@@ -1552,11 +1552,17 @@ def _coach_practice_payload(practice: dict) -> dict:
 
 
 
-def _shared_exercise_snapshot(exercise, final_video_url, body) -> dict:
+def _shared_exercise_snapshot(exercise, final_video_url, body,
+                              practice=None) -> dict:
     """What the speaker is shown. `own_wording` when the coach asks for
     different words than the ones said (founder 2026-09-28, 14B): the
     speaker's practice is then not held to the exact passage. Recorded on the
-    shared exercise itself, so the rule travels with what they were asked."""
+    shared exercise itself, so the rule travels with what they were asked.
+
+    With `practice` (the share path), the coach's pick counts (0398): it is
+    frozen as a coach assignment so the practice joins the jar, and the
+    snapshot carries the id the readiness count joins on. Best effort, after
+    nothing and in the way of nothing."""
     snapshot = {
         "exercise_id": exercise.get("exercise_id"),
         "version": int(exercise.get("version") or 1),
@@ -1567,6 +1573,12 @@ def _shared_exercise_snapshot(exercise, final_video_url, body) -> dict:
     }
     if body.get("own_wording") is True:
         snapshot["own_wording"] = True
+    if practice is not None:
+        from services.confident_voice_practice import record_coach_review_share
+        coach_assignment = record_coach_review_share(db, practice, exercise)
+        if coach_assignment:
+            snapshot["exercise_assignment_id"] = str(
+                coach_assignment.get("id") or "")
     return snapshot
 
 @v2_bp.route(
@@ -1667,7 +1679,7 @@ def v2_coach_confident_voice_practice(session_id, snippet_id):
         return jsonify({"code": "INVALID_INPUT",
                         "error": "Add an explanation video before sharing."}), 400
     exercise_snapshot = _shared_exercise_snapshot(
-        exercise, final_video_url, body)
+        exercise, final_video_url, body, practice if share else None)
     patch = {
         "professional_coach_decision": decision,
         "coach_selected_exercise_id": exercise_id,

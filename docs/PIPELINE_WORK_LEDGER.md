@@ -2223,3 +2223,112 @@ placeholders (title, not-applicable line, granted line, withdraw button,
 back link); the form's own strings are the founder gate's, signed earlier.
 Nothing turns on: the writer state stays `dark`, and after the flip only
 ring-5 principals with a grant write.
+### 2026-09-29 · WS-EXP 1 · claude/v3-learning-packets · #789
+
+**Closed:** decision 1 of the exercise-pipe design (founder 2026-09-29): the
+V3 feedback cards write learning-surface presentation packets. V3 has been
+the served policy since 2026-09-18 and wrote none, so every V3 Take since
+then was invisible to the seven-surface readiness report.
+**Contract lines flipped:** none.
+**Contract lines added:** `tests/test_learning_exposures.py` pins
+`prepare_v3_feedback_presentations` (one packet per surface per visible
+row, keyed by the served row, `bookmark_tier`/`block_id` visible, the block
+partition version in `versions`; refuses a row with no frozen candidate and
+an incomplete inventory) and `FORBIDDEN_VISIBLE_KEYS` (a visible payload
+carrying a score, rank, prediction or another actor's answer is refused:
+AC-9 as a hard refusal in the writer). `tests/test_ideal_text_changes.py`
+pins the stage order (packets after the claim/filter stage) and that V2's
+packet preparation is skipped when V3 replaced the changes.
+**Broke and fixed:** none.
+**Open for the founder:** no backfill of packets for V3 Takes served before
+this PR (the rows are reconstructible, but they were not what the client
+acked). The coach-revision packet (1b) was answered no; the praise question
+(1c) is not in this workstream. Nothing trains on the packets.
+
+### 2026-09-29 · WS-EXP 3 · claude/coach-pick-counts · #(pending)
+
+**Closed:** decision 3 of the exercise-pipe design (founder 2026-09-29): a
+coach-shared exercise counts in the jar. Both coach paths (the answered
+request, lane `coach_request`, and the practice-review share, lane
+`coach_review`) now freeze an assignment under policy
+`exercise-coach-shared-v1`, mode `coach_chosen`, with a trace whose one
+candidate is the coach's pick (fit NULL: a coach's choice is not a machine
+fit), so the render receipt (0387) and the practice outcome join it like an
+80/20 pick.
+**Contract lines flipped:** none.
+**Contract lines added:** migration 0398 `a_coach_pick_counts.sql` widens
+the assignment CHECKs (policy, lane, mode, the coach-policy pairing),
+adds `assign_coach_shared_exercise_v1` (insert-once singleton + trace) and
+`record_exercise_rendered_v2` (finds the assignment by exercise under any
+policy). `tests/test_a_coach_pick_counts_postgres.py` on the released lane;
+`tests/test_exercise_coach_requests.py`, `tests/test_exercise_learning_readiness.py`
+(a coach pick counts toward 300/30 and is flagged `coach_chosen`),
+`tests/test_exercise_fair_test.py` (the fair test never draws a unit from a
+coach pick).
+**Broke and fixed:** none.
+**Open for the founder:** the counted coach picks are flagged, never mixed
+into the machine fit (L3): the learned ranker, when a founder decision
+unseals it, must read `coach_chosen` as a separate provenance. Practices
+rendered through the coach paths before this PR have no assignment and are
+not backfilled.
+
+### 2026-09-29 · WS-EXP 4 · claude/coach-panel-authoring · #(pending)
+
+**Closed:** decision 4 of the exercise-pipe design (founder 2026-09-29):
+exercise authoring in the coach panel, backend. The coach files and edits
+exercises through `/v2/coach/exercises` (`require_admin_or_coach`) with the
+same catalogue service and the same refusals as the CMS, without the shared
+CMS password. Every save keeps its version.
+**Contract lines flipped:** none.
+**Contract lines added:** migration 0399 `an_exercise_keeps_its_versions.sql`:
+`diagnostic_exercise_version`, one immutable row per (exercise, version)
+holding the definition as saved, the AI script draft if there was one, the
+coach's final, the video's lineage and the transcript, written only through
+`record_exercise_version_v1` (insert-once) and
+`set_exercise_version_transcript_v1` (the one transition). Pins in
+`tests/test_exercise_versions_postgres.py` (released lane),
+`tests/test_exercise_versions_migration.py`, `tests/test_exercise_versions.py`
+(the version bumps only when the definition or the video changed; the
+transcript is made under the coach's own authorization through the
+authorized provider path and a missing authorization is recorded, never
+raised), `tests/test_coach_exercise_authoring.py` (a new exercise arrives
+with its video in one call, checked before anything is stored; the draft
+goes to the coach only and stores nothing).
+**Broke and fixed:** none.
+**Open for the founder:** the three texts (AI draft, coach final, and later
+which versions helped) are kept for a script generator that has not been
+decided; no learning surface is registered for them. The coach-facing copy
+on the panel awaits sign-off.
+
+### 2026-09-29 · WS-EXP 5 · frontend claude/cms-jar-page · frontend #543
+
+**Closed:** decision 5 of the exercise-pipe design (founder 2026-09-29;
+frontend wilplus/frontend-cursor#543; nothing changes in this repository
+but this entry): `/cms/jar` shows how full the exercise-learning jar is,
+counts only, from `get_exercise_learning_readiness` through a
+password-gated passthrough.
+**Contract lines flipped:** none.
+**Contract lines added:** in the frontend, `src/app/cms/jar/exerciseJar.test.tsx`
+pins that the page shows counts and never a result, verdict or score.
+**Broke and fixed:** none.
+**Open for the founder:** unsealing the scorekeeper and the fair test stays a
+founder decision; the page only shows when the bar is met. The CMS wording
+awaits sign-off.
+
+### 2026-09-29 · WS-EXP 6 · frontend claude/coach-exercise-authoring · frontend #542
+
+**Closed:** decision 4, frontend (wilplus/frontend-cursor#542; nothing
+changes in this repository but this entry): `/coach/exercises`, coach only,
+against this PR's routes; the review's "Add to the library" hand-off now
+opens the coach lane instead of the CMS lane and returns the coach to the
+moment with the new exercise attached.
+**Contract lines flipped:** none.
+**Contract lines added:** in the frontend, `src/services/api/coachExercises.test.ts`
+and `src/app/coach/exercises/page.client.test.tsx` pin that a new exercise
+cannot leave without its video, that the AI draft enters the exercise only
+through the coach's own hands, and that every BFF route goes through
+`callBackend`.
+**Broke and fixed:** none.
+**Open for the founder:** the coach-facing copy (`FORM_COPY`,
+`AUTHORING_COPY`) awaits sign-off. Merge order: this backend PR before
+frontend #542.

@@ -197,6 +197,42 @@ def _client():
     return _s3_client
 
 
+def put_object_bytes(*, kind: Any, content_type: Any, data: bytes,
+                     filename: Any = None, folder: Any = None) -> dict:
+    """Store one file server-side and return {public_url, key}.
+
+    The coach panel's exercise video (founder 2026-09-29, decision 4): the
+    coach has no CMS password, so the presigned PUT the CMS uses is not on
+    offer; the bytes come through the coach route and land in the same
+    bucket, under the same public base, with the same allowlist. Raises
+    JournalMediaError as ``presign_put`` does.
+    """
+    k = (kind or "").strip().lower()
+    ct = (content_type or "").strip().lower()
+    if k not in _ALLOWED or ct not in _ALLOWED[k]:
+        raise JournalMediaError(
+            f"content_type for {k or 'unknown'} must be one of "
+            f"{', '.join(_ALLOWED.get(k, ()))}"
+        )
+    if not journal_media_use_r2():
+        raise JournalMediaError(
+            "Journal media storage is not configured (R2 credentials or "
+            "bucket missing)."
+        )
+    base = journal_public_base_url()
+    if not base:
+        raise JournalMediaError(
+            "Journal media storage has no public base URL configured "
+            "(set R2_JOURNAL_PUBLIC_BASE_URL)."
+        )
+    if len(data or b"") > max_bytes_for(k):
+        raise JournalMediaError(f"{k} is larger than the allowed size")
+    key = build_object_key(k, ct, filename, folder=folder)
+    _client().put_object(Bucket=journal_bucket_name(), Key=key, Body=data,
+                         ContentType=ct)
+    return {"public_url": f"{base}/{key}", "key": key}
+
+
 def presign_put(*, kind: Any, content_type: Any,
                 filename: Any = None) -> dict:
     """Mint a presigned PUT for one cover file.

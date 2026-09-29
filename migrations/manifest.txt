@@ -433,3 +433,5 @@
 0395	module_8_is_counted.sql
 0396	one_practice_per_moment.sql
 0397	every_judgement_reaches_the_coach.sql
+0398	a_coach_pick_counts.sql
+0399	an_exercise_keeps_its_versions.sql

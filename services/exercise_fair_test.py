@@ -85,6 +85,11 @@ def units_from(records: list[dict]) -> list[dict]:
         if not record["in_cohort"]:
             continue
         exposure, assignment = record["exposure"], record["assignment"]
+        if str(assignment.get("selection_mode") or "") == "coach_chosen":
+            # A coach's pick (0398) was not drawn from a ranked pool with
+            # logged odds, so no policy can be compared on it. It counts in
+            # the jar; it is not an evaluation unit.
+            continue
         ranked = sorted((r for r in assignment.get("candidates") or ()
                          if isinstance(r, dict)),
                         key=lambda r: int(r.get("rank") or 0))

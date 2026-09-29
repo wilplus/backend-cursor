@@ -281,3 +281,57 @@ class PagingTests(unittest.TestCase):
         fake.client = type("C", (), {"table": lambda self, _n: _Query(rows, log)})()
         self.assertEqual(len(fake.list_exercise_exposures()), 2500)
         self.assertEqual(log, [(0, 999), (1000, 1999), (2000, 2999)])
+
+
+# ── A COACH'S PICK COUNTS, FLAGGED (founder 2026-09-29, decision 3; 0398) ─
+
+
+def _coach_trace(observed=("rushing", "ending_compression"),
+                 main=("rushing",), secondary=("ending_compression",),
+                 rules=RULES):
+    return {"fit": None, "observed_tags": list(observed),
+            "candidates": [{"exercise_id": "coach-pick",
+                            "outcome": "coach_chosen",
+                            "main_targets": list(main),
+                            "secondary_targets": list(secondary)}],
+            "signal_rules_version": rules}
+
+
+class CoachPickTests(unittest.TestCase):
+    def test_a_coach_pick_is_judged_on_every_target_it_claims_that_fired(self):
+        targets = lr.targeted_problems(_coach_trace(), "coach-pick")
+        self.assertEqual(targets, frozenset({"rushing", "ending_compression"}))
+        self.assertEqual(
+            lr.targeted_problems(_coach_trace(observed=("mumbling",)),
+                                 "coach-pick"),
+            frozenset())
+
+    def test_a_coach_pick_is_never_in_the_ranked_pool(self):
+        self.assertEqual(lr.ranked_pool(_coach_trace()), [])
+
+    def test_a_coach_pick_counts_under_its_own_mode(self):
+        out = (_World()
+               .add(exercise="coach-pick", owner="o1", mode="coach_chosen",
+                    trace=_coach_trace(), attempts=1)
+               .add(exercise="room", owner="o2", mode="top", attempts=1)
+               .build())
+        self.assertEqual(out["counted"], 2)
+        self.assertEqual(out["counted_by_selection_mode"],
+                         {"coach_chosen": 1, "top": 1})
+        by_id = {row["exercise_id"]: row for row in out["exercises"]}
+        self.assertEqual(by_id["coach-pick"]["counted"], 1)
+        # The bar's per-exercise pool is the ranked exercises only: the
+        # machine draw's pool is listed, the coach pick adds nothing to it.
+        listed = {row["exercise_id"] for row in out["exercises"]}
+        self.assertEqual(listed, {"coach-pick", "room", "slow"})
+        self.assertIn("2 of 300", out["why_not"])
+
+    def test_a_coach_pick_seen_first_makes_the_machine_pick_a_repeat(self):
+        out = (_World()
+               .add(exercise="coach-pick", owner="o1", mode="coach_chosen",
+                    trace=_coach_trace(observed=("rushing",), main=("rushing",),
+                                       secondary=()), attempts=1)
+               .add(exercise="room", owner="o1", mode="top", attempts=1)
+               .build())
+        self.assertEqual(out["counted"], 1)
+        self.assertEqual(out["excluded"]["repeat"], 1)

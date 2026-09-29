@@ -1082,6 +1082,10 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     "admin_notifications", "arc_invite_codes", "casual_voice_benchmarks",
     "chat_question_pool", "coach_video_assets",
     "dad_jokes", "diagnostic_exercise",
+    # Its version rows (0399): the coach's texts, the AI draft and the video's
+    # transcript, product vocabulary like the row they mirror. Coach content,
+    # never a speaker's recording.
+    "diagnostic_exercise_version",
     # The speaking error LIBRARY — names and written definitions of speech
     # patterns, beside diagnostic_exercise for the same reason: it is product
     # vocabulary, not anybody's recording. A row never says that a pattern

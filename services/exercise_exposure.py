@@ -7,10 +7,11 @@ assignment is made when the feedback is built, whether or not anyone saw it,
 so it cannot stand in for this.
 
 Recorded once per assignment in the database; a card rendered on every poll
-is still one exposure. A moment with no draw — nothing fitted, or an exercise
-a coach shared — has nothing to expose, and the call says so without error,
-so the client can send it for every exercise card without knowing which kind
-it is.
+is still one exposure. Since 0398 a coach-shared exercise has an assignment
+of its own and is recorded like any other (founder 2026-09-29, decision 3).
+A moment with no assignment at all (nothing fitted and nothing shared yet)
+has nothing to expose, and the call says so without error, so the client can
+send it for every exercise card without knowing which kind it is.
 
 Nothing here reaches the speaker beyond "recorded": no count, no time.
 """
