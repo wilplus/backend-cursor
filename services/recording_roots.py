@@ -25,6 +25,22 @@ def project_recording_roots(
     payload = snapshot.get("payload")
     if not isinstance(payload, Mapping):
         raise RecordingRootsStale("RECORDING_ROOTS_SNAPSHOT_REQUIRED")
+    frozen_parts, live_parts, pieces = _matching_parts(payload, live_rows)
+
+    roots: list[dict[str, Any]] = []
+    for frozen, live, piece in zip(frozen_parts, live_parts, pieces):
+        _require_same_paragraph(frozen, live, piece)
+        root = _locked_root(live, piece)
+        if root is not None:
+            roots.append(root)
+    return roots
+
+
+def _matching_parts(
+    payload: Mapping[str, Any], live_rows: Any,
+) -> tuple[list, list, list]:
+    """``(frozen_parts, live_parts, pieces)`` when the snapshot's parts, its
+    pieces and the live parts line up one to one over the same text."""
     text = payload.get("text")
     frozen_parts = payload.get("parts")
     pieces = payload.get("pieces")
@@ -40,44 +56,48 @@ def project_recording_roots(
         or not agrees_with_text(live_parts, text)
     ):
         raise RecordingRootsStale("RECORDING_ROOTS_CONTENT_STALE")
+    return frozen_parts, live_parts, pieces
 
-    roots: list[dict[str, Any]] = []
-    for frozen, live, piece in zip(frozen_parts, live_parts, pieces):
-        if not isinstance(frozen, Mapping) or not isinstance(piece, Mapping):
-            raise RecordingRootsStale("RECORDING_ROOTS_LINEAGE_STALE")
-        if (
-            str(frozen.get("id") or "") != str(live.get("id") or "")
-            or frozen.get("text") != live.get("text")
-            or piece.get("text") != live.get("text")
-        ):
-            raise RecordingRootsStale("RECORDING_ROOTS_LINEAGE_STALE")
 
-        phrase = live.get("root_phrase")
-        if not phrase:
-            continue
-        if not live.get("locked"):
-            # NOT YET ELIGIBLE, NOT A STALE DOCUMENT. Since the emphasis step
-            # saves on the step that chose the words (founder 2026-09-24), an
-            # unlocked paragraph legitimately carries a phrase. This used to
-            # raise RECORDING_ROOTS_UNLOCKED_ROOT, which failed the WHOLE
-            # projection with a 409: one unlocked phrase and every root on the
-            # project vanished from the read. Skipping keeps the promise this
-            # function makes — locked roots only — without letting an ordinary
-            # product state present as a corrupted document.
-            continue
-        # NO SPAN CHECK. The helper words are their own text and persist
-        # when a Take rewrites the Paragraph (contract 14, founder
-        # 2026-09-25); the recording screen shows the words, not a position,
-        # so a Paragraph that no longer contains them still shows them.
-        slide = piece.get("slide_index")
-        if isinstance(slide, bool) or not isinstance(slide, int) or slide < 0:
-            # A committed root without exact Slide lineage remains stored but
-            # cannot be displayed during recording.  Never place it by text.
-            continue
-        roots.append({
-            "part_id": str(live["id"]),
-            "slide_index": slide,
-            "text": phrase,
-            "type": "flagship",
-        })
-    return roots
+def _require_same_paragraph(frozen: Any, live: Any, piece: Any) -> None:
+    """The frozen part, the live part and the piece are one Paragraph."""
+    if not isinstance(frozen, Mapping) or not isinstance(piece, Mapping):
+        raise RecordingRootsStale("RECORDING_ROOTS_LINEAGE_STALE")
+    if (
+        str(frozen.get("id") or "") != str(live.get("id") or "")
+        or frozen.get("text") != live.get("text")
+        or piece.get("text") != live.get("text")
+    ):
+        raise RecordingRootsStale("RECORDING_ROOTS_LINEAGE_STALE")
+
+
+def _locked_root(live: Any, piece: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The Paragraph's locked helper words on their Slide, or None."""
+    phrase = live.get("root_phrase")
+    if not phrase:
+        return None
+    if not live.get("locked"):
+        # NOT YET ELIGIBLE, NOT A STALE DOCUMENT. Since the emphasis step
+        # saves on the step that chose the words (founder 2026-09-24), an
+        # unlocked paragraph legitimately carries a phrase. This used to
+        # raise RECORDING_ROOTS_UNLOCKED_ROOT, which failed the WHOLE
+        # projection with a 409: one unlocked phrase and every root on the
+        # project vanished from the read. Skipping keeps the promise this
+        # function makes — locked roots only — without letting an ordinary
+        # product state present as a corrupted document.
+        return None
+    # NO SPAN CHECK. The helper words are their own text and persist
+    # when a Take rewrites the Paragraph (contract 14, founder
+    # 2026-09-25); the recording screen shows the words, not a position,
+    # so a Paragraph that no longer contains them still shows them.
+    slide = piece.get("slide_index")
+    if isinstance(slide, bool) or not isinstance(slide, int) or slide < 0:
+        # A committed root without exact Slide lineage remains stored but
+        # cannot be displayed during recording.  Never place it by text.
+        return None
+    return {
+        "part_id": str(live["id"]),
+        "slide_index": slide,
+        "text": phrase,
+        "type": "flagship",
+    }
