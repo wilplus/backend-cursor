@@ -253,9 +253,15 @@ class TestTheWorkerUsesTheFactory:
         assert [name for name, _ in client.calls] == ["fail_mlc2_outbox_event_v1"]
 
 
-class TestTheModeStaysDark:
+class TestTheDarkModeStillDoesNothing:
+    """The constant is founder_canary since the flip (2026-09-29); the dark
+    behaviour is pinned under an explicit dark, because `killed` and a
+    rollback path still rely on the worker touching nothing."""
+
     def test_boot_starts_nothing_while_dark(self, monkeypatch):
         import services.job_queue as job_queue
+
+        monkeypatch.setattr("config.Config.MLC2_CONFIDENCE_CUTOVER_MODE", "dark")
 
         def boom(*a, **k):
             raise AssertionError("dark mode must not touch the broker")
@@ -268,16 +274,19 @@ class TestTheModeStaysDark:
     def test_a_sweep_tick_claims_nothing_while_dark(self, monkeypatch):
         import services.job_queue as job_queue
 
+        monkeypatch.setattr("config.Config.MLC2_CONFIDENCE_CUTOVER_MODE", "dark")
+
         def boom(*a, **k):
             raise AssertionError("dark mode must not touch the broker")
 
         monkeypatch.setattr(job_queue, "get_redis", boom)
         assert sweep_confidence_outbox("chain") == {"skipped": "dark", "claimed": 0}
 
-    def test_the_constant_is_still_dark(self):
+    def test_the_constant_is_founder_canary_since_the_flip(self):
         from config import Config
 
-        assert Config.MLC2_CONFIDENCE_CUTOVER_MODE == "dark"
+        # The flip (founder 2026-09-29): one-way, never back to dark.
+        assert Config.MLC2_CONFIDENCE_CUTOVER_MODE == "founder_canary"
 
 
 class TestReplayInputsAreBound:

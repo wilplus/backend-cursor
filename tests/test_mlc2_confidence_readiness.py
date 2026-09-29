@@ -71,11 +71,23 @@ def test_all_pre_activation_evidence_can_be_ready_while_cutover_stays_dark():
     assert report.evidence["prior_learning_writes_enabled"] is True
 
 
+def test_founder_canary_is_the_flipped_state_and_the_monitor_keeps_guarding():
+    """The flip (founder 2026-09-29): the same invariants hold, canonical
+    writes are on for the reached and consented person, and the receipt
+    warning no longer says "while dark"."""
+    report = _assess(cutover_mode="founder_canary")
+    assert report.ready is True
+    assert report.blocker_codes == ()
+    assert report.evidence["canonical_writes_enabled"] is True
+    assert report.evidence["prior_learning_writes_enabled"] is False
+    assert "no_runtime_canary_receipt_yet" in report.warning_codes
+    assert "no_runtime_canary_receipt_expected_while_dark" not in report.warning_codes
+
+
 @pytest.mark.parametrize(
     "override,blocker",
     [
-        ({"cutover_mode": "founder_canary"},
-         "canary_must_remain_dark_during_readiness"),
+        ({"cutover_mode": "killed"}, "canary_killed"),
         ({"cutover_mode": "typo"}, "invalid_cutover_mode"),
         ({"monitoring_enabled": False},
          "production_monitor_not_enabled"),

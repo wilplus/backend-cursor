@@ -2332,3 +2332,27 @@ through the coach's own hands, and that every BFF route goes through
 **Open for the founder:** the coach-facing copy (`FORM_COPY`,
 `AUTHORING_COPY`) awaits sign-off. Merge order: this backend PR before
 frontend #542.
+
+### 2026-09-29 · WS-FLIP · flip-founder-canary · #(pending)
+
+**Closed:** the flip. `MLC2_CONFIDENCE_CUTOVER_MODE` goes `dark` →
+`founder_canary` after the readiness cron read READY with no blocker on
+the deployed head (ring row present and not killed, one bundled consent
+grant, monitor and alert sink on, every downstream capability disabled;
+the one warning, more than one ring-eligible principal, is for the
+founder to trim on the rings panel and does not change who writes, since
+writes need the grant too). One-way: dark → founder_canary → killed,
+never back.
+**Contract lines flipped:** `test_the_constant_is_still_dark` in the
+consumer and frame-factory suites becomes
+`test_the_constant_is_founder_canary_since_the_flip`.
+**Contract lines added:** `test_founder_canary_is_the_flipped_state_and_the_monitor_keeps_guarding`
+(readiness): after the flip the cron keeps guarding the same invariants
+every five minutes; `killed` is the one state it reports as a blocker
+(`canary_killed`), and the receipt warning reads
+`no_runtime_canary_receipt_yet` until the first Take writes one.
+**Broke and fixed:** none.
+**Open for the founder:** the first real Take, then a second account
+judges it blind; the cron's receipt warning clearing is the evidence the
+producer ran.
+

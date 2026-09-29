@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from services.mlc2_confidence_cutover import DARK, resolve_confidence_cutover
+from services.mlc2_confidence_cutover import DARK, FOUNDER_CANARY, resolve_confidence_cutover
 from services.mlc3_founder_canary_readiness import _count
 
 
@@ -144,8 +144,11 @@ def assess_confidence_canary_readiness(
 
     if not cutover.valid_configuration:
         blockers.append("invalid_cutover_mode")
-    elif cutover.mode != DARK:
-        blockers.append("canary_must_remain_dark_during_readiness")
+    elif cutover.mode not in (DARK, FOUNDER_CANARY):
+        # After the flip (founder 2026-09-29) the monitor keeps guarding the
+        # same invariants every five minutes; the one state it must never
+        # find is the kill, which is an incident, not a readiness.
+        blockers.append("canary_killed")
     blockers.extend(_ring_blockers(ring_health))
     if not monitoring_enabled:
         blockers.append("production_monitor_not_enabled")
@@ -163,7 +166,11 @@ def assess_confidence_canary_readiness(
 
     eligible = _count(ring_health, "eligible_principal_count")
     if _count(ring_health, "eligible_producer_receipt_count") == 0:
-        warnings.append("no_runtime_canary_receipt_expected_while_dark")
+        warnings.append(
+            "no_runtime_canary_receipt_expected_while_dark"
+            if cutover.mode == DARK
+            else "no_runtime_canary_receipt_yet"
+        )
     if eligible > 1:
         warnings.append("more_than_one_ring_eligible_principal")
 
