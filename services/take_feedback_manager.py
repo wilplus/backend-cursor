@@ -111,42 +111,53 @@ def exposure_snapshot(changes: Iterable[Any]) -> list[dict]:
         family = str(raw.get("feedback_family") or "")
         if family not in FAMILIES or _span(raw) is None:
             continue
-        out.append({
-            "id": str(raw.get("id") or ""),
-            "feedback_family": family,
-            "snippet_id": str(raw.get("snippet_id") or "") or None,
-            "take_session_id": (
-                str(raw.get("take_session_id"))
-                if raw.get("take_session_id") else None
-            ),
-            "span": dict(raw.get("span") or {}),
-            # Exact generated/source material is retained only in the
-            # internal exposure ledger. It is needed to reproduce ranking
-            # and to build surface-specific preference pairs later; none of
-            # these fields ride the student payload.
-            "quote": raw.get("quote"),
-            "proposed_text": raw.get("proposed_text"),
-            "why_key": raw.get("why_key"),
-            "device": raw.get("device"),
-            "tentative": bool(raw.get("tentative")),
-            "cue_keys": list(raw.get("cue_keys") or []),
-            "detector_version": raw.get("detector_version"),
-            "rule_version": raw.get("rule_version"),
-            "model_version": raw.get("model_version"),
-            "prompt_version": raw.get("prompt_version"),
-            **({"machine_prediction": dict(raw["machine_prediction"])}
-               if isinstance(raw.get("machine_prediction"), dict) else {}),
-            **({
-                "acoustic_feature_snapshot": dict(
-                    raw["acoustic_feature_snapshot"]),
-            } if isinstance(raw.get("acoustic_feature_snapshot"), dict)
-               else {}),
-            "evidence": dict(raw.get("_manager_evidence") or {}),
-            "_manager_evidence": dict(raw.get("_manager_evidence") or {}),
-            "rank_key": list(_rank(raw)[:-3]),
-            "selected": False,
-        })
+        out.append(_exposure_row(raw, family))
     return out
+
+
+def _exposure_row(raw: dict, family: str) -> dict:
+    return {
+        "id": str(raw.get("id") or ""),
+        "feedback_family": family,
+        "snippet_id": str(raw.get("snippet_id") or "") or None,
+        "take_session_id": (
+            str(raw.get("take_session_id"))
+            if raw.get("take_session_id") else None
+        ),
+        "span": dict(raw.get("span") or {}),
+        # Exact generated/source material is retained only in the
+        # internal exposure ledger. It is needed to reproduce ranking
+        # and to build surface-specific preference pairs later; none of
+        # these fields ride the student payload.
+        "quote": raw.get("quote"),
+        "proposed_text": raw.get("proposed_text"),
+        "why_key": raw.get("why_key"),
+        "device": raw.get("device"),
+        "tentative": bool(raw.get("tentative")),
+        "cue_keys": list(raw.get("cue_keys") or []),
+        "detector_version": raw.get("detector_version"),
+        "rule_version": raw.get("rule_version"),
+        "model_version": raw.get("model_version"),
+        "prompt_version": raw.get("prompt_version"),
+        **_machine_readings(raw),
+        "evidence": dict(raw.get("_manager_evidence") or {}),
+        "_manager_evidence": dict(raw.get("_manager_evidence") or {}),
+        "rank_key": list(_rank(raw)[:-3]),
+        "selected": False,
+    }
+
+
+def _machine_readings(raw: dict) -> dict:
+    """The machine prediction and acoustic snapshot, each only when present."""
+    return {
+        **({"machine_prediction": dict(raw["machine_prediction"])}
+           if isinstance(raw.get("machine_prediction"), dict) else {}),
+        **({
+            "acoustic_feature_snapshot": dict(
+                raw["acoustic_feature_snapshot"]),
+        } if isinstance(raw.get("acoustic_feature_snapshot"), dict)
+           else {}),
+    }
 
 
 def strip_internal_evidence(changes: Iterable[Any]) -> list[dict]:
@@ -286,11 +297,7 @@ def ensure_required_families(
     """
     text = served_text if isinstance(served_text, str) else ""
     sid = str(snippet_id or "")
-    family_snippets = {
-        str(family): str(value)
-        for family, value in (snippet_ids_by_family or {}).items()
-        if family in FAMILIES and value
-    }
+    family_snippets = _family_snippets(snippet_ids_by_family)
     take = str(take_session_id or "")
     rows = [dict(row) for row in (changes or []) if isinstance(row, dict)]
     present = {
@@ -300,60 +307,95 @@ def ensure_required_families(
     candidates = _sentences(text)
     if not text or not take or not sid or not candidates:
         return rows
+    rows.extend(_missing_lane_fallbacks(
+        present, candidates, take=take, sid=sid,
+        family_snippets=family_snippets))
+    return rows
 
+
+def _missing_lane_fallbacks(present: set, candidates: list, *, take: str,
+                            sid: str, family_snippets: dict) -> list[dict]:
+    """A weak fallback for each text lane with no row: the rewrite first,
+    then the praise."""
+    out: list[dict] = []
     if "rewrite_clarity" not in present:
-        ranked = sorted(
-            candidates,
-            key=lambda item: (-len(_WORD_RE.findall(item[2])), item[0]),
-        )
-        for start, end, quote in ranked:
-            proposed = _actionable_rewrite(quote)
-            if not proposed:
-                continue
-            rows.append({
-                "id": _stable_id("rewrite-review", take, quote),
-                "snippet_id": family_snippets.get("rewrite_clarity", sid),
-                "take_session_id": take,
-                "kind": "replace",
-                "source": "wording",
-                "span": {"start": start, "end": end},
-                "quote": quote,
-                "proposed_text": proposed,
-                "why_key": "clarity_tentative",
-                "feedback_family": "rewrite_clarity",
-                "tentative": True,
-                "rule_version": FALLBACK_GENERATOR_RULE_VERSION,
-                "_manager_evidence": {
-                    "fallback": True,
-                    "specificity": min(3, len(_WORD_RE.findall(quote)) // 6),
-                    "lexical_words_invented": 0,
-                },
-            })
-            break
-
+        rewrite = _fallback_rewrite(
+            candidates, take=take,
+            snippet_id=family_snippets.get("rewrite_clarity", sid))
+        if rewrite is not None:
+            out.append(rewrite)
     if "great_formulation" not in present:
-        # The shortest complete formulation is the most defensible weak
-        # praise: its concision is directly observable in the exact quote.
-        start, end, quote = min(
-            candidates,
-            key=lambda item: (len(_WORD_RE.findall(item[2])), item[0]),
-        )
-        rows.append({
-            "id": _stable_id("praise-review", take, quote),
-            "snippet_id": family_snippets.get("great_formulation", sid),
+        out.append(_fallback_praise(
+            candidates, take=take,
+            snippet_id=family_snippets.get("great_formulation", sid)))
+    return out
+
+
+def _family_snippets(snippet_ids_by_family: Optional[dict[str, Any]]) -> dict:
+    """The snippet id each known family's fallback should anchor to."""
+    return {
+        str(family): str(value)
+        for family, value in (snippet_ids_by_family or {}).items()
+        if family in FAMILIES and value
+    }
+
+
+def _fallback_rewrite(candidates: list, *, take: str,
+                      snippet_id: str) -> Optional[dict]:
+    """The longest sentence with an actionable rewrite, as a tentative
+    rewrite_clarity row; None when no sentence has one."""
+    ranked = sorted(
+        candidates,
+        key=lambda item: (-len(_WORD_RE.findall(item[2])), item[0]),
+    )
+    for start, end, quote in ranked:
+        proposed = _actionable_rewrite(quote)
+        if not proposed:
+            continue
+        return {
+            "id": _stable_id("rewrite-review", take, quote),
+            "snippet_id": snippet_id,
             "take_session_id": take,
-            "kind": "advice",
-            "source": "structural",
+            "kind": "replace",
+            "source": "wording",
             "span": {"start": start, "end": end},
             "quote": quote,
-            "device": "tentative_formulation",
-            "feedback_family": "great_formulation",
+            "proposed_text": proposed,
+            "why_key": "clarity_tentative",
+            "feedback_family": "rewrite_clarity",
             "tentative": True,
             "rule_version": FALLBACK_GENERATOR_RULE_VERSION,
             "_manager_evidence": {
                 "fallback": True,
-                "specificity": 1,
-                "basis": "exact_concise_formulation",
+                "specificity": min(3, len(_WORD_RE.findall(quote)) // 6),
+                "lexical_words_invented": 0,
             },
-        })
-    return rows
+        }
+    return None
+
+
+def _fallback_praise(candidates: list, *, take: str, snippet_id: str) -> dict:
+    # The shortest complete formulation is the most defensible weak
+    # praise: its concision is directly observable in the exact quote.
+    start, end, quote = min(
+        candidates,
+        key=lambda item: (len(_WORD_RE.findall(item[2])), item[0]),
+    )
+    return {
+        "id": _stable_id("praise-review", take, quote),
+        "snippet_id": snippet_id,
+        "take_session_id": take,
+        "kind": "advice",
+        "source": "structural",
+        "span": {"start": start, "end": end},
+        "quote": quote,
+        "device": "tentative_formulation",
+        "feedback_family": "great_formulation",
+        "tentative": True,
+        "rule_version": FALLBACK_GENERATOR_RULE_VERSION,
+        "_manager_evidence": {
+            "fallback": True,
+            "specificity": 1,
+            "basis": "exact_concise_formulation",
+        },
+    }
