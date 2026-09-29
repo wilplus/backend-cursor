@@ -81,21 +81,9 @@ def _acoustics(pcm: np.ndarray, start_ms: int, end_ms: int) -> dict[str, Any]:
     }
 
 
-def extract_rushed_phrase_endings_n1(
-    *,
-    exact_passage: str,
-    transcript: str,
-    words: list[dict[str, Any]],
-    pcm: np.ndarray | None,
-    language: str | None,
-) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
-    """Return raw measurements, safeguards, and typed technical-invalidity.
-
-    Word error rate is exact normalized word-level Levenshtein distance divided
-    by reference token count.  No hidden similarity threshold is applied.
-    """
-    reference = _tokens(exact_passage)
-    hypothesis = _tokens(transcript)
+def _input_reasons(transcript: str, language: str | None,
+                   pcm: np.ndarray | None) -> list[str]:
+    """Technical invalidity visible before any word is read."""
     reasons: list[str] = []
     if not transcript.strip():
         reasons.append("transcript_missing")
@@ -105,7 +93,26 @@ def extract_rushed_phrase_endings_n1(
         reasons.append("language_out_of_scope")
     if pcm is None or len(pcm) == 0:
         reasons.append("audio_decode_failed")
+    return reasons
 
+
+def _word_confidence(raw: dict[str, Any]) -> float | None:
+    """The ASR confidence when it is a number in [0, 1], else None."""
+    confidence = raw.get("confidence")
+    try:
+        confidence = None if confidence is None else float(confidence)
+    except (TypeError, ValueError):
+        confidence = None
+    if confidence is not None and not 0.0 <= confidence <= 1.0:
+        confidence = None
+    return confidence
+
+
+def _normalized_words(
+    words: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], bool]:
+    """Single-token words with valid millisecond timings, and whether any
+    word's timing was invalid (skipped, and reported by the caller)."""
     normalized_words: list[dict[str, Any]] = []
     timing_invalid = False
     for raw in words or []:
@@ -121,19 +128,133 @@ def extract_rushed_phrase_endings_n1(
         if start_ms < 0 or end_ms <= start_ms:
             timing_invalid = True
             continue
-        confidence = raw.get("confidence")
-        try:
-            confidence = None if confidence is None else float(confidence)
-        except (TypeError, ValueError):
-            confidence = None
-        if confidence is not None and not 0.0 <= confidence <= 1.0:
-            confidence = None
         normalized_words.append({
             "token": token_values[0],
             "start_ms": start_ms,
             "end_ms": end_ms,
-            "confidence": confidence,
+            "confidence": _word_confidence(raw),
         })
+    return normalized_words, timing_invalid
+
+
+def _empty_span() -> dict[str, Any]:
+    return {
+        "start_ms": None, "end_ms": None, "duration_ms": None,
+        "word_count": 0, "wpm": None, "pause_count": None,
+        "pause_total_ms": None, "syllable_count": None,
+        "syllables_per_second": None, "oov_tokens": [],
+        "asr_confidence_mean": None, "asr_confidence_min": None,
+        "rms_dbfs": None, "clipping_fraction": None,
+    }
+
+
+def _span(values: list[dict[str, Any]], pcm: np.ndarray | None) -> dict[str, Any]:
+    """Timing, syllable, confidence and acoustic measurements of one span."""
+    if not values:
+        return _empty_span()
+    start_ms, end_ms = values[0]["start_ms"], values[-1]["end_ms"]
+    duration_ms = end_ms - start_ms
+    gaps = [
+        max(0, right["start_ms"] - left["end_ms"])
+        for left, right in zip(values, values[1:])
+    ]
+    pauses = [gap for gap in gaps if gap >= PAUSE_THRESHOLD_MS]
+    syllable_count = 0
+    oov: list[str] = []
+    for value in values:
+        count, is_oov = _syllables(value["token"])
+        if is_oov or count is None:
+            oov.append(value["token"])
+        else:
+            syllable_count += count
+    confidences = [
+        value["confidence"] for value in values
+        if value["confidence"] is not None
+    ]
+    acoustic = (
+        _acoustics(pcm, start_ms, end_ms)
+        if pcm is not None else {"rms_dbfs": None, "clipping_fraction": None}
+    )
+    return {
+        "start_ms": start_ms,
+        "end_ms": end_ms,
+        "duration_ms": duration_ms,
+        "word_count": len(values),
+        "wpm": None if duration_ms <= 0 else _round(
+            len(values) * 60_000.0 / duration_ms
+        ),
+        "pause_count": len(pauses),
+        "pause_total_ms": sum(pauses),
+        "syllable_count": syllable_count if not oov else None,
+        "syllables_per_second": (
+            None if duration_ms <= 0 or oov else
+            _round(syllable_count * 1000.0 / duration_ms)
+        ),
+        "oov_tokens": oov,
+        "asr_confidence_mean": (
+            _round(sum(confidences) / len(confidences))
+            if len(confidences) == len(values) else None
+        ),
+        "asr_confidence_min": (
+            _round(min(confidences))
+            if len(confidences) == len(values) else None
+        ),
+        **acoustic,
+    }
+
+
+def _missingness(reasons: list[str], normalized_words: list[dict[str, Any]],
+                 usable_spans: bool, prefix_span: dict[str, Any],
+                 ending_span: dict[str, Any]) -> list[str]:
+    missingness: list[str] = []
+    if usable_spans and any(
+        value["confidence"] is None for value in normalized_words
+    ):
+        missingness.append("word_confidence_unavailable")
+    if prefix_span["oov_tokens"] or ending_span["oov_tokens"]:
+        missingness.append("syllable_estimate_oov")
+    missingness.extend(reason for reason in reasons if reason not in missingness)
+    return missingness
+
+
+def _safeguards(normalized_words: list[dict[str, Any]],
+                missingness: list[str]) -> dict[str, Any]:
+    return {
+        "pause_threshold_ms": PAUSE_THRESHOLD_MS,
+        "rms_unit": "dBFS_float32_mono_16khz",
+        "clipping_amplitude_fs": CLIPPING_AMPLITUDE_FS,
+        "syllable_method": "english_orthographic_v1",
+        "oov_policy": "null_aggregate_and_retain_tokens",
+        "confidence_aggregation": "mean_and_min_only_when_all_words_present",
+        "wer_method": "normalized_word_levenshtein_half_up_4dp",
+        "uncertainty": {
+            "word_confidence_complete": not any(
+                value["confidence"] is None for value in normalized_words
+            ),
+            "no_rushed_or_improved_label_derived": True,
+        },
+        "missingness_reasons": sorted(set(missingness)),
+    }
+
+
+def extract_rushed_phrase_endings_n1(
+    *,
+    exact_passage: str,
+    transcript: str,
+    words: list[dict[str, Any]],
+    pcm: np.ndarray | None,
+    language: str | None,
+) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
+    """Return raw measurements, safeguards, and typed technical-invalidity.
+
+    Word error rate is exact normalized word-level Levenshtein distance divided
+    by reference token count.  No hidden similarity threshold is applied.
+    """
+    reference = _tokens(exact_passage)
+    hypothesis = _tokens(transcript)
+    reasons = _input_reasons(transcript, language, pcm)
+
+    normalized_words, timing_invalid = _normalized_words(words)
     if timing_invalid:
         reasons.append("word_timing_invalid")
     if len(normalized_words) < ENDING_WORD_COUNT + MIN_PREFIX_WORD_COUNT:
@@ -151,79 +272,13 @@ def extract_rushed_phrase_endings_n1(
     ending = normalized_words[-ENDING_WORD_COUNT:]
     usable_spans = len(prefix) >= MIN_PREFIX_WORD_COUNT and len(ending) == 3
 
-    def span(values: list[dict[str, Any]]) -> dict[str, Any]:
-        if not values:
-            return {
-                "start_ms": None, "end_ms": None, "duration_ms": None,
-                "word_count": 0, "wpm": None, "pause_count": None,
-                "pause_total_ms": None, "syllable_count": None,
-                "syllables_per_second": None, "oov_tokens": [],
-                "asr_confidence_mean": None, "asr_confidence_min": None,
-                "rms_dbfs": None, "clipping_fraction": None,
-            }
-        start_ms, end_ms = values[0]["start_ms"], values[-1]["end_ms"]
-        duration_ms = end_ms - start_ms
-        gaps = [
-            max(0, right["start_ms"] - left["end_ms"])
-            for left, right in zip(values, values[1:])
-        ]
-        pauses = [gap for gap in gaps if gap >= PAUSE_THRESHOLD_MS]
-        syllable_count = 0
-        oov: list[str] = []
-        for value in values:
-            count, is_oov = _syllables(value["token"])
-            if is_oov or count is None:
-                oov.append(value["token"])
-            else:
-                syllable_count += count
-        confidences = [
-            value["confidence"] for value in values
-            if value["confidence"] is not None
-        ]
-        acoustic = (
-            _acoustics(pcm, start_ms, end_ms)
-            if pcm is not None else {"rms_dbfs": None, "clipping_fraction": None}
-        )
-        return {
-            "start_ms": start_ms,
-            "end_ms": end_ms,
-            "duration_ms": duration_ms,
-            "word_count": len(values),
-            "wpm": None if duration_ms <= 0 else _round(
-                len(values) * 60_000.0 / duration_ms
-            ),
-            "pause_count": len(pauses),
-            "pause_total_ms": sum(pauses),
-            "syllable_count": syllable_count if not oov else None,
-            "syllables_per_second": (
-                None if duration_ms <= 0 or oov else
-                _round(syllable_count * 1000.0 / duration_ms)
-            ),
-            "oov_tokens": oov,
-            "asr_confidence_mean": (
-                _round(sum(confidences) / len(confidences))
-                if len(confidences) == len(values) else None
-            ),
-            "asr_confidence_min": (
-                _round(min(confidences))
-                if len(confidences) == len(values) else None
-            ),
-            **acoustic,
-        }
-
-    prefix_span = span(prefix if usable_spans else [])
-    ending_span = span(ending if usable_spans else [])
+    prefix_span = _span(prefix if usable_spans else [], pcm)
+    ending_span = _span(ending if usable_spans else [], pcm)
     rate_ratio = None
     if prefix_span["wpm"] and ending_span["wpm"]:
         rate_ratio = _round(ending_span["wpm"] / prefix_span["wpm"])
-    missingness: list[str] = []
-    if usable_spans and any(
-        value["confidence"] is None for value in normalized_words
-    ):
-        missingness.append("word_confidence_unavailable")
-    if prefix_span["oov_tokens"] or ending_span["oov_tokens"]:
-        missingness.append("syllable_estimate_oov")
-    missingness.extend(reason for reason in reasons if reason not in missingness)
+    missingness = _missingness(reasons, normalized_words, usable_spans,
+                               prefix_span, ending_span)
     status = "complete" if usable_spans and not reasons else (
         "partial" if normalized_words else "unavailable"
     )
@@ -242,20 +297,4 @@ def extract_rushed_phrase_endings_n1(
         "ending_to_prefix_wpm_ratio": rate_ratio,
         "measurement_status": status,
     }
-    safeguards = {
-        "pause_threshold_ms": PAUSE_THRESHOLD_MS,
-        "rms_unit": "dBFS_float32_mono_16khz",
-        "clipping_amplitude_fs": CLIPPING_AMPLITUDE_FS,
-        "syllable_method": "english_orthographic_v1",
-        "oov_policy": "null_aggregate_and_retain_tokens",
-        "confidence_aggregation": "mean_and_min_only_when_all_words_present",
-        "wer_method": "normalized_word_levenshtein_half_up_4dp",
-        "uncertainty": {
-            "word_confidence_complete": not any(
-                value["confidence"] is None for value in normalized_words
-            ),
-            "no_rushed_or_improved_label_derived": True,
-        },
-        "missingness_reasons": sorted(set(missingness)),
-    }
-    return measurements, safeguards, sorted(set(reasons))
+    return measurements, _safeguards(normalized_words, missingness), sorted(set(reasons))

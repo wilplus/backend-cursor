@@ -10,6 +10,9 @@ import pytest
 from services.data_purge_registry import DEPENDENCIES
 from services.practice_adoption import (
     ADOPTING,
+    ANSWERS,
+    LEGACY_ROUTE_OF,
+    route_matches,
     helper_words_from_practice,
     judge_attempt,
     judgeable_attempt,
@@ -168,3 +171,28 @@ def test_the_migration_widens_all_three_answers_and_registers_history():
         assert name in sql
     assert "'document_moved'" in sql
     assert "ideal_text_practice_adoptions" in {d.relation for d in DEPENDENCIES}
+
+
+# F-4 (audit 2026-09-22): the stored route is the answer itself; rows from
+# before the fix hold the legacy pair and are still read.
+
+def test_a_route_stored_as_the_answer_matches_that_answer_only():
+    for answer in ANSWERS:
+        assert route_matches(answer, answer)
+        for other in ANSWERS:
+            if other != answer:
+                assert not route_matches(answer, other)
+
+
+def test_a_legacy_route_matches_every_answer_it_folded():
+    assert route_matches("neutral", "in_between")
+    assert route_matches("neutral", "not_sure")
+    assert route_matches("unrateable", "audio_unclear")
+    assert not route_matches("neutral", "yes")
+    assert not route_matches("unrateable", "no")
+    assert set(LEGACY_ROUTE_OF) == set(ANSWERS)
+
+
+def test_an_unknown_answer_never_matches():
+    assert not route_matches("yes", "maybe")
+    assert not route_matches("", "")

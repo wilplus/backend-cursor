@@ -428,26 +428,7 @@ def _validate_core_summary(value: Any, *, snapshot_id: str) -> dict[str, Any]:
     return summary
 
 
-def validate_ideal_text_core_v2(value: Any) -> dict[str, Any]:
-    """Validate D29's exact database-owned core-read envelope."""
-    envelope = _object(value, "ideal_text core v2")
-    _reject_forbidden_keys(envelope)
-    _exact_keys(envelope, {
-        "ideal_text_core_read_contract_version", "snapshot",
-        "dynamic_overlay", "read_sha256",
-    }, "ideal_text core v2")
-    if envelope.get("ideal_text_core_read_contract_version") != (
-        "ideal-text-document-core-v2"
-    ):
-        raise ConfidentMomentProjectionInvalid("core read version invalid")
-
-    snapshot = _object(envelope.get("snapshot"), "snapshot")
-    _exact_keys(snapshot, {
-        "id", "arc_id", "actor_id", "acquisition_principal_id",
-        "project_id", "source_take_session_id", "version",
-        "source_generation", "source_fingerprint_sha256", "payload_sha256",
-        "payload", "enrichment_seed", "supersedes_id", "created_at",
-    }, "snapshot")
+def _validate_core_snapshot_identity(snapshot: dict) -> None:
     for field in (
         "id", "acquisition_principal_id", "project_id",
         "source_take_session_id",
@@ -459,6 +440,9 @@ def validate_ideal_text_core_v2(value: Any) -> dict[str, Any]:
             raise ConfidentMomentProjectionInvalid(
                 f"snapshot.{field} must be non-empty exact text"
             )
+
+
+def _validate_core_snapshot_counters(snapshot: dict) -> None:
     version = snapshot.get("version")
     if (
         isinstance(version, bool) or not isinstance(version, int)
@@ -474,6 +458,19 @@ def validate_ideal_text_core_v2(value: Any) -> dict[str, Any]:
         raise ConfidentMomentProjectionInvalid(
             "snapshot.source_generation must be a canonical bigint string"
         )
+
+
+def _validate_core_snapshot(envelope: dict) -> dict:
+    """The snapshot: exact keys, identities, counters, hashes, timestamp."""
+    snapshot = _object(envelope.get("snapshot"), "snapshot")
+    _exact_keys(snapshot, {
+        "id", "arc_id", "actor_id", "acquisition_principal_id",
+        "project_id", "source_take_session_id", "version",
+        "source_generation", "source_fingerprint_sha256", "payload_sha256",
+        "payload", "enrichment_seed", "supersedes_id", "created_at",
+    }, "snapshot")
+    _validate_core_snapshot_identity(snapshot)
+    _validate_core_snapshot_counters(snapshot)
     _sha256(
         snapshot.get("source_fingerprint_sha256"),
         "snapshot.source_fingerprint_sha256",
@@ -490,20 +487,16 @@ def validate_ideal_text_core_v2(value: Any) -> dict[str, Any]:
         raise ConfidentMomentProjectionInvalid(
             "snapshot.created_at must be six-digit UTC RFC3339"
         )
+    return snapshot
 
-    overlay = _object(envelope.get("dynamic_overlay"), "dynamic_overlay")
-    _exact_keys(overlay, {
-        "owner_edit", "confident_moment_summary",
-        "confident_moment_summary_status",
-    }, "dynamic_overlay")
-    validate_owner_edit_transport(overlay.get("owner_edit"))
+
+def _validate_summary_status(overlay: dict) -> dict:
     status = _object(
         overlay.get("confident_moment_summary_status"),
         "confident_moment_summary_status",
     )
     _exact_keys(status, {"state", "code", "retryable"}, "summary status")
-    state = status.get("state")
-    if state not in {"disabled", "unavailable", "available"}:
+    if status.get("state") not in {"disabled", "unavailable", "available"}:
         raise ConfidentMomentProjectionInvalid("summary status state invalid")
     code = status.get("code")
     if code is not None and (
@@ -512,15 +505,45 @@ def validate_ideal_text_core_v2(value: Any) -> dict[str, Any]:
         raise ConfidentMomentProjectionInvalid("summary status code invalid")
     if not isinstance(status.get("retryable"), bool):
         raise ConfidentMomentProjectionInvalid("summary retryable invalid")
+    return status
+
+
+def _validate_core_overlay(envelope: dict, *, snapshot_id: Any) -> None:
+    """The dynamic overlay: the owner edit, and a summary consistent with
+    its status (only `available` carries one)."""
+    overlay = _object(envelope.get("dynamic_overlay"), "dynamic_overlay")
+    _exact_keys(overlay, {
+        "owner_edit", "confident_moment_summary",
+        "confident_moment_summary_status",
+    }, "dynamic_overlay")
+    validate_owner_edit_transport(overlay.get("owner_edit"))
+    status = _validate_summary_status(overlay)
+    state, code = status.get("state"), status.get("code")
     summary = overlay.get("confident_moment_summary")
     if state == "available":
         if summary is None or code is not None or status["retryable"]:
             raise ConfidentMomentProjectionInvalid("available summary state invalid")
-        _validate_core_summary(summary, snapshot_id=snapshot["id"])
+        _validate_core_summary(summary, snapshot_id=snapshot_id)
     elif summary is not None:
         raise ConfidentMomentProjectionInvalid("unavailable summary must be null")
     elif state == "disabled" and (code is not None or status["retryable"]):
         raise ConfidentMomentProjectionInvalid("disabled summary state invalid")
+
+
+def validate_ideal_text_core_v2(value: Any) -> dict[str, Any]:
+    """Validate D29's exact database-owned core-read envelope."""
+    envelope = _object(value, "ideal_text core v2")
+    _reject_forbidden_keys(envelope)
+    _exact_keys(envelope, {
+        "ideal_text_core_read_contract_version", "snapshot",
+        "dynamic_overlay", "read_sha256",
+    }, "ideal_text core v2")
+    if envelope.get("ideal_text_core_read_contract_version") != (
+        "ideal-text-document-core-v2"
+    ):
+        raise ConfidentMomentProjectionInvalid("core read version invalid")
+    snapshot = _validate_core_snapshot(envelope)
+    _validate_core_overlay(envelope, snapshot_id=snapshot["id"])
     _sha256(envelope.get("read_sha256"), "read_sha256")
     return envelope
 
