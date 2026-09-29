@@ -1593,7 +1593,7 @@ def v2_coach_confident_voice_practice(session_id, snippet_id):
     if not owner_sid:
         return jsonify({"code": "SNIPPET_NOT_FOUND",
                         "error": "Snippet not in this session"}), 404
-    # Hard blind gate: the current coach must first commit a definite rating.
+    # Hard blind gate: the current coach must first commit their own rating.
     state = _coach_state_map(owner_sid, rater_id=getattr(request, "user_id", None))
     coach_state = state.get(str(snippet_id)) or {}
     if not _practice_door_open(coach_state):
@@ -1602,7 +1602,7 @@ def v2_coach_confident_voice_practice(session_id, snippet_id):
     if not _speaker_practice_permitted(owner_sid):  # E3, founder 2026-09-25
         return jsonify({"code": "SPEAKER_PRACTICE_OFF",
                         "error": "The speaker turned practice off."}), 409
-    practice = db.get_confident_voice_practice_by_take(owner_sid)
+    practice = db.get_confident_voice_practice_by_moment(owner_sid, snippet_id)
     if not practice or str(practice.get("snippet_id")) != str(snippet_id):
         return jsonify({"code": "NOT_FOUND",
                         "error": "practice not found"}), 404

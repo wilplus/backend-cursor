@@ -1039,8 +1039,10 @@ class V3ExerciseFitTests(unittest.TestCase):
     def _offer(self, db, fired):
         target = {"source": "confident_voice", "bookmark_tier": "exercise",
                   "snippet_id": "snippet-a"}
-        verdict = {"eligible": True, "pattern": "near_confident",
-                   "priority": 3, "signals": fired, "snapshot": {}}
+        # Read weak: the library video is for a clip the machine reads weak
+        # (the follow-up matrix, founder 2026-09-29).
+        verdict = {"eligible": True, "pattern": "low_confidence_rushing_dominant",
+                   "priority": 1, "signals": fired, "snapshot": {}}
         original = cvp.exercise_eligibility
         cvp.exercise_eligibility = lambda *_a, **_k: verdict
         try:

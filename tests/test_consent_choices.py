@@ -308,7 +308,7 @@ class CoachTests(unittest.TestCase):
         self.assertLess(route.index("BLIND_RATING_REQUIRED"),
                         route.index("_speaker_practice_permitted(owner_sid)"))
         self.assertLess(route.index("_speaker_practice_permitted(owner_sid)"),
-                        route.index("get_confident_voice_practice_by_take"))
+                        route.index("get_confident_voice_practice_by_moment"))
         self.assertIn('"SPEAKER_PRACTICE_OFF"', route)
 
 

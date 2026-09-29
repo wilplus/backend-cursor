@@ -14852,12 +14852,16 @@ class DatabaseService:
     def request_exercise_from_coach(
         self, *, owner_user_id: str, take_session_id: str, snippet_id: str,
         reason: str, pattern: Optional[str], observed_tags: list[str],
-        request_trace: dict,
+        request_trace: dict, kind: str = "error",
     ) -> Optional[dict]:
-        """The moment's coach request (migration 0385): recorded on the first
-        call, returned unchanged — with any resolution since — on every later
-        one. Raises on failure; the caller keeps the feedback regardless."""
-        result = self.client.rpc("request_exercise_from_coach_v1", {
+        """The moment's coach request (migration 0385; its kind, 0397):
+        recorded on the first call, returned unchanged — with any resolution
+        since — on every later one. Raises on failure; the caller keeps the
+        feedback regardless.
+
+        Without 0397 (PGRST202 on v2) the v1 function records it without a
+        kind, except a 'library_matched' request, which v1 cannot hold."""
+        params = {
             "p_owner_user_id": str(owner_user_id),
             "p_take_session_id": str(take_session_id),
             "p_snippet_id": str(snippet_id),
@@ -14865,7 +14869,19 @@ class DatabaseService:
             "p_pattern": pattern,
             "p_observed_tags": list(observed_tags),
             "p_request_trace": request_trace,
-        }).execute()
+        }
+        try:
+            result = self.client.rpc("request_exercise_from_coach_v2",
+                                     {**params, "p_kind": str(kind)}).execute()
+            return self._rpc_row(result.data)
+        except Exception as e:  # noqa: BLE001 — only "not installed" falls back
+            if "PGRST202" not in str(e):
+                raise
+            if reason == "library_matched":
+                return None
+            logger.warning("request_exercise_from_coach_v2 missing; recording "
+                           "without a kind sid=%s", take_session_id, exc_info=True)
+        result = self.client.rpc("request_exercise_from_coach_v1", params).execute()
         return self._rpc_row(result.data)
 
     def get_exercise_coach_request(
@@ -14921,6 +14937,28 @@ class DatabaseService:
             logger.warning(
                 "get_confident_voice_exercise_assignment failed sid=%s: %s",
                 take_session_id, e)
+            return None
+
+    def get_confident_voice_practice_by_moment(
+        self, take_session_id: str, snippet_id: str,
+        owner_user_id: Optional[str] = None,
+    ) -> Optional[dict]:
+        """The practice on this exact moment (founder 2026-09-29: every
+        bookmark may carry its own; migration 0396 keys it per moment)."""
+        if not take_session_id or not snippet_id:
+            return None
+        try:
+            query = (self.client.table("confident_voice_practice").select("*")
+                     .eq("take_session_id", str(take_session_id))
+                     .eq("snippet_id", str(snippet_id)))
+            if owner_user_id:
+                query = query.eq("owner_user_id", str(owner_user_id))
+            res = query.limit(1).execute()
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("get_confident_voice_practice_by_moment failed "
+                           "sid=%s snip=%s: %s", take_session_id, snippet_id, e,
+                           exc_info=True)
             return None
 
     def get_confident_voice_practice_by_take(
@@ -15046,12 +15084,13 @@ class DatabaseService:
                    .insert(row).execute())
             return (res.data or [None])[0]
         except Exception as e:
-            # The DB unique(take_session_id) is the final one-per-take guard.
-            # A concurrent create simply re-reads the winner.
+            # The DB unique(take_session_id, snippet_id) is the final
+            # one-per-moment guard. A concurrent create re-reads the winner.
             logger.warning("create_confident_voice_practice failed take=%s: %s",
                            row.get("take_session_id"), e)
-            return self.get_confident_voice_practice_by_take(
+            return self.get_confident_voice_practice_by_moment(
                 str(row.get("take_session_id") or ""),
+                str(row.get("snippet_id") or ""),
                 str(row.get("owner_user_id") or "") or None)
 
     def list_confident_voice_practice_attempts(

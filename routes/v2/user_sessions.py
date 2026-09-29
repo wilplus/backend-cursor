@@ -1600,11 +1600,22 @@ def v2_post_take_feedback_response(take_session_id):
                 db, row=row, arc_id=arc_id, owner_user_id=str(request.user_id))
             from services.voice_album import refresh_voice_album
             refresh_voice_album(arc_id, database=db)
+        # A JUDGEMENT IS ALWAYS ANSWERED (founder 2026-09-29): the follow-up
+        # matrix decides what the sheet may show next and sends the bookmark
+        # to the coach with its kind. Never fails the save.
+        follow_up = "none"
+        if row["feedback_family"] == "confident_voice" and row.get("snippet_id"):
+            from services.judgement_follow_up import follow_up_for_judgement
+            follow_up = follow_up_for_judgement(
+                db, take_session_id=str(take_session_id),
+                snippet_id=str(row["snippet_id"]),
+                owner_user_id=str(request.user_id), answer=row["response"])
         return jsonify({
             "saved": True,
             "feedback_id": row["feedback_id"],
             "feedback_family": row["feedback_family"],
             "response": row["response"],
+            "follow_up": follow_up,
         }), 200
     except Exception as e:
         logger.error("take feedback response failed take=%s: %s",
@@ -1794,12 +1805,12 @@ def v2_start_confident_voice_practice(snippet_id):
             return jsonify({"code": "EXERCISE_UNAVAILABLE",
                             "error": "This exercise is not available."}), 409
         take_id = str(session.get("id"))
-        existing = db.get_confident_voice_practice_by_take(
-            take_id, str(request.user_id))
+        # ONE PRACTICE PER MOMENT (founder 2026-09-29): every bookmark may
+        # carry its own exercise, so another moment's practice on this Take
+        # no longer refuses this one. This moment's own row resumes.
+        existing = db.get_confident_voice_practice_by_moment(
+            take_id, str(snippet_id), str(request.user_id))
         if existing:
-            if str(existing.get("snippet_id")) != str(snippet_id):
-                return jsonify({"code": "TAKE_EXERCISE_LIMIT",
-                                "error": "An exercise was already offered for this take."}), 409
             return jsonify({"practice": _practice_user_payload(existing)}), 200
 
         take_snippets = db.get_snippets_by_session(take_id) or []

@@ -431,3 +431,5 @@
 0393	the_coach_card_consumes_the_confidence_chain.sql
 0394	a_feature_reaches_a_person_by_ring.sql
 0395	module_8_is_counted.sql
+0396	one_practice_per_moment.sql
+0397	every_judgement_reaches_the_coach.sql

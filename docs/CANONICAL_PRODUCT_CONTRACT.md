@@ -178,10 +178,21 @@ with this contract, this contract wins.
       fidelity to the Ideal Text. *At most* two, not always two: clause 25 still
       governs, so a Take with only one defensible praise candidate surfaces one,
       and inventing a second to fill the slot is forbidden;
-    - **one exercise** — on the weakest item below the neutral delivery band.
-      Other below-neutral items show **"Let's practice"** without an exercise,
-      because an exercise is work the user must go and do and a list of them is
-      a list nobody starts;
+    - **an exercise on any bookmark** (founder 2026-09-29, superseding the
+      2026-09-26 "one exercise, on the weakest item below the neutral band"):
+      "they can carry as many exercises as bookmark indicates". Each Confident
+      Voice item the machine reads weak gets the library exercise matched to
+      its own clip under 35g-1. Which note follows a judgement is the
+      **follow-up matrix** (founder 2026-09-29): the speaker's answer crossed
+      with the machine's read of the same clip. Read confident: praise now
+      (on Yes and In-between as agreement; on No and Not sure as better than
+      expected). Read weak with an acoustic problem fired: the library video
+      now on In-between, No and Not sure; nothing now on Yes. Read weak with
+      nothing acoustic fired: the rewrite now on In-between, No and Not sure;
+      nothing now on Yes. Audio unclear: nothing. Praise and rewrites show
+      only where the Manager found an evidence-backed one; nothing is ever
+      filled in. The read chooses and is never surfaced. The weakest
+      below-neutral item keeps its bookmark colour;
     - **one Actionable Improvement (rewrite)** — the highest-ranked of the Take.
       Capped because unlike a relative-best read it asserts a finding and can be
       wrong, which is the expensive error under H.0.
@@ -417,10 +428,24 @@ with this contract, this contract wins.
     practice" alone. Fit is a category, never a number, and never reaches the
     speaker. Among equal fits, the exercise covering more of what fired wins,
     then the one claiming fewer targets.
-35g-2. **The coach hears when nothing fits** (founder 2026-09-28). When the
-    Take's exercise item gets no exercise under 35g-1, one coach request is
-    recorded for that exact moment with why (nothing spotted, or nothing in
-    the library targets what was). The speaker never waits on it. The coach
+35g-2. **The coach hears when nothing fits** (founder 2026-09-28; extended
+    2026-09-29). When the Take's exercise item gets no exercise under 35g-1,
+    one coach request is recorded for that exact moment with why (nothing
+    spotted, nothing in the library targets what was, or the library
+    matched). **Every judgement reaches the coach** (founder 2026-09-29,
+    the follow-up matrix): every answer but Audio unclear sends that
+    bookmark to the coach the moment it is saved, tagged with its kind:
+    **error** (read weak, a delivery problem named, on In-between or No),
+    **praise** (read confident, on Yes or In-between), **rewrite** (read
+    weak, nothing acoustic fired, on In-between or No), or **ambiguity**
+    (the speaker and the machine disagree: a Yes read weak, a No read
+    confident, every Not sure, and a clip the machine could not read). The
+    coach records a video for errors by default and may for the rest; a
+    shared video rides that same moment. On an error with no library match
+    the item reads "Your coach is working on your exercise." (founder-signed
+    copy, 2026-09-29) until the coach shares one; on the other kinds nothing
+    is promised and the video appears when shared. The coach hears often
+    while the library is small; each answer files a reusable exercise. The speaker never waits on it. The coach
     sees it only after their own blind rating of the moment and answers once:
     a library exercise, a new one filed into the library (which must name a
     problem code can detect, and so becomes reusable for any speaker), or no
