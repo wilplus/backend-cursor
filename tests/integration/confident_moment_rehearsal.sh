@@ -440,7 +440,11 @@ hard migrations/a_coach_answers_practice_five_ways.sql
 # before and after answers. Twice: apply/reapply.
 hard migrations/sounds_more_confident_reads_the_coachs_two_answers.sql
 hard migrations/sounds_more_confident_reads_the_coachs_two_answers.sql
-# 0392 gives the legacy coach card its three confidence-chain wrappers
+# 0392 makes the canonical promotion take its own consent snapshot from the
+# current bundled grant (Q1). Twice: apply/reapply.
+hard migrations/the_promotion_freezes_the_consent_snapshot.sql
+hard migrations/the_promotion_freezes_the_consent_snapshot.sql
+# 0393 gives the legacy coach card its three confidence-chain wrappers
 # (packet, render receipt, judgment + reveal) (Q2). Twice: apply/reapply.
 hard migrations/the_coach_card_consumes_the_confidence_chain.sql
 hard migrations/the_coach_card_consumes_the_confidence_chain.sql

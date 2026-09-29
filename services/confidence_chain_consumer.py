@@ -5,7 +5,7 @@ built and rehearsed; its consumer half (blind packet → render receipt →
 judgment → reveal) had no application caller. This module is that caller,
 for the legacy coach card: the queue coaches use today.
 
-It writes only through the three 0392 wrappers, reads no legacy learning
+It writes only through the three 0393 wrappers, reads no legacy learning
 store, and does nothing at all unless the writer state is ``founder_canary``
 (``consumer_enabled``). In ``dark`` every function here is a no-op, so the
 coach queue and the label route are byte-identical to before.
@@ -68,7 +68,7 @@ def _row(data: Any) -> Optional[dict]:
 
 
 class ConfidenceChainConsumerStore:
-    """Service-role RPC seam for the three 0392 wrappers."""
+    """Service-role RPC seam for the three 0393 wrappers."""
 
     def __init__(self, client: Any):
         self.client = client
