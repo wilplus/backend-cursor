@@ -30,7 +30,11 @@ def _calm_snippet(**over):
     refusal. One problem is still spotted (too few pauses), because with
     nothing spotted no exercise is offered at all (D1, 2026-09-28)."""
     row = _snippet(words=_words(compressed=False), **over)
-    row["metrics"] = {**row["metrics"], "pause_ratio": 0.05, "voiced_ratio": 0.6}
+    # Read weak: the library video is for a clip the machine reads weak (the
+    # follow-up matrix, founder 2026-09-29); a confident read is praise.
+    row["metrics"] = {**row["metrics"], "pause_ratio": 0.05, "voiced_ratio": 0.6,
+                      "voice_confidence": {**row["metrics"]["voice_confidence"],
+                                           "score": -0.2}}
     return row
 
 

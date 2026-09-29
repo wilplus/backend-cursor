@@ -951,6 +951,18 @@ _CLIP_REFUSALS = frozenset({
 })
 
 
+def machine_read(verdict: Any) -> str:
+    """How the machine read the clip, for the follow-up matrix (founder
+    2026-09-29): "confident", "weak" or "unknown". Internal: chooses the
+    follow-up and is never surfaced (AC-9)."""
+    pattern = (verdict or {}).get("pattern") if isinstance(verdict, dict) else None
+    if pattern in ("confident", "near_confident"):
+        return "confident"
+    if pattern:
+        return "weak"
+    return "unknown"
+
+
 def clip_can_carry_exercise(verdict: Any) -> bool:
     """Whether a clip passes the safety half of `exercise_eligibility`."""
     if not isinstance(verdict, dict):
@@ -1267,6 +1279,7 @@ def _annotate_coach_answers(
         if exercise is None:
             row["coach_request"] = {
                 "status": "answered" if request.get("resolution") else "open",
+                "kind": request.get("kind") or "error",
             }
             continue
         if not snippets:
@@ -1333,8 +1346,10 @@ def _attach_exercises(
             continue
         verdict = exercise_eligibility(snippet, session_median_wpm=median)
         observed = observed_problem_tags(verdict, vocabulary=vocabulary)
-        if not clip_can_carry_exercise(verdict):
-            target["problem_recognised"] = bool(observed)
+        # THE LIBRARY VIDEO IS FOR A CLIP READ WEAK (the follow-up matrix,
+        # founder 2026-09-29). A clip the machine reads confident is praise,
+        # whatever fired on it; the coach may still add a video.
+        if machine_read(verdict) != "weak" or not clip_can_carry_exercise(verdict):
             continue
         # History is read only when a moment has not been drawn yet: once it
         # has, the draw is frozen and ranking again changes nothing, and this
@@ -1350,6 +1365,8 @@ def _attach_exercises(
             str(verdict.get("pattern") or ""), exercises,
             observed_tags=observed, history=moment_history)
         if not keyed:
+            # Read weak, a problem fired, nothing targets it: an "error" the
+            # coach will hear on the judgement, so the sheet can say so.
             target["problem_recognised"] = bool(observed)
             continue
         evidence = ground(target)

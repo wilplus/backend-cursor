@@ -66,6 +66,9 @@ def coach_request_payload(request: dict, database: Any) -> dict:
         "take_session_id": str(request.get("take_session_id")),
         "snippet_id": str(request.get("snippet_id")),
         "reason": request.get("reason"),
+        # Why it came (founder 2026-09-29): error, praise, rewrite, ambiguity.
+        # Rows from before 0391 are errors.
+        "kind": request.get("kind") or "error",
         "spotted": [{"error_id": tag, "label": labels.get(tag) or tag}
                     for tag in request.get("observed_tags") or []],
         "created_at": request.get("created_at"),

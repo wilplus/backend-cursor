@@ -426,3 +426,4 @@
 0388	a_practice_sounds_more_confident.sql
 0389	canonical_tables_are_written_only_through_their_rpcs.sql
 0390	one_practice_per_moment.sql
+0391	every_judgement_reaches_the_coach.sql

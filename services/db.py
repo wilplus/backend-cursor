@@ -14834,12 +14834,16 @@ class DatabaseService:
     def request_exercise_from_coach(
         self, *, owner_user_id: str, take_session_id: str, snippet_id: str,
         reason: str, pattern: Optional[str], observed_tags: list[str],
-        request_trace: dict,
+        request_trace: dict, kind: str = "error",
     ) -> Optional[dict]:
-        """The moment's coach request (migration 0385): recorded on the first
-        call, returned unchanged — with any resolution since — on every later
-        one. Raises on failure; the caller keeps the feedback regardless."""
-        result = self.client.rpc("request_exercise_from_coach_v1", {
+        """The moment's coach request (migration 0385; its kind, 0391):
+        recorded on the first call, returned unchanged — with any resolution
+        since — on every later one. Raises on failure; the caller keeps the
+        feedback regardless.
+
+        Without 0391 (PGRST202 on v2) the v1 function records it without a
+        kind, except a 'library_matched' request, which v1 cannot hold."""
+        params = {
             "p_owner_user_id": str(owner_user_id),
             "p_take_session_id": str(take_session_id),
             "p_snippet_id": str(snippet_id),
@@ -14847,7 +14851,19 @@ class DatabaseService:
             "p_pattern": pattern,
             "p_observed_tags": list(observed_tags),
             "p_request_trace": request_trace,
-        }).execute()
+        }
+        try:
+            result = self.client.rpc("request_exercise_from_coach_v2",
+                                     {**params, "p_kind": str(kind)}).execute()
+            return self._rpc_row(result.data)
+        except Exception as e:  # noqa: BLE001 — only "not installed" falls back
+            if "PGRST202" not in str(e):
+                raise
+            if reason == "library_matched":
+                return None
+            logger.warning("request_exercise_from_coach_v2 missing; recording "
+                           "without a kind sid=%s", take_session_id)
+        result = self.client.rpc("request_exercise_from_coach_v1", params).execute()
         return self._rpc_row(result.data)
 
     def get_exercise_coach_request(

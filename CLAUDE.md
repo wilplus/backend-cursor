@@ -17,10 +17,13 @@ Take 1 included (contract 24b). Every item carries the delivery read; after Yes,
 Not sure the tap-to-root helper-words step follows — Emphasis IS that step, not a
 Feedback family and not a budget. No and Audio unclear get it only through the
 practice loop (24e, 29a). On top, each Take carries at most two Praise (on its most
-and second-most Confident items), an exercise on any bookmark whose clip a
-library exercise matches (founder 2026-09-29; a judgement other than Audio unclear
-opens it, and a bookmark nothing matched goes to the coach on the judgement,
-35g-2), and one rewrite (24f). Of the Slides yielding at least one valid
+and second-most Confident items), an exercise on any bookmark whose clip the
+machine reads weak and a library exercise matches (founder 2026-09-29), and one
+rewrite (24f). What follows a judgement is the follow-up matrix (24f, 35g-2):
+the answer crossed with the machine's read chooses praise, the rewrite, the
+library video or nothing now, and every judgement but Audio unclear reaches the
+coach tagged error, praise, rewrite or ambiguity; the coach's video rides the
+moment when shared. Of the Slides yielding at least one valid
 block, coverage is ≥70% on Take 1, ≥80% on Take 2 and 100% from Take 3 — a
 target on selection, never a floor on output (24c/24d). An honest empty rewrite
 or praise lane shows no card.

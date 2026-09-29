@@ -72,8 +72,8 @@ def _offer(db, fired):
 
 def _judge(db, fired, answer="no"):
     """The speaker's judgement on the moment, with these signals fired."""
-    verdict = {"eligible": True, "pattern": "near_confident", "priority": 3,
-               "signals": fired, "snapshot": {}}
+    verdict = {"eligible": True, "pattern": "low_confidence_rushing_dominant",
+               "priority": 1, "signals": fired, "snapshot": {}}
     original = cvp.exercise_eligibility
     cvp.exercise_eligibility = lambda *_a, **_k: verdict
     try:
@@ -109,23 +109,27 @@ class RequestTests(unittest.TestCase):
                          "targets_nothing_that_fired")
         self.assertEqual(db.assigned, [])
 
-    def test_nothing_spotted_records_why_on_a_no(self):
+    def test_nothing_spotted_on_a_no_is_a_rewrite_that_reaches_the_coach(self):
         db = _Db([_row("any", ["rushing"])])
         self.assertIsNone(_offer(db, {}))
-        self.assertEqual(_judge(db, {}), "coach_request")
+        self.assertEqual(_judge(db, {}), "rewrite")
         self.assertEqual(db.requested[0]["reason"], "nothing_spotted")
+        self.assertEqual(db.requested[0]["kind"], "rewrite")
 
-    def test_nothing_spotted_stays_quiet_on_the_other_answers(self):
-        for answer in ("yes", "in_between", "not_sure"):
+    def test_every_answer_but_unclear_reaches_the_coach_with_its_kind(self):
+        # The follow-up matrix (founder 2026-09-29): a weak read with nothing
+        # fired is a rewrite (or an ambiguity on Not sure); with a problem
+        # fired, an error (or an ambiguity); Audio unclear raises nothing.
+        for answer, kind in (("yes", "ambiguity"), ("in_between", "rewrite"),
+                             ("not_sure", "ambiguity"), ("no", "rewrite")):
             db = _Db([_row("any", ["rushing"])])
-            self.assertEqual(_judge(db, {}, answer), "none", answer)
-            self.assertEqual(db.requested, [])
-
-    def test_a_recognised_problem_reaches_the_coach_on_any_answer_but_unclear(self):
-        for answer in ("yes", "in_between", "not_sure", "no"):
+            _judge(db, {}, answer)
+            self.assertEqual(db.requested[0]["kind"], kind, answer)
+        for answer, kind in (("yes", "ambiguity"), ("in_between", "error"),
+                             ("not_sure", "ambiguity"), ("no", "error")):
             db = _Db([_row("elsewhere", ["ending_compression"])])
-            self.assertEqual(_judge(db, {"insufficient_pauses": True}, answer),
-                             "coach_request", answer)
+            _judge(db, {"insufficient_pauses": True}, answer)
+            self.assertEqual(db.requested[0]["kind"], kind, answer)
         db = _Db([_row("elsewhere", ["ending_compression"])])
         self.assertEqual(_judge(db, {"insufficient_pauses": True}, "audio_unclear"),
                          "none")
@@ -139,13 +143,16 @@ class RequestTests(unittest.TestCase):
     def test_a_request_that_cannot_be_written_never_costs_the_answer(self):
         db = _Db([], fail=True)
         self.assertIsNone(_offer(db, {"insufficient_pauses": True}))
+        # And never promises the coach: nothing shows instead of the sentence.
         self.assertEqual(_judge(db, {"insufficient_pauses": True}), "none")
 
-    def test_a_matched_moment_makes_no_request(self):
+    def test_a_matched_moment_still_reaches_the_coach_as_an_error(self):
+        # The library video shows now; the coach may add their own on top.
         db = _Db([_row("exact", ["rushing"])])
         self.assertIsNotNone(_offer(db, {"insufficient_pauses": True}))
         self.assertEqual(_judge(db, {"insufficient_pauses": True}), "exercise")
-        self.assertEqual(db.requested, [])
+        self.assertEqual(db.requested[0]["kind"], "error")
+        self.assertEqual(db.requested[0]["reason"], "library_matched")
 
 
 class SharedExerciseTests(unittest.TestCase):

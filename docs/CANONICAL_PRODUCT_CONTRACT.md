@@ -181,9 +181,17 @@ with this contract, this contract wins.
     - **an exercise on any bookmark** (founder 2026-09-29, superseding the
       2026-09-26 "one exercise, on the weakest item below the neutral band"):
       "they can carry as many exercises as bookmark indicates". Each Confident
-      Voice item gets the exercise matched to its own clip under 35g-1, and
-      a judgement other than Audio unclear opens it; where nothing matched,
-      the bookmark goes to the coach on the judgement (35g-2). The weakest
+      Voice item the machine reads weak gets the library exercise matched to
+      its own clip under 35g-1. Which note follows a judgement is the
+      **follow-up matrix** (founder 2026-09-29): the speaker's answer crossed
+      with the machine's read of the same clip. Read confident: praise now
+      (on Yes and In-between as agreement; on No and Not sure as better than
+      expected). Read weak with an acoustic problem fired: the library video
+      now on In-between, No and Not sure; nothing now on Yes. Read weak with
+      nothing acoustic fired: the rewrite now on In-between, No and Not sure;
+      nothing now on Yes. Audio unclear: nothing. Praise and rewrites show
+      only where the Manager found an evidence-backed one; nothing is ever
+      filled in. The read chooses and is never surfaced. The weakest
       below-neutral item keeps its bookmark colour;
     - **one Actionable Improvement (rewrite)** — the highest-ranked of the Take.
       Capped because unlike a relative-best read it asserts a finding and can be
@@ -414,16 +422,21 @@ with this contract, this contract wins.
 35g-2. **The coach hears when nothing fits** (founder 2026-09-28; extended
     2026-09-29). When the Take's exercise item gets no exercise under 35g-1,
     one coach request is recorded for that exact moment with why (nothing
-    spotted, or nothing in the library targets what was). **A judgement is
-    always answered** (founder 2026-09-29): a No on any bookmark that carries
-    no exercise sends that bookmark to the coach the moment the answer is
-    saved, whether or not a problem was recognised, because the speaker has
-    named one; a Yes, In-between or Not sure sends it when a problem was
-    recognised on the clip and nothing in the library targets it. The item
-    then reads "Your coach is working on your exercise." (founder-signed
-    copy, 2026-09-29) until the coach shares one. Audio unclear raises
-    nothing. The coach hears often while the library is small; each answer
-    files a reusable exercise. The speaker never waits on it. The coach
+    spotted, nothing in the library targets what was, or the library
+    matched). **Every judgement reaches the coach** (founder 2026-09-29,
+    the follow-up matrix): every answer but Audio unclear sends that
+    bookmark to the coach the moment it is saved, tagged with its kind:
+    **error** (read weak, a delivery problem named, on In-between or No),
+    **praise** (read confident, on Yes or In-between), **rewrite** (read
+    weak, nothing acoustic fired, on In-between or No), or **ambiguity**
+    (the speaker and the machine disagree: a Yes read weak, a No read
+    confident, every Not sure, and a clip the machine could not read). The
+    coach records a video for errors by default and may for the rest; a
+    shared video rides that same moment. On an error with no library match
+    the item reads "Your coach is working on your exercise." (founder-signed
+    copy, 2026-09-29) until the coach shares one; on the other kinds nothing
+    is promised and the video appears when shared. The coach hears often
+    while the library is small; each answer files a reusable exercise. The speaker never waits on it. The coach
     sees it only after their own blind rating of the moment and answers once:
     a library exercise, a new one filed into the library (which must name a
     problem code can detect, and so becomes reusable for any speaker), or no

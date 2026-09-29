@@ -56,66 +56,105 @@ def _follow(db, answer):
         owner_user_id="owner-1", answer=answer)
 
 
-class FollowUpTests(unittest.TestCase):
-    def test_a_no_with_no_exercise_sends_the_bookmark_to_the_coach(self):
+def _verdict(read, fired):
+    pattern = {"confident": "confident", "weak": "low_confidence_rushing_dominant",
+               "unknown": None}[read]
+    verdict = {"eligible": True, "pattern": pattern, "priority": 1,
+               "signals": {"insufficient_pauses": True} if fired else {},
+               "snapshot": {}}
+    if pattern is None:
+        verdict = {"eligible": False, "reason": "confidence_unavailable"}
+    return verdict
+
+
+def _judged(db, answer, *, read="weak", fired=False):
+    """One judgement, with the machine's read and what fired pinned."""
+    original = cvp.exercise_eligibility
+    cvp.exercise_eligibility = lambda *_a, **_k: _verdict(read, fired)
+    try:
+        return _follow(db, answer)
+    finally:
+        cvp.exercise_eligibility = original
+
+
+class MatrixTests(unittest.TestCase):
+    """The follow-up matrix (founder 2026-09-29), cell by cell."""
+
+    def test_read_confident_is_praise_now_for_every_answer(self):
+        for answer, kind in (("yes", "praise"), ("in_between", "praise"),
+                             ("no", "ambiguity"), ("not_sure", "ambiguity")):
+            db = _Db()
+            self.assertEqual(_judged(db, answer, read="confident"), "praise", answer)
+            self.assertEqual(db.raised[0]["kind"], kind, answer)
+
+    def test_read_weak_with_a_problem_fired_is_the_video_lane(self):
+        for answer, kind in (("in_between", "error"), ("no", "error"),
+                             ("not_sure", "ambiguity")):
+            db = _Db()
+            self.assertEqual(_judged(db, answer, fired=True), "coach_request", answer)
+            self.assertEqual(db.raised[0]["kind"], kind, answer)
+            self.assertEqual(db.raised[0]["reason"], "nothing_targets_it")
+        matched = _Db(assignment={"selected_exercise_id": "x"})
+        self.assertEqual(_judged(matched, "no", fired=True), "exercise")
+        self.assertEqual(matched.raised[0]["kind"], "error")
+        self.assertEqual(matched.raised[0]["reason"], "library_matched")
+
+    def test_read_weak_with_nothing_fired_is_the_rewrite(self):
+        for answer, kind in (("in_between", "rewrite"), ("no", "rewrite"),
+                             ("not_sure", "ambiguity")):
+            db = _Db()
+            self.assertEqual(_judged(db, answer), "rewrite", answer)
+            self.assertEqual(db.raised[0]["kind"], kind, answer)
+            self.assertEqual(db.raised[0]["reason"], "nothing_spotted")
+
+    def test_a_yes_the_machine_reads_weak_shows_nothing_and_asks_the_coach(self):
+        for fired in (True, False):
+            db = _Db()
+            self.assertEqual(_judged(db, "yes", fired=fired), "none")
+            self.assertEqual(db.raised[0]["kind"], "ambiguity")
+
+    def test_an_unreadable_clip_shows_nothing_and_asks_the_coach(self):
         db = _Db()
-        self.assertEqual(_follow(db, "no"), "coach_request")
-        self.assertEqual(len(db.raised), 1)
-        raised = db.raised[0]
-        self.assertEqual(raised["snippet_id"], "snip-1")
-        self.assertEqual(raised["owner_user_id"], "owner-1")
-        self.assertIn(raised["reason"], ("nothing_spotted", "nothing_targets_it"))
-        self.assertEqual(raised["request_trace"]["lane"], "v3_judgement")
+        self.assertEqual(_judged(db, "no", read="unknown"), "none")
+        self.assertEqual(db.raised[0]["kind"], "ambiguity")
 
     def test_audio_unclear_raises_nothing(self):
         db = _Db()
-        self.assertEqual(_follow(db, "audio_unclear"), "none")
-        self.assertEqual(db.raised, [])
-
-    def test_the_other_answers_raise_only_when_a_problem_was_recognised(self):
-        # Yes, In-between and Not sure send the bookmark to the coach when a
-        # problem fired on the clip and nothing targets it; with nothing
-        # recognised they raise nothing (founder 2026-09-29).
-        original = cvp.observed_problem_tags
-        try:
-            cvp.observed_problem_tags = lambda *_a, **_k: set()
-            for answer in ("yes", "in_between", "not_sure"):
-                db = _Db()
-                self.assertEqual(_follow(db, answer), "none", answer)
-                self.assertEqual(db.raised, [])
-            cvp.observed_problem_tags = lambda *_a, **_k: {"rushing"}
-            for answer in ("yes", "in_between", "not_sure"):
-                db = _Db()
-                self.assertEqual(_follow(db, answer), "coach_request", answer)
-                self.assertEqual(db.raised[0]["reason"], "nothing_targets_it")
-        finally:
-            cvp.observed_problem_tags = original
-
-    def test_a_no_raises_even_with_nothing_recognised(self):
-        original = cvp.observed_problem_tags
-        try:
-            cvp.observed_problem_tags = lambda *_a, **_k: set()
-            db = _Db()
-            self.assertEqual(_follow(db, "no"), "coach_request")
-            self.assertEqual(db.raised[0]["reason"], "nothing_spotted")
-        finally:
-            cvp.observed_problem_tags = original
-
-    def test_a_moment_with_an_exercise_keeps_it(self):
-        db = _Db(assignment={"selected_exercise_id": "x"})
-        self.assertEqual(_follow(db, "no"), "exercise")
+        self.assertEqual(_judged(db, "audio_unclear", fired=True), "none")
         self.assertEqual(db.raised, [])
 
     def test_a_request_already_raised_is_not_raised_twice(self):
-        db = _Db(request={"id": "req-1", "resolution": None})
-        self.assertEqual(_follow(db, "no"), "coach_request")
+        db = _Db(request={"id": "req-1", "resolution": None, "kind": "error"})
+        self.assertEqual(_judged(db, "no", fired=True), "coach_request")
         self.assertEqual(db.raised, [])
+
+    def test_the_request_carries_the_trace_and_the_owner(self):
+        db = _Db()
+        _judged(db, "no", fired=True)
+        raised = db.raised[0]
+        self.assertEqual(raised["snippet_id"], "snip-1")
+        self.assertEqual(raised["owner_user_id"], "owner-1")
+        self.assertEqual(raised["request_trace"]["lane"], "v3_judgement")
 
     def test_a_failed_write_never_fails_the_answer(self):
         class _Broken(_Db):
             def request_exercise_from_coach(self, **_kwargs):
                 raise RuntimeError("rpc down")
-        self.assertEqual(_follow(_Broken(), "no"), "none")
+        # A failed write shows nothing rather than promising the coach.
+        self.assertEqual(_judged(_Broken(), "no", fired=True), "none")
+        self.assertEqual(_judged(_Broken(), "no", fired=False), "rewrite")
+
+    def test_the_pure_matrix(self):
+        from services.judgement_follow_up import decide
+        self.assertEqual(decide("yes", "confident", True, False), ("praise", "praise"))
+        self.assertEqual(decide("no", "confident", False, False), ("praise", "ambiguity"))
+        self.assertEqual(decide("in_between", "weak", True, True), ("exercise", "error"))
+        self.assertEqual(decide("no", "weak", True, False), ("coach_request", "error"))
+        self.assertEqual(decide("not_sure", "weak", True, False), ("coach_request", "ambiguity"))
+        self.assertEqual(decide("in_between", "weak", False, False), ("rewrite", "rewrite"))
+        self.assertEqual(decide("yes", "weak", True, True), ("none", "ambiguity"))
+        self.assertEqual(decide("no", "unknown", False, False), ("none", "ambiguity"))
+        self.assertEqual(decide("audio_unclear", "weak", True, True), ("none", None))
 
 
 class AnnotationTests(unittest.TestCase):
@@ -146,7 +185,7 @@ class AnnotationTests(unittest.TestCase):
         rows = cvp._annotate_coach_answers(
             self._rows(), take_session_id="t", owner_user_id="o",
             database=db, ground=lambda _r: None)
-        self.assertEqual(rows[0]["coach_request"], {"status": "open"})
+        self.assertEqual(rows[0]["coach_request"], {"status": "open", "kind": "error"})
         self.assertNotIn("coach_request", rows[1])
         self.assertNotIn("coach_request", rows[2])
 
@@ -156,7 +195,7 @@ class AnnotationTests(unittest.TestCase):
         rows = cvp._annotate_coach_answers(
             self._rows(), take_session_id="t", owner_user_id="o",
             database=db, ground=lambda _r: None)
-        self.assertEqual(rows[0]["coach_request"], {"status": "answered"})
+        self.assertEqual(rows[0]["coach_request"], {"status": "answered", "kind": "error"})
 
     def test_no_request_leaves_the_row_alone(self):
         rows = cvp._annotate_coach_answers(
@@ -232,8 +271,8 @@ class EveryBookmarkTests(unittest.TestCase):
     def _attach(self, db, rows, withhold=False):
         original = cvp.exercise_eligibility
         cvp.exercise_eligibility = lambda snippet, **_k: {
-            "eligible": True, "pattern": "near_confident", "priority": 3,
-            "signals": db.fired[snippet["id"]], "snapshot": {}}
+            "eligible": True, "pattern": "low_confidence_rushing_dominant",
+            "priority": 1, "signals": db.fired[snippet["id"]], "snapshot": {}}
         try:
             return cvp.attach_v3_exercise_offer(
                 rows, take_session_id="take-1", owner_user_id="owner-1",
@@ -301,6 +340,9 @@ class ContractTests(unittest.TestCase):
         contract = (ROOT / "docs/CANONICAL_PRODUCT_CONTRACT.md").read_text()
         self.assertIn("as many exercises as bookmark indicates", contract)
         self.assertIn("Your coach is working on your exercise.", contract)
+        self.assertIn("follow-up matrix", contract)
+        for kind in ("error", "praise", "rewrite", "ambiguity"):
+            self.assertIn(kind, contract)
         rules = (ROOT / "CLAUDE.md").read_text()
         self.assertNotIn("one exercise (on the weakest item", rules)
         self.assertIn("an exercise on any bookmark", rules)
@@ -308,6 +350,10 @@ class ContractTests(unittest.TestCase):
     def test_the_migration_keys_practice_per_moment(self):
         manifest = (ROOT / "migrations/manifest.txt").read_text()
         self.assertIn("one_practice_per_moment.sql", manifest)
+        self.assertIn("every_judgement_reaches_the_coach.sql", manifest)
+        kinds = (ROOT / "migrations/every_judgement_reaches_the_coach.sql").read_text()
+        self.assertIn("request_exercise_from_coach_v2", kinds)
+        self.assertIn("'library_matched'", kinds)
         sql = (ROOT / "migrations/one_practice_per_moment.sql").read_text()
         self.assertIn("DROP CONSTRAINT IF EXISTS confident_voice_practice_one_per_take", sql)
         self.assertIn("UNIQUE (take_session_id, snippet_id)", sql)
