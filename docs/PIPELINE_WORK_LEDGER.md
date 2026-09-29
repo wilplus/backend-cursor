@@ -2199,3 +2199,27 @@ tables. Released-lane pins in `tests/test_module_8_is_counted_postgres.py`.
 nothing; the release constants stay False and the epoch CHECK stays. The
 readiness function keeps its `seven_surface` name so its callers and grants
 stand; renaming it is cosmetic and was not done.
+
+### 2026-09-29 · WS-Q7 · q7-consent-screen · #(pending)
+
+**Closed:** the second half of ring 1 for the confidence chain (founder
+2026-09-29, "build the consent screen"): the bundled model-improvement
+consent could be granted by the founder only. `/v2/user/mlc2-consent` now
+opens to any person the `confidence_learning_writes` ring row reaches
+(`_chain_reaches_request`, ring/rule/not-killed, no email read); everyone
+else still gets `applicable=false` and is not modified. `_bind_refusal`
+keeps the ring check on the principal the grant would bind. The matching
+frontend PR adds `/account/model-improvement` (the same checkbox form the
+founder gate uses, on its own page) and points the announcement sheet's
+Phase-2 "yes" at it, the way the Phase-1 "yes" points at data choices.
+**Contract lines flipped:** none.
+**Contract lines added:** `tests/test_consent_endpoint.py`: an unreached
+account is not modified; the founder email alone no longer opens the door;
+a reached person is applicable whatever the email; no principal, not
+applicable.
+**Broke and fixed:** none.
+**Open for the founder:** the page's new strings ship as `[founder copy]`
+placeholders (title, not-applicable line, granted line, withdraw button,
+back link); the form's own strings are the founder gate's, signed earlier.
+Nothing turns on: the writer state stays `dark`, and after the flip only
+ring-5 principals with a grant write.
