@@ -52,8 +52,9 @@ Behaviour to design for:
 like the existing `confidence-practice` one.
 
 **Gate: the same as the practice review.**
-- `409 BLIND_RATING_REQUIRED` until the coach has saved their own yes/no
-  rating on that moment. Call the endpoint only after that, exactly like
+- `409 BLIND_RATING_REQUIRED` until the coach has saved their own rating on
+  that moment (any of the five answers, founder 2026-09-29; until then only
+  Yes and No counted). Call the endpoint only after that, exactly like
   `/confidence-practice`. Nothing about the request may appear before the
   rating (the BLIND COACH fence), not even a badge saying one exists.
 - `409 SPEAKER_PRACTICE_OFF`: the speaker turned practice off. Show nothing.

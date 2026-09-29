@@ -165,6 +165,21 @@ def _coach_state_map(session_id, rater_id=None, *, draft_rows=None):
     return out
 
 
+def _blind_rating_saved(coach_state) -> bool:
+    """The blind gate's key: this coach's own answer on the moment, saved.
+
+    FOUNDER 2026-09-29: any of the five answers opens the door. Until today
+    only Yes and No did ("a definite rating"), so a coach who answered
+    In-between, Not sure or Audio unclear never saw that moment's practice
+    or its exercise request, and it looked as if nothing existed there. The
+    fence (contract 34: judge before you see) is unchanged: the answer must
+    be SAVED first, and it is immutable once saved. `unrateable` is the
+    Audio unclear answer, stored beside `value` rather than as a value.
+    """
+    state = coach_state or {}
+    return bool(state.get("rating_value")) or bool(state.get("rating_unrateable"))
+
+
 def _confidence_queue_selection(session_id, session, snippets):
     """One source of truth for the blind queue and its post-label audit."""
     from services.confidence_labels import (
@@ -1580,10 +1595,9 @@ def v2_coach_confident_voice_practice(session_id, snippet_id):
     if not owner_sid:
         return jsonify({"code": "SNIPPET_NOT_FOUND",
                         "error": "Snippet not in this session"}), 404
-    # Hard blind gate: the current coach must first commit a definite rating.
+    # Hard blind gate: the current coach must first commit their own rating.
     state = _coach_state_map(owner_sid, rater_id=getattr(request, "user_id", None))
-    coach_state = state.get(str(snippet_id)) or {}
-    if coach_state.get("rating_value") not in ("yes", "no"):
+    if not _blind_rating_saved(state.get(str(snippet_id))):
         return jsonify({"code": "BLIND_RATING_REQUIRED",
                         "error": "Rate the original moment before reviewing practice."}), 409
     if not _speaker_practice_permitted(owner_sid):  # E3, founder 2026-09-25
@@ -1732,7 +1746,7 @@ def v2_coach_exercise_request(session_id, snippet_id):
         return jsonify({"code": "SNIPPET_NOT_FOUND",
                         "error": "Snippet not in this session"}), 404
     state = _coach_state_map(owner_sid, rater_id=getattr(request, "user_id", None))
-    if (state.get(str(snippet_id)) or {}).get("rating_value") not in ("yes", "no"):
+    if not _blind_rating_saved(state.get(str(snippet_id))):
         return jsonify({"code": "BLIND_RATING_REQUIRED",
                         "error": "Rate the original moment first."}), 409
     if not _speaker_practice_permitted(owner_sid):
