@@ -823,6 +823,21 @@ class DatabaseService:
             return data[0] if data else None
         return data if isinstance(data, dict) else None
 
+    def get_coach_review_revision(self, revision_id: str) -> Optional[dict]:
+        """One published coach-review revision (what the speaker was actually
+        sent), or None. Best-effort."""
+        if not revision_id:
+            return None
+        try:
+            res = (self.client.table("coach_review_revisions")
+                   .select("id,session_id,overall_message,published_at")
+                   .eq("id", str(revision_id)).limit(1).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("get_coach_review_revision failed id=%s: %s",
+                           revision_id, e)
+            return None
+
     def publish_coach_review_revisions(self, reviews: list[dict]) -> list[dict]:
         """Atomically publish a complete set of immutable review snapshots."""
         result = self.client.rpc("publish_coach_review_batch_v1", {
