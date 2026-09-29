@@ -3,7 +3,7 @@
 A person has one ring (an integer; a missing row is the default ring with no
 attributes). A feature carries the lowest ring that gets it, an optional
 attribute rule, an optional consent purpose and a kill switch. The rule the
-database implements (migration 0392, ``feature_is_on_v1``) and this module
+database implements (migration 0393, ``feature_is_on_v1``) and this module
 mirrors for the panel's previews:
 
     A feature is on for a person when the row is not killed, the person's

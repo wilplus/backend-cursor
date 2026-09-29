@@ -440,7 +440,11 @@ hard migrations/a_coach_answers_practice_five_ways.sql
 # before and after answers. Twice: apply/reapply.
 hard migrations/sounds_more_confident_reads_the_coachs_two_answers.sql
 hard migrations/sounds_more_confident_reads_the_coachs_two_answers.sql
-# 0392 is the rings rollout mechanism: feature_rings, principal_rings, the
+# 0392 makes the canonical promotion take its own consent snapshot from the
+# current bundled grant (Q1). Twice: apply/reapply.
+hard migrations/the_promotion_freezes_the_consent_snapshot.sql
+hard migrations/the_promotion_freezes_the_consent_snapshot.sql
+# 0393 is the rings rollout mechanism: feature_rings, principal_rings, the
 # check function and the write RPCs. Twice: apply/reapply.
 hard migrations/a_feature_reaches_a_person_by_ring.sql
 hard migrations/a_feature_reaches_a_person_by_ring.sql

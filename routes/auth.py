@@ -33,7 +33,7 @@ def _signup_terms_version() -> str:
 
 
 def _after_signup(user_id: str, email: str, consent_row: object) -> bool:
-    """The sign-up hook for rings (0392): the new account's starting row at
+    """The sign-up hook for rings (0393): the new account's starting row at
     the default ring, with the attributes the request can tell us (region
     from the edge's country header when present, language from
     Accept-Language, plan free, role speaker or coach, and the stable

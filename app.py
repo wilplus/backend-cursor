@@ -348,7 +348,7 @@ def _startup_cleanup():
     try:
         from services.gate_flags import gate_summary
         _logger.info("gate flags %s", gate_summary())
-        # Rings (0392): the three canary variables are no longer read by any
+        # Rings (0393): the three canary variables are no longer read by any
         # gate; say so at boot until the follow-up removes them.
         from services.rings import deprecated_canary_variables_summary
         _logger.info("%s", deprecated_canary_variables_summary())

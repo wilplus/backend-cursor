@@ -68,6 +68,10 @@ def test_confidence_dark_contract_is_not_imported_by_live_product_code():
         ROOT / "services" / "mlc2_confidence_frame_factory.py",
         # RPC adapter only; it schedules nothing and makes no decision.
         ROOT / "services" / "db.py",
+        # Q1 (2026-09-29): the fail-closed HTTP doors. confidence_chain_alive
+        # reads the writer state only to answer 410 while it is killed; it
+        # holds no learning store and starts nothing.
+        ROOT / "routes" / "phase2_guard.py",
     }
     violations = []
     for root in live_roots:

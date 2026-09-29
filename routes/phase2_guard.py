@@ -28,6 +28,37 @@ def phase2_learning_disabled(function):
     return disabled
 
 
+def confidence_chain_alive(function):
+    """410 while the Confidence writer state is ``killed``; otherwise enter.
+
+    The founder's bundled MLC-2 consent grant is the one Phase-2 purpose a
+    person may record before the chain writes anything: readiness requires
+    the grant to exist while the chain is still dark (audit 2026-09-22, G-3,
+    consent half), and the canonical promotion freezes a snapshot of it for
+    every Take (migration 0393). Recording a grant creates no corpus, exports
+    no dataset and starts no training, so ``phase2_learning_disabled`` was the
+    wrong door for it. A killed chain never takes a new grant.
+    """
+    @wraps(function)
+    def gated(*args, **kwargs):
+        from services.mlc2_confidence_cutover import (
+            KILLED, configured_confidence_cutover,
+        )
+
+        if configured_confidence_cutover().mode == KILLED:
+            return jsonify({
+                "code": "PHASE2_DISABLED",
+                "error": "Pooled datasets, training, and promotion are not active.",
+            }), 410
+        return function(*args, **kwargs)
+
+    raw = function
+    while getattr(raw, "__wrapped__", None) is not None:
+        raw = raw.__wrapped__
+    gated.__wrapped__ = raw
+    return gated
+
+
 def operational_purpose_disabled(purpose_id: str):
     """Fail closed while a registry-only product purpose is not operational.
 
@@ -111,7 +142,7 @@ def consent_choice_required(choice: str):
 
 
 def ring_required(feature: str):
-    """Expose a route to the people its ring row reaches (rings, 0392).
+    """Expose a route to the people its ring row reaches (rings, 0393).
 
     Generalised from ``mlc3_service_required`` (founder 2026-09-29). Order:
 
@@ -128,7 +159,7 @@ def ring_required(feature: str):
 
     Authentication must wrap this decorator. Every refusal is 404 so the
     surface is not discoverable. The old cohort and allow-list tables are
-    kept and no longer read here; 0392 copied them into principal_rings.
+    kept and no longer read here; 0393 copied them into principal_rings.
     """
     def decorate(function):
         @wraps(function)

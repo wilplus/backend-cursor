@@ -3827,7 +3827,7 @@ def v2_coach_confidence_queue(session_id):
 def _inline_authoring_for(coach_id: str) -> bool:
     """D5 inline authoring replaces the legacy queue for THIS coach when the
     building switch is on AND the coach_inline_authoring ring row reaches the
-    coach (rings, 0392). Every other coach keeps the legacy blind
+    coach (rings, 0393). Every other coach keeps the legacy blind
     presentation queue."""
     from services import rings
     from services.coach_guidance_delivery import inline_authoring_is_enabled

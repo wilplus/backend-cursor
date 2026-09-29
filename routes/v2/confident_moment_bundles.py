@@ -3,7 +3,7 @@
 All endpoints remain hard-disabled while CONFIDENT_MOMENT_BUNDLE_V1_ENABLED
 is false (the building switch). Per person, the ``confident_moment_bundles``
 ring row decides reach, and ``rooting_coverage`` the root actions (rings,
-0392, ``@ring_required``). They reserve the typed HTTP boundary so later
+0393, ``@ring_required``). They reserve the typed HTTP boundary so later
 activation cannot be smuggled into an unrelated route.
 
 See Interface Manifest D6 §6.

@@ -1,4 +1,4 @@
-"""The rings rule and its RPCs, executed on the released lane (0392).
+"""The rings rule and its RPCs, executed on the released lane (0393).
 
 Every clause of the rule runs against the real ``feature_is_on_v1``, the
 Python mirror in services/rings.py is checked against it on the same matrix,

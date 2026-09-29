@@ -1,4 +1,4 @@
-"""Rings: the founder's rollout panel and the per-login read (0392).
+"""Rings: the founder's rollout panel and the per-login read (0393).
 
 /v2/admin/rings/*  — founder-gated exactly like the other admin routes
                      (@require_admin: the admin_users allow-list by token

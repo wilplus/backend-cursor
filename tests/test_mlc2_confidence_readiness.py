@@ -143,7 +143,7 @@ def test_database_evidence_gates_fail_closed(health_key, blocker):
     ],
 )
 def test_ring_evidence_gates_fail_closed(override, blocker):
-    """The canary's "who" is the ring row (0392): the row must exist, be
+    """The canary's "who" is the ring row (0393): the row must exist, be
     one-way and not killed, reach at least one principal with a bundled
     consent grant, and nobody the row does NOT reach may have written a
     receipt or a canonical event."""
