@@ -495,7 +495,7 @@ def test_new_tables_are_rls_and_runtime_read_only(table: str):
 
 
 def test_route_surface_is_hidden_and_has_no_learning_operations():
-    assert ROUTE.count("@mlc3_service_required") == 17
+    assert ROUTE.count('@ring_required("exercise_service")') == 17
     assert ROUTE.count("@require_auth") == 17
     for forbidden in (
         "/user/mlc3/dataset",

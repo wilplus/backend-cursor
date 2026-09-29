@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Read-only production readiness check for the founder Confidence canary."""
+"""Read-only production readiness check for the Confidence canary.
+
+The canary's "who" is the ``confidence_learning_writes`` ring row (0392),
+not a founder email or a principal variable; see
+services/mlc2_confidence_readiness.py.
+"""
 from __future__ import annotations
 
 import argparse
@@ -18,12 +23,24 @@ from services.mlc2_confidence_readiness import (  # noqa: E402
 )
 
 
-def _health(connection, founder_principal_id: str | None) -> dict:
+def _health(connection) -> dict:
+    """The chain's own invariants. The founder-principal argument is passed
+    NULL: the per-person keys it drove (founder_*, nonfounder_*) are read
+    from the ring health below instead (rings, 0392)."""
     with connection.cursor() as cursor:
         cursor.execute(
-            "SELECT public.get_mlc2_confidence_canary_readiness_v1(%s::uuid)",
-            (founder_principal_id or None,),
+            "SELECT public.get_mlc2_confidence_canary_readiness_v1(NULL::uuid)"
         )
+        row = cursor.fetchone()
+    payload = row[0] if row else None
+    return dict(payload) if isinstance(payload, dict) else {}
+
+
+def _ring_health(connection) -> dict:
+    """The ring rows, the eligible principals, and what anyone the row does
+    not reach has written. Aggregate only."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT public.get_ring_confidence_readiness_v1()")
         row = cursor.fetchone()
     payload = row[0] if row else None
     return dict(payload) if isinstance(payload, dict) else {}
@@ -66,23 +83,15 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
-        health = _health(
-            connection,
-            Config.MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID or None,
-        )
+        health = _health(connection)
+        ring_health = _ring_health(connection)
     finally:
         connection.close()
 
     report = assess_confidence_canary_readiness(
         health,
         cutover_mode=Config.MLC2_CONFIDENCE_CUTOVER_MODE,
-        configured_founder_email=(
-            Config.MLC2_CONFIDENCE_CANARY_FOUNDER_EMAIL
-        ),
-        founder_principal_id=Config.MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID,
-        data_foundation_canary_enabled=(
-            Config.DATA_FOUNDATION_CANARY_ENABLED
-        ),
+        ring_health=ring_health,
         monitoring_enabled=Config.MLC2_CONFIDENCE_MONITORING_ENABLED,
         alert_sink_configured=bool(Config.SENTRY_DSN),
         dataset_creation_enabled=Config.MLC2_DATASET_RELEASES_ENABLED,

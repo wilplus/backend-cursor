@@ -357,11 +357,13 @@ class Mlc2ConsentEndpointTests(unittest.TestCase):
         self.app = Flask(__name__)
         self.originals = []
         self._patch(route.config, "ADMIN_EMAIL", "artur@willonski.com")
+        # Rings (0392): the founder is also a person the
+        # confidence_learning_writes row REACHES; the baked-in email is gone.
         self._patch(
-            route.config,
-            "MLC2_CONFIDENCE_CANARY_FOUNDER_EMAIL",
-            "artur@willonski.com",
+            route.rings, "principal_for_user",
+            lambda user_id: "11111111-1111-4111-8111-111111111111",
         )
+        self._patch(route.rings, "feature_reaches", lambda feature, p: True)
         self._patch(route, "_owner_and_status", lambda: ("principal-1", dict(STATUS)))
 
     def tearDown(self):

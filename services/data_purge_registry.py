@@ -356,6 +356,17 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "authorization_evidence"),
     PurgeDependency("owner_identity", "owner_principals", "id", "principal",
                     "retain", "database_row", 200, "deletion_evidence"),
+    # Rings (0392): the person's ring, attributes (region, plan, language,
+    # role, bucket), their answers to announcements, and the append-only
+    # history of their ring. Personal, not evidence: all deleted. The service
+    # key holds DELETE on exactly these three tables for this path.
+    PurgeDependency("principal_ring", "principal_rings", "principal_id",
+                    "principal", "delete", "database_row", 80),
+    PurgeDependency("principal_ring_history", "principal_ring_changes",
+                    "principal_id", "principal", "delete", "database_row", 80),
+    PurgeDependency("ring_announcement_decisions",
+                    "ring_announcement_decisions", "principal_id",
+                    "principal", "delete", "database_row", 80),
     PurgeDependency("owner_claim_source", "owner_claim_events",
                     "source_owner_principal_id", "principal", "retain",
                     "database_row", 200, "deletion_evidence"),
@@ -1115,6 +1126,12 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     "feedback_language_delivery_stalled_scan_halt_receipts",
     "data_purge_inventory_manifests", "processing_provider_deletion_contracts",
     "processing_provider_deletion_contract_events", "detector_version",
+    # Rings (0392): which ring gets a feature, the default ring, the
+    # founder-held announcement copy, and the append-only history of those
+    # three. Rollout configuration; no row names a person. A person's own
+    # ring row, decisions and history are `delete` dependencies above.
+    "feature_rings", "ring_settings", "ring_announcements",
+    "feature_ring_changes", "ring_setting_changes",
 })
 
 # Child relations whose reviewed foreign key deletes with an allowlisted

@@ -3801,9 +3801,8 @@ def v2_coach_confidence_queue(session_id):
         _blind_candidates = [{
             "candidate_key": str(row.get("snippet_id") or ""),
         } for row in visible_rows]
-        from services.coach_guidance_delivery import inline_authoring_is_enabled
         if (_coach_id and _owner_id and _project_id and
-                inline_authoring_is_enabled()):
+                _inline_authoring_for(_coach_id)):
             visible_rows = _coach_inline_authoring_queue(
                 visible_rows, session_id=session_id, _project_id=_project_id,
                 _owner_id=_owner_id, _coach_id=_coach_id,
@@ -3823,6 +3822,18 @@ def v2_coach_confidence_queue(session_id):
         logger.warning("confidence queue failed sid=%s: %s", session_id, e)
         return jsonify({"code": "SERVER_ERROR",
                         "error": "could not load the queue"}), 500
+
+
+def _inline_authoring_for(coach_id: str) -> bool:
+    """D5 inline authoring replaces the legacy queue for THIS coach when the
+    building switch is on AND the coach_inline_authoring ring row reaches the
+    coach (rings, 0392). Every other coach keeps the legacy blind
+    presentation queue."""
+    from services import rings
+    from services.coach_guidance_delivery import inline_authoring_is_enabled
+
+    return bool(inline_authoring_is_enabled() and rings.feature_is_on_for_user(
+        rings.COACH_INLINE_AUTHORING, coach_id))
 
 
 @v2_bp.route("/coach/sessions/<session_id>/language", methods=["PUT"])

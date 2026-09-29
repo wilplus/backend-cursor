@@ -216,6 +216,16 @@ def get_bootstrap(admin_user_id: str) -> dict:
     from services.ceo_intelligence import bootstrap_data
 
     payload.update(bootstrap_data())
+    # Rings (0392): what is on for THIS admin and what is pending for them,
+    # the same read every login makes (/v2/user/rings). An unreachable ring
+    # table answers an empty, marked list; the console loads regardless.
+    from services import rings
+
+    ring_state = rings.features_on_for_user(admin_user_id)
+    payload["features_on"] = list(ring_state.get("features_on") or [])
+    payload["pending_announcements"] = list(
+        ring_state.get("pending_announcements") or [])
+    payload["ring"] = ring_state.get("ring")
     # Aggregate-only and observational: no transcript, audio, identity,
     # decision mutation, training trigger or model-promotion control crosses
     # this CEO boundary. Missing migration is reported honestly as unavailable.
