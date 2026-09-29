@@ -306,3 +306,211 @@ def test_invalid_render_identity_never_reaches_the_database():
             render_instance_id="cccccccc-cccc-4ccc-8ccc-cccccccccccc",
         )
     database.acknowledge_learning_surface_exposure.assert_not_called()
+
+
+# ── V3 PACKETS (founder 2026-09-29; the 29 Sep report's "V3 packets") ─────
+#
+# V3 has served every Take since 2026-09-18. Its rows share no identity with
+# V2's three, and the V2 writer above insists on exactly three cards, so no
+# served V3 card ever carried a packet. The V3 writer freezes one packet per
+# surface for every visible row, from the bundle V3 itself served from.
+
+from services.learning_exposures import (  # noqa: E402
+    FORBIDDEN_VISIBLE_KEYS,
+    prepare_v3_feedback_presentations,
+)
+
+
+def _v3_rows(bundle: dict, *keys: str) -> list[dict]:
+    """Served V3 rows, in the shape the service emits: id = candidate key."""
+    by_key = {row["candidate_key"]: row for row in bundle["candidates"]}
+    rows = []
+    for key in keys:
+        row = {"id": key, "feedback_family": by_key[key]["feedback_family"],
+               "snippet_id": "snip-" + key}
+        if by_key[key]["feedback_family"] == "confident_voice":
+            row.update({"bookmark_tier": "exercise", "block_id": "block-1",
+                        "practice_prompt": True})
+        rows.append(row)
+    return rows
+
+
+@pytest.mark.parametrize("served", [
+    ("voice",), ("voice", "rewrite"), ("voice", "rewrite", "praise"),
+])
+def test_v3_writer_freezes_one_packet_per_surface_for_every_served_card(served):
+    database = _presentation_database()
+    bundle = _bundle()
+
+    packets = prepare_v3_feedback_presentations(
+        database=database, bundle=bundle, visible_rows=_v3_rows(bundle, *served),
+        actor_id=ACTOR, block_partition_version="slide-run-75-word-partition-v1")
+
+    expected = {"voice": 1, "rewrite": 2, "praise": 2}
+    assert set(packets) == set(served)
+    for key in served:
+        assert len(packets[key]) == expected[key], key
+    assert database.create_learning_surface_presentation.call_count == sum(
+        expected[key] for key in served)
+    surfaces = {
+        call.args[0]["learning_surface"]
+        for call in database.create_learning_surface_presentation.call_args_list
+    }
+    assert surfaces <= {
+        "confidence_classification", "correction_generation",
+        "correction_selection", "praise_generation", "praise_selection",
+    }
+
+
+def test_v3_packets_are_keyed_by_the_served_row_id_not_by_position():
+    """`_finish` attaches by `row["id"]`; the V2 ids never matched V3's."""
+    database = _presentation_database()
+    bundle = _bundle()
+
+    packets = prepare_v3_feedback_presentations(
+        database=database, bundle=bundle,
+        visible_rows=_v3_rows(bundle, "rewrite", "voice"), actor_id=ACTOR)
+
+    assert set(packets) == {"rewrite", "voice"}
+    for key, handles in packets.items():
+        for handle in handles:
+            assert set(handle) == {
+                "presentation_id", "acknowledgement_token",
+                "learning_surface", "evaluation_only",
+            }, key
+
+
+def test_v3_packet_pins_the_block_the_tier_and_the_partition_version():
+    database = _presentation_database()
+    bundle = _bundle()
+
+    prepare_v3_feedback_presentations(
+        database=database, bundle=bundle,
+        visible_rows=_v3_rows(bundle, "voice", "praise"), actor_id=ACTOR,
+        block_partition_version="slide-run-75-word-partition-v1")
+
+    rows = {
+        call.args[0]["learning_surface"]: call.args[0]
+        for call in database.create_learning_surface_presentation.call_args_list
+    }
+    voice = rows["confidence_classification"]
+    assert voice["visible_payload"]["bookmark_tier"] == "exercise"
+    assert voice["visible_payload"]["block_id"] == "block-1"
+    assert voice["versions"]["block_partition_version"] == \
+        "slide-run-75-word-partition-v1"
+    assert voice["versions"]["taxonomy_version"] == "v1"
+    assert voice["delivery_mode"] == "production"
+    assert voice["evidence_span_id"] == bundle["candidates"][0]["evidence"]["id"]
+    # A praise row has no block or tier of its own; nothing is invented.
+    praise = rows["praise_generation"]
+    assert "bookmark_tier" not in praise["visible_payload"]
+    assert "block_id" not in praise["visible_payload"]
+    assert len(praise["complete_candidate_set"]) == 3
+
+
+def test_v3_packets_carry_no_score_rank_prediction_or_other_actors_answer():
+    """The three columns stay apart (L3) and nothing shown is a number (AC-9).
+
+    The machine's own score and rank evidence live in the frozen candidate
+    snapshots -- the machine column -- and nowhere else in the packet.
+    """
+    database = _presentation_database()
+    bundle = _bundle()
+    for row in bundle["candidates"]:
+        row["user_self_report"] = "yes"
+        row["coach_judgment"] = "yes"
+        row["machine_prediction"] = {"lean": "confident"}
+
+    prepare_v3_feedback_presentations(
+        database=database, bundle=bundle,
+        visible_rows=_v3_rows(bundle, "voice", "rewrite", "praise"),
+        actor_id=ACTOR)
+
+    for call in database.create_learning_surface_presentation.call_args_list:
+        payload = call.args[0]
+        assert not FORBIDDEN_VISIBLE_KEYS.intersection(payload["visible_payload"])
+        assert not FORBIDDEN_VISIBLE_KEYS.intersection(payload["versions"])
+        for snapshot in [payload["selected_candidate"],
+                         *payload["complete_candidate_set"]]:
+            assert "user_self_report" not in snapshot
+            assert "coach_judgment" not in snapshot
+            assert "peer_judgment" not in snapshot
+            assert "machine_prediction" not in snapshot
+            # The machine column keeps the machine's own evidence.
+            assert snapshot["candidate_score"] == 0.7
+            assert snapshot["rank_evidence"] == {"rank_key": [1]}
+        assert payload["actor_role"] == "owner"
+
+
+def test_a_visible_payload_with_a_score_or_an_answer_is_refused_at_the_seam():
+    database = _presentation_database()
+    for key in ("candidate_score", "user_self_report", "coach_judgment"):
+        with pytest.raises(LearningExposureError, match="another actor"):
+            prepare_presentation(
+                database=database,
+                owner_principal_id=OWNER,
+                project_id=PROJECT,
+                take_id=TAKE,
+                evidence_span_id="55555555-5555-4555-8555-555555555555",
+                learning_surface="confidence_classification",
+                actor_role="owner",
+                actor_id=ACTOR,
+                complete_candidate_set=[{"candidate_key": "voice"}],
+                selected_candidate={"candidate_key": "voice"},
+                visible_payload={"quote": "shown", key: 0.9},
+                versions={"taxonomy_version": "v1"},
+            )
+    database.create_learning_surface_presentation.assert_not_called()
+
+
+def test_a_served_v3_row_outside_the_bundle_is_a_fault_not_a_card():
+    database = _presentation_database()
+    bundle = _bundle()
+    stray = {"id": "not-in-bundle", "feedback_family": "confident_voice"}
+
+    with pytest.raises(LearningExposureError,
+                       match="^served V3 row has no frozen candidate$"):
+        prepare_v3_feedback_presentations(
+            database=database, bundle=bundle,
+            visible_rows=[*_v3_rows(bundle, "voice"), stray], actor_id=ACTOR)
+
+
+def test_v3_writer_refuses_an_empty_serve_and_an_empty_inventory():
+    database = _presentation_database()
+    bundle = _bundle()
+    with pytest.raises(LearningExposureError, match="no served V3 row"):
+        prepare_v3_feedback_presentations(
+            database=database, bundle=bundle, visible_rows=[], actor_id=ACTOR)
+    with pytest.raises(LearningExposureError, match="inventory is incomplete"):
+        prepare_v3_feedback_presentations(
+            database=database, bundle={**bundle, "candidates": []},
+            visible_rows=_v3_rows(bundle, "voice"), actor_id=ACTOR)
+    database.create_learning_surface_presentation.assert_not_called()
+
+
+def test_v3_shadow_packets_are_stored_but_never_handed_to_the_row():
+    database = _presentation_database()
+    bundle = _bundle()
+
+    packets = prepare_v3_feedback_presentations(
+        database=database, bundle=bundle, visible_rows=_v3_rows(bundle, "voice"),
+        actor_id=ACTOR, delivery_mode="shadow")
+
+    assert packets == {}
+    assert database.create_learning_surface_presentation.call_count == 1
+
+
+def test_v3_packets_are_idempotent_across_polls_of_the_same_take():
+    """The Ideal Text is polled; the same card must freeze the same packet."""
+    database = _presentation_database()
+    bundle = _bundle()
+    rows = _v3_rows(bundle, "voice")
+    prepare_v3_feedback_presentations(
+        database=database, bundle=bundle, visible_rows=rows, actor_id=ACTOR)
+    prepare_v3_feedback_presentations(
+        database=database, bundle=bundle, visible_rows=rows, actor_id=ACTOR)
+    first, second = [
+        call.args[0]["idempotency_key"]
+        for call in database.create_learning_surface_presentation.call_args_list
+    ]
+    assert first == second

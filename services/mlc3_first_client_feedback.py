@@ -496,6 +496,26 @@ def _log_served(
     )
 
 
+def _note_learning(
+    learning: Optional[dict], *, bundle: dict, inventory: dict,
+) -> None:
+    """Hand the caller the bundle V3 served from, for the learning packets.
+
+    AN OUT-PARAMETER, NOT A SECOND RETURN VALUE (2026-09-29). Every caller
+    and test of `prepare_first_client_feedback` pins its three-outcome
+    contract -- rows, `V3Unavailable`, or `None` -- and a tuple would have
+    changed all of them to carry one more thing. `detail` in the inventory
+    builder is the same device. Written only on the success exit, so a
+    declined Take hands back nothing and no packet can describe a card that
+    was not served.
+    """
+    if learning is None:
+        return
+    learning["bundle"] = bundle
+    learning["block_partition_version"] = str(
+        inventory.get("block_partition_version") or "")
+
+
 def prepare_first_client_feedback(
     *,
     database: Any,
@@ -506,6 +526,7 @@ def prepare_first_client_feedback(
     suggestions: Any,
     feedback_candidates: Iterable[Any],
     owner_user_id: str,
+    learning: Optional[dict] = None,
 ) -> list[dict] | V3Unavailable | None:
     """Rows, a typed failure, or ``None`` when V3 does not apply here.
 
@@ -513,6 +534,10 @@ def prepare_first_client_feedback(
     outside the service and the legacy answer is correct. A `V3Unavailable`
     means V3 owned this Take and could not produce it, which the caller
     surfaces rather than papering over with V2.
+
+    ``learning``, when given, receives the exposure bundle the rows were
+    served from (see `_note_learning`); the caller freezes the seven-surface
+    learning packets from it, one per served card.
     """
     take = session if isinstance(session, dict) else {}
     principal_id = str(take.get("owner_principal_id") or "")
@@ -636,5 +661,6 @@ def prepare_first_client_feedback(
         # contract this function's own docstring states, and names the reason
         # in the log instead of failing silently.
         return _decline(take_id, "inventory_returned_no_visible_rows")
+    _note_learning(learning, bundle=bundle, inventory=inventory)
     _log_served(visible, lineage=lineage, take_id=take_id)
     return visible
