@@ -142,3 +142,62 @@ def test_a_served_take_logs_its_families_and_lineage(monkeypatch, caplog):
         "first_client: v3 served items=1 families=confident_voice:1 "
         f"lineage=yes take={TAKE}"
     ]
+
+
+# ── THE BUNDLE COMES BACK WITH THE ROWS (founder 2026-09-29) ──────────────
+#
+# The V3 learning packets are frozen from the bundle V3 served from. It is
+# handed back through the `learning` out-parameter on the success exit only,
+# so a declined Take hands back nothing and no packet can describe a card
+# that was not served.
+
+
+def test_a_served_take_hands_back_the_bundle_it_served_from(monkeypatch):
+    from config import Config
+
+    monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", True)
+    database = _SnapshotDatabase(lambda data: data)
+    session, document, snippets = _source()
+    learning: dict = {}
+
+    rows = prepare_first_client_feedback(
+        database=database, session=session, take_document=document,
+        served_text=document["text"], snippets=snippets, suggestions={},
+        feedback_candidates=[], owner_user_id=USER, learning=learning,
+    )
+
+    assert isinstance(rows, list) and len(rows) == 1
+    assert learning["bundle"] is database.bundle
+    assert learning["block_partition_version"] == \
+        "slide-run-75-word-partition-v1"
+    served = {(row["feedback_family"], row["id"]) for row in rows}
+    frozen = {(row["feedback_family"], row["candidate_key"])
+              for row in learning["bundle"]["candidates"]}
+    assert served <= frozen
+
+
+@pytest.mark.parametrize("bend,reason", _BENDS[:2])
+def test_a_declined_take_hands_back_no_bundle(monkeypatch, bend, reason):
+    from config import Config
+
+    monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", True)
+    learning: dict = {}
+    session, document, snippets = _source()
+
+    result = prepare_first_client_feedback(
+        database=_SnapshotDatabase(bend), session=session,
+        take_document=document, served_text=document["text"],
+        snippets=snippets, suggestions={}, feedback_candidates=[],
+        owner_user_id=USER, learning=learning,
+    )
+
+    assert result == V3Unavailable(reason)
+    assert learning == {}
+
+
+def test_callers_that_pass_no_learning_dict_are_unchanged(monkeypatch):
+    from config import Config
+
+    monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", True)
+    rows = _run(_SnapshotDatabase(lambda data: data))
+    assert isinstance(rows, list) and len(rows) == 1
