@@ -1188,13 +1188,7 @@ def _take_full_text(session_id):
     Coach rewrites are separate FeedbackItems until the user accepts them.
     """
     snips = db.get_snippets_by_session(session_id) or []
-    edits = {}
-    try:
-        for e in (db.get_user_transcript_edits(session_id) or []):
-            if e.get("snippet_id") and (e.get("text") or "").strip():
-                edits[str(e["snippet_id"])] = e["text"].strip()
-    except Exception:
-        pass
+    edits = _accepted_transcript_edits(session_id)
     parts = []
     for s in sorted(snips, key=lambda x: (x.get("start_offset_ms") or 0)):
         _sid = str(s.get("id"))
@@ -1204,6 +1198,18 @@ def _take_full_text(session_id):
         if txt:
             parts.append(txt)
     return " ".join(parts)
+
+
+def _accepted_transcript_edits(session_id):
+    """The user's accepted edits by snippet id, stripped; best-effort."""
+    edits = {}
+    try:
+        for e in (db.get_user_transcript_edits(session_id) or []):
+            if e.get("snippet_id") and (e.get("text") or "").strip():
+                edits[str(e["snippet_id"])] = e["text"].strip()
+    except Exception:
+        pass
+    return edits
 
 
 def _take_key_moments(session_id, read_session_ids=None):
@@ -1228,11 +1234,7 @@ def _take_key_moments(session_id, read_session_ids=None):
                               + [(r, "read") for r in _reads]):
         if not sid:
             continue
-        drafts = {
-            str(d.get("snippet_id")): d
-            for d in (db.get_coach_snippet_drafts(sid) or [])
-            if d.get("snippet_id")
-        }
+        drafts = _drafts_by_snippet(sid)
         # KEY = CONFIDENCE QUORUM = YES (founder 2026-08-14). One batched
         # read per take rather than a lookup per snippet.
         from services.key_moments import key_snippet_ids
@@ -1245,27 +1247,41 @@ def _take_key_moments(session_id, read_session_ids=None):
                 continue
             if _sid not in _key_ids:
                 continue
-            m = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
-            _piece = m.get("piece") if isinstance(m.get("piece"), dict) else {}
-            out.append({
-                "snippet_id": s.get("id"),
-                "take_session_id": sid,
-                "slide_index": _piece.get("slide_index"),
-                "recording_kind": m.get("recording_kind") or kind_default,
-                "transcript": (
-                    (d.get("transcript_corrected") or "").strip()
-                    or s.get("transcript") or s.get("transcription_text") or ""
-                ),
-                # Resolved (founder 2026-08-10): an s3:// fallback ref
-                # renders a dead player; the resolver signs it against
-                # its own bucket and passes healthy URLs through.
-                "audio_ref": _resolve_feedback_audio(
-                    s.get("audio_segment_path")),
-                "start_offset_ms": s.get("start_offset_ms"),
-                "duration_ms": s.get("duration_ms"),
-                "comment_text": (d.get("note") or "").strip() or None,
-            })
+            out.append(_key_moment(s, d, sid, kind_default))
     return out
+
+
+def _drafts_by_snippet(sid):
+    """The take's coach drafts keyed by snippet id."""
+    return {
+        str(d.get("snippet_id")): d
+        for d in (db.get_coach_snippet_drafts(sid) or [])
+        if d.get("snippet_id")
+    }
+
+
+def _key_moment(s, d, sid, kind_default):
+    """One key moment: the snippet's playback span and the coach's comment."""
+    m = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
+    _piece = m.get("piece") if isinstance(m.get("piece"), dict) else {}
+    return {
+        "snippet_id": s.get("id"),
+        "take_session_id": sid,
+        "slide_index": _piece.get("slide_index"),
+        "recording_kind": m.get("recording_kind") or kind_default,
+        "transcript": (
+            (d.get("transcript_corrected") or "").strip()
+            or s.get("transcript") or s.get("transcription_text") or ""
+        ),
+        # Resolved (founder 2026-08-10): an s3:// fallback ref
+        # renders a dead player; the resolver signs it against
+        # its own bucket and passes healthy URLs through.
+        "audio_ref": _resolve_feedback_audio(
+            s.get("audio_segment_path")),
+        "start_offset_ms": s.get("start_offset_ms"),
+        "duration_ms": s.get("duration_ms"),
+        "comment_text": (d.get("note") or "").strip() or None,
+    }
 
 
 def _moments_entitled(arc_id) -> bool:

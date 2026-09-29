@@ -87,14 +87,6 @@
     "lines": 65,
     "db_calls": 3
   },
-  "routes/v2/arcs.py:_take_full_text": {
-    "lines": 23,
-    "db_calls": 2
-  },
-  "routes/v2/arcs.py:_take_key_moments": {
-    "lines": 60,
-    "db_calls": 2
-  },
   "routes/v2/arcs.py:v2_arc_redeem": {
     "lines": 48,
     "db_calls": 2
