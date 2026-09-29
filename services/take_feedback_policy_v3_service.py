@@ -7,7 +7,7 @@ Human answers and coach judgments are deliberately absent from its inputs.
 """
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 _FAMILIES = {"confident_voice", "rewrite_clarity", "great_formulation"}
@@ -139,7 +139,25 @@ def _row_rejection(
     Split one per line so the log says which. The values carried are
     identifiers and millisecond offsets -- lineage, not content, and not a
     score. AC-9 is about what reaches a user; none of this does.
+
+    The conditions are checked in this order, and the first that holds is
+    the answer: the row's own lineage, its transcript span, the clip
+    against the piece, the piece's Paragraph, and its served span.
     """
+    return (
+        _lineage_gap(raw, candidate_key=candidate_key, snippet_id=snippet_id,
+                     source=source, span=span, lineage=lineage)
+        or _span_rejection(span, document_text, prefix="")
+        or _clip_mismatch(source, lineage)
+        or (None if source.get("part_id") else "piece_has_no_part_id")
+        or _served_span_rejection(raw.get("target_span"), served_text)
+    )
+
+
+def _lineage_gap(
+    raw: dict, *, candidate_key: str, snippet_id: str, source: Any,
+    span: Any, lineage: Any,
+) -> str | None:
     if not candidate_key:
         return "no_candidate_id"
     if source is None:
@@ -150,13 +168,25 @@ def _row_rejection(
         return "clip_identity_missing"
     if raw.get("eligibility") not in {"eligible", "excluded"}:
         return f"eligibility_unknown:{raw.get('eligibility')!r}"
+    return None
+
+
+def _span_rejection(span: dict, text: str, *, prefix: str) -> str | None:
+    """A ``{start, end}`` span that is not integer, not forward, or runs
+    past ``text``; ``prefix`` names which document ("" or "served_")."""
     start, end = span.get("start"), span.get("end")
     if not isinstance(start, int) or not isinstance(end, int):
-        return "span_bounds_not_integers"
+        return f"{prefix}span_bounds_not_integers"
     if start < 0 or end <= start:
-        return f"span_inverted:{start}..{end}"
-    if end > len(document_text):
-        return f"span_past_document_end:{end}>{len(document_text)}"
+        return f"{prefix}span_inverted:{start}..{end}"
+    if end > len(text):
+        return f"{prefix}span_past_document_end:{end}>{len(text)}"
+    return None
+
+
+def _clip_mismatch(source: dict, lineage: dict) -> str | None:
+    """The clip's recording, start offset or duration disagrees with the
+    piece's; both sides are carried so the log can be compared."""
     if str(source.get("recording_id") or "") != str(
         lineage.get("recording_id") or ""
     ):
@@ -165,37 +195,27 @@ def _row_rejection(
             f"piece={source.get('recording_id')!r}"
             f",clip={lineage.get('recording_id')!r}"
         )
-    if source.get("start_offset_ms") != lineage.get("start_offset_ms"):
-        return (
-            "start_offset_mismatch:"
-            f"piece={source.get('start_offset_ms')!r}"
-            f",clip={lineage.get('start_offset_ms')!r}"
-        )
-    if source.get("duration_ms") != lineage.get("duration_ms"):
-        return (
-            "duration_mismatch:"
-            f"piece={source.get('duration_ms')!r}"
-            f",clip={lineage.get('duration_ms')!r}"
-        )
-    if not source.get("part_id"):
-        return "piece_has_no_part_id"
+    for field, reason in (("start_offset_ms", "start_offset_mismatch"),
+                          ("duration_ms", "duration_mismatch")):
+        if source.get(field) != lineage.get(field):
+            return (
+                f"{reason}:"
+                f"piece={source.get(field)!r}"
+                f",clip={lineage.get(field)!r}"
+            )
+    return None
+
+
+def _served_span_rejection(target: Any, served_text: str) -> str | None:
     # THE SPAN THE BOOKMARK IS DRAWN ON, which is not the one measured. The
     # checks above validate `document_span` against the TRANSCRIPT; these
     # validate `target_span` against the SERVED Ideal Text. Two documents,
     # two spans, and conflating them put V3's highlight at transcript
     # offsets inside a shorter document -- past its end in production, and
     # silently on the wrong words whenever it happened to fit.
-    target = raw.get("target_span")
     if not isinstance(target, dict):
         return "piece_has_no_served_span"
-    t_start, t_end = target.get("start"), target.get("end")
-    if not isinstance(t_start, int) or not isinstance(t_end, int):
-        return "served_span_bounds_not_integers"
-    if t_start < 0 or t_end <= t_start:
-        return f"served_span_inverted:{t_start}..{t_end}"
-    if t_end > len(served_text):
-        return f"served_span_past_document_end:{t_end}>{len(served_text)}"
-    return None
+    return _span_rejection(target, served_text, prefix="served_")
 
 
 def _v3_confidence_candidate_row(
@@ -473,11 +493,7 @@ def prepare_v3_service_inventory(
     pieces = _source_parts(document)
     raw_by_identity = _candidate_map(feedback_candidates)
     inventory = _V3ServiceInventory()
-    confidence_selected = {
-        str(row.get("candidate_id")): str(row.get("block_id"))
-        for row in policy.get("selected_confidence") or []
-        if isinstance(row, dict) and row.get("candidate_id") and row.get("block_id")
-    }
+    confidence_selected = _selected_confidence(policy)
     blocks = policy.get("blocks")
     if not isinstance(blocks, list) or not blocks:
         closed("no_blocks_in_policy")
@@ -494,8 +510,44 @@ def prepare_v3_service_inventory(
             # cannot read contributes nothing, and contributing nothing must
             # not mean silencing the blocks we can.
             closed(f"confidence_block_excluded:{block_position}")
-            continue
 
+    _add_verbal_lanes(
+        policy, blocks, closed, raw_by_identity=raw_by_identity,
+        pieces=pieces, inventory=inventory,
+    )
+
+    # THE ONE REMAINING FAIL-CLOSED GATE, and it is the right one: everything
+    # above now excludes what it cannot prove and keeps what it can, so
+    # reaching here with an incomplete inventory means nothing provable
+    # survived. That is an honest decline; aborting because a single row was
+    # unprovable was not.
+    if not _v3_inventory_is_complete(inventory):
+        closed(
+            "inventory_incomplete:"
+            f"selected={len(inventory.selected)}"
+            f",candidates={len(inventory.candidates)}"
+            f",items={len(inventory.items)}"
+        )
+        return None
+    return _service_inventory_payload(inventory)
+
+
+def _selected_confidence(policy: dict) -> dict[str, str]:
+    """The policy's selected Confident Voice rows, candidate id -> block id."""
+    return {
+        str(row.get("candidate_id")): str(row.get("block_id"))
+        for row in policy.get("selected_confidence") or []
+        if isinstance(row, dict) and row.get("candidate_id") and row.get("block_id")
+    }
+
+
+def _add_verbal_lanes(
+    policy: dict, blocks: list, closed: Callable[[str], None], *,
+    raw_by_identity: dict[tuple[str, str], dict], pieces: dict[str, dict],
+    inventory: _V3ServiceInventory,
+) -> None:
+    """Add the rewrite and praise lanes to ``inventory``; a lane that
+    cannot be proven is named and contributes nothing."""
     verbal = policy.get("verbal_lanes")
     if not isinstance(verbal, dict):
         # An absent verbal block is an empty rewrite and praise lane, which
@@ -514,21 +566,9 @@ def prepare_v3_service_inventory(
             # lane shows no card. A lane that cannot be proven is an empty
             # lane, not a reason to withhold Confident Voice.
             closed(f"verbal_lane_excluded:{family}")
-            continue
 
-    # THE ONE REMAINING FAIL-CLOSED GATE, and it is the right one: everything
-    # above now excludes what it cannot prove and keeps what it can, so
-    # reaching here with an incomplete inventory means nothing provable
-    # survived. That is an honest decline; aborting because a single row was
-    # unprovable was not.
-    if not _v3_inventory_is_complete(inventory):
-        closed(
-            "inventory_incomplete:"
-            f"selected={len(inventory.selected)}"
-            f",candidates={len(inventory.candidates)}"
-            f",items={len(inventory.items)}"
-        )
-        return None
+
+def _service_inventory_payload(inventory: _V3ServiceInventory) -> dict:
     return {
         "candidates": inventory.candidates,
         "selected_keys": inventory.selected,
