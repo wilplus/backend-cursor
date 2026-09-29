@@ -66,7 +66,7 @@ def variants_enabled() -> bool:
 
 def _join_pieces(pieces: Any) -> str:
     """A block's display text from its pieces — the same single-space
-    join the offer lane uses (upgrade_changes), so texts compare."""
+    join the master document's block lane uses, so texts compare."""
     return " ".join((p.get("text") or "").strip()
                     for p in (pieces or [])
                     if (p.get("text") or "").strip()).strip()

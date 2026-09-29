@@ -10,7 +10,6 @@ from services.master_document import (
     assemble_master_document,
     block_additions,
     decide_block,
-    upgrade_changes,
 )
 
 ARC = "a1"
@@ -218,40 +217,6 @@ class AssembleMasterTests(unittest.TestCase):
         self.assertFalse(out["ready"])
 
 
-class UpgradeChangesTests(unittest.TestCase):
-    def test_pending_upgrade_serves_span_anchored_offer(self):
-        row = _block(0, text="the master words")
-        row.update({"status": "pending_upgrade",
-                    "challenger_take_session_id": T2,
-                    "challenger_take_index": 2,
-                    "challenger_pieces": [{"snippet_id": "n1",
-                                           "text": "the newer words"}],
-                    "challenger_why": "energy"})
-        db = _Db(blocks=[row])
-        doc = "The master words."
-        out = upgrade_changes(ARC, doc, db)
-        c = out[0]
-        self.assertEqual(c["kind"], "replace")
-        self.assertEqual(c["source"], "new_take")
-        self.assertEqual(doc[c["span"]["start"]:c["span"]["end"]],
-                         c["quote"])
-        self.assertEqual(c["proposed_text"], "the newer words")
-        self.assertEqual(c["take_index"], 2)
-        self.assertEqual(c["why_key"], "energy")
-        self.assertEqual(c["take_session_id"], T2)
-
-    def test_a_candidate_is_NOT_a_tracked_change(self):
-        """It used to ride here as a zero-width `insert` and reached NOBODY —
-        dropped by the FE's kind vocabulary, by its `end > start` span check,
-        and by the manager gate's zero-width guard. All three were right; the
-        mistake was upstream. Additions are their own lane now."""
-        row = _block(10, text="brand new closing", status="candidate",
-                     active=False, sess=T2, take=2)
-        db = _Db(blocks=[_block(0), row])
-        out = upgrade_changes(ARC, "The master words.", db)
-        self.assertEqual([c for c in out if c.get("kind") == "insert"], [])
-
-
 class BlockAdditionsTests(unittest.TestCase):
     """Material the speaker SAID that is not in the master document at all — a
     decked slide the skeleton never saw. Words on a slide of the student's own
@@ -300,15 +265,6 @@ class BlockAdditionsTests(unittest.TestCase):
 
     def test_no_blocks_is_empty(self):
         self.assertEqual(block_additions(ARC, "doc", _Db(blocks=[])), [])
-
-    def test_missing_incumbent_text_drops_the_offer(self):
-        row = _block(0, text="words no longer in the doc")
-        row.update({"status": "pending_upgrade",
-                    "challenger_take_session_id": T2,
-                    "challenger_pieces": [{"snippet_id": "n1",
-                                           "text": "x"}]})
-        db = _Db(blocks=[row])
-        self.assertEqual(upgrade_changes(ARC, "A different doc.", db), [])
 
 
 class DecideBlockTests(unittest.TestCase):
