@@ -34,7 +34,7 @@ from __future__ import annotations
 import hashlib
 import math
 from dataclasses import dataclass, field, replace
-from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
+from typing import Any, Callable, Iterable, Iterator, Mapping, Optional, Sequence
 
 # ── Progression states (Appendix B) ─────────────────────────────────────────
 # FRAGILE is NOT on the fading arc: high performance, low calibration, and
@@ -496,13 +496,7 @@ def arm_rows(result: dict, *, session_id: str, user_id: str) -> list[dict]:
     apart afterwards. Reading the constants at analysis time instead would
     silently re-interpret old rows under a new policy.
     """
-    arms = result.get("arms") or {}
-    policy = {
-        "control_salt": arms.get("control_salt"),
-        "withhold_salt": arms.get("withhold_salt"),
-        "withhold_rate": arms.get("intervention_randomisation"),
-        "exploration_rate": arms.get("epsilon_explore"),
-    }
+    policy = _arm_policy(result)
 
     def row(dimension, arm, *, priority=None, would=None, surfaced=False,
             form=None):
@@ -513,10 +507,7 @@ def arm_rows(result: dict, *, session_id: str, user_id: str) -> list[dict]:
 
     rows: list[dict] = []
     seen: set[str] = set()
-    # Product-contract rows are outside the experiment by construction. They
-    # were neither eligible for gamma control nor intervention withholding,
-    # so stamping them TREATED would fabricate an assignment that never ran.
-    protected = {str(d) for d in (result.get("protected") or [])}
+    protected = _protected_dimensions(result)
 
     # DEDUP HERE TOO. Two same-lane winners in one serve (routine — the
     # budget is 3 and the lanes are few) would produce two rows with the
@@ -524,50 +515,65 @@ def arm_rows(result: dict, *, session_id: str, user_id: str) -> list[dict]:
     # rejects wholesale (21000: row affected twice) — and the writer's
     # best-effort except would swallow it, recording the whole serve as
     # zero rows. First winner carries the lane's row, same rule as the
-    # other three loops.
+    # other loops.
     for c in result.get("selected") or ():
-        if c.dimension in protected:
-            continue
-        if c.dimension in seen:
-            continue
-        seen.add(c.dimension)
-        rows.append(row(c.dimension,
-                        ARM_EXPLORE if c.exploration else ARM_TREATED,
-                        priority=c.priority, would=True, surfaced=True,
-                        form=c.form))
+        if _first_arm(c.dimension, protected, seen):
+            rows.append(row(c.dimension,
+                            ARM_EXPLORE if c.exploration else ARM_TREATED,
+                            priority=c.priority, would=True, surfaced=True,
+                            form=c.form))
 
     # WITHHELD is the within-subject untreated condition and the single most
     # important arm to record: it is the only evidence the condition occurred
     # at all. `would_have_surfaced` is True by construction — it won.
     for dimension in result.get("withheld") or ():
-        if dimension in protected:
-            continue
-        if dimension in seen:
-            continue
-        seen.add(dimension)
-        rows.append(row(dimension, ARM_WITHHELD, would=True))
+        if _first_arm(dimension, protected, seen):
+            rows.append(row(dimension, ARM_WITHHELD, would=True))
 
-
-    # BEATEN BY THE BUDGET — considered, ranked, uncollided, and out of room.
-    # `would_have_surfaced` is False and that is exact: it lost the slot on
-    # the policy the experiment is testing, which is the outcome to record.
-    for dimension in result.get("budget_lost") or ():
-        if dimension in protected:
-            continue
-        if dimension in seen:
-            continue
-        seen.add(dimension)
-        rows.append(row(dimension, ARM_NOT_SELECTED, would=False))
-
-    for dimension, _why in result.get("rejected") or ():
-        if dimension in protected:
-            continue
-        if dimension in seen:
-            continue
-        seen.add(dimension)
-        rows.append(row(dimension, ARM_NOT_SELECTED, would=False))
+    for dimension in _not_selected_dimensions(result):
+        if _first_arm(dimension, protected, seen):
+            rows.append(row(dimension, ARM_NOT_SELECTED, would=False))
 
     return rows
+
+
+def _arm_policy(result: dict) -> dict:
+    """The assignment policy stamped on every arm row, salts included."""
+    arms = result.get("arms") or {}
+    return {
+        "control_salt": arms.get("control_salt"),
+        "withhold_salt": arms.get("withhold_salt"),
+        "withhold_rate": arms.get("intervention_randomisation"),
+        "exploration_rate": arms.get("epsilon_explore"),
+    }
+
+
+def _protected_dimensions(result: dict) -> set[str]:
+    # Product-contract rows are outside the experiment by construction. They
+    # were neither eligible for gamma control nor intervention withholding,
+    # so stamping them TREATED would fabricate an assignment that never ran.
+    return {str(d) for d in (result.get("protected") or [])}
+
+
+def _not_selected_dimensions(result: dict) -> Iterator[Any]:
+    """The NOT_SELECTED arm's dimensions, in recording order.
+
+    BEATEN BY THE BUDGET first — considered, ranked, uncollided, and out of
+    room. `would_have_surfaced` is False and that is exact: it lost the slot
+    on the policy the experiment is testing, which is the outcome to record.
+    Then the rejected ones."""
+    yield from result.get("budget_lost") or ()
+    for dimension, _why in result.get("rejected") or ():
+        yield dimension
+
+
+def _first_arm(dimension: Any, protected: set[str], seen: set) -> bool:
+    """True the first time an unprotected dimension comes up (and records
+    it as seen): one row per (session, dimension)."""
+    if dimension in protected or dimension in seen:
+        return False
+    seen.add(dimension)
+    return True
 
 
 
