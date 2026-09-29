@@ -2009,27 +2009,6 @@ Next.js proxy file between them never existed, so every acknowledgement
 which is why the seven-surface readiness could never leave `blocked`. After
 the frontend deploys, the first visible render writes the first receipt.
 
-<<<<<<< HEAD
-### 2026-09-29 · WS-Q3 · q3-practice-door · #(pending)
-
-**Closed:** Q3 (founder 2026-09-29): the coach's practice review and exercise
-request open on any saved answer but Audio unclear. Both routes shared the
-words `not in ("yes", "no")` but not a predicate; `_practice_door_open` in
-`routes/v2/coach.py` is now the one door for both. Yes, In-between, No and
-Not sure are answers about the moment; Audio unclear is an abstention, so the
-moment stays unrated and the door stays shut. The matching frontend PR
-applies the same rule to the blind card (`answered`, `ratingSaved`) and to
-the overlay's practice review, which also no longer opens on a row with no
-label at all.
-**Contract lines flipped:** none (35g-2 says "after their own blind rating of
-the moment", which this keeps).
-**Contract lines added:** `tests/test_practice_door.py` (the four answers
-open it; Audio unclear, an abstention flag and no answer keep it shut; both
-routes use the one predicate).
-**Broke and fixed:** none.
-**Open for the founder:** none. The contextual walk and the D3 reveal grant
-keep their own doors, as decided.
-=======
 ### 2026-09-29 · WS-Q1 · q1-consent-snapshot-path · #(pending)
 
 **Closed:** the consent half of G-6's first blocker (audit 2026-09-22, G-3
@@ -2100,4 +2079,23 @@ label PUT) is a separate frontend PR; without it the backend stays inert
 even in `founder_canary`. The Voice Album still reads its live legs; a
 canonical admission writer (R-5) is a follow-up. The writer state stays
 `dark`.
->>>>>>> origin/main
+
+### 2026-09-29 · WS-Q3 · q3-practice-door · #(pending)
+
+**Closed:** Q3 (founder 2026-09-29): the coach's practice review and exercise
+request open on any saved answer but Audio unclear. Both routes shared the
+words `not in ("yes", "no")` but not a predicate; `_practice_door_open` in
+`routes/v2/coach.py` is now the one door for both. Yes, In-between, No and
+Not sure are answers about the moment; Audio unclear is an abstention, so the
+moment stays unrated and the door stays shut. The matching frontend PR
+applies the same rule to the blind card (`answered`, `ratingSaved`) and to
+the overlay's practice review, which also no longer opens on a row with no
+label at all.
+**Contract lines flipped:** none (35g-2 says "after their own blind rating of
+the moment", which this keeps).
+**Contract lines added:** `tests/test_practice_door.py` (the four answers
+open it; Audio unclear, an abstention flag and no answer keep it shut; both
+routes use the one predicate).
+**Broke and fixed:** none.
+**Open for the founder:** none. The contextual walk and the D3 reveal grant
+keep their own doors, as decided.
