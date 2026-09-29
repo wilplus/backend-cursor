@@ -1055,10 +1055,9 @@ def _offer_payload(exercise: dict, verdict: dict, snippet: dict,
         "practice_id": str(existing.get("id")) if existing else None,
         "resume": bool(existing and existing.get("status") == "open"),
         "matching_policy_version": MATCHING_POLICY_VERSION,
-        "pattern_distance": confidence_pattern_distance(
-            str(verdict.get("pattern") or ""),
-            exercise.get("supported_confidence_patterns"),
-        ),
+        # NO pattern_distance HERE (AC-9, founder 2026-09-29): it is a number,
+        # and this payload is the speaker's. The frontend never drew it; the
+        # match trace (0384) and the practice's machine_assessment keep it.
     }
 
 
@@ -1309,7 +1308,6 @@ def _coach_request_offer(
     target["practice_exercise"] = {
         **_offer_payload(exercise, verdict, snippet, target, existing),
         "matching_policy_version": COACH_REQUEST_POLICY_VERSION,
-        "pattern_distance": None,
         "chosen_by_coach": True,
         "done_before": _done_before(
             database, owner_user_id, str(exercise.get("exercise_id") or ""),

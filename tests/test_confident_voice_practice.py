@@ -216,7 +216,9 @@ class ManagerTests(unittest.TestCase):
         ))
         offer = next(row["practice_exercise"] for row in rows
                      if "practice_exercise" in row)
-        self.assertEqual(offer["pattern_distance"], 1)
+        # AC-9 (founder 2026-09-29): the distance is a number, so it never
+        # rides in the speaker's offer; the match trace keeps it.
+        self.assertNotIn("pattern_distance", offer)
         # The bare version: whether this was a trial never reaches the
         # speaker's payload.
         self.assertEqual(
