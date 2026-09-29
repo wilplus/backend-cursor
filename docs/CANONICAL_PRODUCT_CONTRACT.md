@@ -357,15 +357,19 @@ with this contract, this contract wins.
 ## 5a. Confidence-linked exercise policy
 
 35a. The product may assign an exercise to an exact Confident Voice clip. The
-    match is made when the Take's Feedback is built, before any answer exists,
-    and **every one of the five answers keeps it offered, Audio unclear
-    included** (founder 2026-09-29, Q2; this matches 24e and the code, and
-    replaces "Audio unclear blocks matching for that clip"). Audio unclear is
-    a routing signal, not a gate: the practice loop (29a) answers it with
-    another attempt. Audio the machine cannot rely on is refused by the clip
-    safety gate (35b: length, noise and voiced-share checks) whatever the
-    speaker answered. The responses remain separate self-reports and never
-    override deterministic exercise eligibility.
+    match is made when the Take's Feedback is built, before any answer exists.
+    **Which answers open it is the follow-up matrix (24f, founder 2026-09-29,
+    evening ruling "it closes")**: In-between, No and Not sure open the
+    library video on a clip read weak; a Yes never does (the moment reaches
+    the coach as praise or an ambiguity, and a video the coach shares opens
+    on any answer but Audio unclear); **Audio unclear closes the moment and
+    moves on**, sends nothing to the coach, and keeps no exercise offered.
+    This supersedes the same day's earlier Q2 ruling ("every one of the five
+    answers keeps it offered, Audio unclear included"), which is retired.
+    Audio the machine cannot rely on is refused by the clip safety gate (35b:
+    length, noise and voiced-share checks) whatever the speaker answered. The
+    responses remain separate self-reports and never override deterministic
+    exercise eligibility.
 35b. A deterministic safety and need-compatibility gate runs before ranking.
     A model may rank only eligible exercise versions and may never bypass the
     gate. The complete in-scope catalogue is frozen with every version marked
