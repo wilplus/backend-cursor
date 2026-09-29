@@ -1468,21 +1468,7 @@ _QUESTION_POOL_VALID_POSITIONS = ("opener", "mid", "closer")
 _QUESTION_POOL_MAX_TEXT_LEN = 500
 
 
-def _validate_question_pool_body(body: Any, *, partial: bool) -> dict:
-    """Manual validator for POST/PATCH bodies on the question pool.
-
-    Mirrors the style of v2_routes.py's other manual validators
-    (no Pydantic dep). When ``partial=True``, fields are optional
-    (PATCH); when False (POST), intent + text are required.
-
-    Returns a clean dict on success. Raises ValueError with a
-    user-friendly message on failure.
-    """
-    if not isinstance(body, dict):
-        raise ValueError("Body must be a JSON object")
-
-    cleaned: dict[str, Any] = {}
-
+def _clean_pool_intent(body: dict, cleaned: dict, *, partial: bool) -> None:
     if "intent" in body:
         intent = (body.get("intent") or "").strip().lower()
         if intent not in _QUESTION_POOL_VALID_INTENTS:
@@ -1494,6 +1480,8 @@ def _validate_question_pool_body(body: Any, *, partial: bool) -> dict:
     elif not partial:
         raise ValueError("intent: required")
 
+
+def _clean_pool_text(body: dict, cleaned: dict, *, partial: bool) -> None:
     if "text" in body:
         text_raw = body.get("text")
         if not isinstance(text_raw, str):
@@ -1510,6 +1498,8 @@ def _validate_question_pool_body(body: Any, *, partial: bool) -> dict:
     elif not partial:
         raise ValueError("text: required")
 
+
+def _clean_pool_weight_and_position(body: dict, cleaned: dict) -> None:
     if "weight" in body:
         weight_raw = body.get("weight")
         if isinstance(weight_raw, bool) or not isinstance(weight_raw, int):
@@ -1531,6 +1521,8 @@ def _validate_question_pool_body(body: Any, *, partial: bool) -> dict:
                 )
         cleaned["position_hint"] = pos
 
+
+def _clean_pool_flags(body: dict, cleaned: dict) -> None:
     if "active" in body:
         active = body.get("active")
         if not isinstance(active, bool):
@@ -1545,6 +1537,25 @@ def _validate_question_pool_body(body: Any, *, partial: bool) -> dict:
             raise ValueError("notes: must be 2000 characters or fewer")
         cleaned["notes"] = notes
 
+
+def _validate_question_pool_body(body: Any, *, partial: bool) -> dict:
+    """Manual validator for POST/PATCH bodies on the question pool.
+
+    Mirrors the style of v2_routes.py's other manual validators
+    (no Pydantic dep). When ``partial=True``, fields are optional
+    (PATCH); when False (POST), intent + text are required.
+
+    Returns a clean dict on success. Raises ValueError with a
+    user-friendly message on failure.
+    """
+    if not isinstance(body, dict):
+        raise ValueError("Body must be a JSON object")
+
+    cleaned: dict[str, Any] = {}
+    _clean_pool_intent(body, cleaned, partial=partial)
+    _clean_pool_text(body, cleaned, partial=partial)
+    _clean_pool_weight_and_position(body, cleaned)
+    _clean_pool_flags(body, cleaned)
     return cleaned
 
 

@@ -135,10 +135,97 @@ def _bucket(value: float, cuts: list[tuple[int, Optional[float]]]) -> int:
     return 10
 
 
+def _mint_or_explain(report: dict[str, Any], session_values: dict,
+                     *, version: str, db: Any) -> None:
+    """No reference yet: mint one from this data, or say why not."""
+    minted = _mint_reference(session_values, version=version)
+    if minted:
+        report["minted"] = db.insert_reference_distribution(minted)
+        report["note"] = (f"minted {version} from "
+                          f"{report['minted'] // 10} dimension(s); PSI "
+                          f"starts from the NEXT run — comparing a "
+                          f"reference against the data it was built from "
+                          f"would read 0.0 by construction")
+    else:
+        report["note"] = (f"not enough data to mint {version} "
+                          f"(need {MIN_SESSIONS_TO_MINT} sessions per "
+                          f"dimension)")
+
+
+def _reference_cuts(reference: Any) -> tuple[dict, dict]:
+    """The frozen decile cut points and expected counts per dimension."""
+    cuts: dict[str, list[tuple[int, Optional[float]]]] = defaultdict(list)
+    ref_counts: dict[str, dict[int, int]] = defaultdict(dict)
+    for r in reference:
+        dim = str(r.get("dimension_id"))
+        decile = int(r.get("decile") or 0)
+        cuts[dim].append((decile, r.get("upper_bound")))
+        n_at_freeze = int(r.get("n_at_freeze") or 0)
+        ref_counts[dim][decile] = int(round(float(r.get("pct") or 0.0)
+                                            * n_at_freeze))
+    for dim in cuts:
+        cuts[dim].sort()
+    return cuts, ref_counts
+
+
+def _weekly_decisions(rows: Any) -> dict[str, dict[str, dict[str, int]]]:
+    """p-chart input: ABSOLUTE tiers with a real decision, weekly, session
+    grain."""
+    weekly: dict[str, dict[str, dict[str, int]]] = defaultdict(
+        lambda: defaultdict(lambda: {"n": 0, "fired": 0}))
+    seen_sessions: dict[str, set] = defaultdict(set)
+    for r in rows or ():
+        if r.get("insufficient_data") or r.get("fired") is None:
+            continue
+        if str(r.get("benchmark_tier")) not in ("T1", "T2"):
+            continue
+        dim, session = str(r.get("dimension_id")), str(r.get("session_id"))
+        week = str(r.get("evaluated_at") or "")[:10]
+        key = (dim, session, week)
+        if key in seen_sessions[dim]:
+            continue
+        seen_sessions[dim].add(key)
+        bucket = weekly[dim][week]
+        bucket["n"] += 1
+        if r.get("fired"):
+            bucket["fired"] += 1
+    return weekly
+
+
+def _dimension_report(dim: str, sessions: dict[str, float], cuts: list,
+                      ref_counts: dict[int, int],
+                      weekly: dict[str, dict[str, int]]) -> dict[str, Any]:
+    """PSI against the frozen reference, the p-chart signal, and triage."""
+    from services import dimension_registry as registry
+    from services import drift_monitor as dm
+
+    current: dict[int, int] = defaultdict(int)
+    for value in sessions.values():
+        current[_bucket(value, cuts)] += 1
+
+    psi_value = dm.psi(dict(current), ref_counts)
+    band = dm.psi_verdict(psi_value, n_current=len(sessions))
+
+    series = [{"week": w, **counts}
+              for w, counts in sorted(weekly.items())]
+    chart: dict = (dm.p_chart(series) if series
+                   else {"signal": dm.INSUFFICIENT_N})
+
+    d = registry.get(dim)
+    return {
+        "psi": psi_value,
+        "psi_band": band,
+        "n_sessions": len(sessions),
+        "chart_signal": chart.get("signal"),
+        "chartable": registry.is_chartable(dim),
+        "window_class": d.window_class if d else None,
+        "triage": dm.triage(band, str(chart.get("signal") or dm.INSUFFICIENT_N)),
+    }
+
+
 def run_weekly(*, weeks: int = 4, version: str = DEFAULT_VERSION) -> dict:
     """One drift run. Never raises — a monitor that can crash the thing it
     monitors is worse than no monitor."""
-    from services import dimension_registry as registry
     from services import drift_monitor as dm
     from services.db import db
 
@@ -160,77 +247,17 @@ def run_weekly(*, weeks: int = 4, version: str = DEFAULT_VERSION) -> dict:
 
     reference = db.get_reference_distribution(version)
     if not reference:
-        minted = _mint_reference(session_values, version=version)
-        if minted:
-            report["minted"] = db.insert_reference_distribution(minted)
-            report["note"] = (f"minted {version} from "
-                              f"{report['minted'] // 10} dimension(s); PSI "
-                              f"starts from the NEXT run — comparing a "
-                              f"reference against the data it was built from "
-                              f"would read 0.0 by construction")
-        else:
-            report["note"] = (f"not enough data to mint {version} "
-                              f"(need {MIN_SESSIONS_TO_MINT} sessions per "
-                              f"dimension)")
+        _mint_or_explain(report, session_values, version=version, db=db)
         return report
 
-    cuts: dict[str, list[tuple[int, Optional[float]]]] = defaultdict(list)
-    ref_counts: dict[str, dict[int, int]] = defaultdict(dict)
-    for r in reference:
-        dim = str(r.get("dimension_id"))
-        decile = int(r.get("decile") or 0)
-        cuts[dim].append((decile, r.get("upper_bound")))
-        n_at_freeze = int(r.get("n_at_freeze") or 0)
-        ref_counts[dim][decile] = int(round(float(r.get("pct") or 0.0)
-                                            * n_at_freeze))
-    for dim in cuts:
-        cuts[dim].sort()
-
-    # p-chart input: ABSOLUTE tiers with a real decision, weekly, session grain.
-    weekly: dict[str, dict[str, dict[str, int]]] = defaultdict(
-        lambda: defaultdict(lambda: {"n": 0, "fired": 0}))
-    seen_sessions: dict[str, set] = defaultdict(set)
-    for r in rows or ():
-        if r.get("insufficient_data") or r.get("fired") is None:
-            continue
-        if str(r.get("benchmark_tier")) not in ("T1", "T2"):
-            continue
-        dim, session = str(r.get("dimension_id")), str(r.get("session_id"))
-        week = str(r.get("evaluated_at") or "")[:10]
-        key = (dim, session, week)
-        if key in seen_sessions[dim]:
-            continue
-        seen_sessions[dim].add(key)
-        bucket = weekly[dim][week]
-        bucket["n"] += 1
-        if r.get("fired"):
-            bucket["fired"] += 1
-
+    cuts, ref_counts = _reference_cuts(reference)
+    weekly = _weekly_decisions(rows)
     for dim, sessions in session_values.items():
         if dim not in cuts:
             continue
-        current: dict[int, int] = defaultdict(int)
-        for value in sessions.values():
-            current[_bucket(value, cuts[dim])] += 1
-
-        psi_value = dm.psi(dict(current), ref_counts[dim])
-        band = dm.psi_verdict(psi_value, n_current=len(sessions))
-
-        series = [{"week": w, **counts}
-                  for w, counts in sorted(weekly.get(dim, {}).items())]
-        chart: dict = (dm.p_chart(series) if series
-                       else {"signal": dm.INSUFFICIENT_N})
-
-        d = registry.get(dim)
-        report["dimensions"][dim] = {
-            "psi": psi_value,
-            "psi_band": band,
-            "n_sessions": len(sessions),
-            "chart_signal": chart.get("signal"),
-            "chartable": registry.is_chartable(dim),
-            "window_class": d.window_class if d else None,
-            "triage": dm.triage(band, str(chart.get("signal") or dm.INSUFFICIENT_N)),
-        }
+        report["dimensions"][dim] = _dimension_report(
+            dim, sessions, cuts[dim], ref_counts[dim], weekly.get(dim, {}),
+        )
 
     ranked = dm.rank_triage(v["triage"] for v in report["dimensions"].values())
     report["worst"] = ranked[0] if ranked else None

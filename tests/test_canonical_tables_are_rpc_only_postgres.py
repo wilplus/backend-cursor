@@ -1,5 +1,5 @@
 """The canonical learning-evidence tables refuse a direct write from the
-service key (0388).
+service key (0389).
 
 R-1 (audit 2026-09-22, major). 0296 and 0299 ended with `GRANT ALL ON TABLE
 ... TO service_role` on twenty-eight tables. service_role bypasses row level
@@ -17,7 +17,7 @@ one owner-claim trigger this test pins by name.
 
 Every write attempt below matches zero rows (`WHERE false`, or a TRUNCATE in
 a transaction that is always rolled back), so a database that still grants
-the privilege — origin/main before 0388 — lets it through and the assertion
+the privilege — origin/main before 0389 — lets it through and the assertion
 fails; nothing is ever written.
 
 The target must be a disposable local database whose name starts with
@@ -36,7 +36,7 @@ pytestmark = pytest.mark.skipif(
     not DSN, reason="disposable confident-moment rehearsal only"
 )
 
-# The two grant blocks 0388 revokes, verbatim.
+# The two grant blocks 0389 revokes, verbatim.
 GRANTED_BY_0296 = (
     "transcript_versions", "slides", "paragraphs", "evidence_spans",
     "acoustic_feature_snapshots", "candidate_sets", "feedback_candidates",
@@ -55,13 +55,13 @@ GRANTED_BY_0299 = (
 TABLES = GRANTED_BY_0296 + GRANTED_BY_0299
 
 # The coaching bundle (add_confident_moment_coaching_bundle_v1.sql) revoked
-# feedback_revisions from service_role entirely, SELECT included. 0388 never
+# feedback_revisions from service_role entirely, SELECT included. 0389 never
 # widens, so that table stays unreadable; every other table keeps SELECT.
 LOCKED_ENTIRELY = ("feedback_revisions",)
 READ_KEPT = tuple(t for t in TABLES if t not in LOCKED_ENTIRELY)
 
 # The one writer that is not SECURITY DEFINER: a trigger on projects that
-# only fires inside claim_guest_owner (a definer); see 0388's header.
+# only fires inside claim_guest_owner (a definer); see 0389's header.
 KNOWN_NON_DEFINER_WRITERS = {
     ("transfer_learning_surfaces_on_owner_claim", "projects"),
 }
@@ -210,7 +210,7 @@ class TestServiceRoleStillReads:
 
     @pytest.mark.parametrize("table", LOCKED_ENTIRELY)
     def test_a_table_locked_before_stays_locked(self, db, table):
-        """0388 never widens: the bundle's full revoke survives it."""
+        """0389 never widens: the bundle's full revoke survives it."""
         with _ServiceRole(db) as cur:
             with pytest.raises(psycopg2.errors.InsufficientPrivilege):
                 cur.execute(f"SELECT count(*) FROM public.{table}")
@@ -232,8 +232,8 @@ class TestServiceRoleStillReads:
 class TestWhyTheRevokeIsSafe:
     def test_every_writer_is_a_definer_except_the_owner_claim_trigger(self, db):
         """A plain function or trigger that wrote one of these tables would
-        run with the caller's privileges and start failing under 0388. The
-        catalog shows exactly one, and it is the trigger 0388's header
+        run with the caller's privileges and start failing under 0389. The
+        catalog shows exactly one, and it is the trigger 0389's header
         explains."""
         with db.cursor() as cur:
             cur.execute(

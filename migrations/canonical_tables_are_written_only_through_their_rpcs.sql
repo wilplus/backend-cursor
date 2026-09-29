@@ -1,4 +1,4 @@
--- canonical_tables_are_written_only_through_their_rpcs (0388)
+-- canonical_tables_are_written_only_through_their_rpcs (0389)
 --
 -- R-1 (audit 2026-09-22, major). Migrations 0296 and 0299 created the
 -- canonical learning-evidence tables and closed with
@@ -64,7 +64,7 @@ BEGIN
         'learning_surface_presentations', 'learning_surface_exposure_receipts'
     ] LOOP
         IF to_regclass('public.' || v_table) IS NULL THEN
-            RAISE NOTICE '0388: public.% is not present here; skipped',
+            RAISE NOTICE '0389: public.% is not present here; skipped',
                 v_table;
             CONTINUE;
         END IF;
@@ -90,7 +90,7 @@ BEGIN
             EXECUTE format('GRANT SELECT ON TABLE public.%I TO service_role',
                            v_table);
         ELSE
-            RAISE NOTICE '0388: service_role could not read public.% before; '
+            RAISE NOTICE '0389: service_role could not read public.% before; '
                          'left without SELECT', v_table;
         END IF;
         -- Post-condition. A REVOKE issued by a role that is not the table
@@ -108,7 +108,7 @@ BEGIN
                AND grant_row.grantee = 'service_role'
                AND grant_row.privilege_type <> 'SELECT'
         ) THEN
-            RAISE EXCEPTION '0388: public.% is still writable by service_role '
+            RAISE EXCEPTION '0389: public.% is still writable by service_role '
                             'after the revoke; run this file as the table '
                             'owner', v_table;
         END IF;

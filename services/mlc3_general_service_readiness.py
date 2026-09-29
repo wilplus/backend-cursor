@@ -85,12 +85,11 @@ def _exact_disabled_gates(value: object, expected: set[str]) -> bool:
     )
 
 
-def _valid_emergency_disable(value: object, now: datetime | None) -> bool:
-    if not isinstance(value, Mapping):
-        return False
-    attempts_value = value.get("attempts")
-    attempts = attempts_value if isinstance(attempts_value, list) else []
-    if (
+def _valid_disable_header(value: Mapping[str, Any], attempts: list,
+                          now: datetime | None) -> bool:
+    """The evidence record itself: contract, mode, two attempts, the final
+    disabled states, a completed verification, and fresh timestamps."""
+    return not (
         value.get("contract_version")
         != EMERGENCY_DISABLE_EVIDENCE_VERSION
         or value.get("mode") != "idempotent_disabled_rehearsal"
@@ -99,42 +98,87 @@ def _valid_emergency_disable(value: object, now: datetime | None) -> bool:
         or value.get("verification_completed") is not True
         or not _valid_sha256(value.get("rollback_command_sha256"))
         or not _fresh_timestamp(value.get("verified_at"), now)
-    ):
+    )
+
+
+def _disable_attempt_in_order(
+    attempt: Mapping[str, Any], number: int, now: datetime | None, *,
+    operation_ids: set[str], previous_completed: datetime | None,
+) -> bool:
+    """Numbered in order, a unique operation, ordered fresh timestamps."""
+    operation_id = str(attempt.get("operation_id") or "")
+    started = _parse_timestamp(attempt.get("started_at"))
+    completed = _parse_timestamp(attempt.get("completed_at"))
+    return not (
+        attempt.get("attempt_number") != number
+        or not _valid_uuid(operation_id)
+        or operation_id in operation_ids
+        or started is None or completed is None or started > completed
+        or (previous_completed is not None and previous_completed > started)
+        or not _fresh_timestamp(attempt.get("started_at"), now)
+        or not _fresh_timestamp(attempt.get("completed_at"), now)
+    )
+
+
+def _disable_attempt_result_ok(
+    attempt: Mapping[str, Any], number: int, *,
+    previous_after: Mapping[str, Any] | None,
+) -> bool:
+    """Every target ending disabled (the second attempt starting where the
+    first ended), completed, and carrying its own result hash."""
+    before = attempt.get("before_states")
+    after = attempt.get("after_states")
+    identity = {
+        key: item for key, item in attempt.items()
+        if key != "result_sha256"
+    }
+    return not (
+        not isinstance(before, Mapping)
+        or set(before) != set(_DISABLED_TARGETS)
+        or after != _DISABLED_TARGETS
+        or (number == 2 and before != previous_after)
+        or attempt.get("completed") is not True
+        or attempt.get("result_sha256") != _value_sha256(identity)
+    )
+
+
+def _valid_disable_attempt(
+    attempt: object, number: int, now: datetime | None, *,
+    operation_ids: set[str], previous_after: Mapping[str, Any] | None,
+    previous_completed: datetime | None,
+) -> bool:
+    """One disable attempt, checked in the original order: ordering and
+    timing first, then states and the result hash (last, as before)."""
+    if not isinstance(attempt, Mapping):
+        return False
+    return _disable_attempt_in_order(
+        attempt, number, now, operation_ids=operation_ids,
+        previous_completed=previous_completed,
+    ) and _disable_attempt_result_ok(
+        attempt, number, previous_after=previous_after,
+    )
+
+
+def _valid_emergency_disable(value: object, now: datetime | None) -> bool:
+    if not isinstance(value, Mapping):
+        return False
+    attempts_value = value.get("attempts")
+    attempts = attempts_value if isinstance(attempts_value, list) else []
+    if not _valid_disable_header(value, attempts, now):
         return False
     operation_ids: set[str] = set()
     previous_after: Mapping[str, Any] | None = None
     previous_completed: datetime | None = None
     for number, attempt in enumerate(attempts, start=1):
-        if not isinstance(attempt, Mapping):
-            return False
-        operation_id = str(attempt.get("operation_id") or "")
-        started = _parse_timestamp(attempt.get("started_at"))
-        completed = _parse_timestamp(attempt.get("completed_at"))
-        before = attempt.get("before_states")
-        after = attempt.get("after_states")
-        identity = {
-            key: item for key, item in attempt.items()
-            if key != "result_sha256"
-        }
-        if (
-            attempt.get("attempt_number") != number
-            or not _valid_uuid(operation_id)
-            or operation_id in operation_ids
-            or started is None or completed is None or started > completed
-            or (previous_completed is not None and previous_completed > started)
-            or not _fresh_timestamp(attempt.get("started_at"), now)
-            or not _fresh_timestamp(attempt.get("completed_at"), now)
-            or not isinstance(before, Mapping)
-            or set(before) != set(_DISABLED_TARGETS)
-            or after != _DISABLED_TARGETS
-            or (number == 2 and before != previous_after)
-            or attempt.get("completed") is not True
-            or attempt.get("result_sha256") != _value_sha256(identity)
+        if not _valid_disable_attempt(
+            attempt, number, now, operation_ids=operation_ids,
+            previous_after=previous_after,
+            previous_completed=previous_completed,
         ):
             return False
-        operation_ids.add(operation_id)
-        previous_after = after
-        previous_completed = completed
+        operation_ids.add(str(attempt.get("operation_id") or ""))
+        previous_after = attempt.get("after_states")
+        previous_completed = _parse_timestamp(attempt.get("completed_at"))
     return True
 
 

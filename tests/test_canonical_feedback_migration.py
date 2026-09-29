@@ -48,7 +48,7 @@ def test_migration_is_additive_and_manifested_last():
 
 def test_every_canonical_table_has_rls_and_service_role_only_grant():
     # 0296's text is frozen history: it did grant service_role ALL, which
-    # R-1 (audit 2026-09-22) found and 0388 revokes down to SELECT. This
+    # R-1 (audit 2026-09-22) found and 0389 revokes down to SELECT. This
     # asserts what 0296 said, not the privileges a database ends up with;
     # tests/test_canonical_tables_are_rpc_only_postgres.py asserts those.
     for table in TABLES:

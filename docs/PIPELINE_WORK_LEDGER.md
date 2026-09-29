@@ -1856,10 +1856,10 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 
 ### 2026-09-28 · WS-R1 · r1-canonical-tables-rpc-only · #754
 
-**Closed:** R-1 (0388 `canonical_tables_are_written_only_through_their_rpcs.sql`).
+**Closed:** R-1 (0389 `canonical_tables_are_written_only_through_their_rpcs.sql`).
 **Contract lines flipped:** none — the contract has no line for this; the
 finding's own suite is `tests/test_canonical_tables_are_rpc_only_postgres.py`
-(146 cases on the released lane: 105 failed before 0388, 146 pass after).
+(146 cases on the released lane: 105 failed before 0389, 146 pass after).
 **Contract lines added:** none in `test_f1_loop_contract.py`; the released
 lane gained the suite above and now also applies 0299, which it never had.
 **Broke and fixed:** none.
@@ -1868,7 +1868,7 @@ lane gained the suite above and now also applies 0299, which it never had.
 What the audit counted and what the grant blocks say differ. R-1 named
 eighteen tables because the lane it was read on lacked ten of the tables 0296
 granted; the two `GRANT ALL ... TO service_role` blocks (0296 lines 2339–2364,
-0299 lines 119–120) name twenty-eight. 0388 covers the blocks: REVOKE ALL from
+0299 lines 119–120) name twenty-eight. 0389 covers the blocks: REVOKE ALL from
 PUBLIC, anon, authenticated and service_role on each, then SELECT back to
 service_role only where it could already read. correction_decisions (0321,
 SELECT only) and feedback_revisions (coaching bundle, no privileges at all)
