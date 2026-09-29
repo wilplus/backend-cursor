@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from services.take_lifecycle import (
     TakeLifecycleError,
@@ -13,6 +13,14 @@ from services.take_lifecycle import (
 
 
 class TakeLifecycleTests(unittest.TestCase):
+    def setUp(self):
+        # The lifecycle mechanics under dark; the founder_canary promote path
+        # (manifest required, atomic producer RPC) is pinned in
+        # test_mlc2_confidence_cutover_integration.
+        patcher = patch("config.Config.MLC2_CONFIDENCE_CUTOVER_MODE", "dark")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_registration_is_a_hard_boundary(self):
         database = Mock()
         database.register_recording_attempt.return_value = None

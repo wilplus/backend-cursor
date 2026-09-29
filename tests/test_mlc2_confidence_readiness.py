@@ -89,6 +89,8 @@ def test_founder_canary_is_the_flipped_state_and_the_monitor_keeps_guarding():
     [
         ({"cutover_mode": "killed"}, "canary_killed"),
         ({"cutover_mode": "typo"}, "invalid_cutover_mode"),
+        ({"source_audio_store_is_r2": False},
+         "confidence_source_audio_store_not_r2"),
         ({"monitoring_enabled": False},
          "production_monitor_not_enabled"),
         ({"alert_sink_configured": False},

@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from config import Config  # noqa: E402
 from migrate import CannotRun, connect  # noqa: E402
+from services.coach_video_storage import coach_videos_use_r2  # noqa: E402
 from services.mlc2_confidence_readiness import (  # noqa: E402
     assess_confidence_canary_readiness,
 )
@@ -97,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
         dataset_creation_enabled=Config.MLC2_DATASET_RELEASES_ENABLED,
         training_enabled=Config.MLC2_TRAINING_ENABLED,
         promotion_enabled=Config.MLC2_PROMOTION_ENABLED,
+        source_audio_store_is_r2=coach_videos_use_r2(),
     ).as_dict()
     if args.alert:
         _notify_sentry(report)

@@ -129,6 +129,7 @@ def assess_confidence_canary_readiness(
     dataset_creation_enabled: bool,
     training_enabled: bool,
     promotion_enabled: bool,
+    source_audio_store_is_r2: bool = True,
 ) -> ConfidenceCanaryReadinessReport:
     """Fail closed unless every pre-activation gate has explicit evidence.
 
@@ -150,6 +151,12 @@ def assess_confidence_canary_readiness(
         # find is the kill, which is an incident, not a readiness.
         blockers.append("canary_killed")
     blockers.extend(_ring_blockers(ring_health))
+    if not source_audio_store_is_r2:
+        # Under founder_canary every Take's promotion builds an immutable
+        # source manifest that must point to Cloudflare R2 and fails closed
+        # otherwise; a service without the R2 credentials would fail its
+        # Takes, not just the learning write (LIVE LOOP).
+        blockers.append("confidence_source_audio_store_not_r2")
     if not monitoring_enabled:
         blockers.append("production_monitor_not_enabled")
     if not alert_sink_configured:
@@ -176,6 +183,7 @@ def assess_confidence_canary_readiness(
 
     evidence = {
         "cutover_mode": cutover.mode,
+        "source_audio_store_is_r2": bool(source_audio_store_is_r2),
         "canonical_writes_enabled": cutover.canonical_writes_enabled,
         "prior_learning_writes_enabled": cutover.prior_learning_writes_enabled,
         "confidence_ring_feature": CONFIDENCE_RING_FEATURE,
