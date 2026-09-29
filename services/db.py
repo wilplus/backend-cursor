@@ -14880,7 +14880,7 @@ class DatabaseService:
             if reason == "library_matched":
                 return None
             logger.warning("request_exercise_from_coach_v2 missing; recording "
-                           "without a kind sid=%s", take_session_id)
+                           "without a kind sid=%s", take_session_id, exc_info=True)
         result = self.client.rpc("request_exercise_from_coach_v1", params).execute()
         return self._rpc_row(result.data)
 

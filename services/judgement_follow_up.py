@@ -125,7 +125,7 @@ def _clip_read(database: Any, take_session_id: str,
         }
     except Exception as e:  # noqa: BLE001 — never lose the answer
         _log.warning("judgement clip read failed take=%s snip=%s: %s",
-                     take_session_id, snippet_id, e)
+                     take_session_id, snippet_id, e, exc_info=True)
         return None
 
 
@@ -139,7 +139,7 @@ def _exercise_on_moment(database: Any, take_session_id: str,
         return isinstance(getter(take_session_id, snippet_id), dict)
     except Exception as e:  # noqa: BLE001 — a failed read is "no exercise"
         _log.warning("assignment read failed take=%s snip=%s: %s",
-                     take_session_id, snippet_id, e)
+                     take_session_id, snippet_id, e, exc_info=True)
         return False
 
 
@@ -152,7 +152,7 @@ def _request_on_moment(database: Any, take_session_id: str,
         request = getter(take_session_id, snippet_id)
     except Exception as e:  # noqa: BLE001
         _log.warning("coach request read failed take=%s snip=%s: %s",
-                     take_session_id, snippet_id, e)
+                     take_session_id, snippet_id, e, exc_info=True)
         return None
     return request if isinstance(request, dict) else None
 
@@ -189,5 +189,5 @@ def _raise_request(database: Any, *, take_session_id: str, snippet_id: str,
         return True
     except Exception as e:  # noqa: BLE001 — never lose the answer
         _log.warning("judgement coach request failed take=%s snip=%s: %s",
-                     take_session_id, snippet_id, e)
+                     take_session_id, snippet_id, e, exc_info=True)
         return False
