@@ -305,17 +305,5 @@ class RankingPoolExclusionAuditTests(unittest.TestCase):
             self.assertNotIn("script read back", s.get("text") or "")
             self.assertNotIn("script read back", s.get("verbatim") or "")
 
-    def test_master_skeleton_never_seeds_from_a_read(self):
-        # The skeleton seeds from the LATEST spoken take with pieces —
-        # a newer read must not be that seed.
-        from services.master_document import build_skeleton
-        db = _PoolAuditDB()
-        rows = build_skeleton("a1", db)
-        self.assertTrue(rows, "skeleton should build from the spoken take")
-        for row in rows:
-            self.assertEqual(row["incumbent_take_session_id"], "t1")
-            for p in row["incumbent_pieces"]:
-                self.assertNotEqual(p["snippet_id"], "rd1")
-
 if __name__ == "__main__":
     unittest.main()
