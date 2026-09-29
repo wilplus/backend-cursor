@@ -43,10 +43,10 @@ def _function(name: str) -> str:
     return match.group(1)
 
 
-def test_manifest_appends_rings_as_0394_after_0392():
+def test_manifest_appends_rings_as_0394_after_0393():
     manifest = (ROOT / "migrations" / "manifest.txt").read_text().splitlines()
     rings = "0394\ta_feature_reaches_a_person_by_ring.sql"
-    previous = "0392\tthe_promotion_freezes_the_consent_snapshot.sql"
+    previous = "0393\tthe_coach_card_consumes_the_confidence_chain.sql"
     assert rings in manifest
     assert manifest.index(previous) < manifest.index(rings)
 
