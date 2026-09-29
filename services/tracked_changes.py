@@ -172,34 +172,44 @@ def _narrow(window_text: str, sug: dict,
         if sug.get("kind") == "replace" and has_profanity(window_text):
             return profanity_sentence(window_text)
         if sug.get("kind") == "emphasize":
-            low = window_text.lower()
-            # ① THE PHRASE THE MODEL PICKED (founder 2026-08-15). Chosen at
-            # generation time from the moment's own words and pinned verbatim
-            # there; re-checked here because the served document may have
-            # moved on since. Must still be INSIDE this window, still narrower
-            # than it, and still of accent width — a stored quote is evidence,
-            # not authority.
-            picked = sug.get("emphasis_quote")
-            picked = picked.strip() if isinstance(picked, str) else ""
-            if picked and len(picked) < len(window_text):
-                i = low.find(picked.lower())
-                if i >= 0:
-                    cand = window_text[i:i + len(picked)]
-                    if is_accent_width(cand):
-                        return cand
-            # ② Bold only the strongest phrase, not the whole fragment
-            # (founder T3): the first say-it-stronger upgrade wording that
-            # occurs in this window AND is genuinely narrower than it.
-            # Return the window's OWN slice (case-exact), so the caller's
-            # substring anchor lands.
-            for phrase in (key_phrases or []):
-                if not phrase or len(phrase) >= len(window_text):
-                    continue
-                i = low.find(phrase.lower())
-                if i >= 0:
-                    return window_text[i:i + len(phrase)]
+            return (_picked_emphasis(window_text, sug)
+                    or _key_phrase_slice(window_text, key_phrases))
     except Exception:
         return None
+    return None
+
+
+def _picked_emphasis(window_text: str, sug: dict) -> Optional[str]:
+    # ① THE PHRASE THE MODEL PICKED (founder 2026-08-15). Chosen at
+    # generation time from the moment's own words and pinned verbatim
+    # there; re-checked here because the served document may have
+    # moved on since. Must still be INSIDE this window, still narrower
+    # than it, and still of accent width — a stored quote is evidence,
+    # not authority.
+    picked = sug.get("emphasis_quote")
+    picked = picked.strip() if isinstance(picked, str) else ""
+    if picked and len(picked) < len(window_text):
+        i = window_text.lower().find(picked.lower())
+        if i >= 0:
+            cand = window_text[i:i + len(picked)]
+            if is_accent_width(cand):
+                return cand
+    return None
+
+
+def _key_phrase_slice(window_text: str, key_phrases: Any) -> Optional[str]:
+    # ② Bold only the strongest phrase, not the whole fragment
+    # (founder T3): the first say-it-stronger upgrade wording that
+    # occurs in this window AND is genuinely narrower than it.
+    # Return the window's OWN slice (case-exact), so the caller's
+    # substring anchor lands.
+    low = window_text.lower()
+    for phrase in (key_phrases or []):
+        if not phrase or len(phrase) >= len(window_text):
+            continue
+        i = low.find(phrase.lower())
+        if i >= 0:
+            return window_text[i:i + len(phrase)]
     return None
 
 
