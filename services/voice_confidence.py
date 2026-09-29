@@ -305,33 +305,46 @@ def resolve_confidence_baseline(
         if user_id:
             if database is None:
                 from services.db import db as database
-            hist: list = []
-            try:
-                sessions = database.takes.v2_list_user_lab_sessions(
-                    str(user_id), limit=_BASELINE_MAX_SESSIONS) or []
-                for s in sessions:
-                    sid = str(s.get("id") or "")
-                    if not sid:
-                        continue
-                    for snip in (database.get_snippets_by_session(sid) or []):
-                        m = snip.get("metrics")
-                        if isinstance(m, dict):
-                            hist.append(m)
-            except Exception:
-                hist = []
-            stats = feature_stats(hist, min_samples=_BASELINE_MIN_SAMPLES)
+            stats = feature_stats(_history_metrics(database, user_id),
+                                  min_samples=_BASELINE_MIN_SAMPLES)
             if stats:
                 return stats, "user"
-        usable = [m for m in (current_piece_metrics or [])
-                  if isinstance(m, dict) and normalize_features(m)]
-        if len(usable) >= _MIN_PIECES_WITHIN_TAKE:
-            stats = feature_stats(usable, min_samples=_MIN_PIECES_WITHIN_TAKE)
-            if stats:
-                return stats, "take"
-        return None, "none"
+        return _within_take_baseline(current_piece_metrics)
     except Exception as e:
         logger.warning("voice_confidence: baseline resolve failed: %s", e)
         return None, "none"
+
+
+def _history_metrics(database: Any, user_id: Any) -> list:
+    """The metric blobs of the speaker's recent Takes' pieces; [] when the
+    history cannot be read."""
+    hist: list = []
+    try:
+        sessions = database.takes.v2_list_user_lab_sessions(
+            str(user_id), limit=_BASELINE_MAX_SESSIONS) or []
+        for s in sessions:
+            sid = str(s.get("id") or "")
+            if not sid:
+                continue
+            for snip in (database.get_snippets_by_session(sid) or []):
+                m = snip.get("metrics")
+                if isinstance(m, dict):
+                    hist.append(m)
+    except Exception:
+        hist = []
+    return hist
+
+
+def _within_take_baseline(current_piece_metrics: Any) -> tuple[Optional[dict], str]:
+    """This Take's own pieces as the reference once there are enough usable
+    ones, else ``(None, "none")``."""
+    usable = [m for m in (current_piece_metrics or [])
+              if isinstance(m, dict) and normalize_features(m)]
+    if len(usable) >= _MIN_PIECES_WITHIN_TAKE:
+        stats = feature_stats(usable, min_samples=_MIN_PIECES_WITHIN_TAKE)
+        if stats:
+            return stats, "take"
+    return None, "none"
 
 
 def confidence_z(piece_metrics: Any, baseline: Optional[dict]) -> Optional[tuple]:
