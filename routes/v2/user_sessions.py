@@ -1771,12 +1771,12 @@ def v2_start_confident_voice_practice(snippet_id):
             return jsonify({"code": "EXERCISE_UNAVAILABLE",
                             "error": "This exercise is not available."}), 409
         take_id = str(session.get("id"))
-        existing = db.get_confident_voice_practice_by_take(
-            take_id, str(request.user_id))
+        # ONE PRACTICE PER MOMENT (founder 2026-09-29): every bookmark may
+        # carry its own exercise, so another moment's practice on this Take
+        # no longer refuses this one. This moment's own row resumes.
+        existing = db.get_confident_voice_practice_by_moment(
+            take_id, str(snippet_id), str(request.user_id))
         if existing:
-            if str(existing.get("snippet_id")) != str(snippet_id):
-                return jsonify({"code": "TAKE_EXERCISE_LIMIT",
-                                "error": "An exercise was already offered for this take."}), 409
             return jsonify({"practice": _practice_user_payload(existing)}), 200
 
         take_snippets = db.get_snippets_by_session(take_id) or []

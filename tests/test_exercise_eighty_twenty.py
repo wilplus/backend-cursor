@@ -117,9 +117,11 @@ def _pick(rank):
 
 
 class V3ExerciseTests(unittest.TestCase):
-    def test_the_item_v3_marks_carries_the_exercise_and_only_it(self):
+    def test_every_bookmark_carries_the_exercise_matched_to_its_clip(self):
+        # FOUNDER 2026-09-29: "they can carry as many exercises as bookmark
+        # indicates". Until then only the item V3 marked for it carried one.
         rows = _attach_v3(_Db())
-        self.assertEqual(_offers(rows), {"a": "best"})
+        self.assertEqual(_offers(rows), {"a": "best", "b": "best"})
         target = next(r for r in rows if r["id"] == "a")
         # The practice cannot start without exact evidence; V3 rows arrive
         # without it, so the lane grounds it.
@@ -129,7 +131,7 @@ class V3ExerciseTests(unittest.TestCase):
         verdict = cvp.exercise_eligibility(_calm_snippet(), session_median_wpm=150)
         self.assertFalse(verdict["eligible"])
         self.assertEqual(verdict["reason"], "weak_acoustic_evidence")
-        self.assertEqual(_offers(_attach_v3(_Db())), {"a": "best"})
+        self.assertEqual(_offers(_attach_v3(_Db())), {"a": "best", "b": "best"})
 
     def test_a_clip_that_cannot_carry_practice_gets_none(self):
         unsafe = _snippet()
@@ -147,28 +149,30 @@ class V3ExerciseTests(unittest.TestCase):
         self.assertEqual(_offers(_attach_v3(db, ground=lambda row: None)), {})
         self.assertEqual(db.assign_calls, [])
 
-    def test_one_exercise_per_take_still_holds(self):
+    def test_one_practice_per_moment(self):
+        # A finished practice ends the offer on ITS moment only (2026-09-29);
+        # another moment's practice on the same Take no longer blocks this one.
         done = _Db(existing={"id": "p", "snippet_id": "snip-v3", "status": "completed"})
-        self.assertEqual(_offers(_attach_v3(done)), {})
+        self.assertEqual(_offers(_attach_v3(done)), {"b": "best"})
         elsewhere = _Db(existing={"id": "p", "snippet_id": "snip-x", "status": "open"})
-        self.assertEqual(_offers(_attach_v3(elsewhere)), {})
+        self.assertEqual(_offers(_attach_v3(elsewhere)), {"a": "best", "b": "best"})
         resumed = _attach_v3(_Db(existing={
             "id": "p", "snippet_id": "snip-v3", "status": "open"}))
         offer = next(r["practice_exercise"] for r in resumed if r["id"] == "a")
         self.assertTrue(offer["resume"])
 
-    def test_a_take_without_an_exercise_item_is_untouched(self):
+    def test_the_bookmark_tier_no_longer_decides_who_carries_one(self):
         rows = [dict(r, bookmark_tier="standard") for r in _v3_rows()]
         out = cvp.attach_v3_exercise_offer(
             rows, take_session_id="take-1", owner_user_id="o", database=_Db(),
             ground=lambda row: dict(_EVIDENCE))
-        self.assertEqual(out, rows)
+        self.assertEqual(_offers(out), {"a": "best", "b": "best"})
 
 
 class EightyTwentyTests(unittest.TestCase):
     def test_the_frozen_choice_is_what_is_served(self):
         db = _Db(assign=_pick(3))
-        self.assertEqual(_offers(_attach_v3(db)), {"a": "third"})
+        self.assertEqual(_offers(_attach_v3(db)), {"a": "third", "b": "third"})
         call = db.assign_calls[0]
         self.assertEqual([c["exercise_id"] for c in call["candidates"]],
                          ["best", "second", "third"])
@@ -187,7 +191,7 @@ class EightyTwentyTests(unittest.TestCase):
         class Unmigrated(_Db):
             def assign_confident_voice_exercise(self, **kw):
                 raise RuntimeError("function does not exist")
-        self.assertEqual(_offers(_attach_v3(Unmigrated())), {"a": "best"})
+        self.assertEqual(_offers(_attach_v3(Unmigrated())), {"a": "best", "b": "best"})
 
     def test_a_frozen_choice_that_left_the_catalogue_is_not_swapped(self):
         db = _Db(assign=lambda kw: {"id": "asg", "selected_exercise_id": "retired"})

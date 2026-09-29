@@ -17,8 +17,10 @@ Take 1 included (contract 24b). Every item carries the delivery read; after Yes,
 Not sure the tap-to-root helper-words step follows — Emphasis IS that step, not a
 Feedback family and not a budget. No and Audio unclear get it only through the
 practice loop (24e, 29a). On top, each Take carries at most two Praise (on its most
-and second-most Confident items), one exercise (on the weakest item below the
-neutral band), and one rewrite (24f). Of the Slides yielding at least one valid
+and second-most Confident items), an exercise on any bookmark whose clip a
+library exercise matches (founder 2026-09-29; a judgement other than Audio unclear
+opens it, and a bookmark nothing matched goes to the coach on the judgement,
+35g-2), and one rewrite (24f). Of the Slides yielding at least one valid
 block, coverage is ≥70% on Take 1, ≥80% on Take 2 and 100% from Take 3 — a
 target on selection, never a floor on output (24c/24d). An honest empty rewrite
 or praise lane shows no card.
@@ -45,7 +47,8 @@ the Paragraph's history. Best Presentation is retired.
 **L2** Detectors create Candidates and only Manager-approved Candidates surface
 under the active versioned budget. V3 (served since 2026-09-18) uses one
 relative-best Confident Voice item per valid 75-word block on every Take,
-plus per Take at most two anchored Praise, one exercise and one rewrite (24f).
+plus per Take at most two anchored Praise, an exercise on any matched bookmark
+(founder 2026-09-29) and one rewrite (24f).
 V2 kept exactly one item from each of three families and is retained only as
 superseded history — never a silent substitute (24h). Neither invents evidence
 or fills an honest `no_defensible_candidate` lane.

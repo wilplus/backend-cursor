@@ -1,9 +1,9 @@
 """The coach's side of a moment no exercise fitted (founder 2026-09-28).
 
 Since D1 an exercise is offered only when a detected problem fired on the clip
-and something in the library targets it. When V3's exercise item finds
-nothing, ``confident_voice_practice._coach_request_offer`` records one request
-per (Take, moment) (migration 0385). This module is what the coach does with
+and something in the library targets it. When a bookmark the speaker judged
+has nothing, ``services.judgement_follow_up`` records one request per (Take,
+moment) (migration 0385; founder 2026-09-29: every bookmark, at judgement). This module is what the coach does with
 it, reached only through the route's blind gate: the coach has already rated
 the moment themselves before any of this is revealed (contract 35f).
 

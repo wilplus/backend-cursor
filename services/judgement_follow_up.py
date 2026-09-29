@@ -25,10 +25,11 @@ from typing import Any
 _log = logging.getLogger(__name__)
 
 #: Judgements that send the bookmark to the coach when nothing matched.
-#: A No does so unconditionally. (Yes, In-between and Not sure follow in the
-#: budget change, where the lane opens on every bookmark, and only when a
-#: problem was recognised.)
+#: A No does so unconditionally: the speaker has named a problem. Yes,
+#: In-between and Not sure do so only when a problem was recognised on the
+#: clip and nothing in the library targets it (founder 2026-09-29).
 ALWAYS_RAISING = frozenset({"no"})
+RAISING_WHEN_RECOGNISED = frozenset({"yes", "in_between", "not_sure"})
 
 #: The trace lane written on a request raised at judgement time.
 JUDGEMENT_LANE = "v3_judgement"
@@ -90,11 +91,12 @@ def follow_up_for_judgement(
     existing = _request_on_moment(database, take_session_id, snippet_id)
     if existing is not None:
         return "coach_request"
-    if answer not in ALWAYS_RAISING:
+    if answer not in ALWAYS_RAISING and answer not in RAISING_WHEN_RECOGNISED:
         return "none"
     return "coach_request" if _raise_request(
         database, take_session_id=take_session_id, snippet_id=snippet_id,
-        owner_user_id=owner_user_id) else "none"
+        owner_user_id=owner_user_id,
+        only_when_recognised=answer not in ALWAYS_RAISING) else "none"
 
 
 def _exercise_on_moment(database: Any, take_session_id: str,
@@ -126,7 +128,7 @@ def _request_on_moment(database: Any, take_session_id: str,
 
 
 def _raise_request(database: Any, *, take_session_id: str, snippet_id: str,
-                   owner_user_id: str) -> bool:
+                   owner_user_id: str, only_when_recognised: bool) -> bool:
     """Record the coach request for this moment, with what was spotted."""
     from services.confident_voice_practice import (
         _median_wpm, build_match_trace, detected_problem_vocabulary,
@@ -147,6 +149,8 @@ def _raise_request(database: Any, *, take_session_id: str, snippet_id: str,
                 database.get_snippets_by_session(take_session_id) or []))
         vocabulary = detected_problem_vocabulary(database)
         observed = observed_problem_tags(verdict, vocabulary=vocabulary)
+        if only_when_recognised and not observed:
+            return False
         writer(
             owner_user_id=str(owner_user_id),
             take_session_id=str(take_session_id), snippet_id=str(snippet_id),

@@ -1603,7 +1603,7 @@ def v2_coach_confident_voice_practice(session_id, snippet_id):
     if not _speaker_practice_permitted(owner_sid):  # E3, founder 2026-09-25
         return jsonify({"code": "SPEAKER_PRACTICE_OFF",
                         "error": "The speaker turned practice off."}), 409
-    practice = db.get_confident_voice_practice_by_take(owner_sid)
+    practice = db.get_confident_voice_practice_by_moment(owner_sid, snippet_id)
     if not practice or str(practice.get("snippet_id")) != str(snippet_id):
         return jsonify({"code": "NOT_FOUND",
                         "error": "practice not found"}), 404

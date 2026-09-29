@@ -1179,30 +1179,54 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
 
 def attach_v3_exercise_offer(
     changes: list[dict], *, take_session_id: str, owner_user_id: str,
-    database: Any, ground: Any, verbal_problem: bool = False,
+    database: Any, ground: Any, verbal_problem: Any = False,
 ) -> list[dict]:
-    """The exercise on the V3 item that carries it, and the coach's answer on
-    every other bookmark (contract 24f, 35g-2).
+    """The exercise lane on every bookmark (founder 2026-09-29; contract 24f
+    as amended, 35g-2).
 
-    V3 marks one Confident Voice item per Take `bookmark_tier = "exercise"`:
-    the weakest below the neutral band. That item gets the best matching
-    exercise for its clip under the 80/20 policy (``_attach_exercise_tier``).
+    "They can carry as many exercises as bookmark indicates": every Confident
+    Voice item gets the best matching exercise for its own clip under the
+    80/20 policy, frozen once per moment (``_attach_exercises``). Where
+    nothing matched, the item says whether a problem was recognised, so the
+    speaker's judgement can send the bookmark to the coach
+    (``services.judgement_follow_up``), and this read serves what came of
+    that: the coach's shared exercise as the item's practice, or the open
+    request (``_annotate_coach_answers``). Nothing here writes a request.
 
-    EVERY OTHER BOOKMARK (founder 2026-09-29): a judgement is always answered.
-    A No on any bookmark sends it to the coach at judgement time
-    (``services.judgement_follow_up``), and this read serves what came of it:
-    the coach's shared exercise as the item's practice, or the open request
-    so the sheet can say the coach is working on it. Nothing here writes.
+    `verbal_problem` withholds the exercise where the problem is the words:
+    a bool for every row, or a predicate of the row (a rewrite on the same
+    Paragraph).
     """
     rows = [dict(row) for row in (changes or [])]
     if not take_session_id:
         return rows
-    rows = _attach_exercise_tier(
+    withhold = (verbal_problem if callable(verbal_problem)
+                else (lambda _row: bool(verbal_problem)))
+    rows = _attach_exercises(
         rows, take_session_id=take_session_id, owner_user_id=owner_user_id,
-        database=database, ground=ground, verbal_problem=verbal_problem)
+        database=database, ground=ground, withhold=withhold)
     return _annotate_coach_answers(
         rows, take_session_id=take_session_id, owner_user_id=owner_user_id,
         database=database, ground=ground)
+
+
+def _moment_practice(database: Any, take_session_id: str,
+                     snippet_id: str) -> Any:
+    """This moment's own practice row, on either database shape."""
+    getter = getattr(database, "get_confident_voice_practice_by_moment", None)
+    if getter is not None:
+        return getter(take_session_id, snippet_id)
+    existing = database.get_confident_voice_practice_by_take(take_session_id)
+    if existing and str(existing.get("snippet_id")) == str(snippet_id):
+        return existing
+    return None
+
+
+def _moment_closed(existing: Any) -> bool:
+    """A finished or declined practice ends the offer on its moment; an open
+    one keeps its exercise (its passage and audio are bound)."""
+    return bool(existing) and existing.get("status") in (
+        "completed", "dismissed")
 
 
 def _annotate_coach_answers(
@@ -1214,9 +1238,9 @@ def _annotate_coach_answers(
     `coach_request: {"status": "open" | "answered"}` while the moment has no
     exercise: the speaker's sheet shows the sentence on it. Once the coach
     shared an exercise for the moment, it rides the item as
-    `practice_exercise` with `chosen_by_coach`, exactly as on the exercise
-    tier. Rows that already carry an exercise are left alone. A read that
-    fails leaves the row as it was: the answer arrives on a later read.
+    `practice_exercise` with `chosen_by_coach`. Rows that already carry an
+    exercise are left alone. A read that fails leaves the row as it was: the
+    answer arrives on a later read.
     """
     getter = getattr(database, "get_exercise_coach_request", None)
     if getter is None:
@@ -1257,12 +1281,11 @@ def _annotate_coach_answers(
             row["coach_request"] = {"status": "answered"}
             continue
         verdict = exercise_eligibility(snippet, session_median_wpm=median)
-        existing = database.get_confident_voice_practice_by_take(take_session_id)
-        if existing and str(existing.get("snippet_id")) != snippet_id:
-            existing = None
         row["evidence"] = evidence
         row["practice_exercise"] = {
-            **_offer_payload(exercise, verdict, snippet, row, existing),
+            **_offer_payload(exercise, verdict, snippet, row,
+                             _moment_practice(database, take_session_id,
+                                              snippet_id)),
             "matching_policy_version": COACH_REQUEST_POLICY_VERSION,
             "pattern_distance": None,
             "chosen_by_coach": True,
@@ -1273,140 +1296,88 @@ def _annotate_coach_answers(
     return rows
 
 
-def _attach_exercise_tier(
+def _attach_exercises(
     rows: list[dict], *, take_session_id: str, owner_user_id: str,
-    database: Any, ground: Any, verbal_problem: bool,
+    database: Any, ground: Any, withhold: Any,
 ) -> list[dict]:
-    """The exercise on the one V3 item marked for it (contract 24f).
+    """The best matching exercise on each Confident Voice bookmark.
 
-    The clip must still be able to carry practice (`clip_can_carry_exercise`),
-    and `ground` must prove its exact evidence coordinates, which the practice
-    needs; failing either, the item is served exactly as V3 made it, without
-    an exercise. When nothing fits (D1), the coach hears about it instead
-    (``_coach_request_offer``), and an exercise the coach later shares for
-    this exact moment is what the item carries.
+    Per moment: the clip must be able to carry practice
+    (`clip_can_carry_exercise`), `ground` must prove its exact evidence
+    coordinates, and a problem the library targets must have fired on it
+    (D1); failing any of those, the item is served as V3 made it, and
+    `problem_recognised` says whether a problem fired with nothing targeting
+    it, so a judgement can send the bookmark to the coach. The catalogue,
+    the vocabulary and the speaker's history are read once per Take.
     """
-    target = next((row for row in rows
-                   if row.get("source") == "confident_voice"
-                   and row.get("bookmark_tier") == "exercise"
-                   and row.get("snippet_id")), None)
-    if target is None or verbal_problem:
-        return rows
-    snippet_id = str(target["snippet_id"])
-    existing = database.get_confident_voice_practice_by_take(take_session_id)
-    if _blocked_by_existing(existing, snippet_id):
+    targets = [row for row in rows
+               if row.get("source") == "confident_voice"
+               and row.get("snippet_id") and not withhold(row)]
+    if not targets:
         return rows
     exercises = offerable_exercises(database)
-    snippet = next(iter(
-        database.get_confident_voice_practice_candidates([snippet_id]) or []),
-        None)
-    if not isinstance(snippet, dict):
-        return rows
-    verdict = exercise_eligibility(
-        snippet, session_median_wpm=_median_wpm(
-            database.get_snippets_by_session(take_session_id) or []))
-    if not clip_can_carry_exercise(verdict):
-        return rows
-    # Nothing spotted on this clip, or nothing in the catalogue targets what
-    # was: the item is served exactly as V3 made it — "Let's practice" with
-    # no exercise (D1). The clip's confidence level alone never picks one.
+    by_id = {str(r.get("id")): r for r in (
+        database.get_confident_voice_practice_candidates(
+            [str(row["snippet_id"]) for row in targets]) or [])}
+    median = _median_wpm(database.get_snippets_by_session(take_session_id) or [])
     vocabulary = detected_problem_vocabulary(database)
-    # History is read only when this moment has not been drawn yet: once it
-    # has, the draw is frozen and ranking again changes nothing, and this
-    # runs on every poll of the Ideal Text.
     getter = getattr(database, "get_confident_voice_exercise_assignment", None)
-    drawn = getter(take_session_id, snippet_id) if getter is not None else None
-    history = (dict(EMPTY_HISTORY) if isinstance(drawn, dict)
-               else speaker_history(database, owner_user_id, take_session_id))
-    fit, keyed = matched_exercises(
-        str(verdict.get("pattern") or ""), exercises,
-        observed_tags=observed_problem_tags(verdict, vocabulary=vocabulary),
-        history=history)
-    if not keyed:
-        return _coach_request_offer(
-            rows, target, verdict=verdict, vocabulary=vocabulary,
-            exercises=exercises, snippet=snippet, existing=existing,
-            take_session_id=take_session_id, owner_user_id=owner_user_id,
-            database=database, ground=ground)
-    evidence = ground(target)
-    if not isinstance(evidence, dict):
-        return rows
-    ranked = [item[1] for item in keyed]
-    exercise = choose_exercise(
-        ranked, owner_user_id=owner_user_id,
-        take_session_id=take_session_id, snippet_id=snippet_id,
-        lane="v3_exercise_block", database=database, fit=fit,
-        trace=build_match_trace(
-            lane="v3_exercise_block", verdict=verdict, vocabulary=vocabulary,
-            exercises=exercises, ranked=ranked, fit=fit, snippet=snippet,
-            history=history,
-            take_session_id=take_session_id, snippet_id=snippet_id))
-    if exercise is None:
-        return rows
-    target["evidence"] = evidence
-    target["practice_exercise"] = _offer_payload(
-        exercise, verdict, snippet, target, existing)
-    target["practice_exercise"]["done_before"] = _done_before(
-        database, owner_user_id, str(exercise.get("exercise_id") or ""),
-        take_session_id)
+    history: Optional[dict] = None
+    for target in targets:
+        snippet_id = str(target["snippet_id"])
+        existing = _moment_practice(database, take_session_id, snippet_id)
+        if _moment_closed(existing):
+            continue
+        snippet = by_id.get(snippet_id)
+        if not isinstance(snippet, dict):
+            continue
+        verdict = exercise_eligibility(snippet, session_median_wpm=median)
+        observed = observed_problem_tags(verdict, vocabulary=vocabulary)
+        if not clip_can_carry_exercise(verdict):
+            target["problem_recognised"] = bool(observed)
+            continue
+        # History is read only when a moment has not been drawn yet: once it
+        # has, the draw is frozen and ranking again changes nothing, and this
+        # runs on every poll of the Ideal Text.
+        drawn = getter(take_session_id, snippet_id) if getter is not None else None
+        if isinstance(drawn, dict):
+            moment_history: dict = dict(EMPTY_HISTORY)
+        else:
+            if history is None:
+                history = speaker_history(database, owner_user_id, take_session_id)
+            moment_history = history
+        fit, keyed = matched_exercises(
+            str(verdict.get("pattern") or ""), exercises,
+            observed_tags=observed, history=moment_history)
+        if not keyed:
+            target["problem_recognised"] = bool(observed)
+            continue
+        evidence = ground(target)
+        if not isinstance(evidence, dict):
+            continue
+        ranked = [item[1] for item in keyed]
+        exercise = choose_exercise(
+            ranked, owner_user_id=owner_user_id,
+            take_session_id=take_session_id, snippet_id=snippet_id,
+            lane="v3_exercise_block", database=database, fit=fit,
+            trace=build_match_trace(
+                lane="v3_exercise_block", verdict=verdict, vocabulary=vocabulary,
+                exercises=exercises, ranked=ranked, fit=fit, snippet=snippet,
+                history=moment_history,
+                take_session_id=take_session_id, snippet_id=snippet_id))
+        if exercise is None:
+            continue
+        target["evidence"] = evidence
+        target["practice_exercise"] = _offer_payload(
+            exercise, verdict, snippet, target, existing)
+        target["practice_exercise"]["done_before"] = _done_before(
+            database, owner_user_id, str(exercise.get("exercise_id") or ""),
+            take_session_id)
     return rows
 
 
 #: The policy a coach-shared exercise is served under: no match, no draw.
 COACH_REQUEST_POLICY_VERSION = "exercise-coach-request-v1"
-
-
-def _coach_request_offer(
-    rows: list[dict], target: dict, *, verdict: dict, vocabulary: Any,
-    exercises: list[dict], snippet: dict, existing: Any,
-    take_session_id: str, owner_user_id: str, database: Any, ground: Any,
-) -> list[dict]:
-    """No exercise fits this moment: record the coach request (contract 35b),
-    and serve the exercise the coach shared for it, if they have.
-
-    The request is written insert-once (migration 0385): this runs on every
-    feedback build, and every call after the first returns the same row with
-    whatever resolution it has gained. Nothing waits on it — the item is
-    served now, exactly as V3 made it, and the coach's answer arrives on a
-    later read. A failed write never costs the feedback.
-    """
-    request_fn = getattr(database, "request_exercise_from_coach", None)
-    if request_fn is None or not owner_user_id:
-        return rows
-    snippet_id = str(target["snippet_id"])
-    observed = observed_problem_tags(verdict, vocabulary=vocabulary)
-    try:
-        request = request_fn(
-            owner_user_id=str(owner_user_id),
-            take_session_id=str(take_session_id), snippet_id=snippet_id,
-            reason="nothing_targets_it" if observed else "nothing_spotted",
-            pattern=verdict.get("pattern"), observed_tags=sorted(observed),
-            request_trace=build_match_trace(
-                lane="v3_exercise_block", verdict=verdict,
-                vocabulary=vocabulary, exercises=exercises, ranked=[],
-                fit=None, snippet=snippet, take_session_id=take_session_id,
-                snippet_id=snippet_id))
-    except Exception as e:  # noqa: BLE001 — never lose the feedback
-        _log.warning("exercise coach request failed take=%s snip=%s: %s",
-                     take_session_id, snippet_id, e)
-        return rows
-    exercise = coach_shared_exercise(request, database)
-    if exercise is None:
-        return rows
-    evidence = ground(target)
-    if not isinstance(evidence, dict):
-        return rows
-    target["evidence"] = evidence
-    target["practice_exercise"] = {
-        **_offer_payload(exercise, verdict, snippet, target, existing),
-        "matching_policy_version": COACH_REQUEST_POLICY_VERSION,
-        "pattern_distance": None,
-        "chosen_by_coach": True,
-        "done_before": _done_before(
-            database, owner_user_id, str(exercise.get("exercise_id") or ""),
-            take_session_id),
-    }
-    return rows
 
 
 def _shared_request_for(database: Any, take_session_id: str,

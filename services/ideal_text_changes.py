@@ -867,12 +867,12 @@ class _ChangesRun:
             owner_user_id=str(getattr(self, "user_id", "") or ""))
 
     def _v3_exercise_offer(self) -> None:
-        # V3 CHOSE THE MOMENT (contract 24f): the one item it marks
-        # `bookmark_tier="exercise"`. This attaches the exercise to that item
-        # (founder 2026-09-26: "Follow V3"), grounding its evidence
-        # coordinates on the way, because V3 rows arrive without them and the
-        # practice cannot start without them. A rewrite on the same Paragraph
-        # still withholds it: that problem is the words, not the delivery.
+        # EVERY V3 BOOKMARK MAY CARRY AN EXERCISE (founder 2026-09-29; until
+        # then only the item V3 marked `bookmark_tier="exercise"`). This
+        # attaches each item's exercise, grounding its evidence coordinates
+        # on the way, because V3 rows arrive without them and the practice
+        # cannot start without them. A rewrite on the same Paragraph still
+        # withholds it: that problem is the words, not the delivery.
         from services.confident_voice_practice import attach_v3_exercise_offer
         from services.intervention_spend import paragraph_index_at
 
@@ -890,14 +890,18 @@ class _ChangesRun:
             return (paragraph_index_at(self.served_text, start)
                     if isinstance(start, int) else None)
 
-        target = next((row for row in self.changes
-                       if isinstance(row, dict)
-                       and row.get("bookmark_tier") == "exercise"), None)
-        verbal = target is not None and paragraph(target) is not None and any(
-            isinstance(row, dict)
+        # EVERY BOOKMARK (founder 2026-09-29): the lane runs on each
+        # Confident Voice item, and the rewrite rule applies per Paragraph.
+        rewritten = {
+            paragraph(row) for row in self.changes
+            if isinstance(row, dict)
             and row.get("feedback_family") == "rewrite_clarity"
-            and paragraph(row) == paragraph(target)
-            for row in self.changes)
+            and paragraph(row) is not None}
+
+        def verbal(row: dict) -> bool:
+            index = paragraph(row)
+            return index is not None and index in rewritten
+
         self.changes = attach_v3_exercise_offer(
             self.changes, take_session_id=self.arm_sid,
             owner_user_id=str(self.user_id or ""), database=self.db,

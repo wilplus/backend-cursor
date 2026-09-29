@@ -303,8 +303,8 @@ def build_moment_history(
                         else _int_or_none(practice.get("slide_index"))
                     )
         elif take_session_id:
-            candidate = database.get_confident_voice_practice_by_take(
-                take_session_id, owner or None)
+            candidate = database.get_confident_voice_practice_by_moment(
+                take_session_id, snippet_id, owner or None)
             if (isinstance(candidate, dict)
                     and _text(candidate.get("snippet_id")) == snippet_id):
                 practice = candidate
@@ -400,8 +400,8 @@ def build_snippet_history(
         practice = None
         take = _text(take_session_id)
         if take:
-            candidate = database.get_confident_voice_practice_by_take(
-                take, owner or None)
+            candidate = database.get_confident_voice_practice_by_moment(
+                take, snippet, owner or None)
             if (isinstance(candidate, dict)
                     and _text(candidate.get("snippet_id")) == snippet):
                 practice = candidate

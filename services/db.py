@@ -14905,6 +14905,27 @@ class DatabaseService:
                 take_session_id, e)
             return None
 
+    def get_confident_voice_practice_by_moment(
+        self, take_session_id: str, snippet_id: str,
+        owner_user_id: Optional[str] = None,
+    ) -> Optional[dict]:
+        """The practice on this exact moment (founder 2026-09-29: every
+        bookmark may carry its own; migration 0390 keys it per moment)."""
+        if not take_session_id or not snippet_id:
+            return None
+        try:
+            query = (self.client.table("confident_voice_practice").select("*")
+                     .eq("take_session_id", str(take_session_id))
+                     .eq("snippet_id", str(snippet_id)))
+            if owner_user_id:
+                query = query.eq("owner_user_id", str(owner_user_id))
+            res = query.limit(1).execute()
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("get_confident_voice_practice_by_moment failed "
+                           "sid=%s snip=%s: %s", take_session_id, snippet_id, e)
+            return None
+
     def get_confident_voice_practice_by_take(
         self, take_session_id: str, owner_user_id: Optional[str] = None,
     ) -> Optional[dict]:
@@ -15028,12 +15049,13 @@ class DatabaseService:
                    .insert(row).execute())
             return (res.data or [None])[0]
         except Exception as e:
-            # The DB unique(take_session_id) is the final one-per-take guard.
-            # A concurrent create simply re-reads the winner.
+            # The DB unique(take_session_id, snippet_id) is the final
+            # one-per-moment guard. A concurrent create re-reads the winner.
             logger.warning("create_confident_voice_practice failed take=%s: %s",
                            row.get("take_session_id"), e)
-            return self.get_confident_voice_practice_by_take(
+            return self.get_confident_voice_practice_by_moment(
                 str(row.get("take_session_id") or ""),
+                str(row.get("snippet_id") or ""),
                 str(row.get("owner_user_id") or "") or None)
 
     def list_confident_voice_practice_attempts(

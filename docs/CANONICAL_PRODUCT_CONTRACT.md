@@ -178,10 +178,13 @@ with this contract, this contract wins.
       fidelity to the Ideal Text. *At most* two, not always two: clause 25 still
       governs, so a Take with only one defensible praise candidate surfaces one,
       and inventing a second to fill the slot is forbidden;
-    - **one exercise** — on the weakest item below the neutral delivery band.
-      Other below-neutral items show **"Let's practice"** without an exercise,
-      because an exercise is work the user must go and do and a list of them is
-      a list nobody starts;
+    - **an exercise on any bookmark** (founder 2026-09-29, superseding the
+      2026-09-26 "one exercise, on the weakest item below the neutral band"):
+      "they can carry as many exercises as bookmark indicates". Each Confident
+      Voice item gets the exercise matched to its own clip under 35g-1, and
+      a judgement other than Audio unclear opens it; where nothing matched,
+      the bookmark goes to the coach on the judgement (35g-2). The weakest
+      below-neutral item keeps its bookmark colour;
     - **one Actionable Improvement (rewrite)** — the highest-ranked of the Take.
       Capped because unlike a relative-best read it asserts a finding and can be
       wrong, which is the expensive error under H.0.
@@ -415,9 +418,12 @@ with this contract, this contract wins.
     always answered** (founder 2026-09-29): a No on any bookmark that carries
     no exercise sends that bookmark to the coach the moment the answer is
     saved, whether or not a problem was recognised, because the speaker has
-    named one; the item then reads "Your coach is working on your exercise."
-    (founder-signed copy, 2026-09-29) until the coach shares one. Audio
-    unclear raises nothing. The speaker never waits on it. The coach
+    named one; a Yes, In-between or Not sure sends it when a problem was
+    recognised on the clip and nothing in the library targets it. The item
+    then reads "Your coach is working on your exercise." (founder-signed
+    copy, 2026-09-29) until the coach shares one. Audio unclear raises
+    nothing. The coach hears often while the library is small; each answer
+    files a reusable exercise. The speaker never waits on it. The coach
     sees it only after their own blind rating of the moment and answers once:
     a library exercise, a new one filed into the library (which must name a
     problem code can detect, and so becomes reusable for any speaker), or no

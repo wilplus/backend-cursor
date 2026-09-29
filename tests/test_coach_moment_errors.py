@@ -179,6 +179,10 @@ class _Db:
     def get_confident_voice_practice_by_take(self, owner_sid):
         return self.practice
 
+    def get_confident_voice_practice_by_moment(self, owner_sid, snippet_id,
+                                               owner=None):
+        return self.practice
+
     # naming
     def list_coach_moment_error_events(self, practice_id):
         return list(self.events)
@@ -228,6 +232,7 @@ class _Db:
 class RouteTests(unittest.TestCase):
     _PATCHED = (
         "v2_get_session_by_id", "get_confident_voice_practice_by_take",
+        "get_confident_voice_practice_by_moment",
         "list_coach_moment_error_events", "insert_coach_moment_error_event",
         "get_speaking_error", "list_speaking_errors",
         "teach_diagnostic_exercise", "undo_diagnostic_exercise_teaching",

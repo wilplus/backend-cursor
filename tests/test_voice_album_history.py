@@ -48,6 +48,9 @@ class _Db:
     def get_confident_voice_practice_by_take(self, sid, owner=None):
         return self.practice
 
+    def get_confident_voice_practice_by_moment(self, sid, snippet_id, owner=None):
+        return self.practice
+
     def get_confident_voice_practice(self, practice_id, owner=None):
         return self.practice
 
