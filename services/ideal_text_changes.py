@@ -887,10 +887,18 @@ class _ChangesRun:
         # then only the item V3 marked `bookmark_tier="exercise"`). This
         # attaches each item's exercise, grounding its evidence coordinates
         # on the way, because V3 rows arrive without them and the practice
-        # cannot start without them. A rewrite on the same Paragraph still
-        # withholds it: that problem is the words, not the delivery.
+        # cannot start without them.
+        #
+        # A REWRITE ON THE PARAGRAPH NO LONGER WITHHOLDS IT (founder
+        # 2026-09-29, evening: the rewrite cap is lifted, so the Manager now
+        # writes a rewrite on every block it reads weak). Under the follow-up
+        # matrix (24f) the video is for a clip read weak with an acoustic
+        # problem fired, and the rewrite is a note on the words; the two are
+        # different findings on the same moment and neither silences the
+        # other. Keeping the old rule would have withheld the video on nearly
+        # every weak block, the opposite of "the video should fire off more
+        # often".
         from services.confident_voice_practice import attach_v3_exercise_offer
-        from services.intervention_spend import paragraph_index_at
 
         def ground(row: dict) -> Optional[dict]:
             grounded = self.deps.with_evidence_coordinates(
@@ -900,28 +908,10 @@ class _ChangesRun:
                         if isinstance(p, dict)])
             return grounded[0].get("evidence") if grounded else None
 
-        def paragraph(row: dict) -> Optional[int]:
-            span = row.get("span")
-            start = span.get("start") if isinstance(span, dict) else None
-            return (paragraph_index_at(self.served_text, start)
-                    if isinstance(start, int) else None)
-
-        # EVERY BOOKMARK (founder 2026-09-29): the lane runs on each
-        # Confident Voice item, and the rewrite rule applies per Paragraph.
-        rewritten = {
-            paragraph(row) for row in self.changes
-            if isinstance(row, dict)
-            and row.get("feedback_family") == "rewrite_clarity"
-            and paragraph(row) is not None}
-
-        def verbal(row: dict) -> bool:
-            index = paragraph(row)
-            return index is not None and index in rewritten
-
         self.changes = attach_v3_exercise_offer(
             self.changes, take_session_id=self.arm_sid,
             owner_user_id=str(self.user_id or ""), database=self.db,
-            ground=ground, verbal_problem=verbal)
+            ground=ground)
 
     def _practice_permitted(self) -> bool:
         """Whether this Take's owner allows exercises chosen from it.

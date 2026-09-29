@@ -1190,7 +1190,7 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
 
 def attach_v3_exercise_offer(
     changes: list[dict], *, take_session_id: str, owner_user_id: str,
-    database: Any, ground: Any, verbal_problem: Any = False,
+    database: Any, ground: Any,
 ) -> list[dict]:
     """The exercise lane on every bookmark (founder 2026-09-29; contract 24f
     as amended, 35g-2).
@@ -1204,18 +1204,17 @@ def attach_v3_exercise_offer(
     that: the coach's shared exercise as the item's practice, or the open
     request (``_annotate_coach_answers``). Nothing here writes a request.
 
-    `verbal_problem` withholds the exercise where the problem is the words:
-    a bool for every row, or a predicate of the row (a rewrite on the same
-    Paragraph).
+    A rewrite on the same Paragraph no longer withholds the exercise (founder
+    2026-09-29, evening): the Manager writes a rewrite on every block it reads
+    weak, and the video and the rewrite are different findings on the same
+    moment (24f).
     """
     rows = [dict(row) for row in (changes or [])]
     if not take_session_id:
         return rows
-    withhold = (verbal_problem if callable(verbal_problem)
-                else (lambda _row: bool(verbal_problem)))
     rows = _attach_exercises(
         rows, take_session_id=take_session_id, owner_user_id=owner_user_id,
-        database=database, ground=ground, withhold=withhold)
+        database=database, ground=ground)
     return _annotate_coach_answers(
         rows, take_session_id=take_session_id, owner_user_id=owner_user_id,
         database=database, ground=ground)
@@ -1328,7 +1327,7 @@ def _annotate_coach_answers(
 
 def _attach_exercises(
     rows: list[dict], *, take_session_id: str, owner_user_id: str,
-    database: Any, ground: Any, withhold: Any,
+    database: Any, ground: Any,
 ) -> list[dict]:
     """The best matching exercise on each Confident Voice bookmark.
 
@@ -1342,7 +1341,7 @@ def _attach_exercises(
     """
     targets = [row for row in rows
                if row.get("source") == "confident_voice"
-               and row.get("snippet_id") and not withhold(row)]
+               and row.get("snippet_id")]
     if not targets:
         return rows
     exercises = offerable_exercises(database)
