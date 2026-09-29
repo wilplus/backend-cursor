@@ -42,7 +42,7 @@ def configured_confidence_cutover() -> ConfidenceCutoverState:
 
     ``MLC2_CONFIDENCE_CUTOVER_MODE`` stays the writer state and stays a code
     constant (``dark`` today; ``founder_canary`` is a reviewed code change).
-    The rings panel (0393) can only CLOSE it: killing the one-way
+    The rings panel (0394) can only CLOSE it: killing the one-way
     ``confidence_learning_writes`` row is the pipe's own kill, so the state
     reads ``killed`` on every service within seconds, with no deploy, and
     nothing here can ever read more open than the constant says. A ring

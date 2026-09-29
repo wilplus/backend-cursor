@@ -1,5 +1,5 @@
 """Whose Takes get a canonical Recording Attempt row: the canonical_take_rows
-ring row (rings, 0393), which replaced the data-foundation canary's three
+ring row (rings, 0394), which replaced the data-foundation canary's three
 doors (a Railway switch, the founder email, the principal variable)."""
 from flask import Flask, request
 

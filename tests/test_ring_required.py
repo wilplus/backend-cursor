@@ -1,4 +1,4 @@
-"""@ring_required(feature): the route boundary of the rings (0393).
+"""@ring_required(feature): the route boundary of the rings (0394).
 
 Generalised from mlc3_service_required. The order it must keep: building
 switch, principal, the ring check, then (unchanged) the MLC-3 enrollment

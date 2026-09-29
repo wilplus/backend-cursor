@@ -428,4 +428,5 @@
 0390	a_coach_answers_practice_five_ways.sql
 0391	sounds_more_confident_reads_the_coachs_two_answers.sql
 0392	the_promotion_freezes_the_consent_snapshot.sql
-0393	a_feature_reaches_a_person_by_ring.sql
+0393	the_coach_card_consumes_the_confidence_chain.sql
+0394	a_feature_reaches_a_person_by_ring.sql

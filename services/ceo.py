@@ -216,7 +216,7 @@ def get_bootstrap(admin_user_id: str) -> dict:
     from services.ceo_intelligence import bootstrap_data
 
     payload.update(bootstrap_data())
-    # Rings (0393): what is on for THIS admin and what is pending for them,
+    # Rings (0394): what is on for THIS admin and what is pending for them,
     # the same read every login makes (/v2/user/rings). An unreachable ring
     # table answers an empty, marked list; the console loads regardless.
     from services import rings

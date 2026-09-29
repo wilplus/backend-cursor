@@ -16,7 +16,8 @@ DOMAIN_MODULES = (
     "mlc2_consent", "training_consent", "rooting_phrase_qualification",
     "confident_moment_bundles",
     "coach_guidance_delivery", "mlc3_first_client_service",
-    "mlc3_first_client_coach", "processing_authorization", "lounge", "coach",
+    "mlc3_first_client_coach", "confidence_chain_coach",
+    "processing_authorization", "lounge", "coach",
     "admin", "coaching", "canonical_publish", "auth_alias", "lab_recording",
     "projects", "learning_exposures", "user_sessions", "rings",
 )

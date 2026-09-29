@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Read-only production readiness check for the Confidence canary.
 
-The canary's "who" is the ``confidence_learning_writes`` ring row (0393),
+The canary's "who" is the ``confidence_learning_writes`` ring row (0394),
 not a founder email or a principal variable; see
 services/mlc2_confidence_readiness.py.
 """
@@ -26,7 +26,7 @@ from services.mlc2_confidence_readiness import (  # noqa: E402
 def _health(connection) -> dict:
     """The chain's own invariants. The founder-principal argument is passed
     NULL: the per-person keys it drove (founder_*, nonfounder_*) are read
-    from the ring health below instead (rings, 0393)."""
+    from the ring health below instead (rings, 0394)."""
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT public.get_mlc2_confidence_canary_readiness_v1(NULL::uuid)"

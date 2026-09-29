@@ -102,6 +102,10 @@ model/version hints.
   and answers 410 only when the writer state is `killed` (0392 / Q1,
   2026-09-29); recording the grant creates no corpus and starts nothing,
   and the canonical promotion freezes a snapshot of it for every Take.
+- The legacy coach card consumes the chain through the three 0393 wrappers
+  (`services/confidence_chain_consumer.py`, Q2, 2026-09-29): blind packet,
+  render receipt, judgment and reveal. A no-op while the writer state is
+  `dark`; the packet never leaves the server, the handle is four ids.
 - No learning provenance is dual-written to an old and new learning store.
 - The old product-state writers remain unchanged.
 - No historical row is imported or relabeled.

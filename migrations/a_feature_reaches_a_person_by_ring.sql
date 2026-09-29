@@ -932,7 +932,7 @@ GRANT EXECUTE ON FUNCTION public.record_ring_announcement_decision_v1(UUID, TEXT
 -- already moved, is left alone.
 
 INSERT INTO public.ring_settings (key, value, changed_by)
-VALUES ('default_ring', '2'::jsonb, 'migration:0393')
+VALUES ('default_ring', '2'::jsonb, 'migration:0394')
 ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO public.feature_rings
@@ -944,38 +944,38 @@ VALUES
      'mlc3_service_principal_allowlist (seeded at this ring); '
      'MLC3_SERVICE_ENABLED stays the building switch and the DB enrollment '
      'wristband is still issued after this check passes.',
-     'migration:0393'),
+     'migration:0394'),
     ('exercise_service_ui', 3, NULL, NULL, false, false,
      'The exercise service surfaces in the app, served per person through '
      'features_on in the bootstrap payload; NEXT_PUBLIC_MLC3_SERVICE_UI_ENABLED '
      'stays the building switch.',
-     'migration:0393'),
+     'migration:0394'),
     ('coach_inline_authoring', 4, NULL, NULL, false, false,
      'D5 inline blind batch and authoring for the coach whose queue it is; '
      'replaces the legacy coach queue for that coach. '
      'MLC3_COACH_INLINE_AUTHORING_ENABLED stays the building switch.',
-     'migration:0393'),
+     'migration:0394'),
     ('confident_moment_bundles', 4, NULL, NULL, false, false,
      'Confident Moment coaching bundle routes (third answer lane). '
      'CONFIDENT_MOMENT_BUNDLE_V1_ENABLED stays the building switch.',
-     'migration:0393'),
+     'migration:0394'),
     ('rooting_coverage', 4, NULL, NULL, false, false,
      'Root actions on a bundle; needs confident_moment_bundles. '
      'ROOTING_COVERAGE_V1_ENABLED stays the building switch.',
-     'migration:0393'),
+     'migration:0394'),
     ('canonical_take_rows', 5, NULL, NULL, false, false,
      'Replaces the data-foundation canary (DATA_FOUNDATION_CANARY_ENABLED + '
      'ADMIN_EMAIL + MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID): whose Takes get a '
      'canonical Recording Attempt row. Nobody is at this ring after the '
      'migration; the founder moves themself here from the panel.',
-     'migration:0393'),
+     'migration:0394'),
     ('confidence_learning_writes', 5, NULL, 'pooled_model_improvement', false,
      true,
      'The confidence chain''s "who". One-way: killing it is permanent and '
      'moves the writer state to killed. The writer state itself '
      '(MLC2_CONFIDENCE_CUTOVER_MODE) stays a code constant, dark today; '
      'this row never turns the pipe on.',
-     'migration:0393')
+     'migration:0394')
 ON CONFLICT (feature) DO NOTHING;
 
 -- Placeholders only; the founder writes the words in the panel.
@@ -986,12 +986,12 @@ VALUES
      '[founder copy] A new way for willab to learn from your practice',
      '[founder copy] Explain that anonymous confidence moments may be used to '
      'improve the model; link the policy; two buttons: not now / yes.',
-     true, 'migration:0393'),
+     true, 'migration:0394'),
     ('exercise_service',
      '[founder copy] Exercises matched to your moments',
      '[founder copy] Explain the practice tick; one button: turn on in my '
      'data choices.',
-     true, 'migration:0393')
+     true, 'migration:0394')
 ON CONFLICT (feature) DO NOTHING;
 
 -- The MLC-3 guest list moves in, at the exercise service's ring. The people
@@ -1006,33 +1006,33 @@ BEGIN
         INSERT INTO public.principal_rings (principal_id, ring, attributes,
                                             changed_by)
         SELECT DISTINCT m.acquisition_principal_id, 3, '{}'::jsonb,
-               'migration:0393:mlc3_service_cohort_members'
+               'migration:0394:mlc3_service_cohort_members'
           FROM public.mlc3_service_cohort_members m
         ON CONFLICT (principal_id) DO NOTHING;
         GET DIAGNOSTICS seeded = ROW_COUNT;
-        RAISE NOTICE '0393: % cohort members seeded at ring 3', seeded;
+        RAISE NOTICE '0394: % cohort members seeded at ring 3', seeded;
     ELSE
-        RAISE NOTICE '0393: mlc3_service_cohort_members absent here; skipped';
+        RAISE NOTICE '0394: mlc3_service_cohort_members absent here; skipped';
     END IF;
     IF to_regclass('public.mlc3_service_principal_allowlist') IS NOT NULL THEN
         INSERT INTO public.principal_rings (principal_id, ring, attributes,
                                             changed_by)
         SELECT DISTINCT a.acquisition_principal_id, 3, '{}'::jsonb,
-               'migration:0393:mlc3_service_principal_allowlist'
+               'migration:0394:mlc3_service_principal_allowlist'
           FROM public.mlc3_service_principal_allowlist a
          WHERE a.state = 'active'
         ON CONFLICT (principal_id) DO NOTHING;
         GET DIAGNOSTICS seeded = ROW_COUNT;
-        RAISE NOTICE '0393: % allow-listed principals seeded at ring 3', seeded;
+        RAISE NOTICE '0394: % allow-listed principals seeded at ring 3', seeded;
     ELSE
-        RAISE NOTICE '0393: mlc3_service_principal_allowlist absent here; skipped';
+        RAISE NOTICE '0394: mlc3_service_principal_allowlist absent here; skipped';
     END IF;
     -- The seed rows above are changes too.
     INSERT INTO public.principal_ring_changes (principal_id, ring, attributes,
                                                changed_by, changed_at)
     SELECT pr.principal_id, pr.ring, pr.attributes, pr.changed_by, pr.changed_at
       FROM public.principal_rings pr
-     WHERE pr.changed_by LIKE 'migration:0393:%'
+     WHERE pr.changed_by LIKE 'migration:0394:%'
        AND NOT EXISTS (SELECT 1 FROM public.principal_ring_changes c
                         WHERE c.principal_id = pr.principal_id);
 END;
@@ -1044,14 +1044,14 @@ INSERT INTO public.feature_ring_changes
 SELECT f.feature, f.min_ring, f.attribute_rule, f.consent_purpose, f.killed,
        f.one_way, f.note, f.changed_by, f.changed_at
   FROM public.feature_rings f
- WHERE f.changed_by = 'migration:0393'
+ WHERE f.changed_by = 'migration:0394'
    AND NOT EXISTS (SELECT 1 FROM public.feature_ring_changes c
                     WHERE c.feature = f.feature);
 
 INSERT INTO public.ring_setting_changes (key, value, changed_by, changed_at)
 SELECT s.key, s.value, s.changed_by, s.changed_at
   FROM public.ring_settings s
- WHERE s.changed_by = 'migration:0393'
+ WHERE s.changed_by = 'migration:0394'
    AND NOT EXISTS (SELECT 1 FROM public.ring_setting_changes c
                     WHERE c.key = s.key);
 

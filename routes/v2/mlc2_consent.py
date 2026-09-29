@@ -36,7 +36,7 @@ _CLIENT_VERSION_FALLBACK = "willab-web-unknown"
 
 def _founder_request() -> bool:
     """The founder, AND a person the ``confidence_learning_writes`` ring row
-    reaches (rings, 0393). The row's REACH half only (ring, rule, not
+    reaches (rings, 0394). The row's REACH half only (ring, rule, not
     killed): this route is the door that would record the very consent the
     full check asks for, so asking the full check here would be circular.
     The baked-in founder email is no longer read; ADMIN_EMAIL still is."""
@@ -51,7 +51,7 @@ def _founder_request() -> bool:
 
 def _canary_principal_matches(owner_principal_id: str) -> bool:
     """True when the ``confidence_learning_writes`` ring row REACHES the
-    principal about to be bound (rings, 0393). This replaced the
+    principal about to be bound (rings, 0394). This replaced the
     MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID comparison: the variable is
     deprecated and read by no gate. Defence in depth beside
     ``_founder_request``, on the principal the grant would bind."""

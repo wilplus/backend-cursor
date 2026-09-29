@@ -98,7 +98,7 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     "provider_permits", "ai_exposures", "legacy_terms", "legacy_terms_events",
     "owner_identity", "owner_claim_source", "owner_claim_target",
     "token_ledger_review", "llm_usage_review", "ml_consent_events",
-    # Rings (0393): a person's ring, its history and their announcement
+    # Rings (0394): a person's ring, its history and their announcement
     # answers belong to the account, not to any project.
     "principal_ring", "principal_ring_history", "ring_announcement_decisions",
 })

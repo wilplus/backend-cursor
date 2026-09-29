@@ -293,7 +293,7 @@ def _is_data_foundation_canary_owner(
     owner_principal_id: str | None = None,
 ) -> bool:
     """Whose Takes get a canonical Recording Attempt row: the people the
-    ``canonical_take_rows`` ring row reaches (rings, 0393).
+    ``canonical_take_rows`` ring row reaches (rings, 0394).
 
     This replaces the data-foundation canary's three doors — the
     DATA_FOUNDATION_CANARY_ENABLED switch, the founder email and the

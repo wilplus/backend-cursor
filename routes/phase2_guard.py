@@ -35,7 +35,7 @@ def confidence_chain_alive(function):
     person may record before the chain writes anything: readiness requires
     the grant to exist while the chain is still dark (audit 2026-09-22, G-3,
     consent half), and the canonical promotion freezes a snapshot of it for
-    every Take (migration 0393). Recording a grant creates no corpus, exports
+    every Take (migration 0394). Recording a grant creates no corpus, exports
     no dataset and starts no training, so ``phase2_learning_disabled`` was the
     wrong door for it. A killed chain never takes a new grant.
     """
@@ -142,7 +142,7 @@ def consent_choice_required(choice: str):
 
 
 def ring_required(feature: str):
-    """Expose a route to the people its ring row reaches (rings, 0393).
+    """Expose a route to the people its ring row reaches (rings, 0394).
 
     Generalised from ``mlc3_service_required`` (founder 2026-09-29). Order:
 
@@ -159,7 +159,7 @@ def ring_required(feature: str):
 
     Authentication must wrap this decorator. Every refusal is 404 so the
     surface is not discoverable. The old cohort and allow-list tables are
-    kept and no longer read here; 0393 copied them into principal_rings.
+    kept and no longer read here; 0394 copied them into principal_rings.
     """
     def decorate(function):
         @wraps(function)

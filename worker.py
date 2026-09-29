@@ -261,7 +261,7 @@ def main() -> int:
     try:
         from services.gate_flags import gate_summary
         logger.info("gate flags %s", gate_summary())
-        # Rings (0393): the three canary variables are no longer read by any
+        # Rings (0394): the three canary variables are no longer read by any
         # gate; say so at boot until the follow-up removes them.
         from services.rings import deprecated_canary_variables_summary
         logger.info("%s", deprecated_canary_variables_summary())

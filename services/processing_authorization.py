@@ -492,7 +492,7 @@ class ProcessingAuthorizationService:
                 code, "The processing agreement could not be recorded.", status
             ) from error
         # The account country is known from here on: the person's `region`
-        # attribute for ring rules follows it (rings, 0393). Best effort and
+        # attribute for ring rules follows it (rings, 0394). Best effort and
         # after the receipt is safe; it never decides anything about consent.
         from services import rings
 

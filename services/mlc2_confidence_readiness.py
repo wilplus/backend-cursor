@@ -3,7 +3,7 @@
 No product route imports this module.  It consumes aggregate monitoring data
 and configuration metadata only—never recordings, transcripts or blind packets.
 
-RINGS (0393, founder 2026-09-29). The canary's "who" used to be a founder
+RINGS (0394, founder 2026-09-29). The canary's "who" used to be a founder
 email baked into the code and a principal id in a Railway variable. It is
 now the ``confidence_learning_writes`` ring row: the people that row reaches
 are the eligible principals, and the zero-invariants assert that ONLY
@@ -51,7 +51,7 @@ def _flag(mapping: Mapping[str, Any], key: str) -> bool:
 
 
 def _ring_blockers(ring_health: Mapping[str, Any]) -> list[str]:
-    """The canary's "who", read from the ring rows (0393)."""
+    """The canary's "who", read from the ring rows (0394)."""
     blockers: list[str] = []
     if ring_health.get("ring_readiness_contract_version") != RING_READINESS_CONTRACT_VERSION:
         blockers.append("ring_readiness_contract_mismatch")

@@ -1,4 +1,4 @@
-"""0393 a_feature_reaches_a_person_by_ring.sql, read as text (no database).
+"""0394 a_feature_reaches_a_person_by_ring.sql, read as text (no database).
 
 The released-lane rehearsal (tests/test_rings_postgres.py) executes it; this
 pins the shape the repository's rules require: manifest position, the rule's
@@ -43,9 +43,9 @@ def _function(name: str) -> str:
     return match.group(1)
 
 
-def test_manifest_appends_rings_as_0393_after_0392():
+def test_manifest_appends_rings_as_0394_after_0392():
     manifest = (ROOT / "migrations" / "manifest.txt").read_text().splitlines()
-    rings = "0393\ta_feature_reaches_a_person_by_ring.sql"
+    rings = "0394\ta_feature_reaches_a_person_by_ring.sql"
     previous = "0392\tthe_promotion_freezes_the_consent_snapshot.sql"
     assert rings in manifest
     assert manifest.index(previous) < manifest.index(rings)

@@ -357,7 +357,7 @@ class Mlc2ConsentEndpointTests(unittest.TestCase):
         self.app = Flask(__name__)
         self.originals = []
         self._patch(route.config, "ADMIN_EMAIL", "artur@willonski.com")
-        # Rings (0393): the founder is also a person the
+        # Rings (0394): the founder is also a person the
         # confidence_learning_writes row REACHES; the baked-in email is gone.
         self._patch(
             route.rings, "principal_for_user",

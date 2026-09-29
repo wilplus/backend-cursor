@@ -1,4 +1,4 @@
-"""The rule, every clause (rings, 0393).
+"""The rule, every clause (rings, 0394).
 
     A feature is on for a person when the row is not killed, the person's
     ring is >= the feature's ring, the row's attribute rule matches them
