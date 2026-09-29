@@ -55,19 +55,32 @@ def _canary_principal_matches(owner_principal_id: str) -> bool:
     ).strip().lower()
 
 
-def _canary_refusal(owner_principal_id: str):
-    """403 when a configured canary principal is not this one, else None.
+def _bind_refusal(owner_principal_id: str, body: dict, status: dict):
+    """The response that refuses a grant, or None when it may be recorded.
 
     The grant binds a speaker to the chain. When the canary principal is
     configured, only that principal may bind, whatever the email says
-    (defence in depth beside the founder-email scope).
+    (defence in depth beside the founder-email scope). The checkbox must be
+    affirmative, and the text accepted must be the text approved.
     """
-    if _canary_principal_matches(owner_principal_id):
-        return None
-    return jsonify({
-        "code": "CANARY_PRINCIPAL_MISMATCH",
-        "error": "This account is not the configured canary principal.",
-    }), 403
+    if not _canary_principal_matches(owner_principal_id):
+        return jsonify({
+            "code": "CANARY_PRINCIPAL_MISMATCH",
+            "error": "This account is not the configured canary principal.",
+        }), 403
+    if body.get("accepted") is not True:
+        return jsonify({
+            "code": "EXPLICIT_CONSENT_REQUIRED",
+            "error": "The consent checkbox must be selected.",
+        }), 400
+    if body.get("consent_policy_version") != status.get(
+        "consent_policy_version"
+    ) or body.get("copy_sha256") != status.get("approved_copy_sha256"):
+        return jsonify({
+            "code": "CONSENT_VERSION_MISMATCH",
+            "error": "The consent text changed. Please review it again.",
+        }), 409
+    return None
 
 
 def _sha256(value: str) -> str:
@@ -187,21 +200,9 @@ def v2_user_mlc2_consent():
             refreshed = db.get_mlc2_principal_consent_status(owner_id) or {}
             return jsonify(_public_status(refreshed)), 200
 
-        refusal = _canary_refusal(owner_id)
+        refusal = _bind_refusal(owner_id, body, status)
         if refusal is not None:
             return refusal
-        if body.get("accepted") is not True:
-            return jsonify({
-                "code": "EXPLICIT_CONSENT_REQUIRED",
-                "error": "The consent checkbox must be selected.",
-            }), 400
-        if body.get("consent_policy_version") != status.get(
-            "consent_policy_version"
-        ) or body.get("copy_sha256") != status.get("approved_copy_sha256"):
-            return jsonify({
-                "code": "CONSENT_VERSION_MISMATCH",
-                "error": "The consent text changed. Please review it again.",
-            }), 409
 
         identity_hash, proof_hash = _identity_coordinates(
             str(getattr(request, "user_id", ""))
