@@ -295,13 +295,11 @@ def _is_data_foundation_canary_owner(
     """Whose Takes get a canonical Recording Attempt row: the people the
     ``canonical_take_rows`` ring row reaches (rings, 0394).
 
-    This replaces the data-foundation canary's three doors — the
-    DATA_FOUNDATION_CANARY_ENABLED switch, the founder email and the
-    MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID variable — with one row: its kill
-    switch is the row's kill, its "who" is the ring. Those three variables
-    are no longer read here (services/rings.py names them as deprecated; the
-    boot log says so). An anonymous upload or a Take with no owner principal
-    gets no canonical row, as before; every downstream learning write stays
+    This replaced the data-foundation canary's three doors — a Railway
+    switch, the founder email and a principal variable, all retired on
+    2026-09-29 — with one row: its kill switch is the row's kill, its "who"
+    is the ring. An anonymous upload or a Take with no owner principal gets
+    no canonical row, as before; every downstream learning write stays
     FK-gated by that row.
     """
     if not user_id or not owner_principal_id:

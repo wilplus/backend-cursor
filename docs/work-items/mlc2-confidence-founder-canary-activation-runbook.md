@@ -165,8 +165,9 @@ Do not propose activation unless every item below has fresh evidence:
    missing principals and mismatched principals.
 6. The pre-activation aggregate report is `ready=true`, has no blocker codes,
    and reports every zero invariant at zero.
-7. `DATA_FOUNDATION_CANARY_ENABLED=true` and the foundation producer boundary
-   is healthy.
+7. The `canonical_take_rows` ring row is not killed (it replaced
+   `DATA_FOUNDATION_CANARY_ENABLED`, retired 2026-09-29) and the foundation
+   producer boundary is healthy.
 8. Sentry delivery is tested, not merely configured.
 9. Dataset creation, training and promotion are false in both code and
    production evidence.

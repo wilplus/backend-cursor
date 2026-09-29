@@ -36,12 +36,11 @@ the cutover module's ``configured_confidence_cutover`` reads it and reports
 ``MLC2_CONFIDENCE_CUTOVER_MODE`` remains the writer state and remains
 ``dark``; this module can only close it, never open it.
 
-THE THREE RETIRED CANARY VARIABLES. ``DATA_FOUNDATION_CANARY_ENABLED``,
+THE THREE CANARY VARIABLES ARE GONE. ``DATA_FOUNDATION_CANARY_ENABLED``,
 ``MLC2_CONFIDENCE_CANARY_FOUNDER_EMAIL`` and
-``MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID`` are no longer read by any gate. They
-stay readable on ``Config`` for one release so a Railway panel that still
-carries them is not a surprise, and the boot log says so
-(``deprecated_canary_variables_summary``). A follow-up removes them.
+``MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID`` were kept readable and unread for
+one release after 0394 and retired on 2026-09-29. Who a feature reaches is a
+row; a Railway panel that still carries them sets nothing.
 """
 from __future__ import annotations
 
@@ -49,7 +48,7 @@ import hashlib
 import logging
 import threading
 import time
-from typing import Any, Iterable, Mapping, Optional
+from typing import Any, Mapping, Optional
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
@@ -76,12 +75,6 @@ CONSENT_PURPOSES: tuple[str, ...] = (
 DECISIONS: tuple[str, ...] = ("accepted", "not_now")
 ATTRIBUTE_KEYS: tuple[str, ...] = ("region", "plan", "language", "role", "bucket")
 FALLBACK_DEFAULT_RING = 2
-
-DEPRECATED_CANARY_VARIABLES: tuple[str, ...] = (
-    "DATA_FOUNDATION_CANARY_ENABLED",
-    "MLC2_CONFIDENCE_CANARY_FOUNDER_EMAIL",
-    "MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID",
-)
 
 #: How long a process without a request (the worker, a cron) trusts a
 #: writer-kill read before asking again. A kill lands within this many
@@ -823,18 +816,3 @@ def _is_coach_email(email: Optional[str], *, database: Any) -> bool:
         return bool(rows)
     except Exception:
         return False
-
-
-# ── the boot line ──────────────────────────────────────────────────────────
-
-def deprecated_canary_variables_summary(names: Iterable[str] = DEPRECATED_CANARY_VARIABLES) -> str:
-    """One line for the boot log: the three canary variables are no longer
-    read by any gate (the ring rows canonical_take_rows and
-    confidence_learning_writes are), and go in the next release. Reported as
-    set/unset, never by value: the principal id names a person."""
-    from config import Config
-
-    values = Config.current_env(list(names))
-    parts = [f"{name}={'set' if values.get(name) else 'unset'}" for name in names]
-    return ("deprecated canary variables (not read; ring rows decide; "
-            "removed next release) " + " ".join(parts))

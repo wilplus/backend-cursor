@@ -9,9 +9,10 @@
 # Required variables:
 #   DATABASE_URL
 #   SENTRY_DSN
-#   DATA_FOUNDATION_CANARY_ENABLED=true
-#   MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID=<verified founder principal UUID>
 #   MLC2_CONFIDENCE_MONITORING_ENABLED=true
+#
+# The canary's "who" is the confidence_learning_writes ring row (0394), read
+# from the database; no principal variable is needed since 2026-09-29.
 #
 # The check is read-only, sends only aggregate blocker evidence to Sentry and
 # exits non-zero whenever any readiness invariant is unsafe. It cannot activate
