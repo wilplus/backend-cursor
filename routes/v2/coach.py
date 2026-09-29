@@ -247,6 +247,18 @@ def _rater_language_error(outcome, language=None):
     return None
 
 
+def _practice_door_open(coach_state):
+    """Q3 (founder 2026-09-29): any saved answer but Audio unclear opens the
+    coach's practice review and exercise request. Yes, In-between, No and
+    Not sure are answers about the moment; Audio unclear is an abstention,
+    so the moment stays unrated and the door stays shut."""
+    state = coach_state or {}
+    return (
+        state.get("rating_value") in ("yes", "in_between", "no", "not_sure")
+        and not state.get("rating_unrateable")
+    )
+
+
 def _coach_state_for(session_id, snippet_id):
     """One snippet's coach_state (default-empty when nothing authored yet)."""
     return _coach_state_map(session_id).get(str(snippet_id), {
@@ -1584,7 +1596,7 @@ def v2_coach_confident_voice_practice(session_id, snippet_id):
     # Hard blind gate: the current coach must first commit a definite rating.
     state = _coach_state_map(owner_sid, rater_id=getattr(request, "user_id", None))
     coach_state = state.get(str(snippet_id)) or {}
-    if coach_state.get("rating_value") not in ("yes", "no"):
+    if not _practice_door_open(coach_state):
         return jsonify({"code": "BLIND_RATING_REQUIRED",
                         "error": "Rate the original moment before reviewing practice."}), 409
     if not _speaker_practice_permitted(owner_sid):  # E3, founder 2026-09-25
@@ -1733,7 +1745,7 @@ def v2_coach_exercise_request(session_id, snippet_id):
         return jsonify({"code": "SNIPPET_NOT_FOUND",
                         "error": "Snippet not in this session"}), 404
     state = _coach_state_map(owner_sid, rater_id=getattr(request, "user_id", None))
-    if (state.get(str(snippet_id)) or {}).get("rating_value") not in ("yes", "no"):
+    if not _practice_door_open(state.get(str(snippet_id))):
         return jsonify({"code": "BLIND_RATING_REQUIRED",
                         "error": "Rate the original moment first."}), 409
     if not _speaker_practice_permitted(owner_sid):
