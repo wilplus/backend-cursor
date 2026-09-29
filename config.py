@@ -255,17 +255,11 @@ class Config:
     RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL")
     ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "artur@willonski.com")
 
-    # DEPRECATED, NOT READ BY ANY GATE (rings, 0394, founder 2026-09-29).
-    # The data-foundation canary's three doors — this switch, the founder
-    # email and MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID — are the
-    # `canonical_take_rows` ring row now: its kill switch is the row's kill,
-    # its "who" is the ring (routes/v2/lab_recording.py). Kept readable for
-    # one release so a Railway panel that still carries it is not a
-    # surprise; the boot log names it as deprecated. Removed next release.
-    DATA_FOUNDATION_CANARY_ENABLED = (
-        (os.getenv("DATA_FOUNDATION_CANARY_ENABLED") or "true")
-        .strip().lower() in ("1", "true", "yes", "on")
-    )
+    # The data-foundation canary's three doors (DATA_FOUNDATION_CANARY_ENABLED,
+    # the founder email, MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID) were retired on
+    # 2026-09-29: whose Takes get a canonical row is the `canonical_take_rows`
+    # ring row (0394), its kill switch is the row's kill. A Railway panel that
+    # still carries them sets nothing.
     # MLC-2 / ED-2.4 is additive and dark until the separately reviewed
     # per-surface cutovers.  This flag may enable foundation workers only; it
     # never authorizes a dataset release, training run or model promotion.
@@ -295,15 +289,10 @@ class Config:
     # read `killed` on every service (services/mlc2_confidence_cutover.py).
     # Nothing outside a reviewed code change can make it read more open.
     MLC2_CONFIDENCE_CUTOVER_MODE = "dark"
-    # DEPRECATED, NOT READ BY ANY GATE (rings, 0394). The confidence chain's
-    # "who" is the `confidence_learning_writes` ring row; readiness reads
-    # the row and the ring-eligible principals instead of these two. Kept
-    # readable for one release; the boot log names them. Removed next
-    # release.
-    MLC2_CONFIDENCE_CANARY_FOUNDER_EMAIL = "artur@willonski.com"
-    MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID = (
-        os.getenv("MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID") or ""
-    ).strip()
+    # The chain's "who" is the `confidence_learning_writes` ring row (0394);
+    # readiness reads the row and the ring-eligible principals. The founder
+    # email constant and the canary principal variable that used to say it
+    # were retired on 2026-09-29.
     # Monitoring may be deployed while the producer remains dark.  Readiness
     # requires this plus Sentry configuration before activation can be
     # proposed; neither setting activates a producer.

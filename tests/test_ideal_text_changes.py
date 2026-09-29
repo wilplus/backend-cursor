@@ -679,3 +679,153 @@ def test_a_freeze_that_does_address_the_served_rows_still_filters():
     run._claim_or_filter()
 
     assert [row["id"] for row in run.changes] == [kept["id"]]
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  V3 PACKETS — every served V3 card leaves a learning presentation
+#  (founder 2026-09-29; the 29 Sep report's "V3 packets" finding)
+# ══════════════════════════════════════════════════════════════════════════
+#
+# V2 froze a packet per card inside `_canonical_dual_write`, keyed by V2 row
+# ids. V3's rows share no identity with those, so since the cutover no served
+# card carried a packet and the browser had nothing to receipt. The V3 stage
+# freezes the packets after the claim, from the bundle V3 served from.
+
+
+def _v3_bundle(*keys):
+    """The bundle `prepare_first_client_feedback` hands back, minimal."""
+    family = {"cv": "confident_voice", "rw": "rewrite_clarity",
+              "gf": "great_formulation"}
+    candidates = [{
+        "id": f"cand-{key}",
+        "candidate_key": key,
+        "feedback_family": family[key[:2]],
+        "candidate_score": 0.5,
+        "rank_evidence": {},
+        "generated_output": {"quote": "We started small."},
+        "training_eligible": False,
+        "evidence": {"id": f"span-{key}", "evidence_hash": "b" * 64,
+                     "exact_text": "We started small.", "audio_ref": "a.webm",
+                     "start_ms": 0, "end_ms": 900},
+    } for key in keys]
+    return {
+        "owner_principal_id": "owner", "project_id": ARC, "take_id": T1,
+        "candidate_set_id": "set-1", "candidates": candidates,
+        "selected_keys": [{"id": c["candidate_key"],
+                           "feedback_family": c["feedback_family"]}
+                          for c in candidates],
+        "versions": {"taxonomy_version": "v1"}, "generation_runs": [],
+    }
+
+
+class _PacketDb(_R4Db):
+    """`_R4Db` plus the one write the packet stage makes."""
+
+    def __init__(self):
+        super().__init__()
+        self.presentations: list[dict] = []
+
+    def create_learning_surface_presentation(self, row):
+        self.presentations.append(row)
+        return {"presentation_id": f"p-{len(self.presentations)}",
+                "acknowledgement_token": "tok", "evaluation_only": False}
+
+
+def _v3_verbal_row(key, family):
+    return {"id": key, "kind": "replace", "source": "wording",
+            "feedback_family": family, "snippet_id": S1,
+            "span": {"start": 0, "end": 17}}
+
+
+def test_every_served_v3_row_carries_its_learning_handles():
+    db = _PacketDb()
+    run = _r4_run(db)
+    run.arm_sid = T1
+    run.v3_replaced_changes = True
+    run.v3_learning = {"bundle": _v3_bundle("cv1", "cv2", "rw1"),
+                       "block_partition_version": "slide-run-75-word-partition-v1"}
+    cv1, cv2 = _v3_row(S1), _v3_row("44444444-4444-4444-8444-444444444444")
+    cv1["id"], cv2["id"] = "cv1", "cv2"
+    cv1["bookmark_tier"], cv1["block_id"] = "exercise", "block-1"
+    run.changes = [cv1, cv2, _v3_verbal_row("rw1", "rewrite_clarity")]
+    run.styles = []
+
+    run._v3_learning_presentations()
+    out = run._finish()
+
+    handles = {row["id"]: row.get("learning_exposures") for row in out["changes"]}
+    assert set(handles) == {"cv1", "cv2", "rw1"}
+    assert [h["learning_surface"] for h in handles["cv1"]] == [
+        "confidence_classification"]
+    assert {h["learning_surface"] for h in handles["rw1"]} == {
+        "correction_generation", "correction_selection"}
+    assert len(db.presentations) == 4
+    for presentation in db.presentations:
+        assert presentation["actor_role"] == "owner"
+        assert presentation["delivery_mode"] == "production"
+        assert presentation["versions"]["block_partition_version"] == \
+            "slide-run-75-word-partition-v1"
+        assert "candidate_score" not in presentation["visible_payload"]
+    exercise_card = next(p for p in db.presentations
+                         if p["visible_payload"]["candidate_key"] == "cv1")
+    assert exercise_card["visible_payload"]["bookmark_tier"] == "exercise"
+    # The handle is all that leaves the server with the row.
+    for handle in handles["cv1"]:
+        assert set(handle) == {"presentation_id", "acknowledgement_token",
+                               "learning_surface", "evaluation_only"}
+
+
+def test_no_bundle_or_no_served_rows_means_no_packet_and_no_error():
+    db = _PacketDb()
+    run = _r4_run(db)
+    run.v3_replaced_changes = True
+    run.v3_learning = {}
+    run.changes = [_v3_row(S1)]
+    run._v3_learning_presentations()
+    assert db.presentations == [] and run.learning_presentations == {}
+
+    run.v3_learning = {"bundle": _v3_bundle("cv1")}
+    run.changes = []                      # the claim failed: nothing serves
+    run._v3_learning_presentations()
+    assert db.presentations == [] and run.learning_presentations == {}
+
+
+def test_a_packet_that_cannot_be_frozen_is_named_and_the_take_still_serves():
+    """LIVE LOOP: the stage runs under the degradation log."""
+    db = _PacketDb()
+    run = _r4_run(db)
+    run.v3_replaced_changes = True
+    run.v3_learning = {"bundle": _v3_bundle("cv1")}
+    stray = _v3_row(S1)
+    stray["id"] = "not-in-bundle"
+    run.changes = [stray]
+    run.styles = []
+
+    run.log.run("changes.v3_learning_presentations",
+                run._v3_learning_presentations)
+    out = run._finish()
+
+    assert [row["id"] for row in out["changes"]] == ["not-in-bundle"]
+    assert "learning_exposures" not in out["changes"][0]
+    assert [item.stage for item in run.log.items] == [
+        "ideal_text.changes.v3_learning_presentations"]
+
+
+def test_the_v3_packet_stage_runs_after_the_claim_and_before_the_writer_gate():
+    import inspect
+    source = inspect.getsource(_ChangesRun.execute)
+    assert source.index("self._claim_or_filter()") < source.index(
+        "changes.v3_learning_presentations") < source.index(
+        "confidence_prior_learning_writes_enabled()")
+    # Keyed on the replacement: a V2 Take never reaches it.
+    stage = source.index("changes.v3_learning_presentations")
+    assert source.rfind("if self.v3_replaced_changes:", 0, stage) != -1
+
+
+def test_v2_packets_are_not_prepared_on_a_take_v3_served():
+    """A packet for a card that never reached a screen is a prepared-but-
+    never-shown row; the readiness would hold at `blocked` on it forever."""
+    import inspect
+    write_stage = inspect.getsource(_ChangesRun._canonical_dual_write)
+    guard = write_stage.index("if not self.v3_replaced_changes:")
+    assert write_stage.index("changes.learning_presentations", guard) > guard

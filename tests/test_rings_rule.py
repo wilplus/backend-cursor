@@ -304,18 +304,3 @@ def test_a_seeded_person_who_signs_in_again_keeps_their_ring():
     # Existing keys win; only missing keys are added.
     assert params["p_attributes"]["region"] == "PL"
     assert params["p_attributes"]["plan"] == "free"
-
-
-def test_deprecation_line_names_the_variables_and_never_a_value(monkeypatch):
-    from config import Config
-
-    monkeypatch.setattr(Config, "current_env", staticmethod(lambda names: {
-        "DATA_FOUNDATION_CANARY_ENABLED": "true",
-        "MLC2_CONFIDENCE_CANARY_FOUNDER_EMAIL": "artur@willonski.com",
-        "MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID": P1,
-    }))
-    line = rings.deprecated_canary_variables_summary()
-    assert "deprecated canary variables" in line
-    for name in rings.DEPRECATED_CANARY_VARIABLES:
-        assert f"{name}=set" in line
-    assert P1 not in line and "artur" not in line

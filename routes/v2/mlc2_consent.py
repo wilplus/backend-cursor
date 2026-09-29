@@ -51,10 +51,10 @@ def _founder_request() -> bool:
 
 def _canary_principal_matches(owner_principal_id: str) -> bool:
     """True when the ``confidence_learning_writes`` ring row REACHES the
-    principal about to be bound (rings, 0394). This replaced the
-    MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID comparison: the variable is
-    deprecated and read by no gate. Defence in depth beside
-    ``_founder_request``, on the principal the grant would bind."""
+    principal about to be bound (rings, 0394). This replaced a comparison
+    against a canary principal variable, retired on 2026-09-29. Defence in
+    depth beside ``_founder_request``, on the principal the grant would
+    bind."""
     return rings.feature_reaches(
         rings.CONFIDENCE_LEARNING_WRITES, owner_principal_id)
 
