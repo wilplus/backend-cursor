@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from typing import Any, Iterable, Optional
+from typing import Any, Callable, Iterable, Optional
 from config import Config
 
 config = Config()
@@ -111,37 +111,10 @@ def _transcript_snapshot(
     ]
     if not raw_paragraphs:
         return None
-    slide_indexes = sorted({
-        _normalized_slide(row.get("slide_index")) for row in raw_paragraphs
-    })
-    slides = [{
-        "id": _stable_uuid("slide", transcript_id, slide_index),
-        "slide_index": slide_index,
-        "title": None,
-        "source_payload": {
-            "virtual": all(
-                _int(row.get("slide_index")) is None
-                for row in raw_paragraphs
-            ),
-        },
-    } for slide_index in slide_indexes]
-    paragraphs: list[dict] = []
-    for index, row in enumerate(raw_paragraphs):
-        start, end = _int(row.get("start")), _int(row.get("end"))
-        if start is None or end is None or start < 0 or end <= start:
-            return None
-        paragraph_text = text[start:end]
-        if not paragraph_text:
-            return None
-        paragraphs.append({
-            "id": _stable_uuid("paragraph", transcript_id, index),
-            "paragraph_index": index,
-            "slide_index": _normalized_slide(row.get("slide_index")),
-            "source_ideal_part_id": row.get("part_id"),
-            "text": paragraph_text,
-            "start_char": start,
-            "end_char": end,
-        })
+    slides = _snapshot_slides(transcript_id, raw_paragraphs)
+    paragraphs = _snapshot_paragraphs(text, transcript_id, raw_paragraphs)
+    if paragraphs is None:
+        return None
     return {
         "id": transcript_id,
         "version": take_index,
@@ -159,6 +132,47 @@ def _transcript_snapshot(
         "slides": slides,
         "paragraphs": paragraphs,
     }
+
+
+def _snapshot_slides(transcript_id: str, raw_paragraphs: list) -> list:
+    """One slide row per distinct slide the paragraphs name. ``virtual``
+    when no paragraph carries a real slide index (a deckless Take)."""
+    slide_indexes = sorted({
+        _normalized_slide(row.get("slide_index")) for row in raw_paragraphs
+    })
+    virtual = all(
+        _int(row.get("slide_index")) is None for row in raw_paragraphs
+    )
+    return [{
+        "id": _stable_uuid("slide", transcript_id, slide_index),
+        "slide_index": slide_index,
+        "title": None,
+        "source_payload": {"virtual": virtual},
+    } for slide_index in slide_indexes]
+
+
+def _snapshot_paragraphs(text: str, transcript_id: str,
+                         raw_paragraphs: list) -> Optional[list]:
+    """The paragraph rows, each an exact non-empty slice of ``text``; None
+    when any paragraph's span is not one."""
+    paragraphs: list[dict] = []
+    for index, row in enumerate(raw_paragraphs):
+        start, end = _int(row.get("start")), _int(row.get("end"))
+        if start is None or end is None or start < 0 or end <= start:
+            return None
+        paragraph_text = text[start:end]
+        if not paragraph_text:
+            return None
+        paragraphs.append({
+            "id": _stable_uuid("paragraph", transcript_id, index),
+            "paragraph_index": index,
+            "slide_index": _normalized_slide(row.get("slide_index")),
+            "source_ideal_part_id": row.get("part_id"),
+            "text": paragraph_text,
+            "start_char": start,
+            "end_char": end,
+        })
+    return paragraphs
 
 
 def _snippet_span(piece: Optional[dict], transcript_text: str) -> tuple:
@@ -514,19 +528,11 @@ def _canonical_feedback_candidate(
     )
     if evidence is None:
         return None
-    fallback = bool((raw.get("_manager_evidence") or {}).get("fallback")) \
-        if isinstance(raw.get("_manager_evidence"), dict) else False
-    eligible = bool(evidence.pop("target_matches_transcript")) and not fallback
+    eligible = bool(evidence.pop("target_matches_transcript")) \
+        and not _manager_fallback(raw)
     candidate_id = _stable_uuid(
         "candidate", take_id, manager_rules_version, candidate_key,
     )
-    generated_output = {
-        "quote": raw.get("quote"),
-        "proposed_text": raw.get("proposed_text"),
-        "why_key": raw.get("why_key"),
-        "device": raw.get("device"),
-        "tentative": bool(raw.get("tentative")),
-    }
     canonical_candidate = {
         "id": candidate_id,
         "exposure_id": _stable_uuid("exposure", candidate_id),
@@ -534,12 +540,8 @@ def _canonical_feedback_candidate(
         "feedback_family": family,
         "lane": family,
         "candidate_score": raw.get("candidate_score"),
-        "rank_evidence": {
-            "manager_evidence": raw.get("_manager_evidence") or {},
-            "rank_key": raw.get("rank_key") or [],
-            "cue_keys": raw.get("cue_keys") or [],
-        },
-        "generated_output": generated_output,
+        "rank_evidence": _rank_evidence(raw),
+        "generated_output": _generated_output(raw),
         "detector_version": raw.get("detector_version"),
         "rule_version": raw.get("rule_version"),
         "model_version": raw.get("model_version"),
@@ -548,11 +550,7 @@ def _canonical_feedback_candidate(
         # records therefore remain structurally ineligible even where
         # their exact transcript target is valid.
         "training_eligible": eligible and not service_v3,
-        "ineligibility_reason": (
-            "service_product_evidence_only" if service_v3
-            else None if eligible
-            else "fallback_or_source_target_mismatch"
-        ),
+        "ineligibility_reason": _ineligibility_reason(eligible, service_v3),
         "evidence": evidence,
     }
     prediction = _feedback_candidate_machine_prediction(
@@ -565,6 +563,37 @@ def _canonical_feedback_candidate(
     if snapshot is not None:
         canonical_candidate["acoustic_feature_snapshot"] = snapshot
     return canonical_candidate
+
+
+def _manager_fallback(raw: dict) -> bool:
+    """The Manager filled this lane with its fallback, not a ranked pick."""
+    manager_evidence = raw.get("_manager_evidence")
+    return bool((manager_evidence or {}).get("fallback")) \
+        if isinstance(manager_evidence, dict) else False
+
+
+def _rank_evidence(raw: dict) -> dict:
+    return {
+        "manager_evidence": raw.get("_manager_evidence") or {},
+        "rank_key": raw.get("rank_key") or [],
+        "cue_keys": raw.get("cue_keys") or [],
+    }
+
+
+def _generated_output(raw: dict) -> dict:
+    return {
+        "quote": raw.get("quote"),
+        "proposed_text": raw.get("proposed_text"),
+        "why_key": raw.get("why_key"),
+        "device": raw.get("device"),
+        "tentative": bool(raw.get("tentative")),
+    }
+
+
+def _ineligibility_reason(eligible: bool, service_v3: bool) -> Optional[str]:
+    if service_v3:
+        return "service_product_evidence_only"
+    return None if eligible else "fallback_or_source_target_mismatch"
 
 
 def _valid_feedback_bundle_selection(
@@ -697,6 +726,58 @@ def _feedback_bundle_generation_runs(
     return generation_runs
 
 
+def _feedback_bundle_inputs(
+    session: Any, transcript_document: Any, served_text: Any,
+    selected_keys: Any, manager_rules_version: str,
+    closed: Callable[[str], None],
+) -> Optional[tuple]:
+    """``(project_id, owner_id, take_id, take_index, keys, service_v3)``,
+    or None after naming the first input gate that closed."""
+    if not isinstance(session, dict) or not isinstance(transcript_document, dict):
+        closed("session_or_document_not_a_dict")
+        return None
+    identity = _valid_feedback_bundle_identity(session)
+    if identity is None:
+        closed("take_identity_invalid")
+        return None
+    project_id, owner_id, take_id, take_index = identity
+    if not isinstance(served_text, str) or not served_text:
+        closed("served_text_empty")
+        return None
+    key_selection = _valid_feedback_bundle_keys(selected_keys, manager_rules_version)
+    if key_selection is None:
+        closed("selected_keys_invalid")
+        return None
+    keys, service_v3 = key_selection
+    return project_id, owner_id, take_id, take_index, keys, service_v3
+
+
+def _canonical_feedback_candidates(
+    candidate_inputs: list[dict], closed: Callable[[str], None],
+    **context: Any,
+) -> list[dict]:
+    """Every input row that canonicalises, in input order; each one that
+    does not names its gate."""
+    canonical_candidates: list[dict] = []
+    for raw in candidate_inputs:
+        candidate = _canonical_feedback_candidate(raw, **context)
+        if candidate is not None:
+            canonical_candidates.append(candidate)
+        else:
+            # WHICH ROW, AND WHICH LANE. A candidate canonicalises to None
+            # when its family is unknown, its key is empty, or its exact
+            # transcript evidence cannot be built -- and under the V3
+            # complete-inventory invariant below, ONE of these ends the whole
+            # Take. Naming the row is the difference between "a candidate was
+            # dropped" and a two-hour search for which.
+            closed(
+                "candidate_not_canonical:"
+                f"{str(raw.get('feedback_family') or '∅')}"
+                f"/{str(raw.get('id') or '∅')}"
+            )
+    return canonical_candidates
+
+
 def build_feedback_exposure_bundle(
     *, session: Any, transcript_document: Any, served_text: Any,
     candidates: Iterable[Any], selected_keys: Any,
@@ -726,22 +807,13 @@ def build_feedback_exposure_bundle(
         if detail is not None:
             detail.append(gate)
 
-    if not isinstance(session, dict) or not isinstance(transcript_document, dict):
-        closed("session_or_document_not_a_dict")
+    inputs = _feedback_bundle_inputs(
+        session, transcript_document, served_text, selected_keys,
+        manager_rules_version, closed,
+    )
+    if inputs is None:
         return None
-    identity = _valid_feedback_bundle_identity(session)
-    if identity is None:
-        closed("take_identity_invalid")
-        return None
-    project_id, owner_id, take_id, take_index = identity
-    if not isinstance(served_text, str) or not served_text:
-        closed("served_text_empty")
-        return None
-    key_selection = _valid_feedback_bundle_keys(selected_keys, manager_rules_version)
-    if key_selection is None:
-        closed("selected_keys_invalid")
-        return None
-    keys, service_v3 = key_selection
+    project_id, owner_id, take_id, take_index, keys, service_v3 = inputs
 
     candidate_inputs = [
         row for row in (candidates or []) if isinstance(row, dict)
@@ -759,30 +831,15 @@ def build_feedback_exposure_bundle(
         closed("transcript_snapshot_unbuildable")
         return None
 
-    canonical_candidates: list[dict] = []
-    for raw in candidate_inputs:
-        candidate = _canonical_feedback_candidate(
-            raw, take_id=take_id, manager_rules_version=manager_rules_version,
-            service_v3=service_v3, transcript_document=transcript_document,
-            transcript=transcript, served_text=served_text,
-            document_snapshot_id=document_snapshot_id,
-            document_surface_sha256=document_surface_sha256,
-            model_version=model_version, prompt_version=prompt_version,
-        )
-        if candidate is not None:
-            canonical_candidates.append(candidate)
-        else:
-            # WHICH ROW, AND WHICH LANE. A candidate canonicalises to None
-            # when its family is unknown, its key is empty, or its exact
-            # transcript evidence cannot be built -- and under the V3
-            # complete-inventory invariant below, ONE of these ends the whole
-            # Take. Naming the row is the difference between "a candidate was
-            # dropped" and a two-hour search for which.
-            closed(
-                "candidate_not_canonical:"
-                f"{str(raw.get('feedback_family') or '∅')}"
-                f"/{str(raw.get('id') or '∅')}"
-            )
+    canonical_candidates = _canonical_feedback_candidates(
+        candidate_inputs, closed,
+        take_id=take_id, manager_rules_version=manager_rules_version,
+        service_v3=service_v3, transcript_document=transcript_document,
+        transcript=transcript, served_text=served_text,
+        document_snapshot_id=document_snapshot_id,
+        document_surface_sha256=document_surface_sha256,
+        model_version=model_version, prompt_version=prompt_version,
+    )
 
     if not _valid_feedback_bundle_selection(
         canonical_candidates, keys, service_v3=service_v3,
