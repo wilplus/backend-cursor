@@ -1,5 +1,19 @@
 # The willab engine map — what runs where, and how it all connects
 
+> **⚠️ HISTORICAL (marked 2026-09-29). Parts of this map describe code that no
+> longer exists.** Read it as a record of 28 July, not a description of today:
+> - The **shadow direction classifier** (`learning_train`, `learning_serve`,
+>   `shadow_predictions`, `model_versions`) and the `training_labels`
+>   challenge/threat corpus were **dropped by migration 0281**
+>   (`retire_threat_challenge_framework.sql`, founder 2026-08-22).
+> - E10's **routing by speaker sex** was **retired 2026-08-29**: one universal,
+>   sex-blind cue contract (`voice-confidence-universal-v3`), no sex collected
+>   or inferred (see CLAUDE.md).
+> - The game (E9) and its peer labels went with 0281 (`game_saves` dropped).
+>
+> For the current wiring use `docs/CANONICAL_PRODUCT_CONTRACT.md` and
+> `docs/MLC3-EXERCISE-ADEQUACY-DESIGN.md`.
+
 **Date:** 2026-07-28 · verified against the code on `feat/coach-star-verdict`
 (`ac9b800`). Plain-language reference for the founder; every claim is checked
 against a real file, named in parentheses.
