@@ -11,6 +11,23 @@ from services.canonical_product import OWNER_RESPONSES
 RESPONSES = OWNER_RESPONSES
 
 
+def album_routing_for(response: str) -> str:
+    """The Voice Album routing value for a Confident Voice answer: the answer.
+
+    F-4 (audit 2026-09-22). The Take-review route used to derive the stored
+    routing inline and fold in_between and not_sure into ``neutral`` and
+    audio_unclear into ``unrateable`` on the way to
+    ``owner_voice_album_routing``, so two different things a speaker said
+    became one record, on every Confident Voice answer, after the table's
+    CHECK had already been widened to the five states (0341). The one
+    derivation now lives here and keeps the five apart. Only ``yes`` ever
+    satisfies the Album's USER leg, so nothing downstream changes meaning.
+    """
+    if response not in RESPONSES["confident_voice"]:
+        raise ValueError(f"not a Confident Voice answer: {response!r}")
+    return response
+
+
 def parse_feedback_response(
     body: Any,
 ) -> tuple[Optional[dict], Optional[str]]:

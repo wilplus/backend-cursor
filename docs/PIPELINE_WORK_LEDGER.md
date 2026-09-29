@@ -75,15 +75,17 @@ Run it rather than trust this table — it is a convenience, and it goes stale:
 | the freshness rule names every route an answer takes | green | — |
 | the computation window reaches the writer | green | — |
 | the page offers exactly the five owner states | green | — |
-| each of the five states routes as itself | **xfail** | F-4 |
+| each of the five states routes as itself | green | — |
 | a promoted model cannot reach the document without a gate | green | — |
 | a later Take proposes and never applies | green | — |
 | the words a speaker waits on name work, not judgement | green | — |
 
-One open, twelve held — and the table still undercounts, because #613 and
-#614 added two green lines without an entry here. F-4 is the last of the
-three the audit found against what a speaker sees; every other finding has
-its own regression test in its own file and does not appear here.
+No contract line open, thirteen held (F-4's line flipped 2026-09-28) — and
+the table still undercounts, because #613 and #614 added two green lines
+without an entry here. F-4's contract line was the last of the three the
+audit found against what a speaker sees; the finding itself is closed on the
+Take-review path only (see the WS-F4 entry). Every other finding has its own
+regression test in its own file and does not appear here.
 
 ---
 
@@ -1854,6 +1856,68 @@ rebuild Ideal Text.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 
+### 2026-09-28 · WS-R1 · r1-canonical-tables-rpc-only · #754
+
+**Closed:** R-1 (0389 `canonical_tables_are_written_only_through_their_rpcs.sql`).
+**Contract lines flipped:** none — the contract has no line for this; the
+finding's own suite is `tests/test_canonical_tables_are_rpc_only_postgres.py`
+(146 cases on the released lane: 105 failed before 0389, 146 pass after).
+**Contract lines added:** none in `test_f1_loop_contract.py`; the released
+lane gained the suite above and now also applies 0299, which it never had.
+**Broke and fixed:** none.
+**Open for the founder:** none.
+
+What the audit counted and what the grant blocks say differ. R-1 named
+eighteen tables because the lane it was read on lacked ten of the tables 0296
+granted; the two `GRANT ALL ... TO service_role` blocks (0296 lines 2339–2364,
+0299 lines 119–120) name twenty-eight. 0389 covers the blocks: REVOKE ALL from
+PUBLIC, anon, authenticated and service_role on each, then SELECT back to
+service_role only where it could already read. correction_decisions (0321,
+SELECT only) and feedback_revisions (coaching bundle, no privileges at all)
+keep the narrower shape they already had — the file never widens.
+
+Why it is safe, enumerated rather than assumed: no Python writes any of the
+twenty-eight directly (one SELECT in `services/ideal_text_repository.py`; the
+purge's `.table(relation).delete()` only ever runs for dependencies whose
+disposition is `delete`, and every one of these is `tombstone` or
+`external_review`); every function whose final definition writes one of them
+is SECURITY DEFINER, sixteen in the released lane, except the trigger function
+`transfer_learning_surfaces_on_owner_claim()` on `projects`, which writes only
+when the `willab.owner_claim_*` settings that `claim_guest_owner` (a definer)
+sets are present, so its writes run as the definer. The suite pins that single
+exception by name and fails if a second non-definer writer ever appears.
+
+Two settings the code depends on: none. No environment variable, no flag.
+### 2026-09-28 · WS-F4 · f4-five-states-route-as-themselves · #755
+
+**Closed:** F-4 on the Take-review path only (the fold at
+`routes/v2/user_sessions.py`, leg (a) of the finding). Three legs stay open:
+(b) `db.upsert_owner_voice_album_route` still accepts the legacy pair; (c)
+the table has no `taxonomy_version` column and no trigger, so 0341's
+"audit-only, no new writes" is still enforced by comment; (d) the live
+`PUT /v2/user/snippets/<id>/confidence-agree` route (a ternary instrument
+with a BFF proxy and no frontend caller) still mints `neutral`/`unrateable`.
+**Contract lines flipped:** `test_each_of_the_five_states_routes_as_itself`
+xfail → passing (the contract's last open line; baseline before 13 passed /
+1 xfailed, after 14 passed / 0 xfailed).
+**Contract lines added:** none.
+**Broke and fixed:** none. Found on the way: on `main` the practice start
+route refused (409) any clip answered through "Practice new", because that
+route already stored the five states and the matcher only knew the fold;
+`route_matches` fixes that.
+**Open for the founder:** legs (b)–(d) above are one decision: retire or
+410 `PUT …/confidence-agree` (and its frontend proxy), then narrow the
+writer to the five states and add the WS-7 trigger plus `taxonomy_version`
+with `tests/test_owner_voice_album_routing_postgres.py::test_new_neutral_write_is_rejected`.
+Not done here because it removes a live route.
+
+`album_routing_for` in `services/take_feedback_responses.py` is the one
+derivation and returns the answer itself; the Take-review route calls it.
+`services/practice_adoption.route_matches` reads both vocabularies, because
+rows written before today hold the folded pair and a legacy `neutral` cannot
+say whether it was an in-between or a not-sure. Every reader of the stored
+value tests it against `yes` or uses only the snippet id, so nothing served
+changes.
 ### 2026-09-28 · WS-G6 · g6-confidence-frame-factory · #756
 
 **Closed:** the producer half of G-6's missing piece: the worker's

@@ -251,17 +251,10 @@ def _windowed_rate_rows(session_id: str, active_snippets: list) -> list:
     return rows
 
 
-def compute_session_global_metrics(session_id: str) -> dict | None:
-    """Aggregate snippet-level metrics into session-level averages and
-    persist. Returns the computed dict on success, or ``None`` when
-    the session has no active snippets (caller decides whether
-    that's an error).
-    """
-    snippets = db.get_snippets_by_session(session_id)
-    active_snippets = [s for s in snippets if not s.get("is_skipped", False)]
-    if not active_snippets:
-        return None
-
+def _session_globals(active_snippets: list) -> tuple:
+    """The six session roll-ups plus the registry's filler rate:
+    (wpm, fillers, fillers_per_min, pause_ms, dynamic_db, pitch_center,
+    energy)."""
     # PM-9: ONE resolver, not six ad-hoc lookups with three different fallback
     # policies. The old code read the six denormalized columns first, then
     # patched wpm/fillers from the transcript, then patched the other four from
@@ -333,7 +326,12 @@ def compute_session_global_metrics(session_id: str) -> dict | None:
     global_dynamic_db = round(sum(dynamics) / len(dynamics), 1) if dynamics else None
     global_pitch_center = round(sum(pitches) / len(pitches), 1) if pitches else None
     global_energy = round(sum(energies) / len(energies), 3) if energies else None
+    return (global_wpm, global_fillers, global_fillers_per_min, global_pause_ms, global_dynamic_db, global_pitch_center, global_energy)
 
+
+def _session_kpi(session_id: str, global_wpm: Any, global_fillers: Any,
+                 global_energy: Any) -> tuple:
+    """(kpi_score, kpi_debug): the KPI, or why it was not scored."""
     # KPI — refuse to score when any input is missing.
     kpi_score: float | None = None
     kpi_debug: dict[str, Any] | None = None
@@ -367,18 +365,12 @@ def compute_session_global_metrics(session_id: str) -> dict | None:
             "fillers_missing": global_fillers is None,
             "energy_missing": global_energy is None,
         }
+    return kpi_score, kpi_debug
 
-    db.takes.update_session_global_metrics(
-        session_id=session_id,
-        global_wpm=global_wpm,
-        global_fillers=global_fillers,
-        global_pause_ms=global_pause_ms,
-        global_dynamic_db=global_dynamic_db,
-        global_pitch_center=global_pitch_center,
-        global_energy=global_energy,
-        kpi_score=kpi_score,
-    )
 
+def _drift_guard(session_id: str, active_snippets: list,
+                 kpi_score: Any) -> tuple:
+    """(drift_diag, needs_review) as far as the guard got; never raises."""
     # Phase 17.1: cross-layer drift guard. Compare B6 (kpi_score
     # scaled to 0..1) against the average D1 classifier_confidence
     # across the active snippets. When they disagree by > 40 pp one
@@ -421,6 +413,42 @@ def compute_session_global_metrics(session_id: str) -> dict | None:
             "session metrics: drift check failed session=%s err=%s",
             session_id, drift_err,
         )
+    return drift_diag, needs_review
+
+
+def compute_session_global_metrics(session_id: str) -> dict | None:
+    """Aggregate snippet-level metrics into session-level averages and
+    persist. Returns the computed dict on success, or ``None`` when
+    the session has no active snippets (caller decides whether
+    that's an error).
+    """
+    snippets = db.get_snippets_by_session(session_id)
+    active_snippets = [s for s in snippets if not s.get("is_skipped", False)]
+    if not active_snippets:
+        return None
+
+    (global_wpm, global_fillers, global_fillers_per_min, global_pause_ms,
+     global_dynamic_db, global_pitch_center,
+     global_energy) = _session_globals(active_snippets)
+
+    kpi_score, kpi_debug = _session_kpi(
+        session_id, global_wpm, global_fillers, global_energy,
+    )
+
+    db.takes.update_session_global_metrics(
+        session_id=session_id,
+        global_wpm=global_wpm,
+        global_fillers=global_fillers,
+        global_pause_ms=global_pause_ms,
+        global_dynamic_db=global_dynamic_db,
+        global_pitch_center=global_pitch_center,
+        global_energy=global_energy,
+        kpi_score=kpi_score,
+    )
+
+    drift_diag, needs_review = _drift_guard(
+        session_id, active_snippets, kpi_score,
+    )
 
     # Appendix G / SPEC D26 — drift telemetry. One row per (snippet,
     # dimension) for every measure that actually runs today. These are

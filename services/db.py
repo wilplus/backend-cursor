@@ -12139,9 +12139,12 @@ class DatabaseService:
         """Persist routing only; never write a label or learning corpus.
 
         Accepts the instrument's five states (contract §29) plus the two
-        legacy values, which stay writable only so an older caller is not
-        broken mid-deploy; they are audit-only and no new surface sends them.
-        Widening the column's CHECK is
+        legacy values. Since F-4 (2026-09-28) the Take-review route sends the
+        answer itself; the legacy pair is still minted by one live route,
+        ``PUT /v2/user/snippets/<id>/confidence-agree`` (a ternary instrument
+        with no frontend caller), so narrowing this check is a founder
+        decision about that route, not a hygiene fix. Widening the column's
+        CHECK is
         ``migrations/widen_owner_voice_album_routing_to_five_states.sql``.
         """
         from services.voice_album_routing import FIVE_STATES
@@ -14650,6 +14653,18 @@ class DatabaseService:
             "p_take_session_id": str(take_session_id),
             "p_snippet_id": str(snippet_id),
             "p_exercise_id": str(exercise_id),
+        }).execute()
+        return self._rpc_row(result.data)
+
+    def record_practice_more_confident(
+        self, *, practice_id: str, attempt_id: str,
+    ) -> Optional[dict]:
+        """Recompute one practice's "sounds more confident" result from what
+        is stored (migration 0388). Raises the database's refusal
+        (PRACTICE_MORE_CONFIDENT_*) to the caller."""
+        result = self.client.rpc("record_practice_more_confident_v1", {
+            "p_practice_id": str(practice_id),
+            "p_attempt_id": str(attempt_id),
         }).execute()
         return self._rpc_row(result.data)
 
