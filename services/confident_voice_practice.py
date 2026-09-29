@@ -1054,11 +1054,10 @@ def _offer_payload(exercise: dict, verdict: dict, snippet: dict,
         "passage": (snippet.get("transcript") or chosen.get("quote") or "").strip(),
         "practice_id": str(existing.get("id")) if existing else None,
         "resume": bool(existing and existing.get("status") == "open"),
-        "matching_policy_version": MATCHING_POLICY_VERSION,
-        "pattern_distance": confidence_pattern_distance(
-            str(verdict.get("pattern") or ""),
-            exercise.get("supported_confidence_patterns"),
-        ),
+        # No pattern distance and no matching-policy label (founder
+        # 2026-09-29): the speaker's app never needs them, and a number on
+        # the speaker's device is an AC-9 gap even when nothing renders it.
+        # Both stay server-side, in the trace and the practice record.
     }
 
 
@@ -1308,8 +1307,6 @@ def _coach_request_offer(
     target["evidence"] = evidence
     target["practice_exercise"] = {
         **_offer_payload(exercise, verdict, snippet, target, existing),
-        "matching_policy_version": COACH_REQUEST_POLICY_VERSION,
-        "pattern_distance": None,
         "chosen_by_coach": True,
         "done_before": _done_before(
             database, owner_user_id, str(exercise.get("exercise_id") or ""),
