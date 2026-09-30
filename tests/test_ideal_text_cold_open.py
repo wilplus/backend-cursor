@@ -294,7 +294,9 @@ def test_every_canonical_writer_publishes_the_cold_open_snapshot():
         "services/ideal_text_block.py": "publish_for_arc(database",
         "services/take_review.py": "publish_for_arc(database",
         "routes/v2/explore_ideal_text.py": "_publish_ideal_text_core",
-        "routes/v2/coach.py": "publish_for_arc(db",
+        # routes/v2/coach.py left this list on 2026-09-30 (founder B2): the
+        # coach's Ideal Text PUT was retired, so no coach route writes the
+        # document any more.
     }
     for relative, needle in required.items():
         assert needle in (ROOT / relative).read_text()

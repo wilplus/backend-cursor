@@ -36,15 +36,13 @@ def test_anything_else_is_refused_with_the_field_name(raw):
 
 def test_the_seven_old_helpers_now_share_the_one_rule():
     from routes import recordings
-    from routes.v2 import (
-        coach_guidance_delivery, common, confident_moment_bundles,
-        mlc3_first_client_coach, mlc3_first_client_service,
-    )
+    from routes.v2 import common, confident_moment_bundles
     from services import mlc2_confidence
 
-    for module in (coach_guidance_delivery, confident_moment_bundles,
-                   mlc3_first_client_coach, mlc3_first_client_service):
-        assert module._uuid is parse_uuid, module.__name__
+    # Three of the seven (the MLC-3 service loop's route modules) were
+    # retired as 410 tombstones (founder 2026-09-30, L8; contract 66) and
+    # parse no id any more.
+    assert confident_moment_bundles._uuid is parse_uuid
     assert common._is_valid_uuid is is_uuid
     assert recordings._is_valid_uuid is is_uuid
     assert mlc2_confidence._uuid(CANON.upper(), "id") == CANON

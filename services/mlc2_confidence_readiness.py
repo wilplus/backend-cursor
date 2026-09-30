@@ -19,7 +19,20 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 from services.mlc2_confidence_cutover import DARK, FOUNDER_CANARY, resolve_confidence_cutover
-from services.mlc3_founder_canary_readiness import _count
+
+
+def _count(health: Mapping[str, Any], key: str) -> int:
+    """Read one aggregate as an int; anything that is not one reads as -1,
+    so a missing or malformed count fails every zero- and one-invariant.
+    Lived in the MLC-3 founder canary readiness until that loop was
+    retired (founder 2026-09-30, L8; contract 66)."""
+    value = health.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        return -1
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return -1
 
 
 READINESS_CONTRACT_VERSION = "mlc2-confidence-canary-readiness-v1"

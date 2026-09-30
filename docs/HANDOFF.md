@@ -33,7 +33,10 @@ founder re-lock 2026-08-13** — never reintroduce it; a CI probe and
   (`bin/railway-worker.sh`), and cron services (devbugs, drift,
   life-reminders, learning-weekly — `bin/railway-*-cron.sh`,
   `Dockerfile.*-cron`, `Procfile`; the annotation-export cron was retired
-  2026-09-30).
+  2026-09-30). **The two MLC-3 monitor cron services (founder canary,
+  general service — `bin/railway-mlc3-*-monitor.sh`) are retired with the
+  MLC-3 service loop (founder 2026-09-30, L8): their scripts are gone and
+  the Railway cron services should be deleted.**
 - **⚠️ `MIGRATE_ON_BOOT=1` on the web service: merging a migration IS
   running it in prod at the next container start.** Manifest:
   `migrations/manifest.txt` (contiguous numbering, currently through

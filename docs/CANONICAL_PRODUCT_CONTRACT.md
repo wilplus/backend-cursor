@@ -497,7 +497,7 @@ with this contract, this contract wins.
 35e. Exercise comparison is qualitative. No acoustic score, rank, probability,
     or machine verdict is shown to the user. Opening, skipping, timing out, or
     making no attempt is not an effectiveness label.
-35f. Coach and peer confidence judgments remain independently blind and may be
+35f-1. Coach and peer confidence judgments remain independently blind and may be
     plural. Need evidence, exercise candidates, user answers, and machine output
     remain hidden until that rater submits an immutable confidence judgment.
     Only afterward may a coach choose an eligible exercise, author a versioned
@@ -585,7 +585,7 @@ with this contract, this contract wins.
     from `exercise-adequacy-label-v1` (the design's §3.5), which stays the
     only label specification and is unchanged; nothing about either feeds
     back into which exercise is shown or how often (35c).
-35g-3. **A pattern is tested silently first** (founder 2026-09-28, D2, D3).
+35g-3a. **A pattern is tested silently first** (founder 2026-09-28, D2, D3).
     Between observed (a person named it) and detected (it routes exercises)
     sits shadow: a detector runs on real Takes and its verdicts are logged,
     but it routes nothing, reaches no user and feeds no dataset. The first
@@ -606,6 +606,36 @@ with this contract, this contract wins.
     leave a speaker with no exercise. History is read from the frozen records
     of earlier Takes, as of the first draw, and is frozen with it. Shadow
     verdicts are never part of it.
+
+35g-5. **The coach's walk** (founder 2026-09-30, A1 to A8, B10; build plan
+    P2-8 to P2-14). The coach's work is one walk over one queue: speakers
+    oldest first, each Take's bookmarked moments in slide order, each moment
+    with one state word (judge it, answer it, answered, nothing to add,
+    judged). The judgement screen is the speaker's own Feedback sheet with
+    the one instrument, the five answers in the coach's words, answered
+    blind (clause 34) before anything else is revealed. Read follows: the
+    passage, the speaker's answer, the coach's answer, the goal, what
+    reached the coach and why. An answer is the same three screens for
+    every kind, Words, Video, Home; the model draft, where the kind has one
+    (35g-2a), sits in the field the coach edits; video is recorded in the
+    panel; Home files the answer into the library under its pattern and
+    shares it in one tap, sharing staying explicit (35g-2). The walk moves
+    on by itself. From 1024 px a rail lists speakers, Takes and moment
+    states as words beside the centred sheet; there is no third pane and no
+    table. The coach's library is the same screens entered from the
+    Library. Every earlier coach surface (the Feedbacks review, the
+    take-review overlay and its second instrument, the arc-level publish)
+    is retired (clauses 41, 63 to 66).
+35g-6. **A word for this Take** (founder 2026-09-30, B3; build plan P2-5,
+    P2-12; migration 0403). After the last open moment of a Take the coach
+    may leave one optional word for that Take: words, a video, or both,
+    saved once per coach and Take and shared as a separate act. The speaker
+    reads it as "Your coach" on that Take's page; it is the one Take-level
+    coach note (clause 41). It gates nothing, autoplays nothing, carries no
+    label, verdict or number, and never edits Ideal Text (clause 40). Every
+    per-moment answer reaches the speaker on its own moment the moment it
+    is shared (35g-2); the arc-level publish that once held them back is
+    retired (clause 65).
 
 ## 6. Coach review and learning lineage
 
@@ -633,14 +663,20 @@ with this contract, this contract wins.
 39. Coach review and delivery are item-level. Feedback items and clips may
     reach the user independently. Take-level reviewed or finalized state is an
     aggregate summary only and never gates immediate feedback or the next Take.
-40. The coach does not own or publish a competing full-document version.
-    Ideal Text remains the user's canonical document. Coach wording changes
-    are explicit correction proposals with preserved machine lineage and a
-    user accept/reject decision.
+    Since 2026-09-30 (B2, B3) no such state is shown to the speaker: there is
+    no "Reviewed" badge and no arc-level publish; a shared answer reaches its
+    moment on its own (35g-2) and the Take word its Take (35g-6).
+40. The coach does not own, edit or publish a competing full-document version.
+    Ideal Text remains the user's canonical document (L1). The coach's Ideal
+    Text edit and approve are retired (founder 2026-09-30, B2; clause 64);
+    a coach's wording reaches the speaker only as a clearer version on a
+    moment (35g-2), which the speaker may accept (29b) or leave.
 41. Per-item breakthrough videos and per-item Star Verdict videos are retired.
-    A coach may share only an optional general Take-level video note. It is
-    explicitly shared, never autoplays, never gates progress, and carries no
-    detector label or Feedback verdict. Star Verdict review remains text-based.
+    A coach may share only an optional general Take-level note, words or
+    video, which is the Take word (35g-6). It is explicitly shared, never
+    autoplays, never gates progress, and carries no detector label or
+    Feedback verdict. Star Verdict review is retired altogether (founder
+    2026-09-30, B1; clause 63); the V2 lane's tables stay as history.
 
 ## 7. Lifecycle and journey
 
@@ -713,6 +749,30 @@ with this contract, this contract wins.
     completely, including their user and coach routes, decoy pool, agreement
     matrix, database accessors, and live table. They are not a source for the
     canonical Voice Album, which uses the three independent signals in §5.
+
+63. The Feedbacks review (the star-verdict coach overlay, its blind pass, the
+    per-arc rows and the backend star lane's coach endpoints) is retired
+    (founder 2026-09-30, B1). The V2 lane's tables stay as history and take
+    no new writes; the coach's judgement of a moment is the one instrument
+    on the walk (35g-5).
+64. The coach's Ideal Text edit and approve, the Ideal Text annotation pairs
+    they wrote, and the speaker's "Reviewed" badge are retired (founder
+    2026-09-30, B2). The approve route answers 410. Pairs come from the
+    three answer surfaces (35g-2a).
+65. The arc-level delivery (Wrap up, Ideal text, Message, Review and send,
+    Delivered), the wrap-up page, the slide-mapping correction control, the
+    confidence label chips, the coach note's surface toggle and the
+    take-review overlay are retired (founder 2026-09-30, B3 to B6), replaced
+    by per-moment Share and the Take word (35g-6). The publish-delivery
+    worker job is retired with them. Removal waits until the ledger has
+    shown a week of walk pairs (L2, build plan ML-5), so the pair count never
+    drops to zero.
+66. The coach compare, audit and corpus-summary pages, the /coach/willab
+    redirects, the three off-flag composers, the CMS exercise lane, /cms/gaps
+    and /cms/jar are retired (founder 2026-09-30, B7, B8); posts stay in
+    /cms, and the jar and gaps counts live on the founder's pace panel. The
+    MLC-3 exercise service loop is retired (L8): its routes answer 410, its
+    monitors are off, its tables stay.
 
 ## Non-negotiable provenance walls
 

@@ -10,7 +10,6 @@ from services.practice_attempt_orchestrator import PracticeAttemptOrchestrator
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ROUTE = (ROOT / "routes/v2/mlc3_first_client_service.py").read_text()
 
 
 def _service_with_client(client: Any) -> DatabaseService:
@@ -60,7 +59,6 @@ def test_unnamed_upload_preserves_mime_derived_object_extension():
     expected = mimetypes.guess_extension("audio/webm") or ".audio"
 
     assert PracticeAttemptOrchestrator._extension("", "audio/webm") == expected
-    assert 'filename=upload.filename or "",' in ROUTE
     assert 'command.filename or "practice.audio"' in (
         ROOT / "services/practice_attempt_orchestrator.py"
     ).read_text()

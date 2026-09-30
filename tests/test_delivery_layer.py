@@ -22,7 +22,6 @@ try:
     from routes.v2 import arcs as v2_arcs
     from routes.v2 import coach as v2_coach
     from routes.v2 import common as v2_common
-    from routes.v2 import explore_ideal_text as v2_explore_ideal_text
     from routes.v2 import lab_recording as v2_lab_recording
     from services.db import db
     from routes.v2 import register_domains
@@ -222,94 +221,6 @@ class KeyMomentContractTests(_FeedbackHarness):
                     "recording_kind", "transcript", "audio_ref",
                     "start_offset_ms", "duration_ms", "comment_text",
                 })
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class IdealTextRoutesTests(unittest.TestCase):
-
-    def setUp(self):
-        self.app = Flask(__name__)
-
-    def test_coach_get_prefers_saved_block_over_auto(self):
-        # updated_by set = a human owns the block → source "coach"
-        # (updated_by NULL would be the eager MACHINE draft → "machine").
-        with self.app.test_request_context():
-            request.user_id = "coach1"
-            with patch.object(db.takes, "get_arc_sessions",
-                              return_value=_sessions()), \
-                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
-                              return_value={"text": "coach block",
-                                            "updated_by": "coach1",
-                                            "approved_at": None}):
-                resp, status = v2_coach.v2_coach_get_ideal_text.__wrapped__(ARC)
-                body = resp.get_json()
-        self.assertEqual(status, 200)
-        self.assertEqual(body["source"], "coach")
-        self.assertEqual(body["text"], "coach block")
-        self.assertEqual(body["assembly_state"], "ready")
-        self.assertFalse(body["approved"])
-
-    def test_coach_get_falls_back_to_auto(self):
-        # ≥3 spoken takes + no persisted row → the cold lazy fallback still
-        # serves (and eager-persists for next open) — the panel is never dead.
-        with self.app.test_request_context():
-            request.user_id = "coach1"
-            with patch.object(db.takes, "get_arc_sessions",
-                              return_value=_sessions()), \
-                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
-                              return_value=None), \
-                 patch("services.ideal_text_block.maybe_assemble_ideal_text",
-                       return_value=True), \
-                 patch("services.ideal_text_block.assemble_ideal_text_block",
-                       return_value={"text": "auto block",
-                                     "key_moments": [], "ready": True}):
-                resp, status = v2_coach.v2_coach_get_ideal_text.__wrapped__(ARC)
-                body = resp.get_json()
-        self.assertEqual(status, 200)
-        self.assertEqual(body["source"], "auto")
-        self.assertEqual(body["text"], "auto block")
-        self.assertEqual(body["assembly_state"], "ready")
-
-    def test_approve_persists_auto_when_no_block_saved(self):
-        with self.app.test_request_context():
-            request.user_id = "coach1"
-            with patch.object(db.ideal_text, "get_coach_arc_ideal_text",
-                              return_value=None), \
-                 patch("services.ideal_text_block.assemble_ideal_text_block",
-                       return_value={"text": "auto block",
-                                     "key_moments": [], "ready": True}), \
-                 patch.object(db.ideal_text, "upsert_coach_arc_ideal_text",
-                              return_value=True) as m_up:
-                resp, status = v2_coach.v2_coach_approve_ideal_text.__wrapped__(ARC)
-        self.assertEqual(status, 200)
-        kw = m_up.call_args.kwargs
-        self.assertTrue(kw["approve"])
-        self.assertEqual(m_up.call_args.args[1], "auto block")
-
-    def test_approve_409_when_nothing_assembled(self):
-        with self.app.test_request_context():
-            request.user_id = "coach1"
-            with patch.object(db.ideal_text, "get_coach_arc_ideal_text",
-                              return_value=None), \
-                 patch("services.ideal_text_block.assemble_ideal_text_block",
-                       return_value={"text": "", "key_moments": [],
-                                     "ready": False}):
-                resp, status = v2_coach.v2_coach_approve_ideal_text.__wrapped__(ARC)
-        self.assertEqual(status, 409)
-        self.assertEqual(resp.get_json()["code"], "IDEAL_TEXT_EMPTY")
-
-    def test_notes_put_never_touches_canonical(self):
-        with self.app.test_request_context(json={"text": "my edited copy"}):
-            request.user_id = "u1"
-            with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
-                              lambda a: (True, _sessions())), \
-                 patch.object(db, "upsert_user_arc_ideal_notes",
-                              return_value=True) as m_notes, \
-                 patch.object(db.ideal_text, "upsert_coach_arc_ideal_text") as m_canon:
-                resp, status = v2_explore_ideal_text.v2_explore_put_ideal_notes.__wrapped__(ARC)
-        self.assertEqual(status, 200)
-        m_notes.assert_called_once_with(ARC, "u1", "my edited copy")
-        m_canon.assert_not_called()   # L1 — the canonical is untouched
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")

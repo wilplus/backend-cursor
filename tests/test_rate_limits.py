@@ -435,8 +435,9 @@ class RealRouteTransparencyTests(unittest.TestCase):
                 capped[name] = mod
         # Phase-2 corpus/training and retired coaching-chat routes are absent
         # from the active paid-route registry in Phase 1; the two onboarding
-        # opener routes left in Phase 6 (audit Q-A7, no frontend caller).
-        self.assertGreaterEqual(len(capped), 21, "route list went stale")
+        # opener routes left in Phase 6 (audit Q-A7, no frontend caller); the
+        # coach's Ideal Text verify and approve were retired 2026-09-30 (B2).
+        self.assertGreaterEqual(len(capped), 19, "route list went stale")
         for name, mod in capped.items():
             with self.subTest(route=name):
                 view = getattr(mod, name, None)
@@ -473,8 +474,6 @@ class CoveredRoutesTests(unittest.TestCase):
         },
         "routes/v2/coach.py": {
             "v2_coach_put_say_it_stronger": "llm_limit",
-            "v2_coach_verify_ideal_text": "heavy_limit",
-            "v2_coach_approve_ideal_text": "heavy_limit",
             "v2_coach_session_recut": "heavy_limit",
             "v2_coach_session_video": "heavy_limit",
         },

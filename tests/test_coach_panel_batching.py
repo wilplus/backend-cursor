@@ -326,29 +326,6 @@ if __name__ == "__main__":
 class TheCoachReviewOpensWithFewerReadsTests(unittest.TestCase):
     """Founder 2026-09-26: the coach review "is just very long"."""
 
-    def test_the_stars_route_reads_snippets_once_for_every_take(self):
-        from unittest.mock import MagicMock, patch
-
-        fake = MagicMock()
-        fake.get_snippets_by_sessions.return_value = {
-            "t1": [{"id": "a", "audio_ref": "https://x/a", "transcript": "hi"},
-                   {"id": "z"}],
-            "t2": [{"id": "b", "storage_path": "https://x/b",
-                    "transcript_excerpt": "yo"}]}
-        with patch.object(v2_coach, "db", fake), \
-                patch("services.audio_ref_resolver.resolve_playable_ref",
-                      side_effect=lambda ref: ref):
-            out = v2_coach._star_playback_by_snippet(
-                [{"id": "t1", "take_index": 1}, {"id": "t2", "take_index": 2}],
-                {"a", "b"})
-        self.assertEqual(fake.get_snippets_by_sessions.call_count, 1)
-        fake.get_snippets_by_session.assert_not_called()
-        self.assertEqual(sorted(out), ["a", "b"])
-        self.assertEqual(out["a"]["audio_ref"], "https://x/a")
-        self.assertEqual(out["b"]["audio_ref"], "https://x/b")
-        self.assertEqual(out["b"]["transcript"], "yo")
-        self.assertEqual(out["b"]["take_index"], 2)
-
     def test_the_coach_readout_skips_the_published_feedback_read(self):
         from unittest.mock import patch
 

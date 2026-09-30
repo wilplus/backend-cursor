@@ -148,16 +148,7 @@ class SealTests(unittest.TestCase):
         self.assertIn("unreadable: attempts", out["why_not"])
 
 
-class RouteTests(unittest.TestCase):
-    def test_the_route_is_registered_password_gated_and_thin(self):
-        source = (ROOT / "routes" / "journal.py").read_text()
-        block = source[source.index("def journal_admin_exercise_learning_evaluation"):]
-        block = block[:block.index("\n@journal_bp.route")]
-        self.assertIn("_journal_admin_ok()", block)
-        self.assertIn("evaluate_jar(db)", block)
-        self.assertEqual(block.count("db."), 0)
-        self.assertIn('"/v2/internal/journal/exercise-learning-evaluation"', source)
-
+class ServingFenceTests(unittest.TestCase):
     def test_nothing_serves_a_learned_ranking(self):
         # The candidate lives in the evaluation only: no serving path imports it.
         for path in ("services/confident_voice_practice.py",

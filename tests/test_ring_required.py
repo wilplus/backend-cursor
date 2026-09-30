@@ -125,11 +125,10 @@ def test_the_old_name_is_the_exercise_service_row():
 def test_every_runtime_caller_names_its_row():
     from pathlib import Path
 
+    # The MLC-3 service loop's seventeen exercise_service callers are 410
+    # tombstones since founder 2026-09-30 (L8; contract 66) and ask no row.
     root = Path(phase2_guard.__file__).resolve().parents[1]
-    service = (root / "routes" / "v2" / "mlc3_first_client_service.py").read_text()
     bundles = (root / "routes" / "v2" / "confident_moment_bundles.py").read_text()
-    assert "@mlc3_service_required" not in service
     assert "@mlc3_service_required" not in bundles
-    assert service.count('@ring_required("exercise_service")') == 17
     assert bundles.count('@ring_required("confident_moment_bundles")') == 7
     assert bundles.count('@ring_required("rooting_coverage")') == 1

@@ -227,53 +227,6 @@ class VerifyDbTests(unittest.TestCase):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class VerifyRouteTests(unittest.TestCase):
-    def setUp(self):
-        self.app = Flask(__name__)
-
-    def _post(self, *, sessions, outcome, row):
-        with self.app.test_request_context(json={}):
-            request.user_id = "coach1"
-            with patch.object(db.takes, "get_arc_sessions",
-                              return_value=sessions), \
-                 patch.object(db, "verify_ideal_text",
-                              return_value=outcome), \
-                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
-                              return_value=row), \
-                 patch("services.arc_notifications.fire_ideal_verified") \
-                    as m_fire:
-                out = v2_coach.v2_coach_verify_ideal_text.__wrapped__(ARC)
-                resp, status = out if isinstance(out, tuple) else (out, 200)
-                return resp.get_json(), status, m_fire
-
-    def test_verify_fires_versioned_bubble_to_owner(self):
-        body, status, m_fire = self._post(
-            sessions=[{"id": "s1", "user_id": "u1"}],
-            outcome="verified", row=_row(version=5))
-        self.assertEqual(status, 200)
-        self.assertTrue(body["verified"])
-        self.assertEqual(body["version"], 5)
-        m_fire.assert_called_once()
-        self.assertEqual(m_fire.call_args.args[1:], ("u1", ARC, 5))
-
-    def test_already_verified_no_second_bubble(self):
-        body, status, m_fire = self._post(
-            sessions=[{"id": "s1", "user_id": "u1"}],
-            outcome="already", row=_row(version=5, verified_version=5))
-        self.assertEqual(status, 200)
-        self.assertTrue(body["already_verified"])
-        m_fire.assert_not_called()
-
-    def test_nothing_to_verify_409(self):
-        body, status, m_fire = self._post(
-            sessions=[{"id": "s1", "user_id": "u1"}],
-            outcome=None, row=None)
-        self.assertEqual(status, 409)
-        self.assertEqual(body["code"], "NOTHING_TO_VERIFY")
-        m_fire.assert_not_called()
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class StudentGetSingleDeliverableTests(unittest.TestCase):
     """BE-4 — both states FREE; the coach's working text never leaks."""
 

@@ -52,12 +52,3 @@ def test_the_bundle_projection_accepts_only_judgement_answers():
     source = inspect.getsource(confident_moment_bundle.validate_family_response)
     assert "JUDGEMENT_RESPONSES" in source
     assert '"apply_suggestion"' not in source
-
-
-def test_the_first_client_service_prefixes_the_confident_voice_answers():
-    from routes.v2.mlc3_first_client_service import _SERVICE_RESPONSES
-
-    assert _SERVICE_RESPONSES == {
-        "confident_yes", "confident_in_between", "confident_no",
-        "confident_not_sure", "confident_audio_unclear",
-    }
