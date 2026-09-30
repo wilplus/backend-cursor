@@ -268,6 +268,12 @@ class _ChangesRun:
         # served, and so the 80/20 draw it freezes is never spent on a moment
         # nobody sees.
         log.run("changes.practice_offer", self._practice_offer)
+        # THE WINDOW OF THREE (founder lock 2026-09-30, task 11). Last,
+        # after the practise is attached: orange needs it, and the window
+        # reads the tier and the practise together. Only V3 rows carry the
+        # tier, so only a V3 Take is windowed.
+        if self.v3_replaced_changes:
+            log.run("changes.window", self._window)
         return self._finish()
 
     def _load_document(self) -> None:
@@ -1344,6 +1350,42 @@ class _ChangesRun:
             # The clips attached upstream belonged to the rows just discarded.
             # `execute` re-attaches them to these — see the note at that call.
             self.v3_replaced_changes = True
+
+    def _window(self) -> None:
+        """At most three open moments reach the page (contract 24b/24c as
+        amended by the founder lock of 2026-09-30). The Manager's selection
+        is frozen above; this chooses what is surfaced NOW, and re-decides
+        on every read so a saved paragraph frees its slot."""
+        from services.feedback_window import window_rows
+        from services.intervention_spend import paragraph_index_at
+
+        parts = self.deps.locked_parts(
+            self.arc_id, str(self.user_id), self.served_text) or []
+        saved = {
+            index for index, part in enumerate(parts)
+            if isinstance(part, dict) and part.get("locked_at")
+            and part.get("root_phrase")}
+        bundle = self.v3_learning.get("bundle") if isinstance(
+            self.v3_learning, dict) else None
+        scores = {
+            str(c.get("id")): c.get("candidate_score")
+            for c in ((bundle or {}).get("candidates") or [])
+            if isinstance(c, dict)}
+
+        def paragraph(row: dict) -> Optional[int]:
+            span = row.get("span")
+            start = span.get("start") if isinstance(span, dict) else None
+            return (paragraph_index_at(self.served_text, start)
+                    if isinstance(start, int) else None)
+
+        def score(row: dict) -> Optional[float]:
+            value = scores.get(str(row.get("id") or ""))
+            return float(value) if isinstance(value, (int, float)) \
+                and not isinstance(value, bool) else None
+
+        self.changes = window_rows(
+            self.changes, paragraph_of=paragraph, saved_paragraphs=saved,
+            score_of=score)
 
     def _v3_learning_presentations(self) -> None:
         # One packet per surface for every served V3 card, from the bundle

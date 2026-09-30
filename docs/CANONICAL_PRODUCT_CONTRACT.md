@@ -136,8 +136,16 @@ with this contract, this contract wins.
     surfaces exactly one relative-best Confident Voice item per valid block, on
     **every** Take including Take 1 — see 24e for what every item carries and
     24f for the anchored notes laid on top. There is no whole-Take item
-    cap, and no Improvement or Praise exists independently of the item it is
-    attached to.
+    cap on selection, and no Improvement or Praise exists independently of the
+    item it is
+    attached to. **Surfacing is windowed** (founder lock 2026-09-30, D8 and
+    task 11): of the items still open, at most three reach the page at any
+    moment — the highest read above the confident threshold, the lowest read
+    below it with a practise, and the next farthest from the threshold on
+    either side, never three of one colour. A paragraph saved with helper
+    words is done and frees its slot; the next open item appears on the next
+    read, without a new Take. Everything answered stays. The window chooses
+    what is shown now; it never changes what the Manager selected or froze.
 
 24b-prior. *(superseded, kept so the change is legible)* "V3 Take 1 surfaces
     exactly one relative-best Confident Voice item per valid block and no
@@ -156,7 +164,9 @@ with this contract, this contract wins.
     the upper rungs unreachable by construction: fourteen Slides of which ten
     can be assessed caps coverage at 71% forever, and Take 3 could never be met.
     With this denominator 100% is reachable, because a valid block always has a
-    relative best.
+    relative best. Coverage counts the Manager's **selection**, which is
+    complete on every Take; the window of three (24b) governs only how many
+    of the selected items are on the page at once.
 
 24d. **Coverage is a target on selection, never a floor on output.** V3 attempts
     every spoken Slide and selects the relative best available on each. It never
