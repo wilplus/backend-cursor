@@ -136,3 +136,61 @@ def get_admin_recordings():
         }), 200
     except Exception as e:
         return safe_error("RECORDINGS_ERROR", 500, exc=e)
+
+
+# ── The founder and the research role (founder 2026-09-30; ML-4, ML-6) ────
+
+def _token_email() -> str:
+    payload = getattr(request, "token_payload", None) or {}
+    return str(payload.get("email") or "").strip().lower()
+
+
+def is_founder_email(email: str) -> bool:
+    """The founder's own email, as config names it (ADMIN_EMAIL)."""
+    from config import Config
+    founder = str(getattr(Config, "ADMIN_EMAIL", "") or "").strip().lower()
+    return bool(founder) and str(email or "").strip().lower() == founder
+
+
+def is_research(email: str) -> bool:
+    """A read-only research account (research_users, is_active)."""
+    if not email:
+        return False
+    try:
+        return bool(db.is_research_user(email))
+    except Exception as e:
+        logger.warning("research_users lookup failed: %s", e, exc_info=True)
+        return False
+
+
+def require_founder(f):
+    """Admin AND the founder's email: the pace panel, the golden set."""
+    from functools import wraps
+    from auth import require_auth as base_require_auth
+
+    @wraps(f)
+    @base_require_auth
+    def decorated_function(*args, **kwargs):
+        if not is_admin(request.user_id) or not is_founder_email(_token_email()):
+            return jsonify({"code": "FORBIDDEN", "error": "Not available"}), 403
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
+def require_research_read(f):
+    """The research role or an admin, for GET only: a research account may
+    call the research reads and nothing else (ML-6)."""
+    from functools import wraps
+    from auth import require_auth as base_require_auth
+
+    @wraps(f)
+    @base_require_auth
+    def decorated_function(*args, **kwargs):
+        if request.method != "GET":
+            return jsonify({"code": "FORBIDDEN", "error": "Read-only"}), 403
+        if not (is_admin(request.user_id) or is_research(_token_email())):
+            return jsonify({"code": "FORBIDDEN", "error": "Research access required"}), 403
+        return f(*args, **kwargs)
+
+    return decorated_function

@@ -261,6 +261,10 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     # Pairs from the exercise library (no take) are about the library.
     # The coach's one word for a speaker's Take (0403): about that Take, it
     # goes with it.
+    # The founder's golden judgement names a speaker's moment (0404): it
+    # goes with the moment, like a coach's blind label does.
+    PurgeDependency("golden_judgements", "golden_judgements", "snippet_id",
+                    "snippet", "delete", "derived_feedback", 35),
     PurgeDependency("coach_take_words", "coach_take_words",
                     "take_session_id", "take", "delete", "derived_feedback", 58),
     PurgeDependency("feedback_pairs_by_take", "feedback_pairs",
@@ -1110,6 +1114,15 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     # by the founder or a coach. Copy, never a speaker's words or recording;
     # nothing here names a person.
     "feedback_catalogue",
+    # A dataset release manifest: counts, rules and a checksum, no subject
+    # column (its items are the subject rows, classified above).
+    "dataset_releases",
+    # The ledger's weekly snapshots hold counts about the machine (0404).
+    "ledger_snapshots",
+    # The research role, like admin_users and coach_users (0404).
+    "research_users",
+    # A surface's sealed golden set: a count and a hash (0404).
+    "golden_sets",
     "model_training_runs", "post_recording_questions",
     "pre_recording_questions", "professional_notes_specific_questions",
     "reference_distribution", "runtime_config", "slide_ab_verdicts",
