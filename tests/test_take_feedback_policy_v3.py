@@ -777,7 +777,7 @@ def test_the_client_row_gets_a_tier_and_never_the_band_or_the_score():
         "delivery_band": "delivery_signal_high",
     }
     presentation = _block_presentation(block, "b1")
-    assert presentation["bookmark_tier"] == "most_confident"
+    assert presentation["bookmark_tier"] == "confident"
     assert "delivery_band" not in presentation
 
     visible = _presentable(
@@ -787,7 +787,7 @@ def test_the_client_row_gets_a_tier_and_never_the_band_or_the_score():
         },
         presentation,
     )
-    assert visible["bookmark_tier"] == "most_confident"
+    assert visible["bookmark_tier"] == "confident"
     assert visible["practice_prompt"] is False
     assert "candidate_score" not in visible, (
         "a raw machine number in a payload is one render away from being shown"
@@ -801,13 +801,19 @@ def test_the_client_row_gets_a_tier_and_never_the_band_or_the_score():
     assert "reason_degraded" not in visible
 
 
-def test_the_exercise_outranks_green_on_the_same_block():
-    """One bookmark, one colour. The orange pulsing exercise wins, because it
-    is the single thing on the screen the user is asked to go and do."""
+def test_the_read_decides_the_tier_not_the_old_ladder_flags():
+    """Founder lock 2026-09-30 (B7): the tier is the read. The old flags of
+    the rank ladder — the two most confident, the single weakest with an
+    exercise — no longer place a colour; a block flagged both ways is
+    whatever its read says."""
     from services.take_feedback_policy_v3_service import _block_presentation
 
-    both = {"carries_exercise": True, "most_confident": True}
-    assert _block_presentation(both, "b1")["bookmark_tier"] == "exercise"
+    flagged_weak = {"carries_exercise": True, "most_confident": True,
+                    "delivery_band": "delivery_signal_low"}
+    assert _block_presentation(flagged_weak, "b1")["bookmark_tier"] == "weak"
+    flagged_confident = {"carries_exercise": True, "most_confident": False,
+                         "delivery_band": "delivery_signal_mid_high"}
+    assert _block_presentation(flagged_confident, "b2")["bookmark_tier"] == "confident"
 
 
 def test_an_ordinary_block_is_standard():
@@ -817,3 +823,36 @@ def test_an_ordinary_block_is_standard():
     assert plain["bookmark_tier"] == "standard"
     assert plain["practice_prompt"] is False
     assert plain["block_id"] == "b9"
+
+
+# ── the bar is the read, in two colours (founder lock 2026-09-30, B7) ──
+
+def test_the_tier_names_the_read_not_the_rank():
+    """`confident` above the threshold, `weak` at or below it, `standard`
+    when the clip could not be read. No position, no number."""
+    from services.take_feedback_policy_v3_service import _block_presentation
+
+    def tier(band):
+        return _block_presentation({"delivery_band": band}, "b")["bookmark_tier"]
+
+    assert tier("delivery_signal_high") == "confident"
+    assert tier("delivery_signal_mid_high") == "confident"
+    assert tier("delivery_signal_neutral") == "weak"
+    assert tier("delivery_signal_mid_low") == "weak"
+    assert tier("delivery_signal_low") == "weak"
+    assert tier(None) == "standard"
+
+
+def test_every_block_above_the_threshold_is_confident_not_only_two():
+    """A threshold is a tier name, never a rank: three blocks read above it
+    are three greens, where the old ladder marked two."""
+    from services.take_feedback_policy_v3 import _practice_routing
+    from services.take_feedback_policy_v3_service import _block_presentation
+
+    blocks = [_rblock("a", 0.9), _rblock("b", 0.6), _rblock("c", 0.2),
+              _rblock("d", -0.3)]
+    _practice_routing(blocks)
+    tiers = [_block_presentation(b, b["block_id"])["bookmark_tier"] for b in blocks]
+    assert tiers == ["confident", "confident", "confident", "weak"]
+    presented = _block_presentation(blocks[0], "a")
+    assert "delivery_band" not in presented and "rank" not in presented

@@ -76,13 +76,24 @@ def _block_presentation(block: dict, block_id: str) -> dict:
     the client is told which bookmark to draw and that practice is offered,
     never how it was scored, where it ranked, or how it compares.
 
-    `most_confident` deliberately carries no position. First and second are
-    identical green (24g) because a visible ordering is a surfaced ranking.
+    TWO COLOURS BY THE READ (founder lock 2026-09-30, B7; contract 24g). The
+    tier is the machine's read of the block as a NAME: `confident` above the
+    threshold (green), `weak` at or below it (orange, once a practise is
+    attached — the client checks that), `standard` when the clip could not
+    be read (no bar). The threshold is the same cut the Manager anchors its
+    notes by and the matrix chooses follow-ups by (`CONFIDENT_BANDS`), so
+    the bar, the note and the follow-up never disagree about one moment.
+    Until the lock the tier named a rank (the two most confident, the
+    single weakest with an exercise); a threshold is a tier name, never a
+    position, so every green is identical (24i).
     """
+    from services.take_feedback_policy_v3 import CONFIDENT_BANDS
+
+    band = block.get("delivery_band")
     tier = (
-        "exercise" if block.get("carries_exercise")
-        else "most_confident" if block.get("most_confident")
-        else "standard"
+        "standard" if band is None
+        else "confident" if band in CONFIDENT_BANDS
+        else "weak"
     )
     return {
         "block_id": block_id,
