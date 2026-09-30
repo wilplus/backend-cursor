@@ -1,5 +1,6 @@
-"""Practice is judged after every attempt; an adopted attempt feeds the
-paragraph (contract 29a / 35d, founder 2026-09-25, Q17 A / Q18 A)."""
+"""The practice loop (contract 29a, founder lock 2026-09-30, B6, D1, D2):
+judged after every attempt, no cap, three kinds of passage, and never a
+rewrite of the paragraph."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -9,45 +10,32 @@ import pytest
 
 from services.data_purge_registry import DEPENDENCIES
 from services.practice_adoption import (
-    ADOPTING,
+    DONE_ANSWERS,
     ANSWERS,
+    KINDS,
     LEGACY_ROUTE_OF,
     route_matches,
     helper_words_from_practice,
     judge_attempt,
     judgeable_attempt,
     outcome,
-    passage_span,
+    passage_for,
     phrase_in_transcript,
-    splice,
 )
 
-TEXT = "We cut onboarding.\n\nFrom nine days to two, fast. Every hire ships."
-DOC = {
-    "pieces": [
-        {"snippet_id": "s1", "start": 0, "end": 18, "text": "We cut onboarding."},
-        {"snippet_id": "s2", "start": 20, "end": 48,
-         "text": "From nine days to two, fast."},
-        {"snippet_id": "s3", "start": 49, "end": 66, "text": "Every hire ships."},
-    ],
-    "paragraphs": [
-        {"slide_index": 0, "start": 0, "end": 18},
-        {"slide_index": 1, "start": 20, "end": 66},
-    ],
-}
 
-
-@pytest.mark.parametrize("answer,attempts,expected", [
-    ("yes", 1, "adopt"), ("in_between", 2, "adopt"), ("not_sure", 3, "adopt"),
-    ("no", 1, "again"), ("audio_unclear", 2, "again"),
-    ("no", 3, "closed"), ("audio_unclear", 3, "closed"),
+@pytest.mark.parametrize("answer,expected", [
+    ("yes", "done"), ("in_between", "done"),
+    ("no", "again"), ("not_sure", "again"), ("audio_unclear", "again"),
 ])
-def test_the_loop(answer, attempts, expected):
-    assert outcome(answer, attempts) == expected
+def test_the_loop_ends_on_yes_or_in_between_and_never_on_a_count(answer, expected):
+    # No cap (D2): the answer alone decides, however many attempts exist.
+    assert outcome(answer) == expected
 
 
-def test_only_yes_in_between_and_not_sure_adopt():
-    assert ADOPTING == {"yes", "in_between", "not_sure"}
+def test_only_yes_and_in_between_are_done():
+    # B2: Not sure is another attempt, not a moment to build a cue on.
+    assert DONE_ANSWERS == {"yes", "in_between"}
 
 
 def test_only_the_latest_unjudged_attempt_is_judgeable():
@@ -59,29 +47,24 @@ def test_only_the_latest_unjudged_attempt_is_judgeable():
     assert judgeable_attempt([]) is None
 
 
-def test_the_passage_is_found_by_its_piece_never_by_fuzzy_text():
-    assert passage_span(DOC, TEXT, "s2") == (20, 48)
-    assert passage_span(DOC, TEXT, "gone") is None
-    moved = TEXT.replace("nine", "ten")
-    assert passage_span(DOC, moved, "s2") is None
-
-
-def test_splice_replaces_only_the_passage_and_moves_every_offset():
-    new_text, new_doc = splice(TEXT, DOC, 20, 48, "Nine days became two.")
-    assert new_text == ("We cut onboarding.\n\nNine days became two. "
-                        "Every hire ships.")
-    for piece in new_doc["pieces"]:
-        assert new_text[piece["start"]:piece["end"]] == piece["text"]
-    last = new_doc["paragraphs"][1]
-    assert new_text[last["start"]:last["end"]] == (
-        "Nine days became two. Every hire ships.")
+def test_three_kinds_of_passage():
+    # D1: the exercise and the plain moment practise the moment's own words;
+    # the rewrite practises the Manager's clearer version.
+    assert KINDS == ("exercise", "rewrite", "plain")
+    assert passage_for("exercise", " We cut onboarding. ", None) == "We cut onboarding."
+    assert passage_for("plain", "We cut onboarding.", "ignored") == "We cut onboarding."
+    assert passage_for("rewrite", "We cut onboarding.", "  We  cut it. ") == "We cut it."
+    assert passage_for("rewrite", "We cut onboarding.", "") is None
+    assert passage_for("rewrite", "x", "**bold** words") is None
+    assert passage_for("plain", "", None) is None
+    assert passage_for("song", "words", "words") is None
 
 
 def test_helper_words_must_be_exact_practice_words():
-    said = "  From nine days\n to two  "
-    assert phrase_in_transcript("nine days to", said) == "nine days to"
-    assert phrase_in_transcript("ten days", said) is None
-    assert phrase_in_transcript("**nine**", said) is None
+    assert phrase_in_transcript("nine days", "From  nine days to two") == "nine days"
+    assert phrase_in_transcript("ten days", "From nine days to two") is None
+    assert phrase_in_transcript("**nine**", "nine") is None
+    assert phrase_in_transcript(None, "nine") is None
 
 
 class _Db:
@@ -114,28 +97,33 @@ def test_a_no_leaves_the_practice_open_for_another_attempt():
     assert db.updates == []
 
 
-def test_a_yes_completes_and_adopts():
-    db = _Db([{"id": "a1", "attempt_index": 1, "user_answer": None,
-               "transcript": "Nine days became two."}])
-    with mock.patch("services.practice_adoption.adopt",
-                    return_value={"adopted": True, "reason": "",
-                                  "paragraph": "Nine days became two."}) as adopt:
-        status, body = judge_attempt(db, db.practice, "a1", "in_between", "u")
-    assert status == 200 and body["outcome"] == "adopt" and body["adopted"]
-    assert body["attempt_transcript"]
-    assert body["paragraph"] == "Nine days became two."
-    assert db.practice["status"] == "completed"
-    assert db.practice["final_user_answer"] == "in_between"
-    adopt.assert_called_once()
-
-
-def test_the_third_no_closes_without_adopting():
+def test_the_tenth_no_is_another_attempt_too():
+    # D2: attempt 10 works like attempt 1.
     rows = [{"id": f"a{i}", "attempt_index": i,
-             "user_answer": "no" if i < 3 else None} for i in (1, 2, 3)]
+             "user_answer": "no" if i < 10 else None} for i in range(1, 11)]
     db = _Db(rows)
-    status, body = judge_attempt(db, db.practice, "a3", "no", "u")
-    assert body["outcome"] == "closed" and not body["adopted"]
-    assert db.practice["status"] == "completed"
+    status, body = judge_attempt(db, db.practice, "a10", "not_sure", "u")
+    assert (status, body["outcome"]) == (200, "again")
+    assert db.practice["status"] == "open"
+
+
+def test_a_yes_or_in_between_is_done_and_never_rewrites_the_paragraph():
+    for answer in ("yes", "in_between"):
+        db = _Db([{"id": "a1", "attempt_index": 1, "user_answer": None,
+                   "transcript": "Nine days became two."}])
+        status, body = judge_attempt(db, db.practice, "a1", answer, "u")
+        assert status == 200 and body["outcome"] == "done"
+        # B6: nothing is adopted; the words are for the helper-words picker.
+        assert body["adopted"] is False and body["paragraph"] is None
+        assert body["attempt_transcript"] == "Nine days became two."
+        assert db.practice["status"] == "completed"
+        assert db.practice["final_user_answer"] == answer
+
+
+def test_the_adoption_is_retired_with_its_code():
+    import services.practice_adoption as module
+    for gone in ("adopt", "splice", "passage_span", "MAX_ATTEMPTS", "ADOPTING"):
+        assert not hasattr(module, gone), gone
 
 
 def test_only_the_latest_attempt_and_the_five_answers_are_accepted():
@@ -146,12 +134,16 @@ def test_only_the_latest_attempt_and_the_five_answers_are_accepted():
     assert judge_attempt(closed, closed.practice, "a1", "yes", "u")[0] == 409
 
 
-def test_helper_words_from_practice_need_an_adopting_answer():
+def test_helper_words_from_practice_need_a_done_answer():
     db = _Db([{"id": "a1", "attempt_index": 1, "transcript": "From nine days"}])
     assert helper_words_from_practice(
         db, db.practice, "part", "nine days", "u")[0] == 409
     db.practice.update(status="completed", final_user_answer="not_sure",
                        selected_attempt_id="a1")
+    # Not sure is not done (B2): no helper words from it.
+    assert helper_words_from_practice(
+        db, db.practice, "part", "nine days", "u")[0] == 409
+    db.practice.update(final_user_answer="in_between")
     db.takes = mock.Mock(get_arc_sessions=mock.Mock(return_value=[]))
     with mock.patch("services.slide_helper_words.record_pick") as pick:
         status, body = helper_words_from_practice(
@@ -160,6 +152,33 @@ def test_helper_words_from_practice_need_an_adopting_answer():
     pick.assert_called_once()
     assert helper_words_from_practice(
         db, db.practice, "part", "ten days", "u")[0] == 400
+
+
+def test_the_route_has_no_attempt_cap_and_knows_the_three_kinds():
+    source = (Path(__file__).resolve().parents[1]
+              / "routes/v2/user_sessions.py").read_text()
+    assert "ATTEMPT_LIMIT" not in source
+    assert '"attempts_remaining"' not in source
+    start = source.index("def v2_start_confident_voice_practice")
+    end = source.index("@v2_bp.route", start)
+    route = source[start:end]
+    assert "passage_for(" in route
+    assert "_practice_start_gate(" in route
+    payload = source[source.index("def _practice_user_payload"):
+                     source.index("@v2_bp.route",
+                                  source.index("def _practice_user_payload"))]
+    assert '"kind": kind' in payload
+
+
+def test_the_migration_lets_a_practice_stand_without_an_exercise():
+    sql = (Path(__file__).resolve().parents[1] / "migrations"
+           / "practice_without_a_library_exercise.sql").read_text()
+    assert "ALTER COLUMN exercise_id DROP NOT NULL" in sql
+    assert "ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'exercise'" in sql
+    assert "CHECK (kind IN ('exercise', 'rewrite', 'plain'))" in sql
+    manifest = (Path(__file__).resolve().parents[1] / "migrations"
+                / "manifest.txt").read_text()
+    assert "practice_without_a_library_exercise.sql" in manifest
 
 
 def test_the_migration_widens_all_three_answers_and_registers_history():

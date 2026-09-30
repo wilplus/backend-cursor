@@ -1,20 +1,22 @@
-"""A judged practice attempt feeds the paragraph (contract 29a / 35d, founder
-2026-09-25).
+"""The practice loop (contract 29a, founder lock 2026-09-30, B6, D2).
 
-Q17 A: every practice attempt is judged on the same five-answer screen as the
-first judgement. No or Audio unclear offers another attempt, up to three.
-Yes, In-between or Not sure ADOPTS that attempt:
+Every practice attempt is judged on the same five-answer screen as the
+first judgement (Q17 A). No, Not sure or Audio unclear offers another
+attempt, as long as the speaker wants: there is no attempt cap (D2). Yes or
+In-between is done: the helper words are tapped from that attempt's own
+words and the lock follows (B6).
 
-Q18 A: the attempt's words replace only the passage that was practised, inside
-its paragraph; the rest stays as the Take said it. The passage is found by its
-recording piece in the document (`snippet_id`), never by fuzzy text matching.
-If that piece is no longer in the document (a later Take rebuilt the Slide),
-nothing is replaced — the speaker still taps helper words from the practice.
+A PRACTICE NEVER REWRITES THE PARAGRAPH (B6: "the paragraph text on the
+page is unchanged by any attempt; only a Take rewrites it"). Until the lock
+an adopting answer spliced the attempt's transcript into the passage it
+practised (founder 2026-09-25, Q18 A); that rule is retired with its code,
+and the rows it wrote stay in `ideal_text_practice_adoptions` for the
+paragraph history to read.
 
-The replacement is one atomic RPC that refuses a document that moved since it
-was read. The previous words stay in `ideal_text_practice_adoptions`, which
-the paragraph history reads. The next Take rewrites the paragraph again
-(contract 8).
+THREE KINDS OF PASSAGE (D1): the library exercise where one is matched to
+the clip, else the Manager's rewrite as the words to say, else the plain
+moment said again. The kind names what the passage is; the loop is the same
+for all three.
 
 Owner self-reports only — nothing here is a label, and Voice Album admission
 still needs Machine Yes + User Yes + Coach Yes on the exact attempt (L3).
@@ -36,8 +38,12 @@ ANSWERS = tuple(
     if answer in OWNER_RESPONSES["confident_voice"]
 )
 assert set(ANSWERS) == set(OWNER_RESPONSES["confident_voice"])
-ADOPTING = frozenset({"yes", "in_between", "not_sure"})
-MAX_ATTEMPTS = 3
+# The answers that end the loop and open the helper words (B2, 29a).
+DONE_ANSWERS = frozenset({"yes", "in_between"})
+
+# What the practised passage is (D1): a library exercise, the Manager's
+# rewrite, or the moment's own words.
+KINDS = ("exercise", "rewrite", "plain")
 
 # The owner route stores the answer itself since F-4 closed (2026-09-28,
 # `album_routing_for`). Rows written before that hold the four legacy routing
@@ -56,11 +62,26 @@ def route_matches(stored: str, answer: str) -> bool:
     return stored == answer or stored == LEGACY_ROUTE_OF[answer]
 
 
-def outcome(answer: str, attempts: int) -> str:
-    """"adopt", "again" or "closed" after judging the latest attempt."""
-    if answer in ADOPTING:
-        return "adopt"
-    return "again" if attempts < MAX_ATTEMPTS else "closed"
+def outcome(answer: str) -> str:
+    """"done" or "again" after judging the latest attempt. No cap (D2):
+    every answer but Yes and In-between is another attempt."""
+    return "done" if answer in DONE_ANSWERS else "again"
+
+
+def passage_for(kind: Any, transcript: Any, proposed: Any) -> Optional[str]:
+    """The words to say for a practice of this kind, or None when the kind
+    is unknown or the passage is missing. An exercise or the plain moment
+    practises the moment's own words; a rewrite practises the Manager's
+    clearer version, sent by the client from the served item."""
+    if kind not in KINDS:
+        return None
+    if kind == "rewrite":
+        words = re.sub(r"\s+", " ", str(proposed or "")).strip()
+        if not words or re.search(r"[*_~`{}]", words) or len(words) > 2000:
+            return None
+        return words
+    words = str(transcript or "").strip()
+    return words or None
 
 
 def judgeable_attempt(attempts: list) -> Optional[dict]:
@@ -69,23 +90,6 @@ def judgeable_attempt(attempts: list) -> Optional[dict]:
         return None
     latest = max(attempts, key=lambda r: int(r.get("attempt_index") or 0))
     return None if latest.get("user_answer") else latest
-
-
-def passage_span(document: Any, text: str,
-                 snippet_id: str) -> Optional[tuple[int, int]]:
-    """Where the practised passage sits in the current text, by its piece."""
-    if not isinstance(document, Mapping):
-        return None
-    for piece in document.get("pieces") or []:
-        if not isinstance(piece, Mapping):
-            continue
-        if str(piece.get("snippet_id") or "") != str(snippet_id):
-            continue
-        a, b = piece.get("start"), piece.get("end")
-        if (isinstance(a, int) and isinstance(b, int) and 0 <= a < b <= len(text)
-                and text[a:b] == piece.get("text")):
-            return a, b
-    return None
 
 
 def practice_words(transcript: Any, language: Optional[str] = None) -> str:
@@ -97,109 +101,9 @@ def practice_words(transcript: Any, language: Optional[str] = None) -> str:
     return smooth_piece(flat, language) if flat else ""
 
 
-def splice(text: str, document: Mapping, start: int, end: int,
-           words: str) -> tuple[str, dict]:
-    """Replace [start, end) with `words`; every offset after it moves."""
-    delta = len(words) - (end - start)
-    new_text = text[:start] + words + text[end:]
-
-    def _moved(row: Mapping) -> dict:
-        a, b = row.get("start"), row.get("end")
-        out = dict(row)
-        if isinstance(a, int) and a >= end:
-            out["start"] = a + delta
-        if isinstance(b, int) and b >= end:
-            out["end"] = b + delta
-        return out
-
-    pieces = []
-    for piece in document.get("pieces") or []:
-        if not isinstance(piece, Mapping):
-            continue
-        if piece.get("start") == start and piece.get("end") == end:
-            pieces.append(dict(piece, end=start + len(words), text=words))
-        else:
-            pieces.append(_moved(piece))
-    paragraphs = [_moved(p) for p in document.get("paragraphs") or []
-                  if isinstance(p, Mapping)]
-    return new_text, dict(document, pieces=pieces, paragraphs=paragraphs)
-
-
-def _paragraph_at(text: str, at: int) -> tuple[int, str]:
-    blocks = text.split("\n\n")
-    cursor = 0
-    for i, block in enumerate(blocks):
-        if cursor <= at <= cursor + len(block):
-            return i, block
-        cursor += len(block) + 2
-    return len(blocks) - 1, blocks[-1]
-
-
-def adopt(database: Any, practice: Mapping, attempt: Mapping,
-          owner_user_id: str) -> dict:
-    """Replace the practised passage with the attempt's words, if provable.
-
-    Returns {"adopted": bool, "reason": str}. Never raises: the answer is
-    already stored, and a paragraph that cannot be changed is not an error
-    the speaker can act on."""
-    arc_id = str(practice.get("project_id") or "")
-    try:
-        row = database.ideal_text.get_coach_arc_ideal_text(arc_id) or {}
-        text = str(row.get("auto_text") or "")
-        document = row.get("document")
-        span = passage_span(document, text, str(practice.get("snippet_id")))
-        if span is None or not isinstance(document, Mapping):
-            return {"adopted": False, "reason": "passage_not_in_document"}
-        words = practice_words(attempt.get("transcript"))
-        if not words:
-            return {"adopted": False, "reason": "empty_transcript"}
-        new_text, new_document = splice(text, document, span[0], span[1],
-                                        words)
-        index, before = _paragraph_at(text, span[0])
-        after = new_text.split("\n\n")[index]
-        paragraphs = new_document.get("paragraphs") or []
-        slide = (paragraphs[index].get("slide_index")
-                 if index < len(paragraphs) else None)
-        receipt = database.adopt_practice_passage(
-            arc_id=arc_id, owner_user_id=owner_user_id,
-            expected_text=text, new_text=new_text, new_document=new_document,
-            slide_index=slide, practice_id=str(practice.get("id")),
-            attempt_id=str(attempt.get("id")), before=before, after=after)
-        if not isinstance(receipt, Mapping) or receipt.get("adopted") is not True:
-            return {"adopted": False, "reason": "document_moved"}
-        _rename_part(database, arc_id, owner_user_id, text, index, after)
-        from services.ideal_text_core_snapshot import publish_for_arc
-        publish_for_arc(database, arc_id, owner_user_id)
-        return {"adopted": True, "reason": "", "paragraph": after}
-    except Exception as error:
-        logger.warning("practice adoption failed practice=%s: %s",
-                       practice.get("id"), error)
-        return {"adopted": False, "reason": "error"}
-
-
-def _rename_part(database: Any, arc_id: str, user_id: str, old_text: str,
-                 index: int, after: str) -> None:
-    """The adopted paragraph keeps its id; only its words change."""
-    from services.ideal_text_parts import agrees_with_text, serve
-
-    rows = database.get_ideal_text_parts(arc_id, user_id, with_lock=True) or []
-    served = serve(rows)
-    if not served or not agrees_with_text(served, old_text) \
-            or index >= len(served):
-        return
-    by_id = {str(r.get("id")): r for r in rows}
-    database.replace_ideal_text_parts(arc_id, user_id, [
-        {"id": p["id"], "ord": i,
-         "text": after if i == index else p["text"],
-         "locked_at": (by_id.get(str(p["id"])) or {}).get("locked_at")}
-        for i, p in enumerate(served)])
-
-
 def phrase_in_transcript(phrase: Any, transcript: Any) -> Optional[str]:
-    """The helper words, when they are exact words of the practice attempt.
-
-    Used when the passage could not be adopted: the speaker still taps their
-    helper words from what they said while practising (Q10 B / Q18 A)."""
+    """The helper words, when they are exact words of the practice attempt:
+    the speaker taps them from what they said while practising (B6)."""
     if not isinstance(phrase, str):
         return None
     want = re.sub(r"\s+", " ", phrase).strip()
@@ -232,7 +136,10 @@ def judge_attempt(database: Any, practice: Mapping, attempt_id: str,
     if not database.keep_confident_voice_practice_attempt(
             str(practice.get("id")), str(attempt_id), str(answer)):
         return 500, {"code": "V2_ERROR", "error": "Could not save."}
-    step = outcome(str(answer), len(attempts))
+    step = outcome(str(answer))
+    # `adopted` and `paragraph` stay on the wire, always False and None: a
+    # practice never rewrites the paragraph (B6). `attempt_transcript` is
+    # what the helper-words picker taps from.
     result: dict = {"outcome": step, "adopted": False, "paragraph": None,
                     "attempt_transcript": None, "practice_row": practice}
     if step == "again":
@@ -245,31 +152,23 @@ def judge_attempt(database: Any, practice: Mapping, attempt_id: str,
             "final_user_answer": str(answer),
             "closed_at": now,
         }) or practice
-    if step == "adopt":
-        adoption = adopt(database, practice, target, owner_user_id)
-        # `paragraph`: the adopted paragraph's words, so the sheet shows them
-        # at once and locks against the text the server now holds.
-        result.update(adopted=adoption["adopted"],
-                      paragraph=adoption.get("paragraph"),
-                      attempt_transcript=practice_words(
-                          target.get("transcript")))
+    result["attempt_transcript"] = practice_words(target.get("transcript"))
     return 200, result
 
 
 def helper_words_from_practice(database: Any, practice: Mapping,
                                part_id: Any, phrase: Any,
                                owner_user_id: str) -> tuple[int, dict]:
-    """Tap helper words from the adopted practice attempt (Q10 B).
+    """Tap helper words from the judged practice attempt (B6).
 
-    For when the passage could not be adopted into the paragraph: the words
-    are then not in the paragraph, so the paragraph-level endpoint cannot
-    take them. They are stored on the Slide, unlocked; the Lock step that
-    follows locks them like any other pick."""
+    The attempt's words are not in the paragraph, so the paragraph-level
+    endpoint cannot take them. They are stored on the Slide, unlocked; the
+    lock that follows locks them like any other pick."""
     from services.intervention_spend import latest_spoken_take_sid
     from services.slide_helper_words import record_pick
 
     if practice.get("status") != "completed" \
-            or practice.get("final_user_answer") not in ADOPTING:
+            or practice.get("final_user_answer") not in DONE_ANSWERS:
         return 409, {"code": "NOT_ADOPTED",
                      "error": "Judge a practice attempt first."}
     if not isinstance(part_id, str) or not part_id:

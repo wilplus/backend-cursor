@@ -92,8 +92,8 @@
     "db_calls": 0
   },
   "routes/v2/coach.py:_coach_practice_payload": {
-    "lines": 90,
-    "db_calls": 5
+    "lines": 89,
+    "db_calls": 3
   },
   "routes/v2/coach.py:_save_coach_snippet_lanes": {
     "lines": 84,
@@ -108,12 +108,12 @@
     "db_calls": 2
   },
   "routes/v2/coach.py:v2_coach_arc_review_state": {
-    "lines": 177,
-    "db_calls": 1
+    "lines": 165,
+    "db_calls": 0
   },
   "routes/v2/coach.py:v2_coach_arc_stars": {
-    "lines": 78,
-    "db_calls": 3
+    "lines": 49,
+    "db_calls": 2
   },
   "routes/v2/coach.py:v2_coach_audit_data": {
     "lines": 53,
@@ -124,11 +124,11 @@
     "db_calls": 3
   },
   "routes/v2/coach.py:v2_coach_confidence_queue": {
-    "lines": 95,
+    "lines": 94,
     "db_calls": 3
   },
   "routes/v2/coach.py:v2_coach_confident_voice_practice": {
-    "lines": 148,
+    "lines": 142,
     "db_calls": 6
   },
   "routes/v2/coach.py:v2_coach_confirm_session_language": {
@@ -180,7 +180,7 @@
     "db_calls": 5
   },
   "routes/v2/coach.py:v2_coach_session_video": {
-    "lines": 98,
+    "lines": 97,
     "db_calls": 2
   },
   "routes/v2/coach.py:v2_coach_student_detail": {
@@ -204,7 +204,7 @@
     "db_calls": 2
   },
   "routes/v2/coach_guidance_delivery.py:v2_coach_guidance_attachment": {
-    "lines": 269,
+    "lines": 222,
     "db_calls": 7
   },
   "routes/v2/coach_guidance_delivery.py:v2_coach_guidance_batch": {
@@ -236,15 +236,15 @@
     "db_calls": 2
   },
   "routes/v2/explore_ideal_text.py:v2_explore_get_ideal_text": {
-    "lines": 481,
+    "lines": 477,
     "db_calls": 4
   },
   "routes/v2/explore_ideal_text.py:v2_explore_get_ideal_text_enrichment": {
-    "lines": 171,
+    "lines": 166,
     "db_calls": 5
   },
   "routes/v2/explore_ideal_text.py:v2_explore_get_recording_roots": {
-    "lines": 36,
+    "lines": 33,
     "db_calls": 2
   },
   "routes/v2/explore_ideal_text.py:v2_explore_put_ideal_user_edit": {
@@ -252,7 +252,7 @@
     "db_calls": 1
   },
   "routes/v2/explore_ideal_text.py:v2_explore_set_part_lock": {
-    "lines": 208,
+    "lines": 207,
     "db_calls": 5
   },
   "routes/v2/explore_ideal_text.py:v2_explore_set_part_root": {
@@ -264,7 +264,7 @@
     "db_calls": 0
   },
   "routes/v2/mlc2_consent.py:v2_user_mlc2_consent": {
-    "lines": 124,
+    "lines": 116,
     "db_calls": 4
   },
   "routes/v2/mlc3_first_client_coach.py:v2_coach_mlc3_reviews": {
@@ -315,10 +315,6 @@
     "lines": 118,
     "db_calls": 4
   },
-  "routes/v2/user_sessions.py:_practice_user_payload": {
-    "lines": 57,
-    "db_calls": 2
-  },
   "routes/v2/user_sessions.py:v2_add_confident_voice_practice_attempt": {
     "lines": 141,
     "db_calls": 5
@@ -328,19 +324,19 @@
     "db_calls": 5
   },
   "routes/v2/user_sessions.py:v2_post_take_feedback_response": {
-    "lines": 186,
-    "db_calls": 6
+    "lines": 182,
+    "db_calls": 4
   },
   "routes/v2/user_sessions.py:v2_put_confidence_agree": {
     "lines": 67,
     "db_calls": 3
   },
   "routes/v2/user_sessions.py:v2_start_confident_voice_practice": {
-    "lines": 130,
-    "db_calls": 7
+    "lines": 121,
+    "db_calls": 6
   },
   "routes/v2/user_sessions.py:v2_user_get_session_readout": {
-    "lines": 108,
+    "lines": 104,
     "db_calls": 1
   },
   "routes/v2/user_sessions.py:v2_user_list_trainings": {
