@@ -37,8 +37,8 @@ OWNER_USER = "44444444-4444-4444-4444-444444444444"
 RECORDING = "22222222-2222-2222-2222-222222222222"
 
 # What V3 actually serves: one relative-best Confident Voice item per valid
-# 75-word block (contract 24b), plus at most one rewrite for the whole Take
-# (24f). Six items, five of one family — a shape V2's budget could never hold.
+# 75-word block (contract 24b), plus a rewrite on a block read weak (24f).
+# Six items, five of one family — a shape V2's budget could never hold.
 V3_SET = [
     {"id": "cv-block-0", "feedback_family": "confident_voice"},
     {"id": "cv-block-1", "feedback_family": "confident_voice"},

@@ -20,7 +20,11 @@ from services.take_feedback_manager import (
     EVIDENCE_SCHEMA_VERSION as MANAGER_EVIDENCE_SCHEMA_VERSION,
     POLICY_VERSION as MANAGER_RULES_VERSION,
 )
-from services.voice_confidence import VERSION as CONFIDENCE_DETECTOR_VERSION
+from services.voice_confidence import (
+    BAND_HIGH,
+    BAND_MID_HIGH,
+    VERSION as CONFIDENCE_DETECTOR_VERSION,
+)
 from config import Config
 
 config = Config()
@@ -29,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 POLICY_VERSION = "take-feedback-policy-v3-universal-dark-v3"
 SERVICE_POLICY_VERSION = "take-feedback-policy-v3-serving-v1"
-FRAME_SCHEMA_VERSION = "take-feedback-policy-v3-frame-v3"
+FRAME_SCHEMA_VERSION = "take-feedback-policy-v3-frame-v4"
 SUGGESTION_GENERATOR_CONTRACT_VERSION = "feedback-candidate-generator-v1"
 TARGET_WORDS = 75
 MIN_WORDS = 60
@@ -286,9 +290,19 @@ def _clip_lineage(
     }, None
 
 
-#: Praise anchors to the Take's most and second-most Confident Voice items
-#: (contract 24f). Two, not one — and at most two, never padded to two.
-PRAISE_ANCHOR_LIMIT = 2
+#: The Take's most and second-most Confident Voice items render green
+#: (contract 24g). The number is the bookmark colour's, no longer praise's:
+#: until 2026-09-29 praise anchored to these two blocks only.
+MOST_CONFIDENT_LIMIT = 2
+
+#: THE MANAGER'S READ OF A BLOCK (contract 24f, founder 2026-09-29: "praise on
+#: any moment both sides call confident, a rewrite on any weak-words
+#: moment"). Above neutral is read confident; neutral and below is read weak.
+#: The same cut as `services.confident_voice_practice.machine_read`, which
+#: reads the same stamped score on the clip when the judgement lands, so the
+#: note the Manager anchored and the follow-up the matrix chooses agree.
+#: Internal: the read chooses and is never surfaced (AC-9).
+CONFIDENT_BANDS = (BAND_HIGH, BAND_MID_HIGH)
 
 #: The practice threshold cuts BELOW neutral (founder, 2026-09-18). The two
 #: bands under it prompt; neutral and above do not.
@@ -398,13 +412,15 @@ def _mark_top_confidence(blocks: list[dict], limit: int) -> list[dict]:
     THE GREEN BOOKMARK (contract 24g). The Take's two most Confident Voice
     items render green, identically — first and second are never distinguished,
     because a visible ordering is a surfaced ranking. Which two they are was
-    already computed for praise anchoring and then thrown away, so the client
+    once computed for praise anchoring and then thrown away, so the client
     had no way to draw them and every bookmark came out the same colour.
+    Praise no longer anchors here (24f, founder 2026-09-29: every block read
+    confident); the mark is the colour alone.
 
     A FLAG, NOT THE RANK. What lands on the block is a boolean: this item is
     one of the two, with no position and no score. `_top_confidence_blocks`
-    returns them best-first because praise anchoring needs an order; nothing
-    downstream of here may see it (24i).
+    returns them best-first; nothing downstream of here may see the order
+    (24i).
 
     Written here rather than in the caller for the reason `_practice_routing`
     gives: `build_shadow_frame` is grandfathered at CC 37 and the ratchet only
@@ -421,32 +437,50 @@ def _mark_top_confidence(blocks: list[dict], limit: int) -> list[dict]:
     return top
 
 
-def _anchored_praise(
-    ranked_praise: list[dict], top_blocks: list[dict],
-) -> list[dict]:
-    """Praise for the top Confident Voice blocks — option (a), founder.
+def _blocks_read(blocks: list[dict], *, confident: bool) -> list[dict]:
+    """The selected blocks the machine reads confident (above neutral) or
+    weak (neutral and below), in document order.
 
-    A praise candidate qualifies only when its document span falls INSIDE one
-    of those blocks. Praise stays evidence-led: it is the detector's own
-    finding about words the speaker actually said, not a compliment attached
-    to a block because the block ranked well.
+    A block with no delivery band — no selected item, or a clip the detector
+    could not measure — is neither. The machine could not read it, so neither
+    note anchors there: the judgement still reaches the coach as an ambiguity
+    (35g-2), and a human ear settles it.
+    """
+    return [
+        block for block in blocks
+        if block.get("selected_candidate_id")
+        and block.get("delivery_band") is not None
+        and (block["delivery_band"] in CONFIDENT_BANDS) == confident
+    ]
 
-    The consequence, accepted deliberately: a green bookmark sometimes carries
-    no praise, because the strongest-sounding block had nothing defensible to
-    praise in it. That is the honest outcome. The alternative — praising the
-    block anyway with whatever text was nearest — is manufacturing, which L2
-    and contract 24d forbid.
 
-    `ranked_praise` arrives best-first, so the first candidate found inside a
-    block is that block's best. One per block, so two blocks yield at most two.
+def _anchored_notes(ranked: list[dict], blocks: list[dict]) -> list[dict]:
+    """The best note inside each of these blocks: praise for the blocks read
+    confident, the rewrite for the blocks read weak (contract 24f, founder
+    2026-09-29 — the caps of two praise and one rewrite per Take are lifted).
+
+    A candidate qualifies only when its document span falls INSIDE the block.
+    The note stays evidence-led: it is the detector's own finding about words
+    the speaker actually said, not a compliment or a correction attached to a
+    block because of how the block was read.
+
+    The consequence, accepted deliberately: a block read confident sometimes
+    carries no praise and a block read weak no rewrite, because nothing
+    defensible was found in its words. That is the honest outcome. The
+    alternative — a note made from whatever text was nearest — is
+    manufacturing, which L2 and contract 24d forbid.
+
+    `ranked` arrives best-first, so the first candidate found inside a block
+    is that block's best. One per block, never more, and a candidate anchors
+    once.
     """
     chosen: list[dict] = []
     used: set[str] = set()
-    for block in top_blocks:
+    for block in blocks:
         start, end = block.get("start"), block.get("end")
         if not isinstance(start, int) or not isinstance(end, int):
             continue
-        for item in ranked_praise:
+        for item in ranked:
             candidate_id = str(item.get("candidate_id") or "")
             span = item.get("document_span")
             if not candidate_id or candidate_id in used or not isinstance(span, dict):
@@ -468,7 +502,7 @@ def _log_verbal_lanes(take_id: Any, rewrite_ranked: list,
                       praise_selected: list) -> None:
     """Why a lane came out empty, in counts only (founder 2026-09-28: "no
     praise and no corrections"). No detector finding (candidates=0) and a
-    finding outside the two most Confident blocks (candidates>0,
+    finding outside every block its read would anchor it to (candidates>0,
     anchored=0) are different causes."""
     logger.info(
         "v3 lanes take=%s rewrite candidates=%d selected=%d "
@@ -764,9 +798,9 @@ def _verbal_inventory(
         ranked.append((rank, item))
 
     ranked.sort(key=lambda value: value[0])
-    # Return the whole ranking, not just the winner. Praise is no longer a
-    # single global pick: it anchors to the Take's two most Confident Voice
-    # blocks (contract 24f), so the caller has to ask "best praise INSIDE this
+    # Return the whole ranking, not just the winner. Neither lane is a single
+    # global pick: each anchors one note per block by the block's read
+    # (contract 24f), so the caller has to ask "best candidate INSIDE this
     # block", which the winner alone cannot answer.
     return inventory, [item for _, item in ranked], exclusions
 
@@ -894,13 +928,19 @@ def build_shadow_frame(
     # `take_index >= 2` gate is gone: it made the first take the one take whose
     # bookmarks lead nowhere, which is the worst place in the product to have
     # that happen.
-    rewrite_selected_ids = (
-        [rewrite_ranked[0]["candidate_id"]] if rewrite_ranked else []
-    )
-    praise_anchors = _anchored_praise(
-        praise_ranked,
-        _mark_top_confidence(blocks, PRAISE_ANCHOR_LIMIT),
-    )
+    #
+    # ONE NOTE PER BLOCK, BY THE READ (contract 24f, founder 2026-09-29). The
+    # caps — two praise on the two most Confident blocks, one rewrite for the
+    # whole Take — are lifted: praise anchors to every block read confident
+    # and the rewrite to every block read weak, each only where a defensible
+    # candidate sits inside the block. The green mark stays on the top two
+    # (24g); it no longer decides where praise goes.
+    _mark_top_confidence(blocks, MOST_CONFIDENT_LIMIT)
+    rewrite_anchors = _anchored_notes(
+        rewrite_ranked, _blocks_read(blocks, confident=False))
+    praise_anchors = _anchored_notes(
+        praise_ranked, _blocks_read(blocks, confident=True))
+    rewrite_selected_ids = [row["candidate_id"] for row in rewrite_anchors]
     praise_selected_ids = [row["candidate_id"] for row in praise_anchors]
     _log_verbal_lanes(take_id, rewrite_ranked, rewrite_selected_ids,
                       praise_ranked, praise_selected_ids)
@@ -960,14 +1000,15 @@ def build_shadow_frame(
         "verbal_lanes": {
             "enabled": True,
             "rewrite_clarity": {
-                "selection_scope": "global_absolute_quality",
-                "budget": 1,
+                "selection_scope": "anchored_to_blocks_read_weak",
+                "budget": "one_per_block",
+                "anchors": rewrite_anchors,
                 "candidates": rewrite_inventory,
                 "selected_candidate_ids": rewrite_selected_ids,
             },
             "great_formulation": {
-                "selection_scope": "anchored_to_top_confidence_blocks",
-                "budget": PRAISE_ANCHOR_LIMIT,
+                "selection_scope": "anchored_to_blocks_read_confident",
+                "budget": "one_per_block",
                 "anchors": praise_anchors,
                 "candidates": praise_inventory,
                 "selected_candidate_ids": praise_selected_ids,

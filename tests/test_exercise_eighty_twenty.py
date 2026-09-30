@@ -100,10 +100,10 @@ _EVIDENCE = {"project_id": "arc", "take_session_id": "take-1", "slide_index": 0,
              "paragraph_index": 0, "span": {"start": 0, "end": 5}}
 
 
-def _attach_v3(db, *, ground=lambda row: dict(_EVIDENCE), verbal=False):
+def _attach_v3(db, *, ground=lambda row: dict(_EVIDENCE)):
     return cvp.attach_v3_exercise_offer(
         _v3_rows(), take_session_id="take-1", owner_user_id="owner-1",
-        database=db, ground=ground, verbal_problem=verbal)
+        database=db, ground=ground)
 
 
 def _offers(rows):
@@ -144,9 +144,6 @@ class V3ExerciseTests(unittest.TestCase):
         self.assertEqual(_offers(_attach_v3(_Db(snippet=unsafe))), {})
         short = _snippet(transcript="Too short", words=[])
         self.assertEqual(_offers(_attach_v3(_Db(snippet=short))), {})
-
-    def test_a_rewrite_on_the_same_paragraph_withholds_it(self):
-        self.assertEqual(_offers(_attach_v3(_Db(), verbal=True)), {})
 
     def test_no_provable_evidence_means_no_exercise_and_no_draw(self):
         db = _Db(assign=_pick(1))

@@ -280,48 +280,68 @@ def _serialize_arc_voice_album(arc_id, sessions):
         if not isinstance(entry, dict):
             continue
         session_id = str(entry.get("take_session_id") or "")
+        take_index = take_index_by_sid.get(session_id)
         if entry.get("source_kind") == "practice_attempt":
-            attempt_id = str(entry.get("practice_attempt_id") or "")
-            attempt = db.get_confident_voice_practice_attempt(attempt_id)
-            if not attempt:
-                continue
-            out.append({
-                "snippet_id": f"practice:{attempt_id}",
-                "take_session_id": entry.get("take_session_id"),
-                "take_index": take_index_by_sid.get(session_id),
-                "slide_index": entry.get("slide_index"),
-                "entered_at": entry.get("entered_at"),
-                "text": str(attempt.get("transcript") or "").strip(),
-                "audio_url": _resolve_feedback_audio(attempt.get("audio_ref")),
-                "start_offset_ms": 0,
-                "duration_ms": attempt.get("duration_ms"),
-            })
+            item = _practice_album_item(entry, take_index)
+            if item is not None:
+                out.append(item)
             continue
         snippet = None
         if session_id:
             if session_id not in snips_by_sid:
-                try:
-                    snips_by_sid[session_id] = {
-                        str(item.get("id")): item
-                        for item in (db.get_snippets_by_session(session_id) or [])
-                    }
-                except Exception:
-                    snips_by_sid[session_id] = {}
+                snips_by_sid[session_id] = _snippets_by_id(session_id)
             snippet = snips_by_sid[session_id].get(str(entry.get("snippet_id")))
-        source = snippet or {}
-        out.append({
-            "snippet_id": entry.get("snippet_id"),
-            "take_session_id": entry.get("take_session_id"),
-            "take_index": take_index_by_sid.get(session_id),
-            "slide_index": entry.get("slide_index"),
-            "entered_at": entry.get("entered_at"),
-            "text": (source.get("transcript")
-                     or source.get("transcription_text") or "").strip(),
-            "audio_url": (_resolve_snippet_audio_url(source) if snippet else None),
-            "start_offset_ms": source.get("start_offset_ms"),
-            "duration_ms": source.get("duration_ms"),
-        })
+        out.append(_snippet_album_item(entry, snippet, take_index))
     return out
+
+
+def _practice_album_item(entry, take_index):
+    """An Album entry admitted from a practice attempt, or None when the
+    attempt is gone."""
+    attempt_id = str(entry.get("practice_attempt_id") or "")
+    attempt = db.get_confident_voice_practice_attempt(attempt_id)
+    if not attempt:
+        return None
+    return {
+        "snippet_id": f"practice:{attempt_id}",
+        "take_session_id": entry.get("take_session_id"),
+        "take_index": take_index,
+        "slide_index": entry.get("slide_index"),
+        "entered_at": entry.get("entered_at"),
+        "text": str(attempt.get("transcript") or "").strip(),
+        "audio_url": _resolve_feedback_audio(attempt.get("audio_ref")),
+        "start_offset_ms": 0,
+        "duration_ms": attempt.get("duration_ms"),
+    }
+
+
+def _snippets_by_id(session_id):
+    """The take's snippets keyed by id; empty when the read fails."""
+    try:
+        return {
+            str(item.get("id")): item
+            for item in (db.get_snippets_by_session(session_id) or [])
+        }
+    except Exception:
+        return {}
+
+
+def _snippet_album_item(entry, snippet, take_index):
+    """An Album entry from a take's snippet (text and audio only when the
+    snippet was found)."""
+    source = snippet or {}
+    return {
+        "snippet_id": entry.get("snippet_id"),
+        "take_session_id": entry.get("take_session_id"),
+        "take_index": take_index,
+        "slide_index": entry.get("slide_index"),
+        "entered_at": entry.get("entered_at"),
+        "text": (source.get("transcript")
+                 or source.get("transcription_text") or "").strip(),
+        "audio_url": (_resolve_snippet_audio_url(source) if snippet else None),
+        "start_offset_ms": source.get("start_offset_ms"),
+        "duration_ms": source.get("duration_ms"),
+    }
 
 
 @v2_bp.route("/explore/arc/<arc_id>/voice-album", methods=["GET"])
@@ -690,20 +710,10 @@ def v2_voice_album_note():
 
     400 BAD_REQUEST · 404 NOT_FOUND · 500 V2_ERROR
     """
-    payload = request.get_json(silent=True)
-    payload = payload if isinstance(payload, dict) else {}
-    arc_id = str(payload.get("arc_id") or "").strip()
-    moment_key = str(payload.get("moment_key") or "").strip()
-    body = str(payload.get("body") or "").strip()
-    if not arc_id or not moment_key:
-        return jsonify({"code": "BAD_REQUEST",
-                        "error": "arc_id and moment_key are required"}), 400
-    if not body:
-        return jsonify({"code": "BAD_REQUEST",
-                        "error": "body: write something first"}), 400
-    if len(body) > 2000:
-        return jsonify({"code": "BAD_REQUEST",
-                        "error": "body: too long"}), 400
+    arc_id, moment_key, body, problem = _album_note_request(
+        request.get_json(silent=True))
+    if problem:
+        return jsonify({"code": "BAD_REQUEST", "error": problem}), 400
     try:
         owned, _sessions = _arc_owned_by_caller(arc_id)
         if not owned or not _album_entry_for(arc_id, moment_key):
@@ -718,18 +728,38 @@ def v2_voice_album_note():
                          "(migration missing? "
                          "migrations/add_voice_album_notes.sql)", arc_id)
             return jsonify({"code": "V2_ERROR", "error": "failed"}), 500
-        return jsonify({"note": {
-            "kind": "note",
-            "who": "You",
-            "at": saved.get("created_at"),
-            "body": str(saved.get("body") or ""),
-            "note_id": str(saved.get("id") or "") or None,
-        }}), 201
+        return jsonify({"note": _album_note_json(saved)}), 201
     except Exception as error:
         logger.error("voice-album note failed arc=%s: %s", arc_id, error,
                      exc_info=True)
         sentry_sdk.capture_exception(error)
         return jsonify({"code": "V2_ERROR", "error": "failed"}), 500
+
+
+def _album_note_request(payload):
+    """``(arc_id, moment_key, body, problem)`` from the note body; ``problem``
+    is the 400 message, or None when the note can be written."""
+    payload = payload if isinstance(payload, dict) else {}
+    arc_id = str(payload.get("arc_id") or "").strip()
+    moment_key = str(payload.get("moment_key") or "").strip()
+    body = str(payload.get("body") or "").strip()
+    if not arc_id or not moment_key:
+        return arc_id, moment_key, body, "arc_id and moment_key are required"
+    if not body:
+        return arc_id, moment_key, body, "body: write something first"
+    if len(body) > 2000:
+        return arc_id, moment_key, body, "body: too long"
+    return arc_id, moment_key, body, None
+
+
+def _album_note_json(saved):
+    return {
+        "kind": "note",
+        "who": "You",
+        "at": saved.get("created_at"),
+        "body": str(saved.get("body") or ""),
+        "note_id": str(saved.get("id") or "") or None,
+    }
 
 
 @v2_bp.route("/explore/arc/<arc_id>/best-presentation", methods=["GET"])
@@ -851,35 +881,9 @@ def v2_explore_arc_progress(arc_id):
         sessions = db.takes.get_arc_sessions(arc_id)
         if not sessions:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        _caller = getattr(request, "user_id", None)
-        _first = sessions[0]
-        if not session_owned_by_principal(
-            _first,
-            repository=ProjectRepository(db),
-            user_id=_caller,
-            guest_token=request.headers.get(GUEST_OWNER_HEADER),
-        ):
+        if not _progress_readable_by_caller(sessions):
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        _principal_id = str(_first.get("owner_principal_id") or "")
-        if _principal_id and any(
-            str(s.get("owner_principal_id") or "") != _principal_id
-            for s in sessions
-        ):
-            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        # Canonical deck size = the most-complete deck across takes (same
-        # rule as compose); deckless arcs (no deck) are never "finalized".
-        _n_slides = 0
-        for _s in sessions:
-            _ctx = _s.get("intake_context") if isinstance(
-                _s.get("intake_context"), dict) else {}
-            _n_slides = max(_n_slides, len((_ctx or {}).get("slides") or []))
-        _coach_finalized = False
-        if _n_slides:
-            _edits = db.get_coach_best_presentation_edits(arc_id) or {}
-            _coach_finalized = all(
-                isinstance(_edits.get(i), str) and _edits[i].strip()
-                for i in range(_n_slides)
-            )
+        _coach_finalized = _coach_finalized_deck(arc_id, sessions)
         from services.slide_selection import spoken_arc_sessions
         return jsonify({
             # SPOKEN takes only (2026-07-15) — a read never inflates N/3.
@@ -894,6 +898,46 @@ def v2_explore_arc_progress(arc_id):
         return jsonify({
             "code": "V2_ERROR", "error": "Failed to load progress",
         }), 500
+
+
+def _progress_readable_by_caller(sessions):
+    """The caller (owner, or the matching signed Guest ID) may read this
+    Project, and every Take belongs to the first Take's owner."""
+    _caller = getattr(request, "user_id", None)
+    _first = sessions[0]
+    if not session_owned_by_principal(
+        _first,
+        repository=ProjectRepository(db),
+        user_id=_caller,
+        guest_token=request.headers.get(GUEST_OWNER_HEADER),
+    ):
+        return False
+    _principal_id = str(_first.get("owner_principal_id") or "")
+    if _principal_id and any(
+        str(s.get("owner_principal_id") or "") != _principal_id
+        for s in sessions
+    ):
+        return False
+    return True
+
+
+def _coach_finalized_deck(arc_id, sessions):
+    """Has the coach corrected every slide of the canonical deck?"""
+    # Canonical deck size = the most-complete deck across takes (same
+    # rule as compose); deckless arcs (no deck) are never "finalized".
+    _n_slides = 0
+    for _s in sessions:
+        _ctx = _s.get("intake_context") if isinstance(
+            _s.get("intake_context"), dict) else {}
+        _n_slides = max(_n_slides, len((_ctx or {}).get("slides") or []))
+    _coach_finalized = False
+    if _n_slides:
+        _edits = db.get_coach_best_presentation_edits(arc_id) or {}
+        _coach_finalized = all(
+            isinstance(_edits.get(i), str) and _edits[i].strip()
+            for i in range(_n_slides)
+        )
+    return _coach_finalized
 
 
 @v2_bp.route("/explore/arc/<arc_id>/take-comparison", methods=["GET"])
@@ -1188,13 +1232,7 @@ def _take_full_text(session_id):
     Coach rewrites are separate FeedbackItems until the user accepts them.
     """
     snips = db.get_snippets_by_session(session_id) or []
-    edits = {}
-    try:
-        for e in (db.get_user_transcript_edits(session_id) or []):
-            if e.get("snippet_id") and (e.get("text") or "").strip():
-                edits[str(e["snippet_id"])] = e["text"].strip()
-    except Exception:
-        pass
+    edits = _accepted_transcript_edits(session_id)
     parts = []
     for s in sorted(snips, key=lambda x: (x.get("start_offset_ms") or 0)):
         _sid = str(s.get("id"))
@@ -1204,6 +1242,18 @@ def _take_full_text(session_id):
         if txt:
             parts.append(txt)
     return " ".join(parts)
+
+
+def _accepted_transcript_edits(session_id):
+    """The user's accepted edits by snippet id, stripped; best-effort."""
+    edits = {}
+    try:
+        for e in (db.get_user_transcript_edits(session_id) or []):
+            if e.get("snippet_id") and (e.get("text") or "").strip():
+                edits[str(e["snippet_id"])] = e["text"].strip()
+    except Exception:
+        pass
+    return edits
 
 
 def _take_key_moments(session_id, read_session_ids=None):
@@ -1228,11 +1278,7 @@ def _take_key_moments(session_id, read_session_ids=None):
                               + [(r, "read") for r in _reads]):
         if not sid:
             continue
-        drafts = {
-            str(d.get("snippet_id")): d
-            for d in (db.get_coach_snippet_drafts(sid) or [])
-            if d.get("snippet_id")
-        }
+        drafts = _drafts_by_snippet(sid)
         # KEY = CONFIDENCE QUORUM = YES (founder 2026-08-14). One batched
         # read per take rather than a lookup per snippet.
         from services.key_moments import key_snippet_ids
@@ -1245,27 +1291,41 @@ def _take_key_moments(session_id, read_session_ids=None):
                 continue
             if _sid not in _key_ids:
                 continue
-            m = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
-            _piece = m.get("piece") if isinstance(m.get("piece"), dict) else {}
-            out.append({
-                "snippet_id": s.get("id"),
-                "take_session_id": sid,
-                "slide_index": _piece.get("slide_index"),
-                "recording_kind": m.get("recording_kind") or kind_default,
-                "transcript": (
-                    (d.get("transcript_corrected") or "").strip()
-                    or s.get("transcript") or s.get("transcription_text") or ""
-                ),
-                # Resolved (founder 2026-08-10): an s3:// fallback ref
-                # renders a dead player; the resolver signs it against
-                # its own bucket and passes healthy URLs through.
-                "audio_ref": _resolve_feedback_audio(
-                    s.get("audio_segment_path")),
-                "start_offset_ms": s.get("start_offset_ms"),
-                "duration_ms": s.get("duration_ms"),
-                "comment_text": (d.get("note") or "").strip() or None,
-            })
+            out.append(_key_moment(s, d, sid, kind_default))
     return out
+
+
+def _drafts_by_snippet(sid):
+    """The take's coach drafts keyed by snippet id."""
+    return {
+        str(d.get("snippet_id")): d
+        for d in (db.get_coach_snippet_drafts(sid) or [])
+        if d.get("snippet_id")
+    }
+
+
+def _key_moment(s, d, sid, kind_default):
+    """One key moment: the snippet's playback span and the coach's comment."""
+    m = s.get("metrics") if isinstance(s.get("metrics"), dict) else {}
+    _piece = m.get("piece") if isinstance(m.get("piece"), dict) else {}
+    return {
+        "snippet_id": s.get("id"),
+        "take_session_id": sid,
+        "slide_index": _piece.get("slide_index"),
+        "recording_kind": m.get("recording_kind") or kind_default,
+        "transcript": (
+            (d.get("transcript_corrected") or "").strip()
+            or s.get("transcript") or s.get("transcription_text") or ""
+        ),
+        # Resolved (founder 2026-08-10): an s3:// fallback ref
+        # renders a dead player; the resolver signs it against
+        # its own bucket and passes healthy URLs through.
+        "audio_ref": _resolve_feedback_audio(
+            s.get("audio_segment_path")),
+        "start_offset_ms": s.get("start_offset_ms"),
+        "duration_ms": s.get("duration_ms"),
+        "comment_text": (d.get("note") or "").strip() or None,
+    }
 
 
 def _moments_entitled(arc_id) -> bool:

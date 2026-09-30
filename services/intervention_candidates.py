@@ -219,9 +219,10 @@ def _span(change: Any) -> Optional[tuple]:
     """(start, end) as floats, or None when the change has no usable span.
 
     A ZERO-WIDTH SPAN IS REFUSED, and this is load-bearing rather than
-    defensive. `master_document.upgrade_changes` emits candidate block
-    additions as ``kind: "insert"`` anchored at ``{start: len(doc), end:
-    len(doc)}`` — nothing to strike, nothing to bold. The FE has always
+    defensive. `master_document.upgrade_changes` (since deleted) emitted
+    candidate block additions as ``kind: "insert"`` anchored at
+    ``{start: len(doc), end: len(doc)}`` — nothing to strike, nothing to
+    bold, and any source could produce the same shape again. The FE has always
     dropped those (`mapDocumentSuggestions` requires `end > start` and only
     accepts replace/bold/advice), so before the gate they cost nothing.
 

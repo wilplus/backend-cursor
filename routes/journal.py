@@ -876,6 +876,24 @@ def journal_admin_exercise_learning_readiness():
     return jsonify(readiness(db)), 200
 
 
+@journal_bp.route("/v2/internal/journal/exercise-learning-evaluation",
+                  methods=["POST"])
+def journal_admin_exercise_learning_evaluation():
+    """The scorekeeper and the fair test, once the jar is full (founder
+    2026-09-29: a full jar unseals the evaluation; nothing promotes, a
+    learned ranking still needs the founder's yes). Below the bar: sealed,
+    and why. Body { password }. Read-only. Two piles, machine_only and
+    with_coach_picks, never mixed.
+    200 { sealed, why_not, machine_only, with_coach_picks, … } · 401 · 503
+
+    The work is services/exercise_evaluation.py's."""
+    ok, err = _journal_admin_ok()
+    if not ok:
+        return err
+    from services.exercise_evaluation import evaluate_jar
+    return jsonify(evaluate_jar(db)), 200
+
+
 @journal_bp.route("/v2/internal/journal/speaking-errors/list",
                   methods=["POST"])
 def journal_admin_list_speaking_errors():

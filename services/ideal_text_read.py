@@ -208,32 +208,14 @@ def resolve_live_text(
     )
     base_text = verified_text if verified else source.machine_text
     edit = database.get_user_ideal_edit(arc_id, user_id)
-    user_edited = bool(
-        edit
-        and source.version is not None
-        and edit.get("version") == source.version
-        and (edit.get("text") or "").strip()
-    )
+    user_edited = _edit_is_current(edit, source.version)
     if user_edited:
         assert edit is not None
         text = edit["text"]
     else:
         text = base_text
 
-    prior_edit = None
-    try:
-        if not user_edited and edit and source.version is not None:
-            prior_text = (edit.get("text") or "").strip()
-            prior_version = edit.get("version")
-            if (
-                prior_text
-                and isinstance(prior_version, int)
-                and not isinstance(prior_version, bool)
-                and prior_version != source.version
-            ):
-                prior_edit = {"text": prior_text, "version": prior_version}
-    except Exception:
-        prior_edit = None
+    prior_edit = _prior_edit(edit, source.version, user_edited)
 
     return LiveTextRead(
         verified=verified,
@@ -242,6 +224,40 @@ def resolve_live_text(
         user_edited=user_edited,
         prior_edit=prior_edit,
     )
+
+
+def _edit_is_current(edit: Mapping[str, Any] | None, version: int | None) -> bool:
+    """The owner's edit is served when it was made on this version and
+    holds words."""
+    return bool(
+        edit
+        and version is not None
+        and edit.get("version") == version
+        and (edit.get("text") or "").strip()
+    )
+
+
+def _prior_edit(
+    edit: Mapping[str, Any] | None,
+    version: int | None,
+    user_edited: bool,
+) -> dict[str, Any] | None:
+    """An owner edit made on an EARLIER version, offered back, or None."""
+    prior_edit = None
+    try:
+        if not user_edited and edit and version is not None:
+            prior_text = (edit.get("text") or "").strip()
+            prior_version = edit.get("version")
+            if (
+                prior_text
+                and isinstance(prior_version, int)
+                and not isinstance(prior_version, bool)
+                and prior_version != version
+            ):
+                prior_edit = {"text": prior_text, "version": prior_version}
+    except Exception:
+        prior_edit = None
+    return prior_edit
 
 
 def resolve_suggestion_display(
@@ -306,31 +322,12 @@ def resolve_project_read(
     spoken_rows = completed_spoken(sessions)
     spoken_rows.sort(key=lambda session: (session.get("take_index") or 0))
 
-    title = None
-    for session in spoken_rows:
-        raw_context = session.get("intake_context")
-        context = raw_context if isinstance(raw_context, dict) else {}
-        topic = context.get("topic")
-        if isinstance(topic, str) and topic.strip():
-            title = topic.strip()
+    title = _project_title(spoken_rows)
 
     latest_take_session_id = (
         str(spoken_rows[-1].get("id")) if spoken_rows else None
     )
-    presentation_ref = None
-    slide_titles: list[str] = []
-    for session in spoken_rows:
-        raw_context = session.get("intake_context")
-        context = raw_context if isinstance(raw_context, dict) else {}
-        slides = context.get("slides")
-        if isinstance(slides, list) and len(slides) >= len(slide_titles):
-            slide_titles = [
-                ((slide.get("title") or "").strip()
-                 if isinstance(slide, dict) else "")
-                for slide in slides
-            ]
-        if presentation_ref is None and context.get("presentation_ref"):
-            presentation_ref = context.get("presentation_ref")
+    presentation_ref, slide_titles = _deck_identity(spoken_rows)
 
     return IdealTextProjectRead(
         spoken_rows=spoken_rows,
@@ -340,3 +337,40 @@ def resolve_project_read(
         presentation_ref=presentation_ref,
         slide_titles=slide_titles,
     )
+
+
+def _intake_context(session: Mapping[str, Any]) -> Mapping[str, Any]:
+    raw_context = session.get("intake_context")
+    return raw_context if isinstance(raw_context, dict) else {}
+
+
+def _project_title(spoken_rows: list[Mapping[str, Any]]) -> str | None:
+    """The latest Take's non-blank intake topic, stripped."""
+    title = None
+    for session in spoken_rows:
+        context = _intake_context(session)
+        topic = context.get("topic")
+        if isinstance(topic, str) and topic.strip():
+            title = topic.strip()
+    return title
+
+
+def _deck_identity(
+    spoken_rows: list[Mapping[str, Any]],
+) -> tuple[Any, list[str]]:
+    """``(presentation_ref, slide_titles)``: the first Take's deck ref, and
+    the titles of the longest slide list (a later Take wins a tie)."""
+    presentation_ref = None
+    slide_titles: list[str] = []
+    for session in spoken_rows:
+        context = _intake_context(session)
+        slides = context.get("slides")
+        if isinstance(slides, list) and len(slides) >= len(slide_titles):
+            slide_titles = [
+                ((slide.get("title") or "").strip()
+                 if isinstance(slide, dict) else "")
+                for slide in slides
+            ]
+        if presentation_ref is None and context.get("presentation_ref"):
+            presentation_ref = context.get("presentation_ref")
+    return presentation_ref, slide_titles

@@ -265,7 +265,7 @@ class EveryBookmarkTests(unittest.TestCase):
             self.raised.append(kwargs)
             return kwargs
 
-    def _attach(self, db, rows, withhold=False):
+    def _attach(self, db, rows):
         original = cvp.exercise_eligibility
         cvp.exercise_eligibility = lambda snippet, **_k: {
             "eligible": True, "pattern": "low_confidence_rushing_dominant",
@@ -273,8 +273,7 @@ class EveryBookmarkTests(unittest.TestCase):
         try:
             return cvp.attach_v3_exercise_offer(
                 rows, take_session_id="take-1", owner_user_id="owner-1",
-                database=db, ground=lambda _row: {"slide_index": 0},
-                verbal_problem=withhold)
+                database=db, ground=lambda _row: {"slide_index": 0})
         finally:
             cvp.exercise_eligibility = original
 
@@ -311,14 +310,6 @@ class EveryBookmarkTests(unittest.TestCase):
         self.assertIs(rows[0]["problem_recognised"], True)
         self.assertIs(rows[1]["problem_recognised"], False)
         self.assertNotIn("practice_exercise", rows[0])
-
-    def test_a_rewrite_on_the_paragraph_withholds_that_bookmark_only(self):
-        db = self._Db({"a": {"insufficient_pauses": True},
-                       "b": {"insufficient_pauses": True}, "c": {}})
-        rows = self._attach(db, self._rows(),
-                            withhold=lambda row: row["snippet_id"] == "a")
-        self.assertNotIn("practice_exercise", rows[0])
-        self.assertEqual(rows[1]["practice_exercise"]["exercise_id"], "land")
 
     def test_a_finished_practice_ends_the_offer_on_its_moment_only(self):
         class _Done(self._Db):

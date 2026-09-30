@@ -218,7 +218,7 @@ class FeedbackSetTests(unittest.TestCase):
         `selected_keys` used to stop at `MAX_FEEDBACK_PER_TAKE`, so a fourth
         item was dropped before it could be frozen. V3 routinely serves six
         to ten — one relative-best Confident Voice item per valid 75-word
-        block, plus up to two Praise, one exercise and one rewrite (24f) — so
+        block, plus praise, rewrites and exercises anchored per block (24f) — so
         the truncation alone would have made the freeze a partial record of
         what the speaker saw, and every answer to a dropped item would still
         have been refused.
