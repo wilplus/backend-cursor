@@ -1584,12 +1584,16 @@ def coach_shared_answer(request: Any) -> Optional[dict]:
     "line" | "version", "text"}`` or None. The draft never rides."""
     if not isinstance(request, dict) or not request.get("shared_at"):
         return None
-    from services.exercise_coach_requests import WORD_RESOLUTIONS
+    from services.exercise_coach_requests import WORD_RESOLUTIONS, answer_video_url
     kind = WORD_RESOLUTIONS.get(str(request.get("resolution") or ""))
     text = " ".join(str(request.get("answer_text") or "").split())
     if kind is None or not text:
         return None
-    return {"kind": kind, "text": text}
+    answer: dict = {"kind": kind, "text": text}
+    video_url = answer_video_url(request)
+    if video_url:
+        answer["video_url"] = video_url
+    return answer
 
 
 def coach_shared_exercise(request: Any, database: Any) -> Optional[dict]:

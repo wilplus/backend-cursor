@@ -1859,6 +1859,62 @@ def v2_coach_exercise_request_draft(session_id, snippet_id):
 
 
 @v2_bp.route(
+    "/coach/sessions/<session_id>/snippets/<snippet_id>/exercise-request/video",
+    methods=["POST"],
+)
+@heavy_limit
+@require_admin_or_coach
+def v2_coach_exercise_request_video(session_id, snippet_id):
+    """The video a coach adds to a written answer (founder 2026-09-30, A5;
+    0403): a praise line, a clearer version or a note may carry one. Stored
+    like an exercise video (public journal media), kept on the request row,
+    and it rides `coach_answer` once the answer is shared. Behind the blind
+    gate; a resolved request takes no new video.
+
+    multipart/form-data: video_file. 200 {video_url} · 400/404/409/413/415/502
+    """
+    error, owner_sid = _moment_gate(session_id, snippet_id)
+    if error:
+        return error
+    from services.coach_answer_video import store_answer_video
+    status, payload = store_answer_video(
+        db, request_row=db.get_exercise_coach_request(owner_sid, snippet_id),
+        video_file=request.files.get("video_file"),
+        max_mb=int(getattr(Config, "COACH_FEEDBACK_VIDEO_MAX_MB", 100) or 100))
+    return jsonify(payload), status
+
+
+@v2_bp.route("/coach/sessions/<session_id>/word", methods=["GET", "PUT"])
+@require_admin_or_coach
+def v2_coach_take_word(session_id):
+    """A word for this Take (founder 2026-09-30, B3; P2-5): one optional
+    message and video per Take, per coach. GET this coach's own; PUT {text,
+    video_ref, share} saves it and, on share, sends it to the speaker, who
+    reads it as "Your coach". The video comes from the session video upload
+    (POST .../video), which returns the ref. Nothing here gates a per-moment
+    share."""
+    if not _is_valid_uuid(session_id):
+        return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a UUID"}), 400
+    if not db.v2_get_session_by_id(session_id):
+        return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
+    from services.coach_take_word import TakeWordRefusal, save_take_word, take_word_for
+    coach_id = str(getattr(request, "user_id", "") or "")
+    if request.method == "GET":
+        return jsonify({"word": take_word_for(db, take_session_id=session_id,
+                                              coach_id=coach_id)}), 200
+    try:
+        word = save_take_word(db, take_session_id=session_id, coach_id=coach_id,
+                              body=request.get_json(silent=True))
+    except TakeWordRefusal as refusal:
+        return jsonify({"code": refusal.code, "error": refusal.message}), refusal.status
+    except Exception as e:
+        logger.error("take word save failed sid=%s: %s", session_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Could not save the word."}), 500
+    return jsonify({"word": word}), 200
+
+
+@v2_bp.route(
     "/coach/sessions/<session_id>/snippets/<snippet_id>/moment",
     methods=["GET"],
 )

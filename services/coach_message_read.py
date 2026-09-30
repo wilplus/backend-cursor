@@ -35,7 +35,16 @@ def _latest_published(sessions: Any) -> Optional[dict]:
 def coach_message_for(database: Any, sessions: Any) -> Optional[dict]:
     """{text, video_url, take_index, published_at} for the latest published
     Take, or None when there is none or the coach sent neither words nor a
-    video. Best-effort: a failed read is None, never an error."""
+    video. Best-effort: a failed read is None, never an error.
+
+    A WORD FOR THIS TAKE (founder 2026-09-30, B3; 0403) comes first: where a
+    coach shared one on any of the arc's takes, the latest shared word is the
+    speaker's coach message; the arc-level publish serves only where none
+    exists, until the removals retire it (P2-19)."""
+    from services.coach_take_word import latest_shared_word
+    word = latest_shared_word(database, sessions)
+    if word is not None:
+        return word
     latest = _latest_published(sessions)
     if latest is None:
         return None

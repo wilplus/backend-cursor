@@ -259,6 +259,10 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     # The (draft, final) pairs a coach's answer about one speaker's moment
     # made (0402). The words are about that passage: they go with the Take.
     # Pairs from the exercise library (no take) are about the library.
+    # The coach's one word for a speaker's Take (0403): about that Take, it
+    # goes with it.
+    PurgeDependency("coach_take_words", "coach_take_words",
+                    "take_session_id", "take", "delete", "derived_feedback", 58),
     PurgeDependency("feedback_pairs_by_take", "feedback_pairs",
                     "take_session_id", "take", "delete", "derived_feedback", 58),
     # A pattern the coach named on the moment itself rather than on a
