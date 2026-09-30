@@ -579,6 +579,9 @@ class Config:
 
     # Optional: shared secret for POST /v2/internal/student-credits/increment (Stripe webhook / BFF).
     INTERNAL_CREDITS_WEBHOOK_SECRET = (os.getenv("INTERNAL_CREDITS_WEBHOOK_SECRET") or "").strip()
+    # Shared secret for POST /v2/internal/learning/weekly (the weekly learning
+    # job's cron, founder 2026-09-30; ML-3). Unset = the route answers 503.
+    LEARNING_WEEKLY_SECRET = (os.getenv("LEARNING_WEEKLY_SECRET") or "").strip()
 
     # willab — upfront free credit grant seeded on a user's first ledger touch
     # (founder testing 2026-07-13: bumped 15 → 25 so every user can unlock one

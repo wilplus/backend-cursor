@@ -30,9 +30,10 @@ founder re-lock 2026-08-13** — never reintroduce it; a CI probe and
 
 - **backend-cursor** — Flask + Supabase (Postgres, RLS) on **Railway**.
   Processes: web (`bin/railway-web.sh`), worker
-  (`bin/railway-worker.sh`), and cron services (annotation-export,
-  devbugs, drift, life-reminders — `bin/railway-*-cron.sh`,
-  `Dockerfile.*-cron`, `Procfile`).
+  (`bin/railway-worker.sh`), and cron services (devbugs, drift,
+  life-reminders, learning-weekly — `bin/railway-*-cron.sh`,
+  `Dockerfile.*-cron`, `Procfile`; the annotation-export cron was retired
+  2026-09-30).
 - **⚠️ `MIGRATE_ON_BOOT=1` on the web service: merging a migration IS
   running it in prod at the next container start.** Manifest:
   `migrations/manifest.txt` (contiguous numbering, currently through

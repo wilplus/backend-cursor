@@ -15223,6 +15223,64 @@ class DatabaseService:
                .not_.is_("shared_at", "null").execute())
         return list(res.data or [])
 
+    # ── The ledger's weeks, the research role, the golden set (0404) ────
+
+    def upsert_ledger_snapshot(self, **row: Any) -> Optional[dict]:
+        """One row per ISO week (ML-3), replaced on a second fire. Raises."""
+        res = (self.client.table("ledger_snapshots")
+               .upsert(row, on_conflict="week_start").execute())
+        return (res.data or [None])[0]
+
+    def list_ledger_snapshots(self, limit: int = 8) -> list[dict]:
+        """The newest weeks first. Raises on failure."""
+        res = (self.client.table("ledger_snapshots").select("*")
+               .order("week_start", desc=True).limit(int(limit)).execute())
+        return list(res.data or [])
+
+    def is_research_user(self, email: str) -> bool:
+        res = (self.client.table("research_users").select("email")
+               .eq("email", str(email).strip().lower()).eq("is_active", True)
+               .limit(1).execute())
+        return bool(res.data)
+
+    def list_dataset_releases(self) -> list[dict]:
+        res = (self.client.table("dataset_releases")
+               .select("id,release_identifier,learning_surface,source_cutoff_at,item_counts,manifest_checksum,created_at")
+               .order("created_at", desc=True).limit(50).execute())
+        return list(res.data or [])
+
+    def list_dataset_exclusions(self) -> list[dict]:
+        res = (self.client.table("dataset_exclusions").select("reason_code")
+               .limit(5000).execute())
+        return list(res.data or [])
+
+    def list_annotation_export_runs(self, limit: int = 20) -> list[dict]:
+        res = (self.client.table("admin_annotation_export_runs")
+               .select("started_at,status,exported_count,export_uri")
+               .order("started_at", desc=True).limit(int(limit)).execute())
+        return list(res.data or [])
+
+    def list_golden_judgements(self, *, surface: str,
+                               judge: Optional[str] = None) -> list[dict]:
+        q = (self.client.table("golden_judgements")
+             .select("snippet_id,value,judge_email,created_at").eq("surface", str(surface)))
+        if judge:
+            q = q.eq("judge_email", str(judge))
+        return list(q.order("created_at").limit(1000).execute().data or [])
+
+    def insert_golden_judgement(self, **fields: Any) -> Optional[dict]:
+        res = self.client.table("golden_judgements").insert(fields).execute()
+        return (res.data or [None])[0]
+
+    def get_golden_set(self, surface: str) -> Optional[dict]:
+        res = (self.client.table("golden_sets").select("*")
+               .eq("surface", str(surface)).limit(1).execute())
+        return (res.data or [None])[0]
+
+    def seal_golden_set(self, **fields: Any) -> Optional[dict]:
+        res = self.client.table("golden_sets").insert(fields).execute()
+        return (res.data or [None])[0]
+
     def insert_feedback_pair(self, **fields: Any) -> Optional[dict]:
         """One (draft, final) pair (0402). Raises on failure; the service
         logs it and the answer stands. A duplicate for the same request or

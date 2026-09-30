@@ -122,6 +122,7 @@ from routes.journal import journal_bp
 from routes.token_routes import tokens_bp
 from routes.life_routes import life_bp
 from routes.drift_webhook import drift_webhook_bp
+from routes.learning_weekly_webhook import learning_weekly_webhook_bp
 from routes.life_reminders_webhook import life_reminders_webhook_bp
 
 app.register_blueprint(auth_bp, url_prefix="/auth")
@@ -154,6 +155,7 @@ app.register_blueprint(tokens_bp)
 app.register_blueprint(life_bp)
 # Opt-in life reminders cron webhook (X-Internal-Secret: LIFE_REMINDER_SECRET).
 app.register_blueprint(drift_webhook_bp)
+app.register_blueprint(learning_weekly_webhook_bp)
 app.register_blueprint(life_reminders_webhook_bp)
 # Durable pipeline job polling (async-queue work): GET /v2/jobs/<id>/status
 # + the internal sweep poke. Full paths baked in.
