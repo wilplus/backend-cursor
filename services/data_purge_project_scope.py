@@ -101,6 +101,10 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     # Rings (0394): a person's ring, its history and their announcement
     # answers belong to the account, not to any project.
     "principal_ring", "principal_ring_history", "ring_announcement_decisions",
+    # A pair release names whose passages it holds (0405): the person's
+    # membership in a weekly file belongs to the account, not to a project;
+    # the weekly refresh voids the release for the object sweep.
+    "pair_release_owners",
 })
 
 #: Rows with no project column of their own that the take-record wipe
