@@ -245,8 +245,8 @@ side yet" is not the same as "we turned this off because it was wrong".
 | `MASTER_DOCUMENT_ENABLED` | the persistent master document + block upgrade offers | needs a migrated skeleton; degrades gracefully when off |
 | `MOMENT_SUGGESTIONS_ENABLED` | the star machinery the other suggestion lanes reuse | prerequisite for the two below |
 | `POLISH_AS_SUGGESTIONS_ENABLED` | serve verbatim text + offer the polish as approvable stars | on top of `MOMENT_SUGGESTIONS_ENABLED` |
-| `DELIVERY_STARS_ENABLED` | delivery advice stars | |
-| `STRUCTURAL_STARS_ENABLED` | structural advice stars | |
+| `DELIVERY_STARS_ENABLED` | delivery praise (the impeccable read and its cues) | **on by default** since 2026-09-30 (founder E1); set `0` to switch off |
+| `STRUCTURAL_STARS_ENABLED` | structural praise (an exact-quote device) | **on by default** since 2026-09-30 (founder E1); set `0` to switch off |
 | `BLOCK_VARIANTS_ENABLED` | the per-block variants picker | |
 | `INSTANT_IDEAL_TEXT_ENABLED` | machine draft served free at take 3 | needs FE variant handling (deploy order: BE → FE → flip) |
 | `ASYNC_ANALYSIS_ENABLED` | the async analysis queue | see `OPS-PIPELINE-QUEUE-RUNBOOK.md` |

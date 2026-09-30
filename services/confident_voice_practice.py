@@ -1276,10 +1276,16 @@ def _annotate_coach_answers(
             continue
         exercise = coach_shared_exercise(request, database)
         if exercise is None:
-            row["coach_request"] = {
-                "status": "answered" if request.get("resolution") else "open",
-                "kind": request.get("kind") or "error",
-            }
+            # THE PROMISE NEEDS A COACH (founder 2026-09-30): with nobody
+            # on the panel the request stays written (a coach who joins
+            # finds it) but the row carries no `coach_request`, so the
+            # sheet falls to the rewrite or the plain moment instead of a
+            # sentence nobody will keep.
+            if coach_on_panel(database):
+                row["coach_request"] = {
+                    "status": "answered" if request.get("resolution") else "open",
+                    "kind": request.get("kind") or "error",
+                }
             continue
         if not snippets:
             snippets = {str(r.get("id")): r for r in (
@@ -1528,6 +1534,40 @@ def _shared_request_for(database: Any, take_session_id: str,
     request = (getter(take_session_id, snippet_id)
                if getter is not None else None)
     return request if coach_shared_exercise(request, database) else None
+
+
+#: How long a process trusts its last "is a coach on the panel" read.
+_COACH_PRESENCE_TTL_SEC = 60.0
+_coach_presence: tuple[float, Optional[bool]] = (0.0, None)
+
+
+def coach_on_panel(database: Any, *, now: Optional[float] = None) -> bool:
+    """Is there a coach to keep the promise "Your coach is working on your
+    exercise"? (founder 2026-09-30, cold start; build plan P1-3.)
+
+    True when at least one coach account is active. A database that cannot
+    say (no helper, or a read that failed) keeps today's behaviour: the
+    request is shown as open, because hiding it on a hiccup would hide a
+    real coach's work. Cached for a minute per process; a coach joining the
+    panel is seen on the next minute's read."""
+    global _coach_presence
+    getter = getattr(database, "any_active_coach", None)
+    if getter is None:
+        return True
+    import time
+    at = time.monotonic() if now is None else now
+    cached_at, cached = _coach_presence
+    if cached is not None and at - cached_at < _COACH_PRESENCE_TTL_SEC:
+        return cached
+    try:
+        value = getter()
+    except Exception as e:  # noqa: BLE001 -- never lose the feedback
+        _log.warning("coach presence read failed: %s", e, exc_info=True)
+        value = None
+    if value is None:
+        return True
+    _coach_presence = (at, bool(value))
+    return bool(value)
 
 
 def coach_shared_exercise(request: Any, database: Any) -> Optional[dict]:

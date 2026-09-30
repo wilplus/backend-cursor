@@ -14270,6 +14270,59 @@ class DatabaseService:
             logger.warning("list_diagnostic_exercises failed: %s", e)
             return []
 
+    def any_active_coach(self) -> Optional[bool]:
+        """Is at least one coach on the panel? True / False, or None when
+        the read failed (callers keep today's behaviour on None rather than
+        deciding either way on a hiccup). Founder 2026-09-30, cold start:
+        the sentence "Your coach is working on your exercise" is a promise,
+        and with nobody on the panel it is false."""
+        try:
+            res = (self.client.table("coach_users").select("email")
+                   .eq("is_active", True).limit(1).execute())
+            return bool(res.data)
+        except Exception as e:
+            logger.warning("any_active_coach failed: %s", e, exc_info=True)
+            return None
+
+    def list_feedback_catalogue(self, active_only: bool = True) -> list[dict]:
+        """The signed lines (migration 0401). [] means "no catalogue": the
+        served rows keep their constants and the honest fallback."""
+        try:
+            query = self.client.table("feedback_catalogue").select("*")
+            if active_only:
+                query = query.eq("active", True)
+            return (query.order("lane").order("pattern_kind")
+                    .order("pattern_key").order("version")
+                    .execute().data) or []
+        except Exception as e:
+            logger.warning("list_feedback_catalogue failed: %s", e,
+                           exc_info=True)
+            return []
+
+    def insert_feedback_catalogue_line(
+        self, *, lane: str, pattern_kind: str, pattern_key: str, text: str,
+        signed_by: Optional[str],
+    ) -> Optional[dict]:
+        """A new VERSION of the line for one pattern (rows are never
+        edited). None on failure."""
+        try:
+            prior = (self.client.table("feedback_catalogue")
+                     .select("version").eq("lane", lane)
+                     .eq("pattern_kind", pattern_kind)
+                     .eq("pattern_key", pattern_key)
+                     .order("version", desc=True).limit(1).execute().data) or []
+            version = int((prior[0] or {}).get("version") or 0) + 1 if prior else 1
+            res = self.client.table("feedback_catalogue").insert({
+                "lane": lane, "pattern_kind": pattern_kind,
+                "pattern_key": pattern_key, "text": text,
+                "version": version, "signed_by": signed_by, "active": True,
+            }).execute()
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("insert_feedback_catalogue_line failed key=%s/%s/%s: %s",
+                           lane, pattern_kind, pattern_key, e, exc_info=True)
+            return None
+
     def list_speaking_errors(self, active_only: bool = True) -> list[dict]:
         """The speaking error library (migrations/add_speaking_error_library).
 

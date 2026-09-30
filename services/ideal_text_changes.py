@@ -274,6 +274,10 @@ class _ChangesRun:
         # tier, so only a V3 Take is windowed.
         if self.v3_replaced_changes:
             log.run("changes.window", self._window)
+        # THE SIGNED LINES (founder 2026-09-30, E3; build plan P1-4). Last of
+        # all: a praise row that surfaces carries its catalogue line, a
+        # rewrite row its move. No catalogue, no change to any row.
+        log.run("changes.catalogue", self._catalogue)
         return self._finish()
 
     def _load_document(self) -> None:
@@ -1350,6 +1354,21 @@ class _ChangesRun:
             # The clips attached upstream belonged to the rows just discarded.
             # `execute` re-attaches them to these — see the note at that call.
             self.v3_replaced_changes = True
+
+    def _catalogue(self) -> None:
+        """One signed sentence per pattern, read before the sheet's constant
+        (services/feedback_catalogue). The Manager's selection is untouched:
+        this adds `praise_line` / `rewrite_move` to rows already chosen, and
+        an honest empty lane stays empty (24f)."""
+        from services.feedback_catalogue import decorate
+        try:
+            reader = getattr(self.db, "list_feedback_catalogue", None)
+            rows = reader() if callable(reader) else []
+        except Exception as e:  # noqa: BLE001 -- no table, no signed lines
+            logger.info("catalogue unavailable arc=%s: %s", self.arc_id, e)
+            rows = []
+        if rows:
+            self.changes = decorate(self.changes, rows)
 
     def _window(self) -> None:
         """At most three open moments reach the page (contract 24b/24c as

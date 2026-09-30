@@ -422,3 +422,54 @@ class CoachPickCountsTests(unittest.TestCase):
         # Frozen only on a share, and before the snapshot is saved.
         self.assertLess(block.index("practice if share else None"),
                         block.index("patch = {"))
+
+
+class CoachOnPanelTests(unittest.TestCase):
+    """The promise needs a coach (founder 2026-09-30, cold start; P1-3)."""
+
+    def setUp(self):
+        cvp._coach_presence = (0.0, None)
+
+    def _rows(self, db):
+        rows = [{"source": "confident_voice", "snippet_id": "snippet-a"}]
+        return cvp._annotate_coach_answers(
+            rows, take_session_id="take-1", owner_user_id="owner",
+            database=db, ground=lambda _row: None)
+
+    def test_no_coach_means_no_sentence_but_the_request_stays(self):
+        db = _Db([], request={"id": "req-1", "kind": "error",
+                              "resolution": None, "shared_at": None})
+        db.any_active_coach = lambda: False
+        self.assertNotIn("coach_request", self._rows(db)[0])
+        # The request row itself is untouched: a coach who joins finds it.
+        self.assertIsNotNone(db.get_exercise_coach_request("take-1", "snippet-a"))
+
+    def test_a_coach_on_the_panel_keeps_the_sentence(self):
+        db = _Db([], request={"id": "req-1", "kind": "error",
+                              "resolution": None, "shared_at": None})
+        db.any_active_coach = lambda: True
+        self.assertEqual(self._rows(db)[0]["coach_request"],
+                         {"status": "open", "kind": "error"})
+
+    def test_a_database_that_cannot_say_keeps_todays_behaviour(self):
+        db = _Db([], request={"id": "req-1", "kind": "error",
+                              "resolution": None, "shared_at": None})
+        # No helper at all (older fakes), and a helper that fails: both
+        # keep the sentence rather than hide a real coach's work.
+        self.assertIn("coach_request", self._rows(db)[0])
+        db.any_active_coach = lambda: None
+        cvp._coach_presence = (0.0, None)
+        self.assertIn("coach_request", self._rows(db)[0])
+
+    def test_the_read_is_cached_for_a_minute(self):
+        calls = []
+
+        class _Coachless:
+            def any_active_coach(self):
+                calls.append(1)
+                return False
+        self.assertFalse(cvp.coach_on_panel(_Coachless(), now=100.0))
+        self.assertFalse(cvp.coach_on_panel(_Coachless(), now=130.0))
+        self.assertEqual(len(calls), 1)
+        self.assertFalse(cvp.coach_on_panel(_Coachless(), now=100.0 + 61))
+        self.assertEqual(len(calls), 2)
