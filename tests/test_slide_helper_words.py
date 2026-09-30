@@ -12,9 +12,11 @@ from services.data_purge_registry import DEPENDENCIES
 from services.slide_helper_words import (
     lock,
     merge_recording_roots,
+    phrase_in_version,
     pick,
     project,
     slide_of_part,
+    version_of_take,
 )
 
 NOW = "2026-09-25T15:00:00+00:00"
@@ -128,3 +130,43 @@ def test_the_table_is_registered_for_deletion_and_locked_down():
            / "helper_words_belong_to_the_slide.sql").read_text()
     assert "CREATE TABLE IF NOT EXISTS public.ideal_text_slide_helper_words" in sql
     assert "ENABLE ROW LEVEL SECURITY" in sql
+
+
+# Helper words from any earlier Take (founder lock 2026-09-30, B4, D5, Q3).
+
+HISTORY = {"versions": [
+    {"take_index": 1, "paragraphs": ["We cut  onboarding.", "Nine days to two."]},
+    {"take_index": 2, "paragraphs": ["We cut it down.", "Two days now."]},
+]}
+
+
+def test_a_take_s_version_is_found_by_its_number():
+    assert version_of_take(HISTORY, 1)["paragraphs"][1] == "Nine days to two."
+    assert version_of_take(HISTORY, 3) is None
+    assert version_of_take(HISTORY, "1") is None
+    assert version_of_take(HISTORY, True) is None
+    assert version_of_take({}, 1) is None
+
+
+def test_the_words_must_be_exact_words_of_that_one_version():
+    v1 = version_of_take(HISTORY, 1)["paragraphs"]
+    assert phrase_in_version("nine days", v1) is None  # case is the speaker's
+    assert phrase_in_version("Nine days", v1) == "Nine days"
+    assert phrase_in_version("cut   onboarding", v1) == "cut onboarding"
+    # One Take, one phrase (Q3): words of Take 2 are not words of Take 1.
+    assert phrase_in_version("Two days", v1) is None
+    assert phrase_in_version("**Nine**", v1) is None
+    assert phrase_in_version("", v1) is None
+    assert phrase_in_version("Nine", None) is None
+
+
+def test_the_route_takes_words_from_a_take_and_clears_the_paragraph_span():
+    source = (Path(__file__).resolve().parents[1]
+              / "routes/v2/explore_ideal_text.py").read_text()
+    start = source.index("def v2_explore_set_part_helper_words_from_take")
+    end = source.index("@v2_bp.route", start)
+    route = source[start:end]
+    assert "version_of_take(history, body.get(\"take_index\"))" in route
+    assert "phrase_in_version(body.get(\"phrase\")" in route
+    assert "phrase=None" in route
+    assert "record_pick(db, arc_id, user_id, str(part_id)" in route

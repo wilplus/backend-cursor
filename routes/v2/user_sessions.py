@@ -1625,6 +1625,16 @@ def v2_post_take_feedback_response(take_session_id):
                         "error": "Failed to save the response"}), 500
 
 
+def _practice_kind(practice) -> str:
+    """What the practised passage is (founder lock 2026-09-30, D1): a
+    library exercise, the Manager's rewrite, or the plain moment. Rows from
+    before migration 0400 carry no kind and are exercises."""
+    from services.practice_adoption import KINDS
+
+    kind = str((practice or {}).get("kind") or "exercise")
+    return kind if kind in KINDS else "exercise"
+
+
 def _judgeable_id(rows):
     """The latest practice attempt while it is still unjudged (Q17 A)."""
     target = judgeable_attempt(list(rows or []))
@@ -1634,20 +1644,10 @@ def _judgeable_id(rows):
 def _practice_user_payload(practice, attempts=None):
     """Owner-safe practice shape. Raw metrics/comparison scores stay private."""
     from services.confident_voice_practice import (
-        FINAL_QUESTION, FINAL_STRONGEST, INSTRUCTION, TITLE,
-        public_attempt,
+        FINAL_QUESTION, FINAL_STRONGEST, public_attempt,
     )
-    # A coach's private draft is never user-visible. Only an explicit Share
-    # copies a complete exercise snapshot into coach_shared_exercise; until
-    # then the owner continues to see the original manager-selected exercise.
-    shared_exercise = practice.get("coach_shared_exercise")
-    if practice.get("coach_shared_at") and isinstance(shared_exercise, dict):
-        exercise = shared_exercise
-    else:
-        exercise = db.get_active_diagnostic_exercise(
-            str(practice.get("exercise_id") or "")) or \
-            (practice.get("exercise_snapshot")
-             if isinstance(practice.get("exercise_snapshot"), dict) else {})
+    kind = _practice_kind(practice)
+    exercise = _practice_exercise_shape(practice, kind)
     rows = attempts if attempts is not None else \
         db.list_confident_voice_practice_attempts(str(practice.get("id")))
     from services.audio_ref_resolver import resolve_playable_ref
@@ -1660,18 +1660,8 @@ def _practice_user_payload(practice, attempts=None):
     return {
         "id": str(practice.get("id")),
         "status": practice.get("status") or "open",
-        "exercise": {
-            "exercise_id": exercise.get("exercise_id")
-                           or practice.get("exercise_id"),
-            "version": exercise.get("version")
-                       or practice.get("exercise_version"),
-            "title": exercise.get("title") or TITLE,
-            "instruction": exercise.get("instruction") or INSTRUCTION,
-            "explanation_video_ref": (
-                exercise.get("explanation_video_url")
-                or exercise.get("explanation_video_ref")
-            ),
-        },
+        "kind": kind,
+        "exercise": exercise,
         "passage": practice.get("exact_passage") or "",
         "original_audio_ref": _resolve_snippet_audio_url({
             "audio_segment_path": practice.get("original_audio_ref"),
@@ -1679,7 +1669,9 @@ def _practice_user_payload(practice, attempts=None):
         "original_start_offset_ms": practice.get("original_start_offset_ms") or 0,
         "original_duration_ms": practice.get("original_duration_ms") or 0,
         "attempts": public_rows,
-        "attempts_remaining": max(0, 3 - len(public_rows)),
+        # NO ATTEMPT CAP (founder lock 2026-09-30, D2): `attempts_remaining`
+        # left the payload with the cap; attempt N+1 is numbered from the
+        # attempts served.
         "strongest_attempt": strongest,
         "final_ready": final_ready,
         "final_message": FINAL_STRONGEST if strongest else None,
@@ -1687,6 +1679,101 @@ def _practice_user_payload(practice, attempts=None):
         "final_user_answer": practice.get("final_user_answer"),
         "selected_attempt_id": practice.get("selected_attempt_id"),
         "judgeable_attempt_id": _judgeable_id(rows),
+    }
+
+
+def _practice_exercise_shape(practice, kind: str) -> dict:
+    """The exercise as the owner may see it. A coach's private draft is
+    never user-visible: only an explicit Share copies a complete exercise
+    snapshot into coach_shared_exercise; until then the owner sees the
+    original manager-selected exercise. A rewrite or the plain moment
+    (founder lock 2026-09-30, D1) has no library exercise, so no library
+    title, instruction or video."""
+    from services.confident_voice_practice import INSTRUCTION, TITLE
+
+    shared_exercise = practice.get("coach_shared_exercise")
+    if practice.get("coach_shared_at") and isinstance(shared_exercise, dict):
+        exercise = shared_exercise
+    elif kind != "exercise":
+        return {"exercise_id": kind, "version": 0, "title": "",
+                "instruction": "", "explanation_video_ref": None}
+    else:
+        exercise = db.get_active_diagnostic_exercise(
+            str(practice.get("exercise_id") or "")) or \
+            (practice.get("exercise_snapshot")
+             if isinstance(practice.get("exercise_snapshot"), dict) else {})
+    return {
+        "exercise_id": exercise.get("exercise_id")
+                       or practice.get("exercise_id"),
+        "version": exercise.get("version")
+                   or practice.get("exercise_version"),
+        "title": exercise.get("title") or TITLE,
+        "instruction": exercise.get("instruction") or INSTRUCTION,
+        "explanation_video_ref": (
+            exercise.get("explanation_video_url")
+            or exercise.get("explanation_video_ref")
+        ),
+    }
+
+
+def _practice_start_kind(body):
+    """The practice's kind and, for a library exercise, its row. Returns
+    (refusal response or None, kind, exercise_id, exercise). A rewrite or
+    the plain moment (founder lock 2026-09-30, D1) needs no exercise row.
+    Its own function so the route stays under the complexity ratchet."""
+    from services.practice_adoption import KINDS
+
+    kind = str(body.get("kind") or "exercise")
+    if kind not in KINDS:
+        return (jsonify({"code": "INVALID_INPUT",
+                         "error": "kind is not valid"}), 400), kind, None, None
+    if kind != "exercise":
+        return None, kind, None, None
+    exercise_id = str(body.get("exercise_id") or "hear-every-word-v1")
+    exercise = db.get_active_diagnostic_exercise(exercise_id)
+    if not exercise:
+        return (jsonify({"code": "EXERCISE_UNAVAILABLE",
+                         "error": "This exercise is not available."}), 409), \
+            kind, exercise_id, None
+    return None, kind, exercise_id, exercise
+
+
+def _practice_start_gate(kind, snip, take_id, snippet_id, exercise_id,
+                         median_wpm):
+    """The exercise gate for a library exercise (the offer froze its
+    choice, 80/20); a rewrite or the plain moment has no exercise to gate,
+    and the clip's read is still recorded with the practice, as evidence,
+    never as a verdict shown. Returns (refusal, verdict, matching)."""
+    from services.confident_voice_practice import (
+        exercise_eligibility, start_exercise_check,
+    )
+
+    if kind != "exercise":
+        return None, exercise_eligibility(
+            snip, session_median_wpm=median_wpm), None
+    return start_exercise_check(
+        snippet=snip, take_session_id=take_id, snippet_id=snippet_id,
+        exercise_id=str(exercise_id), database=db,
+        owner_user_id=request.user_id, session_median_wpm=median_wpm)
+
+
+def _practice_snapshot(kind, exercise_id, exercise, body):
+    """What the practice froze: the library exercise as served, or the
+    kind of passage with the feedback item it came from."""
+    if exercise:
+        return {
+            "exercise_id": exercise_id,
+            "version": int(exercise.get("version") or 1),
+            "title": exercise.get("title"),
+            "instruction": exercise.get("instruction"),
+            "explanation_video_url": exercise.get("explanation_video_url"),
+            "source": "diagnostic_library",
+        }
+    return {
+        "exercise_id": None, "version": 0, "title": None,
+        "instruction": None, "explanation_video_url": None,
+        "source": kind,
+        "feedback_id": str(body.get("feedback_id") or "") or None,
     }
 
 
@@ -1799,11 +1886,13 @@ def v2_start_confident_voice_practice(snippet_id):
         if not owner_route or not _answer_matches_route(owner_route, original_answer):
             return jsonify({"code": "ANSWER_REQUIRED",
                             "error": "Answer the Confident Voice question first."}), 409
-        exercise_id = str(body.get("exercise_id") or "hear-every-word-v1")
-        exercise = db.get_active_diagnostic_exercise(exercise_id)
-        if not exercise:
-            return jsonify({"code": "EXERCISE_UNAVAILABLE",
-                            "error": "This exercise is not available."}), 409
+        # THREE KINDS OF PASSAGE (founder lock 2026-09-30, D1): the library
+        # exercise matched to the clip, the Manager's rewrite as the words to
+        # say, or the plain moment said again. Only the first needs an
+        # exercise row and the exercise gate below.
+        refused, kind, exercise_id, exercise = _practice_start_kind(body)
+        if refused:
+            return refused
         take_id = str(session.get("id"))
         # ONE PRACTICE PER MOMENT (founder 2026-09-29): every bookmark may
         # carry its own exercise, so another moment's practice on this Take
@@ -1824,11 +1913,9 @@ def v2_start_confident_voice_practice(snippet_id):
         # The offer froze its choice (80/20, founder 2026-09-26); the tapped
         # exercise must be that one. services.confident_voice_practice owns
         # the rule, so the offer and this route cannot drift apart.
-        from services.confident_voice_practice import start_exercise_check
-        refusal, verdict, matching = start_exercise_check(
-            snippet=snip, take_session_id=take_id, snippet_id=str(snippet_id),
-            exercise_id=exercise_id, database=db, owner_user_id=request.user_id,
-            session_median_wpm=statistics.median(wpms) if wpms else None)
+        refusal, verdict, matching = _practice_start_gate(
+            kind, snip, take_id, str(snippet_id), exercise_id,
+            statistics.median(wpms) if wpms else None)
         if refusal:
             return jsonify({"code": _START_REFUSALS[refusal][0],
                             "error": _START_REFUSALS[refusal][1]}), 409
@@ -1845,27 +1932,27 @@ def v2_start_confident_voice_practice(snippet_id):
                 or span["end"] <= span["start"]:
             return jsonify({"code": "INVALID_INPUT",
                             "error": "exact feedback evidence is required"}), 400
-        transcript = (snip.get("transcript") or "").strip()
+        from services.practice_adoption import passage_for
+        passage = passage_for(
+            kind, (snip.get("transcript") or "").strip(), body.get("passage"))
+        if not passage:
+            return jsonify({"code": "INVALID_INPUT",
+                            "error": "the words to practise are required"}), 400
         audio_ref = snip.get("audio_segment_path") or snip.get("audio_ref")
+        snapshot = _practice_snapshot(kind, exercise_id, exercise, body)
         created = db.create_confident_voice_practice({
             "owner_user_id": str(request.user_id),
             "project_id": str(session["arc_id"]),
             "take_session_id": take_id,
             "snippet_id": str(snippet_id),
             "exercise_id": exercise_id,
-            "exercise_version": int(exercise.get("version") or 1),
-            "exercise_snapshot": {
-                "exercise_id": exercise_id,
-                "version": int(exercise.get("version") or 1),
-                "title": exercise.get("title"),
-                "instruction": exercise.get("instruction"),
-                "explanation_video_url": exercise.get("explanation_video_url"),
-                "source": "diagnostic_library",
-            },
+            "exercise_version": int(snapshot["version"]),
+            "exercise_snapshot": snapshot,
+            "kind": kind,
             "slide_index": slide_index,
             "paragraph_index": paragraph_index,
             "evidence_span": span,
-            "exact_passage": transcript,
+            "exact_passage": passage,
             "original_audio_ref": str(audio_ref),
             "original_start_offset_ms": int(snip.get("start_offset_ms") or 0),
             "original_duration_ms": int(snip.get("duration_ms") or 0),
@@ -1926,10 +2013,10 @@ def v2_add_confident_voice_practice_attempt(practice_id):
     if practice.get("status") != "open":
         return jsonify({"code": "PRACTICE_CLOSED",
                         "error": "This practice is already closed."}), 409
+    # NO ATTEMPT CAP (founder lock 2026-09-30, D2): attempt 10 works like
+    # attempt 1. The loop ends on In-between or Yes, or when the speaker
+    # skips it.
     existing = db.list_confident_voice_practice_attempts(practice_id)
-    if len(existing) >= 3:
-        return jsonify({"code": "ATTEMPT_LIMIT",
-                        "error": "This practice already has three attempts."}), 409
     upload = request.files.get("audio_file")
     if not upload:
         return jsonify({"code": "INVALID_INPUT",
@@ -2146,7 +2233,7 @@ def v2_judge_confident_voice_practice_attempt(practice_id, attempt_id):
 @operational_purpose_disabled("personalized_exercise_recommendation")
 @consent_choice_required("personalised_practice")
 def v2_confident_voice_practice_helper_words(practice_id):
-    """Helper words tapped from the adopted practice attempt (Q10 B)."""
+    """Helper words tapped from the judged practice attempt (B6)."""
     if not _is_valid_uuid(practice_id):
         return jsonify({"code": "INVALID_INPUT",
                         "error": "practice_id must be a valid UUID"}), 400

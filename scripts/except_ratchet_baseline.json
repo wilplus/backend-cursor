@@ -108,7 +108,6 @@
   "services/pipeline_jobs.py": 20,
   "services/pipeline_stage_execution.py": 1,
   "services/post_session_results_email.py": 4,
-  "services/practice_adoption.py": 1,
   "services/practice_audio_objects.py": 1,
   "services/practice_more_confident.py": 1,
   "services/practice_retention.py": 7,

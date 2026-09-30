@@ -67,11 +67,19 @@ with this contract, this contract wins.
     the cap stay as they are); the one tap on "Use
     these helper words" saves and locks them — there is no separate Lock
     screen, and "lock" is an internal term the user never sees (founder
-    2026-09-26). There is no Keep evolving choice and no Unlock action: every
-    Paragraph follows the speaker (clause 8), and choosing new helper words
-    replaces the old ones. A user whose answer opens the helper-words step
-    (24e) but who closed the sheet before choosing may still choose them from
-    the Paragraph's own sheet.
+    2026-09-26). There is no Keep evolving choice: every Paragraph follows
+    the speaker (clause 8), and choosing new helper words replaces the old
+    ones. **Helper words can be deleted** (founder lock 2026-09-30, B4, D4):
+    Delete on the helper words overlay, confirmed once, clears the words and
+    the lock, the Paragraph is back in the walk, and the deleted set stays in
+    the Paragraph's history with its Take — still the user's act, so L1
+    holds. **Helper words can be taken from any earlier Take** (B4, D5): the
+    overlay shows one chip per Take that has a version of the Paragraph, that
+    Take's text is tappable, and a saved phrase always comes from a single
+    Take's text (Q3). Words from an earlier Take that the latest Take did not
+    say show as the headline with nothing italic until said again. A user
+    whose answer opens the helper-words step (24e) but who closed the sheet
+    before choosing may still choose them from the Paragraph's own sheet.
 14. A lock keeps the helper words, not the text. Locked helper words persist
     across Takes — including a later Take whose words no longer contain them,
     and a later No answer on that Paragraph — until the user explicitly picks
@@ -361,15 +369,20 @@ with this contract, this contract wins.
 29. Confident Voice offers primary responses Yes — Confident, In-between, and
     No — Not confident, plus secondary Not sure and Audio unclear. The response
     is an immutable self-report tied to the exact clip and Take.
-29a. **The practice loop.** After an exercise, the user may practise. After
-    each practice attempt the exact same judgement screen appears again, with
-    the same five responses, judging that practice attempt. No, Not sure or
-    Audio unclear
-    offers another attempt; Yes or In-between opens the helper-words
-    step and the lock (35d; founder lock 2026-09-30, B2). When the attempt
-    limit is reached on No, Not sure or Audio
-    unclear, the sheet closes with no helper words. Each answer is stored
-    against the practice attempt it judges, never against the Take (clause 31).
+29a. **The practice loop.** Practise is the default follow-up for every
+    judgement below In-between (founder lock 2026-09-30, D1): the passage is
+    the library exercise where one is matched to the clip, else the Manager's
+    rewrite as the words to say, else the plain moment said again; the loop
+    is the same for all three. After each practice attempt the exact same
+    judgement screen appears again, with the same five responses, judging
+    that practice attempt. No, Not sure or Audio unclear offers another
+    attempt, **as long as the speaker wants — there is no attempt cap**
+    (D2; until the lock, three); Yes or In-between ends the loop and opens
+    the helper-words step over the attempt's own words, and the lock
+    (founder lock 2026-09-30, B2, B6). **A practice never rewrites the
+    Paragraph** (B6): the words on the page change only with a Take. Each
+    answer is stored against the practice attempt it judges, never against
+    the Take (clause 31).
 30. No blocks orange styling and Voice Album admission for that exact clip and
     suppresses that exact clip from resurfacing. It does not penalize the
     Paragraph, the user's voice, or materially stronger audio in a future Take.
@@ -448,14 +461,16 @@ with this contract, this contract wins.
     event exists, outcomes are raw evidence only, and no dataset, training or
     promotion path reads them.
 35d. The user is shown which exact exercise version was assigned and its prior
-    use, so the product does not unknowingly repeat it. One practice session may
-    contain at most three same-passage Recording Attempts. Practice attempts are
-    not presentation Takes. When the user answers Yes, In-between, or Not sure
-    about a practice attempt (29a), that attempt's transcript replaces the
-    matching part of the Paragraph, the helper words are tapped from that
-    transcript, and the Take's version stays in the Paragraph's history
-    (founder 2026-09-25). No other practice outcome mutates Ideal Text or
-    helper words, and the next Take rewrites the Paragraph again (clause 8).
+    use, so the product does not unknowingly repeat it. A practice holds as
+    many same-passage Recording Attempts as the speaker records (29a; the
+    cap of three is retired, founder lock 2026-09-30, D2). Practice attempts
+    are not presentation Takes. When the user answers Yes or In-between
+    about a practice attempt (29a), the helper words are tapped from that
+    attempt's transcript and stored on the Slide; **no practice outcome
+    mutates Ideal Text** (B6). The adoption rule of 2026-09-25 — the
+    attempt's transcript replacing the practised passage — is retired; the
+    rows it wrote stay in the Paragraph's history. The next Take rewrites the
+    Paragraph again (clause 8).
 35e. Exercise comparison is qualitative. No acoustic score, rank, probability,
     or machine verdict is shown to the user. Opening, skipping, timing out, or
     making no attempt is not an effectiveness label.
