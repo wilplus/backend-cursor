@@ -96,7 +96,14 @@ class _ReviewDb:
 
     def replace_ideal_text_parts(self, arc_id, user_id, parts,
                                  revision_action=None):
-        self.parts = [dict(p) for p in parts]
+        # As production does: the helper-word columns carry by Paragraph id
+        # across the rewrite (services.db._carried_root, contract 14).
+        from services.db import _carried_root
+        previous = {str(p.get("id")): p for p in self.parts}
+        self.parts = [
+            {**dict(p), **_carried_root(previous.get(str(p.get("id"))),
+                                        str(p.get("text") or ""))}
+            for p in parts]
         return True
 
     def get_slide_helper_words(self, arc_id, user_id):
@@ -537,6 +544,42 @@ class EveryTakeRewritesTheSlidesItSpoke(unittest.TestCase):
         self.assertEqual([(p["id"], p["text"]) for p in database.parts],
                          [("p-one", "Slide one words."), ("p-two", new_text)])
         # Q12 A: the locked Paragraph-level helper words moved to the Slide.
+        self.assertEqual(
+            [r["phrase"] for r in database.slide_rows.get(0, [])],
+            ["one words"])
+
+    def test_helper_words_survive_an_edit_between_takes(self):
+        """Founder lock 2026-09-30, B1: pick words on Take 1, edit another
+        paragraph with the pencil, record Take 2 — the words are still on
+        their Paragraph. The edit rewrote the stored rows' words while the
+        machine text stayed, and until this the rebuild answered that
+        mismatch with fresh ids for every Paragraph."""
+        database = _ReviewDb()
+        old_text, old_doc = _two_slide_document()
+        database.ideal.update(auto_text=old_text, text=old_text,
+                              document=old_doc)
+        database.edit = {"text": "Slide one words.\n\nSlide two, edited.",
+                         "version": 1}
+        database.parts = [
+            {"id": "p-one", "ord": 0, "text": "Slide one words.",
+             "locked_at": "2026-09-30T10:00:00Z",
+             "root_phrase": "one words", "root_start": 6, "root_end": 15,
+             "root_selected_at": "2026-09-30T10:00:00Z"},
+            {"id": "p-two", "ord": 1, "text": "Slide two, edited."},
+        ]
+        new_text = "Take two says slide two differently."
+        self._run(database, {
+            "text": new_text, "pieces": [],
+            "paragraphs": [{"slide_index": 1, "start": 0,
+                            "end": len(new_text)}],
+            "take_session_id": "take-2", "take_index": 2,
+        })
+        self.assertEqual([(p["id"], p["text"]) for p in database.parts],
+                         [("p-one", "Slide one words."), ("p-two", new_text)])
+        one = database.parts[0]
+        self.assertEqual(one["locked_at"], "2026-09-30T10:00:00Z")
+        self.assertEqual(one["root_phrase"], "one words")
+        self.assertEqual((one["root_start"], one["root_end"]), (6, 15))
         self.assertEqual(
             [r["phrase"] for r in database.slide_rows.get(0, [])],
             ["one words"])

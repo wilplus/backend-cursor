@@ -211,17 +211,39 @@ def reidentify_parts(old_rows: list, old_text: str,
     return out
 
 
-def _tiling_old_ids(old_rows: list, old_text: str,
-                    rebuild: Rebuild) -> list[str]:
-    """The old Paragraph ids in order, or [] when the stored rows do not
-    tile the old text Paragraph for Paragraph."""
+def old_paragraph_rows(old_rows: list, old_text: str,
+                       rebuild: Rebuild) -> list:
+    """The stored Paragraph rows as the old document's Paragraphs, served
+    and in order, or [] when they cannot be.
+
+    THE ROWS COUNT THE PARAGRAPHS, THEY NEED NOT SPELL THE MACHINE TEXT
+    (founder lock 2026-09-30, B1: helper words follow the Paragraph through
+    every rebuild, edit or no edit). Until then the rows had to tile
+    `old_text`, the machine text. An owner edit between Takes rewrites the
+    rows' words but never the machine text, so after any edit the proof
+    failed, every Paragraph got a fresh id, and its helper words and lock
+    fell off the page while Recording Mode and the history still showed
+    them. The edit surface mutates the existing slots in place and cannot
+    insert, delete, split, merge or reorder them, so equal counts prove
+    that slot N is still Paragraph N. The text proof is kept as the clean
+    case and its absence is logged, never fatal.
+    """
     from services.ideal_text_parts import agrees_with_text, serve
 
     served = serve(old_rows) if old_rows else None
-    if served and agrees_with_text(served, old_text) \
-            and len(served) == len(rebuild.old_slides):
-        return [str(p["id"]) for p in served]
-    return []
+    if not served or len(served) != len(rebuild.old_slides):
+        return []
+    if not agrees_with_text(served, old_text):
+        logger.info("take rebuild: identity carried by count, the rows "
+                    "spell an edit rather than the machine text")
+    return served
+
+
+def _tiling_old_ids(old_rows: list, old_text: str,
+                    rebuild: Rebuild) -> list[str]:
+    """The old Paragraph ids in order, or [] (see `old_paragraph_rows`)."""
+    return [str(p["id"]) for p in old_paragraph_rows(old_rows, old_text,
+                                                      rebuild)]
 
 
 def _spare_ids_by_slide(old_ids: list[str], rebuild: Rebuild) -> dict:
@@ -254,11 +276,8 @@ def legacy_helper_words(old_rows: list, rebuild: Rebuild,
     Helper words locked before the Slide table existed live only on the
     Paragraph row. A rebuilt Slide may give that Paragraph new words, so they
     are carried onto the Slide first (Q12 A) — never lost to a rebuild."""
-    from services.ideal_text_parts import agrees_with_text, serve
-
-    served = serve(old_rows) if old_rows else None
-    if not served or not agrees_with_text(served, old_text) \
-            or len(served) != len(rebuild.old_slides):
+    served = old_paragraph_rows(old_rows, old_text, rebuild)
+    if not served:
         return {}
     out: dict = {}
     for part, slide in zip(served, rebuild.old_slides):

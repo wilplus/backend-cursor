@@ -51,7 +51,11 @@ with this contract, this contract wins.
 12. A Paragraph keeps its ID through ordinary wording edits and through a
     Take rewriting its words, so its helper words and history follow it. Split
     and merge operations create new Paragraph IDs; prior IDs remain only in
-    history and provenance.
+    history and provenance. **This holds when an owner edit sits between the
+    Takes** (founder lock 2026-09-30, B1): the rebuild proves the stored
+    Paragraphs by their count against the old document, not by their
+    spelling, because an edit rewrites the words of a slot and never the
+    slots themselves.
 
 ## 3. Decisions, protection, anchors, and roots
 
