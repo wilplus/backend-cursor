@@ -28,10 +28,13 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 RESOLUTIONS = ("exercise_chosen", "exercise_authored", "no_safe_match",
-               "line_written", "version_written")
-#: Answers in words (0402): the resolution → what the speaker's row calls it.
-WORD_RESOLUTIONS = {"line_written": "line", "version_written": "version"}
-#: The surface a written answer's pair is recorded on.
+               "line_written", "version_written", "note_written")
+#: Answers in words (0402, 0403): the resolution → what the speaker's row
+#: calls it. A note (an error without a video, an ambiguity) rides the
+#: moment only and is never filed anywhere.
+WORD_RESOLUTIONS = {"line_written": "line", "version_written": "version",
+                    "note_written": "note"}
+#: The surface a written answer's pair is recorded on; a note has none.
 _PAIR_SURFACE = {"line_written": "praise_line",
                  "version_written": "clearer_version",
                  "exercise_authored": "exercise_script"}
@@ -85,8 +88,10 @@ def coach_request_payload(request: dict, database: Any) -> dict:
         "created_at": request.get("created_at"),
         "resolution": request.get("resolution"),
         "resolved_exercise_id": request.get("resolved_exercise_id"),
-        # The answer in words (0402), when the coach wrote one.
+        # The answer in words (0402), when the coach wrote one, and the video
+        # the coach added to it (0403).
         "answer_text": request.get("answer_text"),
+        "answer_video_url": answer_video_url(request),
         # The model's draft the coach may edit from; coach-only (C2).
         "draft": draft_on(request),
         "resolved_at": request.get("resolved_at"),
@@ -226,17 +231,37 @@ def _file_answer(database: Any, request: dict, resolved: dict, fields: dict,
         record_pair(
             database, surface=surface, draft=draft, final=final,
             coach_id=coach_id, model_version=request.get("draft_model_version"),
-            pattern_key=_pattern_key(request, resolution),
+            pattern_key=_pattern_key(request, resolution, fields.get("pattern_key")),
             owner_user_id=request.get("owner_user_id"),
             take_session_id=request.get("take_session_id"),
             snippet_id=request.get("snippet_id"), request_id=str(request.get("id")),
             exercise_id=(exercise or {}).get("exercise_id") if exercise else None,
             exercise_version=(int(exercise.get("version") or 1) if exercise else None))
     if resolution == "line_written" and fields.get("file_in_catalogue") is not False:
-        _file_praise_line(database, request, resolved, coach_id)
+        _file_praise_line(database, request, resolved, coach_id,
+                          fields.get("pattern_key"))
 
 
-def _pattern_key(request: dict, resolution: str) -> Optional[str]:
+def answer_video_url(request: Any) -> Optional[str]:
+    """The playable address of the video a coach added to a written answer
+    (0403), or None. Exercise videos are public journal media; a private
+    ref is re-signed on every read."""
+    ref = (request or {}).get("answer_video_ref") if isinstance(request, dict) else None
+    if not ref:
+        return None
+    try:
+        from services.coach_video_storage import refreshed_media_url
+        return refreshed_media_url(str(ref)) or str(ref)
+    except Exception:  # noqa: BLE001 -- the address still serves
+        return str(ref)
+
+
+def _pattern_key(request: dict, resolution: str, chosen: Any = None) -> Optional[str]:
+    """The pattern an answer is filed under: the coach's own choice when they
+    named one on the Home screen (a cue, the read, a move), else the first
+    thing spotted, else the rewrite's why."""
+    if isinstance(chosen, str) and chosen.strip() and not any(c.isspace() for c in chosen.strip()):
+        return chosen.strip()
     tags = [t for t in (request.get("observed_tags") or []) if isinstance(t, str)]
     if resolution == "version_written":
         trace = request.get("request_trace")
@@ -246,14 +271,16 @@ def _pattern_key(request: dict, resolution: str) -> Optional[str]:
 
 
 def _file_praise_line(database: Any, request: dict, resolved: dict,
-                      coach_id: str) -> None:
+                      coach_id: str, chosen: Any = None) -> None:
     from services.feedback_catalogue import (
         CONFIDENT_READ, CatalogueRefusal, validate_line,
     )
     writer = getattr(database, "insert_feedback_catalogue_line", None)
     if writer is None:
         return
-    key = _pattern_key(request, "line_written")
+    key = _pattern_key(request, "line_written", chosen)
+    if key == CONFIDENT_READ:
+        key = None
     body = {"lane": "praise", "pattern_kind": "cue" if key else "read",
             "pattern_key": key or CONFIDENT_READ,
             "text": resolved.get("answer_text")}

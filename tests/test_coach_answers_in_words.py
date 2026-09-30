@@ -143,13 +143,43 @@ class WordsTests(unittest.TestCase):
         self.assertIsNone(coach_shared_answer({"resolution": "exercise_chosen",
                                                "shared_at": "now", "answer_text": None}))
 
+    def test_a_note_rides_the_moment_and_is_never_filed(self):
+        db = _Db(_request("ambiguity", draft_text=None))
+        status, payload = ecr.resolve_request(
+            db, db.request, {"resolution": "note_written",
+                             "answer_text": "You and the machine disagree; listen again.",
+                             "share_with_user": True}, coach_id="c")
+        self.assertEqual(status, 200, payload)
+        self.assertEqual(db.lines, [])
+        self.assertEqual(db.pairs, [])
+        answer = coach_shared_answer({**db.request, "resolution": "note_written",
+                                      "shared_at": "now", "answer_text": "Listen again.",
+                                      "answer_video_ref": "https://v/note.mp4"})
+        self.assertEqual(answer, {"kind": "note", "text": "Listen again.",
+                                  "video_url": "https://v/note.mp4"})
+
+    def test_the_coach_s_own_pattern_choice_files_the_line(self):
+        db = _Db(_request("praise"))
+        ecr.resolve_request(db, db.request, {"resolution": "line_written",
+                                             "answer_text": "You opened strong.",
+                                             "pattern_key": "opened_strong"}, coach_id="c")
+        self.assertEqual((db.lines[0]["pattern_kind"], db.lines[0]["pattern_key"]),
+                         ("cue", "opened_strong"))
+        db = _Db(_request("praise"))
+        ecr.resolve_request(db, db.request, {"resolution": "line_written",
+                                             "answer_text": "You sounded sure.",
+                                             "pattern_key": "confident_read"}, coach_id="c")
+        self.assertEqual((db.lines[0]["pattern_kind"], db.lines[0]["pattern_key"]),
+                         ("read", "confident_read"))
+
     def test_the_resolution_values_match_the_migration(self):
-        sql = (ROOT / "migrations/a_coach_answers_in_words_too.sql").read_text()
+        sql = (ROOT / "migrations/a_word_for_this_take.sql").read_text()
         for value in ecr.RESOLUTIONS:
             self.assertIn(f"'{value}'", sql)
         self.assertIn("resolve_exercise_coach_request_v2", sql)
-        self.assertIn("CREATE TABLE IF NOT EXISTS public.feedback_pairs", sql)
-        self.assertIn("ALTER TABLE public.feedback_pairs ENABLE ROW LEVEL SECURITY", sql)
+        pairs = (ROOT / "migrations/a_coach_answers_in_words_too.sql").read_text()
+        self.assertIn("CREATE TABLE IF NOT EXISTS public.feedback_pairs", pairs)
+        self.assertIn("ALTER TABLE public.feedback_pairs ENABLE ROW LEVEL SECURITY", pairs)
 
 
 class MainTargetTests(unittest.TestCase):

@@ -15167,6 +15167,62 @@ class DatabaseService:
         return {(str(r.get("take_session_id")), str(r.get("snippet_id"))): r
                 for r in (res.data or []) if isinstance(r, dict)}
 
+    def set_exercise_coach_request_video(
+        self, *, request_id: str, video_ref: str,
+    ) -> Optional[dict]:
+        """The video a coach added to a written answer (0403). Raises on
+        failure; the route names it."""
+        res = (self.client.table("exercise_coach_requests")
+               .update({"answer_video_ref": str(video_ref)})
+               .eq("id", str(request_id)).execute())
+        return (res.data or [None])[0]
+
+    def upsert_coach_take_word(
+        self, *, take_session_id: str, coach_id: str, text: Optional[str],
+        video_ref: Optional[str], share: bool,
+    ) -> Optional[dict]:
+        """One word per (Take, coach) (0403), replaced on each save; sharing
+        stamps shared_at once and a later save keeps it. Raises on failure."""
+        now = datetime.now(timezone.utc).isoformat()
+        existing = self.get_coach_take_word(take_session_id, coach_id) or {}
+        payload: dict[str, Any] = {
+            "take_session_id": str(take_session_id),
+            "coach_id": str(coach_id),
+            "text": text,
+            "video_ref": video_ref,
+            "updated_at": now,
+        }
+        if share and not existing.get("shared_at"):
+            payload["shared_at"] = now
+        res = (self.client.table("coach_take_words")
+               .upsert(payload, on_conflict="take_session_id,coach_id")
+               .execute())
+        return (res.data or [None])[0]
+
+    def get_coach_take_word(self, take_session_id: str, coach_id: str) -> Optional[dict]:
+        if not take_session_id or not coach_id:
+            return None
+        try:
+            res = (self.client.table("coach_take_words").select("*")
+                   .eq("take_session_id", str(take_session_id))
+                   .eq("coach_id", str(coach_id)).limit(1).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("get_coach_take_word failed take=%s: %s",
+                           take_session_id, e, exc_info=True)
+            return None
+
+    def list_shared_coach_take_words(self, take_session_ids: list[str]) -> list[dict]:
+        """Every shared word on these Takes (0403). Raises on failure."""
+        ids = [str(i) for i in take_session_ids if i]
+        if not ids:
+            return []
+        res = (self.client.table("coach_take_words")
+               .select("take_session_id,coach_id,text,video_ref,shared_at,updated_at")
+               .in_("take_session_id", ids)
+               .not_.is_("shared_at", "null").execute())
+        return list(res.data or [])
+
     def insert_feedback_pair(self, **fields: Any) -> Optional[dict]:
         """One (draft, final) pair (0402). Raises on failure; the service
         logs it and the answer stands. A duplicate for the same request or

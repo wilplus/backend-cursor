@@ -104,6 +104,33 @@ def test_words_and_exercises_never_mix(db):
     assert done["answer_text"] is None and done["resolved_exercise_id"] == "ex-1"
 
 
+def test_a_note_is_answered_and_shared_and_takes_a_video(db):
+    req = _request(db)
+    _row(db, "UPDATE public.exercise_coach_requests SET answer_video_ref = %s "
+             "WHERE id = %s RETURNING id", ("https://v/note.mp4", req["id"]))
+    done = _resolve_v2(db, req["id"], "note_written", answer="Listen again.", share=True)
+    assert done["resolution"] == "note_written"
+    assert done["answer_video_ref"] == "https://v/note.mp4"
+    assert done["shared_at"] is not None
+
+
+def test_one_word_per_take_and_coach(db):
+    take = str(uuid.uuid4())
+    insert = ("INSERT INTO public.coach_take_words (take_session_id, coach_id, text, "
+              "video_ref) VALUES (%s, 'coach-1', %s, %s) RETURNING id")
+    assert _row(db, insert, (take, "Good Take.", None))["id"]
+    with pytest.raises(psycopg2.Error):  # one per (take, coach)
+        _row(db, insert, (take, "Again.", None))
+    with pytest.raises(psycopg2.Error):  # words or a video
+        _row(db, insert, (str(uuid.uuid4()), "  ", None))
+    rls = _row(db, "SELECT relrowsecurity FROM pg_class WHERE oid = "
+                   "'public.coach_take_words'::regclass")
+    assert rls["relrowsecurity"] is True
+    for role in ("anon", "authenticated"):
+        assert _row(db, "SELECT has_table_privilege(%s, 'public.coach_take_words', "
+                        "'SELECT') AS ok", (role,))["ok"] is False
+
+
 def test_v1_still_resolves_an_exercise(db):
     req = _request(db)
     done = _row(db, "SELECT * FROM public.resolve_exercise_coach_request_v1("

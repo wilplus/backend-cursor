@@ -474,6 +474,9 @@ hard migrations/a_signed_line_for_every_pattern.sql
 hard migrations/a_signed_line_for_every_pattern.sql
 hard migrations/a_coach_answers_in_words_too.sql
 hard migrations/a_coach_answers_in_words_too.sql
+# 0403: the Take-level word, a note as an answer, an answer's video. Twice.
+hard migrations/a_word_for_this_take.sql
+hard migrations/a_word_for_this_take.sql
 
 # R-1 (audit 2026-09-22). 0299 created the two learning-surface tables with
 # the same GRANT ALL TO service_role as 0296, and was never in this chain, so
