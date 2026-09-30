@@ -355,8 +355,6 @@ class PersistenceAndJourneyFenceTests(unittest.TestCase):
         migration = (self.ROOT / "migrations/add_confident_voice_practice.sql").read_text()
         self.assertIn("active                         BOOLEAN NOT NULL DEFAULT FALSE", migration)
         self.assertRegex(migration, r"'hear-every-word-v1'[\s\S]+?FALSE,\s+1")
-        route = (self.ROOT / "routes/journal.py").read_text()
-        self.assertIn("journal/diagnostic-exercises/save", route)
         # The draft rule moved out of the route on 2026-09-16, when the
         # catalogue became dynamic and the route shrank to a thin caller. The
         # RULE is unchanged — an exercise cannot go live on an unpublished

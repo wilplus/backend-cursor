@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import json
 import unittest
-from unittest.mock import patch
 
 from services import exercise_learning_readiness as lr
 
@@ -226,30 +225,6 @@ class ReadTests(unittest.TestCase):
         self.assertEqual(out["unavailable"], ["match_traces"])
         self.assertFalse(out["ready"])
         self.assertIn("match_traces", out["why_not"])
-
-
-class RouteTests(unittest.TestCase):
-    def setUp(self):
-        from flask import Flask
-        self.app = Flask(__name__)
-
-    def _post(self, body, pw="s3cret"):
-        from routes import journal as jroutes
-        with self.app.test_request_context(json=body), \
-                patch.object(jroutes.config, "JOURNAL_ADMIN_PASSWORD", pw), \
-                patch.object(jroutes, "db", _Db()):
-            out = jroutes.journal_admin_exercise_learning_readiness()
-            resp, status = out if isinstance(out, tuple) else (out, 200)
-            return resp.get_json(), status
-
-    def test_behind_the_cms_password(self):
-        self.assertEqual(self._post({"password": "wrong"})[1], 401)
-        self.assertEqual(self._post({"password": "x"}, pw="")[1], 503)
-
-    def test_returns_the_count(self):
-        body, status = self._post({"password": "s3cret"})
-        self.assertEqual(status, 200)
-        self.assertEqual(body["counted"], 1)
 
 
 class _Query:

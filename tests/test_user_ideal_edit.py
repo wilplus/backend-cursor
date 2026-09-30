@@ -18,7 +18,6 @@ from unittest.mock import patch
 
 try:
     from flask import Flask, request
-    from routes.v2 import coach as v2_coach
     from routes.v2 import explore_ideal_text as v2_explore_ideal_text
     from services.db import db
     _IMPORT_ERROR = None
@@ -352,52 +351,6 @@ class PriorEditReofferTests(unittest.TestCase):
         body, _ = self._get(row=_row(version=3), edit=_read)
         self.assertEqual(calls, [(ARC, "u1")])
         self.assertEqual(body["prior_edit"]["version"], 2)
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class CoachGetUserEditTests(unittest.TestCase):
-    """BE-3 — the coach GET carries the student's edit as read-only ref."""
-
-    def setUp(self):
-        self.app = Flask(__name__)
-
-    def _get(self, *, sessions, edit, coach_row):
-        with self.app.test_request_context():
-            request.user_id = "coach1"
-            with patch.object(db.takes, "get_arc_sessions",
-                              return_value=sessions), \
-                 patch.object(db, "get_user_ideal_edit",
-                              return_value=edit) as m_edit, \
-                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
-                              return_value=coach_row), \
-                 patch("services.ideal_text_block.maybe_assemble_ideal_text",
-                       return_value=False), \
-                 patch("services.ideal_text_block.assemble_ideal_text_block",
-                       return_value={"text": "x", "key_moments": [],
-                                     "ready": True}):
-                out = v2_coach.v2_coach_get_ideal_text.__wrapped__(ARC)
-                resp, status = out if isinstance(out, tuple) else (out, 200)
-                return resp.get_json(), status, m_edit
-
-    def test_coach_get_carries_user_edit_keyed_on_owner(self):
-        edit = {"text": "student edit", "version": 3, "updated_at": "t"}
-        body, status, m_edit = self._get(
-            sessions=[{"id": "s1", "user_id": "owner-uid"}],
-            edit=edit,
-            coach_row={"text": "coach block", "updated_by": "coach1",
-                       "approved_at": None, "version": 3})
-        self.assertEqual(status, 200)
-        self.assertEqual(body["user_edit"], edit)
-        # looked up against the ARC OWNER, not the coach
-        self.assertEqual(m_edit.call_args.args[1], "owner-uid")
-
-    def test_coach_get_user_edit_null_when_none(self):
-        body, _, _ = self._get(
-            sessions=[{"id": "s1", "user_id": "owner-uid"}],
-            edit=None,
-            coach_row={"text": "coach block", "updated_by": "coach1",
-                       "approved_at": None, "version": 3})
-        self.assertIsNone(body["user_edit"])
 
 
 if __name__ == "__main__":

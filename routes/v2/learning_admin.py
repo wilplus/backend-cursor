@@ -26,8 +26,13 @@ logger = logging.getLogger(__name__)
 def v2_admin_learning_ledger():
     from services.learning_ledger import ledger as read_ledger
     from services.learning_pace import WINDOW_WEEKS, pace
+    from services.exercise_gaps import gap_view
     try:
         live = read_ledger(db)
+        # The gap view rode the retired /cms/gaps page (founder 2026-09-30,
+        # B8): which pattern needs an exercise filmed, and how many coach
+        # requests wait on it. It lives here now so nothing is lost.
+        gaps = gap_view(db, days=30)
         snapshots = db.list_ledger_snapshots(limit=WINDOW_WEEKS + 1) or []
         oldest_first = sorted(
             (s for s in snapshots if isinstance(s, dict)),
@@ -40,6 +45,7 @@ def v2_admin_learning_ledger():
                        "exported": s.get("exported"), "updated_at": s.get("updated_at")}
                       for s in oldest_first],
             "pace": pace(live, history),
+            "gaps": gaps,
         })
         response.headers["Cache-Control"] = "no-store"
         return response, 200

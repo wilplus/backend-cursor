@@ -22,14 +22,10 @@ The password is compared with hmac.compare_digest and is never logged.
   POST /v2/internal/journal/posts/publish | unpublish
   POST /v2/internal/journal/reorder
   POST /v2/internal/journal/media/presign
-  POST /v2/internal/journal/diagnostic-exercises/list | save
-  POST /v2/internal/journal/speaking-errors/list | save
 
-The last pair authors the SPEAKING ERROR LIBRARY, which is not journal content
-but shares this gate and this CMS page. It writes `observed` entries only: a
-coach names and defines a pattern, and making that name findable in audio is a
-detector, which is code. See the endpoints for the two refusals that keep the
-seam honest.
+The speaking error library and the exercise lane left this gate on 2026-09-30
+(founder B8): the coach names errors at /v2/coach/speaking-errors and files
+exercises from the walk.
 
 Auth note: this app has no blanket before_request — auth is per-route via
 decorators — so "public" here simply means no decorator, and admin means the
@@ -208,43 +204,6 @@ def journal_admin_get():
     if not row:
         return jsonify({"code": "NOT_FOUND", "error": "post not found"}), 404
     return jsonify({"post": jr.serialize_admin(row)}), 200
-
-
-@journal_bp.route("/v2/internal/journal/diagnostic-exercises/list",
-                  methods=["POST"])
-def journal_admin_list_diagnostic_exercises():
-    """Explicit diagnostic pool. Ordinary posts never appear by themselves."""
-    ok, err = _journal_admin_ok()
-    if not ok:
-        return err
-    return jsonify({"exercises": db.list_diagnostic_exercises()}), 200
-
-
-@journal_bp.route("/v2/internal/journal/diagnostic-exercises/save",
-                  methods=["POST"])
-def journal_admin_save_diagnostic_exercise():
-    """Create or update one catalogue entry.
-
-    Thin on purpose: validation lives in
-    services/diagnostic_exercise_catalogue.py, which owns the rule that makes
-    a dynamic catalogue work — a tag must name an error the library can
-    ACTUALLY detect, or the exercise claims a problem nothing can find.
-    200 { exercise } · 400 · 401 · 404 · 500 · 503"""
-    ok, err = _journal_admin_ok()
-    if not ok:
-        return err
-    from services.diagnostic_exercise_catalogue import (
-        CatalogueRefusal, save_exercise,
-    )
-    try:
-        saved = save_exercise(db, _body())
-    except CatalogueRefusal as refusal:
-        return _invalid(refusal.message, code=refusal.code,
-                        status=refusal.status)
-    if not saved:
-        return jsonify({"code": "V2_ERROR",
-                        "error": "Could not save the exercise"}), 500
-    return jsonify({"exercise": saved}), 200
 
 
 @journal_bp.route("/v2/internal/journal/posts/create", methods=["POST"])
@@ -828,103 +787,3 @@ def journal_image_delete():
     if not image_id:
         return _invalid("id: required")
     return jsonify({"deleted": bool(db.delete_journal_post_image(image_id))}), 200
-
-
-# ── THE SPEAKING ERROR LIBRARY — naming, never detection ───────────────────
-#
-# Founder 2026-09-15: a coach should be able to add a pattern's NAME the moment
-# they notice it, without waiting for a deploy. The seam that makes that safe
-# is `status`: this surface writes `observed` entries only. A coach names and
-# defines; making a name findable in audio is a detector, which is code, and
-# arrives with the migration that adds it.
-#
-# Two rules below are not paperwork:
-#   * refusing `detected` keeps a name from claiming a capability nothing has;
-#   * refusing to edit an already-detected entry stops an upsert demoting it to
-#     `observed`, which would silently stop it routing exercises with no error
-#     anywhere. That is the failure this whole library exists to prevent.
-
-
-@journal_bp.route("/v2/internal/journal/exercise-gaps", methods=["POST"])
-def journal_admin_exercise_gaps():
-    """The CMS gap view (founder 2026-09-28): each pattern, how often it was
-    spotted on exercise moments, and which exercises cover it — gaps first.
-    Body { password, days? } (1–90, default 30). Read-only.
-    200 { days, patterns, nothing_spotted_open_requests, unavailable } · 401 · 503
-
-    The work is services/exercise_gaps.py's."""
-    ok, err = _journal_admin_ok()
-    if not ok:
-        return err
-    from services.exercise_gaps import gap_view
-    return jsonify(gap_view(db, days=_body().get("days"))), 200
-
-
-@journal_bp.route("/v2/internal/journal/exercise-learning-readiness",
-                  methods=["POST"])
-def journal_admin_exercise_learning_readiness():
-    """How close exercise learning is to its evidence bar (§3.5 item 8):
-    300 first-exposure attempts with a valid endpoint, 30 per exercise.
-    Body { password }. Read-only; counts only, never outcomes.
-    200 { counted, cohort, attempt_rate, excluded, exercises, ready, … } · 401 · 503
-
-    The work is services/exercise_learning_readiness.py's."""
-    ok, err = _journal_admin_ok()
-    if not ok:
-        return err
-    from services.exercise_learning_readiness import readiness
-    return jsonify(readiness(db)), 200
-
-
-@journal_bp.route("/v2/internal/journal/exercise-learning-evaluation",
-                  methods=["POST"])
-def journal_admin_exercise_learning_evaluation():
-    """The scorekeeper and the fair test, once the jar is full (founder
-    2026-09-29: a full jar unseals the evaluation; nothing promotes, a
-    learned ranking still needs the founder's yes). Below the bar: sealed,
-    and why. Body { password }. Read-only. Two piles, machine_only and
-    with_coach_picks, never mixed.
-    200 { sealed, why_not, machine_only, with_coach_picks, … } · 401 · 503
-
-    The work is services/exercise_evaluation.py's."""
-    ok, err = _journal_admin_ok()
-    if not ok:
-        return err
-    from services.exercise_evaluation import evaluate_jar
-    return jsonify(evaluate_jar(db)), 200
-
-
-@journal_bp.route("/v2/internal/journal/speaking-errors/list",
-                  methods=["POST"])
-def journal_admin_list_speaking_errors():
-    """The whole library, retired entries included. Body { password }."""
-    ok, err = _journal_admin_ok()
-    if not ok:
-        return err
-    return jsonify({"errors": db.list_speaking_errors(active_only=False)}), 200
-
-
-@journal_bp.route("/v2/internal/journal/speaking-errors/save",
-                  methods=["POST"])
-def journal_admin_save_speaking_error():
-    """Name and define one observed speaking error.
-
-    Thin on purpose: the check-then-write lives in
-    services/speaking_error_library.py, which owns both halves and the two
-    refusals that keep naming from becoming a claim about detection.
-    200 { error } · 400 · 401 · 409 · 503"""
-    ok, err = _journal_admin_ok()
-    if not ok:
-        return err
-    from services.speaking_error_library import (
-        LibraryRefusal, save_observed_error,
-    )
-    try:
-        saved = save_observed_error(db, _body())
-    except LibraryRefusal as refusal:
-        return _invalid(refusal.message, code=refusal.code,
-                        status=refusal.status)
-    if not saved:
-        return jsonify({"code": "V2_ERROR",
-                        "error": "Could not save the error"}), 500
-    return jsonify({"error": saved}), 200
