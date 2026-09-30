@@ -87,3 +87,34 @@ def test_rows_that_do_not_tile_the_old_text_get_fresh_ids():
     parts = reidentify_parts(rows, old_text,
                              merge_by_slide(old_text, old, new_text, new))
     assert len(parts) == 2 and "x" not in {p["id"] for p in parts}
+
+
+def test_edited_rows_keep_their_identity_when_they_count_the_paragraphs():
+    """Founder lock 2026-09-30, B1. An owner edit between Takes rewrites the
+    stored rows' words, not the machine text. The rows still count the old
+    Paragraphs one for one, so every id, lock and helper word follows its
+    Paragraph into the rebuild. Until this, the mismatch cost every
+    Paragraph a fresh id."""
+    old_text, old = _doc(["A one.", "B one."], [0, 1], take=1)
+    rows = [{"id": "a", "ord": 0, "text": "A one, edited by hand.",
+             "locked_at": "2026-09-30T10:00:00Z", "root_phrase": "A one"},
+            {"id": "b", "ord": 1, "text": "B one, also edited."}]
+    new_text, new = _doc(["B two."], [1], take=2)
+    parts = reidentify_parts(rows, old_text,
+                             merge_by_slide(old_text, old, new_text, new))
+    assert [(p["id"], p["text"]) for p in parts] == [
+        ("a", "A one."), ("b", "B two.")]
+    assert parts[0]["locked_at"] == "2026-09-30T10:00:00Z"
+
+
+def test_a_different_count_still_means_fresh_ids():
+    """The count is the proof: rows from some other document shape get no
+    identity, as before."""
+    old_text, old = _doc(["A.", "B."], [0, 1], take=1)
+    rows = [{"id": "x", "ord": 0, "text": "A, edited."},
+            {"id": "y", "ord": 1, "text": "B, edited."},
+            {"id": "z", "ord": 2, "text": "A third that is not there."}]
+    new_text, new = _doc(["B new."], [1], take=2)
+    parts = reidentify_parts(rows, old_text,
+                             merge_by_slide(old_text, old, new_text, new))
+    assert {p["id"] for p in parts}.isdisjoint({"x", "y", "z"})
