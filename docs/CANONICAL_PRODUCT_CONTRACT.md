@@ -60,7 +60,11 @@ with this contract, this contract wins.
 ## 3. Decisions, protection, anchors, and roots
 
 13. Resolving Feedback and choosing helper words are separate steps. The
-    helper words (root phrase) are words the user taps; the one tap on "Use
+    helper words (root phrase) are words the user taps, **at most four in one
+    pick** (founder lock 2026-09-30, B3: a cue is read at a glance while
+    recording and found again in the next Take's words; the picker greys the
+    words a tap cannot reach and counts "N of 4 words"; phrases saved before
+    the cap stay as they are); the one tap on "Use
     these helper words" saves and locks them — there is no separate Lock
     screen, and "lock" is an internal term the user never sees (founder
     2026-09-26). There is no Keep evolving choice and no Unlock action: every
@@ -164,11 +168,15 @@ with this contract, this contract wins.
 
 24e. **Every item carries the judgement; the rooting step follows the
     answer.** A surfaced Confident Voice item always offers its delivery read.
-    After **Yes, In-between, or Not sure**, the tap-to-root helper-words step
-    and the lock follow the item's feedback. After **No or Audio unclear**, the
+    After **Yes or In-between**, the tap-to-root helper-words step
+    and the lock follow the item's feedback. After **No, Not sure or Audio
+    unclear**, the
     exercise, praise, or correction still shows, then the sheet closes with no
-    helper words — unless the practice loop in 29a turns the answer into Yes,
-    In-between, or Not sure. **Emphasis is the helper-words step — it is not a
+    helper words — unless the practice loop in 29a turns the answer into Yes
+    or In-between. (Founder lock 2026-09-30, B2, narrowing the 2026-09-25
+    ruling that opened the step on Not sure: helper words are the words of a
+    confident moment, and a Not sure still reaches the coach as an
+    ambiguity.) **Emphasis is the helper-words step — it is not a
     Feedback family and carries no budget.** The only Feedback families remain
     Confident Voice, Actionable Improvement and Evidence-backed Praise. No
     bookmark is ever empty, because the judgement and the Paragraph's history
@@ -336,9 +344,11 @@ with this contract, this contract wins.
     is an immutable self-report tied to the exact clip and Take.
 29a. **The practice loop.** After an exercise, the user may practise. After
     each practice attempt the exact same judgement screen appears again, with
-    the same five responses, judging that practice attempt. No or Audio unclear
-    offers another attempt; Yes, In-between, or Not sure opens the helper-words
-    step and the lock (35d). When the attempt limit is reached on No or Audio
+    the same five responses, judging that practice attempt. No, Not sure or
+    Audio unclear
+    offers another attempt; Yes or In-between opens the helper-words
+    step and the lock (35d; founder lock 2026-09-30, B2). When the attempt
+    limit is reached on No, Not sure or Audio
     unclear, the sheet closes with no helper words. Each answer is stored
     against the practice attempt it judges, never against the Take (clause 31).
 30. No blocks orange styling and Voice Album admission for that exact clip and
