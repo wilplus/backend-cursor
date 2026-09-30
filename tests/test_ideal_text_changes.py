@@ -829,3 +829,21 @@ def test_v2_packets_are_not_prepared_on_a_take_v3_served():
     write_stage = inspect.getsource(_ChangesRun._canonical_dual_write)
     guard = write_stage.index("if not self.v3_replaced_changes:")
     assert write_stage.index("changes.learning_presentations", guard) > guard
+
+
+def test_a_signed_move_rides_the_served_rewrite_row():
+    # The catalogue (founder 2026-09-30, E3; P1-4): a served rewrite row
+    # carries the signed move for its reason; nothing else on it changes.
+    class _Db(FakeDB):
+        def list_feedback_catalogue(self, active_only=True):
+            return [{"lane": "rewrite", "pattern_kind": "move",
+                     "pattern_key": "clarity", "text": "Split the clause.",
+                     "version": 1, "active": True}]
+    db = _Db(sugs={S2: {"kind": "replace", "trigger": "polish",
+                        "replacement_text": "And then we launched it fast.",
+                        "why": "Tighter."}})
+    out = _block(db)
+    c = out["changes"][0]
+    assert c["kind"] == "replace"
+    assert c.get("rewrite_move") == "Split the clause."
+    assert "degraded" not in out

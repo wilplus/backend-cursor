@@ -4681,6 +4681,49 @@ def v2_coach_publish_analysis(arc_id):
 # this request the caller fully controls.
 
 
+@v2_bp.route("/coach/catalogue", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_list_catalogue():
+    """The signed lines, every version, so an author sees what exists before
+    writing the same line twice (founder 2026-09-30, E3; P1-4).
+    200 { lines } · 403 · 500"""
+    try:
+        return jsonify({"lines": db.list_feedback_catalogue(
+            active_only=False)}), 200
+    except Exception as e:
+        logger.error("coach/catalogue GET failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Failed to read the catalogue"}), 500
+
+
+@v2_bp.route("/coach/catalogue", methods=["POST"])
+@require_admin_or_coach
+def v2_coach_add_catalogue_line():
+    """One signed line for one pattern: a new version, never an edit.
+    `signed_by` is the authenticated caller (L3). The line is copy a speaker
+    reads, so it is held to the same rule as every other line: words, no
+    number about a person. 200 { line } · 400 · 403 · 500"""
+    from services.feedback_catalogue import CatalogueRefusal, validate_line
+    try:
+        row = validate_line(request.get_json(silent=True) or {})
+    except CatalogueRefusal as refusal:
+        return jsonify({"code": refusal.code,
+                        "error": refusal.message}), refusal.status
+    try:
+        saved = db.insert_feedback_catalogue_line(
+            **row, signed_by=str(request.user_id or "") or None)
+        if not isinstance(saved, dict):
+            return jsonify({"code": "V2_ERROR",
+                            "error": "Failed to save the line"}), 500
+        return jsonify({"line": saved}), 200
+    except Exception as e:
+        logger.error("coach/catalogue POST failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Failed to save the line"}), 500
+
+
 @v2_bp.route("/coach/speaking-errors", methods=["GET"])
 @require_admin_or_coach
 def v2_coach_list_speaking_errors():

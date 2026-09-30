@@ -1092,6 +1092,10 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     # occurred in a particular take, so there is nothing here to purge when a
     # person asks to be deleted.
     "speaking_error",
+    # The catalogue of signed lines (0401): one sentence per pattern, written
+    # by the founder or a coach. Copy, never a speaker's words or recording;
+    # nothing here names a person.
+    "feedback_catalogue",
     "model_training_runs", "post_recording_questions",
     "pre_recording_questions", "professional_notes_specific_questions",
     "reference_distribution", "runtime_config", "slide_ab_verdicts",

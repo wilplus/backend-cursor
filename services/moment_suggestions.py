@@ -380,8 +380,12 @@ def detect_structural_device(transcript: str, *,
 
 
 def _structural_stars_enabled() -> bool:
+    """Structural praise (an exact-quote device the speaker used) is ON by
+    default since the founder's E1 (2026-09-30): the praise detectors are
+    the evidence behind "Good job", and a cold start must not fall to the
+    concision fallback alone. Set STRUCTURAL_STARS_ENABLED=0 to switch off."""
     import os
-    return (os.getenv("STRUCTURAL_STARS_ENABLED") or "0").strip().lower() \
+    return (os.getenv("STRUCTURAL_STARS_ENABLED") or "1").strip().lower() \
         in ("1", "true", "yes")
 
 
@@ -457,8 +461,11 @@ def _generate_structural(database, arc_id, candidates, *,
 
 
 def _delivery_stars_enabled() -> bool:
+    """Delivery praise (an impeccable read, with the cues that earned it) is
+    ON by default since the founder's E1 (2026-09-30). Set
+    DELIVERY_STARS_ENABLED=0 to switch off."""
     import os
-    return (os.getenv("DELIVERY_STARS_ENABLED") or "0").strip().lower() \
+    return (os.getenv("DELIVERY_STARS_ENABLED") or "1").strip().lower() \
         in ("1", "true", "yes")
 
 

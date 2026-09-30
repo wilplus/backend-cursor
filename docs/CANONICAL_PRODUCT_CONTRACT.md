@@ -380,9 +380,21 @@ with this contract, this contract wins.
     (D2; until the lock, three); Yes or In-between ends the loop and opens
     the helper-words step over the attempt's own words, and the lock
     (founder lock 2026-09-30, B2, B6). **A practice never rewrites the
-    Paragraph** (B6): the words on the page change only with a Take. Each
+    Paragraph** (B6): the words on the page change only with a Take, or
+    with the user's own acceptance of a rewrite (29b). Each
     answer is stored against the practice attempt it judges, never against
     the Take (clause 31).
+29b. **Accepting a rewrite** (founder 2026-09-30, the rewrite amendment and
+    C11). A rewrite card shows the clearer words as text. The one primary
+    action is to accept them and practise: the acceptance is the owner's
+    `apply_suggestion` response on that item, which the decision ledger
+    bakes into the document (a new version; the Paragraph's history shows
+    "Correction accepted" with the accepted words), and the practise
+    passage is the accepted text. Keeping one's own words is the way out
+    and changes nothing. This is the user accepting a proposal under L1:
+    the machine never applies its own rewrite, and the next Take rewrites
+    the Paragraph again from what was said (clause 8). Praise (Yes) never
+    accepts anything; a Yes shows Next.
 30. No blocks orange styling and Voice Album admission for that exact clip and
     suppresses that exact clip from resurfacing. It does not penalize the
     Paragraph, the user's voice, or materially stronger audio in a future Take.
@@ -469,8 +481,19 @@ with this contract, this contract wins.
     attempt's transcript and stored on the Slide; **no practice outcome
     mutates Ideal Text** (B6). The adoption rule of 2026-09-25 — the
     attempt's transcript replacing the practised passage — is retired; the
-    rows it wrote stay in the Paragraph's history. The next Take rewrites the
-    Paragraph again (clause 8).
+    rows it wrote stay in the Paragraph's history. The one thing that
+    changes the words between Takes is the user's acceptance of a rewrite
+    (29b), which is a decision, not a practice outcome. The next Take
+    rewrites the Paragraph again (clause 8).
+35f. **The catalogue of signed lines** (founder 2026-09-30, E3, C4). One
+    signed sentence per pattern — a praise line per delivery cue, device
+    and the confident read, a rewrite move per reason — written by the
+    founder or a coach and versioned, never edited. The Manager reads it
+    before its fallback: a served praise row carries the line for its
+    evidence, a served rewrite row the move for its reason. Where no line
+    exists the sheet keeps its constant and the fallback stays tentative;
+    nothing is invented (24f). A line is copy, never a score (AC-9), and
+    never evidence that a pattern occurred (L3).
 35e. Exercise comparison is qualitative. No acoustic score, rank, probability,
     or machine verdict is shown to the user. Opening, skipping, timing out, or
     making no attempt is not an effectiveness label.
