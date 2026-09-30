@@ -1859,6 +1859,34 @@ def v2_coach_exercise_request_draft(session_id, snippet_id):
 
 
 @v2_bp.route(
+    "/coach/sessions/<session_id>/snippets/<snippet_id>/moment",
+    methods=["GET"],
+)
+@require_admin_or_coach
+def v2_coach_moment_read(session_id, snippet_id):
+    """The Read screen's one source (founder 2026-09-30, A2; P2-10): the
+    passage, both answers, the request that reached the coach, the named
+    patterns and the speaker's goal, all after THIS coach's own rating and
+    never before (BLIND COACH). The work is services.coach_moment_read's."""
+    error, owner_sid = _moment_gate(session_id, snippet_id)
+    if error:
+        return error
+    from services.coach_moment_read import moment_read
+    session = db.v2_get_session_by_id(owner_sid) or {}
+    try:
+        payload = moment_read(
+            db, take_session_id=owner_sid, snippet_id=snippet_id,
+            rater_id=str(getattr(request, "user_id", "")),
+            owner_user_id=session.get("user_id"))
+    except Exception as e:
+        logger.error("coach moment read failed sid=%s snip=%s: %s",
+                     session_id, snippet_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to read the moment"}), 500
+    return jsonify(payload), 200
+
+
+@v2_bp.route(
     "/coach/sessions/<session_id>/snippets/<snippet_id>/named-errors",
     methods=["GET", "PUT"],
 )
