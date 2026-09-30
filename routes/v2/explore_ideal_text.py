@@ -2010,6 +2010,48 @@ def v2_explore_set_part_lock(arc_id, part_id):
                         "error": "Failed to set the lock"}), 500
 
 
+@v2_bp.route("/explore/arc/<arc_id>/parts/<part_id>/helper-words",
+             methods=["PUT"])
+@require_auth
+def v2_explore_set_part_helper_words_from_take(arc_id, part_id):
+    """Helper words taken from any earlier Take (founder lock 2026-09-30,
+    B4, D5): the speaker opens another Take's version of the Paragraph on
+    the helper words overlay and taps words there. Those words need not be
+    in the current text — they show as the headline with nothing italic
+    until said again — so the Paragraph-level rooting phrase, which is a
+    span of the current text, cannot hold them. They go to the Slide's
+    helper words, where the recording screen and the page read them from,
+    replacing the Paragraph's current pick; the lock that follows (the
+    same "Use these helper words" tap) locks them like any other pick.
+    One Take, one phrase (Q3): the words must be exact words of that one
+    version."""
+    owned, _sessions = _arc_owned_by_caller(arc_id)
+    if not owned:
+        return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+    body = request.get_json(silent=True) or {}
+    user_id = str(request.user_id)
+    history = history_for_part(db, arc_id, user_id, str(part_id))
+    if history is None:
+        return jsonify({"code": "NOT_FOUND", "error": "part not found"}), 404
+    from services.slide_helper_words import phrase_in_version, version_of_take
+    version = version_of_take(history, body.get("take_index"))
+    if version is None:
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "that Take has no version of this text"}), 400
+    words = phrase_in_version(body.get("phrase"), version.get("paragraphs"))
+    if words is None:
+        return jsonify({"code": "INVALID_ROOT_PHRASE",
+                        "error": "Choose exact words from that Take."}), 400
+    # The Paragraph-level span, if any, is cleared: the Slide's pick is now
+    # the one set of words, and the page must not show two.
+    db.set_ideal_text_part_root(arc_id=arc_id, user_id=user_id,
+                                part_id=str(part_id), phrase=None,
+                                start=None, end=None)
+    record_pick(db, arc_id, user_id, str(part_id),
+                _latest_take_sid(_sessions), words)
+    return jsonify({"saved": True, "phrase": words}), 200
+
+
 @v2_bp.route("/explore/arc/<arc_id>/parts/<part_id>/history",
              methods=["GET"])
 @require_auth

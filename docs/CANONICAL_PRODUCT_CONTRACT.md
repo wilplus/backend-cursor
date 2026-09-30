@@ -67,11 +67,19 @@ with this contract, this contract wins.
     the cap stay as they are); the one tap on "Use
     these helper words" saves and locks them — there is no separate Lock
     screen, and "lock" is an internal term the user never sees (founder
-    2026-09-26). There is no Keep evolving choice and no Unlock action: every
-    Paragraph follows the speaker (clause 8), and choosing new helper words
-    replaces the old ones. A user whose answer opens the helper-words step
-    (24e) but who closed the sheet before choosing may still choose them from
-    the Paragraph's own sheet.
+    2026-09-26). There is no Keep evolving choice: every Paragraph follows
+    the speaker (clause 8), and choosing new helper words replaces the old
+    ones. **Helper words can be deleted** (founder lock 2026-09-30, B4, D4):
+    Delete on the helper words overlay, confirmed once, clears the words and
+    the lock, the Paragraph is back in the walk, and the deleted set stays in
+    the Paragraph's history with its Take — still the user's act, so L1
+    holds. **Helper words can be taken from any earlier Take** (B4, D5): the
+    overlay shows one chip per Take that has a version of the Paragraph, that
+    Take's text is tappable, and a saved phrase always comes from a single
+    Take's text (Q3). Words from an earlier Take that the latest Take did not
+    say show as the headline with nothing italic until said again. A user
+    whose answer opens the helper-words step (24e) but who closed the sheet
+    before choosing may still choose them from the Paragraph's own sheet.
 14. A lock keeps the helper words, not the text. Locked helper words persist
     across Takes — including a later Take whose words no longer contain them,
     and a later No answer on that Paragraph — until the user explicitly picks

@@ -97,6 +97,40 @@ def lock(rows: list[Row], *, take_id: str, part_id: str, locked: bool,
     return _renumber(out)
 
 
+def _flat(text: Any) -> str:
+    import re
+    return re.sub(r"\s+", " ", str(text or "")).strip()
+
+
+def phrase_in_version(phrase: Any, paragraphs: Any) -> Optional[str]:
+    """The helper words, when they are exact words of one Take's version of
+    the Slide (founder lock 2026-09-30, B4, D5, Q3: one Take, one phrase).
+
+    `paragraphs` is that version's list of Paragraph texts for the Slide;
+    the phrase must sit inside ONE of them, whitespace folded, no marker
+    syntax. None otherwise."""
+    import re
+    want = _flat(phrase)
+    if not want or re.search(r"[*_~`{}]", want):
+        return None
+    for text in paragraphs or []:
+        if want in _flat(text):
+            return want
+    return None
+
+
+def version_of_take(history: Mapping, take_index: Any) -> Optional[dict]:
+    """The Slide's version spoken in one Take, by its Take number — the
+    number the history labels each version with and the overlay's chips
+    show."""
+    if not isinstance(take_index, int) or isinstance(take_index, bool):
+        return None
+    for row in history.get("versions") or []:
+        if isinstance(row, Mapping) and row.get("take_index") == take_index:
+            return dict(row)
+    return None
+
+
 def project(rows: Any) -> list[Row]:
     """Locked helper words as recording roots, Slide by Slide, in pick order."""
     out: list[Row] = []
