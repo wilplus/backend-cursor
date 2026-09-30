@@ -117,8 +117,12 @@ class TheLookMatchesTheStudentEmailTests(unittest.TestCase):
     these assertions are the only thing that notices when they do."""
 
     def test_the_wordmark_is_the_real_logo(self):
-        """It used to fall back to {frontend}/icon, which is the favicon."""
-        self.assertIn("https://www.willpowerlab.com/willab-logo", _html())
+        """It used to fall back to {frontend}/icon, which is the favicon, and
+        then was an <img> of /willab-logo, which a client holding back remote
+        images drew as a broken box (founder 2026-09-30). Now it is text."""
+        h = _html()
+        self.assertIn(">WillpowerLab</span>", h)
+        self.assertNotIn("<img", h)
 
     def test_the_student_email_palette(self):
         h = _html()
