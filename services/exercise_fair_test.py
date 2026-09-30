@@ -23,8 +23,11 @@ docs/MLC3-EXERCISE-ADEQUACY-DESIGN.md §3.5), without ever serving it:
 
 SEALED like the scorekeeper: `evaluate()` answers only "sealed" and why
 until the evidence bar (item 8) is met. `compare()` stays pure for fixtures.
-Internal only: no route serves this; no number here reaches a speaker or a
-coach.
+Once the bar is met the full jar unseals the evaluation on its own (founder
+2026-09-29): services/exercise_evaluation grades its first candidate here
+and shows the result on the founder's jar page. Nothing promotes.
+Internal only: the founder's CMS page, through services/exercise_evaluation;
+no number here reaches a speaker or a coach.
 """
 from __future__ import annotations
 

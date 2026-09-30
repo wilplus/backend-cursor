@@ -2332,3 +2332,30 @@ through the coach's own hands, and that every BFF route goes through
 **Open for the founder:** the coach-facing copy (`FORM_COPY`,
 `AUTHORING_COPY`) awaits sign-off. Merge order: this backend PR before
 frontend #542.
+
+### 2026-09-29 · WS-EXP 7 · claude/jar-unseals-evaluation · #(pending)
+
+**Closed:** the question the exercise-pipe report left open (founder
+2026-09-29, evening): what unseals the scorekeeper and the fair test.
+Answer: a full jar unlocks the EVALUATION by itself (option 1), and coach
+picks are in, in their own pile. When the counter says the bar is met
+(300 first-exposure attempts with a valid endpoint, 30 per exercise), the
+evaluation runs on its own and its result goes to the founder's jar page.
+Nothing promotes: a learned ranking still needs the founder's yes and no
+serving path reads it.
+**Contract lines flipped:** none.
+**Contract lines added:** `services/exercise_evaluation.py` (two piles,
+`machine_only` and `with_coach_picks`, never mixed; the scoreboard adds the
+scorekeeper's labels up per exercise and per selection mode; the first
+candidate `exercise-success-ranked-v1` prefers the highest study-group
+helped rate within the unit's own pool, trusts a rate only above the
+per-exercise bar, and is graded by the fair test on exam-group speakers
+only, machine draws only). Route
+`POST /v2/internal/journal/exercise-learning-evaluation`, password-gated.
+`tests/test_exercise_evaluation.py` pins the seal below the bar, the two
+piles, the candidate's rule, the founder requirement and that no serving
+path imports the module.
+**Broke and fixed:** none.
+**Open for the founder:** the jar page's wording for the unsealed view
+(frontend, next PR). The candidate is a proposal to look at; promoting any
+learned ranking stays a founder click and is not built.

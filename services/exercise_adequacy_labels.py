@@ -21,11 +21,14 @@ counter's reason until the evidence bar (item 8) is reached. Looking at
 success rates while the data fills would let someone stop early on a lucky
 streak; the seal makes that impossible through this module. `build_labels`
 stays pure so tests and the fair-test calculator can run it on fixtures.
+Once the bar is met the full jar unseals the evaluation on its own
+(founder 2026-09-29): services/exercise_evaluation adds these labels up for
+the founder's jar page. Nothing promotes.
 
 Never a label here (item 10): the speaker's answers, coach or peer
 judgments, coach overrides, shadow verdicts, "shown" or "opened". Nothing
-reads them. Internal only: no route serves this, and nothing reaches a
-speaker or a coach.
+reads them. Internal only: the founder's CMS page reads the sum through
+services/exercise_evaluation; nothing reaches a speaker or a coach.
 """
 from __future__ import annotations
 
