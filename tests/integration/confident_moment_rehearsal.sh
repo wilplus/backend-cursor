@@ -38,7 +38,7 @@
 #                                              right after that file applies, the
 #                                              lane is cloned under that name
 #                                              (scripts/rehearsal_tier.sh cuts the
-#                                              canary and D4 lanes this way)
+#                                              D4 lane this way)
 #
 # The database name must start with willab_confident_moment_ — the pytest
 # fixture refuses anything else.

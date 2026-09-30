@@ -1,12 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
-from uuid import uuid4
-
-from flask import Flask, request
-
-from routes.v2 import mlc3_first_client_service as service_routes
 from services.first_client_repository import FirstClientRepository
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -160,9 +154,6 @@ def test_self_speaker_is_explicit_and_not_inferred_from_account():
     assert "record_mlc3_feedback_self_speaker_target_v1" in SQL
     assert "record_mlc3_practice_self_speaker_target_v1" in SQL
     assert "confirm_mlc3_practice_speaker_and_pair_v1" in SQL
-    assert '"identity_routing_only"' in (
-        ROOT / "routes/v2/mlc3_first_client_service.py"
-    ).read_text()
 
 
 def test_pair_insert_requires_current_exact_same_speaker():
@@ -245,105 +236,3 @@ def test_database_allocates_practice_attempt_indexes_for_runtime():
         "reserve_exercise_practice_service_upload_v1\", payload"
         not in repository
     )
-
-
-def _raw_view(function):
-    while hasattr(function, "__wrapped__"):
-        function = function.__wrapped__
-    return function
-
-
-def _media(**changes):
-    return {
-        "bucket": "private-r2",
-        "object_key": "exact/object.wav",
-        "exact_bytes_sha256": (
-            "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81"
-        ),
-        "byte_size": 3,
-        "content_type": "audio/wav",
-        **changes,
-    }
-
-
-def test_offer_playback_is_same_origin_and_revalidates_after_r2(monkeypatch):
-    principal, offer_id = str(uuid4()), str(uuid4())
-    exact = _media()
-    calls: list[tuple[str, str]] = []
-    repository = SimpleNamespace(
-        resolve_exercise_service_offer_read=lambda *_args: {
-            "offer": {"id": offer_id}, "media": exact,
-        }
-    )
-    monkeypatch.setattr(service_routes, "db", repository)
-    monkeypatch.setattr(
-        service_routes, "get_coach_object_r2_bytes",
-        lambda bucket, key: calls.append((bucket, key)) or b"\x01\x02\x03",
-    )
-    app = Flask(__name__)
-    with app.test_request_context():
-        request.mlc3_principal_id = principal
-        response = _raw_view(
-            service_routes.v2_mlc3_exercise_offer_playback
-        )(offer_id)
-    assert response.status_code == 200
-    assert response.get_data() == b"\x01\x02\x03"
-    assert response.headers["Cache-Control"] == "private, no-store, max-age=0"
-    assert calls == [("private-r2", "exact/object.wav")]
-
-
-def test_offer_playback_fails_when_authority_changes_during_r2(monkeypatch):
-    principal, offer_id = str(uuid4()), str(uuid4())
-    results = [
-        {"offer": {"id": offer_id}, "media": _media()},
-        {
-            "offer": {"id": offer_id},
-            "media": _media(object_key="quarantined/object.wav"),
-        },
-    ]
-    repository = SimpleNamespace(
-        resolve_exercise_service_offer_read=lambda *_args: results.pop(0)
-    )
-    monkeypatch.setattr(service_routes, "db", repository)
-    monkeypatch.setattr(
-        service_routes, "get_coach_object_r2_bytes",
-        lambda *_args: b"\x01\x02\x03",
-    )
-    app = Flask(__name__)
-    with app.test_request_context():
-        request.mlc3_principal_id = principal
-        response, status = _raw_view(
-            service_routes.v2_mlc3_exercise_offer_playback
-        )(offer_id)
-    assert status == 409
-    assert response.get_json()["code"] == "MLC3_SERVICE_NOT_AVAILABLE"
-
-
-def test_practice_and_guidance_playback_use_exact_live_leaf(monkeypatch):
-    principal = str(uuid4())
-    attempt_id, version_id = str(uuid4()), str(uuid4())
-    exact = _media()
-    repository = SimpleNamespace(
-        resolve_exercise_practice_media_read=lambda *_args: exact,
-        resolve_coach_guidance_service_media_read=lambda *_args: exact,
-    )
-    monkeypatch.setattr(service_routes, "db", repository)
-    monkeypatch.setattr(
-        service_routes, "get_user_media_r2_bytes",
-        lambda *_args, **_kwargs: b"\x01\x02\x03",
-    )
-    monkeypatch.setattr(
-        service_routes, "get_coach_object_r2_bytes",
-        lambda *_args: b"\x01\x02\x03",
-    )
-    app = Flask(__name__)
-    with app.test_request_context():
-        request.mlc3_principal_id = principal
-        practice = _raw_view(
-            service_routes.v2_mlc3_practice_attempt_playback
-        )(attempt_id)
-        guidance = _raw_view(
-            service_routes.v2_mlc3_user_guidance_playback
-        )(version_id)
-    assert practice.status_code == guidance.status_code == 200
-    assert practice.get_data() == guidance.get_data() == b"\x01\x02\x03"

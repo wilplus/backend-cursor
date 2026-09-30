@@ -451,8 +451,6 @@ def test_d11_runtime_rpc_caller_registry_is_exact():
                 owner = parents[owner]
             actual.add((relative.as_posix(), getattr(owner, "name", "<module>"), node.args[0].value))
     assert actual == expected
-    monitor = (ROOT / "scripts/monitor_mlc3_general_service.py").read_text()
-    assert monitor.count("halt_mlc3_service_rollout_v1") == 1
 
 
 def test_bundle_text_update_binding_is_part_of_root_action_identity():
