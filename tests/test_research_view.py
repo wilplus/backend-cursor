@@ -93,6 +93,9 @@ class _Db:
     def list_ledger_snapshots(self, limit=8):
         return []
 
+    def list_pair_releases(self, limit=20):
+        return []
+
     def count_feedback_pairs(self):
         return {}
 

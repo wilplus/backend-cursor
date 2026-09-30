@@ -78,6 +78,7 @@ def overview(database: Any, *, config: Any = None) -> dict:
     exports = _read("exports", lambda: database.list_annotation_export_runs(limit=20), unavailable) or []
     promotions = _read("promotions", lambda: _promotions(database), unavailable) or []
     snapshots = _read("snapshots", lambda: database.list_ledger_snapshots(limit=8), unavailable) or []
+    pair_releases = _read("pair_releases", lambda: database.list_pair_releases(limit=20), unavailable) or []
     golden = {}
     for surface in GOLDEN_SURFACES:
         def _count(s: str = surface) -> dict:
@@ -99,8 +100,16 @@ def overview(database: Any, *, config: Any = None) -> dict:
                 {"started_at": r.get("started_at"), "status": r.get("status"),
                  "exported_count": r.get("exported_count"), "export_uri": r.get("export_uri")}
                 for r in exports if isinstance(r, dict)],
-            "pair_exports": [],
-            "note": "door 2 closed: no pair export has run; the annotation runs above are the retired daily export",
+            "pair_exports": [
+                {"surface": r.get("surface"), "week_start": r.get("week_start"),
+                 "item_count": r.get("item_count"), "manifest_sha256": r.get("manifest_sha256"),
+                 "file_sha256": r.get("file_sha256"), "storage_key": r.get("storage_key"),
+                 "exported_at": r.get("exported_at"), "voided_at": r.get("voided_at"),
+                 "voided_reason": r.get("voided_reason"), "purged_at": r.get("purged_at")}
+                for r in pair_releases if isinstance(r, dict)],
+            "note": (None if pair_releases else
+                     "door 2 closed: no pair release has run; a release needs the door open in code "
+                     "and the founder's sentence per surface. The annotation runs above are the retired daily export"),
         },
         "evaluations": {"reports": [],
                         "note": "door 3 closed: no candidate has been evaluated; reports appear with ML-11"},

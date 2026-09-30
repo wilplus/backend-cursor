@@ -277,6 +277,17 @@ class Config:
     # constant, flipped only by a reviewed change once counsel has reviewed
     # the policy text and the founder has signed it. Never an env variable.
     MLC2_TRAINING_SWITCH_ENABLED = False
+
+    # DOOR 2, PER SURFACE (founder 2026-09-30, L5; build plan ML-9). The
+    # weekly job exports a pair surface only when MLC2_DATASET_RELEASES_ENABLED
+    # is True AND the surface is named here, each by a reviewed change carrying
+    # the founder's sentence ("open door 2 for surface S"). Empty today.
+    PAIR_RELEASE_SURFACES: frozenset = frozenset()
+    # Where a release goes and what signs its manifest (ML-9). Unset, the
+    # exporter refuses and says why; nothing leaves.
+    R2_PAIR_RELEASE_BUCKET = (os.getenv("R2_PAIR_RELEASE_BUCKET") or "").strip()
+    PAIR_RELEASE_SIGNING_KEY = _secret("PAIR_RELEASE_SIGNING_KEY") or ""
+    PAIR_RELEASE_SIGNING_KEY_ID = (os.getenv("PAIR_RELEASE_SIGNING_KEY_ID") or "pair-release-key-1").strip()
     # Slice 6 readiness replaces the ambiguous bool with an irreversible
     # three-state contract.  ``dark`` was the pre-cutover behavior;
     # ``founder_canary`` is THE FLIP (founder 2026-09-29, after the
