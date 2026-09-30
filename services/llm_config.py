@@ -98,6 +98,14 @@ SPEC_EXERCISE_SCRIPT_DRAFT = LLMSpec(
 """A first script for a coach's exercise video, shown to the coach only
 (founder 2026-09-29, decision 4). Never reaches a speaker as drafted."""
 
+SPEC_COACH_ANSWER_DRAFT = LLMSpec(
+    model=CHEAP_MODEL, temperature=0.5, max_tokens=400,
+)
+"""One draft per coach request, by its kind (founder 2026-09-30, C2): an
+exercise script, a praise line or a clearer version. Shown to the coach
+only; the coach's edited final is what anyone else sees, and the (draft,
+final) pair is the learning record (services.feedback_pairs)."""
+
 SPEC_SNIPPET_DRAFT = LLMSpec(
     model=CHEAP_MODEL, temperature=0.5, max_tokens=220,
 )

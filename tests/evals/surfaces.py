@@ -90,7 +90,23 @@ def _emphasis_phrase(inp: dict) -> Any:
     return {"quote": phrase} if phrase else None
 
 
+def _coach_answer(surface: str) -> Callable[[dict], Any]:
+    """The coach's answer drafts (founder 2026-09-30, C2): the pure compose
+    step, no database, so the shipped prompt gets graded as served."""
+    def adapter(inp: dict) -> Any:
+        from services.coach_request_drafts import compose_draft
+        out = compose_draft(
+            surface=surface, passage=inp.get("passage") or "",
+            spotted=list(inp.get("spotted") or []),
+            kind=str(inp.get("kind") or "error"), notes=inp.get("notes"))
+        return None if out is None else out.get("text")
+    return adapter
+
+
 ADAPTERS: dict[str, Callable[[dict], Any]] = {
+    "praise_line": _coach_answer("praise_line"),
+    "clearer_version": _coach_answer("clearer_version"),
+    "exercise_script": _coach_answer("exercise_script"),
     "say_it_stronger": _say_it_stronger,
     "best_presentation": _best_presentation,
     "slide_claims": _slide_claims,

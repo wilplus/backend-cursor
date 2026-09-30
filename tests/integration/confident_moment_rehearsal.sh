@@ -461,6 +461,19 @@ hard migrations/a_coach_pick_counts.sql
 # (definition, AI draft, video lineage, transcript). Twice: apply/reapply.
 hard migrations/an_exercise_keeps_its_versions.sql
 hard migrations/an_exercise_keeps_its_versions.sql
+# 0391 widens the request's kind and reason (every judgement reaches the
+# coach); 0401 is the catalogue of signed lines; 0402 lets the coach answer
+# a request in words, keeps the model's draft and records the (draft, final)
+# pairs. 0402's third part (an error named on the moment itself) alters
+# coach_moment_error_event, whose migration builds on the exercise library
+# this lane does not carry (see above), so here that part is the no-op the
+# migration degrades to. Each twice: apply/reapply idempotency.
+hard migrations/every_judgement_reaches_the_coach.sql
+hard migrations/every_judgement_reaches_the_coach.sql
+hard migrations/a_signed_line_for_every_pattern.sql
+hard migrations/a_signed_line_for_every_pattern.sql
+hard migrations/a_coach_answers_in_words_too.sql
+hard migrations/a_coach_answers_in_words_too.sql
 
 # R-1 (audit 2026-09-22). 0299 created the two learning-surface tables with
 # the same GRANT ALL TO service_role as 0296, and was never in this chain, so

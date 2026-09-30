@@ -56,6 +56,13 @@ SURFACES: dict[str, SurfaceContract] = {
         runtime_aliases=("ideal_text", "best_presentation"),
         golden_eval_surface="best_presentation",
     ),
+    # THE COACH'S ANSWER SURFACES (praise_line, clearer_version,
+    # exercise_script; founder 2026-09-30) are NOT contracts yet. Their
+    # (draft, final) pairs live in ``feedback_pairs`` (services.feedback_pairs)
+    # and their prompts are locked under those ids; a contract here is a
+    # trainable, promotable model slot with a runtime-config key and a
+    # learning-surface alias, which is door 3/4 work (build plan ML-11) and
+    # lands with its own authorisation, not with the pairs.
 }
 
 # E-6 (audit 2026-09-22). TWO REGISTRIES DISAGREED AND THE LEGACY ONE WAS

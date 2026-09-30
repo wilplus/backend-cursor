@@ -16,7 +16,8 @@
 #
 # The check is read-only, sends only aggregate blocker evidence to Sentry and
 # exits non-zero whenever any readiness invariant is unsafe. It cannot activate
-# the producer; the cutover mode remains hard-coded dark in config.py.
+# or deactivate the producer; the cutover mode remains a hard-coded constant in
+# config.py (flipped by the founder on 2026-09-29; the dark state is history).
 
 set -eu
 

@@ -1276,6 +1276,15 @@ def _annotate_coach_answers(
             continue
         exercise = coach_shared_exercise(request, database)
         if exercise is None:
+            answer = coach_shared_answer(request)
+            if answer is not None:
+                # AN ANSWER IN WORDS (0402): the coach's praise line or
+                # clearer version, shared for this exact moment, rides the
+                # item as `coach_answer`. Never the draft, never a score.
+                row["coach_answer"] = answer
+                row["coach_request"] = {"status": "answered",
+                                        "kind": request.get("kind") or "error"}
+                continue
             # THE PROMISE NEEDS A COACH (founder 2026-09-30): with nobody
             # on the panel the request stays written (a coach who joins
             # finds it) but the row carries no `coach_request`, so the
@@ -1568,6 +1577,19 @@ def coach_on_panel(database: Any, *, now: Optional[float] = None) -> bool:
         return True
     _coach_presence = (at, bool(value))
     return bool(value)
+
+
+def coach_shared_answer(request: Any) -> Optional[dict]:
+    """The coach's answer in words, shared for this moment (0402): ``{"kind":
+    "line" | "version", "text"}`` or None. The draft never rides."""
+    if not isinstance(request, dict) or not request.get("shared_at"):
+        return None
+    from services.exercise_coach_requests import WORD_RESOLUTIONS
+    kind = WORD_RESOLUTIONS.get(str(request.get("resolution") or ""))
+    text = " ".join(str(request.get("answer_text") or "").split())
+    if kind is None or not text:
+        return None
+    return {"kind": kind, "text": text}
 
 
 def coach_shared_exercise(request: Any, database: Any) -> Optional[dict]:

@@ -57,11 +57,12 @@ and the Take's snippets: ids are uuid5 of the event's idempotency key, the run
 timestamps are the event's ``occurred_at``, the RNG is a sha256 counter seeded
 from the idempotency key.
 
-The mode stays ``dark``. ``start_confidence_producer_chain`` starts nothing
-unless ``MLC2_CONFIDENCE_CUTOVER_MODE`` is ``founder_canary`` (a code change the
-founder makes after the readiness report is green), and the sweep re-checks
-the mode on every run, so a chain that outlives a rollback to ``killed``
-stops on its next tick.
+The mode is ``founder_canary`` since the flip of 2026-09-29.
+``start_confidence_producer_chain`` starts nothing unless
+``MLC2_CONFIDENCE_CUTOVER_MODE`` is ``founder_canary`` (it was ``dark`` before
+the flip, a reviewed code change made after the readiness report was green),
+and the sweep re-checks the mode on every run, so a chain that outlives a
+rollback to ``killed`` stops on its next tick.
 """
 from __future__ import annotations
 

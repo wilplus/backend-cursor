@@ -437,3 +437,4 @@
 0399	an_exercise_keeps_its_versions.sql
 0400	practice_without_a_library_exercise.sql
 0401	a_signed_line_for_every_pattern.sql
+0402	a_coach_answers_in_words_too.sql

@@ -541,10 +541,32 @@ with this contract, this contract wins.
     while the library is small; each answer files a reusable exercise. The speaker never waits on it. The coach
     sees it only after their own blind rating of the moment and answers once:
     a library exercise, a new one filed into the library (which must name a
-    problem code can detect, and so becomes reusable for any speaker), or no
-    safe match. Sharing is a separate act and only an exercise can be shared;
-    a shared exercise then rides on that same item for the speaker. Once the
-    library itself fits the moment, the matched exercise is what is served.
+    problem code can detect, and, since 2026-09-30, the one main target it
+    is written for, and so becomes reusable for any speaker), **a praise
+    line or a clearer version written in words** (founder 2026-09-30, C2 to
+    C5), or no safe match. Sharing is a separate act; an exercise, a line
+    or a clearer version can be shared, and a shared answer then rides on
+    that same item for the speaker (an exercise as `practice_exercise`, words
+    as `coach_answer`). A praise line also lands in the catalogue of signed
+    lines (35f) as the newest version for the moment's pattern unless the
+    coach keeps it to the speaker; a clearer version never does, being one
+    speaker's passage. Once the library itself fits the moment, the matched
+    exercise is what is served.
+35g-2a. **The draft and the pair** (founder 2026-09-30, C2, C5; build plan
+    P2-1, P2-2). On an error, praise or rewrite request the coach may ask
+    for one model draft by the request's kind (an exercise script, a praise
+    line, a clearer version); an ambiguity has none. The draft is shown to
+    the coach only, after their blind rating, and never reaches the speaker
+    as drafted. Where a draft was shown and the coach's final differs, one
+    (draft, final) pair is recorded on that surface, stamped with the
+    model version, the pattern and the moment, with the coach as author and
+    the speaker as the passage's owner; the exercise lane records the saved
+    instruction and, once it arrives, the video's transcript the same way.
+    Three surfaces, never mixed. A pair is provenance for a later,
+    separately authorised preference export; it is never a label (L3),
+    never a score (AC-9), and never shown. The coach may also name a
+    pattern on the moment itself from the walk, without a practice row;
+    the shadow-cue validation reads both.
 35g-3. **Did the practice sound more confident?** (founder 2026-09-28,
     option A; rule `exercise-more-confident-v1`, migration 0388.) For each
     practice session, the attempt the coach judged is recorded as **helped**

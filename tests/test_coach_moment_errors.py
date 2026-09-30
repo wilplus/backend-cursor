@@ -464,16 +464,20 @@ class FenceTests(unittest.TestCase):
 
     def test_both_tables_go_with_the_speaker_s_practice(self):
         from services.data_purge_registry import DEPENDENCIES
-        by_relation = {d.relation: d for d in DEPENDENCIES}
-        practice = by_relation["confident_voice_practice"]
+        by_relation: dict = {}
+        for d in DEPENDENCIES:
+            by_relation.setdefault(d.relation, []).append(d)
+        practice = by_relation["confident_voice_practice"][0]
         for relation in ("coach_moment_error_event",
                          "diagnostic_exercise_teaching"):
-            dependency = by_relation[relation]
-            self.assertEqual((dependency.selector_column,
-                              dependency.locator_kind,
-                              dependency.disposition),
-                             ("practice_id", "practice", "delete"), relation)
-            self.assertLess(dependency.delete_order, practice.delete_order)
+            # Since 0402 a naming may also be keyed by the moment itself and
+            # goes with the take; the practice-keyed rows still go with the
+            # practice, and that entry is the one pinned here.
+            keyed = [(d.selector_column, d.locator_kind, d.disposition)
+                     for d in by_relation[relation]]
+            self.assertIn(("practice_id", "practice", "delete"), keyed, relation)
+            for dependency in by_relation[relation]:
+                self.assertLess(dependency.delete_order, practice.delete_order)
 
     def test_the_migration_holds_the_standing_rules(self):
         sql = (ROOT / "migrations/"
