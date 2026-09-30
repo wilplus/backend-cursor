@@ -87,10 +87,6 @@
     "lines": 48,
     "db_calls": 2
   },
-  "routes/v2/coach.py:_coach_inline_canonical_queue_rows": {
-    "lines": 89,
-    "db_calls": 0
-  },
   "routes/v2/coach.py:_coach_practice_payload": {
     "lines": 89,
     "db_calls": 3
@@ -103,28 +99,12 @@
     "lines": 22,
     "db_calls": 2
   },
-  "routes/v2/coach.py:v2_coach_ab_pairs": {
-    "lines": 68,
-    "db_calls": 2
-  },
   "routes/v2/coach.py:v2_coach_arc_review_state": {
     "lines": 165,
     "db_calls": 0
   },
-  "routes/v2/coach.py:v2_coach_arc_stars": {
-    "lines": 49,
-    "db_calls": 2
-  },
-  "routes/v2/coach.py:v2_coach_audit_data": {
-    "lines": 53,
-    "db_calls": 2
-  },
-  "routes/v2/coach.py:v2_coach_confidence_comparison": {
-    "lines": 40,
-    "db_calls": 3
-  },
   "routes/v2/coach.py:v2_coach_confidence_queue": {
-    "lines": 94,
+    "lines": 92,
     "db_calls": 3
   },
   "routes/v2/coach.py:v2_coach_confident_voice_practice": {
@@ -134,10 +114,6 @@
   "routes/v2/coach.py:v2_coach_confirm_session_language": {
     "lines": 82,
     "db_calls": 3
-  },
-  "routes/v2/coach.py:v2_coach_get_ideal_text": {
-    "lines": 94,
-    "db_calls": 1
   },
   "routes/v2/coach.py:v2_coach_get_session": {
     "lines": 83,
@@ -167,14 +143,6 @@
     "lines": 83,
     "db_calls": 3
   },
-  "routes/v2/coach.py:v2_coach_put_star_text": {
-    "lines": 57,
-    "db_calls": 2
-  },
-  "routes/v2/coach.py:v2_coach_put_star_verdict": {
-    "lines": 145,
-    "db_calls": 7
-  },
   "routes/v2/coach.py:v2_coach_save_feedback": {
     "lines": 96,
     "db_calls": 1
@@ -197,30 +165,6 @@
   },
   "routes/v2/coach.py:v2_coach_training_import_status": {
     "lines": 58,
-    "db_calls": 2
-  },
-  "routes/v2/coach_guidance_delivery.py:_store_inline_coach_media": {
-    "lines": 142,
-    "db_calls": 4
-  },
-  "routes/v2/coach_guidance_delivery.py:_store_inline_coach_media.finalize": {
-    "lines": 40,
-    "db_calls": 2
-  },
-  "routes/v2/coach_guidance_delivery.py:v2_coach_guidance_attachment": {
-    "lines": 222,
-    "db_calls": 7
-  },
-  "routes/v2/coach_guidance_delivery.py:v2_coach_guidance_batch": {
-    "lines": 129,
-    "db_calls": 6
-  },
-  "routes/v2/coach_guidance_delivery.py:v2_coach_inline_exercise_draft": {
-    "lines": 108,
-    "db_calls": 2
-  },
-  "routes/v2/coach_guidance_delivery.py:v2_coach_inline_exercise_playback": {
-    "lines": 32,
     "db_calls": 2
   },
   "routes/v2/coaching.py:v2_chat_query": {
@@ -270,38 +214,6 @@
   "routes/v2/mlc2_consent.py:v2_user_mlc2_consent": {
     "lines": 116,
     "db_calls": 4
-  },
-  "routes/v2/mlc3_first_client_coach.py:v2_coach_mlc3_reviews": {
-    "lines": 63,
-    "db_calls": 3
-  },
-  "routes/v2/mlc3_first_client_service.py:v2_mlc3_exercise_offer_playback": {
-    "lines": 32,
-    "db_calls": 2
-  },
-  "routes/v2/mlc3_first_client_service.py:v2_mlc3_get_exercise_offer": {
-    "lines": 37,
-    "db_calls": 2
-  },
-  "routes/v2/mlc3_first_client_service.py:v2_mlc3_get_practice_session": {
-    "lines": 38,
-    "db_calls": 2
-  },
-  "routes/v2/mlc3_first_client_service.py:v2_mlc3_practice_attempt_playback": {
-    "lines": 28,
-    "db_calls": 2
-  },
-  "routes/v2/mlc3_first_client_service.py:v2_mlc3_practice_preference": {
-    "lines": 34,
-    "db_calls": 2
-  },
-  "routes/v2/mlc3_first_client_service.py:v2_mlc3_user_guidance": {
-    "lines": 60,
-    "db_calls": 3
-  },
-  "routes/v2/mlc3_first_client_service.py:v2_mlc3_user_guidance_playback": {
-    "lines": 28,
-    "db_calls": 2
   },
   "routes/v2/user_account.py:v2_user_consent": {
     "lines": 195,
