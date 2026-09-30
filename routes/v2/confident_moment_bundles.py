@@ -17,7 +17,6 @@ from functools import wraps
 from flask import Response, jsonify, request
 
 from auth import require_auth
-from routes.admin import require_admin_or_coach
 from routes.phase2_guard import ring_required
 from routes.v2.blueprint import v2_bp
 from services.confident_moment_bundle import (
@@ -26,7 +25,6 @@ from services.confident_moment_bundle import (
     validate_bundle_item_render_receipt,
     validate_coach_update_render_receipt,
     validate_bundle_text_update,
-    validate_coach_feedback_language,
     validate_family_response,
     validate_projection_envelope,
     validate_root_action_result,
@@ -83,14 +81,6 @@ def _text(value, field: str) -> str:
         raise TypeError(f"{field} must be a string")
     value = value.strip()
     if not value or len(value) > 200:
-        raise ValueError(f"{field} is required")
-    return value
-
-
-def _long_text(value, field: str) -> str:
-    if not isinstance(value, str):
-        raise TypeError(f"{field} must be a string")
-    if not value.strip() or len(value) > 20000:
         raise ValueError(f"{field} is required")
     return value
 
@@ -672,93 +662,6 @@ def update_confident_moment_bundle_text(
             idempotency_key=_text(body.get("idempotency_key"), "idempotency_key"),
         )
         return jsonify(validate_bundle_text_update(result))
-    except (TypeError, ValueError, ConfidentMomentProjectionInvalid) as error:
-        return jsonify({
-            "code": "CONFIDENT_MOMENT_EXACT_IDENTITY_REQUIRED",
-            "error": str(error),
-        }), 400
-    except ConfidentMomentBundleDisabled:
-        return _disabled()
-    except Exception as error:  # noqa: BLE001
-        return _database_error(error)
-
-
-@v2_bp.post(
-    "/coach/confident-moment-bundles/<bundle_id>/attachments/"
-    "<bundle_attachment_id>/feedback-language"
-)
-@_bundle_gate
-@require_admin_or_coach
-def publish_confident_moment_coach_feedback_language(
-    bundle_id: str, bundle_attachment_id: str,
-):
-    """Atomic post-reveal coach wording authoring (D14/D16)."""
-    try:
-        from services.db import db as identity_db
-        bundle = _uuid(bundle_id, "bundle_id")
-        attachment = _uuid(bundle_attachment_id, "bundle_attachment_id")
-        body = _request_object({
-            "review_batch_id", "reveal_grant_id", "reveal_access_id",
-            "review_assignment_id", "output_kind", "comment_purpose",
-            "revision_text", "expected_current_revision_id",
-            "expected_current_delivery_id", "idempotency_key",
-        })
-        output_kind = body.get("output_kind")
-        purpose = body.get("comment_purpose")
-        if output_kind == "comment":
-            if purpose not in {
-                "confidence_explanation", "actionable_observation",
-                "positive_praise",
-            }:
-                raise ValueError("comment_purpose invalid")
-        elif output_kind == "rephrase":
-            if purpose is not None:
-                raise ValueError("rephrase comment_purpose must be null")
-        else:
-            raise ValueError("output_kind invalid")
-        user_id = _uuid(getattr(request, "user_id", None), "reviewer_user_id")
-        principal = identity_db.get_owner_principal_for_user(user_id) or {}
-        result = _repo().publish_coach_feedback_language(
-            reviewer_principal_id=_uuid(
-                principal.get("id"), "reviewer_principal_id"
-            ),
-            bundle_id=bundle,
-            bundle_attachment_id=attachment,
-            review_batch_id=_uuid(body.get("review_batch_id"), "review_batch_id"),
-            reveal_grant_id=_uuid(body.get("reveal_grant_id"), "reveal_grant_id"),
-            reveal_access_id=_uuid(body.get("reveal_access_id"), "reveal_access_id"),
-            review_assignment_id=_uuid(
-                body.get("review_assignment_id"), "review_assignment_id"
-            ),
-            output_kind=output_kind,
-            comment_purpose=purpose,
-            revision_text=_long_text(body.get("revision_text"), "revision_text"),
-            expected_current_revision_id=_nullable_uuid(
-                body.get("expected_current_revision_id"),
-                "expected_current_revision_id",
-            ),
-            expected_current_delivery_id=_nullable_uuid(
-                body.get("expected_current_delivery_id"),
-                "expected_current_delivery_id",
-            ),
-            idempotency_key=_text(body.get("idempotency_key"), "idempotency_key"),
-        )
-        public_payload = validate_coach_feedback_language(
-            result.public_payload, bundle_id=bundle, attachment_id=attachment
-        )
-        if result.materialization_job_id is not None:
-            try:
-                from services.confident_moment_delivery_worker import (
-                    enqueue_confident_moment_delivery,
-                )
-                enqueue_confident_moment_delivery(
-                    result.materialization_job_id
-                )
-            except Exception as error:  # noqa: BLE001
-                logger.warning(
-                    "confident-moment delivery wake-up failed: %s", error
-                )
-        return jsonify(public_payload)
     except (TypeError, ValueError, ConfidentMomentProjectionInvalid) as error:
         return jsonify({
             "code": "CONFIDENT_MOMENT_EXACT_IDENTITY_REQUIRED",

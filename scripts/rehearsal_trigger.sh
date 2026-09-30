@@ -37,8 +37,6 @@ TRIGGER_PATHS=(
   'services/rooting_phrase.py'
   'services/rooting_phrase_qualification_v1.py'
   'services/mlc3_first_client_feedback.py'
-  'services/mlc3_founder_canary_readiness.py'
-  'services/mlc3_general_service_readiness.py'
   'services/user_media_storage.py'
   'services/coach_video_storage.py'
   'services/lab_audio_storage.py'

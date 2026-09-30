@@ -285,7 +285,9 @@ def test_registration_and_core_summary_use_exact_database_boundary():
     assert "record_confident_moment_family_response" in registration
     assert "record_confident_moment_root_action" in registration
     assert "update_confident_moment_bundle_text" in registration
-    assert "publish_confident_moment_coach_feedback_language" in registration
+    # The coach feedback-language route went with the MLC-3 composers
+    # (founder 2026-09-30, L8; contract 66).
+    assert "publish_confident_moment_coach_feedback_language" not in registration
     handler = core[core.index("def v2_explore_get_ideal_text_core"):]
     handler = handler[:handler.index("\n\n@v2_bp.route", 10)]
     # The handler reads through `read_core_or_publish` since decision 16A

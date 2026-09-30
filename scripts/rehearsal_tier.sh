@@ -22,7 +22,6 @@
 #   willab_m33_*                MLC3_REHEARSAL_DSN                dark assignments, N1, RPQ
 #   willab_service_*            MLC3_FIRST_CLIENT_REHEARSAL_DSN   First-Client Service D2
 #   willab_d3_*                 COACH_GUIDANCE_REHEARSAL_DSN      Coach Guidance D3, inline authoring D5
-#   willab_d3_*  (own clone)    MLC3_CANARY_READINESS_REHEARSAL_DSN founder canary readiness
 #   willab_ga_*  (as TEMPLATE)  MLC3_GENERAL_USER_REHEARSAL_DSN   General-User Service D4 (clones per test)
 #   willab_confident_moment_*   CONFIDENT_MOMENT_REHEARSAL_DSN    Confident Moment coaching bundle
 #
@@ -145,15 +144,15 @@ sql_file $CHAIN migrations/add_mlc3_first_client_service_d2.sql
 clone willab_service_rehearsal $CHAIN                   # First-Client Service D2
 
 echo "→ building the Confident Moment lanes via tests/integration/confident_moment_rehearsal.sh"
-# Two checkpoints are cut from the same builds (the recipe's
+# One checkpoint is cut from the narrow build (the recipe's
 # CONFIDENT_MOMENT_CHECKPOINTS hook; docs/REHEARSAL-TIER-PENDING-LANE-RECIPES.md):
-#   released, right after 0325 add_mlc3_founder_canary_security_closure.sql → canary
 #   narrow,   right after 0326 add_mlc3_general_user_service_d4.sql         → D4 template
-# Neither suite runs on the finished chain: from 0326 on the canary audit's
-# required-RPC list names a function 0326 deliberately revoked (7/9 there), and
-# D5/D4 helpers trip triggers installed after their own slice.
+# The released build used to be cut right after 0325 for the founder-canary
+# readiness lane; that lane went with the MLC-3 service loop (founder
+# 2026-09-30, L8; contract 66). The D4 suite does not run on the finished
+# chain: D5/D4 helpers trip triggers installed after their own slice.
 CKPT_narrow="add_mlc3_general_user_service_d4.sql=willab_confident_moment_narrow_0326"
-CKPT_released="add_mlc3_founder_canary_security_closure.sql=willab_confident_moment_released_0325"
+CKPT_released=""   # no cut: the only clone of released @0325 was the retired canary lane
 for lane in narrow released; do
   ck="CKPT_$lane"
   if ! CONFIDENT_MOMENT_PGHOST="$SOCK" CONFIDENT_MOMENT_PGPORT="$PORT" CONFIDENT_MOMENT_PGUSER=postgres \
@@ -164,22 +163,9 @@ for lane in narrow released; do
   grep -E "^Built|^  checkpoint" "$SOCK/$lane.log" | sed 's/^/  /'
 done
 
-# canary: released @0325 with the two required purposes made operational.
-# scripts/check_mlc3_founder_canary_readiness.py counts exactly
-# personalized_exercise_recommendation and coach_review WHERE operational AND
-# authorizes_processing; the recipe seeds all six purposes false, so the test
-# that disables coach_review and expects 1 could never move off 0. CHECK
-# processing_purpose_operational_invariant demands the five control columns
-# whenever authorizes_processing is true, so the booleans alone are rejected.
-clone willab_d3_canary willab_confident_moment_released_0325
-"${PSQL[@]}" -d willab_d3_canary -c "UPDATE public.processing_purpose_registry
-   SET operational = true, authorizes_processing = true,
-       capability_version = 'rehearsal-capability-v1', reviewed_at = now(),
-       retention_control_version = 'rehearsal-retention-v1',
-       deletion_control_version = 'rehearsal-deletion-v1',
-       rights_control_version = 'rehearsal-rights-v1'
- WHERE id IN ('personalized_exercise_recommendation', 'coach_review')" >"$SOCK/apply.log" 2>&1 \
-  || { echo "  canary purpose seed failed:" >&2; grep -m3 ERROR "$SOCK/apply.log" >&2; exit 1; }
+# The founder-canary readiness lane (a clone of released @0325 with two
+# purposes made operational) was retired with the MLC-3 service loop
+# (founder 2026-09-30, L8; contract 66): its checker and its suite are gone.
 
 # D4: narrow @0326 as the TEMPLATE the suite clones per test, plus the two
 # relaxations its fixture helpers need: a default on ml_judgments.id, and the
@@ -264,7 +250,6 @@ LANES=(
   "service|MLC3_FIRST_CLIENT_REHEARSAL_DSN|willab_service_rehearsal|tests/test_mlc3_first_client_service_postgres.py"
   "confident-moment narrow|CONFIDENT_MOMENT_REHEARSAL_DSN|willab_confident_moment_narrow|tests/test_confident_moment_coaching_bundle_postgres.py"
   "confident-moment released|CONFIDENT_MOMENT_REHEARSAL_DSN|willab_confident_moment_released|tests/test_confident_moment_production_fixtures.py tests/test_d11_writer_markers_installed_postgres.py tests/test_phase1_deletion_completion_postgres.py tests/test_phase1_processing_postgres.py tests/test_mlc3_self_speaker_identity_postgres.py tests/test_optional_consent_postgres.py tests/test_reacceptance_signal_postgres.py tests/test_consent_choices_postgres.py tests/test_account_deletion_starts_postgres.py tests/test_practice_without_the_tick_postgres.py tests/test_bundled_era_erasure_postgres.py tests/test_project_deletion_postgres.py tests/test_take_purge_postgres.py tests/test_exercise_assignment_postgres.py tests/test_exercise_match_trace_postgres.py tests/test_exercise_coach_requests_postgres.py tests/test_coach_answers_in_words_postgres.py tests/test_verbal_cue_shadow_postgres.py tests/test_exercise_exposure_postgres.py tests/test_practice_more_confident_postgres.py tests/test_coach_answers_five_ways_postgres.py tests/test_training_consent_postgres.py tests/test_training_corpus_postgres.py tests/test_training_corpus_purge_postgres.py tests/test_old_consent_ignores_training_postgres.py tests/test_purge_scope_postgres.py tests/test_real_take_record_purge_postgres.py tests/test_project_purge_postgres.py tests/test_take_names_its_recording_postgres.py tests/test_canonical_tables_are_rpc_only_postgres.py tests/test_mlc2_confidence_end_to_end_postgres.py tests/test_rings_postgres.py tests/test_module_8_is_counted_postgres.py tests/test_a_coach_pick_counts_postgres.py tests/test_exercise_versions_postgres.py tests/test_the_ledger_keeps_its_weeks_postgres.py"
-  "canary|MLC3_CANARY_READINESS_REHEARSAL_DSN|willab_d3_canary|tests/test_mlc3_founder_canary_readiness_postgres.py"
   "d4|MLC3_GENERAL_USER_REHEARSAL_DSN|willab_ga_template|tests/test_mlc3_general_user_service_d4_postgres.py"
   "freeze|TAKE_FEEDBACK_FREEZE_REHEARSAL_DSN|willab_freeze_rehearsal|tests/test_take_feedback_freeze_postgres.py"
   "bake|IDEAL_TEXT_FEEDBACK_BAKE_REHEARSAL_DSN|willab_bake_rehearsal|tests/test_ideal_text_feedback_bake_postgres.py"

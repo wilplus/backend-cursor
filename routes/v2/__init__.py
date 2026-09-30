@@ -15,7 +15,10 @@ DOMAIN_MODULES = (
     "blueprint", "common", "arcs", "explore_ideal_text", "user_account",
     "mlc2_consent", "training_consent", "rooting_phrase_qualification",
     "confident_moment_bundles",
-    "coach_guidance_delivery", "mlc3_first_client_service",
+    # coach_guidance_delivery (the composers' lanes) was deleted with the
+    # MLC-3 service loop (founder 2026-09-30, L8; contract 66); the two
+    # mlc3_* modules stay as 410 tombstones so the map keeps its shape.
+    "mlc3_first_client_service",
     "mlc3_first_client_coach", "confidence_chain_coach",
     "processing_authorization", "lounge", "coach",
     "coach_exercises",

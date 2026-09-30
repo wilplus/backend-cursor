@@ -2973,97 +2973,6 @@ def v2_coach_restore_training_import(session_id):
                         "error": "could not restore the import"}), 500
 
 
-def _coach_inline_canonical_queue_rows(
-    prepared: dict[str, Any],
-    *,
-    session_id: str,
-    project_id: str,
-) -> list[dict[str, Any]]:
-    """Project frozen D5 items without collapsing their review identity.
-
-    A snippet identifies audio lineage, not a review act. The same clip may
-    have multiple frozen candidate/membership assignments, so this function
-    iterates the canonical items directly and preserves database order.
-    """
-    raw_items = prepared.get("items")
-    if not isinstance(raw_items, list):
-        raise ValueError("COACH_INLINE_CANONICAL_ITEMS_REQUIRED")
-    rows: list[dict[str, Any]] = []
-    decision_values = {
-        "rating_yes": "yes",
-        "rating_in_between": "in_between",
-        "rating_no": "no",
-        "rating_not_sure": "not_sure",
-        "rating_audio_unclear": "audio_unclear",
-    }
-    for expected_position, raw in enumerate(raw_items, start=1):
-        if not isinstance(raw, dict):
-            raise ValueError("COACH_INLINE_CANONICAL_ITEM_INVALID")
-        exact = raw
-        required_uuids = (
-            "review_batch_id",
-            "review_assignment_id",
-            "blind_packet_id",
-            "take_id",
-            "snippet_id",
-            "playback_reference_id",
-            "presentation_id",
-            "acknowledgement_token",
-        )
-        if any(
-            not _is_valid_uuid(str(exact.get(key) or ""))
-            for key in required_uuids
-        ):
-            raise ValueError("COACH_INLINE_CANONICAL_IDENTITY_INVALID")
-        if str(exact["review_assignment_id"]) != str(
-            exact["playback_reference_id"]
-        ):
-            raise ValueError("COACH_INLINE_PLAYBACK_IDENTITY_INVALID")
-        payload_hash = str(exact.get("visible_payload_sha256") or "")
-        if re.fullmatch(r"[0-9a-f]{64}", payload_hash) is None:
-            raise ValueError("COACH_INLINE_VISIBLE_PAYLOAD_INVALID")
-        position = exact.get("canonical_position")
-        if not isinstance(position, int) or position != expected_position:
-            raise ValueError("COACH_INLINE_CANONICAL_ORDER_INVALID")
-        if str(exact["take_id"]) != session_id:
-            continue
-        value = decision_values.get(str(exact.get("judgment") or ""))
-        label = None if value is None else {
-            "value": value,
-            "unrateable": value == "audio_unclear",
-            "confident": True if value == "yes" else (
-                False if value == "no" else None
-            ),
-            "intensity": None,
-            "note": None,
-        }
-        rows.append({
-            "snippet_id": str(exact["snippet_id"]),
-            "review_assignment_id": str(exact["review_assignment_id"]),
-            "canonical_position": position,
-            "playback_reference_id": str(exact["playback_reference_id"]),
-            "label": label,
-            "re_review": False,
-            "rating_locked": label is not None,
-            "rating_lock_reason": (
-                "immutable_blind_judgment" if label else None
-            ),
-            "learning_exposures": [],
-            "blind_review": {
-                "project_id": project_id,
-                "review_batch_id": str(exact["review_batch_id"]),
-                "review_assignment_id": str(exact["review_assignment_id"]),
-                "blind_packet_id": str(exact["blind_packet_id"]),
-                "presentation_id": str(exact["presentation_id"]),
-                "acknowledgement_token": str(
-                    exact["acknowledgement_token"]
-                ),
-                "visible_payload_sha256": payload_hash,
-            },
-        })
-    return rows
-
-
 def _confidence_queue_snippets_and_language_error(session_id, sess):
     snippets = db.get_snippets_by_session(str(session_id)) or []
     language_outcome, _language = _rater_language_outcome(sess, snippets)
@@ -3216,35 +3125,6 @@ def _confidence_queue_row(r, *, session_id, pending_rereviews, labels):
     # assignment in the canonical batch has an immutable judgment.
     r["transcript"] = ""
     return r, is_labelled
-
-
-def _coach_inline_authoring_queue(
-    visible_rows, *, session_id, _project_id, _owner_id, _coach_id,
-):
-    from services.db import first_client_repository
-
-    reviewer_identity = db.get_owner_principal_for_user(_coach_id) or {}
-    reviewer_principal_id = str(reviewer_identity.get("id") or "")
-    prepared = first_client_repository.prepare_coach_inline_blind_batch({
-        "p_project_id": _project_id,
-        "p_acquisition_principal_id": _owner_id,
-        "p_reviewer_principal_id": reviewer_principal_id,
-        "p_idempotency_key": (
-            f"coach-inline-visible-request:{_project_id}:"
-            f"{reviewer_principal_id}"
-        ),
-    }) if _is_valid_uuid(reviewer_principal_id) else None
-    if not prepared:
-        raise ValueError("COACH_INLINE_CANONICAL_BATCH_REQUIRED")
-    # Render the exact frozen assignments themselves. Never use
-    # snippet_id as a dictionary key: two legitimate review acts may
-    # share one clip while carrying different membership/candidate,
-    # offer, packet and presentation identities.
-    return _coach_inline_canonical_queue_rows(
-        prepared,
-        session_id=str(session_id),
-        project_id=_project_id,
-    )
 
 
 def _coach_legacy_blind_learning_exposure(
@@ -3508,13 +3388,11 @@ def v2_coach_confidence_queue(session_id):
         _blind_candidates = [{
             "candidate_key": str(row.get("snippet_id") or ""),
         } for row in visible_rows]
+        # The MLC-3 inline blind assignment is retired (founder 2026-09-30,
+        # L8; contract 66): _inline_authoring_for is False for every coach,
+        # so the queue is the blind presentation queue or nothing.
         if (_coach_id and _owner_id and _project_id and
-                _inline_authoring_for(_coach_id)):
-            visible_rows = _coach_inline_authoring_queue(
-                visible_rows, session_id=session_id, _project_id=_project_id,
-                _owner_id=_owner_id, _coach_id=_coach_id,
-            )
-        elif _coach_id and _owner_id and _project_id:
+                not _inline_authoring_for(_coach_id)):
             visible_rows = _coach_legacy_blind_presentation_queue(
                 visible_rows, session_id=session_id, _project_id=_project_id,
                 _owner_id=_owner_id, _coach_id=_coach_id,
@@ -3532,15 +3410,13 @@ def v2_coach_confidence_queue(session_id):
 
 
 def _inline_authoring_for(coach_id: str) -> bool:
-    """D5 inline authoring replaces the legacy queue for THIS coach when the
-    building switch is on AND the coach_inline_authoring ring row reaches the
-    coach (rings, 0394). Every other coach keeps the legacy blind
-    presentation queue."""
-    from services import rings
-    from services.coach_guidance_delivery import inline_authoring_is_enabled
-
-    return bool(inline_authoring_is_enabled() and rings.feature_is_on_for_user(
-        rings.COACH_INLINE_AUTHORING, coach_id))
+    """Retired with the MLC-3 service loop (founder 2026-09-30, L8; contract
+    66): the corpus queue never hands out an MLC-3 inline blind assignment
+    again, whatever the building switch or the coach_inline_authoring ring
+    row says, because the routes such a ``blind_review`` handle pointed at
+    (``/v2/coach/mlc3/...``) answer 410. Every coach keeps the blind
+    presentation queue. Always False."""
+    return False
 
 
 @v2_bp.route("/coach/sessions/<session_id>/language", methods=["PUT"])

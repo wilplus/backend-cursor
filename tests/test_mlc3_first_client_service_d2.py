@@ -10,9 +10,6 @@ ROOT = Path(__file__).resolve().parents[1]
 SQL = (
     ROOT / "migrations/add_mlc3_first_client_service_d2.sql"
 ).read_text()
-ROUTE = (
-    ROOT / "routes/v2/mlc3_first_client_service.py"
-).read_text()
 PRACTICE_ORCHESTRATOR = (
     ROOT / "services/practice_attempt_orchestrator.py"
 ).read_text()
@@ -20,12 +17,6 @@ FIRST_CLIENT_REPOSITORY = (
     ROOT / "services/first_client_repository.py"
 ).read_text()
 SHARED_DATABASE = (ROOT / "services/db.py").read_text()
-COACH_ROUTE = (
-    ROOT / "routes/v2/mlc3_first_client_coach.py"
-).read_text()
-GUIDANCE_ROUTE = (
-    ROOT / "routes/v2/coach_guidance_delivery.py"
-).read_text()
 
 
 def _function(name: str) -> str:
@@ -35,8 +26,6 @@ def _function(name: str) -> str:
 
 
 def test_first_client_http_and_persistence_glue_have_narrow_boundaries():
-    assert "practice_attempt_orchestrator.execute(command)" in ROUTE
-    assert "def reserve(**media" not in ROUTE
     assert "class PracticeAttemptOrchestrator" in PRACTICE_ORCHESTRATOR
     assert "class FirstClientRepository" in FIRST_CLIENT_REPOSITORY
     assert "def reserve_exercise_practice_service_upload" in (
@@ -54,7 +43,6 @@ def test_all_four_service_gates_are_independent_and_default_closed(monkeypatch):
     assert not hasattr(Config, "MLC3_PILOT_PRINCIPAL_IDS")  # legacy allowlist deleted (audit Q-A5)
     assert principal_is_allowlisted(principal_id="principal") is True
     assert "state = 'disabled'" in SQL
-    assert "MLC3_PILOT_ENABLED" not in ROUTE
 
 
 def test_service_rpcs_never_delegate_to_synthetic_rpcs():
@@ -173,42 +161,6 @@ def test_original_and_practice_confidence_reviews_are_separate_and_blind():
     assert "source_judgment" in complete
     assert "practice_judgment" in complete
     assert "exercise_pair_judgments" not in complete
-    assert "transcript" not in COACH_ROUTE.split(
-        '"assignments": assignments', 1
-    )[0] or "deliberately absent before reveal" in COACH_ROUTE
-    assert '"evidence_kind"' not in COACH_ROUTE
-    assert "confidence-blind-order-v1" in COACH_ROUTE
-
-
-def test_coach_assignment_payload_omits_chronology():
-    from routes.v2 import mlc3_first_client_coach as coach_route
-
-    payload = coach_route._assignment_payload({
-        "id": "11111111-1111-1111-1111-111111111111",
-        "evidence_kind": "original_source",
-        "start_offset_ms": 0,
-        "duration_ms": 1000,
-        "playback_reference_id": "33333333-3333-3333-3333-333333333333",
-        "packet_sha256": "a" * 64,
-        "taxonomy_version": "confidence-five-state-v1",
-    }, None, "22222222-2222-2222-2222-222222222222")
-    assert payload is not None
-    assert "evidence_kind" not in payload
-    assert "start_offset_ms" not in payload
-    assert "duration_ms" not in payload
-    assert payload["audio_ref"] == (
-        "/api/v2/coach/mlc3/reviews/playback/"
-        "33333333-3333-3333-3333-333333333333"
-    )
-    assert "object_key" not in str(payload)
-
-
-def test_coach_blind_playback_is_opaque_and_server_extracted():
-    assert "presigned_get_user_media_r2" not in COACH_ROUTE
-    assert "get_user_media_r2_bytes" in COACH_ROUTE
-    assert "load_authorized_blind_clip" in COACH_ROUTE
-    assert 'mimetype="audio/wav"' in COACH_ROUTE
-    assert "playback_reference_id" in COACH_ROUTE
 
 
 def test_provider_write_is_reserved_and_verified_before_attachment():
@@ -220,7 +172,6 @@ def test_provider_write_is_reserved_and_verified_before_attachment():
     assert "p_attempt_index" not in reserve
     assert "practice-service-upload-session:" in reserve
     assert "allocated_attempt_index" in reserve
-    assert 'request.form.get("attempt_index")' not in ROUTE
     assert "'r2', contract.practice_bucket" in reserve
     assert "write_acknowledged" in acknowledge
     assert "read_after_write_sha256" in finalize
@@ -393,8 +344,6 @@ def test_raw_measurements_never_create_improvement_or_dataset_labels():
     assert "safeguards" in measurement
     assert "improved" not in measurement
     assert "improved" not in validity
-    assert "dataset_eligible" not in ROUTE or "False" in ROUTE
-    assert 'route("/user/mlc3/training' not in ROUTE.lower()
     assert "extract_rushed_phrase_endings_n1" in PRACTICE_ORCHESTRATOR
     assert "acoustic_snapshot" not in PRACTICE_ORCHESTRATOR
     selection = _function("freeze_exercise_practice_service_selection_v1")
@@ -410,13 +359,6 @@ def test_service_playback_uses_authoritative_resolvers_and_strict_r2():
     ):
         assert "require_" in _function(name)
     assert "presigned_get_user_media_r2" not in PRACTICE_ORCHESTRATOR
-    assert "presigned_get_coach_object_r2" not in ROUTE
-    assert "/api/v2/user/mlc3/practice-attempts/" in PRACTICE_ORCHESTRATOR
-    assert "get_user_media_r2_bytes" in ROUTE
-    assert "get_coach_object_r2_bytes" in ROUTE
-    assert ROUTE.count("_exact_media_matches(") >= 4
-    assert "get_exercise_service_offer(" not in ROUTE
-    assert "get_processing_audio_object(" not in COACH_ROUTE
 
 
 def test_service_window_uses_fresh_current_authority_not_historical_permit():
@@ -492,68 +434,3 @@ def test_all_new_subject_relations_are_in_deletion_inventory():
 def test_new_tables_are_rls_and_runtime_read_only(table: str):
     assert f"ALTER TABLE public.{table} ENABLE ROW LEVEL SECURITY" in SQL
     assert "GRANT SELECT ON public.%I TO service_role" in SQL
-
-
-def test_route_surface_is_hidden_and_has_no_learning_operations():
-    assert ROUTE.count('@ring_required("exercise_service")') == 17
-    assert ROUTE.count("@require_auth") == 17
-    for forbidden in (
-        "/user/mlc3/dataset",
-        "/user/mlc3/training",
-        "/user/mlc3/evaluation",
-        "/user/mlc3/promotion",
-        "synthetic_",
-    ):
-        assert forbidden not in ROUTE.lower()
-    assert "runtime_is_enabled()" in GUIDANCE_ROUTE
-    assert "store_exact_object" in GUIDANCE_ROUTE
-    assert "publish_coach_guidance_service_exercise" in GUIDANCE_ROUTE
-
-
-def _record(mod, allowed_events, calls):
-    return mod._record_service_event(
-        "entity-1",
-        id_field="session_id",
-        id_param="p_session_id",
-        rpc=lambda params: calls.append(params) or {"id": "event-1"},
-        allowed_events=allowed_events,
-        error_label="practice",
-    )
-
-
-def test_each_client_event_route_checks_its_own_allowlist(monkeypatch):
-    """Audit fix 7: the practice route used to check the offer allowlist.
-
-    The two sets are equal today, so nothing surfaced; the day they diverge,
-    each route must still accept exactly its own events.
-    """
-    from flask import Flask
-
-    from routes.v2 import mlc3_first_client_service as mod
-
-    for name in ("_uuid", "_sha256", "_rpc_time"):
-        monkeypatch.setattr(mod, name, lambda value, field: value)
-    monkeypatch.setattr(mod, "_event_payload", lambda value: value or {})
-    monkeypatch.setattr(mod, "_principal_id", lambda: "principal-1")
-    monkeypatch.setattr(mod, "_idempotency_key", lambda: "key-1")
-    monkeypatch.setattr(
-        mod, "_body", lambda: {"event_kind": "practice_only"})
-    calls: list = []
-    with Flask(__name__).test_request_context():
-        with pytest.raises(ValueError, match="practice event"):
-            _record(mod, {"render_confirmed"}, calls)
-        assert calls == []
-        row, kind = _record(mod, {"practice_only"}, calls)
-    assert (row, kind) == ({"id": "event-1"}, "practice_only")
-    assert calls[0]["p_event_kind"] == "practice_only"
-
-    offer_route = _function_source(mod.v2_mlc3_exercise_offer_event)
-    practice_route = _function_source(mod.v2_mlc3_practice_event)
-    assert "allowed_events=_OFFER_EVENTS" in offer_route
-    assert "allowed_events=_PRACTICE_EVENTS" in practice_route
-
-
-def _function_source(route) -> str:
-    import inspect
-
-    return inspect.getsource(inspect.unwrap(route))

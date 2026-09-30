@@ -303,32 +303,3 @@ def test_root_route_rejects_cross_lane_source_mix_before_rpc(monkeypatch):
         response, status = _raw(route.record_confident_moment_root_action)(U1)
     assert status == 400
     repo.record_root_action.assert_not_called()
-
-
-def test_d5_context_seam_uses_bundle_wrapper_when_bundle_gate_is_on(monkeypatch):
-    import routes.v2.coach_guidance_delivery as route
-    import services.confident_moment_bundle_repository as repository_module
-
-    monkeypatch.setattr(Config, "CONFIDENT_MOMENT_BUNDLE_V1_ENABLED", True)
-    monkeypatch.setattr(route, "runtime_is_enabled", lambda: False)
-    monkeypatch.setattr(route, "inline_authoring_is_enabled", lambda: False)
-    monkeypatch.setattr(route, "_reviewer_principal_id", lambda: U2)
-    route.db.get_project_identity = MagicMock()
-    route.db.prepare_coach_inline_guidance_context = MagicMock()
-    wrapper = MagicMock()
-    wrapper.project_coach_authoring_context.return_value = {"items": []}
-    monkeypatch.setattr(
-        repository_module, "ConfidentMomentBundleRepository",
-        lambda client_provider: wrapper,
-    )
-    with _app().test_request_context("/", method="GET"):
-        response, status = _raw(route.v2_coach_guidance_batch)(U3)
-    assert status == 200
-    assert response.get_json() == {"items": []}
-    wrapper.project_coach_authoring_context.assert_called_once_with(
-        project_id=U3,
-        reviewer_principal_id=U2,
-        idempotency_key=f"confident-moment-coach-context:{U3}:{U2}",
-    )
-    route.db.prepare_coach_inline_guidance_context.assert_not_called()
-    route.db.get_project_identity.assert_not_called()
