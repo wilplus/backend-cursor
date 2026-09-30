@@ -237,19 +237,28 @@ with this contract, this contract wins.
     re-anchor is removed rather than left pointing at text that no longer
     exists.
 
-24g. **Bookmark hierarchy.** The exercise item renders **orange and pulsing**;
-    the Take's two most Confident Voice items render **green**, identically —
-    first and second are never distinguished from one another, because a
-    visible ordering is a surfaced ranking; every other item renders
-    **orange**. Colour is never the sole differentiator, and the pulse honours
-    reduced-motion. Coach updates on a locked deck render as a plain orange mark
-    with no pulse, so nothing competes with the exercise for attention.
+24g. **Bookmark hierarchy** (founder lock 2026-09-30, B7, replacing the
+    2026-09-18 ladder of two greens and one orange). Two bar colours exist
+    and nothing else. An open item the machine read **above the confident
+    threshold** carries a **green** bar; an open item read **below** it with
+    a practise attached carries an **orange, pulsing** bar; every other
+    paragraph — read unmeasurable, weak with nothing to practise, settled, or
+    saved with helper words — carries **no bar** and reads as plain text at
+    full width, still its own tap target. A threshold is a tier name, never a
+    position: every green is identical, and the read that places the bar is
+    never surfaced (AC-9). At most three open items carry a bar at any time
+    (the window of three, task 11 of the lock). Colour is never the sole
+    differentiator, and the pulse honours reduced-motion. Coach updates on a
+    locked deck render as a plain mark with no pulse, so nothing competes with
+    the practise for attention.
 
 24g-1. **Document state** (amended by the founder 2026-09-26). Every block
     renders in the ordinary text colour; the text is never greyed. A block
-    holding an unsettled judgement carries one orange bar in its left margin,
+    holding an unsettled judgement carries one bar in its left margin, green
+    or orange by 24g,
     level with the block, and nothing else — no underline, highlight, or badge
-    on the text. There is no third "done" state: the clean text *is* the
+    on the text. (Until the founder lock of 2026-09-30 a settled block that
+    opened its sheet kept a thin grey bar; it no longer does.) There is no third "done" state: the clean text *is* the
     settled state, and the document empties as the user works rather than
     accumulating marks. The whole block is the bar's tap target; a settled
     block opens its own sheet (clause 16). While Feedback is still arriving, one
