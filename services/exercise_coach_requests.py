@@ -22,9 +22,19 @@ shared. A shared exercise then rides on that same item for the speaker.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Optional
 
-RESOLUTIONS = ("exercise_chosen", "exercise_authored", "no_safe_match")
+logger = logging.getLogger(__name__)
+
+RESOLUTIONS = ("exercise_chosen", "exercise_authored", "no_safe_match",
+               "line_written", "version_written")
+#: Answers in words (0402): the resolution → what the speaker's row calls it.
+WORD_RESOLUTIONS = {"line_written": "line", "version_written": "version"}
+#: The surface a written answer's pair is recorded on.
+_PAIR_SURFACE = {"line_written": "praise_line",
+                 "version_written": "clearer_version",
+                 "exercise_authored": "exercise_script"}
 
 _REFUSALS = {
     "EXERCISE_COACH_REQUEST_ALREADY_RESOLVED": (
@@ -48,6 +58,7 @@ def _labels(database: Any) -> dict:
 def coach_request_payload(request: dict, database: Any) -> dict:
     """What the coach sees AFTER their blind rating. Coach-only: the need
     evidence may be revealed now (35f), never to the speaker."""
+    from services.coach_request_drafts import draft_on
     from services.confident_voice_practice import coach_exercise_order
     from services.exercise_pick_view import request_candidates
     trace = request.get("request_trace")
@@ -74,6 +85,10 @@ def coach_request_payload(request: dict, database: Any) -> dict:
         "created_at": request.get("created_at"),
         "resolution": request.get("resolution"),
         "resolved_exercise_id": request.get("resolved_exercise_id"),
+        # The answer in words (0402), when the coach wrote one.
+        "answer_text": request.get("answer_text"),
+        # The model's draft the coach may edit from; coach-only (C2).
+        "draft": draft_on(request),
         "resolved_at": request.get("resolved_at"),
         "shared_at": request.get("shared_at"),
         # The library has since gained a fitting exercise and the speaker was
@@ -89,6 +104,27 @@ def coach_request_payload(request: dict, database: Any) -> dict:
             "explanation_video_ref": row.get("explanation_video_url"),
         } for row in ordered],
     }
+
+
+def _require_main_target(fields: dict) -> Optional[tuple]:
+    """THE MAIN TARGET IS REQUIRED (founder 2026-09-30, C8/D5; build plan
+    P2-4). An exercise authored from a moment names the one pattern it is
+    written for, as ``main_target`` or ``matching_criteria.primary_problem_tag``;
+    the catalogue then checks it is one of the exercise's own tags. Without
+    it the exercise would be the exact fit for nothing."""
+    criteria = fields.get("matching_criteria")
+    criteria = dict(criteria) if isinstance(criteria, dict) else {}
+    target = fields.pop("main_target", None) or criteria.get("primary_problem_tag")
+    if not isinstance(target, str) or not target.strip():
+        return _error(400, "MAIN_TARGET_REQUIRED",
+                      "Name the one pattern this exercise is written for.")
+    target = target.strip()
+    criteria["primary_problem_tag"] = target
+    fields["matching_criteria"] = criteria
+    tags = [t for t in (fields.get("acoustic_problem_tags") or []) if isinstance(t, str)]
+    if target not in tags:
+        fields["acoustic_problem_tags"] = [target, *tags]
+    return None
 
 
 def _exercise_for(database: Any, request: dict, body: dict,
@@ -112,6 +148,9 @@ def _exercise_for(database: Any, request: dict, body: dict,
     # What was spotted is what it treats, unless the coach names otherwise.
     if not fields.get("acoustic_problem_tags") and request.get("observed_tags"):
         fields["acoustic_problem_tags"] = list(request["observed_tags"])
+    error = _require_main_target(fields)
+    if error:
+        return None, error
     try:
         exercise = save_exercise(database, fields)
     except CatalogueRefusal as refusal:
@@ -132,13 +171,19 @@ def resolve_request(database: Any, request: dict, body: Any,
                       f"resolution must be one of {', '.join(RESOLUTIONS)}")
     share = fields.get("share_with_user") is True
     exercise = None
-    if resolution != "no_safe_match":
+    answer = None
+    if resolution in WORD_RESOLUTIONS:
+        answer = " ".join(str(fields.get("answer_text") or "").split())
+        if not answer:
+            return _error(400, "INVALID_INPUT", "answer_text is required.")
+    elif resolution != "no_safe_match":
         exercise, error = _exercise_for(database, request, fields, resolution)
         if error:
             return error
     elif share:
         return _error(400, "INVALID_INPUT",
-                      "Only an exercise can be shared with the speaker.")
+                      "Only an answer can be shared with the speaker.")
+    kwargs = {} if answer is None else {"answer_text": answer}
     try:
         resolved = database.resolve_exercise_coach_request(
             request_id=str(request.get("id")), coach_id=str(coach_id),
@@ -147,7 +192,7 @@ def resolve_request(database: Any, request: dict, body: Any,
                          if exercise else None),
             exercise_version=(int(exercise.get("version") or 1)
                               if exercise else None),
-            share=share)
+            share=share, **kwargs)
     except Exception as e:  # the database's refusal, named
         for code, (status, message) in _REFUSALS.items():
             if code in str(e):
@@ -155,7 +200,72 @@ def resolve_request(database: Any, request: dict, body: Any,
         raise
     if not isinstance(resolved, dict):
         return _error(500, "V2_ERROR", "Could not save your answer.")
+    _file_answer(database, request, resolved, fields, exercise, coach_id)
     return 200, {"request": coach_request_payload(resolved, database)}
+
+
+def _file_answer(database: Any, request: dict, resolved: dict, fields: dict,
+                 exercise: Optional[dict], coach_id: str) -> None:
+    """What an answer leaves behind besides the resolution, all best-effort
+    and never in the answer's way:
+
+    * the (draft, final) pair, when a draft was shown and the final differs
+      (services.feedback_pairs; founder C5);
+    * a praise line lands in the catalogue of signed lines as the newest
+      version for the moment's pattern (35f; P2-3) unless the coach says
+      ``file_in_catalogue: false``. A clearer version never does: it is one
+      speaker's passage, not a move for every rewrite.
+    """
+    from services.feedback_pairs import record_pair
+    resolution = str(resolved.get("resolution") or "")
+    surface = _PAIR_SURFACE.get(resolution)
+    draft = request.get("draft_text")
+    if surface and draft and str(request.get("draft_surface") or surface) == surface:
+        final = (resolved.get("answer_text") if resolution in WORD_RESOLUTIONS
+                 else (exercise or {}).get("instruction"))
+        record_pair(
+            database, surface=surface, draft=draft, final=final,
+            coach_id=coach_id, model_version=request.get("draft_model_version"),
+            pattern_key=_pattern_key(request, resolution),
+            owner_user_id=request.get("owner_user_id"),
+            take_session_id=request.get("take_session_id"),
+            snippet_id=request.get("snippet_id"), request_id=str(request.get("id")),
+            exercise_id=(exercise or {}).get("exercise_id") if exercise else None,
+            exercise_version=(int(exercise.get("version") or 1) if exercise else None))
+    if resolution == "line_written" and fields.get("file_in_catalogue") is not False:
+        _file_praise_line(database, request, resolved, coach_id)
+
+
+def _pattern_key(request: dict, resolution: str) -> Optional[str]:
+    tags = [t for t in (request.get("observed_tags") or []) if isinstance(t, str)]
+    if resolution == "version_written":
+        trace = request.get("request_trace")
+        why = trace.get("why_key") if isinstance(trace, dict) else None
+        return str(why) if why else "clarity"
+    return tags[0] if tags else None
+
+
+def _file_praise_line(database: Any, request: dict, resolved: dict,
+                      coach_id: str) -> None:
+    from services.feedback_catalogue import (
+        CONFIDENT_READ, CatalogueRefusal, validate_line,
+    )
+    writer = getattr(database, "insert_feedback_catalogue_line", None)
+    if writer is None:
+        return
+    key = _pattern_key(request, "line_written")
+    body = {"lane": "praise", "pattern_kind": "cue" if key else "read",
+            "pattern_key": key or CONFIDENT_READ,
+            "text": resolved.get("answer_text")}
+    try:
+        line = validate_line(body)
+        writer(**line, signed_by=str(coach_id))
+    except CatalogueRefusal as refusal:
+        logger.info("praise line not filed request=%s: %s",
+                    request.get("id"), refusal)
+    except Exception as e:  # noqa: BLE001 -- the answer stands
+        logger.warning("praise line not filed request=%s: %s",
+                       request.get("id"), e, exc_info=True)
 
 
 def review(database: Any, *, take_session_id: str, snippet_id: str,

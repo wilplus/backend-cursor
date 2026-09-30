@@ -253,6 +253,7 @@ class CoachResolutionTests(unittest.TestCase):
         status, _ = self._review(db, body={
             "resolution": "exercise_authored",
             "custom_exercise": {"title": "Room to breathe",
+                                "main_target": "rushing",
                                 "explanation_video_url": "https://x/v.mp4"}})
         self.assertEqual(status, 200)
         self.assertEqual(db.saved[0]["exercise_id"], "coach-request-req-1")
@@ -263,7 +264,7 @@ class CoachResolutionTests(unittest.TestCase):
         db = _Db([], request=self._open())
         status, payload = self._review(db, body={
             "resolution": "exercise_authored",
-            "custom_exercise": {"title": "No video"}})
+            "custom_exercise": {"title": "No video", "main_target": "rushing"}})
         self.assertEqual(status, 400)
         self.assertIn("video", payload["error"])
         self.assertEqual(db.resolved, [])

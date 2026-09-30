@@ -64,7 +64,30 @@ def save_from_coach_panel(database: Any, body: Any, *,
         ai_draft_text=draft, ai_draft_model_version=draft_model)
     if not saved:
         return None
-    return {"exercise": saved, "version": int(saved.get("version") or 1)}
+    version = int(saved.get("version") or 1)
+    _pair_script(database, saved, version, draft=draft, model=draft_model,
+                 coach_id=coach_id)
+    return {"exercise": saved, "version": version}
+
+
+def _pair_script(database: Any, saved: dict, version: int, *, draft: Any,
+                 model: Any, coach_id: str, transcript: Any = None) -> None:
+    """THE PAIRS FROM THE EXERCISE LANE (founder 2026-09-30, C5; P2-1). When
+    the coach asked for a draft, the saved instruction is one final and the
+    video's transcript, once it arrives, another. Both best-effort."""
+    from services.feedback_pairs import record_pair
+    if not draft:
+        return
+    common = dict(surface="exercise_script", draft=draft, coach_id=coach_id,
+                  model_version=model or None,
+                  pattern_key=(saved.get("matching_criteria") or {}).get(
+                      "primary_problem_tag") if isinstance(
+                      saved.get("matching_criteria"), dict) else None,
+                  exercise_id=str(saved.get("exercise_id") or ""),
+                  exercise_version=version)
+    record_pair(database, final=saved.get("instruction"), **common)
+    if transcript:
+        record_pair(database, final=transcript, final_kind="transcript", **common)
 
 
 def store_exercise_video(video_bytes: bytes, filename: str,
@@ -163,6 +186,11 @@ def attach_video(database: Any, *, exercise_id: str, coach_id: str,
         filename=filename)
     settle_transcript(database, exercise_id=str(exercise_id), version=version,
                       status=status, transcript=transcript, language=language)
+    _pair_script(
+        database, saved, version, draft=extras.get("ai_draft_text"),
+        model=extras.get("ai_draft_model_version"), coach_id=str(coach_id),
+        transcript=(transcript.get("transcript")
+                    if isinstance(transcript, dict) else None))
     return 200, {"exercise": saved, "version": version,
                  "transcript_status": status}
 

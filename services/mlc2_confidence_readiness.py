@@ -50,8 +50,12 @@ def _flag(mapping: Mapping[str, Any], key: str) -> bool:
     return mapping.get(key) is True
 
 
-def _ring_blockers(ring_health: Mapping[str, Any]) -> list[str]:
-    """The canary's "who", read from the ring rows (0394)."""
+def _ring_blockers(ring_health: Mapping[str, Any], *,
+                   dark: bool = True) -> list[str]:
+    """The canary's "who", read from the ring rows (0394). ``dark`` says
+    whether the writer state is still ``dark``: only then is a receipt from
+    an eligible principal unexpected. Under ``founder_canary`` (the flip,
+    2026-09-29) such receipts are the point, not a blocker (ML-1)."""
     blockers: list[str] = []
     if ring_health.get("ring_readiness_contract_version") != RING_READINESS_CONTRACT_VERSION:
         blockers.append("ring_readiness_contract_mismatch")
@@ -75,7 +79,7 @@ def _ring_blockers(ring_health: Mapping[str, Any]) -> list[str]:
                 "noneligible_canonical_event_count"):
         if _count(ring_health, key) != 0:
             blockers.append(f"{key}_nonzero")
-    if _count(ring_health, "eligible_producer_receipt_count") != 0:
+    if dark and _count(ring_health, "eligible_producer_receipt_count") != 0:
         blockers.append("unexpected_eligible_receipts_while_dark")
     return blockers
 
@@ -150,7 +154,7 @@ def assess_confidence_canary_readiness(
         # same invariants every five minutes; the one state it must never
         # find is the kill, which is an incident, not a readiness.
         blockers.append("canary_killed")
-    blockers.extend(_ring_blockers(ring_health))
+    blockers.extend(_ring_blockers(ring_health, dark=cutover.mode == DARK))
     if not source_audio_store_is_r2:
         # Under founder_canary every Take's promotion builds an immutable
         # source manifest that must point to Cloudflare R2 and fails closed

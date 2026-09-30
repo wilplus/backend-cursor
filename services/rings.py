@@ -33,8 +33,8 @@ permanent (the RPC refuses the unkill) and it invokes the pipe's own kill.
 For the confidence chain that pipe kill is ``confidence_writer_killed``:
 the cutover module's ``configured_confidence_cutover`` reads it and reports
 ``killed`` whatever the constant says. The constant
-``MLC2_CONFIDENCE_CUTOVER_MODE`` remains the writer state and remains
-``dark``; this module can only close it, never open it.
+``MLC2_CONFIDENCE_CUTOVER_MODE`` remains the writer state (``founder_canary``
+since the flip of 2026-09-29); this module can only close it, never open it.
 
 THE THREE CANARY VARIABLES ARE GONE. ``DATA_FOUNDATION_CANARY_ENABLED``,
 ``MLC2_CONFIDENCE_CANARY_FOUNDER_EMAIL`` and

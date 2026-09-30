@@ -152,8 +152,6 @@ def test_database_evidence_gates_fail_closed(health_key, blocker):
          "noneligible_producer_receipt_count_nonzero"),
         ({"noneligible_canonical_event_count": 1},
          "noneligible_canonical_event_count_nonzero"),
-        ({"eligible_producer_receipt_count": 1},
-         "unexpected_eligible_receipts_while_dark"),
     ],
 )
 def test_ring_evidence_gates_fail_closed(override, blocker):
@@ -165,6 +163,19 @@ def test_ring_evidence_gates_fail_closed(override, blocker):
     report = _assess(ring_health=ring_health)
     assert report.ready is False
     assert blocker in report.blocker_codes
+
+
+def test_an_eligible_receipt_is_unexpected_only_while_dark():
+    """ML-1 (build plan, 2026-09-30). Before the flip a receipt from the
+    ring's eligible person meant the dark producer had written: a blocker.
+    Under founder_canary those receipts ARE the canary; the same count is
+    evidence, not a fault, and the other ring invariants still hold."""
+    ring_health = {**_ring_health(), "eligible_producer_receipt_count": 3}
+    dark = _assess(ring_health=ring_health, cutover_mode="dark")
+    assert "unexpected_eligible_receipts_while_dark" in dark.blocker_codes
+    flipped = _assess(ring_health=ring_health, cutover_mode="founder_canary")
+    assert "unexpected_eligible_receipts_while_dark" not in flipped.blocker_codes
+    assert flipped.ready is True
 
 
 def test_readiness_no_longer_reads_the_retired_canary_variables():

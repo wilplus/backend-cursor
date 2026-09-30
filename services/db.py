@@ -14463,19 +14463,48 @@ class DatabaseService:
                            "practice=%s: %s", practice_id, e)
             return []
 
+    def list_coach_moment_error_events_for_snippet(
+        self, snippet_id: str,
+    ) -> list[dict]:
+        """Every naming event on one moment named by its snippet (0402), in
+        the order they happened."""
+        if not snippet_id:
+            return []
+        try:
+            res = (self.client.table("coach_moment_error_event")
+                   .select("error_id,action,coach_id,created_at,seq")
+                   .eq("snippet_id", str(snippet_id))
+                   .order("seq").execute())
+            return res.data or []
+        except Exception as e:
+            logger.warning("list_coach_moment_error_events_for_snippet failed "
+                           "snippet=%s: %s", snippet_id, e, exc_info=True)
+            return []
+
     def insert_coach_moment_error_event(
-        self, practice_id: str, error_id: str, coach_id: str, action: str,
+        self, practice_id: Optional[str], error_id: str, coach_id: str,
+        action: str, *, snippet_id: Optional[str] = None,
+        take_session_id: Optional[str] = None,
     ) -> Optional[dict]:
-        """Append one naming event. Never an update: the history is the record."""
+        """Append one naming event. Never an update: the history is the record.
+        Keyed by the practice row, or (0402) by the moment itself."""
         if action not in ("named", "withdrawn"):
             return None
+        if not practice_id and not snippet_id:
+            return None
         try:
-            res = (self.client.table("coach_moment_error_event").insert({
-                "practice_id": str(practice_id),
+            payload: dict[str, Any] = {
+                "practice_id": str(practice_id) if practice_id else None,
                 "error_id": str(error_id),
                 "coach_id": str(coach_id),
                 "action": action,
-            }).execute())
+            }
+            if snippet_id:
+                payload["snippet_id"] = str(snippet_id)
+                payload["take_session_id"] = (str(take_session_id)
+                                              if take_session_id else None)
+            res = (self.client.table("coach_moment_error_event")
+                   .insert(payload).execute())
             return (res.data or [None])[0]
         except Exception as e:
             logger.warning("insert_coach_moment_error_event failed "
@@ -15005,20 +15034,27 @@ class DatabaseService:
         is 'named' — independent of any shadow verdict, which is never shown
         to them. Returns [{practice_id, snippet_id}]."""
         events = (self.client.table("coach_moment_error_event")
-                  .select("practice_id,action,seq")
+                  .select("practice_id,snippet_id,action,seq")
                   .eq("error_id", error_id)
                   .order("seq").execute()).data or []
         latest: dict[str, str] = {}
+        by_snippet: dict[str, str] = {}
         for row in events:
-            latest[str(row.get("practice_id"))] = str(row.get("action"))
+            if row.get("practice_id"):
+                latest[str(row.get("practice_id"))] = str(row.get("action"))
+            elif row.get("snippet_id"):
+                # Named on the moment itself (0402): no practice row to join.
+                by_snippet[str(row.get("snippet_id"))] = str(row.get("action"))
+        out = [{"practice_id": None, "snippet_id": sid}
+               for sid, action in by_snippet.items() if action == "named"]
         named = [pid for pid, action in latest.items() if action == "named"]
         if not named:
-            return []
+            return out
         practices = (self.client.table("confident_voice_practice")
                      .select("id,snippet_id")
                      .in_("id", named).execute()).data or []
-        return [{"practice_id": str(p.get("id")),
-                 "snippet_id": str(p.get("snippet_id"))} for p in practices]
+        return out + [{"practice_id": str(p.get("id")),
+                       "snippet_id": str(p.get("snippet_id"))} for p in practices]
 
     def request_exercise_from_coach(
         self, *, owner_user_id: str, take_session_id: str, snippet_id: str,
@@ -15075,19 +15111,83 @@ class DatabaseService:
     def resolve_exercise_coach_request(
         self, *, request_id: str, coach_id: str, resolution: str,
         exercise_id: Optional[str], exercise_version: Optional[int],
-        share: bool,
+        share: bool, answer_text: Optional[str] = None,
     ) -> Optional[dict]:
-        """Resolve once, share once (migration 0385). Raises the database's
-        refusal (e.g. EXERCISE_COACH_REQUEST_ALREADY_RESOLVED) to the caller."""
-        result = self.client.rpc("resolve_exercise_coach_request_v1", {
+        """Resolve once, share once (migration 0385; in words 0402). Raises the
+        database's refusal (e.g. EXERCISE_COACH_REQUEST_ALREADY_RESOLVED) to
+        the caller."""
+        params = {
             "p_request_id": str(request_id),
             "p_coach_id": str(coach_id),
             "p_resolution": str(resolution),
             "p_exercise_id": exercise_id,
             "p_exercise_version": exercise_version,
             "p_share": bool(share),
-        }).execute()
+        }
+        if answer_text is None:
+            result = self.client.rpc(
+                "resolve_exercise_coach_request_v1", params).execute()
+        else:
+            # An answer in words (0402): a praise line or a clearer version.
+            result = self.client.rpc("resolve_exercise_coach_request_v2", {
+                **params, "p_answer_text": str(answer_text)}).execute()
         return self._rpc_row(result.data)
+
+    def set_exercise_coach_request_draft(
+        self, *, request_id: str, surface: str, text: str,
+        model_version: Optional[str],
+    ) -> Optional[dict]:
+        """Keep the model's draft on the request row (0402), coach-only; a
+        re-draft replaces it. Raises on failure: the caller logs and the
+        draft still shows."""
+        res = (self.client.table("exercise_coach_requests")
+               .update({"draft_surface": str(surface), "draft_text": str(text),
+                        "draft_model_version": model_version or None,
+                        "drafted_at": datetime.now(timezone.utc).isoformat()})
+               .eq("id", str(request_id)).execute())
+        return (res.data or [None])[0]
+
+    def list_exercise_coach_requests_for_sessions(
+        self, session_ids: list[str],
+    ) -> dict[tuple[str, str], dict]:
+        """Every request on these takes, keyed (take_session_id, snippet_id),
+        without traces. {} on anything missing: the queue still draws."""
+        ids = [str(i) for i in session_ids if i]
+        if not ids:
+            return {}
+        try:
+            res = (self.client.table("exercise_coach_requests")
+                   .select("id,take_session_id,snippet_id,kind,reason,"
+                           "resolution,resolved_at,shared_at,created_at")
+                   .in_("take_session_id", ids).execute())
+        except Exception as e:
+            logger.warning("list_exercise_coach_requests_for_sessions failed: %s",
+                           e, exc_info=True)
+            return {}
+        return {(str(r.get("take_session_id")), str(r.get("snippet_id"))): r
+                for r in (res.data or []) if isinstance(r, dict)}
+
+    def insert_feedback_pair(self, **fields: Any) -> Optional[dict]:
+        """One (draft, final) pair (0402). Raises on failure; the service
+        logs it and the answer stands. A duplicate for the same request or
+        version is the unique index's refusal, which is the same."""
+        res = self.client.table("feedback_pairs").insert(fields).execute()
+        return (res.data or [None])[0]
+
+    def count_feedback_pairs(self) -> dict[str, dict[str, int]]:
+        """{surface: {total, unexported}} for the ledger. Raises on failure
+        so the ledger names the source as unavailable rather than zero."""
+        out: dict[str, dict[str, int]] = {}
+        for surface in ("praise_line", "clearer_version", "exercise_script"):
+            total = (self.client.table("feedback_pairs")
+                     .select("id", count="exact").eq("surface", surface)
+                     .limit(1).execute())
+            waiting = (self.client.table("feedback_pairs")
+                       .select("id", count="exact").eq("surface", surface)
+                       .is_("exported_at", "null").limit(1).execute())
+            out[surface] = {"total": int(total.count or 0),
+                            "unexported": int(waiting.count or 0)}
+        return out
 
     def get_confident_voice_exercise_assignment(
         self, take_session_id: str, snippet_id: str,

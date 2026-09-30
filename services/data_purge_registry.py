@@ -256,6 +256,16 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("practice_exercise_coach_request",
                     "exercise_coach_requests", "take_session_id",
                     "take", "delete", "derived_feedback", 59),
+    # The (draft, final) pairs a coach's answer about one speaker's moment
+    # made (0402). The words are about that passage: they go with the Take.
+    # Pairs from the exercise library (no take) are about the library.
+    PurgeDependency("feedback_pairs_by_take", "feedback_pairs",
+                    "take_session_id", "take", "delete", "derived_feedback", 58),
+    # A pattern the coach named on the moment itself rather than on a
+    # practice row (0402): same judgement about that recording, same fate.
+    PurgeDependency("coach_moment_error_events_by_take",
+                    "coach_moment_error_event", "take_session_id",
+                    "take", "delete", "derived_feedback", 58),
     # The frozen 80/20 exercise choice per (Take, moment), migration 0372.
     # Product state about one speaker's Take, not evidence: it goes with it.
     PurgeDependency("practice_exercise_assignment",

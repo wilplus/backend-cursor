@@ -86,7 +86,8 @@ def test_exercise_surface_is_registry_only_and_fail_closed():
     # Seven since 2026-09-28: the exercise-rendered confirmation (0387).
     assert user_routes.count(marker) == 7
     # Two since 2026-09-28: the coach's exercise request carries it too.
-    assert coach_routes.count(marker) == 2
+    # + the coach's answer draft behind the same gate (2026-09-30)
+    assert coach_routes.count(marker) == 3
     # The purpose was born phase2 here and was moved to phase1 by 0335, once
     # its deletion and retention controls actually existed. Both halves are
     # asserted so the history stays legible: this file's INSERT is not a

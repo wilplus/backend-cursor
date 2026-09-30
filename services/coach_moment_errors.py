@@ -227,6 +227,48 @@ def _name_error(
     return 200, None
 
 
+def name_error_on_moment(
+    database: Any, *, take_session_id: str, snippet_id: str, body: Any,
+    coach_id: str,
+) -> tuple[int, dict]:
+    """The coach names (or withdraws) a pattern on the moment itself (0402;
+    build plan P2-7), from the unified walk, with no practice row needed.
+    Same rules as ``_name_error``: a library entry only, append-only,
+    idempotent. Returns the moment's current names. Never on the speaker's
+    payload (L3, BLIND COACH); the route enforces the blind gate."""
+    edit = body if isinstance(body, dict) else {}
+    error_id = edit.get("error_id")
+    named = edit.get("named", True)
+    if not isinstance(error_id, str) or not error_id.strip() \
+            or not isinstance(named, bool):
+        return 400, {"code": "INVALID_INPUT",
+                     "error": "error_id and named are required"}
+    error_id = error_id.strip()
+    entry = database.get_speaking_error(error_id)
+    if not entry or (named and entry.get("active") is False):
+        return 404, {"code": "ERROR_NOT_IN_LIBRARY",
+                     "error": "Add this error to the library first."}
+    events = database.list_coach_moment_error_events_for_snippet(str(snippet_id))
+    current = current_named_errors(events)
+    if named == (error_id in current):
+        return 200, {"named": current}
+    written = database.insert_coach_moment_error_event(
+        None, error_id, coach_id, "named" if named else "withdrawn",
+        snippet_id=str(snippet_id), take_session_id=str(take_session_id))
+    if not written:
+        return 503, {"code": "V2_ERROR", "error": "Could not save the error."}
+    return 200, {"named": current_named_errors(
+        database.list_coach_moment_error_events_for_snippet(str(snippet_id)))}
+
+
+def named_errors_on_moment(database: Any, snippet_id: str) -> list[str]:
+    """The names currently on a moment, by its snippet."""
+    reader = getattr(database, "list_coach_moment_error_events_for_snippet", None)
+    if reader is None:
+        return []
+    return current_named_errors(reader(str(snippet_id)))
+
+
 _UUID = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 

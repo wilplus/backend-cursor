@@ -26,5 +26,7 @@ def test_audio_unclear_and_no_answer_keep_it_shut():
 
 def test_both_doors_use_the_one_predicate():
     source = open(coach.__file__, encoding="utf-8").read()
-    assert source.count("if not _practice_door_open(") == 2
+    # The practice review, the exercise request, and (2026-09-30) the
+    # `_moment_gate` shared by the answer draft and the named errors.
+    assert source.count("if not _practice_door_open(") == 3
     assert 'not in ("yes", "no")' not in source

@@ -626,6 +626,43 @@ def v2_coach_queue():
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch coach queue"}), 500
 
 
+@v2_bp.route("/coach/queue/moments", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_moments_queue():
+    """The coach's walk (founder 2026-09-30, A1 to A8; P2-6): speakers
+    oldest first, their takes, and each bookmarked moment with one word for
+    where THIS coach is with it. The kind of a moment rides only once this
+    coach has rated it (BLIND COACH). Same language filter and pseudonyms as
+    the review queue; the shape is services.coach_moments_queue'."""
+    from services.coach_moments_queue import moments_queue
+    try:
+        rater_id = str(getattr(request, "user_id", "") or "")
+        proficient = db.get_user_proficient_languages(rater_id)
+        if not proficient:
+            return _rater_language_error("profile_required")
+        rows, snips, _states = load_review_queue(db, _coach_state_map)
+        matched = [r for r in rows if _rater_language_outcome(
+            r, snips.get(str(r.get("id"))) or [], proficient=proficient)[0] == "matched"]
+        requests = db.list_exercise_coach_requests_for_sessions(
+            [str(r.get("id")) for r in matched])
+
+        def moments_for(row):
+            sid = str(row.get("id"))
+            marked = _bookmarked_snippet_ids(row, sid)
+            return [str(s.get("id")) for s in snips.get(sid) or []
+                    if str(s.get("id")) in marked]
+
+        return jsonify(moments_queue(
+            matched, moments_for=moments_for,
+            ratings_for=lambda sid: db.get_own_state_ratings_for_session(sid, rater_id),
+            request_for=lambda sid, snip: requests.get((sid, snip)),
+            pseudonym_for=_coach_pseudonym)), 200
+    except Exception as e:
+        logger.error("coach/queue/moments GET failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch the queue"}), 500
+
+
 # Phase 4 / Prompt 2 — the AI-Commentator draft the coach's comment
 # field opens PRE-FILLED with (frozen; the coach types over it). {} when
 # the migration hasn't run → blank field, same as before.
@@ -1767,6 +1804,80 @@ def v2_coach_exercise_request(session_id, snippet_id):
     status, payload = review(
         db, take_session_id=owner_sid, snippet_id=snippet_id,
         method=request.method, body=request.get_json(silent=True),
+        coach_id=str(getattr(request, "user_id", "")))
+    return jsonify(payload), status
+
+
+def _moment_gate(session_id, snippet_id):
+    """The blind gate for a coach's answer about one moment (0402): a valid
+    pair of ids, a session, a snippet that belongs to it, and THIS coach's
+    own rating saved first. ``(error_response, owner_sid)``; the routes for
+    the draft, the queue's answers and the named errors share it, so no
+    door opens before the rating (BLIND COACH)."""
+    if not _is_valid_uuid(session_id) or not _is_valid_uuid(snippet_id):
+        return (jsonify({"code": "INVALID_INPUT",
+                         "error": "session_id and snippet_id must be UUIDs"}), 400), None
+    if not db.v2_get_session_by_id(session_id):
+        return (jsonify({"code": "SESSION_NOT_FOUND",
+                         "error": "Session not found"}), 404), None
+    owner_sid = _snippet_owner_map(session_id).get(snippet_id)
+    if not owner_sid:
+        return (jsonify({"code": "SNIPPET_NOT_FOUND",
+                         "error": "Snippet not in this session"}), 404), None
+    state = _coach_state_map(owner_sid, rater_id=getattr(request, "user_id", None))
+    if not _practice_door_open(state.get(str(snippet_id))):
+        return (jsonify({"code": "BLIND_RATING_REQUIRED",
+                         "error": "Rate the original moment first."}), 409), None
+    return None, owner_sid
+
+
+@v2_bp.route(
+    "/coach/sessions/<session_id>/snippets/<snippet_id>/exercise-request/draft",
+    methods=["POST"],
+)
+@require_admin_or_coach
+@operational_purpose_disabled("personalized_exercise_recommendation")
+@llm_limit
+def v2_coach_exercise_request_draft(session_id, snippet_id):
+    """A first draft for the coach's answer, by the request's kind (founder
+    2026-09-30, C2; P2-2): a script, a praise line or a clearer version.
+    Coach-only, behind the blind gate; kept on the request row so the
+    coach's final can be paired with it. The work is
+    services.coach_request_drafts'."""
+    error, owner_sid = _moment_gate(session_id, snippet_id)
+    if error:
+        return error
+    if not _speaker_practice_permitted(owner_sid):
+        return jsonify({"code": "SPEAKER_PRACTICE_OFF",
+                        "error": "The speaker turned practice off."}), 409
+    from services.coach_request_drafts import draft_for_request
+    status, payload = draft_for_request(
+        db, db.get_exercise_coach_request(owner_sid, snippet_id),
+        request.get_json(silent=True),
+        coach_id=str(getattr(request, "user_id", "")))
+    return jsonify(payload), status
+
+
+@v2_bp.route(
+    "/coach/sessions/<session_id>/snippets/<snippet_id>/named-errors",
+    methods=["GET", "PUT"],
+)
+@require_admin_or_coach
+def v2_coach_named_errors(session_id, snippet_id):
+    """The patterns the coach names on the moment itself (0402; P2-7), from
+    the unified walk: GET the current names, PUT {error_id, named}. Behind
+    the blind gate; coach provenance only, never on the speaker's payload."""
+    error, owner_sid = _moment_gate(session_id, snippet_id)
+    if error:
+        return error
+    from services.coach_moment_errors import (
+        name_error_on_moment, named_errors_on_moment,
+    )
+    if request.method == "GET":
+        return jsonify({"named": named_errors_on_moment(db, snippet_id)}), 200
+    status, payload = name_error_on_moment(
+        db, take_session_id=owner_sid, snippet_id=snippet_id,
+        body=request.get_json(silent=True),
         coach_id=str(getattr(request, "user_id", "")))
     return jsonify(payload), status
 

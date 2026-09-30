@@ -327,10 +327,11 @@ def main() -> int:
 
     # The Confidence Classification producer (G-6, audit 2026-09-22). One
     # line, every boot, saying what MLC2_CONFIDENCE_CUTOVER_MODE resolved to
-    # in THIS container and whether a producer chain was started. In `dark`,
-    # the deployed mode, this starts nothing and touches no broker key; the
-    # constant changes only by a reviewed code change after the readiness
-    # report is green (services/mlc2_confidence_readiness.py).
+    # in THIS container and whether a producer chain was started. Under
+    # `founder_canary`, the deployed mode since the flip of 2026-09-29, the
+    # chain starts for the ring's one eligible person; `dark` started nothing
+    # and touched no broker key. The constant changes only by a reviewed code
+    # change (services/mlc2_confidence_readiness.py keeps guarding it).
     try:
         from services.mlc2_confidence_frame_factory import (
             start_confidence_producer_chain,
