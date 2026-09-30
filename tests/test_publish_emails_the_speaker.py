@@ -254,6 +254,7 @@ class FallbackEmailSaysTheSignedWordsTests(unittest.TestCase):
             self.assertIn("Your coach's feedback is in.", text.replace("&#x27;", "'"))
             self.assertIn("left feedback on 2 moments.", text)
             self.assertIn("Open the feedback", text)
-        self.assertIn("/willab-logo", out["html"])
+        self.assertIn(">WillpowerLab</span>", out["html"])
+        self.assertNotIn("<img", out["html"])
         self.assertNotIn("Top theme", out["html"])
         self.assertNotIn("View your results", out["html"])

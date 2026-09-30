@@ -1,6 +1,8 @@
 """Dedicated HTML builders for the 3 email templates."""
 from html import escape
 
+from services.email_wordmark import wordmark_html
+
 DEFAULT_COACH_MESSAGE = "Good work. It is a small step for you, but a huge step for your progress!"
 DEFAULT_AI_INSIGHT = (
     "You had strong energy and clear intent. Focus next on slowing transitions between points and reducing filler words in openings."
@@ -112,7 +114,6 @@ def build_admin_homework_completed_email_html(
         f"{safe_name} ({escape(student_email)})" if safe_name
         else escape(student_email)
     )
-    logo = (logo_url or "").strip() or LOGO_URL
     eyebrow = escape((lesson_label or "").strip()) or "Homework"
     rows = [_email_row("Student", student_label)]
     if isinstance(moments_awaiting, int) and moments_awaiting > 0:
@@ -138,7 +139,7 @@ def build_admin_homework_completed_email_html(
 </head>
 <body style="margin:0;padding:0;background:#FAF7F2;font-family:{_FONT_STACK};color:#1F1A14;">
   <div style="max-width:600px;margin:0 auto;padding:32px 20px;">
-    <div style="text-align:center;margin:0 0 24px;"><img src="{escape(logo)}" alt="WillpowerLab" width="182" height="42" style="display:inline-block;width:182px;height:auto;border:0;"></div>
+    {wordmark_html()}
     <div style="background:#FCFAF6;border:1px solid #EFE9DE;border-radius:16px;padding:40px;">
       <p style="margin:0;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#F97316;font-weight:600;">{eyebrow}</p>
       <h1 style="margin:8px 0 0 0;font-family:{_FONT_STACK};font-weight:600;font-size:28px;line-height:34px;color:#1F1A14;">A student has completed a homework lesson.</h1>

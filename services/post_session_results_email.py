@@ -46,6 +46,7 @@ from config import Config
 from services.db import db
 from services.email_service import send_email_resend
 from services.email_threading import user_thread_headers
+from services.email_wordmark import wordmark_html
 
 
 logger = logging.getLogger(__name__)
@@ -406,7 +407,7 @@ def _render_inline_fallback(props: dict) -> dict:
 <head><meta charset="utf-8"></head>
 <body style="margin:0;padding:0;background:#FAF7F2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1F1A14;">
   <div style="max-width:580px;margin:0 auto;padding:32px 24px;">
-    <div style="text-align:center;margin:0 0 24px;"><img src="https://www.willpowerlab.com/willab-logo" alt="WillpowerLab" width="182" height="42" style="display:inline-block;width:182px;height:auto;border:0;"></div>
+    {wordmark_html()}
     <div style="background:#FCFAF6;border:1px solid #EFE9DE;border-radius:16px;padding:32px;">
       {eyebrow}
       <h1 style="font-size:26px;font-weight:600;line-height:1.3;margin:0 0 16px;">{heading}</h1>
