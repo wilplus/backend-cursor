@@ -107,6 +107,9 @@ USER_CONTENT_PREFIXES: tuple[str, ...] = (
     "willab_audits/",
     # Separate training copies of a person's recordings (P3, migration 0374).
     "training-corpus/",
+    # Weekly pair releases: a coach's words about a person's passage, so a
+    # person's content (ML-9, migration 0405). Private bucket, never a URL.
+    "pair-releases/",
 )
 
 #: Object-key prefixes this codebase writes that are deliberately NOT user

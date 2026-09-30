@@ -15281,6 +15281,62 @@ class DatabaseService:
         res = self.client.table("golden_sets").insert(fields).execute()
         return (res.data or [None])[0]
 
+    # ── A pair remembers the yes (0405): consent refresh and releases ──────
+
+    def refresh_feedback_pair_consent(self, required_surfaces: list[str]) -> dict:
+        """The weekly refresh: every pair's consent state and releasability,
+        and the voiding of releases whose owner withdrew. Raises."""
+        res = self.client.rpc("refresh_feedback_pair_consent_v1", {
+            "p_required_surfaces": [str(s) for s in required_surfaces],
+        }).execute()
+        data = res.data
+        return data if isinstance(data, dict) else (self._rpc_row(data) or {})
+
+    def list_releasable_pairs(self, surface: str, *, limit: int = 5000) -> list[dict]:
+        """Releasable, unexported pairs of one surface, oldest first. Raises."""
+        res = (self.client.table("feedback_pairs")
+               .select("id,surface,draft_text,final_text,final_kind,draft_model_version,"
+                       "pattern_key,owner_principal_id,consent_state,consent_grant_event_id,"
+                       "consent_policy_version,created_at")
+               .eq("surface", str(surface)).eq("releasable", True)
+               .is_("exported_at", "null").order("created_at").limit(int(limit)).execute())
+        return list(res.data or [])
+
+    def insert_pair_release(self, **fields: Any) -> Optional[dict]:
+        res = self.client.table("pair_releases").insert(fields).execute()
+        return (res.data or [None])[0]
+
+    def insert_pair_release_owners(self, release_id: str, owner_principal_ids: list[str]) -> int:
+        rows = [{"release_id": str(release_id), "owner_principal_id": str(p)}
+                for p in sorted({str(p) for p in owner_principal_ids if p})]
+        if not rows:
+            return 0
+        self.client.table("pair_release_owners").insert(rows).execute()
+        return len(rows)
+
+    def mark_feedback_pairs_released(self, release_id: str, pair_ids: list[str]) -> int:
+        res = self.client.rpc("mark_feedback_pairs_released_v1", {
+            "p_release_id": str(release_id), "p_pair_ids": [str(p) for p in pair_ids],
+        }).execute()
+        return int(res.data or 0)
+
+    def list_pair_releases(self, limit: int = 20) -> list[dict]:
+        res = (self.client.table("pair_releases")
+               .select("id,release_version,surface,week_start,item_count,storage_bucket,storage_key,"
+                       "manifest_sha256,file_sha256,signing_key_id,exported_at,voided_at,voided_reason,purged_at")
+               .order("exported_at", desc=True).limit(int(limit)).execute())
+        return list(res.data or [])
+
+    def list_voided_unpurged_pair_releases(self) -> list[dict]:
+        res = (self.client.table("pair_releases")
+               .select("id,surface,storage_bucket,storage_key,voided_at")
+               .not_.is_("voided_at", "null").is_("purged_at", "null").limit(500).execute())
+        return list(res.data or [])
+
+    def mark_pair_release_purged(self, release_id: str) -> None:
+        (self.client.table("pair_releases").update({"purged_at": "now()"})
+         .eq("id", str(release_id)).execute())
+
     def insert_feedback_pair(self, **fields: Any) -> Optional[dict]:
         """One (draft, final) pair (0402). Raises on failure; the service
         logs it and the answer stands. A duplicate for the same request or

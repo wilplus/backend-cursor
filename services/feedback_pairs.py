@@ -60,8 +60,13 @@ def record_pair(
     writer = getattr(database, "insert_feedback_pair", None)
     if writer is None:
         return None
+    # The pair remembers the yes (0405): its owner's principal and the
+    # consent state at this moment; the weekly refresh keeps it true.
+    from services.pair_consent import stamp
+    consent = stamp(database, surface=surface, owner_user_id=owner_user_id)
     try:
         row = writer(
+            **consent,
             surface=surface, draft_text=str(draft).strip(),
             final_text=str(final).strip(), final_kind=final_kind,
             draft_model_version=model_version or None,

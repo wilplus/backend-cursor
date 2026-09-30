@@ -263,6 +263,11 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     # goes with it.
     # The founder's golden judgement names a speaker's moment (0404): it
     # goes with the moment, like a coach's blind label does.
+    # A release names whose passages it carries (0405): the row goes with the
+    # person, and the weekly refresh voids the release for the object sweep.
+    PurgeDependency("pair_release_owners", "pair_release_owners",
+                    "owner_principal_id", "principal", "delete",
+                    "derived_feedback", 35),
     PurgeDependency("golden_judgements", "golden_judgements", "snippet_id",
                     "snippet", "delete", "derived_feedback", 35),
     PurgeDependency("coach_take_words", "coach_take_words",
@@ -1119,6 +1124,10 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     "dataset_releases",
     # The ledger's weekly snapshots hold counts about the machine (0404).
     "ledger_snapshots",
+    # A pair release's manifest and hashes (0405); whose passages it holds is
+    # pair_release_owners, a dependency below, and the refresh voids the
+    # release itself when an owner withdraws.
+    "pair_releases",
     # The research role, like admin_users and coach_users (0404).
     "research_users",
     # A surface's sealed golden set: a count and a hash (0404).

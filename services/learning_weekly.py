@@ -10,7 +10,10 @@ Once a week, poked by a Railway cron through a shared secret:
      stored beside the snapshot. The job never promotes: merging the
      drafted file after the founder's go is the promotion (ML-14);
   3. pairs are exported per surface ONLY where the dataset-release door is
-     open. The door is a code constant, closed today, so the job exports
+     open AND the founder named the surface (services/pair_release.py);
+     before that the consent refresh and the voided-release sweep run
+     (services/pair_consent.py, ML-8). Both doors are code constants,
+     closed today, so the job exports
      nothing and says so.
 
 Nothing here trains, promotes, or flips a door. Counts about the system,
@@ -65,12 +68,23 @@ def run_weekly(database: Any, *, config: Any = None,
     if config is None:
         from config import Config
         config = Config()
+    from services.pair_consent import refresh
+    from services.pair_release import R2ReleaseStorage, sweep_voided
     moment = now or datetime.now(timezone.utc)
+    # Door 1's weekly pass first (ML-8): every pair's releasability from the
+    # consent ledger, and the voiding of releases whose owner withdrew. Then
+    # the ledger reads the counts as they stand.
+    consent = refresh(database)
     snapshot = read_ledger(database, config=config)
     ready = [cue for cue, row in (snapshot.get("shadow_cues") or {}).items()
              if isinstance(row, dict) and row.get("ready")]
     drafts = {cue: migration_draft(cue) for cue in ready}
-    exported = _export_pairs(database, snapshot, config)
+    storage = R2ReleaseStorage(config)
+    exported = _export_pairs(database, snapshot, config,
+                             week_start_day=week_start(moment), storage=storage)
+    # Revocation purges the copies, whatever the door says (ML-8).
+    swept = sweep_voided(database, storage)
+    snapshot["doors_pass"] = {"consent_refresh": consent, "release_sweep": swept}
     row = {
         "week_start": week_start(moment).isoformat(),
         "ledger_version": str(snapshot.get("ledger_version") or ""),
@@ -88,26 +102,33 @@ def run_weekly(database: Any, *, config: Any = None,
         "ready_cues": ready,
         "migration_drafts": drafts,
         "exported": exported,
+        "consent_refresh": consent,
+        "release_sweep": swept,
         "unavailable": list(snapshot.get("unavailable") or []),
         "doors": snapshot.get("doors"),
     }
 
 
-def _export_pairs(database: Any, snapshot: dict, config: Any) -> list[dict]:
-    """Per surface: exported when door 2 is open, else the reason. The door
-    is one code constant for every surface today (ML-9 opens it per surface
-    by a reviewed change carrying the founder's sentence)."""
-    door_open = bool(getattr(config, "MLC2_DATASET_RELEASES_ENABLED", False))
+def _export_pairs(database: Any, snapshot: dict, config: Any,
+                  *, week_start_day: Optional[date] = None,
+                  storage: Any = None) -> list[dict]:
+    """Per surface: the release, or the reason it stayed. The door is a code
+    constant and each surface needs the founder's sentence (ML-9); while
+    either is missing the row says so in words."""
+    from services.pair_release import R2ReleaseStorage, export_surface, why_not
     out = []
-    for surface, entry in (snapshot.get("pairs") or {}).items():
-        waiting = int((entry or {}).get("unexported") or 0)
-        if not door_open:
-            out.append({"surface": surface, "exported": 0, "waiting": waiting,
-                        "why": "door 2 closed (MLC2_DATASET_RELEASES_ENABLED)"})
+    for surface in (snapshot.get("pairs") or {}):
+        reason = why_not(config, surface)
+        if reason:
+            waiting = int(((snapshot.get("pairs") or {}).get(surface) or {}).get("unexported") or 0)
+            out.append({"surface": surface, "exported": 0, "waiting": waiting, "why": reason})
             continue
-        # The door is open by a reviewed change; the export itself is ML-9's
-        # signed manifest and JSONL to the bucket. Until it lands the job
-        # names the gap rather than pretending.
-        out.append({"surface": surface, "exported": 0, "waiting": waiting,
-                    "why": "exporter not built (ML-9)"})
+        try:
+            out.append(export_surface(
+                database, storage or R2ReleaseStorage(config), surface=surface,
+                week_start=week_start_day or week_start(), config=config))
+        except Exception as e:  # noqa: BLE001 -- named, never a silent zero
+            _log.warning("pair release failed surface=%s: %s", surface, e, exc_info=True)
+            out.append({"surface": surface, "exported": 0, "waiting": None,
+                        "why": f"export failed: {str(e)[:120]}"})
     return out
