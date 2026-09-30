@@ -49,6 +49,15 @@ def _database() -> Mock:
 
 
 class AnalysisDispatchTests(unittest.TestCase):
+    def setUp(self):
+        # These pin the dispatch mechanics, not the confidence cutover: under
+        # dark no source manifest is built. The flipped constant
+        # (founder 2026-09-29) is pinned in its own suites, and the
+        # founder_canary promote path in test_mlc2_confidence_cutover_integration.
+        patcher = patch("config.Config.MLC2_CONFIDENCE_CUTOVER_MODE", "dark")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
 
     def test_non_canary_analysis_never_writes_canonical_lifecycle(self):
         database = _database()

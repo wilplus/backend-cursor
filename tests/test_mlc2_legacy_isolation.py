@@ -97,7 +97,8 @@ def test_slice4_live_bridge_is_guarded_by_the_one_hard_disabled_flag():
     assert "promote_recording_attempt_with_confidence_outbox" in lifecycle
     assert "and confidence_prior_learning_writes_enabled()" in block
     config = (ROOT / "config.py").read_text()
-    assert 'MLC2_CONFIDENCE_CUTOVER_MODE = "dark"' in config
+    # The flip (founder 2026-09-29): still a literal constant, never env.
+    assert 'MLC2_CONFIDENCE_CUTOVER_MODE = "founder_canary"' in config
 
 
 def test_confidence_audit_maps_every_guarded_runtime_dependency():
@@ -117,5 +118,6 @@ def test_confidence_audit_maps_every_guarded_runtime_dependency():
 
 def test_confidence_cutover_is_hard_disabled_not_environment_controlled():
     config = (ROOT / "config.py").read_text()
-    assert 'MLC2_CONFIDENCE_CUTOVER_MODE = "dark"' in config
+    # The flip (founder 2026-09-29): still a literal constant, never env.
+    assert 'MLC2_CONFIDENCE_CUTOVER_MODE = "founder_canary"' in config
     assert 'os.getenv("MLC2_CONFIDENCE_CUTOVER_MODE")' not in config

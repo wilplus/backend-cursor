@@ -2333,6 +2333,42 @@ through the coach's own hands, and that every BFF route goes through
 `AUTHORING_COPY`) awaits sign-off. Merge order: this backend PR before
 frontend #542.
 
+### 2026-09-29 · WS-FLIP · flip-founder-canary · #(pending)
+
+**Closed:** the flip. `MLC2_CONFIDENCE_CUTOVER_MODE` goes `dark` →
+`founder_canary` after the readiness cron read READY with no blocker on
+the deployed head (ring row present and not killed, one bundled consent
+grant, monitor and alert sink on, every downstream capability disabled;
+the one warning, more than one ring-eligible principal, is for the
+founder to trim on the rings panel and does not change who writes, since
+writes need the grant too). One-way: dark → founder_canary → killed,
+never back.
+**Contract lines flipped:** `test_the_constant_is_still_dark` in the
+consumer and frame-factory suites becomes
+`test_the_constant_is_founder_canary_since_the_flip`.
+**Contract lines added:** `test_founder_canary_is_the_flipped_state_and_the_monitor_keeps_guarding`
+(readiness): after the flip the cron keeps guarding the same invariants
+every five minutes; `killed` is the one state it reports as a blocker
+(`canary_killed`), and the receipt warning reads
+`no_runtime_canary_receipt_yet` until the first Take writes one.
+**Broke and fixed:** the unit tier under the flipped constant: the
+dispatch and lifecycle mechanics suites built a source manifest against a
+non-R2 store and failed closed, exactly what a production service without
+the R2 credentials would do to every Take. They now pin the dark mode
+explicitly; the founder_canary promote path stays pinned in
+`test_mlc2_confidence_cutover_integration.py`. The two isolation tests that
+read the literal constant read `founder_canary`.
+**Added guard:** the readiness reports `confidence_source_audio_store_not_r2`
+when the service lacks the R2 credentials (`coach_videos_use_r2()`), so the
+cron says before a Take does whether the promote path can build its
+manifest.
+**Open for the founder:** confirm R2_ACCOUNT_ID, R2_ACCESS_KEY_ID and
+R2_SECRET_ACCESS_KEY on the backend web AND worker services before merging
+(the manifest is built on the worker); then the first real Take, and a
+second account judges it blind; the cron's receipt warning clearing is the
+evidence the producer ran.
+
+
 ### 2026-09-29 · WS-EXP 7 · claude/jar-unseals-evaluation · #(pending)
 
 **Closed:** the question the exercise-pipe report left open (founder

@@ -278,17 +278,21 @@ class Config:
     # the policy text and the founder has signed it. Never an env variable.
     MLC2_TRAINING_SWITCH_ENABLED = False
     # Slice 6 readiness replaces the ambiguous bool with an irreversible
-    # three-state contract.  ``dark`` is the deployed/pre-cutover behavior;
-    # ``founder_canary`` is a separately-authorized future code change;
-    # ``killed`` disables both canonical and retired learning writes so an
-    # incident rollback can never resurrect the old supervision path.
-    # Deliberately not environment-controlled: activation requires review,
+    # three-state contract.  ``dark`` was the pre-cutover behavior;
+    # ``founder_canary`` is THE FLIP (founder 2026-09-29, after the
+    # readiness cron read READY with no blocker: the ring row present and
+    # not killed, one bundled consent grant, monitor and alert sink on,
+    # every downstream capability disabled); ``killed`` disables both
+    # canonical and retired learning writes so an incident rollback can
+    # never resurrect the old supervision path. One-way: this constant goes
+    # dark → founder_canary → killed and never back.
+    # Deliberately not environment-controlled: activation required review,
     # code change and deployment rather than an unreviewed dashboard toggle.
     # The rings panel can only CLOSE this state: killing the one-way
     # `confidence_learning_writes` row makes configured_confidence_cutover()
     # read `killed` on every service (services/mlc2_confidence_cutover.py).
     # Nothing outside a reviewed code change can make it read more open.
-    MLC2_CONFIDENCE_CUTOVER_MODE = "dark"
+    MLC2_CONFIDENCE_CUTOVER_MODE = "founder_canary"
     # The chain's "who" is the `confidence_learning_writes` ring row (0394);
     # readiness reads the row and the ring-eligible principals. The founder
     # email constant and the canary principal variable that used to say it
