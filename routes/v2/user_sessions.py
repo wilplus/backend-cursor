@@ -1679,7 +1679,39 @@ def _practice_user_payload(practice, attempts=None):
         "final_user_answer": practice.get("final_user_answer"),
         "selected_attempt_id": practice.get("selected_attempt_id"),
         "judgeable_attempt_id": _judgeable_id(rows),
+        # Phase 3 (F5): the sentence the speaker heard after this practice,
+        # from the signed closed set; null until the switch, and off it.
+        "after_practice": practice.get("after_practice"),
     }
+
+
+def _dismissed(updated: dict) -> dict:
+    """The practice the speaker left, with its encouragement (Phase 3, F5)
+    when the switch is on; the row as closed otherwise."""
+    from services.after_practice import after_dismissal
+    said = after_dismissal(db, updated)
+    return {**updated, "after_practice": said} if said else updated
+
+
+def _attempt_comparison(database, practice, original, current_snapshot,
+                        previous, metrics, baseline, baseline_kind) -> dict:
+    """The versioned before/after observation (no automatic outcome), with
+    both sides' delivery-cue reads beside it (Phase 3, F5) whenever the
+    speaker has a baseline. Raw, versioned, never an improvement label."""
+    from services.after_practice import attach_cue_reads
+    comparison = {
+        "contract_version": "practice-product-observation-v1",
+        "baseline": original,
+        "attempt": current_snapshot,
+        "previous_attempt": previous,
+        "no_automatic_outcome": True,
+    }
+    if not baseline:
+        return comparison
+    snippet = database.get_snippet_by_id(str(practice.get("snippet_id") or "")) or {}
+    return attach_cue_reads(
+        comparison, original_metrics=snippet.get("metrics"),
+        attempt_metrics=metrics, baseline=baseline, baseline_kind=baseline_kind)
 
 
 def _practice_exercise_shape(practice, kind: str) -> dict:
@@ -2121,6 +2153,7 @@ def v2_add_confident_voice_practice_attempt(practice_id):
         # Apply the SAME existing, self-relative acoustic confidence signal
         # used by full-take snippets when a valid speaker/take baseline is
         # available. Honest absence stays None; we never synthesize a score.
+        baseline, baseline_kind = None, "none"
         try:
             from services.voice_confidence import (
                 read_for_piece, resolve_confidence_baseline,
@@ -2153,13 +2186,9 @@ def v2_add_confident_voice_practice_attempt(practice_id):
         # Keep raw, versioned before/after observations for later validation,
         # but do not manufacture an improvement label or choose a "best"
         # attempt before the need-specific thresholds are approved.
-        comparison = {
-            "contract_version": "practice-product-observation-v1",
-            "baseline": original,
-            "attempt": current_snapshot,
-            "previous_attempt": previous,
-            "no_automatic_outcome": True,
-        }
+        comparison = _attempt_comparison(
+            db, practice, original, current_snapshot, previous, metrics,
+            baseline, baseline_kind)
         attempt_index = len(existing) + 1
         key = (f"confidence-practice/{request.user_id}/{practice_id}/"
                f"{attempt_index}-{uuid.uuid4().hex}{ext}")
@@ -2230,7 +2259,7 @@ def v2_complete_confident_voice_practice(practice_id):
         if not updated:
             return jsonify({"code": "V2_ERROR",
                             "error": "Could not close this practice."}), 500
-        return jsonify({"practice": _practice_user_payload(updated)}), 200
+        return jsonify({"practice": _practice_user_payload(_dismissed(updated))}), 200
     answer, attempt_id = body.get("user_answer"), body.get("attempt_id")
     if answer not in ("yes", "no") or not _is_valid_uuid(str(attempt_id or "")):
         return jsonify({"code": "INVALID_INPUT",

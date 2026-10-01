@@ -113,6 +113,12 @@ def ledger(database: Any, *, config: Any = None) -> dict:
     since = (datetime.now(timezone.utc) - timedelta(days=COACH_LOAD_DAYS)).isoformat()
     load = _read("coach_load", lambda: coach_load(database, since=since),
                  unavailable) or {}
+    # Practices that land, Bold voices heard, steps shown (Phase 3; the
+    # founder's weekly line), same window.
+    from services.bold_voices import after_practice_counts
+    after = _read("after_practice",
+                  lambda: after_practice_counts(database, since=since),
+                  unavailable) or {}
     return {
         "ledger_version": LEDGER_VERSION,
         "pairs": pairs,
@@ -121,5 +127,6 @@ def ledger(database: Any, *, config: Any = None) -> dict:
                                 min_caught_rate=PROMOTION_MIN_CAUGHT_RATE),
         "doors": doors(config),
         "coach_load": load,
+        "after_practice": after,
         "unavailable": unavailable,
     }

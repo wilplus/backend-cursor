@@ -105,6 +105,9 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     # membership in a weekly file belongs to the account, not to a project;
     # the weekly refresh voids the release for the object sweep.
     "pair_release_owners", "fine_tune_run_owners", "golden_judgements_by_owner",
+    # A coach's own model readings (0409): their voice, under the coach
+    # agreement; they belong to the coach's account, not to any project.
+    "coach_readings",
 })
 
 #: Rows with no project column of their own that the take-record wipe

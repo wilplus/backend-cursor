@@ -260,6 +260,16 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     # speaker's Take: they go with it.
     PurgeDependency("moment_events", "moment_events", "take_session_id",
                     "take", "delete", "derived_feedback", 59),
+    # Which after-practice steps a Take showed, and the Bold voices plays
+    # the speaker heard (0409). About one speaker's Take: they go with it.
+    PurgeDependency("after_practice_steps", "after_practice_steps",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("bold_voices_plays", "bold_voices_plays",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    # A coach's own model readings (0409): their voice, under the coach
+    # agreement; they go with the coach.
+    PurgeDependency("coach_readings", "coach_readings", "coach_id",
+                    "principal", "delete", "derived_feedback", 35),
     # The (draft, final) pairs a coach's answer about one speaker's moment
     # made (0402). The words are about that passage: they go with the Take.
     # Pairs from the exercise library (no take) are about the library.

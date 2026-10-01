@@ -161,6 +161,14 @@ def judge_attempt(database: Any, practice: Mapping, attempt_id: str,
             "closed_at": now,
         }) or practice
     result["attempt_transcript"] = practice_words(target.get("transcript"))
+    from services.after_practice import after_landing
+    # Phase 3 (founder 2026-10-01, F5): one sentence about the attempt the
+    # speaker LANDED on; the scorekeeper reads the first valid one (F7) and
+    # the two may disagree by design. Off, nothing is said.
+    said = after_landing(database, result["practice_row"], attempts,
+                         attempt_id, str(answer))
+    if said:
+        result["practice_row"] = {**result["practice_row"], "after_practice": said}
     return 200, result
 
 

@@ -412,6 +412,24 @@ with this contract, this contract wins.
     the machine never applies its own rewrite, and the next Take rewrites
     the Paragraph again from what was said (clause 8). Praise (Yes) never
     accepts anything; a Yes shows Next.
+29c. **After the practice** (founder 2026-10-01, F5; Phase 3 of the
+    after-practice paths, served only once `PRAISE_AFTER_PRACTICE_ENABLED`
+    is on): "After a practice the speaker judges Yes or In-between, one
+    signed sentence names what measurably changed. If nothing measurably
+    changed, a plain 'Good job'. It is practice feedback, not a Feedback
+    item, and carries no budget." The sentence comes from a closed,
+    founder-signed set and describes the attempt the speaker landed on (the
+    scorekeeper reads the first valid attempt, F7, and the two may disagree
+    by design). It names the targeted problem that cleared, else the one
+    delivery cue that moved, else that the attempt sounded more assured,
+    else nothing; a rewrite practice (29b) compares only attempts of the
+    same accepted text, never the original. A practice that did not land
+    hears an encouragement: a real step between tries, else the effort
+    alone. After the first practice ending the speaker may hear Bold voices
+    once per Take: their own landed attempt, then a coach's published
+    readings, without names; plays only, nothing judged, a heard receipt
+    kept. Others' shared clips and Lend your ear wait for Phase 4 and
+    counsel (C1 to C3, F3, F4).
 30. No blocks orange styling and Voice Album admission for that exact clip and
     suppresses that exact clip from resurfacing. It does not penalize the
     Paragraph, the user's voice, or materially stronger audio in a future Take.
