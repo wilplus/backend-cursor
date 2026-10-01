@@ -28,8 +28,11 @@ unsigned render is never the right value.
 signed at 09:02:46 UTC (PAdES, `/ETSI.CAdES.detached`, the qualified seal in
 the founder's name). The unsigned render (sha256 `121f2da8…775d2a`) is a
 byte-identical prefix of the signed file, so what was signed is exactly what
-was rendered. The signed file still has to reach its `object_key` in storage;
-the hash above is the value `configure_mlc2_training_consent_policy_v1` takes.
+was rendered. Uploaded by the founder on 2026-10-01 11:20 CEST to the R2
+bucket `coach-feedback-videos` (the backend's main bucket, `R2_BUCKET_NAME`)
+at exactly that `object_key`, 108,961 bytes, `application/pdf`. The hash
+above is the value `configure_mlc2_training_consent_policy_v1` took at
+09:08 UTC the same day.
 
 `02` and `03` were rendered by `scripts/render_doc_pdf.py` and
 signed on 2026-09-22 at 21:02:08 UTC. Both signatures are PAdES
