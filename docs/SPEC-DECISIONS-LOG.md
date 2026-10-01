@@ -851,3 +851,17 @@ and the removal landed the same day, both repos.
    slide corrections already recorded still feed the Ideal Text's slide
    bucketing; `results_published_at` stops advancing for new Takes, which
    the speaker never saw as such.
+
+
+**N18 · Door 2 opened for praise_line and clearer_version (founder 2026-10-01,
+C4).** "open door 2 for surface praise_line" and "open door 2 for surface
+clearer_version", said in chat the same day door 2 opened for exercise_script
+(N16). The reviewed change carrying them adds both to
+`Config.PAIR_RELEASE_SURFACES`; nothing else moves: door 3 and door 4 stay
+closed (`MLC2_TRAINING_ENABLED`, `MLC2_PROMOTION_ENABLED` False), the retired
+DPO lane stays dark. It rests on counsel's signed door-1 answer of 2026-10-01,
+which named all three existing surfaces. The two coach-word surfaces of Phase 7
+(`coach_moment_line`, `coach_take_word`) are not opened: the founder's "open
+now" for them rested on an AI draft, not a lawyer's answer, and they wait for a
+qualified lawyer's written answer to question 2 and the founder's sentence
+after it.

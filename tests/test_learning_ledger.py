@@ -54,7 +54,9 @@ class LedgerTests(unittest.TestCase):
         # for exercise_script only); doors 3 and 4 are shut.
         self.assertTrue(doors["consent"]["open"])
         self.assertTrue(doors["dataset_release"]["open"])
-        self.assertEqual(doors["dataset_release"]["surfaces"], ["exercise_script"])
+        # Door 2 for all three existing surfaces (N16, then C4 / N18).
+        self.assertEqual(doors["dataset_release"]["surfaces"],
+                         ["clearer_version", "exercise_script", "praise_line"])
         self.assertFalse(doors["training"]["open"])
         self.assertFalse(doors["promotion"]["open"])
 
