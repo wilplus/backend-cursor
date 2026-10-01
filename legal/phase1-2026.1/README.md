@@ -36,9 +36,9 @@ that runbook refuses to let anyone invent in code.
 | `05-us-counsel-brief-DRAFT.md` | Instructions to US counsel: BIPA, CCPA, all-party consent, US terms | — (US counsel's own determination) |
 | `06-retention-schedule-v1.0-DRAFT.md` | The retention and destruction schedule | `… = 'retention_schedule'`, and the rows in `data_retention_rules` |
 | `07-vendor-actions-DRAFT.md` | Who to contact for each DPA, with the text to send | — (executed agreements, filed) |
-| `10-training-policy-changes-DRAFT.md` | Privacy 3.1 → 3.2: the training changes, revised 2026-10-01 to counsel's fixes (text only, six-year consent record, the regurgitation sentence) | the privacy 3.2 copy file, once approved |
+| `10-training-policy-changes-DRAFT.md` | Privacy 3.1 → 3.2: the training changes, revised 2026-10-01 to counsel's fixes (text only, six-year consent record, the regurgitation sentence) | `copy/privacy-3.2.txt` (approved by the founder 2026-10-01, N15; effective 1 October 2026; PUBLISHED as `phase1-2026-10-01`, active since 2026-10-01 09:00 UTC) |
 | `11-retention-schedule-v1.1-training-DRAFT.md` | Retention schedule v1.1: v1.0 plus the training rows | `… = 'retention_schedule'` v1.1, and two more rows in `data_retention_rules` |
-| `12-terms-training-licence-DRAFT.md` | Terms 3.1 → 3.2: the licence to reproduce and adapt the speaker's text for training (counsel's fix, 2026-10-01) | the terms 3.2 copy file, once approved |
+| `12-terms-training-licence-DRAFT.md` | Terms 3.1 → 3.2: the licence to reproduce and adapt the speaker's text for training (counsel's fix, 2026-10-01) | `copy/terms-3.2.txt` (approved by the founder 2026-10-01, N15; effective 1 October 2026; PUBLISHED as `phase1-2026-10-01`, active since 2026-10-01 09:00 UTC) |
 | `13-training-consent-wording-SIGNED-2026-10-01.md` | The switch sentence and the four lines above it, counsel's wording, signed by the founder 2026-10-01 | `configure_mlc2_training_consent_policy_v1` (the copy, its hash, the evidence PDF) |
 
 The four `copy/*.txt` files are deliberately plain text with no front matter,

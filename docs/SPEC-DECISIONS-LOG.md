@@ -759,3 +759,48 @@ page).**
 6. **Words approved as written:** "Archive", "Archived", "Unarchive",
    "Delete a project", "Your projects", "Couldn't archive. Try again." The
    delete confirmation keeps the signed N8 wording.
+
+**N15 · Door 1 opened; Privacy 3.2 and Terms 3.2 approved (founder
+2026-10-01).** In chat, in this order: "You have my sign off" on counsel's
+switch sentence and the four lines above it (recorded in
+`legal/phase1-2026.1/13-training-consent-wording-SIGNED-2026-10-01.md`);
+then "I just approve it here right now" on Privacy 3.2 and Terms 3.2 as
+drafted from counsel's five fixes (`10-…`, `12-…`), including the six-year
+consent-record period that counsel has not yet confirmed; then "Yes, open
+door one."
+1. **`MLC2_TRAINING_SWITCH_ENABLED` is True** by the reviewed change carrying
+   that sentence. The route answers; the Settings card stays hidden until a
+   training policy row exists, and the database refuses a yes from anyone who
+   has not accepted the policy version that introduced training (C1). The
+   order of the real gates is therefore unchanged: Privacy 3.2 published and
+   re-accepted → the policy row registered → the card appears.
+2. **The approved text is `copy/privacy-3.2.txt` and `copy/terms-3.2.txt`**,
+   effective 1 October 2026, the day the founder ran the publish script
+   (a first run with the placeholder still in the text registered nothing) (the 2026-09-24 lesson: the effective date in registered copy
+   must be the activation day). The AI notice and the agreement screen are
+   unchanged from 3.1. The publish script is
+   `scripts/phase1_policy_publish_training_3_2.sql`, version id
+   `phase1-2026-10-01`; the five processing purposes are unchanged, because
+   the training yes is recorded in the MLC-2 consent ledger, not as a Phase-1
+   purpose (`pooled_model_improvement` stays phase2 in the registry and the
+   publish RPC refuses it).
+3. **Still counsel's:** the six-year number. If counsel replaces it, the copy
+   changes before publishing (free) or in a 3.3 everyone re-accepts (not).
+4. **The wording PDF** is rendered from `13-…` for the founder's qualified
+   signature (PAdES, as for 01 and 06); its signed hash goes into
+   `SIGNED-ARTIFACTS.md` row 13 and the registration SQL in
+   `docs/LEARNING-DOORS.md`.
+5. **PUBLISHED 2026-10-01 09:00:43 UTC.** The founder ran the four pieces of
+   `scripts/phase1_policy_publish_training_3_2.sql` in the Supabase SQL
+   editor: STEP 0 resolved all five purposes operational; STEP 1 registered
+   `phase1-2026-10-01` (status approved, policy_id `dbd20044-099d-453e-9feb-9d5e01f3da45…`);
+   STEP 2 activated it (cutoff 2026-10-01T09:00:43Z), retiring
+   `phase1-2026-09-23`; STEP 6 read privacy_has_4a = 1, terms_has_licence = 1,
+   placeholder_left = false. Every speaker is now asked to accept 3.2.
+6. **THE TRAINING POLICY ROW EXISTS, 2026-10-01 09:08:46 UTC.** The founder
+   ran `configure_mlc2_training_consent_policy_v1` with the signed sentence,
+   its fingerprint, the signed PDF's hash (SIGNED-ARTIFACTS row 13) and
+   `phase1-2026-10-01`: `training-only-v1`, grant_scope training_only,
+   active. Door 1 is now open on every side: the constant (this PR), the
+   policy version (item 5) and the row. The Settings card shows for every
+   speaker who has accepted 3.2, off, with the four lines above the switch.

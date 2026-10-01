@@ -29,7 +29,9 @@ from typing import Any, Optional
 _log = logging.getLogger(__name__)
 
 CACHE_SECONDS = 600.0
-_CACHE: dict[str, Any] = {"at": 0.0, "rates": None, "why": "not read yet"}
+# `at` is None until the first read: a monotonic clock starts near zero on a
+# fresh machine, so 0.0 would read as "just cached" for the first ten minutes.
+_CACHE: dict[str, Any] = {"at": None, "rates": None, "why": "not read yet"}
 _LOCK = threading.Lock()
 
 
@@ -61,7 +63,8 @@ def learned_rates(database: Any) -> tuple[Optional[dict[str, float]], str]:
 def _rates_cached(database: Any) -> tuple[Optional[dict[str, float]], str]:
     now = time.monotonic()
     with _LOCK:
-        if now - float(_CACHE["at"]) < CACHE_SECONDS:
+        at = _CACHE["at"]
+        if at is not None and now - float(at) < CACHE_SECONDS:
             return _CACHE["rates"], str(_CACHE["why"])
     try:
         rates, why = learned_rates(database)
@@ -75,7 +78,7 @@ def _rates_cached(database: Any) -> tuple[Optional[dict[str, float]], str]:
 
 def clear_cache() -> None:
     with _LOCK:
-        _CACHE.update(at=0.0, rates=None, why="not read yet")
+        _CACHE.update(at=None, rates=None, why="not read yet")
 
 
 def reorder(ranked: list[tuple], rates: Optional[dict[str, float]]) -> list[tuple]:

@@ -8,7 +8,7 @@ nothing left.
 
 | Door | Constant | Opens when | The sentence |
 |------|----------|------------|--------------|
-| 1 · the training yes | `MLC2_TRAINING_SWITCH_ENABLED` | counsel answered (2026-10-01: all three surfaces); the founder signed counsel's wording (2026-10-01); the legal drafts carry counsel's five fixes (done 2026-10-01, counsel reads once more); Privacy 3.2 + Terms 3.2 registered as a processing policy version and re-accepted (C1); the policy row configured with the signed wording (`configure_mlc2_training_consent_policy_v1`) | "open door 1" |
+| 1 · the training yes | `MLC2_TRAINING_SWITCH_ENABLED` | **OPEN since 2026-10-01** (N15): the founder's sentence flipped the constant, Privacy 3.2 + Terms 3.2 are the active policy (`phase1-2026-10-01`, 09:00 UTC) and the training policy row exists (`training-only-v1`, 09:08 UTC). The card shows to every speaker who has accepted 3.2 | "open door 1" (said) |
 | 2 · dataset releases | `MLC2_DATASET_RELEASES_ENABLED` and, per surface, `PAIR_RELEASE_SURFACES` | door 1 is open, the release bucket and signing key are set on the web service, and the founder names the surface | "open door 2 for surface S" (S ∈ praise_line, clearer_version, exercise_script) |
 | 3 · training | `MLC2_TRAINING_ENABLED` and, per surface, `TRAINING_SURFACES` | the OpenAI DPA with SCCs obliges file deletion; the key may fine-tune; the golden set for the surface is sealed (ML-10); 200 trainable pairs exist | "open door 3 for surface S" |
 | 4 · promotion | `MLC2_PROMOTION_ENABLED` and, per surface, `PROMOTION_SURFACES` | an evaluation report passed (candidate ahead, regurgitation clean) under the current prompt lock | "open door 4 for surface S" |
@@ -80,17 +80,21 @@ after withdrawal or erasure.
 1. ~~the founder signs the sentence and the four lines~~ done 2026-10-01;
 2. ~~the legal drafts carry counsel's five fixes~~ done 2026-10-01; counsel
    reads `10`, `11`, `12` once more and confirms the six-year period;
-3. the founder approves the final Privacy 3.2 and Terms 3.2 text; they are
-   registered as a processing policy version and every user re-accepts
+3. ~~the founder approves the final Privacy 3.2 and Terms 3.2 text; they are
+   registered as a processing policy version and every user re-accepts~~
+   DONE 2026-10-01 09:00 UTC: `phase1-2026-10-01` is the active policy
+   (N15 item 5); re-acceptance runs from here
    (SPEC C1: a training yes is refused for anyone who has not accepted the
    version that introduced training). This is the long pole: it is the
    existing policy-registration path (`legal/phase1-2026.1/04-…`,
    `docs/PHASE1-PROCESSING-RUNBOOK.md`), not new code;
-4. the founder renders and signs `13-…` as a PDF (`scripts/render_doc_pdf.py`),
-   uploads it to `phase1-2026.1/legal/training-consent-wording-v1.pdf` and
-   records its hash in `SIGNED-ARTIFACTS.md`;
-5. the policy row is registered with the signed copy and its fingerprint,
-   by the founder in the Supabase SQL editor (service role):
+4. ~~the founder renders and signs `13-…` as a PDF~~ signed 2026-10-01
+   09:02 UTC, hash in `SIGNED-ARTIFACTS.md` row 13; the upload to
+   `phase1-2026.1/legal/training-consent-wording-v1.pdf` is the founder's;
+5. ~~the policy row is registered with the signed copy and its fingerprint,
+   by the founder in the Supabase SQL editor (service role)~~ DONE
+   2026-10-01 09:08 UTC (`training-only-v1`, active). The call, for the
+   record:
 
 ```sql
 SELECT public.configure_mlc2_training_consent_policy_v1(
@@ -104,15 +108,27 @@ SELECT public.configure_mlc2_training_consent_policy_v1(
     '2026-10-01T00:00:00Z',
     ARRAY['PL'],
     'phase1-2026.1/legal/training-consent-wording-v1.pdf',
-    '<sha256 of the signed PDF, from SIGNED-ARTIFACTS.md>',
-    '<the processing policy version that carries Privacy 3.2>',
+    'b1ec620ea7a8c85d8b351a7e1eadc31c81b52bfffc4cd0c7d4897053b0ce1632',  -- the signed PDF, SIGNED-ARTIFACTS row 13
+    'phase1-2026-10-01',                                 -- the version the publish script creates
     now());
 ```
 
    The database recomputes the sentence's hash and refuses any other text;
    the last two placeholders exist only after steps 3 and 4;
-6. the founder says "open door 1" → the switch flips by one reviewed change
-   and the Settings card appears, with the four lines above it.
+6. ~~the founder says "open door 1"~~ said 2026-10-01; the constant is True.
+   The Settings card appears the moment step 5's row exists, with the four
+   lines above it; until then the route answers `available: false` and the
+   card hides itself.
+
+**The publish of Privacy 3.2 and Terms 3.2 (step 3), prepared 2026-10-01:**
+the approved copy is `legal/phase1-2026.1/copy/privacy-3.2.txt` and
+`terms-3.2.txt` (effective 1 October 2026, the day the founder ran it; another day means changing the date first);
+the script is `scripts/phase1_policy_publish_training_3_2.sql`, run by hand
+in the Supabase SQL editor like the 3.1 publish, step by step (the 3.1
+publish's rollout re-point is no longer needed: ML-15 retired that loop). The
+processing policy
+version it creates is `phase1-2026-10-01`: that string is the registration
+SQL's twelfth argument.
 
 **The OpenAI side, before door 3:** the data processing agreement with
 OpenAI, with the standard contractual clauses, must oblige deletion of
