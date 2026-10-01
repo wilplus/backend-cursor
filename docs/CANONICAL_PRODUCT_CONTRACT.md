@@ -522,7 +522,18 @@ with this contract, this contract wins.
     nothing targets what fired: no exercise, and the item keeps "Let's
     practice" alone. Fit is a category, never a number, and never reaches the
     speaker. Among equal fits, the exercise covering more of what fired wins,
-    then the one claiming fewer targets.
+    then the one claiming fewer targets. **The ladder** (founder 2026-10-01,
+    F2): "Every moment read weak with an error gets an exercise: the exact
+    match, else the closest match, else the general exercise for that error,
+    else the warm-up. Fallbacks are traced and never teach the exercise
+    ranker." The closest match is the trial tier; the general exercise is the
+    catalogue entry flagged for that error and never in the ranked pool; the
+    warm-up is `hear-every-word-v1` once a reviewed change activates it. A
+    fallback is marked in the match trace and left out of every learning
+    read, the delayed human measure included. The coach request still rises
+    on the moment, and a coach-shared exercise replaces the rung. Dark behind
+    `EXERCISE_FALLBACK_LADDER_ENABLED` until the three general exercises
+    and the warm-up exist.
 35g-2. **The coach hears when nothing fits** (founder 2026-09-28; extended
     2026-09-29). When the Take's exercise item gets no exercise under 35g-1,
     one coach request is recorded for that exact moment with why (nothing
