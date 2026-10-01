@@ -8,7 +8,7 @@ nothing left.
 
 | Door | Constant | Opens when | The sentence |
 |------|----------|------------|--------------|
-| 1 · the training yes | `MLC2_TRAINING_SWITCH_ENABLED` | **OPENED 2026-10-01** by the founder's sentence (N15). The card still appears only when Privacy 3.2 + Terms 3.2 are published and re-accepted (C1) and the policy row is configured with the signed wording (`configure_mlc2_training_consent_policy_v1`); both are the founder's hands below | "open door 1" (said) |
+| 1 · the training yes | `MLC2_TRAINING_SWITCH_ENABLED` | **OPEN since 2026-10-01** (N15): the founder's sentence flipped the constant, Privacy 3.2 + Terms 3.2 are the active policy (`phase1-2026-10-01`, 09:00 UTC) and the training policy row exists (`training-only-v1`, 09:08 UTC). The card shows to every speaker who has accepted 3.2 | "open door 1" (said) |
 | 2 · dataset releases | `MLC2_DATASET_RELEASES_ENABLED` and, per surface, `PAIR_RELEASE_SURFACES` | door 1 is open, the release bucket and signing key are set on the web service, and the founder names the surface | "open door 2 for surface S" (S ∈ praise_line, clearer_version, exercise_script) |
 | 3 · training | `MLC2_TRAINING_ENABLED` and, per surface, `TRAINING_SURFACES` | the OpenAI DPA with SCCs obliges file deletion; the key may fine-tune; the golden set for the surface is sealed (ML-10); 200 trainable pairs exist | "open door 3 for surface S" |
 | 4 · promotion | `MLC2_PROMOTION_ENABLED` and, per surface, `PROMOTION_SURFACES` | an evaluation report passed (candidate ahead, regurgitation clean) under the current prompt lock | "open door 4 for surface S" |
@@ -91,8 +91,10 @@ after withdrawal or erasure.
 4. ~~the founder renders and signs `13-…` as a PDF~~ signed 2026-10-01
    09:02 UTC, hash in `SIGNED-ARTIFACTS.md` row 13; the upload to
    `phase1-2026.1/legal/training-consent-wording-v1.pdf` is the founder's;
-5. the policy row is registered with the signed copy and its fingerprint,
-   by the founder in the Supabase SQL editor (service role):
+5. ~~the policy row is registered with the signed copy and its fingerprint,
+   by the founder in the Supabase SQL editor (service role)~~ DONE
+   2026-10-01 09:08 UTC (`training-only-v1`, active). The call, for the
+   record:
 
 ```sql
 SELECT public.configure_mlc2_training_consent_policy_v1(

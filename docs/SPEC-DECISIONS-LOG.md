@@ -797,3 +797,10 @@ door one."
    STEP 2 activated it (cutoff 2026-10-01T09:00:43Z), retiring
    `phase1-2026-09-23`; STEP 6 read privacy_has_4a = 1, terms_has_licence = 1,
    placeholder_left = false. Every speaker is now asked to accept 3.2.
+6. **THE TRAINING POLICY ROW EXISTS, 2026-10-01 09:08:46 UTC.** The founder
+   ran `configure_mlc2_training_consent_policy_v1` with the signed sentence,
+   its fingerprint, the signed PDF's hash (SIGNED-ARTIFACTS row 13) and
+   `phase1-2026-10-01`: `training-only-v1`, grant_scope training_only,
+   active. Door 1 is now open on every side: the constant (this PR), the
+   policy version (item 5) and the row. The Settings card shows for every
+   speaker who has accepted 3.2, off, with the four lines above the switch.
