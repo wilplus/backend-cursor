@@ -88,9 +88,9 @@ after withdrawal or erasure.
    version that introduced training). This is the long pole: it is the
    existing policy-registration path (`legal/phase1-2026.1/04-…`,
    `docs/PHASE1-PROCESSING-RUNBOOK.md`), not new code;
-4. the founder renders and signs `13-…` as a PDF (`scripts/render_doc_pdf.py`),
-   uploads it to `phase1-2026.1/legal/training-consent-wording-v1.pdf` and
-   records its hash in `SIGNED-ARTIFACTS.md`;
+4. ~~the founder renders and signs `13-…` as a PDF~~ signed 2026-10-01
+   09:02 UTC, hash in `SIGNED-ARTIFACTS.md` row 13; the upload to
+   `phase1-2026.1/legal/training-consent-wording-v1.pdf` is the founder's;
 5. the policy row is registered with the signed copy and its fingerprint,
    by the founder in the Supabase SQL editor (service role):
 
@@ -106,7 +106,7 @@ SELECT public.configure_mlc2_training_consent_policy_v1(
     '2026-10-01T00:00:00Z',
     ARRAY['PL'],
     'phase1-2026.1/legal/training-consent-wording-v1.pdf',
-    '<sha256 of the signed PDF, from SIGNED-ARTIFACTS.md>',
+    'b1ec620ea7a8c85d8b351a7e1eadc31c81b52bfffc4cd0c7d4897053b0ce1632',  -- the signed PDF, SIGNED-ARTIFACTS row 13
     'phase1-2026-10-01',                                 -- the version the publish script creates
     now());
 ```
