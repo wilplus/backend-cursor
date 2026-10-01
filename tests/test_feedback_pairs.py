@@ -102,6 +102,8 @@ class CountTests(unittest.TestCase):
             "praise_line": {"total": 3, "unexported": 1},
             "clearer_version": {"total": 0, "unexported": 0},
             "exercise_script": {"total": 0, "unexported": 0},
+            "coach_moment_line": {"total": 0, "unexported": 0},
+            "coach_take_word": {"total": 0, "unexported": 0},
         })
 
     def test_the_surfaces_are_locked_prompts_and_gated_model_slots(self):

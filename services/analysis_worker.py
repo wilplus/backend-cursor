@@ -227,6 +227,19 @@ def _run_full_analysis_impl(
                         session_id, added)
         _deg.run("acoustic_cue_shadow", _acoustic_cue_shadow)
 
+        # DETECTOR VERSIONS IN SHADOW (founder 2026-10-01, 6b/6d; 0411): the
+        # live rules and every candidate version give their verdict on each
+        # clip, insert-once into the same log; the fair test grades them
+        # against the blind audit. Routes nothing. Best-effort like the above.
+        def _detector_rollout_shadow() -> None:
+            from services.detector_candidates import register_candidates
+            from services.detector_rollout import record_take as record_versions
+            register_candidates()
+            added = record_versions(db, session_id)
+            logger.info("lab: detector rollout shadow sid=%s added=%s",
+                        session_id, added)
+        _deg.run("detector_rollout_shadow", _detector_rollout_shadow)
+
         _emit(progress, "ideal_text", 55, "Building your Ideal Text…")
         tl.mark("ideal_text")
 

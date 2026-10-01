@@ -24,7 +24,16 @@ from typing import Any, Optional
 
 _log = logging.getLogger(__name__)
 
-SURFACES = ("praise_line", "clearer_version", "exercise_script")
+#: The three answer surfaces, and (Phase 7, C5-a; dark behind
+#: COACH_WORD_PAIRS_ENABLED) the coach's own two: never in
+#: PAIR_RELEASE_SURFACES until a qualified lawyer answers and the founder's
+#: sentence follows.
+SURFACES = ("praise_line", "clearer_version", "exercise_script",
+            "coach_moment_line", "coach_take_word")
+#: The three answer surfaces the doors (2, 3, 4) know. The two coach-word
+#: surfaces (Phase 7, C5-a) are recorded and counted but stand outside every
+#: door until a qualified lawyer's answer and the founder's sentence.
+ANSWER_SURFACES = ("praise_line", "clearer_version", "exercise_script")
 FINAL_KINDS = ("final", "transcript")
 _WS = re.compile(r"\s+")
 
@@ -46,16 +55,17 @@ def record_pair(
     owner_user_id: Optional[str] = None, take_session_id: Optional[str] = None,
     snippet_id: Optional[str] = None, request_id: Optional[str] = None,
     exercise_id: Optional[str] = None, exercise_version: Optional[int] = None,
-    final_kind: str = "final",
+    final_kind: str = "final", take_word_id: Optional[str] = None,
 ) -> Optional[dict]:
     """The one write. None when the rule says no row, or the write failed:
-    a pair that is not recorded never breaks the answer it rode on."""
+    a pair that is not recorded never breaks the answer it rode on. A pair
+    hangs on a request, an exercise, or (Phase 7, C5-a) a Take word."""
     if surface not in SURFACES or final_kind not in FINAL_KINDS:
         return None
     coach = str(coach_id or "").strip()
     if not coach or not differs(draft, final):
         return None
-    if not request_id and not exercise_id:
+    if not request_id and not exercise_id and not take_word_id:
         return None
     writer = getattr(database, "insert_feedback_pair", None)
     if writer is None:
@@ -82,6 +92,7 @@ def record_pair(
             snippet_id=snippet_id or None, request_id=request_id or None,
             exercise_id=exercise_id or None,
             exercise_version=int(exercise_version) if exercise_version else None,
+            **({"take_word_id": str(take_word_id)} if take_word_id else {}),
         )
     except Exception as e:  # noqa: BLE001 -- the answer stands
         _log.warning("feedback pair not recorded surface=%s: %s", surface, e,

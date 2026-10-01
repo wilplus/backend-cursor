@@ -876,3 +876,18 @@ recorded under either flow, so the coach-load report (requests per opened
 moment, by kind, before and after the switch) has its "before". The flip of
 each switch is a reviewed change after the founder's yes; the speaker's
 screens follow the designer session's build of the flow.
+
+**N20 · The coach panel's learning additions built dark (founder
+2026-10-01, F8, C5-a, F6, C5-b, task 4; "go until you finish the whole
+implementation").** Migration 0411 and one constant per lane:
+`COACH_EXERCISE_PREFERENCE_ENABLED` (1b, contract 35g-7),
+`COACH_WORD_PAIRS_ENABLED` (7, 35g-8), `ERROR_PRESENCE_AUDIT_ENABLED` with
+`ERROR_PRESENCE_AUDIT_VERBAL_ENABLED` and `DETECTOR_TRAINING_AUTHORISED` (6a
+to 6d, 35g-9), `COACH_BLOCK_PICK_ENABLED` (8, 35g-10), and
+`COACH_TAKE_BUBBLES_ENABLED` (0c, reserved). The coach's exposure record and
+the blind stamp on ratings (35g-11) are not behind a constant: they only ever
+subtract, and the first rating a coach gives on a moment is blind as before.
+Door 2 stays shut for the two coach-word surfaces. Every flip is a reviewed
+change after the founder's yes; the 6a privacy line and the 6d voice consent
+precede theirs.
+

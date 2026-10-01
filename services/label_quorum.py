@@ -235,6 +235,11 @@ def _eligible(rows: Any, *, state_id: Optional[str] = None) -> tuple:
         if (r.get("lane") or "") not in QUORUM_LANES:
             n_lane_excluded += 1
             continue
+        if r.get("blind") is False:
+            # Task 4 (0411): the rater had seen the clip's non-blind side
+            # before rating. Not a label; not even an abstention.
+            n_lane_excluded += 1
+            continue
         if technical:
             n_audio_unclear += 1
             continue

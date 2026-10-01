@@ -51,6 +51,26 @@
       "module": "coach_comment_drafter",
       "sha256": "0108028681ea0abb05aab915fa13ab9529636b66e4ca878c527aef14da19ef0d"
     },
+    "coach_moment_line.system": {
+      "kind": "static",
+      "module": "coach_word_drafts",
+      "sha256": "b6a7775a7815dedce4088b4417d4025329e75205e99c2bc4ea81780d7ae1f8a7"
+    },
+    "coach_moment_line.user": {
+      "kind": "builder",
+      "module": "coach_word_drafts",
+      "sha256": "5d985bed38bb5f01b4e5c42bd9644f71e2870b1d760497a2bd8485e6abf59b56"
+    },
+    "coach_take_word.system": {
+      "kind": "static",
+      "module": "coach_word_drafts",
+      "sha256": "3f1ab9f2937ed850c2d7f3deed33294c46582f38d1f9eaffffd31789e171cf16"
+    },
+    "coach_take_word.user": {
+      "kind": "builder",
+      "module": "coach_word_drafts",
+      "sha256": "5d985bed38bb5f01b4e5c42bd9644f71e2870b1d760497a2bd8485e6abf59b56"
+    },
     "community_content.preamble": {
       "kind": "source_ref",
       "module": "pending",

@@ -713,6 +713,74 @@ with this contract, this contract wins.
     per-moment answer reaches the speaker on its own moment the moment it
     is shared (35g-2); the arc-level publish that once held them back is
     retired (clause 65).
+35g-7. **The coach's exercise preference** (founder 2026-10-01, F8; Phase 1b
+    of the coach panel; migration 0411; served only once
+    `COACH_EXERCISE_PREFERENCE_ENABLED` is on). After the blind rating the
+    coach sees the exercise the machine served on a moment and may keep it,
+    swap it for one of the pool the frozen trace ranked (shuffled, no rank or
+    score shown, the served one marked) or make a new one. Keep is explicit;
+    silence records nothing. Each explicit choice is appended under
+    provenance `coach_preference` with the served exercise and version, the
+    draw, the fit, the fired errors and the signal rules of the trace, and
+    on a swap the exercise chosen and whether it was in the pool. It may
+    propose a ranking (exercise-coach-preferred-v1, dark, graded by the
+    same fair test); only outcomes decide whether an exercise helps.
+    Coach-chosen exercises never enter the fair test; their outcomes stay in
+    their own pile. Never mixed with adequacy labels, detector verdicts,
+    audit answers, confidence labels or owner answers (L3).
+35g-8. **The coach's words as pair surfaces** (founder 2026-10-01, C5-a;
+    Phase 7; migration 0411; `COACH_WORD_PAIRS_ENABLED`). The personal line
+    on a moment and the Take word are drafted by the model from the
+    transcript and the coach's notes only, after the moment's blind rating
+    (the line) or after every moment of the Take is judged (the word); the
+    draft sits in the field the coach edits under the label "Drafted from
+    this Take · edit every word", is never shown to the speaker as drafted,
+    and states nothing about the read. When the coach's final differs, the
+    (draft, final) pair is recorded under the C5 rule on its own surface
+    (`coach_moment_line`, `coach_take_word`), never mixed with the three
+    answer surfaces; a video's transcript is a second final. Pairs are text
+    only. Door 2 stays shut for both surfaces until a qualified lawyer's
+    written answer and the founder's sentence.
+35g-9. **The blind error audit and the detector that can learn** (founder
+    2026-10-01, F6; Phase 6; migration 0411; `ERROR_PRESENCE_AUDIT_ENABLED`,
+    `DETECTOR_TRAINING_AUTHORISED`). A coach answers Yes, No or Can't tell
+    to one error's own question (`speaking_error.asks`, word for word) about
+    one clip, never seeing whether the detector fired; clips are sampled
+    fired and not fired, stratified per error, practice attempts included,
+    one in ten to two coaches, at most three per speaker and twenty blind
+    answers per coach per week shared with 35g-10. Answers are appended
+    under provenance `coach_audit`, never shown to a speaker and never mixed
+    with any other label (L3); they give the false-alarm half the shadow
+    comparison cannot measure. Every acoustic detector has a version per
+    error (off, shadow, live; `LIVE_DETECTOR` names the one in force; a
+    change or a rollback is one reviewed line after the founder's yes);
+    every version's verdict on every clip is logged insert-once and every
+    match trace says which version made its choice. A candidate is
+    promoted only after four weeks in shadow, better on one rate and not
+    worse on the other on held-out speakers, and never by itself. Fitting a
+    learned detector is voice-based training and waits for separate voice
+    consent and the AI Act opinion; the tuned thresholds run in shadow
+    regardless.
+35g-10. **The coach's block pick** (founder 2026-10-01, C5-b; Phase 8;
+    migration 0411; `COACH_BLOCK_PICK_ENABLED`). On a Take the coach is not
+    walking, the coach hears up to three candidate moments of one block,
+    letters only, and picks the one that sounds most assured or says they
+    can't tell; the Manager's pick is stored and never sent. The pick is
+    appended under provenance `coach_block_pick`, never changes a bookmark,
+    never reaches the speaker, and grades the Manager's choice only.
+35g-12. **A student's new Take as a bubble** (founder 2026-10-01, Phase 0c,
+    A2; `COACH_TAKE_BUBBLES_ENABLED`). A Take in the coach's queue that this
+    coach has not walked yet appears as a bubble in the coach's Lounge chat,
+    opening the walk on that Take; it is derived at read and never stored.
+    It names the student (the real name only as 0b allows, A3) and the Take,
+    and says nothing about the Take's quality or its moments' kinds.
+35g-11. **A coach's exposure and the blind rating** (founder 2026-10-01,
+    task 4; migration 0411). The first time a coach sees a clip's non-blind
+    side (the Read screen, a request, an audit, a block pick) is recorded
+    once per coach and clip. A rating by that coach on that clip afterwards
+    is stamped not blind by the server, counts for no quorum, no Album leg
+    and no measure, and the audit and the block pick never serve that coach
+    that clip. Game raters have no exposure record.
 
 ## 6. Coach review and learning lineage
 

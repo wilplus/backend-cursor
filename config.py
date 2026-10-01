@@ -377,6 +377,37 @@ class Config:
     # written before any data. GATED like Phase 4, plus the founder's
     # signature on the measure. Off, no pair and no vote is written.
     DELAYED_MEASURE_ENABLED = False
+
+    # THE COACH PANEL'S LEARNING ADDITIONS (founder 2026-10-01; migration
+    # 0411), each dark behind its own constant, each a reviewed flip after
+    # the founder's yes. Off, every route answers 404 and nothing is written.
+    # 1b (F8): the coach keeps, swaps or replaces the served exercise and
+    # the choice is recorded as the coach's preference; outcomes alone
+    # decide whether an exercise helps.
+    COACH_EXERCISE_PREFERENCE_ENABLED = False
+    # 7 (C5-a): the coach's personal line on a moment and the Take word are
+    # drafted from the transcript and the coach's notes, and the (draft,
+    # final) pair is recorded when the final differs. Door 2 stays shut for
+    # both surfaces until counsel's answer and the founder's sentence.
+    COACH_WORD_PAIRS_ENABLED = False
+    # 6a (F6): the blind error audit, Yes/No per (clip, error), sampled fired
+    # and not fired, 20 blind answers per coach per week shared with 8.
+    # Working assumption from counsel's draft: measuring may be legitimate
+    # interest; the privacy line, the balancing test and the retention
+    # period precede the flip.
+    ERROR_PRESENCE_AUDIT_ENABLED = False
+    # 6a: the three verbal cues join the audit (rules on the transcript).
+    ERROR_PRESENCE_AUDIT_VERBAL_ENABLED = False
+    # 8 (C5-b): the coach's blind pick among a block's candidate moments,
+    # against the Manager's pick, never changing a bookmark.
+    COACH_BLOCK_PICK_ENABLED = False
+    # 6d: fitting a learned detector on audit answers. Voice-based training:
+    # separate voice consent and the AI Act opinion precede it; the tuned
+    # thresholds (no fit) run in shadow regardless.
+    DETECTOR_TRAINING_AUTHORISED = False
+    # 0c (A2): a student's new Take appears as a bubble in the coach's
+    # Lounge chat, opening the walk.
+    COACH_TAKE_BUBBLES_ENABLED = False
     # Slice 6 readiness replaces the ambiguous bool with an irreversible
     # three-state contract.  ``dark`` was the pre-cutover behavior;
     # ``founder_canary`` is THE FLIP (founder 2026-09-29, after the

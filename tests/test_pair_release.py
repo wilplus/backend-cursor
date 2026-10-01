@@ -105,7 +105,10 @@ class _Db:
 
 class StampTests(unittest.TestCase):
     def test_every_surface_needs_the_yes_until_counsel_says_otherwise(self):
-        self.assertEqual(pc.CONSENT_REQUIRED_SURFACES, frozenset(("praise_line", "clearer_version", "exercise_script")))
+        self.assertEqual(pc.CONSENT_REQUIRED_SURFACES, frozenset((
+            "praise_line", "clearer_version", "exercise_script",
+            # The coach's own words (Phase 7, C5-a) need the yes like the rest.
+            "coach_moment_line", "coach_take_word")))
 
     def test_a_yes_makes_the_pair_releasable_and_names_its_grant(self):
         db = mock.Mock()

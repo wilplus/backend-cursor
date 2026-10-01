@@ -55,6 +55,10 @@ MODEL_CONFIG_KEYS = frozenset({
     "openai_surface_model_praise_line",
     "openai_surface_model_clearer_version",
     "openai_surface_model_exercise_script",
+    # The coach's own words (C5-a, Phase 7, 2026-10-01): slots that serve
+    # the stock model while the doors stay shut.
+    "openai_surface_model_coach_moment_line",
+    "openai_surface_model_coach_take_word",
     # The two ungoverned chat surfaces (R-13). Neither is a learned surface
     # and neither has a writer in this repository; they are listed because
     # they are READ, and an unlisted readable key is the hole this closes.

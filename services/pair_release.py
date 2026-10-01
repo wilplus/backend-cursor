@@ -30,7 +30,7 @@ import logging
 from datetime import date, datetime, timezone
 from typing import Any, Optional
 
-from services.feedback_pairs import SURFACES
+from services.feedback_pairs import ANSWER_SURFACES as SURFACES
 
 _log = logging.getLogger(__name__)
 

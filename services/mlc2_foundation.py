@@ -37,6 +37,10 @@ LEARNING_SURFACE_ALIASES: dict[str, str] = {
     "praise_line": "praise_generation",
     "clearer_version": "correction_generation",
     "exercise_script": "coach_comment_generation",
+    # The coach's own words (C5-a, Phase 7, 2026-10-01): both are the
+    # coach's note in the coach's words, a draft turned into a final.
+    "coach_moment_line": "coach_comment_generation",
+    "coach_take_word": "coach_comment_generation",
 }
 
 REJECTED_LEARNING_ALIASES = frozenset({"moment_suggestion"})

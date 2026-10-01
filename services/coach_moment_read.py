@@ -75,6 +75,11 @@ def moment_read(database: Any, *, take_session_id: str, snippet_id: str,
     from services.exercise_coach_requests import coach_request_payload
     take, snip = str(take_session_id), str(snippet_id)
     request = database.get_exercise_coach_request(take, snip)
+    # Task 4 (0411): the Read screen is the clip's non-blind side. From
+    # here on a rating by this coach on this clip is not blind; the first
+    # exposure stands and a repeat read records nothing new.
+    from services.coach_exposure import record_exposure
+    record_exposure(database, coach_id=str(rater_id), clip_id=snip, via="moment_read")
     return {
         **_passage(database, take, snip),
         "speaker_answer": _speaker_answer(database, snip),

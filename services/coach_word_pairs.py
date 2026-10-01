@@ -1,0 +1,209 @@
+"""The coach's own words as pair surfaces, C5-a (founder 2026-10-01; Phase 7
+of the coach panel), dark behind ``Config.COACH_WORD_PAIRS_ENABLED``.
+
+C5-a: "The coach's written words become preference surfaces like the other
+three. The model drafts them, the draft sits in the field the coach edits
+and is never shown to the speaker as drafted, and when the coach's final
+differs, the (draft, final) pair is recorded under the C5 rule, never mixed
+with other surfaces."
+
+Two surfaces: ``coach_moment_line`` (the personal line on a moment, C1) and
+``coach_take_word`` (the Take word, 35g-6). The Take word's video transcript
+is saved as a second final (final_kind "transcript"), text only.
+
+BLIND: a draft is requested only AFTER the coach judged every moment of the
+Take (the Take word) or rated the moment (the line); the drafter's inputs
+are the transcript and the coach's own text, never acoustics, never the
+read; the draft states nothing about the read and carries no number.
+Pre-fill returns for these two fields only (reversing 2026-07-14 for them).
+TEXT ONLY: pairs are stored as text; whether a delivery note is "practice
+text" is open with counsel, so nothing filters or rewrites the coach's
+words.
+
+DOOR 2 ON HOLD: neither surface is in PAIR_RELEASE_SURFACES until a
+qualified lawyer answers question 2 and the founder's sentence follows.
+Door 3 needs the sealed golden set and 200 pairs. The ledger reports, per
+surface, the share of drafts sent unchanged.
+"""
+from __future__ import annotations
+
+import logging
+from typing import Any, Optional
+
+_log = logging.getLogger(__name__)
+
+SURFACES = ("coach_moment_line", "coach_take_word")
+LABEL = "Drafted from this Take · edit every word"
+_MAX_PASSAGE = 1200
+
+
+def word_pairs_enabled() -> bool:
+    from config import Config
+    return bool(getattr(Config, "COACH_WORD_PAIRS_ENABLED", False))
+
+
+# ── drafting (text only) ──────────────────────────────────────────────────
+
+def _every_moment_judged(database: Any, *, take_session_id: str, coach_id: str) -> bool:
+    """The Take word's blind gate: this coach has rated every bookmarked
+    moment of the Take."""
+    bookmarked = database.list_bookmarked_snippet_ids(str(take_session_id)) or []
+    if not bookmarked:
+        return False
+    ratings = database.get_own_state_ratings_for_session(str(take_session_id), str(coach_id)) or {}
+    return all(str(s) in {str(k) for k in ratings} for s in bookmarked)
+
+
+def compose(*, surface: str, transcript: str, coach_text: Optional[str],
+            user_id: Optional[str] = None) -> Optional[dict]:
+    """The one model call, text only: the transcript and the coach's own
+    words. {"text", "model_version"} or None."""
+    from services.llm import chat_complete
+    from services.llm_config import SPEC_COACH_ANSWER_DRAFT
+    from services.prompts.coach_word_drafts import SYSTEM, user
+    system = SYSTEM.get(surface)
+    passage = " ".join(str(transcript or "").split())[:_MAX_PASSAGE]
+    if system is None or not passage:
+        return None
+    result = chat_complete(spec=SPEC_COACH_ANSWER_DRAFT, system=system,
+                           user=user(surface=surface, transcript=passage, coach_text=coach_text),
+                           surface=surface, user_id=user_id)
+    text = str(getattr(result, "text", "") or "").strip()
+    if not text:
+        return None
+    return {"text": text, "model_version": str(getattr(result, "model", "") or "")}
+
+
+def draft_take_word(database: Any, *, take_session_id: str, coach_id: str,
+                    body: Any) -> tuple[int, dict]:
+    """POST .../word/draft: a draft of the Take word from the Take's
+    transcript and the coach's notes, kept on the coach's word row."""
+    if not word_pairs_enabled():
+        return 404, {"code": "NOT_FOUND", "error": "not found"}
+    if not _every_moment_judged(database, take_session_id=take_session_id, coach_id=coach_id):
+        return 409, {"code": "JUDGE_EVERY_MOMENT_FIRST",
+                     "error": "Judge every moment of this Take before a draft."}
+    fields: dict = body if isinstance(body, dict) else {}
+    transcript = " ".join(str(s.get("transcript") or "") for s in
+                          (database.get_snippets_by_session(str(take_session_id)) or [])
+                          if isinstance(s, dict))
+    draft = compose(surface="coach_take_word", transcript=transcript,
+                    coach_text=str(fields.get("notes") or "").strip() or None, user_id=coach_id)
+    if draft is None:
+        return 503, {"code": "DRAFT_UNAVAILABLE", "error": "A draft could not be written right now."}
+    database.set_coach_take_word_draft(take_session_id=str(take_session_id), coach_id=str(coach_id),
+                                       text=draft["text"], model_version=draft["model_version"])
+    return 200, {"draft": {"surface": "coach_take_word", "text": draft["text"],
+                           "model_version": draft["model_version"], "label": LABEL}}
+
+
+def draft_moment_line(database: Any, *, request_row: Any, coach_id: str,
+                      body: Any) -> tuple[int, dict]:
+    """POST .../moment-line/draft: a draft of the personal line on a moment
+    (an answer in words of kind note), after the coach's rating; kept on
+    the request row under draft_surface coach_moment_line."""
+    if not word_pairs_enabled():
+        return 404, {"code": "NOT_FOUND", "error": "not found"}
+    if not isinstance(request_row, dict) or not request_row.get("id"):
+        return 404, {"code": "NOT_FOUND", "error": "No request for this moment."}
+    if request_row.get("resolution"):
+        return 409, {"code": "ALREADY_RESOLVED", "error": "This moment already has your answer."}
+    fields: dict = body if isinstance(body, dict) else {}
+    snippet = database.get_snippet_by_id(str(request_row.get("snippet_id") or "")) or {}
+    draft = compose(surface="coach_moment_line", transcript=str(snippet.get("transcript") or ""),
+                    coach_text=str(fields.get("notes") or "").strip() or None, user_id=coach_id)
+    if draft is None:
+        return 503, {"code": "DRAFT_UNAVAILABLE", "error": "A draft could not be written right now."}
+    database.set_exercise_coach_request_draft(request_id=str(request_row["id"]),
+                                              surface="coach_moment_line", text=draft["text"],
+                                              model_version=draft["model_version"])
+    return 200, {"draft": {"surface": "coach_moment_line", "text": draft["text"],
+                           "model_version": draft["model_version"], "label": LABEL}}
+
+
+# ── the pair on save ──────────────────────────────────────────────────────
+
+def record_take_word_pair(database: Any, *, word_row: Any, coach_id: str,
+                          final_text: Optional[str], final_kind: str = "final") -> Optional[dict]:
+    """When a draft was shown and the coach's final differs, the pair under
+    the C5 rule (feedback_pairs.record_pair; surface coach_take_word). A
+    transcript of the word's video is a second final (final_kind
+    "transcript"). Never in the save's way."""
+    if not word_pairs_enabled() or not isinstance(word_row, dict):
+        return None
+    draft = word_row.get("draft_text")
+    if not draft or not final_text:
+        return None
+    from services.feedback_pairs import record_pair
+    take = str(word_row.get("take_session_id") or "")
+    session = database.v2_get_session_by_id(take) or {}
+    return record_pair(database, surface="coach_take_word", draft=draft, final=final_text,
+                       coach_id=coach_id, model_version=word_row.get("draft_model_version"),
+                       owner_user_id=session.get("user_id"), take_session_id=take,
+                       take_word_id=str(word_row.get("id") or ""), final_kind=final_kind)
+
+
+def record_moment_line_pair(database: Any, *, request_row: Any, coach_id: str,
+                            final_text: Optional[str]) -> Optional[dict]:
+    """The line's pair on a note answered in words (resolution note_written)."""
+    if not word_pairs_enabled() or not isinstance(request_row, dict):
+        return None
+    if str(request_row.get("draft_surface") or "") != "coach_moment_line":
+        return None
+    draft = request_row.get("draft_text")
+    if not draft or not final_text:
+        return None
+    from services.feedback_pairs import record_pair
+    return record_pair(database, surface="coach_moment_line", draft=draft, final=final_text,
+                       coach_id=coach_id, model_version=request_row.get("draft_model_version"),
+                       owner_user_id=request_row.get("owner_user_id"),
+                       take_session_id=request_row.get("take_session_id"),
+                       snippet_id=request_row.get("snippet_id"),
+                       request_id=str(request_row.get("id") or ""))
+
+
+def transcribe_take_word_video(database: Any, *, word_row: Any, coach_id: str) -> Optional[str]:
+    """The word's video, transcribed (the coach video pipeline's own path:
+    audio extracted, Whisper), saved as the second final. Best-effort,
+    never raises; None when there is no video or it could not be read."""
+    if not word_pairs_enabled() or not isinstance(word_row, dict) or not word_row.get("video_ref"):
+        return None
+    try:
+        from io import BytesIO
+        from services.coach_video_storage import get_coach_object_bytes
+        from services.ffmpeg_audio_extract import extract_audio_mp3_for_whisper
+        from services.openai_service import openai_service
+        ref = str(word_row["video_ref"])
+        if not ref.startswith("s3://"):
+            return None
+        bucket, _, key = ref[len("s3://"):].partition("/")
+        audio = extract_audio_mp3_for_whisper(get_coach_object_bytes(bucket, key), max_seconds=600)
+        tr = openai_service.transcribe_audio(BytesIO(audio), "take-word.mp3")
+        text = (tr.get("text") or "").strip() if isinstance(tr, dict) else ""
+        if not text:
+            return None
+        database.set_coach_take_word_transcript(take_session_id=str(word_row.get("take_session_id")),
+                                                coach_id=str(coach_id), transcript=text)
+        record_take_word_pair(database, word_row=word_row, coach_id=coach_id,
+                              final_text=text, final_kind="transcript")
+        return text
+    except Exception as e:  # noqa: BLE001 — the word is saved either way
+        _log.warning("take word transcript failed take=%s: %s",
+                     (word_row or {}).get("take_session_id"), e, exc_info=True)
+        return None
+
+
+def unchanged_share(rows: Any) -> dict:
+    """Per surface: drafts sent unchanged over drafts shown. Pure;
+    founder-only."""
+    out: dict[str, dict] = {}
+    for r in rows or []:
+        if not isinstance(r, dict) or r.get("surface") not in SURFACES:
+            continue
+        entry = out.setdefault(str(r["surface"]), {"shown": 0, "unchanged": 0})
+        entry["shown"] += 1
+        if r.get("unchanged"):
+            entry["unchanged"] += 1
+    for entry in out.values():
+        entry["share_unchanged"] = round(entry["unchanged"] / entry["shown"], 3) if entry["shown"] else None
+    return out
