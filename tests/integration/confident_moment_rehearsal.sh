@@ -493,6 +493,11 @@ hard migrations/a_practice_hears_what_changed.sql
 hard migrations/a_practice_hears_what_changed.sql
 hard migrations/a_moment_may_be_lent_an_ear.sql
 hard migrations/a_moment_may_be_lent_an_ear.sql
+# 0411 (the coach panel's learning additions): four tables, additive
+# columns, two widened checks, the shadow writer learns clip_kind. Twice:
+# apply/reapply idempotency.
+hard migrations/a_coach_keeps_swaps_and_hears_blind.sql
+hard migrations/a_coach_keeps_swaps_and_hears_blind.sql
 
 # R-1 (audit 2026-09-22). 0299 created the two learning-surface tables with
 # the same GRANT ALL TO service_role as 0296, and was never in this chain, so

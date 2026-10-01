@@ -772,6 +772,11 @@ def _sha256(value: Any) -> str:
         value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+def _live_detector_versions() -> dict[str, str]:
+    from services.detector_rollout import LIVE_DETECTOR
+    return dict(LIVE_DETECTOR)
+
+
 def build_match_trace(*, lane: str, verdict: dict, vocabulary: Any,
                       exercises: list[dict], ranked: list[dict],
                       fit: Optional[str], snippet: Any,
@@ -839,6 +844,9 @@ def build_match_trace(*, lane: str, verdict: dict, vocabulary: Any,
         "fallback": fallback,
         "matching_policy_version": matching_policy_for(fit),
         "signal_rules_version": SIGNAL_RULES_VERSION,
+        # 6b (0411): the detector version in force per error when this
+        # trace was built, beside the rules it applied.
+        "detector_versions": _live_detector_versions(),
         "clip": {
             "snippet_id": str(snippet_id),
             "take_session_id": str(take_session_id),

@@ -284,6 +284,24 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "listener_user_id", "principal", "delete", "derived_feedback", 35),
     PurgeDependency("delayed_measure_votes", "delayed_measure_votes",
                     "rater_id", "principal", "delete", "derived_feedback", 35),
+    # The coach panel's learning additions (0411). The preference, the
+    # audit and the block pick are about one speaker's Take (they go with
+    # it) AND are one coach's own words (they go with the coach too). The
+    # exposure record is the coach's alone.
+    PurgeDependency("coach_exercise_preference", "coach_exercise_preference",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("coach_exercise_preference_by_coach", "coach_exercise_preference",
+                    "coach_id", "principal", "delete", "derived_feedback", 35),
+    PurgeDependency("error_presence_audit", "error_presence_audit",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("error_presence_audit_by_coach", "error_presence_audit",
+                    "coach_id", "principal", "delete", "derived_feedback", 35),
+    PurgeDependency("coach_block_pick", "coach_block_pick",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("coach_block_pick_by_coach", "coach_block_pick",
+                    "coach_id", "principal", "delete", "derived_feedback", 35),
+    PurgeDependency("coach_clip_exposures", "coach_clip_exposures",
+                    "coach_id", "principal", "delete", "derived_feedback", 35),
     # The (draft, final) pairs a coach's answer about one speaker's moment
     # made (0402). The words are about that passage: they go with the Take.
     # Pairs from the exercise library (no take) are about the library.

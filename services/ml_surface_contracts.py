@@ -83,6 +83,23 @@ SURFACES: dict[str, SurfaceContract] = {
         runtime_aliases=("exercise_script",),
         golden_eval_surface="exercise_script",
     ),
+    # THE COACH'S OWN WORDS (founder 2026-10-01, C5-a; Phase 7, dark behind
+    # COACH_WORD_PAIRS_ENABLED): the personal line on a moment and the Take
+    # word. Text only; their pairs never leave through door 2 until a
+    # qualified lawyer answers and the founder's sentence follows, and doors
+    # 3 and 4 stay closed for them like the rest.
+    "coach_moment_line": SurfaceContract(
+        id="coach_moment_line",
+        annotation_fields=("coach_moment_line",),
+        runtime_aliases=("coach_moment_line",),
+        golden_eval_surface="coach_moment_line",
+    ),
+    "coach_take_word": SurfaceContract(
+        id="coach_take_word",
+        annotation_fields=("coach_take_word",),
+        runtime_aliases=("coach_take_word",),
+        golden_eval_surface="coach_take_word",
+    ),
 }
 
 # E-6 (audit 2026-09-22). TWO REGISTRIES DISAGREED AND THE LEGACY ONE WAS

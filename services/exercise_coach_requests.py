@@ -252,6 +252,11 @@ def _file_answer(database: Any, request: dict, resolved: dict, fields: dict,
     """
     from services.feedback_pairs import record_pair
     resolution = str(resolved.get("resolution") or "")
+    if resolution == "note_written":
+        # 7 (C5-a, 0411): the personal line is a pair surface of its own.
+        from services.coach_word_pairs import record_moment_line_pair
+        record_moment_line_pair(database, request_row=request, coach_id=coach_id,
+                                final_text=resolved.get("answer_text"))
     surface = _PAIR_SURFACE.get(resolution)
     draft = request.get("draft_text")
     if surface and draft and str(request.get("draft_surface") or surface) == surface:

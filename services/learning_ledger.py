@@ -132,6 +132,11 @@ def ledger(database: Any, *, config: Any = None) -> dict:
     from services.delayed_measure import report as delayed_report
     peer = _read("peer_lane", lambda: _peer_lane_counts(database, since), unavailable) or {}
     delayed = _read("delayed_measure", lambda: delayed_report(database), unavailable) or {}
+    # The coach panel's learning additions (0411): the coach's exercise
+    # preference (1b), the blind error audit's report card (6a), the fair
+    # test of every detector version (6b-6d), the block pick (8) and the
+    # share of coach-word drafts sent unchanged (7). Empty while dark.
+    panel = _coach_panel_rows(database, unavailable)
     return {
         "ledger_version": LEDGER_VERSION,
         "pairs": pairs,
@@ -143,5 +148,32 @@ def ledger(database: Any, *, config: Any = None) -> dict:
         "after_practice": after,
         "peer_lane": peer,
         "delayed_measure": delayed,
+        **panel,
         "unavailable": unavailable,
     }
+
+
+def _coach_panel_rows(database: Any, unavailable: list[str]) -> dict:
+    from services.coach_block_pick import ledger as block_pick_ledger
+    from services.coach_exercise_preference import ledger as preference_ledger, preference_enabled
+    from services.coach_word_pairs import unchanged_share, word_pairs_enabled
+    from services.detector_candidates import register_candidates
+    from services.detector_rollout import fair_test
+    from services.error_presence_audit import audit_enabled, report_card
+    register_candidates()
+    preference = (_read("coach_preference", lambda: preference_ledger(database), unavailable)
+                  if preference_enabled() else {"enabled": False}) or {}
+    audit = (_read("error_audit",
+                   lambda: report_card(database.list_error_presence_audit_answered_all() or []),
+                   unavailable) if audit_enabled() else {"enabled": False}) or {}
+    # The fair test grades every version against the audit's answers, so
+    # it has nothing to say until the audit is on.
+    detectors = (_read("detector_fair_test", lambda: fair_test(database), unavailable)
+                 if audit_enabled() else {"enabled": False}) or {}
+    picks = _read("block_pick", lambda: block_pick_ledger(database), unavailable) or {}
+    words = (_read("coach_word_pairs",
+                   lambda: unchanged_share(database.list_coach_word_drafts() or []),
+                   unavailable) if word_pairs_enabled() else {"enabled": False}) or {}
+    return {"coach_preference": preference, "error_audit": audit,
+            "detector_fair_test": detectors, "block_pick": picks,
+            "coach_word_pairs": words}

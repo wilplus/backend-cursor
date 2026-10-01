@@ -446,3 +446,4 @@
 0408	a_moment_opens_before_it_is_judged.sql
 0409	a_practice_hears_what_changed.sql
 0410	a_moment_may_be_lent_an_ear.sql
+0411	a_coach_keeps_swaps_and_hears_blind.sql

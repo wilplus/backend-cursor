@@ -148,7 +148,22 @@ def record_practice_attempt(
             "attempt back", attempt_id)
         _undo(database, attempt_id)
         return None
+    _shadow_verdicts(database, inserted, practice)
     return inserted
+
+
+def _shadow_verdicts(database: Any, attempt: dict, practice: Any) -> None:
+    """6b (0411): every detector version's verdict on the attempt's saved
+    snapshot, into the shadow log. Best-effort; the attempt stands."""
+    try:
+        from services.detector_candidates import register_candidates
+        from services.detector_rollout import record_attempt
+        register_candidates()
+        take = str((practice or {}).get("take_session_id") or "") if isinstance(practice, dict) else ""
+        if take:
+            record_attempt(database, attempt, take_session_id=take)
+    except Exception as e:  # noqa: BLE001 — a shadow row is never worth the attempt
+        logger.info("practice attempt shadow verdicts skipped: %s", e)
 
 
 def _undo(database: Any, attempt_id: str) -> None:

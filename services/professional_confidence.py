@@ -23,6 +23,7 @@ def is_professional_coach_rating(row: Any) -> bool:
     )
     return bool(
         professional
+        and row.get("blind") is not False
         and row.get("state_id") in (None, "confidence")
         and row.get("unrateable") is not True
         and row.get("value") in ("yes", "no")

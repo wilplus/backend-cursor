@@ -11051,6 +11051,15 @@ class DatabaseService:
         }
         if rater_id:
             payload["rater_id"] = str(rater_id)
+            # Task 4 (0411): a coach's rating is blind unless this coach saw
+            # the clip's non-blind side first; the stamp is computed here,
+            # from the exposure record, never sent by a client. A row
+            # stamped not blind counts for no quorum, no Album leg and no
+            # measure. Game raters have no exposure record: always blind.
+            if lane in ("bootstrap", "coach") and not self_report:
+                from services.coach_exposure import rating_is_blind
+                payload["blind"] = rating_is_blind(
+                    self, coach_id=str(rater_id), snippet_id=str(snippet_id))
         if session_id:
             payload["session_id"] = str(session_id)
         if model_version_at_time:
@@ -11129,7 +11138,7 @@ class DatabaseService:
         ceiling and adding the third column name tipped it over. The retry is
         one self-contained concern, so it is the right piece to lift out.
         """
-        stamps = ("machine_value", "self_report", "saw_slide")
+        stamps = ("machine_value", "self_report", "saw_slide", "blind")
         if not any(name in err_low for name in stamps):
             return None
         if "column" not in err_low and "pgrst204" not in err_low:
@@ -15926,6 +15935,319 @@ class DatabaseService:
                 "set practice attempt coach decision failed id=%s: %s",
                 attempt_id, e)
             return None
+
+    # ── the coach panel's learning additions (migration 0411) ────────────
+    # 1b (F8), 7 (C5-a), 6a to 6d (F6), 8 (C5-b) and the coach's exposure
+    # record (task 4). Each lane is append-only under its own provenance;
+    # none is mixed with another (L3). Readers raise so the ledger names the
+    # source as unavailable rather than reading zero; writers raise so the
+    # service can say what refused.
+
+    def insert_coach_exercise_preference(self, row: dict) -> Optional[dict]:
+        """One kept/swapped/new (F8, 0411). Raises on failure."""
+        res = self.client.table("coach_exercise_preference").insert(row).execute()
+        return (res.data or [None])[0]
+
+    def list_coach_exercise_preferences(self, limit: int = 5000) -> list[dict]:
+        res = (self.client.table("coach_exercise_preference").select("*")
+               .order("created_at", desc=True).limit(int(limit)).execute())
+        return list(res.data or [])
+
+    def record_coach_clip_exposure(
+        self, *, coach_id: str, clip_id: str, clip_kind: str, via: str,
+    ) -> bool:
+        """The first time this coach saw this clip's non-blind side (task 4,
+        0411): True when new, False when it was already recorded (the first
+        exposure stands). Raises on any other failure."""
+        try:
+            self.client.table("coach_clip_exposures").insert({
+                "coach_id": str(coach_id), "clip_id": str(clip_id),
+                "clip_kind": str(clip_kind), "via": str(via),
+            }).execute()
+        except Exception as e:
+            text = str(e).lower()
+            if "23505" in text or "duplicate" in text or "unique" in text:
+                return False
+            raise
+        return True
+
+    def list_coach_clip_exposures(self, coach_id: str, clip_ids: list[str]) -> list[dict]:
+        ids = [str(c) for c in clip_ids if c]
+        if not ids:
+            return []
+        res = (self.client.table("coach_clip_exposures").select("clip_id,clip_kind,via")
+               .eq("coach_id", str(coach_id)).in_("clip_id", ids).execute())
+        return list(res.data or [])
+
+    def count_coach_blind_answers(self, coach_id: str, week: str) -> int:
+        """Blind answers this coach gave this week across the audit (6a) and
+        the block pick (8): the shared weekly cap."""
+        audits = (self.client.table("error_presence_audit").select("id", count="exact")
+                  .eq("coach_id", str(coach_id)).eq("week", str(week))
+                  .not_.is_("answer", "null").limit(1).execute())
+        picks = (self.client.table("coach_block_pick").select("id", count="exact")
+                 .eq("coach_id", str(coach_id)).eq("week", str(week))
+                 .not_.is_("answered_at", "null").limit(1).execute())
+        return int(audits.count or 0) + int(picks.count or 0)
+
+    def list_error_presence_audit_pending(self, coach_id: str) -> list[dict]:
+        res = (self.client.table("error_presence_audit").select("*")
+               .eq("coach_id", str(coach_id)).is_("answer", "null")
+               .order("created_at").execute())
+        return list(res.data or [])
+
+    def list_error_presence_audit_by_coach(self, coach_id: str) -> list[dict]:
+        res = (self.client.table("error_presence_audit")
+               .select("id,clip_id,error_id,answer,week")
+               .eq("coach_id", str(coach_id)).execute())
+        return list(res.data or [])
+
+    def list_error_presence_audit_answered(self, error_id: str) -> list[dict]:
+        res = (self.client.table("error_presence_audit").select("*")
+               .eq("error_id", str(error_id)).not_.is_("answer", "null").execute())
+        return list(res.data or [])
+
+    def list_error_presence_audit_answered_all(self, limit: int = 20000) -> list[dict]:
+        res = (self.client.table("error_presence_audit").select("*")
+               .not_.is_("answer", "null").order("answered_at", desc=True)
+               .limit(int(limit)).execute())
+        return list(res.data or [])
+
+    def list_audit_candidates(self, errors: list[str], limit: int = 2000) -> list[dict]:
+        """Clips the audit may sample (6a): the live detector's verdict per
+        (clip, error) from the shadow log, with the speaker and how many
+        coaches answered on it already. The verdict itself travels only
+        into fired_at_sampling; no reader shows it."""
+        from services.confident_voice_practice import SIGNAL_RULES_VERSION
+        from services.detector_rollout import LIVE_DETECTOR
+        from services.verbal_cues import VERBAL_CUES_VERSION
+        wanted = [str(e) for e in errors if e]
+        if not wanted:
+            return []
+        res = (self.client.table("verbal_cue_shadow_observations")
+               .select("snippet_id,take_session_id,error_id,detector_version,"
+                       "fired,measurements,clip_kind,created_at")
+               .in_("error_id", wanted).order("created_at", desc=True)
+               .limit(int(limit)).execute())
+        rows = [r for r in (res.data or []) if isinstance(r, dict)]
+        rows = [r for r in rows
+                if str(r.get("detector_version")) ==
+                str(LIVE_DETECTOR.get(str(r.get("error_id")), VERBAL_CUES_VERSION))]
+        takes = sorted({str(r.get("take_session_id")) for r in rows if r.get("take_session_id")})
+        speaker: dict[str, str] = {}
+        for i in range(0, len(takes), 200):
+            got = (self.client.table("v2_sessions").select("id,user_id")
+                   .in_("id", takes[i:i + 200]).execute())
+            speaker.update({str(s.get("id")): str(s.get("user_id") or "")
+                            for s in (got.data or []) if isinstance(s, dict)})
+        clips = sorted({str(r.get("snippet_id")) for r in rows})
+        answered: dict[tuple[str, str], int] = {}
+        for i in range(0, len(clips), 200):
+            got = (self.client.table("error_presence_audit").select("clip_id,error_id")
+                   .in_("clip_id", clips[i:i + 200]).not_.is_("answer", "null").execute())
+            for a in got.data or []:
+                key = (str(a.get("clip_id")), str(a.get("error_id")))
+                answered[key] = answered.get(key, 0) + 1
+        return [{
+            "clip_id": str(r.get("snippet_id")),
+            "clip_kind": str(r.get("clip_kind") or "snippet"),
+            "take_session_id": r.get("take_session_id"),
+            "speaker_user_id": speaker.get(str(r.get("take_session_id")) or ""),
+            "error_id": str(r.get("error_id")),
+            "fired": bool(r.get("fired")),
+            "detector_version": r.get("detector_version"),
+            "signal_rules_version": SIGNAL_RULES_VERSION,
+            "measurements": r.get("measurements") or {},
+            "answered_count": answered.get((str(r.get("snippet_id")), str(r.get("error_id"))), 0),
+        } for r in rows]
+
+    def insert_error_presence_audit(self, row: dict) -> Optional[dict]:
+        res = self.client.table("error_presence_audit").insert(row).execute()
+        return (res.data or [None])[0]
+
+    def audit_clip_audio(self, clip_id: str, clip_kind: str) -> Optional[str]:
+        """The clip's audio ref, by kind; None when unreadable."""
+        if clip_kind == "practice_attempt":
+            attempt = self.get_confident_voice_practice_attempt(str(clip_id)) or {}
+            return attempt.get("audio_ref") or None
+        snippet = self.get_snippet_by_id(str(clip_id)) or {}
+        return snippet.get("audio_segment_path") or None
+
+    def answer_error_presence_audit(
+        self, *, audit_id: str, coach_id: str, answer: str,
+    ) -> Optional[dict]:
+        """One answer, once: None when the row is not this coach's or is
+        already answered."""
+        res = (self.client.table("error_presence_audit")
+               .update({"answer": str(answer),
+                        "answered_at": datetime.now(timezone.utc).isoformat()})
+               .eq("id", str(audit_id)).eq("coach_id", str(coach_id))
+               .is_("answer", "null").execute())
+        return (res.data or [None])[0]
+
+    def list_coach_block_picks_pending(self, coach_id: str) -> list[dict]:
+        res = (self.client.table("coach_block_pick").select("*")
+               .eq("coach_id", str(coach_id)).is_("answered_at", "null")
+               .order("created_at").execute())
+        return list(res.data or [])
+
+    def list_coach_block_picks_by_coach(self, coach_id: str) -> list[dict]:
+        res = (self.client.table("coach_block_pick").select("id,block_id,answered_at,week")
+               .eq("coach_id", str(coach_id)).execute())
+        return list(res.data or [])
+
+    def list_coach_block_picks_all(self, limit: int = 20000) -> list[dict]:
+        res = (self.client.table("coach_block_pick").select("*")
+               .not_.is_("answered_at", "null").order("answered_at", desc=True)
+               .limit(int(limit)).execute())
+        return list(res.data or [])
+
+    def list_takes_coach_is_walking(self, coach_id: str) -> list[str]:
+        """Takes this coach has rated a moment of: the block pick never asks
+        about a Take the coach walks (8)."""
+        res = (self.client.table("confidence_labels").select("session_id")
+               .eq("rater_id", str(coach_id)).not_.is_("session_id", "null")
+               .limit(5000).execute())
+        return sorted({str(r.get("session_id")) for r in (res.data or [])
+                       if isinstance(r, dict) and r.get("session_id")})
+
+    def list_recent_v3_frames(self, limit: int = 200) -> list[dict]:
+        res = (self.client.table("take_feedback_policy_v3_shadow_frames")
+               .select("take_session_id,policy_version,frame,created_at")
+               .order("created_at", desc=True).limit(int(limit)).execute())
+        return list(res.data or [])
+
+    def insert_coach_block_pick(self, row: dict) -> Optional[dict]:
+        res = self.client.table("coach_block_pick").insert(row).execute()
+        return (res.data or [None])[0]
+
+    def get_coach_block_pick(self, pick_id: str, coach_id: str) -> Optional[dict]:
+        res = (self.client.table("coach_block_pick").select("*")
+               .eq("id", str(pick_id)).eq("coach_id", str(coach_id)).limit(1).execute())
+        return (res.data or [None])[0]
+
+    def answer_coach_block_pick(
+        self, *, pick_id: str, coach_id: str, pick_snippet_id: Optional[str],
+        cant_tell: bool,
+    ) -> Optional[dict]:
+        res = (self.client.table("coach_block_pick")
+               .update({"pick_snippet_id": pick_snippet_id, "cant_tell": bool(cant_tell),
+                        "answered_at": datetime.now(timezone.utc).isoformat()})
+               .eq("id", str(pick_id)).eq("coach_id", str(coach_id))
+               .is_("answered_at", "null").execute())
+        return (res.data or [None])[0]
+
+    def list_shadow_observations_by_version(
+        self, detector_version: str, limit: int = 50000,
+    ) -> list[dict]:
+        res = (self.client.table("verbal_cue_shadow_observations")
+               .select("snippet_id,error_id,fired,clip_kind")
+               .eq("detector_version", str(detector_version)).limit(int(limit)).execute())
+        return list(res.data or [])
+
+    def shadow_since(self, detector_version: str) -> Optional[str]:
+        """When this version's first shadow verdict was logged."""
+        res = (self.client.table("verbal_cue_shadow_observations").select("created_at")
+               .eq("detector_version", str(detector_version))
+               .order("created_at").limit(1).execute())
+        row = (res.data or [None])[0]
+        return str(row.get("created_at")) if isinstance(row, dict) and row.get("created_at") else None
+
+    def list_clips_for_rescore(self, *, since: str, limit: int = 2000) -> list[dict]:
+        """Clips and attempts since `since` with their stored snapshots, for
+        a silent re-score under a candidate version (6d)."""
+        from services.confident_voice_practice import acoustic_snapshot
+        out: list[dict] = []
+        snippets = (self.client.table("snippets").select("id,session_id,metrics,created_at")
+                    .gte("created_at", str(since)).order("created_at")
+                    .limit(int(limit)).execute())
+        for s in snippets.data or []:
+            if isinstance(s, dict) and s.get("id"):
+                out.append({"clip_id": str(s["id"]), "clip_kind": "snippet",
+                            "take_session_id": str(s.get("session_id") or ""),
+                            "snapshot": acoustic_snapshot(s)})
+        attempts = (self.client.table("confident_voice_practice_attempt")
+                    .select("id,practice_id,acoustic_metrics,created_at")
+                    .gte("created_at", str(since)).order("created_at")
+                    .limit(int(limit)).execute())
+        rows = [a for a in (attempts.data or []) if isinstance(a, dict) and a.get("id")]
+        practice_ids = sorted({str(a.get("practice_id")) for a in rows if a.get("practice_id")})
+        take_of: dict[str, str] = {}
+        for i in range(0, len(practice_ids), 200):
+            got = (self.client.table("confident_voice_practice").select("id,take_session_id")
+                   .in_("id", practice_ids[i:i + 200]).execute())
+            take_of.update({str(p.get("id")): str(p.get("take_session_id") or "")
+                            for p in (got.data or []) if isinstance(p, dict)})
+        for a in rows:
+            out.append({"clip_id": str(a["id"]), "clip_kind": "practice_attempt",
+                        "take_session_id": take_of.get(str(a.get("practice_id")), ""),
+                        "snapshot": a.get("acoustic_metrics")})
+        return out
+
+    def list_bookmarked_snippet_ids(self, take_session_id: str) -> list[str]:
+        """The Take's frozen Confident Voice bookmarks, in the Take's order;
+        [] while not frozen. The Take word's blind gate (7)."""
+        from services.take_feedback_set import (
+            CONFIDENT_VOICE_FAMILY, sanitize_selected_keys,
+        )
+        session = self.v2_get_session_by_id(str(take_session_id)) or {}
+        arc_id = session.get("arc_id")
+        if not arc_id:
+            return []
+        row = self.get_ideal_text_feedback_set(str(arc_id), str(take_session_id))
+        if not row:
+            return []
+        marked = {str(key["snippet_id"]) for key in sanitize_selected_keys(row.get("selected_keys"))
+                  if key.get("feedback_family") == CONFIDENT_VOICE_FAMILY and key.get("snippet_id")}
+        return [str(s.get("id")) for s in self.get_snippets_by_session(str(take_session_id)) or []
+                if isinstance(s, dict) and str(s.get("id")) in marked]
+
+    def set_coach_take_word_draft(
+        self, *, take_session_id: str, coach_id: str, text: str,
+        model_version: Optional[str],
+    ) -> Optional[dict]:
+        """The model's draft of the Take word (7, 0411), on the coach's row,
+        created draft-only when the word is not written yet. Raises on
+        failure."""
+        now = datetime.now(timezone.utc).isoformat()
+        res = (self.client.table("coach_take_words")
+               .upsert({"take_session_id": str(take_session_id), "coach_id": str(coach_id),
+                        "draft_text": str(text), "draft_model_version": model_version or None,
+                        "drafted_at": now, "updated_at": now},
+                       on_conflict="take_session_id,coach_id").execute())
+        return (res.data or [None])[0]
+
+    def set_coach_take_word_transcript(
+        self, *, take_session_id: str, coach_id: str, transcript: str,
+    ) -> Optional[dict]:
+        res = (self.client.table("coach_take_words")
+               .update({"transcript": str(transcript),
+                        "transcribed_at": datetime.now(timezone.utc).isoformat()})
+               .eq("take_session_id", str(take_session_id))
+               .eq("coach_id", str(coach_id)).execute())
+        return (res.data or [None])[0]
+
+    def list_coach_word_drafts(self, limit: int = 5000) -> list[dict]:
+        """Every draft shown on the two coach-word surfaces and whether it
+        went unchanged: [{surface, unchanged}] for the ledger (7)."""
+        out: list[dict] = []
+        words = (self.client.table("coach_take_words").select("text,draft_text")
+                 .not_.is_("draft_text", "null").limit(int(limit)).execute())
+        for w in words.data or []:
+            if isinstance(w, dict) and w.get("text"):
+                out.append({"surface": "coach_take_word",
+                            "unchanged": str(w.get("text") or "").strip()
+                            == str(w.get("draft_text") or "").strip()})
+        lines = (self.client.table("exercise_coach_requests").select("answer_text,draft_text")
+                 .eq("draft_surface", "coach_moment_line").not_.is_("resolution", "null")
+                 .limit(int(limit)).execute())
+        for r in lines.data or []:
+            if isinstance(r, dict) and r.get("answer_text"):
+                out.append({"surface": "coach_moment_line",
+                            "unchanged": str(r.get("answer_text") or "").strip()
+                            == str(r.get("draft_text") or "").strip()})
+        return out
+
 
 
 # Singleton instance

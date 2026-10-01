@@ -110,6 +110,11 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     "coach_readings",
     # A rater's own answers on others' clips (0410): the rater's account.
     "lend_your_ear_answers", "delayed_measure_votes",
+    # A coach's own choices, blind answers and exposures (0411): the
+    # coach's account; the Take-keyed twins of three of them go with the
+    # Take under their own codes.
+    "coach_exercise_preference_by_coach", "error_presence_audit_by_coach",
+    "coach_block_pick_by_coach", "coach_clip_exposures",
 })
 
 #: Rows with no project column of their own that the take-record wipe

@@ -73,10 +73,20 @@ def meets_bar(summary: dict, *, min_named: int,
 def report(database: Any, *, detector_version: str,
            cues: tuple[str, ...]) -> dict:
     """The comparison for every cue, read from the database."""
-    return {
+    from services.error_presence_audit import false_alarm_rate
+    out = {
         cue: summarise(
             database.list_verbal_cue_shadow_observations(
                 cue, detector_version),
             database.list_coach_named_moments(cue))
         for cue in cues
     }
+    # 6a (0411): the half this comparison cannot measure comes from the
+    # blind audit's answers on clips the detector fired on; None below the
+    # floor or while the audit is off, and the note then still says so.
+    for cue, summary in out.items():
+        rate = false_alarm_rate(database, error_id=cue, detector_version=detector_version)
+        if rate is not None:
+            summary["false_alarm_rate"] = rate
+            summary["false_alarm_note"] = "from the blind error audit (0411)"
+    return out
