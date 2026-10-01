@@ -43,7 +43,10 @@ class ReleaseRefusal(Exception):
 
 
 def door_open(config: Any) -> bool:
-    return bool(getattr(config, "MLC2_DATASET_RELEASES_ENABLED", False))
+    """Door 2 is MLC2_PAIR_RELEASES_ENABLED (its own constant since
+    2026-10-01: the DPO dataset-release lane keeps MLC2_DATASET_RELEASES_ENABLED
+    and stays dark)."""
+    return bool(getattr(config, "MLC2_PAIR_RELEASES_ENABLED", False))
 
 
 def authorised_surfaces(config: Any) -> frozenset:
@@ -58,7 +61,7 @@ def authorised_surfaces(config: Any) -> frozenset:
 def why_not(config: Any, surface: str) -> Optional[str]:
     """None when the surface may leave; else the reason, in words."""
     if not door_open(config):
-        return "door 2 closed (MLC2_DATASET_RELEASES_ENABLED)"
+        return "door 2 closed (MLC2_PAIR_RELEASES_ENABLED)"
     if surface not in authorised_surfaces(config):
         return "door 2 open, but no founder sentence for this surface yet (PAIR_RELEASE_SURFACES)"
     if not (getattr(config, "R2_PAIR_RELEASE_BUCKET", "") or "").strip():
