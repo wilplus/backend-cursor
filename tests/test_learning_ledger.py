@@ -26,6 +26,10 @@ class LedgerTests(unittest.TestCase):
             "per_opened_moment": {"open": None, "judgement": None}})
         patcher.start()
         self.addCleanup(patcher.stop)
+        after = mock.patch("services.bold_voices.after_practice_counts",
+                           return_value={"since": "s", "practices_landed": 0})
+        after.start()
+        self.addCleanup(after.stop)
 
     def test_every_jar_and_every_door_is_named(self):
         with mock.patch("services.feedback_pairs.counts", return_value={

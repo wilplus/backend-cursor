@@ -351,6 +351,15 @@ class Config:
     # first, exactly as before. One switch, both flows side by side until
     # the cutover; the speaker's screens follow the designer session's build.
     JUDGEMENT_AFTER_FEEDBACK_ENABLED = False
+
+    # PHASE 3 of the after-practice paths (founder 2026-10-01, F5): praise
+    # after practice. On, a practice that lands hears one signed sentence
+    # about what measurably changed in the attempt the speaker landed on
+    # (else "Good job"), a practice left hears an encouragement, Bold voices
+    # (own attempt, then a coach's published readings; plays only) may show
+    # once per Take, and coaches may record and publish readings (migration
+    # 0409). Off, nothing is said, written or served; the routes answer 404.
+    PRAISE_AFTER_PRACTICE_ENABLED = False
     # Slice 6 readiness replaces the ambiguous bool with an irreversible
     # three-state contract.  ``dark`` was the pre-cutover behavior;
     # ``founder_canary`` is THE FLIP (founder 2026-09-29, after the

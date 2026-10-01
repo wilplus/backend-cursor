@@ -14827,6 +14827,110 @@ class DatabaseService:
             query = query.eq("owner_user_id", str(owner_user_id))
         return list(query.execute().data or [])
 
+    def list_landed_practices_for_take(
+        self, take_session_id: str, owner_user_id: str,
+    ) -> list[dict]:
+        """The practices on this Take that landed (Yes or In-between on an
+        attempt, 29a), oldest first, for Bold voices (0409). Raises on
+        failure."""
+        res = (self.client.table("confident_voice_practice")
+               .select("id,snippet_id,selected_attempt_id,exact_passage,kind,closed_at")
+               .eq("take_session_id", str(take_session_id))
+               .eq("owner_user_id", str(owner_user_id))
+               .eq("status", "completed")
+               .in_("final_user_answer", ["yes", "in_between"])
+               .order("closed_at").execute())
+        return list(res.data or [])
+
+    def list_coach_readings(self, coach_id: str) -> list[dict]:
+        """One coach's own readings (0409), newest first. Raises on failure."""
+        res = (self.client.table("coach_readings").select("*")
+               .eq("coach_id", str(coach_id))
+               .order("created_at", desc=True).limit(100).execute())
+        return list(res.data or [])
+
+    def list_published_coach_readings(self) -> list[dict]:
+        """Every published reading (0409), newest first, WITHOUT the coach:
+        the speaker hears a voice, never a name. Raises on failure."""
+        res = (self.client.table("coach_readings")
+               .select("id,passage,media_url,media_kind,published_at")
+               .not_.is_("published_at", "null")
+               .order("published_at", desc=True).limit(50).execute())
+        return list(res.data or [])
+
+    def insert_coach_reading(self, row: dict) -> Optional[dict]:
+        """A coach's new reading (0409). Raises on failure."""
+        res = self.client.table("coach_readings").insert(dict(row)).execute()
+        return (res.data or [None])[0]
+
+    def set_coach_reading_published(
+        self, *, reading_id: str, coach_id: str, published: bool,
+    ) -> Optional[dict]:
+        """Publish or withdraw one's own reading (0409); None when it is not
+        this coach's. Raises on failure."""
+        now = datetime.now(timezone.utc).isoformat()
+        res = (self.client.table("coach_readings")
+               .update({"published_at": now if published else None,
+                        "updated_at": now})
+               .eq("id", str(reading_id)).eq("coach_id", str(coach_id))
+               .execute())
+        return (res.data or [None])[0]
+
+    def mark_after_practice_step(
+        self, *, owner_user_id: str, take_session_id: str, step: str,
+    ) -> bool:
+        """The Take showed this step (0409), once per Take per step. True
+        when THIS call recorded it. Raises on failure."""
+        res = (self.client.table("after_practice_steps").upsert(
+            {"owner_user_id": str(owner_user_id),
+             "take_session_id": str(take_session_id), "step": str(step)},
+            on_conflict="take_session_id,step",
+            ignore_duplicates=True).execute())
+        return bool(res.data)
+
+    def list_after_practice_steps(self, take_session_id: str) -> list[dict]:
+        """Which steps this Take has shown (0409). Raises on failure."""
+        res = (self.client.table("after_practice_steps")
+               .select("step,shown_at")
+               .eq("take_session_id", str(take_session_id)).execute())
+        return list(res.data or [])
+
+    def record_bold_voices_play(
+        self, *, owner_user_id: str, take_session_id: str, clip_kind: str,
+        clip_id: str,
+    ) -> Optional[dict]:
+        """The speaker heard a clip (0409): a receipt. Raises on failure."""
+        res = self.client.table("bold_voices_plays").insert({
+            "owner_user_id": str(owner_user_id),
+            "take_session_id": str(take_session_id),
+            "clip_kind": str(clip_kind), "clip_id": str(clip_id),
+        }).execute()
+        return (res.data or [None])[0]
+
+    def count_after_practice(self, since: str) -> dict:
+        """{practices_landed, bold_voices_heard, steps: {step: n}} since
+        `since` (0409), for the founder's ledger. Raises on failure."""
+        def _count(table: str, **eq: Any) -> int:
+            query = (self.client.table(table).select("id", count="exact"))
+            for column, value in eq.items():
+                query = query.eq(column, value)
+            return int(query.gte(self._since_column(table), since)
+                       .limit(1).execute().count or 0)
+        landed = (self.client.table("confident_voice_practice")
+                  .select("id", count="exact").eq("status", "completed")
+                  .in_("final_user_answer", ["yes", "in_between"])
+                  .gte("closed_at", since).limit(1).execute().count or 0)
+        return {
+            "practices_landed": int(landed),
+            "bold_voices_heard": _count("bold_voices_plays"),
+            "steps": {step: _count("after_practice_steps", step=step)
+                      for step in ("bridge", "lend_your_ear", "bold_voices")},
+        }
+
+    @staticmethod
+    def _since_column(table: str) -> str:
+        return "shown_at" if table == "after_practice_steps" else "created_at"
+
     def upsert_coach_take_word(
         self, *, take_session_id: str, coach_id: str, text: Optional[str],
         video_ref: Optional[str], share: bool,
