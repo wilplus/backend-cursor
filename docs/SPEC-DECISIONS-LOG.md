@@ -865,3 +865,14 @@ which named all three existing surfaces. The two coach-word surfaces of Phase 7
 now" for them rested on an AI draft, not a lawyer's answer, and they wait for a
 qualified lawyer's written answer to question 2 and the founder's sentence
 after it.
+
+**N19 · Phases 1 and 2 of the after-practice paths built dark (founder
+2026-10-01, F1, F2; "go until you finish the whole implementation").** F2's
+exercise fallback ladder (`EXERCISE_FALLBACK_LADDER_ENABLED`, contract 35g-1)
+and F1's judgement after feedback (`JUDGEMENT_AFTER_FEEDBACK_ENABLED`,
+migration 0408, contract 24e-1) are in the code, off. Fallbacks and rewrite
+practices are excluded from every outcome measure. Opens and skips are
+recorded under either flow, so the coach-load report (requests per opened
+moment, by kind, before and after the switch) has its "before". The flip of
+each switch is a reviewed change after the founder's yes; the speaker's
+screens follow the designer session's build of the flow.

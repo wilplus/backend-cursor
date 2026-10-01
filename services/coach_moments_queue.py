@@ -12,7 +12,8 @@ and for each moment ONE WORD for where the coach is with it:
 
 The kind (error, praise, rewrite, ambiguity) rides ONLY on a moment this
 coach has rated (BLIND COACH): before the rating the row says only that a
-judgement is waiting. Nothing here is a count of quality (AC-9); the
+judgement is waiting. It is the speaker's side of the request once they
+judged (`answer_kind`, 0408; Phase 2, F1), else the kind it rose under. Nothing here is a count of quality (AC-9); the
 pseudonym is the queue's own, never a name (L3, §B.4). Pure: every read is
 handed in by the route.
 """
@@ -33,7 +34,7 @@ def moment_state(rating: Any, request: Any) -> dict:
         return {"state": "judge_it"}
     if not isinstance(request, dict):
         return {"state": "judged"}
-    kind = str(request.get("kind") or "error")
+    kind = str(request.get("answer_kind") or request.get("kind") or "error")
     resolution = request.get("resolution")
     if not resolution:
         return {"state": "answer_it", "kind": kind}

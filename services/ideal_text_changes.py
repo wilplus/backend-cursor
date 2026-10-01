@@ -185,6 +185,8 @@ class _ChangesRun:
         if self.v3_replaced_changes:
             log.run("changes.answered_service_items",
                     self._mark_answered_service_items)
+            log.run("changes.settled_without_answer",
+                    self._mark_settled_without_answer)
         # FREEZE WHAT ACTUALLY SERVED (founder 2026-09-21: "we have to make
         # the users act upon it to close the UX loop").
         #
@@ -736,6 +738,36 @@ class _ChangesRun:
             logger.info(
                 "answered service items marked arc=%s take=%s marked=%d",
                 self.arc_id, self.arm_sid, marked)
+
+    def _mark_settled_without_answer(self) -> None:
+        """Phase 2 (founder 2026-10-01, F1): a moment the speaker settled
+        through the practice loop, or by skipping the bookmark, has no Path
+        1 answer, so the join above leaves it open. The one settled read
+        (services.moment_events.settled_status_by_moment) decides it, so
+        the page's bar and the lock gate agree. Off, nothing runs."""
+        from services.judgement_follow_up import (
+            judgement_after_feedback_enabled,
+        )
+        from services.moment_events import settled_status_by_moment
+
+        if not judgement_after_feedback_enabled() or not self.changes:
+            return
+        settled = settled_status_by_moment(
+            self.db, take_session_id=self.arm_sid,
+            owner_user_id=str(self.user_id) if self.user_id else None)
+        marked = 0
+        for row in self.changes:
+            if row.get("source") != "confident_voice" or not row.get("snippet_id"):
+                continue
+            if str(row.get("status") or "") in ("approved", "dismissed"):
+                continue
+            status = settled.get(str(row["snippet_id"]))
+            if status:
+                row["status"] = status
+                marked += 1
+        if marked:
+            logger.info("settled moments marked arc=%s take=%s marked=%d",
+                        self.arc_id, self.arm_sid, marked)
 
     def _decision_backfill(self) -> None:
         # DECISION BACKFILL-ON-READ. A compatibility response may have

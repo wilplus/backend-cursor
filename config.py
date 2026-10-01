@@ -341,6 +341,16 @@ class Config:
     # are traced and never teach the exercise ranker. Off, matching is
     # exactly what it was.
     EXERCISE_FALLBACK_LADDER_ENABLED = False
+
+    # PHASE 2 of the after-practice paths (founder 2026-10-01, F1): the
+    # judgement comes after the feedback. On, opening a bookmark raises the
+    # moment's coach request under the machine's kind (migration 0408), the
+    # speaker's later judgement sets its answer_kind, a practice may start
+    # without an answer, and a landed or dismissed practice or a skipped
+    # bookmark settles the item. Off, every bookmark asks for the judgement
+    # first, exactly as before. One switch, both flows side by side until
+    # the cutover; the speaker's screens follow the designer session's build.
+    JUDGEMENT_AFTER_FEEDBACK_ENABLED = False
     # Slice 6 readiness replaces the ambiguous bool with an irreversible
     # three-state contract.  ``dark`` was the pre-cutover behavior;
     # ``founder_canary`` is THE FLIP (founder 2026-09-29, after the

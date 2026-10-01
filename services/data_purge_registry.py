@@ -256,6 +256,10 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("practice_exercise_coach_request",
                     "exercise_coach_requests", "take_session_id",
                     "take", "delete", "derived_feedback", 59),
+    # The speaker's opens and skips of their bookmarks (0408). About one
+    # speaker's Take: they go with it.
+    PurgeDependency("moment_events", "moment_events", "take_session_id",
+                    "take", "delete", "derived_feedback", 59),
     # The (draft, final) pairs a coach's answer about one speaker's moment
     # made (0402). The words are about that passage: they go with the Take.
     # Pairs from the exercise library (no take) are about the library.
