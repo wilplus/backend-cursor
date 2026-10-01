@@ -1,20 +1,20 @@
-"""willab — the publish-time RLHF capture repair + the Say-It-Stronger and
-moment-suggestion text lanes (founder 2026-07-27, learning-pipeline item 2).
+"""willab — the Say-It-Stronger serialization + moment-suggestion text lanes
+(founder 2026-07-27, learning-pipeline item 2).
 
-THE REPAIR THIS PINS DOWN (so it can never silently regress the same way):
-``_emit_publish_event_if_signal`` used to call
-``self.insert_admin_annotation_event`` — a method that has never existed in
-any commit — with ``user_id=None`` against the table's NOT NULL. The
-AttributeError was swallowed and every publish wrote ZERO rlhf rows. These
-tests exercise the real emit path down to ``create_admin_annotation_event``'s
-kwargs, unmocked in between, which is exactly what the old tests didn't do.
+HISTORY: this file used to pin the publish-time RLHF capture
+(``record_snippet_publish_annotations`` and its emitter repair). The
+arc-level publish and its delivery job are retired (P2-19, contract 65), and
+that writer is deleted with them — pairs come from the three answer surfaces
+on the coach's walk (35g-2a, services/feedback_pairs.py), with no
+replacement publish-time writer.
 
-Also pinned:
-  * the say_it_stronger (draft, coach-final) pair at publish — canonical JSON,
-    volatile stamps stripped, missing final == approved_as_is;
+Still pinned here:
+  * the say_it_stronger card serialization: canonical JSON, volatile stamps
+    stripped, so a card saved untouched reads equal to its draft;
   * the keep-verdict → writer-corpus flip guard (once per star, re-keep never
     double-writes) and the star text serialization (a delivery star has no
-    text → no event).
+    text → no event);
+  * the export prompt coverage and the moment-suggestion final sentinels.
 
 Run: python3 -m unittest tests.test_annotation_capture
 """
@@ -24,7 +24,6 @@ import json
 import sys
 import types
 import unittest
-from unittest.mock import MagicMock
 
 # Prefer the REAL supabase/sentry_sdk (installed in the venv) and stub only
 # when genuinely absent. This file sorts early in unittest discovery, so a
@@ -138,212 +137,6 @@ class SisAnnotationTextTests(unittest.TestCase):
 
 
 @unittest.skipIf(DatabaseService is None, f"services.db import failed: {_IMPORT_ERR}")
-class EmitRepairTests(unittest.TestCase):
-    """The dead-emitter repair, exercised down to the real insert helper."""
-
-    def _svc(self):
-        svc = DatabaseService.__new__(DatabaseService)
-        svc.create_admin_annotation_event = MagicMock()
-        return svc
-
-    def test_emit_reaches_the_real_helper_with_the_owner(self):
-        svc = self._svc()
-        n = svc._emit_publish_event_if_signal(
-            session_id="sess-1", admin_user_id="coach-1",
-            section_type="charisma_snippet", field_name="admin_comment",
-            draft="draft text", final="final text", draft_id="snip-1",
-            owner_user_id="student-1",
-        )
-        self.assertEqual(n, 1)
-        kwargs = svc.create_admin_annotation_event.call_args.kwargs
-        self.assertEqual(kwargs["user_id"], "student-1")
-        self.assertEqual(kwargs["created_by"], "coach-1")
-        self.assertEqual(kwargs["ai_original_text"], "draft text")
-        self.assertEqual(kwargs["coach_final_text"], "final text")
-        self.assertIsNone(kwargs["reason_chip"])
-        self.assertEqual(kwargs["draft_id"], "snip-1")
-
-    def test_approved_as_is_on_normalized_equality(self):
-        svc = self._svc()
-        svc._emit_publish_event_if_signal(
-            session_id="s", admin_user_id="c", section_type="x",
-            field_name="f", draft="Same  Text", final="same text",
-            draft_id=None, owner_user_id="u",
-        )
-        kwargs = svc.create_admin_annotation_event.call_args.kwargs
-        self.assertEqual(kwargs["reason_chip"], "approved_as_is")
-
-    def test_no_owner_skips_instead_of_violating_not_null(self):
-        svc = self._svc()
-        n = svc._emit_publish_event_if_signal(
-            session_id="s", admin_user_id="c", section_type="x",
-            field_name="f", draft="d", final="f", draft_id=None,
-            owner_user_id=None,
-        )
-        self.assertEqual(n, 0)
-        svc.create_admin_annotation_event.assert_not_called()
-
-    def test_no_signal_no_row(self):
-        svc = self._svc()
-        n = svc._emit_publish_event_if_signal(
-            session_id="s", admin_user_id="c", section_type="x",
-            field_name="f", draft="  ", final=None, draft_id=None,
-            owner_user_id="u",
-        )
-        self.assertEqual(n, 0)
-
-    def test_insert_failure_returns_zero_never_raises(self):
-        svc = self._svc()
-        svc.create_admin_annotation_event.side_effect = RuntimeError("db down")
-        n = svc._emit_publish_event_if_signal(
-            session_id="s", admin_user_id="c", section_type="x",
-            field_name="f", draft="d", final="f2", draft_id=None,
-            owner_user_id="u",
-        )
-        self.assertEqual(n, 0)
-
-
-@unittest.skipIf(DatabaseService is None, f"services.db import failed: {_IMPORT_ERR}")
-class PublishCaptureTests(unittest.TestCase):
-    """record_snippet_publish_annotations end-to-end over a fake client."""
-
-    def _svc(self, charisma_rows, owner="student-1", fail_when=None,
-             already_captured=False):
-        svc = DatabaseService.__new__(DatabaseService)
-        svc.client = _FakeClient({
-            "charisma_snippets": charisma_rows,
-            "recordings": [],
-            # the idempotency probe reads this table: [] = not yet captured
-            "admin_annotation_events": ([{"id": "e1"}] if already_captured
-                                        else []),
-        }, fail_when=fail_when)
-        svc.v2_get_session_by_id = MagicMock(
-            return_value={"id": "sess-1", "user_id": owner} if owner else {})
-        svc.get_coach_snippet_drafts = MagicMock(return_value=[])
-        svc.create_admin_annotation_event = MagicMock()
-        return svc
-
-    def _events(self, svc):
-        return [c.kwargs for c in
-                svc.create_admin_annotation_event.call_args_list]
-
-    def test_say_it_stronger_draft_only_is_approved_as_is(self):
-        svc = self._svc([{"id": "snip-1", "say_it_stronger": _card()}])
-        n = svc.record_snippet_publish_annotations(
-            session_id="sess-1", admin_user_id="coach-1")
-        events = self._events(svc)
-        sis = [e for e in events if e["field_name"] == "say_it_stronger"]
-        self.assertEqual(len(sis), 1)
-        self.assertEqual(n, len(events))
-        e = sis[0]
-        self.assertEqual(e["reason_chip"], "approved_as_is")
-        self.assertEqual(e["ai_original_text"], e["coach_final_text"])
-        self.assertEqual(e["user_id"], "student-1")
-        self.assertEqual(e["section_type"], "charisma_snippet")
-        parsed = json.loads(e["ai_original_text"])
-        self.assertNotIn("model", parsed)
-
-    def test_say_it_stronger_correction_pair(self):
-        final = _card(rewrite_polished="A very different polished line.",
-                      edited_by_coach=True)
-        svc = self._svc([{"id": "snip-1", "say_it_stronger": _card(),
-                          "say_it_stronger_final": final}])
-        svc.record_snippet_publish_annotations(
-            session_id="sess-1", admin_user_id="coach-1")
-        sis = [e for e in self._events(svc)
-               if e["field_name"] == "say_it_stronger"]
-        self.assertEqual(len(sis), 1)
-        self.assertIsNone(sis[0]["reason_chip"])
-        self.assertNotEqual(sis[0]["ai_original_text"],
-                            sis[0]["coach_final_text"])
-
-    def test_final_differing_only_in_stamps_is_approved_as_is(self):
-        final = _card(edited_by_coach=True)
-        del final["model"], final["generated_at"]
-        svc = self._svc([{"id": "snip-1", "say_it_stronger": _card(),
-                          "say_it_stronger_final": final}])
-        svc.record_snippet_publish_annotations(
-            session_id="sess-1", admin_user_id="coach-1")
-        sis = [e for e in self._events(svc)
-               if e["field_name"] == "say_it_stronger"]
-        self.assertEqual(sis[0]["reason_chip"], "approved_as_is")
-
-    def test_no_card_no_sis_event(self):
-        svc = self._svc([{"id": "snip-1", "admin_comment": "nice",
-                          "ai_draft_admin_comment": "draft nice"}])
-        svc.record_snippet_publish_annotations(
-            session_id="sess-1", admin_user_id="coach-1")
-        events = self._events(svc)
-        self.assertFalse([e for e in events
-                          if e["field_name"] == "say_it_stronger"])
-        # ...and the classic admin_comment lane still fires (the repair).
-        comments = [e for e in events if e["field_name"] == "admin_comment"]
-        self.assertEqual(len(comments), 1)
-        self.assertEqual(comments[0]["user_id"], "student-1")
-
-    def test_missing_owner_captures_nothing(self):
-        svc = self._svc([{"id": "snip-1", "say_it_stronger": _card(),
-                          "admin_comment": "x",
-                          "ai_draft_admin_comment": "y"}], owner=None)
-        n = svc.record_snippet_publish_annotations(
-            session_id="sess-1", admin_user_id="coach-1")
-        self.assertEqual(n, 0)
-        svc.create_admin_annotation_event.assert_not_called()
-
-    def test_final_only_card_still_captured(self):
-        """Coach wrote the card from scratch (draft never generated) — the
-        empty-draft pair must still enter the corpus (review finding)."""
-        final = _card(edited_by_coach=True)
-        svc = self._svc([{"id": "snip-1", "say_it_stronger": None,
-                          "say_it_stronger_final": final}])
-        svc.record_snippet_publish_annotations(
-            session_id="sess-1", admin_user_id="coach-1")
-        sis = [e for e in self._events(svc)
-               if e["field_name"] == "say_it_stronger"]
-        self.assertEqual(len(sis), 1)
-        self.assertIsNone(sis[0]["reason_chip"])
-        self.assertIsNone(sis[0]["ai_original_text"])
-        self.assertIn("rewrite_polished", sis[0]["coach_final_text"])
-
-    def test_republish_is_skipped_by_the_probe(self):
-        """The repaired emitter made the documented re-publish double-write
-        LIVE — the session-level probe closes it (review finding)."""
-        svc = self._svc([{"id": "snip-1", "say_it_stronger": _card()}],
-                        already_captured=True)
-        n = svc.record_snippet_publish_annotations(
-            session_id="sess-1", admin_user_id="coach-1")
-        self.assertEqual(n, 0)
-        svc.create_admin_annotation_event.assert_not_called()
-
-    def test_probe_failure_reads_as_captured(self):
-        """Never double-write on uncertainty (the backfill's rule): a probe
-        error must skip the capture, not fall through to writing blind."""
-        svc = self._svc([{"id": "snip-1", "say_it_stronger": _card()}],
-                        fail_when={"admin_annotation_events":
-                                   lambda cols: True})
-        n = svc.record_snippet_publish_annotations(
-            session_id="sess-1", admin_user_id="coach-1")
-        self.assertEqual(n, 0)
-        svc.create_admin_annotation_event.assert_not_called()
-
-    def test_half_migrated_db_still_captures_the_draft(self):
-        """add_say_it_stronger.sql run, add_say_it_stronger_final.sql NOT:
-        tier 0 fails on the missing final column, but the next tier must
-        still carry say_it_stronger — the draft-only approved_as_is capture
-        survives (review finding: the coarse ladder dropped both)."""
-        svc = self._svc(
-            [{"id": "snip-1", "say_it_stronger": _card()}],
-            fail_when={"charisma_snippets":
-                       lambda cols: "say_it_stronger_final" in cols})
-        svc.record_snippet_publish_annotations(
-            session_id="sess-1", admin_user_id="coach-1")
-        sis = [e for e in self._events(svc)
-               if e["field_name"] == "say_it_stronger"]
-        self.assertEqual(len(sis), 1)
-        self.assertEqual(sis[0]["reason_chip"], "approved_as_is")
-
-
-@unittest.skipIf(DatabaseService is None, f"services.db import failed: {_IMPORT_ERR}")
 class GetStarVerdictFailClosedTests(unittest.TestCase):
     """The error-distinguishing verdict read behind the keep-flip guard."""
 
@@ -396,18 +189,6 @@ class ExportPromptCoverageTests(unittest.TestCase):
             self.assertIn(field, _FIELD_SYSTEM_PROMPTS)
         for field in ("say_it_stronger", "moment_suggestion"):
             self.assertIn("JSON", _FIELD_SYSTEM_PROMPTS[field])
-
-    def test_backfill_probe_knows_every_emitted_field(self):
-        """KEEP IN SYNC pin: a field the writer emits but the backfill probe
-        doesn't know lets a backfill re-run double-write it. Source-level on
-        purpose — the script imports heavy deps at module top."""
-        with open("scripts/backfill_few_shot_annotations.py",
-                  encoding="utf-8") as fh:
-            source = fh.read()
-        from services.db import DatabaseService as _DS
-        for field in _DS._PUBLISH_CAPTURE_FIELDS:
-            self.assertIn(f'"{field}"', source,
-                          f"{field} missing from _PUBLISH_PATH_FIELDS")
 
 
 @unittest.skipIf(DatabaseService is None, f"services.db import failed: {_IMPORT_ERR}")

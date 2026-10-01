@@ -35,10 +35,13 @@ nothing new.
 else — no DROP, no DELETE, no TRUNCATE. Safe to run at any time; running it
 late costs nothing.
 
-`coach_label_notes` **stays** in `_PUBLISH_CAPTURE_FIELDS`. Events written
-before today carry that field name and the idempotency probe keys on the
-tuple; removing it would make the backfill unable to recognise its own prior
-writes.
+`coach_label_notes` stayed in `_PUBLISH_CAPTURE_FIELDS` while that tuple
+existed: events written before today carry that field name and the
+idempotency probe keyed on the tuple. **2026-10-01 update:** the arc-level
+publish is retired (P2-19, contract 65), so `record_snippet_publish_annotations`,
+its field tuple and probe, and `scripts/backfill_few_shot_annotations.py` are
+deleted. Existing `admin_annotation_events` rows are untouched; new pairs
+come only from the three answer surfaces (35g-2a, `services/feedback_pairs.py`).
 
 Enforcement is `test_stress_snippets_retired.py`, not a database trigger — a
 trigger raising on INSERT can only ever fire in production, on a path that was

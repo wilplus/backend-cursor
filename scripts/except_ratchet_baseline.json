@@ -46,7 +46,7 @@
   "services/conversation_summary.py": 1,
   "services/create_take.py": 1,
   "services/cross_take_selection.py": 2,
-  "services/db.py": 393,
+  "services/db.py": 388,
   "services/deck_parser.py": 1,
   "services/degradation.py": 1,
   "services/delivery_alignment.py": 3,

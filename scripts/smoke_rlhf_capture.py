@@ -660,10 +660,12 @@ def run_smoke_test(
             fail_count += 1
 
         _info(
-            "service-role mode: skipped the route's "
-            "record_snippet_publish_annotations() call. Step 5 "
+            "service-role mode: skipped the publish route. Step 5 "
             "(admin_annotation_events check) will show 0 fresh rows — "
-            "that's expected in this mode, not a failure."
+            "that's expected in this mode, not a failure. NOTE: the "
+            "publish-time capture is deleted (P2-19, contract 65); the "
+            "route answers 410 and pairs come from the three answer "
+            "surfaces (35g-2a, services/feedback_pairs.py)."
         )
     else:
         _step(3, "POST /v2/admin/sessions/<id>/publish")
@@ -816,18 +818,18 @@ def run_smoke_test(
     elif service_role:
         _warn(
             "admin_annotation_events fresh rows = 0 — EXPECTED in "
-            "service-role mode (we bypassed the route handler that "
-            "calls record_snippet_publish_annotations). To exercise "
-            "this gate, re-run without --service-role and with a real "
-            "admin JWT."
+            "service-role mode (we bypassed the publish route). The "
+            "publish-time capture is deleted (P2-19, contract 65) — "
+            "this gate no longer has a writer to exercise."
         )
     else:
         _fail(
             "admin_annotation_events fresh rows",
             "NO rows from this run contain our test text. "
-            "This means publish-time capture (record_snippet_publish_annotations) "
-            "did NOT write to admin_annotation_events. "
-            "A1 backfill cron would have nothing to recover from this path."
+            "The publish-time capture is deleted (P2-19, contract 65) and "
+            "the publish route answers 410, so this is the expected "
+            "outcome; pairs come from the three answer surfaces "
+            "(35g-2a, services/feedback_pairs.py)."
         )
         fail_count += 1
 
