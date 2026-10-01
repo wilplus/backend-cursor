@@ -8,7 +8,7 @@ nothing left.
 
 | Door | Constant | Opens when | The sentence |
 |------|----------|------------|--------------|
-| 1 · the training yes | `MLC2_TRAINING_SWITCH_ENABLED` | counsel has answered which pairs need a speaker's yes and approved the wording; the policy row is configured with that wording (`configure_mlc2_training_consent_policy_v1`) | "open door 1" |
+| 1 · the training yes | `MLC2_TRAINING_SWITCH_ENABLED` | counsel answered (2026-10-01: all three surfaces); the founder signs counsel's wording; the legal drafts carry counsel's five fixes; the policy row is configured with the signed wording (`configure_mlc2_training_consent_policy_v1`) | "open door 1" |
 | 2 · dataset releases | `MLC2_DATASET_RELEASES_ENABLED` and, per surface, `PAIR_RELEASE_SURFACES` | door 1 is open, the release bucket and signing key are set on the web service, and the founder names the surface | "open door 2 for surface S" (S ∈ praise_line, clearer_version, exercise_script) |
 | 3 · training | `MLC2_TRAINING_ENABLED` | the golden set for the surface is sealed (ML-10) and 200 releasable pairs exist | "open door 3 for surface S" |
 | 4 · promotion | `MLC2_PROMOTION_ENABLED` | the golden evaluation shows the candidate ahead of the baseline | "open door 4 for surface S" |
@@ -28,21 +28,53 @@ nothing left.
   hides itself while the route answers 410. It shows counsel's sentence as
   the backend serves it, fingerprinted.
 
-**The question for counsel** (send as is):
+**Counsel's answer (2026-10-01, developer version)**
 
-> WillpowerLab records a coach's written answers about a speaker's own
-> passage: a praise line, a clearer version of the speaker's sentence, and
-> an exercise instruction, each stored beside the model's first draft. We
-> want to use these pairs to improve the drafting model for everyone. Each
-> pair quotes the speaker's own words (the passage) and never their voice.
-> (1) Which of the three kinds needs the speaker's explicit training
-> consent before it may be used, given that the passage is the speaker's
-> content and the answer is the coach's? (2) Please approve the wording of
-> the one-sentence consent the speaker turns on in Settings, revocable at
-> any time, with the consequence that copies already exported are deleted
-> on revocation: proposed "Use my recordings and my practice text to help
-> improve WillpowerLab for everyone." (3) Does a withdrawal have to reach
-> a model already trained on the pair, or only the stored copies?
+1. All three surfaces need the speaker's yes: a coach's note about a
+   speaker's passage is the speaker's personal data even without the
+   passage attached (CJEU Nowak). Basis: consent, Art 6(1)(a), with
+   Art 9(2)(a) explicit consent on top; never legitimate interest (Privacy
+   3.1 promises no training). `CONSENT_REQUIRED_SURFACES` stays all three.
+2. The proposed sentence was not approved ("my recordings" is false for a
+   text-only programme; the coach's notes were missing; "improve
+   WillpowerLab" too vague). Counsel's replacement, for the founder to sign:
+   *"Use my practice text and my coach's notes on it to train the models
+   that write WillpowerLab's feedback."* On the same screen, before the
+   switch can be turned on: text only, never your voice; off by default, no
+   cost to saying no; OpenAI, United States, standard contractual clauses;
+   turning it off deletes your training copies and keeps you out of new
+   training; a model already trained stays. The existing card line
+   "Anything already used to train stays in that training, but it won't be
+   used again" stays.
+3. A withdrawal reaches: every stored copy here with the release voided
+   (the weekly refresh does this); every copy at OpenAI (fine-tuning files
+   deleted; the DPA must oblige it); every training run that starts after
+   the withdrawal, queued ones included. It does not reach an
+   already-trained model, provided the model cannot reproduce the speaker's
+   text: a regurgitation check joins the golden evaluation before door 4
+   opens, and a model that fails it is retrained without the withdrawn pairs.
+
+**Before any policy version is registered** (counsel's list; legal drafts
+under `legal/phase1-2026.1/`): the coach's video never enters a pair
+(true: `exercise_script` pairs carry the transcript text only; the coach's
+own basis and IP sit in the coach agreement); the Terms need a licence to
+reproduce and adapt the speaker's presentation text for training; Privacy
+3.2's audio-moments draft and this text-only programme become one
+description; the consent record gets a fixed retention period instead of
+"as long as it is useful"; "models hold no personal information" softens to
+"we test that our models do not reproduce your text".
+
+**Door 1's sequence, then:** the founder signs the sentence and the four
+pre-switch lines → the legal drafts carry counsel's five fixes → the policy
+row is registered with the signed copy and its fingerprint
+(`configure_mlc2_training_consent_policy_v1`) → the founder says "open door
+1" → the switch flips by one reviewed change and the Settings card appears.
+
+**Carried into doors 3 and 4 (ML-11, ML-10):** a fine-tuning file uploaded
+to OpenAI is deleted on any owner's withdrawal; a run reads releasability
+at start, so a queued run never trains on a withdrawn pair; the golden
+evaluation gains a regurgitation check and a failing model is retrained
+without the withdrawn pairs.
 
 ## Door 2 · what is built (ML-9, migration 0405)
 
