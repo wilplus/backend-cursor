@@ -891,3 +891,9 @@ Door 2 stays shut for the two coach-word surfaces. Every flip is a reviewed
 change after the founder's yes; the 6a privacy line and the 6d voice consent
 precede theirs.
 
+**N21 · Phase 0c built dark (founder 2026-10-01, A2, A3).** A student's new
+Take as a bubble in the coach's Lounge chat (`COACH_TAKE_BUBBLES_ENABLED`,
+contract 35g-12): derived at read from the coach's own queue, never stored,
+opening the walk on that Take; the real name rides only as 0b allows. Three
+proposed frontend strings wait for sign-off with the flip.
+
