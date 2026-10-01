@@ -78,6 +78,14 @@ def cue_rows(report: Any, *, min_named: int, min_caught_rate: float) -> dict:
     return out
 
 
+def _peer_lane_counts(database: Any, since: str) -> dict:
+    """Counts only; empty and marked dark while the peer lane is off."""
+    from services.lend_your_ear import peer_lane_enabled
+    if not peer_lane_enabled():
+        return {"enabled": False}
+    return {"enabled": True, "since": since, **(database.count_lend_your_ear(since) or {})}
+
+
 def ledger(database: Any, *, config: Any = None) -> dict:
     """Everything the founder's page and the weekly job need, in one dict."""
     from services.feedback_pairs import counts
@@ -119,6 +127,11 @@ def ledger(database: Any, *, config: Any = None) -> dict:
     after = _read("after_practice",
                   lambda: after_practice_counts(database, since=since),
                   unavailable) or {}
+    # Phase 4 and 5 (the founder's weekly line): peer answers, sets, live
+    # shares; the delayed measure's pairs and outcomes. Zero while dark.
+    from services.delayed_measure import report as delayed_report
+    peer = _read("peer_lane", lambda: _peer_lane_counts(database, since), unavailable) or {}
+    delayed = _read("delayed_measure", lambda: delayed_report(database), unavailable) or {}
     return {
         "ledger_version": LEDGER_VERSION,
         "pairs": pairs,
@@ -128,5 +141,7 @@ def ledger(database: Any, *, config: Any = None) -> dict:
         "doors": doors(config),
         "coach_load": load,
         "after_practice": after,
+        "peer_lane": peer,
+        "delayed_measure": delayed,
         "unavailable": unavailable,
     }

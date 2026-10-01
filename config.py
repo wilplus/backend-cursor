@@ -360,6 +360,23 @@ class Config:
     # once per Take, and coaches may record and publish readings (migration
     # 0409). Off, nothing is said, written or served; the routes answer 404.
     PRAISE_AFTER_PRACTICE_ENABLED = False
+
+    # PHASE 4 of the after-practice paths (founder 2026-10-01, F3, F4): the
+    # peer lane. On, a Voice Album moment can be lent to other ears (share
+    # toggle, revocable), Lend your ear serves up to three blind clips once
+    # per Take after a practice that lands, answers count toward the coach +
+    # peer quorum, and Bold voices adds others' settled clips and the
+    # licensed corpus (migration 0410). GATED: stays False until counsel
+    # answers C1 (voice training consent), C2 (share opt-in, Terms and
+    # Privacy) and C3 (peer answers as personal data). Off, the routes answer
+    # 404 and nothing is written.
+    PEER_LANE_ENABLED = False
+
+    # PHASE 5 (founder 2026-10-01): the delayed blind human measure
+    # exercise-human-delayed-v1, docs/MEASURE-exercise-human-delayed-v1.md,
+    # written before any data. GATED like Phase 4, plus the founder's
+    # signature on the measure. Off, no pair and no vote is written.
+    DELAYED_MEASURE_ENABLED = False
     # Slice 6 readiness replaces the ambiguous bool with an irreversible
     # three-state contract.  ``dark`` was the pre-cutover behavior;
     # ``founder_canary`` is THE FLIP (founder 2026-09-29, after the

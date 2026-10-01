@@ -30,6 +30,11 @@ class LedgerTests(unittest.TestCase):
                            return_value={"since": "s", "practices_landed": 0})
         after.start()
         self.addCleanup(after.stop)
+        for target, value in (("services.learning_ledger._peer_lane_counts", {"enabled": False}),
+                              ("services.delayed_measure.report", {"enabled": False})):
+            patcher = mock.patch(target, return_value=value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def test_every_jar_and_every_door_is_named(self):
         with mock.patch("services.feedback_pairs.counts", return_value={
