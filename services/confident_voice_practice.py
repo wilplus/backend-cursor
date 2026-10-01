@@ -859,8 +859,13 @@ def rank_exercises_for_clip(
     """
     _, matched = match_for_clip(verdict, database, exercises=exercises,
                                 history=history)
-    return [(key[KEY_DISTANCE], key[KEY_EDITORIAL], key[KEY_ID], exercise)
-            for key, exercise in matched]
+    ranked = [(key[KEY_DISTANCE], key[KEY_EDITORIAL], key[KEY_ID], exercise)
+              for key, exercise in matched]
+    # ML-13 (founder E8): equal-fit ties by the learned helped rate, only
+    # behind EXERCISE_LEARNED_ORDER_ENABLED, the jar's bar and the fair
+    # test's bar. Closed today, so this returns `ranked` unchanged.
+    from services.exercise_learned_order import apply as learned_order
+    return learned_order(ranked, database)
 
 
 def match_for_clip(

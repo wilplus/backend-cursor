@@ -29,6 +29,14 @@ LEARNING_SURFACE_ALIASES: dict[str, str] = {
     "say_it_stronger": "correction_generation",
     "coach_comment_draft": "coach_comment_generation",
     "ideal_text": "ideal_text_generation",
+    # The coach's answer surfaces (doors 3 and 4, ML-11/ML-12, 2026-10-01),
+    # each under the canonical surface its (draft, final) pairs are about:
+    # a praise line is praise wording; a clearer version is a rewrite; an
+    # exercise script is the coach's note of kind "exercise", a machine
+    # draft turned into the coach's final. Migration 0406 seeds the rows.
+    "praise_line": "praise_generation",
+    "clearer_version": "correction_generation",
+    "exercise_script": "coach_comment_generation",
 }
 
 REJECTED_LEARNING_ALIASES = frozenset({"moment_suggestion"})

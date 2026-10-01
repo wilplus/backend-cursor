@@ -64,9 +64,15 @@ def record_pair(
     # consent state at this moment; the weekly refresh keeps it true.
     from services.pair_consent import stamp
     consent = stamp(database, surface=surface, owner_user_id=owner_user_id)
+    # The pair remembers the passage it was drafted from and what the
+    # prompt was told (0406): a training example needs the prompt, and a
+    # pair without one is never an example.
+    prompt = _prompt_snapshot(database, take_session_id=take_session_id,
+                              snippet_id=snippet_id, surface=surface,
+                              pattern_key=pattern_key)
     try:
         row = writer(
-            **consent,
+            **consent, **prompt,
             surface=surface, draft_text=str(draft).strip(),
             final_text=str(final).strip(), final_kind=final_kind,
             draft_model_version=model_version or None,
@@ -85,6 +91,33 @@ def record_pair(
         _mirror(database, row, coach)
         return row
     return None
+
+
+#: Request kind by surface, as the draft prompt was told it (coach_request_drafts).
+KIND_FOR_SURFACE = {"exercise_script": "error", "praise_line": "praise",
+                    "clearer_version": "rewrite"}
+
+
+def _prompt_snapshot(database: Any, *, take_session_id: Any, snippet_id: Any,
+                     surface: str, pattern_key: Any) -> dict:
+    """{passage_text, prompt_context} for the pair, best effort: the clip's
+    transcript as it stands now and the kind the prompt was given. An
+    exercise-lane pair (no clip) gets neither and is never trained on."""
+    passage = ""
+    if take_session_id and snippet_id:
+        reader = getattr(database, "get_snippets_by_session", None)
+        try:
+            for row in (reader(str(take_session_id)) if reader else []) or []:
+                if isinstance(row, dict) and str(row.get("id")) == str(snippet_id):
+                    passage = " ".join(str(row.get("transcript") or "").split())
+                    break
+        except Exception as e:  # noqa: BLE001 -- the pair is still recorded
+            _log.info("pair prompt snapshot skipped: %s", e)
+    if not passage:
+        return {"passage_text": None, "prompt_context": None}
+    return {"passage_text": passage,
+            "prompt_context": {"kind": KIND_FOR_SURFACE.get(surface, "error"),
+                               "pattern_key": pattern_key or None}}
 
 
 def _mirror(database: Any, row: dict, coach: str) -> None:

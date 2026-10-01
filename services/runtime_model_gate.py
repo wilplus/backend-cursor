@@ -49,6 +49,12 @@ MODEL_CONFIG_KEYS = frozenset({
     "openai_surface_model_say_it_stronger",
     "openai_surface_model_coach_comment_draft",
     "openai_surface_model_ideal_text",
+    # The coach's answer surfaces (doors 3 and 4, ML-11/ML-12, 2026-10-01),
+    # promoted by services.model_promotion through the same RPC; migration
+    # 0406 widened the database allowlist to match.
+    "openai_surface_model_praise_line",
+    "openai_surface_model_clearer_version",
+    "openai_surface_model_exercise_script",
     # The two ungoverned chat surfaces (R-13). Neither is a learned surface
     # and neither has a writer in this repository; they are listed because
     # they are READ, and an unlisted readable key is the hole this closes.

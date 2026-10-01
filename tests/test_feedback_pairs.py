@@ -104,19 +104,24 @@ class CountTests(unittest.TestCase):
             "exercise_script": {"total": 0, "unexported": 0},
         })
 
-    def test_the_surfaces_are_locked_prompts_and_not_yet_model_slots(self):
-        """A pair surface is a prompt id namespace with a golden dataset; a
-        promotable model slot (services.ml_surface_contracts) is door 3/4
-        work and comes with its own authorisation (build plan ML-11)."""
+    def test_the_surfaces_are_locked_prompts_and_gated_model_slots(self):
+        """A pair surface is a prompt id namespace with a golden dataset
+        and, since doors 3 and 4 were built (ML-11, ML-12, 2026-10-01), a
+        model slot: a contract with a runtime key on the allowlist and an
+        accepted canonical alias. The slot serves the stock model while
+        MLC2_PROMOTION_ENABLED is False (services.llm)."""
         import json
         import pathlib
-        from services.ml_surface_contracts import SURFACES
-        from services.mlc2_foundation import REJECTED_LEARNING_ALIASES
+        from services.ml_surface_contracts import SURFACES, runtime_config_key
+        from services.mlc2_foundation import LEARNING_SURFACE_ALIASES, REJECTED_LEARNING_ALIASES
+        from services.runtime_model_gate import MODEL_CONFIG_KEYS
         root = pathlib.Path(__file__).resolve().parents[1]
         locked = json.loads((root / "services/prompts/prompts.lock.json").read_text())["prompts"]
         for surface in fp.SURFACES:
             self.assertNotIn(surface, REJECTED_LEARNING_ALIASES)
-            self.assertNotIn(surface, SURFACES)
+            self.assertIn(surface, SURFACES)
+            self.assertIn(surface, LEARNING_SURFACE_ALIASES)
+            self.assertIn(runtime_config_key(surface), MODEL_CONFIG_KEYS)
             self.assertIn(f"{surface}.system", locked)
 
 

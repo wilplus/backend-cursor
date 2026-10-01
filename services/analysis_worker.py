@@ -217,6 +217,16 @@ def _run_full_analysis_impl(
                         session_id, added)
         _deg.run("verbal_cue_shadow", _verbal_cue_shadow)
 
+        # SHADOW-STAGE ACOUSTIC CUES (founder 2026-09-30, E10; ML-14): low
+        # volume and flat pitch from the clips' stored metrics, logged into
+        # the same shadow log, routing nothing. Best-effort like the above.
+        def _acoustic_cue_shadow() -> None:
+            from services.acoustic_cues import record_take as record_acoustic
+            added = record_acoustic(db, session_id)
+            logger.info("lab: acoustic cue shadow sid=%s added=%s",
+                        session_id, added)
+        _deg.run("acoustic_cue_shadow", _acoustic_cue_shadow)
+
         _emit(progress, "ideal_text", 55, "Building your Ideal Text…")
         tl.mark("ideal_text")
 

@@ -104,7 +104,7 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     # A pair release names whose passages it holds (0405): the person's
     # membership in a weekly file belongs to the account, not to a project;
     # the weekly refresh voids the release for the object sweep.
-    "pair_release_owners",
+    "pair_release_owners", "fine_tune_run_owners", "golden_judgements_by_owner",
 })
 
 #: Rows with no project column of their own that the take-record wipe
