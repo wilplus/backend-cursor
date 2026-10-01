@@ -288,6 +288,22 @@ class Config:
     R2_PAIR_RELEASE_BUCKET = (os.getenv("R2_PAIR_RELEASE_BUCKET") or "").strip()
     PAIR_RELEASE_SIGNING_KEY = _secret("PAIR_RELEASE_SIGNING_KEY") or ""
     PAIR_RELEASE_SIGNING_KEY_ID = (os.getenv("PAIR_RELEASE_SIGNING_KEY_ID") or "pair-release-key-1").strip()
+    # DOORS 3 AND 4, PER SURFACE (founder 2026-09-30, L6 to L9; build plan
+    # ML-11, ML-12). The weekly job starts a fine-tune for a surface only when
+    # MLC2_TRAINING_ENABLED is True AND the surface is named here ("open door
+    # 3 for surface S"); a promotion writes runtime_config only when
+    # MLC2_PROMOTION_ENABLED is True AND the surface is named here ("open
+    # door 4 for surface S"). Both empty today; both reviewed changes.
+    TRAINING_SURFACES: frozenset = frozenset()
+    PROMOTION_SURFACES: frozenset = frozenset()
+    # The base model a run fine-tunes (ML-11). An environment choice, not a
+    # door: changing it opens nothing.
+    OPENAI_FINE_TUNE_BASE_MODEL = (os.getenv("OPENAI_FINE_TUNE_BASE_MODEL")
+                                   or "gpt-4.1-mini-2025-04-14").strip()
+    # ML-13 (founder E8): the matcher orders equal-fit exercises by the
+    # learned helped rate only when this is True AND the jar's fair test
+    # meets its bar AND the founder said yes. Closed in code; never an env.
+    EXERCISE_LEARNED_ORDER_ENABLED = False
     # Slice 6 readiness replaces the ambiguous bool with an irreversible
     # three-state contract.  ``dark`` was the pre-cutover behavior;
     # ``founder_canary`` is THE FLIP (founder 2026-09-29, after the

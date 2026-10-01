@@ -57,12 +57,32 @@ SURFACES: dict[str, SurfaceContract] = {
         golden_eval_surface="best_presentation",
     ),
     # THE COACH'S ANSWER SURFACES (praise_line, clearer_version,
-    # exercise_script; founder 2026-09-30) are NOT contracts yet. Their
-    # (draft, final) pairs live in ``feedback_pairs`` (services.feedback_pairs)
-    # and their prompts are locked under those ids; a contract here is a
-    # trainable, promotable model slot with a runtime-config key and a
-    # learning-surface alias, which is door 3/4 work (build plan ML-11) and
-    # lands with its own authorisation, not with the pairs.
+    # exercise_script; founder 2026-09-30). Their (draft, final) pairs live in
+    # ``feedback_pairs`` and their prompts are locked under these ids. Since
+    # doors 3 and 4 were built (ML-11, ML-12, 2026-10-01) each is a model
+    # slot: a fine-tune produces a candidate, the golden evaluation runs it
+    # through ``compose_draft`` under ``evaluation_model_override``, and a
+    # promotion writes its runtime_config key. Both doors stay closed in
+    # code; with them shut ``_model_the_promotion_gate_allows`` serves the
+    # stock model whatever the row says.
+    "praise_line": SurfaceContract(
+        id="praise_line",
+        annotation_fields=("praise_line",),
+        runtime_aliases=("praise_line",),
+        golden_eval_surface="praise_line",
+    ),
+    "clearer_version": SurfaceContract(
+        id="clearer_version",
+        annotation_fields=("clearer_version",),
+        runtime_aliases=("clearer_version",),
+        golden_eval_surface="clearer_version",
+    ),
+    "exercise_script": SurfaceContract(
+        id="exercise_script",
+        annotation_fields=("exercise_script",),
+        runtime_aliases=("exercise_script",),
+        golden_eval_surface="exercise_script",
+    ),
 }
 
 # E-6 (audit 2026-09-22). TWO REGISTRIES DISAGREED AND THE LEGACY ONE WAS

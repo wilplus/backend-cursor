@@ -270,6 +270,18 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "derived_feedback", 35),
     PurgeDependency("golden_judgements", "golden_judgements", "snippet_id",
                     "snippet", "delete", "derived_feedback", 35),
+    # A text golden moment (0406) keeps the speaker's passage with the
+    # judgement, so it goes with the person; the evaluation then refuses
+    # the changed set until the founder re-seals it.
+    PurgeDependency("golden_judgements_by_owner", "golden_judgements",
+                    "owner_principal_id", "principal", "delete",
+                    "derived_feedback", 35),
+    # A fine-tune run names whose passages it learned from (0406): the row
+    # goes with the person, and the weekly sweep deletes the provider's
+    # files for a run with a withdrawn owner.
+    PurgeDependency("fine_tune_run_owners", "fine_tune_run_owners",
+                    "owner_principal_id", "principal", "delete",
+                    "derived_feedback", 35),
     PurgeDependency("coach_take_words", "coach_take_words",
                     "take_session_id", "take", "delete", "derived_feedback", 58),
     PurgeDependency("feedback_pairs_by_take", "feedback_pairs",
@@ -1132,6 +1144,13 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     "research_users",
     # A surface's sealed golden set: a count and a hash (0404).
     "golden_sets",
+    # Door 3 and 4 ledgers (0406): a run's file hashes, job and candidate
+    # ids; a report about a model; a promotion's history. Whose passages a
+    # run learned from is fine_tune_run_owners, a dependency above.
+    "fine_tune_runs", "evaluation_reports", "model_promotions",
+    # The view over fine_tune_runs and its owners that the withdrawal sweep
+    # reads (0406): no row of its own.
+    "fine_tune_runs_with_withdrawn_owner",
     "model_training_runs", "post_recording_questions",
     "pre_recording_questions", "professional_notes_specific_questions",
     "reference_distribution", "runtime_config", "slide_ab_verdicts",

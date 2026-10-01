@@ -15278,7 +15278,10 @@ class DatabaseService:
         return (res.data or [None])[0]
 
     def seal_golden_set(self, **fields: Any) -> Optional[dict]:
-        res = self.client.table("golden_sets").insert(fields).execute()
+        # An upsert: a set whose moment erasure removed is re-sealed by the
+        # founder with a new hash (0406); the service refuses while the
+        # sealed rows still match.
+        res = self.client.table("golden_sets").upsert(fields, on_conflict="surface").execute()
         return (res.data or [None])[0]
 
     # ── A pair remembers the yes (0405): consent refresh and releases ──────
@@ -15336,6 +15339,113 @@ class DatabaseService:
     def mark_pair_release_purged(self, release_id: str) -> None:
         (self.client.table("pair_releases").update({"purged_at": "now()"})
          .eq("id", str(release_id)).execute())
+
+    # ── Doors 3 and 4 (0406): the golden text pool, runs, reports, promotions ──
+    def list_golden_pair_pool(self, surface: str, *, limit: int = 500) -> list[dict]:
+        """Pairs with a passage, newest first: the founder's text pool. The
+        draft is not selected: the founder judges the coach's answer."""
+        res = (self.client.table("feedback_pairs")
+               .select("id,surface,final_text,passage_text,prompt_context,"
+                       "owner_principal_id,take_session_id,created_at")
+               .eq("surface", str(surface)).not_.is_("passage_text", "null")
+               .order("created_at", desc=True).limit(int(limit)).execute())
+        return list(res.data or [])
+
+    def get_feedback_pair(self, pair_id: str) -> Optional[dict]:
+        res = (self.client.table("feedback_pairs")
+               .select("id,surface,final_text,passage_text,prompt_context,owner_principal_id")
+               .eq("id", str(pair_id)).limit(1).execute())
+        return (res.data or [None])[0]
+
+    def list_trainable_pairs(self, surface: str, *, limit: int = 5000) -> list[dict]:
+        """Released, releasable, never trained, with a passage; oldest first.
+        Read at run start, so a withdrawal since the release keeps the pair
+        out. Raises."""
+        res = (self.client.table("feedback_pairs")
+               .select("id,surface,final_text,passage_text,prompt_context,owner_principal_id,"
+                       "releasable,release_id,trained_run_id,created_at")
+               .eq("surface", str(surface)).eq("releasable", True)
+               .not_.is_("release_id", "null").is_("trained_run_id", "null")
+               .not_.is_("passage_text", "null")
+               .order("created_at").limit(int(limit)).execute())
+        return list(res.data or [])
+
+    def list_trained_texts(self, run_id: str) -> dict:
+        """{trained: [texts], withdrawn: [texts]} for one run: the passages
+        and finals it learned from, and those whose owner has since
+        withdrawn (releasable turned false by the refresh)."""
+        res = (self.client.table("feedback_pairs")
+               .select("passage_text,final_text,releasable")
+               .eq("trained_run_id", str(run_id)).limit(5000).execute())
+        trained, withdrawn = [], []
+        for row in res.data or []:
+            texts = [t for t in (row.get("passage_text"), row.get("final_text")) if t]
+            trained.extend(texts)
+            if row.get("releasable") is not True:
+                withdrawn.extend(texts)
+        return {"trained": trained, "withdrawn": withdrawn}
+
+    def insert_fine_tune_run(self, **fields: Any) -> Optional[dict]:
+        res = self.client.table("fine_tune_runs").insert(fields).execute()
+        return (res.data or [None])[0]
+
+    def insert_fine_tune_run_owners(self, run_id: str, owner_principal_ids: list[str]) -> int:
+        rows = [{"run_id": str(run_id), "owner_principal_id": str(p)}
+                for p in sorted({str(p) for p in owner_principal_ids if p})]
+        if not rows:
+            return 0
+        self.client.table("fine_tune_run_owners").insert(rows).execute()
+        return len(rows)
+
+    def mark_feedback_pairs_trained(self, run_id: str, pair_ids: list[str]) -> int:
+        res = self.client.rpc("mark_feedback_pairs_trained_v1", {
+            "p_run_id": str(run_id), "p_pair_ids": [str(p) for p in pair_ids],
+        }).execute()
+        return int(res.data or 0)
+
+    def update_fine_tune_run(self, run_id: str, **fields: Any) -> None:
+        self.client.table("fine_tune_runs").update(fields).eq("id", str(run_id)).execute()
+
+    def list_fine_tune_runs(self, *, status: Optional[str] = None, limit: int = 20) -> list[dict]:
+        q = self.client.table("fine_tune_runs").select("*")
+        if status:
+            q = q.eq("status", status)
+        res = q.order("started_at", desc=True).limit(int(limit)).execute()
+        return list(res.data or [])
+
+    def list_fine_tune_runs_with_withdrawn_owner(self) -> list[dict]:
+        res = (self.client.table("fine_tune_runs_with_withdrawn_owner").select("*")
+               .limit(500).execute())
+        return list(res.data or [])
+
+    def insert_evaluation_report(self, **fields: Any) -> Optional[dict]:
+        res = self.client.table("evaluation_reports").insert(fields).execute()
+        return (res.data or [None])[0]
+
+    def get_evaluation_report(self, report_id: str) -> Optional[dict]:
+        res = (self.client.table("evaluation_reports").select("*")
+               .eq("id", str(report_id)).limit(1).execute())
+        return (res.data or [None])[0]
+
+    def list_evaluation_reports(self, *, limit: int = 20) -> list[dict]:
+        res = (self.client.table("evaluation_reports").select("*")
+               .order("created_at", desc=True).limit(int(limit)).execute())
+        return list(res.data or [])
+
+    def insert_model_promotion(self, **fields: Any) -> Optional[dict]:
+        res = self.client.table("model_promotions").insert(fields).execute()
+        return (res.data or [None])[0]
+
+    def kill_model_promotions(self, *, surface: str, killed_by: str,
+                              kill_reason: str, killed_at: str) -> None:
+        (self.client.table("model_promotions")
+         .update({"killed_at": killed_at, "killed_by": killed_by, "kill_reason": kill_reason})
+         .eq("surface", str(surface)).is_("killed_at", "null").execute())
+
+    def list_model_promotions(self, *, limit: int = 20) -> list[dict]:
+        res = (self.client.table("model_promotions").select("*")
+               .order("promoted_at", desc=True).limit(int(limit)).execute())
+        return list(res.data or [])
 
     def insert_feedback_pair(self, **fields: Any) -> Optional[dict]:
         """One (draft, final) pair (0402). Raises on failure; the service

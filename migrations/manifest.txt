@@ -441,3 +441,4 @@
 0403	a_word_for_this_take.sql
 0404	the_ledger_keeps_its_weeks.sql
 0405	a_pair_remembers_the_yes.sql
+0406	a_model_learns_only_from_the_yes.sql

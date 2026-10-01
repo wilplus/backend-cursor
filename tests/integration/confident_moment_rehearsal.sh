@@ -483,6 +483,8 @@ hard migrations/the_ledger_keeps_its_weeks.sql
 # 0405: a pair remembers the yes. Twice.
 hard migrations/a_pair_remembers_the_yes.sql
 hard migrations/a_pair_remembers_the_yes.sql
+hard migrations/a_model_learns_only_from_the_yes.sql
+hard migrations/a_model_learns_only_from_the_yes.sql
 
 # R-1 (audit 2026-09-22). 0299 created the two learning-surface tables with
 # the same GRANT ALL TO service_role as 0296, and was never in this chain, so

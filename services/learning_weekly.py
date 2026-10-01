@@ -46,6 +46,8 @@ def migration_draft(cue: str, *, next_number: str = "NNNN") -> dict:
     shadow cue to detected, in the house shape (idempotent, no env var).
     Returned as text for the founder's page; nothing is written to disk."""
     slug = f"{cue}_is_detected"
+    from services.acoustic_cues import CUES as ACOUSTIC_CUES
+    detector = "acoustic_cues" if cue in ACOUSTIC_CUES else "verbal_cues"
     sql = (
         f"-- {cue} is detected (the weekly learning job read it READY; founder go\n"
         f"-- merges this file, which IS the promotion: ML-14). Idempotent.\n"
@@ -53,7 +55,7 @@ def migration_draft(cue: str, *, next_number: str = "NNNN") -> dict:
         "UPDATE public.speaking_error\n"
         "   SET status = 'detected', updated_at = now()\n"
         f" WHERE error_id = '{cue}' AND status = 'shadow'\n"
-        f"   AND detector_ref = 'verbal_cues:{cue}';\n"
+        f"   AND detector_ref = '{detector}:{cue}';\n"
         "COMMIT;\n"
     )
     return {"cue": cue, "file": str(Path(MIGRATIONS_DIR) / f"{slug}.sql"),
@@ -61,7 +63,7 @@ def migration_draft(cue: str, *, next_number: str = "NNNN") -> dict:
 
 
 def run_weekly(database: Any, *, config: Any = None,
-               now: Optional[datetime] = None) -> dict:
+               now: Optional[datetime] = None, provider: Any = None) -> dict:
     """The job. Returns what it wrote, for the cron's log and the founder's
     page. Raises only when the ledger itself cannot be read."""
     from services.learning_ledger import ledger as read_ledger
@@ -84,7 +86,13 @@ def run_weekly(database: Any, *, config: Any = None,
                              week_start_day=week_start(moment), storage=storage)
     # Revocation purges the copies, whatever the door says (ML-8).
     swept = sweep_voided(database, storage)
-    snapshot["doors_pass"] = {"consent_refresh": consent, "release_sweep": swept}
+    # Door 3's weekly pass (ML-11): the withdrawal sweep at the provider,
+    # the poll of running jobs (a finished one is evaluated), and a start
+    # where the door, the founder's sentence, the sealed golden set and 200
+    # trainable pairs all hold. Closed today: every surface says why.
+    training = _training_pass(database, config, now=moment, provider=provider)
+    snapshot["doors_pass"] = {"consent_refresh": consent, "release_sweep": swept,
+                              "training": training}
     row = {
         "week_start": week_start(moment).isoformat(),
         "ledger_version": str(snapshot.get("ledger_version") or ""),
@@ -104,6 +112,7 @@ def run_weekly(database: Any, *, config: Any = None,
         "exported": exported,
         "consent_refresh": consent,
         "release_sweep": swept,
+        "training": training,
         "unavailable": list(snapshot.get("unavailable") or []),
         "doors": snapshot.get("doors"),
     }
@@ -132,3 +141,14 @@ def _export_pairs(database: Any, snapshot: dict, config: Any,
             out.append({"surface": surface, "exported": 0, "waiting": None,
                         "why": f"export failed: {str(e)[:120]}"})
     return out
+
+
+def _training_pass(database: Any, config: Any, *, now: Optional[datetime],
+                   provider: Any = None) -> dict:
+    """Door 3's step, never a reason the snapshot is not written."""
+    from services.model_training import run_training_pass
+    try:
+        return run_training_pass(database, config=config, provider=provider, now=now)
+    except Exception as e:  # noqa: BLE001 -- named, never a silent zero
+        _log.warning("training pass failed: %s", e, exc_info=True)
+        return {"unavailable": str(e)[:200]}

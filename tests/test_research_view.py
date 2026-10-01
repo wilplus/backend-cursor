@@ -96,6 +96,15 @@ class _Db:
     def list_pair_releases(self, limit=20):
         return []
 
+    def list_evaluation_reports(self, limit=20):
+        return []
+
+    def list_fine_tune_runs(self, status=None, limit=20):
+        return []
+
+    def list_model_promotions(self, limit=20):
+        return []
+
     def count_feedback_pairs(self):
         return {}
 

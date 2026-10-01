@@ -89,10 +89,17 @@ def ledger(database: Any, *, config: Any = None) -> dict:
     unavailable: list[str] = []
     pairs = _read("pairs", lambda: counts(database), unavailable) or {}
     jar = _read("exercise_jar", lambda: readiness(database), unavailable) or {}
+    from services.acoustic_cues import ACOUSTIC_CUES_VERSION, CUES as ACOUSTIC_CUES
     cues = _read(
         "shadow_cues",
         lambda: report(database, detector_version=VERBAL_CUES_VERSION, cues=CUES),
         unavailable) or {}
+    # The two acoustic shadow cues (ML-14) sit in the same ledger, under
+    # their own detector version, against the same bar.
+    cues.update(_read(
+        "acoustic_cues",
+        lambda: report(database, detector_version=ACOUSTIC_CUES_VERSION, cues=ACOUSTIC_CUES),
+        unavailable) or {})
     for surface, entry in pairs.items():
         entry["run_bar"] = PAIRS_PER_RUN
         entry["ready_for_run"] = entry.get("unexported", 0) >= PAIRS_PER_RUN

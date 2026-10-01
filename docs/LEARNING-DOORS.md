@@ -10,8 +10,8 @@ nothing left.
 |------|----------|------------|--------------|
 | 1 · the training yes | `MLC2_TRAINING_SWITCH_ENABLED` | counsel answered (2026-10-01: all three surfaces); the founder signed counsel's wording (2026-10-01); the legal drafts carry counsel's five fixes (done 2026-10-01, counsel reads once more); Privacy 3.2 + Terms 3.2 registered as a processing policy version and re-accepted (C1); the policy row configured with the signed wording (`configure_mlc2_training_consent_policy_v1`) | "open door 1" |
 | 2 · dataset releases | `MLC2_DATASET_RELEASES_ENABLED` and, per surface, `PAIR_RELEASE_SURFACES` | door 1 is open, the release bucket and signing key are set on the web service, and the founder names the surface | "open door 2 for surface S" (S ∈ praise_line, clearer_version, exercise_script) |
-| 3 · training | `MLC2_TRAINING_ENABLED` | the golden set for the surface is sealed (ML-10) and 200 releasable pairs exist | "open door 3 for surface S" |
-| 4 · promotion | `MLC2_PROMOTION_ENABLED` | the golden evaluation shows the candidate ahead of the baseline | "open door 4 for surface S" |
+| 3 · training | `MLC2_TRAINING_ENABLED` and, per surface, `TRAINING_SURFACES` | the OpenAI DPA with SCCs obliges file deletion; the key may fine-tune; the golden set for the surface is sealed (ML-10); 200 trainable pairs exist | "open door 3 for surface S" |
+| 4 · promotion | `MLC2_PROMOTION_ENABLED` and, per surface, `PROMOTION_SURFACES` | an evaluation report passed (candidate ahead, regurgitation clean) under the current prompt lock | "open door 4 for surface S" |
 
 ## Door 1 · what is built (ML-8, migration 0405)
 
@@ -145,6 +145,73 @@ PAIR_RELEASE_SIGNING_KEY_ID=pair-release-key-1
   account and token as the others; the token must be scoped to it too, or
   the put fails with a silent 403 (see OPS-SECRETS-AND-STAGING.md §3).
   Config-first: set them before the surface is named.
+
+## Door 3 · what is built (ML-10, ML-11, migration 0406)
+
+- **The golden set for a pair surface (ML-10).** On the research screen the
+  founder judges fifty pairs per surface: the passage and the coach's
+  final, never the machine's draft, one question (is this the right
+  answer for this passage? yes / no / not sure). A judgement keeps both
+  texts and names the owner, so the sealed set stays what was sealed and
+  erasure still reaches it; a set a purge changed is refused by the
+  evaluation until the founder judges a replacement and re-seals.
+  `services/golden_set.py` `sealed_rows` is the one read the evaluation
+  uses; it raises on an unsealed or changed set.
+- **The run (`services/model_training.py`).** A surface trains only when
+  `MLC2_TRAINING_ENABLED` is True AND it is in `TRAINING_SURFACES` AND the
+  key is set AND its golden set is sealed AND 200 trainable pairs wait:
+  pairs that left through door 2, are still releasable when the run
+  starts (exclusion at run start), carry their passage (0406 backfilled
+  it; `record_pair` stores it since), and were never trained on (a pair
+  trains once, `mark_feedback_pairs_trained_v1`). The file is the serving
+  prompt example for example, split by owner principal (train, validation;
+  the test bucket held out). One OpenAI job per run; the row remembers the
+  file, the job and the owners.
+- **The poll.** Each week a running job is read; a finished one loses its
+  files at the provider at once; a succeeded one gets its candidate id and
+  the golden evaluation (`services/golden_evaluation.py`): token F1
+  against the founder's confirmed finals, candidate vs stock, at least 20
+  references, and counsel's regurgitation check (an 8-word window of any
+  withdrawn speaker's text in any answer fails the model). The report is
+  a row; the research screen lists it. Nothing promotes.
+- **The withdrawal sweep** (counsel 2026-10-01): a run with an owner whose
+  yes is gone loses its files at the provider now and its job if still
+  running, whatever the door says. A model already trained stays, marked
+  withdrawn-from; only a passing regurgitation check lets it be promoted,
+  and a failing one is retrained without those pairs.
+- Variables: `OPENAI_API_KEY` (the worker's key must be allowed to
+  fine-tune), `OPENAI_FINE_TUNE_BASE_MODEL` (default
+  `gpt-4.1-mini-2025-04-14`). Config-first: set before the sentence.
+
+## Door 4 · what is built (ML-12, migration 0406)
+
+- The three answer surfaces are contracts (`ml_surface_contracts`), with
+  runtime keys on the allowlist (`runtime_model_gate`, the SQL guard's
+  widened RPC) and canonical aliases (praise → praise_generation, clearer
+  version → correction_generation, exercise script →
+  coach_comment_generation). `compose_draft` already serves through
+  `chat_complete`, so a promoted id is served the moment the door opens and
+  the stock model until then (`_model_the_promotion_gate_allows`).
+- `services/model_promotion.py` `promote` refuses unless
+  `MLC2_PROMOTION_ENABLED` is True AND the surface is in
+  `PROMOTION_SURFACES` AND the report passed under the current prompt lock;
+  it writes one runtime key through the only writer and a `model_promotions`
+  history row. `kill` returns the surface to the stock model within one
+  request, door or no door. `scripts/promote_pair_surface.py` is the hand.
+
+## The two model-free lanes (ML-13, ML-14)
+
+- **Learned exercise order** (`services/exercise_learned_order.py`): with
+  `EXERCISE_LEARNED_ORDER_ENABLED` True, the jar past its bar and the fair
+  test above its bar, equal-fit ties in the matcher follow the learned
+  helped rate; otherwise today's order exactly. The eligible pool never
+  changes. Closed in code until the founder's yes.
+- **Two acoustic shadow cues** (`services/acoustic_cues.py`): `low_volume`
+  (the voice under 12 dB above the room, by the clip's own noise meter) and
+  `flat_pitch` (pitch variation under 6% of its mean on 30+ frames), logged
+  per Take into the shadow log, routing nothing; the ledger reports them
+  against the same bar, and the weekly job drafts their promotion
+  migration like the verbal cues'.
 
 ## What never changes by a door
 

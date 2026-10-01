@@ -62,6 +62,9 @@ def _healthy_modules(calls):
         "services.verbal_cues": _module(
             "services.verbal_cues",
             record_take=lambda db, sid: calls.append("verbal_cues") or 0),
+        "services.acoustic_cues": _module(
+            "services.acoustic_cues",
+            record_take=lambda db, sid: calls.append("acoustic_cues") or 0),
         "services.session_cadence": _module(
             "services.session_cadence",
             fire_arc_start=lambda *a, **k: calls.append("cadence")),
@@ -80,7 +83,7 @@ def test_a_healthy_authed_run_leaves_the_log_empty():
     readout, sent = _run_worker(_healthy_modules(calls), degradation=log)
     assert readout == {"snippets": [1]}
     assert sent is True
-    assert calls == ["globals", "verbal_cues", "cadence", "cards"]
+    assert calls == ["globals", "verbal_cues", "acoustic_cues", "cadence", "cards"]
     assert log.payload() == {}
 
 
@@ -92,6 +95,9 @@ def test_every_best_effort_stage_names_itself_in_order():
         "services.verbal_cues": _module(
             "services.verbal_cues",
             record_take=_raise(LookupError("cue"))),
+        "services.acoustic_cues": _module(
+            "services.acoustic_cues",
+            record_take=_raise(ArithmeticError("pitch"))),
         "services.session_cadence": _module(
             "services.session_cadence",
             fire_arc_start=_raise(KeyError("goal"))),
@@ -111,6 +117,7 @@ def test_every_best_effort_stage_names_itself_in_order():
     assert [d.as_payload() for d in log.items] == [
         {"stage": "take_analysis.session_globals", "kind": "RuntimeError"},
         {"stage": "take_analysis.verbal_cue_shadow", "kind": "LookupError"},
+        {"stage": "take_analysis.acoustic_cue_shadow", "kind": "ArithmeticError"},
         {"stage": "take_analysis.cadence", "kind": "KeyError"},
         {"stage": "take_analysis.auto_send", "kind": "TimeoutError"},
         {"stage": "take_analysis.arc_cards", "kind": "ValueError"},
