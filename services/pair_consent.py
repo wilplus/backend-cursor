@@ -11,10 +11,12 @@ that works either way:
     pairs releasable and a withdrawal makes them not, voiding any release
     that carried them.
 
-WHICH SURFACES NEED THE YES is counsel's question (L1). Until the answer
-lands, every surface does: a coach's words about a speaker's passage carry
-the passage. The constant below changes by a reviewed change with counsel's
-answer, never by a toggle. AC-9: nothing here reaches a speaker.
+WHICH SURFACES NEED THE YES: all three, counsel 2026-10-01 (a coach's note
+about a speaker's passage is the speaker's personal data even without the
+passage attached; basis Art 6(1)(a) with Art 9(2)(a), never legitimate
+interest). The constant below changes only by a reviewed change carrying a
+new answer from counsel, never by a toggle. AC-9: nothing here reaches a
+speaker.
 """
 from __future__ import annotations
 
@@ -26,7 +28,7 @@ from services.feedback_pairs import SURFACES
 _log = logging.getLogger(__name__)
 
 #: The pair surfaces whose release needs the speaker's training yes. All
-#: three until counsel says otherwise (founder 2026-09-30, L1).
+#: three (counsel 2026-10-01; founder 2026-09-30, L1).
 CONSENT_REQUIRED_SURFACES: frozenset = frozenset(SURFACES)
 
 STATES = ("yes", "no", "not_needed", "unknown")
