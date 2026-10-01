@@ -177,16 +177,27 @@ class DoorTests(unittest.TestCase):
 
     def test_the_doors_in_config_are_what_the_founder_said(self):
         """Door 1 opened 2026-10-01 ("open door 1"); door 2 opened the same
-        day for exercise_script only ("open door 2 for surface
-        exercise_script", N16). The retired DPO dataset lane stays dark."""
+        day for exercise_script ("open door 2 for surface exercise_script",
+        N16) and then for praise_line and clearer_version by their own
+        sentences (C4, N18). The retired DPO dataset lane stays dark; the
+        Phase 7 coach-word surfaces have no sentence yet."""
         from config import Config
         self.assertTrue(Config.MLC2_TRAINING_SWITCH_ENABLED)
         self.assertTrue(Config.MLC2_PAIR_RELEASES_ENABLED)
-        self.assertEqual(Config.PAIR_RELEASE_SURFACES, frozenset({"exercise_script"}))
+        three = frozenset({"exercise_script", "praise_line", "clearer_version"})
+        self.assertEqual(Config.PAIR_RELEASE_SURFACES, three)
         self.assertFalse(Config.MLC2_DATASET_RELEASES_ENABLED)
-        self.assertEqual(pr.authorised_surfaces(Config), frozenset({"exercise_script"}))
-        self.assertIn("no founder sentence", pr.why_not(Config, "praise_line") or "")
-        self.assertIn("no founder sentence", pr.why_not(Config, "clearer_version") or "")
+        self.assertEqual(pr.authorised_surfaces(Config), three)
+        for surface in sorted(three):
+            reason = pr.why_not(Config, surface)
+            # With the bucket and key on the service the answer is None; in
+            # CI they are unset, so the only reason left is one of those two.
+            self.assertTrue(reason is None or "no release bucket" in reason
+                            or "no signing key" in reason, (surface, reason))
+        for held in ("coach_moment_line", "coach_take_word"):
+            self.assertIn("no founder sentence", pr.why_not(Config, held) or "")
+        self.assertFalse(Config.MLC2_TRAINING_ENABLED)
+        self.assertFalse(Config.MLC2_PROMOTION_ENABLED)
 
 
 class ExportTests(unittest.TestCase):

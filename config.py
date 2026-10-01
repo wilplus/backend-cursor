@@ -289,12 +289,20 @@ class Config:
     # is True AND the surface is named here, each by a reviewed change carrying
     # the founder's sentence ("open door 2 for surface S").
     # OPENED 2026-10-01 for exercise_script by the founder's sentence "open
-    # door 2 for surface exercise_script" (N16). The pair door is its own
-    # constant: MLC2_DATASET_RELEASES_ENABLED above gates the retired DPO
-    # export lane (scripts/export_openai_preference_jsonl.py) and stays
-    # False; a pair release and a DPO dataset release are different lanes.
+    # door 2 for surface exercise_script" (N16), and the same day for
+    # praise_line and clearer_version by "open door 2 for surface
+    # praise_line" and "open door 2 for surface clearer_version" (C4, N18).
+    # The pair door is its own constant: MLC2_DATASET_RELEASES_ENABLED above
+    # gates the retired DPO export lane
+    # (scripts/export_openai_preference_jsonl.py) and stays False; a pair
+    # release and a DPO dataset release are different lanes. The coach-word
+    # surfaces of Phase 7 (coach_moment_line, coach_take_word) are NOT here:
+    # their door waits for a qualified lawyer's answer and the founder's
+    # sentence after it.
     MLC2_PAIR_RELEASES_ENABLED = True
-    PAIR_RELEASE_SURFACES: frozenset = frozenset({"exercise_script"})
+    PAIR_RELEASE_SURFACES: frozenset = frozenset({
+        "exercise_script", "praise_line", "clearer_version",
+    })
     # Where a release goes and what signs its manifest (ML-9). Unset, the
     # exporter refuses and says why; nothing leaves.
     R2_PAIR_RELEASE_BUCKET = (os.getenv("R2_PAIR_RELEASE_BUCKET") or "").strip()
