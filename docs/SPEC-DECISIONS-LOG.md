@@ -790,3 +790,10 @@ door one."
    signature (PAdES, as for 01 and 06); its signed hash goes into
    `SIGNED-ARTIFACTS.md` row 13 and the registration SQL in
    `docs/LEARNING-DOORS.md`.
+5. **PUBLISHED 2026-10-01 09:00:43 UTC.** The founder ran the four pieces of
+   `scripts/phase1_policy_publish_training_3_2.sql` in the Supabase SQL
+   editor: STEP 0 resolved all five purposes operational; STEP 1 registered
+   `phase1-2026-10-01` (status approved, policy_id `dbd20044-099d-453e-9feb-9d5e01f3da45…`);
+   STEP 2 activated it (cutoff 2026-10-01T09:00:43Z), retiring
+   `phase1-2026-09-23`; STEP 6 read privacy_has_4a = 1, terms_has_licence = 1,
+   placeholder_left = false. Every speaker is now asked to accept 3.2.

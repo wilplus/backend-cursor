@@ -1,5 +1,7 @@
 -- Publish Privacy 3.2 and Terms 3.2: the training choice (door 1).
--- Founder approval 2026-10-01 (SPEC-DECISIONS-LOG N15). NOT YET RUN.
+-- Founder approval 2026-10-01 (SPEC-DECISIONS-LOG N15).
+-- RAN IN PRODUCTION 2026-10-01 09:00 UTC, by the founder, in four pieces;
+-- phase1-2026-10-01 is active. Kept as the record of what was published.
 --
 -- ⚠ RUN BY HAND, ONCE, IN THE SUPABASE SQL EDITOR (service role), step by
 -- step. Nothing here runs on merge: this file is deliberately absent from

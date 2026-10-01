@@ -80,8 +80,10 @@ after withdrawal or erasure.
 1. ~~the founder signs the sentence and the four lines~~ done 2026-10-01;
 2. ~~the legal drafts carry counsel's five fixes~~ done 2026-10-01; counsel
    reads `10`, `11`, `12` once more and confirms the six-year period;
-3. the founder approves the final Privacy 3.2 and Terms 3.2 text; they are
-   registered as a processing policy version and every user re-accepts
+3. ~~the founder approves the final Privacy 3.2 and Terms 3.2 text; they are
+   registered as a processing policy version and every user re-accepts~~
+   DONE 2026-10-01 09:00 UTC: `phase1-2026-10-01` is the active policy
+   (N15 item 5); re-acceptance runs from here
    (SPEC C1: a training yes is refused for anyone who has not accepted the
    version that introduced training). This is the long pole: it is the
    existing policy-registration path (`legal/phase1-2026.1/04-…`,
