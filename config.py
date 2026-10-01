@@ -332,6 +332,15 @@ class Config:
     # routes answer exactly as before and the walk-take read is 404. A
     # reviewed change flips it after the founder's yes.
     COACH_STUDENTS_ENABLED = False
+
+    # PHASE 1 of the after-practice paths (founder 2026-10-01, F2): the
+    # exercise fallback ladder. On, a moment read weak with an error that no
+    # exercise targets gets the general exercise for that error (catalogue
+    # flag matching_criteria.general_for), else the universal warm-up
+    # (hear-every-word-v1, once a reviewed change activates it). Fallbacks
+    # are traced and never teach the exercise ranker. Off, matching is
+    # exactly what it was.
+    EXERCISE_FALLBACK_LADDER_ENABLED = False
     # Slice 6 readiness replaces the ambiguous bool with an irreversible
     # three-state contract.  ``dark`` was the pre-cutover behavior;
     # ``founder_canary`` is THE FLIP (founder 2026-09-29, after the

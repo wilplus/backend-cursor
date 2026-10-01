@@ -55,8 +55,9 @@ MIN_COUNTED = 300
 MIN_PER_EXERCISE = 30
 
 #: Why an exposure is not counted, in the order the checks run.
-EXCLUSIONS = ("untraced", "no_targeted_problem", "rules_changed", "repeat",
-              "below_minimum_probability", "no_attempt", "no_valid_attempt")
+EXCLUSIONS = ("untraced", "fallback", "no_targeted_problem", "rules_changed",
+              "repeat", "below_minimum_probability", "no_attempt",
+              "no_valid_attempt")
 
 
 def targeted_problems(trace: Any, exercise_id: str) -> frozenset[str]:
@@ -130,6 +131,12 @@ def _gate(exposure: dict, *, trace: Any, assignment: dict,
     Marks its targeted problems as seen for the speaker either way."""
     if not isinstance(trace, dict):
         return "untraced"
+    if trace.get("fallback"):
+        # F2 (founder 2026-10-01): a general exercise or the warm-up served
+        # because nothing targeted what fired. Traced, never learned from:
+        # out of the count, the labels, the fair test, the evaluation and
+        # the delayed measure alike.
+        return "fallback"
     targets = targeted_problems(trace, str(exposure.get("exercise_id") or ""))
     if not targets:
         return "no_targeted_problem"

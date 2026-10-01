@@ -150,7 +150,7 @@ class CountTests(unittest.TestCase):
                  .add(owner="g", valid=False))
         out = world.build()
         self.assertEqual(out["excluded"], {
-            "untraced": 1, "no_targeted_problem": 1, "rules_changed": 1,
+            "untraced": 1, "fallback": 0, "no_targeted_problem": 1, "rules_changed": 1,
             "repeat": 1, "below_minimum_probability": 1, "no_attempt": 1,
             "no_valid_attempt": 1})
         self.assertEqual(out["counted"], 1)          # d's first
