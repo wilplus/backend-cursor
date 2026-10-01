@@ -137,7 +137,11 @@ class HandOffTests(unittest.TestCase):
         run["charged"].assert_not_called()
         run["flipped"].assert_not_called()
         self.assertEqual(run["events"], [])
-        self.assertEqual(run["logs"], [])
+        # One internal line names the filter the Take left the coach queue
+        # at (founder 2026-10-01, 0a); nothing reaches a user.
+        self.assertEqual(run["logs"], [
+            "lab_send: coach hand-off refused sid=s user=u1 code=NO_RECEIPT "
+            "filter=coach_delivery_authorization"])
 
     def test_a_delivered_take_records_its_permit_started_then_completed(self):
         run = self._send({"recording_id": "rec-1"})

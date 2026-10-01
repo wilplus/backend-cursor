@@ -56,8 +56,24 @@ class QueueTests(unittest.TestCase):
             [{"id": "t", "user_id": "u", "created_at": "x"}],
             moments_for=lambda r: [], ratings_for=lambda s: {},
             request_for=lambda s, n: None, pseudonym_for=lambda u: "Calm Heron")
-        self.assertEqual(set(out[0]), {"pseudonym", "takes", "waiting"})
+        self.assertEqual(set(out[0]), {"pseudonym", "takes", "waiting", "waiting_for_text"})
         self.assertNotIn("user_id", out[0]["takes"][0])
+
+    def test_a_take_whose_bookmarks_are_not_frozen_rides_as_waiting_for_text(self):
+        # Founder 2026-10-01 (A1): never silently absent. `moments_for` says
+        # None for "not frozen yet" and [] for "frozen, nothing bookmarked".
+        out = moments_queue(
+            [{"id": "t-new", "user_id": "u", "created_at": "2026-10-01T09:00"},
+             {"id": "t-old", "user_id": "u", "created_at": "2026-09-30T09:00"}],
+            moments_for=lambda r: None if r["id"] == "t-new" else [],
+            ratings_for=lambda s: {}, request_for=lambda s, n: None,
+            pseudonym_for=lambda u: "Calm Otter")
+        takes = {t["session_id"]: t for t in out[0]["takes"]}
+        self.assertTrue(takes["t-new"]["waiting_for_text"])
+        self.assertEqual(takes["t-new"]["moments"], [])
+        self.assertEqual(takes["t-new"]["waiting"], 0)
+        self.assertFalse(takes["t-old"]["waiting_for_text"])
+        self.assertEqual(out[0]["waiting_for_text"], 1)
 
 
 if __name__ == "__main__":

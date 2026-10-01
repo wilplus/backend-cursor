@@ -12457,14 +12457,19 @@ class DatabaseService:
         (fold_reads_out_of_queue) — a re-read reviews INSIDE its parent
         take's packet, never as its own row.
         """
+        # `recording_id` IS LOAD-BEARING (P2-19 follow-up, 0a): the coach
+        # queue resolves a Take's language from intake_context, else the
+        # recording's detected transcription_language, else the snippets.
+        # Without the id here the recording fallback silently never ran and
+        # a Take with no declared language was withheld from every coach.
         _full_cols = (
             "id, user_id, intake_context, review_requested_at, "
-            "created_at, results_published_at, "
+            "created_at, results_published_at, recording_id, "
             "recording_kind, paired_session_id, arc_id, take_index"
         )
         _base_cols = (
             "id, user_id, intake_context, review_requested_at, "
-            "created_at, results_published_at"
+            "created_at, results_published_at, recording_id"
         )
         try:
             try:
