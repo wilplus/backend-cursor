@@ -150,6 +150,9 @@ def judge_attempt(database: Any, practice: Mapping, attempt_id: str,
             "status": "completed",
             "selected_attempt_id": str(attempt_id),
             "final_user_answer": str(answer),
+            # F7 (founder 2026-10-01): where the speaker landed, for reading
+            # only. The scorekeeper reads the first valid attempt instead.
+            "landed_attempt_index": target.get("attempt_index"),
             "closed_at": now,
         }) or practice
     result["attempt_transcript"] = practice_words(target.get("transcript"))

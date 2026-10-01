@@ -13,7 +13,7 @@ Module 8 is different by design, and this is the one place that says how:
   (0299 stays at seven). An exercise is shown as a card, and its exposure is
   recorded once per frozen 80/20 assignment when the speaker's client
   confirms the card rendered (``confident_voice_exercise_exposures``, 0387);
-* its label is the practice outcome (``exercise-adequacy-label-v1``,
+* its label is the practice outcome (``exercise-adequacy-label-v2``,
   ``practice_more_confident_outcomes``), never a speaker's or a coach's
   answer about the exercise;
 * its readiness is its own bar, 300 first-exposure attempts with a valid

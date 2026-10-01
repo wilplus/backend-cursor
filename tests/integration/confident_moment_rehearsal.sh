@@ -485,6 +485,8 @@ hard migrations/a_pair_remembers_the_yes.sql
 hard migrations/a_pair_remembers_the_yes.sql
 hard migrations/a_model_learns_only_from_the_yes.sql
 hard migrations/a_model_learns_only_from_the_yes.sql
+hard migrations/a_practice_remembers_where_it_landed.sql
+hard migrations/a_practice_remembers_where_it_landed.sql
 
 # R-1 (audit 2026-09-22). 0299 created the two learning-surface tables with
 # the same GRANT ALL TO service_role as 0296, and was never in this chain, so

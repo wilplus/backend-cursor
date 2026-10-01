@@ -1,4 +1,4 @@
-"""The "exercise rendered" confirmation (0387; label spec exercise-adequacy-label-v1).
+"""The "exercise rendered" confirmation (0387; label spec exercise-adequacy-label-v2).
 
 Pins:
   * only the moment's owner can confirm, and only the exercise the draw chose;

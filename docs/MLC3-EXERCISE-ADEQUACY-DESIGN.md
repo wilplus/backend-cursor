@@ -176,7 +176,12 @@ may never override the gate, learn the gate's eligibility decision as its
 label, or treat an exclusion as a negative adequacy outcome. A separate
 trainable ranking surface is not created initially.
 
-### 3.5 Label specification `exercise-adequacy-label-v1`
+### 3.5 Label specification `exercise-adequacy-label-v2`
+
+> v2 (founder 2026-10-01, F7) changes item 3 only: the endpoint is the first
+> valid attempt, not the last. The readiness counter was below 300/30 when it
+> merged, so no result was ever read under v1. The founder's delayed human
+> measure is named `exercise-human-delayed-v1`, not a v2 variant.
 
 Founder-approved 2026-09-28. It replaces the open requirements this section
 used to list; every item they named is decided below. Nothing here authorizes
@@ -206,10 +211,14 @@ Raw horizons stay separate and are all still stored:
      or any answer or judgment (item 10).
 2. **Horizon.** `same_session_same_passage` is the only primary horizon. The
    other two are stored as raw evidence and are never pooled with it.
-3. **Endpoint attempt.** The **last valid** attempt of at most three. *Valid*
+3. **Endpoint attempt.** The **first valid** attempt of at most three (F7,
+   signed 1 Oct 2026: "The endpoint of a practice is its first valid attempt,
+   fixed in advance. Later attempts are stored and never replace it, so when
+   the speaker stops cannot change whether the exercise helped."). *Valid*
    means it passes the safety half of the clip gate (aligned to the same
-   passage, reliable audio, a confidence read present). The attempt is fixed
-   in advance; the best attempt is never chosen after the fact.
+   passage, reliable audio, a confidence read present). The attempt the
+   speaker answered Yes or In-between on is stored as `landed_attempt_index`,
+   descriptive only; no scorer reads it.
 4. **Baseline.** The original clip as frozen in its trace.
 5. **Exposure and missing data.**
    - **An exposure exists only once the client confirms the exercise
