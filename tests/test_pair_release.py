@@ -27,7 +27,7 @@ from services import learning_weekly as lw
 
 
 class _Config:
-    MLC2_DATASET_RELEASES_ENABLED = False
+    MLC2_PAIR_RELEASES_ENABLED = False
     PAIR_RELEASE_SURFACES: frozenset = frozenset()
     R2_PAIR_RELEASE_BUCKET = ""
     PAIR_RELEASE_SIGNING_KEY = ""
@@ -36,7 +36,7 @@ class _Config:
 
 def _open(*surfaces):
     c = _Config()
-    c.MLC2_DATASET_RELEASES_ENABLED = True
+    c.MLC2_PAIR_RELEASES_ENABLED = True
     c.PAIR_RELEASE_SURFACES = frozenset(surfaces)
     c.R2_PAIR_RELEASE_BUCKET = "willab-pair-releases"
     c.PAIR_RELEASE_SIGNING_KEY = "k" * 32
@@ -175,12 +175,18 @@ class DoorTests(unittest.TestCase):
         self.assertEqual(storage.objects, {})
         self.assertEqual(db.releases, [])
 
-    def test_the_doors_ship_closed_in_config(self):
+    def test_the_doors_in_config_are_what_the_founder_said(self):
+        """Door 1 opened 2026-10-01 ("open door 1"); door 2 opened the same
+        day for exercise_script only ("open door 2 for surface
+        exercise_script", N16). The retired DPO dataset lane stays dark."""
         from config import Config
-        self.assertFalse(Config.MLC2_DATASET_RELEASES_ENABLED)
-        # Door 1 opened 2026-10-01 by the founder's sentence; door 2 is shut.
         self.assertTrue(Config.MLC2_TRAINING_SWITCH_ENABLED)
-        self.assertEqual(Config.PAIR_RELEASE_SURFACES, frozenset())
+        self.assertTrue(Config.MLC2_PAIR_RELEASES_ENABLED)
+        self.assertEqual(Config.PAIR_RELEASE_SURFACES, frozenset({"exercise_script"}))
+        self.assertFalse(Config.MLC2_DATASET_RELEASES_ENABLED)
+        self.assertEqual(pr.authorised_surfaces(Config), frozenset({"exercise_script"}))
+        self.assertIn("no founder sentence", pr.why_not(Config, "praise_line") or "")
+        self.assertIn("no founder sentence", pr.why_not(Config, "clearer_version") or "")
 
 
 class ExportTests(unittest.TestCase):

@@ -11,7 +11,7 @@ from services import learning_ledger as ll
 
 class _Config:
     MLC2_TRAINING_SWITCH_ENABLED = False
-    MLC2_DATASET_RELEASES_ENABLED = False
+    MLC2_PAIR_RELEASES_ENABLED = False
     MLC2_TRAINING_ENABLED = False
     MLC2_PROMOTION_ENABLED = False
 
@@ -50,10 +50,12 @@ class LedgerTests(unittest.TestCase):
     def test_the_doors_are_the_code_constants(self):
         from config import Config
         doors = ll.doors(Config())
-        # Door 1 opened 2026-10-01 by the founder's sentence; the rest are shut.
+        # Doors 1 and 2 opened 2026-10-01 by the founder's sentences (door 2
+        # for exercise_script only); doors 3 and 4 are shut.
         self.assertTrue(doors["consent"]["open"])
+        self.assertTrue(doors["dataset_release"]["open"])
+        self.assertEqual(doors["dataset_release"]["surfaces"], ["exercise_script"])
         self.assertFalse(doors["training"]["open"])
-        self.assertFalse(doors["dataset_release"]["open"])
         self.assertFalse(doors["promotion"]["open"])
 
 

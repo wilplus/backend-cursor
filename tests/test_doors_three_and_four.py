@@ -38,7 +38,7 @@ NOW = datetime(2026, 10, 5, 9, 0, tzinfo=timezone.utc)
 class _Config:
     MLC2_TRAINING_ENABLED = False
     MLC2_PROMOTION_ENABLED = False
-    MLC2_DATASET_RELEASES_ENABLED = False
+    MLC2_PAIR_RELEASES_ENABLED = False
     MLC2_TRAINING_SWITCH_ENABLED = False
     TRAINING_SURFACES: frozenset = frozenset()
     PROMOTION_SURFACES: frozenset = frozenset()

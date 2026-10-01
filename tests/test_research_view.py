@@ -156,7 +156,7 @@ class OverviewTests(unittest.TestCase):
     def test_every_closed_door_is_named_in_words(self):
         class _Config:
             MLC2_TRAINING_SWITCH_ENABLED = False
-            MLC2_DATASET_RELEASES_ENABLED = False
+            MLC2_PAIR_RELEASES_ENABLED = False
             MLC2_TRAINING_ENABLED = False
             MLC2_PROMOTION_ENABLED = False
         db = _Db()

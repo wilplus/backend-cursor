@@ -44,8 +44,9 @@ def doors(config: Any) -> dict:
     return {
         "consent": {"open": bool(getattr(config, "MLC2_TRAINING_SWITCH_ENABLED", False)),
                     "constant": "MLC2_TRAINING_SWITCH_ENABLED"},
-        "dataset_release": {"open": bool(getattr(config, "MLC2_DATASET_RELEASES_ENABLED", False)),
-                            "constant": "MLC2_DATASET_RELEASES_ENABLED"},
+        "dataset_release": {"open": bool(getattr(config, "MLC2_PAIR_RELEASES_ENABLED", False)),
+                            "constant": "MLC2_PAIR_RELEASES_ENABLED",
+                            "surfaces": sorted(getattr(config, "PAIR_RELEASE_SURFACES", ()) or ())},
         "training": {"open": bool(getattr(config, "MLC2_TRAINING_ENABLED", False)),
                      "constant": "MLC2_TRAINING_ENABLED"},
         "promotion": {"open": bool(getattr(config, "MLC2_PROMOTION_ENABLED", False)),

@@ -804,3 +804,21 @@ door one."
    active. Door 1 is now open on every side: the constant (this PR), the
    policy version (item 5) and the row. The Settings card shows for every
    speaker who has accepted 3.2, off, with the four lines above the switch.
+
+**N16 · Door 2 opened for exercise_script (founder 2026-10-01).** "open door
+2 for surface exercise_script", said in chat after door 1 was open on every
+side (N15). The reviewed change carrying it: `MLC2_PAIR_RELEASES_ENABLED =
+True` and `PAIR_RELEASE_SURFACES = {"exercise_script"}`.
+1. **The pair door is its own constant.** `MLC2_DATASET_RELEASES_ENABLED`
+   gates the retired DPO export lane (`scripts/export_openai_preference_jsonl.py`,
+   audit J1-2) and four tests pin it dark; a pair release and a DPO dataset
+   release are different lanes, so the sentence opens the pair door only.
+2. **What leaves, and when:** every Monday's weekly job writes one signed
+   JSONL file of the exercise_script pairs that are releasable (the
+   speaker's training yes, re-read that week) to `willab-pair-releases`,
+   marks them left, and lists the release on the research screen. The other
+   two surfaces report "no founder sentence" until theirs.
+3. **Config first:** the bucket variable is set; `PAIR_RELEASE_SIGNING_KEY`
+   (and the R2 token's scope for the new bucket) must be on the backend web
+   service before the first Monday, else the job reports "no signing key"
+   and nothing leaves, which is the designed failure.

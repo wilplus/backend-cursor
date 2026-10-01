@@ -9,7 +9,7 @@ nothing left.
 | Door | Constant | Opens when | The sentence |
 |------|----------|------------|--------------|
 | 1 · the training yes | `MLC2_TRAINING_SWITCH_ENABLED` | **OPEN since 2026-10-01** (N15): the founder's sentence flipped the constant, Privacy 3.2 + Terms 3.2 are the active policy (`phase1-2026-10-01`, 09:00 UTC) and the training policy row exists (`training-only-v1`, 09:08 UTC). The card shows to every speaker who has accepted 3.2 | "open door 1" (said) |
-| 2 · dataset releases | `MLC2_DATASET_RELEASES_ENABLED` and, per surface, `PAIR_RELEASE_SURFACES` | door 1 is open, the release bucket and signing key are set on the web service, and the founder names the surface | "open door 2 for surface S" (S ∈ praise_line, clearer_version, exercise_script) |
+| 2 · pair releases | `MLC2_PAIR_RELEASES_ENABLED` and, per surface, `PAIR_RELEASE_SURFACES` | **OPEN for exercise_script since 2026-10-01** (N16); praise_line and clearer_version wait for their sentence. The release bucket and signing key sit on the web service (`MLC2_DATASET_RELEASES_ENABLED` is the retired DPO lane's constant and stays False) | "open door 2 for surface S" (S ∈ praise_line, clearer_version, exercise_script) |
 | 3 · training | `MLC2_TRAINING_ENABLED` and, per surface, `TRAINING_SURFACES` | the OpenAI DPA with SCCs obliges file deletion; the key may fine-tune; the golden set for the surface is sealed (ML-10); 200 trainable pairs exist | "open door 3 for surface S" |
 | 4 · promotion | `MLC2_PROMOTION_ENABLED` and, per surface, `PROMOTION_SURFACES` | an evaluation report passed (candidate ahead, regurgitation clean) under the current prompt lock | "open door 4 for surface S" |
 
@@ -160,7 +160,9 @@ PAIR_RELEASE_SIGNING_KEY_ID=pair-release-key-1
   The bucket is a new private R2 bucket (no public domain), on the same R2
   account and token as the others; the token must be scoped to it too, or
   the put fails with a silent 403 (see OPS-SECRETS-AND-STAGING.md §3).
-  Config-first: set them before the surface is named.
+  Config-first: set them before the surface is named. The bucket was set on
+  2026-10-01 before the sentence; the signing key is the founder's next hand
+  (the job says "no signing key" and exports nothing until it is).
 
 ## Door 3 · what is built (ML-10, ML-11, migration 0406)
 
