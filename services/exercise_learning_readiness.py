@@ -1,6 +1,7 @@
 """How close the exercise-adequacy data is to its evidence bar (step 8 prep).
 
-The learning contract (exercise-adequacy-label-v1, founder 2026-09-28,
+The learning contract (exercise-adequacy-label-v2, founder 2026-09-28,
+F7 2026-10-01,
 docs/MLC3-EXERCISE-ADEQUACY-DESIGN.md §3.5) says no learned ranking may even
 be evaluated before at least 300 first-exposure attempts with a valid
 endpoint, and 30 for every exercise it would rank (item 8). This counts them,
@@ -30,10 +31,12 @@ The funnel follows §3.5 item by item:
   * a coach-shared exercise (0398, founder decision 3) counts like a machine
     pick, judged on every target it claims that fired, and is reported under
     its own selection mode, `coach_chosen`; it is never in the ranked pool;
-  * the endpoint attempt is the last valid attempt in the practice flow the
-    speaker opened on that assignment (items 2 and 3). No attempt, or none
-    valid, is missing data, never a negative (item 5); the attempt rate is
-    reported beside the count.
+  * the endpoint attempt is the FIRST valid attempt of at most three in
+    the practice flow the speaker opened on that assignment (items 2 and 3;
+    F7, founder 2026-10-01: fixed in advance, so when the speaker stops
+    cannot change whether the exercise helped). No attempt, or none valid,
+    is missing data, never a negative (item 5); the attempt rate is reported
+    beside the count.
 
 Internal only: an admin CMS surface. No number here reaches a speaker or a
 coach, and a count here is never a judgment about any person.
@@ -42,7 +45,9 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-LABEL_SPEC_VERSION = "exercise-adequacy-label-v1"
+#: THE ONLY DEFINITION. v2 means exactly F7 (first valid attempt); the
+#: founder's delayed human measure has its own name, exercise-human-delayed-v1.
+LABEL_SPEC_VERSION = "exercise-adequacy-label-v2"
 READINESS_VERSION = "exercise-learning-readiness-v1"
 
 #: §3.5 item 8 (founder 2026-09-28). Changing either is the founder's call.
@@ -106,11 +111,17 @@ def attempt_is_valid(attempt: Any) -> bool:
 
 
 def endpoint_attempt(attempts: list[dict]) -> Optional[dict]:
-    """The last valid attempt of at most three (§3.5 item 3); never the best."""
+    """The FIRST valid attempt of at most three (§3.5 item 3 as amended by
+    F7, founder 2026-10-01); never the best, never the one the speaker
+    stopped on. The live loop already stops on Yes or In-between, so reading
+    the last attempt let the speaker's stopping point tilt the scoreboard;
+    the first valid attempt is fixed before anyone answers. Within three
+    attempts a valid first exists exactly when a valid last does, so the
+    readiness counts are unchanged; only the scorekeeper's result can be."""
     ordered = sorted((a for a in attempts if isinstance(a, dict)),
                      key=lambda a: int(a.get("attempt_index") or 0))[:3]
     valid = [a for a in ordered if attempt_is_valid(a)]
-    return valid[-1] if valid else None
+    return valid[0] if valid else None
 
 
 def _gate(exposure: dict, *, trace: Any, assignment: dict,

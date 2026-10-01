@@ -461,10 +461,12 @@ with this contract, this contract wins.
     commitment and draw, the policy version and the selected version, once per
     (Take, moment), and never rerandomizes on refresh or retry
     (`exercise-80-20-v1`, migration 0372). Using the outcomes as evaluation
-    evidence follows label specification `exercise-adequacy-label-v1`
+    evidence follows label specification `exercise-adequacy-label-v2`
     (founder 2026-09-28; docs/MLC3-EXERCISE-ADEQUACY-DESIGN.md §3.5): an
-    exercise helped when the problems it targeted no longer fire on the last
-    valid same-passage attempt; first exposures only; an unattempted exercise
+    exercise helped when the problems it targeted no longer fire on the first
+    valid same-passage attempt (F7, founder 2026-10-01: fixed in advance, so
+    when the speaker stops cannot change it; the attempt the speaker landed
+    on is stored for reading only); first exposures only; an unattempted exercise
     is excluded, never a failure, with the attempt rate always reported; a
     learned ranking may replace the fixed one only after 300 attempts (30 per
     exercise), a gain of at least 5 points on held-out speakers, an attempt
@@ -582,7 +584,7 @@ with this contract, this contract wins.
     help". The speaker's own answer is not part of it. It is internal: never
     shown to a speaker or a coach, and never a label. The machine leg and the
     coach leg keep their own provenance (clause 31). It is a separate reading
-    from `exercise-adequacy-label-v1` (the design's §3.5), which stays the
+    from `exercise-adequacy-label-v2` (the design's §3.5), which stays the
     only label specification and is unchanged; nothing about either feeds
     back into which exercise is shown or how often (35c).
 35g-3a. **A pattern is tested silently first** (founder 2026-09-28, D2, D3).

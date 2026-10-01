@@ -1,6 +1,6 @@
 """The speaker's client confirms an assigned exercise rendered (0387).
 
-Label specification exercise-adequacy-label-v1 (founder 2026-09-28,
+Label specification exercise-adequacy-label-v2 (founder 2026-09-28,
 docs/MLC3-EXERCISE-ADEQUACY-DESIGN.md §3.5, item 5): an exposure exists only
 once the client confirms the exercise was actually on screen. The 80/20
 assignment is made when the feedback is built, whether or not anyone saw it,

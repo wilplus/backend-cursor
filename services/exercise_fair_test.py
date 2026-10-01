@@ -1,7 +1,7 @@
 """The fair-test calculator: would a new ranker help more people? (step 8 prep)
 
 Grades a candidate exercise ranker against today's fixed ranking under
-exercise-adequacy-label-v1 (founder 2026-09-28,
+exercise-adequacy-label-v2 (founder 2026-09-28,
 docs/MLC3-EXERCISE-ADEQUACY-DESIGN.md §3.5), without ever serving it:
 
   * **Study group and exam group (item 6).** Speakers are split by a stable

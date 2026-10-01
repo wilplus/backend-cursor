@@ -2,7 +2,7 @@
 
 Rule exercise-more-confident-v2 (founder 2026-09-28, option A; rewritten
 2026-09-29, Q5; contract 35g-3; migration 0391). Internal only: nothing here reaches a speaker or a coach (AC-9), and
-it is never a label — exercise-adequacy-label-v1 (design §3.5) stays the one
+it is never a label — exercise-adequacy-label-v2 (design §3.5) stays the one
 label specification, unchanged.
 
 Two legs, kept apart (L3), and both must say yes:

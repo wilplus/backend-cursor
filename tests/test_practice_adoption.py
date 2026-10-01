@@ -118,6 +118,9 @@ def test_a_yes_or_in_between_is_done_and_never_rewrites_the_paragraph():
         assert body["attempt_transcript"] == "Nine days became two."
         assert db.practice["status"] == "completed"
         assert db.practice["final_user_answer"] == answer
+        # F7 (founder 2026-10-01): where the speaker landed is written for
+        # reading only; the scorekeeper reads the first valid attempt.
+        assert db.practice["landed_attempt_index"] == 1
 
 
 def test_the_adoption_is_retired_with_its_code():

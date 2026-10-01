@@ -92,9 +92,29 @@ class TargetTests(unittest.TestCase):
 
 
 class EndpointTests(unittest.TestCase):
-    def test_the_last_valid_attempt_is_the_endpoint(self):
+    def test_the_first_valid_attempt_is_the_endpoint(self):
+        # F7 (founder 2026-10-01): fixed in advance, never the one the
+        # speaker stopped on.
         tries = [_attempt(1), _attempt(2), _attempt(3, valid=False)]
+        self.assertEqual(lr.endpoint_attempt(tries)["attempt_index"], 1)
+
+    def test_an_invalid_first_attempt_hands_the_endpoint_to_the_next_valid_one(self):
+        tries = [_attempt(1, valid=False), _attempt(2), _attempt(3)]
         self.assertEqual(lr.endpoint_attempt(tries)["attempt_index"], 2)
+
+    def test_a_landing_on_attempt_two_never_moves_the_endpoint_off_attempt_one(self):
+        tries = [_attempt(1), {**_attempt(2), "user_answer": "yes"}]
+        self.assertEqual(lr.endpoint_attempt(tries)["attempt_index"], 1)
+
+    def test_the_readiness_count_is_the_same_under_first_and_last(self):
+        # Within three attempts a valid first exists exactly when a valid
+        # last does, so v2 moves no exposure in or out of the count.
+        for tries in ([_attempt(1), _attempt(2, valid=False)],
+                      [_attempt(1, valid=False), _attempt(2)],
+                      [_attempt(1, valid=False), _attempt(2, valid=False)],
+                      [_attempt(1, valid=False), _attempt(2, valid=False), _attempt(3, valid=False), _attempt(4)]):
+            valid = [a for a in tries[:3] if lr.attempt_is_valid(a)]
+            self.assertEqual(lr.endpoint_attempt(tries) is None, not valid)
 
     def test_only_the_first_three_attempts_count(self):
         tries = [_attempt(1, valid=False), _attempt(2, valid=False),
@@ -179,7 +199,7 @@ class CountTests(unittest.TestCase):
 
     def test_the_contract_is_named(self):
         out = _World().build()
-        self.assertEqual(out["label_spec_version"], "exercise-adequacy-label-v1")
+        self.assertEqual(out["label_spec_version"], "exercise-adequacy-label-v2")
         self.assertEqual(out["bar"], {"min_counted": 300,
                                       "min_per_exercise": 30})
         self.assertIsNone(out["attempt_rate"])

@@ -67,7 +67,7 @@ class LabelTests(unittest.TestCase):
         self.assertTrue(row["helped"])
         self.assertEqual((row["targeted_problems"], row["still_firing"]),
                          (["rushing"], []))
-        self.assertEqual(row["label_spec_version"], "exercise-adequacy-label-v1")
+        self.assertEqual(row["label_spec_version"], "exercise-adequacy-label-v2")
 
     def test_not_helped_when_it_still_fires(self):
         [row] = self._labels(_with_endpoint(_World().add(), RUSHING))
@@ -78,10 +78,22 @@ class LabelTests(unittest.TestCase):
         [row] = self._labels(_with_endpoint(_World().add(), {**CALM, **ENDING}))
         self.assertTrue(row["helped"])
 
-    def test_the_last_valid_attempt_decides_not_the_best(self):
+    def test_the_first_valid_attempt_decides_not_the_best_nor_the_last(self):
+        # F7: attempt 1 is calm, attempt 2 rushes and is where the speaker
+        # stopped; the endpoint is attempt 1.
         [row] = self._labels(_with_endpoint(_World().add(), CALM, RUSHING))
+        self.assertTrue(row["helped"])
+        self.assertEqual(row["endpoint_attempt_index"], 1)
+        [row] = self._labels(_with_endpoint(_World().add(), RUSHING, CALM))
         self.assertFalse(row["helped"])
-        self.assertEqual(row["endpoint_attempt_index"], 2)
+        self.assertEqual(row["endpoint_attempt_index"], 1)
+
+    def test_no_scorer_reads_where_the_speaker_landed(self):
+        import inspect
+
+        from services import exercise_evaluation, exercise_fair_test
+        for module in (sk, exercise_fair_test, exercise_evaluation):
+            self.assertNotIn("landed_attempt_index", inspect.getsource(module))
 
     def test_a_trial_is_judged_on_its_secondary_target(self):
         trace = _trace(fit="trial", observed=("rushing",), main=("ending",),

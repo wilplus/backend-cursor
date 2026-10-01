@@ -442,3 +442,4 @@
 0404	the_ledger_keeps_its_weeks.sql
 0405	a_pair_remembers_the_yes.sql
 0406	a_model_learns_only_from_the_yes.sql
+0407	a_practice_remembers_where_it_landed.sql
