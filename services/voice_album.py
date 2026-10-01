@@ -9,10 +9,11 @@ snippet:
     (a `moment_suggestions` row; the machine's confident read);
   * USER     — the owner answered yes on the displayed Confident Voice card
     (an owner_voice_album_routing row, structurally outside learning);
-  * COACH    — an explicit professional coach confidence label is YES and the
-    session is PUBLISHED. Peer labels and owner self-reports never satisfy
-    this leg. Blind until publish: an unreleased coach answer does not exist
-    on the user surface.
+  * COACH    — an explicit professional coach confidence label is YES on a
+    Take of this project. Peer labels and owner self-reports never satisfy
+    this leg. The coach's judgement on the walk is final when written
+    (35g-5), so the write is the release; the arc-level publish that once
+    released it is retired (founder 2026-09-30, B3; contract 65).
 
 NEVER a ranking term. The founder deleted the album-quorum bonus with
 `_W_B` (2026-08-14): the album is a DESTINATION for aligned moments, not
@@ -29,7 +30,7 @@ an append-only graveyard of changed minds". `refresh_voice_album` is a
 full reconciliation: it inserts newly aligned moments AND removes
 entries that no longer align. Still-aligned entries are untouched (the
 insert is insert-if-missing, so `entered_at` survives re-refreshes).
-Best-effort throughout: a refresh miss never breaks the publish flow or
+Best-effort throughout: a refresh miss never breaks the rating write or
 the decide POST it rides behind (LIVE LOOP).
 """
 from __future__ import annotations
@@ -123,9 +124,10 @@ def _reconcile_practice_attempt(
 def _reconcile_original_clip(
     database: Any, *, arc: str, target: str, take_session_id: Any,
 ) -> bool:
-    """An original clip: an explicit professional No on its published Take
-    removes it; it enters only when the user's yes, the machine's confident
-    star and the professional Yes on that published Take all align."""
+    """An original clip: an explicit professional No on its Take removes
+    it; it enters only when the user's yes, the machine's confident star and
+    the professional Yes on that Take all align. The Take has to be this
+    project's; nothing else gates it since the publish was retired."""
     user_row = _owner_agreements(database, arc).get(target)
     suggestion = (
         database.get_moment_suggestions_by_arc(arc) or {}
@@ -135,7 +137,7 @@ def _reconcile_original_clip(
     coach_value = latest_professional_value(labels.get(target))
     session = database.v2_get_session_by_id(str(take_session_id or "")) or {}
     session_matches = bool(
-        session.get("results_published_at")
+        session
         and str(session.get("project_id") or session.get("arc_id") or "") == arc
     )
     if coach_value == "no" and session_matches:
@@ -205,16 +207,15 @@ def _acoustic_yes_ids(database: Any, arc_id: Any) -> set:
 
 def _coach_yes_sessions(database: Any, arc_id: Any) -> dict:
     """COACH — {snippet_id: take_session_id} for every explicit professional
-    coach YES, on PUBLISHED sessions only.
+    coach YES on a Take of this project.
 
-    The publish gate is unchanged and load-bearing: a professional coach
-    can save a draft judgment while still working, and none of it exists
-    for the student until the review is released.
+    The publish gate that once stood here is retired with the arc-level
+    delivery (founder 2026-09-30, B3; contract 65): on the walk a judgement
+    is answered blind and is final when written (35g-5), so there is no
+    draft to hold back. The album still has no read surface (capture only).
     """
     coach_ok: dict = {}   # snippet_id -> take_session_id
     for sess in (database.takes.get_arc_sessions(arc_id) or []):
-        if not sess.get("results_published_at"):
-            continue
         sid = str(sess.get("id") or "")
         if not sid:
             continue

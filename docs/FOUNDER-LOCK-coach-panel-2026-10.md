@@ -82,7 +82,7 @@ Contract: 24f, 35a–35c, 35f, 35g-2, 35g-3a (shadow), 35k.
 | # | Locked |
 |---|--------|
 | L1 | Door 1: the training-consent switch goes to counsel now, with the question of which pairs need a speaker's yes. |
-| L2 | The walk's pair recording lands before the arc-level Publish is removed, so the pair count never drops to zero (build plan ML-5: a week of walk pairs on the ledger before P2-19 merges). |
+| L2 | The walk's pair recording lands before the arc-level Publish is removed, so the pair count never drops to zero (build plan ML-5: a week of walk pairs on the ledger before P2-19 merges). *Waived by the founder on 2026-10-01 ("do P2-19 now"): the walk's pair recording was live, the week was not; P2-19 merged that day (decisions log N17).* |
 | L3 | The failing daily annotation cron is replaced by the weekly export job; its Dockerfile is removed. |
 | L4 | The weekly readiness job and the founder's pace panel exist before any door opens. |
 | L5 | Doors 2, 3 and 4 open one surface at a time, exercise script first, each by a reviewed change the founder authorises, never a toggle. |

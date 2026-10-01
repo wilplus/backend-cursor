@@ -105,12 +105,13 @@ class EntryRuleTests(unittest.TestCase):
         db.suggestions = {"sn1": {"kind": "replace"}}
         self.assertEqual(refresh_voice_album(ARC, database=db), 0)
 
-    def test_coach_yes_without_publish_is_invisible(self):
-        # BLIND COACH: a coach answer can exist while the review is still in
-        # progress; none of it exists for the student until publish.
+    def test_coach_yes_counts_without_a_publish(self):
+        # The arc-level publish is retired (founder 2026-09-30, B3; contract
+        # 65): the walk's judgement is final when written, so a Take that
+        # was never "published" carries the coach leg all the same.
         db = _all_three(published=False)
-        self.assertEqual(refresh_voice_album(ARC, database=db), 0)
-        self.assertEqual(db.inserted, [])
+        self.assertEqual(refresh_voice_album(ARC, database=db), 1)
+        self.assertEqual(db.inserted[0]["snippet_id"], "sn1")
 
     def test_a_settled_NO_is_not_agreement(self):
         # A quorum that settled the other way is a real verdict, and the

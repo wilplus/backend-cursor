@@ -5,6 +5,7 @@ Run: python3 -m unittest tests.test_arc_notifications
 """
 from __future__ import annotations
 
+import pathlib
 import unittest
 import uuid
 
@@ -247,16 +248,22 @@ class VoiceAlbumBubbleTests(unittest.TestCase):
         self.assertFalse(fire_voice_album_ready(db, "u1", None))
         self.assertEqual(db.rows, [])
 
-    def test_publish_no_longer_posts_its_own_album_bubble(self):
-        # FOUNDER 2026-09-25, Q34 B: one bubble per publish, nothing else. The
-        # clips are still reconciled on publish; the album is announced by its
-        # other paths (the owner's and the coach's confirmations), not here.
+    def test_the_coach_judgement_reconciles_the_clip_and_posts_no_bubble(self):
+        # The publish-delivery job is retired (founder 2026-09-30, B3;
+        # contract 65). The exact clip is reconciled by the judgement write
+        # itself; the album is announced by its other paths (the owner's and
+        # the coach's confirmations), never from there.
         import inspect
 
-        from services import coach_publish_delivery
-        src = inspect.getsource(coach_publish_delivery._deliver)
-        self.assertNotIn("fire_voice_album_ready", src)
-        self.assertIn("reconcile_voice_album_clip", src)
+        from routes.v2 import coach
+        src = inspect.getsource(coach.v2_coach_put_confidence_label)
+        self.assertIn("_reconcile_album_after_judgement(", src)
+        hook = inspect.getsource(coach._reconcile_album_after_judgement)
+        self.assertIn("reconcile_voice_album_clip", hook)
+        self.assertNotIn("fire_voice_album_ready", src + hook)
+        self.assertFalse(
+            (pathlib.Path(__file__).resolve().parents[1]
+             / "services/coach_publish_delivery.py").exists())
 
     def test_it_waits_for_take_three(self):
         from services.arc_notifications import fire_voice_album_ready

@@ -23,9 +23,9 @@ it deserves its own `/coach/*` namespace, not a re-gated admin route.
 |---|---|---|---|
 | GET  | `/v2/coach/queue` | `v2_coach_queue` | pseudonymized rows, FIFO oldest-first |
 | GET  | `/v2/coach/sessions/<id>` | `v2_coach_get_session` | per-snippet `coach_state` (both lanes), identity-stripped |
-| POST | `/v2/coach/sessions/<id>/snippets/<id>` | `v2_coach_save_snippet` | body `direction_label`/`note`/`tag`/`surfaced`; echoes `coach_state` |
-| POST | `/v2/coach/sessions/<id>/video` | `v2_coach_session_video` | coach feedback video |
-| POST | `/v2/internal/publish-session-results` | `v2_internal_publish_session_results` | publish — the FE's `publishWillabSession` POSTs here (confirmed); `@require_admin_or_coach` |
+| POST | `/v2/coach/sessions/<id>/snippets/<id>` | `v2_coach_save_snippet_gone` | 410 since 2026-10-01 (P2-19): the note and surface toggle left with the arc-level delivery |
+| POST | `/v2/coach/sessions/<id>/video` | `v2_coach_session_video` | the Take word's video (35g-6) |
+| POST | `/v2/internal/publish-session-results` | `v2_internal_publish_session_results_gone` | 410 since 2026-10-01 (P2-19): the arc-level publish is retired (contract 65); answers reach the speaker per moment and through the Take word |
 
 All gated `@require_admin_or_coach`. Every response is **pseudonymized**
 (`pseudonym` + `domain` only — never `user_id`/name/email; §S.4 / §14 red-line 6).

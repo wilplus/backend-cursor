@@ -724,14 +724,11 @@ class MomentExplanationGetTests(unittest.TestCase):
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class LegacyRetirementTests(unittest.TestCase):
-    """The $25 unlock is retired — always 410.
-
-    THE COACH PUBLISH ROUTE IS NOT. It was a 410 tombstone here until
-    2026-08-14, when the coach panel's "Publish the full analysis" button was
-    found to be POSTing straight at it — so publishing was impossible from
-    the app, and the only code that sets results_published_at sat behind an
-    /internal route with no BFF path. Restored; see
-    PublishAnalysisRestoredTests in test_eager_ideal_text.py."""
+    """The $25 unlock is retired — always 410. So is the coach's arc-level
+    publish (founder 2026-09-30, B3; contract 65; removed 2026-10-01 on the
+    founder's "do P2-19 now"): the FE's publish button is gone with it, and
+    what reaches the speaker is a shared answer on its moment and the Take
+    word."""
 
     def setUp(self):
         self.app = Flask(__name__)
@@ -743,18 +740,13 @@ class LegacyRetirementTests(unittest.TestCase):
             resp, status = out if isinstance(out, tuple) else (out, 200)
         self.assertEqual(status, 410)
 
-    def test_publish_analysis_is_NOT_a_tombstone_any_more(self):
-        """Regression pin for the dead-end button. Whatever this route
-        answers, it must never be 410 again: the FE's publish button targets
-        it, and a tombstone there means the coach cannot deliver work they
-        have already done."""
+    def test_publish_analysis_is_a_tombstone_again(self):
         with self.app.test_request_context(json={}):
             request.user_id = "coach1"
-            with patch.object(db.takes, "get_arc_sessions", return_value=[]):
-                out = v2_coach.v2_coach_publish_analysis.__wrapped__(ARC)
+            out = v2_coach.v2_coach_publish_analysis_gone.__wrapped__(ARC)
             resp, status = out if isinstance(out, tuple) else (out, 200)
-        self.assertNotEqual(status, 410)
-        self.assertEqual(status, 404)   # no such arc, in this fixture
+        self.assertEqual(status, 410)
+        self.assertEqual(resp.get_json()["code"], "GONE")
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
