@@ -53,9 +53,11 @@ def moments_queue(
     first under each, moments in the order the take lists them.
 
     `rows` are the review queue's raw rows; `moments_for(row)` the take's
-    bookmarked snippet ids in order; `ratings_for(session_id)` THIS coach's
-    own ratings by snippet; `request_for(session_id, snippet_id)` the
-    moment's request row or None."""
+    bookmarked snippet ids in order, or None while the take's bookmarks are
+    not frozen yet (the take then rides as `waiting_for_text`, never absent:
+    founder 2026-10-01, A1); `ratings_for(session_id)` THIS coach's own
+    ratings by snippet; `request_for(session_id, snippet_id)` the moment's
+    request row or None."""
     speakers: dict[str, dict] = {}
     order: list[str] = []
     for row in rows or []:
@@ -65,8 +67,9 @@ def moments_queue(
         key = str(row.get("user_id") or session_id)
         sent_at = str(row.get("review_requested_at") or row.get("created_at") or "")
         ratings = ratings_for(session_id) or {}
+        bookmarked = moments_for(row)
         moments = []
-        for snippet_id in moments_for(row) or []:
+        for snippet_id in bookmarked or []:
             sid = str(snippet_id)
             moments.append({
                 "snippet_id": sid,
@@ -78,6 +81,7 @@ def moments_queue(
             "sent_at": sent_at,
             "moments": moments,
             "waiting": sum(1 for m in moments if m["state"] in ("judge_it", "answer_it")),
+            "waiting_for_text": bookmarked is None,
         }
         speaker = speakers.get(key)
         if speaker is None:
@@ -96,5 +100,6 @@ def moments_queue(
             "pseudonym": speaker["pseudonym"],
             "takes": speaker["takes"],
             "waiting": sum(t["waiting"] for t in speaker["takes"]),
+            "waiting_for_text": sum(1 for t in speaker["takes"] if t["waiting_for_text"]),
         })
     return out

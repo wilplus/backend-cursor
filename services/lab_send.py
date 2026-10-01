@@ -253,6 +253,11 @@ def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
             db, session, session_id, user_id,
         )
     except ProcessingAuthorizationError as error:
+        # Named once, internally: this is the first of the four filters a
+        # Take can leave the coach queue at (founder 2026-10-01, 0a).
+        logger.info("lab_send: coach hand-off refused sid=%s user=%s "
+                    "code=%s filter=coach_delivery_authorization",
+                    session_id, user_id, error.code)
         return {
             "ok": False, "already_sent": False, "status": current,
             "reason": "processing_authorization_required", "code": error.code,
