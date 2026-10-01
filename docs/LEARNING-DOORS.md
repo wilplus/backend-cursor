@@ -130,10 +130,13 @@ processing policy
 version it creates is `phase1-2026-10-01`: that string is the registration
 SQL's twelfth argument.
 
-**The OpenAI side, before door 3:** the data processing agreement with
-OpenAI, with the standard contractual clauses, must oblige deletion of
-uploaded fine-tuning files on request; the founder executes it and confirms
-the fine-tuning permission on the key.
+**The OpenAI side, before door 3 — in place 2026-10-01:** the founder holds
+OpenAI's data processing agreement (one DPA per account; it carries the EU
+standard contractual clauses and deletion on instruction, which covers
+fine-tuning files; the date is the founder's to record); the backend's key
+("willab", permissions All) may fine-tune; the organisation passed
+OpenAI's individual verification on 2026-10-01. What door 3 still waits for
+is time: the sealed golden set and 200 released exercise_script pairs.
 
 **Carried into doors 3 and 4 (ML-11, ML-10):** a fine-tuning file uploaded
 to OpenAI is deleted on any owner's withdrawal; a run reads releasability
