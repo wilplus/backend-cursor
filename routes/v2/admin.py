@@ -395,11 +395,10 @@ def v2_admin_update_snippet_coaching_rationale(snippet_id):
     Backs the editable-rationale strip on the admin user-detail page.
     The strip pre-fills its textarea with the AI's rationale and lets
     the admin save it as-is (approval signal) or edit it (correction
-    signal). At publish time, ``record_snippet_publish_annotations``
-    emits one ``admin_annotation_events`` row per reviewed snippet
-    (field_name='evaluator_rationale') so the RLHF/DPO export
-    captures the (AI draft, admin final) pair the same way it
-    already captures admin_comment / follow_up_question.
+    signal). The publish-time capture that emitted one
+    ``admin_annotation_events`` row per reviewed snippet went with the
+    arc-level publish (P2-19, contract 65); this route only persists the
+    review. Pairs come from the three answer surfaces (35g-2a).
 
     Body::
 

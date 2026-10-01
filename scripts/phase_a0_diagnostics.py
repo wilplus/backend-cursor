@@ -126,10 +126,12 @@ ORDER  BY eligible_count DESC;
 SQL_A02_4_PITFALL10_STARVATION = """
 -- A0.2.4 — pitfall-#10 starvation set: sessions where the admin
 -- typed admin_comment on at least one snippet BUT the session was
--- never published, so record_snippet_publish_annotations() never
+-- never published, so the (now deleted) publish-time capture never
 -- fired and the admin's edits never reached admin_annotation_events.
 --
--- This is the corpus A1's backfill cron will recover.
+-- Historical diagnostic: the arc-level publish and its capture are
+-- retired (P2-19, contract 65) and the backfill script is gone; pairs
+-- come from the three answer surfaces (35g-2a, services/feedback_pairs.py).
 SELECT COUNT(DISTINCT v.id) AS unpublished_but_reviewed_sessions
 FROM   v2_sessions     v
 JOIN   charisma_snippets cs ON cs.session_id = v.id
