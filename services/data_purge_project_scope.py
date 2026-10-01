@@ -108,6 +108,8 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     # A coach's own model readings (0409): their voice, under the coach
     # agreement; they belong to the coach's account, not to any project.
     "coach_readings",
+    # A rater's own answers on others' clips (0410): the rater's account.
+    "lend_your_ear_answers", "delayed_measure_votes",
 })
 
 #: Rows with no project column of their own that the take-record wipe

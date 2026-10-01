@@ -14931,6 +14931,163 @@ class DatabaseService:
     def _since_column(table: str) -> str:
         return "shown_at" if table == "after_practice_steps" else "created_at"
 
+    # ── Phase 4 and 5 of the after-practice paths (0410) ─────────────────
+
+    def voice_album_has(self, arc_id: str, snippet_id: str) -> bool:
+        """Whether this moment is in the speaker's Voice Album now."""
+        res = (self.client.table("voice_album").select("snippet_id")
+               .eq("arc_id", str(arc_id)).eq("snippet_id", str(snippet_id))
+               .limit(1).execute())
+        return bool(res.data)
+
+    def set_voice_album_share(
+        self, *, owner_user_id: str, arc_id: str, snippet_id: str,
+        take_session_id: Optional[str], shared: bool,
+    ) -> Optional[dict]:
+        """Lend or withdraw one moment (0410): one row per moment; a share
+        clears revoked_at, a withdrawal stamps it. Raises on failure."""
+        now = datetime.now(timezone.utc).isoformat()
+        res = (self.client.table("voice_album_shares").upsert({
+            "owner_user_id": str(owner_user_id), "arc_id": str(arc_id),
+            "snippet_id": str(snippet_id), "take_session_id": take_session_id,
+            "shared_at": now, "revoked_at": None if shared else now,
+        }, on_conflict="snippet_id").execute())
+        return (res.data or [None])[0]
+
+    def list_shared_clips_live(self) -> list[dict]:
+        """Every moment lent and still in an Album (the view, 0410)."""
+        res = (self.client.table("shared_clips_live").select("*")
+               .order("shared_at", desc=True).limit(500).execute())
+        return list(res.data or [])
+
+    def list_corpus_clips(self, *, active_only: bool = True) -> list[dict]:
+        query = self.client.table("corpus_clips").select("*")
+        if active_only:
+            query = query.eq("active", True)
+        return list(query.order("created_at", desc=True).limit(500).execute().data or [])
+
+    def list_corpus_clips_active(self) -> list[dict]:
+        return self.list_corpus_clips(active_only=True)
+
+    def insert_corpus_clip(self, row: dict) -> Optional[dict]:
+        res = self.client.table("corpus_clips").insert(dict(row)).execute()
+        return (res.data or [None])[0]
+
+    def set_corpus_clip_coach_value(
+        self, *, clip_id: str, coach_id: str, value: Optional[str],
+    ) -> Optional[dict]:
+        res = (self.client.table("corpus_clips")
+               .update({"coach_value": value, "coach_id": str(coach_id) if value else None,
+                        "labelled_at": datetime.now(timezone.utc).isoformat() if value else None})
+               .eq("id", str(clip_id)).execute())
+        return (res.data or [None])[0]
+
+    def list_lend_your_ear_answered_clip_ids(self, listener_id: str) -> list[str]:
+        res = (self.client.table("lend_your_ear_answers").select("clip_id")
+               .eq("listener_user_id", str(listener_id)).limit(2000).execute())
+        return [str(r.get("clip_id")) for r in (res.data or []) if r.get("clip_id")]
+
+    def _with_answers(self, the_set: Optional[dict]) -> Optional[dict]:
+        if not isinstance(the_set, dict):
+            return None
+        res = (self.client.table("lend_your_ear_answers").select("clip_id")
+               .eq("set_id", str(the_set.get("id"))).execute())
+        return {**the_set, "answered_clip_ids": [str(r.get("clip_id")) for r in (res.data or [])]}
+
+    def get_lend_your_ear_set_for_take(self, take_session_id: str) -> Optional[dict]:
+        res = (self.client.table("lend_your_ear_sets").select("*")
+               .eq("take_session_id", str(take_session_id)).limit(1).execute())
+        return self._with_answers((res.data or [None])[0])
+
+    def get_lend_your_ear_set(self, set_id: str, listener_id: str) -> Optional[dict]:
+        res = (self.client.table("lend_your_ear_sets").select("*")
+               .eq("id", str(set_id)).eq("listener_user_id", str(listener_id))
+               .limit(1).execute())
+        return self._with_answers((res.data or [None])[0])
+
+    def insert_lend_your_ear_set(self, row: dict) -> Optional[dict]:
+        res = self.client.table("lend_your_ear_sets").insert(dict(row)).execute()
+        return (res.data or [None])[0]
+
+    def insert_lend_your_ear_answer(self, row: dict) -> Optional[dict]:
+        """One per person per clip: a duplicate answers None."""
+        try:
+            res = self.client.table("lend_your_ear_answers").insert(dict(row)).execute()
+        except Exception as e:  # noqa: BLE001 — the unique key is the rule
+            if "23505" in str(e) or "duplicate" in str(e).lower():
+                return None
+            raise
+        return (res.data or [None])[0]
+
+    def list_recent_pair_ids_for_listener(self, listener_id: str, *, days: int) -> list[str]:
+        """The pairs whose clip this listener was shown within `days`, so the
+        partner waits (correction 5)."""
+        since = (datetime.now(timezone.utc) - timedelta(days=max(1, int(days)))).isoformat()
+        res = (self.client.table("lend_your_ear_sets").select("clips")
+               .eq("listener_user_id", str(listener_id)).gte("created_at", since).execute())
+        out: list[str] = []
+        for row in res.data or []:
+            for clip in (row.get("clips") or []) if isinstance(row, dict) else []:
+                if isinstance(clip, dict) and clip.get("pair_id"):
+                    out.append(str(clip["pair_id"]))
+        return out
+
+    def count_lend_your_ear(self, since: str) -> dict:
+        def _count(table: str) -> int:
+            return int(self.client.table(table).select("id", count="exact")
+                       .gte("created_at", since).limit(1).execute().count or 0)
+        return {"sets_opened": _count("lend_your_ear_sets"),
+                "answers": _count("lend_your_ear_answers"),
+                "shares_live": int(self.client.table("voice_album_shares")
+                                   .select("id", count="exact").is_("revoked_at", "null")
+                                   .limit(1).execute().count or 0)}
+
+    def insert_delayed_measure_pair(self, row: dict) -> Optional[dict]:
+        """One pair per practice (0410); the first write wins."""
+        res = (self.client.table("delayed_measure_pairs").upsert(
+            dict(row), on_conflict="practice_id", ignore_duplicates=True).execute())
+        return (res.data or [None])[0]
+
+    def get_delayed_measure_pair(self, pair_id: str) -> Optional[dict]:
+        res = (self.client.table("delayed_measure_pairs").select("*")
+               .eq("id", str(pair_id)).limit(1).execute())
+        return (res.data or [None])[0]
+
+    def list_delayed_measure_pairs_open(self) -> list[dict]:
+        res = (self.client.table("delayed_measure_pairs").select("*")
+               .eq("status", "open").order("created_at").limit(1000).execute())
+        return list(res.data or [])
+
+    def insert_delayed_measure_vote(self, row: dict) -> Optional[dict]:
+        """One vote per rater per clip: a duplicate answers None."""
+        try:
+            res = self.client.table("delayed_measure_votes").insert(dict(row)).execute()
+        except Exception as e:  # noqa: BLE001 — the unique key is the rule
+            if "23505" in str(e) or "duplicate" in str(e).lower():
+                return None
+            raise
+        return (res.data or [None])[0]
+
+    def list_delayed_measure_votes(self, pair_id: str) -> list[dict]:
+        res = (self.client.table("delayed_measure_votes").select("*")
+               .eq("pair_id", str(pair_id)).execute())
+        return list(res.data or [])
+
+    def list_delayed_measure_votes_by_rater(self, rater_id: str) -> list[dict]:
+        res = (self.client.table("delayed_measure_votes").select("pair_id,clip")
+               .eq("rater_id", str(rater_id)).limit(5000).execute())
+        return list(res.data or [])
+
+    def coach_handled_moment(self, coach_id: str, take_session_id: str,
+                             snippet_id: str) -> bool:
+        """Whether this coach resolved the moment's request or rated the
+        clip (correction 6): such a coach never votes on its pair."""
+        request_row = self.get_exercise_coach_request(take_session_id, snippet_id)
+        if isinstance(request_row, dict) and str(request_row.get("resolved_by") or "") == str(coach_id):
+            return True
+        labels = (self.get_confidence_labels_by_snippet_ids([str(snippet_id)]) or {}).get(str(snippet_id), [])
+        return any(isinstance(r, dict) and str(r.get("rater_id") or "") == str(coach_id) for r in labels)
+
     def upsert_coach_take_word(
         self, *, take_session_id: str, coach_id: str, text: Optional[str],
         video_ref: Optional[str], share: bool,

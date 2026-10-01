@@ -270,6 +270,20 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     # agreement; they go with the coach.
     PurgeDependency("coach_readings", "coach_readings", "coach_id",
                     "principal", "delete", "derived_feedback", 35),
+    # Phase 4 and 5 (0410). The share of a moment and the measure's pair
+    # are about the speaker's Take: they go with it. A set is the listener's
+    # Take's; the answers and the votes are the rater's own words about
+    # someone else's clip: they go with the rater.
+    PurgeDependency("voice_album_shares", "voice_album_shares",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("delayed_measure_pairs", "delayed_measure_pairs",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("lend_your_ear_sets", "lend_your_ear_sets",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("lend_your_ear_answers", "lend_your_ear_answers",
+                    "listener_user_id", "principal", "delete", "derived_feedback", 35),
+    PurgeDependency("delayed_measure_votes", "delayed_measure_votes",
+                    "rater_id", "principal", "delete", "derived_feedback", 35),
     # The (draft, final) pairs a coach's answer about one speaker's moment
     # made (0402). The words are about that passage: they go with the Take.
     # Pairs from the exercise library (no take) are about the library.
@@ -1127,6 +1141,9 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
 # Relations used by runtime code but not owned by the student/acquisition
 # principal being purged. Keeping them here makes the source audit explicit.
 NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
+    # The licensed corpus (0410): clips licensed from elsewhere, not about
+    # any speaker; the live view of shares reads tables purged on their own.
+    "corpus_clips", "shared_clips_live",
     "admin_users", "coach_users", "admin_annotation_export_runs",
     "admin_notifications", "arc_invite_codes", "casual_voice_benchmarks",
     "chat_question_pool", "coach_video_assets",

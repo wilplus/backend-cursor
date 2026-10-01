@@ -69,7 +69,12 @@ def bold_voices_for_take(database: Any, *, take_session_id: str,
     shown = {str(row.get("step")): row.get("shown_at")
              for row in database.list_after_practice_steps(str(take_session_id)) or []
              if isinstance(row, dict) and row.get("step") in STEPS}
-    return 200, {"own": own, "coach_readings": readings, "steps_shown": shown}
+    # Phase 4 (F4): others' shared clips the quorum settled Yes and the
+    # licensed corpus a coach labelled Yes; [] until the peer lane opens.
+    from services.lend_your_ear import others_for_bold_voices
+    others = others_for_bold_voices(database, listener_id=str(owner_user_id))
+    return 200, {"own": own, "coach_readings": readings, "others": others,
+                 "steps_shown": shown}
 
 
 def mark_step(database: Any, *, take_session_id: str, owner_user_id: str,

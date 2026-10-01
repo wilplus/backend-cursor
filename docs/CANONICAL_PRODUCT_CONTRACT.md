@@ -430,6 +430,33 @@ with this contract, this contract wins.
     readings, without names; plays only, nothing judged, a heard receipt
     kept. Others' shared clips and Lend your ear wait for Phase 4 and
     counsel (C1 to C3, F3, F4).
+29d. **Lend your ear and the share** (founder 2026-10-01, F3, F4; Phase 4,
+    served only once `PEER_LANE_ENABLED` is on, which waits for counsel's
+    answers to C1, C2 and C3): "A blind 'Lend your ear' step reopens the
+    peer lane. Speakers judge up to three short shared or licensed clips,
+    audio only, never their own, at most once per Take after a practice
+    that lands. Their answers count toward the coach + peer quorum. The
+    retired Game stays retired." "Licensed corpus clips may be played to
+    speakers, without names, in 'Lend your ear' and 'Bold voices'." A
+    Voice Album moment is lent by a toggle, off by default, per recording,
+    revocable; a withdrawal leaves both pools at once. The set is a blind
+    stratified mix by the machine's read, in random order, never the before
+    and the after of one pair in one set nor on the same day. An answer is
+    one per person per clip and lands under lane `game_peer` (coach + peer
+    settles; a disagreement routes a third rater); owner answers never
+    enter (L3). Bold voices then adds others' clips the quorum settled Yes
+    and corpus clips a coach labelled Yes, without names.
+29e. **The delayed blind human measure** (founder 2026-10-01; Phase 5,
+    exercise-human-delayed-v1, `docs/MEASURE-exercise-human-delayed-v1.md`,
+    served only once `DELAYED_MEASURE_ENABLED` is on after the founder
+    signs the definition and counsel answers C1 to C3): one practice makes
+    one pair, the original clip and the first valid attempt (F7), fixed when
+    the practice closes; fallbacks and rewrite practices are excluded; the
+    clips enter Lend your ear as separate, unlabelled clips seven days
+    later, never both in one set; the speaker, the coach who handled the
+    moment, and any exposed rater never vote; a pair is better, same or
+    worse only once both clips are settled by the quorum. It grades the
+    machine's label and never teaches on its own.
 30. No blocks orange styling and Voice Album admission for that exact clip and
     suppresses that exact clip from resurfacing. It does not penalize the
     Paragraph, the user's voice, or materially stronger audio in a future Take.

@@ -169,6 +169,10 @@ def judge_attempt(database: Any, practice: Mapping, attempt_id: str,
                          attempt_id, str(answer))
     if said:
         result["practice_row"] = {**result["practice_row"], "after_practice": said}
+    # Phase 5: the closed practice's pair for the delayed measure (off,
+    # nothing). The endpoint is the first valid attempt, not the landing.
+    from services.delayed_measure import enrol
+    enrol(database, result["practice_row"])
     return 200, result
 
 

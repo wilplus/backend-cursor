@@ -1689,7 +1689,9 @@ def _dismissed(updated: dict) -> dict:
     """The practice the speaker left, with its encouragement (Phase 3, F5)
     when the switch is on; the row as closed otherwise."""
     from services.after_practice import after_dismissal
+    from services.delayed_measure import enrol
     said = after_dismissal(db, updated)
+    enrol(db, updated)   # Phase 5: a dismissed practice may still have a valid first attempt
     return {**updated, "after_practice": said} if said else updated
 
 
