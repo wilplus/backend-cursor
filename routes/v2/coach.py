@@ -29,7 +29,6 @@ from routes.phase2_guard import (
     operational_purpose_disabled,
     phase2_learning_disabled,
 )
-from routes.v2.arcs import _spoken_takes_and_reads
 from routes.v2.blueprint import v2_bp
 from services.rate_limits import heavy_limit, llm_limit, whisper_limit
 # Module scope on purpose: `except DeadlineExceeded` in the upload routes
@@ -881,18 +880,6 @@ def _fold_coach_review_reads(session_id, snippets, cstate):
     return read_sessions
 
 
-def _coach_arc_ideal_ready(session, _context_unlocked):
-    if not (_context_unlocked and session.get("arc_id")):
-        return False
-    try:
-        _it_row = db.ideal_text.get_coach_arc_ideal_text(session.get("arc_id"))
-        return bool(
-            _it_row and (_it_row.get("text") or "").strip()
-            and not _it_row.get("approved_at"))
-    except Exception:
-        return False
-
-
 def _session_shows_slides(session):
     """Could the surface that collected a rating for this session show a slide?
 
@@ -918,17 +905,8 @@ def _session_shows_slides(session):
     return bool(str(ctx.get("presentation_ref") or "").strip())
 
 
-def _coach_review_state(session):
-    if session.get("results_published_at"):
-        return "delivered"
-    if session.get("coach_feedback_saved_at"):
-        return "reviewed"
-    return "to_review"
-
-
 def _coach_get_session_identity_fields(
     *, session_id, session, cstate, ctx, _context_unlocked, _blind_progress,
-    _arc_ideal_ready, _review_state,
 ):
     return {
         "session_id": session_id,
@@ -945,9 +923,7 @@ def _coach_get_session_identity_fields(
                           if _context_unlocked else None),
         "sent_at": session.get("review_requested_at") or session.get("created_at") or "",
         "state": _coach_session_state(session, cstate),
-        "review_state": _review_state,
         "arc_id": session.get("arc_id"),
-        "arc_ideal_ready": _arc_ideal_ready if _context_unlocked else False,
         "context_unlocked": _context_unlocked,
         "blind_label": _blind_progress,
     }
@@ -981,23 +957,9 @@ def _coach_get_session_reads_fields(read_sessions, _context_unlocked):
 
 
 def _coach_get_session_media_fields(
-    *, session_id, session, readout, ctx, _context_unlocked, _served_snippets,
+    *, readout, ctx, _context_unlocked, _served_snippets,
 ):
-    from services.feelings import shape_coach_feelings
     return {
-        "overall_message": (
-            session.get("coach_overall_message") or ""
-            if _context_unlocked else ""),
-        "video_ref": (refreshed_media_url(session.get("coach_video_ref") or None)
-                      if _context_unlocked else None),
-        # Slide-deck context (UX Wave 4 BE-S6a) — coach sees the deck while
-        # reviewing; per-snippet slide mapping is Phase 2.
-        #
-        # `slides` — the WHOLE deck, for the slide-correction control. Stays
-        # behind the context gate: correcting a mapping is authoring, not
-        # rating, and a blind rater has no business paging the deck.
-        "slides": ((ctx or {}).get("slides") or [])
-        if _context_unlocked else [],
         # `presentation_ref` — THE DECK FILE, AND IT IS NOT GATED (founder
         # 2026-09-25). The 2026-09-24 override already put `slide` on the
         # blind allowlist — "I want as a coach to see the slide at the top; to
@@ -1014,36 +976,31 @@ def _coach_get_session_media_fields(
         # label from a voice-plus-slide one instead of silently merging them.
         # Do not gate this again while `slide` is on that allowlist — the two
         # halves are one ruling and splitting them is what caused this.
+        #
+        # The whole deck (`slides`, for the slide-mapping control), the Take
+        # Message and video, and the pre-recording feelings left with the
+        # arc-level delivery (founder 2026-09-30, B3 to B6; contract 65).
         "presentation_ref": refreshed_media_url(
             (ctx or {}).get("presentation_ref") or None),
         # Per-slide coverage ledger (Stickiness #2 (i)) — coach audit.
         "slide_coverage": (readout.get("slide_coverage") or [])
         if _context_unlocked else [],
         "snippets": _served_snippets,
-        # U10 — the pre-recording feeling(s) the student named (nervous/
-        # excited/calm/unsure), shown at the END of the snippets. Coach-only
-        # (split-sink/AC-9, never user-facing); the felt-state input the
-        # coach factors into the audit's "Performance under feeling".
-        "feelings": (
-            shape_coach_feelings(db.get_feelings_by_session(session_id))
-            if _context_unlocked else []),
     }
 
 
 def _coach_get_session_response(
     *, session_id, session, cstate, readout, ctx, _context_unlocked,
-    _blind_progress, _served_snippets, read_sessions, _arc_ideal_ready,
-    _review_state,
+    _blind_progress, _served_snippets, read_sessions,
 ):
     return {
         **_coach_get_session_identity_fields(
             session_id=session_id, session=session, cstate=cstate, ctx=ctx,
             _context_unlocked=_context_unlocked, _blind_progress=_blind_progress,
-            _arc_ideal_ready=_arc_ideal_ready, _review_state=_review_state,
         ),
         **_coach_get_session_reads_fields(read_sessions, _context_unlocked),
         **_coach_get_session_media_fields(
-            session_id=session_id, session=session, readout=readout, ctx=ctx,
+            readout=readout, ctx=ctx,
             _context_unlocked=_context_unlocked, _served_snippets=_served_snippets,
         ),
     }
@@ -1117,18 +1074,11 @@ def v2_coach_get_session(session_id):
         )
 
         ctx = session.get("intake_context") if isinstance(session.get("intake_context"), dict) else {}
-        # "Ideal text ready to review" (founder 2026-07-15) — a persisted,
-        # unapproved machine draft exists for this session's arc.
-        _arc_ideal_ready = _coach_arc_ideal_ready(session, _context_unlocked)
-        # Founder 2026-07-15: saved = REVIEWED (three explicit states beside
-        # the legacy `state`; additive, FE maps safe-ahead).
-        _review_state = _coach_review_state(session)
         return jsonify(_coach_get_session_response(
             session_id=session_id, session=session, cstate=cstate,
             readout=readout, ctx=ctx, _context_unlocked=_context_unlocked,
             _blind_progress=_blind_progress, _served_snippets=_served_snippets,
-            read_sessions=read_sessions, _arc_ideal_ready=_arc_ideal_ready,
-            _review_state=_review_state,
+            read_sessions=read_sessions,
         )), 200
     except Exception as e:
         logger.error("coach/get-session failed sid=%s err=%s", session_id, e, exc_info=True)
@@ -1290,92 +1240,6 @@ def v2_coach_put_say_it_stronger(snippet_id):
                      snippet_id, e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to save card"}), 500
-
-
-def _save_coach_snippet_lanes(session_id, snippet_id, body):
-    """SHARED two-lane persist for one snippet's coach authoring — used by
-    BOTH the per-snippet immediate-save route AND the publish route's inline
-    ``snippets[]`` batch (founder 2026-07-13: the FE saves everything at
-    Publish instead of per keystroke). One implementation so the two doors
-    physically cannot drift (same validators, same caps, same stores).
-
-    Runs inside a request context (reads ``request.user_id``). Returns None
-    on success, or a ``(flask_response, status)`` tuple to return directly.
-    Persists note/tag/surfaced/when/examples/transcript_corrected to the
-    user-facing coach draft. Blind confidence ratings use their own endpoint.
-    """
-    from services.feedback_repository import LEGACY_COACH_TAGS
-
-    # ── USER lane — note / tag / surfaced / when / examples (drafts). ──
-    draft_fields: dict = {}
-    if "note" in body:
-        note_raw = body.get("note")
-        if note_raw is not None and not isinstance(note_raw, str):
-            return jsonify({"code": "INVALID_INPUT", "error": "note: must be a string"}), 422
-        note = (note_raw or "").strip()
-        if len(note) > 2000:
-            return jsonify({"code": "INVALID_INPUT", "error": "note: 2000 chars max"}), 422
-        draft_fields["note"] = note or None
-    if "tag" in body:
-        tag = body.get("tag")
-        if tag is not None and tag not in LEGACY_COACH_TAGS:
-            return jsonify({
-                "code": "INVALID_INPUT",
-                "error": (
-                    "tag: must be one of "
-                    f"{', '.join(LEGACY_COACH_TAGS)}"
-                ),
-            }), 422
-        draft_fields["tag"] = tag
-    if "surfaced" in body:
-        surfaced = body.get("surfaced")
-        if not isinstance(surfaced, bool):
-            return jsonify({"code": "INVALID_INPUT", "error": "surfaced: must be a boolean"}), 422
-        draft_fields["surfaced"] = surfaced
-    if "when" in body:
-        when_raw = body.get("when")
-        if when_raw is not None and not isinstance(when_raw, str):
-            return jsonify({"code": "INVALID_INPUT", "error": "when: must be a string"}), 422
-        when = (when_raw or "").strip()
-        if len(when) > 1000:
-            return jsonify({"code": "INVALID_INPUT", "error": "when: 1000 chars max"}), 422
-        draft_fields["when_context"] = when or None
-    if "examples" in body:
-        ex_raw = body.get("examples")
-        if ex_raw is None:
-            draft_fields["examples"] = []
-        elif not isinstance(ex_raw, list):
-            return jsonify({"code": "INVALID_INPUT", "error": "examples: must be a list"}), 422
-        else:
-            cleaned_ex = []
-            for ex in ex_raw[:10]:
-                if isinstance(ex, str) and ex.strip():
-                    cleaned_ex.append(ex.strip()[:500])
-            draft_fields["examples"] = cleaned_ex
-    # Coach-corrected transcript (founder 2026-07-06) — a real coach-
-    # authored artifact, distinct from `note`. Free tier the instant it's
-    # saved + surfaced (no payment check anywhere in this path).
-    if "transcript_corrected" in body:
-        tx_raw = body.get("transcript_corrected")
-        if tx_raw is not None and not isinstance(tx_raw, str):
-            return jsonify({
-                "code": "INVALID_INPUT",
-                "error": "transcript_corrected: must be a string",
-            }), 422
-        tx = (tx_raw or "").strip()
-        if len(tx) > 4000:
-            return jsonify({
-                "code": "INVALID_INPUT",
-                "error": "transcript_corrected: 4000 chars max",
-            }), 422
-        draft_fields["transcript_corrected"] = tx or None
-
-    if draft_fields:
-        db.upsert_coach_snippet_draft(
-            session_id, snippet_id, draft_fields,
-            updated_by=str(request.user_id),
-        )
-    return None
 
 
 def _speaker_practice_permitted(take_session_id: str) -> bool:
@@ -1909,217 +1773,35 @@ def v2_coach_named_errors(session_id, snippet_id):
     return jsonify(payload), status
 
 
+# ── willab — the arc-level delivery: RETIRED ─────────────────────────────
+# Founder 2026-09-30, B3 to B6 (contract 65; docs/FOUNDER-LOCK-coach-panel-
+# 2026-10.md), removed 2026-10-01 on the founder's "do P2-19 now". The
+# per-snippet note and surface toggle, the re-cut, the per-take Save, the
+# wrap-up read, the slide-mapping correction and the arc-level publish
+# answer 410 and write nothing. Their tables (coach_snippet_drafts,
+# coach_review_revisions, coach_review_delivery_outbox,
+# snippet_slide_corrections, recording_feelings) stay as history and take no
+# new writes. What reaches the speaker now is a shared answer on its moment
+# (35g-2) and the Take word (35g-6); the coach's judgement is the one
+# instrument (35g-5), written by the confidence-label PUT below.
+
+def _coach_delivery_gone():
+    return jsonify({
+        "code": "GONE",
+        "error": "The arc-level delivery was retired (founder 2026-09-30, B3 to B6).",
+    }), 410
+
+
 @v2_bp.route("/coach/sessions/<session_id>/snippets/<snippet_id>", methods=["POST"])
 @require_admin_or_coach
-def v2_coach_save_snippet(session_id, snippet_id):
-    """③ willab coach per-snippet immediate save (E1 / §B.3 / S.5).
-
-    Persists ONE snippet's coach authoring immediately, so reopening the
-    overlay resumes where the coach left off (no all-in-memory-until-publish
-    loss). Partial saves are first-class — send only the fields that changed.
-
-    Body (any subset)::
-        { "note"?:    "..."        // empty/whitespace -> cleared
-          "tag"?:     "strong"|"to_work_on"
-          "surfaced"?: bool         // does this snippet reach the user?
-          "transcript_corrected"?: "..."  // FREE tier the instant it's saved (2026-07-06)
-          "when"?:    "...", "examples"?: ["..."] }       // optional PR-2 fields
-
-    note/tag/surfaced/when/examples are assembled into the user-facing payload
-    at publish. Blind confidence ratings use their own state-rating endpoint.
-
-    Idempotent on (session_id, snippet_id). NO publish-floor validation here
-    (drafts are partial; the floor is enforced at publish). Coach-facing only:
-    the response echoes the coach's own input — no salience/control score, no
-    real identity, never serialized to the user.
-
-    200 { coach_state }
-    400 INVALID_INPUT · 404 SESSION_NOT_FOUND / SNIPPET_NOT_FOUND · 422 invalid value
-    """
-    if not _is_valid_uuid(session_id) or not _is_valid_uuid(snippet_id):
-        return jsonify({
-            "code": "INVALID_INPUT", "error": "session_id and snippet_id must be UUIDs",
-        }), 400
-    try:
-        session = db.v2_get_session_by_id(session_id)
-        if not session:
-            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-
-        # Snippet must belong to THIS session OR one of its folded mid-take
-        # re-reads (founder 2026-07-16 — the coach edits the MERGED packet
-        # under the spoken take's path). The write ROUTES to the snippet's
-        # OWNING session so every downstream reader (key moments, labels
-        # export, learning loop) — all keyed by the read's own session id —
-        # sees it.
-        _owner_sid = _snippet_owner_map(session_id).get(snippet_id)
-        if not _owner_sid:
-            return jsonify({
-                "code": "SNIPPET_NOT_FOUND", "error": "Snippet not in this session",
-            }), 404
-
-        body = request.get_json(silent=True) or {}
-
-        # SHARED two-lane persist (also the publish route's inline snippets[]
-        # path) — one implementation so the two doors cannot drift.
-        _lane_err = _save_coach_snippet_lanes(_owner_sid, snippet_id, body)
-        if _lane_err is not None:
-            return _lane_err
-
-        # Echo the persisted coach_state (BOTH lanes folded) — the FE writes
-        # this back into its local state, so it must reflect what's stored.
-        return jsonify({
-            "coach_state": _coach_state_for(_owner_sid, snippet_id),
-        }), 200
-    except Exception as e:
-        logger.error(
-            "coach/save-snippet failed sid=%s snip=%s err=%s",
-            session_id, snippet_id, e, exc_info=True,
-        )
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": "Failed to save snippet"}), 500
+def v2_coach_save_snippet_gone(session_id, snippet_id):
+    return _coach_delivery_gone()
 
 
 @v2_bp.route("/coach/sessions/<session_id>/recut", methods=["POST"])
-@heavy_limit
 @require_admin_or_coach
-def v2_coach_session_recut(session_id):
-    """willab admin re-cut (UX Wave 3 E-2 / S7). Re-runs the willab segmenter
-    on the session's STORED parent audio and replaces the auto-cut snippets.
-
-    DEVIATION (reported): the spec named apply_extracted_snippets, but that is
-    the OLD funnel's pipeline (turn rows / session_recordings/full.webm).
-    willab Lab audio lives in the coach bucket and is cut by
-    process_lab_recording, so re-cut re-runs THAT on the re-downloaded parent.
-
-    Guard: refused on a PUBLISHED session (never disturb a delivered report).
-    Caveat: re-cut mints new snippet ids, so any pre-publish coach drafts/
-    labels on the old snippets are orphaned (invisible to the new cut).
-    """
-    if not _is_valid_uuid(session_id):
-        return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a UUID"}), 400
-    try:
-        session = db.v2_get_session_by_id(session_id)
-        if not session:
-            return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-        if session.get("results_published_at"):
-            return jsonify({
-                "code": "ALREADY_PUBLISHED",
-                "error": "Cannot re-cut a published session.",
-            }), 409
-        # Guard the PARTIALLY-REVIEWED case: re-cut mints new snippet ids, so
-        # any coach drafts already on this session would be orphaned. Refuse
-        # unless ?force=true so the discard is explicit.
-        _force = (request.args.get("force") or "").strip().lower() in ("1", "true", "yes")
-        _drafts = db.get_coach_snippet_drafts(session_id) or []
-        if _drafts and not _force:
-            return jsonify({
-                "code": "RECUT_WOULD_DISCARD_COACH_WORK",
-                "error": (
-                    "Re-cut mints new snippets and would discard the coach "
-                    "notes already on this session. Re-send with "
-                    "?force=true to re-cut and discard them."
-                ),
-                "drafts": len(_drafts),
-            }), 409
-        recording_id = session.get("recording_id")
-        if not recording_id:
-            return jsonify({"code": "NO_RECORDING", "error": "Session has no recording."}), 404
-        rec = db.get_recording(recording_id)
-        if not rec:
-            return jsonify({"code": "NO_RECORDING", "error": "Recording not found."}), 404
-        storage_path = rec.get("storage_path")
-        parent_url = rec.get("audio_url") or storage_path
-        if not storage_path:
-            return jsonify({"code": "NO_AUDIO", "error": "Recording has no stored audio."}), 422
-
-        from services.processing_authorization import ProcessingAuthorizationService
-        authorization = ProcessingAuthorizationService(db)
-        try:
-            if authorization.enforced:
-                from services.authorized_provider import (
-                    AuthorizedProviderAdapter,
-                    ProviderCoordinates,
-                )
-                attempt_result = (
-                    db.client.table("processing_recording_attempts")
-                    .select("id,acquisition_principal_id")
-                    .eq("recording_id", str(recording_id)).limit(1).execute()
-                )
-                attempt = (attempt_result.data or [None])[0]
-                if not isinstance(attempt, dict):
-                    raise RuntimeError("AUTHORIZED_AUDIO_LINEAGE_MISSING")
-                object_result = (
-                    db.client.table("processing_audio_objects")
-                    .select("storage_provider,bucket,object_key")
-                    .eq("recording_attempt_id", str(attempt["id"]))
-                    .limit(1).execute()
-                )
-                audio_object = (object_result.data or [None])[0]
-                if not isinstance(audio_object, dict):
-                    raise RuntimeError("AUTHORIZED_AUDIO_OBJECT_MISSING")
-                principal_id = str(attempt["acquisition_principal_id"])
-                authorization.require_current(principal_id, operation="coach_recut")
-                adapter = AuthorizedProviderAdapter(
-                    db,
-                    ProviderCoordinates(principal_id, session_id, str(recording_id)),
-                    authorization=authorization,
-                )
-                audio_bytes = adapter.download_audio(
-                    storage_provider=str(audio_object["storage_provider"]),
-                    bucket=str(audio_object["bucket"]),
-                    object_key=str(audio_object["object_key"]),
-                    idempotency_key=f"coach-recut-download:{session_id}:{uuid.uuid4()}",
-                )
-            else:
-                # Compatibility before the reviewed Phase‑1 policy is active.
-                from services.lab_audio_storage import get_lab_audio_bytes
-                audio_bytes = get_lab_audio_bytes(storage_path)
-        except Exception as fe:
-            from services.processing_authorization import ProcessingAuthorizationError
-            if isinstance(fe, ProcessingAuthorizationError):
-                return jsonify({"code": fe.code, "error": fe.message}), fe.status
-            logger.error("recut: audio fetch failed sid=%s err=%s", session_id, fe)
-            return jsonify({"code": "AUDIO_FETCH_FAILED", "error": "Could not load stored audio."}), 502
-        if not audio_bytes:
-            return jsonify({"code": "NO_AUDIO", "error": "Stored audio is empty."}), 422
-
-        # Replace the existing auto-cut snippets, then re-run the segmenter.
-        # On a forced re-cut, also clear the now-orphaned coach drafts.
-        if _force and _drafts:
-            db.delete_coach_snippet_drafts_for_session(session_id)
-            logger.info(
-                "recut: force-discarded coach work sid=%s drafts=%d",
-                session_id, len(_drafts),
-            )
-        db.v2_delete_lab_snippets_for_recording(recording_id)
-        from services.lab_recording import process_lab_recording
-        readout = process_lab_recording(
-            session_id=session_id,
-            user_id=session.get("user_id"),
-            recording_id=recording_id,
-            audio_bytes=audio_bytes,
-            filename=(storage_path.rsplit("/", 1)[-1] or "lab.webm"),
-            session_context=(
-                session.get("intake_context")
-                if isinstance(session.get("intake_context"), dict) else {}
-            ),
-            parent_audio_url=parent_url,
-            # Preserve the session's spoken/read kind across a re-cut.
-            recording_kind=(session.get("recording_kind") or "spoken"),
-            # …and its parent take, so a re-cut re-read keeps the acoustic
-            # reference that makes its needle honest (2026-07-17).
-            paired_session_id=session.get("paired_session_id"),
-        )
-        snippets = (readout or {}).get("snippets") or []
-        logger.info("recut: sid=%s re-cut snippets=%d", session_id, len(snippets))
-        return jsonify({
-            "status": "ok", "session_id": session_id,
-            "snippet_count": len(snippets), "snippets": snippets,
-        }), 200
-    except Exception as e:
-        logger.error("coach/session-recut failed sid=%s err=%s", session_id, e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": "Failed to re-cut session"}), 500
+def v2_coach_session_recut_gone(session_id):
+    return _coach_delivery_gone()
 
 
 @v2_bp.route("/coach/sessions/<session_id>/video", methods=["POST"])
@@ -2280,296 +1962,14 @@ def v2_coach_approve_ideal_text_gone(arc_id):
 
 @v2_bp.route("/coach/sessions/<session_id>/save-feedback", methods=["POST"])
 @require_admin_or_coach
-def v2_coach_save_feedback(session_id):
-    """The per-take coach 'Save' checkpoint (founder 2026-07-15): PERSISTS the
-    coach's authoring for this take and stamps it reviewed-and-saved so the
-    coach can move to the next recording. Delivers NOTHING to the student —
-    the single 'Save and Publish full analysis' does.
-
-    Body (FE sends the same shape the old publish door took — save-at-once,
-    no per-keystroke autosave):
-      snippets?: [{id, note?, tag?, surfaced?, transcript_corrected?, ...}]
-                  → the coach draft store, via
-                  the SAME shared helper as every other door (no drift);
-      overall_message? → persisted as the separate take-level coach summary.
-                  Exact-evidence paragraph feedback remains in the canonical
-                  draft repository until publish.
-
-    200 {saved:true, snippets_saved} · 400 · 404 · 422 · 500"""
-    if not _is_valid_uuid(session_id):
-        return jsonify({"code": "INVALID_INPUT",
-                        "error": "session_id must be a UUID"}), 400
-    try:
-        session = db.v2_get_session_by_id(session_id)
-        if not session:
-            return jsonify({"code": "SESSION_NOT_FOUND",
-                            "error": "Session not found"}), 404
-        body = request.get_json(silent=True) or {}
-
-        if "insights_payload" in body:
-            return jsonify({
-                "code": "INVALID_INPUT",
-                "error": "insights_payload is retired",
-            }), 422
-
-        if "overall_message" in body:
-            from services.feedback_repository import (
-                FeedbackContractError,
-                normalize_coach_overall_message,
-            )
-            try:
-                overall_message = normalize_coach_overall_message(
-                    body.get("overall_message"))
-            except FeedbackContractError as error:
-                return jsonify({
-                    "code": "INVALID_INPUT", "error": str(error),
-                }), 422
-            if not db.takes.set_session_coach_overall_message(
-                session_id, overall_message,
-            ):
-                return jsonify({
-                    "code": "V2_ERROR",
-                    "error": "Could not save coach review summary",
-                }), 500
-
-        # Founder 2026-07-16: the coach saves the MERGED packet (the take +
-        # its folded mid-take re-reads) under the spoken take's path — every
-        # row routes to its OWNING session (a read snippet persists under
-        # the read's own session id, where all downstream readers look).
-        _owners = {}
-        _inline = body.get("snippets")
-        if isinstance(_inline, list) and _inline:
-            _owners = _snippet_owner_map(session_id)
-
-        # ── Persist the inline authoring (same doors-can't-drift helper). ──
-        _n_saved = 0
-        if isinstance(_inline, list) and _inline:
-            for _entry in _inline:
-                if not isinstance(_entry, dict):
-                    return jsonify({
-                        "code": "INVALID_INPUT",
-                        "error": "snippets: entries must be objects",
-                    }), 422
-                _snip_id = str(_entry.get("id") or "").strip()
-                if _snip_id not in _owners:
-                    return jsonify({
-                        "code": "SNIPPET_NOT_FOUND",
-                        "error": f"snippet {_snip_id or '(missing id)'} "
-                                 "not in this session",
-                    }), 404
-                _fields = dict(_entry)
-                _fields.pop("id", None)
-                _lane_err = _save_coach_snippet_lanes(
-                    _owners[_snip_id], _snip_id, _fields,
-                )
-                if _lane_err is not None:
-                    return _lane_err
-                _n_saved += 1
-
-        if not db.takes.set_session_feedback_saved(session_id):
-            return jsonify({"code": "V2_ERROR",
-                            "error": "Could not save"}), 500
-        return jsonify({"saved": True, "session_id": session_id,
-                        "snippets_saved": _n_saved}), 200
-    except Exception as e:
-        logger.error("save-feedback failed sid=%s: %s", session_id, e,
-                     exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": "Failed to save"}), 500
-
-
-def _arc_has_a_surfaced_note(spoken):
-    """Does anywhere in this arc carry a surfaced note? — the library floor.
-
-    ONE READ FOR THE WHOLE ARC. This scanned take by take and broke on the
-    first hit: cheap for a coach who authored something on take 1, a round
-    trip PER TAKE for the case that actually matters — a journey with no
-    notes yet, which is every new student's.
-
-    True on a read miss, DELIBERATELY: a miss must not fabricate a blocker
-    and lock the coach out of publishing. Publish re-checks per take anyway,
-    where a miss is a 409 with copy that says what to do — a false ENABLE
-    costs one clear error, a false DISABLE costs a coach who cannot ship
-    work they have already done.
-    """
-    try:
-        by_take = db.get_coach_snippet_drafts_by_sessions(
-            [s.get("id") for s in spoken if s.get("id")]) or {}
-    except Exception:
-        return True
-    return any(
-        d.get("surfaced") and (d.get("note") or "").strip()
-        for rows in by_take.values() for d in rows
-    )
+def v2_coach_save_feedback_gone(session_id):
+    return _coach_delivery_gone()
 
 
 @v2_bp.route("/coach/arc/<arc_id>/review-state", methods=["GET"])
 @require_admin_or_coach
-def v2_coach_arc_review_state(arc_id):
-    """The coach's arc wrap-up state (founder 2026-07-17) — ONE read that
-    answers "what's left before I can publish?", so the post-last-take screen
-    (Open the ideal text → PUBLISH) needs no client-side inference across
-    per-take calls.
-
-    The publish preconditions are the SAME ones publish-analysis enforces
-    (every spoken take saved + the ideal text approved) — served here as data
-    instead of only as a 409, so the FE can render the button's state up front
-    rather than discovering it on a failed POST.
-
-    200 {
-      arc_id, published,
-      takes: [{session_id, take_index, review_state, has_reread}],   # spoken
-      takes_saved, takes_total, takes_target,
-      ideal: {assembly_state, ready, approved, source, takes_done},
-      can_publish, blockers: ["TAKES_NOT_SAVED"|"IDEAL_TEXT_NOT_APPROVED"|
-                              "NO_TAKES"],
-      pending_session_ids: [...]        # the unsaved takes, for the FE's copy
-    }
-    404 · 500
-    """
-    try:
-        sessions = db.takes.get_arc_sessions(arc_id)
-        if not sessions:
-            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        spoken, reads = _spoken_takes_and_reads(sessions)
-
-        takes = []
-        pending = []
-        for s in spoken:
-            sid = str(s.get("id"))
-            publish_payload = None
-            if s.get("results_published_at"):
-                _rs = "delivered"
-            elif s.get("coach_feedback_saved_at"):
-                _rs = "reviewed"
-                try:
-                    from services.feedback_repository import (
-                        FeedbackRepository,
-                        serialize_feedback_item,
-                    )
-
-                    publish_payload = {
-                        "session_id": sid,
-                        "overall_message": (
-                            str(s.get("coach_overall_message") or "").strip()
-                            or None
-                        ),
-                        "feedback_items": [
-                            serialize_feedback_item(item)
-                            for item in FeedbackRepository(db).surfaced_items(sid)
-                        ],
-                        # Video remains private unless the coach explicitly
-                        # chooses Share with user in the final payload.
-                        "share_video": False,
-                    }
-                except Exception as payload_error:
-                    logger.warning(
-                        "coach review-state payload invalid sid=%s: %s",
-                        sid,
-                        payload_error,
-                    )
-            else:
-                _rs = "to_review"
-                pending.append(sid)
-            takes.append({
-                "session_id": sid,
-                "take_index": s.get("take_index"),
-                "review_state": _rs,
-                "has_reread": bool(reads.get(sid)),
-                "publish_payload": publish_payload,
-            })
-
-        from services.slide_selection import TAKES_TARGET
-        row = db.ideal_text.get_coach_arc_ideal_text(arc_id) or {}
-        _ideal_text = (row.get("text") or "").strip()
-        _approved = bool(row.get("approved_at"))
-        ideal = {
-            # "ready" the moment a block exists to review; "pending" until the
-            # eager assembly at spoken take 3 has something to show.
-            "assembly_state": ("ready" if _ideal_text else "pending"),
-            "ready": bool(_ideal_text),
-            "approved": _approved,
-            "source": ("coach" if row.get("updated_by")
-                       else ("machine" if _ideal_text else None)),
-            "takes_done": min(len(spoken), TAKES_TARGET),
-        }
-
-        # ── WHAT ACTUALLY BLOCKS A PUBLISH (founder ruling 2026-08-14) ──
-        #
-        # "Post it when I want, even with a single feedback." The old gate
-        # demanded EVERY take saved AND the ideal text verified, which made
-        # coach work all-or-nothing: review 17 of 18 moments, save one take
-        # of two, skip the verify — and the student saw exactly as much as if
-        # the panel had never been opened. That is how a month of recordings
-        # produced nothing.
-        #
-        # The library floor stays, and is now the ONLY content gate: at least
-        # one surfaced snippet carrying a note, somewhere in the arc. It is
-        # what guarantees a publish delivers something rather than an empty
-        # envelope, and it is enforced again per-take at publish time.
-        _has_a_note = _arc_has_a_surfaced_note(spoken)
-
-        # ONLY ONE BLOCKER SURVIVES: there is nothing recorded to publish.
-        #
-        # Not even the library floor blocks HERE, and that is deliberate.
-        # `get_coach_snippet_drafts` returns [] on a read failure exactly as
-        # it does when there genuinely are no drafts, so blocking on it would
-        # let one transient hiccup grey out the publish button with a reason
-        # the coach cannot act on. The floor is re-checked per take at publish
-        # time against fresh reads, where a miss is a 409 with copy that says
-        # what to do — a false ENABLE costs one clear error message, a false
-        # DISABLE costs a coach who cannot ship work they have already done.
-        blockers = []
-        if not spoken:
-            blockers.append("NO_TAKES")
-
-        # ADVISORIES, not blockers. The panel shows them so the coach knows
-        # what a publish right now would leave out — unsaved takes are
-        # skipped and stay visibly "to review" (partial publish, founder
-        # 2026-08-14) — but nothing here disables the button.
-        advisories = []
-        if pending:
-            advisories.append("TAKES_NOT_SAVED")
-        if not _approved:
-            advisories.append("IDEAL_TEXT_NOT_APPROVED")
-        if spoken and not _has_a_note:
-            advisories.append("NO_FEEDBACK")
-
-        _body = {
-            "arc_id": arc_id,
-            "published": bool(spoken) and all(
-                s.get("results_published_at") for s in spoken),
-            "takes": takes,
-            "takes_saved": len(spoken) - len(pending),
-            "takes_total": len(spoken),
-            "takes_target": TAKES_TARGET,
-            "ideal": ideal,
-            "can_publish": not blockers,
-            "blockers": blockers,
-            "advisories": advisories,
-            "pending_session_ids": pending,
-        }
-        # Single deliverable (2026-07-17): the wrap-up's action is VERIFY —
-        # available whenever a current version exists and isn't verified yet.
-        _v = row.get("version") or (1 if _ideal_text else None)
-        _vv = row.get("verified_version")
-        _verified = bool(_v is not None and _vv == _v
-                         and (row.get("verified_text") or "").strip())
-        _body.update({
-            "version": _v,
-            "verification_status": (
-                "verified" if _verified
-                else ("unverified" if _ideal_text else None)),
-            "verify_available": bool(_ideal_text and not _verified),
-        })
-        return jsonify(_body), 200
-    except Exception as e:
-        logger.error("coach/arc review-state failed arc=%s: %s", arc_id, e,
-                     exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({
-            "code": "V2_ERROR", "error": "Failed to load the review state",
-        }), 500
+def v2_coach_arc_review_state_gone(arc_id):
+    return _coach_delivery_gone()
 
 
 def _resolve_audio_refs(rows: list, *, expires_in: int = 6 * 3600) -> None:
@@ -3507,89 +2907,20 @@ def v2_coach_confirm_session_language(session_id):
 
 @v2_bp.route("/coach/snippets/<snippet_id>/slide", methods=["PUT"])
 @require_admin_or_coach
-def v2_coach_put_snippet_slide(snippet_id):
-    """THE WORD→SLIDE GROUND TRUTH (founder 2026-08-11). The coach says which
-    slide was ON SCREEN while this snippet was spoken.
+def v2_coach_put_snippet_slide_gone(snippet_id):
+    return _coach_delivery_gone()
 
-        { slide_index: int }   this snippet was delivered on slide N
-        { slide_index: null }  withdraw a correction — the pipeline was right
 
-    WHAT THIS IS FOR. The pipeline buckets words by the tap timeline and
-    nothing has ever checked it against a human; services/slide_boundary_
-    metrics.py can only report exposure and impact, never accuracy, and says
-    so in its own header — the missing piece is exactly this row. Every
-    correction is also one (speech window, slide) training pair, which is the
-    corpus any learned aligner would need before it could be trained at all.
-
-    WHAT IT IS NOT. Not "these words are about slide N". Correctness here is
-    what the audience was looking at, so a speaker who ran ahead of their own
-    deck is not a bucketing error. The FE copy says so; this docstring is the
-    contract behind it, because a corpus that mixes the two teaches the
-    opposite of the thing we measure.
-
-    The index is validated against THIS session's deck: a correction pointing
-    at a slide the deck does not have is a corrupt label, and it fails here
-    rather than landing in the corpus.
-
-    Append-only — the row is inserted, never upserted, so the trail of what
-    the pipeline said and what the human said instead survives.
-
-    200 { saved, snippet_id, slide_index } · 400 · 404 · 500
-    """
-    if not _is_valid_uuid(snippet_id):
-        return jsonify({"code": "INVALID_INPUT",
-                        "error": "snippet_id must be a valid UUID"}), 400
-    body = request.get_json(silent=True) or {}
-    if "slide_index" not in body:
-        return jsonify({"code": "INVALID_INPUT",
-                        "error": "slide_index: required (null to withdraw)"}), 400
-    raw = body.get("slide_index")
-    if raw is not None and (isinstance(raw, bool) or not isinstance(raw, int)):
-        return jsonify({"code": "INVALID_INPUT",
-                        "error": "slide_index: must be an integer or null"}), 400
-    try:
-        snip = db.get_snippet_by_id(snippet_id)
-        if not snip or not snip.get("session_id"):
-            return jsonify({"code": "NOT_FOUND",
-                            "error": "snippet not found"}), 404
-        session_id = str(snip.get("session_id"))
-        session = db.v2_get_session_by_id(session_id) or {}
-        ctx = session.get("intake_context")
-        ctx = ctx if isinstance(ctx, dict) else {}
-        slides = ctx.get("slides") or []
-        if raw is not None and not (0 <= raw < len(slides)):
-            return jsonify({
-                "code": "INVALID_INPUT",
-                "error": (f"slide_index: out of range for this deck "
-                          f"({len(slides)} slide(s))"),
-            }), 400
-        # What the pipeline says right now, recorded beside the correction:
-        # without it the corpus knows where the words belong but never how
-        # far off the timeline was, and the size of the miss IS the
-        # measurement.
-        was = None
-        try:
-            from services.slide_alignment import slide_for_snippet
-            was = slide_for_snippet(
-                snip, ctx.get("slide_advances") or [], slides
-            ) if slides else None
-        except Exception:
-            was = None
-        saved = db.record_snippet_slide_correction(
-            session_id=session_id,
-            snippet_id=snippet_id,
-            slide_index=raw,
-            was_slide_index=was,
-            corrected_by=str(getattr(request, "user_id", "") or "") or None,
-        )
-        return jsonify({"saved": bool(saved), "snippet_id": snippet_id,
-                        "slide_index": raw}), 200
-    except Exception as e:
-        logger.error("coach/snippet-slide failed snippet=%s err=%s",
-                     snippet_id, e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR",
-                        "error": "Failed to save the slide correction"}), 500
+def _reconcile_album_after_judgement(sess, snippet_id, session_id):
+    """THE ALBUM'S COACH LEG (founder 2026-09-30, B3; contract 65): the
+    walk's judgement is final when written, so the judgement write is the
+    moment the exact clip is reconciled against the user's yes and the
+    machine's star. The arc-level publish job that once did it is retired.
+    Best-effort inside: never breaks the rating."""
+    from services.voice_album import reconcile_voice_album_clip
+    reconcile_voice_album_clip(
+        sess.get("project_id") or sess.get("arc_id"), snippet_id,
+        take_session_id=session_id, database=db)
 
 
 @v2_bp.route("/coach/snippets/<snippet_id>/confidence-label", methods=["PUT"])
@@ -3800,6 +3131,7 @@ def v2_coach_put_confidence_label(snippet_id):
                 owner_user_id=sess.get("user_id"), coach_value=value,
                 coach_note=row.get("note"), coach_write=True,
                 is_rereview=is_rereview)
+            _reconcile_album_after_judgement(sess, snippet_id, session_id)
         # BLINDNESS RELEASE. This read occurs only after the independent
         # judgment above was durably written. Queue/read payloads never call
         # it, so the coach cannot see the owner label or machine proposal
@@ -3842,65 +3174,8 @@ def v2_coach_put_confidence_label(snippet_id):
 
 @v2_bp.route("/coach/arc/<arc_id>/publish-analysis", methods=["POST"])
 @require_admin_or_coach
-def v2_coach_publish_analysis(arc_id):
-    """Publish complete saved take snapshots as one atomic revision batch."""
-    try:
-        sessions = db.takes.get_arc_sessions(arc_id)
-        if not sessions:
-            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        spoken, _reads = _spoken_takes_and_reads(sessions)
-        if not spoken:
-            return jsonify({"code": "NOTHING_TO_PUBLISH",
-                            "error": "No recordings to publish yet."}), 409
-
-        spoken_ids = {str(row.get("id")) for row in spoken if row.get("id")}
-        body = request.get_json(silent=True) or {}
-        reviews = body.get("reviews")
-        if not isinstance(reviews, list) or not reviews:
-            return jsonify({
-                "code": "INVALID_INPUT",
-                "error": "reviews must contain at least one complete saved take",
-            }), 400
-        for payload in reviews:
-            if not isinstance(payload, dict):
-                return jsonify({
-                    "code": "INVALID_INPUT",
-                    "error": "reviews entries must be objects",
-                }), 400
-            if str(payload.get("session_id") or "") not in spoken_ids:
-                return jsonify({
-                    "code": "TAKE_SCOPE_MISMATCH",
-                    "error": "Every published take must belong to this project",
-                }), 422
-
-        from routes.v2.canonical_publish import publish_complete_reviews
-
-        response, status = publish_complete_reviews(
-            reviews,
-            actor_user_id=str(request.user_id),
-            admin_override_reason=body.get("admin_override_reason"),
-        )
-        if status != 200:
-            return response, status
-        published = response.get_json().get("takes") or []
-        delivered_at = max(
-            (str(row.get("published_at") or "") for row in published),
-            default="",
-        ) or datetime.now(timezone.utc).isoformat()
-        return jsonify({
-            "arc_id": arc_id,
-            "takes_published": len(published),
-            "takes_skipped": len(spoken_ids) - len(published),
-            "delivered_at": delivered_at,
-            "takes": published,
-        }), 200
-    except Exception as e:
-        logger.error("publish-analysis failed arc=%s: %s", arc_id, e,
-                     exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({
-            "code": "V2_ERROR", "error": "Failed to publish the analysis",
-        }), 500
+def v2_coach_publish_analysis_gone(arc_id):
+    return _coach_delivery_gone()
 
 
 # ── THE SPEAKING ERROR LIBRARY ────────────────────────────────────────────

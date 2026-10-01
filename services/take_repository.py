@@ -1380,29 +1380,6 @@ class TakeRepository(TableRepository):
                 "analysis-state broadcast wrapper failed sid=%s", session_id)
         return True
 
-    def set_session_feedback_saved(self, session_id: str) -> bool:
-        """Stamp the per-take coach 'Save' checkpoint (nothing delivered —
-        the publish requires all 3 takes saved). Best-effort."""
-        if not session_id:
-            return False
-        try:
-            self.client.table("v2_sessions").update({
-                "coach_feedback_saved_at":
-                    datetime.now(timezone.utc).isoformat(),
-            }).eq("id", session_id).execute()
-            return True
-        except Exception as e:
-            if "coach_feedback_saved_at" in str(e).lower():
-                logger.warning(
-                    "set_session_feedback_saved: column missing (run "
-                    "migrations/add_coach_feedback_saved.sql) sid=%s",
-                    session_id,
-                )
-                return False
-            logger.warning("set_session_feedback_saved failed sid=%s: %s",
-                           session_id, e)
-            return False
-
     def count_arc_sessions(
         self, arc_id: Optional[str], exclude_session_id: Optional[str] = None,
     ) -> Optional[int]:
@@ -1808,42 +1785,6 @@ class TakeRepository(TableRepository):
                 "list_user_lab_sessions failed user=%s err=%s", user_id, e,
             )
             return []
-
-    def set_session_coach_overall_message(
-        self,
-        session_id: str,
-        message: Optional[str],
-    ) -> bool:
-        """Persist the optional take-level coach summary.
-
-        Exact-evidence paragraph feedback lives in ``coach_snippet_drafts``
-        through ``FeedbackRepository``.  This scalar is intentionally
-        separate so it cannot become a second feedback-item schema.
-        """
-        if not session_id:
-            return False
-        try:
-            (
-                self.client.table("v2_sessions")
-                .update({"coach_overall_message": message})
-                .eq("id", session_id)
-                .execute()
-            )
-            return True
-        except Exception as e:
-            err_low = str(e).lower()
-            if "coach_overall_message" in err_low or "pgrst204" in err_low:
-                logger.warning(
-                    "set_session_coach_overall_message: column missing (run "
-                    "migrations/add_canonical_project_ownership.sql) "
-                    "sid=%s", session_id,
-                )
-                return False
-            logger.error(
-                "set_session_coach_overall_message failed sid=%s err=%s",
-                session_id, e,
-            )
-            return False
 
     def set_session_coach_video_ref(
         self,

@@ -20,12 +20,9 @@ from unittest.mock import patch
 try:
     from flask import Flask, request
     from routes.v2 import arcs as v2_arcs
-    from routes.v2 import coach as v2_coach
     from routes.v2 import common as v2_common
     from routes.v2 import lab_recording as v2_lab_recording
     from services.db import db
-    from routes.v2 import register_domains
-    from routes.v2.blueprint import v2_bp
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
@@ -221,90 +218,6 @@ class KeyMomentContractTests(_FeedbackHarness):
                     "recording_kind", "transcript", "audio_ref",
                     "start_offset_ms", "duration_ms", "comment_text",
                 })
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class SavePublishTests(unittest.TestCase):
-
-    def setUp(self):
-        self.app = Flask(__name__)
-
-    def test_save_feedback_persists_body_then_stamps(self):
-        # The FE sends inline exact-evidence drafts plus the separate take-level
-        # coach summary.
-        sid = "11111111-1111-4111-8111-111111111111"
-        snip = "22222222-2222-4222-8222-222222222222"
-        body = {
-            "snippets": [{"id": snip, "note": "Key turn.", "tag": "strong",
-                          "surfaced": True}],
-            "overall_message": "Overall note.",
-            "notify_client": False,
-        }
-        with self.app.test_request_context(json=body):
-            request.user_id = "coach1"
-            with patch.object(db, "v2_get_session_by_id",
-                              return_value={"id": sid}), \
-                 patch.object(db, "get_snippets_by_session",
-                              return_value=[{"id": snip}]), \
-                 patch("routes.v2.coach._save_coach_snippet_lanes",
-                              return_value=None) as m_lanes, \
-                 patch.object(db.takes, "set_session_coach_overall_message",
-                              return_value=True) as m_summary, \
-                 patch.object(db.takes, "set_session_feedback_saved",
-                              return_value=True) as m_save:
-                resp, status = v2_coach.v2_coach_save_feedback.__wrapped__(sid)
-        self.assertEqual(status, 200)
-        out = resp.get_json()
-        self.assertTrue(out["saved"])
-        self.assertEqual(out["snippets_saved"], 1)
-        # The snippet went through the shared coach-authoring helper, with its
-        # transport id stripped before persistence.
-        args = m_lanes.call_args.args
-        self.assertEqual(args[1], snip)
-        self.assertEqual(args[2]["note"], "Key turn.")
-        self.assertEqual(args[2]["tag"], "strong")
-        self.assertTrue(args[2]["surfaced"])
-        self.assertNotIn("id", args[2])
-        m_summary.assert_called_once_with(sid, "Overall note.")
-        m_save.assert_called_once_with(sid)
-
-    def test_save_feedback_no_body_still_stamps(self):
-        sid = "11111111-1111-4111-8111-111111111111"
-        with self.app.test_request_context(json={}):
-            request.user_id = "coach1"
-            with patch.object(db, "v2_get_session_by_id",
-                              return_value={"id": sid}), \
-                 patch("routes.v2.coach._save_coach_snippet_lanes") as m_lanes, \
-                 patch.object(db.takes, "set_session_feedback_saved",
-                              return_value=True) as m_save:
-                resp, status = v2_coach.v2_coach_save_feedback.__wrapped__(sid)
-        self.assertEqual(status, 200)
-        m_lanes.assert_not_called()
-        m_save.assert_called_once_with(sid)
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class PublishRouteContractTests(unittest.TestCase):
-    """The publish contract points after the 2026-07-17 FE handoff:
-    /publish-analysis is THE door (the FE relay targets it since their
-    63be223); the briefly-restored legacy /publish alias is retired; the
-    review-state read + approve-without-publish routes stand."""
-
-    def _rules(self):
-        register_domains()
-        app = Flask(__name__)
-        app.register_blueprint(v2_bp, url_prefix="/v2")
-        return {r.rule: r.endpoint for r in app.url_map.iter_rules()}
-
-    def test_publish_analysis_is_the_only_publish_door(self):
-        rules = self._rules()
-        self.assertIn("/v2/coach/arc/<arc_id>/publish-analysis", rules)
-        self.assertNotIn("/v2/coach/arc/<arc_id>/publish", rules)  # retired
-
-    def test_wrapup_contract_points_stand(self):
-        rules = self._rules()
-        self.assertIn("/v2/coach/arc/<arc_id>/review-state", rules)
-        self.assertIn("/v2/coach/arc/<arc_id>/ideal-text/approve", rules)
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")

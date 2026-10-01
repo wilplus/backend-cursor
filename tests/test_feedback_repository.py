@@ -108,9 +108,6 @@ def test_rewrite_keeps_original_span_and_proposal_separate():
 def test_empty_feedback_is_valid_no_changes_needed_result():
     database = EmptyFeedbackDatabase()
     assert FeedbackRepository(database).surfaced_items("take-1") == []
-    assert FeedbackRepository(database).publish(
-        "take-1", actor_user_id="coach-1",
-    ) == []
 
 
 def test_published_readout_exposes_empty_result_and_separate_coach_review():

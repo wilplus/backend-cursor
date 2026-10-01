@@ -1,7 +1,8 @@
 """`reconcile_voice_album_clip`, pinned path by path.
 
 The exact-clip reconciler admits a moment only when Machine Yes, User Yes
-and a professional Coach Yes on the PUBLISHED Take align on that clip (L3),
+and a professional Coach Yes on a Take of the project align on that clip
+(L3; the publish gate left with the arc-level delivery, contract 65),
 and removes one only on an explicit professional No. A practice attempt is
 reconciled from its own three recorded decisions instead. Every other read
 is a no-op that can never withdraw a saved moment.
@@ -124,9 +125,18 @@ class OriginalClip(unittest.TestCase):
             "arc_id": ARC, "snippet_id": CLIP,
         })])
 
-    def test_an_unpublished_no_withdraws_nothing(self):
+    def test_a_no_on_an_unpublished_take_withdraws_too(self):
+        # No publish gate since the arc-level delivery was retired: the
+        # coach's No on the walk is final when written.
         database = _aligned(labels=[_COACH_NO],
                             session={"project_id": ARC})
+        self.assertTrue(_run(database))
+        self.assertEqual(database.writes, [("delete", {
+            "arc_id": ARC, "snippet_id": CLIP,
+        })])
+
+    def test_a_take_row_that_is_missing_matches_nothing(self):
+        database = _aligned(labels=[_COACH_NO], session={})
         self.assertFalse(_run(database))
         self.assertEqual(database.writes, [])
 

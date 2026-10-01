@@ -838,16 +838,6 @@ class DatabaseService:
                            revision_id, e)
             return None
 
-    def publish_coach_review_revisions(self, reviews: list[dict]) -> list[dict]:
-        """Atomically publish a complete set of immutable review snapshots."""
-        result = self.client.rpc("publish_coach_review_batch_v1", {
-            "p_reviews": reviews,
-        }).execute()
-        data = result.data
-        if isinstance(data, list):
-            return [row for row in data if isinstance(row, dict)]
-        return []
-
     def refund_coach_review_credit(
         self, user_id: str, session_id: str,
     ) -> Optional[dict]:
@@ -859,78 +849,6 @@ class DatabaseService:
         if isinstance(data, list):
             return data[0] if data else None
         return data if isinstance(data, dict) else None
-
-    def get_coach_review_delivery(self, revision_id: str) -> Optional[dict]:
-        result = (
-            self.client.table("coach_review_delivery_outbox")
-            .select("*,coach_review_revisions(*)")
-            .eq("revision_id", str(revision_id))
-            .limit(1)
-            .execute()
-        )
-        return (result.data or [None])[0]
-
-    def start_coach_review_delivery(self, outbox_id: str) -> bool:
-        result = (
-            self.client.table("coach_review_delivery_outbox")
-            .update({
-                "status": "running",
-                "attempts": self._coach_delivery_attempt_count(outbox_id) + 1,
-                "last_error": None,
-            })
-            .eq("id", str(outbox_id))
-            .in_("status", ["pending", "failed"])
-            .execute()
-        )
-        return bool(result.data)
-
-    def _coach_delivery_attempt_count(self, outbox_id: str) -> int:
-        result = (
-            self.client.table("coach_review_delivery_outbox")
-            .select("attempts")
-            .eq("id", str(outbox_id))
-            .limit(1)
-            .execute()
-        )
-        row = (result.data or [{}])[0]
-        return int(row.get("attempts") or 0)
-
-    def finish_coach_review_delivery(
-        self, outbox_id: str, *, error: Optional[str] = None,
-        retry_after_seconds: int = 0,
-    ) -> bool:
-        from datetime import datetime, timedelta, timezone
-
-        now = datetime.now(timezone.utc)
-        patch = {
-            "status": "failed" if error else "done",
-            "last_error": str(error)[:2000] if error else None,
-            "completed_at": None if error else now.isoformat(),
-            "available_at": (
-                now + timedelta(seconds=max(0, retry_after_seconds))
-            ).isoformat(),
-        }
-        result = (
-            self.client.table("coach_review_delivery_outbox")
-            .update(patch)
-            .eq("id", str(outbox_id))
-            .execute()
-        )
-        return bool(result.data)
-
-    def list_pending_coach_review_deliveries(self, limit: int = 100) -> list:
-        from datetime import datetime, timezone
-
-        result = (
-            self.client.table("coach_review_delivery_outbox")
-            .select("revision_id")
-            .in_("status", ["pending", "failed"])
-            .lte("available_at", datetime.now(timezone.utc).isoformat())
-            .order("available_at")
-            .limit(max(1, min(int(limit), 500)))
-            .execute()
-        )
-        return result.data or []
 
     def v2_get_session_by_id(self, session_id: str):
         """Get v2 session by id only (no user filter). For debugging 404: check if session exists and which user_id owns it."""
@@ -9970,34 +9888,6 @@ class DatabaseService:
     # the latest row per snippet wins and the earlier ones stay as the audit
     # trail. Never an upsert — a silently overwritten label is a corpus
     # nobody can compare across time.
-
-    def record_snippet_slide_correction(self, *, session_id: str,
-                                        snippet_id: str,
-                                        slide_index: Optional[int],
-                                        was_slide_index: Optional[int] = None,
-                                        corrected_by: Optional[str] = None,
-                                        ) -> bool:
-        """One human judgment: the slide ON SCREEN while this snippet was
-        spoken was `slide_index`. None = the coach withdrew a correction and
-        the pipeline's own answer stands (stored, not deleted — "a human
-        checked and the pipeline was right" is a label too).
-
-        Best-effort: a labelling write must never break the coach's save."""
-        if not session_id or not snippet_id:
-            return False
-        try:
-            self.client.table("snippet_slide_corrections").insert({
-                "session_id": str(session_id),
-                "snippet_id": str(snippet_id),
-                "slide_index": slide_index,
-                "was_slide_index": was_slide_index,
-                "corrected_by": str(corrected_by) if corrected_by else None,
-            }).execute()
-            return True
-        except Exception as e:
-            logger.warning("record_snippet_slide_correction failed sid=%s "
-                           "snippet=%s: %s", session_id, snippet_id, e)
-            return False
 
     def get_snippet_slide_corrections(self, session_id: str) -> dict:
         """{snippet_id: slide_index} for one session — the LATEST correction

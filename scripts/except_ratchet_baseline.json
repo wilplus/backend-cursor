@@ -1,5 +1,5 @@
 {
-  "app.py": 6,
+  "app.py": 5,
   "config.py": 1,
   "routes/admin.py": 3,
   "routes/auth.py": 2,
@@ -14,7 +14,7 @@
   "routes/v2/canonical_publish.py": 1,
   "routes/v2/ceo.py": 8,
   "routes/v2/ceo_work_items.py": 10,
-  "routes/v2/coach.py": 25,
+  "routes/v2/coach.py": 20,
   "routes/v2/coaching.py": 12,
   "routes/v2/confident_moment_bundles.py": 5,
   "routes/v2/explore_ideal_text.py": 23,
@@ -46,7 +46,7 @@
   "services/conversation_summary.py": 1,
   "services/create_take.py": 1,
   "services/cross_take_selection.py": 2,
-  "services/db.py": 394,
+  "services/db.py": 393,
   "services/deck_parser.py": 1,
   "services/degradation.py": 1,
   "services/delivery_alignment.py": 3,
@@ -103,9 +103,8 @@
   "services/paragraph_history.py": 2,
   "services/part_acoustics.py": 4,
   "services/pipeline_health.py": 2,
-  "services/pipeline_jobs.py": 20,
+  "services/pipeline_jobs.py": 19,
   "services/pipeline_stage_execution.py": 1,
-  "services/post_session_results_email.py": 4,
   "services/practice_audio_objects.py": 1,
   "services/practice_more_confident.py": 1,
   "services/practice_retention.py": 7,
@@ -155,7 +154,7 @@
   "services/swap_offer.py": 5,
   "services/take_feedback_candidates.py": 1,
   "services/take_rebuild.py": 4,
-  "services/take_repository.py": 59,
+  "services/take_repository.py": 57,
   "services/take_review.py": 1,
   "services/tier_checkout.py": 2,
   "services/token_account.py": 17,
@@ -174,5 +173,5 @@
   "services/voice_album_practice_queue.py": 4,
   "services/voice_confidence.py": 3,
   "utils/errors.py": 3,
-  "worker.py": 13
+  "worker.py": 12
 }

@@ -21,12 +21,11 @@ Why generate at extraction time
 
 Implicit-approval signal
 ------------------------
-Both edited and not-edited produce learning signal. The capture
-happens at publish time (see services/db.py::
-record_snippet_publish_annotations) — not on the admin's save click —
-because we want admins to leave the AI draft alone when it's good
-WITHOUT being forced to manually approve. Publication is the implicit
-"this draft is shipped" moment.
+Both edited and not-edited used to produce learning signal at publish
+time (services/db.py::record_snippet_publish_annotations). The arc-level
+publish is retired (founder 2026-09-30, B3; contract 65), so no new pair is
+captured here: pairs come from the three answer surfaces on the coach's
+walk (35g-2a, services/feedback_pairs.py).
 
 Failure semantics
 -----------------

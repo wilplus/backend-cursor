@@ -264,34 +264,6 @@ class FeedbackRepository:
             examples=_examples(row),
         )
 
-    def publish(self, take_id: str, *, actor_user_id: str | None) -> list[FeedbackItem]:
-        """Validate exact evidence and mark current surfaced items reviewed.
-
-        An empty list is a valid professional verdict: no changes needed.
-        """
-        session = self.database.v2_get_session_by_id(str(take_id)) or {}
-        if not session:
-            raise FeedbackContractError("take not found")
-        items = self.surfaced_items(str(take_id))
-        for item in items:
-            if item.review_state is None:
-                raise FeedbackContractError(
-                    "published feedback requires a coach review state")
-            snippet_id = item.id.rsplit(":", 1)[-1]
-            saved = self.database.upsert_coach_snippet_draft(
-                str(take_id),
-                snippet_id,
-                {
-                    "feedback_family": item.family.value,
-                    "review_state": item.review_state.value,
-                    "evidence_locator": asdict(item.evidence),
-                },
-                updated_by=actor_user_id,
-            )
-            if saved is None:
-                raise FeedbackContractError("could not publish coach feedback")
-        return items
-
 
 def serialize_feedback_item(item: FeedbackItem) -> dict:
     return {

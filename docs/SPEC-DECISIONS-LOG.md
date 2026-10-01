@@ -822,3 +822,32 @@ True` and `PAIR_RELEASE_SURFACES = {"exercise_script"}`.
    (and the R2 token's scope for the new bucket) must be on the backend web
    service before the first Monday, else the job reports "no signing key"
    and nothing leaves, which is the designed failure.
+
+**N17 · P2-19 done on the founder's word, the ML-5 wait waived (founder
+2026-10-01).** "do P2-19 now", said in chat after door 2 opened (N16). Lock L2
+and contract 65 held the removal of the arc-level delivery until the ledger
+had shown a week of walk pairs (build plan ML-5); the founder waived the wait
+and the removal landed the same day, both repos.
+1. **What answers 410 now:** the per-snippet note and surface toggle, the
+   re-cut, the per-take Save, the wrap-up read, the slide-mapping
+   correction, the arc-level publish and the internal publish door. Their
+   tables (`coach_snippet_drafts`, `coach_review_revisions`,
+   `coach_review_delivery_outbox`, `snippet_slide_corrections`,
+   `recording_feelings`) stay as history and take no new writes.
+2. **What is gone:** the publish service, the publish-delivery worker job and
+   its sweeper, the publish-results email, and on the frontend the
+   take-review overlay, the per-snippet card, the Delivery overlay, the
+   wrap-up page, the slide-mapping control, the legacy roster that opened
+   them and the `/chat?review=` deep link. The confidence label chips stay
+   as a component: the walk's Judge screen and the speaker's Feedback sheet
+   use them; the old review's second instrument is gone with the card.
+3. **The Voice Album's coach leg:** it was gated on the publish ("blind
+   until publish"). On the walk a judgement is answered blind and is final
+   when written (35g-5), so the judgement write now reconciles the exact
+   clip; no other gate replaces the publish. The album still has no read
+   surface, so nothing the speaker sees changes.
+4. **What still reads the old data:** the speaker's "Your coach" falls back
+   to a revision published before this day when no Take word is shared; the
+   slide corrections already recorded still feed the Ideal Text's slide
+   bucketing; `results_published_at` stops advancing for new Takes, which
+   the speaker never saw as such.

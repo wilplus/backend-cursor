@@ -764,9 +764,14 @@ with this contract, this contract wins.
     confidence label chips, the coach note's surface toggle and the
     take-review overlay are retired (founder 2026-09-30, B3 to B6), replaced
     by per-moment Share and the Take word (35g-6). The publish-delivery
-    worker job is retired with them. Removal waits until the ledger has
-    shown a week of walk pairs (L2, build plan ML-5), so the pair count never
-    drops to zero.
+    worker job is retired with them. The removal was to wait until the
+    ledger had shown a week of walk pairs (L2, build plan ML-5); the founder
+    waived that wait on 2026-10-01 ("do P2-19 now", decisions log N17) and
+    the removal landed that day: the routes answer 410, the tables stay as
+    history, and the Voice Album's coach leg is released by the judgement
+    write itself, since a judgement on the walk is final when written
+    (35g-5). The speaker's "Your coach" still reads a revision published
+    before that day.
 66. The coach compare, audit and corpus-summary pages, the /coach/willab
     redirects, the three off-flag composers, the CMS exercise lane, /cms/gaps
     and /cms/jar are retired (founder 2026-09-30, B7, B8); posts stay in

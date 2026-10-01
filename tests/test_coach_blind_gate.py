@@ -189,7 +189,7 @@ def test_the_deck_reaches_a_blind_rater_so_the_slide_can_be_drawn():
     from routes.v2 import coach
 
     source = inspect.getsource(coach)
-    start = source.index('"presentation_ref"')
+    start = source.index('"presentation_ref": refreshed_media_url(')
     served = source[start:start + 200]
     assert "_context_unlocked" not in served, (
         "the deck file must not be gated while `slide` is on the blind "
@@ -197,15 +197,18 @@ def test_the_deck_reaches_a_blind_rater_so_the_slide_can_be_drawn():
     )
 
 
-def test_the_whole_deck_stays_gated_because_paging_it_is_authoring():
+def test_the_whole_deck_is_no_longer_served_at_all():
+    """Paging the deck was authoring, so the whole deck sat behind the
+    context gate for the slide-mapping control. That control left with the
+    arc-level delivery (founder 2026-09-30, B5; P2-19), and the deck with
+    it: the coach's session read serves the deck FILE for the one slide on
+    screen and nothing to page."""
     import inspect
 
     from routes.v2 import coach
 
     source = inspect.getsource(coach)
-    start = source.index('"slides":')
-    served = source[start:start + 120]
-    assert "_context_unlocked" in served
+    assert '"slides":' not in source
 
 
 def test_the_stamp_that_pays_for_it_is_still_there():

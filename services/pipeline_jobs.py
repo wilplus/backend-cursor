@@ -1145,15 +1145,6 @@ def sweep_stale_jobs(max_rows: int = 100) -> Dict[str, int]:
         counts["orphan_objects_deleted"] = 0
         counts["orphan_objects_failed"] = 0
     try:
-        from services.coach_publish_delivery import sweep_pending_deliveries
-
-        counts["coach_deliveries_requeued"] = sweep_pending_deliveries(
-            database=db, limit=max_rows,
-        )
-    except Exception as e:
-        logger.warning("pipeline_jobs: coach delivery sweep failed: %s", e)
-        counts["coach_deliveries_requeued"] = 0
-    try:
         from services.ideal_text_core_snapshot import (
             sweep_pending_publications,
         )

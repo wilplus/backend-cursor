@@ -91,17 +91,9 @@
     "lines": 89,
     "db_calls": 3
   },
-  "routes/v2/coach.py:_save_coach_snippet_lanes": {
-    "lines": 84,
-    "db_calls": 1
-  },
   "routes/v2/coach.py:_snippet_owner_map": {
     "lines": 22,
     "db_calls": 2
-  },
-  "routes/v2/coach.py:v2_coach_arc_review_state": {
-    "lines": 165,
-    "db_calls": 0
   },
   "routes/v2/coach.py:v2_coach_confidence_queue": {
     "lines": 92,
@@ -116,7 +108,7 @@
     "db_calls": 3
   },
   "routes/v2/coach.py:v2_coach_get_session": {
-    "lines": 83,
+    "lines": 76,
     "db_calls": 2
   },
   "routes/v2/coach.py:v2_coach_list_training_imports": {
@@ -128,7 +120,7 @@
     "db_calls": 3
   },
   "routes/v2/coach.py:v2_coach_put_confidence_label": {
-    "lines": 244,
+    "lines": 254,
     "db_calls": 7
   },
   "routes/v2/coach.py:v2_coach_put_moment_reference": {
@@ -138,18 +130,6 @@
   "routes/v2/coach.py:v2_coach_put_say_it_stronger": {
     "lines": 50,
     "db_calls": 2
-  },
-  "routes/v2/coach.py:v2_coach_put_snippet_slide": {
-    "lines": 83,
-    "db_calls": 3
-  },
-  "routes/v2/coach.py:v2_coach_save_feedback": {
-    "lines": 96,
-    "db_calls": 1
-  },
-  "routes/v2/coach.py:v2_coach_session_recut": {
-    "lines": 138,
-    "db_calls": 5
   },
   "routes/v2/coach.py:v2_coach_session_video": {
     "lines": 97,

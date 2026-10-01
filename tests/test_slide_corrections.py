@@ -4,20 +4,14 @@
 written: "There is no ground truth here... The only real labels available
 are COACH CORRECTIONS — when a coach moves text between slides, a human has
 said 'this was bucketed wrong'." That correction did not exist as data.
-These tests pin the row that now carries it.
+These tests pin the rows that carry it.
 
-Three properties, in order of how badly getting them wrong would hurt:
-
-  1. THE CORPUS IS APPEND-ONLY. The write inserts; it never upserts and
-     never deletes. A silently overwritten label is a corpus nobody can
-     compare across time — the same rule the filler-rate data lives under.
-  2. THE READ IS "LATEST WINS", reverts included. A coach who withdraws a
-     correction must get the pipeline's answer back, and the withdrawal is
-     itself a stored label ("a human checked and the pipeline was right").
-  3. THE LABEL RECORDS BOTH SIDES. Every row carries what the pipeline said
-     beside what the human said, because the size of the miss is the
-     measurement — a corpus of corrections alone can tell you where the
-     words belong but never how far off the timeline was.
+The slide-mapping correction control and its writer were retired with the
+arc-level delivery (founder 2026-09-30, B5; contract 65): no new row is
+written. The corpus already recorded stays, and the READ stays load-bearing,
+"latest wins", reverts included: a withdrawal is itself a stored label ("a
+human checked and the pipeline was right"), and the Ideal Text's slide
+bucketing (services/transcript_document.py) still reads it.
 
 Run: python3 -m unittest tests.test_slide_corrections
 """
@@ -32,71 +26,6 @@ import services.db as db_mod
 ARC_SESSION = "11111111-1111-4111-8111-111111111111"
 SNIP_A = "aaaa1111-aaaa-1111-aaaa-111111111111"
 SNIP_B = "bbbb2222-bbbb-2222-bbbb-222222222222"
-
-
-class RecordCorrectionTests(unittest.TestCase):
-    """The write — append-only, best-effort, both sides recorded."""
-
-    def _client(self):
-        return FakeSupabaseClient({"snippet_slide_corrections": []})
-
-    def test_a_correction_is_INSERTED_never_upserted(self):
-        client = self._client()
-        with swap_attr(db_mod.db, "client", client):
-            ok = db_mod.db.record_snippet_slide_correction(
-                session_id=ARC_SESSION, snippet_id=SNIP_A,
-                slide_index=2, was_slide_index=1, corrected_by="coach-1")
-        self.assertTrue(ok)
-        q = client.tables["snippet_slide_corrections"]
-        # The operation itself is the guarantee: an upsert would collapse the
-        # trail of what the pipeline said before the human moved it.
-        self.assertIn("insert", [c[0] for c in q.calls])
-        self.assertNotIn("upsert", [c[0] for c in q.calls])
-        self.assertNotIn("delete", [c[0] for c in q.calls])
-
-    def test_the_row_carries_BOTH_sides_and_the_labeller(self):
-        client = self._client()
-        with swap_attr(db_mod.db, "client", client):
-            db_mod.db.record_snippet_slide_correction(
-                session_id=ARC_SESSION, snippet_id=SNIP_A,
-                slide_index=2, was_slide_index=1, corrected_by="coach-1")
-        row = client.tables["snippet_slide_corrections"].payload
-        self.assertEqual(row["slide_index"], 2)
-        self.assertEqual(row["was_slide_index"], 1)     # how far off it was
-        self.assertEqual(row["corrected_by"], "coach-1")
-        self.assertEqual(row["snippet_id"], SNIP_A)
-
-    def test_a_WITHDRAWAL_is_stored_as_a_row_not_a_deletion(self):
-        # "A human checked and the pipeline was right" is a label too, and a
-        # rarer one than a correction — deleting it throws away the evidence.
-        client = self._client()
-        with swap_attr(db_mod.db, "client", client):
-            db_mod.db.record_snippet_slide_correction(
-                session_id=ARC_SESSION, snippet_id=SNIP_A,
-                slide_index=None, was_slide_index=1)
-        row = client.tables["snippet_slide_corrections"].payload
-        self.assertIsNone(row["slide_index"])
-        self.assertNotIn("delete", [c[0] for c in
-                              client.tables["snippet_slide_corrections"].calls])
-
-    def test_a_write_without_ids_is_refused_before_the_db(self):
-        client = self._client()
-        with swap_attr(db_mod.db, "client", client):
-            self.assertFalse(db_mod.db.record_snippet_slide_correction(
-                session_id="", snippet_id=SNIP_A, slide_index=1))
-            self.assertFalse(db_mod.db.record_snippet_slide_correction(
-                session_id=ARC_SESSION, snippet_id="", slide_index=1))
-        self.assertEqual(client.tables, {})
-
-    def test_a_labelling_write_never_raises_into_the_caller(self):
-        # It rides along with the coach's own save; a corpus write must not be
-        # able to break the review it came from.
-        def boom(_q):
-            raise RuntimeError("pgrst down")
-        client = FakeSupabaseClient({"snippet_slide_corrections": boom})
-        with swap_attr(db_mod.db, "client", client):
-            self.assertFalse(db_mod.db.record_snippet_slide_correction(
-                session_id=ARC_SESSION, snippet_id=SNIP_A, slide_index=1))
 
 
 class ReadCorrectionsTests(unittest.TestCase):

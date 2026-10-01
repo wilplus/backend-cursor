@@ -237,7 +237,6 @@ class CoachSessionReadTests(unittest.TestCase):
             "labelled": 1, "total": 2, "complete": False,
         })
         self.assertEqual(data["domain"], "")
-        self.assertEqual(data["slides"], [])
         self.assertIsNone(data["presentation_ref"])
         self.assertNotIn("stickiness", data["snippets"][0])
         self.assertNotIn("features", data["snippets"][0])

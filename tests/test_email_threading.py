@@ -8,8 +8,6 @@ Covers:
   - send_lesson_complete_to_admin: stable "Homework — {pseudonym}" subject
     (NO session id), per-student References/In-Reply-To, guest (user_id
     None) sends unthreaded without crashing, never raises on send failure
-  - send_publish_results_email: stable subject, per-user thread headers,
-    List-Unsubscribe preserved alongside them
   - user_audit.send_user_audit_email: stable subject + thread headers
   - send_email_resend forwards the threading headers verbatim
   - dead EmailService methods removed
@@ -203,58 +201,6 @@ class LessonCompleteToAdminTests(unittest.TestCase):
             )
         self.assertEqual(result["status"], "failed")
         self.assertFalse(result["sent"])
-
-
-class PublishResultsEmailTests(unittest.TestCase):
-    """BE-3c — the user-bound publish-results mail."""
-
-    def _send(self, *, user_id="u-9"):
-        from config import Config
-        from services import post_session_results_email as mod
-        stub_db = MagicMock()
-        stub_db.get_email_pref_publish_results.return_value = True
-        with patch.object(mod, "db", stub_db), \
-             patch.object(Config, "SEND_EMAILS", True), \
-             patch.object(Config, "PUBLIC_FRONTEND_URL", "https://app.x.com"), \
-             patch.object(mod, "build_unsubscribe_url",
-                          return_value="https://app.x.com/unsubscribe?token=tok"), \
-             patch.object(mod, "render_post_session_results_email",
-                          return_value={"html": "<p>hi</p>", "text": "hi"}), \
-             patch.object(mod, "send_email_resend",
-                          return_value={"status": "sent", "sent": True}) as mock_send:
-            result = mod.send_publish_results_email(
-                user_id=user_id,
-                user_email="student@x.com",
-                user_first_name="Al",
-                snippet_count=4,
-                top_theme="clarity",
-                session_id="sess-1",
-            )
-        return result, mock_send
-
-    def test_stable_subject(self):
-        result, mock_send = self._send()
-        self.assertEqual(result["status"], "sent")
-        subject = mock_send.call_args.kwargs["subject"]
-        self.assertEqual(subject, "Your feedback from WillpowerLab")
-        # No per-send variance: no counts, no session ids.
-        self.assertNotIn("4", subject)
-        self.assertNotIn("sess", subject.lower())
-
-    def test_thread_headers_and_list_unsubscribe_preserved(self):
-        _, mock_send = self._send(user_id="u-9")
-        headers = mock_send.call_args.kwargs["headers"]
-        ref = "<willab-user-u-9@willpowerlab.com>"
-        self.assertEqual(headers["References"], ref)
-        self.assertEqual(headers["In-Reply-To"], ref)
-        # RFC 8058 pair kept exactly as before, alongside threading.
-        self.assertEqual(
-            headers["List-Unsubscribe"],
-            "<https://app.x.com/unsubscribe?token=tok>",
-        )
-        self.assertEqual(
-            headers["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click",
-        )
 
 
 class UserAuditSendTests(unittest.TestCase):
