@@ -8,7 +8,7 @@ nothing left.
 
 | Door | Constant | Opens when | The sentence |
 |------|----------|------------|--------------|
-| 1 · the training yes | `MLC2_TRAINING_SWITCH_ENABLED` | counsel answered (2026-10-01: all three surfaces); the founder signs counsel's wording; the legal drafts carry counsel's five fixes; the policy row is configured with the signed wording (`configure_mlc2_training_consent_policy_v1`) | "open door 1" |
+| 1 · the training yes | `MLC2_TRAINING_SWITCH_ENABLED` | counsel answered (2026-10-01: all three surfaces); the founder signed counsel's wording (2026-10-01); the legal drafts carry counsel's five fixes (done 2026-10-01, counsel reads once more); Privacy 3.2 + Terms 3.2 registered as a processing policy version and re-accepted (C1); the policy row configured with the signed wording (`configure_mlc2_training_consent_policy_v1`) | "open door 1" |
 | 2 · dataset releases | `MLC2_DATASET_RELEASES_ENABLED` and, per surface, `PAIR_RELEASE_SURFACES` | door 1 is open, the release bucket and signing key are set on the web service, and the founder names the surface | "open door 2 for surface S" (S ∈ praise_line, clearer_version, exercise_script) |
 | 3 · training | `MLC2_TRAINING_ENABLED` | the golden set for the surface is sealed (ML-10) and 200 releasable pairs exist | "open door 3 for surface S" |
 | 4 · promotion | `MLC2_PROMOTION_ENABLED` | the golden evaluation shows the candidate ahead of the baseline | "open door 4 for surface S" |
@@ -64,11 +64,60 @@ description; the consent record gets a fixed retention period instead of
 "as long as it is useful"; "models hold no personal information" softens to
 "we test that our models do not reproduce your text".
 
-**Door 1's sequence, then:** the founder signs the sentence and the four
-pre-switch lines → the legal drafts carry counsel's five fixes → the policy
-row is registered with the signed copy and its fingerprint
-(`configure_mlc2_training_consent_policy_v1`) → the founder says "open door
-1" → the switch flips by one reviewed change and the Settings card appears.
+**Signed 2026-10-01.** The founder signed the sentence and the four lines in
+chat ("You have my sign off."); the record is
+`legal/phase1-2026.1/13-training-consent-wording-SIGNED-2026-10-01.md`, and
+the four lines live in the frontend (`dataConsentCopy.ts`,
+`trainingBeforeLines`), rendered above the switch only while the backend
+offers it. The five legal fixes landed the same day: `10-…` (Privacy 3.2,
+text only, six-year consent record, the regurgitation sentence), `11-…`
+(retention rows), `12-terms-training-licence-DRAFT.md` (the Terms licence).
+One number stays counsel's: the consent-record period, drafted as six years
+after withdrawal or erasure.
+
+**Door 1's sequence, then:**
+
+1. ~~the founder signs the sentence and the four lines~~ done 2026-10-01;
+2. ~~the legal drafts carry counsel's five fixes~~ done 2026-10-01; counsel
+   reads `10`, `11`, `12` once more and confirms the six-year period;
+3. the founder approves the final Privacy 3.2 and Terms 3.2 text; they are
+   registered as a processing policy version and every user re-accepts
+   (SPEC C1: a training yes is refused for anyone who has not accepted the
+   version that introduced training). This is the long pole: it is the
+   existing policy-registration path (`legal/phase1-2026.1/04-…`,
+   `docs/PHASE1-PROCESSING-RUNBOOK.md`), not new code;
+4. the founder renders and signs `13-…` as a PDF (`scripts/render_doc_pdf.py`),
+   uploads it to `phase1-2026.1/legal/training-consent-wording-v1.pdf` and
+   records its hash in `SIGNED-ARTIFACTS.md`;
+5. the policy row is registered with the signed copy and its fingerprint,
+   by the founder in the Supabase SQL editor (service role):
+
+```sql
+SELECT public.configure_mlc2_training_consent_policy_v1(
+    'training-consent-wording-v1',                       -- approval reference
+    '7ed9c87115a1f85d33b6e865c0d5d2859b8d2ebaa140dda30e9295a4b21983f7',
+    'Use my practice text and my coach''s notes on it to train the models that write WillpowerLab''s feedback.',
+    'training-only-v1',                                  -- consent policy version
+    '3.2',                                               -- terms version
+    '3.2',                                               -- privacy version
+    'Artur Willoński, founder; wording by counsel',
+    '2026-10-01T00:00:00Z',
+    ARRAY['PL'],
+    'phase1-2026.1/legal/training-consent-wording-v1.pdf',
+    '<sha256 of the signed PDF, from SIGNED-ARTIFACTS.md>',
+    '<the processing policy version that carries Privacy 3.2>',
+    now());
+```
+
+   The database recomputes the sentence's hash and refuses any other text;
+   the last two placeholders exist only after steps 3 and 4;
+6. the founder says "open door 1" → the switch flips by one reviewed change
+   and the Settings card appears, with the four lines above it.
+
+**The OpenAI side, before door 3:** the data processing agreement with
+OpenAI, with the standard contractual clauses, must oblige deletion of
+uploaded fine-tuning files on request; the founder executes it and confirms
+the fine-tuning permission on the key.
 
 **Carried into doors 3 and 4 (ML-11, ML-10):** a fine-tuning file uploaded
 to OpenAI is deleted on any owner's withdrawal; a run reads releasability
