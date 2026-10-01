@@ -1601,6 +1601,25 @@ class DatabaseService:
         except Exception:
             return None
 
+    def get_student_names(self, user_ids: list) -> dict:
+        """{user_id: name} from v2_student_details for the ids that have a
+        non-empty name, in one query (Phase 0b, coach students)."""
+        ids = [str(u) for u in (user_ids or []) if u]
+        if not ids:
+            return {}
+        result = (
+            self.client.table("v2_student_details")
+            .select("user_id, name")
+            .in_("user_id", ids)
+            .execute()
+        )
+        out: dict = {}
+        for row in result.data or []:
+            name = str(row.get("name") or "").strip()
+            if row.get("user_id") and name:
+                out[str(row["user_id"])] = name
+        return out
+
     def v2_get_student_details(self, user_id: str):
         """Get student details row (name, price_per_live_lesson, credits, is_archived) or None."""
         result = (
