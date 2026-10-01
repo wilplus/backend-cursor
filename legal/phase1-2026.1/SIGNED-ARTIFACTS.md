@@ -19,6 +19,7 @@ unsigned render is never the right value.
 | 02 | `phase1-2026.1/legal/power-score-classification-v1.0.pdf` | 2026-09-22 | `9e31dd4105a2dcb1394c6bf22b700ca418df9b9b123cdd837df06af3cbdfbdc5` |
 | 03 | `phase1-2026.1/legal/article-50-assessment-v1.0.pdf` | 2026-09-22 | `f79a5114e0047ca8b15a60b77023cde5bab79669f510120a8166f82359d70fc3` |
 | 06 | `phase1-2026.1/legal/retention-schedule-v1.0.pdf` | 2026-09-19 | `73d078ea110c4419fc1c8b5322f90881716e66141cac5fa3a4221f0aa72a0c69` |
+| 13 | `phase1-2026.1/legal/training-consent-wording-v1.pdf` | pending | the signed PDF's hash goes here; the unsigned render of 2026-10-01 hashes `121f2da8595c2be59f9178bfa7b131693f86fd3cfc27ccebb3b818eac1775d2a`, which is NOT the value to register |
 
 `01` and `06` were rendered from markdown that is byte-identical at
 `6f7ded6`, so those signatures stand and nothing about them needs redoing.

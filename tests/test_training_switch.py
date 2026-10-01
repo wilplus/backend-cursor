@@ -67,14 +67,19 @@ def _on(**over):
     return body
 
 
-def test_the_switch_is_off_in_code():
+def test_the_switch_is_open_in_code_since_the_founders_sentence():
+    """Door 1 opened 2026-10-01 ("open door 1"). The constant is True; the
+    card still waits on a policy row, which `_read` reports as
+    available=False until one exists."""
     from config import Config
 
-    assert Config.MLC2_TRAINING_SWITCH_ENABLED is False
-    assert tc.switch_enabled() is False
+    assert Config.MLC2_TRAINING_SWITCH_ENABLED is True
+    assert tc.switch_enabled() is True
 
 
 def test_the_route_is_closed_while_the_switch_is_off():
+    """The 410 the route gave until 2026-10-01, kept as the contract for a
+    closed switch: patched shut here, since the constant is now True."""
     from flask import Flask
 
     from routes.v2 import training_consent as route
@@ -82,7 +87,8 @@ def test_the_route_is_closed_while_the_switch_is_off():
     app = Flask(__name__)
     with app.test_request_context("/v2/user/training-consent", method="POST",
                                   json=_on()):
-        with mock.patch.object(route, "handle") as handle:
+        with mock.patch.object(route, "handle") as handle, \
+                mock.patch.object(route, "switch_enabled", return_value=False):
             response, status = route.v2_user_training_consent.__wrapped__()
     assert status == 410
     assert response.get_json() == {"code": "TRAINING_SWITCH_DISABLED"}

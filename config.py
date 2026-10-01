@@ -273,10 +273,16 @@ class Config:
     # code constant, flipped only by a reviewed change at P5 (counsel +
     # founder), never by a dashboard.
     MLC2_TRAINING_CORPUS_COPY_ENABLED = False
-    # The training switch route (P5 packet §4 item 6). Same rule: a code
-    # constant, flipped only by a reviewed change once counsel has reviewed
-    # the policy text and the founder has signed it. Never an env variable.
-    MLC2_TRAINING_SWITCH_ENABLED = False
+    # The training switch route (P5 packet §4 item 6). A code constant,
+    # flipped only by a reviewed change; never an env variable.
+    # DOOR 1 OPENED 2026-10-01 by the founder's sentence "open door 1"
+    # (counsel's wording signed the same day; docs/LEARNING-DOORS.md). The
+    # route answers; the Settings card stays hidden until a training policy
+    # row exists (configure_mlc2_training_consent_policy_v1), and the
+    # database refuses a yes from anyone who has not accepted the policy
+    # version that introduced training (C1). The switch opens nothing by
+    # itself.
+    MLC2_TRAINING_SWITCH_ENABLED = True
 
     # DOOR 2, PER SURFACE (founder 2026-09-30, L5; build plan ML-9). The
     # weekly job exports a pair surface only when MLC2_DATASET_RELEASES_ENABLED

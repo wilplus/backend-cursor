@@ -4,6 +4,18 @@
 
 Locked by the founder on 2026-09-30 from the decisions page, with four overrides. Each item below is the locked outcome and the acceptance criteria to check when it is built. The build list and the mocks: <https://claude.ai/artifact/DQ41tdJqgC21SZGnqn9UYR>. The decisions page: <https://claude.ai/artifact/2Vz1UZVEA997UZpwivWWYh>.
 
+## Signed
+
+The founder signed the lock page as a PDF on 2026-10-01 08:38 UTC with a
+qualified seal (PAdES, `ETSI.CAdES.detached`, "ARTUR WILLOŃSKI"), eight
+pages, title "Helper Words Lock", rendered from the decisions page on
+2026-09-30. sha256 of the signed file as received:
+`2024740823dbb58284867ae7d88fc0e93250fc0d42bea5d54bb2a8c5a29e3369`. The
+file itself stays with the founder (and in the legal bucket if uploaded,
+under `phase1-2026.1/founder/helper-words-lock-2026-09-30.pdf`); this
+hash is the record. It is a product lock, not a legal-pack artifact: it
+registers nothing in the database.
+
 ## Overrides
 
 - **B5** — Next on a Yes or In-between. Practise with Skip on No and Not sure only.

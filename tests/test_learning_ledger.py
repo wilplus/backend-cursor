@@ -50,7 +50,8 @@ class LedgerTests(unittest.TestCase):
     def test_the_doors_are_the_code_constants(self):
         from config import Config
         doors = ll.doors(Config())
-        self.assertFalse(doors["consent"]["open"])
+        # Door 1 opened 2026-10-01 by the founder's sentence; the rest are shut.
+        self.assertTrue(doors["consent"]["open"])
         self.assertFalse(doors["training"]["open"])
         self.assertFalse(doors["dataset_release"]["open"])
         self.assertFalse(doors["promotion"]["open"])

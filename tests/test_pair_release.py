@@ -178,7 +178,8 @@ class DoorTests(unittest.TestCase):
     def test_the_doors_ship_closed_in_config(self):
         from config import Config
         self.assertFalse(Config.MLC2_DATASET_RELEASES_ENABLED)
-        self.assertFalse(Config.MLC2_TRAINING_SWITCH_ENABLED)
+        # Door 1 opened 2026-10-01 by the founder's sentence; door 2 is shut.
+        self.assertTrue(Config.MLC2_TRAINING_SWITCH_ENABLED)
         self.assertEqual(Config.PAIR_RELEASE_SURFACES, frozenset())
 
 
