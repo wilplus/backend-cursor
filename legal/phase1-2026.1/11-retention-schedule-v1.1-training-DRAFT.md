@@ -32,18 +32,22 @@ its own, is what lets an erasure finish.
 
 | Category | Period | Trigger |
 |---|---|---|
-| Training copies (only if you turned on **Help improve WillpowerLab**) | until you turn it off or delete your account | turning it off, or account deletion |
-| The record of your training choice | as long as it is useful for training our models | — |
+| Training copies (only if you turned on **Help improve WillpowerLab**): the words of a practised passage and the coach's notes on it, never audio | until you turn it off or delete your account; then deleted here and at OpenAI | turning it off, or account deletion |
+| The record of your training choice | six years after you turn it off or delete your account `[[COUNSEL: confirm the period]]` | turning it off, or account deletion |
 
 A project deletion does not end the first period while the switch is on. The
-founder signed that wording on 2026-09-26 (§N10).
+founder signed the first wording on 2026-09-26 (§N10); on 2026-10-01 counsel
+made the programme text only and asked for a fixed period on the second row
+(`docs/LEARNING-DOORS.md`), and the founder signed the switch wording that
+day (`13-training-consent-wording-SIGNED-2026-10-01.md`). The rows above
+carry both.
 
 ## 2. Additions to the rules to seed (v1.0 §2)
 
 | `rule_code` | `evidence_category` | `retention_until_rule` | What it covers |
 |---|---|---|---|
-| `training_corpus` | `training_corpus` | `training_consent_withdrawn_or_account_erased` | Training copies: `training_corpus_items` and their audio under `training-corpus/` |
-| `consent-evidence-v1` | `consent_evidence` | `useful_for_training` | The yes and no records: `ml_consent_events`, `ml_consent_snapshots` |
+| `training_corpus` | `training_corpus` | `training_consent_withdrawn_or_account_erased` | Training copies: the `feedback_pairs` rows carrying the yes and the weekly files under `pair-releases/` (text only, counsel 2026-10-01). The earlier audio design (`training_corpus_items`, `training-corpus/`) is retired and holds nothing |
+| `consent-evidence-v1` | `consent_evidence` | `six_years_after_withdrawal_or_erasure` `[[COUNSEL: confirm]]` | The yes and no records: `ml_consent_events`, `ml_consent_snapshots` |
 
 **`training_corpus` is the exact name the database checks** (migration 0375,
 `record_training_corpus_item_v1`). A rule under any other name leaves the
@@ -64,12 +68,12 @@ database refusing every copy, so the name must not change at registration.
 
 ## 3. What counsel is asked to check
 
-1. **The consent-record period.** The founder chose "as long as it is useful
-   for training our models" (§N11 answer 1). No date or event ends it, so no
-   job can enforce it; a person decides. Engineering offered "while any model
-   trained on the person's data is in use" as a period the system could check;
-   the founder chose counsel's wording. Is it specific enough under Art. 5(1)(e),
-   and does the published schedule need a review date?
+1. **The consent-record period.** Counsel answered on 2026-10-01: "as long
+   as it is useful" is not a period; name a fixed one. The row now says six
+   years after the switch is turned off or the account is deleted (the
+   general limitation period for claims, art. 118 KC, as the reasoning), a
+   period a job can enforce. Counsel confirms or replaces the number; the
+   privacy draft (`10-…`, change 4) carries the same figure.
 2. **What the consent records hold.** Identifiers, timestamps, the policy
    version, the hash of the switch wording and the control used. No audio, no
    words spoken. Is keeping them after erasure justified as accountability
