@@ -20,6 +20,7 @@ else: this is a page of numbers about the machine).
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 _log = logging.getLogger(__name__)
@@ -27,6 +28,8 @@ _log = logging.getLogger(__name__)
 LEDGER_VERSION = "learning-ledger-v1"
 #: Pairs a surface needs before one fine-tune run may start (C6).
 PAIRS_PER_RUN = 200
+#: The window of the coach-load report (Phase 2 addition, 2026-10-01).
+COACH_LOAD_DAYS = 28
 
 
 def _read(name: str, reader: Callable[[], Any], unavailable: list[str]) -> Any:
@@ -104,6 +107,12 @@ def ledger(database: Any, *, config: Any = None) -> dict:
     for surface, entry in pairs.items():
         entry["run_bar"] = PAIRS_PER_RUN
         entry["ready_for_run"] = entry.get("unexported", 0) >= PAIRS_PER_RUN
+    # Requests per opened moment, before and after the Phase 2 switch
+    # (founder 2026-10-01): the last four weeks, split by kind.
+    from services.coach_load import coach_load
+    since = (datetime.now(timezone.utc) - timedelta(days=COACH_LOAD_DAYS)).isoformat()
+    load = _read("coach_load", lambda: coach_load(database, since=since),
+                 unavailable) or {}
     return {
         "ledger_version": LEDGER_VERSION,
         "pairs": pairs,
@@ -111,5 +120,6 @@ def ledger(database: Any, *, config: Any = None) -> dict:
         "shadow_cues": cue_rows(cues, min_named=PROMOTION_MIN_NAMED,
                                 min_caught_rate=PROMOTION_MIN_CAUGHT_RATE),
         "doors": doors(config),
+        "coach_load": load,
         "unavailable": unavailable,
     }

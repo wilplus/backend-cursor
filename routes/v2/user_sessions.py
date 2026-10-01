@@ -1852,6 +1852,72 @@ def v2_exercise_rendered(snippet_id):
     return jsonify(payload), status
 
 
+@v2_bp.route("/user/snippets/<snippet_id>/moment-event", methods=["POST"])
+@require_auth
+def v2_moment_event(snippet_id):
+    """The speaker opened or skipped this bookmark (0408; founder 2026-10-01,
+    F1). Body {event: "opened" | "skipped", shown: [...]}; recorded once per
+    event however often it arrives. Under JUDGEMENT_AFTER_FEEDBACK_ENABLED an
+    open also raises the moment's coach request under the machine's kind
+    and says what the sheet may show next; off, it is a receipt. The work
+    is services.moment_events'.
+    """
+    if not _is_valid_uuid(snippet_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "snippet_id must be a valid UUID"}), 400
+    from services.moment_events import record_moment_event
+    try:
+        status, payload = record_moment_event(
+            db, user_id=str(request.user_id), snippet_id=snippet_id,
+            body=request.get_json(silent=True))
+    except Exception as e:
+        logger.error("moment-event failed snip=%s: %s", snippet_id, e,
+                     exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Could not record this."}), 500
+    return jsonify(payload), status
+
+
+def _practice_original_answer(body: dict):
+    """(answer, refusal). The speaker's answer about the original, one of
+    the five; or None under Phase 2 (founder 2026-10-01, F1), where the
+    judgement comes after the practice and the start carries no answer."""
+    from services.judgement_follow_up import judgement_after_feedback_enabled
+
+    answer = body.get("original_user_answer")
+    if answer is None and judgement_after_feedback_enabled():
+        return None, None
+    if answer not in _PRACTICE_ANSWERS:
+        return None, (jsonify({"code": "INVALID_INPUT",
+                               "error": "original_user_answer is not valid"}), 400)
+    return answer, None
+
+
+def _practice_answer_gate(database, *, session: dict, snippet_id: str,
+                          user_id: str, answer):
+    """ANSWER FIRST, until Phase 2: the practice starts only once the
+    Confident Voice question was answered, as the owner route records it
+    (the five answers, or the two-way yes/no the sheet sent before PR 5).
+    Under F1 a start with no answer passes; a start that carries one is
+    still checked, so the old sheet and the new run side by side."""
+    from services.judgement_follow_up import judgement_after_feedback_enabled
+
+    if answer is None and judgement_after_feedback_enabled():
+        return None
+    owner_route = next((
+        row for row in database.list_owner_voice_album_routes(
+            str(session.get("arc_id")))
+        if str(row.get("snippet_id")) == str(snippet_id)
+        and str(row.get("owner_user_id")) == str(user_id)
+    ), None)
+    if not owner_route or not _answer_matches_route(owner_route, answer):
+        return (jsonify({"code": "ANSWER_REQUIRED",
+                         "error": "Answer the Confident Voice question first."}),
+                409)
+    return None
+
+
 @v2_bp.route("/user/snippets/<snippet_id>/confidence-practice",
              methods=["POST"])
 @require_auth
@@ -1863,10 +1929,9 @@ def v2_start_confident_voice_practice(snippet_id):
         return jsonify({"code": "INVALID_INPUT",
                         "error": "snippet_id must be a valid UUID"}), 400
     body = request.get_json(silent=True) or {}
-    original_answer = body.get("original_user_answer")
-    if original_answer not in _PRACTICE_ANSWERS:
-        return jsonify({"code": "INVALID_INPUT",
-                        "error": "original_user_answer is not valid"}), 400
+    original_answer, refused = _practice_original_answer(body)
+    if refused:
+        return refused
     try:
         snip = db.get_snippet_by_id(snippet_id)
         session = db.v2_get_session_by_id(
@@ -1876,16 +1941,11 @@ def v2_start_confident_voice_practice(snippet_id):
                 or not session.get("arc_id")):
             return jsonify({"code": "NOT_FOUND",
                             "error": "snippet not found"}), 404
-        owner_route = next((
-            row for row in db.list_owner_voice_album_routes(
-                str(session.get("arc_id")))
-            if str(row.get("snippet_id")) == str(snippet_id)
-            and str(row.get("owner_user_id")) == str(request.user_id)
-        ), None)
-        # The five answers, or the two-way yes/no the sheet sent before PR 5.
-        if not owner_route or not _answer_matches_route(owner_route, original_answer):
-            return jsonify({"code": "ANSWER_REQUIRED",
-                            "error": "Answer the Confident Voice question first."}), 409
+        refused = _practice_answer_gate(
+            db, session=session, snippet_id=str(snippet_id),
+            user_id=str(request.user_id), answer=original_answer)
+        if refused:
+            return refused
         # THREE KINDS OF PASSAGE (founder lock 2026-09-30, D1): the library
         # exercise matched to the clip, the Manager's rewrite as the words to
         # say, or the plain moment said again. Only the first needs an

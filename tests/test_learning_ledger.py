@@ -17,6 +17,16 @@ class _Config:
 
 
 class LedgerTests(unittest.TestCase):
+    def setUp(self):
+        # The coach-load row (Phase 2 addition, 2026-10-01) reads two tables
+        # these stubs do not have; it is a source like the others.
+        patcher = mock.patch("services.coach_load.coach_load", return_value={
+            "since": "s", "moments_opened": 0,
+            "requests": {"open": {}, "judgement": {}},
+            "per_opened_moment": {"open": None, "judgement": None}})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_every_jar_and_every_door_is_named(self):
         with mock.patch("services.feedback_pairs.counts", return_value={
                     "praise_line": {"total": 1, "unexported": 1},
@@ -38,6 +48,7 @@ class LedgerTests(unittest.TestCase):
         self.assertFalse(out["shadow_cues"]["filler_cluster"]["ready"])
         self.assertEqual(set(out["doors"]), {"consent", "dataset_release", "training", "promotion"})
         self.assertFalse(any(d["open"] for d in out["doors"].values()))
+        self.assertEqual(out["coach_load"]["moments_opened"], 0)
 
     def test_a_source_that_fails_is_named_not_zeroed(self):
         with mock.patch("services.feedback_pairs.counts", side_effect=RuntimeError("down")), \

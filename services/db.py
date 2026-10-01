@@ -14560,7 +14560,8 @@ class DatabaseService:
         """Coach requests made since `since` (migration 0385), without their
         traces. Raises on failure."""
         res = (self.client.table("exercise_coach_requests")
-               .select("reason,observed_tags,resolution,created_at")
+               .select("reason,observed_tags,resolution,created_at,"
+                       "kind,answer_kind,raised_on")
                .gte("created_at", since).execute())
         return list(res.data or [])
 
@@ -14629,14 +14630,18 @@ class DatabaseService:
         self, *, owner_user_id: str, take_session_id: str, snippet_id: str,
         reason: str, pattern: Optional[str], observed_tags: list[str],
         request_trace: dict, kind: str = "error",
+        raised_on: str = "judgement",
     ) -> Optional[dict]:
-        """The moment's coach request (migration 0385; its kind, 0397):
-        recorded on the first call, returned unchanged — with any resolution
-        since — on every later one. Raises on failure; the caller keeps the
-        feedback regardless.
+        """The moment's coach request (migration 0385; its kind, 0397; where
+        it rose, 0408): recorded on the first call, returned unchanged — with
+        any resolution since — on every later one. Raises on failure; the
+        caller keeps the feedback regardless.
 
-        Without 0397 (PGRST202 on v2) the v1 function records it without a
-        kind, except a 'library_matched' request, which v1 cannot hold."""
+        A request raised at the open (F1, `raised_on` 'open') goes through
+        v3; without 0408 (PGRST202) v2 records it as a judgement-time one,
+        logged. Without 0397 (PGRST202 on v2) the v1 function records it
+        without a kind, except a 'library_matched' request, which v1 cannot
+        hold."""
         params = {
             "p_owner_user_id": str(owner_user_id),
             "p_take_session_id": str(take_session_id),
@@ -14646,6 +14651,19 @@ class DatabaseService:
             "p_observed_tags": list(observed_tags),
             "p_request_trace": request_trace,
         }
+        if raised_on != "judgement":
+            try:
+                result = self.client.rpc(
+                    "request_exercise_from_coach_v3",
+                    {**params, "p_kind": str(kind),
+                     "p_raised_on": str(raised_on)}).execute()
+                return self._rpc_row(result.data)
+            except Exception as e:  # noqa: BLE001 — only "not installed" falls back
+                if "PGRST202" not in str(e):
+                    raise
+                logger.warning("request_exercise_from_coach_v3 missing; "
+                               "recording as raised at the judgement sid=%s",
+                               take_session_id, exc_info=True)
         try:
             result = self.client.rpc("request_exercise_from_coach_v2",
                                      {**params, "p_kind": str(kind)}).execute()
@@ -14726,8 +14744,8 @@ class DatabaseService:
             return {}
         try:
             res = (self.client.table("exercise_coach_requests")
-                   .select("id,take_session_id,snippet_id,kind,reason,"
-                           "resolution,resolved_at,shared_at,created_at")
+                   .select("id,take_session_id,snippet_id,kind,answer_kind,"
+                           "reason,resolution,resolved_at,shared_at,created_at")
                    .in_("take_session_id", ids).execute())
         except Exception as e:
             logger.warning("list_exercise_coach_requests_for_sessions failed: %s",
@@ -14745,6 +14763,69 @@ class DatabaseService:
                .update({"answer_video_ref": str(video_ref)})
                .eq("id", str(request_id)).execute())
         return (res.data or [None])[0]
+
+    def set_exercise_coach_request_answer_kind(
+        self, *, take_session_id: str, snippet_id: str, answer_kind: str,
+        only_if_unset: bool = False,
+    ) -> Optional[dict]:
+        """The speaker's side of the moment's request (0408): the matrix's
+        kind once they judged. `only_if_unset` leaves a kind already written
+        (a first disagreement stays). None when no row changed. Raises on
+        failure; the caller logs."""
+        query = (self.client.table("exercise_coach_requests")
+                 .update({"answer_kind": str(answer_kind),
+                          "answered_at": datetime.now(timezone.utc).isoformat()})
+                 .eq("take_session_id", str(take_session_id))
+                 .eq("snippet_id", str(snippet_id)))
+        if only_if_unset:
+            query = query.is_("answer_kind", "null")
+        res = query.execute()
+        return (res.data or [None])[0]
+
+    def record_moment_event(
+        self, *, owner_user_id: str, take_session_id: str, snippet_id: str,
+        event: str, co_exposed: dict,
+    ) -> bool:
+        """The speaker opened or skipped a bookmark (0408), once per (Take,
+        moment, event). True when THIS call recorded it. Raises on failure."""
+        res = (self.client.table("moment_events").upsert(
+            {"owner_user_id": str(owner_user_id),
+             "take_session_id": str(take_session_id),
+             "snippet_id": str(snippet_id), "event": str(event),
+             "co_exposed": co_exposed if isinstance(co_exposed, dict) else {}},
+            on_conflict="take_session_id,snippet_id,event",
+            ignore_duplicates=True).execute())
+        return bool(res.data)
+
+    def list_moment_events_for_take(self, take_session_id: str) -> list[dict]:
+        """Every open and skip on this Take (0408), oldest first. Raises on
+        failure."""
+        res = (self.client.table("moment_events")
+               .select("snippet_id,event,created_at")
+               .eq("take_session_id", str(take_session_id))
+               .order("created_at").execute())
+        return list(res.data or [])
+
+    def count_moment_events(self, event: str, since: str) -> int:
+        """How many bookmarks were opened (or skipped) since `since` (0408).
+        Raises on failure."""
+        res = (self.client.table("moment_events")
+               .select("id", count="exact")
+               .eq("event", str(event)).gte("created_at", since)
+               .limit(1).execute())
+        return int(res.count or 0)
+
+    def list_confident_voice_practice_for_take(
+        self, take_session_id: str, owner_user_id: Optional[str] = None,
+    ) -> list[dict]:
+        """Every practice on this Take (one per moment since 0400), with the
+        fields that say whether it settled its moment. Raises on failure."""
+        query = (self.client.table("confident_voice_practice")
+                 .select("id,snippet_id,status,final_user_answer")
+                 .eq("take_session_id", str(take_session_id)))
+        if owner_user_id:
+            query = query.eq("owner_user_id", str(owner_user_id))
+        return list(query.execute().data or [])
 
     def upsert_coach_take_word(
         self, *, take_session_id: str, coach_id: str, text: Optional[str],

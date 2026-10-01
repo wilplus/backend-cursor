@@ -81,8 +81,14 @@ def coach_request_payload(request: dict, database: Any) -> dict:
         "snippet_id": str(request.get("snippet_id")),
         "reason": request.get("reason"),
         # Why it came (founder 2026-09-29): error, praise, rewrite, ambiguity.
-        # Rows from before 0391 are errors.
-        "kind": request.get("kind") or "error",
+        # Rows from before 0391 are errors. Since 0408 (Phase 2, F1) the
+        # speaker's side once they judged, else the kind it rose under.
+        "kind": (request.get("answer_kind") or request.get("kind")
+                 or "error"),
+        # Where it rose (0408) and what the speaker did with the bookmark:
+        # coach-only, after the blind rating; never the read.
+        "raised_on": request.get("raised_on") or "judgement",
+        **_moment_event_fields(request, database),
         "spotted": [{"error_id": tag, "label": labels.get(tag) or tag}
                     for tag in request.get("observed_tags") or []],
         "created_at": request.get("created_at"),
@@ -109,6 +115,29 @@ def coach_request_payload(request: dict, database: Any) -> dict:
             "explanation_video_ref": row.get("explanation_video_url"),
         } for row in ordered],
     }
+
+
+def _moment_event_fields(request: dict, database: Any) -> dict:
+    """When the speaker opened and skipped this bookmark (0408); None where
+    nothing was recorded or the read failed."""
+    out: dict[str, Any] = {"opened_at": None, "skipped_at": None}
+    reader = getattr(database, "list_moment_events_for_take", None)
+    if reader is None:
+        return out
+    try:
+        rows = reader(str(request.get("take_session_id"))) or []
+    except Exception as e:  # noqa: BLE001 — the payload still serves
+        logger.warning("moment events read failed take=%s: %s",
+                       request.get("take_session_id"), e, exc_info=True)
+        return out
+    for row in rows:
+        if not isinstance(row, dict) \
+                or str(row.get("snippet_id")) != str(request.get("snippet_id")):
+            continue
+        key = f"{row.get('event')}_at"
+        if key in out and out[key] is None:
+            out[key] = row.get("created_at")
+    return out
 
 
 def _require_main_target(fields: dict) -> Optional[tuple]:

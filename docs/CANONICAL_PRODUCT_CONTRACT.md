@@ -201,6 +201,23 @@ with this contract, this contract wins.
     are always there. (Founder 2026-09-25; supersedes the 2026-09-24 "keep the
     emphasis open for every answer" ruling.)
 
+24e-1. **Judgement after feedback** (founder 2026-10-01, F1; Phase 2 of the
+    after-practice paths, served only once `JUDGEMENT_AFTER_FEEDBACK_ENABLED`
+    is on): "Opening a bookmark never asks for a judgment first. The
+    machine's read chooses the feedback. The speaker judges themselves after
+    it: on a confident moment right after the praise, on a moment that
+    needed work after each practice attempt. Helper words open on Yes or
+    In-between of that judgment." Lock B2 is unchanged. Under it the coach
+    request of 35g-2 rises when the moment opens, under the machine's kind
+    (praise; error where a problem fired; rewrite where nothing did), and
+    the judgement that follows sets the request's answer kind from the same
+    matrix: an ambiguity where the speaker and the machine disagree, on the
+    moment or on a practice attempt. Nothing rises for an unopened bookmark,
+    a clip the machine could not read, or Audio unclear. A practice may
+    start before any judgement (29a); a practice that lands, a practice
+    dismissed, or a bookmark skipped settles the item without a Path 1
+    answer. Until the switch, 24e above is served as written.
+
 24f. **On top of that, each Take carries anchored notes**, each attached to
     the item it concerns and never floating free of a Slide. **The caps are
     lifted** (founder 2026-09-29, evening: "now build it"; until then at most
@@ -564,7 +581,9 @@ with this contract, this contract wins.
     lines (35f) as the newest version for the moment's pattern unless the
     coach keeps it to the speaker; a clearer version never does, being one
     speaker's passage. Once the library itself fits the moment, the matched
-    exercise is what is served.
+    exercise is what is served. Under 24e-1 the request rises at the open
+    instead, under the machine's kind, and the judgement sets its answer
+    kind; the coach reads that side only after their blind rating.
 35g-2a. **The draft and the pair** (founder 2026-09-30, C2, C5; build plan
     P2-1, P2-2). On an error, praise or rewrite request the coach may ask
     for one model draft by the request's kind (an exercise script, a praise

@@ -136,6 +136,11 @@ def judge_attempt(database: Any, practice: Mapping, attempt_id: str,
     if not database.keep_confident_voice_practice_attempt(
             str(practice.get("id")), str(attempt_id), str(answer)):
         return 500, {"code": "V2_ERROR", "error": "Could not save."}
+    from services.judgement_follow_up import practice_judgement
+    # Phase 2 (founder 2026-10-01, F1): the moment's coach request learns
+    # the speaker's side of this attempt; off, this writes nothing.
+    practice_judgement(database, practice, str(answer),
+                       target.get("machine_confidence_decision"))
     step = outcome(str(answer))
     # `adopted` and `paragraph` stay on the wire, always False and None: a
     # practice never rewrites the paragraph (B6). `attempt_transcript` is
