@@ -323,17 +323,20 @@ def v2_coach_students():
         # round trips before the coach saw a name.
         _profiles = db.get_user_profiles(
             [r.get("user_id") for r in rows if r.get("user_id")]) or {}
+        # Phase 0b (founder 2026-10-01): the real name rides only while
+        # COACH_STUDENTS_ENABLED; off, the row is exactly what it was.
+        from services.coach_students import name_field, student_names
+        _names = student_names(db, [r.get("user_id") for r in rows])
         out = []
         for r in rows:
             uid = r.get("user_id")
             prof = _profiles.get(str(uid)) or {}
             out.append({
-                # Opaque drill key — the FE keys the student detail view
-                # (GET /v2/coach/students/<user_id>) on this and NEVER renders
-                # it. A random UUID is not name/email, so this does not breach
-                # §B.4 (pseudonym + domain are still the only DISPLAYED fields).
+                # Opaque drill key — the FE keys the student detail view on
+                # this; a random UUID is not name/email.
                 "user_id": str(uid) if uid else "",
                 "pseudonym": _coach_pseudonym(uid),
+                **name_field(_names, uid),
                 "domain": (prof or {}).get("domain") or "",
                 "last_active": r.get("last_active") or "",
                 # read-only coach-load signal (the beta "drowning guard") —
@@ -405,14 +408,13 @@ def v2_coach_student_detail(user_id):
                 review_state = "to_review"
             sessions.append({
                 "session_id": s.get("id"),
+                "take_index": s.get("take_index"),
                 "topic": (ctx or {}).get("topic") or "",
                 "created_at": s.get("created_at"),
                 "state": state,
                 "review_state": review_state,
                 "arc_id": s.get("arc_id"),
-                # nervous/excited/calm/unsure, or null if not captured.
                 "feeling": _feel_by_session.get(s.get("id")),
-                # This take has folded mid-take re-read(s) in its packet.
                 "has_reread": str(s.get("id")) in _reread_parents,
             })
         # "Ideal text ready to review" badges (founder 2026-07-15) — the arcs
@@ -426,15 +428,16 @@ def v2_coach_student_detail(user_id):
             if _row and (_row.get("text") or "").strip() \
                     and not _row.get("approved_at"):
                 _ideal_ready_arcs.append(str(_aid))
+        from services.coach_students import name_field, student_names
         return jsonify({
             "pseudonym": _coach_pseudonym(user_id),
+            # Phase 0b: the real name, only while COACH_STUDENTS_ENABLED.
+            **name_field(student_names(db, [user_id]), user_id),
             "domain": (prof or {}).get("domain") or "",
             "goal": (prof or {}).get("goal") or "",
-            # Arcs whose ideal text awaits coach review/approval.
             "ideal_ready_arc_ids": _ideal_ready_arcs,
-            # Goal-change context (Prompt A §6 C4 follow-up) — what the goal
-            # WAS before the last change + when, so the coach sees old→new.
-            # Null/empty when the goal has never been changed.
+            # Goal-change context: what the goal WAS before the last change
+            # and when. Empty when the goal has never been changed.
             "previous_goal": (prof or {}).get("previous_goal") or "",
             "goal_changed_at": (prof or {}).get("goal_changed_at") or "",
             "sessions": sessions,
@@ -1718,6 +1721,44 @@ def v2_coach_exercise_request_video(session_id, snippet_id):
         video_file=request.files.get("video_file"),
         max_mb=int(getattr(Config, "COACH_FEEDBACK_VIDEO_MAX_MB", 100) or 100))
     return jsonify(payload), status
+
+
+@v2_bp.route("/coach/sessions/<session_id>/walk-take", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_walk_take(session_id):
+    """One Take in the walk's own shape (founder 2026-10-01, Phase 0b): the
+    speaker with this one take, its bookmarked moments and THIS coach's
+    state on each, plus the student's real name. Opened from a named
+    profile the walk may show the name; the kind still rides only once this
+    coach has rated the moment (BLIND COACH). Same language gate as the
+    queue. 404 while COACH_STUDENTS_ENABLED is off."""
+    from services.coach_moments_queue import moments_queue
+    from services.coach_students import load_walk_take
+    if not _is_valid_uuid(session_id):
+        return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a UUID"}), 400
+    try:
+        rater_id = str(getattr(request, "user_id", "") or "")
+        loaded = load_walk_take(db, session_id, rater_id)
+        if loaded is None:
+            return jsonify({"code": "NOT_FOUND", "error": "No such Take."}), 404
+        if not loaded["proficient"]:
+            return _rater_language_error("profile_required")
+        outcome, language = _rater_language_outcome(
+            loaded["row"], loaded["snippets"], proficient=loaded["proficient"])
+        language_error = _rater_language_error(outcome, language)
+        if language_error is not None:
+            return language_error
+        sid = str(loaded["row"]["id"])
+        speakers = moments_queue(
+            [loaded["row"]], moments_for=_queue_moments_for({sid: loaded["snippets"]}),
+            ratings_for=lambda _sid: loaded["ratings"],
+            request_for=lambda _sid, snip: loaded["requests"].get((_sid, snip)),
+            pseudonym_for=_coach_pseudonym)
+        return jsonify({"speaker": speakers[0], "name": loaded["name"]}), 200
+    except Exception as e:
+        logger.error("coach/walk-take GET failed sid=%s: %s", session_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to read the Take"}), 500
 
 
 @v2_bp.route("/coach/sessions/<session_id>/word", methods=["GET", "PUT"])

@@ -324,6 +324,14 @@ class Config:
     # learned helped rate only when this is True AND the jar's fair test
     # meets its bar AND the founder said yes. Closed in code; never an env.
     EXERCISE_LEARNED_ORDER_ENABLED = False
+
+    # PHASE 0b (founder 2026-10-01): the coach's Students screens. On, the
+    # roster and a student's profile carry the student's real name (coaches
+    # know their own students; the walk stays blind to the machine's read)
+    # and one Take can be read in the walk's shape from a profile. Off, the
+    # routes answer exactly as before and the walk-take read is 404. A
+    # reviewed change flips it after the founder's yes.
+    COACH_STUDENTS_ENABLED = False
     # Slice 6 readiness replaces the ambiguous bool with an irreversible
     # three-state contract.  ``dark`` was the pre-cutover behavior;
     # ``founder_canary`` is THE FLIP (founder 2026-09-29, after the
