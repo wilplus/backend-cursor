@@ -124,6 +124,14 @@ class _Db:
     def __init__(self):
         self.updates: list = []
         self.steps: list = []
+
+    # Bold voices asks the peer lane for others' clips (on from 2026-10-02,
+    # N25); this Take has none lent and no corpus.
+    def list_shared_clips_live(self):
+        return []
+
+    def list_corpus_clips_active(self):
+        return []
         self.plays: list = []
         self.readings: list = []
 
