@@ -3,7 +3,7 @@
     artifact_kind:       power_score_classification
     version:             1.1 — supersedes 1.0 (signed 2026-09-22); never edited in place, see 04 §5
     approving_authority: Artur Willoński (founder and controller) — controller's own determination, NOT counsel-reviewed; see §9 and its condition
-    approved_at:         [[FOUNDER: ISO-8601 UTC, on signing v1.1]]
+    approved_at:         2026-10-02 (in chat: "I sign it all"; the PAdES timestamp on the signed PDF is the time of day)
     object_key:          phase1-2026.1/legal/power-score-classification-v1.1.pdf
     sha256:              [[computed from the signed PDF at registration time]]
     metadata: {
@@ -37,17 +37,18 @@
 > v1.0; v1.1 needs its own render, signature, upload and hash
 > (`SIGNED-ARTIFACTS.md`).
 
-**STATUS: DETERMINED AND SIGNED BY THE CONTROLLER, 19 September 2026 — NOT
-COUNSEL-REVIEWED, AND CONDITIONAL.** §§2-4 are a factual description of the
+**STATUS: DETERMINED AND SIGNED BY THE CONTROLLER — v1.0 on 19 September 2026,
+v1.1 on 2 October 2026 — NOT COUNSEL-REVIEWED, AND CONDITIONAL.** §§2-4 are a factual description of the
 code, written by engineering, and can be checked line by line against the cited
 files. §§5-8 set out the legal questions and the arguments on both sides. §9
 carries the determination — `false` on all three booleans, not high-risk under
 Annex III, not prohibited under Article 5 — made by the founder as controller
 and not by counsel, subject to the condition recorded there: **counsel must
-confirm it before any person other than the founder records.** Every recording
-made to date is the founder's own voice, so if the determination is wrong
-today, the only affected data subject is the person who made it. That stops
-being true the moment someone else records.
+confirm it before any person other than the founder records.** When v1.0 was
+signed every recording made to date was the founder's own voice, so a wrong
+determination affected only the person who made it. That stopped being true
+before v1.1: one other person has recorded (§9), so the condition is engaged
+and counsel's confirmation is the next action, not a future one.
 
 ---
 
@@ -593,7 +594,7 @@ preference:
 
     Name:      Artur Willoński
     Firm:      None — natural person, no company (działalność nieewidencjonowana)
-    Date:      [[FOUNDER: on signing v1.1]]
+    Date:      2 October 2026
     Reference: WILLAB-PHASE1-2026.1-PSC-v1.1
 
 *Article and recital numbering above should be verified by counsel against the

@@ -55,6 +55,32 @@ because this table is what people check:
 The signed PDFs still have to reach `object_key` in storage. A hash recorded
 here against a file nobody uploaded is a claim, not a record.
 
+## Awaiting signature and upload (rendered 2026-10-02)
+
+Two renders made on 2026-10-02 for the founder's PAdES signature, by
+`scripts/render_doc_pdf.py` from the markdown in the same commit as this
+table. The founder signed the content in chat the same day ("I sign it all",
+decisions log N24). The hash of the **unsigned** render is recorded so that
+the signed file can be checked to be that render plus a signature and nothing
+else (the byte-identical-prefix test above); it is never the value to
+register.
+
+| # | `object_key` | source | `sha256` of the UNSIGNED render |
+|---|---|---|---|
+| 02 v1.1 | `phase1-2026.1/legal/power-score-classification-v1.1.pdf` | `02-power-score-classification-v1.1-DRAFT.md` | `dc175ffc54b88a81155bdce439a40785bdabb783454f19d4408838c2641c40e8` |
+| 06 v1.2 | `phase1-2026.1/legal/retention-schedule-v1.2.pdf` | `18-retention-schedule-v1.2-blind-check-and-lending-DRAFT.md` | `cec455cb8e7e65af5ca40787f0b07f5ce9d45496b2e4e44eee10bbbb4d4dc85c` |
+
+After the founder signs and uploads each file to its `object_key` (the
+backend's main bucket, as for `13`): the signed file's sha256 goes into the
+**Current** table above with the signing time, `02 v1.0` and `06 v1.0` move to
+Superseded (superseded by version, their signatures stand for their
+versions), and the hash is what `scripts/phase1_retention_rules_v1_2.sql`
+takes for `06 v1.2`. `02 v1.1` is registered under
+`(power_score_classification, 1.1)` with its real hash; the 3.3 publish
+(`scripts/phase1_policy_publish_3_3.sql`) carries a provisional reference
+until then, as the 3.2 publish did. Neither signature makes either document
+counsel-reviewed; both say so on their first page.
+
 ## Why 02 and 03 were re-signed (closed 2026-09-22)
 
 Neither is a change of substance to what the founder decided. Both are

@@ -932,3 +932,57 @@ changed from B to A the same day to keep counsel's 2026-10-01 answer), so door
 2 stays shut for them. Nothing of this merges without the founder's review,
 and no gate flips on it until its wording is published.
 
+**N24 · The founder's sign-off of 2026-10-02 ("I sign it all"; own
+determinations, not reviewed by outside counsel).** In chat, after the eight
+determinations (N23): the founder signed the Privacy and Terms lines of
+`legal/phase1-2026.1/15-coach-blind-check-privacy-line-and-balancing-test-SIGNED-2026-10-02.md`
+§1 and `legal/phase1-2026.1/16-share-switch-wording-SIGNED-2026-10-02.md` §1,
+document 02 v1.1, the delayed-measure definition
+(`docs/MEASURE-exercise-human-delayed-v1.md`), and said counsel has answered
+everything put to it; what needs a real signature is rendered for him.
+1. **The approved text is `legal/phase1-2026.1/copy/privacy-3.3.txt` and
+   `legal/phase1-2026.1/copy/terms-3.3.txt`**: the 3.2 bytes plus the signed
+   lines, placed as the two records say, and nothing else except the version
+   line and a version note at the top of each text that describes both
+   additions (engineering's words; the founder confirmed them the same day,
+   "Yes"). The effective date is the day the publish runs (the 2026-09-24
+   lesson): the founder named 2 October 2026, and both texts and the publish
+   script `scripts/phase1_policy_publish_3_3.sql` (version id
+   `phase1-2026-10-02`) carry it. The AI notice and the agreement screen
+   are unchanged; the five purposes are unchanged and read back from the
+   registry. Neither addition is a Phase-1 purpose: the blind check rides
+   legitimate interest with the Personalised practice choice as its off
+   switch, the lending yes is the per-recording share switch.
+2. **Document 02 v1.1 is signed by the controller** (approved_at 2026-10-02,
+   signature date 2 October 2026), rendered by `scripts/render_doc_pdf.py` for
+   the PAdES signature, upload to its `object_key` and hash
+   (`legal/phase1-2026.1/SIGNED-ARTIFACTS.md`, pending rows). Its condition is
+   engaged (N23): counsel's confirmation is the next action.
+3. **Retention schedule v1.2**
+   (`legal/phase1-2026.1/18-retention-schedule-v1.2-blind-check-and-lending-DRAFT.md`):
+   v1.0 unchanged, v1.1's two training rows (six years stands as the
+   founder's figure) and the three rows of 15 §3 and 16 §3, rendered for the
+   same signature; `scripts/phase1_retention_rules_v1_2.sql` registers the
+   signed PDF and seeds the five rows, run by hand after the upload.
+4. **The measure definition is signed**; its C1 to C3 are the founder's Q3 to
+   Q5. `DELAYED_MEASURE_ENABLED` still waits on the published policy, the
+   seeded rows and `PEER_LANE_ENABLED`.
+5. **What flips, and in what order, each one reviewed PR after the founder's
+   review:** 3.3 active and re-accepted → `PEER_SHARE_POLICY_VERSION =
+   'phase1-2026-10-02'` → rows seeded → `ERROR_PRESENCE_AUDIT_ENABLED` (and
+   the verbal lane), `PEER_LANE_ENABLED`, `DELAYED_MEASURE_ENABLED`;
+   `DETECTOR_TRAINING_AUTHORISED` after 02 v1.1 is uploaded and its hash
+   recorded. Door 2 for the coach-word surfaces stays shut (N23, Q8). Nothing
+   of this merges without the founder's review.
+6. **No counsel answer is on file.** The same day the founder pasted a
+   memorandum headed "SPECIMEN — DRAFTING EXERCISE. NOT LEGAL ADVICE", by an
+   author who states they are not an admitted lawyer and that it must not be
+   filed in the pack or cited as counsel's opinion. It is not filed and not
+   cited; every record keeps "not reviewed by outside counsel". Two points
+   from it are already met by the pack's own reasoning (document 02 §7.1
+   assumes the AI Act's Article 3(34) condition is met and decides on
+   condition (i); record 15 §2 is the contemporaneous balancing test with the
+   off switch read as the Article 21 right). One is an engineering follow-up
+   outside this entry: an access response to a listener must not disclose the
+   speaker, nor the speaker's the listener (Article 15(4)), to be checked in
+   the data-export path before the peer lane flips.
