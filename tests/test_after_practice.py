@@ -127,6 +127,14 @@ class _Db:
         self.plays: list = []
         self.readings: list = []
 
+    # Bold voices asks the peer lane for others' clips (on from 2026-10-02,
+    # N25); this Take has none lent and no corpus.
+    def list_shared_clips_live(self):
+        return []
+
+    def list_corpus_clips_active(self):
+        return []
+
     def update_confident_voice_practice(self, practice_id, owner, fields):
         self.updates.append((practice_id, owner, fields))
         return {"id": practice_id, **fields}

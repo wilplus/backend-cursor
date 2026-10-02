@@ -1,5 +1,6 @@
 """Coach Yes/No answers about errors, blind (founder 2026-10-01, F6; task 1
-and Phase 6a), dark behind ``Config.ERROR_PRESENCE_AUDIT_ENABLED``.
+and Phase 6a), behind ``Config.ERROR_PRESENCE_AUDIT_ENABLED`` (on from
+2026-10-02, N25) and, per speaker, ``Config.BLIND_CHECK_POLICY_VERSION``.
 
 F6: "Coaches may answer blind Yes/No questions about errors on speakers'
 moments. The answers are stored for measuring and improving the error
@@ -120,11 +121,35 @@ def sampling_plan(candidates: Iterable[dict], *, size: int,
     return out
 
 
+def _on_notice_version(database: Any, take_session_id: str) -> bool:
+    """The balancing test (15 §2) holds only for a speaker who has read the
+    Privacy line that describes the check: their current Phase-1
+    authorization is on ``BLIND_CHECK_POLICY_VERSION`` or a later one. False
+    while no version is named, and false when the read fails (the safe
+    side); a speaker on an older version is out of the pool until they
+    re-accept."""
+    from config import Config
+    from services.processing_authorization import ProcessingAuthorizationService
+    version = getattr(Config, "BLIND_CHECK_POLICY_VERSION", None)
+    if not version:
+        return False
+    try:
+        service = ProcessingAuthorizationService(database)
+        status = service.status(service.take_acquisition_principal(str(take_session_id)))
+    except Exception as e:  # noqa: BLE001 — unknown reads as not on the version
+        _log.warning("blind-check policy read failed take=%s: %s", take_session_id, e,
+                     exc_info=True)
+        return False
+    accepted = str(status.get("policy_version") or "")
+    return bool(status.get("authorized")) and accepted >= str(version)
+
+
 def _still_permitted(database: Any, candidates: list[dict]) -> list[dict]:
     """Q1-C (founder 2026-10-02): the easy off switch is the speaker's
     "Personalised practice" choice, read NOW, not at recording time. A
     speaker who turned it off since has no clip in the pool, whatever the
-    shadow log still holds."""
+    shadow log still holds. And the speaker must be on the policy version
+    that carries the line (``_on_notice_version``)."""
     from services.verbal_cues import _practice_permitted
     permitted: dict[str, bool] = {}
     out = []
@@ -133,7 +158,8 @@ def _still_permitted(database: Any, candidates: list[dict]) -> list[dict]:
         if not take:
             continue
         if take not in permitted:
-            permitted[take] = bool(_practice_permitted(database, take))
+            permitted[take] = bool(_practice_permitted(database, take)) and \
+                _on_notice_version(database, take)
         if permitted[take]:
             out.append(c)
     return out

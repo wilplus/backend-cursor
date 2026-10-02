@@ -431,8 +431,9 @@ with this contract, this contract wins.
     kept. Others' shared clips and Lend your ear wait for Phase 4 and
     counsel (C1 to C3, F3, F4).
 29d. **Lend your ear and the share** (founder 2026-10-01, F3, F4; Phase 4,
-    served only once `PEER_LANE_ENABLED` is on, which waits for counsel's
-    answers to C1, C2 and C3): "A blind 'Lend your ear' step reopens the
+    served once `PEER_LANE_ENABLED` is on — on from 2026-10-02 after the
+    founder's own answers to C1, C2 and C3 (N23) and Privacy 3.3 (N24, N25);
+    the share switch waits per speaker for `PEER_SHARE_POLICY_VERSION`): "A blind 'Lend your ear' step reopens the
     peer lane. Speakers judge up to three short shared or licensed clips,
     audio only, never their own, at most once per Take after a practice
     that lands. Their answers count toward the coach + peer quorum. The
@@ -453,8 +454,9 @@ with this contract, this contract wins.
     and corpus clips a coach labelled Yes, without names.
 29e. **The delayed blind human measure** (founder 2026-10-01; Phase 5,
     exercise-human-delayed-v1, `docs/MEASURE-exercise-human-delayed-v1.md`,
-    served only once `DELAYED_MEASURE_ENABLED` is on after the founder
-    signs the definition and counsel answers C1 to C3): one practice makes
+    served once `DELAYED_MEASURE_ENABLED` is on — on from 2026-10-02, the
+    founder having signed the definition and answered C1 to C3 himself, N24,
+    N25): one practice makes
     one pair, the original clip and the first valid attempt (F7), fixed when
     the practice closes; fallbacks and rewrite practices are excluded; the
     clips enter Lend your ear as separate, unlabelled clips seven days

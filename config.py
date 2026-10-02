@@ -366,24 +366,36 @@ class Config:
     # toggle, revocable), Lend your ear serves up to three blind clips once
     # per Take after a practice that lands, answers count toward the coach +
     # peer quorum, and Bold voices adds others' settled clips and the
-    # licensed corpus (migration 0410). GATED: stays False until counsel
-    # answers C1 (voice training consent), C2 (share opt-in, Terms and
-    # Privacy) and C3 (peer answers as personal data). Off, the routes answer
-    # 404 and nothing is written.
-    PEER_LANE_ENABLED = False
+    # licensed corpus (migration 0410). ON from 2026-10-02 (founder: "You
+    # have my go on each of the flips"; N25) after his own determinations
+    # Q3 to Q5 (C1 to C3, N23) and the signed 3.3 wording (N24). The share
+    # switch itself exists only for a speaker on PEER_SHARE_POLICY_VERSION
+    # or later, so nothing is lent before the speaker has read 4b. Off, the
+    # routes answer 404 and nothing is written.
+    PEER_LANE_ENABLED = True
 
     # PHASE 5 (founder 2026-10-01): the delayed blind human measure
     # exercise-human-delayed-v1, docs/MEASURE-exercise-human-delayed-v1.md,
-    # written before any data. GATED like Phase 4, plus the founder's
-    # signature on the measure. Off, no pair and no vote is written.
-    DELAYED_MEASURE_ENABLED = False
+    # written before any data. ON from 2026-10-02 (N25): the founder signed
+    # the definition 2026-10-02 (N24) and the pair rides the share switch
+    # (Q3-A), which rides PEER_SHARE_POLICY_VERSION. Off, no pair and no vote
+    # is written.
+    DELAYED_MEASURE_ENABLED = True
     # Q4-A (founder 2026-10-02): the share switch is written into both
     # Terms and Privacy, in a new Phase-1 policy version everyone re-accepts
     # before the switch appears (the 1 October path: Terms 3.2 + Privacy 3.2
-    # → phase1-2026-10-01 → re-acceptance). This names that policy version;
-    # None until it is published, and the share route refuses until the
-    # speaker's current authorization is on it or a later one.
-    PEER_SHARE_POLICY_VERSION: str | None = None
+    # → phase1-2026-10-01 → re-acceptance). This names that policy version:
+    # phase1-2026-10-02, Privacy 3.3 + Terms 3.3 (scripts/
+    # phase1_policy_publish_3_3.sql, N24). The share route refuses until the
+    # speaker's current authorization is on it or a later one, so setting it
+    # before the publish runs is the safe order: until then nobody is on it.
+    PEER_SHARE_POLICY_VERSION: str | None = "phase1-2026-10-02"
+    # 6a: the same version carries the blind check's Privacy §4 purpose
+    # (15 §1). A clip is sampled only from a speaker whose current
+    # authorization is on it or later (services/error_presence_audit.py,
+    # _on_notice_version): the balancing test holds only for a speaker who
+    # has read the line, never before the publish.
+    BLIND_CHECK_POLICY_VERSION: str | None = "phase1-2026-10-02"
 
     # THE COACH PANEL'S LEARNING ADDITIONS (founder 2026-10-01; migration
     # 0411), each dark behind its own constant, each a reviewed flip after
@@ -399,12 +411,14 @@ class Config:
     COACH_WORD_PAIRS_ENABLED = True
     # 6a (F6): the blind error audit, Yes/No per (clip, error), sampled fired
     # and not fired, 20 blind answers per coach per week shared with 8.
-    # Working assumption from counsel's draft: measuring may be legitimate
-    # interest; the privacy line, the balancing test and the retention
-    # period precede the flip.
-    ERROR_PRESENCE_AUDIT_ENABLED = False
+    # ON from 2026-10-02 (N25): legitimate interest with the balancing test
+    # (15 §2), the Privacy line in 3.3 (15 §1), the speaker's Personalised
+    # practice choice as the Article 21 off switch read at sampling, and
+    # BLIND_CHECK_POLICY_VERSION keeping every speaker out of the pool until
+    # they are on 3.3. The retention row is 18 §2.
+    ERROR_PRESENCE_AUDIT_ENABLED = True
     # 6a: the three verbal cues join the audit (rules on the transcript).
-    ERROR_PRESENCE_AUDIT_VERBAL_ENABLED = False
+    ERROR_PRESENCE_AUDIT_VERBAL_ENABLED = True
     # 8 (C5-b): the coach's blind pick among a block's candidate moments,
     # against the Manager's pick, never changing a bookmark.
     COACH_BLOCK_PICK_ENABLED = True
