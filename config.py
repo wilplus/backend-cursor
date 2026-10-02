@@ -389,7 +389,7 @@ class Config:
     # drafted from the transcript and the coach's notes, and the (draft,
     # final) pair is recorded when the final differs. Door 2 stays shut for
     # both surfaces until counsel's answer and the founder's sentence.
-    COACH_WORD_PAIRS_ENABLED = False
+    COACH_WORD_PAIRS_ENABLED = True
     # 6a (F6): the blind error audit, Yes/No per (clip, error), sampled fired
     # and not fired, 20 blind answers per coach per week shared with 8.
     # Working assumption from counsel's draft: measuring may be legitimate
