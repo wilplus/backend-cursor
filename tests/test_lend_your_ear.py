@@ -33,6 +33,8 @@ VALID_ATTEMPT = {"id": "a-1", "attempt_index": 1, "transcript": "the words here 
                  "duration_ms": 2500, "audio_ref": "https://a/a-1.webm",
                  "acoustic_metrics": {"aligned_words": 4, "confidence": 0.3, "voiced_ratio": 0.8}}
 MEASURE_ON = patch("config.Config.DELAYED_MEASURE_ENABLED", True)
+PEER_OFF = patch("config.Config.PEER_LANE_ENABLED", False)
+MEASURE_OFF = patch("config.Config.DELAYED_MEASURE_ENABLED", False)
 
 
 def _snippet(sid, band=None, session="take-9"):
@@ -196,12 +198,11 @@ class _Db:
         return {"fallback": None}
 
 
+@PEER_OFF
+@MEASURE_OFF
 class OffTests(unittest.TestCase):
-    def test_both_switches_are_off(self):
-        from config import Config as _live
-        self.assertFalse(_live.PEER_LANE_ENABLED)
-        self.assertFalse(_live.DELAYED_MEASURE_ENABLED)
-
+    """The off behaviour, with both switches patched off: on from 2026-10-02
+    (N25), after the founder's own C1 to C3 and the 3.3 wording."""
     def test_off_nothing_is_served_or_written(self):
         db = _Db()
         self.assertEqual(lye.set_share(db, owner_user_id="owner-1", snippet_id="snip-a",
@@ -255,9 +256,12 @@ class PeerLaneTests(unittest.TestCase):
         # Q4-A (founder 2026-10-02): no published version, no switch; a
         # speaker who has not accepted it, no switch.
         db = _Db()
+        with patch("config.Config.PEER_SHARE_POLICY_VERSION", None, create=True):
+            self.assertEqual(lye.set_share(db, owner_user_id="owner-1", snippet_id="snip-a",
+                                           body={"shared": True})[1]["code"], "TERMS_REACCEPT_REQUIRED")
+        db.accepted = {"owner-1": "phase1-2026-10-01"}
         self.assertEqual(lye.set_share(db, owner_user_id="owner-1", snippet_id="snip-a",
                                        body={"shared": True})[1]["code"], "TERMS_REACCEPT_REQUIRED")
-        db.accepted = {"owner-1": "phase1-2026-10-01"}
         with patch("config.Config.PEER_SHARE_POLICY_VERSION", "phase1-2026-11-01", create=True):
             self.assertEqual(lye.set_share(db, owner_user_id="owner-1", snippet_id="snip-a",
                                            body={"shared": True})[0], 409)
@@ -480,8 +484,9 @@ class WiringTests(unittest.TestCase):
         self.assertIn("29d. **Lend your ear and the share**", contract)
         self.assertIn("29e. **The delayed blind human measure**", contract)
         config = (ROOT / "config.py").read_text()
-        self.assertIn("PEER_LANE_ENABLED = False", config)
-        self.assertIn("DELAYED_MEASURE_ENABLED = False", config)
+        self.assertIn("PEER_LANE_ENABLED = True", config)
+        self.assertIn("DELAYED_MEASURE_ENABLED = True", config)
+        self.assertIn("PEER_SHARE_POLICY_VERSION: str | None = \"phase1-2026-10-02\"", config)
         sql = (ROOT / "migrations/a_moment_may_be_lent_an_ear.sql").read_text()
         for table in ("voice_album_shares", "corpus_clips", "lend_your_ear_sets",
                       "lend_your_ear_answers", "delayed_measure_pairs", "delayed_measure_votes"):

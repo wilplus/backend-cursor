@@ -986,3 +986,31 @@ everything put to it; what needs a real signature is rendered for him.
    outside this entry: an access response to a listener must not disclose the
    speaker, nor the speaker's the listener (Article 15(4)), to be checked in
    the data-export path before the peer lane flips.
+
+**N25 · The flips of 2026-10-02 ("You have my go on each of the flips, so
+just go"; founder).** On the merged sign-off (N24, #861) the founder ordered
+the flips ahead of the publish and the seeding, so each is gated in code on
+the speaker's own re-acceptance rather than on the day:
+1. **`PEER_SHARE_POLICY_VERSION = "phase1-2026-10-02"`.** The share switch
+   exists only for a speaker whose current authorization is on 3.3 or
+   later; before the publish runs nobody is, and the route answers
+   `TERMS_REACCEPT_REQUIRED`.
+2. **`BLIND_CHECK_POLICY_VERSION = "phase1-2026-10-02"`** (new) and
+   **`ERROR_PRESENCE_AUDIT_ENABLED`, `ERROR_PRESENCE_AUDIT_VERBAL_ENABLED`
+   True.** A clip is sampled only from a speaker on 3.3 or later
+   (`services/error_presence_audit.py`, `_on_notice_version`, the share
+   read's twin) who still has Personalised practice on (Q1-C). The balancing
+   test (15 §2) therefore never applies to a speaker who has not read the
+   line; the record's "published and re-accepted first" holds per speaker.
+3. **`PEER_LANE_ENABLED`, `DELAYED_MEASURE_ENABLED` True.** Both ride the
+   share switch (Q3-A), which rides 1. The founder signed the measure
+   definition (N24) and answered C1 to C3 himself (N23).
+4. **The retention rows (18 §2) are seeded after the founder uploads the
+   signed v1.2 and gives its hash** (`scripts/phase1_retention_rules_v1_2.sql`);
+   the founder's order puts the flips first. The rows are the signed
+   period's proof, not a disposition the purge consults (18 §2), and the
+   period itself is in the 3.3 text every sampled speaker has accepted.
+5. **`DETECTOR_TRAINING_AUTHORISED` follows in its own change** once 02 v1.1
+   is uploaded and registered by its hash
+   (`scripts/phase1_register_power_score_v1_1.sql`).
+

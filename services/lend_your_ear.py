@@ -1,9 +1,8 @@
 """Lend your ear, the share toggle, and the others' voices (founder
 2026-10-01, F3, F4; Phase 4 of the after-practice paths), dark behind
-``Config.PEER_LANE_ENABLED``, which stays off until counsel answers C1
-(voice training consent), C2 (share opt-in, Terms and Privacy, labels after
-sharing off) and C3 (peer answers as personal data). Built now so the switch
-is one line.
+``Config.PEER_LANE_ENABLED`` (on from 2026-10-02, N25, after the founder's
+own answers to C1 to C3, Q3 to Q5 of N23, and the signed 3.3 wording, N24);
+the share switch itself waits per speaker for ``PEER_SHARE_POLICY_VERSION``.
 
 F3: "A blind 'Lend your ear' step reopens the peer lane. Speakers judge up to
 three short shared or licensed clips, audio only, never their own, at most

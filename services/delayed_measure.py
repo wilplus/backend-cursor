@@ -1,7 +1,8 @@
 """The delayed blind human measure, exercise-human-delayed-v1 (founder
 2026-10-01; Phase 5 of the after-practice paths), dark behind
-``Config.DELAYED_MEASURE_ENABLED``, which stays off until the founder signs
-docs/MEASURE-exercise-human-delayed-v1.md and counsel answers C1 to C3.
+``Config.DELAYED_MEASURE_ENABLED`` (on from 2026-10-02, N25: the founder
+signed docs/MEASURE-exercise-human-delayed-v1.md and answered C1 to C3
+himself, N24, N23).
 
 The definition is written BEFORE any data: which attempt (the first valid
 among the first three, F7), which horizon (seven days), what counts as

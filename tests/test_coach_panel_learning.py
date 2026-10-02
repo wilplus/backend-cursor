@@ -190,7 +190,8 @@ class _Db:
 class OffTests(unittest.TestCase):
     """The off behaviour under every switch patched off. The founder flipped
     the coach-panel switches on from 2026-10-02 ("go with all of them in that
-    order"); the two legally gated ones stay off until counsel answers."""
+    order"), then 6a on the same day after the 3.3 wording (N25); 6d stays
+    off until document 02 v1.1 is uploaded and its hash recorded."""
     SWITCHES = ("COACH_EXERCISE_PREFERENCE_ENABLED", "ERROR_PRESENCE_AUDIT_ENABLED",
                 "COACH_BLOCK_PICK_ENABLED", "COACH_WORD_PAIRS_ENABLED",
                 "DETECTOR_TRAINING_AUTHORISED")
@@ -210,8 +211,10 @@ class OffTests(unittest.TestCase):
             p.stop()
         try:
             from config import Config as _live
-            for name in ("ERROR_PRESENCE_AUDIT_ENABLED", "DETECTOR_TRAINING_AUTHORISED"):
-                self.assertFalse(getattr(_live, name, False), name)
+            self.assertTrue(_live.ERROR_PRESENCE_AUDIT_ENABLED)
+            self.assertTrue(_live.ERROR_PRESENCE_AUDIT_VERBAL_ENABLED)
+            self.assertEqual(_live.BLIND_CHECK_POLICY_VERSION, "phase1-2026-10-02")
+            self.assertFalse(_live.DETECTOR_TRAINING_AUTHORISED)
         finally:
             for p in self._patches:
                 p.start()
@@ -302,20 +305,54 @@ class PreferenceTests(unittest.TestCase):
         self.assertEqual(ledger["ranker_version"], cep.RANKER_VERSION)
 
 
+class NoticeVersionTests(unittest.TestCase):
+    """The blind check's per-speaker gate, unpatched: the share read's twin."""
+    class _Svc:
+        accepted = {"take-1": "phase1-2026-10-01", "take-2": "phase1-2026-10-02"}
+
+        def __init__(self, db):
+            pass
+
+        def take_acquisition_principal(self, take):
+            return take
+
+        def status(self, principal):
+            v = self.accepted.get(principal)
+            return {"authorized": bool(v), "policy_version": v}
+
+    def test_no_version_or_an_older_one_keeps_the_speaker_out(self):
+        with patch("services.processing_authorization.ProcessingAuthorizationService", self._Svc):
+            with patch("config.Config.BLIND_CHECK_POLICY_VERSION", None, create=True):
+                self.assertFalse(epa._on_notice_version(None, "take-2"))
+            with patch("config.Config.BLIND_CHECK_POLICY_VERSION", "phase1-2026-10-02", create=True):
+                self.assertFalse(epa._on_notice_version(None, "take-1"))
+                self.assertTrue(epa._on_notice_version(None, "take-2"))
+                self.assertFalse(epa._on_notice_version(None, "take-9"))
+
+    def test_a_failed_read_is_out(self):
+        class _Broken:
+            def __init__(self, db):
+                raise RuntimeError("down")
+        with patch("services.processing_authorization.ProcessingAuthorizationService", _Broken):
+            self.assertFalse(epa._on_notice_version(None, "take-2"))
+
+
 @AUDIT_ON
 @patch("services.verbal_cues._practice_permitted", lambda db, take: not str(take).startswith("off-"))
+@patch("services.error_presence_audit._on_notice_version", lambda db, take: not str(take).startswith("old-"))
 class AuditTests(unittest.TestCase):
-    def test_a_speaker_who_turned_personalised_practice_off_is_out_of_the_pool(self):
-        # Q1-C (founder 2026-10-02): the easy off switch, read at sampling.
-        class _Off(_Db):
+    def test_a_speaker_not_yet_on_the_three_three_notice_is_out_of_the_pool(self):
+        # 15 §2: the balancing test holds only for a speaker who has read
+        # the line; until the re-acceptance nobody is sampled.
+        class _Old(_Db):
             def list_audit_candidates(self, errors):
                 rows = super().list_audit_candidates(errors)
                 for r in rows[:6]:
-                    r["take_session_id"] = "off-" + r["take_session_id"]
+                    r["take_session_id"] = "old-" + r["take_session_id"]
                 return rows
-        written = epa.sample_for_coach(_Off(), coach_id="c", rng=random.Random(3))
+        written = epa.sample_for_coach(_Old(), coach_id="c", rng=random.Random(3))
         self.assertTrue(written)
-        self.assertFalse(any(str(w.get("take_session_id", "")).startswith("off-") for w in written))
+        self.assertFalse(any(str(w.get("take_session_id", "")).startswith("old-") for w in written))
 
     def test_sampling_is_stratified_and_carries_the_probability(self):
         cands = [{"clip_id": f"c{i}", "error_id": "rushing", "fired": i < 8} for i in range(10)]
