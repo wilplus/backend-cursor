@@ -377,6 +377,11 @@ class Config:
     # written before any data. GATED like Phase 4, plus the founder's
     # signature on the measure. Off, no pair and no vote is written.
     DELAYED_MEASURE_ENABLED = False
+    # Q4-A (founder 2026-10-02): the share switch is written into both
+    # Terms and Privacy, in a new version everyone re-accepts before the
+    # switch appears. This names that version; None until it is published,
+    # and the share route refuses until the speaker has accepted it.
+    PEER_SHARE_TERMS_VERSION: str | None = None
 
     # THE COACH PANEL'S LEARNING ADDITIONS (founder 2026-10-01; migration
     # 0411), each dark behind its own constant, each a reviewed flip after

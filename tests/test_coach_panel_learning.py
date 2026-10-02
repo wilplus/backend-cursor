@@ -303,7 +303,20 @@ class PreferenceTests(unittest.TestCase):
 
 
 @AUDIT_ON
+@patch("services.verbal_cues._practice_permitted", lambda db, take: not str(take).startswith("off-"))
 class AuditTests(unittest.TestCase):
+    def test_a_speaker_who_turned_personalised_practice_off_is_out_of_the_pool(self):
+        # Q1-C (founder 2026-10-02): the easy off switch, read at sampling.
+        class _Off(_Db):
+            def list_audit_candidates(self, errors):
+                rows = super().list_audit_candidates(errors)
+                for r in rows[:6]:
+                    r["take_session_id"] = "off-" + r["take_session_id"]
+                return rows
+        written = epa.sample_for_coach(_Off(), coach_id="c", rng=random.Random(3))
+        self.assertTrue(written)
+        self.assertFalse(any(str(w.get("take_session_id", "")).startswith("off-") for w in written))
+
     def test_sampling_is_stratified_and_carries_the_probability(self):
         cands = [{"clip_id": f"c{i}", "error_id": "rushing", "fired": i < 8} for i in range(10)]
         plan = epa.sampling_plan(cands, size=4, rng=random.Random(3))
