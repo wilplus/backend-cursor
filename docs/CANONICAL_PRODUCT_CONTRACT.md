@@ -439,7 +439,12 @@ with this contract, this contract wins.
     retired Game stays retired." "Licensed corpus clips may be played to
     speakers, without names, in 'Lend your ear' and 'Bold voices'." A
     Voice Album moment is lent by a toggle, off by default, per recording,
-    revocable; a withdrawal leaves both pools at once. The set is a blind
+    revocable; a withdrawal leaves both pools at once, the measure's pair
+    included (founder 2026-10-02, Q3-A). The toggle exists only for a
+    speaker who accepted the Terms and Privacy version that describes it
+    (`PEER_SHARE_TERMS_VERSION`; founder 2026-10-02, Q4-A), and a
+    listener's answers are the listener's own data, kept with their
+    account and gone with it (Q5-A). The set is a blind
     stratified mix by the machine's read, in random order, never the before
     and the after of one pair in one set nor on the same day. An answer is
     one per person per clip and lands under lane `game_peer` (coach + peer
@@ -747,7 +752,10 @@ with this contract, this contract wins.
     to one error's own question (`speaking_error.asks`, word for word) about
     one clip, never seeing whether the detector fired; clips are sampled
     fired and not fired, stratified per error, practice attempts included,
-    one in ten to two coaches, at most three per speaker and twenty blind
+    one in ten to two coaches, only while the speaker's "Personalised
+    practice" choice is on at sampling time (the easy off switch; founder
+    2026-10-02, Q1-C; the answers die with the recording, Q2-C), at most
+    three per speaker and twenty blind
     answers per coach per week shared with 35g-10. Answers are appended
     under provenance `coach_audit`, never shown to a speaker and never mixed
     with any other label (L3); they give the false-alarm half the shadow

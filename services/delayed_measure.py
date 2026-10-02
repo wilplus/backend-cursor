@@ -111,8 +111,16 @@ def clips_for_listener(database: Any, *, listener_id: str) -> list[dict]:
     voted = {(str(v.get("pair_id")), str(v.get("clip"))) for v in
              (database.list_delayed_measure_votes_by_rater(str(listener_id)) or [])
              if isinstance(v, dict)}
+    # Q3-A (founder 2026-10-02): another user hears a clip of somebody's
+    # voice only with that recording's own switch on; switching it off
+    # pulls the clip from both pools at once. A pair's clips are the
+    # original moment and its attempt: both ride the original's share.
+    shared = {str(r.get("snippet_id")) for r in (database.list_shared_clips_live() or [])
+              if isinstance(r, dict) and r.get("snippet_id")}
     for pair in database.list_delayed_measure_pairs_open() or []:
         if not isinstance(pair, dict) or str(pair.get("owner_user_id")) == str(listener_id):
+            continue
+        if str(pair.get("before_snippet_id") or "") not in shared:
             continue
         if not ripe(pair):
             continue

@@ -26,6 +26,7 @@ One practice makes at most one pair:
 | the after | the practice's **first valid attempt among its first three** (F7, `exercise_learning_readiness.endpoint_attempt`); later attempts never replace it, so when the speaker stopped cannot change the pair |
 | eligible | `kind = exercise` only; the match trace carries **no fallback rung** (general or warm-up, F2); the practice has a valid endpoint; the speaker's consent covers it (C1) |
 | excluded | rewrite practices (the words changed), plain-moment practices, fallbacks, practices with no valid attempt |
+| heard | only while the original moment's **share switch** is on (founder 2026-10-02, Q3-A): the pair's two clips ride that one switch, and switching it off pulls both from Lend your ear at once; the shared entry and the pair's before carry one pair id so a set never holds the same voice twice |
 
 A pair is enrolled once (insert-once on `practice_id`), with the rule
 version, when the practice closes.

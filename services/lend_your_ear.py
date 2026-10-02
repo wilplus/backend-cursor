@@ -56,6 +56,26 @@ def peer_lane_enabled() -> bool:
 
 # ── the share toggle ───────────────────────────────────────────────────────
 
+def _accepted_share_terms(database: Any, owner_user_id: Any) -> bool:
+    """Q4-A (founder 2026-10-02): the switch exists only for a speaker whose
+    current Phase-1 authorization is on the policy version that describes
+    it, or a later one. False while no such version is published
+    (PEER_SHARE_POLICY_VERSION None), and false when the read fails."""
+    from config import Config
+    from services.processing_authorization import ProcessingAuthorizationService
+    version = getattr(Config, "PEER_SHARE_POLICY_VERSION", None)
+    if not version:
+        return False
+    try:
+        service = ProcessingAuthorizationService(database)
+        status = service.status(service.user_acquisition_principal(str(owner_user_id)))
+    except Exception as e:  # noqa: BLE001 — unknown reads as not accepted: the safe side
+        _log.warning("share policy read failed user=%s: %s", owner_user_id, e, exc_info=True)
+        return False
+    accepted = str(status.get("policy_version") or "")
+    return bool(status.get("authorized")) and accepted >= str(version)
+
+
 def set_share(database: Any, *, owner_user_id: str, snippet_id: str,
               body: Any) -> tuple[int, dict]:
     """Share or withdraw one Voice Album moment. 409 when the moment is not
@@ -72,6 +92,9 @@ def set_share(database: Any, *, owner_user_id: str, snippet_id: str,
     if (not snippet or not session or str(session.get("user_id")) != str(owner_user_id)
             or not session.get("arc_id")):
         return 404, {"code": "NOT_FOUND", "error": "snippet not found"}
+    if not _accepted_share_terms(database, owner_user_id):
+        return 409, {"code": "TERMS_REACCEPT_REQUIRED",
+                     "error": "Accept the updated Terms and Privacy first."}
     arc_id = str(session["arc_id"])
     if shared and not database.voice_album_has(arc_id, str(snippet_id)):
         return 409, {"code": "NOT_IN_ALBUM",
@@ -126,37 +149,54 @@ def build_set(candidates: Iterable[dict], *, recent_pairs: Iterable[str],
     return chosen
 
 
-def _candidates(database: Any, *, listener_id: str) -> list[dict]:
-    """Shared clips still in an Album and licensed corpus clips, never the
-    listener's own, never one they answered, never one already settled."""
+def _shared_candidates(database: Any, *, listener_id: str, answered: set[str]) -> list[dict]:
+    """Shared clips still in an Album, never the listener's own, never one
+    they answered, never one already settled."""
     from services.label_quorum import SETTLED_STATUSES, resolve
-    answered = {str(c) for c in database.list_lend_your_ear_answered_clip_ids(str(listener_id)) or []}
-    out: list[dict] = []
     shared = [row for row in database.list_shared_clips_live() or []
               if isinstance(row, dict) and row.get("snippet_id")
               and str(row.get("owner_user_id")) != str(listener_id)
               and str(row["snippet_id"]) not in answered]
-    if shared:
-        ids = [str(r["snippet_id"]) for r in shared]
-        labels = database.get_confidence_labels_by_snippet_ids(ids) or {}
-        snippets = {str(s.get("id")): s for s in
-                    (database.get_snippets_by_ids(ids) or []) if isinstance(s, dict)}
-        for row in shared:
-            sid = str(row["snippet_id"])
-            if resolve(labels.get(sid, [])).get("status") in SETTLED_STATUSES:
-                continue
-            out.append({"clip_id": sid, "source": "shared",
-                        "stratum": stratum(snippets.get(sid)),
-                        "pair_id": row.get("pair_id"), "snippet": snippets.get(sid)})
+    if not shared:
+        return []
+    ids = [str(r["snippet_id"]) for r in shared]
+    labels = database.get_confidence_labels_by_snippet_ids(ids) or {}
+    snippets = {str(s.get("id")): s for s in
+                (database.get_snippets_by_ids(ids) or []) if isinstance(s, dict)}
+    out: list[dict] = []
+    for row in shared:
+        sid = str(row["snippet_id"])
+        if resolve(labels.get(sid, [])).get("status") in SETTLED_STATUSES:
+            continue
+        out.append({"clip_id": sid, "source": "shared",
+                    "stratum": stratum(snippets.get(sid)),
+                    "pair_id": row.get("pair_id"), "snippet": snippets.get(sid)})
+    return out
+
+
+def _candidates(database: Any, *, listener_id: str) -> list[dict]:
+    """Shared clips still in an Album and licensed corpus clips, never the
+    listener's own, never one they answered, never one already settled."""
+    answered = {str(c) for c in database.list_lend_your_ear_answered_clip_ids(str(listener_id)) or []}
+    out: list[dict] = _shared_candidates(database, listener_id=listener_id, answered=answered)
     for row in database.list_corpus_clips_active() or []:
         if isinstance(row, dict) and row.get("id") and str(row["id"]) not in answered:
             out.append({"clip_id": str(row["id"]), "source": "corpus",
                         "stratum": row.get("machine_stratum") or "unknown",
                         "pair_id": None, "corpus": row})
-    # Phase 5: the measure's pairs enter as separate, unlabelled clips.
+    # Phase 5: the measure's pairs enter as separate, unlabelled clips. A
+    # pair rides its original's share (Q3-A), so the shared entry and the
+    # pair's before are the same voice: they carry one pair id, and the set
+    # and the day keep them apart like any pair.
     from services.delayed_measure import clips_for_listener
-    out.extend(c for c in clips_for_listener(database, listener_id=str(listener_id))
-               if str(c.get("clip_id")) not in answered)
+    delayed = [c for c in clips_for_listener(database, listener_id=str(listener_id))
+               if str(c.get("clip_id")) not in answered]
+    before_of = {str((c.get("pair") or {}).get("before_snippet_id") or ""): str(c.get("pair_id"))
+                 for c in delayed if c.get("pair_id")}
+    for c in out:
+        if c.get("source") == "shared" and not c.get("pair_id") and str(c["clip_id"]) in before_of:
+            c["pair_id"] = before_of[str(c["clip_id"])]
+    out.extend(delayed)
     return out
 
 

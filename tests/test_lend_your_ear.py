@@ -43,9 +43,27 @@ def _snippet(sid, band=None, session="take-9"):
     return row
 
 
+class _Status:
+    """The Phase-1 authorization read, stubbed: on the stub's policy version."""
+    def __init__(self, database):
+        self.db = database
+    def user_acquisition_principal(self, user_id):
+        return f"principal-{user_id}"
+    def status(self, principal):
+        user = principal.replace("principal-", "")
+        version = self.db.accepted.get(user)
+        return {"authorized": bool(version), "policy_version": version}
+
+
+SERVICE = patch("services.processing_authorization.ProcessingAuthorizationService", _Status)
+
+
 class _Db:
     def __init__(self):
         self.shares: dict = {}
+        # Q4-A (founder 2026-10-02): whose authorization is on the policy
+        # version that names the switch: {user_id: policy_version}.
+        self.accepted = {"owner-1": "phase1-2026-11-01"}
         self.album = {("arc-1", "snip-a")}
         self.sets: list = []
         self.answers: list = []
@@ -77,6 +95,7 @@ class _Db:
 
     def list_shared_clips_live(self):
         return list(self.live)
+
 
     def list_corpus_clips_active(self):
         return [c for c in self.corpus if c.get("active", True)]
@@ -231,6 +250,20 @@ class SetTests(unittest.TestCase):
 
 @PEER_ON
 class PeerLaneTests(unittest.TestCase):
+    @SERVICE
+    def test_the_switch_waits_for_the_re_accepted_terms(self):
+        # Q4-A (founder 2026-10-02): no published version, no switch; a
+        # speaker who has not accepted it, no switch.
+        db = _Db()
+        self.assertEqual(lye.set_share(db, owner_user_id="owner-1", snippet_id="snip-a",
+                                       body={"shared": True})[1]["code"], "TERMS_REACCEPT_REQUIRED")
+        db.accepted = {"owner-1": "phase1-2026-10-01"}
+        with patch("config.Config.PEER_SHARE_POLICY_VERSION", "phase1-2026-11-01", create=True):
+            self.assertEqual(lye.set_share(db, owner_user_id="owner-1", snippet_id="snip-a",
+                                           body={"shared": True})[0], 409)
+
+    @SERVICE
+    @patch("config.Config.PEER_SHARE_POLICY_VERSION", "phase1-2026-11-01", create=True)
     def test_the_share_is_a_toggle_on_an_album_moment_only(self):
         db = _Db()
         self.assertEqual(lye.set_share(db, owner_user_id="owner-1", snippet_id="snip-a",
@@ -402,12 +435,22 @@ class MeasureTests(unittest.TestCase):
         db.pairs = [{"id": "pair-1", "owner_user_id": "other", "take_session_id": "t",
                      "before_snippet_id": "snip-b", "after_attempt_id": "a-9", "status": "open",
                      "practice_closed_at": (datetime.now(timezone.utc) - timedelta(days=9)).isoformat()}]
+        # Q3-A (founder 2026-10-02): the pair rides the original's share;
+        # unshared, nobody hears either clip.
+        self.assertEqual(dm.clips_for_listener(db, listener_id="owner-1"), [])
+        db.live = [{"snippet_id": "snip-b", "owner_user_id": "other"}]
         cands = dm.clips_for_listener(db, listener_id="owner-1")
         self.assertEqual({c["clip_id"] for c in cands}, {"pair-1:before", "pair-1:after"})
         self.assertEqual(dm.clips_for_listener(db, listener_id="other"), [])
-        _, payload = lye.open_set(db, listener_id="owner-1", take_session_id="take-1")
+        # The shared entry of snip-b and the pair's before are one voice:
+        # one pair id, so a set holds one of the three, never two.
+        shared = [c for c in lye._candidates(db, listener_id="owner-1") if c["source"] == "shared"]
+        self.assertEqual([c["pair_id"] for c in shared], ["pair-1"])
+        with patch("services.lend_your_ear._shared_candidates", return_value=[]):
+            _, payload = lye.open_set(db, listener_id="owner-1", take_session_id="take-1")
         self.assertEqual(len(payload["clips"]), 1)
         clip_id = payload["clips"][0]["clip_id"]
+        self.assertTrue(clip_id.startswith("pair-1:"))
         out = lye.answer(db, listener_id="owner-1", set_id=payload["set_id"],
                          body={"clip_id": clip_id, "value": "yes"})
         self.assertEqual(out[0], 200)

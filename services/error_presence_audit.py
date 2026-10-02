@@ -120,6 +120,25 @@ def sampling_plan(candidates: Iterable[dict], *, size: int,
     return out
 
 
+def _still_permitted(database: Any, candidates: list[dict]) -> list[dict]:
+    """Q1-C (founder 2026-10-02): the easy off switch is the speaker's
+    "Personalised practice" choice, read NOW, not at recording time. A
+    speaker who turned it off since has no clip in the pool, whatever the
+    shadow log still holds."""
+    from services.verbal_cues import _practice_permitted
+    permitted: dict[str, bool] = {}
+    out = []
+    for c in candidates:
+        take = str(c.get("take_session_id") or "")
+        if not take:
+            continue
+        if take not in permitted:
+            permitted[take] = bool(_practice_permitted(database, take))
+        if permitted[take]:
+            out.append(c)
+    return out
+
+
 def _per_speaker_cap(rows: list[dict]) -> list[dict]:
     seen: Counter = Counter()
     out = []
@@ -153,6 +172,7 @@ def sample_for_coach(database: Any, *, coach_id: str, now: Optional[datetime] = 
                       if isinstance(r, dict)}
     candidates = [c for c in (database.list_audit_candidates(list(errors_in_scope())) or [])
                   if isinstance(c, dict) and (str(c.get("clip_id")), str(c.get("error_id"))) not in answered_by_me]
+    candidates = _still_permitted(database, candidates)
     candidates = unexposed(database, str(coach_id), candidates)
     plan = _per_speaker_cap(sampling_plan(candidates, size=room * 3, rng=rng))[:room]
     written = []
