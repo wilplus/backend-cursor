@@ -188,12 +188,27 @@ class _Db:
 
 
 class OffTests(unittest.TestCase):
-    def test_every_switch_is_off_and_nothing_serves(self):
-        from config import Config as _live
-        for name in ("COACH_EXERCISE_PREFERENCE_ENABLED", "ERROR_PRESENCE_AUDIT_ENABLED",
-                     "COACH_BLOCK_PICK_ENABLED", "COACH_WORD_PAIRS_ENABLED",
-                     "DETECTOR_TRAINING_AUTHORISED"):
-            self.assertFalse(getattr(_live, name, False), name)
+    """The off behaviour under every switch patched off. The founder flipped
+    the coach-panel switches on from 2026-10-02 ("go with all of them in that
+    order"); the two legally gated ones stay off until counsel answers."""
+    SWITCHES = ("COACH_EXERCISE_PREFERENCE_ENABLED", "ERROR_PRESENCE_AUDIT_ENABLED",
+                "COACH_BLOCK_PICK_ENABLED", "COACH_WORD_PAIRS_ENABLED",
+                "DETECTOR_TRAINING_AUTHORISED")
+
+    def setUp(self):
+        for name in self.SWITCHES:
+            p = patch(f"config.Config.{name}", False, create=True)
+            p.start()
+            self.addCleanup(p.stop)
+
+    def test_the_legally_gated_switches_stay_off(self):
+        import importlib
+        import config as _config
+        live = importlib.reload(_config).Config
+        for name in ("ERROR_PRESENCE_AUDIT_ENABLED", "DETECTOR_TRAINING_AUTHORISED"):
+            self.assertFalse(getattr(live, name, False), name)
+
+    def test_off_nothing_serves(self):
         db = _Db()
         self.assertEqual(cep.record(db, coach_id="c", take_session_id="t", snippet_id="s",
                                     speaker_user_id="o", body={"action": "kept"})[0], 404)

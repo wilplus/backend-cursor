@@ -384,7 +384,7 @@ class Config:
     # 1b (F8): the coach keeps, swaps or replaces the served exercise and
     # the choice is recorded as the coach's preference; outcomes alone
     # decide whether an exercise helps.
-    COACH_EXERCISE_PREFERENCE_ENABLED = False
+    COACH_EXERCISE_PREFERENCE_ENABLED = True
     # 7 (C5-a): the coach's personal line on a moment and the Take word are
     # drafted from the transcript and the coach's notes, and the (draft,
     # final) pair is recorded when the final differs. Door 2 stays shut for
