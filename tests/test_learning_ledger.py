@@ -31,7 +31,14 @@ class LedgerTests(unittest.TestCase):
         after.start()
         self.addCleanup(after.stop)
         for target, value in (("services.learning_ledger._peer_lane_counts", {"enabled": False}),
-                              ("services.delayed_measure.report", {"enabled": False})):
+                              ("services.delayed_measure.report", {"enabled": False}),
+                              # The coach panel's rows (0411): sources like the
+                              # others, on or off, never read from these stubs.
+                              ("services.coach_exercise_preference.ledger", {"per_exercise": {}}),
+                              ("services.coach_block_pick.ledger", {"enabled": False}),
+                              ("services.detector_rollout.fair_test", {"live": {}}),
+                              ("services.error_presence_audit.report_card", {}),
+                              ("services.coach_word_pairs.unchanged_share", {})):
             patcher = mock.patch(target, return_value=value)
             patcher.start()
             self.addCleanup(patcher.stop)

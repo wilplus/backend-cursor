@@ -196,17 +196,25 @@ class OffTests(unittest.TestCase):
                 "DETECTOR_TRAINING_AUTHORISED")
 
     def setUp(self):
+        self._patches = []
         for name in self.SWITCHES:
             p = patch(f"config.Config.{name}", False, create=True)
             p.start()
+            self._patches.append(p)
             self.addCleanup(p.stop)
 
     def test_the_legally_gated_switches_stay_off(self):
-        import importlib
-        import config as _config
-        live = importlib.reload(_config).Config
-        for name in ("ERROR_PRESENCE_AUDIT_ENABLED", "DETECTOR_TRAINING_AUTHORISED"):
-            self.assertFalse(getattr(live, name, False), name)
+        # Read the live default with the patches lifted, never by reloading
+        # config (a reload would hand every other test a second Config class).
+        for p in self._patches:
+            p.stop()
+        try:
+            from config import Config as _live
+            for name in ("ERROR_PRESENCE_AUDIT_ENABLED", "DETECTOR_TRAINING_AUTHORISED"):
+                self.assertFalse(getattr(_live, name, False), name)
+        finally:
+            for p in self._patches:
+                p.start()
 
     def test_off_nothing_serves(self):
         db = _Db()
