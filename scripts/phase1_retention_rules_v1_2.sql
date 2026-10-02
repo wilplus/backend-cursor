@@ -3,9 +3,10 @@
 -- schedule itself is signed as a PDF (legal/phase1-2026.1/18-retention-
 -- schedule-v1.2-blind-check-and-lending-DRAFT.md §4).
 --
--- NOT YET RUN WITH THE HASH. A first run on 2026-10-02 with the placeholder
--- still in the file stopped at the guard, as designed. When the filled
--- version has run, record the day and the time here.
+-- RAN IN PRODUCTION 2026-10-02, by the founder (a first run with the
+-- placeholder still in the file stopped at the guard, as designed). The
+-- verify query returned five rows, all active, all on retention_schedule
+-- 1.2 (shown to the session). Kept as the record of what was seeded.
 --
 -- ⚠ RUN BY HAND, ONCE, IN THE SUPABASE SQL EDITOR (service role), AFTER the
 -- signed PDF is uploaded to its object_key. Nothing here runs on merge: this

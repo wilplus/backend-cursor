@@ -1,7 +1,10 @@
 -- Register document 02 v1.1 (power_score_classification, 1.1) by the signed
 -- PDF's key and hash. Founder signed v1.1 on 2026-10-02 (N24).
 --
--- NOT YET RUN. When it has run, record the day and the time here.
+-- RAN IN PRODUCTION 2026-10-02, by the founder: (power_score_classification,
+-- 1.1) registered with approved_at 2026-10-02 15:53:48+00 and the hash below;
+-- the 3.3 publish's provisional row of 15:55:11 stands beside it (shown to
+-- the session). Kept as the record.
 --
 -- ⚠ RUN BY HAND, ONCE, IN THE SUPABASE SQL EDITOR (service role), AFTER the
 -- signed PDF is uploaded to its object_key. Not a migration; absent from

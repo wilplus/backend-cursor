@@ -28,13 +28,15 @@ unsigned render is never the right value.
 at 15:53:48 UTC the same day (PAdES, `/ETSI.CAdES.detached`); the founder sent
 the signed files to the session on 2026-10-02, 141,626 and 112,482 bytes. In
 each the unsigned render is a byte-identical prefix of the signed file, so
-what was signed is exactly what was rendered. **Upload to the `object_key`
-above is the founder's, not yet confirmed to the session**; the hashes are
-of the signed files as received. `02 v1.0` and `06 v1.0` are superseded by
-version (their signatures stand for their versions, 04 §5); every rule in
-`data_retention_rules` seeded from 2026-10-02 points at `06 v1.2`
-(`scripts/phase1_retention_rules_v1_2.sql`), and `02 v1.1` is registered by
-`scripts/phase1_register_power_score_v1_1.sql`.
+what was signed is exactly what was rendered. **Both are registered in
+`processing_legal_artifacts` as of 2026-10-02** by their hashes: `02 v1.1`
+under `(power_score_classification, 1.1)`, `06 v1.2` under
+`(retention_schedule, 1.2)` with the five rules of `data_retention_rules`
+pointing at it (the two scripts named below, run by the founder that day).
+The upload of each signed file to its `object_key` is the founder's; the
+hashes are of the signed files as received by the session. `02 v1.0` and
+`06 v1.0` are superseded by version (their signatures stand for their
+versions, 04 §5).
 
 `01` and `06` were rendered from markdown that is byte-identical at
 `6f7ded6`, so those signatures stand and nothing about them needs redoing.
