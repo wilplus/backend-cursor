@@ -57,19 +57,23 @@ def peer_lane_enabled() -> bool:
 # ── the share toggle ───────────────────────────────────────────────────────
 
 def _accepted_share_terms(database: Any, owner_user_id: Any) -> bool:
-    """Q4-A (founder 2026-10-02): the switch exists only for a speaker who
-    accepted the Terms and Privacy version that describes it. False while
-    no such version is published (PEER_SHARE_TERMS_VERSION None)."""
+    """Q4-A (founder 2026-10-02): the switch exists only for a speaker whose
+    current Phase-1 authorization is on the policy version that describes
+    it, or a later one. False while no such version is published
+    (PEER_SHARE_POLICY_VERSION None), and false when the read fails."""
     from config import Config
-    version = getattr(Config, "PEER_SHARE_TERMS_VERSION", None)
+    from services.processing_authorization import ProcessingAuthorizationService
+    version = getattr(Config, "PEER_SHARE_POLICY_VERSION", None)
     if not version:
         return False
     try:
-        state = database.get_user_consent_state(str(owner_user_id), current_terms_version=str(version))
+        service = ProcessingAuthorizationService(database)
+        status = service.status(service.user_acquisition_principal(str(owner_user_id)))
     except Exception as e:  # noqa: BLE001 — unknown reads as not accepted: the safe side
-        _log.warning("share terms read failed user=%s: %s", owner_user_id, e, exc_info=True)
+        _log.warning("share policy read failed user=%s: %s", owner_user_id, e, exc_info=True)
         return False
-    return bool(isinstance(state, dict) and state.get("terms_consent"))
+    accepted = str(status.get("policy_version") or "")
+    return bool(status.get("authorized")) and accepted >= str(version)
 
 
 def set_share(database: Any, *, owner_user_id: str, snippet_id: str,

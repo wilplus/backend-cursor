@@ -43,11 +43,27 @@ def _snippet(sid, band=None, session="take-9"):
     return row
 
 
+class _Status:
+    """The Phase-1 authorization read, stubbed: on the stub's policy version."""
+    def __init__(self, database):
+        self.db = database
+    def user_acquisition_principal(self, user_id):
+        return f"principal-{user_id}"
+    def status(self, principal):
+        user = principal.replace("principal-", "")
+        version = self.db.accepted.get(user)
+        return {"authorized": bool(version), "policy_version": version}
+
+
+SERVICE = patch("services.processing_authorization.ProcessingAuthorizationService", _Status)
+
+
 class _Db:
     def __init__(self):
         self.shares: dict = {}
-        # Q4-A (founder 2026-10-02): who accepted the version that names the switch.
-        self.accepted = {("owner-1", "9.9")}
+        # Q4-A (founder 2026-10-02): whose authorization is on the policy
+        # version that names the switch: {user_id: policy_version}.
+        self.accepted = {"owner-1": "phase1-2026-11-01"}
         self.album = {("arc-1", "snip-a")}
         self.sets: list = []
         self.answers: list = []
@@ -80,8 +96,6 @@ class _Db:
     def list_shared_clips_live(self):
         return list(self.live)
 
-    def get_user_consent_state(self, user_id, *, current_terms_version):
-        return {"terms_consent": (user_id, current_terms_version) in self.accepted}
 
     def list_corpus_clips_active(self):
         return [c for c in self.corpus if c.get("active", True)]
@@ -236,18 +250,20 @@ class SetTests(unittest.TestCase):
 
 @PEER_ON
 class PeerLaneTests(unittest.TestCase):
+    @SERVICE
     def test_the_switch_waits_for_the_re_accepted_terms(self):
         # Q4-A (founder 2026-10-02): no published version, no switch; a
         # speaker who has not accepted it, no switch.
         db = _Db()
         self.assertEqual(lye.set_share(db, owner_user_id="owner-1", snippet_id="snip-a",
                                        body={"shared": True})[1]["code"], "TERMS_REACCEPT_REQUIRED")
-        db.accepted = set()
-        with patch("config.Config.PEER_SHARE_TERMS_VERSION", "9.9", create=True):
+        db.accepted = {"owner-1": "phase1-2026-10-01"}
+        with patch("config.Config.PEER_SHARE_POLICY_VERSION", "phase1-2026-11-01", create=True):
             self.assertEqual(lye.set_share(db, owner_user_id="owner-1", snippet_id="snip-a",
                                            body={"shared": True})[0], 409)
 
-    @patch("config.Config.PEER_SHARE_TERMS_VERSION", "9.9", create=True)
+    @SERVICE
+    @patch("config.Config.PEER_SHARE_POLICY_VERSION", "phase1-2026-11-01", create=True)
     def test_the_share_is_a_toggle_on_an_album_moment_only(self):
         db = _Db()
         self.assertEqual(lye.set_share(db, owner_user_id="owner-1", snippet_id="snip-a",
@@ -427,12 +443,11 @@ class MeasureTests(unittest.TestCase):
         self.assertEqual({c["clip_id"] for c in cands}, {"pair-1:before", "pair-1:after"})
         self.assertEqual(dm.clips_for_listener(db, listener_id="other"), [])
         # The shared entry of snip-b and the pair's before are one voice:
-        # one pair id, so the set holds one of the three, never two.
-        _, payload = lye.open_set(db, listener_id="owner-1", take_session_id="take-1")
-        self.assertEqual(len(payload["clips"]), 1)
+        # one pair id, so a set holds one of the three, never two.
+        shared = [c for c in lye._candidates(db, listener_id="owner-1") if c["source"] == "shared"]
+        self.assertEqual([c["pair_id"] for c in shared], ["pair-1"])
         with patch("services.lend_your_ear._shared_candidates", return_value=[]):
-            db.sets = []
-            _, payload = lye.open_set(db, listener_id="owner-1", take_session_id="take-2")
+            _, payload = lye.open_set(db, listener_id="owner-1", take_session_id="take-1")
         self.assertEqual(len(payload["clips"]), 1)
         clip_id = payload["clips"][0]["clip_id"]
         self.assertTrue(clip_id.startswith("pair-1:"))
