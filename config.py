@@ -400,7 +400,7 @@ class Config:
     ERROR_PRESENCE_AUDIT_VERBAL_ENABLED = False
     # 8 (C5-b): the coach's blind pick among a block's candidate moments,
     # against the Manager's pick, never changing a bookmark.
-    COACH_BLOCK_PICK_ENABLED = False
+    COACH_BLOCK_PICK_ENABLED = True
     # 6d: fitting a learned detector on audit answers. Voice-based training:
     # separate voice consent and the AI Act opinion precede it; the tuned
     # thresholds (no fit) run in shadow regardless.
