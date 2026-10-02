@@ -1014,3 +1014,19 @@ the speaker's own re-acceptance rather than on the day:
    is uploaded and registered by its hash
    (`scripts/phase1_register_power_score_v1_1.sql`).
 
+**N26 · `DETECTOR_TRAINING_AUTHORISED` on (founder 2026-10-02, "You have
+my go on each of the flips").** The last of the five flips. What authorises
+it: document 02 v1.1, the founder's own determination that the speaking-error
+detectors describe how a delivery sounds (Q7, N23), signed 2026-10-02 (N24),
+rendered for the PAdES signature and registered by its hash once uploaded
+(`scripts/phase1_register_power_score_v1_1.sql`); and Privacy 3.3 §4, whose
+line says the blind-check answer "is used only to check and correct the
+software that chooses your feedback" (15 §1). The learned detector's only
+input is those answers, each from a speaker on 3.3 (N25 item 2); no audio and
+no transcript is trained on, and no training on voice is opened by this (door
+3's voice consent, C1, is untouched). What the flip does today: `fit` no
+longer refuses on authorisation; the learned detector is still built, not
+trained (`NotImplementedError`), and the tuned thresholds keep running in
+shadow behind the promotion bar (35g-9). Registration of 02 v1.1 by its hash
+is the founder's upload; the flip precedes it on his order, as N25's do.
+

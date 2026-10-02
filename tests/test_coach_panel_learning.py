@@ -190,8 +190,8 @@ class _Db:
 class OffTests(unittest.TestCase):
     """The off behaviour under every switch patched off. The founder flipped
     the coach-panel switches on from 2026-10-02 ("go with all of them in that
-    order"), then 6a on the same day after the 3.3 wording (N25); 6d stays
-    off until document 02 v1.1 is uploaded and its hash recorded."""
+    order"), then 6a (N25) and 6d (N26) on the same day after the 3.3
+    wording and document 02 v1.1."""
     SWITCHES = ("COACH_EXERCISE_PREFERENCE_ENABLED", "ERROR_PRESENCE_AUDIT_ENABLED",
                 "COACH_BLOCK_PICK_ENABLED", "COACH_WORD_PAIRS_ENABLED",
                 "DETECTOR_TRAINING_AUTHORISED")
@@ -214,7 +214,7 @@ class OffTests(unittest.TestCase):
             self.assertTrue(_live.ERROR_PRESENCE_AUDIT_ENABLED)
             self.assertTrue(_live.ERROR_PRESENCE_AUDIT_VERBAL_ENABLED)
             self.assertEqual(_live.BLIND_CHECK_POLICY_VERSION, "phase1-2026-10-02")
-            self.assertFalse(_live.DETECTOR_TRAINING_AUTHORISED)
+            self.assertTrue(_live.DETECTOR_TRAINING_AUTHORISED)
         finally:
             for p in self._patches:
                 p.start()
@@ -483,7 +483,11 @@ class DetectorTests(unittest.TestCase):
         self.assertEqual(dr.stage_of(dc.TUNED_VERSION), "shadow")
         self.assertTrue(dc.tuned("rushing", {"pause_ratio": 0.02}))
         self.assertIsNone(dc.tuned("rushing", {}))
-        with self.assertRaises(dc.NotAuthorised):
+        with patch("config.Config.DETECTOR_TRAINING_AUTHORISED", False, create=True):
+            with self.assertRaises(dc.NotAuthorised):
+                dc.LearnedDetector("rushing").fit([])
+        # Authorised (N26), the detector is still built, not trained.
+        with self.assertRaises(NotImplementedError):
             dc.LearnedDetector("rushing").fit([])
         self.assertIsNone(dc.learned("rushing", {"pause_ratio": 0.02}))
 
