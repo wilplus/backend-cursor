@@ -473,7 +473,7 @@ class MeasureTests(unittest.TestCase):
 class WiringTests(unittest.TestCase):
     def test_the_measure_is_written_before_data_and_the_wiring_is_in_place(self):
         spec = (ROOT / "docs/MEASURE-exercise-human-delayed-v1.md").read_text()
-        for needle in ("awaiting the founder's signature", "first valid attempt", "seven days",
+        for needle in ("written before any data", "signed by the founder on 2026-10-02", "first valid attempt", "seven days",
                        "coach who handled the moment", "No training"):
             self.assertIn(needle, spec)
         contract = (ROOT / "docs/CANONICAL_PRODUCT_CONTRACT.md").read_text()
