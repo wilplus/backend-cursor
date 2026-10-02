@@ -986,6 +986,11 @@ everything put to it; what needs a real signature is rendered for him.
    outside this entry: an access response to a listener must not disclose the
    speaker, nor the speaker's the listener (Article 15(4)), to be checked in
    the data-export path before the peer lane flips.
+7. **Both PDFs signed 2026-10-02 15:53:48 UTC** (PAdES), received by the
+   session the same day, each the unsigned render plus the signature and
+   nothing else; hashes in `legal/phase1-2026.1/SIGNED-ARTIFACTS.md` and in
+   the two registration scripts. The upload to each `object_key` is the
+   founder's.
 
 **N25 · The flips of 2026-10-02 ("You have my go on each of the flips, so
 just go"; founder).** On the merged sign-off (N24, #861) the founder ordered

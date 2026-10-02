@@ -1,7 +1,10 @@
 -- Register document 02 v1.1 (power_score_classification, 1.1) by the signed
 -- PDF's key and hash. Founder signed v1.1 on 2026-10-02 (N24).
 --
--- NOT YET RUN. When it has run, record the day and the time here.
+-- RAN IN PRODUCTION 2026-10-02, by the founder: (power_score_classification,
+-- 1.1) registered with approved_at 2026-10-02 15:53:48+00 and the hash below;
+-- the 3.3 publish's provisional row of 15:55:11 stands beside it (shown to
+-- the session). Kept as the record.
 --
 -- ⚠ RUN BY HAND, ONCE, IN THE SUPABASE SQL EDITOR (service role), AFTER the
 -- signed PDF is uploaded to its object_key. Not a migration; absent from
@@ -10,17 +13,18 @@
 -- this script is the real one. A signed artifact is superseded, never
 -- edited (04 §5): v1.0 keeps its row, v1.1 gets its own.
 --
--- Fill the two placeholders from legal/phase1-2026.1/SIGNED-ARTIFACTS.md
--- (row 02 v1.1) and nothing else. The block refuses while either is a
--- placeholder.
+-- The hash and the time are those of legal/phase1-2026.1/SIGNED-ARTIFACTS.md
+-- (row 02 v1.1): signed 2026-10-02 15:53:48 UTC, 141,626 bytes. Check the
+-- uploaded object's sha256 against v_sha256 before running; the guard below
+-- stays for a future version.
 
 DO $$
 DECLARE
     v_object_key TEXT := 'phase1-2026.1/legal/power-score-classification-v1.1.pdf';
-    v_sha256 TEXT := '[[sha256 of the signed v1.1 PDF, as uploaded]]';
+    v_sha256 TEXT := 'e00536d02779d4687a02817348b978b8c4702b7e16bc5c51c102e4f4f2ac2ade';
     v_authority TEXT := 'Artur Willoński';
     -- The PAdES timestamp of the signature, ISO-8601 UTC.
-    v_approved_at TIMESTAMPTZ := '[[YYYY-MM-DDThh:mm:ssZ]]';
+    v_approved_at TIMESTAMPTZ := '2026-10-02T15:53:48Z';
     v_id UUID;
 BEGIN
     IF v_sha256 LIKE '[[%' OR v_approved_at::text LIKE '[[%' THEN

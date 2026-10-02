@@ -2,8 +2,13 @@
 -- the per-recording share switch (Phases 4 and 5).
 -- Founder sign-off 2026-10-02 (SPEC-DECISIONS-LOG N24): "I sign it all".
 --
--- NOT YET RUN. When it has run, record the day and the time here, as the
--- 3.2 script does (scripts/phase1_policy_publish_training_3_2.sql).
+-- RAN IN PRODUCTION 2026-10-02, by the founder; phase1-2026-10-02 is
+-- active (step 3 and step 6 shown to the session). Kept as the record of
+-- what was published. Step 6's terms_has_blind_check read 0 on that run:
+-- the probe looked for "to check our automated listening" on one line, and
+-- the Terms wrap that phrase across a line break ("check our\nautomated
+-- listening"); the text is right (the test mirrors the copy byte for byte)
+-- and the probe is corrected below to a phrase that does not wrap.
 --
 -- ⚠ RUN BY HAND, ONCE, IN THE SUPABASE SQL EDITOR (service role), step by
 -- step. Nothing here runs on merge: this file is deliberately absent from
@@ -991,7 +996,7 @@ SELECT p.version,
        (position('To check that our automated listening is right' in p.privacy_copy) > 0)::int AS privacy_has_blind_check,
        (position('4b. LENDING A RECORDING TO OTHER USERS' in p.privacy_copy) > 0)::int AS privacy_has_4b,
        (position('If you turn on lending for a recording' in p.terms_copy) > 0)::int AS terms_has_lending,
-       (position('to check our automated listening' in p.terms_copy) > 0)::int AS terms_has_blind_check,
+       (position('without being told what it found and without seeing' in p.terms_copy) > 0)::int AS terms_has_blind_check,
        (position('[[EFFECTIVE DATE]]' in p.privacy_copy || p.terms_copy) > 0) AS placeholder_left
   FROM public.processing_policy_versions p
  WHERE p.status = 'active';

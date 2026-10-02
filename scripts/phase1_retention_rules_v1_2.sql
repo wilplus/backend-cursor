@@ -3,7 +3,10 @@
 -- schedule itself is signed as a PDF (legal/phase1-2026.1/18-retention-
 -- schedule-v1.2-blind-check-and-lending-DRAFT.md §4).
 --
--- NOT YET RUN. When it has run, record the day and the time here.
+-- RAN IN PRODUCTION 2026-10-02, by the founder (a first run with the
+-- placeholder still in the file stopped at the guard, as designed). The
+-- verify query returned five rows, all active, all on retention_schedule
+-- 1.2 (shown to the session). Kept as the record of what was seeded.
 --
 -- ⚠ RUN BY HAND, ONCE, IN THE SUPABASE SQL EDITOR (service role), AFTER the
 -- signed PDF is uploaded to its object_key. Nothing here runs on merge: this
@@ -12,17 +15,18 @@
 -- script rather than a migration because its inputs are the signed file's
 -- key and hash, which only exist after the founder signs and uploads.
 --
--- Fill the two placeholders below from legal/phase1-2026.1/SIGNED-ARTIFACTS.md
--- (row 06 v1.2) and nothing else. The DO block refuses to run while either is
--- still a placeholder, which is the designed failure.
+-- The hash and the day are those of legal/phase1-2026.1/SIGNED-ARTIFACTS.md
+-- (row 06 v1.2): signed 2026-10-02 15:53:48 UTC, 112,482 bytes. Check the
+-- uploaded object's sha256 against v_sha256 before running; the guard below
+-- stays for a future version.
 
 DO $$
 DECLARE
     v_object_key TEXT := 'phase1-2026.1/legal/retention-schedule-v1.2.pdf';
-    v_sha256 TEXT := '[[sha256 of the signed v1.2 PDF, as uploaded]]';
+    v_sha256 TEXT := 'b0439d1847e4eff0d5e8eedc8efd3dcbed8317f9731e7319a91ec7abf529f479';
     v_authority TEXT := 'Artur Willoński';
     -- The day of the PAdES signature, as the document records a date.
-    v_approved_at TIMESTAMPTZ := '[[YYYY-MM-DD]] 00:00:00+00';
+    v_approved_at TIMESTAMPTZ := '2026-10-02 00:00:00+00';
     v_artifact_id UUID;
 BEGIN
     IF to_regclass('public.data_retention_rules') IS NULL
