@@ -911,3 +911,24 @@ through the existing screens only (the fallback rung's caption on the exercise
 card; the open-time request and the praise sentence travel in payloads no
 screen renders yet).
 
+**N23 · The founder's eight determinations of 2026-10-02 (own answers; not
+reviewed by outside counsel).** Recorded one per answer under
+`legal/phase1-2026.1/14-founder-determinations-2026-10-02/`. Gate 6a: the blind
+check runs on legitimate interest once the Privacy and Terms lines of
+`15-…-DRAFT.md` are published and re-accepted, with the speaker's Personalised
+practice choice as the easy off switch read at sampling time (Q1), and the
+coach's answer deleted with the recording (Q2). Phases 4 and 5: a clip of a
+voice reaches another user only behind its own per-recording switch, off by
+default, and switching it off pulls the clip from both pools at once (Q3, now
+true of the delayed measure's pair as well); the switch is written into both
+Terms and Privacy in the next policy version everyone re-accepts first (Q4,
+`PEER_SHARE_POLICY_VERSION` gates the route until then); a listener's answer is
+the speaker's data and the listener's own (Q5). Gate 6d: the mistake-spotter
+describes how a delivery sounds, not how the speaker feels (Q7), so the
+employer and school fact is moot while that stands, with the condition that it
+decides prohibition if Q7 ever moves (Q6); document 02 v1.1 carries both. Door
+2: the coach-word surfaces need the speaker's yes like the other three (Q8,
+changed from B to A the same day to keep counsel's 2026-10-01 answer), so door
+2 stays shut for them. Nothing of this merges without the founder's review,
+and no gate flips on it until its wording is published.
+
