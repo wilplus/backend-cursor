@@ -3,6 +3,7 @@ with no exercise sends it to the coach when the answer is saved."""
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from services import confident_voice_practice as cvp
@@ -77,7 +78,11 @@ def _judged(db, answer, *, read="weak", fired=False):
         cvp.exercise_eligibility = original
 
 
+@patch("config.Config.JUDGEMENT_AFTER_FEEDBACK_ENABLED", False)
 class MatrixTests(unittest.TestCase):
+    """The matrix on the judgement path (24f). Since 2026-10-02 the request
+    rises at the open (24e-1) and the judgement sets answer_kind; these pin
+    the kinds the judgement path records when F1 is off."""
     """The follow-up matrix (founder 2026-09-29), cell by cell."""
 
     def test_read_confident_is_praise_now_for_every_answer(self):

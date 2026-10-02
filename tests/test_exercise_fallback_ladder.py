@@ -89,9 +89,20 @@ def _offer(db, fired):
 
 
 class OffTests(unittest.TestCase):
-    def test_off_is_exactly_today(self):
+    """The off behaviour, under the switch patched off (the live default is
+    on since the founder's yes of 2026-10-02)."""
+    def setUp(self):
+        self._off = patch("config.Config.EXERCISE_FALLBACK_LADDER_ENABLED", False)
+        self._off.start()
+        self.addCleanup(self._off.stop)
+
+    def test_the_switch_is_on_since_the_founders_yes(self):
+        self._off.stop()
         from config import Config as _live
-        self.assertFalse(_live.EXERCISE_FALLBACK_LADDER_ENABLED)
+        self.assertTrue(_live.EXERCISE_FALLBACK_LADDER_ENABLED)
+        self._off.start()
+
+    def test_off_is_exactly_yesterday(self):
         db = _Db([ENDING_ONLY, GENERAL_RUSHING, WARMUP])
         row = _offer(db, RUSHING)
         # With the ladder off a "general" exercise is an ordinary one, and

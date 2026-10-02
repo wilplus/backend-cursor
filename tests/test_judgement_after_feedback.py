@@ -151,9 +151,18 @@ PRACTICE = {"id": "p-1", "take_session_id": "take-1", "snippet_id": "snip-1"}
 
 
 class OffTests(unittest.TestCase):
-    def test_the_switch_is_off(self):
+    """The off behaviour, under the switch patched off (the live default is
+    on since the founder's yes of 2026-10-02)."""
+    def setUp(self):
+        self._off = patch("config.Config.JUDGEMENT_AFTER_FEEDBACK_ENABLED", False)
+        self._off.start()
+        self.addCleanup(self._off.stop)
+
+    def test_the_switch_is_on_since_the_founders_yes(self):
+        self._off.stop()
         from config import Config as _live
-        self.assertFalse(_live.JUDGEMENT_AFTER_FEEDBACK_ENABLED)
+        self.assertTrue(_live.JUDGEMENT_AFTER_FEEDBACK_ENABLED)
+        self._off.start()
 
     def test_off_the_open_is_a_receipt_and_raises_nothing(self):
         db = _Db()
@@ -417,7 +426,7 @@ class ContractTests(unittest.TestCase):
     def test_the_contract_the_config_and_the_migration_record_f1(self):
         contract = (ROOT / "docs/CANONICAL_PRODUCT_CONTRACT.md").read_text()
         self.assertIn("Opening a bookmark never asks for a judgment first", contract)
-        self.assertIn("JUDGEMENT_AFTER_FEEDBACK_ENABLED = False",
+        self.assertIn("JUDGEMENT_AFTER_FEEDBACK_ENABLED = True",
                       (ROOT / "config.py").read_text())
         sql = (ROOT / "migrations/a_moment_opens_before_it_is_judged.sql").read_text()
         for needle in ("ADD COLUMN IF NOT EXISTS answer_kind",
