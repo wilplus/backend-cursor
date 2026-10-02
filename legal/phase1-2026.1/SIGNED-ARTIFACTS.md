@@ -20,6 +20,21 @@ unsigned render is never the right value.
 | 03 | `phase1-2026.1/legal/article-50-assessment-v1.0.pdf` | 2026-09-22 | `f79a5114e0047ca8b15a60b77023cde5bab79669f510120a8166f82359d70fc3` |
 | 06 | `phase1-2026.1/legal/retention-schedule-v1.0.pdf` | 2026-09-19 | `73d078ea110c4419fc1c8b5322f90881716e66141cac5fa3a4221f0aa72a0c69` |
 | 13 | `phase1-2026.1/legal/training-consent-wording-v1.pdf` | 2026-10-01 | `b1ec620ea7a8c85d8b351a7e1eadc31c81b52bfffc4cd0c7d4897053b0ce1632` |
+| 02 v1.1 | `phase1-2026.1/legal/power-score-classification-v1.1.pdf` | 2026-10-02 | `e00536d02779d4687a02817348b978b8c4702b7e16bc5c51c102e4f4f2ac2ade` |
+| 06 v1.2 | `phase1-2026.1/legal/retention-schedule-v1.2.pdf` | 2026-10-02 | `b0439d1847e4eff0d5e8eedc8efd3dcbed8317f9731e7319a91ec7abf529f479` |
+
+`02 v1.1` and `06 v1.2` were rendered by `scripts/render_doc_pdf.py` on
+2026-10-02 (unsigned sha256 `dc175ffc…c40e8` and `cec455cb…dc85c`) and signed
+at 15:53:48 UTC the same day (PAdES, `/ETSI.CAdES.detached`); the founder sent
+the signed files to the session on 2026-10-02, 141,626 and 112,482 bytes. In
+each the unsigned render is a byte-identical prefix of the signed file, so
+what was signed is exactly what was rendered. **Upload to the `object_key`
+above is the founder's, not yet confirmed to the session**; the hashes are
+of the signed files as received. `02 v1.0` and `06 v1.0` are superseded by
+version (their signatures stand for their versions, 04 §5); every rule in
+`data_retention_rules` seeded from 2026-10-02 points at `06 v1.2`
+(`scripts/phase1_retention_rules_v1_2.sql`), and `02 v1.1` is registered by
+`scripts/phase1_register_power_score_v1_1.sql`.
 
 `01` and `06` were rendered from markdown that is byte-identical at
 `6f7ded6`, so those signatures stand and nothing about them needs redoing.
@@ -55,7 +70,7 @@ because this table is what people check:
 The signed PDFs still have to reach `object_key` in storage. A hash recorded
 here against a file nobody uploaded is a claim, not a record.
 
-## Awaiting signature and upload (rendered 2026-10-02)
+## Signed 2026-10-02 (closed; rendered and signed the same day)
 
 Two renders made on 2026-10-02 for the founder's PAdES signature, by
 `scripts/render_doc_pdf.py` from the markdown in the same commit as this
@@ -70,15 +85,10 @@ register.
 | 02 v1.1 | `phase1-2026.1/legal/power-score-classification-v1.1.pdf` | `02-power-score-classification-v1.1-DRAFT.md` | `dc175ffc54b88a81155bdce439a40785bdabb783454f19d4408838c2641c40e8` |
 | 06 v1.2 | `phase1-2026.1/legal/retention-schedule-v1.2.pdf` | `18-retention-schedule-v1.2-blind-check-and-lending-DRAFT.md` | `cec455cb8e7e65af5ca40787f0b07f5ce9d45496b2e4e44eee10bbbb4d4dc85c` |
 
-After the founder signs and uploads each file to its `object_key` (the
-backend's main bucket, as for `13`): the signed file's sha256 goes into the
-**Current** table above with the signing time, `02 v1.0` and `06 v1.0` move to
-Superseded (superseded by version, their signatures stand for their
-versions), and the hash is what `scripts/phase1_retention_rules_v1_2.sql`
-takes for `06 v1.2`. `02 v1.1` is registered under
-`(power_score_classification, 1.1)` with its real hash; the 3.3 publish
-(`scripts/phase1_policy_publish_3_3.sql`) carries a provisional reference
-until then, as the 3.2 publish did. Neither signature makes either document
+Both were signed at 15:53:48 UTC on 2026-10-02 and their hashes are in the
+**Current** table. The 3.3 publish (`scripts/phase1_policy_publish_3_3.sql`)
+carries a provisional reference for 02 until the registration script runs,
+as the 3.2 publish did. Neither signature makes either document
 counsel-reviewed; both say so on their first page.
 
 ## Why 02 and 03 were re-signed (closed 2026-09-22)
