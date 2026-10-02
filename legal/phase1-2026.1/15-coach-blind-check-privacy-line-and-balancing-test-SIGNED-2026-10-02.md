@@ -84,9 +84,10 @@ the "secure and working" paragraph, the §5 sentence after "see only what a
 review requires", the §7 sentence after the voice-measurements sentence, the
 Terms §11 paragraph after the voice-measurements paragraph. Not a word of the
 lines changed. Two things in 3.3 are not in this section or in `16-…`: the
-version line ("Version 3.3. Effective …", the day the publish runs) and the
-version note under it in each text, which engineering rewrote to describe
-both additions and put to the founder in the same reply as this record.
+version line ("Version 3.3. Effective 2 October 2026", the day the founder
+named for the publish) and the version note under it in each text, which
+engineering rewrote to describe both additions; the founder confirmed both
+notes on 2026-10-02 ("Yes").
 
 ## 2. The legitimate-interest assessment (the balancing test)
 
@@ -163,8 +164,8 @@ states, "Voice measurements are never outlived by their source."
 
 1. The founder signs the lines in §1 — done 2026-10-02.
 2. Privacy 3.3 and Terms 3.3 are written as `legal/phase1-2026.1/copy/privacy-3.3.txt`
-   and `legal/phase1-2026.1/copy/terms-3.3.txt` (exact bytes; done, with the
-   effective date to be set on the day), registered as `phase1-2026-10-02` by
+   and `legal/phase1-2026.1/copy/terms-3.3.txt` (exact bytes; done, effective
+   2 October 2026), registered as `phase1-2026-10-02` by
    `scripts/phase1_policy_publish_3_3.sql`, and re-accepted through the six
    screens.
 3. The retention row is seeded (`18-retention-schedule-v1.2-blind-check-and-lending-DRAFT.md`,

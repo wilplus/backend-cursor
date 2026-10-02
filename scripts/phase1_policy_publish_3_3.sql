@@ -11,7 +11,7 @@
 -- the publication. The founder signed the lines in chat on 2026-10-02
 -- (legal/phase1-2026.1/15-…-SIGNED-2026-10-02.md and 16-…-SIGNED-2026-10-02.md);
 -- the two version notes at the top of each text were written by engineering
--- to describe the change and were put to the founder in the same reply.
+-- to describe the change and the founder confirmed them the same day ("Yes").
 --
 -- ── WHAT CHANGES, AND WHAT DOES NOT ─────────────────────────────────────
 --
@@ -37,15 +37,14 @@
 --
 -- ── THE EFFECTIVE DATE ──────────────────────────────────────────────────
 --
--- Both texts carry the placeholder [[EFFECTIVE DATE]] on their second line.
--- Replace it, in this file, with the day you run step 2, written as the 3.2
--- text writes it ("2 October 2026"), and tell engineering the day so the two
--- copy files are committed with the same bytes. The 2026-09-24 lesson:
+-- Both texts say "Effective 2 October 2026": the founder named that day on
+-- 2026-10-02 ("I will run it on 02/10/2026"). The 2026-09-24 lesson:
 -- activate_phase1_policy_v1 stamps activated_at with the moment it runs, so
--- the date in the registered text must be that day. Step 1 registers
--- NOTHING while the placeholder is still in either text (the WHERE clause),
--- which is what happened on the first 3.2 run and is the designed failure.
--- The version id stays phase1-2026-10-02 whatever day it runs.
+-- the date in the registered text must be that day. If it runs on another
+-- day, change the date in this file AND in the two copy files first, to the
+-- same bytes. The WHERE clause of step 1 is kept from the 3.2 script: it
+-- registers nothing if a [[EFFECTIVE DATE]] placeholder is ever in either
+-- text. The version id stays phase1-2026-10-02 whatever day it runs.
 --
 -- ── STEP 0 · COUNT THE PURPOSES BEFORE PUBLISHING ANYTHING ──────────────
 --
@@ -65,7 +64,7 @@ SELECT count(*) AS purposes_resolving,
 
 WITH c AS (SELECT
 $terms$WillpowerLab — Terms of Service
-Version 3.3. Effective [[EFFECTIVE DATE]].
+Version 3.3. Effective 2 October 2026.
 
 These terms are an agreement between you and Artur Willoński, operating under
 the name "WillpowerLab" from Poland ("WillpowerLab", "we", "us"). They govern
@@ -358,7 +357,7 @@ Contact: contact@willpowerlab.com (a postal address is provided on request to
 data subjects and to the supervisory authority)$terms$ AS terms,
 
 $privacy$WillpowerLab — Privacy Policy
-Version 3.3. Effective [[EFFECTIVE DATE]].
+Version 3.3. Effective 2 October 2026.
 
 This policy explains what WillpowerLab does with your personal data, who else
 receives it, how long we keep it, and how you get it deleted.

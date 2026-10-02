@@ -8,8 +8,9 @@ founder 2026-10-02, N24). Pins what made the 3.2 publish safe, for this one:
     no required purpose is on consent;
   * the copy is the 3.2 copy plus the signed lines of 15 §1 and 16 §1, every
     one of them present, and 3.2's training section intact;
-  * the effective-date placeholder is still there, STEP 1 refuses to register
-    while it is, and the day is set in the copy files and the script together;
+  * the effective date is the day the founder named (2 October 2026), set in
+    the copy files and the script together, and STEP 1 still refuses a
+    placeholder;
   * it is not a migration, and its version id is the one the share switch
     will be gated on.
 """
@@ -126,9 +127,10 @@ def test_three_three_is_three_two_plus_additions_only():
         assert dropped == [], (new, dropped[:3])
 
 
-def test_the_effective_date_placeholder_is_there_and_step_one_refuses_it():
+def test_the_effective_date_is_set_and_step_one_refuses_a_placeholder():
     for tag in ("privacy", "terms"):
-        assert "Version 3.3. Effective [[EFFECTIVE DATE]]." in _quoted(tag)
+        assert "Version 3.3. Effective 2 October 2026." in _quoted(tag)
+        assert "[[EFFECTIVE DATE]]" not in _quoted(tag)
     body = _script()
     assert "WHERE position('[[EFFECTIVE DATE]]' in c.terms) = 0" in body
     assert "AND position('[[EFFECTIVE DATE]]' in c.privacy) = 0" in body

@@ -944,11 +944,11 @@ everything put to it; what needs a real signature is rendered for him.
    `legal/phase1-2026.1/copy/terms-3.3.txt`**: the 3.2 bytes plus the signed
    lines, placed as the two records say, and nothing else except the version
    line and a version note at the top of each text that describes both
-   additions (engineering's words, put to the founder in the same reply). The
-   effective date is the day the publish runs (the 2026-09-24 lesson), so both
-   texts carry `[[EFFECTIVE DATE]]` until then and the publish script
-   `scripts/phase1_policy_publish_3_3.sql` (version id `phase1-2026-10-02`)
-   registers nothing while it is there. The AI notice and the agreement screen
+   additions (engineering's words; the founder confirmed them the same day,
+   "Yes"). The effective date is the day the publish runs (the 2026-09-24
+   lesson): the founder named 2 October 2026, and both texts and the publish
+   script `scripts/phase1_policy_publish_3_3.sql` (version id
+   `phase1-2026-10-02`) carry it. The AI notice and the agreement screen
    are unchanged; the five purposes are unchanged and read back from the
    registry. Neither addition is a Phase-1 purpose: the blind check rides
    legitimate interest with the Personalised practice choice as its off
@@ -974,3 +974,15 @@ everything put to it; what needs a real signature is rendered for him.
    `DETECTOR_TRAINING_AUTHORISED` after 02 v1.1 is uploaded and its hash
    recorded. Door 2 for the coach-word surfaces stays shut (N23, Q8). Nothing
    of this merges without the founder's review.
+6. **No counsel answer is on file.** The same day the founder pasted a
+   memorandum headed "SPECIMEN — DRAFTING EXERCISE. NOT LEGAL ADVICE", by an
+   author who states they are not an admitted lawyer and that it must not be
+   filed in the pack or cited as counsel's opinion. It is not filed and not
+   cited; every record keeps "not reviewed by outside counsel". Two points
+   from it are already met by the pack's own reasoning (document 02 §7.1
+   assumes the AI Act's Article 3(34) condition is met and decides on
+   condition (i); record 15 §2 is the contemporaneous balancing test with the
+   off switch read as the Article 21 right). One is an engineering follow-up
+   outside this entry: an access response to a listener must not disclose the
+   speaker, nor the speaker's the listener (Article 15(4)), to be checked in
+   the data-export path before the peer lane flips.
