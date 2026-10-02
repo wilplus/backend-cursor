@@ -1,10 +1,13 @@
-# The share switch — Terms and Privacy wording for the next policy version (DRAFT)
+# The share switch — Terms and Privacy wording for the next policy version — SIGNED by the founder 2026-10-02
 
     record:              share-switch-wording-2026-10-02
     author:              Artur Willoński, founder and controller; not reviewed by outside counsel
     rests on:            14-founder-determinations-2026-10-02/q3.md (A), q4.md (A), q5.md (A)
     gates it serves:     Phases 4 and 5 · PEER_LANE_ENABLED and DELAYED_MEASURE_ENABLED (off until the version is published and re-accepted)
-    status:              DRAFT for the founder's review; user-facing lines below need his sign-off before they ship (LIVE LOOP)
+    status:              SIGNED by the founder 2026-10-02 (in chat: "I sign it all"). The lines in §1 are
+                         now the bytes of `legal/phase1-2026.1/copy/privacy-3.3.txt` and
+                         `legal/phase1-2026.1/copy/terms-3.3.txt`, published by `scripts/phase1_policy_publish_3_3.sql`
+                         (version phase1-2026-10-02; not yet run)
 
 **What the switch does.** A speaker may lend one Voice Album moment (a short
 clip of their own voice) to other users, per recording, off by default. Other
@@ -18,7 +21,7 @@ authorization is on the policy version that describes it
 (`PEER_SHARE_POLICY_VERSION` in `config.py`), so nobody is offered it before
 reading these lines.
 
-## 1. The lines — draft copy for Privacy 3.3 and Terms 3.3
+## 1. The lines — the copy of Privacy 3.3 and Terms 3.3 (signed 2026-10-02)
 
 ### Privacy §3 — "The sound of your voice", one sentence added at the end
 
@@ -78,22 +81,32 @@ reading these lines.
 > Other users hear a recording of yours only if you lend it (Privacy Policy,
 > section 4b); nothing in this section lends anything for you.
 
+**How the lines were placed in the 3.3 bytes (engineering, 2026-10-02).** The
+§3 sentence is the last paragraph of Privacy §3; §4b follows §4a with its
+heading in the capitals every section heading of the text uses ("4b. LENDING
+A RECORDING TO OTHER USERS — OPTIONAL, PER RECORDING"); "Other users"
+follows "Human coaches" in §5; the two §7 sentences form one paragraph after
+the recordings paragraph; the Terms §8 paragraph closes §8 and the §11
+sentence closes §11. Not a word of the lines changed. The version line and
+the version note at the top of each text are engineering's and are put to
+the founder in the same reply as this record (see `15-…` §1).
+
 ## 2. The path (the 1 October one)
 
 1. The founder signs the lines in §1 and in `15-…` §1 (one version carries
-   both: one re-acceptance, not two).
-2. copy/privacy-3.3.txt and copy/terms-3.3.txt are produced as exact
-   bytes; the AI notice and the agreement screen are unchanged.
-3. Registered as the next `phase1-…` policy version
-   (`services/processing_authorization.py`, the registration described in
-   `04-policy-registration-DRAFT.md`), activated, and re-accepted through the
-   six screens.
+   both: one re-acceptance, not two) — done 2026-10-02.
+2. `legal/phase1-2026.1/copy/privacy-3.3.txt` and `legal/phase1-2026.1/copy/terms-3.3.txt`
+   are produced as exact bytes (done; the effective date is set on the day);
+   the AI notice and the agreement screen are unchanged.
+3. Registered as `phase1-2026-10-02` by `scripts/phase1_policy_publish_3_3.sql`
+   (the registration described in `04-policy-registration-DRAFT.md`),
+   activated, and re-accepted through the six screens.
 4. `PEER_SHARE_POLICY_VERSION` is set to that version in one reviewed PR;
    until then the share route refuses (`TERMS_REACCEPT_REQUIRED`).
 5. `PEER_LANE_ENABLED`, then `DELAYED_MEASURE_ENABLED` after the founder signs
    `docs/MEASURE-exercise-human-delayed-v1.md`, each one reviewed PR.
 
-## 3. The retention rows
+## 3. The retention rows (carried into `18-retention-schedule-v1.2-blind-check-and-lending-DRAFT.md`)
 
 | Category | Period | Trigger |
 |---|---|---|

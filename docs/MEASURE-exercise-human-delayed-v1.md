@@ -1,11 +1,18 @@
-# exercise-human-delayed-v1 — the delayed blind human measure (DRAFT, unsigned)
+# exercise-human-delayed-v1 — the delayed blind human measure (signed by the founder 2026-10-02)
 
-**Status: written before any data, awaiting the founder's signature.** No
-row of `delayed_measure_pairs` or `delayed_measure_votes` is written while
-`Config.DELAYED_MEASURE_ENABLED` is False, and the switch stays False until
-(a) this definition is signed by the founder and (b) counsel has answered C1
-to C3 (the measure plays speakers' clips to other people, like Lend your
-ear). Phase 5 of the after-practice paths (founder 2026-10-01).
+**Status: written before any data; signed by the founder on 2026-10-02 (in
+chat: "I sign it all"; SPEC-DECISIONS-LOG N24).** No row of
+`delayed_measure_pairs` or `delayed_measure_votes` is written while
+`Config.DELAYED_MEASURE_ENABLED` is False. The switch stayed False until (a)
+this definition was signed by the founder and (b) C1 to C3 were answered (the
+measure plays speakers' clips to other people, like Lend your ear). Both are
+now true: (a) on 2026-10-02, and (b) by the founder's own determinations of
+2026-10-02 (`legal/phase1-2026.1/14-founder-determinations-2026-10-02/`, Q3
+to Q5; not reviewed by outside counsel). What still holds the switch is the
+published policy: Privacy 3.3 and Terms 3.3 active and re-accepted
+(`scripts/phase1_policy_publish_3_3.sql`), the lending rows seeded
+(`scripts/phase1_retention_rules_v1_2.sql`), and `PEER_LANE_ENABLED` first.
+Phase 5 of the after-practice paths (founder 2026-10-01).
 
 ## What it measures
 

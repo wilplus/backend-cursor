@@ -1,10 +1,13 @@
-# The coach's blind check of the detector — privacy line, balancing test, retention row (DRAFT)
+# The coach's blind check of the detector — privacy line, balancing test, retention row — SIGNED by the founder 2026-10-02
 
     record:              coach-blind-check-basis-2026-10-02
     author:              Artur Willoński, founder and controller; not reviewed by outside counsel
     rests on:            14-founder-determinations-2026-10-02/q1.md (C) and q2.md (C)
     gate it serves:      6a · ERROR_PRESENCE_AUDIT_ENABLED (off until the version below is published and re-accepted)
-    status:              DRAFT for the founder's review; user-facing lines below need his sign-off before they ship (LIVE LOOP)
+    status:              SIGNED by the founder 2026-10-02 (in chat: "I sign it all"). The lines in §1 are
+                         now the bytes of `legal/phase1-2026.1/copy/privacy-3.3.txt` and
+                         `legal/phase1-2026.1/copy/terms-3.3.txt`, published by `scripts/phase1_policy_publish_3_3.sql`
+                         (version phase1-2026-10-02; not yet run)
 
 **What the gate does, in one paragraph, so the lines below describe it and
 nothing else.** A coach hears a short clip of a recording and answers one
@@ -24,7 +27,7 @@ heard purely to check the detector is neither, so the promise must change
 before the first blind check (Q1, "change the promise first"). The Terms say
 the same in §1 and §11 and change with it.
 
-## 1. The lines — draft copy for Privacy 3.3 and Terms 3.3
+## 1. The lines — the copy of Privacy 3.3 and Terms 3.3 (signed 2026-10-02)
 
 Section numbers are Privacy 3.2's and Terms 3.2's (`legal/phase1-2026.1/copy/privacy-3.2.txt`,
 `legal/phase1-2026.1/copy/terms-3.2.txt`). Everything not quoted here stays as it is.
@@ -74,6 +77,16 @@ described in section 3 of the Privacy Policy.":
 
 Terms §1 needs no change: "a WillpowerLab coach — a person — may listen to your
 recordings" already covers hearing, and the purpose is stated in §11.
+
+**How the lines were placed in the 3.3 bytes (engineering, 2026-10-02).** Each
+sits exactly where this section says: the Privacy §4 purpose directly after
+the "secure and working" paragraph, the §5 sentence after "see only what a
+review requires", the §7 sentence after the voice-measurements sentence, the
+Terms §11 paragraph after the voice-measurements paragraph. Not a word of the
+lines changed. Two things in 3.3 are not in this section or in `16-…`: the
+version line ("Version 3.3. Effective …", the day the publish runs) and the
+version note under it in each text, which engineering rewrote to describe
+both additions and put to the founder in the same reply as this record.
 
 ## 2. The legitimate-interest assessment (the balancing test)
 
@@ -125,7 +138,7 @@ under §4(1)(b); the new element is the purpose, not the hearing.
 **Conclusion.** Legitimate interest holds for the blind check with the opt-out
 and the new wording in place; it does not hold for the current wording, which
 is why the gate waits for Privacy 3.3 and Terms 3.3 to be published and
-re-accepted (`16-share-switch-wording-DRAFT.md` carries the share lines into
+re-accepted (`16-share-switch-wording-SIGNED-2026-10-02.md` carries the share lines into
 the same version so there is one re-acceptance, not two).
 
 ## 3. The retention row
@@ -148,9 +161,12 @@ states, "Voice measurements are never outlived by their source."
 
 ## 4. What has to be true before `ERROR_PRESENCE_AUDIT_ENABLED` flips
 
-1. The founder signs the lines in §1 (this document's status moves to SIGNED).
-2. Privacy 3.3 and Terms 3.3 are written as copy/privacy-3.3.txt and
-   copy/terms-3.3.txt (exact bytes), registered as the next `phase1-…`
-   policy version, and re-accepted through the six screens.
-3. The retention row is seeded.
+1. The founder signs the lines in §1 — done 2026-10-02.
+2. Privacy 3.3 and Terms 3.3 are written as `legal/phase1-2026.1/copy/privacy-3.3.txt`
+   and `legal/phase1-2026.1/copy/terms-3.3.txt` (exact bytes; done, with the
+   effective date to be set on the day), registered as `phase1-2026-10-02` by
+   `scripts/phase1_policy_publish_3_3.sql`, and re-accepted through the six
+   screens.
+3. The retention row is seeded (`18-retention-schedule-v1.2-blind-check-and-lending-DRAFT.md`,
+   `scripts/phase1_retention_rules_v1_2.sql`, after the schedule's signature).
 4. The flip is one reviewed PR, after the founder's review.
