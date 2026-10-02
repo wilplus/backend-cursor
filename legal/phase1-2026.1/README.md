@@ -41,6 +41,7 @@ that runbook refuses to let anyone invent in code.
 | `12-terms-training-licence-DRAFT.md` | Terms 3.1 → 3.2: the licence to reproduce and adapt the speaker's text for training (counsel's fix, 2026-10-01) | `copy/terms-3.2.txt` (approved by the founder 2026-10-01, N15; effective 1 October 2026; PUBLISHED as `phase1-2026-10-01`, active since 2026-10-01 09:00 UTC) |
 | `13-training-consent-wording-SIGNED-2026-10-01.md` | The switch sentence and the four lines above it, counsel's wording, signed by the founder 2026-10-01 | `configure_mlc2_training_consent_policy_v1` (the copy, its hash, the evidence PDF) |
 | `14-founder-determinations-2026-10-02/` | The founder's eight answers of 2026-10-02 that held four gates shut (6a, Phases 4 and 5, 6d, door 2), one record each; author line "founder and controller; not reviewed by outside counsel" | the four documents below |
+| `16-share-switch-wording-DRAFT.md` | Phases 4 and 5: the Terms and Privacy wording for the per-recording share switch, the listener's answer as their own data, the path and the retention rows (Q3 to Q5) | the same 3.3 copies, `PEER_SHARE_POLICY_VERSION`, two `data_retention_rules` rows |
 
 The four `copy/*.txt` files are deliberately plain text with no front matter,
 headers, or commentary: their **exact bytes** are what gets hashed and what a
