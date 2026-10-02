@@ -422,10 +422,14 @@ class Config:
     # 8 (C5-b): the coach's blind pick among a block's candidate moments,
     # against the Manager's pick, never changing a bookmark.
     COACH_BLOCK_PICK_ENABLED = True
-    # 6d: fitting a learned detector on audit answers. Voice-based training:
-    # separate voice consent and the AI Act opinion precede it; the tuned
+    # 6d: fitting a learned detector on audit answers. ON from 2026-10-02
+    # (founder: "You have my go on each of the flips"; N26): the AI Act
+    # determination is document 02 v1.1 (the founder's own, Q7, signed
+    # 2026-10-02, N24; registered by its hash once uploaded), and the only
+    # input is the blind-check answers, each from a speaker on Privacy 3.3
+    # whose §4 line says the answer corrects the software (N25). The tuned
     # thresholds (no fit) run in shadow regardless.
-    DETECTOR_TRAINING_AUTHORISED = False
+    DETECTOR_TRAINING_AUTHORISED = True
     # 0c (A2): a student's new Take appears as a bubble in the coach's
     # Lounge chat, opening the walk.
     COACH_TAKE_BUBBLES_ENABLED = True
