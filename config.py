@@ -407,7 +407,7 @@ class Config:
     DETECTOR_TRAINING_AUTHORISED = False
     # 0c (A2): a student's new Take appears as a bubble in the coach's
     # Lounge chat, opening the walk.
-    COACH_TAKE_BUBBLES_ENABLED = False
+    COACH_TAKE_BUBBLES_ENABLED = True
     # Slice 6 readiness replaces the ambiguous bool with an irreversible
     # three-state contract.  ``dark`` was the pre-cutover behavior;
     # ``founder_canary`` is THE FLIP (founder 2026-09-29, after the

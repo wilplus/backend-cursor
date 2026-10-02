@@ -42,10 +42,11 @@ class BubblesTests(unittest.TestCase):
         class Db:
             def get_user_proficient_languages(self, _):
                 raise AssertionError("read while off")
-        status, payload = take_bubbles(Db(), rater_id="c", state_for=lambda *a, **k: {},
-                                       matched_rows=lambda r, s, p: r,
-                                       moments_for_snips=lambda s: _moments,
-                                       pseudonym_for=str)
+        with patch("config.Config.COACH_TAKE_BUBBLES_ENABLED", False, create=True):
+            status, payload = take_bubbles(Db(), rater_id="c", state_for=lambda *a, **k: {},
+                                           matched_rows=lambda r, s, p: r,
+                                           moments_for_snips=lambda s: _moments,
+                                           pseudonym_for=str)
         self.assertEqual((status, payload["code"]), (404, "NOT_FOUND"))
 
     def test_on_it_reads_the_queue_through_the_queue_s_own_gates(self):
