@@ -340,7 +340,7 @@ class Config:
     # (hear-every-word-v1, once a reviewed change activates it). Fallbacks
     # are traced and never teach the exercise ranker. Off, matching is
     # exactly what it was.
-    EXERCISE_FALLBACK_LADDER_ENABLED = False
+    EXERCISE_FALLBACK_LADDER_ENABLED = True
 
     # PHASE 2 of the after-practice paths (founder 2026-10-01, F1): the
     # judgement comes after the feedback. On, opening a bookmark raises the
@@ -350,7 +350,7 @@ class Config:
     # bookmark settles the item. Off, every bookmark asks for the judgement
     # first, exactly as before. One switch, both flows side by side until
     # the cutover; the speaker's screens follow the designer session's build.
-    JUDGEMENT_AFTER_FEEDBACK_ENABLED = False
+    JUDGEMENT_AFTER_FEEDBACK_ENABLED = True
 
     # PHASE 3 of the after-practice paths (founder 2026-10-01, F5): praise
     # after practice. On, a practice that lands hears one signed sentence
@@ -359,7 +359,7 @@ class Config:
     # (own attempt, then a coach's published readings; plays only) may show
     # once per Take, and coaches may record and publish readings (migration
     # 0409). Off, nothing is said, written or served; the routes answer 404.
-    PRAISE_AFTER_PRACTICE_ENABLED = False
+    PRAISE_AFTER_PRACTICE_ENABLED = True
 
     # PHASE 4 of the after-practice paths (founder 2026-10-01, F3, F4): the
     # peer lane. On, a Voice Album moment can be lent to other ears (share

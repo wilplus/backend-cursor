@@ -897,3 +897,17 @@ contract 35g-12): derived at read from the coach's own queue, never stored,
 opening the walk on that Take; the real name rides only as 0b allows. Three
 proposed frontend strings wait for sign-off with the flip.
 
+**N22 · The founder's flips of 2026-10-02 ("go with all of them in that
+order").** On, in this order, one reviewed PR each: `COACH_TAKE_BUBBLES_ENABLED`
+(0c), `COACH_EXERCISE_PREFERENCE_ENABLED` (1b), `COACH_BLOCK_PICK_ENABLED` (8),
+`COACH_WORD_PAIRS_ENABLED` (7), then `JUDGEMENT_AFTER_FEEDBACK_ENABLED` (F1),
+`EXERCISE_FALLBACK_LADDER_ENABLED` (F2) and `PRAISE_AFTER_PRACTICE_ENABLED` (F5)
+together. The strings proposed on 2026-10-01 were signed off the same day. Off,
+awaiting counsel: `ERROR_PRESENCE_AUDIT_ENABLED` and its verbal switch,
+`DETECTOR_TRAINING_AUTHORISED`, `PEER_LANE_ENABLED`, `DELAYED_MEASURE_ENABLED`;
+door 2 stays shut for the two coach-word surfaces. The speaker's after-practice
+screens remain the designer session's to build; until then F1, F2 and F5 act
+through the existing screens only (the fallback rung's caption on the exercise
+card; the open-time request and the praise sentence travel in payloads no
+screen renders yet).
+
