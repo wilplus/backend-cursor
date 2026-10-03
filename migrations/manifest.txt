@@ -447,3 +447,4 @@
 0409	a_practice_hears_what_changed.sql
 0410	a_moment_may_be_lent_an_ear.sql
 0411	a_coach_keeps_swaps_and_hears_blind.sql
+0412	a_training_yes_counts_any_later_policy.sql
