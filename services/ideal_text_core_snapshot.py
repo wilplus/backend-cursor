@@ -460,18 +460,78 @@ def run_pending_publication(arc_id: str, source_generation: int) -> None:
     if current != int(source_generation):
         return
     if publish_for_arc(db, str(arc_id), enqueue_on_failure=False) is None:
+        _note_publication_failure(str(arc_id), int(source_generation))
         raise RuntimeError("IDEAL_TEXT_DOCUMENT_PUBLICATION_RETRY_REQUIRED")
+
+
+# A generation that keeps failing rests (production, 2026-10-03). The sweep
+# runs every minute and re-enqueues every generation row without a head; a
+# publication that fails for a durable reason (two arcs whose project has no
+# owner row: LINEAGE_REQUIRED) therefore failed every minute, forever, with a
+# traceback each time, and the worker spent its minute on them instead of on
+# the Take being processed. Three attempts cover the transient causes (a
+# dropped connection, a source moving mid-build); after that the generation
+# rests until the window closes or a new generation replaces it (a new Take
+# or an edit bumps the generation, which is a new key). The on-open publish
+# and the Take finaliser do not go through the sweep and are not affected.
+PUBLICATION_FAILURES_BEFORE_REST = 3
+PUBLICATION_FAILURE_WINDOW_SECONDS = 24 * 3600
+
+
+def _publication_failure_key(arc_id: str, generation: int) -> str:
+    return f"willab:ideal-text-publish:failures:{arc_id}:{generation}"
+
+
+def _note_publication_failure(arc_id: str, generation: int) -> None:
+    """Count one failed delivery for this generation; best-effort."""
+    try:
+        from services import job_queue
+        conn = job_queue.get_redis()
+        if conn is None:
+            return
+        key = _publication_failure_key(arc_id, generation)
+        conn.incr(key)
+        conn.expire(key, PUBLICATION_FAILURE_WINDOW_SECONDS)
+    except Exception:
+        logger.warning("ideal-text publication failure count failed arc=%s",
+                       arc_id, exc_info=True)
+
+
+def _publication_resting(arc_id: str, generation: int) -> bool:
+    """True when this generation has failed enough times to rest. Fails open:
+    an unreadable broker means keep trying, the behaviour before the count."""
+    try:
+        from services import job_queue
+        conn = job_queue.get_redis()
+        if conn is None:
+            return False
+        raw = conn.get(_publication_failure_key(arc_id, generation))
+        return int(raw or 0) >= PUBLICATION_FAILURES_BEFORE_REST
+    except Exception:
+        logger.warning("ideal-text publication failure count unreadable "
+                       "arc=%s", arc_id, exc_info=True)
+        return False
 
 
 def sweep_pending_publications(database: Any, limit: int = 100) -> int:
     """Re-enqueue durable invalidations whose materialisation was interrupted."""
     queued = 0
+    resting: list[str] = []
     for row in database.list_pending_ideal_text_document_publications(limit):
         arc_id = str(row.get("arc_id") or "")
         generation = row.get("generation")
-        if arc_id and isinstance(generation, int) and enqueue_pending_publication(
-                arc_id, generation):
+        if not arc_id or not isinstance(generation, int):
+            continue
+        if _publication_resting(arc_id, generation):
+            resting.append(arc_id)
+            continue
+        if enqueue_pending_publication(arc_id, generation):
             queued += 1
+    if resting:
+        logger.info(
+            "ideal-text publication sweep: %d generation(s) resting after %d "
+            "failures: %s", len(resting), PUBLICATION_FAILURES_BEFORE_REST,
+            ",".join(resting))
     return queued
 
 
