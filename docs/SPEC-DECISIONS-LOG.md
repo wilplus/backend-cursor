@@ -1054,3 +1054,22 @@ consent it needs) holds because the Take is then not canonical, and the
 producer never attaches later (the RPC's own "pre-cutover Take" refusal).
 An unknown owner or an unreadable ring reads as not eligible.
 
+**N28 · "Turn on the learning?" before every Take (founder 2026-10-03).**
+The founder's words: "a simple question, turn on the learning? Yes as a CTA
+and stacked below the skip button, for each user that has it OFF; if you
+have it ON it doesn't show; if you have it OFF it shows each time you are
+starting a take; the next take: right before the screen to start the
+recording, in the same design always." The frontend asks it as the first
+screen of every Lab entry while the training switch is off (before the
+feelings check-in on a new project, before the "Start recording" screen on
+the next Take), in the consent gate's layout. The yes IS the signed training
+consent (13, 2026-10-01): the four counsel lines and the switch's sentence
+render above the answer and the yes is sent against that sentence's
+fingerprint through the same route as the account card, so C1 and the
+own-act rule hold unchanged. Skip records nothing. Raised and overruled:
+once-and-remember (the ring announcement of 0394) was proposed because a
+question repeated after every refusal weighs on "freely given"; the founder,
+as controller, chose "each time", and this entry is the record of that
+choice. The screen never gates the live loop: a closed switch, a switch
+already on, a guest, a slow or failed read all pass straight through.
+
