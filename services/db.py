@@ -7439,6 +7439,23 @@ class DatabaseService:
             )
             return None
 
+    def get_recording_attempt_owner_principal(self, attempt_id: str) -> str:
+        """The attempt's owner principal, or "" (unknown reads as not
+        eligible for the canonical producer; the plain promotion runs)."""
+        if not attempt_id:
+            return ""
+        try:
+            result = (self.client.table("recording_attempts")
+                      .select("owner_principal_id")
+                      .eq("id", str(attempt_id)).limit(1).execute())
+            row = (result.data or [None])[0]
+            return str((row or {}).get("owner_principal_id") or "")
+        except Exception:
+            logger.warning(
+                "get_recording_attempt_owner_principal failed attempt=%s",
+                attempt_id, exc_info=True)
+            return ""
+
     def promote_recording_attempt_with_confidence_outbox(
         self, *, recording_attempt_id: str, completion_hash: str,
         processing_job_id: Optional[str], attempt_count: int,
