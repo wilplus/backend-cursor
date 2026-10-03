@@ -335,3 +335,50 @@ def test_browser_roles_call_nothing(db, consented):
             cur.execute(*calls[0])
         finally:
             cur.execute("RESET ROLE")
+
+
+# ── 0412: a receipt for a later version counts, an earlier one does not ────
+
+def _clone_version(db, base_version, new_version, *, days):
+    """A retired copy of ``base_version`` activated ``days`` after it (or
+    before, negative), whatever columns the lane's table has."""
+    return _one(db, """
+        INSERT INTO public.processing_policy_versions
+        SELECT (jsonb_populate_record(
+            NULL::public.processing_policy_versions,
+            to_jsonb(v) || jsonb_build_object(
+                'id', gen_random_uuid(), 'version', %s, 'status', 'retired',
+                'retired_at', now(),
+                'activated_at', coalesce(v.activated_at, now())
+                                + make_interval(days => %s)))).*
+          FROM public.processing_policy_versions v WHERE v.version = %s
+        RETURNING version""", (new_version, days, base_version))
+
+
+def test_a_receipt_for_a_version_activated_later_counts(db, training_policy,
+                                                         processing_version):
+    # Privacy 3.3 carries the training section 3.2 introduced; a person
+    # whose only receipt is for 3.3 can still say yes (0412).
+    required_at = _one(db, "SELECT activated_at FROM public.processing_policy_versions WHERE version = %s",
+                       (processing_version,))
+    later = _clone_version(db, processing_version, f"later-{uuid.uuid4().hex[:8]}", days=1)
+    principal = _principal(db)
+    _receipt(db, principal, later)
+    if required_at is None:
+        # The required version was never activated: nothing is "after" it,
+        # and the exact match stays the only door.
+        with pytest.raises(psycopg2.Error, match="TRAINING_CONSENT_NEEDS_POLICY_RECEIPT"):
+            _grant(db, principal)
+        return
+    grant = _grant(db, principal)
+    assert grant and grant["event_kind"] == "grant"
+    assert _status(db, principal)["active"] is True
+
+
+def test_a_receipt_for_a_version_activated_earlier_does_not_count(db, training_policy,
+                                                                   processing_version):
+    earlier = _clone_version(db, processing_version, f"earlier-{uuid.uuid4().hex[:8]}", days=-1)
+    principal = _principal(db)
+    _receipt(db, principal, earlier)
+    with pytest.raises(psycopg2.Error, match="TRAINING_CONSENT_NEEDS_POLICY_RECEIPT"):
+        _grant(db, principal)
