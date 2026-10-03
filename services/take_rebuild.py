@@ -15,7 +15,9 @@ DROP, NEVER GUESS. Whenever the Slide of a Paragraph cannot be proven — an old
 document with no provenance, Paragraph rows that do not tile the text, a mix
 of Slide-less and Slide-bearing Paragraphs — `plan_rebuild` returns None and
 the Take finalizes exactly as before (text unchanged). A Take never fails
-because its rebuild could not be planned (LIVE LOOP).
+because its rebuild could not be planned (LIVE LOOP). Contract 8 as amended
+on 2026-10-03 (N29) asks instead that such a Take follow the Take; the F1
+Repair Plan's Phase 3 builds that.
 """
 from __future__ import annotations
 

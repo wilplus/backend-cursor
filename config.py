@@ -339,8 +339,12 @@ class Config:
     # flag matching_criteria.general_for), else the universal warm-up
     # (hear-every-word-v1, once a reviewed change activates it). Fallbacks
     # are traced and never teach the exercise ranker. Off, matching is
-    # exactly what it was.
-    EXERCISE_FALLBACK_LADDER_ENABLED = True
+    # exactly what it was. OFF again from 2026-10-03 (founder, F1 Repair
+    # Plan Phase 0, N29): the ladder had no rungs (no exercise carries
+    # matching_criteria.general_for and the warm-up is seeded inactive) and
+    # no screen reads its caption. It comes back on with the three general
+    # exercises, the active warm-up and the caption's screen.
+    EXERCISE_FALLBACK_LADDER_ENABLED = False
 
     # PHASE 2 of the after-practice paths (founder 2026-10-01, F1): the
     # judgement comes after the feedback. On, opening a bookmark raises the
@@ -371,16 +375,21 @@ class Config:
     # Q3 to Q5 (C1 to C3, N23) and the signed 3.3 wording (N24). The share
     # switch itself exists only for a speaker on PEER_SHARE_POLICY_VERSION
     # or later, so nothing is lent before the speaker has read 4b. Off, the
-    # routes answer 404 and nothing is written.
-    PEER_LANE_ENABLED = True
+    # routes answer 404 and nothing is written. OFF again from 2026-10-03
+    # (founder, F1 Repair Plan Phase 0, N29): no screen renders the share
+    # switch or Lend your ear, so nothing could be lent. It comes back on
+    # with those screens.
+    PEER_LANE_ENABLED = False
 
     # PHASE 5 (founder 2026-10-01): the delayed blind human measure
     # exercise-human-delayed-v1, docs/MEASURE-exercise-human-delayed-v1.md,
     # written before any data. ON from 2026-10-02 (N25): the founder signed
     # the definition 2026-10-02 (N24) and the pair rides the share switch
     # (Q3-A), which rides PEER_SHARE_POLICY_VERSION. Off, no pair and no vote
-    # is written.
-    DELAYED_MEASURE_ENABLED = True
+    # is written. OFF again from 2026-10-03 (founder, F1 Repair Plan Phase
+    # 0, N29): pairs were written at every practice close with no screen
+    # that could ever vote on them. It comes back on with the peer lane.
+    DELAYED_MEASURE_ENABLED = False
     # Q4-A (founder 2026-10-02): the share switch is written into both
     # Terms and Privacy, in a new Phase-1 policy version everyone re-accepts
     # before the switch appears (the 1 October path: Terms 3.2 + Privacy 3.2
@@ -420,16 +429,25 @@ class Config:
     # 6a: the three verbal cues join the audit (rules on the transcript).
     ERROR_PRESENCE_AUDIT_VERBAL_ENABLED = True
     # 8 (C5-b): the coach's blind pick among a block's candidate moments,
-    # against the Manager's pick, never changing a bookmark.
-    COACH_BLOCK_PICK_ENABLED = True
+    # against the Manager's pick, never changing a bookmark. OFF again from
+    # 2026-10-03 (founder, F1 Repair Plan Phase 0, N29): it samples
+    # take_feedback_policy_v3_shadow_frames, which are written only for the
+    # founder's own Takes (take_feedback_policy_v3.dark_enabled), so it had
+    # no other speaker's blocks. It comes back on with a source of every
+    # speaker's blocks.
+    COACH_BLOCK_PICK_ENABLED = False
     # 6d: fitting a learned detector on audit answers. ON from 2026-10-02
     # (founder: "You have my go on each of the flips"; N26): the AI Act
     # determination is document 02 v1.1 (the founder's own, Q7, signed
     # 2026-10-02, N24; registered by its hash once uploaded), and the only
     # input is the blind-check answers, each from a speaker on Privacy 3.3
     # whose §4 line says the answer corrects the software (N25). The tuned
-    # thresholds (no fit) run in shadow regardless.
-    DETECTOR_TRAINING_AUTHORISED = True
+    # thresholds (no fit) run in shadow regardless. OFF again from
+    # 2026-10-03 (founder, F1 Repair Plan Phase 0, N29): LearnedDetector.fit
+    # does not exist yet (NotImplementedError, no caller), and document 02
+    # v1.1 §9 keeps this gate off until counsel confirms. It comes back on
+    # with counsel's confirmation and a fit that exists.
+    DETECTOR_TRAINING_AUTHORISED = False
     # 0c (A2): a student's new Take appears as a bubble in the coach's
     # Lounge chat, opening the walk.
     COACH_TAKE_BUBBLES_ENABLED = True

@@ -2,7 +2,7 @@
 2026-10-01; Phase 5 of the after-practice paths), dark behind
 ``Config.DELAYED_MEASURE_ENABLED`` (on from 2026-10-02, N25: the founder
 signed docs/MEASURE-exercise-human-delayed-v1.md and answered C1 to C3
-himself, N24, N23).
+himself, N24, N23; off again from 2026-10-03 with the peer lane, N29).
 
 The definition is written BEFORE any data: which attempt (the first valid
 among the first three, F7), which horizon (seven days), what counts as

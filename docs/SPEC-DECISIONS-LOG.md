@@ -1073,3 +1073,50 @@ as controller, chose "each time", and this entry is the record of that
 choice. The screen never gates the live loop: a closed switch, a switch
 already on, a guest, a slow or failed read all pass straight through.
 
+**N29 · The F1 Repair Plan: the founder's answers (founder 2026-10-03).**
+After the lock audit (https://claude.ai/artifact/DwAgAoxxszUSd3WV5EJfMk)
+showed the F1 loop works only in part for a speaker who is not the founder,
+the founder settled eight questions before the plan
+(https://claude.ai/artifact/9vuDyMBxjo9ipKisHz9Ds4):
+1. **V3 reaches every speaker.** The F1 Feedback read stops requiring a row
+   in `mlc3_service_principal_allowlist` (the retired MLC-3 loop's guest
+   list, which held only the founder); the pending-deletion check stays.
+   Config first: `MLC3_SERVICE_ENABLED` is confirmed on the web service
+   before that migration merges. (Plan Phase 2.)
+2. **A Take rewrites whole Slides**, as built since Q4 A. Contract 8 now says
+   Slide, not Paragraph; a Paragraph not said again on a spoken Slide is
+   replaced with the Slide, and its text stays in history.
+3. **A Take that cannot be lined up follows the Take**: a deck recording
+   with no slide taps belongs to the Slide on screen when recording started;
+   a document whose Slides cannot be proven is rewritten whole from that
+   Take. (Plan Phase 3; contract 8 amended.)
+4. **24e-1 is built now** — this is the founder's "build it": the Feedback
+   sheet shows the machine's feedback first and asks the judgement after,
+   using only strings the design and the locks already contain;
+   `JUDGEMENT_AFTER_FEEDBACK_ENABLED` stays on meanwhile. (Plan Phase 6.)
+5. **Wiring-only fixes may touch the design-locked screens** (handlers,
+   hiding Practise when Personalised practice is off, reading the V3
+   failure status). Any new or changed string or element goes to the
+   founder first.
+6. **F1 first; idle switches off; the rest later.** Off from today, each
+   until what it needs exists: `PEER_LANE_ENABLED` and
+   `DELAYED_MEASURE_ENABLED` (no screen renders the share switch or Lend
+   your ear; the measure wrote pairs nobody could vote on),
+   `EXERCISE_FALLBACK_LADDER_ENABLED` (no rungs, no caption on screen),
+   `COACH_BLOCK_PICK_ENABLED` (it samples shadow frames written only for
+   the founder's own Takes) and `DETECTOR_TRAINING_AUTHORISED` (the fit does not exist, and
+   document 02 v1.1 §9 keeps the gate off until counsel confirms). This
+   reverses the flips of N22 (ladder, block pick), N25 (peer lane,
+   measure) and N26 (detector training) for these five only; no row is
+   deleted. Kept on: `JUDGEMENT_AFTER_FEEDBACK_ENABLED` (its screen is
+   Phase 6), `PRAISE_AFTER_PRACTICE_ENABLED` (it writes nothing unless a
+   coach acts), doors 1 and 2, and the coach preference, word pairs, blind
+   audit and Take bubbles, which render for coaches. The Voice Album, the
+   coach side, legal and retention, the commercial model and the ML doors
+   wait for a second plan.
+7. **Proof is a speaker who is not the founder**: the founder records with a
+   non-founder test account after each deploy, and every fix carries a test
+   against the real schema or the real screen.
+8. **This session runs each phase** once the founder accepts its prompt,
+   merges when green, and audits before writing the next prompt.
+
