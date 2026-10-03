@@ -484,8 +484,10 @@ class WiringTests(unittest.TestCase):
         self.assertIn("29d. **Lend your ear and the share**", contract)
         self.assertIn("29e. **The delayed blind human measure**", contract)
         config = (ROOT / "config.py").read_text()
-        self.assertIn("PEER_LANE_ENABLED = True", config)
-        self.assertIn("DELAYED_MEASURE_ENABLED = True", config)
+        # Off again from 2026-10-03 (F1 Repair Plan Phase 0, N29): no screen
+        # renders the share switch or Lend your ear yet.
+        self.assertIn("PEER_LANE_ENABLED = False", config)
+        self.assertIn("DELAYED_MEASURE_ENABLED = False", config)
         self.assertIn("PEER_SHARE_POLICY_VERSION: str | None = \"phase1-2026-10-02\"", config)
         sql = (ROOT / "migrations/a_moment_may_be_lent_an_ear.sql").read_text()
         for table in ("voice_album_shares", "corpus_clips", "lend_your_ear_sets",

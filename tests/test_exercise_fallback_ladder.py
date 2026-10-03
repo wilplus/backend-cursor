@@ -89,17 +89,19 @@ def _offer(db, fired):
 
 
 class OffTests(unittest.TestCase):
-    """The off behaviour, under the switch patched off (the live default is
-    on since the founder's yes of 2026-10-02)."""
+    """The off behaviour, under the switch patched off (the live default:
+    on from the founder's yes of 2026-10-02, off again from 2026-10-03)."""
     def setUp(self):
         self._off = patch("config.Config.EXERCISE_FALLBACK_LADDER_ENABLED", False)
         self._off.start()
         self.addCleanup(self._off.stop)
 
-    def test_the_switch_is_on_since_the_founders_yes(self):
+    def test_the_switch_is_off_until_the_ladder_has_rungs(self):
+        # On from 2026-10-02, off again from 2026-10-03 (F1 Repair Plan
+        # Phase 0, N29): no general exercise and no active warm-up exist.
         self._off.stop()
         from config import Config as _live
-        self.assertTrue(_live.EXERCISE_FALLBACK_LADDER_ENABLED)
+        self.assertFalse(_live.EXERCISE_FALLBACK_LADDER_ENABLED)
         self._off.start()
 
     def test_off_is_exactly_yesterday(self):

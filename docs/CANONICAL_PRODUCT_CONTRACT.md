@@ -35,10 +35,16 @@ with this contract, this contract wins.
 7. Ideal Text is the sole canonical presentation document. Best Presentation
    as a separate assembled product artifact is retired.
 8. Take 1 creates the initial project-specific Ideal Text. Each later Take
-   rewrites every Paragraph it covers from exactly what the speaker said in
-   that Take — the latest Take, never a best-of pick across Takes. A Paragraph
-   the speaker did not say in a Take keeps its last spoken version. (Founder,
-   2026-09-25; supersedes "later Takes never replace it".)
+   rewrites every Slide it covers from exactly what the speaker said on that
+   Slide — the latest Take, never a best-of pick across Takes. A Slide the
+   speaker did not speak in a Take keeps its last version. When a Take
+   cannot be lined up with the Slides, it follows the Take: a deck recording
+   with no slide taps belongs to the Slide on screen when recording started,
+   and a document whose Slides cannot be proven is rewritten whole from that
+   Take. Nothing is lost, because every version stays in history (clause
+   16). (Founder, 2026-09-25, Q4 A; supersedes "later Takes never replace
+   it". Amended 2026-10-03, N29: the rewrite is per Slide, as built since
+   Q4 A, and a Take that cannot be lined up follows the Take.)
 9. Between Takes, Ideal Text also changes through direct user editing, an
    explicitly accepted proposal, or a practice attempt adopted under 35d. The
    next Take replaces all of these with what was said; nothing is lost,
@@ -432,7 +438,9 @@ with this contract, this contract wins.
     counsel (C1 to C3, F3, F4).
 29d. **Lend your ear and the share** (founder 2026-10-01, F3, F4; Phase 4,
     served once `PEER_LANE_ENABLED` is on — on from 2026-10-02 after the
-    founder's own answers to C1, C2 and C3 (N23) and Privacy 3.3 (N24, N25);
+    founder's own answers to C1, C2 and C3 (N23) and Privacy 3.3 (N24, N25),
+    off again from 2026-10-03 until the share switch and Lend your ear have
+    a screen (N29);
     the share switch waits per speaker for `PEER_SHARE_POLICY_VERSION`): "A blind 'Lend your ear' step reopens the
     peer lane. Speakers judge up to three short shared or licensed clips,
     audio only, never their own, at most once per Take after a practice
@@ -456,7 +464,7 @@ with this contract, this contract wins.
     exercise-human-delayed-v1, `docs/MEASURE-exercise-human-delayed-v1.md`,
     served once `DELAYED_MEASURE_ENABLED` is on — on from 2026-10-02, the
     founder having signed the definition and answered C1 to C3 himself, N24,
-    N25): one practice makes
+    N25; off again from 2026-10-03 with the peer lane, N29): one practice makes
     one pair, the original clip and the first valid attempt (F7), fixed when
     the practice closes; fallbacks and rewrite practices are excluded; the
     clips enter Lend your ear as separate, unlabelled clips seven days
@@ -602,7 +610,8 @@ with this contract, this contract wins.
     read, the delayed human measure included. The coach request still rises
     on the moment, and a coach-shared exercise replaces the rung. Dark behind
     `EXERCISE_FALLBACK_LADDER_ENABLED` until the three general exercises
-    and the warm-up exist.
+    and the warm-up exist (switched on 2026-10-02 before they did, off again
+    from 2026-10-03, N29).
 35g-2. **The coach hears when nothing fits** (founder 2026-09-28; extended
     2026-09-29). When the Take's exercise item gets no exercise under 35g-1,
     one coach request is recorded for that exact moment with why (nothing
@@ -750,7 +759,9 @@ with this contract, this contract wins.
     written answer and the founder's sentence.
 35g-9. **The blind error audit and the detector that can learn** (founder
     2026-10-01, F6; Phase 6; migration 0411; `ERROR_PRESENCE_AUDIT_ENABLED`,
-    `DETECTOR_TRAINING_AUTHORISED`). A coach answers Yes, No or Can't tell
+    `DETECTOR_TRAINING_AUTHORISED`, the latter off again from 2026-10-03
+    because the fit does not exist and document 02 v1.1 §9 keeps it off
+    until counsel confirms, N29). A coach answers Yes, No or Can't tell
     to one error's own question (`speaking_error.asks`, word for word) about
     one clip, never seeing whether the detector fired; clips are sampled
     fired and not fired, stratified per error, practice attempts included,
@@ -772,7 +783,8 @@ with this contract, this contract wins.
     consent and the AI Act opinion; the tuned thresholds run in shadow
     regardless.
 35g-10. **The coach's block pick** (founder 2026-10-01, C5-b; Phase 8;
-    migration 0411; `COACH_BLOCK_PICK_ENABLED`). On a Take the coach is not
+    migration 0411; `COACH_BLOCK_PICK_ENABLED`, off from 2026-10-03 until
+    it samples every speaker's blocks, N29). On a Take the coach is not
     walking, the coach hears up to three candidate moments of one block,
     letters only, and picks the one that sounds most assured or says they
     can't tell; the Manager's pick is stored and never sent. The pick is

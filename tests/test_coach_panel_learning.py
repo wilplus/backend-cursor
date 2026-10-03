@@ -214,7 +214,10 @@ class OffTests(unittest.TestCase):
             self.assertTrue(_live.ERROR_PRESENCE_AUDIT_ENABLED)
             self.assertTrue(_live.ERROR_PRESENCE_AUDIT_VERBAL_ENABLED)
             self.assertEqual(_live.BLIND_CHECK_POLICY_VERSION, "phase1-2026-10-02")
-            self.assertTrue(_live.DETECTOR_TRAINING_AUTHORISED)
+            # Off again from 2026-10-03 (F1 Repair Plan Phase 0, N29): the
+            # fit does not exist and document 02 v1.1 §9 keeps it off.
+            self.assertFalse(_live.DETECTOR_TRAINING_AUTHORISED)
+            self.assertFalse(_live.COACH_BLOCK_PICK_ENABLED)
         finally:
             for p in self._patches:
                 p.start()
@@ -486,9 +489,12 @@ class DetectorTests(unittest.TestCase):
         with patch("config.Config.DETECTOR_TRAINING_AUTHORISED", False, create=True):
             with self.assertRaises(dc.NotAuthorised):
                 dc.LearnedDetector("rushing").fit([])
-        # Authorised (N26), the detector is still built, not trained.
-        with self.assertRaises(NotImplementedError):
+        # Off by default again (N29); authorised, it is still built, not trained.
+        with self.assertRaises(dc.NotAuthorised):
             dc.LearnedDetector("rushing").fit([])
+        with patch("config.Config.DETECTOR_TRAINING_AUTHORISED", True, create=True):
+            with self.assertRaises(NotImplementedError):
+                dc.LearnedDetector("rushing").fit([])
         self.assertIsNone(dc.learned("rushing", {"pause_ratio": 0.02}))
 
         class _Clips(_Db):

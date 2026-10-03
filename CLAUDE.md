@@ -5,7 +5,7 @@
 **F1 — THE MVP, THE CRITICAL PATH.** voice → durable Recording Attempt →
 perfect transcript segmented exactly 1:1 per slide → project-specific Ideal Text
 after Take 1 → evidence-backed Manager Feedback after every Take. Ideal Text is
-the sole canonical presentation document. Each Take rewrites each Paragraph
+the sole canonical presentation document. Each Take rewrites each Slide it spoke
 from exactly what was said in the latest Take; locked helper words persist until the
 user picks new ones, and every version stays in the Paragraph's history. The load-bearing pieces are per-slide
 transcription, coherent initial Ideal Text with stable Paragraph identity, and
@@ -44,8 +44,8 @@ eligible pool. Owner answers are routing signals, never blind training labels.
 **LOCKED choices** (complete contract:
 [`docs/CANONICAL_PRODUCT_CONTRACT.md`](docs/CANONICAL_PRODUCT_CONTRACT.md)):
 **L1** (founder amended 2026-09-25) Ideal Text is the one persistent document. Each
-Take rewrites each Paragraph from exactly what was said in the latest Take — never
-a best-of pick; an unspoken Paragraph keeps its last version. The lock keeps the
+Take rewrites each Slide it spoke from exactly what was said in the latest Take — never
+a best-of pick; an unspoken Slide keeps its last version (N29). The lock keeps the
 helper words, which persist until the user picks new ones. Every version stays in
 the Paragraph's history. Best Presentation is retired.
 **L2** Detectors create Candidates and only Manager-approved Candidates surface
