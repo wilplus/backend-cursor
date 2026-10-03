@@ -1035,3 +1035,22 @@ trained (`NotImplementedError`), and the tuned thresholds keep running in
 shadow behind the promotion bar (35g-9). Registration of 02 v1.1 by its hash
 is the founder's upload; the flip precedes it on his order, as N25's do.
 
+**N27 · The ring says who the canonical promotion is for (production,
+2026-10-03).** Since the flip (#814, 2026-09-30) every spoken Take's
+promotion went to `promote_recording_attempt_with_mlc2_confidence_v1`, which
+needs a speaker binding and a bundled grant that only the founder-consent
+route creates; for every other speaker the RPC refused ("confidence producer
+requires a resolved speaker"), the promotion rolled back with it and the
+speaker had no Take at all, three attempts and a failed job. The ring row
+`confidence_learning_writes` (0394) was always the chain's "who" (ring 5 and
+a current pooled-model-improvement consent, the set readiness read before
+the flip); the writer consulted only the state. Now `promote_attempt` asks
+the ring for the attempt's owner and goes canonical only for a speaker it
+names; everyone else gets the plain promotion, as before the flip. And when
+the canonical RPC refuses an eligible speaker, the plain promotion runs
+instead, logged at error level: the Take is F1 and outlives the learning
+write, which is F2; Q1's rule (never a canonical promotion without the
+consent it needs) holds because the Take is then not canonical, and the
+producer never attaches later (the RPC's own "pre-cutover Take" refusal).
+An unknown owner or an unreadable ring reads as not eligible.
+

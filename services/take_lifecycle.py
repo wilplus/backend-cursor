@@ -6,9 +6,12 @@ RPCs; a missing canonical write is a hard persistence error, never telemetry.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Optional
 
 from services.feedback_data_contract import content_hash
+
+logger = logging.getLogger(__name__)
 
 
 class TakeLifecycleError(RuntimeError):
@@ -24,6 +27,38 @@ def confidence_canonical_writes_enabled() -> bool:
     from services.mlc2_confidence_cutover import configured_confidence_cutover
 
     return configured_confidence_cutover().canonical_writes_enabled
+
+
+def confidence_canonical_writes_enabled_for(database: Any, attempt_id: str) -> bool:
+    """Whether THIS attempt's promotion goes through the canonical producer.
+
+    The writer state (``founder_canary``) says the pipe is open; the ring row
+    ``confidence_learning_writes`` (0394) says WHO it is open for: ring 5 and
+    a current pooled-model-improvement consent, the "who" readiness read
+    before the flip. Until 2026-10-03 the promotion consulted only the state,
+    so every spoken Take of every speaker went to the canonical RPC, which
+    requires a speaker binding and a bundled grant that only the consent
+    route creates; everyone else's Take was refused and never promoted
+    (production: ``confidence producer requires a resolved speaker``).
+    Unknown owner or an unreadable ring reads as not eligible: the plain
+    promotion, never a refused Take.
+    """
+    if not confidence_canonical_writes_enabled():
+        return False
+    from services import rings
+    owner = ""
+    reader = getattr(database, "get_recording_attempt_owner_principal", None)
+    if callable(reader):
+        try:
+            owner = str(reader(str(attempt_id)) or "")
+        except Exception:
+            logger.warning("attempt owner read failed attempt=%s", attempt_id,
+                           exc_info=True)
+            owner = ""
+    if not owner:
+        return False
+    return bool(rings.feature_is_on(
+        rings.CONFIDENCE_LEARNING_WRITES, owner, database=database))
 
 
 def confidence_prior_learning_writes_enabled() -> bool:
@@ -153,7 +188,8 @@ def promote_attempt(
             f"attempt-promotion:{attempt_id}:{completion_hash}"
         ),
     }
-    if confidence_canonical_writes_enabled():
+    row: Any = None
+    if confidence_canonical_writes_enabled_for(database, attempt_id):
         if not isinstance(confidence_producer_manifest, dict):
             raise TakeLifecycleError(
                 "confidence cutover requires an immutable source manifest"
@@ -162,7 +198,22 @@ def promote_attempt(
             **promotion_kwargs,
             source_manifest=confidence_producer_manifest,
         )
-    else:
+        if not isinstance(row, dict) or not row.get("take_id"):
+            # THE TAKE OUTLIVES THE LEARNING WRITE (production, 2026-10-03).
+            # The canonical RPC refused (the wrapper logged its reason: a
+            # speaker binding missing, the consent snapshot refused, the
+            # source not in R2) and rolled the promotion back with it, so the
+            # speaker had no Take at all and the job failed three times over.
+            # The live loop is F1; the outbox event is F2. The plain promotion
+            # runs instead and this Take carries no learning write, which is
+            # the one thing Q1 (2026-09-29) asks: never a canonical promotion
+            # without the consent it needs. Loud, because for an eligible
+            # speaker it is a configuration fault to fix, not a state to keep.
+            logger.error(
+                "canonical promotion refused attempt=%s; promoting plainly, "
+                "this Take carries no learning write", attempt_id)
+            row = None
+    if row is None:
         row = database.promote_recording_attempt_to_take(**promotion_kwargs)
     if not isinstance(row, dict) or not row.get("take_id"):
         raise TakeLifecycleError("successful recording was not promoted to a Take")
