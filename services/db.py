@@ -7387,18 +7387,26 @@ class DatabaseService:
                 or attempt_count < 1):
             return None
         try:
-            result = self.client.rpc(
-                "promote_recording_attempt_to_take_v1", {
-                    "p_recording_attempt_id": str(recording_attempt_id),
-                    "p_completion_hash": str(completion_hash),
-                    "p_processing_job_id": (
-                        str(processing_job_id) if processing_job_id else None
-                    ),
-                    "p_attempt_count": int(attempt_count),
-                    "p_input_hash": str(input_hash),
-                    "p_output_hash": str(output_hash) if output_hash else None,
-                    "p_idempotency_key": str(idempotency_key),
-                }).execute()
+            # Retried on a transient transport drop: the RPC is idempotent on
+            # (attempt, completion_hash), so a replay returns the same Take.
+            # Without this, one dropped connection at the very end threw the
+            # whole attempt away and the job re-ran transcription and the
+            # Ideal Text from the start (the founder's Takes of 2026-10-02
+            # and 03, during the database incident).
+            result = self._execute_with_retry(
+                lambda: self.client.rpc(
+                    "promote_recording_attempt_to_take_v1", {
+                        "p_recording_attempt_id": str(recording_attempt_id),
+                        "p_completion_hash": str(completion_hash),
+                        "p_processing_job_id": (
+                            str(processing_job_id) if processing_job_id else None
+                        ),
+                        "p_attempt_count": int(attempt_count),
+                        "p_input_hash": str(input_hash),
+                        "p_output_hash": str(output_hash) if output_hash else None,
+                        "p_idempotency_key": str(idempotency_key),
+                    }),
+                label="promote_recording_attempt_to_take")
             data = result.data
             if isinstance(data, list):
                 data = data[0] if data and isinstance(data[0], dict) else None
@@ -7448,21 +7456,26 @@ class DatabaseService:
                 or attempt_count < 1 or not isinstance(source_manifest, dict)):
             return None
         try:
-            result = self.client.rpc(
-                "promote_recording_attempt_with_mlc2_confidence_v1", {
-                    "p_recording_attempt_id": str(recording_attempt_id),
-                    "p_completion_hash": str(completion_hash),
-                    "p_processing_job_id": (
-                        str(processing_job_id) if processing_job_id else None
-                    ),
-                    "p_attempt_count": int(attempt_count),
-                    "p_input_hash": str(input_hash),
-                    "p_output_hash": (
-                        str(output_hash) if output_hash else None
-                    ),
-                    "p_idempotency_key": str(idempotency_key),
-                    "p_source_manifest": source_manifest,
-                }).execute()
+            # Same transient-drop retry as the plain promotion: idempotent on
+            # (attempt, completion_hash); the outbox event is written in the
+            # same transaction, so a replay neither doubles nor loses it.
+            result = self._execute_with_retry(
+                lambda: self.client.rpc(
+                    "promote_recording_attempt_with_mlc2_confidence_v1", {
+                        "p_recording_attempt_id": str(recording_attempt_id),
+                        "p_completion_hash": str(completion_hash),
+                        "p_processing_job_id": (
+                            str(processing_job_id) if processing_job_id else None
+                        ),
+                        "p_attempt_count": int(attempt_count),
+                        "p_input_hash": str(input_hash),
+                        "p_output_hash": (
+                            str(output_hash) if output_hash else None
+                        ),
+                        "p_idempotency_key": str(idempotency_key),
+                        "p_source_manifest": source_manifest,
+                    }),
+                label="promote_recording_attempt_with_confidence_outbox")
             data = result.data
             if isinstance(data, list):
                 return data[0] if data and isinstance(data[0], dict) else None
