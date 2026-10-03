@@ -1103,10 +1103,11 @@ the founder settled eight questions before the plan
    `DELAYED_MEASURE_ENABLED` (no screen renders the share switch or Lend
    your ear; the measure wrote pairs nobody could vote on),
    `EXERCISE_FALLBACK_LADDER_ENABLED` (no rungs, no caption on screen),
-   `COACH_BLOCK_PICK_ENABLED` (it samples shadow frames production never
-   writes) and `DETECTOR_TRAINING_AUTHORISED` (the fit does not exist, and
+   `COACH_BLOCK_PICK_ENABLED` (it samples shadow frames written only for
+   the founder's own Takes) and `DETECTOR_TRAINING_AUTHORISED` (the fit does not exist, and
    document 02 v1.1 §9 keeps the gate off until counsel confirms). This
-   reverses the flips of N25 and N26 for these five only; no row is
+   reverses the flips of N22 (ladder, block pick), N25 (peer lane,
+   measure) and N26 (detector training) for these five only; no row is
    deleted. Kept on: `JUDGEMENT_AFTER_FEEDBACK_ENABLED` (its screen is
    Phase 6), `PRAISE_AFTER_PRACTICE_ENABLED` (it writes nothing unless a
    coach acts), doors 1 and 2, and the coach preference, word pairs, blind

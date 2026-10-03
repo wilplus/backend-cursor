@@ -431,9 +431,10 @@ class Config:
     # 8 (C5-b): the coach's blind pick among a block's candidate moments,
     # against the Manager's pick, never changing a bookmark. OFF again from
     # 2026-10-03 (founder, F1 Repair Plan Phase 0, N29): it samples
-    # take_feedback_policy_v3_shadow_frames, which production never writes
-    # (TAKE_FEEDBACK_POLICY_V3_MODE unset), so it had no real blocks. It
-    # comes back on with a source of every speaker's blocks.
+    # take_feedback_policy_v3_shadow_frames, which are written only for the
+    # founder's own Takes (take_feedback_policy_v3.dark_enabled), so it had
+    # no other speaker's blocks. It comes back on with a source of every
+    # speaker's blocks.
     COACH_BLOCK_PICK_ENABLED = False
     # 6d: fitting a learned detector on audit answers. ON from 2026-10-02
     # (founder: "You have my go on each of the flips"; N26): the AI Act

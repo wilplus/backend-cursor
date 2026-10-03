@@ -3,8 +3,9 @@
 Status: founder-locked on 2026-08-26. Feedback Policy V3 amendment locked on
 2026-08-30; it remains inactive until a separately authorized serving cutover.
 L1 / helper-words amendment locked by the founder on 2026-09-25 (clauses 8, 9,
-12-20, 24e, 29a, 35d): each Take rewrites the Paragraph from what was said; the
-lock keeps the helper words, not the text. Ideal Text redesign amendment locked
+12-20, 24e, 29a, 35d): each Take rewrites what was said; the lock keeps the
+helper words, not the text. Clause 8 amended 2026-10-03 (N29): the rewrite is
+per Slide. Ideal Text redesign amendment locked
 by the founder on 2026-09-26 (clauses 13, 16, 20, 24g-1): "Use these helper
 words" is the lock; helper words head their own Paragraph and read italic inside
 it; the text is never greyed.
@@ -44,7 +45,8 @@ with this contract, this contract wins.
    Take. Nothing is lost, because every version stays in history (clause
    16). (Founder, 2026-09-25, Q4 A; supersedes "later Takes never replace
    it". Amended 2026-10-03, N29: the rewrite is per Slide, as built since
-   Q4 A, and a Take that cannot be lined up follows the Take.)
+   Q4 A; that a Take which cannot be lined up follows the Take is new, and
+   is built in the F1 Repair Plan's Phase 3.)
 9. Between Takes, Ideal Text also changes through direct user editing, an
    explicitly accepted proposal, or a practice attempt adopted under 35d. The
    next Take replaces all of these with what was said; nothing is lost,
@@ -783,8 +785,8 @@ with this contract, this contract wins.
     consent and the AI Act opinion; the tuned thresholds run in shadow
     regardless.
 35g-10. **The coach's block pick** (founder 2026-10-01, C5-b; Phase 8;
-    migration 0411; `COACH_BLOCK_PICK_ENABLED`, off from 2026-10-03 until
-    it samples every speaker's blocks, N29). On a Take the coach is not
+    migration 0411; `COACH_BLOCK_PICK_ENABLED`, on from 2026-10-02 (N22),
+    off again from 2026-10-03 until it samples every speaker's blocks, N29). On a Take the coach is not
     walking, the coach hears up to three candidate moments of one block,
     letters only, and picks the one that sounds most assured or says they
     can't tell; the Manager's pick is stored and never sent. The pick is

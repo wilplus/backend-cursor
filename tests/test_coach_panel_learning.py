@@ -191,7 +191,8 @@ class OffTests(unittest.TestCase):
     """The off behaviour under every switch patched off. The founder flipped
     the coach-panel switches on from 2026-10-02 ("go with all of them in that
     order"), then 6a (N25) and 6d (N26) on the same day after the 3.3
-    wording and document 02 v1.1."""
+    wording and document 02 v1.1; 6d and 8 went off again on 2026-10-03
+    (N29)."""
     SWITCHES = ("COACH_EXERCISE_PREFERENCE_ENABLED", "ERROR_PRESENCE_AUDIT_ENABLED",
                 "COACH_BLOCK_PICK_ENABLED", "COACH_WORD_PAIRS_ENABLED",
                 "DETECTOR_TRAINING_AUTHORISED")

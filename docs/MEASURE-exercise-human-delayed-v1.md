@@ -12,6 +12,9 @@ to Q5; not reviewed by outside counsel). What still holds the switch is the
 published policy: Privacy 3.3 and Terms 3.3 active and re-accepted
 (`scripts/phase1_policy_publish_3_3.sql`), the lending rows seeded
 (`scripts/phase1_retention_rules_v1_2.sql`), and `PEER_LANE_ENABLED` first.
+The switch went on 2026-10-02 (N25) and off again on 2026-10-03 (N29): no
+screen renders the share switch or Lend your ear, so no pair could ever be
+voted on. It comes back on with the peer lane.
 Phase 5 of the after-practice paths (founder 2026-10-01).
 
 ## What it measures

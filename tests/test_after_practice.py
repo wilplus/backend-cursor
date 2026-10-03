@@ -128,7 +128,7 @@ class _Db:
         self.readings: list = []
 
     # Bold voices asks the peer lane for others' clips (on from 2026-10-02,
-    # N25); this Take has none lent and no corpus.
+    # N25; off again from 2026-10-03, N29); this Take has none lent and no corpus.
     def list_shared_clips_live(self):
         return []
 

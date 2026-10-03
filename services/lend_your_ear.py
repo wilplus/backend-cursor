@@ -1,7 +1,9 @@
 """Lend your ear, the share toggle, and the others' voices (founder
 2026-10-01, F3, F4; Phase 4 of the after-practice paths), dark behind
 ``Config.PEER_LANE_ENABLED`` (on from 2026-10-02, N25, after the founder's
-own answers to C1 to C3, Q3 to Q5 of N23, and the signed 3.3 wording, N24);
+own answers to C1 to C3, Q3 to Q5 of N23, and the signed 3.3 wording, N24;
+off again from 2026-10-03, N29, until the share switch and Lend your ear
+have a screen);
 the share switch itself waits per speaker for ``PEER_SHARE_POLICY_VERSION``.
 
 F3: "A blind 'Lend your ear' step reopens the peer lane. Speakers judge up to
