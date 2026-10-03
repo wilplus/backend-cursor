@@ -498,6 +498,11 @@ hard migrations/a_moment_may_be_lent_an_ear.sql
 # apply/reapply idempotency.
 hard migrations/a_coach_keeps_swaps_and_hears_blind.sql
 hard migrations/a_coach_keeps_swaps_and_hears_blind.sql
+# 0412 redefines the training yes (0373): a receipt for the version that
+# introduced training or any version activated after it. Twice:
+# apply/reapply idempotency.
+hard migrations/a_training_yes_counts_any_later_policy.sql
+hard migrations/a_training_yes_counts_any_later_policy.sql
 
 # R-1 (audit 2026-09-22). 0299 created the two learning-surface tables with
 # the same GRANT ALL TO service_role as 0296, and was never in this chain, so
