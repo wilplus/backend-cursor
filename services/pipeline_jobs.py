@@ -38,6 +38,7 @@ from contextlib import nullcontext
 import logging
 import threading
 from typing import Any, Dict, Optional
+import uuid
 
 import sentry_sdk
 
@@ -740,7 +741,13 @@ def _run_session_recording(job: Dict[str, Any]) -> Dict[str, Any]:
             storage_provider=str(payload.get("storage_provider") or ""),
             bucket=str(payload.get("bucket") or ""),
             object_key=str(payload.get("storage_key") or ""),
-            idempotency_key=f"audio-download:{job_id}:{job.get('attempts') or 1}",
+            # One permit per run of this attempt: a re-run under the same
+            # attempt number (the sweeper after a lost worker) must not
+            # replay the earlier run's, by then expired, permit.
+            idempotency_key=(
+                f"audio-download:{job_id}:{job.get('attempts') or 1}:"
+                f"{uuid.uuid4().hex[:12]}"
+            ),
         )
         if not audio_bytes:
             raise RuntimeError("audio object empty or missing in storage")

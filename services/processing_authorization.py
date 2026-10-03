@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 from typing import Any, Mapping
+import uuid
 
 
 _ENFORCED_VALUES = {"enforce", "enforced", "active"}
@@ -78,6 +79,21 @@ def _one(data: Any) -> dict | None:
     if isinstance(data, list) and data and isinstance(data[0], dict):
         return data[0]
     return None
+
+
+def _permit_expired(permit: Mapping[str, Any]) -> bool:
+    """True when the permit's ``expires_at`` is already in the past; an
+    unreadable value is treated as live, so a replay never loops."""
+    raw = str(permit.get("expires_at") or "").strip()
+    if not raw:
+        return False
+    try:
+        expires = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    return expires <= datetime.now(timezone.utc)
 
 
 def _domain_code(error: Exception, fallback: str) -> str:
@@ -585,7 +601,20 @@ class ProcessingAuthorizationService:
         self, *, acquisition_principal_id: str, take_id: str | None,
         recording_id: str | None, provider: str, operation_kind: str,
         minimum_data_manifest: Mapping[str, Any], idempotency_key: str,
+        _reissued: bool = False,
     ) -> dict | None:
+        """A permit for one provider operation, 15 minutes long.
+
+        The RPC is idempotent on the key: a replayed key hands back the
+        permit the key first minted, however old. A job attempt that died
+        (a worker lost mid-stage, a database incident) and is re-run by the
+        sweeper hours later therefore got back a permit that had expired
+        long before, and its first ``record_provider_event('started')``
+        raised PROVIDER_PERMIT_INVALID on every retry until the attempts
+        ran out (the founder's Take of 2026-10-02). So an expired replay is
+        minted again under a derived key, once; the original key stays the
+        record of the first attempt.
+        """
         if not self.enforced:
             return None
         # The database alone may grant the narrowly scoped policy-cutover
@@ -611,12 +640,21 @@ class ProcessingAuthorizationService:
             row = _one(result.data)
             if not row:
                 raise RuntimeError("empty provider permit")
-            return row
         except Exception as error:
             code = _domain_code(error, "PROVIDER_PERMIT_DENIED")
             raise ProcessingAuthorizationError(
                 code, "Provider processing is not authorized.", 403
             ) from error
+        if not _reissued and _permit_expired(row):
+            return self.issue_provider_permit(
+                acquisition_principal_id=acquisition_principal_id,
+                take_id=take_id, recording_id=recording_id, provider=provider,
+                operation_kind=operation_kind,
+                minimum_data_manifest=minimum_data_manifest,
+                idempotency_key=f"{idempotency_key}:reissue:{uuid.uuid4().hex[:12]}",
+                _reissued=True,
+            )
+        return row
 
     def record_provider_event(
         self, permit_id: str | None, event_kind: str, *,
