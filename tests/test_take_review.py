@@ -94,12 +94,29 @@ class _ReviewDb:
     def get_ideal_text_parts(self, arc_id, user_id, with_lock=False):
         return [dict(p) for p in self.parts]
 
+    revisions: list = []
+
     def replace_ideal_text_parts(self, arc_id, user_id, parts,
-                                 revision_action=None):
+                                 revision_action=None,
+                                 revision_take_session_id=None,
+                                 revision_review_version=None):
         # As production does: the helper-word columns carry by Paragraph id
-        # across the rewrite (services.db._carried_root, contract 14).
+        # across the rewrite (services.db._carried_root, contract 14), and a
+        # revision is appended for each Paragraph whose words or lock changed
+        # or that is new.
         from services.db import _carried_root
         previous = {str(p.get("id")): p for p in self.parts}
+        if revision_action:
+            for p in parts:
+                before = previous.get(str(p.get("id")))
+                if (before is None or before.get("text") != p.get("text")
+                        or bool(before.get("locked_at"))
+                        != bool(p.get("locked_at"))):
+                    self.revisions = self.revisions + [{
+                        "part_id": str(p.get("id")),
+                        "action": revision_action, "text": p.get("text"),
+                        "take_session_id": revision_take_session_id,
+                        "review_version": revision_review_version}]
         self.parts = [
             {**dict(p), **_carried_root(previous.get(str(p.get("id"))),
                                         str(p.get("text") or ""))}
@@ -548,6 +565,50 @@ class EveryTakeRewritesTheSlidesItSpoke(unittest.TestCase):
             [r["phrase"] for r in database.slide_rows.get(0, [])],
             ["one words"])
 
+    def test_each_paragraph_the_take_rewrote_records_that_take(self):
+        """Contract 16; Phase 3: a Take rewrite appends a `take_rewrite`
+        revision naming the Take and its version for each Paragraph whose
+        words it changed. The Slide it did not speak gets none, and its lock
+        and helper words stay."""
+        database = _ReviewDb()
+        old_text, old_doc = _two_slide_document()
+        database.ideal.update(auto_text=old_text, text=old_text,
+                              document=old_doc)
+        database.parts = [
+            {"id": "p-one", "ord": 0, "text": "Slide one words.",
+             "locked_at": "2026-10-04T10:00:00Z"},
+            {"id": "p-two", "ord": 1, "text": "Slide two words.",
+             "locked_at": "2026-10-04T10:00:00Z"},
+        ]
+        new_text = "Take two says slide two differently."
+        self._run(database, {
+            "text": new_text, "pieces": [],
+            "paragraphs": [{"slide_index": 1, "start": 0,
+                            "end": len(new_text)}],
+            "take_session_id": "take-2", "take_index": 2,
+        })
+        self.assertEqual(database.revisions, [{
+            "part_id": "p-two", "action": "take_rewrite", "text": new_text,
+            "take_session_id": "take-2", "review_version": 2}])
+        # The lock rides the rewrite (contract 14): both stay locked.
+        self.assertEqual([bool(p.get("locked_at")) for p in database.parts],
+                         [True, True])
+
+    def test_a_whole_take_rewrite_records_every_paragraph(self):
+        """An unprovable old document follows the Take whole: every
+        Paragraph it now has is this Take's, so each records it."""
+        database = _ReviewDb()
+        database.parts = [{"id": "p-old", "ord": 0, "text": "Old words."}]
+        with self.assertLogs("services.take_rebuild", "WARNING"):
+            self._run(database, {
+                "text": "Anything.", "pieces": [],
+                "paragraphs": [{"slide_index": 0, "start": 0, "end": 9}],
+            })
+        self.assertEqual(
+            [(r["action"], r["text"], r["take_session_id"],
+              r["review_version"]) for r in database.revisions],
+            [("take_rewrite", "Anything.", "take-2", 2)])
+
     def test_helper_words_survive_an_edit_between_takes(self):
         """Founder lock 2026-09-30, B1: pick words on Take 1, edit another
         paragraph with the pencil, record Take 2 — the words are still on
@@ -584,13 +645,18 @@ class EveryTakeRewritesTheSlidesItSpoke(unittest.TestCase):
             [r["phrase"] for r in database.slide_rows.get(0, [])],
             ["one words"])
 
-    def test_an_unprovable_document_finalizes_exactly_as_before(self):
+    def test_an_unprovable_document_follows_the_take(self):
+        """F1 Repair Plan Phase 3 (contract 8, N29 answer 3). An old document
+        with no Slide provenance cannot be merged by Slide; it used to stay
+        exactly as it was. Now the Take's own words become the whole text,
+        and the previous version stays in the versions table."""
         database = _ReviewDb()  # no `document`: nothing to merge by Slide
-        result = self._run(database, {
-            "text": "Anything.", "pieces": [],
-            "paragraphs": [{"slide_index": 0, "start": 0, "end": 9}],
-        })
+        with self.assertLogs("services.take_rebuild", "WARNING") as logs:
+            result = self._run(database, {
+                "text": "Anything.", "pieces": [],
+                "paragraphs": [{"slide_index": 0, "start": 0, "end": 9}],
+            })
         self.assertEqual(result["version"], 2)
-        self.assertEqual(database.ideal["auto_text"], "Canonical words")
-        self.assertEqual(database.edit, {"text": "My exact words",
-                                         "version": 2})
+        self.assertEqual(database.ideal["auto_text"], "Anything.")
+        self.assertTrue(any("take_rebuild_followed_whole_take" in line
+                            for line in logs.output))

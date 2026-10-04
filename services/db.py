@@ -8584,6 +8584,8 @@ class DatabaseService:
     def replace_ideal_text_parts(
         self, arc_id: str, user_id: str, parts: list,
         revision_action: Optional[str] = None,
+        revision_take_session_id: Optional[str] = None,
+        revision_review_version: Optional[int] = None,
     ) -> bool:
         """Replace a document's parts wholesale. True on success.
 
@@ -8688,6 +8690,8 @@ class DatabaseService:
                             action=revision_action,
                             text=str(p["text"]),
                             root_phrase=_previous.get("root_phrase"),
+                            take_session_id=revision_take_session_id,
+                            review_version=revision_review_version,
                         )
             return True
         except Exception as e:

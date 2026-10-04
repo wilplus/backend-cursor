@@ -187,14 +187,14 @@ def finalize_later_take_review(
 
     # EVERY TAKE REWRITES THE SLIDES IT SPOKE (contract 8-9, founder
     # 2026-09-25). Planned before the atomic write and handed to it, so the
-    # words, their Slide map and the version snapshot land together. None
-    # (nothing provable) finalizes exactly as before — until the F1 Repair
-    # Plan's Phase 3, which makes such a Take follow the Take (contract 8 as
-    # amended 2026-10-03, N29).
+    # words, their Slide map and the version snapshot land together. A Slide
+    # map that cannot be proven follows the Take whole (contract 8 as amended
+    # 2026-10-03, N29; Phase 3); None only when the Take itself cannot be
+    # laid out, which finalizes exactly as before.
     from services.take_rebuild import prepare
 
     plan = prepare(database, str(arc_id), str(owner_user_id),
-                   str(take_session_id), before)
+                   str(take_session_id), before, take_index=index)
 
     try:
         receipt = database.finalize_ideal_text_take(
