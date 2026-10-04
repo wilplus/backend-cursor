@@ -12,6 +12,7 @@ from services.data_purge_registry import DEPENDENCIES
 from services.slide_helper_words import (
     lock,
     merge_recording_roots,
+    parts_on_slide,
     phrase_in_version,
     pick,
     project,
@@ -57,13 +58,25 @@ def test_a_repick_after_the_lock_stays_locked():
 
 
 def test_a_later_take_pick_waits_for_its_lock_before_replacing():
-    rows = pick(_take1_both_paragraphs_locked(), take_id="t3", part_id="p9",
+    rows = pick(_take1_both_paragraphs_locked(), take_id="t3", part_id="p2",
                 phrase="first week", now=NOW)
     # Picked but not locked: the locked Take-1 set still stands.
     assert [r["text"] for r in project(
         [dict(r, slide_index=3) for r in rows])] == ["nine days", "week one"]
+    rows = lock(rows, take_id="t3", part_id="p2", locked=True, now=NOW)
+    # The lock replaces THAT paragraph's earlier words; p1's stay (F1 Repair
+    # Plan Phase 5: a lock on one paragraph never drops another's words).
+    assert _phrases(rows) == [("nine days", "t1", True),
+                              ("first week", "t3", True)]
+
+
+def test_a_lock_on_one_paragraph_keeps_a_siblings_words():
+    rows = pick(_take1_both_paragraphs_locked(), take_id="t3", part_id="p9",
+                phrase="first week", now=NOW)
     rows = lock(rows, take_id="t3", part_id="p9", locked=True, now=NOW)
-    assert _phrases(rows) == [("first week", "t3", True)]
+    assert _phrases(rows) == [("nine days", "t1", True),
+                              ("week one", "t1", True),
+                              ("first week", "t3", True)]
 
 
 def test_locking_without_a_new_pick_keeps_the_older_set():
@@ -99,15 +112,20 @@ def test_project_serves_locked_words_slide_by_slide():
     ]
 
 
-def test_slide_rows_win_and_older_paragraph_roots_fill_the_rest():
+def test_slide_rows_win_for_their_paragraph_and_older_roots_fill_the_rest():
     legacy = [
-        {"part_id": "x", "slide_index": 1, "text": "old", "type": "flagship"},
+        {"part_id": "x", "slide_index": 1, "text": "sibling", "type": "flagship"},
+        {"part_id": "P", "slide_index": 1, "text": "old", "type": "flagship"},
         {"part_id": "y", "slide_index": 4, "text": "kept", "type": "flagship"},
+        {"slide_index": 1, "text": "no part", "type": "flagship"},
     ]
     slide = [{"part_id": "p", "slide_index": 1, "text": "new",
               "type": "flagship"}]
+    # Phase 5: a Slide row covers its own paragraph, so a sibling's older
+    # words on the same Slide are no longer hidden; a legacy row naming no
+    # paragraph is still covered by its Slide.
     assert [r["text"] for r in merge_recording_roots(legacy, slide)] == [
-        "new", "kept"]
+        "sibling", "new", "kept"]
 
 
 def test_slide_of_part_needs_the_core_pairing():
@@ -170,3 +188,54 @@ def test_the_route_takes_words_from_a_take_and_clears_the_paragraph_span():
     assert "phrase_in_version(body.get(\"phrase\")" in route
     assert "phrase=None" in route
     assert "record_pick(db, arc_id, user_id, str(part_id)" in route
+
+
+def test_the_four_word_cap_holds_on_the_server():
+    # Founder lock 2026-09-30, B3; F1 Repair Plan Phase 5.
+    from services.slide_helper_words import HELPER_WORDS_MAX, within_cap
+    assert HELPER_WORDS_MAX == 4
+    assert within_cap("one")
+    assert within_cap("one two three four")
+    assert not within_cap("one two three four five")
+    assert not within_cap("")
+    assert not within_cap(None)
+
+
+def test_every_save_route_checks_the_cap():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    explore = (root / "routes/v2/explore_ideal_text.py").read_text()
+    assert explore.count("within_cap(") == 1
+    from services.rooting_phrase import validate_rooting_phrase
+    text = "one two three four five"
+    assert validate_rooting_phrase(text, "one two three four", 0, 18)
+    assert validate_rooting_phrase(text, text, 0, len(text)) is None
+    practice = (root / "services/practice_adoption.py").read_text()
+    assert "within_cap(words)" in practice
+
+
+def test_a_lock_retires_the_words_of_a_paragraph_the_slide_no_longer_has():
+    """Audit 2026-10-04: Take 3 has one Paragraph (p9) where Take 1 had p1
+    and p2. Locking p9 retires the Take-1 rows of p1 and p2, which no lock
+    or unlock could reach any more; a sibling still on the Slide keeps its
+    words."""
+    rows = pick(_take1_both_paragraphs_locked(), take_id="t3", part_id="p9",
+                phrase="first week", now=NOW)
+    gone = lock(rows, take_id="t3", part_id="p9", locked=True, now=NOW,
+                live_parts={"p9"})
+    assert _phrases(gone) == [("first week", "t3", True)]
+    kept = lock(rows, take_id="t3", part_id="p9", locked=True, now=NOW,
+                live_parts={"p1", "p9"})
+    assert _phrases(kept) == [("nine days", "t1", True),
+                              ("first week", "t3", True)]
+
+
+def test_the_slide_s_paragraphs_come_from_the_core_pairing():
+    snap = {"payload": {
+        "parts": [{"id": "P1"}, {"id": "p2"}, {"id": "p3"}],
+        "pieces": [{"slide_index": 0}, {"slide_index": 1}, {"slide_index": 0}],
+    }}
+    assert parts_on_slide(snap, 0) == {"p1", "p3"}
+    assert parts_on_slide({"payload": {"parts": [], "pieces": [{}]}}, 0) is None
+    assert parts_on_slide(None, 0) is None
+

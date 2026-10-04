@@ -2040,7 +2040,8 @@ def v2_explore_set_part_helper_words_from_take(arc_id, part_id):
         return jsonify({"code": "INVALID_INPUT",
                         "error": "that Take has no version of this text"}), 400
     words = phrase_in_version(body.get("phrase"), version.get("paragraphs"))
-    if words is None:
+    from services.slide_helper_words import within_cap
+    if words is None or not within_cap(words):
         return jsonify({"code": "INVALID_ROOT_PHRASE",
                         "error": "Choose exact words from that Take."}), 400
     # The Paragraph-level span, if any, is cleared: the Slide's pick is now

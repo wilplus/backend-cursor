@@ -90,3 +90,24 @@ def test_the_score_never_reaches_the_served_row():
     out = window_rows(rows, paragraph_of=_para, saved_paragraphs=set(),
                       score_of=lambda r: 0.9)
     assert "candidate_score" not in out[0] and "delivery_band" not in out[0]
+
+
+# F1 Repair Plan Phase 1 (founder lock 2026-09-30, Q2 A: "never three of one
+# colour").
+
+def test_three_greens_show_two_even_with_only_three_moments():
+    rows = [_m("c1", 0, "confident", 0.9), _m("c2", 100, "confident", 0.8),
+            _m("c3", 200, "confident", 0.7)]
+    assert [r["id"] for r in choose_open_moments(rows, _score)] == ["c1", "c2"]
+
+
+def test_unscored_coloured_moments_still_keep_the_colour_cap():
+    rows = [_m("c1", 0, "confident", None), _m("c2", 100, "confident", None),
+            _m("c3", 200, "confident", None), _m("u1", 300, "standard", None)]
+    assert [r["id"] for r in choose_open_moments(rows, _score)] == ["c1", "c2", "u1"]
+
+
+def test_unscored_greens_and_oranges_fill_two_and_one():
+    rows = [_m("w1", 0, "weak", None), _m("w2", 100, "weak", None),
+            _m("w3", 200, "weak", None), _m("c1", 300, "confident", None)]
+    assert [r["id"] for r in choose_open_moments(rows, _score)] == ["w1", "w2", "c1"]

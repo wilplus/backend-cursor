@@ -36,7 +36,7 @@ the decide POST it rides behind (LIVE LOOP).
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,25 @@ def _professional_coach_yes(rows: Any) -> bool:
     return latest_professional_value(rows) == "yes"
 
 
-def _owner_agreements(database, arc_id: Any) -> dict:
+def _strict(complete: Optional[list], fn: Any, *args: Any) -> Any:
+    """A read whose failure is not "nobody agreed" (F1 Repair Plan Phase 5;
+    audit 2026-10-04): the reader re-raises instead of returning empty, and
+    a failure marks the refresh incomplete, so it removes nothing.
+
+    `complete` None: a caller that never removes on absence (the exact-clip
+    reconcile) reads as before."""
+    try:
+        return fn(*args) if complete is None else fn(*args, strict=True)
+    except Exception:
+        logger.warning("voice_album: %s unreadable %s",
+                       getattr(fn, "__name__", "read"), args, exc_info=True)
+        if complete is not None:
+            complete[0] = False
+        return None
+
+
+def _owner_agreements(database, arc_id: Any,
+                      complete: Optional[list] = None) -> dict:
     """{snippet_id: routing row} for the Voice Album's USER signal.
 
     The Confident Voice card is an anchored response, so it lives in the
@@ -68,15 +86,15 @@ def _owner_agreements(database, arc_id: Any) -> dict:
     # New immutable exact-clip self-reports are the authoritative USER leg.
     # Machine, user and coach provenance remain separate tables. The legacy
     # routing mirror below keeps older clips readable during migration.
-    try:
-        for row in database.list_confident_voice_self_reports(
-                str(arc_id)) or []:
-            if (isinstance(row, dict) and row.get("response") == "yes"
-                    and row.get("snippet_id")):
-                out[str(row["snippet_id"])] = row
-    except Exception:
-        pass
-    for row in database.list_owner_voice_album_routes(str(arc_id)) or []:
+    reader = getattr(database, "list_confident_voice_self_reports", None)
+    reports = _strict(complete, reader, str(arc_id)) if reader else None
+    for row in reports or []:
+        if (isinstance(row, dict) and row.get("response") == "yes"
+                and row.get("snippet_id")):
+            out[str(row["snippet_id"])] = row
+    routes = _strict(complete, database.list_owner_voice_album_routes,
+                     str(arc_id))
+    for row in routes or []:
         if (isinstance(row, dict) and row.get("response") == "yes"
                 and row.get("snippet_id")
                 and str(row["snippet_id"]) not in out):
@@ -195,17 +213,15 @@ def reconcile_voice_album_clip(
         return False
 
 
-def _acoustic_yes_ids(database: Any, arc_id: Any) -> set:
+def _acoustic_yes_ids(database: Any, arc_id: Any, complete: list) -> set:
     """ACOUSTIC — the machine's emphasize stars for this arc."""
-    return {
-        sid for sid, row in
-        (database.get_moment_suggestions_by_arc(str(arc_id)) or {}
-         ).items()
-        if _machine_confident(row)
-    }
+    rows = _strict(complete, database.get_moment_suggestions_by_arc,
+                   str(arc_id))
+    return {sid for sid, row in (rows or {}).items()
+            if _machine_confident(row)}
 
 
-def _coach_yes_sessions(database: Any, arc_id: Any) -> dict:
+def _coach_yes_sessions(database: Any, arc_id: Any, complete: list) -> dict:
     """COACH — {snippet_id: take_session_id} for every explicit professional
     coach YES on a Take of this project.
 
@@ -215,17 +231,17 @@ def _coach_yes_sessions(database: Any, arc_id: Any) -> dict:
     draft to hold back. The album still has no read surface (capture only).
     """
     coach_ok: dict = {}   # snippet_id -> take_session_id
-    for sess in (database.takes.get_arc_sessions(arc_id) or []):
+    for sess in _strict(complete, database.takes.get_arc_sessions, arc_id) or []:
         sid = str(sess.get("id") or "")
         if not sid:
             continue
-        try:
-            snips = database.get_snippets_by_session(sid) or []
-        except Exception:
-            continue
+        snips = _strict(complete, database.get_snippets_by_session, sid) or []
         _ids = [str(x.get("id")) for x in snips
                 if isinstance(x, dict) and x.get("id")]
-        labels = database.get_confidence_labels_by_snippet_ids(_ids) or {}
+        if not _ids:
+            continue
+        labels = _strict(complete, database.get_confidence_labels_by_snippet_ids,
+                         _ids) or {}
         for snip_id in _ids:
             if _professional_coach_yes(labels.get(snip_id)):
                 coach_ok[str(snip_id)] = sid
@@ -253,9 +269,13 @@ def refresh_voice_album(arc_id: Any, *, database=None) -> int:
         if database is None:
             from services.db import db as database
 
-        user_ok = _owner_agreements(database, arc_id)
-        acoustic_ok = _acoustic_yes_ids(database, arc_id)
-        coach_ok = _coach_yes_sessions(database, arc_id)
+        # FAIL CLOSED (F1 Repair Plan Phase 5; audit 2026-10-03): a read
+        # that failed is not "nobody agreed". Inserts still land; removals
+        # wait for a refresh whose every read completed.
+        complete = [True]
+        user_ok = _owner_agreements(database, arc_id, complete)
+        acoustic_ok = _acoustic_yes_ids(database, arc_id, complete)
+        coach_ok = _coach_yes_sessions(database, arc_id, complete)
 
         # `aligned` may legitimately be EMPTY — the mirror still has to
         # run, because an empty alignment with existing entries means
@@ -275,7 +295,7 @@ def refresh_voice_album(arc_id: Any, *, database=None) -> int:
                 new += 1
 
         removed = 0
-        for snip_id in sorted(existing - aligned):
+        for snip_id in sorted(existing - aligned if complete[0] else set()):
             if database.delete_voice_album_entry(
                     arc_id=str(arc_id), snippet_id=snip_id):
                 removed += 1

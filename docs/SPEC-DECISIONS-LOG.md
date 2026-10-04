@@ -1235,3 +1235,114 @@ honestly (founder 2026-10-04, "Accept phase four.").**
 5. **The attempt label counts on.** The Feedback sheet's recording screen
    read "Attempt 3" from the third attempt on (a clamp on a remaining count
    that stops at zero); it now numbers the next after those saved.
+
+**N35 · Phase 1 (the window of three) and Phase 4 B (an accepted rewrite is a
+Paragraph version), founder 2026-10-04 ("Accept phase four"; "keep going
+with all the next phases ... and merge along the way").**
+1. **The window finds the machine's read.** The score map was keyed by the
+   bundle candidate's uuid and looked up by the served row's id (its
+   candidate key), so every lookup missed and the window filled in text
+   order. It is keyed by (family, candidate key) and by the uuid
+   (`window_scores`, `window_score`).
+2. **Never three of one colour, at any count.** The three-or-fewer shortcut
+   and the unscored fallback both skipped the two-per-colour rule; both are
+   gone (`feedback_window.choose_open_moments`).
+3. **Slide-saved words count as saved.** A locked paragraph whose helper
+   words live on its Slide row (from practice or an earlier Take) leaves the
+   window like one with its own words (`saved_paragraphs`).
+4. **An accepted rewrite writes its Paragraph (P1-1, 29b, clause 16).** After
+   the owner's `apply_suggestion` on a V3 rewrite, the server takes the
+   quote and the proposed words from the V3 freeze that served the item
+   (the selected membership item names the Paragraph; its candidate holds
+   the words), replaces the quote in that Paragraph and writes the result
+   through `compare_and_set_user_ideal_edit_v1`, which appends the
+   `owner_part_text_updated` revision and stores the owner edit; the next
+   Take supersedes it (Q5 A, clause 9). The decision-ledger star is no
+   longer sent for these items. Refused, with the reason in `text_update`
+   and no word changed: a Paragraph with helper words or a lock
+   (`protected`), a quote no longer in the Paragraph or Paragraphs that do
+   not join to the text (`stale`), an item the freeze never served
+   (`not_found`), any writer failure (`failed`). The writer needs the
+   speaker's MLC-3 enrollment, which follows the Personalised-practice
+   choice -- as every text edit already does.
+
+**N36 · Phase 5: helper words hold together (founder 2026-10-04, "keep
+going with all the next phases ... and merge along the way").**
+1. **The four-word cap holds on the server** (B3): the paragraph route, the
+   earlier-Take route and the practice route refuse more than four words with
+   their existing INVALID_ROOT_PHRASE answer (`within_cap`). Words saved
+   before the cap are read as they are.
+2. **A lock replaces only its own paragraph's earlier words** (Q14 A,
+   narrowed): a pick locked in a later Take replaces what THAT paragraph had
+   from earlier Takes; a sibling paragraph's words on the same Slide stay
+   until it is locked anew (contract 14). The recording roots cover a
+   legacy paragraph root by its paragraph, not its Slide.
+3. **The Album refresh fails closed**: inserts still land, removals wait for
+   a refresh whose every read completed.
+4. **Frontend** (wiring only): Presentation Mode and export read the page's
+   helper words (Slide-saved words included); a deleted set stays in
+   History; the Lab's text screen gets Delete-unlock, earlier-Take words and
+   judged updates; "Record Take 2" there asks "Turn on the learning?" (N28).
+5. **Open for the founder: the old "undecided" lock gate.** The lock route
+   refuses (409 UNDECIDED) while any served row on the paragraph is open --
+   a V3 rewrite or praise note included -- and the page treats that refusal
+   as final, so helper words can save while their lock does not. Pinned by
+   `tests/test_the_undecided_lock_gate.py`; left as it stands until the
+   founder decides whether it goes.
+
+**N37 · Phase 6 (judgement after feedback, 24e-1) and Phase 7 (landing after
+a Take, J1 J2 J4 J5), frontend, founder 2026-10-04 ("keep going with all the
+next phases ... and merge along the way").**
+1. **The sheet opens on the feedback** (24e-1): a waiting moment opens in the
+   paragraph's own sheet on the card the machine's read chooses -- the
+   praise on a confident moment (Next then asks the judgement), the exercise
+   matched to the clip, else the rewrite, else the moment, on one that needed
+   work (Practise, or Skip, which settles the moment unanswered through the
+   `skipped` event; a rewrite the speaker can accept keeps 29b's "Accept and
+   practise" with "Keep my words"). Practise opens the card shown. The open is reported once (`opened`, with what was on
+   screen), which raises the coach request under the machine's kind (0408).
+   The card is chosen on the page from the served items by the same matrix as
+   `decide_at_open`, so it never waits on the network; the open's
+   `follow_up` is recorded, not read. Only strings the design and the locks
+   already hold. `FEEDBACK_FIRST` is the page's one switch back.
+2. **A Yes shows the praise only** (24f): a Yes on a moment read weak no
+   longer falls through to the rewrite.
+3. **No made-up answer**: a practice started before any judgement sends no
+   `original_user_answer`, instead of a "no" the speaker never gave.
+4. **Landing after a Take** (J1, J4): the text lands with "Review feedback"
+   and the next Take both visible, "See next steps" as the quiet link; the
+   walk's end card offers the next Take as its one button with "Back to the
+   text" as its link. The button reads "Record Take 2" after Take 1 and
+   counts on after that, with its existing labels. J2: the Lounge no longer
+   opens the text by itself when a Take settles. J5: the journey bubble no
+   longer offers Presentation Mode (the ⋯ menu stays its only door).
+5. **Open for the founder**: the J2 Lounge card that reads "working on your
+   text" and turns into "Review feedback" is not built -- the founder asked,
+   2026-08, for the working-on-your-text block to be deleted (flowCopy), so
+   bringing it back is the founder's call.
+
+**N38 · Close-out audit fixes (F1 Repair Plan Phase 8, 2026-10-04).** Two
+independent checkers re-read Phases 1-7 against the code; what they found
+and this session confirmed is fixed here.
+1. **The Album never empties on a failed read.** The readers behind the
+   refresh returned empty on failure, so the Phase 5 guard never tripped
+   and one failed read could remove every entry. The refresh now reads
+   strictly (`strict=True` on the six readers it uses); any failure keeps
+   every entry.
+2. **No V2 stand-in on an early V3 failure** (24h, N32). The session read,
+   the document and the binding ran outside V3's guard, so a raise there
+   left V2's rows serving. They are V3 failing the Take now: no rows, the
+   failure reported. V2's rows failing their own span check no longer
+   silence V3 either.
+3. **An accepted rewrite** (N35.4): a repeated answer finds the words in
+   place and changes nothing, even when the new words hold the quote; a
+   quote found more than once is refused rather than guessed (the freeze
+   carries no span); helper words saved on the Slide row protect their
+   Paragraph; the writer's refusals are read by their exact codes; the
+   Paragraphs are joined as every other writer joins them.
+4. **Words of a Paragraph the Slide no longer has** (N36.2): a lock retires
+   the earlier-Take rows of Paragraphs no longer on the Slide, which no lock
+   or unlock could reach.
+5. **Frontend** (Phase 6): Practise opens the card shown (a library exercise
+   opened the rewrite or the old sheet before any judgement); the button
+   before a judgement reads Next, not Done.

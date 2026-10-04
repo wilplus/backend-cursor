@@ -4,10 +4,13 @@ A Take may split a Slide into a different number of Paragraphs than the Take
 before it, so helper words cannot live on a Paragraph and survive that. They
 live on the Slide, in the order they were picked (Q12 A).
 
-WHEN PICKS ADD UP AND WHEN THEY REPLACE (Q14 A). Picks made while reviewing
-the same Take add up on a Slide. The first pick on that Slide that is LOCKED
-in a later Take replaces everything the Slide had from earlier Takes. The
-replacement waits for the lock rather than the tap, because a pick the
+WHEN PICKS ADD UP AND WHEN THEY REPLACE (Q14 A, as narrowed by the F1
+Repair Plan Phase 5). Picks made while reviewing the same Take add up on a
+Slide. A pick LOCKED in a later Take replaces what THAT Paragraph had from
+earlier Takes; another Paragraph's words on the same Slide stay until that
+Paragraph is locked anew (locked helper words persist until the user picks
+new ones, contract 14; the audit of 2026-10-03 found the whole Slide wiped).
+The replacement waits for the lock rather than the tap, because a pick the
 speaker never locks must not wipe the helper words they did lock.
 
 Tapping new words on the same Paragraph in the same Take replaces that
@@ -72,9 +75,19 @@ def pick(rows: list[Row], *, take_id: str, part_id: str,
 
 
 def lock(rows: list[Row], *, take_id: str, part_id: str, locked: bool,
-         now: Optional[str] = None) -> list[Row]:
-    """One Slide's rows after the speaker locks (or unlocks) a Paragraph."""
+         now: Optional[str] = None,
+         live_parts: Optional[set] = None) -> list[Row]:
+    """One Slide's rows after the speaker locks (or unlocks) a Paragraph.
+
+    `live_parts`: the ids of the Slide's Paragraphs now (lower case). A lock
+    also retires earlier-Take rows of a Paragraph the Slide no longer has
+    (audit 2026-10-04: a later Take with fewer or fresh Paragraphs left its
+    words on the recording screen, out of reach of any lock or unlock)."""
     part = str(part_id).lower()
+
+    def _orphan(r: Row) -> bool:
+        source = str(r.get("source_part_id") or "").lower()
+        return live_parts is not None and source not in live_parts
 
     def _mine(r: Row) -> bool:
         return (str(r.get("take_session_id") or "") == take_id
@@ -93,8 +106,21 @@ def lock(rows: list[Row], *, take_id: str, part_id: str, locked: bool,
     out = [dict(r, locked_at=r.get("locked_at") or stamp) if _mine(r)
            else dict(r)
            for r in rows
-           if str(r.get("take_session_id") or "") == take_id]
+           if str(r.get("take_session_id") or "") == take_id
+           or (str(r.get("source_part_id") or "").lower() != part
+               and not _orphan(r))]
     return _renumber(out)
+
+
+# THE FOUR-WORD CAP ON THE SERVER (founder lock 2026-09-30, B3; F1 Repair
+# Plan Phase 5). The client stops a fifth tap; until now every save route took
+# any length. Words saved before the cap are read as they are.
+HELPER_WORDS_MAX = 4
+
+
+def within_cap(phrase: Any) -> bool:
+    """One to four words."""
+    return 0 < len(str(phrase or "").split()) <= HELPER_WORDS_MAX
 
 
 def _flat(text: Any) -> str:
@@ -152,13 +178,24 @@ def project(rows: Any) -> list[Row]:
 
 
 def merge_recording_roots(legacy: list[Row], slide_roots: list[Row]) -> list[Row]:
-    """Slide-level helper words win for every Slide that has any.
+    """Slide-level helper words win for every Paragraph that has any.
 
-    Slides without a slide-level row yet (helper words locked before this
-    table existed) keep the Paragraph-level projection, so nothing already
-    locked disappears on deploy."""
-    covered = {r["slide_index"] for r in slide_roots}
-    kept = [r for r in legacy if r.get("slide_index") not in covered]
+    A Paragraph without a slide-level row yet (helper words locked before
+    this table existed) keeps its Paragraph-level projection, so nothing
+    already locked disappears on deploy -- including a sibling Paragraph on a
+    Slide where another Paragraph has a slide-level row (Phase 5). A legacy
+    row that names no Paragraph is covered by its Slide, as before."""
+    covered_parts = {(r["slide_index"], str(r.get("part_id") or "").lower())
+                     for r in slide_roots if r.get("part_id")}
+    covered_slides = {r["slide_index"] for r in slide_roots}
+
+    def _covered(r: Row) -> bool:
+        part = str(r.get("part_id") or "").lower()
+        if part:
+            return (r.get("slide_index"), part) in covered_parts
+        return r.get("slide_index") in covered_slides
+
+    kept = [r for r in legacy if not _covered(r)]
     return sorted(kept + slide_roots,
                   key=lambda r: int(r.get("slide_index") or 0))
 
@@ -189,6 +226,22 @@ def slide_of_part(snapshot: Any, part_id: str) -> Optional[int]:
     return None
 
 
+def parts_on_slide(snapshot: Any, slide: int) -> Optional[set]:
+    """The lower-case ids of the Paragraphs on `slide` in the core snapshot,
+    or None when the snapshot cannot say."""
+    payload = snapshot.get("payload") if isinstance(snapshot, Mapping) else None
+    if not isinstance(payload, Mapping):
+        return None
+    parts, pieces = payload.get("parts"), payload.get("pieces")
+    if (not isinstance(parts, list) or not isinstance(pieces, list)
+            or len(parts) != len(pieces)):
+        return None
+    return {str(part.get("id") or "").lower()
+            for part, piece in zip(parts, pieces)
+            if isinstance(part, Mapping) and isinstance(piece, Mapping)
+            and piece.get("slide_index") == slide and part.get("id")}
+
+
 def _apply(database: Any, arc_id: str, user_id: str, part_id: str,
            change) -> None:
     snapshot = database.get_ideal_text_document_core(arc_id, user_id)
@@ -197,7 +250,7 @@ def _apply(database: Any, arc_id: str, user_id: str, part_id: str,
         return
     rows = [r for r in (database.get_slide_helper_words(arc_id, user_id) or [])
             if r.get("slide_index") == slide]
-    after = change(rows)
+    after = change(rows, parts_on_slide(snapshot, slide))
     if after != rows:
         database.replace_slide_helper_words(arc_id, user_id, slide, after)
 
@@ -207,8 +260,8 @@ def record_pick(database: Any, arc_id: str, user_id: str, part_id: str,
     """Best-effort: mirror a Paragraph pick onto its Slide."""
     try:
         _apply(database, arc_id, user_id, part_id,
-               lambda rows: pick(rows, take_id=take_id, part_id=part_id,
-                                 phrase=phrase))
+               lambda rows, _live: pick(rows, take_id=take_id,
+                                        part_id=part_id, phrase=phrase))
     except Exception as error:
         logger.warning("slide helper words pick failed arc=%s part=%s: %s",
                        arc_id, part_id, error)
@@ -219,8 +272,9 @@ def record_lock(database: Any, arc_id: str, user_id: str, part_id: str,
     """Best-effort: mirror a Paragraph lock onto its Slide."""
     try:
         _apply(database, arc_id, user_id, part_id,
-               lambda rows: lock(rows, take_id=take_id, part_id=part_id,
-                                 locked=locked))
+               lambda rows, live: lock(rows, take_id=take_id,
+                                       part_id=part_id, locked=locked,
+                                       live_parts=live))
     except Exception as error:
         logger.warning("slide helper words lock failed arc=%s part=%s: %s",
                        arc_id, part_id, error)

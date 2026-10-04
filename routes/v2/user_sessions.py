@@ -41,6 +41,7 @@ from services.snippet_values import resolve_all
 from services.take_repository import TakeHasLineageError
 from services.owner_feedback_answers import owner_answers
 from services.take_feedback_responses import album_routing_for
+from services.accepted_rewrite import text_update_for_answer
 from services.practice_adoption import (
     ANSWERS as _PRACTICE_ANSWERS,
     helper_words_from_practice,
@@ -1601,9 +1602,7 @@ def v2_post_take_feedback_response(take_session_id):
                 db, row=row, arc_id=arc_id, owner_user_id=str(request.user_id))
             from services.voice_album import refresh_voice_album
             refresh_voice_album(arc_id, database=db)
-        # A JUDGEMENT IS ALWAYS ANSWERED (founder 2026-09-29): the follow-up
-        # matrix decides what the sheet may show next and sends the bookmark
-        # to the coach with its kind. Never fails the save.
+        # A JUDGEMENT IS ALWAYS ANSWERED (founder 2026-09-29; 24f matrix).
         follow_up = "none"
         if row["feedback_family"] == "confident_voice" and row.get("snippet_id"):
             from services.judgement_follow_up import follow_up_for_judgement
@@ -1617,6 +1616,8 @@ def v2_post_take_feedback_response(take_session_id):
             "feedback_family": row["feedback_family"],
             "response": row["response"],
             "follow_up": follow_up,
+            **text_update_for_answer(  # 29b P1-1: the accepted rewrite's Paragraph
+                db, row, arc_id, str(request.user_id), str(take_session_id)),
         }), 200
     except Exception as e:
         logger.error("take feedback response failed take=%s: %s",

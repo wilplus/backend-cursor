@@ -74,4 +74,8 @@ def validate_rooting_phrase(
             or text[start:end] != phrase
             or _MARKER_RE.search(phrase)):
         return None
+    # The four-word cap on the server (B3; F1 Repair Plan Phase 5).
+    from services.slide_helper_words import within_cap
+    if not within_cap(phrase):
+        return None
     return {"text": phrase, "start": start, "end": end}
