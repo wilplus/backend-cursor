@@ -204,6 +204,10 @@ def test_every_save_route_checks_the_cap():
     from pathlib import Path
     root = Path(__file__).resolve().parents[1]
     explore = (root / "routes/v2/explore_ideal_text.py").read_text()
-    assert explore.count("within_cap(") == 2
+    assert explore.count("within_cap(") == 1
+    from services.rooting_phrase import validate_rooting_phrase
+    text = "one two three four five"
+    assert validate_rooting_phrase(text, "one two three four", 0, 18)
+    assert validate_rooting_phrase(text, text, 0, len(text)) is None
     practice = (root / "services/practice_adoption.py").read_text()
     assert "within_cap(words)" in practice

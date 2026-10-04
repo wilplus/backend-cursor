@@ -2112,8 +2112,7 @@ def v2_explore_set_part_root(arc_id, part_id):
             from services.rooting_phrase import validate_rooting_phrase
             valid = validate_rooting_phrase(
                 target.get("text"), phrase, start, end)
-            from services.slide_helper_words import within_cap
-            if valid is None or not within_cap(valid.get("text")):
+            if valid is None:
                 return jsonify({
                     "code": "INVALID_ROOT_PHRASE",
                     # "locked" dropped 2026-09-25, founder sign-off.

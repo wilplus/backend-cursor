@@ -168,7 +168,7 @@
   "services/user_media_storage.py": 2,
   "services/user_patterns.py": 1,
   "services/verbal_cues.py": 1,
-  "services/voice_album.py": 4,
+  "services/voice_album.py": 2,
   "services/voice_album_history.py": 8,
   "services/voice_album_practice_queue.py": 4,
   "services/voice_confidence.py": 3,
