@@ -850,6 +850,18 @@ def test_a_signed_move_rides_the_served_rewrite_row():
 
 
 # ── CLOSE-OUT AUDIT 2026-10-04: V3 is never silenced or stood in for ──────
+def _v3_block(db, *, deps=None):
+    """The block with the V3 service on. The flag is patched where the block
+    reads it (this file's `Config`, as `_block` does), and the service switch
+    at its one function: another test reloads `config`, after which
+    `from config import Config` inside a call names a different class from
+    the one imported here (test order must not matter)."""
+    with patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", True), \
+            patch("services.coach_guidance_delivery.runtime_is_enabled",
+                  return_value=True):
+        return build_changes_block(ARC, DOC, deps=deps or _deps(db))
+
+
 def _replace_sug_db():
     return FakeDB(sugs={S2: {"kind": "replace", "trigger": "polish",
                              "replacement_text": "And then we launched it fast.",
@@ -859,10 +871,9 @@ def _replace_sug_db():
 def test_a_failure_on_the_way_to_v3_serves_no_v2_rows():
     """The session read, the document and the binding ran outside the guard,
     so a raise there left V2's rows serving. It is V3 failing this Take."""
-    with patch.object(Config, "MLC3_SERVICE_ENABLED", True), \
-            patch("services.ideal_text_parts.bind_pieces_to_parts",
-                  side_effect=RuntimeError("binding broke")):
-        out = _block(_replace_sug_db())
+    with patch("services.ideal_text_parts.bind_pieces_to_parts",
+               side_effect=RuntimeError("binding broke")):
+        out = _v3_block(_replace_sug_db())
     assert out["changes"] == []
     assert out["feedback_status"] == {"state": "failed",
                                       "reason": "v3_error:RuntimeError"}
@@ -878,11 +889,10 @@ def test_v2_rows_failing_their_span_check_do_not_silence_v3():
             row["quote"] = "ZZZ"
         return rows
 
-    with patch.object(Config, "MLC3_SERVICE_ENABLED", True), \
-            patch("services.mlc3_first_client_feedback."
-                  "prepare_first_client_feedback",
-                  return_value=V3Unavailable(reason="asked")) as asked:
-        out = _block(db, deps=_deps(db, with_evidence_coordinates=corrupt_spans))
+    with patch("services.mlc3_first_client_feedback."
+               "prepare_first_client_feedback",
+               return_value=V3Unavailable(reason="asked")) as asked:
+        out = _v3_block(db, deps=_deps(db, with_evidence_coordinates=corrupt_spans))
     assert asked.called
     assert out["changes"] == []
     assert out["feedback_status"] == {"state": "failed", "reason": "asked"}
