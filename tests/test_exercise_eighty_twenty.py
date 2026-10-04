@@ -276,3 +276,50 @@ class PipelineOrderTests(unittest.TestCase):
         run._v3_exercise_offer = lambda: taken.append("v3")
         run._practice_offer()
         self.assertEqual(taken, ["v3"])
+
+
+class EveryMomentCanBePractisedTests(unittest.TestCase):
+    """F1 Repair Plan Phase 4 (founder lock 2026-09-30, B6): the practice
+    cannot start without the moment's evidence coordinates, which only the
+    exercise steps used to ground. A praise moment -- read confident, so no
+    library video -- recorded and then went nowhere."""
+
+    def _confident(self):
+        row = _snippet(id="snip-v3")
+        row["metrics"] = {**row["metrics"], "voice_confidence": {
+            **row["metrics"]["voice_confidence"], "score": 0.9}}
+        return row
+
+    def test_a_praise_moment_is_grounded_without_an_exercise(self):
+        rows = _attach_v3(_Db(snippet=self._confident()))
+        self.assertEqual(_offers(rows), {})
+        for row in rows:
+            self.assertEqual(row["evidence"], _EVIDENCE)
+
+    def test_a_moment_ground_cannot_prove_is_served_as_it_was(self):
+        rows = _attach_v3(_Db(snippet=self._confident()), ground=lambda row: None)
+        self.assertTrue(all("evidence" not in row for row in rows))
+
+    def test_a_failing_ground_never_loses_the_item(self):
+        def boom(_row):
+            raise RuntimeError("no pieces")
+        rows = cvp._ground_every_moment(
+            [{"id": "a", "source": "confident_voice", "snippet_id": "s"}],
+            ground=boom)
+        self.assertEqual(rows, [{"id": "a", "source": "confident_voice",
+                                 "snippet_id": "s"}])
+
+    def test_only_confident_voice_moments_with_a_clip_are_grounded(self):
+        rows = cvp._ground_every_moment(
+            [{"id": "r", "source": "wording", "snippet_id": "s"},
+             {"id": "c", "source": "confident_voice"}],
+            ground=lambda row: dict(_EVIDENCE))
+        self.assertTrue(all("evidence" not in row for row in rows))
+
+    def test_an_exercise_moment_keeps_its_own_coordinates(self):
+        own = {"project_id": "arc", "span": {"start": 1, "end": 2}}
+        rows = cvp._ground_every_moment(
+            [{"id": "a", "source": "confident_voice", "snippet_id": "s",
+              "evidence": own}],
+            ground=lambda row: dict(_EVIDENCE))
+        self.assertIs(rows[0]["evidence"], own)

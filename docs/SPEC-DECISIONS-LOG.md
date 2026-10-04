@@ -1208,3 +1208,30 @@ three.").**
    appends a newer revision, so a locked Paragraph would have read unlocked
    after Take 2. 0416 reads `ideal_text_part.locked_at`, as every bundle
    read already did.
+
+**N34 · Phase 4 (first half): practice that saves, starts and is offered
+honestly (founder 2026-10-04, "Accept phase four.").**
+1. **Attempt 4 and attempt 10 save (0417).** 0279's inline
+   `CHECK (attempt_index BETWEEN 1 AND 3)` on
+   `confident_voice_practice_attempt` outlived the route's own cap (D2,
+   2026-09-30): the fourth attempt was refused by the database. It is
+   replaced by `CHECK (attempt_index >= 1)`.
+2. **A refused save leaves no recording.** The route uploads before it
+   records; `record_practice_attempt` now deletes the uploaded object
+   (verified by its bytes) on every refusal or exception. The orphan sweep
+   never saw this path's objects, despite the comments that said it would.
+3. **Every moment can be practised.** The practice cannot start without the
+   moment's evidence coordinates, and only moments with an attached
+   exercise were grounded, so practise on a praise, rewrite or plain card
+   recorded and went nowhere. Every Confident Voice moment with a clip is
+   now grounded (`_ground_every_moment`); coordinates only. Practice on a
+   praise card passes on the speaker's own Yes or In-between, as every
+   practice does (`practice_adoption.outcome`).
+4. **Practise follows the choice (frontend, wiring only).** With
+   Personalised practice off, the paragraph sheet offers no Practise and no
+   "Accept and practise" (its one button promises the practise); its
+   footer is Next. A plain "Accept" for these speakers would be new copy
+   and waits on the founder.
+5. **The attempt label counts on.** The Feedback sheet's recording screen
+   read "Attempt 3" from the third attempt on (a clamp on a remaining count
+   that stops at zero); it now numbers the next after those saved.

@@ -293,7 +293,11 @@ CREATE TABLE public.confident_voice_practice_attempt (
     coach_confidence_decision TEXT NULL,
     -- Released (add_confident_voice_practice.sql:117); 0391 reads the same
     -- coach's blind rating of the original.
-    coach_confidence_decided_by UUID NULL
+    coach_confidence_decided_by UUID NULL,
+    -- Released (add_confident_voice_practice.sql:103) with its inline 1..3
+    -- CHECK, which 0417 replaces. The DEFAULT is the rehearsal's only, so
+    -- the older fixtures that insert only ids still do.
+    attempt_index INTEGER NOT NULL DEFAULT 1 CHECK (attempt_index BETWEEN 1 AND 3)
 );
 -- The coach's blind ratings, as released (add_confidence_labels.sql plus
 -- add_state_generic_ratings.sql), narrowed to the columns 0391 reads.
