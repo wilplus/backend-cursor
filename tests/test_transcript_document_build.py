@@ -208,3 +208,53 @@ class BuildTranscriptDocumentPins(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ARevisitedSlideIsStillOneSlide(unittest.TestCase):
+    """Founder 2026-10-04 ("A: join their slide"). Recording against the
+    default deck the founder went Slide 1 -> 2 -> 1 -> 2 -> 3; the document
+    came out with its slides going backwards and the page fell back to one
+    unlinked "Your talk" block. Words said on a slide on a return visit now
+    join that slide, after what was already said on it."""
+
+    def _doc(self, snips):
+        return build("arc", database=Db(snips))
+
+    def test_the_document_is_in_slide_order_with_every_word_kept(self):
+        doc = self._doc([
+            snip("a", 0, "opening the first slide", slide=0),
+            snip("b", 1000, "the second slide begins", slide=1),
+            snip("c", 2000, "back to the first slide", slide=0),
+            snip("d", 3000, "the second slide again", slide=1),
+            snip("e", 4000, "the third slide closes", slide=2),
+        ])
+        slides = [p["slide_index"] for p in doc["paragraphs"]]
+        self.assertEqual(slides, sorted(slides))
+        self.assertEqual(sorted(set(slides)), [0, 1, 2])
+        self.assertEqual(len(doc["paragraphs"]), 3)
+        text = doc["text"].lower()
+        # Inside a slide the words keep the order they were said in.
+        self.assertLess(text.index("opening the first slide"),
+                        text.index("back to the first slide"))
+        self.assertLess(text.index("back to the first slide"),
+                        text.index("the second slide begins"))
+        self.assertLess(text.index("the second slide begins"),
+                        text.index("the second slide again"))
+        for words in ("opening the first slide", "the second slide begins",
+                      "back to the first slide", "the second slide again",
+                      "the third slide closes"):
+            self.assertIn(words, text)
+        # Every piece still points at the slide it was spoken on.
+        self.assertEqual(
+            [(p["snippet_id"], p["slide_index"]) for p in doc["pieces"]],
+            [("a", 0), ("c", 0), ("b", 1), ("d", 1), ("e", 2)])
+
+    def test_a_talk_with_no_slide_information_stays_as_spoken(self):
+        doc = self._doc([
+            snip("a", 0, "first words"),
+            snip("b", 1000, "then more words"),
+        ])
+        self.assertEqual([p["slide_index"] for p in doc["paragraphs"]],
+                         [None])
+        self.assertLess(doc["text"].lower().index("first words"),
+                        doc["text"].lower().index("then more words"))
