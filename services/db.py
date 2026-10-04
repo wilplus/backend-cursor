@@ -8181,6 +8181,50 @@ class DatabaseService:
         logger.warning("upsert_user_ideal_edit is retired; use CAS writer")
         return False
 
+    def get_served_v3_rewrite(
+        self, take_session_id: str, candidate_key: str,
+    ) -> Optional[dict]:
+        """The selected V3 rewrite this Take served under `candidate_key`:
+        ``{source_ideal_part_id, generated_output}`` from the newest freeze,
+        or None. Read-only (F1 Repair Plan Phase 4, P1-1): the accepted words
+        come from what was served, never from the browser."""
+        if not take_session_id or not candidate_key:
+            return None
+        try:
+            memberships = (
+                self.client.table("feedback_v3_memberships")
+                .select("id, frozen_at")
+                .eq("take_id", str(take_session_id))
+                .order("frozen_at", desc=True)
+                .execute().data or [])
+            for membership in memberships:
+                items = (
+                    self.client.table("feedback_v3_membership_items")
+                    .select("candidate_id, source_ideal_part_id")
+                    .eq("membership_id", str(membership.get("id")))
+                    .eq("candidate_key", str(candidate_key))
+                    .eq("feedback_family", "rewrite_clarity")
+                    .eq("selected", True)
+                    .limit(1).execute().data or [])
+                if not items:
+                    continue
+                candidates = (
+                    self.client.table("feedback_candidates")
+                    .select("generated_output")
+                    .eq("id", str(items[0].get("candidate_id")))
+                    .limit(1).execute().data or [])
+                if not candidates:
+                    return None
+                return {
+                    "source_ideal_part_id": items[0].get("source_ideal_part_id"),
+                    "generated_output": candidates[0].get("generated_output") or {},
+                }
+            return None
+        except Exception as e:
+            logger.warning("served V3 rewrite unreadable take=%s: %s",
+                           take_session_id, e, exc_info=True)
+            return None
+
     def compare_and_set_user_ideal_edit(
         self, *, owner_user_id: str, arc_id: str,
         source_document_version: int,

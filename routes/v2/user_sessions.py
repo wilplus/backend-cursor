@@ -1596,6 +1596,12 @@ def v2_post_take_feedback_response(take_session_id):
             ),
         )
 
+        # AN ACCEPTED REWRITE IS A NEW PARAGRAPH VERSION (contract 29b,
+        # clause 16; F1 Repair Plan Phase 4, P1-1). See the service.
+        from services.accepted_rewrite import text_update_for_answer
+        text_update = text_update_for_answer(
+            db, row, arc_id=arc_id, owner_user_id=str(request.user_id),
+            take_session_id=str(take_session_id))
         if row["feedback_family"] == "confident_voice" and row.get("snippet_id"):
             _route_owner_voice_album(
                 db, row=row, arc_id=arc_id, owner_user_id=str(request.user_id))
@@ -1617,6 +1623,7 @@ def v2_post_take_feedback_response(take_session_id):
             "feedback_family": row["feedback_family"],
             "response": row["response"],
             "follow_up": follow_up,
+            **text_update,
         }), 200
     except Exception as e:
         logger.error("take feedback response failed take=%s: %s",

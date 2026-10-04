@@ -1235,3 +1235,33 @@ honestly (founder 2026-10-04, "Accept phase four.").**
 5. **The attempt label counts on.** The Feedback sheet's recording screen
    read "Attempt 3" from the third attempt on (a clamp on a remaining count
    that stops at zero); it now numbers the next after those saved.
+
+**N35 · Phase 1 (the window of three) and Phase 4 B (an accepted rewrite is a
+Paragraph version), founder 2026-10-04 ("Accept phase four"; "keep going
+with all the next phases ... and merge along the way").**
+1. **The window finds the machine's read.** The score map was keyed by the
+   bundle candidate's uuid and looked up by the served row's id (its
+   candidate key), so every lookup missed and the window filled in text
+   order. It is keyed by (family, candidate key) and by the uuid
+   (`window_scores`, `window_score`).
+2. **Never three of one colour, at any count.** The three-or-fewer shortcut
+   and the unscored fallback both skipped the two-per-colour rule; both are
+   gone (`feedback_window.choose_open_moments`).
+3. **Slide-saved words count as saved.** A locked paragraph whose helper
+   words live on its Slide row (from practice or an earlier Take) leaves the
+   window like one with its own words (`saved_paragraphs`).
+4. **An accepted rewrite writes its Paragraph (P1-1, 29b, clause 16).** After
+   the owner's `apply_suggestion` on a V3 rewrite, the server takes the
+   quote and the proposed words from the V3 freeze that served the item
+   (the selected membership item names the Paragraph; its candidate holds
+   the words), replaces the quote in that Paragraph and writes the result
+   through `compare_and_set_user_ideal_edit_v1`, which appends the
+   `owner_part_text_updated` revision and stores the owner edit; the next
+   Take supersedes it (Q5 A, clause 9). The decision-ledger star is no
+   longer sent for these items. Refused, with the reason in `text_update`
+   and no word changed: a Paragraph with helper words or a lock
+   (`protected`), a quote no longer in the Paragraph or Paragraphs that do
+   not join to the text (`stale`), an item the freeze never served
+   (`not_found`), any writer failure (`failed`). The writer needs the
+   speaker's MLC-3 enrollment, which follows the Personalised-practice
+   choice -- as every text edit already does.

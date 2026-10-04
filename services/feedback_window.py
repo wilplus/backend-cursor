@@ -123,8 +123,10 @@ def choose_open_moments(
     zero being the confident side; a moment with no score counts as
     unreadable.
     """
-    if len(moments) <= WINDOW:
-        return list(moments)
+    # NO SHORTCUT FOR THREE OR FEWER (F1 Repair Plan Phase 1). Returning
+    # every moment when there were three or fewer skipped the two-per-colour
+    # rule, so three greens could show. The fill below already returns up to
+    # three, at most two of one colour.
     scored = [(row, score_of(row)) for row in moments]
     confident, weak = _sides(scored)
     slots = _Slots()
@@ -132,12 +134,20 @@ def choose_open_moments(
     slots.take("weak", weak)
     _fill_from_the_ends(slots, confident, weak)
     # Unreadable moments, weak with nothing to practise, or a moment the
-    # bundle carries no score for, in text order.
+    # bundle carries no score for, in text order. A coloured moment with no
+    # score still carries its bar, so it still counts against its colour:
+    # never three of one colour, scored or not.
     for row, s in scored:
         if slots.full():
             break
-        if row not in slots.chosen and (_colour(row) is None or s is None):
-            slots.chosen.append(row)
+        if row in slots.chosen or not (_colour(row) is None or s is None):
+            continue
+        side = _colour(row)
+        if side is not None:
+            if slots.taken[side] >= PER_COLOUR:
+                continue
+            slots.taken[side] += 1
+        slots.chosen.append(row)
     kept = {id(row) for row in slots.chosen}
     return [row for row in moments if id(row) in kept]
 
