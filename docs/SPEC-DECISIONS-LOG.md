@@ -1289,3 +1289,34 @@ going with all the next phases ... and merge along the way").**
    as final, so helper words can save while their lock does not. Pinned by
    `tests/test_the_undecided_lock_gate.py`; left as it stands until the
    founder decides whether it goes.
+
+**N37 · Phase 6 (judgement after feedback, 24e-1) and Phase 7 (landing after
+a Take, J1 J2 J4 J5), frontend, founder 2026-10-04 ("keep going with all the
+next phases ... and merge along the way").**
+1. **The sheet opens on the feedback** (24e-1): a waiting moment opens in the
+   paragraph's own sheet on the card the machine's read chooses -- the
+   praise on a confident moment (Next then asks the judgement), the exercise
+   matched to the clip, else the rewrite, else the moment, on one that needed
+   work (Practise, or Skip, which settles the moment unanswered through the
+   `skipped` event; a rewrite the speaker can accept keeps 29b's "Accept and
+   practise" with "Keep my words"). Practise opens the card shown. The open is reported once (`opened`, with what was on
+   screen), which raises the coach request under the machine's kind (0408).
+   The card is chosen on the page from the served items by the same matrix as
+   `decide_at_open`, so it never waits on the network; the open's
+   `follow_up` is recorded, not read. Only strings the design and the locks
+   already hold. `FEEDBACK_FIRST` is the page's one switch back.
+2. **A Yes shows the praise only** (24f): a Yes on a moment read weak no
+   longer falls through to the rewrite.
+3. **No made-up answer**: a practice started before any judgement sends no
+   `original_user_answer`, instead of a "no" the speaker never gave.
+4. **Landing after a Take** (J1, J4): the text lands with "Review feedback"
+   and the next Take both visible, "See next steps" as the quiet link; the
+   walk's end card offers the next Take as its one button with "Back to the
+   text" as its link. The button reads "Record Take 2" after Take 1 and
+   counts on after that, with its existing labels. J2: the Lounge no longer
+   opens the text by itself when a Take settles. J5: the journey bubble no
+   longer offers Presentation Mode (the ⋯ menu stays its only door).
+5. **Open for the founder**: the J2 Lounge card that reads "working on your
+   text" and turns into "Review feedback" is not built -- the founder asked,
+   2026-08, for the working-on-your-text block to be deleted (flowCopy), so
+   bringing it back is the founder's call.
