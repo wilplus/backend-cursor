@@ -115,6 +115,23 @@ def _emit(progress: ProgressFn, stage: str, percent: int,
         logger.warning("analysis progress callback failed: %s", pe)
 
 
+def _document_actor(session_id: str, user_id: Optional[str]) -> str:
+    """Whose document this Take's bake is for: the account, else -- a guest
+    Take (Phase 0.6/2) -- its owner principal, the actor the publisher and
+    the guest's own read both use. Empty only when neither is known, which
+    makes the bake a no-op exactly as before."""
+    if user_id:
+        return str(user_id)
+    try:
+        from services.db import db
+        session = db.v2_get_session_by_id(str(session_id)) or {}
+    except Exception:  # noqa: BLE001 -- no bake, the reader computes live
+        logger.warning("bake actor read failed session=%s", session_id,
+                       exc_info=True)
+        return ""
+    return str(session.get("owner_principal_id") or "")
+
+
 def _run_full_analysis_impl(
     *,
     session_id: str,
@@ -563,7 +580,7 @@ def _run_full_analysis_impl(
     # inside it, because whether a bake is worth making is the bake's own
     # question.
     from services.ideal_text_feedback_bake import enqueue_bake
-    enqueue_bake(arc_id, user_id, recording_kind)
+    enqueue_bake(arc_id, _document_actor(session_id, user_id), recording_kind)
     # Training copies (SPEC-training-corpus P3). Same shape as the bake: one
     # unbranched call that cannot raise, every condition inside it. A code
     # constant keeps it a no-op until P5.

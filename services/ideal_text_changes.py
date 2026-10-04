@@ -1347,20 +1347,26 @@ class _ChangesRun:
             parts=self.deps.locked_parts(
                 self.arc_id, str(self.user_id), self.served_text),
         )
-        _service_rows = prepare_first_client_feedback(
-            database=self.deps.first_client_repository,
-            session=_service_session,
-            take_document=_service_doc,
-            served_text=self.served_text,
-            snippets=(
-                db.get_snippets_by_session(_arm_sid) or []
-                if _arm_sid else []
-            ),
-            suggestions=self.user_sugs,
-            feedback_candidates=self.feedback_exposure,
-            owner_user_id=str(self.user_id),
-            learning=self.v3_learning,
-        )
+        try:
+            _service_rows = prepare_first_client_feedback(
+                database=self.deps.first_client_repository,
+                session=_service_session,
+                take_document=_service_doc,
+                served_text=self.served_text,
+                snippets=(
+                    db.get_snippets_by_session(_arm_sid) or []
+                    if _arm_sid else []
+                ),
+                suggestions=self.user_sugs,
+                feedback_candidates=self.feedback_exposure,
+                owner_user_id=str(self.user_id),
+                learning=self.v3_learning,
+            )
+        except Exception as error:  # noqa: BLE001 -- reported, never swallowed
+            logger.warning("feedback v3 raised arc=%s take=%s: %s",
+                           self.arc_id, _arm_sid, error, exc_info=True)
+            _service_rows = V3Unavailable(
+                reason=f"v3_error:{type(error).__name__}")
         # THREE OUTCOMES, NOT TWO (contract 24h, founder 2026-09-18).
         #
         # A typed failure means V3 owned this Take and could not produce it.
@@ -1378,14 +1384,18 @@ class _ChangesRun:
         # wiping the working feedback and clearing the styles. Nothing at this
         # call site can tell an empty result from a deliberate one, and the
         # cost of guessing wrong is the user seeing nothing at all.
-        if isinstance(_service_rows, V3Unavailable):
-            self.v3_failure = _service_rows.reason
-        elif _service_rows:
-            self.changes = _service_rows
+        # Superseded by Phase 2 (2026-10-04): the comment above is history.
+        # What serves now is decided in one place -- see `v3_outcome`.
+        from services.coach_guidance_delivery import runtime_is_enabled
+        self.changes, self.v3_failure, self.v3_replaced_changes = (
+            v3_outcome(_service_rows, self.changes,
+                       service_on=runtime_is_enabled()))
+        if self.v3_failure or self.v3_replaced_changes or _service_rows == []:
+            # V3 answered (rows, honest empty, or failure): V2's styles were
+            # chosen beside V2's rows and go with them. The clips attached
+            # upstream belonged to the rows just discarded; `execute`
+            # re-attaches them to V3's -- see the note at that call.
             self.styles = []
-            # The clips attached upstream belonged to the rows just discarded.
-            # `execute` re-attaches them to these — see the note at that call.
-            self.v3_replaced_changes = True
 
     def _catalogue(self) -> None:
         """One signed sentence per pattern, read before the sheet's constant
@@ -1497,6 +1507,37 @@ class _ChangesRun:
             if self.v3_failure else {}
         )
         return {"changes": changes, **_style, **_v3}
+
+
+def v3_outcome(service_rows, legacy_changes, *, service_on: bool):
+    """What a Take serves once V3 has been asked: ``(changes, failure,
+    replaced)``.
+
+    V3 FOR EVERY SPEAKER, AND NO STAND-IN (F1 Repair Plan Phase 2, founder
+    N29 "Every speaker"; contract 24h: V2 is superseded history, never a
+    silent substitute). Until now a typed failure was recorded and V2's rows
+    were served anyway, ``None`` served V2 as "the legacy answer", and an
+    empty V3 result fell through to V2 too.
+
+      * rows: V3's rows serve.
+      * ``[]``: V3's honest answer -- no valid block -- serves no rows (L2:
+        an honest empty lane shows no card).
+      * a typed failure, or ``None`` while the service is on (V3 could not
+        even be asked -- with every speaker in, a broken state, not an
+        outsider): no rows, and the failure is reported; the page shows its
+        notice and its retry.
+      * ``None`` with MLC3_SERVICE_ENABLED off: a deliberate switch read in
+        the boot log, not a silent swap -- the legacy answer serves.
+    """
+    from services.mlc3_first_client_feedback import V3Unavailable
+    if service_rows is None and not service_on:
+        return legacy_changes, "", False
+    if isinstance(service_rows, V3Unavailable):
+        return [], service_rows.reason, False
+    if service_rows is None:
+        return [], "v3_not_applicable", False
+    rows = list(service_rows)
+    return rows, "", bool(rows)
 
 
 def build_changes_block(arc_id, served_text, user_id="", take_session_id="",

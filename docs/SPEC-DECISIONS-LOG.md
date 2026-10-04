@@ -1160,3 +1160,28 @@ said on it in that Take, in spoken order. Pieces are still cut per contiguous
 visit, so every audio span stays exact. A talk with no slide information
 stays exactly as spoken. `services/transcript_document.py`
 `_one_run_per_slide`.
+
+**N32 · Phase 2: V3 for every speaker, failing visibly (founder 2026-10-04,
+"I accept phase two").**
+1. **The allowlist is off (0415).** `require_mlc3_service_principal_v1`
+   consults `mlc3_service_principal_allowlist` only while
+   `ring_settings.v3_requires_allowlist` is true (default false) -- the
+   switch back without a deploy. The pending-deletion check always holds.
+2. **No stand-in.** A typed V3 failure, an exception inside V3, or no V3
+   answer while MLC3_SERVICE_ENABLED is on serves NO rows and reports
+   `feedback_status: failed`; an empty V3 result is V3's honest answer and
+   serves no rows. Only MLC3_SERVICE_ENABLED off (a deliberate switch) keeps
+   the legacy answer (`services/ideal_text_changes.v3_outcome`).
+3. **The page says so.** Retried once, then "We couldn't prepare your
+   feedback this time. Your text is saved." with "Try again" (founder
+   sign-off 2026-10-04).
+4. **Coverage per Take is written down**: one `feedback_v3_coverage` log
+   line per served Take against its 70/80/100% floor (24c).
+5. **A guest's first save asks to sign up** (founder 2026-10-04, "Ask to
+   sign up"): reading the Feedback is free; answering a moment, picking
+   helper words or practising opens the sign-up dialog. Guest saves that
+   follow the Take into the account are not built (six database checks and
+   append-only evidence would need a claim-time exception); revisit only on
+   the founder's word.
+6. **A guest Take is baked for its reader** (the bake's actor is the
+   account, else the Take's owner principal).

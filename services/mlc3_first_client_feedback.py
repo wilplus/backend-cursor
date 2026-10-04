@@ -516,6 +516,32 @@ def _note_learning(
         inventory.get("block_partition_version") or "")
 
 
+def _log_coverage(take_id: Any, take_index: Any, frame: Any) -> None:
+    """Coverage per Take, written down (contract 24c; F1 Repair Plan Phase 2).
+
+    `_slide_coverage` has computed it on every frame since 2026-09-18 and
+    nothing ever read it, so the 70/80/100% ladder could not be checked. One
+    structured line per served Take: Slides that formed at least one valid
+    block, how many carry an item, the floor for this Take, and the reasons
+    on every uncovered Slide. Internal only -- never surfaced (AC-9, 24i).
+    """
+    coverage = frame.get("coverage") if isinstance(frame, dict) else None
+    if not isinstance(coverage, dict):
+        logger.info("feedback_v3_coverage take=%s take_index=%s unknown",
+                    take_id, take_index)
+        return
+    logger.info(
+        "feedback_v3_coverage take=%s take_index=%s assessable=%s covered=%s "
+        "ratio=%s floor=%s meets_floor=%s uncovered=%s",
+        take_id, take_index, coverage.get("assessable_slides"),
+        coverage.get("covered_slides"), coverage.get("ratio"),
+        coverage.get("required_floor"), coverage.get("meets_floor"),
+        [(item.get("slide_index"), item.get("reasons"))
+         for item in coverage.get("uncovered") or []
+         if isinstance(item, dict)],
+    )
+
+
 def prepare_first_client_feedback(
     *,
     database: Any,
@@ -572,6 +598,7 @@ def prepare_first_client_feedback(
         take_index=take.get("take_index"),
         expected_recording_id=take.get("recording_id"),
     )
+    _log_coverage(take_id, take.get("take_index"), frame)
     inventory_detail: list[str] = []
     inventory = prepare_v3_service_inventory(
         frame=frame,
