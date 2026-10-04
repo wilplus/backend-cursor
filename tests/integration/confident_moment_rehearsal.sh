@@ -508,6 +508,10 @@ hard migrations/a_training_yes_counts_any_later_policy.sql
 # Twice: apply/reapply idempotency.
 hard migrations/an_acceptance_alone_never_displaces_the_account.sql
 hard migrations/an_acceptance_alone_never_displaces_the_account.sql
+# 0415: the V3 source read stops requiring the allowlist unless
+# ring_settings.v3_requires_allowlist is true; the purge check stays. Twice.
+hard migrations/v3_reaches_every_speaker.sql
+hard migrations/v3_reaches_every_speaker.sql
 
 # R-1 (audit 2026-09-22). 0299 created the two learning-surface tables with
 # the same GRANT ALL TO service_role as 0296, and was never in this chain, so

@@ -1,4 +1,5 @@
 from hashlib import sha256
+from pathlib import Path
 
 from services.feedback_data_contract import build_feedback_exposure_bundle
 from services.mlc3_first_client_feedback import prepare_first_client_feedback
@@ -367,18 +368,12 @@ def test_an_empty_inventory_declines_instead_of_serving_zero_rows(monkeypatch):
     assert rows.reason == "inventory_returned_no_visible_rows"
 
 
-def test_the_caller_treats_an_empty_service_result_as_no_result():
-    """The second line of defence, asserted on the source.
+def test_an_empty_service_result_serves_no_rows():
+    """Phase 2 (founder N29, contract 24h): an empty V3 answer is V3's honest
+    "no valid block" -- it serves no rows, never V2's in its place."""
+    from services.ideal_text_changes import v3_outcome
 
-    `if _service_rows is not None` accepted `[]`. Nothing at that call site can
-    tell an empty V3 answer from a deliberate one, and the cost of guessing
-    wrong is the user seeing no feedback at all — so it tests truthiness.
-    """
-    from pathlib import Path
-
-    source = Path("services/ideal_text_changes.py").read_text(encoding="utf-8")
-    assert "if _service_rows:" in source
-    assert "if _service_rows is not None:" not in source
+    assert v3_outcome([], [{"id": "v2"}], service_on=True) == ([], "", False)
 
 
 # ── no silent fallback (founder 2026-09-18, contract 24h) ──
@@ -484,11 +479,37 @@ def test_the_database_error_stays_in_the_log_and_out_of_the_payload():
 
 
 def test_the_caller_surfaces_the_failure_rather_than_serving_v2():
-    """Asserted on the source: a silent policy swap is the thing 24h forbids,
-    and nothing at runtime can tell you it happened."""
-    from pathlib import Path
+    """A silent policy swap is the thing 24h forbids. Phase 2: a failure, or
+    no answer while the service is on, serves NO rows and names the failure;
+    only a deliberately switched-off service keeps the legacy answer."""
+    from services.ideal_text_changes import v3_outcome
+    from services.mlc3_first_client_feedback import V3Unavailable
 
+    legacy = [{"id": "v2"}]
+    assert v3_outcome(V3Unavailable(reason="source_snapshot_rpc_failed"),
+                      legacy, service_on=True) == (
+        [], "source_snapshot_rpc_failed", False)
+    assert v3_outcome(None, legacy, service_on=True) == (
+        [], "v3_not_applicable", False)
+    assert v3_outcome(None, legacy, service_on=False) == (legacy, "", False)
+    assert v3_outcome([{"id": "v3"}], legacy, service_on=True) == (
+        [{"id": "v3"}], "", True)
     source = Path("services/ideal_text_changes.py").read_text(encoding="utf-8")
-    assert "isinstance(_service_rows, V3Unavailable)" in source
-    assert "self.v3_failure = _service_rows.reason" in source
     assert '"feedback_status"' in source
+
+
+def test_coverage_is_written_down_per_take(caplog):
+    """Contract 24c, F1 Repair Plan Phase 2: one line per served Take."""
+    import logging
+    from services.mlc3_first_client_feedback import _log_coverage
+
+    caplog.set_level(logging.INFO, logger="services.mlc3_first_client_feedback")
+    _log_coverage("take-1", 2, {"coverage": {
+        "assessable_slides": 5, "covered_slides": 4, "ratio": 0.8,
+        "required_floor": 0.8, "meets_floor": True,
+        "uncovered": [{"slide_index": 3, "reasons": ["no_candidate"]}],
+    }})
+    line = caplog.records[-1].getMessage()
+    assert "feedback_v3_coverage take=take-1 take_index=2" in line
+    assert "assessable=5 covered=4 ratio=0.8 floor=0.8 meets_floor=True" in line
+    assert "no_candidate" in line

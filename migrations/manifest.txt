@@ -450,3 +450,4 @@
 0412	a_training_yes_counts_any_later_policy.sql
 0413	a_signup_carries_the_whole_take.sql
 0414	an_acceptance_alone_never_displaces_the_account.sql
+0415	v3_reaches_every_speaker.sql

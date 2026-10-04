@@ -42,7 +42,7 @@ class DarkTests(unittest.TestCase):
     def test_the_analysis_run_calls_it_unbranched_after_the_bake(self):
         from services import analysis_worker
         source = inspect.getsource(analysis_worker._run_full_analysis_impl)
-        bake = source.index("enqueue_bake(arc_id, user_id, recording_kind)")
+        bake = source.index("enqueue_bake(arc_id, _document_actor(session_id, user_id), recording_kind)")
         copy = source.index("enqueue_corpus_copy(session_id, arc_id, user_id)")
         self.assertLess(bake, copy)
         between = source[bake:copy]

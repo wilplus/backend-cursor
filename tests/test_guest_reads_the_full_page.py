@@ -261,3 +261,18 @@ class TheSignUpMigration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AGuestTakeIsBakedForItsReader(unittest.TestCase):
+    """Phase 2: the feedback bake used to be keyed on user_id alone, so a
+    guest Take was never baked; its actor is its owner principal."""
+
+    def test_the_actor_is_the_account_else_the_owner_principal(self):
+        from services import analysis_worker
+        self.assertEqual(analysis_worker._document_actor("s", USER), USER)
+        with patch("services.db.db.v2_get_session_by_id",
+                   return_value={"owner_principal_id": GUEST}):
+            self.assertEqual(analysis_worker._document_actor("s", None), GUEST)
+        with patch("services.db.db.v2_get_session_by_id",
+                   side_effect=RuntimeError("down")):
+            self.assertEqual(analysis_worker._document_actor("s", None), "")
