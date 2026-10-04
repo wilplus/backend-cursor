@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import uuid
+from datetime import date, timedelta
 
 import psycopg2
 import psycopg2.extras
@@ -61,6 +62,13 @@ def _principal(db):
     return str(_one(db, "INSERT INTO public.owner_principals (id, user_id) VALUES (gen_random_uuid(), gen_random_uuid()) RETURNING id"))
 
 
+def _unique_week() -> str:
+    """A release week no other test will draw. `pair_releases` holds one row
+    per (surface, week_start); the old draw (one of 28 January days) made two
+    releases in one run collide about one run in three."""
+    return str(date(1900, 1, 1) + timedelta(days=uuid.uuid4().int % 60000))
+
+
 def _pair(db, principal, *, releasable=True, released=True):
     release = None
     if released:
@@ -68,7 +76,7 @@ def _pair(db, principal, *, releasable=True, released=True):
             INSERT INTO public.pair_releases (release_version, surface, week_start, item_count, storage_bucket,
                 storage_key, manifest, manifest_sha256, file_sha256, signature, signing_key_id)
             VALUES ('pair-release-v1', 'praise_line', %s, 1, 'b', %s, '{}'::jsonb, repeat('a', 64), repeat('b', 64), 'sig', 'k1')
-            RETURNING id""", (f"2001-01-{uuid.uuid4().int % 28 + 1:02d}", f"pair-releases/praise_line/{uuid.uuid4()}/pairs.jsonl")))
+            RETURNING id""", (_unique_week(), f"pair-releases/praise_line/{uuid.uuid4()}/pairs.jsonl")))
     return str(_one(db, """
         INSERT INTO public.feedback_pairs (surface, draft_text, final_text, coach_id, owner_principal_id,
                                            request_id, releasable, release_id, passage_text, consent_state)

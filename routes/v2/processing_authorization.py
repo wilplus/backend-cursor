@@ -9,6 +9,7 @@ from auth import optional_auth
 from routes.v2.blueprint import v2_bp
 from services.create_take import CreateTakeError, resolve_owner_principal
 from services.db import db
+from services.rate_limits import guest_identity_limit
 from services.processing_authorization import (
     ProcessingAuthorizationError,
     ProcessingAuthorizationService,
@@ -161,6 +162,7 @@ def enforce_phase1_processing_gate():
 
 
 @v2_bp.route("/processing-authorization/principal", methods=["POST"])
+@guest_identity_limit
 @optional_auth
 def v2_processing_principal():
     """Resolve an account principal or mint one signed guest principal.

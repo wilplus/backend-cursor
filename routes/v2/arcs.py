@@ -33,6 +33,10 @@ from routes.v2.blueprint import v2_bp
 from routes.v2.common import _resolve_snippet_audio_url
 from services.db import db
 from services.create_take import session_owned_by_principal
+from routes.v2.guest_owner import (
+    require_owner_or_guest,
+    session_actor_id,
+)
 from services.project_ownership import GUEST_OWNER_HEADER
 from services.project_repository import ProjectRepository
 from services.token_prices import price_of as _price_of
@@ -249,10 +253,16 @@ def v2_explore_arc_moments(arc_id):
 
 def _arc_owned_by_caller(arc_id):
     """True iff the arc has a session owned by request.user_id. Returns
-    (owned, sessions) so callers reuse the read."""
+    (owned, sessions) so callers reuse the read.
+
+    A guest Take has no account, only its owner principal; a guest let in by
+    ``require_owner_or_guest`` carries that principal as ``request.user_id``
+    (Phase 0.6), so ``session_actor_id`` matches both. A signed-in caller's id
+    is an auth user id and never equals a principal id."""
     sessions = db.takes.get_arc_sessions(arc_id)
-    owned = any(
-        str(s.get("user_id")) == str(request.user_id) for s in sessions
+    caller = str(request.user_id or "")
+    owned = bool(caller) and any(
+        session_actor_id(s) == caller for s in sessions
     )
     return owned, sessions
 
@@ -763,7 +773,7 @@ def _album_note_json(saved):
 
 
 @v2_bp.route("/explore/arc/<arc_id>/best-presentation", methods=["GET"])
-@require_auth
+@require_owner_or_guest
 def v2_explore_arc_best_presentation(arc_id):
     """Best-Presentation (willab Prompt D) — REPLACES the audit. After the arc's
     3 takes, the user's strongest-supported delivery of each slide is lightly
@@ -1576,7 +1586,7 @@ def v2_explore_arc_feedback(arc_id):
 
 
 @v2_bp.route("/explore/arc/<arc_id>/setup", methods=["GET"])
-@require_auth
+@require_owner_or_guest
 def v2_explore_arc_setup(arc_id):
     """The saved SETUP of a project, so continuing it never re-asks the
     student (founder 2026-07-22, context-aware recording).

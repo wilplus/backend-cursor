@@ -333,13 +333,20 @@ def prepare_ideal_text_presentation(
     take_id: str, actor_id: str, text: str, version: int | None,
     take_count: int, title: str | None, parts: list[dict] | None,
     delivery_mode: str = "production",
-) -> dict:
+) -> dict | None:
     """Freeze the exact Ideal Text document offered to its owner.
 
     Ideal Text is a document-level generation surface, so it deliberately has
     no fabricated transcript span.  The canonical Take remains the immutable
     sample boundary and the browser ACK remains the exposure boundary.
+
+    None for a guest reader (Phase 0.6): a guest's actor IS its owner
+    principal, it has given no learning consent and holds no account, so the
+    page is read and nothing is recorded. An account reader's actor is an
+    auth user id, never a principal id.
     """
+    if actor_id and str(actor_id) == str(owner_principal_id):
+        return None
     if not isinstance(text, str) or not text.strip():
         raise LearningExposureError("ideal text presentation has no document")
     document = {

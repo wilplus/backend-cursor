@@ -1120,3 +1120,31 @@ the founder settled eight questions before the plan
 8. **This session runs each phase** once the founder accepts its prompt,
    merges when green, and audits before writing the next prompt.
 
+
+**N30 · A guest sees the whole page; sign-up stands in front of practise
+(founder 2026-10-04, "Accept phase 0.6").** Recording as a brand-new guest
+on a phone, the founder got plain text: "it makes no sense. You need to show
+the full feedback ... when they click on the text, the bookmark should open,
+the feedback should open. And then when they want to practice, then show you
+need to sign up. That should be the order." F1 Repair Plan Phase 0.6:
+1. **The guest reads its own page.** The Ideal Text page's reads (the core,
+   enrichment, recording roots, the deck, setup, a paragraph's history, the
+   owner's own answers) accept a verified guest owner token as well as an
+   account (`routes/v2/guest_owner.py`). A guest's actor is its owner
+   principal -- the actor the publisher already used for a guest Take -- and
+   a caller matches only Takes whose account, else owner principal, is theirs.
+2. **Sign-up carries the Take (0413).** `claim_guest_owner`'s adopt path (a
+   brand-new account) never gave the guest's Takes the account's `user_id`,
+   so the account got "not found" on its own project. Fixed, already-adopted
+   guests repaired, and the guest's paragraphs move with it so Paragraph
+   identity survives sign-up (L1).
+3. **Practise, Take 2, coach review and Lounge stay account-only.** Writes a
+   guest would make on the page (answering a moment, helper words, edits)
+   stay account-only in this phase; the page asks to sign up at those steps.
+   Opening them to guests rides Phase 2, where V3 starts serving guests --
+   until then a guest Take has no Feedback items to answer.
+4. **Guest identities are rate-limited** (`RATE_LIMIT_GUEST_IDENTITY`,
+   default 10/min, 60/h, per IP) on minting and on guest project creation.
+5. **0414 (Phase 0.5b):** a claimed guest that only accepted the Terms and
+   acquired nothing never displaces an account that holds its own
+   acceptance.

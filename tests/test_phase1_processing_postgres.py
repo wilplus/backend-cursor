@@ -365,6 +365,50 @@ class TestTheAcquirerIsFrozenAtAcquisition:
             SELECT public.resolve_phase1_acquisition_principal_v1(%s, %s)""",
             (account, user_id)) == early
 
+    def test_a_guest_that_only_accepted_never_displaces_the_account(
+            self, db, policy):
+        """0414 (Phase 0.5b). The guest accepted the Terms on a first visit
+        and recorded nothing; the account it signed into accepted on its own.
+        The account's recordings are the account's, under its own receipt."""
+        guest, account = _principal(db, guest=True), _principal(db)
+        user_id = _one(db, "SELECT user_id::text FROM public.owner_principals"
+                           " WHERE id = %s", (account,))
+        _accept(db, policy, guest)
+        _accept(db, policy, account)
+        _claim(db, guest, account, user_id)
+
+        assert _one(db, """
+            SELECT public.resolve_phase1_acquisition_principal_v1(%s, %s)""",
+            (account, user_id)) == account
+
+    def test_a_guest_that_recorded_is_still_the_acquirer(self, db, policy):
+        """The same claim, but the guest acquired a recording first: it stays
+        the acquirer of what it acquired, as before 0414."""
+        guest, account = _principal(db, guest=True), _principal(db)
+        user_id = _one(db, "SELECT user_id::text FROM public.owner_principals"
+                           " WHERE id = %s", (account,))
+        _accept(db, policy, guest)
+        _intake(db, guest)
+        _accept(db, policy, account)
+        _claim(db, guest, account, user_id)
+
+        assert _one(db, """
+            SELECT public.resolve_phase1_acquisition_principal_v1(%s, %s)""",
+            (account, user_id)) == guest
+
+    def test_an_account_without_its_own_receipt_keeps_the_guests(
+            self, db, policy):
+        """No acceptance of the account's own: nothing changes from 0355."""
+        guest, account = _principal(db, guest=True), _principal(db)
+        user_id = _one(db, "SELECT user_id::text FROM public.owner_principals"
+                           " WHERE id = %s", (account,))
+        _accept(db, policy, guest)
+        _claim(db, guest, account, user_id)
+
+        assert _one(db, """
+            SELECT public.resolve_phase1_acquisition_principal_v1(%s, %s)""",
+            (account, user_id)) == guest
+
     def test_an_account_that_was_never_claimed_resolves_to_itself(
             self, db, policy):
         """No claim event, no indirection."""

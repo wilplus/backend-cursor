@@ -11,6 +11,7 @@ from auth import optional_auth, require_auth
 from routes.admin import require_admin
 from routes.v2.blueprint import v2_bp
 from services.db import db
+from services.rate_limits import guest_identity_limit
 from services.project_ownership import (
     GUEST_OWNER_HEADER,
     issue_guest_owner,
@@ -54,6 +55,7 @@ def _existing_guest_principal(repository: ProjectRepository) -> str | None:
 
 
 @v2_bp.route("/projects", methods=["POST"])
+@guest_identity_limit
 @optional_auth
 def v2_create_project():
     """Create the immutable Project before Take 1, signed in or as a guest."""
