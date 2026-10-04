@@ -88,6 +88,45 @@ def test_gate_still_refuses_an_anonymous_caller_with_no_guest_token(
     assert "user_id" not in stubbed_authority
 
 
+def test_a_first_time_guest_mints_an_identity_the_gate_then_accepts(
+    app_client, monkeypatch, enforced, stubbed_authority,
+):
+    """F1 Repair Plan Phase 0.5 (2026-10-03). A brand-new guest met
+    OWNER_REQUIRED on every core route, project creation included, because
+    nothing ever called the mint below. The mint sits outside the gate, and
+    the token it issues is what the gate resolves the guest by."""
+    principals: dict = {}
+
+    def create_guest_owner(self, principal_id, secret_hash):
+        principals[str(principal_id)] = {
+            "id": str(principal_id), "user_id": None,
+            "guest_secret_hash": secret_hash}
+        return OwnerPrincipal(str(principal_id), None, True)
+
+    monkeypatch.setattr(ProjectRepository, "create_guest_owner", create_guest_owner)
+    monkeypatch.setattr(
+        ProjectRepository, "get_principal",
+        lambda self, principal_id: principals.get(str(principal_id)))
+
+    # Before the mint: the closed loop the visitor met.
+    refused = app_client.get("/v2/chat/session-state")
+    assert (refused.get_json() or {}).get("error") == OWNER_REQUIRED
+
+    minted = app_client.post("/v2/processing-authorization/principal")
+    assert minted.status_code == 201
+    body = minted.get_json() or {}
+    token = body.get("guest_owner_token")
+    assert token and body.get("is_guest") is True
+
+    passed = app_client.get(
+        "/v2/chat/session-state",
+        headers={"X-Willab-Guest-Owner": token},
+    )
+    assert (passed.get_json() or {}).get("error") != OWNER_REQUIRED
+    assert stubbed_authority.get("authorized") == (
+        body["owner_principal_id"], "core_service")
+
+
 def test_gate_treats_a_rejected_token_as_anonymous_like_optional_auth_does(
     app_client, monkeypatch, enforced, stubbed_authority,
 ):

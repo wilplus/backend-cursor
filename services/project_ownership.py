@@ -57,3 +57,17 @@ def verify_guest_owner(token: str | None, stored: dict | None) -> str | None:
         return None
     return principal_id if hmac.compare_digest(supplied_hash, stored_hash) else None
 
+
+
+def session_actor_id(session) -> str:
+    """Who owns a Take as an actor: its account, else its guest owner.
+
+    A guest Take carries only ``owner_principal_id``; a guest caller let in by
+    ``routes.v2.guest_owner.require_owner_or_guest`` carries that principal as
+    its id (Phase 0.6). A signed-in caller's id is an auth user id and never
+    equals a principal id, so comparing against this matches only one's own
+    Takes."""
+    if not session:
+        return ""
+    return str(session.get("user_id") or session.get("owner_principal_id")
+               or "")

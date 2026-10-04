@@ -22,8 +22,9 @@ def owner_answers(database: Any, take_session_id: str,
     """The owner's latest answer per feedback item on their own Take.
 
     None when the Take is not theirs (the route answers 404)."""
+    from services.project_ownership import session_actor_id
     session = database.v2_get_session_by_id(str(take_session_id)) or {}
-    if str(session.get("user_id") or "") != str(owner_user_id):
+    if not owner_user_id or session_actor_id(session) != str(owner_user_id):
         return None
     latest: dict = {}
     for row in database.list_take_feedback_self_reports(

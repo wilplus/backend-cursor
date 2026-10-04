@@ -25,6 +25,7 @@ import sentry_sdk
 from flask import jsonify, request
 
 from auth import require_auth
+from routes.v2.guest_owner import require_owner_or_guest
 from config import Config
 from routes.v2.arcs import (
     _arc_owned_by_caller,
@@ -545,7 +546,7 @@ def _ideal_text_pieces(arc_id, served_text, presentation_ref, user_id=None,
 
 
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/core", methods=["GET"])
-@require_auth
+@require_owner_or_guest
 def v2_explore_get_ideal_text_core(arc_id):
     """Strict, read-only cold-open document.
 
@@ -627,7 +628,7 @@ def v2_explore_get_ideal_text_core(arc_id):
 
 
 @v2_bp.route("/explore/arc/<arc_id>/recording-roots", methods=["GET"])
-@require_auth
+@require_owner_or_guest
 def v2_explore_get_recording_roots(arc_id):
     """Live committed roots, bound to the current immutable document.
 
@@ -664,7 +665,7 @@ def v2_explore_get_recording_roots(arc_id):
 
 
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/enrichment", methods=["GET"])
-@require_auth
+@require_owner_or_guest
 def v2_explore_get_ideal_text_enrichment(arc_id):
     """Optional sections bound to one immutable document snapshot."""
     from time import perf_counter
@@ -2054,7 +2055,7 @@ def v2_explore_set_part_helper_words_from_take(arc_id, part_id):
 
 @v2_bp.route("/explore/arc/<arc_id>/parts/<part_id>/history",
              methods=["GET"])
-@require_auth
+@require_owner_or_guest
 def v2_explore_get_part_history(arc_id, part_id):
     """The history behind a Paragraph's bookmark (contract 16): its Slide's
     words Take by Take, and the helper words locked when. Owner only."""

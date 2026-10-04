@@ -17,6 +17,7 @@ import sentry_sdk
 from flask import jsonify, request
 
 from auth import optional_auth, require_auth
+from routes.v2.guest_owner import require_owner_or_guest
 from config import Config
 from routes.admin import is_admin, is_coach
 from routes.phase2_guard import (
@@ -1424,7 +1425,7 @@ def _coach_asked_own_wording(practice) -> bool:
 
 @v2_bp.route("/user/takes/<take_session_id>/feedback-responses",
              methods=["GET"])
-@require_auth
+@require_owner_or_guest
 def v2_get_take_feedback_responses(take_session_id):
     """The owner's own answers on their Take (the answered bookmark, Q19 A)."""
     if not _is_valid_uuid(take_session_id):
