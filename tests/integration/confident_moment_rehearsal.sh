@@ -516,6 +516,9 @@ hard migrations/v3_reaches_every_speaker.sql
 # read takes a Paragraph's lock from its row, not its newest revision. Twice.
 hard migrations/a_take_rewrite_is_a_paragraph_revision.sql
 hard migrations/a_take_rewrite_is_a_paragraph_revision.sql
+# 0417: the practice attempt table's 1..3 cap gives way to >= 1. Twice.
+hard migrations/an_attempt_after_the_third_saves.sql
+hard migrations/an_attempt_after_the_third_saves.sql
 
 # R-1 (audit 2026-09-22). 0299 created the two learning-surface tables with
 # the same GRANT ALL TO service_role as 0296, and was never in this chain, so

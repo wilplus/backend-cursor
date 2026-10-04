@@ -19,8 +19,8 @@ WHAT HAPPENS WHEN REGISTRATION FAILS. The attempt is rolled back and the
 caller is told. That is deliberately the harsh choice: an attempt whose audio
 cannot be accounted for is exactly the state this module exists to prevent,
 and a speaker losing one retake is a far smaller harm than an unreachable
-recording of their voice. The uploaded object is left for
-orphan_audio_cleanup, which is what that sweep is for.
+recording of their voice. The uploaded object is deleted here, before the
+caller answers (Phase 4): the orphan sweep never sees this path's objects.
 """
 from __future__ import annotations
 
@@ -93,6 +93,55 @@ def record_practice_attempt(
     audio_bytes: bytes,
 ) -> Optional[dict]:
     """Insert one attempt and register its recording. Returns the attempt.
+
+    A REFUSED SAVE LEAVES NO RECORDING (F1 Repair Plan Phase 4). The route
+    uploads before it calls this, so every way this can fail -- no principal,
+    a refused insert, a refused registration, an exception -- deletes the
+    object it was handed before answering. Nothing else would: the orphan
+    sweep only reads `processing_orphan_objects`, which this path never
+    wrote, and the purge only reads registered objects.
+    """
+    try:
+        inserted = _record(database, row, practice=practice, bucket=bucket,
+                           audio_bytes=audio_bytes)
+    except Exception:
+        _discard_object(row, bucket, audio_bytes)
+        raise
+    if inserted is None:
+        _discard_object(row, bucket, audio_bytes)
+    return inserted
+
+
+def _discard_object(row: dict, bucket: Optional[str],
+                    audio_bytes: bytes) -> None:
+    """Delete the uploaded recording of an attempt that was not saved.
+    Verified by its bytes, best effort: a failure is logged loudly."""
+    key = str((row or {}).get("storage_path") or "")
+    if not key or not bucket or not audio_bytes:
+        return
+    try:
+        from services.lab_audio_storage import delete_verified_lab_audio_object
+        deleted = delete_verified_lab_audio_object(
+            key, bucket=str(bucket), storage_provider=_provider_for(bucket),
+            expected_sha256=hashlib.sha256(audio_bytes).hexdigest())
+    except Exception as error:
+        logger.error("unsaved practice recording not deleted key=%s: %s",
+                     key, error, exc_info=True)
+        return
+    if not deleted:
+        logger.error("unsaved practice recording not deleted key=%s", key)
+
+
+def _record(
+    database: Any,
+    row: dict,
+    *,
+    practice: Any,
+    bucket: Optional[str],
+    audio_bytes: bytes,
+) -> Optional[dict]:
+    """The insert and the registration; `record_practice_attempt` owns the
+    cleanup of the uploaded object when this returns None or raises.
 
     Returns None when either half fails; the attempt is removed if the
     registration does not land, so no attempt exists whose audio the purge
@@ -168,8 +217,8 @@ def _shadow_verdicts(database: Any, attempt: dict, practice: Any) -> None:
 
 def _undo(database: Any, attempt_id: str) -> None:
     """Best effort. A failure here is logged and nothing more: the caller is
-    already returning an error, and the stored object is picked up by
-    orphan_audio_cleanup, which exists for exactly this."""
+    already returning an error, and `record_practice_attempt` deletes the
+    stored object."""
     if not attempt_id or not hasattr(database, "delete_confident_voice_practice_attempt"):
         return
     try:

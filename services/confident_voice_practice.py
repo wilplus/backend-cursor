@@ -1297,9 +1297,38 @@ def attach_v3_exercise_offer(
     rows = _attach_exercises(
         rows, take_session_id=take_session_id, owner_user_id=owner_user_id,
         database=database, ground=ground)
-    return _annotate_coach_answers(
+    rows = _annotate_coach_answers(
         rows, take_session_id=take_session_id, owner_user_id=owner_user_id,
         database=database, ground=ground)
+    return _ground_every_moment(rows, ground=ground)
+
+
+def _ground_every_moment(rows: list[dict], *, ground: Any) -> list[dict]:
+    """EVERY MOMENT CAN BE PRACTISED (F1 Repair Plan Phase 4; founder lock
+    2026-09-30, B6: "Rewrite, exercise and plain moment all reach these same
+    screens").
+
+    The practice cannot start without the moment's exact evidence
+    coordinates, and V3 rows arrive without them; only the exercise steps
+    above grounded a row, and only when an exercise was attached. So a
+    praise, a rewrite or a plain moment opened the practise, recorded the
+    whole attempt, and then went nowhere. Each Confident Voice row with a
+    clip gets its coordinates here -- the same `ground` the exercise steps
+    use, coordinates only, never a score -- and a row `ground` cannot prove
+    stays as it was."""
+    for row in rows:
+        if (row.get("source") != "confident_voice" or not row.get("snippet_id")
+                or isinstance(row.get("evidence"), dict)):
+            continue
+        try:
+            evidence = ground(row)
+        except Exception as error:  # noqa: BLE001 -- the item still serves
+            _log.warning("moment not grounded snippet=%s: %s",
+                           row.get("snippet_id"), error)
+            continue
+        if isinstance(evidence, dict):
+            row["evidence"] = evidence
+    return rows
 
 
 def _moment_practice(database: Any, take_session_id: str,

@@ -192,6 +192,64 @@ class RecordPracticeAttemptTests(unittest.TestCase):
                     audio_bytes=AUDIO))
 
 
+class ARefusedSaveLeavesNoRecordingTests(unittest.TestCase):
+    """F1 Repair Plan Phase 4: the route uploads before it records, and the
+    orphan sweep never sees this path, so every refusal deletes the object
+    it was handed -- verified by its bytes -- and a saved attempt never."""
+
+    def _run(self, db, **over):
+        with patch("services.lab_audio_storage."
+                   "delete_verified_lab_audio_object",
+                   return_value=True) as delete:
+            result = _record(db, **over)
+        return result, delete
+
+    def _assert_deleted(self, delete):
+        delete.assert_called_once_with(
+            ROW["storage_path"], bucket="willab-audio", storage_provider="r2",
+            expected_sha256=hashlib.sha256(AUDIO).hexdigest())
+
+    def test_a_saved_attempt_keeps_its_recording(self):
+        saved, delete = self._run(_Db())
+        self.assertIsNotNone(saved)
+        delete.assert_not_called()
+
+    def test_a_refused_insert_deletes_the_recording(self):
+        saved, delete = self._run(_Db(insert_ok=False))
+        self.assertIsNone(saved)
+        self._assert_deleted(delete)
+
+    def test_a_refused_registration_deletes_the_recording(self):
+        saved, delete = self._run(_Db(register_ok=False))
+        self.assertIsNone(saved)
+        self._assert_deleted(delete)
+
+    def test_no_principal_deletes_the_recording(self):
+        saved, delete = self._run(_Db(principal="", project_principal=""))
+        self.assertIsNone(saved)
+        self._assert_deleted(delete)
+
+    def test_an_exception_deletes_the_recording_and_still_raises(self):
+        db = _Db()
+
+        def boom(_row):
+            raise RuntimeError("database down")
+        db.insert_confident_voice_practice_attempt = boom
+        with patch("services.lab_audio_storage."
+                   "delete_verified_lab_audio_object",
+                   return_value=True) as delete:
+            with self.assertRaises(RuntimeError):
+                _record(db)
+        self._assert_deleted(delete)
+
+    def test_a_failed_delete_is_logged_not_raised(self):
+        with patch("services.lab_audio_storage."
+                   "delete_verified_lab_audio_object",
+                   side_effect=RuntimeError("r2 down")), \
+                self.assertLogs("services.practice_audio_objects", "ERROR"):
+            self.assertIsNone(_record(_Db(insert_ok=False)))
+
+
 class PurgeReachesPracticeAudioTests(unittest.TestCase):
     """Source fences on the half that does the deleting."""
 

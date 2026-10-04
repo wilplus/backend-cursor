@@ -343,10 +343,16 @@ class PracticeAlbumTests(unittest.TestCase):
 class PersistenceAndJourneyFenceTests(unittest.TestCase):
     ROOT = pathlib.Path(__file__).resolve().parents[1]
 
-    def test_database_enforces_one_exercise_per_full_take_and_three_attempts(self):
+    def test_database_enforces_one_exercise_per_full_take_and_ordered_attempts(self):
         migration = (self.ROOT / "migrations/add_confident_voice_practice.sql").read_text()
         self.assertIn("UNIQUE (take_session_id)", migration)
+        # 0279 capped attempts at three; 0417 lifts the cap (founder lock
+        # 2026-09-30, D2: attempt 10 works like attempt 1) and keeps >= 1.
         self.assertIn("attempt_index BETWEEN 1 AND 3", migration)
+        lifted = (self.ROOT / "migrations/an_attempt_after_the_third_saves.sql").read_text()
+        self.assertIn("CHECK (attempt_index >= 1)", lifted)
+        self.assertIn("0417\tan_attempt_after_the_third_saves.sql",
+                      (self.ROOT / "migrations/manifest.txt").read_text())
         self.assertIn("machine_confidence_decision", migration)
         self.assertIn("coach_confidence_decision", migration)
         self.assertIn("voice_album_practice", migration)
