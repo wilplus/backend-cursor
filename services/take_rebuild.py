@@ -11,13 +11,17 @@ This module plans the rebuild (pure merge + reads) and re-identifies the
 Paragraphs afterwards. The durable write is one atomic RPC,
 `finalize_ideal_text_take_v2`, called from `services/take_review.py`.
 
-DROP, NEVER GUESS. Whenever the Slide of a Paragraph cannot be proven — an old
-document with no provenance, Paragraph rows that do not tile the text, a mix
-of Slide-less and Slide-bearing Paragraphs — `plan_rebuild` returns None and
-the Take finalizes exactly as before (text unchanged). A Take never fails
-because its rebuild could not be planned (LIVE LOOP). Contract 8 as amended
-on 2026-10-03 (N29) asks instead that such a Take follow the Take; the F1
-Repair Plan's Phase 3 builds that.
+FOLLOW THE TAKE WHEN THE SLIDES CANNOT BE PROVEN (contract 8 as amended
+2026-10-03, N29 answer 3; F1 Repair Plan Phase 3). Whenever the Slide of a
+Paragraph cannot be proven — an old document with no provenance, Paragraph
+rows that do not tile the text, a mix of Slide-less and Slide-bearing
+Paragraphs — the merge by Slide is impossible, and the Take's own words become
+the whole text (`follow_the_take`). Nothing is lost: the previous version
+stays in `ideal_text_versions`, so History keeps it. It used to leave the
+text unchanged with one warning, so a Project whose map could not be proven
+never followed its speaker again. Every such rewrite is logged with the fixed
+event name `take_rebuild_followed_whole_take`, so it can be counted. A Take
+still never fails because its rebuild could not be planned (LIVE LOOP).
 """
 from __future__ import annotations
 
@@ -156,6 +160,40 @@ def merge_by_slide(old_text: str, old_doc: Mapping, new_text: str,
     )
 
 
+def follow_the_take(old_text: str, old_doc: Any, new_text: str,
+                    new_doc: Mapping) -> Optional[Rebuild]:
+    """The whole text rewritten from the latest Take (N29 answer 3).
+
+    Used only when `merge_by_slide` cannot prove the Slides. Every Paragraph
+    is the new Take's, in its order, with its own Slide where it has one. The
+    old Paragraphs' Slides are kept when the old document tiles, so a
+    rebuilt Slide can still reuse that Slide's old Paragraph ids and carry
+    its helper words; otherwise every Paragraph gets a fresh id. None when
+    the new Take itself cannot be laid out."""
+    new_paras = list(new_doc.get("paragraphs") or [])
+    if not new_paras or _paragraph_texts(new_text, new_paras) is None:
+        return None
+    old_paras = (list(old_doc.get("paragraphs") or [])
+                 if isinstance(old_doc, Mapping) else [])
+    old_slides = ([_slide(p) for p in old_paras]
+                  if old_paras and _paragraph_texts(old_text, old_paras)
+                  is not None else [])
+    slides = [_slide(p) for p in new_paras]
+    return Rebuild(
+        text=new_text,
+        document={
+            "pieces": list(new_doc.get("pieces") or []),
+            "paragraphs": [dict(p) for p in new_paras],
+            "take_session_id": new_doc.get("take_session_id"),
+            "take_index": new_doc.get("take_index"),
+        },
+        sources=[("new", i) for i in range(len(new_paras))],
+        slides=slides,
+        old_slides=old_slides,
+        rebuilt_slides=set(slides),
+    )
+
+
 def plan_rebuild(database: Any, arc_id: str,
                  take_session_id: str) -> Optional[Rebuild]:
     """Read the current document and this Take's transcript; merge them.
@@ -166,20 +204,24 @@ def plan_rebuild(database: Any, arc_id: str,
         row = database.ideal_text.get_coach_arc_ideal_text(str(arc_id)) or {}
         old_text = str(row.get("auto_text") or "").strip()
         old_doc = row.get("document")
-        if not old_text or not isinstance(old_doc, Mapping):
+        if not old_text:
             return None
         from services.transcript_document import build_transcript_document
         new = build_transcript_document(
             str(arc_id), database=database, session_id=str(take_session_id))
         if not isinstance(new, Mapping) or not str(new.get("text") or "").strip():
             return None
-        merged = merge_by_slide(old_text, old_doc, str(new["text"]), new)
-        if merged is None:
-            # Safe (the Take finalizes with its words unchanged) but never
-            # silent: this Project is not following its speaker.
-            logger.warning("take rebuild: Slides not provable, text kept "
-                           "arc=%s take=%s", arc_id, take_session_id)
-        return merged
+        merged = (merge_by_slide(old_text, old_doc, str(new["text"]), new)
+                  if isinstance(old_doc, Mapping) else None)
+        if merged is not None:
+            return merged
+        followed = follow_the_take(old_text, old_doc, str(new["text"]), new)
+        # Logged under one fixed name so it can be counted: every Project
+        # whose Slide map could not be proven, rewritten whole from its Take.
+        logger.warning("take_rebuild_followed_whole_take arc=%s take=%s "
+                       "planned=%s", arc_id, take_session_id,
+                       followed is not None)
+        return followed
     except Exception as error:
         logger.warning("take rebuild: plan failed arc=%s take=%s: %s",
                        arc_id, take_session_id, error)
@@ -292,7 +334,9 @@ def legacy_helper_words(old_rows: list, rebuild: Rebuild,
 
 def apply_after_finalize(database: Any, arc_id: str, user_id: str,
                          old_text: str, old_rows: list,
-                         rebuild: Rebuild) -> bool:
+                         rebuild: Rebuild, *,
+                         take_session_id: Optional[str] = None,
+                         review_version: Optional[int] = None) -> bool:
     """After the atomic RPC wrote the rebuilt text: carry legacy helper words
     onto their Slides, then give the Paragraphs their new identity.
 
@@ -322,7 +366,19 @@ def apply_after_finalize(database: Any, arc_id: str, user_id: str,
                        arc_id, error)
     try:
         parts = reidentify_parts(old_rows, old_text, rebuild)
-        return bool(database.replace_ideal_text_parts(arc_id, user_id, parts))
+        # EVERY TAKE REWRITE IS A PARAGRAPH REVISION (contract 16; F1 Repair
+        # Plan Phase 3). Each Paragraph whose words this Take changed, or that
+        # this Take created, gets an immutable `take_rewrite` revision naming
+        # the Take and the review version -- so a Paragraph's History reads
+        # "Take N" from its own record, not only from document snapshots. A
+        # Paragraph on a Slide the Take did not speak keeps its words and
+        # gets no revision.
+        return bool(database.replace_ideal_text_parts(
+            arc_id, user_id, parts,
+            revision_action="take_rewrite",
+            revision_take_session_id=take_session_id,
+            revision_review_version=review_version,
+        ))
     except Exception as error:
         logger.warning("take rebuild: identity failed arc=%s: %s",
                        arc_id, error)
@@ -335,6 +391,8 @@ class Plan:
     rebuild: Optional[Rebuild]
     old_text: str
     old_rows: list
+    take_session_id: Optional[str] = None
+    take_index: Optional[int] = None
 
     @property
     def auto_text(self) -> Optional[str]:
@@ -352,13 +410,18 @@ class Plan:
             return False
         if (after or {}).get("auto_text") != self.rebuild.text:
             return False
-        apply_after_finalize(database, arc_id, user_id, self.old_text,
-                             self.old_rows, self.rebuild)
+        # The revision names the Take that wrote the words: its own number,
+        # not the document version (which a retried older Take leaves ahead).
+        apply_after_finalize(
+            database, arc_id, user_id, self.old_text, self.old_rows,
+            self.rebuild, take_session_id=self.take_session_id,
+            review_version=self.take_index)
         return True
 
 
 def prepare(database: Any, arc_id: str, user_id: str,
-            take_session_id: str, before: Any) -> Plan:
+            take_session_id: str, before: Any, *,
+            take_index: Optional[int] = None) -> Plan:
     """Plan the rebuild and read what identity needs, before the RPC."""
     rebuild = plan_rebuild(database, arc_id, take_session_id)
     rows: list = []
@@ -369,4 +432,5 @@ def prepare(database: Any, arc_id: str, user_id: str,
         except Exception as error:
             logger.warning("take rebuild: parts unreadable arc=%s: %s",
                            arc_id, error)
-    return Plan(rebuild, str((before or {}).get("auto_text") or ""), rows)
+    return Plan(rebuild, str((before or {}).get("auto_text") or ""), rows,
+                take_session_id=str(take_session_id), take_index=take_index)

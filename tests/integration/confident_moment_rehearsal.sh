@@ -512,6 +512,10 @@ hard migrations/an_acceptance_alone_never_displaces_the_account.sql
 # ring_settings.v3_requires_allowlist is true; the purge check stays. Twice.
 hard migrations/v3_reaches_every_speaker.sql
 hard migrations/v3_reaches_every_speaker.sql
+# 0416: 'take_rewrite' joins the Paragraph revision actions, and the core
+# read takes a Paragraph's lock from its row, not its newest revision. Twice.
+hard migrations/a_take_rewrite_is_a_paragraph_revision.sql
+hard migrations/a_take_rewrite_is_a_paragraph_revision.sql
 
 # R-1 (audit 2026-09-22). 0299 created the two learning-surface tables with
 # the same GRANT ALL TO service_role as 0296, and was never in this chain, so

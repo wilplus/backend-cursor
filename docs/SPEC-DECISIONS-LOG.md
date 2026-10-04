@@ -1185,3 +1185,26 @@ stays exactly as spoken. `services/transcript_document.py`
    the founder's word.
 6. **A guest Take is baked for its reader** (the bake's actor is the
    account, else the Take's owner principal).
+
+**N33 · Phase 3: Take 2 follows the Take (founder 2026-10-04, "Accept phase
+three.").**
+1. **No taps is not no slide.** A recording with a deck but no slide taps
+   was spoken on the first slide; its words are slide 0, not "unknown"
+   (`services/slide_word_split._contiguous_slide_runs`).
+2. **An unprovable document follows the Take whole.** When the old document
+   cannot be merged by slide (no slide provenance, or the merge cannot be
+   proven), the latest Take's own words become the whole text; the previous
+   version stays in the versions table. It used to stay exactly as it was,
+   which is a best-of by omission (L1, contract 8 as amended, N29 answer 3).
+   One `take_rebuild_followed_whole_take` warning per such Take
+   (`services/take_rebuild.follow_the_take`).
+3. **Every Take rewrite is a Paragraph revision (0416, contract 16).** Each
+   Paragraph whose words a Take changed, or that it created, appends a
+   `take_rewrite` revision carrying the Take session and the review
+   version, so the Paragraph's History reads Take N from its own record. A
+   Paragraph on a slide the Take did not speak gets none.
+4. **The lock is the Paragraph row's.** The v2 core read took `locked` from
+   the newest revision being a `lock`; a Take rewrite keeps the lock but
+   appends a newer revision, so a locked Paragraph would have read unlocked
+   after Take 2. 0416 reads `ideal_text_part.locked_at`, as every bundle
+   read already did.

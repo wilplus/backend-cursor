@@ -822,9 +822,14 @@ def _contiguous_slide_runs(words_all: Any, slide_advances: Any,
     Returns ``[(slide_index, [word dicts]), ...]`` time-ordered. Pure.
     """
     n = len(slides) if isinstance(slides, list) else 0
-    if n == 0 or not words_all or not slide_advances:
+    # NO TAPS IS NOT NO SLIDE (F1 Repair Plan Phase 3). A deck recording in
+    # which the speaker never moved the deck spoke every word on the slide it
+    # started on. This used to return [] here, so a decked Take with no taps
+    # yielded no canonical pieces and raised instead of being transcribed;
+    # `_slide_on_screen` already reads an empty timeline as slide 0.
+    if n == 0 or not words_all:
         return []
-    slide_at = _slide_on_screen(slide_advances, n)
+    slide_at = _slide_on_screen(slide_advances or [], n)
     runs: list = []
     for w in _timed_speech_words(words_all):
         # Same reading as the sort key: a word with no start sorts and
