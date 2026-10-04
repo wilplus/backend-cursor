@@ -1148,3 +1148,15 @@ need to sign up. That should be the order." F1 Repair Plan Phase 0.6:
 5. **0414 (Phase 0.5b):** a claimed guest that only accepted the Terms and
    acquired nothing never displaces an account that holds its own
    acceptance.
+
+**N31 · A revisited slide is still one slide (founder 2026-10-04, "A: join
+their slide").** Recording against the default deck the founder went Slide 1
+-> 2 -> 1 -> 2 -> 3; the document's paragraphs came out on slides 2, 1, 1,
+2, 2, 2, 2, 3, 3, and the page (which will not guess a slide order it cannot
+prove) showed the whole text as one unlinked "Your talk" block. Words said
+on a slide on a return visit now join that slide, after what was already
+said on it; the Ideal Text is in slide order and each slide holds everything
+said on it in that Take, in spoken order. Pieces are still cut per contiguous
+visit, so every audio span stays exact. A talk with no slide information
+stays exactly as spoken. `services/transcript_document.py`
+`_one_run_per_slide`.

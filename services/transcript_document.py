@@ -129,7 +129,32 @@ def _slide_runs(rows: list) -> list:
                 last["slide"] = si
         else:
             runs.append({"slide": si, "items": [(snip, text)]})
-    return runs
+    return _one_run_per_slide(runs)
+
+
+def _one_run_per_slide(runs: list) -> list:
+    """A REVISITED SLIDE IS STILL ONE SLIDE (founder 2026-10-04, "A: join
+    their slide").
+
+    Recording against the default deck the founder went Slide 1 -> 2 -> 1 ->
+    2 -> 3. The runs above came out 2, 1, 2, 3 -- a document whose slides go
+    backwards. The page will not guess a slide order it cannot prove, so the
+    whole text fell back to one unlinked "Your talk" block, and a later Take
+    could not rewrite "each Slide it spoke" when a Slide sat in two places.
+
+    So the words said on a slide on a return visit join that slide, after
+    what was already said on it, and the document is in slide order. Every
+    word is kept and keeps its own place inside its slide (spoken order);
+    only whole visits move. A document with any run of unknown slide is left
+    exactly as spoken: with no proof of a slide there is nothing to group
+    by, and no structure is invented."""
+    if any(run["slide"] is None for run in runs):
+        return runs
+    by_slide: dict = {}
+    for run in runs:
+        by_slide.setdefault(run["slide"], []).extend(run["items"])
+    return [{"slide": slide, "items": by_slide[slide]}
+            for slide in sorted(by_slide)]
 
 
 def pack_items(items: list, cap: int) -> list:
