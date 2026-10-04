@@ -12,6 +12,7 @@ from services.data_purge_registry import DEPENDENCIES
 from services.slide_helper_words import (
     lock,
     merge_recording_roots,
+    parts_on_slide,
     phrase_in_version,
     pick,
     project,
@@ -211,3 +212,30 @@ def test_every_save_route_checks_the_cap():
     assert validate_rooting_phrase(text, text, 0, len(text)) is None
     practice = (root / "services/practice_adoption.py").read_text()
     assert "within_cap(words)" in practice
+
+
+def test_a_lock_retires_the_words_of_a_paragraph_the_slide_no_longer_has():
+    """Audit 2026-10-04: Take 3 has one Paragraph (p9) where Take 1 had p1
+    and p2. Locking p9 retires the Take-1 rows of p1 and p2, which no lock
+    or unlock could reach any more; a sibling still on the Slide keeps its
+    words."""
+    rows = pick(_take1_both_paragraphs_locked(), take_id="t3", part_id="p9",
+                phrase="first week", now=NOW)
+    gone = lock(rows, take_id="t3", part_id="p9", locked=True, now=NOW,
+                live_parts={"p9"})
+    assert _phrases(gone) == [("first week", "t3", True)]
+    kept = lock(rows, take_id="t3", part_id="p9", locked=True, now=NOW,
+                live_parts={"p1", "p9"})
+    assert _phrases(kept) == [("nine days", "t1", True),
+                              ("first week", "t3", True)]
+
+
+def test_the_slide_s_paragraphs_come_from_the_core_pairing():
+    snap = {"payload": {
+        "parts": [{"id": "P1"}, {"id": "p2"}, {"id": "p3"}],
+        "pieces": [{"slide_index": 0}, {"slide_index": 1}, {"slide_index": 0}],
+    }}
+    assert parts_on_slide(snap, 0) == {"p1", "p3"}
+    assert parts_on_slide({"payload": {"parts": [], "pieces": [{}]}}, 0) is None
+    assert parts_on_slide(None, 0) is None
+

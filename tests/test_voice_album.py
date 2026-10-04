@@ -33,14 +33,29 @@ class _Db:
         self.inserted = []
         self.deleted = []
 
-    def list_owner_voice_album_routes(self, arc_id):
-        return self.routes
+    # Each reader behaves like production's: a failed read returns empty,
+    # unless asked strictly, when it raises. `failing` names the readers
+    # that fail (F1 Repair Plan Phase 5, audit 2026-10-04).
+    failing: frozenset = frozenset()
 
-    def get_moment_suggestions_by_arc(self, arc_id):
-        return self.suggestions
+    def _read(self, name, value, strict):
+        if name in self.failing:
+            if strict:
+                raise RuntimeError(f"{name} failed")
+            return type(value)()
+        return value
 
-    def get_arc_sessions(self, arc_id):
-        return self.sessions
+    def list_confident_voice_self_reports(self, arc_id, *, strict=False):
+        return self._read("self_reports", [], strict)
+
+    def list_owner_voice_album_routes(self, arc_id, *, strict=False):
+        return self._read("routes", self.routes, strict)
+
+    def get_moment_suggestions_by_arc(self, arc_id, *, strict=False):
+        return self._read("suggestions", self.suggestions, strict)
+
+    def get_arc_sessions(self, arc_id, *, strict=False):
+        return self._read("sessions", self.sessions, strict)
 
     @property
     def takes(self):
@@ -48,11 +63,11 @@ class _Db:
         # this fake implements those methods directly on itself.
         return self
 
-    def get_snippets_by_session(self, sid):
-        return self.snips.get(sid, [])
+    def get_snippets_by_session(self, sid, *, strict=False):
+        return self._read("snips", self.snips.get(sid, []), strict)
 
-    def get_confidence_labels_by_snippet_ids(self, ids):
-        return {i: self.conf.get(i, []) for i in ids}
+    def get_confidence_labels_by_snippet_ids(self, ids, *, strict=False):
+        return self._read("conf", {i: self.conf.get(i, []) for i in ids}, strict)
 
     def list_voice_album(self, arc_id):
         return self.album
@@ -177,7 +192,7 @@ class EntryRuleTests(unittest.TestCase):
 
     def test_broken_db_never_raises(self):
         class _Boom(_Db):
-            def get_arc_sessions(self, arc_id):
+            def get_arc_sessions(self, arc_id, *, strict=False):
                 raise RuntimeError("db down")
 
             @property
@@ -319,7 +334,7 @@ class FailsClosedTests(unittest.TestCase):
         db = _all_three()
         db.album = [{"snippet_id": "sn_old"}]
 
-        def boom(_sid):
+        def boom(_sid, *, strict=False):
             raise RuntimeError("read failed")
         db.get_snippets_by_session = boom
         refresh_voice_album(ARC, database=db)
@@ -330,8 +345,27 @@ class FailsClosedTests(unittest.TestCase):
         db.routes = []
         db.album = [{"snippet_id": "sn1"}]
 
-        def boom(_arc):
+        def boom(_arc, *, strict=False):
             raise RuntimeError("read failed")
         db.list_confident_voice_self_reports = boom
         refresh_voice_album(ARC, database=db)
         self.assertEqual(db.deleted, [])
+
+    def test_a_read_that_returns_empty_on_failure_removes_nothing(self):
+        # Production readers swallow a failure and return empty; the refresh
+        # asks them strictly, so each failing one keeps the Album whole.
+        for reader in ("self_reports", "routes", "suggestions", "sessions",
+                       "snips", "conf"):
+            with self.subTest(reader=reader):
+                db = _all_three()
+                db.album = [{"snippet_id": "sn1"}, {"snippet_id": "sn_old"}]
+                db.failing = frozenset({reader})
+                refresh_voice_album(ARC, database=db)
+                self.assertEqual(db.deleted, [])
+
+    def test_a_complete_read_still_removes(self):
+        db = _all_three()
+        db.album = [{"snippet_id": "sn_old"}]
+        refresh_voice_album(ARC, database=db)
+        self.assertEqual([d.get("snippet_id") for d in db.deleted], ["sn_old"])
+

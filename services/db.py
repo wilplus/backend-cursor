@@ -3437,8 +3437,12 @@ class DatabaseService:
             logger.warning("set_coach_video_comment_at_publish failed asset=%s: %s", asset_id, e)
             return False
 
-    def get_snippets_by_session(self, session_id: str) -> List[dict]:
-        """Get all snippets for a session, ordered by start time."""
+    def get_snippets_by_session(self, session_id: str, *,
+                                strict: bool = False) -> List[dict]:
+        """Get all snippets for a session, ordered by start time.
+
+        ``strict=True`` re-raises a failed read instead of returning [] (the
+        Album refresh must not read "could not read" as "no moments")."""
         try:
             result = self._execute_with_retry(
                 lambda: (
@@ -3452,6 +3456,8 @@ class DatabaseService:
             return result.data if result.data else []
         except Exception as e:
             logger.error(f"get_snippets_by_session failed: {e}")
+            if strict:
+                raise
             return []
 
     def get_snippets_by_sessions(
@@ -7968,7 +7974,10 @@ class DatabaseService:
                 logger.warning("clip self-report read failed: %s", e)
             return []
 
-    def list_confident_voice_self_reports(self, arc_id: str) -> list:
+    def list_confident_voice_self_reports(self, arc_id: str, *,
+                                          strict: bool = False) -> list:
+        """``strict=True`` re-raises a failed read (a missing table is still
+        an empty list)."""
         if not arc_id:
             return []
         try:
@@ -7981,6 +7990,8 @@ class DatabaseService:
         except Exception as e:
             if "take_feedback_self_report" not in str(e).lower():
                 logger.warning("confident self-report read failed: %s", e)
+                if strict:
+                    raise
             return []
 
     def verify_ideal_text(self, arc_id: str, coach_id: Optional[str]) -> Optional[str]:
@@ -11620,9 +11631,11 @@ class DatabaseService:
             logger.warning("insert_reference_distribution failed: %s", e)
             return 0
 
-    def get_confidence_labels_by_snippet_ids(self, snippet_ids: list) -> dict:
+    def get_confidence_labels_by_snippet_ids(self, snippet_ids: list, *,
+                                             strict: bool = False) -> dict:
         """{snippet_id: [label rows]} for the given snippets. {} on anything
-        missing — the queue then renders every piece as unlabelled."""
+        missing — the queue then renders every piece as unlabelled.
+        ``strict=True`` re-raises a failed read instead."""
         ids = [str(s) for s in (snippet_ids or []) if s]
         if not ids:
             return {}
@@ -11635,6 +11648,8 @@ class DatabaseService:
             return out
         except Exception as e:
             logger.warning("get_confidence_labels_by_snippet_ids failed: %s", e)
+            if strict:
+                raise
             return {}
 
     def get_own_state_ratings_for_session(self, session_id: str,
@@ -11846,8 +11861,10 @@ class DatabaseService:
                 snippet_id, e)
             return False
 
-    def list_owner_voice_album_routes(self, arc_id: str) -> list:
-        """Current owner routing responses for one arc; [] pre-migration."""
+    def list_owner_voice_album_routes(self, arc_id: str, *,
+                                      strict: bool = False) -> list:
+        """Current owner routing responses for one arc; [] pre-migration.
+        ``strict=True`` re-raises any other failed read."""
         if not arc_id:
             return []
         try:
@@ -11866,6 +11883,8 @@ class DatabaseService:
                 return []
             logger.warning(
                 "list_owner_voice_album_routes failed arc=%s: %s", arc_id, e)
+            if strict:
+                raise
             return []
 
     def get_confidence_rereview(self, snippet_id: str) -> Optional[dict]:

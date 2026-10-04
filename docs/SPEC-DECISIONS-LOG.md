@@ -1320,3 +1320,29 @@ next phases ... and merge along the way").**
    text" and turns into "Review feedback" is not built -- the founder asked,
    2026-08, for the working-on-your-text block to be deleted (flowCopy), so
    bringing it back is the founder's call.
+
+**N38 · Close-out audit fixes (F1 Repair Plan Phase 8, 2026-10-04).** Two
+independent checkers re-read Phases 1-7 against the code; what they found
+and this session confirmed is fixed here.
+1. **The Album never empties on a failed read.** The readers behind the
+   refresh returned empty on failure, so the Phase 5 guard never tripped
+   and one failed read could remove every entry. The refresh now reads
+   strictly (`strict=True` on the six readers it uses); any failure keeps
+   every entry.
+2. **No V2 stand-in on an early V3 failure** (24h, N32). The session read,
+   the document and the binding ran outside V3's guard, so a raise there
+   left V2's rows serving. They are V3 failing the Take now: no rows, the
+   failure reported. V2's rows failing their own span check no longer
+   silence V3 either.
+3. **An accepted rewrite** (N35.4): a repeated answer finds the words in
+   place and changes nothing, even when the new words hold the quote; a
+   quote found more than once is refused rather than guessed (the freeze
+   carries no span); helper words saved on the Slide row protect their
+   Paragraph; the writer's refusals are read by their exact codes; the
+   Paragraphs are joined as every other writer joins them.
+4. **Words of a Paragraph the Slide no longer has** (N36.2): a lock retires
+   the earlier-Take rows of Paragraphs no longer on the Slide, which no lock
+   or unlock could reach.
+5. **Frontend** (Phase 6): Practise opens the card shown (a library exercise
+   opened the rewrite or the old sheet before any judgement); the button
+   before a judgement reads Next, not Done.

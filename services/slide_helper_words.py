@@ -75,9 +75,19 @@ def pick(rows: list[Row], *, take_id: str, part_id: str,
 
 
 def lock(rows: list[Row], *, take_id: str, part_id: str, locked: bool,
-         now: Optional[str] = None) -> list[Row]:
-    """One Slide's rows after the speaker locks (or unlocks) a Paragraph."""
+         now: Optional[str] = None,
+         live_parts: Optional[set] = None) -> list[Row]:
+    """One Slide's rows after the speaker locks (or unlocks) a Paragraph.
+
+    `live_parts`: the ids of the Slide's Paragraphs now (lower case). A lock
+    also retires earlier-Take rows of a Paragraph the Slide no longer has
+    (audit 2026-10-04: a later Take with fewer or fresh Paragraphs left its
+    words on the recording screen, out of reach of any lock or unlock)."""
     part = str(part_id).lower()
+
+    def _orphan(r: Row) -> bool:
+        source = str(r.get("source_part_id") or "").lower()
+        return live_parts is not None and source not in live_parts
 
     def _mine(r: Row) -> bool:
         return (str(r.get("take_session_id") or "") == take_id
@@ -97,7 +107,8 @@ def lock(rows: list[Row], *, take_id: str, part_id: str, locked: bool,
            else dict(r)
            for r in rows
            if str(r.get("take_session_id") or "") == take_id
-           or str(r.get("source_part_id") or "").lower() != part]
+           or (str(r.get("source_part_id") or "").lower() != part
+               and not _orphan(r))]
     return _renumber(out)
 
 
@@ -215,6 +226,22 @@ def slide_of_part(snapshot: Any, part_id: str) -> Optional[int]:
     return None
 
 
+def parts_on_slide(snapshot: Any, slide: int) -> Optional[set]:
+    """The lower-case ids of the Paragraphs on `slide` in the core snapshot,
+    or None when the snapshot cannot say."""
+    payload = snapshot.get("payload") if isinstance(snapshot, Mapping) else None
+    if not isinstance(payload, Mapping):
+        return None
+    parts, pieces = payload.get("parts"), payload.get("pieces")
+    if (not isinstance(parts, list) or not isinstance(pieces, list)
+            or len(parts) != len(pieces)):
+        return None
+    return {str(part.get("id") or "").lower()
+            for part, piece in zip(parts, pieces)
+            if isinstance(part, Mapping) and isinstance(piece, Mapping)
+            and piece.get("slide_index") == slide and part.get("id")}
+
+
 def _apply(database: Any, arc_id: str, user_id: str, part_id: str,
            change) -> None:
     snapshot = database.get_ideal_text_document_core(arc_id, user_id)
@@ -223,7 +250,7 @@ def _apply(database: Any, arc_id: str, user_id: str, part_id: str,
         return
     rows = [r for r in (database.get_slide_helper_words(arc_id, user_id) or [])
             if r.get("slide_index") == slide]
-    after = change(rows)
+    after = change(rows, parts_on_slide(snapshot, slide))
     if after != rows:
         database.replace_slide_helper_words(arc_id, user_id, slide, after)
 
@@ -233,8 +260,8 @@ def record_pick(database: Any, arc_id: str, user_id: str, part_id: str,
     """Best-effort: mirror a Paragraph pick onto its Slide."""
     try:
         _apply(database, arc_id, user_id, part_id,
-               lambda rows: pick(rows, take_id=take_id, part_id=part_id,
-                                 phrase=phrase))
+               lambda rows, _live: pick(rows, take_id=take_id,
+                                        part_id=part_id, phrase=phrase))
     except Exception as error:
         logger.warning("slide helper words pick failed arc=%s part=%s: %s",
                        arc_id, part_id, error)
@@ -245,8 +272,9 @@ def record_lock(database: Any, arc_id: str, user_id: str, part_id: str,
     """Best-effort: mirror a Paragraph lock onto its Slide."""
     try:
         _apply(database, arc_id, user_id, part_id,
-               lambda rows: lock(rows, take_id=take_id, part_id=part_id,
-                                 locked=locked))
+               lambda rows, live: lock(rows, take_id=take_id,
+                                       part_id=part_id, locked=locked,
+                                       live_parts=live))
     except Exception as error:
         logger.warning("slide helper words lock failed arc=%s part=%s: %s",
                        arc_id, part_id, error)

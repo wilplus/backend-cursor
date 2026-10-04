@@ -1026,6 +1026,12 @@ class _ChangesRun:
             self.styles = []
         if not verify_changes(served_text, self.changes):
             self.log.note("changes.span_check", "span_check_failed")
+            if self.v3_asked():
+                # V2's rows failing their own span check must not silence
+                # V3 (close-out audit 2026-10-04): they are dropped and V3
+                # still answers -- its rows, its honest empty, or its failure.
+                self.changes = []
+                return None
             from services.take_feedback_manager import strip_internal_evidence
             self.styles = strip_internal_evidence(self.styles)
             return {
@@ -1033,6 +1039,13 @@ class _ChangesRun:
                 **({"style_changes": self.styles} if self.styles else {}),
             }
         return None
+
+    @staticmethod
+    def v3_asked() -> bool:
+        """V3 answers this read (Phase 2: every speaker, while the service
+        is on)."""
+        from services.coach_guidance_delivery import runtime_is_enabled
+        return bool(runtime_is_enabled())
 
     def _claim_or_filter(self) -> None:
         # Claim only the FINAL, coordinate-proven, span-verified rows. The
@@ -1363,6 +1376,23 @@ class _ChangesRun:
         )
         from services.ideal_text_parts import bind_pieces_to_parts
         from services.transcript_document import build_transcript_document
+        try:
+            _service_rows = self._ask_v3(prepare_first_client_feedback,
+                                         bind_pieces_to_parts,
+                                         build_transcript_document)
+        except Exception as error:  # noqa: BLE001 -- reported, never swallowed
+            # Anything that raises on the way to V3 -- the session read, the
+            # document, the binding -- is V3 failing for this Take, never
+            # a reason to serve V2's rows (close-out audit 2026-10-04).
+            logger.warning("feedback v3 raised arc=%s take=%s: %s",
+                           self.arc_id, self.arm_sid, error, exc_info=True)
+            _service_rows = (V3Unavailable(
+                reason=f"v3_error:{type(error).__name__}")
+                if self.v3_asked() else None)
+        self._serve_v3(_service_rows)
+
+    def _ask_v3(self, prepare_first_client_feedback, bind_pieces_to_parts,
+                build_transcript_document):
         db = self.db
         _arm_sid = self.arm_sid
         _service_session = db.v2_get_session_by_id(_arm_sid) or {} \
@@ -1392,26 +1422,22 @@ class _ChangesRun:
             parts=self.deps.locked_parts(
                 self.arc_id, str(self.user_id), self.served_text),
         )
-        try:
-            _service_rows = prepare_first_client_feedback(
-                database=self.deps.first_client_repository,
-                session=_service_session,
-                take_document=_service_doc,
-                served_text=self.served_text,
-                snippets=(
-                    db.get_snippets_by_session(_arm_sid) or []
-                    if _arm_sid else []
-                ),
-                suggestions=self.user_sugs,
-                feedback_candidates=self.feedback_exposure,
-                owner_user_id=str(self.user_id),
-                learning=self.v3_learning,
-            )
-        except Exception as error:  # noqa: BLE001 -- reported, never swallowed
-            logger.warning("feedback v3 raised arc=%s take=%s: %s",
-                           self.arc_id, _arm_sid, error, exc_info=True)
-            _service_rows = V3Unavailable(
-                reason=f"v3_error:{type(error).__name__}")
+        return prepare_first_client_feedback(
+            database=self.deps.first_client_repository,
+            session=_service_session,
+            take_document=_service_doc,
+            served_text=self.served_text,
+            snippets=(
+                db.get_snippets_by_session(_arm_sid) or []
+                if _arm_sid else []
+            ),
+            suggestions=self.user_sugs,
+            feedback_candidates=self.feedback_exposure,
+            owner_user_id=str(self.user_id),
+            learning=self.v3_learning,
+        )
+
+    def _serve_v3(self, _service_rows) -> None:
         # THREE OUTCOMES, NOT TWO (contract 24h, founder 2026-09-18).
         #
         # A typed failure means V3 owned this Take and could not produce it.

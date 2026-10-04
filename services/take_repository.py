@@ -1473,12 +1473,14 @@ class TakeRepository(TableRepository):
             )
             return []
 
-    def get_arc_sessions(self, arc_id: Optional[str]) -> list[dict]:
+    def get_arc_sessions(self, arc_id: Optional[str], *,
+                         strict: bool = False) -> list[dict]:
         """The takes of an explore arc, ORDERED by take_index (Prompt A §3/§5).
         Powers cross-take selection + the delivery layer (spoken/read split,
         per-take Save state). Best-effort: [] on missing column / no arc /
         DB hiccup; the delivery-layer columns degrade to absent pre-migration
-        (older rows read as spoken/unsaved)."""
+        (older rows read as spoken/unsaved). ``strict=True`` re-raises a
+        failed read that is not a missing column (the Album refresh)."""
         if not arc_id:
             return []
         _full_cols = ("id, user_id, owner_principal_id, project_id, arc_id, "
@@ -1543,6 +1545,8 @@ class TakeRepository(TableRepository):
                 )
                 return []
             logger.warning("get_arc_sessions failed arc=%s: %s", arc_id, e)
+            if strict:
+                raise
             return []
 
     def list_user_arc_sessions(self, user_id: Optional[str]) -> list[dict]:

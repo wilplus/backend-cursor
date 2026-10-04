@@ -54,6 +54,11 @@ class _Db:
     def get_ideal_text_parts(self, _arc, _user, with_lock=False):
         return [dict(p) for p in self.parts]
 
+    slide_words: list = []
+
+    def get_slide_helper_words(self, _arc, _user):
+        return self.slide_words
+
     def compare_and_set_user_ideal_edit(self, **kw):
         self.cas_calls.append(kw)
         if self.cas_error:
@@ -169,3 +174,55 @@ class TheRouteCallsIt(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AuditTwentyTenFourTests(unittest.TestCase):
+    """Close-out audit 2026-10-04: a replay never applies twice, an
+    ambiguous quote is never guessed, Slide-saved words protect their
+    Paragraph, and refusals are read by their code."""
+
+    def test_a_replay_when_the_new_words_hold_the_quote_changes_nothing(self):
+        rows = [{"id": "p-2", "ord": 0, "text": "Then we grew fast. Done."}]
+        outcome, parts = ar.rewritten_parts(rows, "p-2", "we grew", "we grew fast")
+        self.assertEqual((outcome, parts), (ar.ALREADY, None))
+
+    def test_the_first_apply_when_the_new_words_hold_the_quote(self):
+        rows = [{"id": "p-2", "ord": 0, "text": "Then we grew. Done."}]
+        outcome, parts = ar.rewritten_parts(rows, "p-2", "we grew", "we grew fast")
+        self.assertEqual(outcome, ar.APPLIED)
+        self.assertEqual(parts[0]["text"], "Then we grew fast. Done.")
+
+    def test_a_quote_found_twice_is_never_guessed(self):
+        rows = [{"id": "p-2", "ord": 0, "text": "We grow. Revenue is up. We grow."}]
+        outcome, parts = ar.rewritten_parts(rows, "p-2", "We grow.", "We keep growing.")
+        self.assertEqual((outcome, parts), (ar.STALE, None))
+
+    def test_slide_saved_helper_words_protect_the_paragraph(self):
+        db = _Db()
+        db.slide_words = [{"slide_index": 0, "phrase": "data is clear",
+                           "source_part_id": "P-2"}]
+        outcome, _ = _accept(db)
+        self.assertEqual(outcome, ar.PROTECTED)
+        self.assertEqual(db.cas_calls, [])
+
+    def test_another_paragraphs_slide_words_do_not_protect_this_one(self):
+        db = _Db()
+        db.slide_words = [{"slide_index": 0, "phrase": "start",
+                           "source_part_id": "p-1"}]
+        outcome, _ = _accept(db)
+        self.assertEqual(outcome, ar.APPLIED)
+
+    def test_an_unrelated_stale_code_is_a_failure_not_stale(self):
+        db = _Db(cas_error="MLC3_ENROLLMENT_AUTHORITY_STALE")
+        outcome, _ = _accept(db)
+        self.assertEqual(outcome, ar.FAILED)
+
+    def test_the_document_source_stale_code_is_stale(self):
+        db = _Db(cas_error="IDEAL_TEXT_DOCUMENT_SOURCE_STALE")
+        outcome, _ = _accept(db)
+        self.assertEqual(outcome, ar.STALE)
+
+    def test_stray_whitespace_in_a_stored_paragraph_still_joins(self):
+        parts = [dict(PARTS[0], text="We start here.  "), dict(PARTS[1])]
+        outcome, _ = _accept(_Db(parts=parts))
+        self.assertEqual(outcome, ar.APPLIED)

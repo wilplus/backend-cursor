@@ -27,9 +27,11 @@ clause 9.
 WHAT IT REFUSES, and says so: a Paragraph that carries helper words or a
 lock (the writer refuses to change a protected Paragraph; helper words stay
 until the user picks new ones, contract 14), a quote that is no longer in
-the Paragraph, and a document whose Paragraphs do not join to the text the
-speaker is reading. Each is an outcome the page shows as "not saved"; none
-changes a word.
+the Paragraph, a quote found more than once (the freeze carries no span,
+so the server never guesses which), and a document whose Paragraphs do not
+join to the text the speaker is reading. Each is an outcome the page shows
+as "not saved"; none changes a word. A repeated answer (a replay) finds the
+words already in place and changes nothing (audit 2026-10-04).
 """
 from __future__ import annotations
 
@@ -45,7 +47,10 @@ STALE = "stale"
 NOT_FOUND = "not_found"
 FAILED = "failed"
 
-_SEPARATOR = "\n\n"
+# The writer's refusals, by code (never a substring of an unrelated code).
+_PROTECTED_CODES = ("IDEAL_TEXT_PART_REQUIRES_UNLOCK",)
+_STALE_CODES = ("IDEAL_TEXT_DOCUMENT_SOURCE_STALE", "IDEAL_TEXT_USER_EDIT_CONFLICT",
+                "IDEAL_TEXT_PARTS_REFRESH_REQUIRED")
 
 
 def served_rewrite(database: Any, take_session_id: str,
@@ -87,34 +92,65 @@ def _served_text(database: Any, arc_id: str, owner_user_id: str
     return machine or None, version
 
 
+def _positions(text: str, needle: str) -> list[int]:
+    """Every non-overlapping start of `needle` in `text`."""
+    out: list[int] = []
+    at = text.find(needle) if needle else -1
+    while at >= 0:
+        out.append(at)
+        at = text.find(needle, at + len(needle))
+    return out
+
+
+def _free_quotes(text: str, quote: str, proposed: str) -> list[int]:
+    """The quote's starts that do not sit inside the accepted words already
+    in place (proposed "we grew fast" holds the quote "we grew")."""
+    covered = [(s, s + len(proposed)) for s in _positions(text, proposed)]
+    return [a for a in _positions(text, quote)
+            if not any(s <= a and a + len(quote) <= e for s, e in covered)]
+
+
 def rewritten_parts(parts: list, part_id: str, quote: str,
                     proposed: str) -> tuple[str, Optional[list]]:
     """The Paragraphs with the quote replaced in `part_id`. Pure.
 
     Returns (outcome, parts): APPLIED with the new parts, ALREADY when the
-    Paragraph already reads the accepted words and not the quote, else
-    STALE or NOT_FOUND with None."""
+    Paragraph already reads the accepted words and no free quote is left,
+    else STALE (the quote is gone, or found more than once) or NOT_FOUND
+    with None."""
     target = next((p for p in parts if str(p.get("id")) == part_id), None)
     if target is None:
         return NOT_FOUND, None
     text = str(target.get("text") or "")
-    at = text.find(quote)
-    if at < 0:
-        stripped = quote.strip()
-        at = text.find(stripped) if stripped else -1
-        if at >= 0:
-            quote = stripped
-    if at < 0:
+    free = _free_quotes(text, quote, proposed)
+    if not free and quote.strip() != quote:
+        quote = quote.strip()
+        free = _free_quotes(text, quote, proposed) if quote else []
+    if not free:
         return (ALREADY if proposed in text else STALE), None
+    if len(free) > 1:
+        return STALE, None
+    at = free[0]
     new_text = text[:at] + proposed + text[at + len(quote):]
     out = []
     for p in parts:
         row = {"id": str(p.get("id")), "ord": int(p.get("ord") or 0),
-               "text": str(p.get("text") or "")}
+               "text": str(p.get("text") or "").strip()}
         if row["id"] == part_id:
             row["text"] = new_text
         out.append(row)
     return APPLIED, out
+
+
+def _slide_words_on(database: Any, arc_id: str, owner_user_id: str,
+                    part_id: str) -> bool:
+    """Helper words saved on the Slide row for this Paragraph (from practice
+    or an earlier Take) protect it as its own words do (contract 14)."""
+    reader = getattr(database, "get_slide_helper_words", None)
+    rows = reader(str(arc_id), str(owner_user_id)) if reader else []
+    return any(str(r.get("source_part_id") or "").lower() == part_id.lower()
+               and str(r.get("phrase") or "").strip()
+               for r in rows or [] if isinstance(r, dict))
 
 
 def accept_rewrite(database: Any, *, arc_id: str, owner_user_id: str,
@@ -132,21 +168,24 @@ def accept_rewrite(database: Any, *, arc_id: str, owner_user_id: str,
             database.get_ideal_text_parts(arc_id, owner_user_id,
                                           with_lock=True) or [],
             key=lambda p: int(p.get("ord") or 0))
-        if not parts or _SEPARATOR.join(
-                str(p.get("text") or "") for p in parts) != served:
+        from services.ideal_text_parts import agrees_with_text
+        if not parts or not agrees_with_text(parts, served):
             logger.warning("accept_rewrite: paragraphs do not join to the "
                            "served text arc=%s", arc_id)
             return STALE
         target = next((p for p in parts
                        if str(p.get("id")) == item["part_id"]), None)
-        if target is not None and (target.get("locked_at")
-                                   or target.get("root_phrase")):
+        if target is not None and (
+                target.get("locked_at") or target.get("root_phrase")
+                or _slide_words_on(database, arc_id, owner_user_id,
+                                   item["part_id"])):
             return PROTECTED
         outcome, desired = rewritten_parts(
             parts, item["part_id"], item["quote"], item["proposed_text"])
         if outcome != APPLIED or desired is None:
             return outcome
-        text = _SEPARATOR.join(p["text"] for p in desired)
+        from services.ideal_text_parts import joined
+        text = joined(desired)
         try:
             result = database.compare_and_set_user_ideal_edit(
                 owner_user_id=str(owner_user_id), arc_id=str(arc_id),
@@ -158,9 +197,9 @@ def accept_rewrite(database: Any, *, arc_id: str, owner_user_id: str,
                 idempotency_key=None,
             )
         except Exception as error:
-            if "REQUIRES_UNLOCK" in str(error):
+            if any(code in str(error) for code in _PROTECTED_CODES):
                 return PROTECTED
-            if "STALE" in str(error):
+            if any(code in str(error) for code in _STALE_CODES):
                 return STALE
             raise
         if not isinstance(result, dict) or result.get("saved") is not True:
