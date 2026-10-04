@@ -150,22 +150,20 @@ class TheRouteCallsIt(unittest.TestCase):
                   / "routes/v2/user_sessions.py").read_text()
         start = source.index("def v2_post_take_feedback_response(")
         body = source[start:start + 12000]
-        self.assertIn("text_update_for_answer(", body)
-        self.assertIn("**text_update", body)
+        self.assertIn("**text_update_for_answer(", body)
 
     def test_only_an_accepted_rewrite_writes_the_paragraph(self):
         with patch.object(ar, "accept_rewrite", return_value=ar.APPLIED) as acc:
             self.assertEqual(ar.text_update_for_answer(
                 object(), {"feedback_family": "rewrite_clarity",
                            "response": "apply_suggestion", "feedback_id": "rw"},
-                arc_id="a", owner_user_id="u", take_session_id="t"),
+                "a", "u", "t"),
                 {"text_update": "applied"})
             for row in ({"feedback_family": "rewrite_clarity", "response": "keep_wording"},
                         {"feedback_family": "confident_voice", "response": "yes"},
                         {"feedback_family": "great_formulation", "response": "apply_suggestion"}):
                 self.assertEqual(ar.text_update_for_answer(
-                    object(), row, arc_id="a", owner_user_id="u",
-                    take_session_id="t"), {})
+                    object(), row, "a", "u", "t"), {})
             self.assertEqual(acc.call_count, 1)
 
 

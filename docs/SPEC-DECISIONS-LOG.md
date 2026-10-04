@@ -1265,3 +1265,27 @@ with all the next phases ... and merge along the way").**
    (`not_found`), any writer failure (`failed`). The writer needs the
    speaker's MLC-3 enrollment, which follows the Personalised-practice
    choice -- as every text edit already does.
+
+**N36 · Phase 5: helper words hold together (founder 2026-10-04, "keep
+going with all the next phases ... and merge along the way").**
+1. **The four-word cap holds on the server** (B3): the paragraph route, the
+   earlier-Take route and the practice route refuse more than four words with
+   their existing INVALID_ROOT_PHRASE answer (`within_cap`). Words saved
+   before the cap are read as they are.
+2. **A lock replaces only its own paragraph's earlier words** (Q14 A,
+   narrowed): a pick locked in a later Take replaces what THAT paragraph had
+   from earlier Takes; a sibling paragraph's words on the same Slide stay
+   until it is locked anew (contract 14). The recording roots cover a
+   legacy paragraph root by its paragraph, not its Slide.
+3. **The Album refresh fails closed**: inserts still land, removals wait for
+   a refresh whose every read completed.
+4. **Frontend** (wiring only): Presentation Mode and export read the page's
+   helper words (Slide-saved words included); a deleted set stays in
+   History; the Lab's text screen gets Delete-unlock, earlier-Take words and
+   judged updates; "Record Take 2" there asks "Turn on the learning?" (N28).
+5. **Open for the founder: the old "undecided" lock gate.** The lock route
+   refuses (409 UNDECIDED) while any served row on the paragraph is open --
+   a V3 rewrite or praise note included -- and the page treats that refusal
+   as final, so helper words can save while their lock does not. Pinned by
+   `tests/test_the_undecided_lock_gate.py`; left as it stands until the
+   founder decides whether it goes.

@@ -308,3 +308,30 @@ class VoiceAlbumReadTests(unittest.TestCase):
                             snips=self._SNIPS)
         self.assertEqual([e["snippet_id"] for e in body["entries"]],
                          ["early", "late"])
+
+
+class FailsClosedTests(unittest.TestCase):
+    """F1 Repair Plan Phase 5 (audit 2026-10-03): one failed read must never
+    empty a project's Album. Removals wait for a refresh whose every read
+    completed; inserts still land."""
+
+    def test_a_failed_snippet_read_removes_nothing(self):
+        db = _all_three()
+        db.album = [{"snippet_id": "sn_old"}]
+
+        def boom(_sid):
+            raise RuntimeError("read failed")
+        db.get_snippets_by_session = boom
+        refresh_voice_album(ARC, database=db)
+        self.assertEqual(db.deleted, [])
+
+    def test_a_failed_self_report_read_removes_nothing(self):
+        db = _all_three()
+        db.routes = []
+        db.album = [{"snippet_id": "sn1"}]
+
+        def boom(_arc):
+            raise RuntimeError("read failed")
+        db.list_confident_voice_self_reports = boom
+        refresh_voice_album(ARC, database=db)
+        self.assertEqual(db.deleted, [])

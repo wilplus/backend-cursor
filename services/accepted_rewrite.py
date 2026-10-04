@@ -179,7 +179,7 @@ def accept_rewrite(database: Any, *, arc_id: str, owner_user_id: str,
         return FAILED
 
 
-def text_update_for_answer(database: Any, row: dict, *, arc_id: str,
+def text_update_for_answer(database: Any, row: dict, arc_id: str,
                            owner_user_id: str, take_session_id: str) -> dict:
     """For the answer route: ``{"text_update": outcome}`` when the answer
     accepts a rewrite, else ``{}``. The words come from the V3 freeze that

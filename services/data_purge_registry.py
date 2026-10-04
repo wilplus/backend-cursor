@@ -1253,6 +1253,16 @@ CASCADE_RELATIONS: frozenset[str] = frozenset({
     "coaching_attempt_annotations", "journal_post_image",
 })
 
+# Child relations the lineage tombstone empties through their parent
+# (tombstone_phase1_purge_lineage_v1, migration a_take_keeps_an_empty_receipt:
+# `feedback_candidates` follows `candidate_sets`, its `rank_evidence` and
+# `generated_output` erased). Read at runtime since F1 Repair Plan Phase 4,
+# where an accepted rewrite takes its words from the candidate that served
+# it; no resolver step of its own, like CASCADE_RELATIONS.
+TOMBSTONE_CHILD_RELATIONS: frozenset[str] = frozenset({
+    "feedback_candidates",
+})
+
 # Runtime-selected relation names that a literal-only source scan cannot see.
 # Tests bind these values to the defining modules so a new dynamic path fails
 # closed until the registry is deliberately updated.
@@ -1272,6 +1282,7 @@ def classified_relations() -> frozenset[str]:
         frozenset(item.relation for item in DEPENDENCIES)
         | NON_SUBJECT_RELATIONS
         | CASCADE_RELATIONS
+        | TOMBSTONE_CHILD_RELATIONS
     )
 
 

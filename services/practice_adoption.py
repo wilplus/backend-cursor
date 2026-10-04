@@ -197,7 +197,8 @@ def helper_words_from_practice(database: Any, practice: Mapping,
         str(practice.get("id")))
         if str(r.get("id")) == str(practice.get("selected_attempt_id"))), None)
     words = phrase_in_transcript(phrase, (attempt or {}).get("transcript"))
-    if words is None:
+    from services.slide_helper_words import within_cap
+    if words is None or not within_cap(words):
         return 400, {"code": "INVALID_ROOT_PHRASE",
                      "error": "Choose exact words from your practice."}
     arc_id = str(practice.get("project_id"))
