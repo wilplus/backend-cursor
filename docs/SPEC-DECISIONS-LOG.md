@@ -1385,3 +1385,16 @@ refusal of N35.4 and N39.4 for protected Paragraphs.
    to the Slide row (no Slide proof), nothing is written and Accept answers
    `protected` as before.
 
+
+**N41 · A guest's Take gets its Feedback (founder live test, 2026-10-05:
+"there are still no feedbacks available in the ideal text").**
+1. **The claim knows a guest's Take (0419).** `claim_ideal_text_feedback_set_v1`
+   compared `v2_sessions.user_id` with the caller; a guest's Take has none, so
+   every guest claim raised 'feedback set provenance mismatch'. It now
+   compares `COALESCE(user_id, owner_principal_id)` -- the rule
+   `session_actor_id` already applies on the guest read route. A signed-in
+   Take compares as before.
+2. **Never silent again.** A refused claim no longer throws the whole Feedback
+   block away: the page gets `feedback_status: failed`
+   (`feedback_set_claim_failed`) and shows its notice and Try again. A block
+   that falls over for any other reason says so too (`changes_failed`).
