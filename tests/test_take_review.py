@@ -645,6 +645,83 @@ class EveryTakeRewritesTheSlidesItSpoke(unittest.TestCase):
             [r["phrase"] for r in database.slide_rows.get(0, [])],
             ["one words"])
 
+    def test_an_unspoken_slide_keeps_the_words_the_speaker_reads(self):
+        """L1, contract 8, N29: a Slide Take 2 did not speak keeps its LAST
+        version, which is the served text: here the owner's edit on Slide
+        one and an accepted rewrite (N35.4 / N40, written through the same
+        owner-edit writer) on its locked Paragraph. The document, the
+        version snapshot and the Paragraph row all carry those words; the
+        Paragraph keeps its id, lock and helper words, and gets no Take
+        revision, because no Take spoke it. Until 2026-10-05 Take 2 put
+        Take 1's machine words back."""
+        database = _ReviewDb()
+        old_text, old_doc = _two_slide_document()
+        database.ideal.update(auto_text=old_text, text=old_text,
+                              document=old_doc)
+        accepted = "Slide one words, accepted."
+        database.edit = {"text": f"{accepted}\n\nSlide two, edited.",
+                         "version": 1}
+        database.parts = [
+            {"id": "p-one", "ord": 0, "text": accepted,
+             "locked_at": "2026-10-05T10:00:00Z", "root_phrase": "one words",
+             "root_start": 6, "root_end": 15,
+             "root_selected_at": "2026-10-05T10:00:00Z"},
+            {"id": "p-two", "ord": 1, "text": "Slide two, edited."},
+        ]
+        new_text = "Take two says slide two differently."
+        self._run(database, {
+            "text": new_text, "pieces": [],
+            "paragraphs": [{"slide_index": 1, "start": 0,
+                            "end": len(new_text)}],
+            "take_session_id": "take-2", "take_index": 2,
+        })
+        merged = f"{accepted}\n\n{new_text}"
+        self.assertEqual(database.ideal["auto_text"], merged)
+        self.assertEqual(database.snapshots[2]["text"], merged)
+        self.assertEqual(
+            [p["slide_index"] for p in database.ideal["document"]["paragraphs"]],
+            [0, 1])
+        self.assertEqual([(p["id"], p["text"]) for p in database.parts],
+                         [("p-one", accepted), ("p-two", new_text)])
+        one = database.parts[0]
+        self.assertEqual(one["locked_at"], "2026-10-05T10:00:00Z")
+        self.assertEqual(one["root_phrase"], "one words")
+        self.assertEqual([r["part_id"] for r in database.revisions],
+                         ["p-two"])
+        # The owner edit stays at its version: it reads back as prior_edit.
+        self.assertEqual(database.edit["version"], 1)
+
+    def test_an_unreadable_edit_never_stops_the_rebuild(self):
+        """LIVE LOOP: if the served text cannot be read, the rebuild is
+        still planned; its unspoken Slide keeps the machine words, and that
+        is counted under one fixed name."""
+        from unittest import mock
+
+        from services.take_rebuild import plan_rebuild
+
+        database = _ReviewDb()
+        old_text, old_doc = _two_slide_document()
+        database.ideal.update(auto_text=old_text, text=old_text,
+                              document=old_doc)
+
+        def broken(arc_id, user_id):
+            raise RuntimeError("edit store down")
+
+        database.get_user_ideal_edit = broken
+        new_text = "Take two says slide two differently."
+        new_doc = {"text": new_text, "pieces": [],
+                   "paragraphs": [{"slide_index": 1, "start": 0,
+                                   "end": len(new_text)}]}
+        with mock.patch(
+                "services.transcript_document.build_transcript_document",
+                return_value=new_doc), \
+                self.assertLogs("services.take_rebuild", "WARNING") as logs:
+            rebuild = plan_rebuild(database, "arc-1", "take-2", "user-1")
+        self.assertIsNotNone(rebuild)
+        self.assertEqual(rebuild.text, f"Slide one words.\n\n{new_text}")
+        self.assertTrue(any("take_rebuild_unspoken_kept_machine_words" in line
+                            for line in logs.output))
+
     def test_an_unprovable_document_follows_the_take(self):
         """F1 Repair Plan Phase 3 (contract 8, N29 answer 3). An old document
         with no Slide provenance cannot be merged by Slide; it used to stay

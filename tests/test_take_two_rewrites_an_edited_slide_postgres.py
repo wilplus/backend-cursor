@@ -424,25 +424,56 @@ def test_take_two_rewrites_the_edited_slide_and_keeps_the_rest(speaker, monkeypa
 SLIDE1_EDITED = "Nobody believed the numbers until they saw them twice."
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "OPEN (found by this suite, 2026-10-05): `merge_by_slide` takes an "
-    "unspoken Slide's words from `coach_arc_ideal_text.auto_text`, the "
-    "machine's Take 1 text, so an owner edit on a Slide Take 2 did not "
-    "speak is reverted to Take 1's words (the edit survives only in the "
-    "revision chain and as `prior_edit`). Contract 8 / N29 says that Slide "
-    "keeps its last version; whether Q5 A means otherwise is the founder's "
-    "call. Strict: this flips to a failure the day the rebuild keeps it."))
 def test_an_edit_on_a_slide_take_two_did_not_speak_is_its_last_version(
         speaker, monkeypatch):
     """N29: a Slide the speaker did not speak keeps its LAST version. When
-    the owner edited it after Take 1, that edit is its last version."""
+    the owner edited it after Take 1, that edit is its last version.
+
+    Found by this suite on 2026-10-05: `merge_by_slide` took an unspoken
+    Slide's words from `coach_arc_ideal_text.auto_text`, the machine's Take 1
+    text, so Take 2 reverted the edit. The rebuild now reads the served text
+    (`take_rebuild.served_text`, the page's own resolver)."""
+    from services.ideal_text_read import (
+        resolve_ideal_text_source,
+        resolve_live_text,
+    )
+
     s = speaker
     first, second = _take_one_paragraphs(s)
     _edit(s, [(first, SLIDE0_TAKE1), (second, SLIDE1_EDITED)])
+    before = {p["id"]: p for p in _parts(s)}
 
     _take_two(s, monkeypatch, [(0, SLIDE0_TAKE2)])
 
+    expected = f"{SLIDE0_TAKE2}\n\n{SLIDE1_EDITED}"
     after = _parts(s)
     assert [p["id"] for p in after] == [first, second]
     assert after[0]["text"] == SLIDE0_TAKE2
     assert after[1]["text"] == SLIDE1_EDITED
+    assert after[1]["locked_at"] == before[second]["locked_at"]
+
+    # The words the speaker reads after Take 2, the stored document, the
+    # Take 2 snapshot and the Paragraph rows all agree.
+    row = s["db"].ideal_text.get_coach_arc_ideal_text(s["arc"])
+    assert (row["auto_text"], row["version"]) == (expected, 2)
+    live = resolve_live_text(s["arc"], s["owner"],
+                             resolve_ideal_text_source(row), database=s["db"])
+    assert live.text == expected and live.user_edited is False
+    assert [p["slide_index"] for p in row["document"]["paragraphs"]] == [0, 1]
+    versions = _rows(s["conn"], "SELECT version, text FROM ideal_text_versions "
+                                "WHERE arc_id=%s ORDER BY version", (s["arc"],))
+    assert versions == [
+        {"version": 1, "text": f"{SLIDE0_TAKE1}\n\n{SLIDE1_TAKE1}"},
+        {"version": 2, "text": expected},
+    ]
+    assert "\n\n".join(p["text"] for p in after) == expected
+
+    # No Take spoke Slide 1, so its Paragraph gets no Take 2 revision; the
+    # edit is its own revision, and the owner edit reads back as prior_edit.
+    chain = _rows(s["conn"], """SELECT action, text FROM ideal_text_part_revision
+        WHERE arc_id=%s AND part_id=%s ORDER BY id""", (s["arc"], second))
+    assert "take_rewrite" not in [r["action"] for r in chain]
+    assert [r["text"] for r in chain
+            if r["action"] == "owner_part_text_updated"] == [SLIDE1_EDITED]
+    assert live.prior_edit == {
+        "text": f"{SLIDE0_TAKE1}\n\n{SLIDE1_EDITED}", "version": 1}
