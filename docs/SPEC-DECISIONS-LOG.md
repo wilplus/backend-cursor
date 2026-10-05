@@ -1346,3 +1346,19 @@ and this session confirmed is fixed here.
 5. **Frontend** (Phase 6): Practise opens the card shown (a library exercise
    opened the rewrite or the old sheet before any judgement); the button
    before a judgement reads Next, not Done.
+
+**N39 · The founder's answers to the close-out questions (2026-10-05).**
+1. **Practice off hides Accept too** ("ok"): with Personalised practice off,
+   neither Practise nor "Accept and practise" shows. No plain "Accept" string.
+2. **The "undecided" lock gate is retired** ("i guess yes"). The lock route no
+   longer refuses (409 UNDECIDED) while feedback on the paragraph is open, and
+   no longer rebuilds the Feedback block to ask. Nothing is decided on the
+   speaker's behalf: an open row stays open, and a rewrite on a locked
+   paragraph is refused at Accept (N35.4, PROTECTED). `undecided` stays the
+   page-colour rule.
+3. **No "working on your text" Lounge card** ("no"): journey decision 2's card
+   is not built; the Lounge keeps not opening the text by itself (N37.4).
+4. **Accept on a paragraph with helper words**: explained to the founder,
+   awaiting the answer; the refusal stands meanwhile.
+5. **A moment the machine could not read, with a rewrite**, opens on Accept and
+   practise / Keep my words with no Skip ("acceptable").

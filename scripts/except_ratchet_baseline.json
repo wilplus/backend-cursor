@@ -17,7 +17,7 @@
   "routes/v2/coach.py": 20,
   "routes/v2/coaching.py": 12,
   "routes/v2/confident_moment_bundles.py": 5,
-  "routes/v2/explore_ideal_text.py": 23,
+  "routes/v2/explore_ideal_text.py": 22,
   "routes/v2/lab_recording.py": 4,
   "routes/v2/processing_authorization.py": 3,
   "routes/v2/projects.py": 1,

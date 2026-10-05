@@ -225,14 +225,13 @@ class TheAnswerSurvivesTheRead(unittest.TestCase):
         ]
         self.assertEqual([row["id"] for row in undecided(rows)], ["open"])
 
-    def test_the_lock_gate_asks_the_page_s_own_question(self):
-        """Not "is there a rule" but "is it the SAME rule". Two copies
-        drifting apart is how the lock started refusing over items the
-        speaker had already judged."""
+    def test_the_lock_no_longer_asks_at_all(self):
+        """The lock gate that had to ask the page's question is retired
+        (founder 2026-10-05): the lock never refuses over open feedback, so
+        the two can no longer disagree."""
         import routes.v2.explore_ideal_text as route
-        from services.ideal_text_changes import undecided
 
-        self.assertIs(route.undecided, undecided)
+        self.assertFalse(hasattr(route, "undecided"))
 
 
 # ══════════════════════════════════════════════════════════════════════════

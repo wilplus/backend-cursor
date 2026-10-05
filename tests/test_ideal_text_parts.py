@@ -927,7 +927,7 @@ class TheGetServesIdentityOnlyWhenItStillFits(unittest.TestCase):
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class TheLockEndpoint(unittest.TestCase):
-    """PUT …/parts/<id>/lock — R2, R3, R5.
+    """PUT …/parts/<id>/lock — R2, R5 (R3 retired 2026-10-05).
 
     The lock is not a setting: it changes which intervention LAYER may fire on
     this paragraph. So the gates matter more than the write."""
@@ -978,27 +978,26 @@ class TheLockEndpoint(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(m.call_args[0][3], False)
 
-    def test_R3_an_undecided_intervention_BLOCKS_the_lock(self):
-        """Locking makes composition illegal on this part, so a pending
-        rewrite there becomes unreachable. Auto-disregarding it would write a
-        decision the student never made into the one signal §6 depends on."""
+    def test_an_open_intervention_no_longer_blocks_the_lock(self):
+        """R3 RETIRED (founder 2026-10-05): a paragraph with open feedback
+        locks like any other, and nothing is decided on the speaker's behalf
+        -- the open row simply stays open."""
         pending = [{"id": "c1", "kind": "replace",
                     "span": {"start": 0, "end": 17}}]
         body, status, m = self._put(
             {"locked": True, "text_echo": self.DOC}, changes=pending)
-        self.assertEqual(status, 409)
-        self.assertEqual(body["code"], "UNDECIDED")
-        self.assertEqual(body["pending"], 1)
-        m.assert_not_called()
+        self.assertEqual(status, 200)
+        self.assertTrue(body["locked"])
+        self.assertEqual(m.call_args[0][3], True)
 
-    def test_R3_applies_in_reverse_to_UNLOCK(self):
+    def test_an_open_intervention_no_longer_blocks_UNLOCK(self):
         pending = [{"id": "c1", "kind": "bold",
                     "span": {"start": 0, "end": 17}}]
         _b, status, m = self._put(
             {"locked": False, "text_echo": self.DOC},
             rows=self._rows(locked_a="2026-08-07T10:00Z"), changes=pending)
-        self.assertEqual(status, 409)
-        m.assert_not_called()
+        self.assertEqual(status, 200)
+        self.assertEqual(m.call_args[0][3], False)
 
     def test_an_intervention_on_ANOTHER_part_does_not_block(self):
         # The gate is per part, not per document — that is what makes
@@ -1048,9 +1047,9 @@ class TheLockEndpoint(unittest.TestCase):
             _b, status, _m = self._put({"locked": bad, "text_echo": self.DOC})
             self.assertEqual(status, 400, bad)
 
-    def test_a_gate_that_cannot_read_the_interventions_REFUSES(self):
-        """Locking over an unknown pending set is exactly the corruption R3
-        exists to prevent, so the gate fails closed."""
+    def test_the_lock_no_longer_reads_the_served_feedback(self):
+        """With R3 retired the lock does not rebuild the Feedback block, so a
+        failure there can no longer refuse a lock."""
         with self.app.test_request_context(
                 json={"locked": True, "text_echo": self.DOC}):
             request.user_id = "u1"
@@ -1059,13 +1058,14 @@ class TheLockEndpoint(unittest.TestCase):
                  patch.object(db, "get_ideal_text_parts",
                               return_value=self._rows(), create=True), \
                  patch("routes.v2.explore_ideal_text._tracked_changes_block",
-                       side_effect=RuntimeError("boom")), \
+                       side_effect=RuntimeError("boom")) as m_block, \
                  patch.object(db, "set_ideal_text_part_lock",
                               return_value=True, create=True) as m_write:
                 out = v2_explore_ideal_text.v2_explore_set_part_lock.__wrapped__("a1", self.PA)
                 _resp, status = out if isinstance(out, tuple) else (out, 200)
-        self.assertEqual(status, 500)
-        m_write.assert_not_called()
+        self.assertEqual(status, 200)
+        m_block.assert_not_called()
+        m_write.assert_called_once()
 
     def test_a_failed_write_is_a_500_not_a_silent_200(self):
         body, status, _m = self._put({"locked": True, "text_echo": self.DOC},
@@ -1198,17 +1198,16 @@ class SeedOnLock(unittest.TestCase):
         self.assertEqual(body["code"], "STALE_DOCUMENT")
         m_replace.assert_not_called()
 
-    def test_the_R3_gate_still_runs_after_a_seed(self):
-        """Seeding identity does not skip the undecided-suggestions check —
-        the gate reads the same served pipeline either way."""
+    def test_a_seed_with_open_feedback_locks(self):
+        """R3 retired (founder 2026-10-05): a seeded document with open
+        feedback on the part locks too."""
         pending = [{"id": "c1", "kind": "replace",
                     "span": {"start": 0, "end": 17}}]
-        body, status, _r, m_write = self._put(
+        _b, status, _r, m_write = self._put(
             {"locked": True, "text_echo": self.DOC, "parts": self._seed()},
             changes=pending)
-        self.assertEqual(status, 409)
-        self.assertEqual(body["code"], "UNDECIDED")
-        m_write.assert_not_called()
+        self.assertEqual(status, 200)
+        m_write.assert_called_once()
 
     def test_a_failed_seed_write_is_STALE_not_a_lock_on_nothing(self):
         body, status, _r, m_write = self._put(

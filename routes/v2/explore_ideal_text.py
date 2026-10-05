@@ -39,7 +39,6 @@ from routes.v2.arcs import (
     _reassemble_after_decision,
 )
 from routes.v2.blueprint import v2_bp
-from services.ideal_text_changes import undecided
 from services.db import db, first_client_repository
 from services.ideal_text_read import (
     decorate_key_moments,
@@ -1826,16 +1825,18 @@ def v2_explore_set_part_lock(arc_id, part_id):
     part over a series of already-decided changes; the decisions themselves ride
     their own endpoints and are untouched here.
 
-    R3 — a part with UNDECIDED interventions cannot be locked, and R5 applies it
-    in reverse for unlock. Locking makes composition illegal on this part, so a
-    pending rewrite there becomes unreachable — the alternative, auto-
-    disregarding it, would write a decision the student never made into the one
-    signal §6 depends on. Undecided is a real third state (R4), not a refusal.
+    R3 RETIRED (founder 2026-10-05, "i guess yes"): a part with open
+    feedback on it locks like any other. The old gate refused while any served
+    row on the paragraph was undecided -- a V3 rewrite or praise note included
+    -- and the page read that refusal as final, so helper words saved while
+    their lock did not. Nothing is auto-decided: an open row simply stays
+    open, and a rewrite on a locked paragraph is refused at Accept
+    (`accepted_rewrite`, PROTECTED).
 
-    200 {locked, part_id} · 400 · 404 · 409 STALE_DOCUMENT / UNDECIDED · 500
+    200 {locked, part_id} · 400 · 404 · 409 STALE_DOCUMENT · 500
     """
     try:
-        from services.ideal_text_parts import agrees_with_text, part_spans
+        from services.ideal_text_parts import agrees_with_text
         owned, _lock_sessions = _arc_owned_by_caller(arc_id)
         if not owned:
             return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
@@ -1870,56 +1871,6 @@ def v2_explore_set_part_lock(arc_id, part_id):
                       None)
         if target is None:
             return jsonify({"code": "NOT_FOUND", "error": "part not found"}), 404
-
-        # R3 / R5 — is anything on this part still undecided?
-        #
-        # DERIVED FROM THE SERVED INTERVENTIONS, not from a second count.
-        # Every lane already drops what the student decided (`applied` ids, the
-        # cross-take ledger, settled blocks), so a change still on screen IS an
-        # undecided one. Reading the same pipeline the student is looking at is
-        # what stops the gate and the button disagreeing.
-        try:
-            # THE SAME ARBITRATION KEY AS THE SERVE — without it this gate
-            # runs a different policy than the screen: the withhold arm
-            # never fires on an empty session key, and the take's spent
-            # budget counts a different epoch, so the gate could see three
-            # changes where the student sees two and 409 a lock the screen
-            # says is ready.
-            from services.intervention_spend import latest_spoken_take_sid
-            _lock_review_version = (
-                (db.ideal_text.get_coach_arc_ideal_text(arc_id) or {}).get("version")
-            )
-            _served = (_tracked_changes_block(
-                arc_id,
-                echo,
-                user_id,
-                latest_spoken_take_sid(_lock_sessions),
-                review_version=_lock_review_version,
-            )
-                .get("changes") or [])
-            _lo, _hi, _ = next(
-                (s for s in part_spans(parts) if s[2]["id"] == target["id"]),
-                (None, None, None))
-            _pending = [
-                c for c in undecided(_served)
-                if _lo is not None
-                and c.get("span", {}).get("start", -1) >= _lo
-                and c.get("span", {}).get("end", -1) <= _hi
-            ]
-        except Exception as _pe:
-            # A gate that cannot read the interventions must not pass. Locking
-            # over an unknown pending set is precisely the corruption R3 exists
-            # to prevent.
-            logger.warning("part lock gate failed arc=%s: %s", arc_id, _pe)
-            return jsonify({"code": "V2_ERROR",
-                            "error": "Could not check this part — "
-                                     "try again."}), 500
-        if _pending:
-            return jsonify({
-                "code": "UNDECIDED",
-                "error": "decide every suggestion on this part first",
-                "pending": len(_pending),
-            }), 409
 
         _reason = body.get("reason")
         if _reason not in (None, "keep_evolving"):
