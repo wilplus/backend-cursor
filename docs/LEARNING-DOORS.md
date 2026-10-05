@@ -148,10 +148,28 @@ without the withdrawn pairs.
 
 - `services/pair_release.py`: one JSONL file per surface per week to the
   private bucket, manifest beside it, HMAC-SHA256 signature over the
-  manifest's sha256, split speaker-disjoint 80/10/10 by owner principal,
-  no user id, coach id or take in the file; the pairs are marked released
-  atomically and leave once. `pair_releases` and `pair_release_owners` are
-  the ledger; the research screen lists them.
+  manifest's sha256, split speaker-disjoint 80/10/10, no user id, coach id
+  or take in the file; the pairs are marked released atomically and leave
+  once. `pair_releases` and `pair_release_owners` are the ledger; the
+  research screen lists them.
+- **The split is the owner's speaker assignment (F-3, 2026-10-05, 0431).**
+  Until then it hashed the owner principal, an account or a guest rather
+  than a person. Now a pair leaves only when its owner's speaker
+  (`ml_speaker_principals`) has its one assignment
+  (`ml_speaker_split_assignments`, `speaker-sha256-80-10-10-v1`), and leaves
+  under it; the manifest says `split_source: speaker_assignment`. The
+  training yes binds the speaker (in the same transaction since 0431; a yes
+  given earlier is bound the next time the switch is read, which every
+  entry to the recording screen does). A pair whose owner is not bound yet
+  waits, and the job's row says "waiting for the owner's speaker binding".
+  Door 3 reads the same assignment (`services/speaker_split.py`), so a pair
+  released as test is never trained on.
+- **Every release is checked (F-8, 0431).** The file and its manifest are
+  read back right after they are written, and every week while the release
+  stands; each read appends one `pair_release_verifications` row, which the
+  database judges against the release row (the file's sha256; the
+  manifest's sha256 and its signature). A check that cannot run is named in
+  the job's row and never holds a release back.
 - Variables on the **web** service (the weekly cron calls the web app):
 
 ```
@@ -185,8 +203,10 @@ PAIR_RELEASE_SIGNING_KEY_ID=pair-release-key-1
   starts (exclusion at run start), carry their passage (0406 backfilled
   it; `record_pair` stores it since), and were never trained on (a pair
   trains once, `mark_feedback_pairs_trained_v1`). The file is the serving
-  prompt example for example, split by owner principal (train, validation;
-  the test bucket held out). One OpenAI job per run; the row remembers the
+  prompt example for example, split by the same speaker assignment door 2
+  released each pair under (train, validation; the test bucket held out;
+  F-3, 2026-10-05; a pair released before then keeps the owner-principal
+  split it left under). One OpenAI job per run; the row remembers the
   file, the job and the owners.
 - **The poll.** Each week a running job is read; a finished one loses its
   files at the provider at once; a succeeded one gets its candidate id and

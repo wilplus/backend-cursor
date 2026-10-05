@@ -57,6 +57,9 @@ def _release(surface, week, splits, voided=False):
 
 HEALTH = {"readiness_contract_version": "mlc2-confidence-canary-readiness-v1",
           "active_consent_policy_count": 1, "valid_active_consent_policy_count": 1,
+          # The chain's one consent authority is the training yes (0431).
+          "active_training_consent_policy_count": 1,
+          "valid_active_training_consent_policy_count": 1,
           "pending_confidence_outbox_count": 0, "failed_confidence_outbox_count": 0,
           "receipt_without_outbox_count": 0, "processed_without_frame_count": 0,
           "blind_assignment_without_packet_count": 0, "revealed_without_judgment_count": 0,
@@ -66,7 +69,8 @@ RING = {"ring_readiness_contract_version": "rings-confidence-readiness-v1",
         "confidence_ring_row_present": True, "confidence_ring_row_killed": False,
         "confidence_ring_row_one_way": True, "canonical_take_rows_row_present": True,
         "canonical_take_rows_row_killed": False, "eligible_principal_count": 1,
-        "eligible_bundled_consent_grant_count": 1, "noneligible_producer_receipt_count": 0,
+        "eligible_bundled_consent_grant_count": 1, "eligible_training_consent_grant_count": 1,
+        "noneligible_producer_receipt_count": 0,
         "noneligible_canonical_event_count": 0, "eligible_producer_receipt_count": 4}
 
 DRIFT = {"version": "frozen_v1", "minted": 0, "note": None, "worst": "PIPELINE_CHANGED",

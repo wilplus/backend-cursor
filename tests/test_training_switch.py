@@ -227,3 +227,100 @@ def test_the_late_label_sweep_copies_only_missing_labels():
     copied = [(call.args[1]["training_grant_event_id"], call.args[2])
               for call in copy.call_args_list]
     assert copied == [("grant-1", "s1"), ("grant-2", "s3")]
+
+
+# ── The one consent authority binds the speaker (N48.5 Q27 A; 0431; F-3) ───
+
+IDENTITY = ("i" * 64, "p" * 64)
+
+
+class BindingDatabase(FakeDatabase):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.accepted: list[dict] = []
+        self.bound: list[dict] = []
+        self.bind_raises = False
+
+    def accept_mlc2_training_consent(self, **kwargs):
+        if self.refuse:
+            raise RuntimeError(self.refuse)
+        self.accepted.append(kwargs)
+        self.active = True
+        return {"consent_event_id": "grant-1", "speaker_bound": True}
+
+    def bind_mlc2_training_speaker(self, **kwargs):
+        if self.bind_raises:
+            raise RuntimeError("database down")
+        self.bound.append(kwargs)
+        return {"id": "binding-1"}
+
+
+def test_a_yes_with_the_verified_identity_binds_the_speaker_in_one_call():
+    database = BindingDatabase()
+    state = tc.handle(database, "owner", "POST", _on(), "web", identity=IDENTITY)
+    assert state["active"] is True
+    assert database.grants == []  # never the plain writer when the identity is there
+    (accepted,) = database.accepted
+    assert accepted["identity_hash"] == IDENTITY[0]
+    assert accepted["binding_proof_hash"] == IDENTITY[1]
+    assert accepted["identity_version"] == "supabase-auth-sub-v1"
+    assert accepted["bound_by"] == "authenticated-training-consent-v1"
+    assert accepted["affirmative_action"]["control"] == "training_toggle"
+
+
+def test_a_refused_yes_with_the_identity_keeps_its_stable_code():
+    database = BindingDatabase(refuse="TRAINING_CONSENT_NEEDS_POLICY_RECEIPT")
+    with pytest.raises(tc.TrainingSwitchError) as refused:
+        tc.handle(database, "owner", "POST", _on(), "web", identity=IDENTITY)
+    assert (refused.value.code, refused.value.status) == ("REACCEPT_REQUIRED", 409)
+    assert database.accepted == [] and database.bound == []
+
+
+def test_an_earlier_yes_is_bound_when_the_card_reads_the_switch():
+    database = BindingDatabase(active=True)
+    state = tc.handle(database, "owner", "GET", None, "web", identity=IDENTITY)
+    assert state["active"] is True
+    (bound,) = database.bound
+    assert bound["acquisition_principal_id"] == "owner"
+    assert bound["identity_hash"] == IDENTITY[0]
+
+
+def test_without_a_yes_the_read_binds_nobody():
+    database = BindingDatabase(active=False)
+    tc.handle(database, "owner", "GET", None, "web", identity=IDENTITY)
+    assert database.bound == []
+
+
+def test_a_failing_binding_never_fails_the_card():
+    database = BindingDatabase(active=True)
+    database.bind_raises = True
+    state = tc.handle(database, "owner", "GET", None, "web", identity=IDENTITY)
+    assert state["active"] is True
+
+
+def test_turning_on_twice_binds_an_unbound_earlier_yes_and_records_no_second_yes():
+    database = BindingDatabase(active=True)
+    tc.handle(database, "owner", "POST", _on(), "web", identity=IDENTITY)
+    assert database.accepted == [] and len(database.bound) == 1
+
+
+def test_the_route_hands_the_verified_identity_to_the_switch():
+    from flask import Flask, request
+
+    from routes.v2 import training_consent as route
+    from services.speaker_identity import identity_coordinates
+
+    payload = {"sub": "user-1", "iss": "https://auth.example/auth/v1",
+               "email": "Person@Example.com"}
+    app = Flask(__name__)
+    with app.test_request_context("/v2/user/training-consent", method="GET"):
+        request.user_id = "user-1"
+        request.token_payload = payload
+        with mock.patch.object(route, "handle", return_value={"active": False}) as handle, \
+                mock.patch.object(route._repository, "owner_for_user",
+                                  return_value=mock.Mock(id="owner-1")):
+            response, status = route.v2_user_training_consent.__wrapped__()
+    assert status == 200
+    assert handle.call_args.kwargs["identity"] == identity_coordinates(payload, "user-1")
+    identity, proof = identity_coordinates(payload, "user-1")
+    assert len(identity) == len(proof) == 64 and identity != proof

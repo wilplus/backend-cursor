@@ -466,3 +466,4 @@
 0428	the_bake_knows_about_the_coach.sql
 0429	the_purge_reaches_what_v1_5_decided.sql
 0430	the_bake_knows_about_skips_and_practice.sql
+0431	the_chain_hears_the_training_yes.sql

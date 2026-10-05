@@ -133,6 +133,15 @@ class ConfidenceChainConsumerStore:
         return _row(getattr(result, "data", None))
 
 
+def _visible_sha256(packet: Mapping[str, Any]) -> Any:
+    """The visible payload's hash. The packet RPC (0304, through 0393's
+    wrapper) names it ``visible_packet_sha256``; the presentation and the
+    render receipt call the same value ``visible_payload_sha256``. Until
+    2026-10-05 the handle asked only for the second name, which the RPC
+    never returns, so no queue row ever carried a handle."""
+    return packet.get("visible_payload_sha256") or packet.get("visible_packet_sha256")
+
+
 def coach_packet_handle(packet: Mapping[str, Any]) -> dict:
     """The four identifiers the browser needs, and nothing of the packet.
 
@@ -140,7 +149,10 @@ def coach_packet_handle(packet: Mapping[str, Any]) -> dict:
     server: the card already has its own playback reference, and the handle
     must never become a second channel for anything about the moment.
     """
-    return {field: str(packet[field]) for field in HANDLE_FIELDS}
+    handle = {field: str(packet[field]) for field in HANDLE_FIELDS
+              if field != "visible_payload_sha256"}
+    handle["visible_payload_sha256"] = str(_visible_sha256(packet))
+    return handle
 
 
 def attach_coach_packet(
@@ -168,7 +180,9 @@ def attach_coach_packet(
             take_id, snippet_id, error,
         )
         return row
-    if packet and all(packet.get(field) for field in HANDLE_FIELDS):
+    if packet and _visible_sha256(packet) and all(
+            packet.get(field) for field in HANDLE_FIELDS
+            if field != "visible_payload_sha256"):
         row[HANDLE_KEY] = coach_packet_handle(packet)
     return row
 

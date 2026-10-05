@@ -12,6 +12,12 @@ canonical-Take door in front of it is the ``canonical_take_rows`` row. The
 writer state (``MLC2_CONFIDENCE_CUTOVER_MODE``) is not a "who" and stays a
 code constant; readiness still requires it dark, and the one-way row's kill
 reads as ``killed`` through ``configured_confidence_cutover``.
+
+ONE CONSENT AUTHORITY (founder 2026-10-05, N48.5 Q27 A; migration 0431). The
+consent half of the "who" is the training yes: readiness wants at least one
+ring-eligible principal holding an active training yes with a bound speaker,
+and exactly one valid active training-only policy. The bundled grant and the
+bundled policy are reported as evidence only; they gate nothing (N2, N10.6).
 """
 from __future__ import annotations
 
@@ -84,8 +90,10 @@ def _ring_blockers(ring_health: Mapping[str, Any], *,
         blockers.append("canonical_take_rows_row_killed")
     if _count(ring_health, "eligible_principal_count") < 1:
         blockers.append("no_ring_eligible_principal")
-    if _count(ring_health, "eligible_bundled_consent_grant_count") < 1:
-        blockers.append("eligible_bundled_consent_missing")
+    # 0431: the training yes is the one consent authority; a bundled grant
+    # admits nothing, so it no longer satisfies (or blocks) readiness.
+    if _count(ring_health, "eligible_training_consent_grant_count") < 1:
+        blockers.append("eligible_training_consent_missing")
     # Only ring-eligible principals may have written anything, and while the
     # producer is dark not even they may have.
     for key in ("noneligible_producer_receipt_count",
@@ -102,10 +110,11 @@ def _health_blockers(health: Mapping[str, Any]) -> list[str]:
     blockers: list[str] = []
     if health.get("readiness_contract_version") != READINESS_CONTRACT_VERSION:
         blockers.append("readiness_health_contract_mismatch")
-    if _count(health, "active_consent_policy_count") != 1:
-        blockers.append("active_consent_policy_count_invalid")
-    if _count(health, "valid_active_consent_policy_count") != 1:
-        blockers.append("product_legal_consent_configuration_invalid")
+    # 0431: the policy that matters is the training-only one.
+    if _count(health, "active_training_consent_policy_count") != 1:
+        blockers.append("active_training_consent_policy_count_invalid")
+    if _count(health, "valid_active_training_consent_policy_count") != 1:
+        blockers.append("training_consent_configuration_invalid")
     zero_invariants = (
         "pending_confidence_outbox_count",
         "failed_confidence_outbox_count",
@@ -217,6 +226,19 @@ def assess_confidence_canary_readiness(
         "valid_active_consent_policy_count": _count(
             health, "valid_active_consent_policy_count"
         ),
+        "active_training_consent_policy_count": _count(
+            health, "active_training_consent_policy_count"
+        ),
+        "valid_active_training_consent_policy_count": _count(
+            health, "valid_active_training_consent_policy_count"
+        ),
+        "eligible_training_consent_grant_count": _count(
+            ring_health, "eligible_training_consent_grant_count"
+        ),
+        "eligible_training_yes_without_speaker_count": _count(
+            ring_health, "eligible_training_yes_without_speaker_count"
+        ),
+        # The bundled era, for the record only (N2, N10.6).
         "eligible_bundled_consent_grant_count": _count(
             ring_health, "eligible_bundled_consent_grant_count"
         ),

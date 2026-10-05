@@ -18,6 +18,8 @@ def _health() -> dict:
         "readiness_contract_version": READINESS_CONTRACT_VERSION,
         "active_consent_policy_count": 1,
         "valid_active_consent_policy_count": 1,
+        "active_training_consent_policy_count": 1,
+        "valid_active_training_consent_policy_count": 1,
         "pending_confidence_outbox_count": 0,
         "failed_confidence_outbox_count": 0,
         "oldest_pending_confidence_outbox_at": None,
@@ -43,6 +45,8 @@ def _ring_health() -> dict:
         "canonical_take_rows_row_killed": False,
         "eligible_principal_count": 1,
         "eligible_bundled_consent_grant_count": 1,
+        "eligible_training_consent_grant_count": 1,
+        "eligible_training_yes_without_speaker_count": 0,
         "eligible_producer_receipt_count": 0,
         "noneligible_producer_receipt_count": 0,
         "noneligible_canonical_event_count": 0,
@@ -110,8 +114,10 @@ def test_configuration_gates_fail_closed(override, blocker):
 @pytest.mark.parametrize(
     "health_key,blocker",
     [
-        ("valid_active_consent_policy_count",
-         "product_legal_consent_configuration_invalid"),
+        ("valid_active_training_consent_policy_count",
+         "training_consent_configuration_invalid"),
+        ("active_training_consent_policy_count",
+         "active_training_consent_policy_count_invalid"),
         ("failed_confidence_outbox_count",
          "failed_confidence_outbox_count_nonzero"),
         ("receipt_without_outbox_count",
@@ -146,8 +152,8 @@ def test_database_evidence_gates_fail_closed(health_key, blocker):
         ({"canonical_take_rows_row_killed": True},
          "canonical_take_rows_row_killed"),
         ({"eligible_principal_count": 0}, "no_ring_eligible_principal"),
-        ({"eligible_bundled_consent_grant_count": 0},
-         "eligible_bundled_consent_missing"),
+        ({"eligible_training_consent_grant_count": 0},
+         "eligible_training_consent_missing"),
         ({"noneligible_producer_receipt_count": 1},
          "noneligible_producer_receipt_count_nonzero"),
         ({"noneligible_canonical_event_count": 1},
@@ -156,9 +162,9 @@ def test_database_evidence_gates_fail_closed(health_key, blocker):
 )
 def test_ring_evidence_gates_fail_closed(override, blocker):
     """The canary's "who" is the ring row (0394): the row must exist, be
-    one-way and not killed, reach at least one principal with a bundled
-    consent grant, and nobody the row does NOT reach may have written a
-    receipt or a canonical event."""
+    one-way and not killed, reach at least one principal with a training
+    yes and a bound speaker (0431), and nobody the row does NOT reach may
+    have written a receipt or a canonical event."""
     ring_health = {**_ring_health(), **override}
     report = _assess(ring_health=ring_health)
     assert report.ready is False
@@ -237,3 +243,30 @@ def test_normal_feedback_selection_precedes_and_does_not_depend_on_writer_gate()
     assert "confidence_prior_learning_writes_enabled" not in claim_stage
     write_stage = inspect.getsource(_ChangesRun._canonical_dual_write)
     assert "db.record_canonical_feedback_exposure(" in write_stage
+
+
+def test_the_bundled_era_neither_admits_nor_blocks():
+    """0431 (N48.5 Q27 A; N2, N10.6): a bundled grant without a training
+    yes leaves the canary blocked, and retiring the bundled policy (count
+    0) blocks nothing. Both stay in the evidence, for the record."""
+    bundled_only = {**_ring_health(), "eligible_training_consent_grant_count": 0}
+    report = _assess(ring_health=bundled_only, cutover_mode="founder_canary")
+    assert "eligible_training_consent_missing" in report.blocker_codes
+    no_bundled = {**_health(), "active_consent_policy_count": 0,
+                  "valid_active_consent_policy_count": 0}
+    report = _assess(no_bundled, cutover_mode="founder_canary")
+    assert report.ready is True, report.blocker_codes
+    assert report.evidence["eligible_bundled_consent_grant_count"] == 1
+    assert report.evidence["eligible_training_consent_grant_count"] == 1
+
+
+def test_a_missing_training_key_fails_closed():
+    """A database still on the pre-0431 functions reports no training
+    count: that reads as -1, a blocker, never as ready."""
+    ring_health = _ring_health()
+    del ring_health["eligible_training_consent_grant_count"]
+    health = _health()
+    del health["valid_active_training_consent_policy_count"]
+    report = _assess(health, ring_health=ring_health)
+    assert "eligible_training_consent_missing" in report.blocker_codes
+    assert "training_consent_configuration_invalid" in report.blocker_codes

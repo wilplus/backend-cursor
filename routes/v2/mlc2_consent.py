@@ -1,22 +1,35 @@
-"""The MLC-2 bundled-consent surface (Slice 6A; opened to the ring, Q7).
+"""The bundled MLC-2 consent route, retired as a door (N48.5 Q27 A).
 
-Founder-only until 2026-09-29. Since Q7 the door is the
-``confidence_learning_writes`` ring row: any person that row reaches (ring,
-attribute rule, not killed) may read, grant or withdraw; everyone else gets
-``applicable=false`` and is not modified. The founder is one such person,
-not a special case. The browser never writes canonical tables. A verified
-Supabase subject is resolved to one acquisition principal, then service-role
-RPCs append speaker and consent provenance. The Confidence producer remains
-dark.
+Until 2026-10-05 this route recorded the bundled two-purpose grant
+(``accept_mlc2_founder_consent_v1`` → ``record_mlc2_consent_grant_v1``) that
+admitted a person into the confidence chain. The founder's answer of that
+day ("the confidence-learning chain is connected: one consent authority (the
+training yes)") and the earlier locks (N2 / C2: the v1 grant and withdrawal
+functions do not stay; N10 item 6: bundled-era yeses count for nothing) make
+the training yes the only authority: ``/v2/user/training-consent`` on its own
+screen, read through ``get_mlc2_training_consent_status_v2`` (migration
+0431). So this route records no new bundled grant.
 
-The route is open in ``dark`` and ``founder_canary`` and answers 410 only when
-the writer state is ``killed`` (``confidence_chain_alive``): the grant must
-exist before activation, because readiness requires it and the canonical
-promotion freezes a snapshot of it for every Take (0392).
+It still answers, because two screens read it: the founder gate in front of
+the Lounge and ``/account/model-improvement``. And it keeps one write: a
+person who holds a bundled grant can still withdraw it. Withdrawing is never
+harder than agreeing was, and only the v1 withdrawal can withdraw a bundled
+grant (0373 built the v2 one for training grants alone, by design).
+
+  GET     a holder of an active bundled grant: applicable and granted, so the
+          page offers the withdrawal; anyone else: not applicable. Never an
+          error: the founder gate reads this before the Lounge, and an error
+          there would stop recording (LIVE LOOP).
+  POST    410 ``BUNDLED_CONSENT_RETIRED``. Nothing is written. The training
+          yes is its own act on its own screen (N10, N15).
+  DELETE  a holder's withdrawal (``record_mlc2_consent_withdrawal_v1``);
+          anyone else gets the not-applicable status. Neither the ring nor
+          the writer state can stand in front of a withdrawal.
+
+The browser never writes canonical tables; responses carry no internal id.
 """
 from __future__ import annotations
 
-import hashlib
 import logging
 from datetime import datetime, timezone
 
@@ -24,85 +37,21 @@ import sentry_sdk
 from flask import jsonify, request
 
 from auth import require_auth
-from config import Config
-from routes.phase2_guard import confidence_chain_alive
 from routes.v2.blueprint import v2_bp
-from services import rings
 from services.db import db
-from services.project_repository import ProjectOwnershipError, ProjectRepository
 
 
 logger = logging.getLogger(__name__)
-config = Config()
-_repository = ProjectRepository(db)
 _SOURCE_ROUTE = "/v2/user/mlc2-consent"
 _CLIENT_VERSION_FALLBACK = "willab-web-unknown"
+RETIRED_CODE = "BUNDLED_CONSENT_RETIRED"
 
-
-def _chain_reaches_request() -> bool:
-    """A person the ``confidence_learning_writes`` ring row reaches (rings,
-    0394). The row's REACH half only (ring, rule, not killed): this route is
-    the door that would record the very consent the full check asks for, so
-    asking the full check here would be circular. No email is read (Q7,
-    founder 2026-09-29): the ring decides who may consent, the founder
-    included; the announcement sheet is how a person gets here."""
-    principal = rings.principal_for_user(getattr(request, "user_id", None))
-    return bool(principal) and rings.feature_reaches(
-        rings.CONFIDENCE_LEARNING_WRITES, principal)
-
-
-def _canary_principal_matches(owner_principal_id: str) -> bool:
-    """True when the ``confidence_learning_writes`` ring row REACHES the
-    principal about to be bound (rings, 0394). This replaced a comparison
-    against a canary principal variable, retired on 2026-09-29. Defence in
-    depth beside ``_chain_reaches_request``, on the principal the grant would
-    bind."""
-    return rings.feature_reaches(
-        rings.CONFIDENCE_LEARNING_WRITES, owner_principal_id)
-
-
-def _bind_refusal(owner_principal_id: str, body: dict, status: dict):
-    """The response that refuses a grant, or None when it may be recorded.
-
-    The grant binds a speaker to the chain. Only a principal the
-    ``confidence_learning_writes`` ring row reaches may bind (defence in
-    depth beside the door, on the principal the grant would bind). The checkbox must be
-    affirmative, and the text accepted must be the text approved.
-    """
-    if not _canary_principal_matches(owner_principal_id):
-        return jsonify({
-            "code": "CANARY_PRINCIPAL_MISMATCH",
-            "error": "This account is not the configured canary principal.",
-        }), 403
-    if body.get("accepted") is not True:
-        return jsonify({
-            "code": "EXPLICIT_CONSENT_REQUIRED",
-            "error": "The consent checkbox must be selected.",
-        }), 400
-    if body.get("consent_policy_version") != status.get(
-        "consent_policy_version"
-    ) or body.get("copy_sha256") != status.get("approved_copy_sha256"):
-        return jsonify({
-            "code": "CONSENT_VERSION_MISMATCH",
-            "error": "The consent text changed. Please review it again.",
-        }), 409
-    return None
-
-
-def _sha256(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
-
-
-def _identity_coordinates(user_id: str) -> tuple[str, str]:
-    payload = getattr(request, "token_payload", None) or {}
-    issuer = str(payload.get("iss") or "supabase").strip()
-    subject = str(payload.get("sub") or user_id).strip()
-    identity = _sha256(f"supabase-auth-sub-v1:{issuer}:{subject}")
-    proof = _sha256(
-        "verified-account-link-v1:"
-        f"{issuer}:{subject}:{str(payload.get('email') or '').strip().lower()}"
-    )
-    return identity, proof
+_NOT_APPLICABLE = {
+    "applicable": False,
+    "configured": False,
+    "granted": False,
+    "retired": True,
+}
 
 
 def _client_version() -> str:
@@ -113,9 +62,10 @@ def _client_version() -> str:
     return value[:120] or _CLIENT_VERSION_FALLBACK
 
 
-def _public_status(status: dict, *, applicable: bool = True) -> dict:
+def _public_status(status: dict) -> dict:
     return {
-        "applicable": applicable,
+        "applicable": True,
+        "retired": True,
         "configured": bool(status.get("configured")),
         "granted": bool(status.get("granted")),
         "speaker_bound": bool(status.get("speaker_bound")),
@@ -132,133 +82,82 @@ def _public_status(status: dict, *, applicable: bool = True) -> dict:
     }
 
 
-def _owner_and_status() -> tuple[str, dict]:
-    user_id = str(getattr(request, "user_id", "")).strip()
+def _principal_id() -> str | None:
+    """The caller's existing owner principal, read only: a retired door
+    creates nothing, not even a principal."""
+    user_id = str(getattr(request, "user_id", "") or "").strip()
     if not user_id:
-        raise ProjectOwnershipError("verified auth subject is missing")
-    owner = _repository.owner_for_user(user_id)
-    status = db.get_mlc2_principal_consent_status(owner.id)
-    if not status:
-        raise RuntimeError("canonical consent status is unavailable")
-    return owner.id, status
+        return None
+    try:
+        principal = db.get_owner_principal_for_user(user_id) or {}
+    except Exception:  # noqa: BLE001 - unknown reads as not applicable
+        logger.warning("bundled consent: principal read failed", exc_info=True)
+        return None
+    value = str(principal.get("id") or "").strip()
+    return value or None
+
+
+def _held_grant(principal_id: str | None) -> dict | None:
+    """The bundled status when this person still holds an active bundled
+    grant, else None. Any failure of the v1 reader (it raises when more than
+    one bundled policy is active) reads as "holds none"."""
+    if not principal_id:
+        return None
+    try:
+        status = db.get_mlc2_principal_consent_status(principal_id) or {}
+    except Exception:  # noqa: BLE001 - never an error on this route
+        logger.warning("bundled consent: status read failed", exc_info=True)
+        return None
+    if status.get("configured") and status.get("granted") \
+            and status.get("grant_event_id"):
+        return status
+    return None
 
 
 @v2_bp.route("/user/mlc2-consent", methods=["GET", "POST", "DELETE"])
-@confidence_chain_alive
 @require_auth
 def v2_user_mlc2_consent():
-    """Read, explicitly grant, or explicitly withdraw the bundled consent.
+    """Read or withdraw a bundled-era grant; never record one."""
+    if request.method == "POST":
+        # A code only, no words: the words are the frontend's (as on the
+        # training switch), and no screen posts here once GET never answers
+        # "applicable but not granted".
+        return jsonify({"code": RETIRED_CODE}), 410
 
-    Accounts the ring row does not reach receive ``applicable=false`` and are
-    not modified. A reached person's principal may be established from
-    verified auth on GET; consent is created only by POST with an affirmative
-    checkbox action.
-    """
-    if not _chain_reaches_request():
+    principal_id = _principal_id()
+    held = _held_grant(principal_id)
+    if request.method == "GET" or held is None or principal_id is None:
+        return jsonify(_public_status(held) if held else _NOT_APPLICABLE), 200
+
+    body = request.get_json(silent=True)
+    idempotency_key = str((body or {}).get("idempotency_key") or "").strip() \
+        if isinstance(body, dict) else ""
+    if not idempotency_key or len(idempotency_key) > 200:
         return jsonify({
-            "applicable": False,
-            "configured": False,
-            "granted": False,
-        }), 200
-
+            "code": "INVALID_INPUT",
+            "error": "A bounded idempotency_key is required.",
+        }), 400
     try:
-        owner_id, status = _owner_and_status()
-        if not status.get("configured"):
-            return jsonify({
-                "code": "MLC2_CONSENT_NOT_CONFIGURED",
-                "error": "Model-improvement consent is not configured yet.",
-            }), 503
-
-        if request.method == "GET":
-            return jsonify(_public_status(status)), 200
-
-        body = request.get_json(silent=True)
-        if not isinstance(body, dict):
-            return jsonify({
-                "code": "INVALID_INPUT",
-                "error": "Request body must be a JSON object.",
-            }), 400
-        idempotency_key = str(body.get("idempotency_key") or "").strip()
-        if not idempotency_key or len(idempotency_key) > 200:
-            return jsonify({
-                "code": "INVALID_INPUT",
-                "error": "A bounded idempotency_key is required.",
-            }), 400
-
-        now = datetime.now(timezone.utc).isoformat()
-        if request.method == "DELETE":
-            grant_event_id = str(status.get("grant_event_id") or "").strip()
-            if not grant_event_id:
-                return jsonify(_public_status(status)), 200
-            withdrawal = db.record_mlc2_consent_withdrawal(
-                acquisition_principal_id=owner_id,
-                grant_event_id=grant_event_id,
-                source_route=_SOURCE_ROUTE,
-                client_version=_client_version(),
-                affirmative_action={
-                    "withdrawn": True,
-                    "service_access_ends": True,
-                },
-                occurred_at=now,
-                idempotency_key=idempotency_key,
-            )
-            if not withdrawal:
-                raise RuntimeError("consent withdrawal was not persisted")
-            refreshed = db.get_mlc2_principal_consent_status(owner_id) or {}
-            return jsonify(_public_status(refreshed)), 200
-
-        refusal = _bind_refusal(owner_id, body, status)
-        if refusal is not None:
-            return refusal
-
-        identity_hash, proof_hash = _identity_coordinates(
-            str(getattr(request, "user_id", ""))
-        )
-        consent = db.accept_mlc2_founder_consent(
-            acquisition_principal_id=owner_id,
-            identity_hash=identity_hash,
-            identity_version="supabase-auth-sub-v1",
-            binding_kind="verified_account_link",
-            binding_proof_hash=proof_hash,
-            bound_by="authenticated-founder-consent-v1",
-            consent_policy_version=str(status["consent_policy_version"]),
-            jurisdiction="PL/EU",
-            terms_version=str(status["terms_version"]),
-            privacy_policy_version=str(status["privacy_policy_version"]),
+        withdrawal = db.record_mlc2_consent_withdrawal(
+            acquisition_principal_id=principal_id,
+            grant_event_id=str(held["grant_event_id"]),
             source_route=_SOURCE_ROUTE,
             client_version=_client_version(),
             affirmative_action={
-                "accepted": True,
-                "copy_sha256": status["approved_copy_sha256"],
-                "purposes": [
-                    "personalized_coaching",
-                    "pooled_model_improvement",
-                ],
-                "checkbox_preselected": False,
+                "withdrawn": True,
+                "service_access_ends": True,
             },
-            occurred_at=now,
-            article_9_applies=(
-                status.get("article_9_treatment")
-                == "9(2)(a)_when_special_category"
-            ),
+            occurred_at=datetime.now(timezone.utc).isoformat(),
             idempotency_key=idempotency_key,
         )
-        if not consent:
-            raise RuntimeError("consent grant was not persisted")
-        refreshed = db.get_mlc2_principal_consent_status(owner_id) or {}
-        return jsonify(_public_status(refreshed)), 200
-
-    except ProjectOwnershipError as error:
-        logger.error("founder principal resolution failed: %s", error)
-        sentry_sdk.capture_exception(error)
-        return jsonify({
-            "code": "PRINCIPAL_UNAVAILABLE",
-            "error": "Your verified owner identity could not be prepared.",
-        }), 503
+        if not withdrawal:
+            raise RuntimeError("consent withdrawal was not persisted")
     except Exception as error:
-        logger.error("MLC-2 founder consent failed: %s", error, exc_info=True)
+        logger.error("bundled consent withdrawal failed: %s", error, exc_info=True)
         sentry_sdk.capture_exception(error)
         return jsonify({
             "code": "MLC2_CONSENT_FAILED",
             "error": "We could not save this consent safely. Please try again.",
         }), 500
+    still = _held_grant(principal_id)
+    return jsonify(_public_status(still) if still else _NOT_APPLICABLE), 200

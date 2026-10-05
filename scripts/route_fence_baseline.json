@@ -187,10 +187,6 @@
     "lines": 116,
     "db_calls": 0
   },
-  "routes/v2/mlc2_consent.py:v2_user_mlc2_consent": {
-    "lines": 116,
-    "db_calls": 4
-  },
   "routes/v2/user_account.py:v2_user_consent": {
     "lines": 195,
     "db_calls": 3

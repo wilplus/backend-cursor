@@ -1303,46 +1303,6 @@ class DatabaseService:
         ).execute()
         return self._rpc_row(result.data)
 
-    def accept_mlc2_founder_consent(
-        self,
-        *,
-        acquisition_principal_id: str,
-        identity_hash: str,
-        identity_version: str,
-        binding_kind: str,
-        binding_proof_hash: str,
-        bound_by: str,
-        consent_policy_version: str,
-        jurisdiction: str,
-        terms_version: str,
-        privacy_policy_version: str,
-        source_route: str,
-        client_version: str,
-        affirmative_action: dict,
-        occurred_at: str,
-        article_9_applies: bool,
-        idempotency_key: str,
-    ) -> Optional[dict]:
-        result = self.client.rpc("accept_mlc2_founder_consent_v1", {
-            "p_acquisition_principal_id": str(acquisition_principal_id),
-            "p_identity_hash": str(identity_hash),
-            "p_identity_version": str(identity_version),
-            "p_binding_kind": str(binding_kind),
-            "p_binding_proof_hash": str(binding_proof_hash),
-            "p_bound_by": str(bound_by),
-            "p_consent_policy_version": str(consent_policy_version),
-            "p_jurisdiction": str(jurisdiction),
-            "p_terms_version": str(terms_version),
-            "p_privacy_policy_version": str(privacy_policy_version),
-            "p_source_route": str(source_route),
-            "p_client_version": str(client_version),
-            "p_affirmative_action": dict(affirmative_action),
-            "p_occurred_at": str(occurred_at),
-            "p_article_9_applies": bool(article_9_applies),
-            "p_idempotency_key": str(idempotency_key),
-        }).execute()
-        return self._rpc_row(result.data)
-
     def record_mlc2_consent_withdrawal(
         self,
         *,
@@ -14453,6 +14413,112 @@ class DatabaseService:
         }).execute()
         return self._rpc_row(result.data)
 
+    def accept_mlc2_training_consent(
+        self, *, acquisition_principal_id: str, consent_policy_version: str,
+        terms_version: str, privacy_policy_version: str, source_route: str,
+        client_version: str, affirmative_action: dict, occurred_at: str,
+        idempotency_key: str, identity_hash: str, identity_version: str,
+        binding_proof_hash: str, bound_by: str,
+    ) -> Optional[dict]:
+        """The training yes and the speaker binding in one transaction
+        (0431, N48.5 Q27 A; F-3). Raises when the database refuses the yes;
+        every refusal of record_mlc2_training_consent_grant_v2 stands."""
+        result = self.client.rpc("accept_mlc2_training_consent_v1", {
+            "p_acquisition_principal_id": str(acquisition_principal_id),
+            "p_consent_policy_version": str(consent_policy_version),
+            "p_jurisdiction": "PL/EU",
+            "p_terms_version": str(terms_version),
+            "p_privacy_policy_version": str(privacy_policy_version),
+            "p_source_route": str(source_route),
+            "p_client_version": str(client_version),
+            "p_affirmative_action": dict(affirmative_action),
+            "p_occurred_at": str(occurred_at),
+            "p_idempotency_key": str(idempotency_key),
+            "p_identity_hash": str(identity_hash),
+            "p_identity_version": str(identity_version),
+            "p_binding_proof_hash": str(binding_proof_hash),
+            "p_bound_by": str(bound_by),
+        }).execute()
+        data = result.data
+        return data if isinstance(data, dict) else self._rpc_row(data)
+
+    def bind_mlc2_training_speaker(
+        self, *, acquisition_principal_id: str, identity_hash: str,
+        identity_version: str, binding_proof_hash: str, bound_by: str,
+    ) -> Optional[dict]:
+        """Bind the speaker of a person who already holds an active training
+        yes (0431). Writes nothing without a yes; keeps an existing binding.
+        None when nothing is bound or the call fails (never raises)."""
+        try:
+            result = self.client.rpc("bind_mlc2_training_speaker_v1", {
+                "p_acquisition_principal_id": str(acquisition_principal_id),
+                "p_identity_hash": str(identity_hash),
+                "p_identity_version": str(identity_version),
+                "p_binding_proof_hash": str(binding_proof_hash),
+                "p_bound_by": str(bound_by),
+            }).execute()
+        except Exception as e:
+            logger.warning("training speaker binding failed principal=%s: %s",
+                           acquisition_principal_id, e, exc_info=True)
+            return None
+        row = self._rpc_row(result.data)
+        return row if row and row.get("id") else None
+
+    def get_mlc2_blind_coach_ratings(
+        self, take_id: str, snippet_ids: list[str],
+    ) -> dict[str, str]:
+        """``{snippet_id: decision}``: the latest blind coach judgement per
+        snippet of one Take, from the chain's ml_judgments (0431). Empty on
+        any failure. Never an owner, peer or machine answer."""
+        ids = [str(s) for s in (snippet_ids or []) if s]
+        if not take_id or not ids:
+            return {}
+        try:
+            result = self.client.rpc("get_mlc2_blind_coach_ratings_v1", {
+                "p_take_id": str(take_id), "p_snippet_ids": ids,
+            }).execute()
+        except Exception as e:
+            logger.warning("blind coach ratings read failed take=%s: %s",
+                           take_id, e, exc_info=True)
+            return {}
+        rows = result.data if isinstance(result.data, list) else []
+        return {str(row["snippet_id"]): str(row["decision"]) for row in rows
+                if isinstance(row, dict) and row.get("snippet_id")
+                and row.get("decision")}
+
+    def get_speaker_splits_for_principals(
+        self, principal_ids: list[str], split_policy_version: str,
+    ) -> dict[str, str]:
+        """``{acquisition_principal_id: split}``: each principal's bound
+        speaker's assignment under the split policy (MLC-2 F-3,
+        ``get_mlc2_speaker_splits_v1``, 0431; services/speaker_split.py). A
+        principal with no bound speaker is absent. Raises on a failed read;
+        the caller names it."""
+        ids = sorted({str(p) for p in (principal_ids or []) if p})
+        out: dict[str, str] = {}
+        for start in range(0, len(ids), 500):
+            result = self.client.rpc("get_mlc2_speaker_splits_v1", {
+                "p_acquisition_principal_ids": ids[start:start + 500],
+                "p_split_policy_version": str(split_policy_version),
+            }).execute()
+            for row in result.data or []:
+                if isinstance(row, dict) and row.get("acquisition_principal_id"):
+                    out[str(row["acquisition_principal_id"])] = str(row.get("split") or "")
+        return out
+
+    def get_pair_release_manifests(self, release_ids: list[str]) -> dict[str, dict]:
+        """``{release_id: manifest}`` for door 3, which trains each pair
+        under the split its release used (F-3). Raises."""
+        ids = sorted({str(r) for r in (release_ids or []) if r})
+        rows: list[dict] = []
+        for start in range(0, len(ids), 200):
+            rows += (self.client.table("pair_releases")
+                     .select("id,manifest")
+                     .in_("id", ids[start:start + 200])
+                     .execute().data or [])
+        return {str(r["id"]): (r.get("manifest") if isinstance(r.get("manifest"), dict) else {})
+                for r in rows if isinstance(r, dict) and r.get("id")}
+
     def list_principals_with_due_training_copies(self, limit: int = 20) -> list[str]:
         """People with copies a withdrawal or the account purge made due."""
         try:
@@ -15380,6 +15446,13 @@ class DatabaseService:
 
     # ── The ledger's weeks, the research role, the golden set (0404) ────
 
+    def get_mlc2_foundation_health(self) -> dict:
+        """F-9: the MLC-2 foundation's aggregate health
+        (``get_mlc2_foundation_health_v1``, service-role only), read through
+        the foundation's own adapter. Raises; the weekly job names it."""
+        from services.mlc2_foundation import Mlc2FoundationStore
+        return Mlc2FoundationStore(self.client).health()
+
     def upsert_ledger_snapshot(self, **row: Any) -> Optional[dict]:
         """One row per ISO week (ML-3), replaced on a second fire. Raises."""
         res = (self.client.table("ledger_snapshots")
@@ -15572,6 +15645,56 @@ class DatabaseService:
     def mark_pair_release_purged(self, release_id: str) -> None:
         (self.client.table("pair_releases").update({"purged_at": "now()"})
          .eq("id", str(release_id)).execute())
+
+    # ── F-8: every download or release check appends a verification (0431) ──
+
+    def list_live_pair_releases(self, limit: int = 500) -> list[dict]:
+        """Releases that stand (not voided, not purged), for the weekly
+        check. Raises."""
+        res = (self.client.table("pair_releases")
+               .select("id,surface,week_start,storage_bucket,storage_key")
+               .is_("voided_at", "null").is_("purged_at", "null")
+               .order("exported_at").limit(int(limit)).execute())
+        return list(res.data or [])
+
+    def record_pair_release_verification(
+        self, *, release_id: str, object_role: str, observed_sha256: str,
+        observed_byte_size: int, signature_valid: Optional[bool],
+        verification_method: str, verifier_version: str,
+    ) -> Optional[dict]:
+        """One append-only check of a release object; the database judges
+        it against the release row. Raises."""
+        res = self.client.rpc("record_pair_release_verification_v1", {
+            "p_release_id": str(release_id), "p_object_role": object_role,
+            "p_observed_sha256": observed_sha256,
+            "p_observed_byte_size": int(observed_byte_size),
+            "p_signature_valid": signature_valid,
+            "p_verification_method": verification_method,
+            "p_verifier_version": verifier_version,
+        }).execute()
+        return self._rpc_row(res.data)
+
+    def record_mlc2_object_verification(
+        self, *, bucket: str, object_key: str, observed_sha256: str,
+        observed_byte_size: int, verification_method: str,
+        verifier_version: str,
+    ) -> Optional[dict]:
+        """One append-only check of a chain object (ml_object_verifications);
+        None when the key is no chain object. Raises."""
+        res = self.client.rpc("record_mlc2_object_verification_v1", {
+            "p_bucket": bucket, "p_object_key": object_key,
+            "p_observed_sha256": observed_sha256,
+            "p_observed_byte_size": int(observed_byte_size),
+            "p_verification_method": verification_method,
+            "p_verifier_version": verifier_version,
+        }).execute()
+        return self._rpc_row(res.data)
+
+    def list_mlc2_objects_due_verification(self, limit: int) -> list[dict]:
+        """The weekly check's capped work list: coordinates only. Raises."""
+        res = self.client.rpc("list_mlc2_objects_due_verification_v1",
+                              {"p_limit": int(limit)}).execute()
+        return [row for row in (res.data or []) if isinstance(row, dict)]
 
     # ── Doors 3 and 4 (0406): the golden text pool, runs, reports, promotions ──
     def list_golden_pair_pool(self, surface: str, *, limit: int = 500) -> list[dict]:
