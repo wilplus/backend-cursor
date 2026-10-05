@@ -773,6 +773,11 @@ class Config:
         (os.getenv("PHASE1_PURGE_EXECUTION_ENABLED") or "").strip().lower()
         == "true"
     )
+    # Shared secret for POST /v2/internal/retention/clean (the scheduled
+    # clean-up's daily cron, founder 2026-10-05, N48.4 Q16 A). Unset = the
+    # route answers 503. It never decides whether anything is deleted: that is
+    # RETENTION_CLEANER_LIVE in services/retention_cleaner.py.
+    RETENTION_CLEANER_SECRET = (os.getenv("RETENTION_CLEANER_SECRET") or "").strip()
 
     # willab — upfront free credit grant seeded on a user's first ledger touch
     # (founder testing 2026-07-13: bumped 15 → 25 so every user can unlock one
