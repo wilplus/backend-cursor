@@ -331,7 +331,9 @@ class Config:
     # know their own students; the walk stays blind to the machine's read)
     # and one Take can be read in the walk's shape from a profile. Off, the
     # routes answer exactly as before and the walk-take read is 404. A
-    # reviewed change flips it after the founder's yes.
+    # reviewed change flips it after the founder's yes. The founder said no
+    # on 2026-10-05 (decisions log N48.5, Q26 A: "the Students screens stay
+    # off"); tests/test_coach_students.py pins it False and unset elsewhere.
     COACH_STUDENTS_ENABLED = False
 
     # PHASE 1 of the after-practice paths (founder 2026-10-01, F2): the

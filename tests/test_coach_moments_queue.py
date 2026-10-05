@@ -138,5 +138,111 @@ class ReachedTests(unittest.TestCase):
         self.assertNotIn("no", str(out))
 
 
+def _label(rater, value, **extra):
+    return {"rater_id": rater, "value": value, "lane": "coach", "self_report": False,
+            "state_id": "confidence", "unrateable": value == "audio_unclear", **extra}
+
+
+def _queue_for(rater, labels, *, own=None, requests=None):
+    """One Take, one moment `s`, as `rater` sees it."""
+    return moments_queue(
+        [{"id": "t", "user_id": "u", "created_at": "x"}],
+        moments_for=lambda r: ["s"], reached_for=lambda sid: {"s"},
+        ratings_for=lambda sid: ({"s": own} if own else {}),
+        request_for=lambda sid, snip: (requests or {}).get(snip),
+        pseudonym_for=lambda u: "Calm Heron",
+        labels_for=lambda sid: labels, rater_id=rater)[0]["takes"][0]
+
+
+class TheLedgerRoutesTheClipTests(unittest.TestCase):
+    """K5: one Audio unclear sends the clip to a DIFFERENT coach; two
+    quarantine it; neither is a label. K4/K6: two matching answers settle
+    it, a disagreement or a Not sure asks a third coach, three without a
+    pair are UNRESOLVED; the owner never counts, the machine never votes."""
+
+    def test_the_coach_who_said_audio_unclear_no_longer_sees_judge_it(self):
+        # The bug: _RATED left audio_unclear out, so the reporter saw "Judge
+        # it" and every retry was a 409 (FRESH_RATER_REQUIRED).
+        unclear = {"value": "audio_unclear", "unrateable": True}
+        take = _queue_for("coach-a", [_label("coach-a", "audio_unclear")], own=unclear)
+        self.assertEqual(take["moments"], [])
+        self.assertEqual(take["waiting"], 0)
+        # Without the panel's rows the coach's own report still decides.
+        self.assertEqual(_queue_for("coach-a", None, own=unclear)["moments"], [])
+
+    def test_the_clip_goes_to_a_different_coach_audio_retry(self):
+        take = _queue_for("coach-b", [_label("coach-a", "audio_unclear")])
+        self.assertEqual(take["moments"], [{"snippet_id": "s", "state": "judge_it"}])
+
+    def test_two_audio_unclear_reports_quarantine_it_for_a_new_coach(self):
+        labels = [_label("coach-a", "audio_unclear"), _label("coach-b", "audio_unclear")]
+        self.assertEqual(_queue_for("coach-c", labels)["moments"], [])
+
+    def test_a_coach_who_already_judged_a_quarantined_clip_keeps_their_moment(self):
+        labels = [_label("coach-c", "no"), _label("coach-a", "audio_unclear"),
+                  _label("coach-b", "audio_unclear")]
+        take = _queue_for("coach-c", labels, own={"value": "no", "unrateable": False},
+                          requests={"s": {"kind": "error", "resolution": None}})
+        self.assertEqual(take["moments"], [{"snippet_id": "s", "state": "answer_it",
+                                            "kind": "error"}])
+
+    def test_two_matching_answers_ask_nobody_new(self):
+        labels = [_label("coach-a", "yes"), _label("coach-b", "yes")]
+        self.assertEqual(_queue_for("coach-c", labels)["moments"], [])
+        # The two who judged it keep their own state.
+        take = _queue_for("coach-a", labels, own={"value": "yes", "unrateable": False})
+        self.assertEqual(take["moments"], [{"snippet_id": "s", "state": "judged"}])
+
+    def test_a_disagreement_or_a_not_sure_asks_a_third_coach(self):
+        for second in ("no", "not_sure"):
+            labels = [_label("coach-a", "yes"), _label("coach-b", second)]
+            take = _queue_for("coach-c", labels)
+            self.assertEqual(take["moments"], [{"snippet_id": "s", "state": "judge_it"}],
+                             second)
+
+    def test_three_without_a_pair_are_unresolved_and_ask_nobody_new(self):
+        labels = [_label("coach-a", "yes"), _label("coach-b", "no"),
+                  _label("coach-c", "not_sure")]
+        self.assertEqual(_queue_for("coach-d", labels)["moments"], [])
+
+    def test_the_owner_never_counts_toward_the_pair(self):
+        # A coach who rated their own clip is a self-report: one coach's yes
+        # plus the owner's yes is still a singleton, so a second coach is asked.
+        labels = [_label("coach-a", "yes"), _label("owner-1", "yes", self_report=True)]
+        take = _queue_for("coach-b", labels)
+        self.assertEqual(take["moments"], [{"snippet_id": "s", "state": "judge_it"}])
+
+    def test_routing_returns_a_reason_never_a_value(self):
+        from services.coach_moments_queue import routing
+        why = routing(None, [_label("coach-a", "yes"), _label("coach-b", "yes")], "coach-c")
+        self.assertEqual(why, "rating_closed")
+        self.assertIsNone(routing(None, [], "coach-c"))
+
+
+class TheLabelReadTests(unittest.TestCase):
+    def test_labels_are_read_in_chunks_and_a_failed_read_routes_on_own_rows(self):
+        from services.coach_moments_queue import labels_for_snippets
+
+        class _Db:
+            calls: list = []
+
+            def get_confidence_labels_by_snippet_ids(self, ids, *, strict=False):
+                self.calls.append((len(ids), strict))
+                return {i: [_label("coach-a", "yes")] for i in ids}
+
+        db = _Db()
+        labels_for = labels_for_snippets(db, [f"s{i}" for i in range(320)])
+        self.assertEqual([n for n, _ in db.calls], [150, 150, 20])
+        self.assertTrue(all(strict for _, strict in db.calls))
+        self.assertEqual(len(labels_for("s7")), 1)
+        self.assertEqual(labels_for("unknown"), [])
+
+        class _Broken:
+            def get_confidence_labels_by_snippet_ids(self, ids, *, strict=False):
+                raise RuntimeError("down")
+
+        self.assertIsNone(labels_for_snippets(_Broken(), ["s1"])("s1"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -600,6 +600,18 @@ if [ "$LANE" = "released" ]; then
   hard migrations/financial_records_go_after_five_years.sql
 fi
 
+# W6 (2026-10-05): a coach's original judgment stands (LOCKIN §5c, contract
+# 34: label_revision.reconsideration) and each rating says why its clip was
+# asked (K9 stamps on confidence_labels and label_revision). This lane has
+# no label_revision, so that half is the no-op the migration degrades to;
+# tests/test_a_coach_judgement_stands_postgres.py builds the released shape
+# and applies it again in its own transaction. Released lane only, after
+# 0426, as in the manifest. Twice: apply/reapply idempotency.
+if [ "$LANE" = "released" ]; then
+  hard migrations/a_coach_judgement_stands.sql
+  hard migrations/a_coach_judgement_stands.sql
+fi
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

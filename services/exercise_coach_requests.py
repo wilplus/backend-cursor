@@ -141,28 +141,29 @@ def _moment_event_fields(request: dict, database: Any) -> dict:
 
 
 def _require_main_target(fields: dict) -> Optional[tuple]:
-    """THE MAIN TARGET IS REQUIRED (founder 2026-09-30, C8/D5; build plan
+    """THE MAIN TARGET IS REQUIRED (founder 2026-09-30, C8/D5, E5; build plan
     P2-4). An exercise authored from a moment names the one pattern it is
     written for, as ``main_target`` or ``matching_criteria.primary_problem_tag``;
     the catalogue then checks it is one of the exercise's own tags. Without
-    it the exercise would be the exact fit for nothing."""
-    criteria = fields.get("matching_criteria")
-    criteria = dict(criteria) if isinstance(criteria, dict) else {}
-    target = fields.pop("main_target", None) or criteria.get("primary_problem_tag")
+    it the exercise would be the exact fit for nothing. The catalogue holds
+    every coach door to the same rule (``_require_main_target`` there); this
+    one refuses before anything is saved, whether the exercise is new or not."""
+    from services.diagnostic_exercise_catalogue import (
+        MAIN_TARGET_MESSAGE, fold_main_target,
+    )
+    target = fields.get("main_target")
     if not isinstance(target, str) or not target.strip():
-        return _error(400, "MAIN_TARGET_REQUIRED",
-                      "Name the one pattern this exercise is written for.")
-    target = target.strip()
-    criteria["primary_problem_tag"] = target
-    fields["matching_criteria"] = criteria
-    tags = [t for t in (fields.get("acoustic_problem_tags") or []) if isinstance(t, str)]
-    if target not in tags:
-        fields["acoustic_problem_tags"] = [target, *tags]
+        criteria = fields.get("matching_criteria")
+        target = criteria.get("primary_problem_tag") if isinstance(criteria, dict) else None
+        if not isinstance(target, str) or not target.strip():
+            return _error(400, "MAIN_TARGET_REQUIRED", MAIN_TARGET_MESSAGE)
+        fields["main_target"] = target
+    fold_main_target(fields)
     return None
 
 
-def _exercise_for(database: Any, request: dict, body: dict,
-                  resolution: str) -> tuple[Optional[dict], Optional[tuple]]:
+def _exercise_for(database: Any, request: dict, body: dict, resolution: str,
+                  coach_id: str = "") -> tuple[Optional[dict], Optional[tuple]]:
     """(exercise, None) or (None, error) for an exercise resolution."""
     if resolution == "exercise_chosen":
         exercise = database.get_active_diagnostic_exercise(
@@ -185,8 +186,17 @@ def _exercise_for(database: Any, request: dict, body: dict,
     error = _require_main_target(fields)
     if error:
         return None, error
+    # The model's draft beside the final is the one kept on this request,
+    # never a client's text (FL-L3).
+    draft = (str(request.get("draft_text") or "").strip() or None
+             if str(request.get("draft_surface") or "exercise_script") == "exercise_script"
+             else None)
     try:
-        exercise = save_exercise(database, fields)
+        exercise = save_exercise(
+            database, fields, source="coach_request", created_by=str(coach_id or ""),
+            ai_draft_text=draft,
+            ai_draft_model_version=(str(request.get("draft_model_version") or "").strip()
+                                    or None) if draft else None)
     except CatalogueRefusal as refusal:
         return None, _error(refusal.status, refusal.code, refusal.message)
     if not isinstance(exercise, dict):
@@ -211,7 +221,8 @@ def resolve_request(database: Any, request: dict, body: Any,
         if not answer:
             return _error(400, "INVALID_INPUT", "answer_text is required.")
     elif resolution != "no_safe_match":
-        exercise, error = _exercise_for(database, request, fields, resolution)
+        exercise, error = _exercise_for(database, request, fields, resolution,
+                                        coach_id=str(coach_id))
         if error:
             return error
     elif share:
@@ -238,39 +249,104 @@ def resolve_request(database: Any, request: dict, body: Any,
     return 200, {"request": coach_request_payload(resolved, database)}
 
 
+def _authored_for_this_moment(request: dict, resolution: str,
+                              exercise: Optional[dict]) -> bool:
+    """The walk's exercise answer: the coach saved a NEW exercise for this
+    moment through the upload seam (``coach-request-<request id>``) and the
+    request resolves to it as ``exercise_chosen``. Choosing any other
+    library exercise is not the coach's final for this draft."""
+    if resolution != "exercise_chosen" or not isinstance(exercise, dict):
+        return False
+    from services.coach_exercise_authoring import exercise_id_for_request
+    return str(exercise.get("exercise_id") or "") == \
+        exercise_id_for_request(request.get("id"))
+
+
+def _pair_surface(request: dict, resolution: str,
+                  exercise: Optional[dict]) -> Optional[str]:
+    if _authored_for_this_moment(request, resolution, exercise):
+        return "exercise_script"
+    return _PAIR_SURFACE.get(resolution)
+
+
+def _version_transcript(database: Any, exercise: Optional[dict]) -> Optional[str]:
+    """The video's transcript on the exercise version the request resolved
+    to (0399), the walk pair's second final; None while it is not there."""
+    reader = getattr(database, "get_exercise_version_transcript", None)
+    if reader is None or not isinstance(exercise, dict):
+        return None
+    try:
+        row = reader(str(exercise.get("exercise_id") or ""),
+                     int(exercise.get("version") or 1))
+    except Exception as e:  # noqa: BLE001 -- the answer stands
+        logger.info("exercise transcript read failed id=%s: %s",
+                    exercise.get("exercise_id"), e)
+        return None
+    if not isinstance(row, dict) or row.get("transcript_status") != "done":
+        return None
+    body = row.get("transcript")
+    text = body.get("transcript") if isinstance(body, dict) else None
+    return " ".join(str(text).split()) if text else None
+
+
+def _record_pairs(database: Any, request: dict, resolved: dict, fields: dict,
+                  exercise: Optional[dict], coach_id: str) -> None:
+    """THE PAIR (founder C2, C5; build plan P2-1): when the model's draft was
+    shown (it is kept on this request row, by the server) and the coach's
+    final differs. Every pair is stamped with the request, the moment, the
+    owner and the model version, so the export contract can release it
+    (W6; W7 L5, L6). The walk's exercise answer (``_authored_for_this_moment``)
+    records the saved instruction and, where it arrived, the video's
+    transcript as a second final. The transcript pair carries the exercise
+    version and the moment but not the request: one pair per request and
+    surface is the table's own key (0402)."""
+    from services.feedback_pairs import record_pair
+    resolution = str(resolved.get("resolution") or "")
+    surface = _pair_surface(request, resolution, exercise)
+    draft = request.get("draft_text")
+    if not surface or not draft or str(request.get("draft_surface") or surface) != surface:
+        return
+    authored = surface == "exercise_script" and isinstance(exercise, dict)
+    criteria = (exercise or {}).get("matching_criteria")
+    main_target = (criteria.get("primary_problem_tag")
+                   if authored and isinstance(criteria, dict) else None)
+    common = dict(
+        surface=surface, draft=draft, coach_id=coach_id,
+        model_version=request.get("draft_model_version"),
+        pattern_key=main_target or _pattern_key(request, resolution, fields.get("pattern_key")),
+        owner_user_id=request.get("owner_user_id"),
+        take_session_id=request.get("take_session_id"),
+        snippet_id=request.get("snippet_id"),
+        exercise_id=(exercise or {}).get("exercise_id") if exercise else None,
+        exercise_version=(int(exercise.get("version") or 1) if exercise else None))
+    final = (resolved.get("answer_text") if resolution in WORD_RESOLUTIONS
+             else (exercise or {}).get("instruction"))
+    record_pair(database, final=final, request_id=str(request.get("id")), **common)
+    if authored:
+        transcript = _version_transcript(database, exercise)
+        if transcript:
+            record_pair(database, final=transcript, final_kind="transcript", **common)
+
+
 def _file_answer(database: Any, request: dict, resolved: dict, fields: dict,
                  exercise: Optional[dict], coach_id: str) -> None:
     """What an answer leaves behind besides the resolution, all best-effort
     and never in the answer's way:
 
     * the (draft, final) pair, when a draft was shown and the final differs
-      (services.feedback_pairs; founder C5);
+      (``_record_pairs``; services.feedback_pairs; founder C5);
     * a praise line lands in the catalogue of signed lines as the newest
       version for the moment's pattern (35f; P2-3) unless the coach says
       ``file_in_catalogue: false``. A clearer version never does: it is one
       speaker's passage, not a move for every rewrite.
     """
-    from services.feedback_pairs import record_pair
     resolution = str(resolved.get("resolution") or "")
     if resolution == "note_written":
         # 7 (C5-a, 0411): the personal line is a pair surface of its own.
         from services.coach_word_pairs import record_moment_line_pair
         record_moment_line_pair(database, request_row=request, coach_id=coach_id,
                                 final_text=resolved.get("answer_text"))
-    surface = _PAIR_SURFACE.get(resolution)
-    draft = request.get("draft_text")
-    if surface and draft and str(request.get("draft_surface") or surface) == surface:
-        final = (resolved.get("answer_text") if resolution in WORD_RESOLUTIONS
-                 else (exercise or {}).get("instruction"))
-        record_pair(
-            database, surface=surface, draft=draft, final=final,
-            coach_id=coach_id, model_version=request.get("draft_model_version"),
-            pattern_key=_pattern_key(request, resolution, fields.get("pattern_key")),
-            owner_user_id=request.get("owner_user_id"),
-            take_session_id=request.get("take_session_id"),
-            snippet_id=request.get("snippet_id"), request_id=str(request.get("id")),
-            exercise_id=(exercise or {}).get("exercise_id") if exercise else None,
-            exercise_version=(int(exercise.get("version") or 1) if exercise else None))
+    _record_pairs(database, request, resolved, fields, exercise, coach_id)
     if resolution == "line_written" and fields.get("file_in_catalogue") is not False:
         _file_praise_line(database, request, resolved, coach_id,
                           fields.get("pattern_key"))

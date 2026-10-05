@@ -14,7 +14,7 @@
   "routes/v2/canonical_publish.py": 1,
   "routes/v2/ceo.py": 8,
   "routes/v2/ceo_work_items.py": 10,
-  "routes/v2/coach.py": 20,
+  "routes/v2/coach.py": 19,
   "routes/v2/coaching.py": 12,
   "routes/v2/confident_moment_bundles.py": 5,
   "routes/v2/explore_ideal_text.py": 22,

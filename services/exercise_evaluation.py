@@ -27,7 +27,12 @@ unknowns falling back to today's fixed ranking. It is graded on exam-group
 ("holdout") speakers only, as the fair test always does. Its name is
 ``exercise-success-ranked-v1``. It is a proposal to look at, not a policy.
 
-Internal only: the founder's CMS jar page. No number here reaches a
+THE SECOND RANKER (35g-7, F8): exercise-coach-preferred-v1, the coach's
+keep and swap choices, is graded by the same fair test beside the piles
+(``coach_preferred``). It stays dark: nothing serves or promotes it.
+
+Internal only: the founder's pace panel (the ledger route's
+``jar_evaluation``; the CMS jar page is retired, B8). No number here reaches a
 speaker or a coach, and a rate here is about an exercise, never a person.
 """
 from __future__ import annotations
@@ -151,9 +156,18 @@ def _pile(labels: list[dict], units: list[dict]) -> dict:
     }
 
 
-def build_evaluation(records: list[dict]) -> dict:
-    """Both piles from the counter's own records (see ``cohort_records``).
-    Pure; unsealed, for fixtures and ``evaluate_jar``."""
+def build_evaluation(records: list[dict],
+                     preference_rows: Optional[list[dict]] = None) -> dict:
+    """Both piles from the counter's own records (see ``cohort_records``),
+    and the coach's preferred ranking graded by the same fair test (35g-7):
+    exercise-coach-preferred-v1 learns from the coach's keep and swap
+    choices (study-group speakers), is graded on the same machine-draw
+    units of exam-group speakers, and never serves (it stays dark: nothing
+    ranks a speaker's exercises by it). ``preference_rows`` is None while
+    the preference lane is off (COACH_EXERCISE_PREFERENCE_ENABLED) or its
+    read failed, and the grade then says so. Pure; unsealed, for fixtures
+    and ``evaluate_jar``."""
+    from services.coach_exercise_preference import RANKER_VERSION, graded
     labels = [label(r) for r in records if r["excluded"] is None]
     units = units_from(records)
     machine = [row for row in labels if row.get("selection_mode") != COACH_MODE]
@@ -161,7 +175,23 @@ def build_evaluation(records: list[dict]) -> dict:
         "machine_only": _pile(machine, units),
         "with_coach_picks": _pile(labels, units),
         "coach_pick_labels": len(labels) - len(machine),
+        "coach_preferred": ({"version": RANKER_VERSION, "enabled": False}
+                            if preference_rows is None
+                            else {**graded(preference_rows, units), "enabled": True}),
     }
+
+
+def _preference_rows(database: Any) -> Optional[list[dict]]:
+    """The coach's keep and swap choices, or None while their lane is dark.
+    A read that fails is None too: the ranker is then not graded."""
+    from services.coach_exercise_preference import preference_enabled
+    if not preference_enabled():
+        return None
+    try:
+        return [r for r in (database.list_coach_exercise_preferences() or [])
+                if isinstance(r, dict)]
+    except Exception:  # noqa: BLE001 -- the piles still grade
+        return None
 
 
 def evaluate_jar(database: Any, gate: Optional[dict] = None) -> dict:
@@ -190,4 +220,4 @@ def evaluate_jar(database: Any, gate: Optional[dict] = None) -> dict:
     records = cohort_records(signal_rules_version=SIGNAL_RULES_VERSION, **rows)
     return {**head, "sealed": False, "why_not": None,
             "signal_rules_version": SIGNAL_RULES_VERSION,
-            **build_evaluation(records)}
+            **build_evaluation(records, _preference_rows(database))}

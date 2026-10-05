@@ -12,13 +12,63 @@ THE DRAFT IS A CANDIDATE. It is returned to the coach, who edits it; what is
 saved as the exercise is the coach's final. The draft is stored beside that
 final on the version row and served nowhere. An exercise's text is copy the
 coach signs; nothing generated reaches a speaker (LIVE LOOP).
+
+WHOSE DRAFT (founder 2026-10-05, W6; C2, C5, FL-L3). The AI-draft columns of
+a version row hold only a draft the SERVER kept: the walk files the coach's
+exercise for a moment under ``coach-request-<request id>``, and the model's
+draft for that moment is on the request row (services.coach_request_drafts),
+so the save reads it from there with its model version. A text the client
+calls ``ai_draft_text`` is never taken on its word: in the Library it is a
+past final (a coach's or the founder's own words), and storing it as the
+model's draft would put coach provenance in the model-draft column (L3).
+
+THE PAIR RIDES THE ANSWER, NOT THE SAVE. The walk's (draft, final) pairs
+are recorded when the request resolves to the exercise authored for it
+(services.exercise_coach_requests), behind the blind gate, stamped with the
+request, the moment, the owner and the model version, so the export
+contract can release them. A Library save records none: it has no moment,
+no owner and no passage, so no export, run or golden set could use it.
 """
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Optional
 
 _log = logging.getLogger(__name__)
+
+#: The walk's exercise for a moment: ``coach-request-<request uuid>`` (the
+#: frontend's exerciseIdFor, and the ``exercise_authored`` resolution).
+_REQUEST_EXERCISE = re.compile(
+    r"^coach-request-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$")
+
+
+def request_id_for_exercise(exercise_id: Any) -> Optional[str]:
+    """The request a walk exercise was filed for, from its id; else None."""
+    found = _REQUEST_EXERCISE.match(str(exercise_id or "").strip().lower())
+    return found.group(1) if found else None
+
+
+def exercise_id_for_request(request_id: Any) -> str:
+    return f"coach-request-{request_id}"
+
+
+def server_draft(database: Any, exercise_id: Any) -> tuple[Optional[str], Optional[str]]:
+    """(draft text, model version) the server kept for this exercise: the
+    model's script draft on the request the walk filed it for. (None, None)
+    for anything else, the Library included (FL-L3)."""
+    request_id = request_id_for_exercise(exercise_id)
+    reader = getattr(database, "get_exercise_coach_request_by_id", None)
+    if request_id is None or reader is None:
+        return None, None
+    request = reader(request_id)
+    if not isinstance(request, dict) or not request.get("draft_text"):
+        return None, None
+    if str(request.get("draft_surface") or "exercise_script") != "exercise_script":
+        return None, None
+    draft = str(request.get("draft_text") or "").strip() or None
+    model = str(request.get("draft_model_version") or "").strip() or None
+    return draft, model
 
 LLM_SURFACE = "exercise_script_draft"
 
@@ -49,45 +99,28 @@ def library_for_authoring(database: Any) -> dict:
     return {"exercises": rows, "speaking_errors": errors or []}
 
 
+def _drop_client_draft(fields: dict) -> None:
+    """The client's ``ai_draft_*`` fields are never provenance (FL-L3)."""
+    fields.pop("ai_draft_text", None)
+    fields.pop("ai_draft_model_version", None)
+
+
 def save_from_coach_panel(database: Any, body: Any, *,
                           coach_id: str) -> Optional[dict]:
-    """One save through the catalogue, source coach_panel, the AI draft (if
-    the coach asked for one) kept beside the final. Raises CatalogueRefusal
-    as the CMS does."""
+    """One save through the catalogue, source coach_panel, the model's draft
+    beside the final only where the server kept one (``server_draft``).
+    Raises CatalogueRefusal as the CMS did. Records no pair: the walk's pair
+    rides the request's resolution."""
     from services.diagnostic_exercise_catalogue import save_exercise
     fields = dict(body) if isinstance(body, dict) else {}
-    draft = str(fields.pop("ai_draft_text", "") or "").strip() or None
-    draft_model = str(fields.pop("ai_draft_model_version", "") or "").strip() \
-        or None
+    _drop_client_draft(fields)
+    draft, draft_model = server_draft(database, fields.get("exercise_id"))
     saved = save_exercise(
         database, fields, source="coach_panel", created_by=str(coach_id),
         ai_draft_text=draft, ai_draft_model_version=draft_model)
     if not saved:
         return None
-    version = int(saved.get("version") or 1)
-    _pair_script(database, saved, version, draft=draft, model=draft_model,
-                 coach_id=coach_id)
-    return {"exercise": saved, "version": version}
-
-
-def _pair_script(database: Any, saved: dict, version: int, *, draft: Any,
-                 model: Any, coach_id: str, transcript: Any = None) -> None:
-    """THE PAIRS FROM THE EXERCISE LANE (founder 2026-09-30, C5; P2-1). When
-    the coach asked for a draft, the saved instruction is one final and the
-    video's transcript, once it arrives, another. Both best-effort."""
-    from services.feedback_pairs import record_pair
-    if not draft:
-        return
-    common = dict(surface="exercise_script", draft=draft, coach_id=coach_id,
-                  model_version=model or None,
-                  pattern_key=(saved.get("matching_criteria") or {}).get(
-                      "primary_problem_tag") if isinstance(
-                      saved.get("matching_criteria"), dict) else None,
-                  exercise_id=str(saved.get("exercise_id") or ""),
-                  exercise_version=version)
-    record_pair(database, final=saved.get("instruction"), **common)
-    if transcript:
-        record_pair(database, final=transcript, final_kind="transcript", **common)
+    return {"exercise": saved, "version": int(saved.get("version") or 1)}
 
 
 def store_exercise_video(video_bytes: bytes, filename: str,
@@ -113,15 +146,14 @@ def _definition_for_video(database: Any, exercise_id: str,
                           definition: Any) -> tuple[Optional[dict], dict]:
     """What the video attaches to: the live row, the coach's definition, or
     both merged (an edit and a new video in one save). ``(base, extras)``
-    with the AI draft fields split off; base None when nothing exists."""
+    with the AI draft the server kept (``server_draft``; the client's
+    ``ai_draft_*`` fields are dropped, FL-L3); base None when nothing
+    exists."""
     existing = database.get_diagnostic_exercise(str(exercise_id))
     fields = dict(definition) if isinstance(definition, dict) else {}
-    extras = {
-        "ai_draft_text": str(fields.pop("ai_draft_text", "") or "").strip()
-        or None,
-        "ai_draft_model_version": str(
-            fields.pop("ai_draft_model_version", "") or "").strip() or None,
-    }
+    _drop_client_draft(fields)
+    draft, model = server_draft(database, exercise_id)
+    extras = {"ai_draft_text": draft, "ai_draft_model_version": model}
     if not isinstance(existing, dict) and not fields:
         return None, extras
     base = {**(existing if isinstance(existing, dict) else {}), **fields,
@@ -143,7 +175,8 @@ def attach_video(database: Any, *, exercise_id: str, coach_id: str,
 
     The transcript never blocks the exercise: a missing coach authorization
     or a failed provider call is recorded on the version row and the video
-    serves as it does today.
+    serves as it does today. It is the second final of the walk's pair,
+    read from the version row when the request resolves.
     """
     from services.diagnostic_exercise_catalogue import (
         CatalogueRefusal, save_exercise, validate_exercise,
@@ -157,7 +190,8 @@ def attach_video(database: Any, *, exercise_id: str, coach_id: str,
     if base is None:
         return 404, {"code": "NOT_FOUND", "error": "exercise not found"}
     try:
-        validate_exercise(database, {**base, "explanation_video_url": _URL_TO_COME})
+        validate_exercise(database, {**base, "explanation_video_url": _URL_TO_COME},
+                          source="coach_panel")
     except CatalogueRefusal as refusal:
         return refusal.status, {"code": refusal.code, "error": refusal.message}
     try:
@@ -186,11 +220,6 @@ def attach_video(database: Any, *, exercise_id: str, coach_id: str,
         filename=filename)
     settle_transcript(database, exercise_id=str(exercise_id), version=version,
                       status=status, transcript=transcript, language=language)
-    _pair_script(
-        database, saved, version, draft=extras.get("ai_draft_text"),
-        model=extras.get("ai_draft_model_version"), coach_id=str(coach_id),
-        transcript=(transcript.get("transcript")
-                    if isinstance(transcript, dict) else None))
     return 200, {"exercise": saved, "version": version,
                  "transcript_status": status}
 

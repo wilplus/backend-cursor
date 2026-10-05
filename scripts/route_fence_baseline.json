@@ -115,13 +115,9 @@
     "lines": 82,
     "db_calls": 3
   },
-  "routes/v2/coach.py:v2_coach_moments_queue": {
-    "lines": 33,
-    "db_calls": 3
-  },
   "routes/v2/coach.py:v2_coach_put_confidence_label": {
-    "lines": 254,
-    "db_calls": 7
+    "lines": 193,
+    "db_calls": 4
   },
   "routes/v2/coach.py:v2_coach_put_moment_reference": {
     "lines": 65,
