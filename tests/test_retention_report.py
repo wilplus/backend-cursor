@@ -65,5 +65,7 @@ def test_no_evidence_or_financial_table_is_swept():
     assert not swept & retained
 
 
-def test_the_open_definition_is_written_down():
+def test_the_founders_definition_of_last_use_is_written_down():
     assert "NOTHING RECORDS \"LAST USE\"" in SQL
+    assert "decisions log N46" in SQL
+    assert "Until the founder confirms" not in SQL
