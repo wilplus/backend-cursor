@@ -112,11 +112,14 @@ trusted signature in the founder's name); the founder sent the signed file to
 the session the same day, 110,851 bytes. The unsigned render (67,131 bytes)
 is a byte-identical prefix of the signed file, so what was signed is exactly
 what was rendered. Its hash is in the **Current** table and in
-`scripts/phase1_retention_rules_v1_3.sql`. The upload to its `object_key` and
-the one run of that script are the founder's; until the script runs,
-`financial_evidence` stays unresolved and an account erasure still stops. The
-signature does not make the document counsel-reviewed; it says so on its
-first page.
+`scripts/phase1_retention_rules_v1_3.sql`. **Registered in
+`processing_legal_artifacts` as of 2026-10-05** under `(retention_schedule,
+1.3)`, with `financial-evidence-v1` active in `data_retention_rules` pointing
+at it (the script, run by the founder that day; its verify query returned the
+one row). `financial_evidence` now resolves, so an account erasure no longer
+stops on `token_ledger` or `llm_usage` rows. The upload of the signed file to
+its `object_key` is the founder's. The signature does not make the document
+counsel-reviewed; it says so on its first page.
 
 ## Why 02 and 03 were re-signed (closed 2026-09-22)
 

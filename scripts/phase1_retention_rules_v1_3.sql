@@ -10,6 +10,12 @@
 -- purge completes: everything else is deleted and those rows are kept under
 -- this rule.
 --
+-- RAN IN PRODUCTION 2026-10-05, by the founder (a first run with the
+-- placeholder still in the file stopped at the guard, as designed). The
+-- verify query returned one row: financial-evidence-v1, financial_evidence,
+-- financial_year_end_plus_5_years, active, retention_schedule 1.3 (shown to
+-- the session). Kept as the record of what was seeded.
+--
 -- ⚠ RUN BY HAND, ONCE, IN THE SUPABASE SQL EDITOR (service role), AFTER the
 -- signed PDF is uploaded to its object_key. Nothing here runs on merge: this
 -- file is deliberately absent from migrations/manifest.txt, as v1.2's script
