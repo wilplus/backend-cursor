@@ -793,46 +793,6 @@ def v2_explore_arc_best_presentation(arc_id):
     return best_presentation_gone()
 
 
-@v2_bp.route("/explore/arc/<arc_id>/best-presentation/slides/<int:index>",
-             methods=["PUT"])
-@require_auth
-def v2_explore_arc_edit_slide(arc_id, index):
-    """Save the user's edited best-presentation text for one slide (Prompt D —
-    the pencil). Overrides the composed text + sticks across recompositions.
-    Ownership-checked.
-
-    Rich formatting (backlog 1.7, founder 2026-07-11): the FE's ideal-text
-    editor persists a tiny marker subset — **bold**, *italic*, __underline__,
-    ==highlight== — INSIDE this same text field. The markers pass through as
-    plain text (they degrade readably on every other surface); raw HTML tags
-    are stripped server-side so markup can never round-trip into a renderer.
-
-    Body: { "text": str }.  200 { ok, arc_id, index } · 400 · 404 · 500
-    """
-    try:
-        owned, _ = _arc_owned_by_caller(arc_id)
-        if not owned:
-            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        body = request.get_json(silent=True) or {}
-        text = (body.get("text") or "").strip() if isinstance(body.get("text"), str) else ""
-        # Strip HTML tags (keep the marker subset — it's plain text). Length
-        # is checked AFTER stripping so tags can't smuggle past the cap.
-        text = re.sub(r"<[^>]*>", "", text).strip()
-        if not text:
-            return jsonify({"code": "INVALID_INPUT", "error": "text is required"}), 400
-        if len(text) > 2000:
-            return jsonify({"code": "INVALID_INPUT", "error": "text too long"}), 400
-        ok = db.upsert_best_presentation_edit(arc_id, index, text, request.user_id)
-        if not ok:
-            return jsonify({"code": "V2_ERROR", "error": "Could not save the edit"}), 500
-        return jsonify({"ok": True, "arc_id": arc_id, "index": index}), 200
-    except Exception as e:
-        logger.error("explore/arc edit-slide failed arc=%s idx=%s: %s",
-                     arc_id, index, e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": "Failed to save edit"}), 500
-
-
 @v2_bp.route("/explore/arc/<arc_id>/progress", methods=["GET"])
 @optional_auth
 def v2_explore_arc_progress(arc_id):
