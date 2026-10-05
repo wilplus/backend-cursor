@@ -54,7 +54,10 @@ MIGRATION = (ROOT / "migrations"
 SCHEDULE = (ROOT / "legal" / "phase1-2026.1" /
             "20-retention-schedule-v1.4-product-records-and-job-evidence-DRAFT.md")
 
-RULED = [dependency for dependency in DEPENDENCIES if dependency.ruled_by]
+# v1.4's own decisions; v1.5's (a `schedule`) are pinned in
+# tests/test_v1_5_rules.py.
+RULED = [dependency for dependency in DEPENDENCIES
+         if dependency.ruled_by and not dependency.schedule]
 RELATIONS = frozenset(d.relation for d in DEPENDENCIES) | {"data_retention_rules"}
 ACTIVE = (
     {"id": "rule-p", "rule_code": PRODUCT_RECORDS_RULE,
@@ -102,8 +105,8 @@ def test_every_ruled_dependency_names_a_v1_4_rule_and_its_category():
 
 
 def test_only_the_job_row_was_anything_but_external_review_before_v1_4():
-    changed = {d.code: d.before_rule for d in RULED
-               if d.before_rule != "external_review"}
+    changed = {d.code: d.before_rule for d in DEPENDENCIES
+               if d.ruled_by and d.before_rule != "external_review"}
     assert changed == {"phase1_jobs": "delete"}
     for dependency in DEPENDENCIES:
         if not dependency.ruled_by:
@@ -124,10 +127,10 @@ def test_the_four_tables_that_stopped_every_erasure_are_decided():
 
 
 @pytest.mark.parametrize("code", [
+    # v1.4 §3: wait for one read-only check. §5.2 and §5.4's original
+    # entries: what v1.5's carve-outs leave of their tables. §5.5's retired
+    # corpora that v1.5 gives no resolver.
     "arc_purchases_review", "admin_uploaded_reference_review",
-    "ml_consent_snapshots", "learning_surface_presentations",
-    "learning_surface_exposure_receipts",
-    "ideal_text_user_edit_cas_operations", "feedback_v3_owner_responses",
     "legacy_snippets_table_review", "retired_stress_corpus",
     "v1_sessions_review", "student_tasks_review", "performance_scores_review",
     "pre_answers_review", "post_answers_review",
@@ -136,6 +139,17 @@ def test_what_v1_4_leaves_for_the_founder_or_a_check_stays_closed(code):
     dependency = dependency_by_code(code)
     assert dependency.disposition == "external_review"
     assert dependency.ruled_by is None
+
+
+@pytest.mark.parametrize("code", [
+    "ml_consent_snapshots", "learning_surface_presentations",
+    "learning_surface_exposure_receipts",
+    "ideal_text_user_edit_cas_operations", "feedback_v3_owner_responses",
+])
+def test_what_v1_5_decided_still_acts_as_before_until_v1_5(code):
+    dependency = dependency_by_code(code)
+    assert dependency.schedule == "1.5"
+    assert before_its_rule(dependency).disposition == "external_review"
 
 
 # ── before the rules are active: exactly as before ──────────────────────
@@ -208,7 +222,7 @@ class _DeleteClient:
         self._relation = relation
         return self
 
-    def delete(self):
+    def delete(self, **_returning):
         return self
 
     def eq(self, column, value):
@@ -395,7 +409,7 @@ def test_the_schedule_names_every_dependency_it_decides_or_leaves_open():
     text = SCHEDULE.read_text(encoding="utf-8")
     missing = sorted(
         d.code for d in DEPENDENCIES
-        if (d.ruled_by or d.disposition == "external_review")
+        if ((d.ruled_by and not d.schedule) or d.disposition == "external_review")
         and f"`{d.code}`" not in text
     )
     assert missing == []

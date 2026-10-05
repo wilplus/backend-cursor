@@ -40,8 +40,14 @@ def test_the_category_is_the_one_the_purge_retains_under():
                 if d.disposition == "retain" and d.retention_category}
     assert "financial_evidence" in retained
     relations = {d.relation for d in DEPENDENCIES
-                 if d.retention_category == "financial_evidence"}
+                 if d.retention_category == "financial_evidence"
+                 and d.schedule is None}
     assert relations == {"token_ledger", "llm_usage"}
+    # v1.5 (N50 P2 A) files a paid arc under the same rule, and it acts only
+    # once v1.5 is registered.
+    assert {d.code for d in DEPENDENCIES
+            if d.retention_category == "financial_evidence"
+            and d.schedule is not None} == {"arc_purchases_paid"}
 
 
 def test_it_refuses_placeholders():

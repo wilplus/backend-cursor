@@ -612,6 +612,19 @@ if [ "$LANE" = "released" ]; then
   hard migrations/a_coach_judgement_stands.sql
 fi
 
+# 0429 lets a running purge delete what retention schedule v1.5 decided
+# (N50 P1-P6), once v1.5 is registered: nine guard functions gain the
+# governed DELETE branch in place, three unguarded tables gain a guard, the
+# service role gains DELETE and the selecting columns, the read-only delete
+# check, the project graph's V3 memberships, and a nullable reference-video
+# owner. Released lane only, where the purge tables and every table it opens
+# live. After the migrations before it in the manifest. Twice:
+# apply/reapply idempotency.
+if [ "$LANE" = "released" ]; then
+  hard migrations/the_purge_reaches_what_v1_5_decided.sql
+  hard migrations/the_purge_reaches_what_v1_5_decided.sql
+fi
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

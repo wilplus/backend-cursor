@@ -24,16 +24,27 @@ How it narrows the account machinery:
     else. Orphan objects and provider operations belong to no project and are
     never frozen (the freeze refuses them too);
   * the finished purge marks the user's request done.
+
+Retention schedule v1.5 (founder 2026-10-05, N50 P1-P6) places its records
+the same way, once v1.5 is registered: a record that names its project, its
+Take or its snippet goes with the project; the V3 feedback rows that name
+only their membership are reached through the project's memberships, which
+the project graph lists since 0429 (`feedback_v3_membership_ids`); a
+person's settings, enrollment and own reviews of others stay with the
+account; and a record no project column reaches is listed in
+`PROJECT_REVIEW`: any such row the account holds stops a project purge for
+review, as it did before v1.5.
 """
 from __future__ import annotations
 
 import hashlib
 import json
 from collections.abc import Mapping
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any
 
 from services.data_purge import (
+    GRAPH_KEYS,
     DataPurgeOrchestrator,
     PurgeTarget,
     SubjectGraph,
@@ -46,6 +57,28 @@ from services.data_purge_registry import (
 )
 
 PROJECT_RESOLVER_VERSION = "phase1-project-purge-resolver-v1"
+
+
+@dataclass(frozen=True)
+class ProjectSubjectGraph(SubjectGraph):
+    """One project's graph: the account graph's keys, plus the project's V3
+    feedback memberships (0429), the only way to reach the rows that name a
+    membership and no project."""
+
+    feedback_v3_membership_ids: tuple[str, ...] = ()
+
+    def values(self, locator_kind: str) -> tuple[str, ...]:
+        if locator_kind == "feedback_v3_membership":
+            return self.feedback_v3_membership_ids
+        return super().values(locator_kind)
+
+    def payload(self) -> dict[str, list[str]]:
+        return {**super().payload(), "feedback_v3_membership_ids":
+                list(self.feedback_v3_membership_ids)}
+
+
+PROJECT_GRAPH_KEYS: tuple[str, ...] = (
+    *GRAPH_KEYS, "feedback_v3_membership_ids")
 
 #: Account-keyed dependencies that hold project content, re-pointed at the
 #: column that names the project: code -> (selector column, locator kind).
@@ -87,6 +120,50 @@ PROJECT_SELECTORS: Mapping[str, tuple[str, str]] = {
     # active; until then they count as unplaced, exactly as before v1.4.
     "moment_unlocks_review": ("arc_id", "project"),
     "arc_deliveries_review": ("arc_id", "project"),
+    # Retention schedule v1.5 (N50 P1, P2, P5, P6): records that name their
+    # project, Take or snippet go with it. Placed only once v1.5 is
+    # registered and product-records-v1 is active; until then they count as
+    # unplaced, exactly as before v1.5.
+    "learning_surface_presentations": ("project_id", "project"),
+    "learning_surface_exposure_receipts": ("project_id", "project"),
+    "ideal_text_user_edit_cas_operations": ("project_id", "project"),
+    "confident_moment_text_update_capabilities": ("project_id", "project"),
+    "feedback_v3_memberships": ("project_id", "project"),
+    # The rows of those memberships, which name no project themselves.
+    "feedback_v3_membership_items": ("membership_id", "feedback_v3_membership"),
+    "feedback_v3_owner_responses": ("membership_id", "feedback_v3_membership"),
+    "feedback_v3_service_render_receipts": (
+        "membership_id", "feedback_v3_membership"),
+    "feedback_v3_service_response_bindings": (
+        "membership_id", "feedback_v3_membership"),
+    "ml_canonical_events": ("project_id", "project"),
+    "ml_evidence_spans": ("project_id", "project"),
+    "ml_candidate_sets": ("project_id", "project"),
+    # take_id is the canonical take, whose id is its take session's.
+    "ml_confidence_producer_receipts": ("take_id", "take"),
+    "v3_shadow": ("arc_id", "project"),
+    "exercise_practice_sessions": ("project_id", "project"),
+    "exercise_service_offers": ("project_id", "project"),
+    "exercise_service_confidence_assignments": ("project_id", "project"),
+    "confident_moment_bundle_attachments": ("project_id", "project"),
+    "confident_moment_owner_decision_bindings": ("project_id", "project"),
+    "root_phrase_coverage_frames": ("project_id", "project"),
+    "confident_moment_bundle_projections": ("project_id", "project"),
+    "confident_moment_bundle_text_update_bindings": ("project_id", "project"),
+    "confident_moment_coach_authorability_inventories": (
+        "project_id", "project"),
+    "confident_moment_blind_assignment_bindings": ("project_id", "project"),
+    "root_phrase_content_versions": ("project_id", "project"),
+    "root_phrase_semantic_input_snapshots": ("project_id", "project"),
+    "root_phrase_product_actions": ("project_id", "project"),
+    "root_phrase_block_heads": ("project_id", "project"),
+    "coach_guidance_review_frames": ("project_id", "project"),
+    # A reflection clip is a stretch of one snippet; a strong side names
+    # the Take its note was made on.
+    "legacy_reflection_clips": ("snippet_id", "snippet"),
+    "legacy_strong_sides": ("session_id", "take"),
+    # A free founding pass names the arc, the project, it unlocked.
+    "arc_purchases_founding_pass": ("arc_id", "project"),
 }
 
 #: Account-keyed dependencies that belong to the person, not to a project:
@@ -141,6 +218,82 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     "life_user_copy_review",
     "few_shot_review", "copilot_upload_jobs_review",
     "feedback_language_delivery_materialization_jobs",
+    # Retention schedule v1.5: a reviewer's, author's, approver's or
+    # recipient's own rows about someone else's work, the speaker's learning
+    # profile, enrollment and speaker identity, the consent snapshot (kept as
+    # evidence), a paid arc (kept as a financial record) and the reference
+    # videos made for the speaker. They belong to the person; a project
+    # purge leaves them. Placed only once v1.5 is registered and their rule
+    # is active; until then they count as unplaced, exactly as before v1.5.
+    "exercise_pair_assignment_reviewers", "exercise_pair_judgment_reviewers",
+    "exercise_reviewer_context", "exercise_authoring_draft_authors",
+    "exercise_service_confidence_assignment_reviewers",
+    "exercise_service_confidence_render_reviewers",
+    "exercise_service_confidence_judgment_reviewers",
+    "exercise_service_blind_review_set_reviewers",
+    "exercise_service_blind_reveal_grant_reviewers",
+    "exercise_service_blind_reveal_access_reviewers",
+    "mlc3_service_principal_allowlist_approvers",
+    "feedback_language_delivery_recipients",
+    "feedback_language_delivery_reviewers", "feedback_revision_reviewers",
+    "confident_moment_coach_wording_reviewers",
+    "coach_guidance_independent_media_reviewers",
+    "coach_inline_source_role_reviewers", "coach_inline_exercise_draft_authors",
+    "coach_inline_context_assessment_reviewers",
+    "exercise_learning_profiles", "ml_speaker_binding", "ml_purge",
+    "mlc3_service_principal_allowlist_subjects", "mlc3_service_cohort_members",
+    "mlc3_service_enrollment_revisions", "mlc3_service_access_events",
+    "mlc3_speaker_acquisition_revisions", "mlc3_self_speaker_assertions",
+    "mlc3_target_speaker_bindings",
+    "mlc3_comparison_speaker_eligibility_revisions",
+    "ml_consent_snapshots", "arc_purchases_paid",
+    "reference_videos_library", "reference_videos_own",
+})
+
+#: Retention schedule v1.5's records a project purge cannot reach by
+#: project: each names only the person, and the row that names the project
+#: is its parent (an item of a frame, an event of a session, a judgment of
+#: an assignment). The account purge deletes them. A project purge stops for
+#: review whenever the account holds any (PROJECT_SCOPE_UNRESOLVED), exactly
+#: as it did before v1.5; all of them sit behind switches that are off.
+PROJECT_REVIEW: frozenset[str] = frozenset({
+    "canonical_dataset_exclusions", "canonical_release_items",
+    "canonical_split_assignments", "coach_guidance_attachment_versions",
+    "coach_guidance_attachments", "coach_guidance_independent_media_reviews",
+    "coach_guidance_lifecycle_events", "coach_guidance_media_bindings",
+    "coach_guidance_media_source_dependencies",
+    "coach_guidance_media_validity_events",
+    "coach_guidance_publication_invalidations", "coach_guidance_publications",
+    "coach_guidance_reveal_accesses", "coach_guidance_reveal_grant_judgments",
+    "coach_guidance_reveal_grants", "coach_guidance_review_batches",
+    "coach_guidance_review_frame_items", "coach_guidance_upload_events",
+    "coach_guidance_upload_permits", "coach_guidance_upload_recoveries",
+    "coach_inline_context_assessments", "coach_inline_exercise_drafts",
+    "coach_inline_exercise_eligibility_reviews", "coach_inline_source_roles",
+    "confident_moment_bundle_projection_items",
+    "confident_moment_coach_authorability_items",
+    "confident_moment_coach_wording_subjects", "exercise_assignments",
+    "exercise_authoring_drafts", "exercise_authorization_checks",
+    "exercise_candidate_sets", "exercise_candidates",
+    "exercise_feature_snapshots", "exercise_n1_pattern_candidates",
+    "exercise_n1_pattern_snapshots", "exercise_n1_source_patterns",
+    "exercise_pair_assignments", "exercise_pair_judgments",
+    "exercise_pair_revisions", "exercise_practice_attempts",
+    "exercise_practice_events", "exercise_practice_measurements",
+    "exercise_practice_selections", "exercise_practice_transcription_runs",
+    "exercise_practice_upload_recoveries", "exercise_practice_validity",
+    "exercise_profile_observations", "exercise_randomization",
+    "exercise_requests", "exercise_service_acquisition_receipts",
+    "exercise_service_blind_reveal_accesses",
+    "exercise_service_blind_reveal_grants",
+    "exercise_service_blind_review_sets",
+    "exercise_service_confidence_judgments",
+    "exercise_service_confidence_render_receipts",
+    "exercise_service_offer_candidates", "exercise_service_offer_events",
+    "exercise_service_requests", "feedback_language_revision_deliveries",
+    "feedback_revision_subjects", "ml_object_artifacts", "ml_product_actions",
+    "root_phrase_coverage_items", "root_phrase_owner_alignment_actions",
+    "root_phrase_qualification_revisions", "root_phrase_semantic_results",
 })
 
 #: Rows with no project column of their own that the take-record wipe
@@ -174,6 +327,7 @@ def project_placement_sha256() -> str:
         "registry": dependency_manifest_sha256(),
         "project_selectors": {k: list(v) for k, v in PROJECT_SELECTORS.items()},
         "account_level": sorted(ACCOUNT_LEVEL),
+        "project_review": sorted(PROJECT_REVIEW),
         "wiped_with_parent": dict(WIPED_WITH_PARENT),
         "project_holds": {k: list(v) for k, v in PROJECT_HOLDS.items()},
     }, sort_keys=True, separators=(",", ":")).encode()
@@ -219,11 +373,12 @@ class ProjectPurgeOrchestrator(DataPurgeOrchestrator):
         payload = _one(result.data)
         if not payload:
             raise RuntimeError("PURGE_SUBJECT_GRAPH_RESOLUTION_FAILED")
-        keys = tuple(SubjectGraph.__dataclass_fields__)
-        if any(not isinstance(payload.get(key), list) for key in keys):
+        if any(not isinstance(payload.get(key), list)
+               for key in PROJECT_GRAPH_KEYS):
             raise RuntimeError("PURGE_SUBJECT_GRAPH_INVALID")
-        graph = SubjectGraph(**{
-            key: tuple(str(item) for item in payload[key]) for key in keys
+        graph = ProjectSubjectGraph(**{
+            key: tuple(str(item) for item in payload[key])
+            for key in PROJECT_GRAPH_KEYS
         })
         if graph.principal_ids or graph.user_ids or graph.permit_ids \
                 or graph.speaker_ids or graph.project_ids != (self._project_id,):
@@ -232,6 +387,12 @@ class ProjectPurgeOrchestrator(DataPurgeOrchestrator):
 
     def _dependency_manifest_sha(self) -> str:
         return project_placement_sha256()
+
+    def _graph_from_manifest(self, raw_graph: Mapping[str, Any]) -> SubjectGraph:
+        return ProjectSubjectGraph(**{
+            key: tuple(str(item) for item in raw_graph.get(key, []))
+            for key in PROJECT_GRAPH_KEYS
+        })
 
     def _account(self) -> SubjectGraph:
         """The whole account's coordinates, only ever to COUNT rows a
@@ -279,9 +440,12 @@ class ProjectPurgeOrchestrator(DataPurgeOrchestrator):
             or code in WIPED_WITH_PARENT
         )
         decided, _rule = self._decided(dependency, existing_relations)
+        if dependency.carved_from and _rule is None:
+            # Not decided yet: its rows are still the original entry's.
+            return None
         if dependency.ruled_by and decided.disposition == "external_review":
-            # A v1.4 dependency whose rule is not active is the unplaced
-            # external_review entry it was before v1.4, and is counted so.
+            # A ruled dependency whose rule (or schedule) is not in force is
+            # the unplaced external_review entry it was before, counted so.
             placed = False
         remapped = (self._dependency(code) or dependency) if placed else dependency
         if (
@@ -416,6 +580,13 @@ class ProjectPurgeOrchestrator(DataPurgeOrchestrator):
     ) -> list[PurgeTarget]:
         # Provider copies are the account's processor evidence; the project
         # graph carries no permit, and the freeze refuses any operation.
+        return []
+
+    def _reference_video_targets(
+        self, graph: SubjectGraph, existing_relations: frozenset[str],
+    ) -> list[PurgeTarget]:
+        # A reference video belongs to the account (v1.5 P4); a project
+        # purge leaves it and its file alone.
         return []
 
     def _object_is_shared(

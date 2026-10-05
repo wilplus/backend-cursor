@@ -809,6 +809,11 @@ def test_principal_purge_inventory_covers_all_permitted_dark_dependencies(db, ct
     orchestrator = DataPurgeOrchestrator(type("Database", (), {"client": object()})())
 
     def rows(relation, columns, *, selector, values, existing_relations):
+        if relation in ("data_retention_rules", "processing_legal_artifacts"):
+            # Neither v1.4's product-records rule nor retention schedule v1.5
+            # is registered here, so each dark entry acts as it did before
+            # v1.5 (N50 P6): a stop for review.
+            return []
         assert relation in {d.relation for d in deps}
         assert selector in ("speaker_id", "acquisition_principal_id") and columns == selector
         return query(db, f"SELECT {columns} FROM {relation} WHERE {selector}::text=ANY(%s)", (list(values),))

@@ -1668,6 +1668,26 @@ P4 A / P5 A / P6 A / P7 A / C1 A / C2 A / C3 A / C4 B").**
    clean-up deletes `token_ledger` and `llm_usage` rows once their five
    years end, counting first; its first real run waits for the founder's
    word.
+   *As built, held for the signature (0429,
+   `migrations/the_purge_reaches_what_v1_5_decided.sql`; retention schedule
+   v1.5, `legal/phase1-2026.1/22-retention-schedule-v1.5-what-v1.4-left-open-DRAFT.md`):
+   v1.5 seeds no rule; each answer points at `product-records-v1`,
+   `consent-evidence-v1` or `financial-evidence-v1`, and the purge acts on
+   it only once `scripts/phase1_retention_schedule_v1_5.sql` registers
+   `(retention_schedule, 1.5)`. P1 and P6 need nothing applied by hand: each
+   table's own guard function gains one branch that passes only a row a
+   running purge's sealed inventory names (nine functions patched, three
+   tables given a guard; the service role gets DELETE, and SELECT only on
+   the columns that select a row); the capabilities table never holds a
+   row. P2 splits by `source` (a paid arc is kept, and the clean-up's
+   financial rule does not reach it yet: v1.5 §4); P3 is kept; P4's library
+   video loses only the speaker's link and a video made for the speaker
+   stops for its file; P5 deletes the four tables with one owner column,
+   the other six wait. A
+   delete that a kept row still points at stops the erasure before anything
+   is deleted: the speaker's rewrite answers (`correction_decisions`, kept
+   by N12) do, for anyone who answered a rewrite, which v1.5 §4 puts to the
+   founder. P7 is 0426.*
 6. **The clean-up (C1–C4).** The eight voice-measurement stores as built
    (C1 A); Voice Album clips go with the audio (C2 A); processing-job rows
    that deletion evidence points at are kept (C3 A); `dev_bugs` is the
