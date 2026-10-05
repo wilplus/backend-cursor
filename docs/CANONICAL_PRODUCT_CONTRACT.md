@@ -8,7 +8,10 @@ helper words, not the text. Clause 8 amended 2026-10-03 (N29): the rewrite is
 per Slide. Ideal Text redesign amendment locked
 by the founder on 2026-09-26 (clauses 13, 16, 20, 24g-1): "Use these helper
 words" is the lock; helper words head their own Paragraph and read italic inside
-it; the text is never greyed.
+it; the text is never greyed. Closing the Gap amendment by the founder
+2026-10-05 (decisions log N48, "go with wave 2"; clauses 4, 8, 20, 24f, 27,
+29, 35g-2, 46, 47): each amendment is marked in place, and the text it
+replaces is kept.
 
 This document is the product source of truth for the frontend and backend.
 Historical prompts, handoffs, schemas, routes, names, and tests are evidence of
@@ -26,6 +29,10 @@ with this contract, this contract wins.
 4. A slide structure is either an uploaded PDF or a project-specific deckless
    structure. It may be replaced before the first completed Take and is
    immutable afterward. A changed deck starts a new Project.
+   **Amended 2026-10-05 (founder, decisions log N48.2 Q4 A):** replacing the
+   deck inside an existing Project is retired: a new deck is a new setup,
+   and so a new Project. The replacement allowed before the first completed
+   Take above is no longer offered.
 5. A Recording Attempt is the preserved submitted audio. A Take exists and
    counts only after processing succeeds. Retrying processing reuses the same
    Recording Attempt and never increments the Take count.
@@ -46,7 +53,12 @@ with this contract, this contract wins.
    16). (Founder, 2026-09-25, Q4 A; supersedes "later Takes never replace
    it". Amended 2026-10-03, N29: the rewrite is per Slide, as built since
    Q4 A; that a Take which cannot be lined up follows the Take is new, and
-   is built in the F1 Repair Plan's Phase 3.)
+   is built in the F1 Repair Plan's Phase 3.) **Amended 2026-10-05
+   (founder, decisions log N48.1, Wave 1):** a Slide's last version is the
+   words the speaker is reading, so an unspoken Slide keeps the speaker's
+   current words, including an owner edit (clause 9) or an accepted rewrite
+   (29b), never the earlier Take's machine words; clause 9's "the next Take
+   replaces all of these" holds on the Slides that Take spoke.
 9. Between Takes, Ideal Text also changes through direct user editing, an
    explicitly accepted proposal, or a practice attempt adopted under 35d. The
    next Take replaces all of these with what was said; nothing is lost,
@@ -121,7 +133,9 @@ with this contract, this contract wins.
     cues. Only locked helper words are shown. Before Take 3 an uncovered Slide
     has no generated fallback. After Take 3, the Manager may propose at most one
     helper-word phrase for an uncovered Slide, but the user must still tap and
-    lock it.
+    lock it. **Amended 2026-10-05 (founder, decisions log N48.2 Q5 A):** that
+    proposal stays off. An uncovered Slide has no generated helper words on
+    any Take; helper words come only from the user's own taps (clause 13).
 
 ## 4. Feedback and Manager arbitration
 
@@ -238,8 +252,9 @@ with this contract, this contract wins.
       band; the read chooses and is never surfaced (AC-9). Not every such
       block carries one: a block with no defensible praise in its words
       surfaces none, and inventing one to fill the slot is forbidden. The
-      green bookmark stays on the two most Confident items (24g) and no
-      longer decides where praise goes;
+      green bar is on every open item the machine read above the confident
+      threshold, within the window of three (24b, 24g), and does not decide
+      where praise goes (amended 2026-10-05, see 24f-prior);
     - **an exercise on any bookmark** (founder 2026-09-29, superseding the
       2026-09-26 "one exercise, on the weakest item below the neutral band"):
       "they can carry as many exercises as bookmark indicates". Each Confident
@@ -253,8 +268,9 @@ with this contract, this contract wins.
       nothing acoustic fired: the rewrite now on In-between, No and Not sure;
       nothing now on Yes. Audio unclear: nothing. Praise and rewrites show
       only where the Manager found an evidence-backed one; nothing is ever
-      filled in. The read chooses and is never surfaced. The weakest
-      below-neutral item keeps its bookmark colour. A rewrite on the same
+      filled in. The read chooses and is never surfaced. An open item read
+      below the confident threshold with a practise attached carries the
+      orange bar (24g; amended 2026-10-05, see 24f-prior). A rewrite on the same
       Paragraph no longer withholds the video (it did until 2026-09-29): the
       video answers the delivery and the rewrite the words, two findings on
       one moment, and neither silences the other;
@@ -273,6 +289,22 @@ with this contract, this contract wins.
     stage** — an item whose block holds nothing defensible carries the
     delivery read and the rooting step alone. Neither the read that places
     the notes nor any ranking among the blocks is ever surfaced (24i).
+    **Amended 2026-10-05 (founder, decisions log N48.3 Q12 A, with Q7 A),
+    to match the founder lock of 2026-09-30:** what the speaker can do after
+    a judgement is the lock's. Practise is the default follow-up for every
+    judgement below In-between (29a; lock D1), with Skip as the way out. On
+    Yes and In-between the button is Next, and on In-between Practise is
+    the plain link under it (lock B5 and its interpretation Q1). On a
+    rewrite card the follow-up is 29b's: "Accept and practise" is the one
+    primary action and "Keep my words" the way out, which changes nothing.
+
+24f-prior. *(superseded 2026-10-05, N48.3 Q12 A; kept so the change is
+    legible)* In the praise lane: "The green bookmark stays on the two most
+    Confident items (24g) and no longer decides where praise goes". In the
+    exercise lane: "The weakest below-neutral item keeps its bookmark
+    colour." Both read the 2026-09-18 ladder of two greens and one orange,
+    which the founder lock of 2026-09-30 (B7) replaced with two bar colours
+    by the machine's read (24g).
 
 24f-1. **An accepted rewrite re-anchors.** Accepting an Actionable Improvement
     changes the wording of the block it sat in, so its bookmark follows the
@@ -384,7 +416,10 @@ with this contract, this contract wins.
 27. Actionable Improvement covers a verbal correction, stronger formulation,
     or material structure improvement. Praise must quote or otherwise identify
     real textual evidence; modest praise is valid when it is the best honest
-    candidate.
+    candidate. **Amended 2026-10-05 (founder, decisions log N48.2 Q2 B):**
+    Actionable Improvement covers verbal correction and stronger formulation
+    now. Structure improvement (restructure, add, cut; clause 15) comes
+    later and is not built; there is no structure lane.
 28. Every surfaced Feedback item references exact Project, Take, Slide,
     Paragraph, and evidence span. Confident Voice additionally requires a
     playable audio interval. Actionable Improvement and Praise do not.
@@ -394,6 +429,8 @@ with this contract, this contract wins.
 29. Confident Voice offers primary responses Yes — Confident, In-between, and
     No — Not confident, plus secondary Not sure and Audio unclear. The response
     is an immutable self-report tied to the exact clip and Take.
+    **Amended 2026-10-05 (founder, decisions log N48.3 Q8 A):** on the screens
+    the answers read "Yes" and "No"; the five responses are unchanged.
 29a. **The practice loop.** Practise is the default follow-up for every
     judgement below In-between (founder lock 2026-09-30, D1): the passage is
     the library exercise where one is matched to the clip, else the Manager's
@@ -630,7 +667,9 @@ with this contract, this contract wins.
     shared video rides that same moment. On an error with no library match
     the item reads "Your coach is working on your exercise." (founder-signed
     copy, 2026-09-29) until the coach shares one; on the other kinds nothing
-    is promised and the video appears when shared. The coach hears often
+    is promised and the video appears when shared. **Amended 2026-10-05
+    (founder, decisions log N48.3 Q10 A):** that sentence shows only while a
+    coach is active. The coach hears often
     while the library is small; each answer files a reusable exercise. The speaker never waits on it. The coach
     sees it only after their own blind rating of the moment and answers once:
     a library exercise, a new one filed into the library (which must name a
@@ -863,11 +902,16 @@ with this contract, this contract wins.
     state and never repeat setup.
 46. Take 3 completes the guided journey. Take 4+ is optional refinement and
     immediately offers Record again without another See-next-steps loop.
+    **Amended 2026-10-05 (founder, decisions log N48.3 Q8 A):** the action
+    reads "Record Take N".
 47. Accepted anchors persist across Takes and are never automatically
     replaced. First-time Paragraph/Slide coverage precedes replacement
     optimization. Replacement candidates must independently deserve
     attention. Unshown low-priority queues end after Take 3. No changes needed
-    is a successful refinement result.
+    is a successful refinement result. **Amended 2026-10-05 (founder,
+    decisions log N48.3 Q12 A):** V3 serves every Take (24b to 24d), so
+    "Unshown low-priority queues end after Take 3" is superseded: every Take
+    is selected in full and surfaced through the window of three (24b).
 
 ## 8. Commercial model
 

@@ -19,6 +19,7 @@ registers nothing in the database.
 ## Overrides
 
 - **B5** — Next on a Yes or In-between. Practise with Skip on No and Not sure only.
+  *Amended 2026-10-05 (founder, decisions log N48.3 Q7 A): on a rewrite card the buttons are contract 29b's, not this rule: "Accept and practise" is the one main action and "Keep my words" is the plain-text way out, which changes nothing.*
 - **B7** — Two bar colours only, orange and green. Everything else is plain text with no bar.
 - **D6** — The paragraph overlay has exactly two states: the practise state and the helper-words-saved state. Playback in both, never the paragraph text.
   *Amended 2026-10-05 (founder, "keep it as it is today"; decisions log N48.1): on a later Take the helper-words-saved state shows no player. The paragraph text is still never shown.*
@@ -31,8 +32,10 @@ The five questions closed on 2026-09-30 (Q1 B · Q2 A · Q3 A · Q4 A · Q5 A).
 - **Q2 · D8, the third slot (confirmed A)** — Slots fill from the two ends: the highest read above the threshold takes green, the lowest read below it with a practise takes orange, and the third slot goes to the next candidate farthest from the threshold on either side, never a third of the same colour. When only one side has candidates, at most two show.
 - **Q3 · B7, locked paragraphs (confirmed A)** — A paragraph saved with helper words carries no bar. Its orange headline is its mark. This keeps 'at most three bars' true.
 - **Q1 · B5 and B6, where Practise stops (confirmed B)** — In-between counts as good enough to lock. On In-between the button reads Next and "Practise" is the plain-text link under it; the practise loop is required only for No and Not sure, and ends on the first In-between or Yes.
+  *Amended 2026-10-05 (founder, decisions log N48.3 Q7 A): on a rewrite card the buttons are contract 29b's, not this rule: "Accept and practise" is the one main action and "Keep my words" is the plain-text way out, which changes nothing.*
 - **Q4 · the mocks (confirmed A)** — Tasks 4, 5 and 6 are built from the three mocks as they stand; later polish rides the same PRs.
 - **Q5 · nothing matched (confirmed A)** — Under "Say it again" the signed sentence "Your coach is working on your exercise." stays; the coach request is still raised.
+  *Amended 2026-10-05 (founder, decisions log N48.3 Q10 A): "Your coach is working on your exercise." shows only while a coach is active.*
 
 ## The build list
 
@@ -89,6 +92,8 @@ Done when:
 - [ ] Judgement No or Not sure: the button reads "Practise" with "Skip" as plain text under it.
 - [ ] Audio unclear: grey label, no practise card, "Next".
 
+*Amended 2026-10-05 (founder, decisions log N48.3 Q7 A): on a rewrite card the buttons are contract 29b's, not this rule: "Accept and practise" is the one main action and "Keep my words" is the plain-text way out, which changes nothing.*
+
 ### B6 — Practise for every moment judged below In-between, as long as she wants, until In-between or Yes, then helper words and the lock.
 
 Done when:
@@ -129,6 +134,10 @@ Done when:
 - [ ] These strings appear exactly: "Your judgement:", "Skip", "Next", "N of 4 words", "Helper words" (eyebrow above the headline), "These replace your Take 1 words. Those stay in Earlier Takes.", "Say it this way", "From your attempt", "History", "This paragraph".
 - [ ] No other new user-facing string lands on these screens; the copy file diff shows only these.
 
+*Amended 2026-10-05 (founder, decisions log N48.3 Q9 A): the signed strings also include "Delete helper words", "Tap words from any Take", "Confident" / "Not confident", "Accept and practise", "Keep my words" and "Say it this way · accepted".*
+
+*Amended 2026-10-05 (founder, decisions log N48.3 Q8 A): the words on these screens are: "Next" wherever this lock says Next (the screens' "Done" becomes "Next"); "Record Take N" (not "Record again"); the judgement answers read "Yes" and "No" (not "Yes — Confident" and "No — Not confident"); the header caption reads "AI-generated text · Take N"; the rewrite card is "Clearer version" (not "Small rewrite"); "Edit" (not "Choose different words"); the Take 1 note ("These replace your Take 1 words. Those stay in Earlier Takes.") shows in the paragraph sheet's picker; and the Lounge's door back reads "Practise again" (not "Keep practising").*
+
 ### B10 — The page note after a new Take and the automatic pre-selection stay parked.
 
 Done when:
@@ -157,6 +166,8 @@ Done when:
 
 - [ ] Every No or Not sure shows a practise card; when nothing matched, the card is "Say it again" on the plain moment with "Your coach is working on your exercise." under it.
 - [ ] No judgement ends on an overlay with nothing to do.
+
+*Amended 2026-10-05 (founder, decisions log N48.3 Q10 A): "Your coach is working on your exercise." shows only while a coach is active.*
 
 ### D2 — No attempt cap.
 
@@ -233,6 +244,8 @@ Done when:
 - [ ] "Skip" is the plain-text link under Practise; "Not now" no longer appears on these screens.
 - [ ] "Next" is the button on Yes, In-between, Audio unclear and the saved screen; "Continue" no longer appears on these screens.
 
+*Amended 2026-10-05 (founder, decisions log N48.3 Q7 A): on a rewrite card the buttons are contract 29b's, not this rule: "Accept and practise" is the one main action and "Keep my words" is the plain-text way out, which changes nothing.*
+
 
 ## The open design questions
 
@@ -271,3 +284,5 @@ Done when:
 ## Contract clauses this lock amends
 
 13 (four words; delete exists), 24b/24c (surfacing windowed to three), 24e (Yes and In-between open the helper words), 24f (Practise as the default follow-up below In-between; Next on Yes and In-between), 24g (two bar colours; no bar otherwise; locked paragraphs carry no bar), 29a (no attempt cap; the loop ends on In-between or Yes), and the design lock L3 (the two overlay states). The amendments land with the PRs that build them, never before.
+
+*Amended 2026-10-05 (founder, decisions log N48.3 Q12 A): the contract texts are brought in line with this lock and its later amendments: 24f (the stale two-greens and weakest-item text replaced by 24g's two bar colours; Practise below In-between, Next on Yes and In-between, 29b on rewrite cards) and 47 (V3 serves every Take). The design lock's L3 still says "the Take stack"; this lock wins.*

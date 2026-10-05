@@ -10,6 +10,9 @@ entered build the same day on founder order. **§12 (founder specs
 2026-08-14)** names the three integrity rules — Anchor Rule, Clean Serve
 Boundary, Intent Ledger; §12.1 and §12.2 shipped the same day; §12.3
 entered build in the next window (founder order).
+**Amended 2026-10-05 (founder, decisions log N48.2 Q3 A, Q4 A):** the
+"Rehearse all" scope (§4.2, §7) and the Clean Serve Boundary (§12.2) are
+retired; the Intent Ledger (§12.3) is not, and is being built for V3.
 **Ships in three PRs:** this spec · stable parts (Step 0) · locking.
 
 ---
@@ -140,6 +143,8 @@ features:
    composition→accentuation order is preserved *per part* without a global
    gate, so rehearsing everything before everything is locked is coherent
    rather than an edge case.
+   *Amended 2026-10-05 (founder, decisions log N48.2 Q4 A): the "Rehearse
+   all" scope is retired; see §7.*
 3. **Voice confidence lands where it belongs.** It is the ranking input for the
    accentuation layer (`services/voice_confidence.py` already exists), and it
    simply never applies to an open part.
@@ -261,6 +266,12 @@ record(scope) ── analysing ── REVIEW(≤3) ── ideal text
 `scope: { mode: 'chunk' | 'full', from_part_id }` is the only new state. The
 existing lifecycle lock still holds: `analysing` blocks both recording and
 opening the deliverable (shipped in frontend-cursor#251).
+
+> **Amended 2026-10-05 (founder, decisions log N48.2 Q4 A):** the
+> "rehearse all" scope is retired. The `rehearse all → scope := whole text`
+> edge above and the "Rehearse all" string in §8 stay as history; nothing
+> is built for them. A Take is a recording of the presentation (contract
+> 5, 8).
 
 ---
 
@@ -593,6 +604,12 @@ anchored to — a marker baked into the text shifts every offset behind it.
   backend must persist for its own bookkeeping stays in its own field,
   stripped before the document string leaves the API.
 
+> **Amended 2026-10-05 (founder, decisions log N48.2 Q4 A): retired.** R8
+> wins: an accepted accent is baked into the part as `{{orange:…}}` by
+> `ideal_decision_ledger.bake_piece`, the one writer R8 names, and the
+> unbaked served text this section asks for is not built. The rule above
+> stays as history.
+
 ### 12.3 · The Intent Ledger (field report #4 — the phrase-drift bypass). "Never re-litigated."
 
 The decisions ledger exists so a declined suggestion stays declined. It
@@ -617,6 +634,10 @@ wording:
 * Un-blocking is the user's: unlock/re-open of the chunk, or an explicit
   new-take decision surface, may clear the pair — the machine never
   clears it for itself.
+
+> **Amended 2026-10-05 (founder, decisions log N48.2 Q3 A): not retired;
+> V3 now reads it, and it is being built.** After "Keep my words" the same
+> rewrite is not offered again on that Paragraph until its words change.
 
 ### 11.7 · Session backlog (founder, 2026-08-14, post-build field notes — NOT built)
 

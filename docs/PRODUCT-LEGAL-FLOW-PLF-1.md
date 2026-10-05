@@ -19,6 +19,8 @@ and separately reviewed implementation remain required.
    Recording and coaching remain unavailable without that acceptance.
 2. The Terms state that a user may provide only recordings containing their
    own voice. There is no per-recording sole-speaker checkbox.
+   *Amended 2026-10-05 (founder, decisions log N48.4 Q20 A; as in PLF-1.1):
+   others may be recorded with their agreement, as the Terms say.*
 3. Setup records an `18+ confirmed` receipt with the applicable version and
    timestamp. Willab does not collect a full date of birth and never infers age
    from voice.
