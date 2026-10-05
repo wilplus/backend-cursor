@@ -1,23 +1,28 @@
-"""The scheduled clean-up against a real schema (migration 0423;
-services/retention_cleaner.py; founder 2026-10-05, decisions log N48.4 Q16 A).
+"""The scheduled clean-up against a real schema (migrations 0423 and 0426;
+services/retention_cleaner.py; founder 2026-10-05, decisions log N48.4 Q16 A
+and N50).
 
 What it proves, on the released lane:
   * the report, a dry run and the founder's script count the same lines, and
     on a world built for it those lines are exactly the rows that are due --
     and they are the report of 2026-10-05's numbers, except where 0423
-    refined them (a processing job deletion evidence points at is kept);
+    refined them (a processing job deletion evidence points at is kept) and
+    0426 changed them (the founder's bug list is not a log, N50 C4 B; the
+    financial records whose five years have ended are rule 4, N50 P7);
   * a live request is refused while RETENTION_CLEANER_LIVE is False, and
     deletes nothing;
   * with the key patched on, a live run deletes exactly those rows and
     objects: an unclaimed guest through the account purge, an idle
     account's recording with its voice measurements (the measurements go
-    first, the event names the run), the five logs' old rows -- and nothing
-    that is not due, and nothing retained;
+    first, the event names the run), the four logs' old rows, the financial
+    records past their five years (the year read in Warsaw time; an account
+    under erasure left to it) -- and nothing that is not due, nothing
+    retained, and never the founder's bug list;
   * a second run finds nothing left to do; a recording whose object will
     not go keeps its event back but never its measurements; and the guards
     0423 opens open for a live run only;
   * rule 1 is a purge: without the purge kill switch no guest is erased
-    (rules 2 and 3 still run), and a guest whose erasure stopped for review
+    (rules 2 to 4 still run), and a guest whose erasure stopped for review
     is left for a person, never run again.
 
 Every case runs in ONE transaction that is rolled back, so nothing it writes
@@ -31,8 +36,12 @@ today, so nothing of theirs is ever due here, and the cases can say
 Stand-ins, each named: object storage is faked (this lane has no R2); every
 retention rule the purge can ask for is seeded active, as production's are
 (tests/test_take_purge_postgres.py); the tables this lane does not carry are
-built from their own migrations; and the grants Supabase gives service_role
-by default are given, on those tables only.
+built from their own migrations (token_ledger's beside a one-column
+stand-in for the account table it alters, v2_student_details, which predates
+the migrations directory); 0426 is applied again inside the case, so its
+door to the two financial tables, guarded on them existing, opens as it does
+in production; and the grants Supabase gives service_role by default are
+given, on the other tables only: rule 4 deletes with 0426's door alone.
 """
 from __future__ import annotations
 
@@ -67,7 +76,10 @@ TABLE_FILES = (
     "add_user_sniper_profile.sql", "add_arc_part_acoustics.sql",
     "add_user_acoustic_baseline.sql", "add_dimension_evaluations.sql",
     "add_dimension_evaluations_snippet_grain.sql",
+    "add_llm_usage.sql", "add_token_pricing.sql",
 )
+#: Rule 4's migration, applied again once its two tables exist here.
+FINANCIAL_MIGRATION = "financial_records_go_after_five_years.sql"
 #: What Supabase grants service_role on every public table by default.
 SUPABASE_DEFAULT_GRANTS = (
     "processing_jobs", "dev_bugs", "life_reminder_log", "admin_annotations_log",
@@ -132,6 +144,7 @@ SELECT 3, 'log rows older than 90 days: mlc3_service_backpressure_events',
 MEASURES = "voice measurements with that audio: "
 LOGS = "log rows older than 90 days: "
 KEPT = "log rows older than 90 days kept, deletion evidence points at them: "
+FIN = "financial records whose five years have ended: "
 #: The lines the world below must produce at AS_OF, and nothing else.
 EXPECTED = {
     (1, "unclaimed guests older than 30 days"): 1,
@@ -146,11 +159,12 @@ EXPECTED = {
     (2, MEASURES + "user_acoustic_baseline"): 1,
     (2, MEASURES + "v2_sessions.voice_measures"): 1,
     (3, LOGS + "admin_annotations_log"): 1,
-    (3, LOGS + "dev_bugs"): 1,
     (3, LOGS + "life_reminder_log"): 1,
     (3, LOGS + "mlc3_service_backpressure_events"): 1,
     (3, LOGS + "processing_jobs"): 1,
     (3, KEPT + "processing_jobs"): 2,
+    (4, FIN + "llm_usage"): 1,
+    (4, FIN + "token_ledger"): 2,
 }
 
 
@@ -261,12 +275,24 @@ def key_on(monkeypatch):
     monkeypatch.setattr(rc, "RETENTION_CLEANER_LIVE", True)
 
 
+def _without_transaction(text: str) -> str:
+    """A migration's own BEGIN/COMMIT would end the case's transaction."""
+    return re.sub(r"(?im)^\s*(BEGIN|COMMIT)\s*;\s*$", "", text)
+
+
 def _schema(db) -> None:
     with db.cursor() as cur:
+        # The account table token_ledger's migration alters; production's
+        # predates the migrations directory. Only the key it is read by.
+        cur.execute("""CREATE TABLE IF NOT EXISTS public.v2_student_details (
+                           user_id text PRIMARY KEY)""")
         for name in TABLE_FILES:
             text = (ROOT / "migrations" / name).read_text()
-            # Their own BEGIN/COMMIT would end the case's transaction.
-            cur.execute(re.sub(r"(?im)^\s*(BEGIN|COMMIT)\s*;\s*$", "", text))
+            cur.execute(_without_transaction(text))
+        # 0426 ran in the lane before its two tables existed here; in
+        # production they did. Again, so its door opens as it does there.
+        cur.execute(_without_transaction(
+            (ROOT / "migrations" / FINANCIAL_MIGRATION).read_text()))
         # 0298's claimed-guest shape, which this lane predates: the column
         # and the identity check production has.
         cur.execute("""
@@ -478,7 +504,8 @@ def _measurements(db, rec: dict) -> None:
 
 
 def _logs(db, *, days: float) -> dict:
-    """One row in each of the five logs, `days` old at AS_OF."""
+    """One row in each of the four logs, and one in the founder's bug list
+    (never the clean-up's, N50 C4 B), `days` old at AS_OF."""
     at = _at(days)
     owner = _person(db, "account", created=days + 1)
     project = _project(db, owner, touched=days)
@@ -506,6 +533,59 @@ def _logs(db, *, days: float) -> dict:
     }
     rows["mlc3_service_backpressure_events"] = _backpressure(db, at)
     return {table: str(row) for table, row in rows.items()}
+
+
+def _utc(*args: int) -> datetime:
+    return datetime(*args, tzinfo=timezone.utc)
+
+
+def _financial(db) -> dict:
+    """Rule 4 at AS_OF (1 June 2001): a row made in 1995 or before is due,
+    its financial year having ended five years ago. The year is Warsaw's:
+    the cut is 1 January 1996 00:00 there, 31 December 1995 23:00 UTC."""
+    payer = _person(db, "account", created=3000)
+    erasing = _person(db, "account", created=3000)
+    pausing = _person(db, "account", created=3000)
+
+    def ledger(owner: dict, at: datetime) -> str:
+        return str(_one(db, """
+            INSERT INTO public.token_ledger (user_id, delta, balance_after,
+                                             action, ref_id, created_at)
+            VALUES (%s, -3000, 0, 'take_short', %s, %s) RETURNING id""",
+            (owner["user"], str(uuid.uuid4()), at)))
+
+    def usage(at: datetime) -> str:
+        return str(_one(db, """
+            INSERT INTO public.llm_usage (surface, model, tokens_in,
+                                          tokens_out, created_at)
+            VALUES ('whisper_take', 'whisper-1', 10, 20, %s) RETURNING id""",
+            (at,)))
+
+    rows = {
+        "ledger_1995": ledger(payer, _utc(1995, 3, 10)),
+        # 23:30 UTC on 31 December 1995 is already 1996 in Warsaw: not due.
+        "ledger_warsaw_1996": ledger(payer, _utc(1995, 12, 31, 23, 30)),
+        "ledger_1996": ledger(payer, _utc(1996, 6, 1)),
+        # A call with no account, 23:30 on 31 December 1995 in Warsaw: due.
+        "usage_1995": usage(_utc(1995, 12, 31, 22, 30)),
+        "usage_1996": usage(_utc(1996, 1, 1)),
+        # Due by its year, but its account is being erased: left to that.
+        "ledger_erasing": ledger(erasing, _utc(1995, 3, 10)),
+        # Due: only a project of this account is being deleted (0378).
+        "ledger_pausing": ledger(pausing, _utc(1995, 3, 10)),
+    }
+    _one(db, """
+        INSERT INTO public.data_purge_requests (acquisition_principal_id,
+            trigger_kind, idempotency_key)
+        VALUES (%s, 'account_deletion', %s) RETURNING id""",
+        (erasing["principal"], str(uuid.uuid4())))
+    _one(db, """
+        INSERT INTO public.data_purge_requests (acquisition_principal_id,
+            trigger_kind, project_id, idempotency_key)
+        VALUES (%s, 'project_deletion', %s, %s) RETURNING id""",
+        (pausing["principal"], _project(db, pausing, touched=3000),
+         str(uuid.uuid4())))
+    return rows
 
 
 def _backpressure(db, at: datetime) -> str:
@@ -598,6 +678,8 @@ def _world(db) -> dict:
     w["old_logs"] = _logs(db, days=100)
     w["new_logs"] = _logs(db, days=80)
     w["kept_jobs"] = _jobs_evidence_points_at(db, days=100)
+    # Rule 4: three rows due, four near misses (financial years).
+    w["financial"] = _financial(db)
     return w
 
 
@@ -676,24 +758,31 @@ class TestOneDefinitionOfWhatIsDue:
         assert _measurements_left(db, w["idle_rec"])["snippets"] == 2
         assert _one(db, "SELECT count(*) FROM public.dev_bugs WHERE id = %s",
                     (int(w["old_logs"]["dev_bugs"]),)) == 1
+        assert _present(db, "token_ledger", w["financial"]["ledger_1995"])
+        assert _present(db, "llm_usage", w["financial"]["usage_1995"])
         assert _one(db, """
             SELECT count(*) FROM public.data_purge_requests
              WHERE acquisition_principal_id = %s""",
             (w["guest_old"]["principal"],)) == 0
 
-    def test_its_numbers_are_the_founders_report_of_5_october_but_one(self, db):
+    def test_its_numbers_are_the_founders_report_of_5_october_but_three(self, db):
         """0423 kept every rule of the report the founder ran (N47) and
         refined one line: a job deletion evidence points at is kept, and
-        counted apart. Here, the only place they differ."""
+        counted apart (N50 C3 A). 0426 took dev_bugs off it (C4 B) and added
+        rule 4 (P7). Here, the only places they differ."""
         _world(db)
         original = {(r["rule"], r["would_delete"]): r["how_many"]
                     for r in _rows(db, REPORT_2026_10_05, {"as_of": AS_OF})}
         report = _report(db)
+        assert original.pop((3, LOGS + "dev_bugs")) == 1
+        assert (3, LOGS + "dev_bugs") not in report
         for line, count in original.items():
             if line == (3, LOGS + "processing_jobs"):
                 assert count == report[line] + report[(3, KEPT + "processing_jobs")]
             else:
                 assert report[line] == count, line
+        assert {line for line in report if line[0] == 4} == {
+            (4, FIN + "llm_usage"), (4, FIN + "token_ledger")}
 
     def test_a_job_evidence_points_at_cannot_go_without_rewriting_that_evidence(
             self, db):
@@ -781,11 +870,24 @@ class TestALiveRun:
         assert sorted(storage["deleted"]) == sorted(
             [w["guest_old_rec"]["key"], w["idle_rec"]["key"]])
 
-        # Rule 3: the old rows of the five logs, no other.
+        # Rule 3: the old rows of the four logs, no other; never the
+        # founder's bug list (N50 C4 B).
         for table, row in w["old_logs"].items():
-            assert _present(db, table, row) is False, table
+            assert _present(db, table, row) is (table == "dev_bugs"), table
         for table, row in w["new_logs"].items():
             assert _present(db, table, row) is True, table
+
+        # Rule 4: the financial records whose years have ended, no other.
+        fin = w["financial"]
+        for name, table in (("ledger_1995", "token_ledger"),
+                            ("ledger_pausing", "token_ledger"),
+                            ("usage_1995", "llm_usage")):
+            assert _present(db, table, fin[name]) is False, name
+        for name, table in (("ledger_warsaw_1996", "token_ledger"),
+                            ("ledger_1996", "token_ledger"),
+                            ("ledger_erasing", "token_ledger"),
+                            ("usage_1996", "llm_usage")):
+            assert _present(db, table, fin[name]) is True, name
         for job in ("staged", "moved"):
             assert _present(db, "processing_jobs", w["kept_jobs"][job]) is True
         assert str(_one(db, """
@@ -817,6 +919,9 @@ class TestALiveRun:
         assert done["measurements.user_acoustic_baseline"] == 1
         for table in rc.LOG_TABLES:
             assert done[f"logs.{table}"] == 1, table
+        assert done["financial.token_ledger"] == 2
+        assert done["financial.llm_usage"] == 1
+        assert "logs.dev_bugs" not in done
 
     def test_a_second_run_finds_nothing_left_to_do(self, db, storage, key_on):
         w = _world(db)
@@ -999,6 +1104,59 @@ class TestTheGuardsOpenForALiveRunOnly:
                 with pytest.raises(psycopg2.Error, match="RETENTION_RUN_RECORD"):
                     cur.execute(statement, (run_id,))
                 cur.execute("ROLLBACK TO SAVEPOINT final")
+
+
+class TestTheWave3SignOff:
+    """N50: the founder's bug list is not a log (C4 B); the financial
+    records go when their five years end, behind the same key (P7)."""
+
+    def _live_run(self, db) -> str:
+        return str(_one(db, "SELECT public.begin_retention_live_run_v1('x', %s)->>'id'",
+                        (AS_OF,)))
+
+    def test_a_live_run_cannot_even_list_the_bug_list(self, db):
+        run = self._live_run(db)
+        with db.cursor() as cur:
+            for rule, relation in (("logs", "dev_bugs"), ("financial", "dev_bugs"),
+                                   ("financial", "v2_student_details")):
+                cur.execute("SAVEPOINT listing")
+                with pytest.raises(psycopg2.Error, match="RETENTION_RULE_UNKNOWN"):
+                    cur.execute("SELECT * FROM public.list_retention_due_v1("
+                                "%s, %s, %s, 10)", (run, rule, relation))
+                cur.execute("ROLLBACK TO SAVEPOINT listing")
+
+    def test_a_financial_year_ends_at_midnight_in_warsaw(self, db):
+        """A row made in 2026 is due from 1 January 2032, 00:00 in Warsaw:
+        23:00 UTC on 31 December 2031, an hour before UTC's new year."""
+        made_2026 = _utc(2026, 3, 10)
+
+        def due(as_of: datetime) -> bool:
+            return bool(_one(db, "SELECT %s < public.retention_financial_cut_v1(%s)",
+                             (made_2026, as_of)))
+
+        assert due(_utc(2031, 12, 31, 22, 59)) is False
+        assert due(_utc(2031, 12, 31, 23, 0)) is True
+        assert due(_utc(2032, 7, 1)) is True
+        # And the last moment of 2026 in Warsaw belongs to 2026.
+        assert _one(db, "SELECT %s < public.retention_financial_cut_v1(%s)",
+                    (_utc(2026, 12, 31, 22, 59), _utc(2031, 12, 31, 23, 0))) is True
+        assert _one(db, "SELECT %s < public.retention_financial_cut_v1(%s)",
+                    (_utc(2026, 12, 31, 23, 1), _utc(2031, 12, 31, 23, 0))) is False
+
+    def test_the_door_is_deletes_by_id_and_nothing_more(self, db):
+        """What 0426 grants the service role on the two tables: removing a
+        row, found by its id. Not a word of what the row says."""
+        with db.cursor() as cur:
+            for table in ("token_ledger", "llm_usage"):
+                cur.execute("""
+                    SELECT has_table_privilege('service_role', %(t)s, 'DELETE'),
+                           has_table_privilege('service_role', %(t)s, 'INSERT'),
+                           has_table_privilege('service_role', %(t)s, 'UPDATE'),
+                           has_column_privilege('service_role', %(t)s, 'id', 'SELECT'),
+                           has_column_privilege('service_role', %(t)s, 'created_at', 'SELECT'),
+                           has_column_privilege('service_role', %(t)s, 'user_id', 'SELECT')
+                    """, {"t": f"public.{table}"})
+                assert cur.fetchone() == (True, False, False, True, True, False), table
 
 
 def _present(db, table: str, row_id: str) -> bool:

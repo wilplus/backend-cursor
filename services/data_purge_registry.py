@@ -1375,8 +1375,11 @@ DYNAMIC_RUNTIME_RELATIONS: frozenset[str] = frozenset({
     "life_push_subscriptions", "life_reminder_settings", "life_reminder_log",
     "life_user_copy", "dev_bugs", "dev_tasks",
     # The scheduled clean-up (services/retention_cleaner.py) removes rows
-    # from the relations its reviewed lists name: the five logs and the
-    # voice-measurement stores. dev_bugs and life_reminder_log are above.
+    # from the relations its reviewed lists name: the four logs, the
+    # voice-measurement stores and, once their five years end, the financial
+    # records (token_ledger and llm_usage, above; N50 P7). life_reminder_log
+    # is above too. dev_bugs is the founder's own bug list and is not the
+    # clean-up's (N50 C4 B).
     "processing_jobs", "admin_annotations_log",
     "mlc3_service_backpressure_events", "dimension_evaluations",
     "session_sniper_metrics", "arc_part_acoustics", "user_acoustic_baseline",

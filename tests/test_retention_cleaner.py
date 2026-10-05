@@ -1,5 +1,5 @@
-"""The scheduled clean-up (founder 2026-10-05, decisions log N48.4 Q16 A;
-services/retention_cleaner.py, migration 0423).
+"""The scheduled clean-up (founder 2026-10-05, decisions log N48.4 Q16 A and
+N50; services/retention_cleaner.py, migrations 0423 and 0426).
 
 Without a database: the two keys a real run needs, the order a live run
 works in (measurements, then the object, then its event), what it does when
@@ -33,10 +33,32 @@ CODE = "\n".join(line.split("--", 1)[0] for line in MIGRATION.splitlines())
 
 
 def _function(name: str) -> str:
+    """A function as 0423 wrote it."""
     match = re.search(
         rf"CREATE OR REPLACE FUNCTION public\.{name}\((.*?)\n\$\$;", CODE, re.S)
     assert match, name
     return match.group(1)
+
+
+def _since_0423() -> list[str]:
+    rows = (ROOT / "migrations" / "manifest.txt").read_text().splitlines()
+    files = [row.split("\t")[1].strip() for row in rows if "\t" in row]
+    return files[files.index(MIGRATION_NAME):]
+
+
+def _latest(name: str) -> str:
+    """A function as the database has it now: its last definition in
+    manifest order (0426 re-issues four of 0423's)."""
+    found = None
+    for file in _since_0423():
+        text = (ROOT / "migrations" / file).read_text()
+        code = "\n".join(line.split("--", 1)[0] for line in text.splitlines())
+        for match in re.finditer(
+                rf"CREATE OR REPLACE FUNCTION public\.{name}\((.*?)\n\$\$;",
+                code, re.S):
+            found = match.group(1)
+    assert found, name
+    return found
 
 
 def _stores() -> list[dict]:
@@ -52,7 +74,12 @@ def _stores() -> list[dict]:
 
 def _log_tables() -> list[str]:
     return re.findall(r"\('([a-z0-9_]+)', ARRAY",
-                      _function("retention_log_relations_v1"))
+                      _latest("retention_log_relations_v1"))
+
+
+def _financial_tables() -> list[str]:
+    return re.findall(r"\('([a-z0-9_]+)', '[a-z0-9_]+'\)",
+                      _latest("retention_financial_relations_v1"))
 
 
 # ── A database stand-in: records every call, in order ───────────────────────
@@ -143,8 +170,10 @@ CLAIM = {
 
 
 def _live_db(*, logs: dict | None = None, claim: dict | None = None,
-             stores: list | None = None) -> _Db:
-    batches = {table: list(seq) for table, seq in (logs or {}).items()}
+             stores: list | None = None, financial: dict | None = None,
+             log_relations: list | None = None) -> _Db:
+    batches = {table: list(seq) for table, seq in
+               {**(logs or {}), **(financial or {})}.items()}
 
     def due(params: dict) -> list:
         rule = params["p_rule"]
@@ -159,7 +188,10 @@ def _live_db(*, logs: dict | None = None, claim: dict | None = None,
         "begin_retention_live_run_v1": _record(mode="live", requested_mode="live",
                                                state="running"),
         "retention_measurement_stores_v1": stores if stores is not None else _stores(),
-        "retention_log_relations_v1": [{"relation": t} for t in _log_tables()],
+        "retention_log_relations_v1": [{"relation": t} for t in (
+            log_relations if log_relations is not None else _log_tables())],
+        "retention_financial_relations_v1": [
+            {"relation": t} for t in _financial_tables()],
         "list_retention_due_v1": due,
         "request_retention_guest_purge_v1": {"purge_request_id": "req-1",
                                              "state": "requested"},
@@ -266,8 +298,9 @@ def test_the_key_alone_never_makes_a_run_live(live, storage):
 
 # ── A live run (the key patched on) ────────────────────────────────────────
 
-def test_a_live_run_works_through_the_three_rules_in_order(live, storage, erasure):
-    db = _live_db(logs={"dev_bugs": [["7", "8"], []]})
+def test_a_live_run_works_through_the_four_rules_in_order(live, storage, erasure):
+    db = _live_db(logs={"life_reminder_log": [["7", "8"], []]},
+                  financial={"token_ledger": [["11", "12", "13"], []]})
     storage["db"] = db
     db.rows = {"session_sniper_metrics": [{"session_id": "t1"}],
                "user_acoustic_baseline": [{"user_id": "u1"}, {"user_id": "u1"}]}
@@ -290,10 +323,18 @@ def test_a_live_run_works_through_the_three_rules_in_order(live, storage, erasur
         "p_run_id": "run-1", "p_audio_object_id": "a1", "p_outcome": "deleted",
         "p_error_code": None}]
     # Rule 3: the due ids, removed by id, in the reviewed table.
-    assert ("delete", "dev_bugs", (("id", ("7", "8")),)) in db.calls
+    logs = db.calls.index(("delete", "life_reminder_log", (("id", ("7", "8")),)))
+    # Rule 4: the same, in a financial table, after the logs.
+    ledger = db.calls.index(("delete", "token_ledger",
+                             (("id", ("11", "12", "13")),)))
+    assert settle < logs < ledger
+    assert {c[2]["p_rule"] for c in db.calls
+            if c[:2] == ("rpc", "list_retention_due_v1")} == {
+        "guests", "audio", "logs", "financial"}
     counted = {(c[2]["p_key"], c[2]["p_n"]) for c in db.calls
                if c[1] == "count_retention_outcome_v1"}
-    assert {("guests.erased", 1), ("logs.dev_bugs", 2),
+    assert {("guests.erased", 1), ("logs.life_reminder_log", 2),
+            ("financial.token_ledger", 3),
             ("measurements.session_sniper_metrics", 1),
             ("measurements.user_acoustic_baseline", 2)} <= counted
     assert db.index("rpc", "finish_retention_live_run_v1") == len(db.calls) - 1
@@ -353,11 +394,15 @@ def test_a_skipped_claim_touches_nothing(live, storage, erasure):
 
 def test_log_rows_that_do_not_go_are_counted_as_a_failure_and_the_run_goes_on(
         live, storage, erasure):
-    db = _live_db(logs={"dev_bugs": [["7"], ["7"]], "processing_jobs": [["j1"], []]})
+    db = _live_db(logs={"life_reminder_log": [["7"], ["7"]],
+                        "processing_jobs": [["j1"], []]},
+                  financial={"llm_usage": [["5"], ["5"]],
+                             "token_ledger": [["6"], []]})
     storage["db"] = db
     summary = rc.run(db, mode="live")
     keys = [c[2]["p_key"] for c in db.calls if c[1] == "count_retention_outcome_v1"]
-    assert "logs.dev_bugs.failed" in keys and "logs.processing_jobs" in keys
+    assert "logs.life_reminder_log.failed" in keys and "logs.processing_jobs" in keys
+    assert "financial.llm_usage.failed" in keys and "financial.token_ledger" in keys
     assert summary["state"] == "completed"
 
 
@@ -390,7 +435,7 @@ def test_without_the_purge_switch_a_live_run_erases_no_guest_and_says_so(
     """Rule 1 is a purge: PHASE1_PURGE_EXECUTION_ENABLED, the switch the
     operator script and the deletion completion run obey, holds it. The
     other two rules are not purges and go on."""
-    db = _live_db(logs={"dev_bugs": [["7"], []]})
+    db = _live_db(logs={"life_reminder_log": [["7"], []]})
     storage["db"] = db
     summary = rc.run(db, mode="live")
     assert summary["state"] == "completed"
@@ -400,7 +445,7 @@ def test_without_the_purge_switch_a_live_run_erases_no_guest_and_says_so(
                if c[1] == "count_retention_outcome_v1"}
     assert ("guests.held_purge_execution_off", 1) in counted
     assert db.rpcs("settle_retention_audio_v1")[0]["p_outcome"] == "deleted"
-    assert ("delete", "dev_bugs", (("id", ("7",)),)) in db.calls
+    assert ("delete", "life_reminder_log", (("id", ("7",)),)) in db.calls
 
 
 def test_only_a_true_switch_lets_rule_1_run(live, storage, erasure):
@@ -424,6 +469,27 @@ def test_a_registry_that_disagrees_with_the_database_deletes_nothing(
     assert not [c for c in db.calls if c[0] in ("delete", "storage")]
 
 
+def test_a_database_still_listing_the_bug_list_deletes_nothing(
+        live, storage, erasure):
+    """0423's log list (with dev_bugs) and this file disagree: if 0426 has
+    not reached the database, a live run stops before anything goes."""
+    db = _live_db(log_relations=[*_log_tables(), "dev_bugs"],
+                  logs={"dev_bugs": [["9"], []]})
+    storage["db"] = db
+    summary = rc.run(db, mode="live", purge_execution=True)
+    assert (summary["state"], summary["error_code"]) == (
+        "failed", "RETENTION_REGISTRY_MISMATCH")
+    assert not [c for c in db.calls if c[0] in ("delete", "storage")]
+
+
+def test_the_founders_bug_list_is_never_the_cleaners():
+    """N50 C4 B: dev_bugs is the founder's own bug list, not a log."""
+    assert "dev_bugs" not in rc.LOG_TABLES + rc.FINANCIAL_TABLES
+    assert "dev_bugs" not in _log_tables() + _financial_tables()
+    assert "dev_bugs" in re.findall(r"\('([a-z0-9_]+)', ARRAY",
+                                    _function("retention_log_relations_v1"))
+
+
 # ── What it may touch ───────────────────────────────────────────────────────
 
 def test_the_service_and_the_migration_name_the_same_stores_and_logs():
@@ -435,20 +501,30 @@ def test_the_service_and_the_migration_name_the_same_stores_and_logs():
             if s["action"] == "delete" and s["scope"] == "account"} == set(
         rc.ACCOUNT_MEASUREMENT_ROWS)
     assert set(_log_tables()) == set(rc.LOG_TABLES) == {
-        "processing_jobs", "dev_bugs", "life_reminder_log",
+        "processing_jobs", "life_reminder_log",
         "admin_annotations_log", "mlc3_service_backpressure_events"}
+    assert set(_financial_tables()) == set(rc.FINANCIAL_TABLES) == {
+        "token_ledger", "llm_usage"}
 
 
 def test_every_relation_the_cleaner_writes_is_classified_and_none_is_retained():
     written = ({s["relation"] for s in _stores()} | set(rc.LOG_TABLES))
     assert written <= classified_relations()
     removed = {r for r, _ in rc.TAKE_MEASUREMENT_ROWS + rc.ACCOUNT_MEASUREMENT_ROWS}
-    assert removed | set(rc.LOG_TABLES) <= DYNAMIC_RUNTIME_RELATIONS
+    assert (removed | set(rc.LOG_TABLES) | set(rc.FINANCIAL_TABLES)
+            <= DYNAMIC_RUNTIME_RELATIONS)
     by_relation: dict[str, set] = {}
     for dep in DEPENDENCIES:
         by_relation.setdefault(dep.relation, set()).add(dep.disposition)
     for relation in written:
         assert "retain" not in by_relation.get(relation, set()), relation
+    # Rule 4 is the one exception, and exactly it: the relations the purge
+    # keeps as financial evidence (v1.3), whose period the clean-up ends.
+    financial = {dep.relation for dep in DEPENDENCIES
+                 if dep.retention_category == "financial_evidence"}
+    assert financial == set(rc.FINANCIAL_TABLES)
+    for relation in financial:
+        assert by_relation[relation] == {"retain"}, relation
     # A tombstone relation is written only in the columns its receipt erases
     # anyway (0379): never what the receipt keeps.
     erasable = {"acoustic_feature_snapshots": {"features"}}

@@ -1672,6 +1672,19 @@ P4 A / P5 A / P6 A / P7 A / C1 A / C2 A / C3 A / C4 B").**
    (C1 A); Voice Album clips go with the audio (C2 A); processing-job rows
    that deletion evidence points at are kept (C3 A); `dev_bugs` is the
    founder's own bug list, not a log, and stays out of the clean-up (C4 B).
+   *As built (0426, `migrations/financial_records_go_after_five_years.sql`):
+   C4 B: `retention_log_relations_v1` is re-issued without `dev_bugs`, so the
+   report, a dry run and a live run never count it or touch it. P7: rule 4
+   of the clean-up counts, and behind `RETENTION_CLEANER_LIVE` (still False)
+   deletes, each `token_ledger` and `llm_usage` row once five years have
+   passed since the end of the financial year it was made in, read as the
+   calendar year in Warsaw time (a row made in 2026 is due from 1 January
+   2032), for every account, open or deleted; a row whose account has an
+   unfinished account-wide purge waits for it. The service role gets
+   SELECT (id, created_at) and DELETE on the two tables, nothing more.
+   Nothing reads an old row for a balance, a receipt or Stripe; a per-arc
+   action re-opened on an arc whose charge row has gone is charged again,
+   once, while token pricing is on.*
 7. **The founder's check** (Supabase, read-only, the same evening):
    migrations 0422 and 0423 are in production; no account deletion has been
    asked for.
