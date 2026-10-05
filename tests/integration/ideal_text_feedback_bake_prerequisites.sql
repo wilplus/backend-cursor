@@ -12,6 +12,10 @@
 -- keeps the released column names and types for the columns it carries, and
 -- the FK the join needs, and stays out of the way of the released CREATE
 -- TABLE IF NOT EXISTS should one ever be applied on top.
+--
+-- The fifth table the rule reads since 0428, `exercise_coach_requests`, is
+-- not copied here: its released chain (0385-0408) is shallow, and the lane
+-- applies it as released (scripts/rehearsal_tier.sh), real writers included.
 \set ON_ERROR_STOP on
 
 CREATE TABLE IF NOT EXISTS public.intervention_decisions (
