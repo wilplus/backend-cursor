@@ -275,7 +275,14 @@ def v2_processing_authorization():
         return _principal_error(error)
     service = ProcessingAuthorizationService(db)
     if request.method == "GET":
-        return jsonify(service.status(principal_id)), 200
+        # Q19 A: a person who asked to leave is shown that, not asked to
+        # accept again. Read here only: require_current stays one read.
+        return jsonify({
+            **service.status(principal_id),
+            "pending_deletion": service.pending_deletion(principal_id),
+            "pending_project_deletions": service.pending_project_deletions(
+                principal_id),
+        }), 200
     payload = request.get_json(silent=True) or {}
     if not isinstance(payload, dict):
         return jsonify({"code": "INVALID_INPUT", "error": "JSON object required"}), 400
@@ -442,13 +449,18 @@ def v2_processing_terminate():
     if not key:
         return jsonify({"code": "IDEMPOTENCY_KEY_REQUIRED",
                         "error": "A request idempotency key is required"}), 422
+    service = ProcessingAuthorizationService(db)
+    reason = str(payload.get("reason_code") or trigger.upper())
     try:
-        row = ProcessingAuthorizationService(db).request_purge(
-            acquisition_principal_id=principal_id,
-            trigger_kind=trigger,
-            idempotency_key=key,
-            reason_code=str(payload.get("reason_code") or trigger.upper()),
-        )
+        if trigger == "account_deletion":
+            # N48.4 Q14 A: blocked now, deleted after seven days unless the
+            # requester cancels first (0422).
+            row = service.request_account_deletion(
+                principal_id, idempotency_key=key, reason_code=reason)
+        else:
+            row = service.request_purge(
+                acquisition_principal_id=principal_id,
+                trigger_kind=trigger, idempotency_key=key, reason_code=reason)
         return jsonify(row), 202
     except ProcessingAuthorizationError as error:
         return jsonify({"code": error.code, "error": error.message}), error.status
@@ -461,8 +473,29 @@ def v2_processing_deletion_status(purge_id: str):
         principal_id = _principal_id()
     except (CreateTakeError, ProjectOwnershipError) as error:
         return _principal_error(error)
-    row = ProcessingAuthorizationService(db).purge_status(principal_id, purge_id)
+    row = ProcessingAuthorizationService(db).deletion_status(principal_id, purge_id)
     if not row:
         return jsonify({"code": "DATA_REQUEST_NOT_FOUND",
                         "error": "Data request not found"}), 404
+    return jsonify(row), 200
+
+
+@v2_bp.route("/processing-authorization/deletion/<purge_id>/cancel",
+             methods=["POST"])
+@optional_auth
+def v2_processing_deletion_cancel(purge_id: str):
+    """Cancel one's own account deletion inside its seven days (0422,
+    N48.4 Q14 A); the block it set lifts. Under /processing-authorization,
+    so the core gate never keeps a person from it.
+    200 the deletion (state "cancelled") · 404 not this person's · 409
+    ACCOUNT_DELETION_WINDOW_CLOSED or ACCOUNT_DELETION_ALREADY_STARTED."""
+    try:
+        principal_id = _principal_id()
+    except (CreateTakeError, ProjectOwnershipError) as error:
+        return _principal_error(error)
+    try:
+        row = ProcessingAuthorizationService(db).cancel_account_deletion(
+            principal_id, purge_id)
+    except ProcessingAuthorizationError as error:
+        return jsonify({"code": error.code, "error": error.message}), error.status
     return jsonify(row), 200

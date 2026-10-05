@@ -457,3 +457,4 @@
 0419	a_guest_take_claims_its_feedback_set.sql
 0420	a_package_is_bought_once.sql
 0421	an_accepted_rewrite_names_its_revision.sql
+0422	a_deletion_completes_after_seven_days.sql

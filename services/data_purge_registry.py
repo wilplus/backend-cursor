@@ -1214,6 +1214,10 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     # data_purge_requests beside it: it names what to delete and is never the
     # content being deleted.
     "project_deletion_requests",
+    # An account deletion REQUEST with its seven-day window (0422), the same
+    # paperwork for a whole account: ids, times, a state and the evidence
+    # hash of the purge that finished it.
+    "account_deletion_requests",
     "data_rights_requests", "data_retention_rules",
     "processing_policy_versions", "processing_policy_purposes",
     "processing_purpose_registry", "processing_legal_artifacts",
