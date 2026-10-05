@@ -3228,6 +3228,15 @@ def test_0418_an_accepted_rewrite_changes_only_the_named_protected_paragraph(db)
     only in History. The owner-edit writer still refuses every change to a
     protected Paragraph, except a TEXT change to the one Paragraph that
     accept_rewrite_into_part_v1 names; the lock stays, nothing moves."""
+    # Other tests in this module re-run 0327 and commit, which reinstalls the
+    # unpatched writer; apply 0418 here, inside this rolled-back transaction,
+    # so the test never depends on their order. A no-op when already applied.
+    migration = (Path(__file__).resolve().parents[1]
+                 / "migrations/an_accepted_rewrite_may_change_a_protected_paragraph.sql")
+    body = "\n".join(line for line in migration.read_text().splitlines()
+                     if line.strip() not in ("BEGIN;", "COMMIT;"))
+    with db.cursor() as cur:
+        cur.execute(body)
     context, _feedback = _positive_projection_context(db)
     owner_user_id = one(
         db, "SELECT user_id FROM owner_principals WHERE id=%s", (context["owner"],)

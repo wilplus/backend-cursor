@@ -240,11 +240,13 @@ def accept_rewrite(database: Any, *, arc_id: str, owner_user_id: str,
             parts, item["part_id"], item["quote"], item["proposed_text"])
         if outcome != APPLIED or desired is None:
             return outcome
-        protected = target is not None and _protected(
-            database, arc_id, owner_user_id, target)
-        if protected and not _carry_helper_words(
-                database, arc_id, owner_user_id, target, take_session_id):
-            return PROTECTED
+        protected = False
+        if target is not None and _protected(database, arc_id,
+                                             owner_user_id, target):
+            protected = True
+            if not _carry_helper_words(database, arc_id, owner_user_id,
+                                       target, take_session_id):
+                return PROTECTED
         try:
             result = _write(database, arc_id=arc_id,
                             owner_user_id=owner_user_id, version=version,

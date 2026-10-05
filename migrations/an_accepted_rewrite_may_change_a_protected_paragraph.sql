@@ -36,12 +36,14 @@ DECLARE
     marker constant text := '/* 0418 accepted rewrite */';
     refusal constant text :=
         'ELSIF change.is_protected THEN RAISE EXCEPTION ''IDEAL_TEXT_PART_REQUIRES_UNLOCK''; END IF;';
+    -- COALESCE(..., false): with no Paragraph named the comparison is NULL,
+    -- and NOT NULL would skip the refusal. Unnamed must mean refused.
     allowed constant text :=
-        'ELSIF change.is_protected AND NOT ' || '/* 0418 accepted rewrite */' || ' ('
+        'ELSIF change.is_protected AND NOT ' || '/* 0418 accepted rewrite */' || ' COALESCE('
         || 'change.old_pos IS NOT NULL AND change.new_pos IS NOT NULL '
         || 'AND change.old_pos=change.new_pos '
         || 'AND change.part_id=NULLIF(current_setting(''willab.accepted_rewrite_part'',true),'''')::uuid'
-        || ') THEN RAISE EXCEPTION ''IDEAL_TEXT_PART_REQUIRES_UNLOCK''; END IF;';
+        || ',false) THEN RAISE EXCEPTION ''IDEAL_TEXT_PART_REQUIRES_UNLOCK''; END IF;';
 BEGIN
     definition := pg_get_functiondef(target);
     IF position(marker IN definition) > 0 THEN
