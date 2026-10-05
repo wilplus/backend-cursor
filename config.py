@@ -344,7 +344,11 @@ class Config:
     # Plan Phase 0, N29): the ladder had no rungs (no exercise carries
     # matching_criteria.general_for and the warm-up is seeded inactive) and
     # no screen reads its caption. It comes back on with the three general
-    # exercises, the active warm-up and the caption's screen.
+    # exercises, the active warm-up and the caption's screen. Q30 A (founder
+    # 2026-10-05, decisions log N48.6): "the exercise fallback ladder stays
+    # off until three general exercises are filmed". A code constant, never
+    # an environment variable, so only a reviewed change can turn it on;
+    # tests/test_exercise_fallback_ladder.py pins it.
     EXERCISE_FALLBACK_LADDER_ENABLED = False
 
     # PHASE 2 of the after-practice paths (founder 2026-10-01, F1): the

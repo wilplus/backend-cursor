@@ -1538,15 +1538,17 @@ class _ChangesRun:
         """One signed sentence per pattern, read before the sheet's constant
         (services/feedback_catalogue). The Manager's selection is untouched:
         this adds `praise_line` / `rewrite_move` to rows already chosen, and
-        an honest empty lane stays empty (24f)."""
-        from services.feedback_catalogue import decorate
+        an honest empty lane stays empty (24f). The proposed lines (N48.6,
+        Q29 A) join as the floor only once signed; until then an empty
+        table changes nothing, as before."""
+        from services.feedback_catalogue import decorate, floor_rows
         try:
             reader = getattr(self.db, "list_feedback_catalogue", None)
             rows = reader() if callable(reader) else []
         except Exception as e:  # noqa: BLE001 -- no table, no signed lines
             logger.info("catalogue unavailable arc=%s: %s", self.arc_id, e)
             rows = []
-        if rows:
+        if rows or floor_rows():
             self.changes = decorate(self.changes, rows)
 
     def _window(self) -> None:

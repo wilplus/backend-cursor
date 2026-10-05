@@ -104,6 +104,22 @@ class OffTests(unittest.TestCase):
         self.assertFalse(_live.EXERCISE_FALLBACK_LADDER_ENABLED)
         self._off.start()
 
+    def test_q30_a_keeps_it_a_reviewed_constant_set_off(self):
+        # Q30 A (founder 2026-10-05, decisions log N48.6): "the exercise
+        # fallback ladder stays off until three general exercises are
+        # filmed". A literal False in config.py, read from no environment
+        # variable, so no Railway setting can turn it on: only a reviewed
+        # change, after the three films exist, may.
+        from pathlib import Path
+        source = (Path(__file__).resolve().parent.parent / "config.py").read_text()
+        assignments = [line.strip() for line in source.splitlines()
+                       if line.strip().startswith("EXERCISE_FALLBACK_LADDER_ENABLED")]
+        self.assertEqual(assignments, ["EXERCISE_FALLBACK_LADDER_ENABLED = False"])
+        self.assertIn("Q30 A", source)
+        self._off.stop()
+        self.assertFalse(cvp.fallback_ladder_enabled())
+        self._off.start()
+
     def test_off_is_exactly_yesterday(self):
         db = _Db([ENDING_ONLY, GENERAL_RUSHING, WARMUP])
         row = _offer(db, RUSHING)
