@@ -99,7 +99,7 @@ class AcceptRewriteTests(unittest.TestCase):
         db = _Db()
         outcome, publish = _accept(db)
         self.assertEqual(outcome, ar.APPLIED)
-        call = db.cas_calls[0]
+        call = db.door_calls[0]
         self.assertEqual(call["desired_user_text"],
                          "We start here.\n\nThe data is clear.")
         self.assertEqual(call["desired_parts_lineage"], [
@@ -114,7 +114,7 @@ class AcceptRewriteTests(unittest.TestCase):
         db = _Db(parts=parts, edit={"text": edited, "version": 2})
         outcome, _ = _accept(db)
         self.assertEqual(outcome, ar.APPLIED)
-        self.assertEqual(db.cas_calls[0]["desired_user_text"],
+        self.assertEqual(db.door_calls[0]["desired_user_text"],
                          "We start right here.\n\nThe data is clear.")
 
     def test_an_older_owner_edit_is_not_what_the_speaker_reads(self):
@@ -124,7 +124,7 @@ class AcceptRewriteTests(unittest.TestCase):
     def test_paragraphs_that_do_not_join_to_the_text_change_nothing(self):
         db = _Db(served="We start here.\n\nOther words.")
         self.assertEqual(_accept(db)[0], ar.STALE)
-        self.assertEqual(db.cas_calls, [])
+        self.assertEqual(db.door_calls, [])
 
     def test_the_writer_refusing_a_protected_paragraph_is_protected(self):
         db = _Db(cas_error="IDEAL_TEXT_PART_REQUIRES_UNLOCK")
@@ -134,7 +134,7 @@ class AcceptRewriteTests(unittest.TestCase):
         parts = [PARTS[0], dict(PARTS[1], text="The data is clear.")]
         db = _Db(parts=parts, served="We start here.\n\nThe data is clear.")
         self.assertEqual(_accept(db)[0], ar.ALREADY)
-        self.assertEqual(db.cas_calls, [])
+        self.assertEqual(db.door_calls, [])
 
     def test_a_quote_gone_from_the_paragraph_is_stale(self):
         parts = [PARTS[0], dict(PARTS[1], text="Entirely new words.")]
@@ -144,7 +144,7 @@ class AcceptRewriteTests(unittest.TestCase):
     def test_an_item_the_freeze_never_served_is_not_found(self):
         db = _Db(item=False)
         self.assertEqual(_accept(db)[0], ar.NOT_FOUND)
-        self.assertEqual(db.cas_calls, [])
+        self.assertEqual(db.door_calls, [])
 
     def test_a_writer_failure_never_raises(self):
         db = _Db(cas_error="boom")
@@ -288,9 +288,15 @@ class HelperWordsMayPointIntoHistory(unittest.TestCase):
         self.assertEqual(db.door_calls, [])
         self.assertEqual(db.cas_calls, [])
 
-    def test_an_unprotected_paragraph_keeps_the_ordinary_writer(self):
+    def test_an_unprotected_paragraph_also_goes_through_the_named_door(self):
+        """N48.1 (founder 2026-10-05): every accepted rewrite names its
+        Paragraph, so the writer names the revision 'accepted_rewrite'
+        (0421) and History shows it as "Correction accepted". Nothing is
+        carried or cleared on a Paragraph with no lock and no helper words."""
         db = _Db()
         self.assertEqual(_accept(db)[0], ar.APPLIED)
-        self.assertEqual(db.door_calls, [])
-        self.assertEqual(len(db.cas_calls), 1)
+        self.assertEqual(db.cas_calls, [])
+        self.assertEqual([c["part_id"] for c in db.door_calls], ["p-2"])
+        self.assertEqual(db.root_clears, [])
+        self.assertEqual(db.slide_words, [])
 

@@ -3302,6 +3302,110 @@ def test_0418_an_accepted_rewrite_changes_only_the_named_protected_paragraph(db)
                    "'EXECUTE') v")["v"] is False
 
 
+def _apply_in_transaction(db, *names):
+    """Apply released migration files inside the test's rolled-back
+    transaction (their own BEGIN/COMMIT stripped)."""
+    root = Path(__file__).resolve().parents[1] / "migrations"
+    for name in names:
+        body = "\n".join(line for line in (root / name).read_text().splitlines()
+                         if line.strip() not in ("BEGIN;", "COMMIT;"))
+        with db.cursor() as cur:
+            cur.execute(body)
+
+
+def test_0421_an_accepted_rewrite_names_only_its_own_revision(db):
+    """0421 (founder 2026-10-05, N48.1; C11 "Correction accepted"): the
+    revision accept_rewrite_into_part_v1 causes is named 'accepted_rewrite';
+    a plain owner edit, and every other Paragraph in the same call, is not.
+    Every 0418 guard still holds."""
+    # As in the 0418 test: other tests here re-run 0327 and commit, which
+    # reinstalls the unpatched writer. Both patches are no-ops when present.
+    _apply_in_transaction(
+        db, "an_accepted_rewrite_may_change_a_protected_paragraph.sql",
+        "an_accepted_rewrite_names_its_revision.sql")
+    context, _feedback = _positive_projection_context(db)
+    owner_user_id = one(
+        db, "SELECT user_id FROM owner_principals WHERE id=%s", (context["owner"],)
+    )["user_id"]
+    arc_id = context["project"]
+    first, second = str(uuid4()), str(uuid4())
+
+    def legacy(texts):
+        return Json([{"id": pid, "ord": n, "text": t}
+                     for n, (pid, t) in enumerate(texts)])
+
+    def provenance(part_id):
+        return [(r["action"], r["text"], r["provenance"]) for r in rows(
+            db, "SELECT action,text,provenance FROM ideal_text_part_revision "
+                "WHERE part_id=%s ORDER BY id", (part_id,))]
+
+    cas = "SELECT compare_and_set_user_ideal_edit_v1(%s,%s,1,NULL,NULL,%s,%s::jsonb,NULL) result"
+    door = "SELECT accept_rewrite_into_part_v1(%s,%s,1,%s,%s,%s::jsonb) result"
+    assert one(db, cas, (owner_user_id, arc_id, "Nobody believed it.\n\nWe grew.",
+                         legacy([(first, "Nobody believed it."),
+                                 (second, "We grew.")])))["result"]["saved"] is True
+
+    # A plain owner edit stays unnamed.
+    assert one(db, cas, (owner_user_id, arc_id, "Nobody believed it.\n\nWe grew fast.",
+                         legacy([(first, "Nobody believed it."),
+                                 (second, "We grew fast.")])))["result"]["saved"] is True
+    assert provenance(second)[-1] == ("owner_part_text_updated", "We grew fast.", None)
+
+    # An accepted rewrite on an unprotected Paragraph is named; a second
+    # Paragraph changed in the same call is not.
+    result = one(db, door, (owner_user_id, arc_id, first,
+                            "Nobody trusted the figures.\n\nWe grew quickly.",
+                            legacy([(first, "Nobody trusted the figures."),
+                                    (second, "We grew quickly.")])))["result"]
+    assert result["saved"] is True
+    assert provenance(first) == [
+        ("owner_part_created", "Nobody believed it.", None),
+        ("owner_part_text_updated", "Nobody trusted the figures.", "accepted_rewrite")]
+    assert provenance(second)[-1] == ("owner_part_text_updated", "We grew quickly.", None)
+    assert one(db, "SELECT current_setting('willab.accepted_rewrite_part', true) v")["v"] in ("", None)
+
+    # On a protected Paragraph (0418) the accepted words go in, the lock
+    # stays, and the revision is named too.
+    rows(db, "UPDATE ideal_text_part SET locked_at=now(),root_phrase='trusted' WHERE id=%s",
+         (first,))
+    rows(db, "SAVEPOINT ordinary")
+    with pytest.raises(psycopg2.Error, match="IDEAL_TEXT_PART_REQUIRES_UNLOCK"):
+        one(db, cas, (owner_user_id, arc_id, "Nobody doubted the figures.\n\nWe grew quickly.",
+                      legacy([(first, "Nobody doubted the figures."),
+                              (second, "We grew quickly.")])))
+    rows(db, "ROLLBACK TO SAVEPOINT ordinary")
+    assert one(db, door, (owner_user_id, arc_id, first,
+                          "Nobody doubted the figures.\n\nWe grew quickly.",
+                          legacy([(first, "Nobody doubted the figures."),
+                                  (second, "We grew quickly.")])))["result"]["saved"] is True
+    assert provenance(first)[-1] == (
+        "owner_part_text_updated", "Nobody doubted the figures.", "accepted_rewrite")
+    assert one(db, "SELECT locked_at IS NOT NULL locked FROM ideal_text_part WHERE id=%s",
+               (first,))["locked"] is True
+
+    # The name exists only on a text revision, and only as 'accepted_rewrite'.
+    insert = ("INSERT INTO ideal_text_part_revision(arc_id,user_id,part_id,action,text,provenance) "
+              "VALUES(%s,%s,%s,%s,'Words.',%s)")
+    for action, value in (("lock", "accepted_rewrite"), ("take_rewrite", "accepted_rewrite"),
+                          ("user_edit", "coach_edit")):
+        rows(db, "SAVEPOINT bad_name")
+        with pytest.raises(psycopg2.errors.CheckViolation):
+            rows(db, insert, (arc_id, owner_user_id, str(uuid4()), action, value))
+        rows(db, "ROLLBACK TO SAVEPOINT bad_name")
+
+    # The writer carries the patch once, and re-applying it changes nothing.
+    body = one(db, "SELECT pg_get_functiondef('public.compare_and_set_user_ideal_edit_v1("
+                   "uuid,text,integer,bigint,text,text,jsonb,text)'::regprocedure) b")["b"]
+    assert body.count("/* 0421 accepted rewrite provenance */") == 1
+    assert body.count("/* 0418 accepted rewrite */") == 1
+    _apply_in_transaction(db, "an_accepted_rewrite_names_its_revision.sql")
+    assert one(db, "SELECT pg_get_functiondef('public.compare_and_set_user_ideal_edit_v1("
+                   "uuid,text,integer,bigint,text,text,jsonb,text)'::regprocedure) b")["b"] == body
+    assert one(db, "SELECT has_function_privilege('anon', "
+                   "'public.compare_and_set_user_ideal_edit_v1(uuid,text,integer,bigint,text,text,jsonb,text)', "
+                   "'EXECUTE') v")["v"] is False
+
+
 def test_d29_d37_scheduler_schema_permissions_and_retired_identity(db):
     with db.cursor() as cur:
         cur.execute(SQL)

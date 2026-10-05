@@ -78,3 +78,22 @@ def test_audio_that_cannot_be_resolved_shows_no_player():
     out = with_earlier_take_details(
         FakeDatabase(), "arc", "user", _history(), lambda s: None)
     assert "clip" not in out["versions"][0]
+
+
+def test_an_accepted_correction_row_gets_no_recording_or_answer():
+    """N48.1: a correction is no Take; even a session with no Take number
+    never lends it a player."""
+    db = FakeDatabase()
+    db.takes = SimpleNamespace(get_arc_sessions=lambda arc: [
+        {"id": "t1", "take_index": 1}, {"id": "tx", "take_index": None}])
+    history = {"slide_index": 1, "versions": [
+        {"kind": "take", "take_index": 1, "paragraphs": ["one"]},
+        {"kind": "accepted_correction", "take_index": None,
+         "paragraphs": ["one, corrected"]},
+    ]}
+    out = with_earlier_take_details(db, "arc", "user", history,
+                                    lambda s: s["url"])
+    correction = out["versions"][1]
+    assert "take_session_id" not in correction
+    assert "clip" not in correction and "answer" not in correction
+    assert out["versions"][0]["take_session_id"] == "t1"

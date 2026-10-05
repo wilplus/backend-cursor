@@ -8,13 +8,25 @@ Slide from the version snapshots, each of which keeps its Slide map.
 
 Words only — no score, rank or verdict (AC-9). A version whose snapshot has
 no Slide map (written before 2026-09-25) is left out rather than guessed.
+
+AN ACCEPTED CORRECTION IS ITS OWN ROW (founder 2026-10-05, N48.1; coach-panel
+lock C11, "labelled 'Correction accepted'"). The snapshots are written only
+when a Take is finalized, so an accepted rewrite never reached them and the
+next Take's snapshot hid it. Its Paragraph revision is named
+'accepted_rewrite' (0421); those revisions are merged among the Take rows by
+time as rows of kind "accepted_correction", holding the Paragraph's words.
+Revisions written before 0421 carry no name and are not guessed.
 """
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 _PARA = "\n\n"
+
+TAKE = "take"
+ACCEPTED_CORRECTION = "accepted_correction"
 
 
 def _slide_paragraphs(version: Mapping, slide_index: int) -> Optional[list]:
@@ -57,6 +69,7 @@ def slide_history(versions: Any, helper_log: Any, slide_index: int,
         if not words or words == last:
             continue
         out_versions.append({
+            "kind": TAKE,
             "version": row.get("version"),
             "take_index": _take_index(row),
             "paragraphs": words,
@@ -76,6 +89,45 @@ def slide_history(versions: Any, helper_log: Any, slide_index: int,
             "helper_words": helper_words, "practice": practice}
 
 
+def _when(value: Any) -> Optional[datetime]:
+    """A row's time, or None when it cannot be read. A time without a zone
+    is UTC, as the database writes it."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def with_accepted_corrections(versions: list, revisions: Any) -> list:
+    """The Take rows with the Paragraph's accepted corrections merged in by
+    time. Pure.
+
+    Each correction goes before the first Take row written after it; Take
+    rows keep their order. A correction with no words or no readable time is
+    left out rather than placed by guess."""
+    out = list(versions)
+    for row in revisions or []:
+        if not isinstance(row, Mapping):
+            continue
+        text = row.get("text")
+        when = _when(row.get("created_at"))
+        if not isinstance(text, str) or not text.strip() or when is None:
+            continue
+        at = len(out)
+        for index, existing in enumerate(out):
+            existing_when = _when(existing.get("at"))
+            if existing_when is not None and existing_when > when:
+                at = index
+                break
+        out.insert(at, {"kind": ACCEPTED_CORRECTION, "version": None,
+                        "take_index": None, "paragraphs": [text],
+                        "at": row.get("created_at")})
+    return out
+
+
 def history_for_part(database: Any, arc_id: str, user_id: str,
                      part_id: str) -> Optional[dict]:
     """The bookmark's history: resolve the Paragraph's Slide, then read.
@@ -87,11 +139,15 @@ def history_for_part(database: Any, arc_id: str, user_id: str,
         database.get_ideal_text_document_core(arc_id, user_id), part_id)
     if slide is None:
         return None
-    return slide_history(
+    history = slide_history(
         database.list_ideal_text_versions(arc_id),
         database.list_slide_helper_words_log(arc_id, user_id, slide),
         slide,
         database.list_practice_adoptions(arc_id, user_id, slide))
+    history["versions"] = with_accepted_corrections(
+        history["versions"],
+        database.list_accepted_rewrite_revisions(arc_id, user_id, part_id))
+    return history
 
 
 def _slide_clip(database: Any, session_id: str, slide_index: int,
@@ -158,6 +214,8 @@ def with_earlier_take_details(database: Any, arc_id: str, user_id: str,
         and not row.get("paired_session_id")
     }
     for version in history.get("versions") or []:
+        if version.get("kind") == ACCEPTED_CORRECTION:
+            continue  # a correction is no Take: no recording, no answer
         session_id = sessions.get(version.get("take_index"))
         if not session_id:
             continue

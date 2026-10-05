@@ -8658,6 +8658,28 @@ class DatabaseService:
             )
             return None
 
+    def list_accepted_rewrite_revisions(
+        self, arc_id: str, user_id: str, part_id: str,
+    ) -> list:
+        """One Paragraph's accepted-rewrite revisions (0421), oldest first:
+        ``{text, created_at}``. [] on anything missing -- History then
+        simply shows its Take rows."""
+        if not all((arc_id, user_id, part_id)):
+            return []
+        try:
+            return (self.client.table("ideal_text_part_revision")
+                    .select("text,created_at")
+                    .eq("arc_id", str(arc_id))
+                    .eq("user_id", str(user_id))
+                    .eq("part_id", str(part_id))
+                    .eq("provenance", "accepted_rewrite")
+                    .order("id")
+                    .execute().data) or []
+        except Exception as e:
+            logger.warning("list_accepted_rewrite_revisions failed arc=%s "
+                           "part=%s: %s", arc_id, part_id, e, exc_info=True)
+            return []
+
     def replace_ideal_text_parts(
         self, arc_id: str, user_id: str, parts: list,
         revision_action: Optional[str] = None,

@@ -523,6 +523,10 @@ hard migrations/an_attempt_after_the_third_saves.sql
 # text of the one protected Paragraph it names. Twice.
 hard migrations/an_accepted_rewrite_may_change_a_protected_paragraph.sql
 hard migrations/an_accepted_rewrite_may_change_a_protected_paragraph.sql
+# 0421: the owner-edit writer names the revision it writes for the one
+# Paragraph accept_rewrite_into_part_v1 names ('accepted_rewrite'). Twice.
+hard migrations/an_accepted_rewrite_names_its_revision.sql
+hard migrations/an_accepted_rewrite_names_its_revision.sql
 
 # R-1 (audit 2026-09-22). 0299 created the two learning-surface tables with
 # the same GRANT ALL TO service_role as 0296, and was never in this chain, so
