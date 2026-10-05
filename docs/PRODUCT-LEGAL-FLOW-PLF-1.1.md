@@ -57,8 +57,16 @@ actions with different effects.
 4. Setup stores an `18+ confirmed` result with version and timestamp. No full
    date of birth is collected and age is never inferred from voice.
 5. Setup collects country of residence once.
+   *Amended 2026-10-05 (founder, decisions log N48.4 Q21 A): a later policy
+   re-acceptance shows the country from the person's newest receipt already
+   chosen (the status read's `country_of_residence`); they may still change
+   it, and the acceptance RPC still checks it against the policy in force.
+   Nothing new is stored: the receipts already keep it.*
 6. Gateway location is reassessed only after a versioned risk signal or
    material account circumstance change, not on every session or recording.
+   *Amended 2026-10-05 (founder, decisions log N48.4 Q21 A): location
+   reassessment is dropped unless counsel wants it. Nothing reassesses
+   location today.*
 7. Applicable AI interaction/inference information appears at first exposure.
 8. Feedback from the current approved model does not wait for dataset
    construction or training.

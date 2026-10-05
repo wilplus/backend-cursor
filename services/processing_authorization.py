@@ -10,10 +10,12 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
+import logging
 import os
 from typing import Any, Mapping
 import uuid
 
+logger = logging.getLogger(__name__)
 
 _ENFORCED_VALUES = {"enforce", "enforced", "active"}
 
@@ -309,6 +311,14 @@ class ProcessingAuthorizationService:
             row = _one(result.data)
             if row:
                 row["gate_mode"] = "enforce" if self.enforced else "off"
+                # N48.4 Q21 A: a re-acceptance shows the country given last
+                # time already chosen. Read only then, so the ordinary path
+                # does no extra work; never raises (see the method).
+                if row.get("reacceptance_required") is True:
+                    country = self.last_country_of_residence(
+                        acquisition_principal_id)
+                    if country:
+                        row["country_of_residence"] = country
                 return row
         except Exception:
             # Before migration/policy activation the gate is explicitly
@@ -321,6 +331,43 @@ class ProcessingAuthorizationService:
             "pooled_learning_eligible": False,
             "gate_mode": "enforce" if self.enforced else "off",
         }
+
+    def last_country_of_residence(
+        self, acquisition_principal_id: str,
+    ) -> str | None:
+        """The country this principal gave at its latest acceptance.
+
+        Founder 2026-10-05 (decisions log N48.4 Q21 A): country of residence
+        is asked once and prefilled on every later re-acceptance. The fact is
+        already stored -- every receipt keeps the country it was accepted
+        under, the evidence of which law applied -- so the newest receipt is
+        the account's answer and nothing new is written. It only prefills:
+        the person still sees it, may change it, and the acceptance RPC still
+        checks it against the policy in force (COUNTRY_NOT_ALLOWED).
+
+        Lowercase, as the policy's ``allowed_countries`` spell it. None when
+        there is no receipt or the read fails; the screen then simply asks,
+        as it does the first time. Never raises: a prefill must not be able
+        to turn a readable status into an unreadable one.
+        """
+        try:
+            result = (
+                self.client.table("processing_authorization_receipts")
+                .select("country_of_residence")
+                .eq("acquisition_principal_id", str(acquisition_principal_id))
+                # The newest, as the status RPC picks the held version.
+                .order("accepted_at", desc=True)
+                .order("id", desc=True)
+                .limit(1)
+                .execute()
+            )
+        except Exception:
+            logger.warning("last country of residence unreadable",
+                           exc_info=True)
+            return None
+        row = _one(result.data) or {}
+        country = str(row.get("country_of_residence") or "").strip().lower()
+        return country or None
 
     def require_current(
         self, acquisition_principal_id: str, *, operation: str
