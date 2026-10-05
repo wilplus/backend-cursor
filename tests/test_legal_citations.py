@@ -163,6 +163,7 @@ _FRONTEND_COMMITS = (
     "f4607888",  # 2026-09-18  acceptance screen (#389)
     "c9a42974",  # 2026-09-18  landing; the CTA stops claiming consent (#400)
     "ae212ee9",  # 2026-09-19  Art 50(2) marking of generated text (#406)
+    "9a928fd6",  # 2026-10-05  `main` when 03 v1.1 read what the screens label (#609)
 )
 
 

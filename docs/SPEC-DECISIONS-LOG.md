@@ -1586,6 +1586,15 @@ answers below.
    `PHASE1_PURGE_EXECUTION_ENABLED`. Until retention schedule v1.4 decides
    the four append-only feedback and job tables, a purge that meets their
    rows still stops for a person (N14.3), so project Delete stays off.*
+   *As built (Q15 A, Q22 A, Q23 A): retention schedule v1.4
+   (`legal/phase1-2026.1/20-retention-schedule-v1.4-product-records-and-job-evidence-DRAFT.md`)
+   and document 03 v1.1 (`03-article-50-assessment-v1.1-DRAFT.md`) were
+   signed 2026-10-05 20:05 UTC (D1 A, D2 A on the Wave 3 sign-off page,
+   N50; hashes in `SIGNED-ARTIFACTS.md`), and the counsel brief is written
+   (`21-counsel-questions-2026-10.md`, document 02's condition first).
+   Registration waits for the upload and, for v1.4, for 0424 (the purge
+   change that acts on its two rules) and 0425 (the grant that lets the
+   purge delete three job tables' rows) to be deployed.*
 5. **Coach and learning.** Q24 A: coaches' Yes answers in the blind error
    audit are what promote a shadow cue. Q25 A: a "Library" link in the coach
    menu. Q26 A: the Students screens stay off. Q27 A: the confidence-learning
@@ -1622,3 +1631,47 @@ clear", "merge it when green").** N48.3 Q13 A made the removal wait for this.
    `STRIPE_AUDIT_PRICE_ID`, `AUDIT_CHECKOUT_*_URL`) are read by nothing and
    may be unset.
 
+**N50 · Wave 3 sign-off: nineteen answers and two signatures (founder
+2026-10-05, on the page https://claude.ai/artifact/EE7tWDgonShyveozGwDgKW:
+"W1 A / W2 A / W3 A / W4 A / W5 A / S1 A / D1 A / D2 A / P1 A / P2 A / P3 A /
+P4 A / P5 A / P6 A / P7 A / C1 A / C2 A / C3 A / C4 B").**
+1. **Words signed (W1–W4 A).** The leaving screen: "Your account will be
+   deleted on <date>." and "Nothing new is processed for this account.",
+   with the signed "Your account is being deleted. We'll finish within one
+   month." and "Data & consent" placed on it. Cancelling: "Cancel
+   deletion", "Your account will not be deleted.", "Couldn't cancel. Try
+   again.", "It can no longer be cancelled." The account confirm while
+   cancelling is on: "Everything you recorded and wrote here will be
+   permanently deleted after 7 days. Until then you can cancel. From now on
+   nothing new is processed." The project window: "The deletion happens 7
+   days from now and can't be undone after that. Until then the project is
+   locked, and you can cancel." and "Will be deleted on <date>".
+2. **W5 A.** N10's project sentence is retired: it is untrue since training
+   is text only and a project delete removes the training copies made from
+   its takes. For a person with training on, the project and the account
+   confirms end with the signed "A model already trained stays." (training
+   wording, 2026-10-01).
+3. **S1 A.** The leaving screen and cancelling switch on now; project Delete
+   stays off until v1.4 is registered and P1 is built.
+4. **D1 A, D2 A.** Retention schedule v1.4 and document 03 v1.1 signed
+   2026-10-05 20:05 UTC (SIGNED-ARTIFACTS.md).
+5. **v1.4 §5 adopted, to be carried by v1.5 (P1–P7 A).** P1: the nine
+   function-only live records are deleted with the account or the project
+   through a governed database function, applied by hand once. P2: a free
+   founding pass is a product record; an arc row paid in credits is a
+   financial record (five years). P3: `ml_consent_snapshots` is consent
+   evidence (six years). P4: a reference video goes with the account unless
+   it is library content, when only the speaker's link goes. P5: in the
+   retired corpora a person's own rows go with the account, each table by
+   its own reviewed, previewed clean-up. P6: learning lineage and the
+   switched-off paths go with the account through P1's function. P7: the
+   clean-up deletes `token_ledger` and `llm_usage` rows once their five
+   years end, counting first; its first real run waits for the founder's
+   word.
+6. **The clean-up (C1–C4).** The eight voice-measurement stores as built
+   (C1 A); Voice Album clips go with the audio (C2 A); processing-job rows
+   that deletion evidence points at are kept (C3 A); `dev_bugs` is the
+   founder's own bug list, not a log, and stays out of the clean-up (C4 B).
+7. **The founder's check** (Supabase, read-only, the same evening):
+   migrations 0422 and 0423 are in production; no account deletion has been
+   asked for.
