@@ -13,9 +13,19 @@ highest moment read above the confident threshold takes green, the lowest
 moment read below it with a practise attached takes orange, and the third
 slot goes to whichever side has the next candidate farthest from the
 threshold. Never three of one colour. When only one side has candidates,
-at most two show. A moment the machine could not read, or read weak with
-nothing to practise, fills a slot only when the two ends leave one empty,
-in text order.
+at most two show.
+
+THE UNCOLOURED MOMENT (founder 2026-10-05, N48.1, Wave 1 step 2). A moment
+the machine could not read, or read weak with nothing to practise, carries
+no bar and is no candidate on either side, so it never takes a slot while
+a coloured candidate exists: not the third beside one green and one
+orange, and not a third beside two of one colour ("when only one side has
+candidates, at most two show"). Only when the Take has no coloured
+candidate at all do uncoloured moments show, at most two, in text order,
+so the speaker still has something to open (24b: an item per valid
+block). A coloured moment the bundle carries no score for still carries
+its bar: it is a candidate on its side, after the scored ones, in text
+order, and counts against its colour.
 
 WHAT LEAVES THE WINDOW ENTIRELY. A paragraph saved with helper words is
 done (B8): its moments are not served for judgement, and its notes ride the
@@ -33,6 +43,9 @@ from typing import Any, Callable, Iterable, Optional
 
 WINDOW = 3
 PER_COLOUR = 2
+#: At most this many uncoloured moments, and only on a Take with no coloured
+#: candidate at all (founder lock Q2 A: "at most two show").
+UNCOLOURED = 2
 CONFIDENT_VOICE = "confident_voice"
 
 
@@ -120,8 +133,9 @@ def choose_open_moments(
 
     `moments` are the open Confident Voice rows on paragraphs not saved
     with helper words, in text order. `score_of` is the internal read, above
-    zero being the confident side; a moment with no score counts as
-    unreadable.
+    zero being the confident side; a coloured moment with no score is
+    placed after the scored ones of its colour, and an uncoloured moment
+    shows only on a Take with no coloured candidate at all.
     """
     # NO SHORTCUT FOR THREE OR FEWER (F1 Repair Plan Phase 1). Returning
     # every moment when there were three or fewer skipped the two-per-colour
@@ -133,21 +147,21 @@ def choose_open_moments(
     slots.take("confident", confident)
     slots.take("weak", weak)
     _fill_from_the_ends(slots, confident, weak)
-    # Unreadable moments, weak with nothing to practise, or a moment the
-    # bundle carries no score for, in text order. A coloured moment with no
-    # score still carries its bar, so it still counts against its colour:
-    # never three of one colour, scored or not.
+    # A coloured moment the bundle carries no score for, in text order. It
+    # still carries its bar, so it still counts against its colour: never
+    # three of one colour, scored or not.
     for row, s in scored:
+        side = _colour(row)
         if slots.full():
             break
-        if row in slots.chosen or not (_colour(row) is None or s is None):
+        if side is None or s is not None or slots.taken[side] >= PER_COLOUR:
             continue
-        side = _colour(row)
-        if side is not None:
-            if slots.taken[side] >= PER_COLOUR:
-                continue
-            slots.taken[side] += 1
+        slots.taken[side] += 1
         slots.chosen.append(row)
+    # Uncoloured moments (unreadable, or weak with nothing to practise) only
+    # when no coloured candidate exists at all, and at most two (Q2 A).
+    if not any(_colour(row) is not None for row, _ in scored):
+        slots.chosen.extend(row for row, _ in scored[:UNCOLOURED])
     kept = {id(row) for row in slots.chosen}
     return [row for row in moments if id(row) in kept]
 

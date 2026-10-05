@@ -321,6 +321,10 @@ class _ChangesRun:
         # tier, so only a V3 Take is windowed.
         if self.v3_replaced_changes:
             log.run("changes.window", self._window)
+            # THE CARD THE MATRIX NAMES (founder 2026-10-05, N48.1, Wave 1
+            # step 1). After the window, so only a served moment pays for the
+            # read, and on answered moments too, so a reopen agrees.
+            log.run("changes.open_cards", self._open_cards)
         # THE SIGNED LINES (founder 2026-09-30, E3; build plan P1-4). Last of
         # all: a praise row that surfaces carries its catalogue line, a
         # rewrite row its move. No catalogue, no change to any row.
@@ -1524,6 +1528,31 @@ class _ChangesRun:
         self.changes = window_rows(
             self.changes, paragraph_of=paragraph, saved_paragraphs=saved,
             score_of=score)
+
+    def _open_cards(self) -> None:
+        """Each served Confident Voice moment carries `open_card`, the cell
+        of the follow-up matrix it opens on (`judgement_follow_up.open_cards`,
+        the same `decide_at_open` the open itself runs). The page could not
+        compute it: the cell needs whether a problem fired, which never
+        leaves the backend (AC-9). A closed routing enum, not a read: the
+        read is already implied by `bookmark_tier`. A moment the matrix
+        cannot place carries no field and the page keeps its own rule."""
+        from services.judgement_follow_up import open_cards
+
+        moments = [row for row in self.changes
+                   if isinstance(row, dict)
+                   and "confident_voice" in (row.get("source"),
+                                             row.get("feedback_family"))
+                   and row.get("snippet_id")]
+        if not moments or not self.arm_sid:
+            return
+        cards = open_cards(
+            self.db, take_session_id=str(self.arm_sid),
+            snippet_ids=[str(row["snippet_id"]) for row in moments])
+        for row in moments:
+            card = cards.get(str(row["snippet_id"]))
+            if card:
+                row["open_card"] = card
 
     def _slide_saved_part_ids(self) -> set[str]:
         """Paragraphs whose helper words were saved on their Slide only --

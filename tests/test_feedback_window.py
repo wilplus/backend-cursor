@@ -25,10 +25,12 @@ def _score(row):
     return row.get("_score")
 
 
-def test_three_or_fewer_open_moments_all_show():
+def test_an_uncoloured_moment_never_joins_a_green_and_an_orange():
+    # Founder lock Q2 A (N48.1, Wave 1 step 2): the third slot goes to a
+    # coloured candidate on either side; an uncoloured moment is neither.
     rows = [_m("a", 0, "confident", 0.5), _m("b", 100, "weak", -0.4),
             _m("c", 200, "standard", None)]
-    assert [r["id"] for r in choose_open_moments(rows, _score)] == ["a", "b", "c"]
+    assert [r["id"] for r in choose_open_moments(rows, _score)] == ["a", "b"]
 
 
 def test_the_two_ends_first_then_the_farther_side():
@@ -54,12 +56,37 @@ def test_one_side_only_shows_at_most_two():
     assert [r["id"] for r in choose_open_moments(rows, _score)] == ["c1", "c2"]
 
 
-def test_weak_without_a_practise_and_unread_fill_only_what_the_ends_leave():
+def test_weak_without_a_practise_and_unread_never_fill_beside_a_coloured_one():
     rows = [_m("c1", 0, "confident", 0.9), _m("u1", 100, "standard", None),
             _m("w0", 200, "weak", -0.5, practise=False),
             _m("u2", 300, "standard", None)]
     chosen = [r["id"] for r in choose_open_moments(rows, _score)]
-    assert chosen == ["c1", "u1", "w0"]
+    assert chosen == ["c1"]
+
+
+def test_two_greens_and_an_unread_show_two():
+    # "When only one side has candidates, at most two show": never a third
+    # of an uncoloured kind beside two of one colour.
+    rows = [_m("c1", 0, "confident", 0.9), _m("u1", 100, "standard", None),
+            _m("c2", 200, "confident", 0.8)]
+    assert [r["id"] for r in choose_open_moments(rows, _score)] == ["c1", "c2"]
+
+
+def test_with_no_coloured_candidate_at_most_two_uncoloured_show():
+    rows = [_m("u1", 0, "standard", None),
+            _m("w0", 100, "weak", -0.5, practise=False),
+            _m("u2", 200, "standard", None), _m("u3", 300, "standard", 0.4)]
+    assert [r["id"] for r in choose_open_moments(rows, _score)] == ["u1", "w0"]
+
+
+def test_one_uncoloured_moment_alone_still_shows():
+    rows = [_m("u1", 0, "standard", None)]
+    assert [r["id"] for r in choose_open_moments(rows, _score)] == ["u1"]
+
+
+def test_an_uncoloured_moment_beside_an_unscored_coloured_one_stays_out():
+    rows = [_m("u1", 0, "standard", None), _m("w1", 100, "weak", None)]
+    assert [r["id"] for r in choose_open_moments(rows, _score)] == ["w1"]
 
 
 def test_a_saved_paragraph_leaves_the_window_and_frees_its_slot():
@@ -104,7 +131,8 @@ def test_three_greens_show_two_even_with_only_three_moments():
 def test_unscored_coloured_moments_still_keep_the_colour_cap():
     rows = [_m("c1", 0, "confident", None), _m("c2", 100, "confident", None),
             _m("c3", 200, "confident", None), _m("u1", 300, "standard", None)]
-    assert [r["id"] for r in choose_open_moments(rows, _score)] == ["c1", "c2", "u1"]
+    # One side only: at most two, and no uncoloured third (Q2 A, N48.1).
+    assert [r["id"] for r in choose_open_moments(rows, _score)] == ["c1", "c2"]
 
 
 def test_unscored_greens_and_oranges_fill_two_and_one():
