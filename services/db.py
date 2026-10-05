@@ -15328,14 +15328,61 @@ class DatabaseService:
         return data if isinstance(data, dict) else (self._rpc_row(data) or {})
 
     def list_releasable_pairs(self, surface: str, *, limit: int = 5000) -> list[dict]:
-        """Releasable, unexported pairs of one surface, oldest first. Raises."""
+        """Releasable, unexported pairs of one surface, oldest first: the
+        candidates the release decides again, item by item (PLF-P5), so the
+        Take is selected for the project check. Raises."""
         res = (self.client.table("feedback_pairs")
                .select("id,surface,draft_text,final_text,final_kind,draft_model_version,"
                        "pattern_key,owner_principal_id,consent_state,consent_grant_event_id,"
-                       "consent_policy_version,created_at")
+                       "consent_policy_version,take_session_id,created_at")
                .eq("surface", str(surface)).eq("releasable", True)
                .is_("exported_at", "null").order("created_at").limit(int(limit)).execute())
         return list(res.data or [])
+
+    def list_active_training_grants(self, principal_ids: list[str]) -> list[dict]:
+        """The training-only yes in force NOW for these principals, read from
+        the view the weekly refresh reads (training_consent_active_grants,
+        0405): [{id, acquisition_principal_id, consent_policy_version}]. The
+        release-time decision (PLF-P5) and the promotion's freshness check
+        read consent here, never from a pair's weekly stamp. Raises."""
+        ids = sorted({str(p) for p in principal_ids if p})
+        out: list[dict] = []
+        for start in range(0, len(ids), 200):
+            res = (self.client.table("training_consent_active_grants")
+                   .select("id,acquisition_principal_id,consent_policy_version")
+                   .in_("acquisition_principal_id", ids[start:start + 200]).execute())
+            out.extend(r for r in (res.data or []) if isinstance(r, dict))
+        return out
+
+    def phase1_learning_stopped(self, principal_id: str) -> bool:
+        """``phase1_learning_stopped_v1`` (0422): True while the person's
+        service is ending (an account deletion not cancelled, or a
+        termination, deletion or retention-expiry block). Raises on failure
+        or on an answer that is not a boolean: unknown is never "no"."""
+        res = self.client.rpc("phase1_learning_stopped_v1", {
+            "p_acquisition_principal_id": str(principal_id),
+        }).execute()
+        data: Any = res.data
+        if isinstance(data, list):
+            data = data[0] if data else None
+        if isinstance(data, dict):
+            data = data.get("phase1_learning_stopped_v1")
+        if not isinstance(data, bool):
+            raise RuntimeError("phase1_learning_stopped_v1 gave no answer")
+        return data
+
+    def list_take_projects(self, take_ids: list[str]) -> dict[str, str]:
+        """{take id: project id} for these Takes (v2_sessions); a Take that
+        is gone is absent, a Take with no project maps to "". Raises."""
+        ids = sorted({str(t) for t in take_ids if t})
+        out: dict[str, str] = {}
+        for start in range(0, len(ids), 200):
+            res = (self.client.table("v2_sessions").select("id,project_id")
+                   .in_("id", ids[start:start + 200]).execute())
+            for row in res.data or []:
+                if isinstance(row, dict) and row.get("id"):
+                    out[str(row["id"])] = str(row.get("project_id") or "")
+        return out
 
     def insert_pair_release(self, **fields: Any) -> Optional[dict]:
         res = self.client.table("pair_releases").insert(fields).execute()
@@ -15356,11 +15403,37 @@ class DatabaseService:
         return int(res.data or 0)
 
     def list_pair_releases(self, limit: int = 20) -> list[dict]:
+        """The newest releases first, with their manifests (the research
+        screen sums the speaker-disjoint split counts from them, ML-7)."""
         res = (self.client.table("pair_releases")
                .select("id,release_version,surface,week_start,item_count,storage_bucket,storage_key,"
-                       "manifest_sha256,file_sha256,signing_key_id,exported_at,voided_at,voided_reason,purged_at")
+                       "manifest,manifest_sha256,file_sha256,signing_key_id,exported_at,voided_at,"
+                       "voided_reason,purged_at")
                .order("exported_at", desc=True).limit(int(limit)).execute())
         return list(res.data or [])
+
+    def _rpc_object(self, name: str, params: dict) -> dict:
+        """A JSONB-returning RPC's object. Raises on failure or on an answer
+        that is not an object: a monitor that cannot be read is named."""
+        data: Any = self.client.rpc(name, params).execute().data
+        if isinstance(data, list):
+            data = data[0] if data else None
+        if isinstance(data, dict) and len(data) == 1 and isinstance(data.get(name), dict):
+            data = data[name]
+        if not isinstance(data, dict):
+            raise RuntimeError(f"{name} gave no object")
+        return data
+
+    def get_mlc2_confidence_canary_readiness(self) -> dict:
+        """The confidence chain's own invariants, exactly as the five-minute
+        readiness cron reads them (scripts/check_mlc2_confidence_canary_
+        readiness.py): aggregate counts only. Raises."""
+        return self._rpc_object("get_mlc2_confidence_canary_readiness_v1",
+                                {"p_founder_principal_id": None})
+
+    def get_ring_confidence_readiness(self) -> dict:
+        """The ring rows' readiness, as the same cron reads it. Raises."""
+        return self._rpc_object("get_ring_confidence_readiness_v1", {})
 
     def list_voided_unpurged_pair_releases(self) -> list[dict]:
         res = (self.client.table("pair_releases")
@@ -15402,20 +15475,27 @@ class DatabaseService:
                .order("created_at").limit(int(limit)).execute())
         return list(res.data or [])
 
-    def list_trained_texts(self, run_id: str) -> dict:
-        """{trained: [texts], withdrawn: [texts]} for one run: the passages
-        and finals it learned from, and those whose owner has since
-        withdrawn (releasable turned false by the refresh)."""
+    def list_trained_pairs(self, run_id: str) -> list[dict]:
+        """The pairs one run learned from, as the withdrawal basis needs
+        them (DOOR-4-WITHDRAWN): whose they are, their two texts, and
+        whether they are still releasable. Raises."""
         res = (self.client.table("feedback_pairs")
-               .select("passage_text,final_text,releasable")
+               .select("owner_principal_id,passage_text,final_text,releasable")
                .eq("trained_run_id", str(run_id)).limit(5000).execute())
-        trained, withdrawn = [], []
-        for row in res.data or []:
-            texts = [t for t in (row.get("passage_text"), row.get("final_text")) if t]
-            trained.extend(texts)
-            if row.get("releasable") is not True:
-                withdrawn.extend(texts)
-        return {"trained": trained, "withdrawn": withdrawn}
+        return list(res.data or [])
+
+    def get_fine_tune_run(self, run_id: str) -> Optional[dict]:
+        """One run row, or None. Raises."""
+        res = (self.client.table("fine_tune_runs").select("*")
+               .eq("id", str(run_id)).limit(1).execute())
+        return (res.data or [None])[0]
+
+    def get_latest_evaluation_report(self, run_id: str) -> Optional[dict]:
+        """The newest evaluation report of one run, or None. Raises."""
+        res = (self.client.table("evaluation_reports").select("*")
+               .eq("run_id", str(run_id)).order("created_at", desc=True)
+               .limit(1).execute())
+        return (res.data or [None])[0]
 
     def insert_fine_tune_run(self, **fields: Any) -> Optional[dict]:
         res = self.client.table("fine_tune_runs").insert(fields).execute()
@@ -15487,12 +15567,15 @@ class DatabaseService:
         return (res.data or [None])[0]
 
     def count_feedback_pairs(self) -> dict[str, dict[str, int]]:
-        """{surface: {total, unexported, releasable}} for the ledger.
-        ``releasable`` counts every pair ever written with the speaker's
-        training yes, exported or not, so it only grows. Raises on failure
-        so the ledger names the source as unavailable rather than zero."""
+        """{surface: {total, unexported, releasable}} for the ledger, for
+        EVERY pair surface (services.feedback_pairs.SURFACES: the three
+        answer surfaces and the two coach-word ones, ML-2).
+        ``releasable`` counts every pair whose speaker's training yes is in
+        force, exported or not. Raises on failure so the ledger names the
+        source as unavailable rather than zero."""
+        from services.feedback_pairs import SURFACES
         out: dict[str, dict[str, int]] = {}
-        for surface in ("praise_line", "clearer_version", "exercise_script"):
+        for surface in SURFACES:
             total = (self.client.table("feedback_pairs")
                      .select("id", count="exact").eq("surface", surface)
                      .limit(1).execute())
@@ -15505,6 +15588,28 @@ class DatabaseService:
             out[surface] = {"total": int(total.count or 0),
                             "unexported": int(waiting.count or 0),
                             "releasable": int(releasable.count or 0)}
+        return out
+
+    def count_draft_exposures(self) -> dict[str, int]:
+        """{surface: drafts shown} for the ledger (ML-2): how often a model's
+        draft was put in front of a coach on each pair surface, the half of
+        the C5 rule a pair needs before its final can differ. A drafting
+        route stores the draft on the row it shows it from, at the moment it
+        shows it: the request row (``draft_surface``, 0402/0411) for the
+        three answer surfaces and the moment line, the coach's Take-word row
+        for the Take word (0411). A re-draft on the same row counts once.
+        Raises on failure so the ledger names the source as unavailable."""
+        out: dict[str, int] = {}
+        for surface in ("exercise_script", "praise_line", "clearer_version",
+                        "coach_moment_line"):
+            shown = (self.client.table("exercise_coach_requests")
+                     .select("id", count="exact").eq("draft_surface", surface)
+                     .not_.is_("draft_text", "null").limit(1).execute())
+            out[surface] = int(shown.count or 0)
+        words = (self.client.table("coach_take_words")
+                 .select("id", count="exact")
+                 .not_.is_("draft_text", "null").limit(1).execute())
+        out["coach_take_word"] = int(words.count or 0)
         return out
 
     def get_confident_voice_exercise_assignment(

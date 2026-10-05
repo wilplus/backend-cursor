@@ -12,9 +12,17 @@ Once a week, poked by a Railway cron through a shared secret:
   3. pairs are exported per surface ONLY where the dataset-release door is
      open AND the founder named the surface (services/pair_release.py);
      before that the consent refresh and the voided-release sweep run
-     (services/pair_consent.py, ML-8). Both doors are code constants,
-     closed today, so the job exports
-     nothing and says so.
+     (services/pair_consent.py, ML-8). Both are code constants: door 2 is
+     open since 2026-10-01 for exercise_script, praise_line and
+     clearer_version (N16, N18); every other surface, and any surface
+     while the bucket or the signing key is missing, exports nothing and
+     its row says why. Each pair is re-decided at release time (PLF-P5);
+  4. the drift run (PM-3, services/drift_job.py: PSI on the inputs, the
+     p-chart on the decisions, the 2x2 per dimension) is stored with the
+     week, so the research screen's drift panel reads a real week (ML-7).
+     Its only write is minting the frozen reference the first time there
+     is enough data, which the table refuses to overwrite; a separate drift
+     cron, if one runs too, mints nothing twice.
 
 Nothing here trains, promotes, or flips a door. Counts about the system,
 never about a person (AC-9 for everyone but the founder's own pages).
@@ -93,6 +101,9 @@ def run_weekly(database: Any, *, config: Any = None,
     training = _training_pass(database, config, now=moment, provider=provider)
     snapshot["doors_pass"] = {"consent_refresh": consent, "release_sweep": swept,
                               "training": training}
+    # The week's PSI 2x2 (ML-7: the research screen's drift panel).
+    drift = _drift_pass(database)
+    snapshot["drift"] = drift
     row = {
         "week_start": week_start(moment).isoformat(),
         "ledger_version": str(snapshot.get("ledger_version") or ""),
@@ -113,6 +124,8 @@ def run_weekly(database: Any, *, config: Any = None,
         "consent_refresh": consent,
         "release_sweep": swept,
         "training": training,
+        "drift": {"worst": drift.get("worst"), "minted": drift.get("minted"),
+                  "note": drift.get("note") or drift.get("unavailable")},
         "unavailable": list(snapshot.get("unavailable") or []),
         "doors": snapshot.get("doors"),
     }
@@ -141,6 +154,22 @@ def _export_pairs(database: Any, snapshot: dict, config: Any,
             out.append({"surface": surface, "exported": 0, "waiting": None,
                         "why": f"export failed: {str(e)[:120]}"})
     return out
+
+
+def _drift_pass(database: Any) -> dict:
+    """The weekly PSI 2x2 (PM-3), for the week's row. The drift run never
+    raises by design; anything else is named, never a reason the snapshot
+    is not written. PIPELINE_CHANGED and UPSTREAM_CHANGE are logged at
+    WARNING, as the drift webhook logs them."""
+    from services import drift_job
+    try:
+        report = drift_job.run_weekly(weeks=drift_job.REFERENCE_WEEKS, database=database)
+    except Exception as e:  # noqa: BLE001 -- named, never a silent zero
+        _log.warning("drift pass failed: %s", e, exc_info=True)
+        return {"unavailable": str(e)[:200]}
+    if report.get("worst") in ("PIPELINE_CHANGED", "UPSTREAM_CHANGE"):
+        _log.warning("drift: %s (weekly learning job)", report.get("worst"))
+    return report
 
 
 def _training_pass(database: Any, config: Any, *, now: Optional[datetime],

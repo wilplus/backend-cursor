@@ -116,7 +116,8 @@ class _Db:
         self.promotions: list[dict] = []
         self.runtime: dict[str, str] = {}
         self.withdrawn_runs: list[dict] = []
-        self.trained_texts = {"trained": [], "withdrawn": []}
+        # The yes in force now, per owner (None: everyone's yes stands).
+        self.active: set | None = None
 
     # golden
     def list_golden_pair_pool(self, surface, limit=500):
@@ -171,8 +172,19 @@ class _Db:
     def list_fine_tune_runs_with_withdrawn_owner(self):
         return self.withdrawn_runs
 
-    def list_trained_texts(self, run_id):
-        return self.trained_texts
+    def list_trained_pairs(self, run_id):
+        return [p for p in self.pairs if p.get("trained_run_id") == run_id]
+
+    def list_active_training_grants(self, owners):
+        return [{"id": f"g-{o}", "acquisition_principal_id": o, "consent_policy_version": "v1"}
+                for o in owners if self.active is None or o in self.active]
+
+    def get_fine_tune_run(self, run_id):
+        return next((r for r in self.runs if r["id"] == run_id), None)
+
+    def get_latest_evaluation_report(self, run_id):
+        mine = [r for r in self.reports if r.get("run_id") == run_id]
+        return mine[-1] if mine else None
 
     def insert_evaluation_report(self, **fields):
         row = {"id": f"rep-{len(self.reports) + 1}", **fields}
@@ -430,6 +442,8 @@ class PromotionTests(unittest.TestCase):
     def _db_with_report(self, passed=True, lock=None):
         from services.ml_surface_contracts import locked_prompt_hash
         db = _Db()
+        db.runs.append({"id": "run-1", "surface": "praise_line", "status": "succeeded",
+                        "candidate_model": "ft:x"})
         db.reports.append({"id": "rep-1", "surface": "praise_line", "candidate_model": "ft:x",
                            "passed": passed, "run_id": "run-1",
                            "prompt_lock_sha256": lock or locked_prompt_hash("praise_line")})

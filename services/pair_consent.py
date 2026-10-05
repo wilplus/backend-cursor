@@ -1,8 +1,8 @@
 """A pair remembers the yes (founder 2026-09-30, L1; build plan ML-8).
 
 Door 1 is the training yes. Its switch (MLC2_TRAINING_SWITCH_ENABLED) is
-closed in code until counsel's wording lands; this module is the machinery
-that works either way:
+open since 2026-10-01 (counsel's wording signed, "open door 1"); this
+module is the machinery, and it works whether the switch is open or not:
 
   * every pair is stamped at write with its owner's principal and the
     consent state the ledger shows for that principal at that moment;

@@ -24,7 +24,20 @@ Once a week, after the export and the sweep (services.learning_weekly):
     its files deleted at the provider at once and a still-running job
     cancelled; a model already trained stays, marked withdrawn-from, and
     the evaluation's regurgitation check decides whether it may ever be
-    promoted — a failing one is retrained without those pairs.
+    promoted;
+  * a report is fresh only while the withdrawn owners it checked are the
+    withdrawn owners NOW (``withdrawn_basis``, read live from the yes in
+    force): a withdrawal or a deletion after an evaluation makes the report
+    stale, promotion refuses it (services.model_promotion), and the weekly
+    pass evaluates the candidate again (``reevaluate_stale``);
+  * "retrained without the withdrawn pairs", made consistent with "a pair
+    trains once" (audit DOOR-3-RETRAIN): a candidate that fails the
+    regurgitation check is marked failed for good (never promoted, never
+    evaluated again, its pairs never train again); the retraining is the
+    NEXT run, under the same door rules, built only from still-releasable
+    pairs no run has trained on, which by construction holds no withdrawn
+    pair. Whether a failed run's clean pairs may train a second time is the
+    founder's decision, not this module's.
 
 Nothing here promotes. AC-9: counts about the machine, never a person.
 """
@@ -232,23 +245,135 @@ def poll_runs(database: Any, provider: Any, *, config: Any,
     return out
 
 
+def withdrawn_basis(database: Any, run_id: str) -> dict:
+    """Whose texts a regurgitation check of this run must cover NOW
+    (counsel 2026-10-01; audit DOOR-4-WITHDRAWN): the run's owners whose
+    training yes is not in force at this moment (the active-grants view,
+    read live, so a withdrawal counts the moment it is recorded, not at the
+    next weekly sweep), or whose pairs the refresh or a deletion request
+    made not releasable. Returns the texts the check searches and a digest
+    of that owner set, which the report keeps: a report is fresh only while
+    the set it checked is the set that holds now. Raises when it cannot be
+    read; a caller that gates on it fails closed."""
+    pairs = [p for p in (database.list_trained_pairs(str(run_id)) or []) if isinstance(p, dict)]
+    owners = sorted({str(p.get("owner_principal_id")) for p in pairs if p.get("owner_principal_id")})
+    active = ({str(r.get("acquisition_principal_id"))
+               for r in (database.list_active_training_grants(owners) or []) if isinstance(r, dict)}
+              if owners else set())
+    gone = {o for o in owners if o not in active}
+    gone |= {str(p["owner_principal_id"]) for p in pairs
+             if p.get("owner_principal_id") and p.get("releasable") is not True}
+    trained: list[str] = []
+    withdrawn: list[str] = []
+    for pair in pairs:
+        texts = [str(t) for t in (pair.get("passage_text"), pair.get("final_text")) if t]
+        trained.extend(texts)
+        if str(pair.get("owner_principal_id") or "") in gone or pair.get("releasable") is not True:
+            withdrawn.extend(texts)
+    return {"owners_sha256": hashlib.sha256("\n".join(sorted(gone)).encode("utf-8")).hexdigest(),
+            "owners": len(gone), "withdrawn_texts": withdrawn, "trained_texts": trained}
+
+
+def report_is_fresh(report: Any, basis: dict) -> bool:
+    """A report speaks for its candidate only while the withdrawn owners it
+    checked are the withdrawn owners now. A withdrawal (or a deletion, or a
+    renewed yes) after the evaluation makes it STALE: promotion refuses it
+    and the weekly pass evaluates again. A report written before the digest
+    existed is fresh only while nobody has withdrawn."""
+    body = (report or {}).get("report") if isinstance(report, dict) else None
+    regurgitation = (body or {}).get("regurgitation") if isinstance(body, dict) else None
+    digest = (regurgitation or {}).get("withdrawn_owners_sha256") if isinstance(regurgitation, dict) else None
+    if not digest:
+        return int(basis.get("owners") or 0) == 0
+    return str(digest) == str(basis.get("owners_sha256"))
+
+
+#: The words a run carries once its candidate failed the regurgitation check
+#: (DOOR-3-RETRAIN). Final: the candidate is never promoted, never evaluated
+#: again, and its pairs never train again (a pair trains once); "retrained
+#: without the withdrawn pairs" is the NEXT run, under the same door rules,
+#: built only from still-releasable pairs no run has trained on.
+REGURGITATION_FAILURE = (
+    "regurgitation check failed: the candidate reproduced a withdrawn speaker's "
+    "text, so it is never promoted; the next run trains only on pairs no run "
+    "has trained on (a pair trains once)")
+
+
+def _mark_regurgitated(database: Any, run_id: str) -> None:
+    """Failed for good. ``finished_at`` keeps when the provider's job ended."""
+    database.update_fine_tune_run(str(run_id), status="failed", failure=REGURGITATION_FAILURE)
+
+
 def _evaluate(database: Any, run: dict, candidate: str, config: Any) -> dict:
     from services.golden_evaluation import EvaluationRefusal, GoldenRefusal, evaluate
     from services.llm_config import SPEC_COACH_ANSWER_DRAFT
     rid = str(run.get("id") or "")
     try:
-        texts = database.list_trained_texts(rid) or {}
+        basis = withdrawn_basis(database, rid)
         report = evaluate(
             database, surface=str(run.get("surface")), candidate_model=candidate,
             baseline_model=str(getattr(SPEC_COACH_ANSWER_DRAFT, "model", "") or "stock"),
-            run_id=rid, withdrawn_texts=list(texts.get("withdrawn") or []),
-            trained_texts=list(texts.get("trained") or []))
-        return {"passed": bool(report.get("passed")), "report_id": report.get("id")}
+            run_id=rid, withdrawn_texts=basis["withdrawn_texts"],
+            trained_texts=basis["trained_texts"],
+            withdrawn_basis={"owners_sha256": basis["owners_sha256"], "owners": basis["owners"]})
     except (EvaluationRefusal, GoldenRefusal) as refusal:
         return {"passed": False, "why": refusal.message}
     except Exception as e:  # noqa: BLE001 -- named; the run row stands
         _log.warning("golden evaluation failed run=%s: %s", rid, e, exc_info=True)
         return {"passed": False, "why": f"evaluation failed: {str(e)[:120]}"}
+    out: dict[str, Any] = {"passed": bool(report.get("passed")), "report_id": report.get("id")}
+    regurgitation = (report.get("report") or {}).get("regurgitation") or {}
+    if regurgitation.get("ok") is False:
+        _mark_regurgitated(database, rid)
+        out.update(run_failed=True, why=REGURGITATION_FAILURE)
+    return out
+
+
+def reevaluate_stale(database: Any, *, config: Any,
+                     skip: frozenset = frozenset()) -> list[dict]:
+    """The weekly re-evaluation (DOOR-4-WITHDRAWN): every succeeded run whose
+    newest report no longer speaks for it (a withdrawal or a deletion since,
+    or no report yet) is evaluated again against the owners withdrawn NOW.
+    A failing regurgitation check marks the run failed for good
+    (DOOR-3-RETRAIN). Runs whatever the doors say: it can only stop a
+    promotion, never start one. A candidate served right now that fails is
+    named loudly; killing it is the founder's hand (scripts/promote_pair_surface.py)."""
+    out: list[dict] = []
+    for run in database.list_fine_tune_runs(status="succeeded", limit=50) or []:
+        if not isinstance(run, dict) or not run.get("candidate_model"):
+            continue
+        rid = str(run.get("id") or "")
+        if rid in skip:
+            continue
+        try:
+            basis = withdrawn_basis(database, rid)
+            latest = database.get_latest_evaluation_report(rid)
+        except Exception as e:  # noqa: BLE001 -- named; promotion refuses meanwhile
+            _log.warning("freshness read failed run=%s: %s", rid, e, exc_info=True)
+            out.append({"run_id": rid, "surface": run.get("surface"),
+                        "why": f"freshness unreadable: {str(e)[:120]}"})
+            continue
+        if isinstance(latest, dict) and report_is_fresh(latest, basis):
+            continue
+        candidate = str(run["candidate_model"])
+        row: dict[str, Any] = {"run_id": rid, "surface": run.get("surface"),
+                               "reevaluated": True,
+                               **_evaluate(database, run, candidate, config)}
+        if row.get("run_failed") and _served_now(database, str(run.get("surface") or ""), candidate):
+            row["served_now"] = True
+            row["why"] = (REGURGITATION_FAILURE + ". THIS CANDIDATE IS SERVED NOW: the founder "
+                          "kills it with scripts/promote_pair_surface.py kill")
+        out.append(row)
+    return out
+
+
+def _served_now(database: Any, surface: str, candidate: str) -> bool:
+    try:
+        from services.ml_surface_contracts import runtime_config_key
+        return str(database.get_runtime_config(runtime_config_key(surface)) or "") == candidate
+    except Exception as e:  # noqa: BLE001 -- unknown reads as served: the loud side
+        _log.warning("served model read failed surface=%s: %s", surface, e)
+        return True
 
 
 def sweep_withdrawn(database: Any, provider: Any, *,
@@ -293,15 +418,21 @@ def sweep_withdrawn(database: Any, provider: Any, *,
 
 def run_training_pass(database: Any, *, config: Any, provider: Any = None,
                       now: Optional[datetime] = None) -> dict:
-    """The weekly step: sweep withdrawals, poll running jobs, start what
-    may start. Each part reports in words."""
+    """The weekly step: sweep withdrawals, poll running jobs, evaluate again
+    every candidate whose report went stale, start what may start. Each
+    part reports in words."""
     provider = provider or OpenAIFineTuning(config)
     swept = sweep_withdrawn(database, provider, now=now)
-    polled = poll_runs(database, provider, config=config, now=now) \
-        if hasattr(database, "list_fine_tune_runs") else []
+    has_runs = hasattr(database, "list_fine_tune_runs")
+    polled = poll_runs(database, provider, config=config, now=now) if has_runs else []
+    # A run the poll just evaluated holds a fresh report (or a refusal the
+    # poll already named): not twice in one pass.
+    just = frozenset(str(r.get("run_id")) for r in polled if isinstance(r, dict))
+    reevaluated = reevaluate_stale(database, config=config, skip=just) if has_runs else []
     started = [start_run(database, provider, surface=s, config=config, now=now)
                for s in sorted(SURFACES)]
-    return {"withdrawn_sweep": swept, "polled": polled, "surfaces": started}
+    return {"withdrawn_sweep": swept, "polled": polled, "reevaluated": reevaluated,
+            "surfaces": started}
 
 
 class OpenAIFineTuning:

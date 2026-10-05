@@ -1290,6 +1290,11 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     # The view over fine_tune_runs and its owners that the withdrawal sweep
     # reads (0406): no row of its own.
     "fine_tune_runs_with_withdrawn_owner",
+    # The view of the training yes in force now (0405), which the weekly
+    # refresh, the release-time decision and the promotion's freshness check
+    # read (PLF-P5, DOOR-4-WITHDRAWN): no row of its own; its rows are
+    # ml_consent_events, classified with the account.
+    "training_consent_active_grants",
     "model_training_runs", "post_recording_questions",
     "pre_recording_questions", "professional_notes_specific_questions",
     "reference_distribution", "runtime_config", "slide_ab_verdicts",

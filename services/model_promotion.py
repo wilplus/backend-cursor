@@ -11,9 +11,15 @@ runtime row holds only the present. It refuses unless:
   * an evaluation report for that candidate on that surface passed, and
     its prompt lock is the current one (a prompt edit since the evaluation
     re-points a gated model at text it was never judged under, H-1);
-  * the candidate's run was not withdrawn from (a run whose owner withdrew
-    keeps its model only if the regurgitation check in that report passed;
-    the report's ``passed`` already carries it).
+  * the candidate's run was not withdrawn from since the report (a run
+    whose owner withdrew keeps its model only if the regurgitation check
+    passed AGAINST THAT WITHDRAWAL): the report must still be fresh, its
+    checked withdrawn owners the withdrawn owners now, read live
+    (services.model_training.withdrawn_basis); a stale report is refused
+    and the candidate is evaluated again (audit DOOR-4-WITHDRAWN);
+  * the run did not fail: a candidate that once failed the regurgitation
+    check is never promoted, whatever a later report says (DOOR-3-RETRAIN).
+    A freshness that cannot be read refuses too.
 
 A kill returns the surface to the stock model within one request: the key
 is set to the stock model id (which ``_model_the_promotion_gate_allows``
@@ -97,6 +103,8 @@ def promote(database: Any, *, surface: str, candidate_model: str,
     if str(report.get("prompt_lock_sha256") or "") != lock:
         raise PromotionRefusal("the prompts changed since this evaluation; re-run it",
                                "PROMPT_LOCK_MISMATCH")
+    if report.get("run_id"):
+        _refuse_unless_current(database, str(report["run_id"]), report)
     previous = database.get_runtime_config(_key(surface))
     now = now or datetime.now(timezone.utc)
     written = database.promote_runtime_surface_model(
@@ -113,6 +121,31 @@ def promote(database: Any, *, surface: str, candidate_model: str,
     _clear_cache()
     return {"surface": surface, "model": candidate, "previous": previous,
             "promotion_id": (row or {}).get("id")}
+
+
+def _refuse_unless_current(database: Any, run_id: str, report: dict) -> None:
+    """The run behind the report has not failed, and nobody withdrew (or was
+    deleted) since the report was written. Read live; unreadable refuses."""
+    from services.model_training import report_is_fresh, withdrawn_basis
+    try:
+        run = database.get_fine_tune_run(run_id)
+        basis = withdrawn_basis(database, run_id)
+    except Exception as e:  # noqa: BLE001 -- fail closed, named
+        _log.warning("promotion freshness unreadable run=%s: %s", run_id, e, exc_info=True)
+        raise PromotionRefusal(
+            "whose training yes this candidate rests on could not be read now; nothing was promoted",
+            "REPORT_FRESHNESS_UNKNOWN") from e
+    if not isinstance(run, dict):
+        raise PromotionRefusal("the report names a run that cannot be found", "RUN_UNKNOWN")
+    if run.get("status") == "failed":
+        raise PromotionRefusal(
+            "this candidate's run failed (a failed regurgitation check is final); "
+            "the next run trains only on pairs no run has trained on", "RUN_FAILED")
+    if not report_is_fresh(report, basis):
+        raise PromotionRefusal(
+            "a speaker withdrew or was deleted after this evaluation, so it checked the wrong "
+            "texts; the weekly job evaluates the candidate again, promote from that report",
+            "REPORT_STALE")
 
 
 def kill(database: Any, *, surface: str, by: str, reason: str,

@@ -1,10 +1,13 @@
-"""The training switch: GET, turn on (POST), turn off (DELETE). DARK.
+"""The training switch: GET, turn on (POST), turn off (DELETE).
 
 SPEC-training-corpus §3; the logic and the refusals live in
-``services.training_consent``. Answers 410 while
-``Config.MLC2_TRAINING_SWITCH_ENABLED`` is False, which it is until P5.
-Responses carry codes only; the words are the frontend's, signed by the
-founder (N10).
+``services.training_consent``. Door 1 is OPEN since 2026-10-01 (the
+founder's sentence "open door 1"; docs/LEARNING-DOORS.md):
+``Config.MLC2_TRAINING_SWITCH_ENABLED`` is True, so the route answers. It
+answers 410 only if a reviewed change sets the constant back to False.
+While no training policy row is active it answers ``available: false`` and
+the Settings card hides itself. Responses carry codes only; the words are
+the frontend's, signed by the founder (N10).
 """
 from __future__ import annotations
 
