@@ -1501,3 +1501,21 @@ recordings count under the account that claimed them). Audio goes when that
 is more than 12 months ago. `scripts/retention_report.sql` already counts by
 this rule; the real deletion run still waits for the founder's word on the
 report's numbers (N45).
+
+
+**N47 · Retention schedule v1.3 registered; the retention report reads zero
+(founder 2026-10-05).**
+1. **Registered.** The founder signed v1.3 (PAdES, 13:42:28 UTC; sha256
+   `59a25f94…3cfb4` in SIGNED-ARTIFACTS.md) and ran
+   `scripts/phase1_retention_rules_v1_3.sql`; its verify query returned one
+   row: `financial-evidence-v1`, `financial_evidence`,
+   `financial_year_end_plus_5_years`, active, on `retention_schedule` 1.3.
+   An account erasure now completes: purchase and usage records are kept
+   under this rule and everything else goes.
+2. **The report reads zero.** `scripts/retention_report.sql` in production
+   returned 0 for every line: no unclaimed guest older than 30 days and none
+   of their audio, no audio unused for 12 months (N46), and no row older than
+   90 days in any of the five log tables. The real deletion run (N45) has
+   nothing to delete today; it is still not built and still waits for the
+   founder's word.
+
