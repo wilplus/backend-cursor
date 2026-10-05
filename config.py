@@ -233,9 +233,10 @@ class Config:
     TAKE_FEEDBACK_POLICY_V3_SHADOW_WRITE_MODE = (
         os.getenv("TAKE_FEEDBACK_POLICY_V3_MODE") or "off"
     ).strip()
-    # Compatibility alias for the existing readers and tests. Same value, and
-    # the name above is the one to use.
-    TAKE_FEEDBACK_POLICY_V3_MODE = TAKE_FEEDBACK_POLICY_V3_SHADOW_WRITE_MODE
+    # The Python alias `TAKE_FEEDBACK_POLICY_V3_MODE` is removed (contract
+    # 52: aliases are removed, not kept; audit 2026-10-05). The ENVIRONMENT
+    # variable keeps its name above, because it is set on live Railway
+    # services (config-first); only the duplicate attribute is gone.
     TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID = (
         os.getenv("TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID") or ""
     ).strip()

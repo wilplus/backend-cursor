@@ -40,6 +40,16 @@ TRIGGER_PATHS=(
   'services/user_media_storage.py'
   'services/coach_video_storage.py'
   'services/lab_audio_storage.py'
+  # A rehearsal suite itself: changing one without running it proves nothing.
+  'tests/test_*_postgres.py'
+  # The edit-then-Take-2 path the take-rewrite lane walks on a real database
+  # (founder lock 2026-09-30, B1-5: "An end-to-end test for edit-then-Take-2
+  # exists and runs in the gate"): the Take 2 review, its rebuild plan, the
+  # Slide's helper words and the Paragraph identity it mints and proves.
+  'services/take_review.py'
+  'services/take_rebuild.py'
+  'services/slide_helper_words.py'
+  'services/ideal_text_parts.py'
 )
 
 if ! git rev-parse --verify -q origin/main >/dev/null; then
@@ -54,7 +64,7 @@ CHANGED="$(git diff --name-only "$BASE" HEAD -- "${TRIGGER_PATHS[@]}" 2>/dev/nul
 CHANGED="$(printf '%s\n' "$CHANGED" | sed '/^$/d' | sort -u)"
 
 if [ -z "$CHANGED" ]; then
-  [ "$MODE" = "--why" ] && echo "no migration or MLC-3 storage change"
+  [ "$MODE" = "--why" ] && echo "no path on the trigger list changed (migrations, rehearsal suites, MLC-3 storage, edit-then-Take-2)"
   exit 1
 fi
 case "$MODE" in

@@ -138,8 +138,12 @@ re-freeze-and-review rule as its own change, not this one.
 
 **The trigger is the change, not discipline.** `scripts/rehearsal_trigger.sh`
 exits 0 when the diff against `origin/main` touches `migrations/`,
-`tests/integration/`, the tier's own runner `scripts/rehearsal_tier.sh`, or an
-MLC-3 storage module (the list is in the script).
+`tests/integration/`, the tier's own runner `scripts/rehearsal_tier.sh`, a
+rehearsal suite (`tests/test_*_postgres.py`), an MLC-3 storage module, or the
+edit-then-Take-2 path the take-rewrite lane walks (`services/take_review.py`,
+`take_rebuild.py`, `slide_helper_words.py`, `ideal_text_parts.py`; founder
+lock 2026-09-30, B1-5: the test "runs in the gate"). The list is in the
+script.
 Both `scripts/local_ci.sh` and the `checks` job in
 `.github/workflows/tests.yml` consult it:
 
