@@ -19,10 +19,12 @@ browser -- takes the rewrite's own words from the V3 freeze that served it
 (the selected membership item names the Paragraph; its candidate holds the
 quote and the proposed words), replaces the quote in that Paragraph, and
 writes the result through the one sanctioned owner-edit writer,
-`compare_and_set_user_ideal_edit_v1`. That RPC appends the immutable
-`owner_part_text_updated` revision (clause 16) and stores the owner edit,
-which the next Take supersedes (Q5 A) -- the "next Take replaces them" of
-clause 9.
+`compare_and_set_user_ideal_edit_v1`, by way of `accept_rewrite_into_part_v1`
+(0418), which names the Paragraph for the transaction. That RPC appends the
+immutable `owner_part_text_updated` revision (clause 16), named
+'accepted_rewrite' (0421) so History shows it as its own "Correction
+accepted" row, and stores the owner edit, which the next Take supersedes
+(Q5 A) -- the "next Take replaces them" of clause 9.
 
 A PARAGRAPH WITH HELPER WORDS OR A LOCK (founder 2026-10-05: "it is possible
 that helper words are attached to the words that are not visible - but
@@ -195,23 +197,18 @@ def _carry_helper_words(database: Any, arc_id: str, owner_user_id: str,
 
 
 def _write(database: Any, *, arc_id: str, owner_user_id: str, version: int,
-           desired: list, protected_part: Optional[str]) -> Any:
+           desired: list, part_id: str) -> Any:
+    """Every accepted rewrite goes through `accept_rewrite_into_part_v1`,
+    protected Paragraph or not (founder 2026-10-05, N48.1). For a Paragraph
+    with no lock and no helper words it is the same writer with the same
+    checks; naming the Paragraph is what lets the writer name its revision
+    'accepted_rewrite' (0421), so History shows it as "Correction
+    accepted" rather than as a plain owner edit."""
     from services.ideal_text_parts import joined
-    text = joined(desired)
-    if protected_part:
-        return database.accept_rewrite_into_part(
-            owner_user_id=str(owner_user_id), arc_id=str(arc_id),
-            source_document_version=version, part_id=protected_part,
-            desired_user_text=text, desired_parts_lineage=desired)
-    return database.compare_and_set_user_ideal_edit(
+    return database.accept_rewrite_into_part(
         owner_user_id=str(owner_user_id), arc_id=str(arc_id),
-        source_document_version=version,
-        expected_user_text_revision=None,
-        expected_user_text_sha256=None,
-        desired_user_text=text,
-        desired_parts_lineage=desired,
-        idempotency_key=None,
-    )
+        source_document_version=version, part_id=part_id,
+        desired_user_text=joined(desired), desired_parts_lineage=desired)
 
 
 def accept_rewrite(database: Any, *, arc_id: str, owner_user_id: str,
@@ -240,19 +237,15 @@ def accept_rewrite(database: Any, *, arc_id: str, owner_user_id: str,
             parts, item["part_id"], item["quote"], item["proposed_text"])
         if outcome != APPLIED or desired is None:
             return outcome
-        protected = False
         if target is not None and _protected(database, arc_id,
                                              owner_user_id, target):
-            protected = True
             if not _carry_helper_words(database, arc_id, owner_user_id,
                                        target, take_session_id):
                 return PROTECTED
         try:
             result = _write(database, arc_id=arc_id,
                             owner_user_id=owner_user_id, version=version,
-                            desired=desired,
-                            protected_part=(item["part_id"] if protected
-                                            else None))
+                            desired=desired, part_id=item["part_id"])
         except Exception as error:
             if any(code in str(error) for code in _PROTECTED_CODES):
                 return PROTECTED
