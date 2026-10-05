@@ -588,6 +588,18 @@ if [ "$LANE" = "released" ]; then
   hard migrations/the_purge_can_delete_job_plumbing.sql
 fi
 
+# 0426 re-issues four of 0423's functions (the log list without dev_bugs,
+# N50 C4 B; the counter, the listing and the report with rule 4) and adds
+# rule 4's definitions: token_ledger and llm_usage rows whose five years
+# have ended (N50 P7). Its door to those two tables is guarded on them
+# existing; this lane has neither, and the suite builds them and applies
+# 0426 again in its own transaction. Released lane only, after 0425, as in
+# the manifest. Twice: apply/reapply idempotency.
+if [ "$LANE" = "released" ]; then
+  hard migrations/financial_records_go_after_five_years.sql
+  hard migrations/financial_records_go_after_five_years.sql
+fi
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

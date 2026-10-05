@@ -6,14 +6,15 @@
 -- RUN IN THE SUPABASE SQL EDITOR. One SELECT. One row per rule and line;
 -- nothing is listed by person.
 --
--- ONE DEFINITION (migration 0423, old_data_goes_on_a_schedule.sql). This
--- file reads public.retention_report_v1, and so does every run of the
--- cleaner (services/retention_cleaner.py): a dry run records exactly these
--- lines, and a live run deletes exactly what they count. The functions it
--- reads are declared STABLE, so the database itself refuses any change made
--- through them.
+-- ONE DEFINITION (migrations 0423, old_data_goes_on_a_schedule.sql, and
+-- 0426, financial_records_go_after_five_years.sql). This file reads
+-- public.retention_report_v1, and so does every run of the cleaner
+-- (services/retention_cleaner.py): a dry run records exactly these lines,
+-- and a live run deletes exactly what they count. The functions it reads
+-- are declared STABLE or IMMUTABLE, so the database itself refuses any
+-- change made through them.
 --
--- THE THREE RULES
+-- THE FOUR RULES
 --   1. An unclaimed guest's recordings go 30 days after the guest was created
 --      (a guest who signed up is claimed and is never counted; a guest whose
 --      erasure has finished is not counted again).
@@ -34,12 +35,19 @@
 --      store: the Take's measurement columns are emptied, its measurement
 --      rows removed, and an account's aggregates go with its last recording.
 --   3. Technical logs go 90 days after creation. Only these tables, named
---      one by one: processing_jobs, dev_bugs, life_reminder_log,
+--      one by one: processing_jobs, life_reminder_log,
 --      admin_annotations_log, mlc3_service_backpressure_events. A
 --      processing_jobs row that deletion evidence points at is kept, and
---      counted on its own line. Evidence tables (authorization, deletion,
---      provider operations, claims) and the financial records kept five
---      years (token_ledger, llm_usage, N43) are never on this list.
+--      counted on its own line. dev_bugs is the founder's own bug list, not
+--      a log, and is never counted (decisions log N50, C4 B). Evidence
+--      tables (authorization, deletion, provider operations, claims) are
+--      never on this list.
+--   4. Financial records (token_ledger, llm_usage) go when their five years
+--      end: five years from the end of the financial year in which each was
+--      made (retention schedule v1.3; decisions log N50, P7), the calendar
+--      year in Polish time. A row made in 2026 is due from 1 January 2032.
+--      Every account's, open or deleted; a row whose account is being
+--      erased waits for that erasure, which keeps it.
 --
 -- What a run did: scripts/retention_cleaner_runs.sql.
 

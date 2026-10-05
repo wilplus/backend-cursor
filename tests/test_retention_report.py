@@ -1,12 +1,15 @@
-"""The retention report (founder 2026-10-05, Q3b and Q4; N45, N46): the list
-the cleaner shows before its first real run. Since migration 0423 it reads
-the one definition of what is due (public.retention_report_v1), which every
-run of the cleaner reads too (services/retention_cleaner.py; N48.4 Q16 A).
+"""The retention report (founder 2026-10-05, Q3b and Q4; N45, N46, N50): the
+list the cleaner shows before its first real run. Since migration 0423 it
+reads the one definition of what is due (public.retention_report_v1), which
+every run of the cleaner reads too (services/retention_cleaner.py; N48.4
+Q16 A); 0426 took the founder's bug list off it and added rule 4.
 
 Pins that the report can change nothing, that it counts by rule and never
 by person, that the founder's periods are written once, that a claimed guest
-is never counted, and that no evidence or financial table is on its log
-list. tests/test_retention_cleaner_postgres.py runs it against a database.
+is never counted, that no evidence table, no financial table and not the
+founder's bug list is on its log list, and that rule 4 takes exactly the
+financial records, five years after their financial year in Polish time.
+tests/test_retention_cleaner_postgres.py runs it against a database.
 """
 from __future__ import annotations
 
@@ -18,18 +21,27 @@ from services.data_purge_registry import DEPENDENCIES
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SQL = (ROOT / "scripts" / "retention_report.sql").read_text()
 CODE = "\n".join(line.split("--", 1)[0] for line in SQL.splitlines())
-MIGRATION = (ROOT / "migrations" / "old_data_goes_on_a_schedule.sql").read_text()
-MIGRATION_CODE = "\n".join(line.split("--", 1)[0] for line in MIGRATION.splitlines())
+#: The clean-up's migrations: 0423 wrote the definitions, 0426 re-issued
+#: four of them and added rule 4's. A later one wins, as in the database.
+CLEANUP = ("old_data_goes_on_a_schedule.sql",
+           "financial_records_go_after_five_years.sql")
+MIGRATION_CODES = [
+    "\n".join(line.split("--", 1)[0]
+              for line in (ROOT / "migrations" / name).read_text().splitlines())
+    for name in CLEANUP]
+MIGRATION_CODE = "\n".join(MIGRATION_CODES)
 
 #: Tables that must never be on a sweep list: evidence (append-only or the
-#: registry's retain dispositions) and the financial records kept five years.
+#: registry's retain dispositions).
 NEVER = {
     "processing_authorization_receipts", "processing_authorization_snapshots",
     "processing_recording_attempts", "processing_provider_operations",
     "phase1_processing_job_events", "data_purge_events",
     "ai_transparency_exposures", "phase1_authorization_admin_events",
-    "owner_claim_events", "token_ledger", "llm_usage",
+    "owner_claim_events",
 }
+#: Kept five years after their financial year (v1.3), then rule 4's.
+FINANCIAL = {"token_ledger", "llm_usage"}
 
 #: Every definition the report reads, directly or through another.
 DEFINITIONS = (
@@ -40,18 +52,22 @@ DEFINITIONS = (
     "retention_store_present_v1", "retention_measurement_dirty_sql_v1",
     "retention_count_measurements_v1", "retention_due_measurements_v1",
     "retention_log_relations_v1", "retention_log_condition_v1",
-    "retention_due_logs_v1",
+    "retention_due_logs_v1", "retention_financial_cut_v1",
+    "retention_financial_relations_v1", "retention_financial_condition_v1",
+    "retention_due_financial_v1",
 )
 
 
 def function(name: str) -> tuple[str, str]:
-    """(header, body) of one function in the migration."""
-    match = re.search(
-        rf"CREATE OR REPLACE FUNCTION public\.{name}\((.*?)\n\$\$;",
-        MIGRATION_CODE, re.S)
-    assert match, name
-    header, _, body = match.group(1).partition("AS $$")
-    return header, body
+    """(header, body) of one function's latest definition."""
+    for code in reversed(MIGRATION_CODES):
+        matches = re.findall(
+            rf"CREATE OR REPLACE FUNCTION public\.{name}\((.*?)\n\$\$;",
+            code, re.S)
+        if matches:
+            header, _, body = matches[-1].partition("AS $$")
+            return header, body
+    raise AssertionError(name)
 
 
 def test_it_changes_nothing():
@@ -80,6 +96,19 @@ def test_the_founders_periods_are_written_once():
                    "interval '90 days'"):
         assert period in cutoffs
         assert MIGRATION_CODE.count(period) == 1, period
+    _, financial = function("retention_financial_cut_v1")
+    assert "interval '5 years'" in financial
+    assert MIGRATION_CODE.count("interval '5 years'") == 1
+
+
+def test_a_financial_year_is_the_calendar_year_in_polish_time():
+    """v1.3: five years from the end of the financial year the record was
+    made in. A row made in 2026 is due from 1 January 2032 in Warsaw."""
+    _, cut = function("retention_financial_cut_v1")
+    assert "date_trunc('year', p_as_of AT TIME ZONE 'Europe/Warsaw')" in cut
+    assert cut.count("AT TIME ZONE 'Europe/Warsaw'") == 2
+    _, condition = function("retention_financial_condition_v1")
+    assert "t.created_at < $1" in condition
 
 
 def test_a_claimed_guest_is_never_counted():
@@ -111,13 +140,28 @@ def _log_tables() -> set[str]:
     return set(re.findall(r"\('([a-z0-9_]+)', ARRAY", body))
 
 
-def test_no_evidence_or_financial_table_is_swept():
+def _financial_tables() -> set[str]:
+    _, body = function("retention_financial_relations_v1")
+    return set(re.findall(r"\('([a-z0-9_]+)', '[a-z0-9_]+'\)", body))
+
+
+def test_no_evidence_or_financial_table_or_the_bug_list_is_a_log():
     swept = _log_tables()
-    assert swept == {"processing_jobs", "dev_bugs", "life_reminder_log",
+    assert swept == {"processing_jobs", "life_reminder_log",
                      "admin_annotations_log", "mlc3_service_backpressure_events"}
-    assert not swept & NEVER
+    assert not swept & (NEVER | FINANCIAL)
+    assert "dev_bugs" not in swept   # the founder's bug list (N50 C4 B)
     retained = {d.relation for d in DEPENDENCIES if d.disposition == "retain"}
     assert not swept & retained
+
+
+def test_rule_4_takes_exactly_the_financial_records_and_no_evidence():
+    assert _financial_tables() == FINANCIAL == {
+        d.relation for d in DEPENDENCIES
+        if d.retention_category == "financial_evidence"}
+    assert not _financial_tables() & NEVER
+    _, report = function("retention_report_v1")
+    assert "SELECT 4, 'financial records whose five years have ended: '" in report
 
 
 def test_the_founders_definition_of_last_use_is_written_down():

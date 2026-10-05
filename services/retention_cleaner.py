@@ -1,11 +1,12 @@
 """The scheduled clean-up (founder 2026-10-05: decisions log N48.4 Q16 A,
-"go with wave 3"; N45 Q3b and Q4; N46; retention schedule v1.0 §1).
+"go with wave 3"; N45 Q3b and Q4; N46; N50 C1-C4 and P7; retention schedule
+v1.0 §1 and v1.3).
 
-Three rules, one definition of what is due. Migration 0423 decides it in SQL
-(``retention_report_v1`` and the functions it reads), and three readers use
-that and nothing else: scripts/retention_report.sql (the founder's read-only
-report), a dry run and a live run. They cannot disagree about what is due,
-because there is nothing for them to disagree about.
+Four rules, one definition of what is due. Migrations 0423 and 0426 decide
+it in SQL (``retention_report_v1`` and the functions it reads), and three
+readers use that and nothing else: scripts/retention_report.sql (the
+founder's read-only report), a dry run and a live run. They cannot disagree
+about what is due, because there is nothing for them to disagree about.
 
   1. An unclaimed guest older than 30 days is erased, recordings and all,
      by the account purge (services/data_purge.py) on a ``retention_expiry``
@@ -20,9 +21,15 @@ because there is nothing for them to disagree about.
      settle records the deletion event naming this run. Measurements first:
      if anything fails after them the recording outlives its measurements,
      which the schedule allows, never the reverse (schedule §1).
-  3. The five technical logs lose their rows older than 90 days, by id, in
+  3. The four technical logs lose their rows older than 90 days, by id, in
      batches. A processing_jobs row that deletion evidence points at is
-     kept: removing it would rewrite retained evidence.
+     kept: removing it would rewrite retained evidence. ``dev_bugs`` is the
+     founder's own bug list, not a log, and is never touched (N50 C4 B).
+  4. The financial records (``token_ledger``, ``llm_usage``) go once their
+     five years have ended: five years from the end of the financial year
+     in which each was made (v1.3; N50 P7), for every account, open or
+     deleted, by id, in batches. A row whose account is being erased waits
+     for that erasure, which keeps it.
 
 TWO KEYS FOR A REAL RUN. A dry run (the default) counts what is due, logs it
 by rule and writes a run record; it deletes nothing. A live run needs
@@ -38,7 +45,7 @@ the route takes from PHASE1_PURGE_EXECUTION_ENABLED -- the switch the
 operator script (scripts/run_phase1_data_purge.py) and the deletion
 completion run (services/deletion_completion.py) obey. Without it the
 guests stay due and the record counts them under
-``guests.held_purge_execution_off``; rules 2 and 3 are not purges and run.
+``guests.held_purge_execution_off``; rules 2 to 4 are not purges and run.
 
 Rows are removed here, through PostgREST, and only from relations named in
 this file, as the account purge removes them: a migration may not carry a
@@ -84,14 +91,23 @@ RECORDINGS_PER_RUN = 100
 LOG_BATCH = 100
 LOG_ROWS_PER_TABLE = 5_000
 
-#: Rule 3: exactly the report's five tables (0423 retention_log_relations_v1).
+#: Rule 3: exactly the report's four logs (0426 retention_log_relations_v1).
+#: Not dev_bugs: the founder's own bug list, not a log (N50 C4 B).
 LOG_TABLES: tuple[str, ...] = (
     "admin_annotations_log",
-    "dev_bugs",
     "life_reminder_log",
     "mlc3_service_backpressure_events",
     "processing_jobs",
 )
+
+#: Rule 4: v1.3's financial records, once their five years have ended
+#: (0426 retention_financial_relations_v1; N50 P7).
+FINANCIAL_TABLES: tuple[str, ...] = (
+    "llm_usage",
+    "token_ledger",
+)
+FINANCIAL_BATCH = 100
+FINANCIAL_ROWS_PER_TABLE = 5_000
 
 #: Rule 2: the voice-measurement rows removed with a recording (the `delete`
 #: stores of 0423 retention_measurement_stores_v1). The `wipe` stores --
@@ -108,7 +124,7 @@ ACCOUNT_MEASUREMENT_ROWS: tuple[tuple[str, str], ...] = (
 )
 
 _MISSING_RELATION_CODES = frozenset({"42P01", "PGRST205"})
-#: An error that is already a code, e.g. RETENTION_LOG_ROWS_REMAIN:dev_bugs.
+#: An error that is already a code, e.g. RETENTION_LOG_ROWS_REMAIN:dev_tasks.
 _CODE = re.compile(r"^[A-Z][A-Z0-9_]{2,80}(:[A-Za-z0-9_.]{1,79})?$")
 
 
@@ -157,6 +173,7 @@ def _live(database: Any, *, as_of: str | None, purge_execution: bool) -> dict:
         _erase_guests(database, run_id, purge_execution=purge_execution)
         _delete_recordings(database, run_id)
         _delete_log_rows(database, run_id)
+        _delete_financial_rows(database, run_id)
     except Exception as error:
         logger.error("retention cleaner: live run %s stopped: %s", run_id,
                      error, exc_info=True)
@@ -183,7 +200,10 @@ def _registry_matches(database: Any) -> None:
     )
     logs = {str(r.get("relation")) for r in
             _rows(database, "retention_log_relations_v1", {})}
-    if named != expected or logs != set(LOG_TABLES):
+    financial = {str(r.get("relation")) for r in
+                 _rows(database, "retention_financial_relations_v1", {})}
+    if (named != expected or logs != set(LOG_TABLES)
+            or financial != set(FINANCIAL_TABLES)):
         raise RuntimeError("RETENTION_REGISTRY_MISMATCH")
 
 
@@ -306,31 +326,51 @@ def _delete_object(claim: Mapping[str, Any]) -> str:
     return "deleted"
 
 
-# ── Rule 3: the five technical logs ─────────────────────────────────────────
+# ── Rules 3 and 4: the technical logs, the financial records ───────────────
 
 def _delete_log_rows(database: Any, run_id: str) -> None:
     for table in LOG_TABLES:
-        try:
-            _empty_log(database, run_id, table)
-        except Exception as error:
-            logger.error("retention cleaner: %s rows kept: %s", table, error,
-                         exc_info=True)
-            _count(database, run_id, f"logs.{table}.failed")
+        _empty_or_count(database, run_id, "logs", table,
+                        batch=LOG_BATCH, cap=LOG_ROWS_PER_TABLE)
 
 
-def _empty_log(database: Any, run_id: str, table: str) -> None:
+def _delete_financial_rows(database: Any, run_id: str) -> None:
+    for table in FINANCIAL_TABLES:
+        _empty_or_count(database, run_id, "financial", table,
+                        batch=FINANCIAL_BATCH, cap=FINANCIAL_ROWS_PER_TABLE)
+
+
+def _empty_or_count(database: Any, run_id: str, rule: str, table: str, *,
+                    batch: int, cap: int) -> None:
+    """One table's due rows; a table that fails is counted, and the run goes
+    on to the next."""
+    try:
+        _empty(database, run_id, rule, table, batch=batch, cap=cap)
+    except Exception as error:
+        logger.error("retention cleaner: %s rows kept: %s", table, error,
+                     exc_info=True)
+        _count(database, run_id, f"{rule}.{table}.failed")
+
+
+_ROWS_REMAIN = {"logs": "RETENTION_LOG_ROWS_REMAIN",
+                "financial": "RETENTION_FINANCIAL_ROWS_REMAIN"}
+
+
+def _empty(database: Any, run_id: str, rule: str, table: str, *,
+           batch: int, cap: int) -> None:
+    """The due ids the database lists, removed by id, until none is left or
+    the run's share is done; an id listed again after its removal stops it."""
     removed = 0
-    batch = _due(database, run_id, "logs", relation=table, limit=LOG_BATCH)
-    while batch and removed < LOG_ROWS_PER_TABLE:
+    ids = _due(database, run_id, rule, relation=table, limit=batch)
+    while ids and removed < cap:
         (database.client.table(table).delete(returning=ReturnMethod.minimal)
-         .in_("id", batch).execute())
-        following = _due(database, run_id, "logs", relation=table,
-                         limit=LOG_BATCH)
-        if set(batch) & set(following):
-            raise RuntimeError(f"RETENTION_LOG_ROWS_REMAIN:{table}")
-        _count(database, run_id, f"logs.{table}", len(batch))
-        removed += len(batch)
-        batch = following
+         .in_("id", ids).execute())
+        following = _due(database, run_id, rule, relation=table, limit=batch)
+        if set(ids) & set(following):
+            raise RuntimeError(f"{_ROWS_REMAIN[rule]}:{table}")
+        _count(database, run_id, f"{rule}.{table}", len(ids))
+        removed += len(ids)
+        ids = following
 
 
 # ── Plumbing ────────────────────────────────────────────────────────────────

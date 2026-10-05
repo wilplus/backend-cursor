@@ -1,5 +1,6 @@
 -- What the scheduled clean-up did: its run records. Read-only.
--- (Migration 0423; services/retention_cleaner.py; decisions log N48.4 Q16 A.)
+-- (Migrations 0423 and 0426; services/retention_cleaner.py; decisions log
+-- N48.4 Q16 A and N50.)
 --
 -- RUN IN THE SUPABASE SQL EDITOR. Two SELECTs; counts only, nothing by person.
 --
