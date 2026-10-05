@@ -1821,30 +1821,6 @@ def v2_coach_moment_read(session_id, snippet_id):
     return jsonify(payload), 200
 
 
-@v2_bp.route(
-    "/coach/sessions/<session_id>/snippets/<snippet_id>/named-errors",
-    methods=["GET", "PUT"],
-)
-@require_admin_or_coach
-def v2_coach_named_errors(session_id, snippet_id):
-    """The patterns the coach names on the moment itself (0402; P2-7), from
-    the unified walk: GET the current names, PUT {error_id, named}. Behind
-    the blind gate; coach provenance only, never on the speaker's payload."""
-    error, owner_sid = _moment_gate(session_id, snippet_id)
-    if error:
-        return error
-    from services.coach_moment_errors import (
-        name_error_on_moment, named_errors_on_moment,
-    )
-    if request.method == "GET":
-        return jsonify({"named": named_errors_on_moment(db, snippet_id)}), 200
-    status, payload = name_error_on_moment(
-        db, take_session_id=owner_sid, snippet_id=snippet_id,
-        body=request.get_json(silent=True),
-        coach_id=str(getattr(request, "user_id", "")))
-    return jsonify(payload), status
-
-
 # ── willab — the arc-level delivery: RETIRED ─────────────────────────────
 # Founder 2026-09-30, B3 to B6 (contract 65; docs/FOUNDER-LOCK-coach-panel-
 # 2026-10.md), removed 2026-10-01 on the founder's "do P2-19 now". The

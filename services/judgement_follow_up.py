@@ -291,6 +291,16 @@ def _clip_read(database: Any, take_session_id: str,
         return None
 
 
+def clip_machine_read(database: Any, take_session_id: str,
+                      snippet_id: str) -> Optional[str]:
+    """The machine's read of one clip: "confident", "weak" or "unknown";
+    None when the clip could not be read. The read that colours a bar
+    green and chooses the follow-up; the Voice Album's Machine Yes too
+    (founder 2026-10-05, Q5; N45). Internal, never surfaced (AC-9)."""
+    read = _clip_read(database, take_session_id, snippet_id)
+    return read["read"] if read else None
+
+
 def _exercise_on_moment(database: Any, take_session_id: str,
                         snippet_id: str) -> bool:
     """A frozen 80/20 draw for this moment: the item already carries one."""

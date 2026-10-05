@@ -1464,3 +1464,30 @@ should be kept for 5 years").**
    line Stripe shows ("Practice · 150,000 tokens") follows the purchase
    screen's chip. Existing subscriptions, if any, keep their webhook path;
    none can be started.
+
+
+**N45 · The second plan's open questions answered (founder 2026-10-05,
+"3a yes b 30 days / 4 yes as recommended / 5 yes / 6 yes / 7 agreed / 8 no /
+9 B").**
+1. **Q5 · The Album's Machine Yes is the clip's own read.** The machine leg
+   is `judgement_follow_up.clip_machine_read` on that exact clip: the read
+   that colours the bar green and chooses the follow-up. It was the legacy
+   star lane's EMPHASIZE row (`MOMENT_SUGGESTIONS_ENABLED`, off by default),
+   so nothing could enter. A clip that cannot be read is neither Yes nor No:
+   it adds nothing and removes nothing (fails closed, as N38).
+2. **Q9 · Naming a pattern on the moment is retired (B).** The route
+   `/coach/sessions/<sid>/snippets/<snip>/named-errors`, its two service
+   functions and the `named_errors` field on the coach's Read are removed;
+   no screen ever called them. `coach_moment_error_events` and its rows
+   stay as history; the practice-attached path still writes there.
+3. **Q8 · "You are here" is not built.** Lock-in spec §4 is marked retired.
+4. **Q7 · The coach's words to the speaker go to the designer session.**
+   `coach_answer` stays on the speaker's item, unrendered, until the design
+   places it on the Feedback sheet (design lock).
+5. **Q6 · The coach's practice judgement comes back** on the coach's screen
+   (frontend; the backend route never left). **Q3, Q4 · leaving and
+   retention:** a "Delete my account" button (its words to the founder for
+   sign-off), unclaimed guest recordings cleaned after 30 days, and a
+   retention cleaner (audio 12 months after last use, logs 90 days) that
+   reports what it would delete before its first real run, which waits for
+   the founder's word.
