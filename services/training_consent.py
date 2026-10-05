@@ -1,4 +1,4 @@
-"""The training switch (SPEC-training-corpus §3, P5 packet §4 item 6). DARK.
+"""The training switch (SPEC-training-corpus §3, P5 packet §4 item 6). OPEN.
 
 One person, one switch, its own screen: **Help improve WillpowerLab**. Turning
 it on records the training-only yes (`record_mlc2_training_consent_grant_v2`,
@@ -13,9 +13,13 @@ training (C1). This module adds no rule of its own; it maps the database's
 answers to stable codes. User-facing words for those codes live in the
 frontend and are the founder's (N10).
 
-DARK. `Config.MLC2_TRAINING_SWITCH_ENABLED` is a code constant, False until P5,
-and the route answers 410 while it is. Behind it the database holds no
-training policy, so there is nothing to turn on.
+OPEN since 2026-10-01 (door 1, the founder's sentence "open door 1";
+docs/LEARNING-DOORS.md). `Config.MLC2_TRAINING_SWITCH_ENABLED` is a code
+constant, True since then; only a reviewed change setting it back to False
+makes the route answer 410 again. The training policy row the yes rests on
+(`training-only-v1`) was registered by the founder the same day, per that
+document; whenever no training policy is active, `_read` answers
+`available: false` and there is nothing to turn on.
 """
 from __future__ import annotations
 

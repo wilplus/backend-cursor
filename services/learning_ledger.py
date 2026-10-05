@@ -4,13 +4,17 @@ ML-2).
 One read that says where every learning jar stands, in counts about the
 SYSTEM and never about a person:
 
-  * pairs per surface, total and awaiting export (feedback_pairs);
+  * pairs per surface, for every pair surface (the three answer surfaces
+    and the two coach-word ones): total, awaiting export, releasable, and
+    the EXPOSURES, the model drafts shown to a coach on that surface (C5:
+    a pair needs a draft shown and a final that differs);
   * the exercise learning jar: counted tries against 300, per exercise
     against 30 (services.exercise_learning_readiness);
   * the shadow cues: coach-named moments against 30 and the caught rate
     against 80% (services.verbal_cue_validation);
   * the four doors, as the code constants say them today;
-  * what last happened, where a table records it.
+  * what last happened, where a table records it: the newest pair
+    release, fine-tune run and promotion (``last``).
 
 A source that cannot be read is NAMED in `unavailable` rather than read as
 zero. Nothing here promotes, trains, exports or flips anything. Founder
@@ -78,6 +82,42 @@ def cue_rows(report: Any, *, min_named: int, min_caught_rate: float) -> dict:
     return out
 
 
+def _newest(database: Any, method: str) -> dict | None:
+    """The newest row a ledger table holds, or None when it holds none. A
+    database double without the table reads as None; a failed read raises
+    (and `_read` names it)."""
+    reader = getattr(database, method, None)
+    if reader is None:
+        return None
+    rows = [r for r in (reader(limit=1) or []) if isinstance(r, dict)]
+    return rows[0] if rows else None
+
+
+def _pick(row: Any, keys: tuple[str, ...]) -> dict | None:
+    return {k: row.get(k) for k in keys} if isinstance(row, dict) else None
+
+
+def last_events(database: Any, unavailable: list[str]) -> dict:
+    """What last happened, where a table records it (build plan ML-2): the
+    newest pair release (door 2), fine-tune run (door 3) and promotion
+    (door 4). Surfaces, states, counts and dates about the machine; no
+    owner, no coach, no file key. None where nothing has happened yet."""
+    release = _read("last_pair_release",
+                    lambda: _newest(database, "list_pair_releases"), unavailable)
+    run = _read("last_fine_tune",
+                lambda: _newest(database, "list_fine_tune_runs"), unavailable)
+    promotion = _read("last_promotion",
+                      lambda: _newest(database, "list_model_promotions"), unavailable)
+    return {
+        "pair_release": _pick(release, ("surface", "week_start", "item_count",
+                                        "exported_at", "voided_at", "purged_at")),
+        "fine_tune": _pick(run, ("surface", "status", "item_count",
+                                 "started_at", "finished_at", "withdrawn_at")),
+        "promotion": _pick(promotion, ("surface", "candidate_model",
+                                       "promoted_at", "killed_at")),
+    }
+
+
 def _peer_lane_counts(database: Any, since: str) -> dict:
     """Counts only; empty and marked dark while the peer lane is off."""
     from services.lend_your_ear import peer_lane_enabled
@@ -88,7 +128,7 @@ def _peer_lane_counts(database: Any, since: str) -> dict:
 
 def ledger(database: Any, *, config: Any = None) -> dict:
     """Everything the founder's page and the weekly job need, in one dict."""
-    from services.feedback_pairs import counts
+    from services.feedback_pairs import counts, exposures as draft_exposures
     from services.exercise_learning_readiness import readiness
     from services.verbal_cue_validation import (
         PROMOTION_MIN_CAUGHT_RATE, PROMOTION_MIN_NAMED, report,
@@ -112,9 +152,14 @@ def ledger(database: Any, *, config: Any = None) -> dict:
         "acoustic_cues",
         lambda: report(database, detector_version=ACOUSTIC_CUES_VERSION, cues=ACOUSTIC_CUES),
         unavailable) or {})
+    # Drafts shown per surface (ML-2): None on every surface when the count
+    # could not be read (named in `unavailable`), never a zero.
+    shown = _read("exposures", lambda: draft_exposures(database), unavailable)
     for surface, entry in pairs.items():
         entry["run_bar"] = PAIRS_PER_RUN
         entry["ready_for_run"] = entry.get("unexported", 0) >= PAIRS_PER_RUN
+        entry["exposures"] = (int(shown.get(surface) or 0)
+                              if isinstance(shown, dict) else None)
     # Requests per opened moment, before and after the Phase 2 switch
     # (founder 2026-10-01): the last four weeks, split by kind.
     from services.coach_load import coach_load
@@ -144,6 +189,7 @@ def ledger(database: Any, *, config: Any = None) -> dict:
         "shadow_cues": cue_rows(cues, min_named=PROMOTION_MIN_NAMED,
                                 min_caught_rate=PROMOTION_MIN_CAUGHT_RATE),
         "doors": doors(config),
+        "last": last_events(database, unavailable),
         "coach_load": load,
         "after_practice": after,
         "peer_lane": peer,

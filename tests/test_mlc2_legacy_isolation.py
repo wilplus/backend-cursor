@@ -55,9 +55,16 @@ def test_confidence_dark_contract_is_not_imported_by_live_product_code():
         ROOT / "services" / "mlc2_confidence.py",
         ROOT / "services" / "mlc2_confidence_producer.py",
         ROOT / "services" / "mlc2_confidence_blind.py",
-        # Aggregate-only evaluator imported by the operator readiness script;
-        # no product route imports it and it cannot write runtime state.
+        # Aggregate-only evaluator imported by the operator readiness script
+        # and the research screen's Monitors panel (below); no speaker- or
+        # coach-facing route imports it and it cannot write runtime state.
         ROOT / "services" / "mlc2_confidence_readiness.py",
+        # ML-7 (2026-10-05): the research screen (research role and founder,
+        # read-only) shows the readiness monitor's checks by running that
+        # same aggregate-only evaluation over the same two aggregate RPCs the
+        # five-minute cron reads. It writes nothing, starts nothing, reaches
+        # no speaker, and a failed read is named, never a broken screen.
+        ROOT / "services" / "research_view.py",
         # Slice 4's only application bridge. Slice 6's atomic mode selects
         # the pre-cutover, founder-canary or fully-killed writer state.
         ROOT / "services" / "take_lifecycle.py",

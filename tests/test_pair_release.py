@@ -63,7 +63,7 @@ def _pair(i, owner="p-1", state="yes"):
 
 
 class _Db:
-    def __init__(self, pairs=None, voided=None):
+    def __init__(self, pairs=None, voided=None, grants=None, stopped=(), takes=None):
         self.pairs = pairs or []
         self.releases: list[dict] = []
         self.owners: list[tuple[str, list]] = []
@@ -71,9 +71,24 @@ class _Db:
         self.voided = voided or []
         self.purged: list[str] = []
         self.refreshed_with = None
+        # The release decides every pair afresh (PLF-P5): the yes in force
+        # now, whether the owner's service is ending, where the Take lives.
+        self.grants = {"p-1": "training-v1", "p-2": "training-v1"} if grants is None else grants
+        self.stopped = set(stopped)
+        self.takes = takes or {}
 
     def list_releasable_pairs(self, surface, limit=5000):
         return [p for p in self.pairs if p["surface"] == surface]
+
+    def list_active_training_grants(self, owners):
+        return [{"id": f"grant-{o}", "acquisition_principal_id": o, "consent_policy_version": v}
+                for o, v in self.grants.items() if o in owners]
+
+    def phase1_learning_stopped(self, owner):
+        return owner in self.stopped
+
+    def list_take_projects(self, takes):
+        return {t: p for t, p in self.takes.items() if t in takes}
 
     def insert_pair_release(self, **fields):
         row = {"id": f"rel-{len(self.releases) + 1}", **fields}
@@ -219,7 +234,10 @@ class ExportTests(unittest.TestCase):
         for line in lines:
             self.assertEqual(set(line), {"pair_id", "surface", "pattern_key", "draft", "final", "final_kind",
                                          "draft_model_version", "split", "owner_split_key", "consent_state",
-                                         "consent_policy_version", "recorded_at"})
+                                         "consent_policy_version", "recorded_at",
+                                         # PLF-P5: the release-time decision, per item.
+                                         "item_sha256", "eligibility_decided_at"})
+            self.assertEqual(line["eligibility_decided_at"], now.isoformat())
             self.assertIn(line["split"], ("train", "validation", "test"))
             self.assertNotIn("p-1", json.dumps(line))
         manifest = json.loads(storage.objects[("willab-pair-releases", key.replace("pairs.jsonl", "manifest.json"))])

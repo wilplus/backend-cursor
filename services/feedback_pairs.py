@@ -152,16 +152,13 @@ def _mirror(database: Any, row: dict, coach: str) -> None:
 
 def counts(database: Any) -> dict:
     """Per surface: how many pairs exist, how many await export and how
-    many were ever releasable (the pace panel's jar, which only grows).
-    Every surface is named, at zero when nothing was written."""
+    many are releasable (the pace panel's jar). Every surface is named, at
+    zero when nothing was written. A count that cannot be read RAISES, so
+    the ledger names "pairs" unavailable instead of drawing zeros that read
+    as a measurement (ML-2); a database with no pair table at all (a test
+    double) reads as zero."""
     reader = getattr(database, "count_feedback_pairs", None)
-    raw: dict = {}
-    if reader is not None:
-        try:
-            raw = reader() or {}
-        except Exception as e:  # noqa: BLE001 -- a count, not a fault
-            _log.warning("feedback pair count failed: %s", e, exc_info=True)
-            raw = {}
+    raw: Any = reader() if reader is not None else {}
     out = {}
     for surface in SURFACES:
         entry = raw.get(surface) if isinstance(raw, dict) else None
@@ -172,3 +169,15 @@ def counts(database: Any) -> dict:
             "releasable": int(entry.get("releasable") or 0),
         }
     return out
+
+
+def exposures(database: Any) -> dict:
+    """Per surface: how many times a model's draft was shown to a coach
+    (ML-2; the first half of the C5 rule: a pair exists only where a draft
+    was shown AND the final differs, so ``pairs / exposures`` is how often
+    coaches change a draft). Every surface is named, at zero when nothing
+    was shown. Raises when the count cannot be read (named, never zero)."""
+    reader = getattr(database, "count_draft_exposures", None)
+    raw: Any = reader() if reader is not None else {}
+    raw = raw if isinstance(raw, dict) else {}
+    return {surface: int(raw.get(surface) or 0) for surface in SURFACES}
