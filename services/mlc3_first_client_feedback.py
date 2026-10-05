@@ -553,6 +553,8 @@ def prepare_first_client_feedback(
     feedback_candidates: Iterable[Any],
     owner_user_id: str,
     learning: Optional[dict] = None,
+    declined_rewrites: Any = frozenset(),
+    frozen_candidate_ids: Any = frozenset(),
 ) -> list[dict] | V3Unavailable | None:
     """Rows, a typed failure, or ``None`` when V3 does not apply here.
 
@@ -564,6 +566,10 @@ def prepare_first_client_feedback(
     ``learning``, when given, receives the exposure bundle the rows were
     served from (see `_note_learning`); the caller freezes the seven-surface
     learning packets from it, one per served card.
+
+    ``declined_rewrites`` / ``frozen_candidate_ids``: the standing "Keep my
+    words" keys and this Take's frozen selection, handed to the frame
+    (N48.2, Q3 A; `services.rewrite_declines`).
     """
     take = session if isinstance(session, dict) else {}
     principal_id = str(take.get("owner_principal_id") or "")
@@ -600,6 +606,8 @@ def prepare_first_client_feedback(
         # The Ideal Text the verbal rows' spans address; V3 maps them into
         # this Take's transcript before anchoring (N48.1, Wave 1).
         served_text=served_text,
+        declined_rewrites=declined_rewrites,
+        frozen_candidate_ids=frozen_candidate_ids,
     )
     _log_coverage(take_id, take.get("take_index"), frame)
     inventory_detail: list[str] = []
