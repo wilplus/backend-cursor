@@ -54,7 +54,7 @@ _VERBAL_FAMILIES = set(VERBAL_FAMILIES)
 
 def dark_enabled(acquisition_principal_id: Any) -> bool:
     """True only for the exact configured founder in explicit dark mode."""
-    mode = (config.TAKE_FEEDBACK_POLICY_V3_MODE or "off").strip()
+    mode = (config.TAKE_FEEDBACK_POLICY_V3_SHADOW_WRITE_MODE or "off").strip()
     founder = (config.TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID or "").strip()
     owner = str(acquisition_principal_id or "").strip()
     return bool(
