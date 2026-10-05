@@ -127,7 +127,7 @@ company idea, and an invitation to San Diego for 3 weeks).
 >
 > For the Zoom with Ariel and her cousin, Thursday or Friday works for me, anytime between 10 am and 1 pm your time. Just 30 minutes: I'll show them the app, collect their feedback and that's it! :D
 >
-> Let me know how Levia liked the lesson. If she'd like to continue, let's find a regular rhythm that suits her, so we can keep building on her story. And if it wasn't quite her thing, that's totally fine too!
+> Let me know how Levia liked the lesson. If she'd like to continue, let's find a regular rhythm that suits her, so we can keep building on her story.
 >
 > And whenever you have any website or marketing questions, just go ahead! If you want, we can talk about it more after the Zoom call.
 >
