@@ -1218,6 +1218,12 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     # paperwork for a whole account: ids, times, a state and the evidence
     # hash of the purge that finished it.
     "account_deletion_requests",
+    # The scheduled clean-up's own paperwork (0423), like the purge's above:
+    # a run's counts and times, and the ids of the objects a live run claimed
+    # with how each ended. No column names a person; what a run deleted is
+    # recorded where every deletion is (processing_audio_object_deletion_
+    # events, data_purge_requests).
+    "retention_cleaner_runs", "retention_cleaner_audio_claims",
     "data_rights_requests", "data_retention_rules",
     "processing_policy_versions", "processing_policy_purposes",
     "processing_purpose_registry", "processing_legal_artifacts",
@@ -1278,6 +1284,12 @@ DYNAMIC_RUNTIME_RELATIONS: frozenset[str] = frozenset({
     "life_weeks", "life_period_reviews", "life_setup_documents",
     "life_push_subscriptions", "life_reminder_settings", "life_reminder_log",
     "life_user_copy", "dev_bugs", "dev_tasks",
+    # The scheduled clean-up (services/retention_cleaner.py) removes rows
+    # from the relations its reviewed lists name: the five logs and the
+    # voice-measurement stores. dev_bugs and life_reminder_log are above.
+    "processing_jobs", "admin_annotations_log",
+    "mlc3_service_backpressure_events", "dimension_evaluations",
+    "session_sniper_metrics", "arc_part_acoustics", "user_acoustic_baseline",
 })
 
 

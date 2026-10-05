@@ -557,6 +557,17 @@ if [ "$LANE" = "released" ]; then
   hard migrations/module_8_is_counted.sql
 fi
 
+# 0423: the scheduled clean-up -- one definition of what is due, the run
+# record, the run's writers, and the two guard openings (patched into the
+# installed reject_canonical_feedback_mutation and
+# reject_mlc3_general_service_mutation_v1). Released lane only: its suite,
+# tests/test_retention_cleaner_postgres.py, runs there. Last, as in the
+# manifest. Twice: apply/reapply idempotency.
+if [ "$LANE" = "released" ]; then
+  hard migrations/old_data_goes_on_a_schedule.sql
+  hard migrations/old_data_goes_on_a_schedule.sql
+fi
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing
