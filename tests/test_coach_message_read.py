@@ -1,7 +1,8 @@
 """The coach's overall message reaches the speaker (founder 2026-09-29, Q1).
 
-Pins: only a PUBLISHED Take counts, and only the Take on screen (N48.3
-Q11 A: a coach's word belongs to its Take); the words come from the
+Pins: only a PUBLISHED Take counts, and only the Take on screen's publish
+(N48.3 Q11 A: a coach's word belongs to its Take; the earlier-Take word
+fallback is pinned in test_coach_take_word); the words come from the
 published revision, never the session's draft field; a video-only message
 is kept; nothing when the coach sent neither; a failed read is None; and the
 Ideal Text enrichment serves it in the owner's journey section for the
@@ -56,10 +57,11 @@ def test_the_take_on_screen_and_its_published_words(monkeypatch):
     }
 
 
-def test_another_takes_message_never_stands_in(monkeypatch):
+def test_another_takes_publish_never_stands_in(monkeypatch):
     """Q11 A: the page showing Take 3 (nothing published on it) gets no
-    message, though Take 2 has one; the page showing Take 1 gets Take 1's
-    own, not the later Take 2's."""
+    message from Take 2's arc-level publish (only an earlier Take's shared
+    WORD may stand in, see test_coach_take_word); the page showing Take 1
+    gets Take 1's own, not the later Take 2's."""
     monkeypatch.setattr("services.coach_video_storage.refreshed_media_url",
                         lambda ref: f"https://media/{ref}")
     db = _Db(

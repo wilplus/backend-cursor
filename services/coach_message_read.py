@@ -12,12 +12,16 @@ this is the one read that serves them.
   (`coach_review_revisions`), never from `v2_sessions.coach_overall_message`,
   which the coach's message step also writes while drafting. Only a Take with
   `results_published_at` counts.
-- THE TAKE ON SCREEN (founder 2026-10-05, N48.3 Q11 A; contract 35g-6). A
-  coach's word belongs to the Take it was left on. The read serves the word
-  for the Take the Ideal Text shows (its `latest_take_session_id`), never
-  the latest word of the whole project, and names that Take
-  (`take_session_id`) so the page can tell an unseen word from one already
-  read. No Take on screen, no word.
+- THE TAKE ON SCREEN FIRST (founder 2026-10-05, N48.3 Q11 A; contract
+  35g-6). A coach's word belongs to the Take it was left on. The read serves
+  the word (or published review) of the Take the Ideal Text shows (its
+  `latest_take_session_id`). Coach review is asynchronous, so a coach often
+  answers Take 1 after Take 2 was recorded; that word must still reach the
+  speaker (LIVE LOOP). So when the Take on screen has none, the most recent
+  shared word of an EARLIER Take is served, carrying its own Take. A later
+  Take's word is never served. Every message names its Take
+  (`take_session_id`, `take_index`) so Step 0 labels it and the page can
+  tell an unseen word from one already shown. No Take on screen, no word.
 - QUALITATIVE. Words and a video; no score, no verdict (AC-9).
 """
 from __future__ import annotations
@@ -38,24 +42,43 @@ def _latest_published(sessions: Any) -> Optional[dict]:
     return max(published, key=lambda s: str(s.get("results_published_at")))
 
 
+def _take_index(row: Any) -> Optional[int]:
+    value = row.get("take_index") if isinstance(row, dict) else None
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
 def coach_message_for(database: Any, sessions: Any,
                       take_session_id: Optional[str]) -> Optional[dict]:
     """{text, video_url, take_index, published_at, take_session_id} for the
-    Take on screen, or None when there is no such Take, it has neither a
-    shared word nor a published review, or the coach sent neither words nor
-    a video. Best-effort: a failed read is None, never an error.
+    Take on screen; failing that, the most recent shared word of an earlier
+    Take (N48.3 Q11 A); else None. Never a later Take's. Best-effort: a
+    failed read is None, never an error.
 
-    A WORD FOR THIS TAKE (founder 2026-09-30, B3; 0403) comes first: where a
-    coach shared one on this Take, the latest shared word is the speaker's
-    coach message; this Take's arc-level publish serves only where none
-    exists, until the removals retire it (P2-19). Another Take's word or
-    publish never stands in (N48.3 Q11 A)."""
+    An earlier Take is one with a lower `take_index` than the Take on
+    screen; when the Take on screen has no index, no Take is provably
+    earlier and none is served."""
     from services.coach_take_word import latest_shared_word
     take = str(take_session_id or "")
-    shown = [s for s in (sessions or [])
-             if isinstance(s, dict) and take and str(s.get("id") or "") == take]
+    rows = [s for s in (sessions or []) if isinstance(s, dict)]
+    shown = [s for s in rows if take and str(s.get("id") or "") == take]
     if not shown:
         return None
+    own = _message_for_take(database, shown, take)
+    if own is not None:
+        return own
+    index = _take_index(shown[0])
+    if index is None:
+        return None
+    earlier = [s for s in rows if (_take_index(s) or index) < index]
+    return latest_shared_word(database, earlier) if earlier else None
+
+
+def _message_for_take(database: Any, shown: list, take: str) -> Optional[dict]:
+    """The Take on screen's own message. A WORD FOR THIS TAKE (founder
+    2026-09-30, B3; 0403) comes first: where a coach shared one on this
+    Take, the latest shared word; this Take's arc-level publish serves only
+    where none exists, until the removals retire it (P2-19)."""
+    from services.coach_take_word import latest_shared_word
     word = latest_shared_word(database, shown)
     if word is not None:
         return word
