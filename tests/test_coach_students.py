@@ -100,6 +100,10 @@ class SwitchOnTests(unittest.TestCase):
                  patch.object(db, "get_snippets_by_session", return_value=[{"id": SNIP}]), \
                  patch.object(db, "get_own_state_ratings_for_session", return_value={}), \
                  patch.object(db, "list_exercise_coach_requests_for_sessions", return_value={}), \
+                 patch.object(db, "list_moment_events_for_sessions",
+                              return_value=[{"take_session_id": SID, "snippet_id": SNIP,
+                                             "event": "opened"}]), \
+                 patch.object(db, "list_confident_voice_answered_moments", return_value=[]), \
                  patch.object(db, "get_user_proficient_languages", return_value=coach_languages), \
                  patch.object(db, "get_student_names", return_value={UID: "Anna"}), \
                  patch.object(db, "get_ideal_text_feedback_set", return_value=feedback_set):

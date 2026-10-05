@@ -55,11 +55,17 @@ class TheMomentsQueueTests(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
 
-    def _get(self, *, recording_language, coach_languages, feedback_set):
+    def _get(self, *, recording_language, coach_languages, feedback_set,
+             events=None, answers=None):
+        opened = [{"take_session_id": SID, "snippet_id": SNIP, "event": "opened"}]
         with self.app.test_request_context():
             request.user_id = "coach1"
             with patch.object(db, "get_user_proficient_languages",
                               return_value=coach_languages), \
+                 patch.object(db, "list_moment_events_for_sessions",
+                              return_value=opened if events is None else events), \
+                 patch.object(db, "list_confident_voice_answered_moments",
+                              return_value=answers or []), \
                  patch("routes.v2.coach.load_review_queue",
                        return_value=([_row()], {SID: [{"id": SNIP}]}, {})), \
                  patch.object(db, "get_recording",
@@ -70,7 +76,7 @@ class TheMomentsQueueTests(unittest.TestCase):
                               return_value={}), \
                  patch.object(db, "get_ideal_text_feedback_set",
                               return_value=feedback_set):
-                with self.assertLogs("routes.v2.coach", level="INFO") as logs:
+                with self.assertLogs(level="INFO") as logs:
                     v2_coach.logger.info("probe")
                     out = v2_coach.v2_coach_moments_queue.__wrapped__()
         resp, status = out if isinstance(out, tuple) else (out, 200)
@@ -101,6 +107,53 @@ class TheMomentsQueueTests(unittest.TestCase):
         self.assertFalse(take["waiting_for_text"])
         self.assertEqual([m["snippet_id"] for m in take["moments"]], [SNIP])
         self.assertEqual(take["waiting"], 1)
+
+    def _frozen(self):
+        return {"selected_keys": [{
+            "id": f"relative-confidence:{SID}:{SNIP}", "kind": "relative_confidence",
+            "source": "confident_voice", "feedback_family": "confident_voice",
+            "snippet_id": SNIP, "take_session_id": SID,
+        }]}
+
+    def test_a_frozen_bookmark_the_speaker_never_met_is_not_listed(self):
+        # N48.2, Q1 A (audit D9): frozen before the window, never opened,
+        # never answered -- the coach does not judge it. The take still
+        # rides (never silently absent) and the log names the filter.
+        body, status, logged = self._get(
+            recording_language="en", coach_languages=["en"],
+            feedback_set=self._frozen(), events=[])
+        self.assertEqual(status, 200)
+        take = body[0]["takes"][0]
+        self.assertFalse(take["waiting_for_text"])
+        self.assertEqual(take["moments"], [])
+        self.assertEqual(take["waiting"], 0)
+        self.assertIn("filter=not_reached_speaker", logged)
+
+    def test_an_answered_bookmark_is_listed_without_the_answer(self):
+        body, status, _ = self._get(
+            recording_language="en", coach_languages=["en"],
+            feedback_set=self._frozen(), events=[],
+            answers=[{"take_session_id": SID, "snippet_id": SNIP}])
+        self.assertEqual(status, 200)
+        moments = body[0]["takes"][0]["moments"]
+        self.assertEqual(moments, [{"snippet_id": SNIP, "state": "judge_it"}])
+
+    def test_a_failed_reach_read_fails_the_queue_visibly(self):
+        with self.app.test_request_context():
+            request.user_id = "coach1"
+            with patch.object(db, "get_user_proficient_languages", return_value=["en"]), \
+                 patch("routes.v2.coach.load_review_queue",
+                       return_value=([_row()], {SID: [{"id": SNIP}]}, {})), \
+                 patch.object(db, "get_recording",
+                              return_value={"transcription_language": "en"}), \
+                 patch.object(db, "list_exercise_coach_requests_for_sessions",
+                              return_value={}), \
+                 patch.object(db, "list_moment_events_for_sessions",
+                              side_effect=RuntimeError("down")), \
+                 patch.object(db, "get_ideal_text_feedback_set",
+                              return_value=self._frozen()):
+                resp, status = v2_coach.v2_coach_moments_queue.__wrapped__()
+        self.assertEqual(status, 500)
 
     def test_a_take_withheld_by_language_is_logged_with_its_filter(self):
         body, status, logged = self._get(recording_language="pl", coach_languages=["en"],

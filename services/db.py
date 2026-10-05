@@ -14938,6 +14938,38 @@ class DatabaseService:
                .order("created_at").execute())
         return list(res.data or [])
 
+    def list_moment_events_for_sessions(
+        self, take_session_ids: list[str],
+    ) -> list[dict]:
+        """Every open and skip on these Takes (0408): which moments reached
+        the speaker, for the coach's queue (N48.2, Q1 A). Raises on failure:
+        the queue then fails visibly rather than listing moments no speaker
+        met."""
+        ids = [str(i) for i in take_session_ids if i]
+        if not ids:
+            return []
+        res = (self.client.table("moment_events")
+               .select("take_session_id,snippet_id,event")
+               .in_("take_session_id", ids).execute())
+        return list(res.data or [])
+
+    def list_confident_voice_answered_moments(
+        self, take_session_ids: list[str],
+    ) -> list[dict]:
+        """Which Confident Voice moments the speaker ANSWERED on these Takes
+        (N48.2, Q1 A): (take_session_id, snippet_id) only. The answer itself
+        is never selected, so nothing here can carry it toward a coach
+        (BLIND COACH). Raises on failure, like the read beside it."""
+        ids = [str(i) for i in take_session_ids if i]
+        if not ids:
+            return []
+        res = (self.client.table("take_feedback_self_report")
+               .select("take_session_id,snippet_id")
+               .in_("take_session_id", ids)
+               .eq("feedback_family", "confident_voice")
+               .execute())
+        return list(res.data or [])
+
     def count_moment_events(self, event: str, since: str) -> int:
         """How many bookmarks were opened (or skipped) since `since` (0408).
         Raises on failure."""
