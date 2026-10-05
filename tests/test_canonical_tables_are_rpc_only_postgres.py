@@ -20,6 +20,15 @@ a transaction that is always rolled back), so a database that still grants
 the privilege — origin/main before 0389 — lets it through and the assertion
 fails; nothing is ever written.
 
+Retention schedule v1.5 (0429, decisions log N50 P1/P6) gives the purge a way
+to delete six of these tables' rows with the account: the service role holds
+DELETE on them again, and on feedback_revisions SELECT of the two columns the
+purge selects it by. The append-only guard still refuses every DELETE but
+one a running purge's sealed inventory names, once v1.5 is registered
+(tests/test_v1_5_purge_postgres.py proves the guard row by row); INSERT,
+UPDATE and TRUNCATE stay refused on every table, and no column that holds
+what anyone wrote becomes readable.
+
 The target must be a disposable local database whose name starts with
 ``willab_confident_moment_``.
 """
@@ -59,6 +68,21 @@ TABLES = GRANTED_BY_0296 + GRANTED_BY_0299
 # widens, so that table stays unreadable; every other table keeps SELECT.
 LOCKED_ENTIRELY = ("feedback_revisions",)
 READ_KEPT = tuple(t for t in TABLES if t not in LOCKED_ENTIRELY)
+
+# 0429 (retention schedule v1.5): the six tables the purge deletes with the
+# account, through their append-only guard; feedback_revisions readable only
+# by the columns that select it.
+OPENED_TO_THE_PURGE = (
+    "dataset_split_assignments", "dataset_release_items", "dataset_exclusions",
+    "learning_surface_presentations", "learning_surface_exposure_receipts",
+    "feedback_revisions",
+)
+PURGE_SELECTORS = {"feedback_revisions": ("acquisition_principal_id", "rater_id")}
+# The guard each of them carries: feedback_revisions is the coaching bundle's.
+GUARD_OF = {table: "reject_canonical_feedback_mutation"
+            for table in OPENED_TO_THE_PURGE}
+GUARD_OF["feedback_revisions"] = "reject_confident_moment_mutation_v1"
+CLOSED_TO_DELETES = tuple(t for t in TABLES if t not in OPENED_TO_THE_PURGE)
 
 # The one writer that is not SECURITY DEFINER: a trigger on projects that
 # only fires inside claim_guest_owner (a definer); see 0389's header.
@@ -185,11 +209,31 @@ class TestServiceRoleCannotWrite:
                     "WHERE false"
                 )
 
-    @pytest.mark.parametrize("table", TABLES)
+    @pytest.mark.parametrize("table", CLOSED_TO_DELETES)
     def test_delete_is_refused(self, db, table):
         with _ServiceRole(db) as cur:
             with pytest.raises(psycopg2.errors.InsufficientPrivilege):
                 cur.execute(f"DELETE FROM public.{table} WHERE false")
+
+    @pytest.mark.parametrize("table", OPENED_TO_THE_PURGE)
+    def test_a_delete_reaches_only_the_append_only_guard(self, db, table):
+        """0429: the privilege is held, so what refuses a delete is the
+        table's guard, patched to pass only what a running purge names."""
+        with _ServiceRole(db) as cur:
+            cur.execute(f"DELETE FROM public.{table} WHERE false")
+        with db.cursor() as cur:
+            cur.execute(
+                "SELECT p.proname, strpos(pg_get_functiondef(p.oid), "
+                "'/* 0429 v1.5 purge */') > 0 "
+                "FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid "
+                "WHERE t.tgrelid = ('public.' || %s)::regclass "
+                "AND NOT t.tgisinternal AND t.tgenabled <> 'D' "
+                "AND (t.tgtype & 1) <> 0 AND (t.tgtype & 2) <> 0 "
+                "AND (t.tgtype & 8) <> 0",
+                (table,),
+            )
+            guards = cur.fetchall()
+        assert guards == [(GUARD_OF[table], True)]
 
     @pytest.mark.parametrize("table", TABLES)
     def test_truncate_is_refused(self, db, table):
@@ -210,10 +254,15 @@ class TestServiceRoleStillReads:
 
     @pytest.mark.parametrize("table", LOCKED_ENTIRELY)
     def test_a_table_locked_before_stays_locked(self, db, table):
-        """0389 never widens: the bundle's full revoke survives it."""
+        """0389 never widens: the bundle's revoke survives it. Since 0429 the
+        purge may read the columns that select a row, and nothing else."""
+        with _ServiceRole(db) as cur:
+            cur.execute(
+                f"SELECT {', '.join(PURGE_SELECTORS[table])} "
+                f"FROM public.{table} LIMIT 1")
         with _ServiceRole(db) as cur:
             with pytest.raises(psycopg2.errors.InsufficientPrivilege):
-                cur.execute(f"SELECT count(*) FROM public.{table}")
+                cur.execute(f"SELECT * FROM public.{table} LIMIT 1")
 
     def test_the_grant_is_exactly_select(self, db, present):
         with db.cursor() as cur:
@@ -226,7 +275,12 @@ class TestServiceRoleStillReads:
                 (list(present),),
             )
             grants = dict(cur.fetchall())
-        assert grants == {t: "SELECT" for t in present if t in READ_KEPT}
+        assert grants == {
+            t: ("DELETE,SELECT" if t in OPENED_TO_THE_PURGE else "SELECT")
+            if t in READ_KEPT else "DELETE"
+            for t in present
+            if t in READ_KEPT or t in OPENED_TO_THE_PURGE
+        }
 
 
 class TestWhyTheRevokeIsSafe:

@@ -1,7 +1,12 @@
 """CI-fast boundaries; the executable PostgreSQL rehearsal is separate."""
 from pathlib import Path
 
-from services.data_purge_registry import DEPENDENCIES, NON_SUBJECT_RELATIONS
+from services.data_purge_registry import (
+    DEPENDENCIES,
+    NON_SUBJECT_RELATIONS,
+    SCHEDULE_V1_5,
+    before_its_rule,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,7 +39,12 @@ def test_every_personal_table_is_dark_rpc_only_append_only_and_purge_classified(
         assert "serves_user BOOLEAN NOT NULL DEFAULT false CHECK (NOT serves_user)" in definition
         assert "dataset_eligible BOOLEAN NOT NULL DEFAULT false CHECK (NOT dataset_eligible)" in definition
         assert f"ALTER TABLE public.{table} ENABLE ROW LEVEL SECURITY" in SQL
-        assert deps[table].disposition == "external_review"
+        # Deleted with the account once retention schedule v1.5 is
+        # registered (N50 P6 A); until then a row stops the erasure for
+        # review, as it always did.
+        assert (deps[table].disposition, deps[table].schedule) == (
+            "delete", SCHEDULE_V1_5)
+        assert before_its_rule(deps[table]).disposition == "external_review"
         assert deps[table].selector_column == "acquisition_principal_id"
         assert deps[table].locator_kind == "principal"
     assert "exercise_media_availability_checks" in NON_SUBJECT_RELATIONS

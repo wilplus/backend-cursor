@@ -520,8 +520,10 @@ def test_every_relation_the_cleaner_writes_is_classified_and_none_is_retained():
         assert "retain" not in by_relation.get(relation, set()), relation
     # Rule 4 is the one exception, and exactly it: the relations the purge
     # keeps as financial evidence (v1.3), whose period the clean-up ends.
+    # v1.5's paid arc (N50 P2 A) is not in it yet: v1.5 §4.
     financial = {dep.relation for dep in DEPENDENCIES
-                 if dep.retention_category == "financial_evidence"}
+                 if dep.retention_category == "financial_evidence"
+                 and dep.schedule is None}
     assert financial == set(rc.FINANCIAL_TABLES)
     for relation in financial:
         assert by_relation[relation] == {"retain"}, relation
