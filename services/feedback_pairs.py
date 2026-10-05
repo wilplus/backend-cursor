@@ -151,7 +151,8 @@ def _mirror(database: Any, row: dict, coach: str) -> None:
 
 
 def counts(database: Any) -> dict:
-    """Per surface: how many pairs exist and how many await export.
+    """Per surface: how many pairs exist, how many await export and how
+    many were ever releasable (the pace panel's jar, which only grows).
     Every surface is named, at zero when nothing was written."""
     reader = getattr(database, "count_feedback_pairs", None)
     raw: dict = {}
@@ -168,5 +169,6 @@ def counts(database: Any) -> dict:
         out[surface] = {
             "total": int(entry.get("total") or 0),
             "unexported": int(entry.get("unexported") or 0),
+            "releasable": int(entry.get("releasable") or 0),
         }
     return out

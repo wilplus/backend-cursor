@@ -15,7 +15,9 @@ from flask import jsonify, request
 
 from routes.admin import require_admin_or_coach
 from routes.v2.blueprint import v2_bp
+from routes.v2.processing_authorization import speaker_provider_route
 from routes.v2.common import _is_valid_uuid
+from services.processing_authorization import ProcessingAuthorizationError
 from services.db import db
 
 logger = logging.getLogger(__name__)
@@ -24,6 +26,8 @@ logger = logging.getLogger(__name__)
 def _run(name: str, call):
     try:
         status, payload = call()
+    except ProcessingAuthorizationError:
+        raise  # speaker_provider_route answers it with its own code
     except Exception as e:
         logger.error("%s failed: %s", name, e, exc_info=True)
         sentry_sdk.capture_exception(e)
@@ -33,6 +37,7 @@ def _run(name: str, call):
 
 @v2_bp.route("/coach/sessions/<session_id>/word/draft", methods=["POST"])
 @require_admin_or_coach
+@speaker_provider_route
 def v2_coach_take_word_draft(session_id):
     """Body {notes?}: a draft of the Take word, kept on the coach's row."""
     from services.coach_word_pairs import draft_take_word
@@ -51,6 +56,7 @@ def v2_coach_take_word_draft(session_id):
     methods=["POST"],
 )
 @require_admin_or_coach
+@speaker_provider_route
 def v2_coach_moment_line_draft(session_id, snippet_id):
     """Body {notes?}: a draft of the personal line on this moment, behind
     the blind gate, kept on the moment's request row."""

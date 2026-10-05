@@ -4,18 +4,11 @@ re-priced to $25/25 credits 2026-07-06 same day).
 Owns every arc-lifecycle bubble so each has ONE idempotent client_id (uuid5 per
 arc + kind) and fires from every trigger without duplication:
 
-  • best_presentation_ready — ONLY when the arc has >=3 takes AND
-    coach_finalized (the coach has corrected EVERY slide — the REAL signal
-    from services.slide_selection, NOT a proxy like "all takes published";
-    a coach can publish every take's automatic review + commentary without
-    having done the separate ideal-text correction pass) AND the arc is PAID.
-    Fired from: lab upload (take >=3), publish (a take lands, may complete
-    coach_finalized), checkout (payment lands), and the coach's own edit save
-    — whichever completes the condition last.
-  • transcript_ready — the unpaid/unfinalized >=3-takes counterpart: the user
-    gets the transcript-text affordance, NOT the best-pres
-    buttons (founder #1: never present the best presentation before the coach
-    has actually corrected it AND it's paid).
+  • best_presentation_ready — RETIRED (L1; second plan, 2026-10-05): never
+    fired again. Rows already written stay; the frontend hides them.
+  • transcript_ready — every arc's >=3-takes card: the transcript.
+    Fired from: lab upload (take >=3), publish, checkout and the coach's
+    edit save; idempotent per arc, so the first trigger wins.
   • human_check note — retired; the compatibility hook is a no-op so deployed
     callers cannot create new copies while older app versions roll forward.
   • pay note — after take 2 is SENT on an UNPAID arc: 25 credits ($25) unlocks
@@ -79,41 +72,21 @@ def _arc_owner_and_topic(db, arc_id: str) -> tuple[Optional[str], int, Any]:
 
 
 def maybe_fire_best_presentation_ready(db, arc_id: Any) -> Optional[str]:
-    """Fire the right >=3-takes card for the arc's CURRENT state:
+    """Fire the arc's >=3-takes card: transcript_ready (the transcript).
 
-      coach_finalized AND paid  → best_presentation_ready (the real buttons)
-      otherwise                 → transcript_ready (transcript)
-
-    coach_finalized is the REAL signal (services.slide_selection — has the
-    coach corrected EVERY slide?), not a proxy. Idempotent per (arc, kind);
-    safe to call from upload, publish, checkout, and the coach's edit save —
-    the terminal card fires exactly once, whichever trigger completes the
-    condition. Returns the kind fired, or None. Never raises."""
+    Best Presentation is retired (L1; second plan, Phase 1, founder "go"
+    2026-10-05): the paid, coach-finalised arc used to get the
+    ``best_presentation_ready`` hero card instead, opening a best-of
+    document the Ideal Text replaced. Every arc now gets the transcript card,
+    and no Best Presentation is composed to decide it. The name stays for its
+    callers (upload, publish, checkout, the coach's edit save). Idempotent
+    per arc. Returns the kind fired, or None. Never raises."""
     try:
         if not arc_id:
             return None
         owner, take_count, topic = _arc_owner_and_topic(db, arc_id)
         if not owner or take_count < TAKES_TARGET:
             return None
-        from services.arc_entitlement import is_arc_entitled
-        from services.slide_selection import build_best_presentation
-        paid = is_arc_entitled(db, arc_id, owner)
-        # Cache-aware (Part B) — a repeated call with an unchanged arc/edits
-        # skips the LLM compose, so this is cheap on the common no-op path.
-        finalized = bool(
-            build_best_presentation(arc_id, database=db).get("coach_finalized")
-        )
-        if finalized and paid:
-            body = (f"Your best presentation for {topic} is ready."
-                    if topic else "Your best presentation is ready.")
-            _insert(
-                db, owner,
-                client_key=f"willab-bestpres:{arc_id}",
-                kind="best_presentation_ready",
-                body=body,
-                metadata={"arc_id": str(arc_id), "topic": topic},
-            )
-            return "best_presentation_ready"
         body = (f"Your full transcript for {topic} is ready."
                 if topic else "Your full transcript is ready.")
         _insert(

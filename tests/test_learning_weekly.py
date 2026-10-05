@@ -30,10 +30,11 @@ class _Db:
         return row
 
 
-def _ledger(ready=False, unexported=3):
+def _ledger(ready=False, unexported=3, releasable=None):
     return {
         "ledger_version": "learning-ledger-v1",
-        "pairs": {"praise_line": {"total": 5, "unexported": unexported, "run_bar": 200, "ready_for_run": False},
+        "pairs": {"praise_line": {"total": 5, "unexported": unexported, "run_bar": 200, "ready_for_run": False,
+                                  **({} if releasable is None else {"releasable": releasable})},
                   "clearer_version": {"total": 0, "unexported": 0}, "exercise_script": {"total": 0, "unexported": 0}},
         "exercise_jar": {"counted": 12},
         "shadow_cues": {"hedging": {"named": 31 if ready else 4, "named_bar": 30, "caught_rate": 0.85 if ready else None,
@@ -85,14 +86,33 @@ class PaceTests(unittest.TestCase):
         self.assertIsNone(lp.weeks_to_bar(None, 200, 4.5))
 
     def test_the_pace_rows_read_the_snapshots_oldest_first(self):
-        weeks = [_ledger(unexported=0), _ledger(unexported=2)]
-        rows = {r["jar"]: r for r in lp.pace(_ledger(unexported=3), weeks)}
+        weeks = [_ledger(releasable=0), _ledger(releasable=2)]
+        rows = {r["jar"]: r for r in lp.pace(_ledger(releasable=3), weeks)}
         praise = rows["pairs.praise_line"]
         self.assertEqual((praise["current"], praise["bar"], praise["observed_rate"]), (3, 200, 1.5))
         self.assertEqual(praise["weeks_to_bar"], 132.0)
         self.assertEqual(rows["exercise_jar.counted"]["observed_rate"], 0.0)
         cue = rows["shadow_cues.hedging"]
         self.assertEqual((cue["current"], cue["bar"], cue["ready"]), (4, 30, False))
+
+
+class PairJarTests(unittest.TestCase):
+    """Second plan, 2026-10-05: the pair jar counts every releasable pair
+    ever written, so a weekly export no longer empties it."""
+
+    def test_an_export_does_not_empty_the_jar(self):
+        # Before: 40 waiting. The export takes them all (unexported 0); the
+        # releasable count keeps them, and the week's growth is the rate.
+        weeks = [_ledger(unexported=40, releasable=40)]
+        rows = {r["jar"]: r for r in lp.pace(_ledger(unexported=5, releasable=45), weeks)}
+        praise = rows["pairs.praise_line"]
+        self.assertEqual((praise["current"], praise["observed_rate"]), (45, 5.0))
+        self.assertEqual(praise["weeks_to_bar"], 31.0)
+
+    def test_a_snapshot_from_before_the_count_is_unknown_not_zero(self):
+        weeks = [_ledger(unexported=40)]
+        rows = {r["jar"]: r for r in lp.pace(_ledger(releasable=45), weeks)}
+        self.assertIsNone(rows["pairs.praise_line"]["observed_rate"])
 
 
 class RouteTests(unittest.TestCase):

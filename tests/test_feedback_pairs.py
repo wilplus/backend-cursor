@@ -97,13 +97,13 @@ class CountTests(unittest.TestCase):
     def test_every_surface_is_named_at_zero(self):
         class _Counts:
             def count_feedback_pairs(self):
-                return {"praise_line": {"total": 3, "unexported": 1}}
+                return {"praise_line": {"total": 3, "unexported": 1, "releasable": 2}}
         self.assertEqual(fp.counts(_Counts()), {
-            "praise_line": {"total": 3, "unexported": 1},
-            "clearer_version": {"total": 0, "unexported": 0},
-            "exercise_script": {"total": 0, "unexported": 0},
-            "coach_moment_line": {"total": 0, "unexported": 0},
-            "coach_take_word": {"total": 0, "unexported": 0},
+            "praise_line": {"total": 3, "unexported": 1, "releasable": 2},
+            "clearer_version": {"total": 0, "unexported": 0, "releasable": 0},
+            "exercise_script": {"total": 0, "unexported": 0, "releasable": 0},
+            "coach_moment_line": {"total": 0, "unexported": 0, "releasable": 0},
+            "coach_take_word": {"total": 0, "unexported": 0, "releasable": 0},
         })
 
     def test_the_surfaces_are_locked_prompts_and_gated_model_slots(self):

@@ -186,16 +186,16 @@ class _Db:
 
 class OffTests(unittest.TestCase):
     """The off behaviour, under the switch patched off (the live default is
-    on since the founder's yes of 2026-10-02)."""
+    off again since 2026-10-05: no screen renders any of it)."""
     def setUp(self):
         self._off = patch("config.Config.PRAISE_AFTER_PRACTICE_ENABLED", False)
         self._off.start()
         self.addCleanup(self._off.stop)
 
-    def test_the_switch_is_on_since_the_founders_yes(self):
+    def test_the_switch_is_off_until_a_screen_ships(self):
         self._off.stop()
         from config import Config as _live
-        self.assertTrue(_live.PRAISE_AFTER_PRACTICE_ENABLED)
+        self.assertFalse(_live.PRAISE_AFTER_PRACTICE_ENABLED)
         self._off.start()
 
     def test_off_nothing_is_said_written_or_served(self):
@@ -326,7 +326,7 @@ class WiringTests(unittest.TestCase):
     def test_the_contract_the_config_the_migration_and_the_routes_record_f5(self):
         self.assertIn("29c. **After the practice**",
                       (ROOT / "docs/CANONICAL_PRODUCT_CONTRACT.md").read_text())
-        self.assertIn("PRAISE_AFTER_PRACTICE_ENABLED = True", (ROOT / "config.py").read_text())
+        self.assertIn("PRAISE_AFTER_PRACTICE_ENABLED = False", (ROOT / "config.py").read_text())
         sql = (ROOT / "migrations/a_practice_hears_what_changed.sql").read_text()
         for needle in ("ADD COLUMN IF NOT EXISTS after_practice",
                        "CREATE TABLE IF NOT EXISTS public.coach_readings",
