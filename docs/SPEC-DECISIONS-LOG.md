@@ -1579,6 +1579,13 @@ answers below.
    Q22 A: document 03 is corrected to say what the screens label, and counsel
    is asked whether the sheets need their own label. Q23 A: document 02's
    condition goes to counsel this week as the first question.
+   *As built (migration 0422): Q14 A and Q17 A supersede the operator's
+   confirmation in N6 Q5 and N8 (SPEC-training-corpus §6.4 amended). A
+   request blocks at once and deletes nothing for 7 days; after that it is
+   purged by the scheduled run, which executes only with
+   `PHASE1_PURGE_EXECUTION_ENABLED`. Until retention schedule v1.4 decides
+   the four append-only feedback and job tables, a purge that meets their
+   rows still stops for a person (N14.3), so project Delete stays off.*
 5. **Coach and learning.** Q24 A: coaches' Yes answers in the blind error
    audit are what promote a shadow cue. Q25 A: a "Library" link in the coach
    menu. Q26 A: the Students screens stay off. Q27 A: the confidence-learning
