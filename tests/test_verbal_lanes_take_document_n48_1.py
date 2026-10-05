@@ -463,3 +463,73 @@ def test_where_the_documents_agree_the_anchors_are_exactly_the_old_ones():
                     for item in ranked]
         assert lane["anchors"] == _anchored_notes(
             old_rule, _blocks_read(frame["blocks"], confident=confident))
+
+
+# ── AC-9 at the serving boundary: only client-read fields leave ────────────
+
+def _numeric_leaves(value, path=""):
+    """Every number in a row outside the location coordinates the client
+    reads (`evidence`, `span`) and the clip window it plays."""
+    allowed = ("span", "evidence", "start_offset_ms", "duration_ms")
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not path and key in allowed:
+                continue
+            yield from _numeric_leaves(item, f"{path}.{key}")
+    elif isinstance(value, list):
+        for item in value:
+            yield from _numeric_leaves(item, path + "[]")
+    elif isinstance(value, (int, float)) and not isinstance(value, bool):
+        yield path
+
+
+def test_a_served_v3_payload_carries_no_internal_evidence_or_numbers():
+    from services.ideal_text_changes import _ChangesRun
+    from services.take_feedback_manager import exposure_snapshot
+
+    pool = exposure_snapshot([
+        {**_praise(), "cue_keys": ["full_volume"],
+         "machine_prediction": {"score": 0.91},
+         "acoustic_feature_snapshot": {"features": {"pitch": 1.2}}},
+        _rewrite(),
+    ])
+    document = _placed_document(parts=True)
+    frame = build_service_candidate_frame(
+        take_document=document, snippets=_snippets(), suggestions={},
+        feedback_candidates=pool, take_index=2,
+        expected_recording_id=RECORDING, served_text=SERVED)
+    inventory = prepare_v3_service_inventory(
+        frame=frame, take_document=document, served_text=SERVED,
+        feedback_candidates=pool)
+    assert inventory is not None
+    served = inventory["visible_rows"]
+    verbal = [row for row in served
+              if row["feedback_family"] != "confident_voice"]
+    assert verbal and all("rank_key" in row and "evidence" in row
+                          for row in verbal)   # the leak, before the boundary
+
+    run = _ChangesRun.__new__(_ChangesRun)
+    run.changes, run.styles = served, []
+    run.sel, run.learning_presentations, run.v3_failure = {}, {}, ""
+    payload = run._finish()
+    assert payload["changes"]
+    for row in payload["changes"]:
+        assert "rank_key" not in row
+        assert not any(key.startswith("_manager_") for key in row)
+        for key in ("candidate_score", "machine_prediction",
+                    "acoustic_feature_snapshot", "reason_tier",
+                    "detector_version", "rule_version", "selected"):
+            assert key not in row
+        # `evidence` is the Manager's copy here, not coordinates: dropped.
+        assert "evidence" not in row
+        assert list(_numeric_leaves(row)) == []
+
+
+def test_location_evidence_still_reaches_the_client():
+    location = {"project_id": "arc-1", "take_session_id": TAKE,
+                "slide_index": 2, "paragraph_index": 1,
+                "span": {"start": 3, "end": 9}}
+    [row] = strip_internal_evidence([{**_praise(), "evidence": location,
+                                      "rank_key": [-1, 0]}])
+    assert row["evidence"] == location
+    assert "rank_key" not in row

@@ -351,13 +351,70 @@ def _machine_readings(raw: dict) -> dict:
     }
 
 
+#: THE FIELDS A SERVED ROW MAY CARRY (AC-9; N48.1, Wave 1). Exactly the
+#: keys the frontend's one reader of the `changes` / `style_changes` lanes
+#: reads (`mapDocumentSuggestion` in frontend src/services/api/idealText.ts,
+#: checked 2026-10-05). An ALLOWLIST, because the denylist it replaces let
+#: every internal field through by default: served V3 verbal rows are copies
+#: of exposure-ledger rows and carried `evidence` (the Manager's specificity,
+#: detector rank, cue count), `rank_key` (negated rank numbers), versions and
+#: machine readings to the browser. A field the client starts reading is
+#: added here the same day, and nothing that grades the speaker ever is.
+CLIENT_ROW_FIELDS = frozenset({
+    "id", "candidate_id", "feedback_membership_id", "feedback_exposure_id",
+    "span", "start", "end", "quote", "kind", "proposed_text",
+    "feedback_family", "tentative", "bookmark_tier", "practice_prompt",
+    "coach_request", "open_card", "problem_recognised", "block_id",
+    "device", "why_key", "why", "source", "coach_note", "status",
+    "snippet_id", "take_session_id", "evidence", "take_index", "block_key",
+    "visual", "pending_better_version", "pending_copy", "cue_keys",
+    "praise_line", "rewrite_move", "snippet_audio_ref", "start_offset_ms",
+    "duration_ms", "practice_exercise", "mlc3_service", "learning_exposures",
+})
+
+
+def _client_evidence(value: Any) -> Optional[dict]:
+    """`evidence` as the client reads it -- WHERE the moment is (Project,
+    Take, Slide, Paragraph, span), written by the evidence-coordinate
+    grounding -- or None. The same key also held the Manager's internal
+    evidence copy on V3 verbal rows; that shape never leaves the server."""
+    raw = value if isinstance(value, dict) else {}
+    raw_span = raw.get("span")
+    span: dict = raw_span if isinstance(raw_span, dict) else {}
+    slide = raw.get("slide_index")
+    if (not isinstance(raw.get("project_id"), str)
+            or not isinstance(raw.get("take_session_id"), str)
+            or _int_or_none(raw.get("paragraph_index")) is None
+            or (slide is not None and _int_or_none(slide) is None)
+            or _int_or_none(span.get("start")) is None
+            or _int_or_none(span.get("end")) is None):
+        return None
+    return {
+        "project_id": raw["project_id"],
+        "take_session_id": raw["take_session_id"],
+        "slide_index": slide,
+        "paragraph_index": raw["paragraph_index"],
+        "span": {"start": span["start"], "end": span["end"]},
+    }
+
+
 def strip_internal_evidence(changes: Iterable[Any]) -> list[dict]:
-    """Internal evidence and rank inputs must never ride a student payload."""
-    return [
-        {key: value for key, value in row.items()
-         if not str(key).startswith("_manager_")}
-        for row in (changes or []) if isinstance(row, dict)
-    ]
+    """Only client-read fields ride a student payload (`CLIENT_ROW_FIELDS`).
+
+    Internal evidence, rank inputs, scores, versions and machine readings
+    stay on the server; `evidence` survives only as location coordinates.
+    """
+    out: list[dict] = []
+    for row in changes or []:
+        if not isinstance(row, dict):
+            continue
+        visible = {key: value for key, value in row.items()
+                   if key in CLIENT_ROW_FIELDS and key != "evidence"}
+        evidence = _client_evidence(row.get("evidence"))
+        if evidence is not None:
+            visible["evidence"] = evidence
+        out.append(visible)
+    return out
 
 
 def _stable_id(prefix: str, take_session_id: str, quote: str) -> str:
