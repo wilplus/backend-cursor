@@ -71,6 +71,7 @@ def _goal(database: Any, owner_user_id: Any) -> Optional[str]:
 def moment_read(database: Any, *, take_session_id: str, snippet_id: str,
                 rater_id: str, owner_user_id: Any) -> dict:
     """Everything the Read screen shows, after the gate."""
+    from services.coach_practice_judgement import selected_practice
     from services.exercise_coach_requests import coach_request_payload
     take, snip = str(take_session_id), str(snippet_id)
     request = database.get_exercise_coach_request(take, snip)
@@ -86,4 +87,7 @@ def moment_read(database: Any, *, take_session_id: str, snippet_id: str,
         "speaker_goal": _goal(database, owner_user_id),
         "request": (coach_request_payload(request, database)
                     if isinstance(request, dict) else None),
+        # The speaker's chosen practice recording, for the coach's answer
+        # on it (Q6; N45). None when there is none.
+        "practice": selected_practice(database, take, snip),
     }
