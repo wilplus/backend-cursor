@@ -597,6 +597,9 @@ def prepare_first_client_feedback(
         feedback_candidates=feedback_candidates,
         take_index=take.get("take_index"),
         expected_recording_id=take.get("recording_id"),
+        # The Ideal Text the verbal rows' spans address; V3 maps them into
+        # this Take's transcript before anchoring (N48.1, Wave 1).
+        served_text=served_text,
     )
     _log_coverage(take_id, take.get("take_index"), frame)
     inventory_detail: list[str] = []

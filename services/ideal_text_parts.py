@@ -852,6 +852,28 @@ def bind_pieces_to_parts(
     return {**doc, "pieces": bound}
 
 
+def with_served_spans(document: Any, *, served_text: Any,
+                      slide_regions: Any) -> Any:
+    """``document`` with each piece's served-text span, no Paragraph binding.
+
+    The same relocation `bind_pieces_to_parts` carries (`_served_span` of
+    `_relocated_by_snippet`), for a reader that must place verbal rows in the
+    Take's transcript before the Paragraphs are read (N48.1, Wave 1:
+    `take_feedback_manager.TakeDocumentMap`). One relocation rule, so the
+    fallback decision and V3 see the same spans. Pure.
+    """
+    doc = document if isinstance(document, dict) else {}
+    pieces = doc.get("pieces")
+    if not isinstance(pieces, list) or not pieces:
+        return document
+    located = _relocated_by_snippet(served_text, pieces, slide_regions)
+    return {**doc, "pieces": [
+        {**piece, **_served_span(located.get(str(piece.get("snippet_id"))))}
+        if isinstance(piece, dict) else piece
+        for piece in pieces
+    ]}
+
+
 def _relocated_by_snippet(served_text: Any, pieces: list,
                           slide_regions: Any) -> dict:
     """``relocate_pieces``' rows on the served text, keyed by snippet id."""

@@ -331,7 +331,10 @@ def pick_emphasis_phrase(transcript: str, *,
         return None
 
 
-_STRUCT_DEVICES = ("contrast", "list_of_three")
+#: The structural detector's closed device vocabulary. Public because the
+#: praise reader vouches for exactly these (tracked_changes, N48.1 Wave 1).
+STRUCTURAL_DEVICES = ("contrast", "list_of_three")
+_STRUCT_DEVICES = STRUCTURAL_DEVICES
 
 
 def detect_structural_device(transcript: str, *,

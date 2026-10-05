@@ -436,6 +436,7 @@ def _v3_verbal_lane(
     lane: Any, *, family: str, raw_by_identity: dict[tuple[str, str], dict],
     pieces: dict[str, dict], snippet_block: dict[str, tuple[int, int]],
     inventory: _V3ServiceInventory,
+    closed: Callable[[str], None] = lambda _gate: None,
 ) -> bool:
     if not isinstance(lane, dict):
         return False
@@ -447,13 +448,20 @@ def _v3_verbal_lane(
         str(value) for value in (lane.get("selected_candidate_ids") or [])
         if str(value or "")
     )
-    for row_input in lane.get("candidates") or []:
+    for position, row_input in enumerate(lane.get("candidates") or [], 1):
         if not _v3_verbal_candidate_row(
             row_input, family=family, lane_selected=lane_selected,
             raw_by_identity=raw_by_identity, pieces=pieces,
             snippet_block=snippet_block, inventory=inventory,
         ):
-            return False
+            # SKIPPED, NOT LANE-FATAL (N48.1, Wave 1) -- the confidence
+            # lane's 2026-09-19 rule, applied to the verbal lanes. A row
+            # with no piece, block or Paragraph in THIS Take (a Take-1 row
+            # still in the text on Take 2, a prior-Take or coach-revision
+            # rewrite on another Take's snippet) cannot be placed and is
+            # never served. It used to abort the whole lane, so one such row
+            # silenced every eligible note and the fallback behind it.
+            closed(f"verbal_candidate_unplaced:{family}:{position}")
     return True
 
 
@@ -572,6 +580,7 @@ def _add_verbal_lanes(
         if not _v3_verbal_lane(
             verbal.get(family), family=family, raw_by_identity=raw_by_identity,
             pieces=pieces, snippet_block=snippet_block, inventory=inventory,
+            closed=closed,
         ):
             # 24f: one note per block where one is defensible, and an honest
             # empty lane shows no card. A lane that cannot be proven is an

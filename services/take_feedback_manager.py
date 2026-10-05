@@ -40,6 +40,197 @@ _OBJECT_PHRASE_START_RE = re.compile(
 )
 
 
+# ── VERBAL ELIGIBILITY: ONE RULE, TWO READERS (N48.1, Wave 1, E1) ──────────
+#
+# A rewrite or praise row may compete under V3 only when it is evidence-backed,
+# versioned, about THIS Take, and locatable in THIS Take's transcript. V3's
+# `_verbal_inventory` applies that rule to rank; `ensure_required_families`
+# applies the SAME rule to decide whether a lane is already covered. They used
+# to disagree: the fallback check counted any row of the family as present, so
+# an excluded row (a detector praise with no evidence, an LLM / prior-Take /
+# coach-revision rewrite, a row left over from an older Take on an unspoken
+# Slide) suppressed the honest fallback and V3 then excluded the row too —
+# the Take ended with no praise and no rewrite. One predicate, `verbal_
+# exclusion`, ends the disagreement; neither reader restates any part of it.
+VERBAL_FAMILIES = ("rewrite_clarity", "great_formulation")
+PRODUCER_VERSION_KEYS = (
+    "suggestion_version",
+    "model_version",
+    "prompt_version",
+    "rule_version",
+    "detector_version",
+)
+VERBAL_EVIDENCE_KEYS = (
+    "specificity",
+    "fallback",
+    "detector",
+    "detector_rank",
+    "lexical_words_invented",
+    "basis",
+    "anchor_score",
+    "cue_count",
+)
+
+
+def producer_versions(row: Any) -> dict:
+    """The producer version keys a row carries, each a string or None."""
+    item = row if isinstance(row, dict) else {}
+    return {
+        key: str(item.get(key)) if item.get(key) not in (None, "") else None
+        for key in PRODUCER_VERSION_KEYS
+    }
+
+
+def verbal_evidence(row: Any) -> dict:
+    """The row's Manager evidence, limited to the keys the policy reads."""
+    item = row if isinstance(row, dict) else {}
+    raw = item.get("_manager_evidence")
+    raw = raw if isinstance(raw, dict) else {}
+    return {key: raw[key] for key in VERBAL_EVIDENCE_KEYS if key in raw}
+
+
+def _int_or_none(value: Any) -> Optional[int]:
+    return value if isinstance(value, int) and not isinstance(value, bool) \
+        else None
+
+
+class TakeDocumentMap:
+    """Served Ideal Text offsets -> this Take's transcript-document offsets.
+
+    TWO DOCUMENTS, TWO COORDINATE SYSTEMS (N48.1, Wave 1). A verbal row's
+    `span` addresses the SERVED Ideal Text: that is where tracked changes,
+    fallbacks and structural repairs are cut, and where the client draws.
+    V3's blocks address the TAKE's transcript document (`start`/`end` of its
+    pieces). From Take 2 on the two differ: a Slide the Take did not speak
+    keeps its older Paragraph in the served text (`take_rebuild.
+    merge_by_slide`), so every later offset is shifted by that Paragraph, and
+    the served words can be edited or locked away from the transcript.
+    Comparing a served span with block offsets anchored notes to whichever
+    block the numbers happened to fall in, or dropped them as out of bounds.
+
+    The map is proven, never guessed. Identical documents map 1:1. Otherwise
+    a span maps only through pieces whose served slice IS their transcript
+    slice (`served_start`/`served_end`, written by `ideal_text_parts.
+    with_served_spans` / `bind_pieces_to_parts`), and only when the mapped
+    transcript words equal the served words character for character. Words
+    the Take did not say map nowhere: the row is excluded as
+    `document_span_unmapped`.
+    """
+
+    def __init__(self, *, take_id: Any, document_text: Any, served_text: Any,
+                 pieces: Any, snippet_takes: Optional[dict] = None) -> None:
+        self.take_id = str(take_id or "")
+        self.document_text = document_text if isinstance(document_text, str) \
+            else ""
+        self.served_text = served_text if isinstance(served_text, str) \
+            else None
+        self.snippet_takes = {
+            str(key): str(value or "")
+            for key, value in (snippet_takes or {}).items() if key
+        }
+        self._verbatim: list[tuple[int, int, int, int]] = []
+        for piece in pieces or []:
+            row = piece if isinstance(piece, dict) else {}
+            start, end = _int_or_none(row.get("start")), _int_or_none(row.get("end"))
+            s_start = _int_or_none(row.get("served_start"))
+            s_end = _int_or_none(row.get("served_end"))
+            if (start is None or end is None or s_start is None
+                    or s_end is None or self.served_text is None
+                    or not 0 <= start < end <= len(self.document_text)
+                    or not 0 <= s_start < s_end <= len(self.served_text)):
+                continue
+            if (self.served_text[s_start:s_end]
+                    == self.document_text[start:end]):
+                self._verbatim.append((s_start, s_end, start, end))
+
+    @classmethod
+    def for_document(cls, take_document: Any, served_text: Any, *,
+                     take_id: Any = None) -> "TakeDocumentMap":
+        """The map for one Take document, its snippets taken from its pieces."""
+        doc = take_document if isinstance(take_document, dict) else {}
+        pieces = [p for p in doc.get("pieces") or [] if isinstance(p, dict)]
+        return cls(
+            take_id=take_id or doc.get("take_session_id"),
+            document_text=doc.get("text"),
+            served_text=served_text,
+            pieces=pieces,
+            snippet_takes={
+                str(p.get("snippet_id")): str(p.get("take_session_id") or "")
+                for p in pieces if p.get("snippet_id")
+            },
+        )
+
+    def snippet_take(self, snippet_id: Any) -> Optional[str]:
+        """The Take a snippet belongs to, or None when it is not this Take's."""
+        return self.snippet_takes.get(str(snippet_id or ""))
+
+    def to_document(self, start: int, end: int) -> Optional[tuple[int, int]]:
+        """The same words in the Take document, or None when unproven."""
+        served = self.served_text
+        if served is None or not 0 <= start < end <= len(served):
+            return None
+        if served == self.document_text:
+            return start, end
+        lo = next((d0 + start - s0 for s0, s1, d0, _ in self._verbatim
+                   if s0 <= start < s1), None)
+        hi = next((d0 + end - s0 for s0, s1, d0, _ in self._verbatim
+                   if s0 < end <= s1), None)
+        if lo is None or hi is None or hi <= lo:
+            return None
+        if self.document_text[lo:hi] != served[start:end]:
+            return None
+        return lo, hi
+
+
+def verbal_exclusion(
+    row: Any, document_map: TakeDocumentMap,
+) -> tuple[Optional[str], Optional[tuple[int, int]]]:
+    """Why V3 would exclude this verbal row, and its Take-document span.
+
+    THE rule (N48.1, Wave 1, E1). ``(None, (start, end))`` means eligible;
+    otherwise the first failing condition names itself, in this order:
+    identity, snippet lineage, Take, served span, evidence, producer version,
+    and finally whether the words map into this Take's transcript.
+    """
+    item = row if isinstance(row, dict) else {}
+    snippet_id = str(item.get("snippet_id") or "")
+    snippet_take = document_map.snippet_take(snippet_id)
+    resolved_take = str(item.get("take_session_id") or "") or (snippet_take or "")
+    span = _span(item)
+    reason: Optional[str] = None
+    if not str(item.get("id") or ""):
+        reason = "missing_candidate_identity"
+    elif not snippet_id or snippet_take is None:
+        reason = "missing_snippet_lineage"
+    elif (resolved_take != document_map.take_id
+          or snippet_take != document_map.take_id):
+        reason = "candidate_take_mismatch"
+    elif span is None:
+        reason = "invalid_document_span"
+    elif not verbal_evidence(item):
+        reason = "missing_evidence_metadata"
+    elif not any(producer_versions(item).values()):
+        reason = "missing_suggestion_generator_version"
+    if reason is not None or span is None:
+        return reason, None
+    mapped = document_map.to_document(*span)
+    if mapped is None:
+        return "document_span_unmapped", None
+    return None, mapped
+
+
+def _eligible_families(rows: list[dict],
+                       document_map: Optional[TakeDocumentMap]) -> set:
+    """The verbal families with at least one row V3 would let compete."""
+    if document_map is None:
+        return set()
+    return {
+        str(row.get("feedback_family")) for row in rows
+        if row.get("feedback_family") in VERBAL_FAMILIES
+        and verbal_exclusion(row, document_map)[0] is None
+    }
+
+
 def _span(row: Any) -> Optional[tuple[int, int]]:
     if not isinstance(row, dict):
         return None
@@ -288,22 +479,27 @@ def ensure_required_families(
     take_session_id: Any,
     snippet_id: Any,
     snippet_ids_by_family: Optional[dict[str, Any]] = None,
+    document_map: Optional[TakeDocumentMap] = None,
 ) -> list[dict]:
     """Add honest weak fallbacks only for genuinely absent text lanes.
 
     The fallback quote is an exact slice of the served Ideal Text. The rewrite
     changes punctuation/structure around the same words; the praise is marked
     tentative. No lexical content or certainty is invented.
+
+    "ABSENT" MEANS "NOTHING THAT CAN COMPETE" (N48.1, Wave 1, E1). A lane is
+    covered only by a row that passes `verbal_exclusion` against this Take's
+    `document_map` -- the very rule V3 ranks by. A row V3 will exclude (no
+    evidence, no producer version, another Take's snippet, words this Take
+    did not say) no longer hides the fallback. With no map nothing can be
+    proven to compete, so both fallbacks are offered and V3 arbitrates.
     """
     text = served_text if isinstance(served_text, str) else ""
     sid = str(snippet_id or "")
     family_snippets = _family_snippets(snippet_ids_by_family)
     take = str(take_session_id or "")
     rows = [dict(row) for row in (changes or []) if isinstance(row, dict)]
-    present = {
-        str(row.get("feedback_family")) for row in rows
-        if row.get("feedback_family") in FAMILIES
-    }
+    present = _eligible_families(rows, document_map)
     candidates = _sentences(text)
     if not text or not take or not sid or not candidates:
         return rows
