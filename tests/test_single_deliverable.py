@@ -821,9 +821,7 @@ class PaywallRetirementTests(unittest.TestCase):
         with self.app.test_request_context():
             request.user_id = UID
             with patch("routes.v2.arcs._arc_owned_by_caller",
-                              return_value=(True, [])), \
-                 patch("services.slide_selection.build_best_presentation",
-                       return_value={"ready": True, "slides": []}):
+                       return_value=(True, [])):
                 out = v2_arcs.v2_explore_arc_best_presentation.__wrapped__(ARC)
         resp, status = out if isinstance(out, tuple) else (out, 200)
         return resp.get_json(), status

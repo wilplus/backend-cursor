@@ -114,11 +114,60 @@ def test_a_failed_grant_asks_stripe_to_deliver_again():
     assert result.http_status == 500
 
 
-def test_the_webhook_routes_a_package_before_any_other_path():
+def test_the_webhook_grants_packages_and_nothing_else():
+    """N48.3 Q13 A: the subscription, arc-checkout and credit-pack paths are
+    gone; a package is the only thing the webhook applies."""
     source = (ROOT / "routes/internal_webhooks.py").read_text()
     body = source[source.index("def stripe_checkout_webhook("):]
-    assert body.index("PACKAGE_KIND") < body.index('md.get("arc_id")')
-    assert body.index("PACKAGE_KIND") < body.index("apply_paid_checkout_session_credits")
+    body = body[:body.index("@internal_webhooks_bp.route")]
+    assert "webhook_reply" in body
+    for retired in ("apply_subscription_event", "apply_completed_arc_checkout",
+                    "apply_paid_checkout_session_credits"):
+        assert retired not in body, retired
+
+
+def _post_webhook(app_client, event):
+    from routes import internal_webhooks as hooks
+    with mock.patch.object(hooks.config, "STRIPE_WEBHOOK_SECRET", "whsec", create=True), \
+            mock.patch.object(hooks.config, "STRIPE_SECRET_KEY", "sk_test", create=True), \
+            mock.patch("stripe.Webhook.construct_event", return_value=event), \
+            mock.patch("services.token_packages.webhook_reply",
+                       side_effect=AssertionError("not a package")):
+        return app_client.post("/v2/internal/stripe/webhook", data=b"{}",
+                               headers={"Stripe-Signature": "t=1,v1=x"})
+
+
+@pytest.mark.parametrize("etype", ["customer.subscription.created",
+                                   "customer.subscription.updated",
+                                   "customer.subscription.deleted"])
+def test_a_subscription_event_is_acked_and_applies_nothing(app_client, etype):
+    resp = _post_webhook(app_client, {"type": etype, "data": {"object": {
+        "id": "sub_1", "metadata": {"user_id": "u1"}}}})
+    assert resp.status_code == 200
+    assert resp.get_json() == {"received": True}
+
+
+@pytest.mark.parametrize("metadata", [{"arc_id": "arc-1", "user_id": "u1"},
+                                      {"user_id": "u1"}, {}])
+def test_an_arc_or_credit_checkout_is_acked_and_grants_nothing(app_client, metadata):
+    resp = _post_webhook(app_client, {"type": "checkout.session.completed",
+                                      "data": {"object": {"id": "cs_9",
+                                                          "metadata": metadata}}})
+    assert resp.status_code == 200
+    assert resp.get_json() == {"received": True, "granted": False,
+                               "reason": "not_a_package"}
+
+
+def test_the_billing_portal_is_gone(app_client, stub_verified_user):
+    stub_verified_user("u1")
+    resp = app_client.post("/v2/tokens/portal", json={},
+                           headers={"Authorization": "Bearer t"})
+    assert resp.status_code == 410
+    assert resp.get_json()["code"] == "GONE"
+
+
+def test_the_balance_carries_no_plan(db):
+    assert "plan" not in ta.get_account("u1", database=db)
 
 
 # ── the grant ───────────────────────────────────────────────────────────
@@ -181,7 +230,6 @@ def db(monkeypatch):
                         tier=None, database=None: database.ledger.append(
                             {"delta": delta, "action": action, "ref_id": ref_id,
                              "tier": tier}))
-    monkeypatch.setattr(ta, "plan_state", lambda *a, **k: {})
     return database
 
 

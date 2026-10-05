@@ -947,41 +947,6 @@ def v2_explore_arc_take_comparison(arc_id):
         }), 500
 
 
-@v2_bp.route("/arc/<arc_id>/checkout", methods=["POST"])
-@require_auth
-def v2_arc_checkout(arc_id):
-    """Start Stripe Checkout for ONE audit = this arc (Paid Audits A3).
-
-    Ownership-gated (the arc must be the caller's). Already-entitled arcs short-
-    circuit (no duplicate charge). Body (optional): { success_url, cancel_url }.
-
-    Response 200 { checkout_url, checkout_session_id, arc_id }
-             200 { already_entitled: true, arc_id }   (purchase exists)
-             404 NOT_FOUND · 4xx/5xx from Stripe/config
-    """
-    try:
-        from services.arc_entitlement import is_arc_entitled
-        from services.arc_checkout import create_arc_checkout_session
-        owned, _ = _arc_owned_by_caller(arc_id)
-        if not owned:
-            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        if is_arc_entitled(db, arc_id, request.user_id):
-            return jsonify({"already_entitled": True, "arc_id": arc_id}), 200
-        body = request.get_json(silent=True) or {}
-        result = create_arc_checkout_session(
-            str(arc_id), str(request.user_id), config,
-            success_url=(body.get("success_url") or None),
-            cancel_url=(body.get("cancel_url") or None),
-        )
-        return jsonify(result.payload), result.http_status
-    except Exception as e:
-        logger.error("arc checkout failed arc=%s: %s", arc_id, e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({
-            "code": "V2_ERROR", "error": "Failed to start checkout",
-        }), 500
-
-
 @v2_bp.route("/arc/<arc_id>/redeem", methods=["POST"])
 @require_auth
 def v2_arc_redeem(arc_id):

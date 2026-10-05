@@ -483,35 +483,5 @@ class TestPowerScoreBlend(unittest.TestCase):
                                          machine_confidence=junk), base)
 
 
-class TestSelectionUsesTheTerm(unittest.TestCase):
-
-    def _cand(self, si, sid, text, confidence):
-        return {"slide_index": si, "snippet_id": sid, "transcript": text,
-                "activation": 0.5, "slide_stickiness": 0.5,
-                "machine_confidence": confidence}
-
-    def test_more_confident_delivery_wins_a_tied_slide(self):
-        from services.slide_selection import select_best_per_slide
-        picks = select_best_per_slide([
-            self._cand(0, "flat", "We tripled revenue this year.", -0.8),
-            self._cand(0, "sure", "We tripled revenue this year again.", 0.8),
-        ])
-        self.assertEqual(picks[0]["snippet_id"], "sure")
-
-    def test_none_confidence_does_not_penalise_a_piece(self):
-        """Unstamped (older) pieces must compete on the other terms, not be
-        treated as maximally doubtful."""
-        from services.slide_selection import select_best_per_slide
-        picks = select_best_per_slide([
-            {"slide_index": 0, "snippet_id": "old", "transcript": "Strong line.",
-             "activation": 0.9, "slide_stickiness": 0.9,
-             "voice_confidence": None},
-            {"slide_index": 0, "snippet_id": "new", "transcript": "Weak line.",
-             "activation": 0.1, "slide_stickiness": 0.1,
-             "voice_confidence": 0.3},
-        ])
-        self.assertEqual(picks[0]["snippet_id"], "old")
-
-
 if __name__ == "__main__":
     unittest.main()

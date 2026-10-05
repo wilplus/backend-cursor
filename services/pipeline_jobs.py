@@ -876,7 +876,6 @@ def _run_ideal_text_retry(job: Dict[str, Any]) -> Dict[str, Any]:
             db,
             arc_id,
             source_session_id=session_id,
-            include_suggestion_anchors=True,
             on_late_confirmation=_withdraw_failure,
         )
     _withdraw_failure()

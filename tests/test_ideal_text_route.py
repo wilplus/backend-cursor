@@ -1,9 +1,8 @@
 """GET /v2/talks/<talk_id>/ideal-text — ROUTE-level test of the
 coach_finalized content gate. (The 402 paywall that used to compose with this
 gate was retired with the single-deliverable flag — the ideal text is free
-now.) Only the service function was covered before this file — see
-test_ideal_text_report.py for the pure build_ideal_text_report mapping tests,
-and test_best_presentation.py's CoachFinalizedGateTests for the gate itself.
+now.) The report builder and the Best Presentation builder it read are
+removed too (N48.3 Q13 A).
 
 Run: python3 -m unittest tests.test_ideal_text_route
 """
@@ -44,10 +43,8 @@ def _snip(sid):
 class TalksRouteIsDeletedTests(unittest.TestCase):
     """/talks/<talk_id>/ideal-text is GONE (founder 2026-08-10: "older
     feedback system should be ripped off") — it had no FE caller and the
-    audits product it served is retired. The coach_finalized content gate
-    the old composition tests exercised through it stays covered where it
-    lives: test_best_presentation.py's CoachFinalizedGateTests (the gate)
-    and test_ideal_text_report.py (the pure builder mapping)."""
+    audits product it served is retired. Its builder and the Best
+    Presentation builder behind it are removed (N48.3 Q13 A)."""
 
     def test_the_route_function_is_gone_from_the_aggregator(self):
         # The aggregator itself is gone (audit Q-A3); nothing can re-export it.

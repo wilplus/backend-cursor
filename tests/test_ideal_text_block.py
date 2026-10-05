@@ -1,8 +1,8 @@
 """willab — the one-block ideal text (founder 2026-07-15).
 
-services/ideal_text_block.py: auto-assembly from the arc's picks (bold
-openings + [[moment:…]] anchors) and the anchor parser the served
-key_moments list derives from.
+services/ideal_text_block.py: the canonical document is never rebuilt by a
+later Take, and the anchor parser the served key_moments list derives from.
+(The best-of assembly from the arc's picks is removed, N48.3 Q13 A.)
 
 Run: python3 -m unittest tests.test_ideal_text_block
 """
@@ -11,7 +11,7 @@ from __future__ import annotations
 import sys
 import types
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 _ORIG_SERVICES_DB = None
 
@@ -35,52 +35,6 @@ SNIP = "11111111-1111-4111-8111-111111111111"
 SESS = "22222222-2222-4222-8222-222222222222"
 
 
-def _bp(ready=True, slides=None):
-    return {
-        "ready": ready,
-        "slides": slides if slides is not None else [
-            {"index": 0, "text": "We open with the mission and the team.",
-             "key_phrases": ["the mission"],
-             "snippet_id": "s0", "session_id": "t0"},
-            {"index": 1, "text": "This quarter we tripled throughput.",
-             "key_phrases": [],
-             "snippet_id": SNIP, "session_id": SESS},
-            {"index": 2, "text": "", "key_phrases": [],
-             "snippet_id": None, "session_id": None},
-        ],
-    }
-
-
-class AssembleTests(unittest.TestCase):
-
-    def _run(self, bp, *, extra_anchor_ids=None):
-        from services import ideal_text_block as mod
-        with patch("services.slide_selection.build_best_presentation",
-                   return_value=bp):
-            return mod.assemble_ideal_text_block(
-                "arc1", extra_anchor_ids=extra_anchor_ids
-            )
-
-    def test_bolds_openings_and_anchors_manager_suggestions(self):
-        out = self._run(_bp(), extra_anchor_ids={SNIP})
-        self.assertTrue(out["ready"])
-        text = out["text"]
-        self.assertIn("**the mission**", text)                # bold opening
-        self.assertIn(f"[[moment:{SNIP}|{SESS}]]", text)      # anchor opens
-        self.assertIn("[[/moment]]", text)
-        self.assertEqual(out["key_moments"], [
-            {"snippet_id": SNIP, "take_session_id": SESS},
-        ])
-        # the empty slide contributed nothing
-        self.assertNotIn("\n\n\n", text)
-
-    def test_not_ready_below_three_takes(self):
-        out = self._run(_bp(ready=False))
-        self.assertFalse(out["ready"])
-        self.assertEqual(out["text"], "")
-        self.assertEqual(out["key_moments"], [])
-
-
 class CanonicalPersistenceTests(unittest.TestCase):
 
     def test_later_take_never_rebuilds_existing_ideal_text(self):
@@ -96,18 +50,6 @@ class CanonicalPersistenceTests(unittest.TestCase):
             "arc1", database=database, require_target=False,
         ))
         database.persist_auto_ideal_text.assert_not_called()
-
-    def test_no_anchor_without_ids(self):
-        from services import ideal_text_block as mod
-
-        bp = _bp(slides=[{"index": 0, "text": "Great line.",
-                          "key_phrases": [],
-                          "snippet_id": None, "session_id": None}])
-        with patch("services.slide_selection.build_best_presentation",
-                   return_value=bp):
-            out = mod.assemble_ideal_text_block("arc1")
-        self.assertNotIn("[[moment:", out["text"])
-        self.assertEqual(out["key_moments"], [])
 
 
 class ExtractKeyMomentsTests(unittest.TestCase):

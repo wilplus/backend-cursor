@@ -632,8 +632,8 @@ class ReasonKeyTests(unittest.TestCase):
 
 
 class AssemblyFlagTests(unittest.TestCase):
-    """Flag OFF must be byte-for-byte today's assembly; flag ON swaps the
-    document source and leaves every other lane working."""
+    """The document is the full transcript whatever the flag says: the
+    flag-off best-of assembly is removed (N48.3 Q13 A)."""
 
     class _Db(DocumentBuildTests._Db):
         def __init__(self, snips):
@@ -658,13 +658,7 @@ class AssemblyFlagTests(unittest.TestCase):
                  {"id": S2, "start_offset_ms": 10, "language": "en",
                   "transcript": "and we kept going"}]
         db = self._Db(snips)
-        bp = {"ready": True, "slides": [{
-            "text": "just the best line", "verbatim": "just the best line",
-            "polished": False, "snippet_id": S1, "session_id": T1,
-            "key_phrases": []}]}
-        with patch("services.slide_selection.build_best_presentation",
-                   return_value=bp), \
-             patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", bool(flag)):
+        with patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", bool(flag)):
             mod.maybe_assemble_ideal_text(ARC, database=db,
                                           require_target=False)
         return db.persisted
@@ -673,13 +667,15 @@ class AssemblyFlagTests(unittest.TestCase):
         out = self._assemble(True)[0]
         self.assertIn("We started small", out)
         self.assertIn("we kept going", out)
-        self.assertNotIn("just the best line", out)   # not the selection
         self.assertNotIn("[[moment:", out)            # no anchors on the doc
 
-    def test_flag_off_persists_todays_selection(self):
+    def test_flag_off_persists_the_full_transcript_too(self):
+        """The best-of selection that used to run with the flag off is
+        removed (N48.3 Q13 A): the document is the transcript either way."""
         out = self._assemble(False)[0]
-        self.assertIn("just the best line", out)
-        self.assertNotIn("We started small", out)
+        self.assertIn("We started small", out)
+        self.assertIn("we kept going", out)
+        self.assertNotIn("[[moment:", out)
 
 
 class SpanRelocationTests(unittest.TestCase):

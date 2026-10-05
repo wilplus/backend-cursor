@@ -24,11 +24,28 @@ id, so a webhook Stripe delivers twice grants once.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from services.tier_checkout import TierCheckoutResult
-
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TierCheckoutResult:
+    """A checkout or grant outcome: the HTTP status and the JSON body.
+    (Moved here from the retired services/tier_checkout.py, N48.3 Q13 A.)"""
+    ok: bool
+    http_status: int
+    payload: dict = field(default_factory=dict)
+
+    @classmethod
+    def success(cls, url: str, session_id: str, tier: str) -> "TierCheckoutResult":
+        return cls(True, 200, {"checkout_url": url, "checkout_session_id": session_id,
+                               "tier": tier})
+
+    @classmethod
+    def error(cls, status: int, code: str, message: str) -> "TierCheckoutResult":
+        return cls(False, status, {"code": code, "error": message})
 
 #: The metadata ``kind`` that routes a completed checkout here.
 PACKAGE_KIND = "token_package"

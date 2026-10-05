@@ -3,10 +3,10 @@ N48.3 Q13 A; N48.1 step 6).
 
 Its builder sent every pick's verbatim transcript to the model with no
 permit, from the student GET, the coach GET and the training import's
-legacy assembly. L1 had already retired the artifact. Both GETs now answer
+legacy assembly. L1 had already retired the artifact. Both GETs answer
 the house 410, the training import pins its own recording (the
-deterministic transcript document), and the compose step itself calls no
-model.
+deterministic transcript document), and the builder itself is removed
+(N48.3 Q13 A).
 """
 from __future__ import annotations
 
@@ -31,8 +31,7 @@ def _never(*_a, **_k):
     coach_routes.v2_coach_arc_best_presentation,
 ])
 def test_both_reads_answer_410_and_build_nothing(app_client, view):
-    with mock.patch("services.slide_selection.build_best_presentation", _never), \
-         mock.patch("services.llm.chat_complete", _never), \
+    with mock.patch("services.llm.chat_complete", _never), \
          app_client.application.test_request_context("/"):
         resp, status = inspect.unwrap(view)(arc_id="arc-1")
     assert status == 410
@@ -46,14 +45,14 @@ def test_the_routes_no_longer_import_the_builder():
 
 def test_the_training_import_pins_its_own_recording():
     """Pinned → maybe_assemble_ideal_text takes the deterministic transcript
-    document, never the legacy best-of compose."""
+    document (the legacy best-of compose is removed, N48.3 Q13 A)."""
     source = (ROOT / "services/training_import.py").read_text()
     stage = source[source.index("if STAGE_IDEAL_TEXT in picked_stages:"):]
     stage = stage[:stage.index("except Exception")]
     assert "source_session_id=session_id" in stage
 
 
-def test_a_pinned_assembly_never_reaches_the_best_of_builder(monkeypatch):
+def test_a_pinned_assembly_takes_the_transcript_document(monkeypatch):
     from services import ideal_text_block as itb
 
     class _Takes:
@@ -74,7 +73,6 @@ def test_a_pinned_assembly_never_reaches_the_best_of_builder(monkeypatch):
             return False
 
     seen: list = []
-    monkeypatch.setattr(itb, "assemble_ideal_text_block", _never)
     monkeypatch.setattr(itb, "_living_transcript_enabled", lambda: False)
     monkeypatch.setattr(itb, "assemble_transcript_document",
                         lambda arc_id, **k: seen.append(k) or {"text": "words"})
