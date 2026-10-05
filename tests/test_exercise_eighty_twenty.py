@@ -264,7 +264,7 @@ class PipelineOrderTests(unittest.TestCase):
         calls = self._calls()
         self.assertLess(calls.index("_first_client_feedback"),
                         calls.index("_practice_offer"))
-        self.assertLess(calls.index("_claim_or_filter"),
+        self.assertLess(calls.index("_claim_visibly"),
                         calls.index("_practice_offer"))
 
     def test_a_v3_take_takes_the_v3_lane(self):

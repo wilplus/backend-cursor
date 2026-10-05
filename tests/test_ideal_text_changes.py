@@ -582,7 +582,7 @@ def test_execute_marks_answered_items_only_after_v3_replaced_the_rows():
     source = inspect.getsource(_ChangesRun.execute)
     assert "if self.v3_replaced_changes:" in source
     assert source.index("changes.first_client_feedback") < source.index(
-        "changes.answered_service_items") < source.index("_claim_or_filter")
+        "changes.answered_service_items") < source.index("_claim_visibly")
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -814,7 +814,7 @@ def test_a_packet_that_cannot_be_frozen_is_named_and_the_take_still_serves():
 def test_the_v3_packet_stage_runs_after_the_claim_and_before_the_writer_gate():
     import inspect
     source = inspect.getsource(_ChangesRun.execute)
-    assert source.index("self._claim_or_filter()") < source.index(
+    assert source.index("self._claim_visibly()") < source.index(
         "changes.v3_learning_presentations") < source.index(
         "confidence_prior_learning_writes_enabled()")
     # Keyed on the replacement: a V2 Take never reaches it.
@@ -896,3 +896,27 @@ def test_v2_rows_failing_their_span_check_do_not_silence_v3():
     assert asked.called
     assert out["changes"] == []
     assert out["feedback_status"] == {"state": "failed", "reason": "asked"}
+
+
+# ── A REFUSED CLAIM IS A VISIBLE FAILURE (founder live test 2026-10-05) ────
+def test_a_refused_claim_shows_the_failure_notice_not_a_blank_page():
+    """A guest's Take lost its whole Feedback block to a refused claim, with
+    no notice and no retry. The claim's failure is now the page's notice."""
+    db = FakeDB(sugs={S2: {"kind": "replace", "trigger": "polish",
+                           "replacement_text": "And then we launched it fast.",
+                           "why": "Tighter."}})
+    with patch.object(_ChangesRun, "_claim_or_filter",
+                      side_effect=RuntimeError("feedback set provenance mismatch")):
+        out = _block(db)
+    assert out["changes"] == []
+    assert out["feedback_status"] == {"state": "failed",
+                                      "reason": "feedback_set_claim_failed"}
+    assert {"stage": "ideal_text.changes.claim",
+            "kind": "RuntimeError"} in out["degraded"]
+
+
+def test_a_block_that_falls_over_says_so():
+    db = FakeDB()
+    with patch.object(_ChangesRun, "execute", side_effect=RuntimeError("boom")):
+        out = _block(db)
+    assert out["feedback_status"] == {"state": "failed", "reason": "changes_failed"}

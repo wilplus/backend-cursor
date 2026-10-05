@@ -205,7 +205,8 @@ for m in add_take_review_lifecycle add_feedback_manager_and_part_commits \
          add_atomic_take_feedback_response add_acknowledged_praise_response \
          answer_a_v3_item_against_the_freeze_that_served_it \
          the_frozen_set_records_the_policy_that_served \
-         the_exposure_record_takes_the_v3_selection; do
+         the_exposure_record_takes_the_v3_selection \
+         a_guest_take_claims_its_feedback_set; do
   sql_file $FREEZE migrations/$m.sql; sql_file $FREEZE migrations/$m.sql
 done
 

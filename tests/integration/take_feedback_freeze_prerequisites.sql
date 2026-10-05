@@ -34,7 +34,10 @@ CREATE TABLE public.v2_sessions (
     id UUID PRIMARY KEY,
     arc_id TEXT NOT NULL,
     owner_principal_id UUID REFERENCES public.owner_principals(id),
-    user_id UUID NOT NULL,
+    -- NULL for a guest's Take, as in production since
+    -- add_guest_funnel_columns.sql; NOT NULL here hid the guest claim
+    -- failure fixed by 0419.
+    user_id UUID NULL,
     recording_1_id UUID REFERENCES public.recordings(id),
     take_index INTEGER NOT NULL,
     recording_kind TEXT,

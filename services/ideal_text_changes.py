@@ -257,7 +257,7 @@ class _ChangesRun:
         # The dual-write moves with it because it reads `self.feedback_set`,
         # and reading it before the claim would have written the canonical
         # provenance of a set that did not exist yet.
-        self._claim_or_filter()
+        self._claim_visibly()
         # THE PACKET BEHIND EVERY V3 CARD (founder 2026-09-29; the 29 Sep
         # report's "V3 packets" finding). V2 froze a learning presentation
         # for each of its three cards inside `_canonical_dual_write`, keyed
@@ -1047,6 +1047,20 @@ class _ChangesRun:
         from services.coach_guidance_delivery import runtime_is_enabled
         return bool(runtime_is_enabled())
 
+    def _claim_visibly(self) -> None:
+        """A claim that fails is a Feedback failure the page can see, never a
+        blank page (founder live test 2026-10-05: a guest's Take lost its
+        whole Feedback block to a refused claim, with no notice and no
+        retry). The rows are not served unfrozen -- an answer to an item the
+        freeze never recorded would be refused -- so the page shows its
+        notice and its Try again instead."""
+        try:
+            self._claim_or_filter()
+        except Exception as error:  # noqa: BLE001 -- reported, never silent
+            self.log.record("changes.claim", error)
+            self.changes = []
+            self.v3_failure = self.v3_failure or "feedback_set_claim_failed"
+
     def _claim_or_filter(self) -> None:
         # Claim only the FINAL, coordinate-proven, span-verified rows. The
         # set spans both the budgeted and style lanes and is therefore
@@ -1641,7 +1655,10 @@ def build_changes_block(arc_id, served_text, user_id="", take_session_id="",
         # the FE renders the star layer, and now knows why the changes are
         # missing.
         log.record("changes", error)
-        result = {}
+        # ...and says so: with no `feedback_status` the page showed neither
+        # Feedback nor its notice (founder live test 2026-10-05).
+        result = {"feedback_status": {"state": "failed",
+                                      "reason": "changes_failed"}}
     if own_log:
         result = {**result, **log.payload()}
     return result

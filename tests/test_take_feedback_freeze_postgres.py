@@ -323,3 +323,54 @@ def test_the_exposure_ceiling_is_the_frozen_set_s_ceiling(db):
             for n in range(65)
         ])
     assert exposures(db, session_id) == 0
+
+
+# ── 0419: A GUEST'S TAKE CLAIMS ITS FEEDBACK SET (founder live test 2026-10-05)
+def guest_take(db, arc_id: str) -> str:
+    """A guest's spoken Take: no account yet, only its guest owner."""
+    session_id = str(uuid4())
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO public.v2_sessions(id, arc_id, owner_principal_id, "
+            "user_id, recording_1_id, take_index, recording_kind) "
+            "VALUES (%s,%s,%s,NULL,%s,1,'spoken')",
+            (session_id, arc_id, OWNER_PRINCIPAL, RECORDING),
+        )
+    return session_id
+
+
+def claim_as(db, arc_id: str, session_id: str, caller: str) -> dict:
+    with db.cursor() as cur:
+        cur.execute(
+            "SELECT public.claim_ideal_text_feedback_set_v1(%s,%s,%s,1,1,%s)",
+            (arc_id, caller, session_id, Json(V3_SET)),
+        )
+        return cur.fetchone()[0]
+
+
+def test_a_guest_take_is_claimed_by_its_guest_owner(db):
+    """A guest caller's id is its principal (Phase 0.6). Before 0419 every
+    guest claim raised 'provenance mismatch', which emptied the whole
+    Feedback block on the guest's Ideal Text."""
+    arc = f"arc-{uuid4()}"
+    session_id = guest_take(db, arc)
+    frozen = claim_as(db, arc, session_id, OWNER_PRINCIPAL)
+    assert ids(frozen) == [key["id"] for key in V3_SET]
+
+
+def test_a_guest_take_refuses_anyone_else(db):
+    arc = f"arc-{uuid4()}"
+    session_id = guest_take(db, arc)
+    with pytest.raises(psycopg2.Error, match="feedback set provenance mismatch"):
+        claim_as(db, arc, session_id, str(uuid4()))
+
+
+def test_an_account_take_is_not_claimed_by_its_principal_id(db):
+    """A signed-in Take compares its account as before: its principal id,
+    which a guest caller would carry, does not stand in for the account."""
+    arc = f"arc-{uuid4()}"
+    session_id = take(db, arc)
+    with pytest.raises(psycopg2.Error, match="feedback set provenance mismatch"):
+        claim_as(db, arc, session_id, OWNER_PRINCIPAL)
+    assert ids(claim_as(db, arc, session_id, OWNER_USER)) == [
+        key["id"] for key in V3_SET]
