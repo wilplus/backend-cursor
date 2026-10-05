@@ -530,16 +530,39 @@ def _log_coverage(take_id: Any, take_index: Any, frame: Any) -> None:
         logger.info("feedback_v3_coverage take=%s take_index=%s unknown",
                     take_id, take_index)
         return
+    exceptions, lanes = _frame_record(frame)
     logger.info(
         "feedback_v3_coverage take=%s take_index=%s assessable=%s covered=%s "
-        "ratio=%s floor=%s meets_floor=%s uncovered=%s",
+        "ratio=%s floor=%s meets_floor=%s uncovered=%s "
+        "partition_exceptions=%s lanes=%s",
         take_id, take_index, coverage.get("assessable_slides"),
         coverage.get("covered_slides"), coverage.get("ratio"),
         coverage.get("required_floor"), coverage.get("meets_floor"),
         [(item.get("slide_index"), item.get("reasons"))
          for item in coverage.get("uncovered") or []
          if isinstance(item, dict)],
+        exceptions, lanes,
     )
+
+
+def _frame_record(frame: dict) -> tuple[list, dict]:
+    """The frame's typed partition exceptions (contract 24a) and the typed
+    outcome of each verbal lane (contract 25, `no_defensible_candidate`), for
+    the coverage line: Slide indexes and type names, never content."""
+    blocks = frame.get("blocks")
+    exceptions = [
+        (block.get("slide_index"), block.get("partition_exception"))
+        for block in (blocks if isinstance(blocks, list) else [])
+        if isinstance(block, dict) and block.get("partition_exception")
+    ]
+    raw = frame.get("verbal_lanes")
+    raw = raw if isinstance(raw, dict) else {}
+    lanes = {
+        name: raw[name].get("outcome")
+        for name in ("rewrite_clarity", "great_formulation")
+        if isinstance(raw.get(name), dict)
+    }
+    return exceptions, lanes
 
 
 def prepare_first_client_feedback(

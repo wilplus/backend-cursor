@@ -218,9 +218,35 @@ def _semantic_blocks(raw_pieces: Any) -> tuple[list[dict], list[dict]]:
                 "snippet_ids": [piece["snippet_id"] for piece in pack],
                 "start": pack[0]["start"],
                 "end": pack[-1]["end"],
+                "partition_exception": _partition_exception(pack, run),
                 "pieces": pack,
             })
     return blocks, exclusions
+
+
+#: Why a block stands outside the normal 60-90 words (contract 24a: "An
+#: indivisible short or long Paragraph remains intact with a typed partition
+#: exception"). Internal arbitration record, never surfaced (24i).
+#:   indivisible_long        one piece over 90 words: words are never cut
+#:   short_slide_run         the whole Slide run is under 60 words, and a
+#:                           block never crosses a Slide boundary
+#:   closest_outside_range   any other: the closest partition at the piece
+#:                           boundaries still falls outside the normal range
+PARTITION_EXCEPTIONS = (
+    "indivisible_long", "short_slide_run", "closest_outside_range",
+)
+
+
+def _partition_exception(pack: list[dict], run: list[dict]) -> Optional[str]:
+    """The typed partition exception for one block, or None inside 60-90."""
+    words = sum(int(piece["word_count"]) for piece in pack)
+    if MIN_WORDS <= words <= MAX_WORDS:
+        return None
+    if words > MAX_WORDS and len(pack) == 1:
+        return "indivisible_long"
+    if words < MIN_WORDS and len(pack) == len(run):
+        return "short_slide_run"
+    return "closest_outside_range"
 
 
 def _clip_lineage(
@@ -314,12 +340,15 @@ _UNROUTED_BLOCK = {
 
 
 def _practice_routing(blocks: list[dict]) -> dict:
-    """Which blocks prompt practice, and which single one carries the exercise.
+    """Which blocks prompt practice, and which carry an exercise.
 
-    EVERY block below the neutral band shows "Let's practice". Exactly ONE of
-    them — the weakest — also carries the exercise, because an exercise is work
-    the user has to go and do, and four of them is a to-do list rather than a
-    lesson (contract 24f).
+    EVERY block below the neutral band shows "Let's practice". EVERY block the
+    machine reads weak (the neutral band and below, `CONFIDENT_BANDS`) carries
+    the exercise matched to its own clip (contract 24f, founder 2026-09-29,
+    superseding "one exercise, on the weakest item below the neutral band":
+    "they can carry as many exercises as bookmark indicates"). Whether one is
+    there is the library's match under 35g-1, made on the serve path; this
+    records which blocks it may be made for, nothing more.
 
     AC-9, and this is the sharp edge: `services.voice_confidence.band()` warns
     in its own docstring that the band IS a verdict and must never reach a user
@@ -329,7 +358,6 @@ def _practice_routing(blocks: list[dict]) -> dict:
     """
     from services.voice_confidence import band as delivery_band
 
-    below: list[tuple[tuple, dict]] = []
     routing: dict[str, dict] = {}
     for block in blocks:
         selected_id = block.get("selected_candidate_id")
@@ -345,21 +373,13 @@ def _practice_routing(blocks: list[dict]) -> dict:
         if chosen is None:
             continue
         label = delivery_band(chosen.get("machine_score"))
-        entry = {
+        routing[block["block_id"]] = {
             "delivery_band": label,
             "practice_prompt": label in PRACTICE_BANDS,
-            "carries_exercise": False,
+            "carries_exercise": (
+                label is not None and label not in CONFIDENT_BANDS),
         }
-        routing[block["block_id"]] = entry
-        if entry["practice_prompt"]:
-            below.append((_confidence_rank(chosen), block))
 
-    # The weakest is the LAST of the shared confidence ordering, not a second
-    # rule — one ranking read from both ends, so "strongest" and "weakest" can
-    # never disagree about the same take.
-    if below:
-        below.sort(key=lambda pair: pair[0])
-        routing[below[-1][1]["block_id"]]["carries_exercise"] = True
 
     # Applied HERE rather than in the caller. build_shadow_frame is
     # grandfathered at CC 37 and the ratchet only lets it come down, so a loop
@@ -486,6 +506,32 @@ def _anchored_notes(ranked: list[dict], blocks: list[dict]) -> list[dict]:
                 used.add(candidate_id)
                 break
     return chosen
+
+
+#: The typed outcome of a verbal lane that found nothing honest to say
+#: (contract 25): no card, and nothing invented to fill it.
+NO_DEFENSIBLE_CANDIDATE = "no_defensible_candidate"
+
+
+def _lane_outcome(anchors: list[dict], read_blocks: list[dict]) -> dict:
+    """What one verbal lane decided, typed (contract 25, as amended
+    2026-09-29: the comparison is within the block).
+
+    `outcome` is ``no_defensible_candidate`` when the lane anchored no note at
+    all on this Take, and each block read for the lane that carries no note
+    is named with the same reason: an honest empty lane shows no card, and
+    the frame says so rather than leaving the lane merely absent. Missing or
+    unusable source material stays its own typed exclusion
+    (`excluded_candidates`)."""
+    anchored = {str(row.get("block_id")) for row in anchors}
+    return {
+        "outcome": "selected" if anchors else NO_DEFENSIBLE_CANDIDATE,
+        "blocks_without_note": [
+            {"block_id": block["block_id"], "reason": NO_DEFENSIBLE_CANDIDATE}
+            for block in read_blocks
+            if str(block.get("block_id")) not in anchored
+        ],
+    }
 
 
 def _log_verbal_lanes(take_id: Any, rewrite_ranked: list,
@@ -1046,8 +1092,10 @@ def build_shadow_frame(
         "practice_policy": {
             "threshold": "below_neutral_delivery_band",
             "prompt_bands": list(PRACTICE_BANDS),
-            "exercise_budget": 1,
-            "exercise_target": "weakest_prompting_block",
+            # 24f (founder 2026-09-29): an exercise on any bookmark the
+            # machine reads weak, each matched to its own clip (35g-1).
+            "exercise_budget": "one_per_block_read_weak",
+            "exercise_target": "each_block_read_weak_own_clip",
         },
         "confidence_definition": {
             "scope": "relative_within_block",
@@ -1066,6 +1114,8 @@ def build_shadow_frame(
                 "anchors": rewrite_anchors,
                 "candidates": rewrite_inventory,
                 "selected_candidate_ids": rewrite_selected_ids,
+                **_lane_outcome(
+                    rewrite_anchors, _blocks_read(blocks, confident=False)),
             },
             "great_formulation": {
                 "selection_scope": "anchored_to_blocks_read_confident",
@@ -1073,6 +1123,8 @@ def build_shadow_frame(
                 "anchors": praise_anchors,
                 "candidates": praise_inventory,
                 "selected_candidate_ids": praise_selected_ids,
+                **_lane_outcome(
+                    praise_anchors, _blocks_read(blocks, confident=True)),
             },
         },
         "excluded_candidates": exclusions,

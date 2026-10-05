@@ -98,9 +98,10 @@ def _block_presentation(block: dict, block_id: str) -> dict:
     return {
         "block_id": block_id,
         "bookmark_tier": tier,
-        # "Let's practice" with no exercise attached — contract 24f: an exercise
-        # is work the user must go and do, and a list of them is a list nobody
-        # starts, so only the weakest below-neutral item carries one.
+        # "Let's practice", one boolean. Which exercise a moment carries is
+        # the library's match to its own clip (contract 24f as of 2026-09-29:
+        # an exercise on any bookmark the machine reads weak; 35g-1), attached
+        # on the serve path, never decided here.
         "practice_prompt": bool(block.get("practice_prompt")),
     }
 
