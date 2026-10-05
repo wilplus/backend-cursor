@@ -48,11 +48,20 @@ def test_it_refuses_placeholders():
     assert "RETENTION_SCHEDULE_V1_3_UNSIGNED" in SCRIPT
     assert "v_sha256 LIKE '[[%'" in SCRIPT
     assert "v_approved_at_text LIKE '[[%'" in SCRIPT
-    # Shipped unsigned: the hash placeholder is still in the file; the day
-    # is the one the document records.
-    assert "'[[sha256 of the signed PDF" in SCRIPT
+    # The day is the one the document records.
     assert "v_approved_at_text TEXT := '2026-10-05'" in SCRIPT
     assert "approved_at:         2026-10-05" in DOC
+
+
+def test_it_carries_the_signed_hash_from_signed_artifacts():
+    """Signed 2026-10-05: the script registers exactly the hash that
+    SIGNED-ARTIFACTS.md records for 06 v1.3, never a placeholder."""
+    table = (ROOT / "legal" / "phase1-2026.1" / "SIGNED-ARTIFACTS.md").read_text()
+    current = table.split("## Current", 1)[1].split("\n## ", 1)[0]
+    row = next(line for line in current.splitlines() if line.startswith("| 06 v1.3 |"))
+    sha = re.search(r"`([0-9a-f]{64})`", row).group(1)
+    assert f"v_sha256 TEXT := '{sha}';" in SCRIPT
+    assert "'[[sha256 of the signed PDF" not in SCRIPT
 
 
 def test_it_registers_version_1_3_and_never_edits_a_signed_one():

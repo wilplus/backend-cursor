@@ -22,6 +22,7 @@ unsigned render is never the right value.
 | 13 | `phase1-2026.1/legal/training-consent-wording-v1.pdf` | 2026-10-01 | `b1ec620ea7a8c85d8b351a7e1eadc31c81b52bfffc4cd0c7d4897053b0ce1632` |
 | 02 v1.1 | `phase1-2026.1/legal/power-score-classification-v1.1.pdf` | 2026-10-02 | `e00536d02779d4687a02817348b978b8c4702b7e16bc5c51c102e4f4f2ac2ade` |
 | 06 v1.2 | `phase1-2026.1/legal/retention-schedule-v1.2.pdf` | 2026-10-02 | `b0439d1847e4eff0d5e8eedc8efd3dcbed8317f9731e7319a91ec7abf529f479` |
+| 06 v1.3 | `phase1-2026.1/legal/retention-schedule-v1.3.pdf` | 2026-10-05 | `59a25f9409e85e2289e8484baa4cc0fc74d5c6ed98dca2d22be443175473cfb4` |
 
 `02 v1.1` and `06 v1.2` were rendered by `scripts/render_doc_pdf.py` on
 2026-10-02 (unsigned sha256 `dc175ffc…c40e8` and `cec455cb…dc85c`) and signed
@@ -93,23 +94,29 @@ carries a provisional reference for 02 until the registration script runs,
 as the 3.2 publish did. Neither signature makes either document
 counsel-reviewed; both say so on their first page.
 
-## Awaiting signature (rendered 2026-10-05)
+## Signed 2026-10-05 (closed; rendered and signed the same day)
 
-One render for the founder's PAdES signature, made by
-`scripts/render_doc_pdf.py` from the markdown in the same commit as this
-table. The founder decided the period in chat that day ("It should be kept
-for 5 years", decisions log N43). The hash is of the **unsigned** render, so
-the signed file can be checked to be that render plus a signature and nothing
-else; it is never the value to register.
+One render made on 2026-10-05 by `scripts/render_doc_pdf.py` from the
+markdown in the same commit as this table. The founder decided the period in
+chat that day ("It should be kept for 5 years", decisions log N43). The hash
+of the **unsigned** render is recorded so that the signed file can be checked
+to be that render plus a signature and nothing else; it is never the value to
+register.
 
 | # | `object_key` | source | `sha256` of the UNSIGNED render |
 |---|---|---|---|
 | 06 v1.3 | `phase1-2026.1/legal/retention-schedule-v1.3.pdf` | `19-retention-schedule-v1.3-financial-records-DRAFT.md` | `9a94ebe930f68db2a6e8959859af5019d6feb479672ecb87f41de1ac43a2c046` |
 
-Once signed: upload the file to its `object_key`, put the signed file's
-sha256 in the **Current** table and in `scripts/phase1_retention_rules_v1_3.sql`,
-and run that script once. Until then `financial_evidence` stays unresolved
-and an account erasure still stops.
+Signed at 13:42:28 UTC on 2026-10-05 (PAdES, `/ETSI.CAdES.detached`, the
+trusted signature in the founder's name); the founder sent the signed file to
+the session the same day, 110,851 bytes. The unsigned render (67,131 bytes)
+is a byte-identical prefix of the signed file, so what was signed is exactly
+what was rendered. Its hash is in the **Current** table and in
+`scripts/phase1_retention_rules_v1_3.sql`. The upload to its `object_key` and
+the one run of that script are the founder's; until the script runs,
+`financial_evidence` stays unresolved and an account erasure still stops. The
+signature does not make the document counsel-reviewed; it says so on its
+first page.
 
 ## Why 02 and 03 were re-signed (closed 2026-09-22)
 
