@@ -23,6 +23,8 @@ unsigned render is never the right value.
 | 02 v1.1 | `phase1-2026.1/legal/power-score-classification-v1.1.pdf` | 2026-10-02 | `e00536d02779d4687a02817348b978b8c4702b7e16bc5c51c102e4f4f2ac2ade` |
 | 06 v1.2 | `phase1-2026.1/legal/retention-schedule-v1.2.pdf` | 2026-10-02 | `b0439d1847e4eff0d5e8eedc8efd3dcbed8317f9731e7319a91ec7abf529f479` |
 | 06 v1.3 | `phase1-2026.1/legal/retention-schedule-v1.3.pdf` | 2026-10-05 | `59a25f9409e85e2289e8484baa4cc0fc74d5c6ed98dca2d22be443175473cfb4` |
+| 06 v1.4 | `phase1-2026.1/legal/retention-schedule-v1.4.pdf` | 2026-10-05 | `f3a19127bd586913ebe5c0a1f2a97c5e24646c8e1fb44e3fef312346200afee6` |
+| 03 v1.1 | `phase1-2026.1/legal/article-50-assessment-v1.1.pdf` | 2026-10-05 | `97a88b6946957e5849c3fa80b3a39d6c480d35080b7b4fa792d768f85667ad6c` |
 
 `02 v1.1` and `06 v1.2` were rendered by `scripts/render_doc_pdf.py` on
 2026-10-02 (unsigned sha256 `dc175ffc…c40e8` and `cec455cb…dc85c`) and signed
@@ -120,6 +122,44 @@ one row). `financial_evidence` now resolves, so an account erasure no longer
 stops on `token_ledger` or `llm_usage` rows. The upload of the signed file to
 its `object_key` is the founder's. The signature does not make the document
 counsel-reviewed; it says so on its first page.
+
+## Signed 2026-10-05, evening (closed; rendered and signed the same day)
+
+Two renders made on 2026-10-05 by `scripts/render_doc_pdf.py` from the
+markdown in the same commit as this table, for the founder's PAdES signature:
+the founder's answers Q15 A and Q22 A (decisions log N48.4), signed as D1 A
+and D2 A on the Wave 3 sign-off page. The hash of the **unsigned** render is
+recorded so that the signed file can be checked to be that render plus a
+signature and nothing else; it is never the value to register.
+
+| # | `object_key` | source | `sha256` of the UNSIGNED render |
+|---|---|---|---|
+| 06 v1.4 | `phase1-2026.1/legal/retention-schedule-v1.4.pdf` | `20-retention-schedule-v1.4-product-records-and-job-evidence-DRAFT.md` | `5dea1acf97cf4fa01df9966f5ca08f1c0680450b16338a14a159d7c4abbedd07` |
+| 03 v1.1 | `phase1-2026.1/legal/article-50-assessment-v1.1.pdf` | `03-article-50-assessment-v1.1-DRAFT.md` | `2eb9c3f1efa9262ed7cb8e2b570797e591fa92d6132f7a6727f2623f0494ad08` |
+
+Both signed at 20:05:07 UTC on 2026-10-05 (PAdES, `/ETSI.CAdES.detached`,
+the trusted-signature seal, "Minister do spraw informatyzacji - pieczęć
+podpisu zaufanego"). The signed files are 127,109 bytes (06 v1.4) and
+132,605 bytes (03 v1.1); the unsigned renders (83,678 and 89,174 bytes) are
+byte-identical prefixes of them, so what was signed is exactly what was
+rendered. In each, the signature's ByteRange covers the whole file and the
+CMS messageDigest equals the sha256 of the signed byte ranges. The session's
+poppler `pdfsig` reports "Signature is Invalid" for this seal, exactly as it
+does for the registered 02 v1.1 and 06 v1.3 files: the session verified the
+prefix and the document digest, not the seal's certificate chain. Their
+hashes are in the **Current** table.
+
+**Not yet registered.** The upload of each signed file to its `object_key`
+is the founder's. Then `03 v1.1` is registered under
+`(article_50_assessment, 1.1)` by `scripts/phase1_register_article_50_v1_1.sql`,
+and `06 v1.4` under `(retention_schedule, 1.4)`, with its two rules, by
+`scripts/phase1_retention_rules_v1_4.sql`, which runs only after the purge
+change and its job-plumbing grant (0424 and 0425) are deployed: the
+script's header says why. Both scripts carry these hashes; check the
+uploaded objects against them before running. `03 v1.0` and `06 v1.3` stay
+signed for their versions (04 §5). Neither signature makes either document
+counsel-reviewed; both say so on their first page, and both are put to
+counsel (`21-counsel-questions-2026-10.md`, questions 2 and 3).
 
 ## Why 02 and 03 were re-signed (closed 2026-09-22)
 
