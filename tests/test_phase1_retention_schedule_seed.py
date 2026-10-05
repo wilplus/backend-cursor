@@ -65,12 +65,15 @@ class TheSeedMatchesTheRegistry(unittest.TestCase):
 
         Six since 2026-09-26: `consent_evidence`, the record of a training
         yes and no (founder N10 answer 9, N11 answer 1; doc 11, retention
-        schedule v1.1 §2)."""
+        schedule v1.1 §2). Seven since 2026-10-05: `job_evidence`, the
+        processing job evidence kept 12 months (founder N48.4 Q15 A;
+        retention schedule v1.4 §2)."""
         self.assertEqual(REQUIRED, {
             "authorization_evidence",
             "consent_evidence",
             "deletion_evidence",
             "financial_evidence",
+            "job_evidence",
             "processor_evidence",
             "transparency_evidence",
         })
@@ -79,7 +82,9 @@ class TheSeedMatchesTheRegistry(unittest.TestCase):
     #: here so "missing" and "open" cannot be confused for one another.
     #: `consent_evidence` waits for retention schedule v1.1 (doc 11), which
     #: counsel checks and the founder signs; it is not in the v1.0 seed.
-    OPEN = {"financial_evidence", "consent_evidence"}
+    #: `job_evidence` is seeded by the hand-run v1.4 script once the founder
+    #: signs v1.4 (scripts/phase1_retention_rules_v1_4.sql), never by 0381.
+    OPEN = {"financial_evidence", "consent_evidence", "job_evidence"}
 
     def test_every_retained_category_has_a_rule_except_the_open_one(self):
         seeded_categories = {category for _, category in SEEDED}

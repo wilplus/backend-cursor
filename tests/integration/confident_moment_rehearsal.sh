@@ -568,6 +568,16 @@ if [ "$LANE" = "released" ]; then
   hard migrations/old_data_goes_on_a_schedule.sql
 fi
 
+# 0424 lets a running purge delete the product records its frozen
+# inventory names under the active v1.4 rule (retention schedule v1.4): the
+# immutable-feedback trigger gains one governed DELETE branch. Released lane
+# only, where the phase-1 purge tables live. After 0423, as in the
+# manifest. Twice: apply/reapply idempotency.
+if [ "$LANE" = "released" ]; then
+  hard migrations/a_purge_deletes_the_product_records_it_froze.sql
+  hard migrations/a_purge_deletes_the_product_records_it_froze.sql
+fi
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing
