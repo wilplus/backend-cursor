@@ -99,6 +99,12 @@ def run_corpus_copy(take_session_id: str, arc_id: str, user_id: str = "",
                if principal else None) or {}
     if consent.get("active") is not True:
         return {"status": "no_training_yes"}
+    # A deletion or termination stops every copy (0422, PLF-T2); the
+    # database refuses one too, this only spares the upload.
+    from services.account_deletion import learning_stopped
+
+    if learning_stopped(database, principal):
+        return {"status": "learning_stopped"}
     from services.take_feedback_set import load_feedback_set
 
     frozen = load_feedback_set(database, arc_id, take_session_id)

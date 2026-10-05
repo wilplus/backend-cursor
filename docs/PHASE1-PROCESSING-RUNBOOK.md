@@ -98,6 +98,40 @@ This fail-closed state is not completed erasure. Production activation remains
 blocked until every target has an approved resolver, retention rule,
 idempotent executor, reconciliation monitor and end-to-end staging proof.
 
+## Deletions that complete by themselves (0422, N48.4 Q14 A, Q17 A)
+
+An account deletion (`POST /v2/processing-authorization/terminate`,
+`account_deletion`) and a project deletion (`POST
+/v2/projects/<id>/deletion-request`) wait seven days. The account is blocked
+at once (the status function counts the pending request); the requester may
+cancel until `completes_after`; nothing is deleted before it. Then the
+completion run starts the purge, runs the orchestrator and marks the request
+done on verified evidence. A purge that meets rows no rule decides stops at
+`review_required`, deletes nothing past the refusal, and waits for a person:
+`GET /v2/admin/deletions` lists it with the targets that stopped it.
+
+Setup (CONFIG-FIRST: the web service first):
+
+1. Web service: `DELETION_COMPLETION_SECRET` (without it the route answers
+   503). Leave `PHASE1_PURGE_EXECUTION_ENABLED` unset at first: every run is
+   then a dry run that reports what is due and writes nothing.
+2. A Railway cron service from this repo: Start Command
+   `sh bin/railway-deletion-completion-cron.sh`, schedule `37 * * * *`,
+   variables `DELETION_COMPLETION_BACKEND_URL` and `DELETION_COMPLETION_SECRET`.
+3. Read a dry run's report (the cron log, or `python
+   scripts/run_due_deletions.py` in a shell). When it lists only what should
+   go, set `PHASE1_PURGE_EXECUTION_ENABLED=true` on the web service.
+
+Known limit (found by the 0422 rehearsal, not changed by it): the purge
+deletes `phase1_processing_jobs`, `phase1_processing_outbox`,
+`processing_job_carryovers` and `processing_orphan_objects` rows directly as
+service_role, and 0310 revoked DELETE on them. A person with processing jobs
+is stopped earlier, at the jobs' events (external_review, N14.3), before
+anything is deleted; once a rule decides those events, or for a person with
+an orphan-object row and no job, those deletes fail with
+InsufficientPrivilege mid-run and the request waits for a person. They need
+an executor (a scoped function, or a grant) before that.
+
 ## Production gates
 
 Required before activation: Product/legal approval of exact artifacts and

@@ -527,6 +527,15 @@ hard migrations/an_accepted_rewrite_may_change_a_protected_paragraph.sql
 # Paragraph accept_rewrite_into_part_v1 names ('accepted_rewrite'). Twice.
 hard migrations/an_accepted_rewrite_names_its_revision.sql
 hard migrations/an_accepted_rewrite_names_its_revision.sql
+# 0422: an account deletion waits seven days and can be cancelled; the
+# status function counts it as a block; learning stops with the service; a
+# project deletion keeps its window; the completion lease. It re-issues
+# request_phase1_purge_v1 (0310), get_phase1_processing_authorization_v1
+# (0358), refresh_feedback_pair_consent_v1 (0405),
+# record_training_corpus_item_v1 (0375) and cancel_project_deletion_v1
+# (0364), all applied above. Twice: apply/reapply.
+hard migrations/a_deletion_completes_after_seven_days.sql
+hard migrations/a_deletion_completes_after_seven_days.sql
 
 # R-1 (audit 2026-09-22). 0299 created the two learning-surface tables with
 # the same GRANT ALL TO service_role as 0296, and was never in this chain, so

@@ -780,6 +780,121 @@ class ProcessingAuthorizationService:
                 "The data request could not be recorded.", 503,
             ) from error
 
+    # ── Account deletion with its seven-day window (0422, N48.4 Q14 A) ─────
+    # The request blocks at once and deletes nothing for seven days; the
+    # requester may cancel until then. services/account_deletion.py holds
+    # the reads; these are the boundary the routes call.
+
+    def request_account_deletion(
+        self, acquisition_principal_id: str, *, idempotency_key: str,
+        reason_code: Any = None,
+    ) -> dict:
+        from services.account_deletion import (
+            AccountDeletionRefused, AccountDeletionService, deletion_view,
+        )
+
+        try:
+            row = AccountDeletionService(self.database).request(
+                acquisition_principal_id, idempotency_key=idempotency_key,
+                reason=reason_code)
+        except AccountDeletionRefused as refused:
+            if refused.code == "ACCOUNT_DELETION_UNAVAILABLE":
+                # 0422 has not reached this database: record the request the
+                # way it was recorded before (blocked at once, no window), so
+                # "Delete my account" never stops working over a migration.
+                logger.warning("account deletion window unavailable; "
+                               "recorded as an immediate purge request",
+                               exc_info=True)
+                return self.request_purge(
+                    acquisition_principal_id=acquisition_principal_id,
+                    trigger_kind="account_deletion",
+                    idempotency_key=idempotency_key,
+                    reason_code="ACCOUNT_DELETION")
+            raise ProcessingAuthorizationError(
+                refused.code, "The deletion request could not be recorded.",
+                refused.status) from refused
+        except Exception as error:
+            raise ProcessingAuthorizationError(
+                "PURGE_REQUEST_FAILED",
+                "The deletion request could not be recorded.", 503,
+            ) from error
+        return deletion_view(row) or {}
+
+    def cancel_account_deletion(
+        self, acquisition_principal_id: str, request_id: str,
+    ) -> dict:
+        from services.account_deletion import (
+            AccountDeletionRefused, AccountDeletionService, deletion_view,
+        )
+
+        try:
+            row = AccountDeletionService(self.database).cancel(
+                acquisition_principal_id, request_id)
+        except AccountDeletionRefused as refused:
+            raise ProcessingAuthorizationError(
+                refused.code, "The deletion cannot be cancelled.",
+                refused.status) from refused
+        except Exception as error:
+            raise ProcessingAuthorizationError(
+                "DELETION_CANCEL_FAILED",
+                "The deletion could not be cancelled.", 503,
+            ) from error
+        return deletion_view(row) or {}
+
+    def pending_deletion(self, acquisition_principal_id: str) -> dict | None:
+        """The account deletion that governs this person (pending, started
+        or done), for the ended state (Q19 A); None when there is none or it
+        cannot be read. The status code still says blocked either way."""
+        from services.account_deletion import (
+            AccountDeletionService, deletion_view,
+        )
+
+        try:
+            row = AccountDeletionService(self.database).live_for_principal(
+                acquisition_principal_id)
+        except Exception as error:
+            logger.warning(
+                "pending deletion unreadable principal=%s: %s",
+                acquisition_principal_id, error, exc_info=True)
+            return None
+        return deletion_view(row)
+
+    def pending_project_deletions(self, acquisition_principal_id: str) -> list:
+        """This person's open project deletions, newest first; empty when
+        none or unreadable (the project list carries each one as well)."""
+        from services.project_deletion import ProjectDeletionService, public_view
+
+        try:
+            rows = ProjectDeletionService(self.database).open_for_principal(
+                acquisition_principal_id)
+        except Exception as error:
+            logger.warning(
+                "pending project deletions unreadable principal=%s: %s",
+                acquisition_principal_id, error, exc_info=True)
+            return []
+        return [view for view in (public_view(row) for row in rows) if view]
+
+    def deletion_status(
+        self, acquisition_principal_id: str, request_id: str,
+    ) -> dict | None:
+        """One of this person's deletion requests by id: an account request
+        (0422), or a purge request read as before."""
+        from services.account_deletion import (
+            AccountDeletionService, deletion_view,
+        )
+
+        try:
+            row = AccountDeletionService(self.database).find(
+                acquisition_principal_id, request_id)
+        except Exception as error:
+            logger.warning(
+                "deletion request unreadable id=%s: %s", request_id, error,
+                exc_info=True)
+            row = None
+        if row:
+            return deletion_view(row)
+        return self.purge_status(acquisition_principal_id, request_id)
+
     def request_data_right(
         self, *, acquisition_principal_id: str, request_kind: str,
         idempotency_key: str, subject_payload: Mapping[str, Any],
@@ -847,8 +962,28 @@ class ProcessingAuthorizationService:
             "authorization_receipts": receipts,
             "data_requests": purges,
             "data_rights_requests": rights,
+            "account_deletion_requests": self._account_deletions(
+                acquisition_principal_id),
             "pooled_learning_eligible": False,
         }
+
+    def _account_deletions(self, acquisition_principal_id: str) -> list:
+        """The person's account deletion requests (0422) for their export;
+        empty before the table exists."""
+        try:
+            return (
+                self.client.table("account_deletion_requests")
+                .select("id,state,requested_at,completes_after,cancelled_at,"
+                        "completed_at")
+                .eq("acquisition_principal_id", acquisition_principal_id)
+                .execute().data or []
+            )
+        except Exception as error:
+            from services.account_deletion import _is_missing
+
+            if _is_missing(error):
+                return []
+            raise
 
 
 def evidence_sha256(value: Mapping[str, Any]) -> str:

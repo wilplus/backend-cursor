@@ -760,6 +760,19 @@ class Config:
     # Shared secret for POST /v2/internal/learning/weekly (the weekly learning
     # job's cron, founder 2026-09-30; ML-3). Unset = the route answers 503.
     LEARNING_WEEKLY_SECRET = (os.getenv("LEARNING_WEEKLY_SECRET") or "").strip()
+    # Shared secret for POST /v2/internal/deletion/complete-due (deletions
+    # that complete by themselves after seven days, founder 2026-10-05,
+    # N48.4 Q14 A / Q17 A). Unset = the route answers 503.
+    DELETION_COMPLETION_SECRET = (
+        os.getenv("DELETION_COMPLETION_SECRET") or ""
+    ).strip()
+    # The purge kill switch scripts/run_phase1_data_purge.py also reads.
+    # Only "true" executes; anything else makes the completion run a dry run
+    # that reports what is due and writes nothing.
+    PHASE1_PURGE_EXECUTION_ENABLED = (
+        (os.getenv("PHASE1_PURGE_EXECUTION_ENABLED") or "").strip().lower()
+        == "true"
+    )
 
     # willab — upfront free credit grant seeded on a user's first ledger touch
     # (founder testing 2026-07-13: bumped 15 → 25 so every user can unlock one

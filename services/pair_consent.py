@@ -9,7 +9,10 @@ that works either way:
   * the weekly refresh (refresh_feedback_pair_consent_v1, migration 0405)
     recomputes every pair from the ledger, so a yes given later makes older
     pairs releasable and a withdrawal makes them not, voiding any release
-    that carried them.
+    that carried them;
+  * a person whose service is ending (an account deletion not cancelled,
+    or a termination) has no releasable pair whatever the ledger says
+    (0422, PLF-T3): at the request, at the stamp and at every refresh.
 
 WHICH SURFACES NEED THE YES: all three, counsel 2026-10-01 (a coach's note
 about a speaker's passage is the speaker's personal data even without the
@@ -83,10 +86,14 @@ def stamp(database: Any, *, surface: str, owner_user_id: Any) -> dict:
                 "releasable": False}
     status = consent_for_principal(database, principal)
     if status.get("active") is True:
+        # The yes stands, but a person whose service is ending adds nothing
+        # to any release (0422, PLF-T3); the weekly refresh keeps it so.
+        from services.account_deletion import learning_stopped
+
         return {"owner_principal_id": principal, "consent_state": "yes",
                 "consent_grant_event_id": status.get("grant_event_id"),
                 "consent_policy_version": status.get("consent_policy_version"),
-                "releasable": True}
+                "releasable": not learning_stopped(database, principal)}
     return {"owner_principal_id": principal, "consent_state": "no",
             "consent_grant_event_id": None, "consent_policy_version": None,
             "releasable": False}

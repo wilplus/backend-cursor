@@ -299,6 +299,13 @@ new training run, and the DPIA records this position at P5.
 
 ### 6.4 Execution — operator-confirmed (Q5, settled)
 
+*Superseded 2026-10-05 (founder, decisions log N48.4 Q17 A; migration 0422):
+a project deletion completes by itself after its 7-day window, during which
+the owner may cancel; the scheduled run confirms it as the system and purges
+it, only with `PHASE1_PURGE_EXECUTION_ENABLED`. An operator acts only on a
+purge that stops on rows no rule decides. The text below is kept as the
+earlier decision.*
+
 `project_deletion` requests **wait for an operator**, exactly like every other
 purge today: execution requires `PHASE1_PURGE_EXECUTION_ENABLED=true` and an
 operator repeating the request id. The user's tap creates the request; it does
