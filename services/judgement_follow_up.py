@@ -262,13 +262,26 @@ def _set_answer_kind(database: Any, take_session_id: str, snippet_id: str,
         return False
 
 
+def _read_of(snippet: dict, median: Any, vocabulary: Any) -> dict:
+    """One clip's read from its loaded inputs: the single computation
+    `_clip_read` and `open_cards` share."""
+    from services.confident_voice_practice import (
+        exercise_eligibility, machine_read, observed_problem_tags,
+    )
+    verdict = exercise_eligibility(snippet, session_median_wpm=median)
+    return {
+        "snippet": snippet, "verdict": verdict, "vocabulary": vocabulary,
+        "read": machine_read(verdict),
+        "observed": observed_problem_tags(verdict, vocabulary=vocabulary),
+    }
+
+
 def _clip_read(database: Any, take_session_id: str,
                snippet_id: str) -> Optional[dict]:
     """The machine's read of the clip and what fired on it, as the lane
     computes them. None when the clip cannot be read at all."""
     from services.confident_voice_practice import (
-        _median_wpm, detected_problem_vocabulary, exercise_eligibility,
-        machine_read, observed_problem_tags,
+        _median_wpm, detected_problem_vocabulary,
     )
     try:
         snippet = next(iter(
@@ -276,19 +289,78 @@ def _clip_read(database: Any, take_session_id: str,
             or []), None)
         if not isinstance(snippet, dict):
             return None
-        verdict = exercise_eligibility(
-            snippet, session_median_wpm=_median_wpm(
-                database.get_snippets_by_session(take_session_id) or []))
-        vocabulary = detected_problem_vocabulary(database)
-        return {
-            "snippet": snippet, "verdict": verdict, "vocabulary": vocabulary,
-            "read": machine_read(verdict),
-            "observed": observed_problem_tags(verdict, vocabulary=vocabulary),
-        }
+        median = _median_wpm(
+            database.get_snippets_by_session(take_session_id) or [])
+        return _read_of(snippet, median, detected_problem_vocabulary(database))
     except Exception as e:  # noqa: BLE001 — never lose the answer
         _log.warning("judgement clip read failed take=%s snip=%s: %s",
                      take_session_id, snippet_id, e, exc_info=True)
         return None
+
+
+#: The cards the page may open a moment on: `decide_at_open`'s "what shows
+#: now", nothing else. A routing instruction, never a read or a score.
+OPEN_CARDS = ("praise", "exercise", "coach_request", "rewrite")
+
+
+def open_cards(database: Any, *, take_session_id: str,
+               snippet_ids: list[str]) -> dict[str, str]:
+    """{snippet_id: card} for the moments the page serves (founder
+    2026-10-05, N48.1, Wave 1 step 1): the cell of the follow-up matrix the
+    moment OPENS on, from `decide_at_open` and the same clip read and
+    exercise draw `follow_up_for_open` uses, so the page opens the card the
+    matrix names instead of guessing without "fired" (which it must never
+    see, AC-9).
+
+    A moment is left out, and the page keeps its own rule, when its clip
+    cannot be read, when the switch for judgement after feedback is off (no
+    request rises at the open, so the coach's sentence would be no
+    promise), or when the cell is the coach's request and no coach is on
+    the panel ("the promise needs a coach", founder 2026-09-30). Never
+    raises: a failed read serves the rows without the field.
+    """
+    from services.confident_voice_practice import (
+        _median_wpm, coach_on_panel, detected_problem_vocabulary,
+    )
+    ids = [str(s) for s in dict.fromkeys(snippet_ids or []) if s]
+    if not take_session_id or not ids or not judgement_after_feedback_enabled():
+        return {}
+    try:
+        snippets = {
+            str(row.get("id")): row for row in (
+                database.get_confident_voice_practice_candidates(ids) or [])
+            if isinstance(row, dict)}
+        if not snippets:
+            return {}
+        median = _median_wpm(
+            database.get_snippets_by_session(take_session_id) or [])
+        vocabulary = detected_problem_vocabulary(database)
+    except Exception as e:  # noqa: BLE001 — the rows still serve
+        _log.warning("open cards read failed take=%s: %s",
+                     take_session_id, e, exc_info=True)
+        return {}
+    out: dict[str, str] = {}
+    coach: Optional[bool] = None
+    for snippet_id in ids:
+        snippet = snippets.get(snippet_id)
+        if snippet is None:
+            continue
+        try:
+            clip = _read_of(snippet, median, vocabulary)
+        except Exception as e:  # noqa: BLE001 — this moment keeps the page's rule
+            _log.warning("open card read failed take=%s snip=%s: %s",
+                         take_session_id, snippet_id, e, exc_info=True)
+            continue
+        matched = _exercise_on_moment(database, take_session_id, snippet_id)
+        now, _ = decide_at_open(clip["read"], bool(clip["observed"]), matched)
+        if now == "coach_request":
+            if coach is None:
+                coach = coach_on_panel(database)
+            if not coach:
+                continue
+        if now in OPEN_CARDS:
+            out[snippet_id] = now
+    return out
 
 
 def clip_machine_read(database: Any, take_session_id: str,
