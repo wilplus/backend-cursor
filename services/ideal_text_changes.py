@@ -622,10 +622,29 @@ class _ChangesRun:
                 take_session_id=self.arm_sid,
                 snippet_id=_candidate_sid,
                 snippet_ids_by_family=self.frozen_family_snippets,
+                document_map=self._take_document_map(),
             )
             self.feedback_exposure = exposure_snapshot(self.changes)
         else:
             self.feedback_exposure = []
+
+    def _take_document_map(self):
+        """The served-to-Take map the fallback decision reads (N48.1, Wave
+        1, E1): the review Take's document with its pieces placed on the
+        served text by the same relocation V3's binding uses. Any failure
+        yields None, which offers both fallbacks -- never fewer lanes."""
+        from services.ideal_text_parts import with_served_spans
+        from services.take_feedback_manager import TakeDocumentMap
+        try:
+            placed = with_served_spans(
+                self.review_doc, served_text=self.served_text,
+                slide_regions=self.slide_regions)
+            return TakeDocumentMap.for_document(
+                placed, self.served_text, take_id=self.arm_sid)
+        except Exception as error:  # noqa: BLE001 -- logged; fallbacks stay
+            logger.warning("take document map failed arc=%s take=%s: %s",
+                           self.arc_id, self.arm_sid, error)
+            return None
 
     def _v3_shadow(self) -> None:
         # TAKE FEEDBACK V3 SHADOW. A real, founder-scoped comparison write
@@ -659,6 +678,7 @@ class _ChangesRun:
                 feedback_candidates=self.changes,
                 take_index=_v3_take_index,
                 expected_recording_id=_v3_session.get("recording_id"),
+                served_text=self.served_text,
             )
             if _v3_frame is not None:
                 _v3_saved = db.record_take_feedback_policy_v3_shadow(

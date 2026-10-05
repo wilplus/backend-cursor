@@ -1981,24 +1981,10 @@ def v2_coach_session_video(session_id):
 @v2_bp.route("/coach/arc/<arc_id>/best-presentation", methods=["GET"])
 @require_admin_or_coach
 def v2_coach_arc_best_presentation(arc_id):
-    """The coach's own preview of the auto-assembled draft + their own
-    corrections so far. Ungated by ownership/payment — coach-only auth is the
-    gate. Response shape matches the student route, plus always-populated
-    `text` regardless of coach_finalized.
-    """
-    try:
-        from services.slide_selection import build_best_presentation
-        return jsonify({
-            "arc_id": arc_id,
-            **build_best_presentation(arc_id, coach_view=True),
-        }), 200
-    except Exception as e:
-        logger.error("coach/arc best-presentation failed arc=%s: %s", arc_id,
-                     e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({
-            "code": "V2_ERROR", "error": "Failed to load best presentation",
-        }), 500
+    """RETIRED with the student read (L1; founder 2026-10-05, N48.3 Q13 A):
+    410, nothing composed, nothing sent to a model."""
+    from routes.v2.arcs import best_presentation_gone
+    return best_presentation_gone()
 
 
 # ── willab — the coach's Ideal Text edit, verify and approve: RETIRED ────

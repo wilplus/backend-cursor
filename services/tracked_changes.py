@@ -444,7 +444,58 @@ def _change_entry(p: dict, sid: str, kind: str, source: str, sug: dict,
         _cues = _known_cues(sug)
         if _cues:
             entry["cue_keys"] = _cues
+        entry.update(_detector_praise_evidence(source, entry["device"], _cues))
     return entry
+
+
+#: The detectors behind the two praise lanes, versioned in code (N48.1,
+#: Wave 1, E1). `moment_suggestions` stores no version column, so these
+#: name the detector contract this reader vouches for: the structural
+#: device's closed vocabulary with its verbatim-quote pin, and the
+#: seven-cue impeccable read. Bump one when its detector's rule changes.
+STRUCTURAL_DEVICE_DETECTOR_VERSION = "structural-device-v1"
+DELIVERY_IMPECCABLE_DETECTOR_VERSION = "delivery-impeccable-v1"
+
+
+def _detector_praise_evidence(source: str, device: Any,
+                              cues: list) -> dict:
+    """The Manager evidence a detector praise row honestly carries, or {}.
+
+    WHY THIS EXISTS (N48.1, Wave 1, E1). Structural and impeccable praise
+    reached the Manager with no `_manager_evidence` and no version, so V3
+    excluded every one (`missing_evidence_metadata`) and the Take's praise
+    lane was the concision fallback or nothing.
+
+    ONLY WHAT THE DETECTOR COMPUTED, nothing ranked on top of it:
+      * structural -- the device is one of the detector's closed vocabulary
+        and its quote passed the verbatim pin, so no word was invented.
+        No specificity: the detector does not measure one.
+      * impeccable -- `delivery_cues.is_impeccable` decided it, and the cues
+        that earned it are counted from the closed vocabulary.
+    Any other advice row (a delivery issue, an unknown device) gets nothing
+    and stays excluded. `_manager_evidence` never rides a student payload
+    (`strip_internal_evidence`).
+    """
+    if source == "structural":
+        from services.moment_suggestions import STRUCTURAL_DEVICES
+        if device in STRUCTURAL_DEVICES:
+            return {
+                "detector_version": STRUCTURAL_DEVICE_DETECTOR_VERSION,
+                "_manager_evidence": {
+                    "detector": "structural_device",
+                    "fallback": False,
+                    "lexical_words_invented": 0,
+                },
+            }
+    elif source == "delivery" and device == "impeccable":
+        return {
+            "detector_version": DELIVERY_IMPECCABLE_DETECTOR_VERSION,
+            "_manager_evidence": {
+                "detector": "delivery_impeccable",
+                "cue_count": len(cues),
+            },
+        }
+    return {}
 
 
 def _change_for_piece(doc: str, p: Any, suggestions: Any, applied: set,

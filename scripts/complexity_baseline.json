@@ -51,7 +51,7 @@
   "services/slide_selection.py:_finalize_best_presentation": 27,
   "services/slide_selection.py:build_best_presentation": 43,
   "services/stripe_checkout_credits.py:apply_paid_checkout_session_credits": 36,
-  "services/take_feedback_policy_v3.py:_verbal_inventory": 45,
+  "services/take_feedback_policy_v3.py:_verbal_inventory": 29,
   "services/take_feedback_policy_v3.py:build_shadow_frame": 37,
   "services/training_import.py:prepare_training_import": 42,
   "services/tutor_video_url.py:resolve_tutor_video_playable_url": 33

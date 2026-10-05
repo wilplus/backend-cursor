@@ -828,10 +828,12 @@ class PaywallRetirementTests(unittest.TestCase):
         resp, status = out if isinstance(out, tuple) else (out, 200)
         return resp.get_json(), status
 
-    def test_best_presentation_free(self):
+    def test_best_presentation_retired(self):
+        # Retired (L1; founder 2026-10-05, N48.3 Q13 A): no paywall and no
+        # body either — the read answers 410 and composes nothing.
         body, status = self._best_presentation()
-        self.assertEqual(status, 200)
-        self.assertTrue(body.get("audit_paid"))
+        self.assertEqual(status, 410)
+        self.assertEqual(body.get("code"), "GONE")
 
     def _feedback(self):
         spoken = [{"id": "s1", "take_index": 1},

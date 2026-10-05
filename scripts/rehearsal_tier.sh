@@ -190,6 +190,30 @@ relax_append_only() {  # relax_append_only <db>
 clone willab_ga_template willab_confident_moment_narrow_0326
 relax_append_only willab_ga_template
 
+# take-rewrite: "the owner edits a Paragraph, then Take 2 rewrites the Slide"
+# (B1-5; contract 8, 9, 14, 16). A clone of the narrow lane, because the one
+# owner-edit writer (compare_and_set_user_ideal_edit_v1) needs the coaching
+# bundle's projection context, whose helpers are narrow-shaped; then the
+# later-Take chain no lane carried: the review lifecycle, the version table,
+# finalize v2 and the Slide's helper words. The narrow copies of
+# coach_arc_ideal_text and user_arc_ideal_notes lack three released columns
+# (0013's approved_at/updated_by, the notes' updated_at); they are added back
+# as the released files define them, as the recipe's widen step does. Cloned
+# before any lane runs, so no suite's rows are in it.
+echo "→ building the take-rewrite lane (narrow → 0032, 0034, 0035, 0064, 0270, 0291, 0369, 0370, 0371)"
+TAKE2=willab_confident_moment_take2
+clone $TAKE2 willab_confident_moment_narrow
+"${PSQL[@]}" -d $TAKE2 \
+  -c "ALTER TABLE public.coach_arc_ideal_text ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ NULL, ADD COLUMN IF NOT EXISTS updated_by UUID NULL" \
+  -c "ALTER TABLE public.user_arc_ideal_notes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now()" >/dev/null \
+  || { echo "  take-rewrite columns failed" >&2; exit 1; }
+for m in add_ideal_text_auto_copy add_ideal_text_versioning add_ideal_text_versions \
+         add_user_ideal_edit add_coach_arc_ideal_text_document add_take_review_lifecycle \
+         helper_words_belong_to_the_slide every_take_rewrites_the_slides_it_spoke \
+         helper_words_keep_a_history; do
+  sql_file $TAKE2 migrations/$m.sql; sql_file $TAKE2 migrations/$m.sql
+done
+
 # freeze: the two functions that decide whether a speaker's judgement is
 # ACCEPTED — claim_ideal_text_feedback_set_v1 (what was served) and
 # record_take_feedback_response_v1 (was this item served). No lane installed
@@ -252,6 +276,7 @@ LANES=(
   "confident-moment narrow|CONFIDENT_MOMENT_REHEARSAL_DSN|willab_confident_moment_narrow|tests/test_confident_moment_coaching_bundle_postgres.py"
   "confident-moment released|CONFIDENT_MOMENT_REHEARSAL_DSN|willab_confident_moment_released|tests/test_confident_moment_production_fixtures.py tests/test_d11_writer_markers_installed_postgres.py tests/test_phase1_deletion_completion_postgres.py tests/test_phase1_processing_postgres.py tests/test_mlc3_self_speaker_identity_postgres.py tests/test_optional_consent_postgres.py tests/test_reacceptance_signal_postgres.py tests/test_consent_choices_postgres.py tests/test_account_deletion_starts_postgres.py tests/test_practice_without_the_tick_postgres.py tests/test_bundled_era_erasure_postgres.py tests/test_project_deletion_postgres.py tests/test_take_purge_postgres.py tests/test_exercise_assignment_postgres.py tests/test_exercise_match_trace_postgres.py tests/test_exercise_coach_requests_postgres.py tests/test_coach_answers_in_words_postgres.py tests/test_verbal_cue_shadow_postgres.py tests/test_exercise_exposure_postgres.py tests/test_practice_more_confident_postgres.py tests/test_coach_answers_five_ways_postgres.py tests/test_training_consent_postgres.py tests/test_training_corpus_postgres.py tests/test_training_corpus_purge_postgres.py tests/test_old_consent_ignores_training_postgres.py tests/test_purge_scope_postgres.py tests/test_real_take_record_purge_postgres.py tests/test_project_purge_postgres.py tests/test_take_names_its_recording_postgres.py tests/test_canonical_tables_are_rpc_only_postgres.py tests/test_mlc2_confidence_end_to_end_postgres.py tests/test_rings_postgres.py tests/test_module_8_is_counted_postgres.py tests/test_a_coach_pick_counts_postgres.py tests/test_exercise_versions_postgres.py tests/test_the_ledger_keeps_its_weeks_postgres.py tests/test_a_pair_remembers_the_yes_postgres.py tests/test_a_model_learns_only_from_the_yes_postgres.py tests/test_a_practice_remembers_where_it_landed_postgres.py tests/test_a_moment_opens_before_it_is_judged_postgres.py tests/test_a_practice_hears_what_changed_postgres.py tests/test_a_moment_may_be_lent_an_ear_postgres.py tests/test_a_coach_keeps_swaps_and_hears_blind_postgres.py tests/test_v3_reaches_every_speaker_postgres.py tests/test_a_take_rewrite_is_a_paragraph_revision_postgres.py tests/test_an_attempt_after_the_third_saves_postgres.py tests/test_an_accepted_rewrite_names_its_revision_postgres.py"
   "d4|MLC3_GENERAL_USER_REHEARSAL_DSN|willab_ga_template|tests/test_mlc3_general_user_service_d4_postgres.py"
+  "take-rewrite|CONFIDENT_MOMENT_REHEARSAL_DSN|willab_confident_moment_take2|tests/test_take_two_rewrites_an_edited_slide_postgres.py"
   "freeze|TAKE_FEEDBACK_FREEZE_REHEARSAL_DSN|willab_freeze_rehearsal|tests/test_take_feedback_freeze_postgres.py"
   "bake|IDEAL_TEXT_FEEDBACK_BAKE_REHEARSAL_DSN|willab_bake_rehearsal|tests/test_ideal_text_feedback_bake_postgres.py"
   "model-gate|RUNTIME_MODEL_GATE_REHEARSAL_DSN|willab_model_gate_rehearsal|tests/test_runtime_config_model_guard_postgres.py"

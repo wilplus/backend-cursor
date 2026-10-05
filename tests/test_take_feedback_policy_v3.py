@@ -94,6 +94,9 @@ def _frame(take_index=2):
         feedback_candidates=feedback,
         take_index=take_index,
         expected_recording_id="recording-1",
+        # The Ideal Text IS this Take's transcript, so a served span is a
+        # transcript span 1:1 (N48.1, Wave 1: verbal spans are mapped).
+        served_text="x" * 5000,
     )
 
 

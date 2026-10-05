@@ -132,11 +132,22 @@ class ComposeTests(unittest.TestCase):
         self.assertEqual(out[0]["text"], "my best line")  # verbatim
         self.assertEqual(out[0]["title"], "S1")
 
-    def test_light_edit_used_when_present(self):
-        bp._render_composition = lambda picks, slides: {0: "my polished line"}
-        picks = {0: _cand(0, "c", 0.8, transcript="my best line")}
-        out = bp.compose_presentation(picks, [{"title": "S1", "body": "b"}])
-        self.assertEqual(out[0]["text"], "my polished line")
+    def test_never_calls_the_model(self):
+        """N48.3 Q13 A / N48.1 step 6 (2026-10-05): the light polish sent the
+        speaker's words with no permit. Compose is verbatim and model-free:
+        neither the polish pass nor the shared LLM wrapper is reached."""
+        calls = []
+        bp._render_composition = lambda picks, slides: (
+            calls.append(1) or {0: "my polished line"})
+        from unittest import mock
+        with mock.patch("services.llm.chat_complete",
+                        side_effect=AssertionError("model called")):
+            picks = {0: _cand(0, "c", 0.8, transcript="my best line")}
+            out = bp.compose_presentation(picks, [{"title": "S1", "body": "b"}])
+        self.assertEqual(calls, [])
+        self.assertEqual(out[0]["text"], "my best line")
+        self.assertEqual(out[0]["verbatim"], "my best line")
+        self.assertIs(out[0]["polished"], False)
 
     def test_empty_slide_stays_blank(self):
         bp._render_composition = lambda picks, slides: {}
@@ -472,14 +483,16 @@ class BestPresentationCacheTests(unittest.TestCase):
     """Part B — the composed slides are cached by arc + content signature."""
 
     def setUp(self):
-        self._orig = bp._render_composition
+        self._orig = bp.compose_presentation
         self.compose_calls = []
-        bp._render_composition = lambda picks, slides: (
-            self.compose_calls.append(1) or None  # verbatim path
-        )
+
+        def _counting(picks, slides):
+            self.compose_calls.append(1)
+            return self._orig(picks, slides)
+        bp.compose_presentation = _counting
 
     def tearDown(self):
-        bp._render_composition = self._orig
+        bp.compose_presentation = self._orig
 
     def _db(self):
         sessions = [{"id": "s1", "take_index": 1, "intake_context": {

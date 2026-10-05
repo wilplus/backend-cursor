@@ -8,6 +8,12 @@ Ideal Text infrastructure. The composition of the retired artifact
 (``build_best_presentation`` and its prompt) leaves in commit 2, once nothing
 in production calls its route.
 
+2026-10-05 (N48.3 Q13 A, N48.1 step 6): both Best Presentation GETs answer
+410 and the compose calls no model. ``build_best_presentation`` stays only
+because the legacy assembly (``assemble_ideal_text_block``, taken while
+LIVING_TRANSCRIPT_ENABLED is off) and ``services/ideal_text_report`` still
+import it; it now returns the speaker's words verbatim.
+
 Original header follows.
 
 Best-Presentation composition (willab Prompt D §4) — REPLACES the audit.
@@ -20,9 +26,9 @@ text.
 Pieces:
   • select_best_per_slide — PURE: rank with the combined power_score, keep the
     best per slide.
-  • compose_presentation — ONE constrained LLM pass that MOSTLY keeps the user's
-    words and changes only a few per slide for continuity + slide-accuracy; on
-    any failure it falls back to the snippet VERBATIM (the §9-safe degradation).
+  • compose_presentation — the picks VERBATIM, slide by slide. (It ran one
+    constrained LLM polish pass until 2026-10-05; that pass sent the speaker's
+    words with no permit and is gone, see compose_presentation.)
   • build_best_presentation — orchestration: pulls the arc's takes, resolves the
     confidence lane per snippet, builds candidates, selects, composes, returns
     the payload.
@@ -292,19 +298,19 @@ def compose_presentation(picks: dict, slides: list) -> list:
     """``picks`` = {slide_index: winning_candidate}. Returns the per-slide
     payload list (slide order), each
     {index, title, text, audio_ref, start_offset_ms, duration_ms, take_index,
-    key_phrases}. The text is the
-    lightly-edited line, or the snippet VERBATIM if the LLM didn't return one.
+    key_phrases}. The text is the snippet VERBATIM.
     A slide with no supported pick is included with empty text (never invented).
+
+    NO MODEL CALL (founder 2026-10-05, N48.3 Q13 A and N48.1 step 6). The
+    light LLM polish (``_render_composition``) sent every pick's transcript
+    to the provider with no permit, from the Best Presentation GETs and the
+    legacy assembly alike. Best Presentation is retired (L1) and its builder
+    leaves, so nothing here reaches a model any more: ``text`` is what the
+    speaker said and ``polished`` is always False. ``_render_composition``
+    stays only for the prompt's golden eval (tests/evals/surfaces.py).
     """
     slides = slides if isinstance(slides, list) else []
     n = max([len(slides)] + [si + 1 for si in picks], default=0)
-
-    picks_text = [
-        {"slide_index": si, "transcript": picks[si].get("transcript") or ""}
-        for si in sorted(picks)
-        if (picks[si].get("transcript") or "").strip()
-    ]
-    edited = _render_composition(picks_text, slides) or {}
 
     out = []
     for i in range(n):
@@ -312,21 +318,17 @@ def compose_presentation(picks: dict, slides: list) -> list:
         pick = picks.get(i)
         if pick:
             verbatim = pick.get("transcript") or ""
-            _edited_text = (edited.get(i) or "").strip()
             out.append({
                 "index": i,
                 "title": slide.get("title") or "",
                 # slide body — the text-slide fallback when there's no deck PDF.
                 "body": slide.get("body") or "",
-                "text": edited.get(i) or verbatim,  # light-edit, else verbatim
-                # The RAW words the speaker actually said (founder 2026-07-18):
-                # the polish-as-suggestions lane serves THIS and offers the
-                # edit as an approvable star, instead of silently replacing.
+                "text": verbatim,  # the speaker's words, no model polish
+                # The RAW words the speaker actually said (founder 2026-07-18).
+                # Kept as its own field for every reader of this shape.
                 "verbatim": verbatim,
-                # True when the light polish changed the words (an approvable
-                # diff exists). Trivial whitespace-only diffs don't count.
-                "polished": bool(
-                    _edited_text and _edited_text != (verbatim or "").strip()),
+                # No polish exists any more, so there is never a diff to offer.
+                "polished": False,
                 # the winning moment's snippet id — the FE deep-links the
                 # exported PDF's "Key moment" link to /game?snippet=<id>
                 # (P8). Metadata, not deliverable text: NOT hidden pre-finalize
@@ -402,7 +404,9 @@ def _arc_snippets(db, snips_batch, sid):
 # Bump when the cached compose PAYLOAD shape changes (a new per-slide field
 # must force one recompute per arc — the content signature alone can't see
 # shape changes). v2: + key_phrases (backlog 1.7, 2026-07-11).
-_BP_PAYLOAD_VERSION = "v10"  # v10: peer/panel ratings no longer enter live
+_BP_PAYLOAD_VERSION = "v11"  # v11: no model polish (2026-10-05) — a warm
+                             # cache would keep serving LLM-polished text.
+                             # v10: peer/panel ratings no longer enter live
                              # assembly ranking; they are internal-only.
                              # v9: the coach tag entered assembly ranking
                              # (publish-gated) — a published arc with tags and
@@ -487,9 +491,9 @@ def build_best_presentation(
     """Assemble the best-presentation payload for an arc. Best-effort; returns
     a progress-only payload (ready=False) when there's nothing to compose.
 
-    Part B — the composed slides (the ~2-4s LLM pass) are CACHED keyed by arc +
-    content signature; an unchanged arc returns the cached compose (no LLM, no
-    snippet reads). Edits + coach_reviewed/coach_finalized are applied fresh on
+    Part B — the composed slides are CACHED keyed by arc + content signature;
+    an unchanged arc returns the cached compose (no snippet reads). No model
+    is called on either path (2026-10-05). Edits + coach_reviewed/coach_finalized are applied fresh on
     every read.
 
     ``coach_view`` (founder 2026-07-06 — coach-owned ideal-text correction):
@@ -532,7 +536,7 @@ def build_best_presentation(
                 continue
 
     # ── Compose cache (Part B). Hit → reuse the composed slides + deck ref,
-    # skipping the snippet reads + LLM. getattr guards keep injected fake dbs
+    # skipping the snippet reads. getattr guards keep injected fake dbs
     # (tests) working without the cache methods.
     signature = _bp_signature(sessions, corrections)
     _get_cache = getattr(db, "get_best_presentation_cache", None)
@@ -651,7 +655,7 @@ def build_best_presentation(
     slides_payload = compose_presentation(picks, canonical_slides)
 
     # Cache the composed (pre-edit) result keyed by the content signature so the
-    # next open with an unchanged arc skips the LLM. Best-effort.
+    # next open with an unchanged arc skips the reads. Best-effort.
     if callable(_put_cache) and arc_id:
         _put_cache(arc_id, signature, {
             "slides": slides_payload,

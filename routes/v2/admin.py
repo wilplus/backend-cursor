@@ -1074,28 +1074,16 @@ def v2_admin_update_next_session_icebreaker(session_id):
 @regenerate_limit
 @require_admin
 def v2_admin_regenerate_next_session_icebreaker(session_id):
-    """Re-run the LLM to produce a fresh icebreaker.
+    """Re-run the LLM to produce a fresh icebreaker. DESTRUCTIVE (FE
+    handoff Q3): fresh ai_draft AND fresh current; FE owns the confirm.
+    One call per session per minute unless ``{"force": true}`` (a
+    double-click guard on cost, not a security boundary).
 
-    DESTRUCTIVE: per FE handoff Q3, regenerate blows away any
-    admin edit on both columns — fresh ai_draft AND fresh current.
-    FE owns the confirm modal.
-
-    Rate-limited to one call per session per minute (shared across
-    workers) unless ``{"force": true}`` is in the body. The cap
-    exists to keep an admin's accidental double-click from doubling
-    our LLM cost, not as a security boundary.
-
-    Responses:
-      200 — same payload shape as GET, with new ai_draft + current.
-      400 INVALID_INPUT       — bad UUID
-      404 SESSION_NOT_FOUND   — session row missing
-      429 RATE_LIMITED        — too soon since last regen; includes
-                                ``retry_after_seconds``.
-      502 LLM_UNAVAILABLE     — generator returned None (LLM down,
-                                empty response, or transcript too
-                                short). The generation_error column
-                                carries the specific tag.
-      500 V2_ERROR            — unexpected
+    200 — the GET shape with the new ai_draft + current.
+    400 INVALID_INPUT · 404 SESSION_NOT_FOUND · 429 RATE_LIMITED
+    (+ ``retry_after_seconds``) · 403/503 the speaker's processing
+    refusal (no model call, N48.1 step 6) · 502 LLM_UNAVAILABLE (the
+    tag is on generation_error) · 500 V2_ERROR.
     """
     if not _is_valid_uuid(session_id):
         return jsonify({
@@ -1120,9 +1108,17 @@ def v2_admin_regenerate_next_session_icebreaker(session_id):
         from services.next_session_icebreaker import (
             generate_next_session_icebreaker,
         )
-        question = generate_next_session_icebreaker(
-            session_id=session_id, overwrite=True,
+        from services.speaker_authority import (
+            call_as_speaker, speaker_of_session,
         )
+        question, refused = call_as_speaker(
+            db, lambda: speaker_of_session(db, session_id),
+            lambda: generate_next_session_icebreaker(
+                session_id=session_id, overwrite=True),
+            surface="next_session_icebreaker")
+        if refused is not None:
+            return jsonify({"code": refused.code,
+                            "error": refused.message}), refused.status
 
         if not question:
             # generator already wrote the generation_error tag.
@@ -1415,7 +1411,9 @@ def v2_admin_suggest_directives_queue(user_id):
         than emit generic filler)
       - The model returns malformed JSON
     The admin UI should render an empty form for manual authoring
-    in those cases.
+    in those cases. 403/503 is the speaker's processing refusal: the
+    transcripts are theirs, so no model call without their current
+    authority (N48.1 step 6).
     """
     if not _is_valid_uuid(user_id):
         return jsonify({
@@ -1434,10 +1432,17 @@ def v2_admin_suggest_directives_queue(user_id):
             }), 400
 
         from services.directive_suggestions import suggest_directive_arc
-        rows = suggest_directive_arc(
-            user_id=user_id,
-            snippet_id_context=snippet_id_context,
-        )
+        from services.speaker_authority import call_as_speaker, speaker_of_user
+        # The speaker's words go out under the SPEAKER's permit (N48.1
+        # step 6); no current authority → no model call, the house refusal.
+        rows, refused = call_as_speaker(
+            db, lambda: speaker_of_user(db, user_id),
+            lambda: suggest_directive_arc(
+                user_id=user_id, snippet_id_context=snippet_id_context),
+            surface="directive_suggestions")
+        if refused is not None:
+            return jsonify({"code": refused.code,
+                            "error": refused.message}), refused.status
 
         admin_user_id = str(request.user_id) if request.user_id else None
         logger.info(

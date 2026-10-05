@@ -19,6 +19,11 @@ from services.reasonable_confidence import selection_summary
 from services.take_feedback_manager import (
     EVIDENCE_SCHEMA_VERSION as MANAGER_EVIDENCE_SCHEMA_VERSION,
     POLICY_VERSION as MANAGER_RULES_VERSION,
+    VERBAL_FAMILIES,
+    TakeDocumentMap,
+    producer_versions,
+    verbal_evidence,
+    verbal_exclusion,
 )
 from services.voice_confidence import (
     BAND_HIGH,
@@ -33,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 POLICY_VERSION = "take-feedback-policy-v3-universal-dark-v3"
 SERVICE_POLICY_VERSION = "take-feedback-policy-v3-serving-v1"
-FRAME_SCHEMA_VERSION = "take-feedback-policy-v3-frame-v4"
+FRAME_SCHEMA_VERSION = "take-feedback-policy-v3-frame-v5"
 SUGGESTION_GENERATOR_CONTRACT_VERSION = "feedback-candidate-generator-v1"
 TARGET_WORDS = 75
 MIN_WORDS = 60
@@ -44,14 +49,7 @@ MAX_WORDS = 90
 COVERAGE_FLOOR_BY_TAKE: dict[int, float] = {1: 0.70, 2: 0.80}
 COVERAGE_FLOOR_MATURE = 1.00
 _WORD_RE = re.compile(r"[^\W_]+(?:[’'-][^\W_]+)*", re.UNICODE)
-_VERBAL_FAMILIES = {"rewrite_clarity", "great_formulation"}
-_VERSION_KEYS = (
-    "suggestion_version",
-    "model_version",
-    "prompt_version",
-    "rule_version",
-    "detector_version",
-)
+_VERBAL_FAMILIES = set(VERBAL_FAMILIES)
 
 
 def dark_enabled(acquisition_principal_id: Any) -> bool:
@@ -76,15 +74,7 @@ def _integer(value: Any) -> Optional[int]:
 
 
 def _versions(row: Any) -> dict:
-    item = row if isinstance(row, dict) else {}
-    return {
-        key: str(item.get(key)) if item.get(key) not in (None, "") else None
-        for key in _VERSION_KEYS
-    }
-
-
-def _has_producer_version(versions: dict) -> bool:
-    return any(versions.get(key) for key in _VERSION_KEYS)
+    return producer_versions(row)
 
 
 def _source_code_sha256() -> str:
@@ -698,11 +688,18 @@ def _confidence_rank(candidate: dict) -> tuple:
 def _verbal_inventory(
     candidates: Iterable[Any],
     family: str,
-    take_id: str,
     *,
-    document_length: int,
-    snippet_map: dict[str, dict],
+    document_map: TakeDocumentMap,
 ) -> tuple[list[dict], list[dict], list[dict]]:
+    """Every row of one verbal family, eligible or excluded with its reason.
+
+    Eligibility is `verbal_exclusion` (take_feedback_manager), the one rule
+    `ensure_required_families` also decides fallbacks by (N48.1, Wave 1, E1).
+    `document_span` is the row's words in THIS Take's transcript document --
+    the coordinates the blocks are cut in -- and `target_span` is the same
+    words in the served Ideal Text, where the row is drawn. Comparing the
+    served span with block offsets anchored notes to the wrong block.
+    """
     ranked: list[tuple[tuple, dict]] = []
     inventory: list[dict] = []
     exclusions: list[dict] = []
@@ -712,45 +709,14 @@ def _verbal_inventory(
             continue
         candidate_id = str(row.get("id") or "")
         snippet_id = str(row.get("snippet_id") or "")
-        snippet = snippet_map.get(snippet_id, {})
-        row_take = str(row.get("take_session_id") or "")
-        resolved_take = row_take or str(snippet.get("session_id") or "")
+        resolved_take = str(row.get("take_session_id") or "") or (
+            document_map.snippet_take(snippet_id) or "")
         raw_span = row.get("span")
         span: dict = raw_span if isinstance(raw_span, dict) else {}
         start, end = _integer(span.get("start")), _integer(span.get("end"))
-        producer_versions = _versions(row)
-        raw_evidence = row.get("_manager_evidence")
-        raw_evidence = raw_evidence if isinstance(raw_evidence, dict) else {}
-        evidence = {
-            key: raw_evidence[key]
-            for key in (
-                "specificity",
-                "fallback",
-                "detector",
-                "detector_rank",
-                "lexical_words_invented",
-                "basis",
-                "anchor_score",
-                "cue_count",
-            )
-            if key in raw_evidence
-        }
-
-        reason: Optional[str] = None
-        if not candidate_id:
-            reason = "missing_candidate_identity"
-        elif not snippet_id or not snippet:
-            reason = "missing_snippet_lineage"
-        elif resolved_take != take_id or str(snippet.get("session_id") or "") != take_id:
-            reason = "candidate_take_mismatch"
-        elif start is None or end is None or start < 0 or end <= start:
-            reason = "invalid_document_span"
-        elif end > document_length:
-            reason = "document_span_out_of_bounds"
-        elif not evidence:
-            reason = "missing_evidence_metadata"
-        elif not _has_producer_version(producer_versions):
-            reason = "missing_suggestion_generator_version"
+        versions = _versions(row)
+        evidence = verbal_evidence(row)
+        reason, mapped = verbal_exclusion(row, document_map)
 
         item = {
             "input_index": input_index,
@@ -759,17 +725,21 @@ def _verbal_inventory(
             "snippet_id": snippet_id or None,
             "take_id": resolved_take or None,
             "document_span": (
+                {"start": mapped[0], "end": mapped[1]}
+                if mapped is not None else None
+            ),
+            "target_span": (
                 {"start": start, "end": end}
                 if start is not None and end is not None else None
             ),
             "evidence": evidence,
-            "producer_versions": producer_versions,
+            "producer_versions": versions,
             "tentative": bool(row.get("tentative")),
             "eligibility": "excluded" if reason else "eligible",
             "exclusion_reason": reason,
         }
         inventory.append(item)
-        if reason:
+        if reason or mapped is None:
             exclusions.append({
                 "candidate_kind": "verbal_feedback",
                 "feedback_family": family,
@@ -793,7 +763,7 @@ def _verbal_inventory(
             else (cue_count, specificity, supported)
         )
         rank = tuple(-int(value) for value in quality) + (
-            int(start or 0), int(end or 0), candidate_id,
+            mapped[0], mapped[1], candidate_id,
         )
         ranked.append((rank, item))
 
@@ -803,6 +773,24 @@ def _verbal_inventory(
     # (contract 24f), so the caller has to ask "best candidate INSIDE this
     # block", which the winner alone cannot answer.
     return inventory, [item for _, item in ranked], exclusions
+
+
+def _document_map(
+    doc: dict, *, take_id: str, document_text: str, served_text: Any,
+    snippet_map: dict[str, dict],
+) -> TakeDocumentMap:
+    """This Take's served-to-transcript map. Snippet lineage comes from the
+    Take's own snippet rows, exactly as the confidence lane reads it."""
+    return TakeDocumentMap(
+        take_id=take_id,
+        document_text=document_text,
+        served_text=served_text,
+        pieces=doc.get("pieces"),
+        snippet_takes={
+            snippet_id: str(row.get("session_id") or "")
+            for snippet_id, row in snippet_map.items()
+        },
+    )
 
 
 def _unrouted_inventory(candidates: Iterable[Any]) -> list[dict]:
@@ -834,8 +822,14 @@ def build_shadow_frame(
     feedback_candidates: Iterable[Any],
     take_index: Any,
     expected_recording_id: Any,
+    served_text: Any = None,
 ) -> Optional[dict]:
-    """Build the complete v3 frame; return None for an unusable Take."""
+    """Build the complete v3 frame; return None for an unusable Take.
+
+    ``served_text`` is the Ideal Text the verbal rows' spans address. Without
+    it no verbal row can be proven to sit in this Take's words, so every one
+    is excluded as ``document_span_unmapped`` (N48.1, Wave 1).
+    """
     doc = take_document if isinstance(take_document, dict) else {}
     take_id = str(doc.get("take_session_id") or "")
     recording_id = str(expected_recording_id or "")
@@ -906,19 +900,15 @@ def build_shadow_frame(
     _practice_routing(blocks)
 
     feedback_rows = list(feedback_candidates or [])
+    document_map = _document_map(
+        doc, take_id=take_id, document_text=document_text,
+        served_text=served_text, snippet_map=snippet_map,
+    )
     rewrite_inventory, rewrite_ranked, rewrite_exclusions = _verbal_inventory(
-        feedback_rows,
-        "rewrite_clarity",
-        take_id,
-        document_length=len(document_text),
-        snippet_map=snippet_map,
+        feedback_rows, "rewrite_clarity", document_map=document_map,
     )
     praise_inventory, praise_ranked, praise_exclusions = _verbal_inventory(
-        feedback_rows,
-        "great_formulation",
-        take_id,
-        document_length=len(document_text),
-        snippet_map=snippet_map,
+        feedback_rows, "great_formulation", document_map=document_map,
     )
     exclusions.extend(rewrite_exclusions)
     exclusions.extend(praise_exclusions)

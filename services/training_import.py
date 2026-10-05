@@ -513,8 +513,13 @@ def run_training_import_analysis(
     if STAGE_IDEAL_TEXT in picked_stages:
         try:
             from services.ideal_text_block import maybe_assemble_ideal_text
+            # Pinned to THIS import's recording (founder 2026-10-05, N48.3
+            # Q13 A): the pinned source is the deterministic transcript
+            # document, never the legacy Best Presentation compose, which
+            # this raw thread used to reach with no permit.
             maybe_assemble_ideal_text(arc_id, database=database,
-                                      require_target=False)
+                                      require_target=False,
+                                      source_session_id=session_id)
         except Exception as e:
             logger.warning("training_import: ideal text failed for %s: %s",
                            filename, e)

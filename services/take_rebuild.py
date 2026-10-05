@@ -2,10 +2,18 @@
 
 Take 1 builds the Ideal Text. From Take 2 on, each Slide the speaker spoke in
 this Take is rebuilt from exactly what they said in it; a Slide they did not
-speak keeps its last version (Q4 A). The new words replace owner edits and
-coach-verified text too (Q5 A, Q13 A) — nothing is lost, because the previous
-version stays in `ideal_text_versions`. Accepted rewrites are NOT re-applied to
-the new words (Q16 A): the Paragraph is what was said.
+speak keeps its last version (Q4 A). On a spoken Slide the new words replace
+owner edits and coach-verified text too (Q5 A, Q13 A) — nothing is lost,
+because the previous version stays in `ideal_text_versions`. Accepted rewrites
+are NOT re-applied to the new words (Q16 A): the Paragraph is what was said.
+
+AN UNSPOKEN SLIDE KEEPS THE WORDS THE SPEAKER IS READING (L1, contract 8,
+N29). Its "last version" is the served text — the owner's edit, an accepted
+rewrite (N35.4, N40: written through the same owner-edit writer) or the
+coach-verified text — not the machine text in `auto_text`. Until 2026-10-05
+the merge read every unspoken Slide from `auto_text`, so Take 2 put an edited
+Slide it never spoke back to Take 1's machine words (found on a real database,
+`tests/test_take_two_rewrites_an_edited_slide_postgres.py`).
 
 This module plans the rebuild (pure merge + reads) and re-identifies the
 Paragraphs afterwards. The durable write is one atomic RPC,
@@ -109,18 +117,50 @@ def _slide_by_slide(known: set, spoken: set, old_slides: list,
     return order
 
 
+def _current_blocks(current_text: Optional[str], old_paras: list,
+                    old_blocks: list[str]) -> list[str]:
+    """The words each old Paragraph shows the speaker now, slot by slot.
+
+    `current_text` is the served text (see `served_text`). It tiles the old
+    document's Paragraphs one to one because the edit surface rewrites the
+    words of a slot and never the slots (contract 12, founder lock
+    2026-09-30, B1), and the owner-edit writer stores exactly the Paragraphs
+    joined by a blank line. When it does not tile, the slots cannot be
+    proven, and the machine words are kept, as before 2026-10-05; that is
+    logged under one fixed name so it can be counted."""
+    if current_text is None or current_text == _PARA.join(old_blocks):
+        return old_blocks
+    blocks = _paragraph_texts(current_text.strip(), old_paras)
+    if blocks is None:
+        logger.warning("take_rebuild_unspoken_kept_machine_words "
+                       "served=%d paragraphs=%d",
+                       len(current_text.strip().split(_PARA)),
+                       len(old_paras))
+        return old_blocks
+    return blocks
+
+
 def merge_by_slide(old_text: str, old_doc: Mapping, new_text: str,
-                   new_doc: Mapping) -> Optional[Rebuild]:
+                   new_doc: Mapping, *,
+                   current_text: Optional[str] = None) -> Optional[Rebuild]:
     """Old document with every Slide the new Take spoke replaced by it.
 
     Slides are ordered ascending; within a Slide the source order is kept.
-    None when the Slide of any Paragraph cannot be proven."""
+    None when the Slide of any Paragraph cannot be proven.
+
+    `old_text` is the machine text the old document's spans are measured
+    against. `current_text`, when given, is what the speaker is reading
+    now; a Slide the new Take did not speak keeps those words, its last
+    version (L1, contract 8, N29), not the machine's. The old pieces of
+    such a Paragraph are carried only where they still spell their own
+    words at their new place."""
     old_paras = list(old_doc.get("paragraphs") or [])
     new_paras = list(new_doc.get("paragraphs") or [])
     old_blocks = _paragraph_texts(old_text, old_paras)
     new_blocks = _paragraph_texts(new_text, new_paras)
     if old_blocks is None or new_blocks is None or not new_paras:
         return None
+    kept_blocks = _current_blocks(current_text, old_paras, old_blocks)
     old_slides = [_slide(p) for p in old_paras]
     planned = _order(old_slides, [_slide(p) for p in new_paras])
     if planned is None:
@@ -137,10 +177,16 @@ def merge_by_slide(old_text: str, old_doc: Mapping, new_text: str,
     for n, (src, i, _slide_index) in enumerate(order):
         cursor += len(_PARA) if n else 0
         doc, text, blocks, paras = sources[src]
-        block = blocks[i]
         src_start = sum(len(b) + len(_PARA) for b in blocks[:i])
-        pieces.extend(_pieces_in(doc, text, src_start,
-                                 src_start + len(block), cursor - src_start))
+        # The words this Paragraph carries: the Take's own on a spoken
+        # Slide, the speaker's current words on any other.
+        block = kept_blocks[i] if src == "old" else blocks[i]
+        pieces.extend(
+            p for p in _pieces_in(doc, text, src_start,
+                                  src_start + len(blocks[i]),
+                                  cursor - src_start)
+            if p["end"] <= cursor + len(block)
+            and block[p["start"] - cursor:p["end"] - cursor] == p.get("text"))
         paragraphs.append(dict(paras[i], start=cursor,
                                end=cursor + len(block)))
         texts.append(block)
@@ -194,8 +240,47 @@ def follow_the_take(old_text: str, old_doc: Any, new_text: str,
     )
 
 
-def plan_rebuild(database: Any, arc_id: str,
-                 take_session_id: str) -> Optional[Rebuild]:
+def served_text(database: Any, arc_id: str, owner_user_id: Optional[str],
+                row: Mapping) -> Optional[str]:
+    """The words the speaker is reading now, read exactly as the page reads
+    them, or None when they cannot be read.
+
+    WHY THIS SOURCE (L1, contract 8, N29: an unspoken Slide keeps its LAST
+    version). The last version is what the speaker sees, and the one
+    resolver of that is `services.ideal_text_read.resolve_live_text`, the
+    same call the Ideal Text GET route and the core snapshot publisher
+    (`ideal_text_core_snapshot.build_snapshot`) make: the owner edit made on
+    the current version (`user_arc_ideal_notes.user_text`, which also holds
+    every accepted rewrite, N35.4 / N40), else the coach-verified text of
+    the current version, else the machine text. Not `auto_text` alone: an
+    owner edit never touches it. Not the latest `ideal_text_versions`
+    snapshot: an edit made after it is not in it. Not the Paragraph rows:
+    they are identity, and the RPC's own non-rebuild branch reads the same
+    precedence. The serve-time fold of the retired star lane
+    (`resolve_suggestion_display`, off unless MOMENT_SUGGESTIONS_ENABLED) is
+    display only and never re-applied to words (Q16 A)."""
+    if not owner_user_id:
+        return None
+    try:
+        from services.ideal_text_read import (
+            resolve_ideal_text_source,
+            resolve_live_text,
+        )
+        source = resolve_ideal_text_source(row)
+        live = resolve_live_text(str(arc_id), str(owner_user_id), source,
+                                 database=database)
+        return live.text if str(live.text or "").strip() else None
+    except Exception as error:
+        # LIVE LOOP: an unreadable edit never stops the Take; its unspoken
+        # Slides keep the machine words, as before, and it is counted.
+        logger.warning("take_rebuild_unspoken_kept_machine_words arc=%s "
+                       "served text unreadable: %s", arc_id, error,
+                       exc_info=True)
+        return None
+
+
+def plan_rebuild(database: Any, arc_id: str, take_session_id: str,
+                 owner_user_id: Optional[str] = None) -> Optional[Rebuild]:
     """Read the current document and this Take's transcript; merge them.
 
     Raw transcript, no ledger bake (Q16 A). None whenever anything cannot
@@ -211,8 +296,12 @@ def plan_rebuild(database: Any, arc_id: str,
             str(arc_id), database=database, session_id=str(take_session_id))
         if not isinstance(new, Mapping) or not str(new.get("text") or "").strip():
             return None
-        merged = (merge_by_slide(old_text, old_doc, str(new["text"]), new)
-                  if isinstance(old_doc, Mapping) else None)
+        merged = None
+        if isinstance(old_doc, Mapping):
+            merged = merge_by_slide(
+                old_text, old_doc, str(new["text"]), new,
+                current_text=served_text(database, arc_id, owner_user_id,
+                                         row))
         if merged is not None:
             return merged
         followed = follow_the_take(old_text, old_doc, str(new["text"]), new)
@@ -423,7 +512,7 @@ def prepare(database: Any, arc_id: str, user_id: str,
             take_session_id: str, before: Any, *,
             take_index: Optional[int] = None) -> Plan:
     """Plan the rebuild and read what identity needs, before the RPC."""
-    rebuild = plan_rebuild(database, arc_id, take_session_id)
+    rebuild = plan_rebuild(database, arc_id, take_session_id, user_id)
     rows: list = []
     if rebuild is not None:
         try:
