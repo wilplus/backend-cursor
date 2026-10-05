@@ -80,6 +80,11 @@ unlocking clears stale root metadata.
 
 ## 4 · The anchoring requirement (CRITICAL, founder-flagged)
 
+> **RETIRED by the founder, 2026-10-05 ("8 no"; decisions log N45).** No
+> "you are here" display is built. Takes are filed to Slides by the slide
+> taps (Phase 3, N31/N33); a later Take rewrites each Slide it spoke whole.
+> Kept below as the record of what was asked and why it was set aside.
+
 > "To know which spoken fragment fits which text paragraph, we must show the
 > user where they are in their practice *during* the official recording
 > (e.g., displaying the first few words of that paragraph). This anchors the

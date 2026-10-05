@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import unittest
+from unittest import mock
 
 from services.voice_album import reconcile_voice_album_clip
 
@@ -18,6 +19,38 @@ ARC = "arc-1"
 CLIP = "snip-1"
 TAKE = "take-1"
 
+
+
+# THE MACHINE LEG IS THE CLIP'S OWN READ (founder 2026-10-05, Q5; N45).
+# These fakes still describe a confident clip the way the old lane did (an
+# EMPHASIZE "confident" row); the read below translates that into the read
+# the album now asks for, so each test keeps its meaning. A reader that
+# raises is a clip that cannot be read (None).
+def _read_from_star(database, take_session_id, snippet_id):
+    try:
+        try:
+            rows = database.get_moment_suggestions_by_arc("arc-1", strict=True)
+        except TypeError:
+            rows = database.get_moment_suggestions_by_arc("arc-1")
+    except Exception:
+        return None
+    row = (rows or {}).get(str(snippet_id))
+    if (isinstance(row, dict) and row.get("kind") == "emphasize"
+            and row.get("trigger") == "confident"):
+        return "confident"
+    return "weak"
+
+
+_READ_PATCH = mock.patch("services.judgement_follow_up.clip_machine_read",
+                         _read_from_star)
+
+
+def setUpModule():
+    _READ_PATCH.start()
+
+
+def tearDownModule():
+    _READ_PATCH.stop()
 
 class _Db:
     def __init__(self, *, attempt=None, practice=None, self_reports=(),

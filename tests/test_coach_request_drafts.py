@@ -110,11 +110,11 @@ class LockTests(unittest.TestCase):
 
 
 class RouteTests(unittest.TestCase):
-    def test_the_draft_and_the_named_errors_sit_behind_the_blind_gate(self):
+    def test_the_draft_sits_behind_the_blind_gate(self):
         source = (ROOT / "routes/v2/coach.py").read_text()
         gate = source[source.index("def _moment_gate"):source.index("@v2_bp.route", source.index("def _moment_gate"))]
         self.assertIn("BLIND_RATING_REQUIRED", gate)
-        for name in ("v2_coach_exercise_request_draft", "v2_coach_named_errors"):
+        for name in ("v2_coach_exercise_request_draft",):
             start = source.index(f"def {name}")
             body = source[start:source.index("@v2_bp.route", start)]
             self.assertIn("_moment_gate(session_id, snippet_id)", body)

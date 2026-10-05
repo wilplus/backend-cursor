@@ -5,8 +5,11 @@ great moment -> User agrees -> Coach agrees = This moment lands in the
 Voice Album." Three independent signals, one row when they align on a
 snippet:
 
-  * ACOUSTIC — the star lane generated an EMPHASIZE for the snippet
-    (a `moment_suggestions` row; the machine's confident read);
+  * ACOUSTIC — the machine reads the clip confident: the same read that
+    colours its bar green and chooses its follow-up
+    (``judgement_follow_up.clip_machine_read``; founder 2026-10-05, Q5,
+    N45). Until then it was the legacy star lane's EMPHASIZE row, a lane
+    switched off by default, so nothing could enter;
   * USER     — the owner answered yes on the displayed Confident Voice card
     (an owner_voice_album_routing row, structurally outside learning);
   * COACH    — an explicit professional coach confidence label is YES on a
@@ -40,16 +43,16 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-_MACHINE_CONFIDENT_TRIGGERS = {"confident"}
-
-
-def _machine_confident(row: Any) -> bool:
-    """A neutral confidence-review nomination is not a machine Yes."""
-    return bool(
-        isinstance(row, dict)
-        and row.get("kind") == "emphasize"
-        and row.get("trigger") in _MACHINE_CONFIDENT_TRIGGERS
-    )
+def _machine_reads_confident(database: Any, take_session_id: Any,
+                             snippet_id: Any) -> Optional[bool]:
+    """Machine Yes on this exact clip (Q5, N45). None when the clip could
+    not be read, which is never a No: an unread clip cannot withdraw an
+    entry."""
+    from services.judgement_follow_up import clip_machine_read
+    read = clip_machine_read(database, str(take_session_id or ""), str(snippet_id))
+    if read is None:
+        return None
+    return read == "confident"
 
 def _professional_coach_yes(rows: Any) -> bool:
     """True only when the latest professional judgment is explicit Yes."""
@@ -147,9 +150,6 @@ def _reconcile_original_clip(
     the professional Yes on that Take all align. The Take has to be this
     project's; nothing else gates it since the publish was retired."""
     user_row = _owner_agreements(database, arc).get(target)
-    suggestion = (
-        database.get_moment_suggestions_by_arc(arc) or {}
-    ).get(target)
     labels = database.get_confidence_labels_by_snippet_ids([target]) or {}
     from services.professional_confidence import latest_professional_value
     coach_value = latest_professional_value(labels.get(target))
@@ -165,8 +165,8 @@ def _reconcile_original_clip(
     aligned = bool(
         coach_value == "yes"
         and user_row
-        and _machine_confident(suggestion)
         and session_matches
+        and _machine_reads_confident(database, take_session_id, target) is True
     )
     if not aligned or not isinstance(user_row, dict):
         return False
@@ -213,12 +213,19 @@ def reconcile_voice_album_clip(
         return False
 
 
-def _acoustic_yes_ids(database: Any, arc_id: Any, complete: list) -> set:
-    """ACOUSTIC — the machine's emphasize stars for this arc."""
-    rows = _strict(complete, database.get_moment_suggestions_by_arc,
-                   str(arc_id))
-    return {sid for sid, row in (rows or {}).items()
-            if _machine_confident(row)}
+def _machine_yes(database: Any, candidates: dict, complete: list) -> set:
+    """ACOUSTIC — the clips the machine reads confident, among those the
+    user and the coach both said yes to ({snippet_id: take_session_id}).
+    A clip that cannot be read is left out and marks the refresh
+    incomplete, so it adds nothing and removes nothing."""
+    out: set = set()
+    for snip_id, take_id in candidates.items():
+        verdict = _machine_reads_confident(database, take_id, snip_id)
+        if verdict is None:
+            complete[0] = False
+        elif verdict:
+            out.add(snip_id)
+    return out
 
 
 def _coach_yes_sessions(database: Any, arc_id: Any, complete: list) -> dict:
@@ -274,13 +281,14 @@ def refresh_voice_album(arc_id: Any, *, database=None) -> int:
         # wait for a refresh whose every read completed.
         complete = [True]
         user_ok = _owner_agreements(database, arc_id, complete)
-        acoustic_ok = _acoustic_yes_ids(database, arc_id, complete)
         coach_ok = _coach_yes_sessions(database, arc_id, complete)
+        both = {sid: coach_ok[sid] for sid in set(user_ok) & set(coach_ok)}
+        acoustic_ok = _machine_yes(database, both, complete)
 
         # `aligned` may legitimately be EMPTY — the mirror still has to
         # run, because an empty alignment with existing entries means
         # every one of them must go (the user changed their mind).
-        aligned = set(user_ok) & acoustic_ok & set(coach_ok)
+        aligned = set(both) & acoustic_ok
 
         existing = _existing_clip_entries(database, arc_id)
 

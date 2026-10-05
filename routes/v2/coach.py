@@ -1700,6 +1700,30 @@ def v2_coach_exercise_request_draft(session_id, snippet_id):
 
 
 @v2_bp.route(
+    "/coach/sessions/<session_id>/snippets/<snippet_id>/practice-judgement",
+    methods=["PUT"],
+)
+@require_admin_or_coach
+@operational_purpose_disabled("personalized_exercise_recommendation")
+def v2_coach_practice_judgement(session_id, snippet_id):
+    """Body {answer}: the coach's answer, one of the five, on the speaker's
+    chosen practice recording (founder 2026-10-05, Q6; N45). Behind the
+    blind gate; the work is services.coach_practice_judgement's."""
+    error, owner_sid = _moment_gate(session_id, snippet_id)
+    if error:
+        return error
+    if not _speaker_practice_permitted(owner_sid):
+        return jsonify({"code": "SPEAKER_PRACTICE_OFF",
+                        "error": "The speaker turned practice off."}), 409
+    from services.coach_practice_judgement import judge_selected_attempt
+    status, payload = judge_selected_attempt(
+        db, take_session_id=owner_sid, snippet_id=snippet_id,
+        body=request.get_json(silent=True),
+        coach_id=str(getattr(request, "user_id", "")))
+    return jsonify(payload), status
+
+
+@v2_bp.route(
     "/coach/sessions/<session_id>/snippets/<snippet_id>/exercise-request/video",
     methods=["POST"],
 )
@@ -1819,30 +1843,6 @@ def v2_coach_moment_read(session_id, snippet_id):
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to read the moment"}), 500
     return jsonify(payload), 200
-
-
-@v2_bp.route(
-    "/coach/sessions/<session_id>/snippets/<snippet_id>/named-errors",
-    methods=["GET", "PUT"],
-)
-@require_admin_or_coach
-def v2_coach_named_errors(session_id, snippet_id):
-    """The patterns the coach names on the moment itself (0402; P2-7), from
-    the unified walk: GET the current names, PUT {error_id, named}. Behind
-    the blind gate; coach provenance only, never on the speaker's payload."""
-    error, owner_sid = _moment_gate(session_id, snippet_id)
-    if error:
-        return error
-    from services.coach_moment_errors import (
-        name_error_on_moment, named_errors_on_moment,
-    )
-    if request.method == "GET":
-        return jsonify({"named": named_errors_on_moment(db, snippet_id)}), 200
-    status, payload = name_error_on_moment(
-        db, take_session_id=owner_sid, snippet_id=snippet_id,
-        body=request.get_json(silent=True),
-        coach_id=str(getattr(request, "user_id", "")))
-    return jsonify(payload), status
 
 
 # ── willab — the arc-level delivery: RETIRED ─────────────────────────────

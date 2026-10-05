@@ -14160,24 +14160,6 @@ class DatabaseService:
                            "practice=%s: %s", practice_id, e)
             return []
 
-    def list_coach_moment_error_events_for_snippet(
-        self, snippet_id: str,
-    ) -> list[dict]:
-        """Every naming event on one moment named by its snippet (0402), in
-        the order they happened."""
-        if not snippet_id:
-            return []
-        try:
-            res = (self.client.table("coach_moment_error_event")
-                   .select("error_id,action,coach_id,created_at,seq")
-                   .eq("snippet_id", str(snippet_id))
-                   .order("seq").execute())
-            return res.data or []
-        except Exception as e:
-            logger.warning("list_coach_moment_error_events_for_snippet failed "
-                           "snippet=%s: %s", snippet_id, e, exc_info=True)
-            return []
-
     def insert_coach_moment_error_event(
         self, practice_id: Optional[str], error_id: str, coach_id: str,
         action: str, *, snippet_id: Optional[str] = None,

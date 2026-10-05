@@ -212,47 +212,16 @@ class MainTargetTests(unittest.TestCase):
         self.assertEqual(db.pairs[0]["final_text"], "Final script.")
 
 
-class _MomentDb:
-    def __init__(self):
-        self.events = []
+class NamedOnMomentRetiredTests(unittest.TestCase):
+    """Naming a pattern on the moment itself is retired (founder
+    2026-10-05, Q9 "B"; N45): no screen ever called it."""
 
-    def get_speaking_error(self, error_id):
-        return {"error_id": error_id, "active": error_id != "retired"}
-
-    def list_coach_moment_error_events_for_snippet(self, snippet_id):
-        return [e for e in self.events if e["snippet_id"] == snippet_id]
-
-    def insert_coach_moment_error_event(self, practice_id, error_id, coach_id, action, *,
-                                        snippet_id=None, take_session_id=None):
-        row = {"practice_id": practice_id, "error_id": error_id, "coach_id": coach_id,
-               "action": action, "snippet_id": snippet_id, "take_session_id": take_session_id}
-        self.events.append(row)
-        return row
-
-
-class NamedOnMomentTests(unittest.TestCase):
-    def test_naming_withdrawing_and_idempotence_on_the_moment(self):
-        db = _MomentDb()
-        status, payload = cme.name_error_on_moment(
-            db, take_session_id="take-1", snippet_id="snip-1",
-            body={"error_id": "hedging"}, coach_id="c")
-        self.assertEqual((status, payload), (200, {"named": ["hedging"]}))
-        self.assertIsNone(db.events[0]["practice_id"])
-        self.assertEqual(db.events[0]["take_session_id"], "take-1")
-        cme.name_error_on_moment(db, take_session_id="take-1", snippet_id="snip-1",
-                                 body={"error_id": "hedging", "named": True}, coach_id="c")
-        self.assertEqual(len(db.events), 1)
-        status, payload = cme.name_error_on_moment(
-            db, take_session_id="take-1", snippet_id="snip-1",
-            body={"error_id": "hedging", "named": False}, coach_id="c")
-        self.assertEqual(payload, {"named": []})
-        self.assertEqual(cme.named_errors_on_moment(db, "snip-1"), [])
-
-    def test_only_a_library_entry_can_be_named(self):
-        status, payload = cme.name_error_on_moment(
-            _MomentDb(), take_session_id="t", snippet_id="s",
-            body={"error_id": "retired"}, coach_id="c")
-        self.assertEqual((status, payload["code"]), (404, "ERROR_NOT_IN_LIBRARY"))
+    def test_the_moment_naming_path_is_gone(self):
+        self.assertFalse(hasattr(cme, "name_error_on_moment"))
+        self.assertFalse(hasattr(cme, "named_errors_on_moment"))
+        routes = (ROOT / "routes/v2/coach.py").read_text()
+        self.assertNotIn("/named-errors", routes)
+        self.assertNotIn("v2_coach_named_errors", routes)
 
 
 if __name__ == "__main__":

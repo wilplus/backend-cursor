@@ -64,7 +64,7 @@ class ReadTests(unittest.TestCase):
         self.assertEqual(out["speaker_goal"], "Sound calm")
         self.assertEqual(out["request"]["kind"], "error")
         self.assertEqual(out["request"]["spotted"], [{"error_id": "hedging", "label": "Hedging"}])
-        self.assertEqual(out["named_errors"], ["hedging"])
+        self.assertNotIn("named_errors", out)  # retired, Q9 "B" (N45)
 
     def test_no_request_is_none_not_an_error(self):
         db = _Db(rating={"value": "yes", "unrateable": True})
