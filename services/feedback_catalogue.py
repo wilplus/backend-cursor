@@ -16,9 +16,10 @@ one catalogue read, which the caller passes in.
 
 THE PROPOSED FLOOR (founder 2026-10-05, decisions log N48.6, Q29 A). Nine
 praise lines and three rewrite moves, drafted for the founder's signature
-and held below behind ``PROPOSED_LINES_SIGNED``, which is OFF: until he
-signs docs/SIGN-praise-lines-and-rewrite-moves-2026-10.md and a reviewed
-change flips it, nothing in this module behaves differently from before.
+and held below behind ``PROPOSED_LINES_SIGNED``, which is OFF: until the
+founder signs docs/SIGN-praise-lines-and-rewrite-moves-2026-10.md and a
+reviewed change flips it, nothing in this module behaves differently from
+before.
 """
 from __future__ import annotations
 
