@@ -51,6 +51,9 @@ actions with different effects.
 2. A separate, initially unchecked control offers pooled model improvement.
 3. The Terms state that the user may provide only recordings containing their
    own voice. There is no per-recording sole-speaker checkbox.
+   *Amended 2026-10-05 (founder, decisions log N48.4 Q20 A): "own voice only"
+   is amended to the Terms as they stand: others may be recorded with their
+   agreement. There is still no per-recording sole-speaker checkbox.*
 4. Setup stores an `18+ confirmed` result with version and timestamp. No full
    date of birth is collected and age is never inferred from voice.
 5. Setup collects country of residence once.
