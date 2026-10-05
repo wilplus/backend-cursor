@@ -85,6 +85,7 @@ def _source_code_sha256() -> str:
         "take_feedback_manager.py",
         "feedback_data_contract.py",
         "voice_confidence.py",
+        "rewrite_declines.py",
     )
     digest = hashlib.sha256()
     for name in names:
@@ -685,11 +686,42 @@ def _confidence_rank(candidate: dict) -> tuple:
     )
 
 
+def _owner_declined(row: dict, candidate_id: str, declined: Any) -> bool:
+    """A rewrite the speaker declined on an earlier Take, on a Paragraph
+    whose words have not changed since (N48.2, Q3 A;
+    `services.rewrite_declines`). `declined` carries the standing keys, the
+    candidates already in this Take's frozen selection (never taken back)
+    and the Paragraph each snippet sits in."""
+    from services.rewrite_declines import rewrite_key
+
+    if not isinstance(declined, dict) or not declined.get("keys"):
+        return False
+    if candidate_id in (declined.get("frozen_ids") or ()):
+        return False
+    part_of = declined.get("part_of") or {}
+    key = rewrite_key(part_of.get(str(row.get("snippet_id") or "")),
+                      row.get("quote"), row.get("proposed_text"))
+    return key is not None and key in declined["keys"]
+
+
+def _with_owner_decline(reason: Optional[str], family: str, row: dict,
+                        candidate_id: str, declined: Any) -> Optional[str]:
+    """`reason` unchanged, or ``declined_by_owner`` for an otherwise
+    eligible rewrite the owner declined (N48.2, Q3 A)."""
+    from services.rewrite_declines import DECLINED_BY_OWNER
+
+    if (reason is None and family == "rewrite_clarity"
+            and _owner_declined(row, candidate_id, declined)):
+        return DECLINED_BY_OWNER
+    return reason
+
+
 def _verbal_inventory(
     candidates: Iterable[Any],
     family: str,
     *,
     document_map: TakeDocumentMap,
+    declined: Any = None,
 ) -> tuple[list[dict], list[dict], list[dict]]:
     """Every row of one verbal family, eligible or excluded with its reason.
 
@@ -699,6 +731,11 @@ def _verbal_inventory(
     the coordinates the blocks are cut in -- and `target_span` is the same
     words in the served Ideal Text, where the row is drawn. Comparing the
     served span with block offsets anchored notes to the wrong block.
+
+    A rewrite the owner declined while its Paragraph had these same words
+    is excluded as ``declined_by_owner`` (N48.2, Q3 A): kept in the
+    inventory with its reason, never served, never replaced by anything
+    the block does not already hold.
     """
     ranked: list[tuple[tuple, dict]] = []
     inventory: list[dict] = []
@@ -717,6 +754,7 @@ def _verbal_inventory(
         versions = _versions(row)
         evidence = verbal_evidence(row)
         reason, mapped = verbal_exclusion(row, document_map)
+        reason = _with_owner_decline(reason, family, row, candidate_id, declined)
 
         item = {
             "input_index": input_index,
@@ -793,6 +831,29 @@ def _document_map(
     )
 
 
+def _declined_context(declined_rewrites: Any, frozen_candidate_ids: Any,
+                      pieces: Any) -> dict:
+    """What `_owner_declined` reads (N48.2, Q3 A)."""
+    return {
+        "keys": frozenset(declined_rewrites or ()),
+        "frozen_ids": frozenset(
+            str(value) for value in (frozen_candidate_ids or ())),
+        "part_of": _snippet_parts(pieces),
+    }
+
+
+def _snippet_parts(pieces: Any) -> dict[str, str]:
+    """{snippet_id: part_id} for the pieces bound to a Paragraph
+    (`ideal_text_parts.bind_pieces_to_parts`): the Paragraph a verbal row
+    sits in, the same join the service inventory names it by."""
+    return {
+        str(piece.get("snippet_id")): str(piece.get("part_id"))
+        for piece in pieces or []
+        if isinstance(piece, dict) and piece.get("snippet_id")
+        and piece.get("part_id")
+    }
+
+
 def _unrouted_inventory(candidates: Iterable[Any]) -> list[dict]:
     out: list[dict] = []
     for input_index, raw in enumerate(candidates or []):
@@ -823,12 +884,20 @@ def build_shadow_frame(
     take_index: Any,
     expected_recording_id: Any,
     served_text: Any = None,
+    declined_rewrites: Any = frozenset(),
+    frozen_candidate_ids: Any = frozenset(),
 ) -> Optional[dict]:
     """Build the complete v3 frame; return None for an unusable Take.
 
     ``served_text`` is the Ideal Text the verbal rows' spans address. Without
     it no verbal row can be proven to sit in this Take's words, so every one
     is excluded as ``document_span_unmapped`` (N48.1, Wave 1).
+
+    ``declined_rewrites`` are the standing "Keep my words" keys
+    (`services.rewrite_declines.standing_declines`); a matching rewrite is
+    excluded as ``declined_by_owner`` unless its id is in
+    ``frozen_candidate_ids``, this Take's already frozen selection (N48.2,
+    Q3 A).
     """
     doc = take_document if isinstance(take_document, dict) else {}
     take_id = str(doc.get("take_session_id") or "")
@@ -906,6 +975,8 @@ def build_shadow_frame(
     )
     rewrite_inventory, rewrite_ranked, rewrite_exclusions = _verbal_inventory(
         feedback_rows, "rewrite_clarity", document_map=document_map,
+        declined=_declined_context(
+            declined_rewrites, frozen_candidate_ids, doc.get("pieces")),
     )
     praise_inventory, praise_ranked, praise_exclusions = _verbal_inventory(
         feedback_rows, "great_formulation", document_map=document_map,

@@ -1453,13 +1453,15 @@ class _ChangesRun:
         # `review_sid` may name a different Take from the one `self.doc` was
         # built for, and a snippet id from one Take cannot address a piece of
         # another.
+        _parts = self.deps.locked_parts(
+            self.arc_id, str(self.user_id), self.served_text)
         _service_doc = bind_pieces_to_parts(
             _service_doc,
             served_text=self.served_text,
             slide_regions=self.slide_regions,
-            parts=self.deps.locked_parts(
-                self.arc_id, str(self.user_id), self.served_text),
+            parts=_parts,
         )
+        declined, frozen_ids = self._declined_rewrites(_service_session, _parts)
         return prepare_first_client_feedback(
             database=self.deps.first_client_repository,
             session=_service_session,
@@ -1473,7 +1475,33 @@ class _ChangesRun:
             feedback_candidates=self.feedback_exposure,
             owner_user_id=str(self.user_id),
             learning=self.v3_learning,
+            declined_rewrites=declined,
+            frozen_candidate_ids=frozen_ids,
         )
+
+    def _declined_rewrites(self, session: Any, parts: Any
+                           ) -> tuple[frozenset, frozenset]:
+        """The standing "Keep my words" keys for this Take and its frozen
+        selection (N48.2, Q3 A; `services.rewrite_declines`). Read-only;
+        anything unreadable applies no decline, which is the behaviour
+        before Q3 and never invents."""
+        from services.rewrite_declines import standing_declines
+        take = session if isinstance(session, dict) else {}
+        frozen = frozenset(
+            str(key.get("id")) for key in (
+                (self.feedback_set or {}).get("selected_keys") or [])
+            if isinstance(key, dict) and key.get("id"))
+        try:
+            declined = standing_declines(
+                self.db, arc_id=str(self.arc_id),
+                owner_user_id=str(self.user_id),
+                take_session_id=str(take.get("id") or self.arm_sid or ""),
+                take_created_at=take.get("created_at"), parts=parts)
+        except Exception as error:  # noqa: BLE001 -- logged, never fatal
+            logger.warning("rewrite declines failed arc=%s take=%s: %s",
+                           self.arc_id, self.arm_sid, error, exc_info=True)
+            declined = frozenset()
+        return declined, frozen
 
     def _serve_v3(self, _service_rows) -> None:
         # THREE OUTCOMES, NOT TWO (contract 24h, founder 2026-09-18).

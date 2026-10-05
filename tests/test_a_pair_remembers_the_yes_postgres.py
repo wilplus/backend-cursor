@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import uuid
+from datetime import date, timedelta
 
 import psycopg2
 import psycopg2.extras
@@ -136,13 +137,21 @@ def _refresh(db, required=ALL):
     return _one(db, "SELECT public.refresh_feedback_pair_consent_v1(%s::text[])", (required,))
 
 
+def _unique_week():
+    """A week no other release in this database holds: pair_releases is
+    UNIQUE (surface, week_start), and the old draw (one of 28 January days)
+    made two releases in one run collide (seen 2026-10-05). The range starts
+    in year 3000 so it never meets the sibling module's (1900 onwards)."""
+    return str(date(3000, 1, 1) + timedelta(days=uuid.uuid4().int % 2_000_000))
+
+
 def _release(db, surface="praise_line"):
     return str(_one(db, """
         INSERT INTO public.pair_releases (release_version, surface, week_start, item_count, storage_bucket,
             storage_key, manifest, manifest_sha256, file_sha256, signature, signing_key_id)
         VALUES ('pair-release-v1', %s, %s, 1, 'b', %s, '{}'::jsonb, repeat('a', 64), repeat('b', 64), 'sig', 'k1')
         RETURNING id""",
-        (surface, f"2000-01-{uuid.uuid4().int % 28 + 1:02d}", f"pair-releases/{surface}/{uuid.uuid4()}/pairs.jsonl")))
+        (surface, _unique_week(), f"pair-releases/{surface}/{uuid.uuid4()}/pairs.jsonl")))
 
 
 def test_a_pair_is_releasable_only_under_an_active_yes(db, policy):

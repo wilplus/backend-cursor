@@ -8236,6 +8236,82 @@ class DatabaseService:
                            take_session_id, e, exc_info=True)
             return None
 
+    def list_rewrite_declines(
+        self, arc_id: str, owner_user_id: str,
+    ) -> Optional[list]:
+        """The owner's "Keep my words" on rewrites in this document
+        (`rewrite_clarity` / `keep_wording`; N48.2, Q3 A), oldest first:
+        take_session_id, feedback_id, created_at. None when unreadable, so
+        the caller can tell "no decline" from "could not look"."""
+        if not arc_id or not owner_user_id:
+            return []
+        try:
+            return list(
+                self.client.table("take_feedback_self_report")
+                .select("take_session_id,feedback_id,created_at")
+                .eq("arc_id", str(arc_id))
+                .eq("owner_user_id", str(owner_user_id))
+                .eq("feedback_family", "rewrite_clarity")
+                .eq("response", "keep_wording")
+                .order("created_at")
+                .execute().data or [])
+        except Exception as e:
+            logger.warning("rewrite declines unreadable arc=%s: %s",
+                           arc_id, e, exc_info=True)
+            return None
+
+    def read_declined_v3_rewrite_rows(
+        self, take_session_ids: list[str], candidate_keys: list[str],
+    ) -> Optional[dict]:
+        """What the declined rewrites were, in four batch reads whatever
+        their number (N48.2, Q3 A): the V3 freezes of these Takes, their
+        selected rewrite items under these keys, those candidates' words,
+        and the document each freeze served (its Paragraphs' words).
+        ``{memberships, items, candidates, snapshots}``, or None when
+        unreadable. The matching is ``services.rewrite_declines``'."""
+        takes = sorted({str(t) for t in take_session_ids if t})
+        keys = sorted({str(k) for k in candidate_keys if k})
+        empty: dict = {"memberships": [], "items": [], "candidates": [],
+                       "snapshots": []}
+        if not takes or not keys:
+            return empty
+        try:
+            memberships = list(
+                self.client.table("feedback_v3_memberships")
+                .select("id,take_id,frozen_at,document_snapshot_id")
+                .in_("take_id", takes).execute().data or [])
+            if not memberships:
+                return empty
+            items = list(
+                self.client.table("feedback_v3_membership_items")
+                .select("membership_id,candidate_key,candidate_id,"
+                        "source_ideal_part_id")
+                .in_("membership_id", [str(m.get("id")) for m in memberships])
+                .in_("candidate_key", keys)
+                .eq("feedback_family", "rewrite_clarity")
+                .eq("selected", True).execute().data or [])
+            if not items:
+                return {**empty, "memberships": memberships}
+            candidates = list(
+                self.client.table("feedback_candidates")
+                .select("id,generated_output")
+                .in_("id", sorted({str(i.get("candidate_id")) for i in items}))
+                .execute().data or [])
+            served = {str(i.get("membership_id")) for i in items}
+            snapshots = list(
+                self.client.table("ideal_text_document_snapshots")
+                .select("id,payload")
+                .in_("id", sorted({
+                    str(m.get("document_snapshot_id")) for m in memberships
+                    if str(m.get("id")) in served}))
+                .execute().data or [])
+            return {"memberships": memberships, "items": items,
+                    "candidates": candidates, "snapshots": snapshots}
+        except Exception as e:
+            logger.warning("declined V3 rewrites unreadable takes=%d: %s",
+                           len(takes), e, exc_info=True)
+            return None
+
     def compare_and_set_user_ideal_edit(
         self, *, owner_user_id: str, arc_id: str,
         source_document_version: int,
@@ -14936,6 +15012,38 @@ class DatabaseService:
                .select("snippet_id,event,created_at")
                .eq("take_session_id", str(take_session_id))
                .order("created_at").execute())
+        return list(res.data or [])
+
+    def list_moment_events_for_sessions(
+        self, take_session_ids: list[str],
+    ) -> list[dict]:
+        """Every open and skip on these Takes (0408): which moments reached
+        the speaker, for the coach's queue (N48.2, Q1 A). Raises on failure:
+        the queue then fails visibly rather than listing moments no speaker
+        met."""
+        ids = [str(i) for i in take_session_ids if i]
+        if not ids:
+            return []
+        res = (self.client.table("moment_events")
+               .select("take_session_id,snippet_id,event")
+               .in_("take_session_id", ids).execute())
+        return list(res.data or [])
+
+    def list_confident_voice_answered_moments(
+        self, take_session_ids: list[str],
+    ) -> list[dict]:
+        """Which Confident Voice moments the speaker ANSWERED on these Takes
+        (N48.2, Q1 A): (take_session_id, snippet_id) only. The answer itself
+        is never selected, so nothing here can carry it toward a coach
+        (BLIND COACH). Raises on failure, like the read beside it."""
+        ids = [str(i) for i in take_session_ids if i]
+        if not ids:
+            return []
+        res = (self.client.table("take_feedback_self_report")
+               .select("take_session_id,snippet_id")
+               .in_("take_session_id", ids)
+               .eq("feedback_family", "confident_voice")
+               .execute())
         return list(res.data or [])
 
     def count_moment_events(self, event: str, since: str) -> int:

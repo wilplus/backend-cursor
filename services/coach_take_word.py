@@ -2,8 +2,10 @@
 
 One optional message and one optional video per Take, per coach. The coach
 writes it after the last moment of a Take, or not at all; sharing sends it
-to the speaker, who reads the latest shared one as "Your coach" on the
-next read of the Ideal Text (the sheet that exists, Final Screens L8).
+to the speaker, who reads it as "Your coach" on that Take's Ideal Text
+(the sheet that exists, Final Screens L8). A word belongs to its Take
+(founder 2026-10-05, N48.3 Q11 A): the page showing Take 3 never serves the
+word left on Take 2.
 
 It replaces the arc-level publish as the speaker's coach message: where a
 Take has a shared word, that is what the speaker reads; where it has none,
@@ -112,9 +114,14 @@ def take_word_for(database: Any, *, take_session_id: str, coach_id: str) -> Opti
 
 
 def latest_shared_word(database: Any, sessions: Any) -> Optional[dict]:
-    """The speaker's coach message from the Take words: the most recently
-    shared word across the arc's spoken takes, as {text, video_url,
-    take_index, published_at}, or None. Best-effort."""
+    """The most recently shared word across these spoken takes, as
+    {text, video_url, take_index, published_at, take_session_id}, or None.
+    Best-effort.
+
+    THE WORD BELONGS TO ITS TAKE (founder 2026-10-05, N48.3 Q11 A; contract
+    35g-6). The speaker's read passes only the Take on screen
+    (`coach_message_read.coach_message_for`), so another Take's word is
+    never served in its place."""
     rows = [s for s in (sessions or []) if isinstance(s, dict) and s.get("id")]
     if not rows:
         return None
@@ -139,4 +146,5 @@ def latest_shared_word(database: Any, sessions: Any) -> Optional[dict]:
         "video_url": payload.get("video_url"),
         "take_index": take.get("take_index"),
         "published_at": latest.get("shared_at"),
+        "take_session_id": str(take.get("id") or "") or None,
     }
