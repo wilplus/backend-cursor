@@ -16,6 +16,15 @@ dated from when its computation STARTED, not when the row was written. The
 Manager measurably takes 4 to 40 seconds, and an answer committed inside that
 window was never seen by it. Dated at the write, such a bake reads as fresh.
 
+The third writer is not the speaker at all (0428). The stored block carries
+what the coach made of each bookmark's request (``_annotate_coach_answers``):
+the request's status, the exercise the coach shared as the moment's practice,
+and the coach's words and video. Those land in ``exercise_coach_requests``,
+which the rule never read, so a coach's share made after the speaker's last
+answer stayed off the page until the speaker answered something else. The
+lane applies the released request chain (0385, 0397, 0402, 0403, 0408), so
+the coach here answers and shares through the real writers.
+
 The target must be a disposable local database whose name starts with
 ``willab_bake_``. Nothing here writes media or activates any service.
 """
@@ -40,6 +49,10 @@ OTHER_ACTOR = "10000000-0000-4000-8000-000000000002"
 PRINCIPAL = "20000000-0000-4000-8000-000000000001"
 PROJECT = "30000000-0000-4000-8000-000000000001"
 TAKE = "40000000-0000-4000-8000-000000000001"
+# The moment the coach is asked about, and the coach. Any text ids: the
+# request names its take and snippet by text, as released.
+SNIPPET = "60000000-0000-4000-8000-000000000001"
+COACH = "70000000-0000-4000-8000-000000000001"
 
 BLOCK = {"changes": [{"id": "cand-1", "source": "confident_voice"}],
          "style_changes": []}
@@ -70,6 +83,7 @@ def _clean(db):
         cursor.execute("DELETE FROM public.take_feedback_self_report")
         cursor.execute("DELETE FROM public.user_suggestion_feedback")
         cursor.execute("DELETE FROM public.intervention_decisions")
+        cursor.execute("DELETE FROM public.exercise_coach_requests")
 
 
 def _publish(db, version: int = 1) -> str:
@@ -134,6 +148,43 @@ def _membership(db) -> str:
             "INSERT INTO public.feedback_v3_memberships(id,take_id) "
             "VALUES(%s,%s)", (membership_id, TAKE))
     return membership_id
+
+
+def _other_arc_take(db) -> str:
+    """A spoken take of some other project, for the per-arc checks."""
+    take = str(uuid4())
+    with db.cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO public.v2_sessions(id,user_id,owner_principal_id,"
+            "project_id,arc_id,take_index,analysis_state,recording_kind) "
+            "VALUES(%s,%s,%s,%s,%s,1,'ready','spoken')",
+            (take, ACTOR, PRINCIPAL, PROJECT, str(uuid4())))
+    return take
+
+
+def _raise_request(db, take: str = TAKE) -> str:
+    """The moment's coach request, raised the way the open and the judgement
+    raise it (0408's writer, insert-once). Returns its id."""
+    with db.cursor() as cursor:
+        cursor.execute(
+            "SELECT (public.request_exercise_from_coach_v3("
+            "%s,%s,%s,'nothing_targets_it','error','open',NULL,"
+            "ARRAY['pace'],'{}'::jsonb)).id",
+            (ACTOR, take, SNIPPET))
+        return str(cursor.fetchone()[0])
+
+
+def _coach_answers(db, request_id: str, resolution: str, *, share: bool,
+                   exercise_id=None, answer_text=None) -> None:
+    """The coach's one answer to a request, and the share when asked for,
+    through the released writer (0403). Repeating the same answer with
+    ``share`` is how a coach shares an answer given earlier."""
+    with db.cursor() as cursor:
+        cursor.execute(
+            "SELECT public.resolve_exercise_coach_request_v2("
+            "%s,%s,%s,%s,%s,%s,%s)",
+            (request_id, COACH, resolution, exercise_id,
+             1 if exercise_id else None, share, answer_text))
 
 
 # ── the stored set is served only while it is still true ──────────────────
@@ -210,13 +261,8 @@ def test_another_arc_s_answer_leaves_this_bake_alone(db):
     _clean(db)
     snapshot = _publish(db)
     _write(db, snapshot)
-    other_take = str(uuid4())
+    other_take = _other_arc_take(db)
     with db.cursor() as cursor:
-        cursor.execute(
-            "INSERT INTO public.v2_sessions(id,user_id,owner_principal_id,"
-            "project_id,arc_id,take_index,analysis_state,recording_kind) "
-            "VALUES(%s,%s,%s,%s,%s,1,'ready','spoken')",
-            (other_take, ACTOR, PRINCIPAL, PROJECT, str(uuid4())))
         cursor.execute(
             "INSERT INTO public.take_feedback_self_report("
             "arc_id,take_session_id,owner_user_id,feedback_id,"
@@ -313,6 +359,116 @@ def test_a_nonsense_window_is_not_allowed_to_move_the_row_backwards(db):
             "FROM public.ideal_text_feedback_bakes "
             "WHERE arc_id=%s AND actor_id=%s", (ARC, ACTOR))
         assert cursor.fetchone()[0] is True
+
+
+# ── what the coach made of a bookmark (0428) ──────────────────────────────
+#
+# A coach's answer and share write `exercise_coach_requests` and nothing the
+# speaker writes, so every case below served the block from before the
+# coach until 0428 named that table in the rule.
+
+
+def test_a_coach_share_after_the_bake_retires_it(db):
+    """THE DEFECT. The coach chose an exercise before the bake and shared it
+    after. The stored block still carried the open request ("your coach is
+    working on it") and no exercise, and served it until the speaker happened
+    to answer something else."""
+    _clean(db)
+    snapshot = _publish(db)
+    request = _raise_request(db)
+    _coach_answers(db, request, "exercise_chosen", share=False,
+                   exercise_id="ex-coach-1")
+    _write(db, snapshot)
+    assert _read(db, snapshot) is not None, "fresh until the share"
+    _coach_answers(db, request, "exercise_chosen", share=True,
+                   exercise_id="ex-coach-1")
+    assert _read(db, snapshot) is None
+
+
+def test_a_coach_answer_in_words_shared_after_the_bake_retires_it(db):
+    """The words, and the video with them, ride `coach_answer` once shared
+    (0402, 0403). Answered and shared in one call."""
+    _clean(db)
+    snapshot = _publish(db)
+    request = _raise_request(db)
+    _write(db, snapshot)
+    _coach_answers(db, request, "line_written", share=True,
+                   answer_text="You held the pause and landed the point.")
+    assert _read(db, snapshot) is None
+
+
+def test_a_coach_answer_without_a_share_retires_it(db):
+    """Nothing reaches the speaker unshared, but the request the block
+    carries moves from open to answered, and that is on the page too."""
+    _clean(db)
+    snapshot = _publish(db)
+    request = _raise_request(db)
+    _write(db, snapshot)
+    _coach_answers(db, request, "no_safe_match", share=False)
+    assert _read(db, snapshot) is None
+
+
+def test_a_request_raised_after_the_bake_retires_it(db):
+    """Raised at the open (F1) or at the judgement: the open request rides
+    the bookmark as the coach's promise, so its arrival changes the block."""
+    _clean(db)
+    snapshot = _publish(db)
+    _write(db, snapshot)
+    _raise_request(db)
+    assert _read(db, snapshot) is None
+
+
+def test_a_coach_share_during_the_computation_retires_the_bake(db):
+    """0351's window holds for the coach as for the speaker: a share
+    committed while the Manager ran was never seen by it."""
+    _clean(db)
+    snapshot = _publish(db)
+    request = _raise_request(db)
+    _coach_answers(db, request, "exercise_chosen", share=True,
+                   exercise_id="ex-coach-1")
+    _write(db, snapshot, computed_over_ms=60_000)
+    assert _read(db, snapshot) is None
+
+
+def test_a_coach_share_before_the_bake_leaves_it_fresh(db):
+    """The flip side: a request raised, answered and shared before the
+    computation began is already in the block, and the bake serves."""
+    _clean(db)
+    snapshot = _publish(db)
+    request = _raise_request(db)
+    _coach_answers(db, request, "exercise_chosen", share=True,
+                   exercise_id="ex-coach-1")
+    _write(db, snapshot)
+    assert _read(db, snapshot) is not None
+
+
+def test_another_arc_s_coach_share_leaves_this_bake_alone(db):
+    """Per arc, like every other branch of the rule: a coach answering on
+    one project costs no other project its fast open."""
+    _clean(db)
+    snapshot = _publish(db)
+    _write(db, snapshot)
+    request = _raise_request(db, take=_other_arc_take(db))
+    _coach_answers(db, request, "line_written", share=True,
+                   answer_text="Steady and clear.")
+    assert _read(db, snapshot) is not None
+
+
+def test_a_coach_share_is_never_taken_back(db):
+    """WHY THE RULE HAS NO REVOCATION TIME. The database refuses to unset a
+    share (0385's guard), so there is no withdrawal for the rule to miss. If
+    that ever changes, this fails first, and the rule must learn the time of
+    the withdrawal before the change ships."""
+    _clean(db)
+    request = _raise_request(db)
+    _coach_answers(db, request, "exercise_chosen", share=True,
+                   exercise_id="ex-coach-1")
+    with db.cursor() as cursor:
+        with pytest.raises(psycopg2.errors.RaiseException) as caught:
+            cursor.execute(
+                "UPDATE public.exercise_coach_requests SET shared_at = NULL "
+                "WHERE id = %s", (request,))
+    assert "ALREADY_SHARED" in str(caught.value)
 
 
 # ── the guards 0345 established, re-checked against the new signature ─────
