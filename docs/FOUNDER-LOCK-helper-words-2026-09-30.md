@@ -21,6 +21,7 @@ registers nothing in the database.
 - **B5** — Next on a Yes or In-between. Practise with Skip on No and Not sure only.
 - **B7** — Two bar colours only, orange and green. Everything else is plain text with no bar.
 - **D6** — The paragraph overlay has exactly two states: the practise state and the helper-words-saved state. Playback in both, never the paragraph text.
+  *Amended 2026-10-05 (founder, "keep it as it is today"; decisions log N48.1): on a later Take the helper-words-saved state shows no player. The paragraph text is still never shown.*
 - **D8** — Only the most above the threshold is displayed. At any moment the Ideal Text holds at most three open feedbacks, up to two of one colour and up to one of the other. A paragraph saved with helper words is done, frees its slot, and does not count; those are unlimited.
 
 ## Interpretations to confirm
