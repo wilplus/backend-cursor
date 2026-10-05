@@ -1519,3 +1519,75 @@ report's numbers (N45).
    nothing to delete today; it is still not built and still waits for the
    founder's word.
 
+
+**N48 · Closing the Gap: the founder's thirty answers and the Wave 1 "go"
+(founder 2026-10-05, "Q1 A / Q2 B / Q3 A / ... / Q14 A / ... / Q18 B / ... /
+Q30 A", on the page https://claude.ai/artifact/29WuaVG6EmaVeuo3DGcgTG).** The
+plan covers all 305 lines the lock audit of 5 October left open, in twelve
+workstreams and five waves. Wave 1 starts now; each later wave starts with its
+answers below.
+1. **Wave 1, with one correction ("keep it as it is today").** Step 3 is
+   dropped: on a later Take a saved paragraph's sheet keeps showing no player.
+   The helper-words lock's "playback in both" (B8-2, D6) is amended
+   accordingly. Wave 1 is: the page opens the card the follow-up matrix
+   names; the window's third slot never goes to an uncoloured moment while a
+   coloured one exists; detector praise and machine rewrites reach V3 with
+   their evidence and the fallbacks step in only when nothing servable
+   exists; History shows an accepted correction as its own row; the coach's
+   Take-word video is transcribed under a permit; Practise follows the
+   sensitive-information choice; re-record asks "Turn on the learning?"; two
+   tests against the real database and screen.
+2. **The paragraph and the page.** Q1 A: the coach's queue holds only moments
+   the speaker was shown or answered. Q2 B: no structure lane now; contract
+   27 says verbal and formulation now, structure later. Q3 A: after "Keep my
+   words" the same rewrite is not offered again on that Paragraph until its
+   words change (PARTS §12.3, read by V3). Q4 A: "Rehearse all"
+   (PARTS §7), replacing the deck inside a project (contract 4) and the
+   unbaked served text (PARTS §12.2) are retired. Q5 A: the Manager's
+   helper-word proposal for an uncovered Slide stays off; clause 20 says so.
+   Q6 A: after Delete the paragraph rejoins the walk at once on its earlier
+   answer.
+3. **Words on the locked screens.** Q7 A: the helper-words lock is amended to
+   29b on rewrite cards ("Accept and practise" / "Keep my words"). Q8 A: "Done"
+   becomes "Next"; "Record again" becomes "Record Take N"; "Yes — Confident" /
+   "No — Not confident" become "Yes" / "No"; the header caption becomes "AI-
+   generated text · Take N"; "Small rewrite" becomes "Clearer version";
+   "Choose different words" becomes "Edit"; the Take 1 note shows in the
+   paragraph sheet's picker; "Keep practising" becomes "Practise again". Q9 A:
+   "Delete helper words", "Tap words from any Take", "Confident" / "Not
+   confident", "Accept and practise", "Keep my words" and "Say it this way ·
+   accepted" are signed into the lock. Q10 A: "Your coach is working on your
+   exercise." shows only while a coach is active. Q11 A: a coach's word
+   belongs to its Take and Step 0 opens whenever an unseen word exists. Q12 A:
+   the contract and lock texts are amended to the later decisions (24f, 47,
+   the design-lock L3 note). Q13 A: after a check for live subscriptions, the
+   subscription and credit-pack paths, the arc checkout and the Best
+   Presentation builder are removed and the deck fallback replaced.
+4. **Leaving and legal.** Q14 A: account deletion completes by itself after
+   a 7-day cancel window; a person acts only on rows no rule decides. Q15 A:
+   retention schedule v1.4 is drafted for the founder's signature (product
+   records deleted with the account or project; job evidence kept 12 months)
+   and counsel reads it. Q16 A: the scheduled clean-up (guests 30 days, audio
+   and voice measurements 12 months after last use, logs 90 days) is built
+   with a dry run; its first real run waits for the founder's word. Q17 A:
+   speakers may delete one project, after Q14; its words go to the founder
+   first. Q18 B: no "report a recording" control; the Terms carry the rule.
+   Q19 A: after a deletion request the app shows a one-line ended state, its
+   words to the founder first. Q20 A: the Terms stand (others with their
+   agreement) and the lock is amended. Q21 A: country is asked once and
+   prefilled; location reassessment is dropped unless counsel wants it.
+   Q22 A: document 03 is corrected to say what the screens label, and counsel
+   is asked whether the sheets need their own label. Q23 A: document 02's
+   condition goes to counsel this week as the first question.
+5. **Coach and learning.** Q24 A: coaches' Yes answers in the blind error
+   audit are what promote a shadow cue. Q25 A: a "Library" link in the coach
+   menu. Q26 A: the Students screens stay off. Q27 A: the confidence-learning
+   chain is connected: one consent authority (the training yes) and the coach
+   walk's blind labels as its judgements; training stays closed.
+6. **Designer session and content.** Q28 A: the designer draws, in order,
+   coach words to the speaker, praise after practice, the share switch with
+   Lend your ear and the delayed measure, then Bold voices. Q29 A: the nine
+   praise lines and three rewrite moves are drafted by the session for the
+   founder's signature. Q30 A: the exercise fallback ladder stays off until
+   three general exercises are filmed.
+
