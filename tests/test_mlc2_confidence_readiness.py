@@ -227,7 +227,7 @@ def test_normal_feedback_selection_precedes_and_does_not_depend_on_writer_gate()
     import inspect
     from services.ideal_text_changes import _ChangesRun
     execute = inspect.getsource(_ChangesRun.execute)
-    claim = execute.index("self._claim_or_filter()")
+    claim = execute.index("self._claim_visibly()")
     writer_gate = execute.index("confidence_prior_learning_writes_enabled()")
     write = execute.index("self._canonical_dual_write", writer_gate)
     assert claim < writer_gate < write
