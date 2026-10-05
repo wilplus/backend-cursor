@@ -18,12 +18,21 @@ the same slide survives verbatim inside the second Paragraph and is provable.
 """
 from __future__ import annotations
 
+import json
 from hashlib import sha256
 
 import pytest
 
+import services.take_feedback_policy_v3 as policy
+import services.take_feedback_policy_v3_service as service
 from services.ideal_text_parts import bind_pieces_to_parts
-from services.take_feedback_policy_v3 import build_service_candidate_frame
+from services.take_feedback_policy_v3 import (
+    UNSERVABLE_PARAGRAPH,
+    UNSERVABLE_SPAN,
+    build_service_candidate_frame,
+    build_shadow_frame,
+    unservable,
+)
 from services.take_feedback_policy_v3_service import prepare_v3_service_inventory
 
 OWNER = "9f4e75b8-268b-468d-9111-000000000002"
@@ -113,6 +122,15 @@ def bound_document(second: str = SLIDE_1_SECOND) -> dict:
     )
 
 
+def with_piece(document: dict, snippet_id: str, **changes) -> dict:
+    """``document`` with one piece's fields changed (None removes one)."""
+    pieces = []
+    for piece in document["pieces"]:
+        if piece["snippet_id"] == snippet_id:
+            piece = {**piece, **changes}
+            piece = {k: v for k, v in piece.items() if v is not None}
+        pieces.append(piece)
+    return {**document, "pieces": pieces}
 
 
 def snippets(scores: dict | None = None) -> list[dict]:
@@ -161,6 +179,10 @@ def visible_by_block(inventory) -> dict[str, list[str]]:
     return out
 
 
+def candidate(frame: dict, snippet_id: str) -> dict:
+    return next(row for block in frame["blocks"]
+                for row in block["confidence_candidates"]
+                if row["snippet_id"] == snippet_id)
 
 
 # ── The shape is what the docstring says it is ──────────────────────────────
@@ -181,9 +203,6 @@ def test_the_binding_proves_the_weaker_clip_and_not_the_stronger_one():
 
 # ── 24b: the block's item is the best one the serve path can prove ─────────
 
-@pytest.mark.xfail(strict=True, reason=(
-    "24b defect on f43aa885: the frame selects the unprovable clip and "
-    "the serve path then drops it, leaving the block empty"))
 def test_a_block_whose_best_clip_is_unprovable_serves_its_best_provable_one():
     frame = service_frame()
     slide_0, slide_1 = frame["blocks"]
@@ -262,9 +281,6 @@ def service_on(monkeypatch):
     monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", True)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "24b defect on f43aa885: the frame selects the unprovable clip and "
-    "the serve path then drops it, leaving the block empty"))
 def test_the_live_chain_serves_an_item_on_every_valid_block(service_on):
     database = _Database()
     rows = run_chain(database)
@@ -276,3 +292,283 @@ def test_the_live_chain_serves_an_item_on_every_valid_block(service_on):
              for item in database.membership_payload["p_items"]}
     assert items[S1B]["selected"] is True
     assert S1A not in items
+
+
+# ── What selection passes over is a typed exclusion, never dropped ─────────
+
+def test_the_passed_over_clip_is_excluded_with_its_typed_reason():
+    frame = service_frame()
+    slide_1 = frame["blocks"][1]
+    passed = candidate(frame, S1A)
+    assert passed["eligibility"] == "excluded"
+    assert passed["exclusion_reason"] == UNSERVABLE_PARAGRAPH
+    assert {"candidate_kind": "confidence_clip", "snippet_id": S1A,
+            "reason": UNSERVABLE_PARAGRAPH,
+            "block_id": slide_1["block_id"]} in frame["excluded_candidates"]
+    # Still in the block's inventory, with its clip lineage intact.
+    assert passed in slide_1["confidence_candidates"]
+    assert passed["clip_identity"]["snippet_id"] == S1A
+    # The served item's own language, as for any winner.
+    assert slide_1["selection_reason"] == "relatively_strongest_measured"
+
+
+def test_a_clip_with_a_paragraph_but_no_served_span_is_unservable_span():
+    document = with_piece(bound_document(), S1B,
+                          served_start=None, served_end=None)
+    frame = service_frame(document)
+    assert candidate(frame, S1B)["exclusion_reason"] == UNSERVABLE_SPAN
+    # The best clip's reason names the empty block (`_slide_coverage`
+    # reports it for the uncovered Slide).
+    assert frame["blocks"][1]["selected_candidate_id"] is None
+    assert frame["blocks"][1]["selection_reason"] == UNSERVABLE_PARAGRAPH
+
+
+# ── Nothing provable: the block stays empty, and says why ──────────────────
+
+def test_a_block_with_nothing_provable_stays_empty_with_its_typed_reason():
+    rewritten = "Every lesson opens with a single short question."
+    document = bound_document(rewritten)
+    served, _parts, _regions = ideal(rewritten)
+    frame = service_frame(document, served=served)
+    slide_0, slide_1 = frame["blocks"]
+    assert slide_1["selected_candidate_id"] is None
+    assert slide_1["selection_reason"] == UNSERVABLE_PARAGRAPH
+    for snippet_id in (S1A, S1B):
+        row = candidate(frame, snippet_id)
+        assert (row["eligibility"], row["exclusion_reason"]) == (
+            "excluded", UNSERVABLE_PARAGRAPH)
+    # Nothing invented to fill it: no read, no route, and the Slide is
+    # reported uncovered for that reason (24c: a target, never a floor).
+    assert slide_1["delivery_band"] is None
+    assert slide_1["practice_prompt"] is False
+    assert frame["coverage"]["covered_slide_indexes"] == [0]
+    assert frame["coverage"]["uncovered"] == [{
+        "slide_index": 1, "block_count": 1,
+        "reasons": [UNSERVABLE_PARAGRAPH]}]
+    # The other block still serves.
+    inventory = inventory_for(frame, document, served=served)
+    assert visible_by_block(inventory) == {slide_0["block_id"]: [S0A]}
+
+
+# ── ONE predicate: the frame and the serve path cannot disagree ────────────
+
+BOUND_S1B = {p["snippet_id"]: p for p in bound_document()["pieces"]}[S1B]
+
+S1B_VARIANTS = {
+    "provable": {},
+    "no_paragraph": {"part_id": None},
+    "no_served_span": {"served_start": None, "served_end": None},
+    "past_the_served_text": {"served_end": len(SERVED) + 5},
+    "empty_span": {"served_end": BOUND_S1B["served_start"]},
+    "not_an_offset": {"served_start": str(BOUND_S1B["served_start"])},
+}
+
+
+@pytest.mark.parametrize("variant", sorted(S1B_VARIANTS))
+def test_selection_and_the_serve_path_agree_clip_by_clip(variant):
+    document = with_piece(bound_document(), S1B, **S1B_VARIANTS[variant])
+    frame = service_frame(document)
+    row = candidate(frame, S1B)
+    piece = next(p for p in document["pieces"] if p["snippet_id"] == S1B)
+    verdict = unservable(piece.get("part_id"), row["target_span"], SERVED)
+
+    detail: list[str] = []
+    inventory = inventory_for(frame, document, detail=detail)
+    served = S1B in visible_by_block(inventory or {"visible_rows": []}).get(
+        frame["blocks"][1]["block_id"], [])
+    selected = frame["blocks"][1]["selected_candidate_id"] == candidate_id(S1B)
+
+    # The block selects the clip exactly when the serve path serves it.
+    assert selected == served == (verdict is None)
+    if verdict is not None:
+        # The frame records the predicate's type; the serve path logs its
+        # exact condition, as it always has.
+        assert row["exclusion_reason"] == verdict.reason
+        assert verdict.detail in detail
+
+
+def test_the_serve_path_calls_the_very_predicate_selection_calls():
+    assert service.unservable is policy.unservable
+    assert service.span_rejection is policy.span_rejection
+    # No second copy of the served-span rule is left behind to drift.
+    assert not hasattr(service, "_served_span_rejection")
+    assert not hasattr(service, "_span_rejection")
+
+
+def test_the_predicate_names_each_condition():
+    span = {"start": 0, "end": 5}
+    assert unservable("p", span, "words here") is None
+    assert unservable(None, span, "words here") == (
+        UNSERVABLE_PARAGRAPH, "piece_has_no_part_id")
+    assert unservable("p", None, "words here") == (
+        UNSERVABLE_SPAN, "piece_has_no_served_span")
+    assert unservable("p", {"start": 0, "end": 50}, "words here") == (
+        UNSERVABLE_SPAN, "served_span_past_document_end:50>10")
+    assert unservable("p", {"start": 3, "end": 3}, "words here") == (
+        UNSERVABLE_SPAN, "served_span_inverted:3..3")
+    assert unservable("p", {"start": "0", "end": 5}, "words here") == (
+        UNSERVABLE_SPAN, "served_span_bounds_not_integers")
+    # No served text proves no served span.
+    assert unservable("p", span, None) == (
+        UNSERVABLE_SPAN, "served_span_past_document_end:5>0")
+
+
+# ── When the best clip is provable, NOTHING changes ────────────────────────
+
+def _old_rule_winners(frame: dict) -> list:
+    """The selection as it was before 24b, re-derived independently from
+    the frame's own candidates: the best-ranked eligible one, by rank."""
+    return [
+        min((row for row in block["confidence_candidates"]
+             if row["eligibility"] == "eligible"),
+            key=policy._confidence_rank, default={}).get("candidate_id")
+        for block in frame["blocks"]
+    ]
+
+
+def _existing_service_fixtures():
+    """The V3 suite's service-shaped fixtures, as their own files build them."""
+    from tests import test_mlc3_first_client_feedback as mlc3
+    from tests import test_v3_end_to_end_production_shape as e2e
+    from tests import test_verbal_lanes_take_document_n48_1 as n48
+
+    _session, document, snips = mlc3._source()
+    yield "mlc3._source", {
+        "take_document": document, "snippets": snips, "suggestions": {},
+        "feedback_candidates": [], "take_index": 1,
+        "expected_recording_id": mlc3.RECORDING,
+        "served_text": document["text"]}
+    yield "e2e._bound_document", {
+        "take_document": e2e._bound_document(), "snippets": e2e._snippets(),
+        "suggestions": {}, "feedback_candidates": [], "take_index": 1,
+        "expected_recording_id": e2e.RECORDING, "served_text": e2e.IDEAL}
+    for frozen in (frozenset(), frozenset({"structural-repair"})):
+        yield f"n48_1._placed_document(parts=True) frozen={sorted(frozen)}", {
+            "take_document": n48._placed_document(parts=True),
+            "snippets": n48._snippets(), "suggestions": {},
+            "feedback_candidates": [n48._praise(), n48._rewrite()],
+            "take_index": 2, "expected_recording_id": n48.RECORDING,
+            "served_text": n48.SERVED, "frozen_candidate_ids": frozen}
+    # This file's Take, with slide 1's provable clip now its best: the
+    # unprovable clip ranked below it is never in contention, so it is not
+    # re-judged and its record stays exactly as it was.
+    yield "this file, provable best above an unprovable clip", frame_inputs(
+        bound_document(), scores={S1B: 0.9})
+
+
+@pytest.mark.parametrize(
+    "name,inputs", list(_existing_service_fixtures()),
+    ids=[name for name, _ in _existing_service_fixtures()])
+def test_with_a_provable_best_the_frame_is_byte_identical(name, inputs):
+    rank_only = build_shadow_frame(**inputs)
+    servable = build_shadow_frame(**inputs, select_servable=True)
+    assert servable is not None
+    # Non-vacuous: every block has a winner, and the serve path can prove it.
+    pieces = {p["snippet_id"]: p for p in inputs["take_document"]["pieces"]}
+    for block in servable["blocks"]:
+        winner = next(row for row in block["confidence_candidates"]
+                      if row["candidate_id"] == block["selected_candidate_id"])
+        assert unservable(pieces[winner["snippet_id"]].get("part_id"),
+                          winner["target_span"], inputs["served_text"]) is None
+    # Same selected ids as the pre-24b rule ...
+    assert [row["candidate_id"] for row in servable["selected_confidence"]] \
+        == _old_rule_winners(servable) == _old_rule_winners(rank_only)
+    # ... and the same frame, to the byte: nothing was passed over.
+    assert servable == rank_only
+    assert servable["frame_hash"] == rank_only["frame_hash"]
+
+
+# ── A frozen Take does not change ──────────────────────────────────────────
+
+def test_a_frozen_take_does_not_take_a_fallback_its_freeze_does_not_hold():
+    # Frozen before 24b: its set holds the rows it served, slide 0's only.
+    frozen = service_frame(frozen=frozenset({candidate_id(S0A)}))
+    rank_only = build_shadow_frame(**frame_inputs())
+    assert frozen["blocks"] == rank_only["blocks"]
+    assert frozen["selected_confidence"] == rank_only["selected_confidence"]
+    assert frozen["excluded_candidates"] == rank_only["excluded_candidates"]
+    assert frozen["blocks"][1]["selected_candidate_id"] == candidate_id(S1A)
+
+
+def test_a_fallback_chosen_before_the_freeze_is_chosen_again():
+    frozen = service_frame(
+        frozen=frozenset({candidate_id(S0A), candidate_id(S1B)}))
+    assert frozen == service_frame()
+
+
+def test_a_take_frozen_before_24b_rebuilds_the_bundle_it_froze(
+        service_on, monkeypatch):
+    # The read that froze it, on the rule before 24b: rank alone.
+    before = _Database()
+    with monkeypatch.context() as patch:
+        patch.setattr(policy, "_servability", lambda *_args: None)
+        served_then = run_chain(before)
+    assert [row["snippet_id"] for row in served_then] == [S0A]
+    # Every later read, with its frozen set: the same candidate set and the
+    # same membership, so the database replays the freeze instead of
+    # refusing a second one for this snapshot (and with it every answer).
+    after = _Database()
+    served_now = run_chain(after, frozen=frozenset(
+        row["id"] for row in served_then))
+    assert after.bundle["candidate_set_id"] == before.bundle["candidate_set_id"]
+    assert after.membership_payload == before.membership_payload
+    assert [row["snippet_id"] for row in served_now] == [S0A]
+
+
+def test_a_take_frozen_after_24b_rebuilds_its_bundle_on_every_read(service_on):
+    first = _Database()
+    rows = run_chain(first)
+    again = _Database()
+    run_chain(again, frozen=frozenset(row["id"] for row in rows))
+    assert again.bundle["candidate_set_id"] == first.bundle["candidate_set_id"]
+    assert again.membership_payload == first.membership_payload
+
+
+# ── The dark frame is untouched ─────────────────────────────────────────────
+
+def test_the_dark_frame_still_selects_by_rank_alone():
+    # Its document is never bound to Paragraphs, so it does not judge what
+    # it cannot know: the same choices, no servability exclusions.
+    for document in (bound_document(), _transcript_document()):
+        dark = build_shadow_frame(**frame_inputs(document))
+        assert [b["selected_candidate_id"] for b in dark["blocks"]] == [
+            candidate_id(S0A), candidate_id(S1A)]
+        assert not any(row["reason"] in (UNSERVABLE_PARAGRAPH, UNSERVABLE_SPAN)
+                       for row in dark["excluded_candidates"])
+
+
+# ── The budget, the read and AC-9 ───────────────────────────────────────────
+
+def test_never_more_than_one_item_per_block():
+    for frame in (service_frame(),
+                  service_frame(frozen=frozenset({candidate_id(S0A)}))):
+        block_ids = [row["block_id"] for row in frame["selected_confidence"]]
+        assert len(block_ids) == len(set(block_ids)) <= len(frame["blocks"])
+        inventory = inventory_for(frame)
+        assert all(len(rows) == 1
+                   for rows in visible_by_block(inventory).values())
+
+
+def test_the_block_is_read_by_the_item_it_serves():
+    # The fallback is weak where the unprovable best was strong: the bar,
+    # the practise prompt and the tentative language follow what is served.
+    frame = service_frame(scores={S1B: -0.3})
+    slide_1 = frame["blocks"][1]
+    assert slide_1["selected_candidate_id"] == candidate_id(S1B)
+    assert slide_1["delivery_band"] == "delivery_signal_mid_low"
+    row = next(r for r in inventory_for(frame)["visible_rows"]
+               if r["snippet_id"] == S1B)
+    assert (row["bookmark_tier"], row["practice_prompt"], row["tentative"]) \
+        == ("weak", True, True)
+
+
+def test_the_served_fallback_carries_nothing_a_winner_does_not():
+    inventory = inventory_for(service_frame())
+    rows = {row["snippet_id"]: row for row in inventory["visible_rows"]}
+    assert set(rows[S1B]) == set(rows[S0A])
+    serialized = json.dumps(inventory["visible_rows"])
+    assert "unservable" not in serialized
+    for row in inventory["visible_rows"]:
+        for key in ("candidate_score", "reason_tier", "eligibility",
+                    "exclusion_reason", "selection_reason", "delivery_band"):
+            assert key not in row
