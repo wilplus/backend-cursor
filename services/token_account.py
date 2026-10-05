@@ -56,6 +56,13 @@ from services.token_prices import (
 
 logger = logging.getLogger(__name__)
 
+#: Contract §8 (founder 2026-10-05, "Packages"; N44): no billing periods. The
+#: monthly roll below re-granted the tier's tokens every month, the free grant
+#: included; with this off the free grant lands once, at seeding, and a
+#: balance only grows by a package or an operator grant. The roll is kept
+#: behind this one switch rather than deleted, so its tests still describe it.
+PERIOD_RESET_ENABLED = False
+
 _ACCOUNT_TABLE = "v2_student_details"
 _LEDGER_TABLE = "token_ledger"
 
@@ -228,7 +235,7 @@ def ensure_period_current(user_id: str, *, database=None) -> Optional[dict]:
         return _seed(user_id, now, tier=tier, database=db)
 
     elapsed = months_elapsed(start, now)
-    if elapsed < 1:
+    if elapsed < 1 or not PERIOD_RESET_ENABLED:
         row["tier"] = tier
         return row
 
@@ -332,6 +339,34 @@ def _read_bonus_balance(user_id: str, *, database=None) -> int:
         return 0
 
 
+def _read_coach_review_credits(user_id: str, *, database=None) -> int:
+    """Coach reviews bought in packages (0420), or 0 if unreadable or not
+    migrated. Its own query, for the reason ``_read_bonus_balance`` gives."""
+    if not user_id:
+        return 0
+    db = database or _db()
+    try:
+        res = (
+            db.client.table(_ACCOUNT_TABLE)
+            .select("coach_review_credits")
+            .eq("user_id", str(user_id)).limit(1).execute()
+        )
+        row = (res.data or [{}])[0] or {}
+        return max(0, int(row.get("coach_review_credits") or 0))
+    except Exception as e:
+        logger.info("token_account: coach credits unreadable user=%s (%s)",
+                    user_id, type(e).__name__, exc_info=True)
+        return 0
+
+
+def coach_allowance(user_id: str, tier: Optional[str], *, database=None) -> int:
+    """The coach reviews a user may have in all: the tier's own (the free
+    tier's is 0) plus every review bought in a package. Spent against
+    ``coach_reviews_used``, which no longer resets (contract §8)."""
+    return coach_reviews_for(tier) + _read_coach_review_credits(
+        user_id, database=database)
+
+
 def get_account(user_id: str, *, database=None) -> Optional[dict]:
     """Balance + tier + period + coach allowance + plan, period already rolled.
 
@@ -344,7 +379,7 @@ def get_account(user_id: str, *, database=None) -> Optional[dict]:
     tier = normalize_tier(row.get("tier"))
     start = _parse_ts(row.get("period_start")) or _now()
     used = int(row.get("coach_reviews_used") or 0)
-    allowed = coach_reviews_for(tier)
+    allowed = coach_allowance(user_id, tier, database=database)
     monthly = int(row.get("token_balance") or 0)
     bonus = _read_bonus_balance(user_id, database=database)
     return {
@@ -359,7 +394,9 @@ def get_account(user_id: str, *, database=None) -> Optional[dict]:
         "bonus_balance": bonus,
         "tier": tier,
         "period_start": start.isoformat(),
-        "period_ends_at": period_end(start).isoformat(),
+        # Nothing renews (contract §8): no end date to show.
+        "period_ends_at": (period_end(start).isoformat()
+                           if PERIOD_RESET_ENABLED else None),
         "coach_reviews": {"used": used, "allowed": allowed,
                           "remaining": max(0, allowed - used)},
         "plan": plan_state(user_id, tier=tier, database=database),
@@ -545,7 +582,8 @@ def charge(user_id: str, action: str, *, ref_id: Optional[str] = None,
     outcome = _charge_atomic(
         db, user_id, action, price, ref_id=ref_id, tier=tier,
         coach_action=coach_action,
-        coach_allowed=coach_reviews_for(tier) if coach_action else 0,
+        coach_allowed=(coach_allowance(user_id, tier, database=db)
+                       if coach_action else 0),
     )
     if outcome is not _RPC_MISSING:
         return outcome
@@ -571,7 +609,7 @@ def _charge_legacy(db, user_id: str, action: str, price: int, *,
 
     if action in COACH_ACTIONS:
         used = int(acct.get("coach_reviews_used") or 0)
-        allowed = coach_reviews_for(tier)
+        allowed = coach_allowance(user_id, tier, database=db)
         if used >= allowed:
             # The SECOND limit, and it binds independently of the balance: a Max
             # user with 1.4M tokens can still be out of reviews. Not purchasable
@@ -757,6 +795,71 @@ def admin_grant(user_id: str, tokens: int, *, ref_id: str,
             ADMIN_ADJUST, ref_id=ref_id,
             tier=(acct or {}).get("tier"), database=db)
     return {"ok": True, "reason": "", "account": acct}
+
+
+PACKAGE_PURCHASE = "package_purchase"
+
+
+def package_grant(user_id: str, *, tokens: int, coach_reviews: int,
+                  ref_id: str, package: str, database=None) -> dict:
+    """Credit one paid package (contract §8; N44): its tokens into
+    ``bonus_balance``, which never resets, and its coach reviews into
+    ``coach_review_credits`` (0420). Called by the Stripe webhook only, after
+    ``services.token_packages`` checked the session is paid for exactly this
+    package's price.
+
+    Returns ``{"ok": bool, "reason": str}``. IDEMPOTENT ON ``ref_id`` (the
+    Checkout Session id): a delivery Stripe repeats finds the ledger row and
+    grants nothing. Each balance write is a compare-and-set on the value read,
+    so a concurrent spend is never overwritten; a lost race answers
+    ``no_row`` and the webhook asks Stripe to deliver again.
+    """
+    db = database or _db()
+    try:
+        tokens = max(0, int(tokens))
+        coach_reviews = max(0, int(coach_reviews))
+    except (TypeError, ValueError):
+        return {"ok": False, "reason": "invalid_amount"}
+    if not user_id or not ref_id or (tokens == 0 and coach_reviews == 0):
+        return {"ok": False, "reason": "invalid_amount"}
+    if _already_charged(user_id, PACKAGE_PURCHASE, ref_id, database=db):
+        return {"ok": True, "reason": "already_applied"}
+    # A buyer who never opened the wallet has no account row yet.
+    if ensure_period_current(str(user_id), database=db) is None:
+        return {"ok": False, "reason": "account_unavailable"}
+
+    current, why = _bonus_raw(str(user_id), database=db)
+    if why:
+        return {"ok": False, "reason": why}
+    credits = _read_coach_review_credits(str(user_id), database=db)
+    update: dict = {"bonus_balance": (current or 0) + tokens}
+    if coach_reviews:
+        update["coach_review_credits"] = credits + coach_reviews
+    try:
+        q = (db.client.table(_ACCOUNT_TABLE).update(update)
+             .eq("user_id", str(user_id)))
+        q = (q.is_("bonus_balance", "null") if current is None
+             else q.eq("bonus_balance", current))
+        if coach_reviews:
+            q = q.eq("coach_review_credits", credits)
+        res = q.execute()
+    except Exception as e:
+        logger.warning("token_account: package grant failed user=%s ref=%s "
+                       "err=%s", user_id, ref_id, e, exc_info=True)
+        return {"ok": False, "reason": "write_failed"}
+    if not (res.data or []):
+        logger.warning("token_account: package grant matched no row user=%s "
+                       "ref=%s (raced)", user_id, ref_id)
+        return {"ok": False, "reason": "no_row"}
+
+    acct = get_account(str(user_id), database=db)
+    _ledger(str(user_id), tokens,
+            int((acct or {}).get("balance") or update["bonus_balance"]),
+            PACKAGE_PURCHASE, ref_id=ref_id, tier=package, database=db)
+    logger.info("token_account: package granted user=%s package=%s tokens=%d "
+                "reviews=%d ref=%s", user_id, package, tokens, coach_reviews,
+                ref_id)
+    return {"ok": True, "reason": ""}
 
 
 def _already_charged(user_id: str, action: str, ref_id: str, *,

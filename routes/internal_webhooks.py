@@ -146,6 +146,12 @@ def stripe_checkout_webhook():
     # BEFORE the credits branch (which stays exactly as it was). The metadata is
     # on the event object, so no extra retrieve to discriminate.
     md = obj.get("metadata") or {}
+    # A one-time token package (contract §8; N44), granted from the re-read session.
+    from services.token_packages import PACKAGE_KIND, webhook_reply
+    if isinstance(md, dict) and md.get("kind") == PACKAGE_KIND:
+        package_payload, package_status = webhook_reply(str(session_id), config)
+        return jsonify(package_payload), package_status
+
     if isinstance(md, dict) and md.get("arc_id"):
         from services.arc_checkout import apply_completed_arc_checkout
         arc_result = apply_completed_arc_checkout(str(session_id), config)

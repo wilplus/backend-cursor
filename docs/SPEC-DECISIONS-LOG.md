@@ -1441,3 +1441,26 @@ should be kept for 5 years").**
    decision), and an account holding rows the registry marks
    `external_review` (an arc purchase, a coach AI conversation, Life Panel
    consent) still stops for an operator, as before.
+
+
+**N44 · Packages, bought once (founder 2026-10-05, "Packages").**
+1. **The buy button opens a one-time Checkout.** `/v2/tokens/checkout`
+   opens a Stripe Checkout in `payment` mode at the published price
+   (`services.token_prices.TIERS`, written inline), never a subscription.
+   Until today it opened a monthly subscription while the purchase screen
+   said "one-time purchase" (contract §8 items 48-50 were right; the code
+   was wrong).
+2. **A paid package is granted once, from the session Stripe re-reads.**
+   The webhook grants only a session that is paid, in USD, for exactly the
+   package's price; its tokens go into `bonus_balance` and its coach reviews
+   into `coach_review_credits` (0420), both never reset, idempotent on the
+   Checkout Session id.
+3. **Nothing renews.** `PERIOD_RESET_ENABLED` is off: the period no longer
+   rolls, so the free grant lands once, at seeding, and `period_ends_at` is
+   null. The coach allowance is the tier's own plus every review bought,
+   against a counter that no longer resets.
+4. **Held for the founder.** Terms 3.3 §2 still describes monthly plans; a
+   3.4 §2 proposal (and one Privacy line) awaits sign-off and counsel. The
+   line Stripe shows ("Practice · 150,000 tokens") follows the purchase
+   screen's chip. Existing subscriptions, if any, keep their webhook path;
+   none can be started.

@@ -147,35 +147,27 @@ def tokens_arc_state(arc_id):
 @tokens_bp.route("/v2/tokens/checkout", methods=["POST"])
 @require_auth
 def tokens_checkout():
-    """Open a Stripe Checkout Session for a recurring tier.
+    """Open a Stripe Checkout Session for a one-time token package.
 
-    Body: {"tier": "starter"|"pro"|"max", "success_url"?, "cancel_url"?}
-    200 {checkout_url, checkout_session_id, tier} · 400 · 409 · 500 · 502 · 503
+    Body: {"tier": "practice"|"coaching"|"intensive", "success_url"?,
+    "cancel_url"?}  ("package" is accepted for "tier".)
+    200 {checkout_url, checkout_session_id, tier} · 400 · 502 · 503
 
-    This exists because a Payment Link cannot sell these tiers — see the module
-    docstring in services/tier_checkout.py. In short: ``client_reference_id``
-    never reaches the Subscription, so renewals would arrive unattributable and
-    grant nothing from month two.
-
-    409 comes in two flavours and they need different copy:
-      ``ALREADY_ON_TIER``  — they are already on it; say so calmly, do nothing.
-      ``MANAGE_EXISTING``  — they have a DIFFERENT live subscription. Send them
-                             to POST /v2/tokens/portal, which SWITCHES the
-                             existing one. Buying through here instead would
-                             leave them paying for two plans at once.
+    Contract §8 (founder 2026-10-05, "Packages"; N44): every purchase is a
+    one-time package, never a subscription. Until that day this opened a
+    monthly subscription while the purchase screen said "one-time purchase".
+    The tokens are granted by the webhook, never here
+    (services/token_packages.py).
 
     Deliberately NOT gated on TOKEN_PRICING_ENABLED. The flag controls whether
-    we CHARGE for actions; it must not stop someone paying us. A subscription
-    bought while the flag is off still sets the tier and grants tokens — they
-    simply are not spent on anything yet, which is the correct behaviour for a
-    soft launch where billing goes live before metering does.
+    we CHARGE for actions; it must not stop someone paying us.
     """
     body = request.get_json(silent=True) or {}
     from config import Config as _config
-    from services.tier_checkout import create_tier_checkout_session
-    result = create_tier_checkout_session(
+    from services.token_packages import create_package_checkout_session
+    result = create_package_checkout_session(
         user_id=str(request.user_id),
-        tier=(body.get("tier") or ""),
+        package=(body.get("package") or body.get("tier") or ""),
         app_config=_config,
         success_url=(body.get("success_url") or None),
         cancel_url=(body.get("cancel_url") or None),
