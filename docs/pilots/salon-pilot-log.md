@@ -115,3 +115,30 @@ Proposed rules (2026-10-05):
   CTAs and location choice sent 10-02, with a wireframe.
 - 10-05: Katie sent it to her developer, and is setting up the Zoom with Ariel
   and her cousin this week.
+
+## 2026-10-05 — sent to Katie (WhatsApp)
+
+The weekly round-up rule was tried first and dropped as too formal for this
+relationship: no numbered lists, no talk of money unless asked. Katie and Dan
+see the user as a friend and a possible business partner (an IT-outsourcing
+company idea, and an invitation to San Diego for 3 weeks).
+
+> Hi Katie, that is awesome!
+>
+> For the Zoom with Ariel and her cousin, Thursday or Friday works for me, anytime between 10 am and 1 pm your time. Just 30 minutes: I'll show them the app, collect their feedback and that's it! :D
+>
+> Let me know how Levia liked the lesson. If she'd like to continue, let's find a regular rhythm that suits her, so we can keep building on her story. And if it wasn't quite her thing, that's totally fine too!
+>
+> And whenever you have any website or marketing questions, just go ahead! If you want, we can talk about it more after the Zoom call.
+>
+> Have a lovely week! 🙏
+
+Context for the Levia session (09-29): "tracing back", meaning finding the way
+out when lost in thought mid-speech. She told a story she had read. Next step:
+continue it in her own words and record it in the app, which would make Levia
+the first real app tester.
+
+Zoom window offered: Thu 8 / Fri 9 Oct, start 10:00–13:00 San Diego
+(19:00–22:00 Warsaw).
+
+**Waiting on:** Zoom time, feedback on Levia's lesson and whether she continues.
