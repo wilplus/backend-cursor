@@ -1591,3 +1591,27 @@ answers below.
    founder's signature. Q30 A: the exercise fallback ladder stays off until
    three general exercises are filmed.
 
+
+**N49 · The legacy commerce check reads zero; the old paths are removed
+(founder 2026-10-05: ran `scripts/legacy_commerce_check.sql`, "stripe is
+clear", "merge it when green").** N48.3 Q13 A made the removal wait for this.
+1. **The numbers.** No live, past-due, cancelling or other subscription row;
+   no subscription renewal or tier change in 35 or 90 days; no account on a
+   paid tier; no credit-pack purchase in 90 days (7 ever, all older); no arc
+   checkout through Stripe ever. In the Stripe dashboard the founder found
+   nothing live ("stripe is clear").
+2. **Removed:** subscriptions (tier checkout, portal, webhook branches,
+   `plan` on the balance), credit packs, the per-project arc checkout, the
+   Best Presentation builder and pencil-edit route, the best-of assembly
+   branch, and their frontend clients. The portal answers 410; the webhook
+   still acknowledges any stray subscription or arc event with 200 and logs
+   it. Token packages are untouched. No table or column is dropped: the
+   seven credit-pack grants and every financial row stay as records.
+3. **Left for a later founder decision (contract 55):** the legacy credits
+   hook, arc redeem/unlock, the retired tier keys, and the one remaining read
+   of the Best Presentation cache.
+4. **After merge (ops):** the retired Railway variables
+   (`STRIPE_CHECKOUT_PRICE_CREDITS_JSON`, `STRIPE_PRICE_TIER_JSON`,
+   `STRIPE_AUDIT_PRICE_ID`, `AUDIT_CHECKOUT_*_URL`) are read by nothing and
+   may be unset.
+

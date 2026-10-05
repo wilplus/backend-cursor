@@ -774,7 +774,6 @@ class FenceTests(unittest.TestCase):
         import importlib
         import inspect
         for name in ("services.slide_selection", "services.ideal_text_block",
-                     "services.ideal_text_report",
                      "services.cross_take_selection",
                      "services.charisma_snippet_service"):
             try:

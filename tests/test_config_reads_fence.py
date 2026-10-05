@@ -58,7 +58,6 @@ GRANDFATHERED_ENV_READS = {
     "services/rate_limits.py": 5,
     "services/recording_piece_analysis.py": 1,
     "services/snippet_tables.py": 2,
-    "services/stripe_subscription_tiers.py": 1,
     "services/token_account.py": 1,
     "services/tutor_video_url.py": 6,
     "services/voice_confidence.py": 2,

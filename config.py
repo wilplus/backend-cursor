@@ -872,22 +872,14 @@ class Config:
         os.getenv("R2_JOURNAL_PUBLIC_BASE_URL") or ""
     ).strip()
 
-    # Stripe Checkout → credits (POST /v2/internal/stripe/webhook). Webhook signing secret from Stripe Dashboard.
+    # Stripe → one-time token packages (POST /v2/internal/stripe/webhook,
+    # services/token_packages.py). Webhook signing secret from Stripe Dashboard.
+    # The credit-pack map (STRIPE_CHECKOUT_PRICE_CREDITS_JSON) and the
+    # subscription tier map (STRIPE_PRICE_TIER_JSON) are retired with their
+    # paths (founder 2026-10-05, N48.3 Q13 A) and read by nothing.
     STRIPE_WEBHOOK_SECRET = _secret("STRIPE_WEBHOOK_SECRET") or ""
-    # Secret key used to expand/verify Checkout Session line items in the webhook handler.
+    # Secret key: opens package Checkout Sessions and re-reads them in the webhook.
     STRIPE_SECRET_KEY = _secret("STRIPE_SECRET_KEY") or ""
-    # JSON object: Stripe Price id → integer credits to add, e.g. {"price_abc":15,"price_def":40}
-    STRIPE_CHECKOUT_PRICE_CREDITS_JSON = (os.getenv("STRIPE_CHECKOUT_PRICE_CREDITS_JSON") or "").strip()
-
-    # Token pricing Phase 1 (docs/PRICING-TOKENS-PLAN.md). JSON object mapping
-    # Stripe RECURRING Price id → tier name, e.g.
-    #   {"price_starter":"starter","price_pro":"pro","price_max":"max"}
-    # Deliberately separate from STRIPE_CHECKOUT_PRICE_CREDITS_JSON above: that
-    # one maps price → a credit AMOUNT for the legacy one-off packs and still
-    # serves them. Tiers are a different concept (a recurring entitlement, not a
-    # quantity), and conflating them would make a subscription renewal look like
-    # a top-up and stack grants every month.
-    STRIPE_PRICE_TIER_JSON = (os.getenv("STRIPE_PRICE_TIER_JSON") or "").strip()
 
     # Master switch for the whole token-pricing surface. Default OFF — unlike
     # the Phase 0 cost ledger, this one can refuse a user's action, so it ships
@@ -898,16 +890,11 @@ class Config:
     # coach-corrected ideal text). Re-priced 2026-07-06: $25, spent as
     # ARC_UNLOCK_CREDITS from the existing credits balance (NOT a second
     # Stripe SKU — see POST /v2/arc/<arc_id>/unlock). AUDIT_PRICE_AMOUNT_MINOR/
-    # CURRENCY are kept ONLY as the display-price the credits are worth + to
-    # honor legacy $50 Stripe-direct grandfathered arcs (services/arc_checkout.py
-    # — dormant, no longer advertised for new purchases).
+    # CURRENCY are kept ONLY as the display-price the credits are worth. The
+    # Stripe-direct arc checkout (STRIPE_AUDIT_PRICE_ID, AUDIT_CHECKOUT_*_URL)
+    # is removed (founder 2026-10-05, N48.3 Q13 A).
     AUDIT_PRICE_CURRENCY = (os.getenv("AUDIT_PRICE_CURRENCY") or "usd").strip().lower() or "usd"
     AUDIT_PRICE_AMOUNT_MINOR = int(os.getenv("AUDIT_PRICE_AMOUNT_MINOR") or "2500")
-    # Stripe Price id for the LEGACY audit checkout (mode=payment). Dormant.
-    STRIPE_AUDIT_PRICE_ID = (os.getenv("STRIPE_AUDIT_PRICE_ID") or "").strip()
-    # Checkout redirect targets (legacy FE pages). Dormant alongside the above.
-    AUDIT_CHECKOUT_SUCCESS_URL = (os.getenv("AUDIT_CHECKOUT_SUCCESS_URL") or "").strip() or None
-    AUDIT_CHECKOUT_CANCEL_URL = (os.getenv("AUDIT_CHECKOUT_CANCEL_URL") or "").strip() or None
     # THE live price (2026-07-06): credits spent by POST /v2/arc/<arc_id>/unlock.
     # 1 credit = $1 (this model's founding peg — no Stripe pack pricing was
     # configured in env before this, so there is no prior peg to violate).
@@ -915,10 +902,8 @@ class Config:
     # ⚠️ SUPERSEDED 2026-07-31 — CREDITS ARE BEING DROPPED, tokens only. The
     # instruction that used to sit here ("at least one Stripe credit pack must
     # map a Price id to >=25 credits before this ships live") is now the exact
-    # opposite of the direction: STRIPE_CHECKOUT_PRICE_CREDITS_JSON is expected
-    # to end up UNSET, which services/stripe_checkout_credits.py treats as
-    # "credits retired" and quietly acks. Do not re-add a pack to satisfy a
-    # comment. The legacy `credits` column and this constant stay put (standing
+    # opposite of the direction: the credit-pack path is removed (N48.3 Q13 A).
+    # Do not re-add a pack to satisfy a comment. The legacy `credits` column and this constant stay put (standing
     # constraint: never auto-drop); real users still hold balances, and the
     # conversion rate is unsettled — see PRICING-TOKENS-PLAN.md §16.
     ARC_UNLOCK_CREDITS = int(os.getenv("ARC_UNLOCK_CREDITS") or "25")

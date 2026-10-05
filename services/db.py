@@ -1681,30 +1681,6 @@ class DatabaseService:
             logger.warning("v2_find_user_id_by_email failed: %s", e)
             return None
 
-    def stripe_checkout_grant_claim(self, checkout_session_id: str) -> bool:
-        """Insert idempotency row for a Stripe Checkout Session. True if newly claimed."""
-        sid = (checkout_session_id or "").strip()
-        if not sid:
-            return False
-        try:
-            result = self.client.table("stripe_checkout_credit_grants").insert({"checkout_session_id": sid}).execute()
-            return bool(result.data)
-        except Exception as e:
-            msg = str(e).lower()
-            if "duplicate" in msg or "unique" in msg or "23505" in msg or "already exists" in msg:
-                return False
-            logger.warning("stripe_checkout_grant_claim failed session=%s: %s", sid, e)
-            raise
-
-    def stripe_checkout_grant_release(self, checkout_session_id: str) -> None:
-        sid = (checkout_session_id or "").strip()
-        if not sid:
-            return
-        try:
-            self.client.table("stripe_checkout_credit_grants").delete().eq("checkout_session_id", sid).execute()
-        except Exception as e:
-            logger.warning("stripe_checkout_grant_release failed session=%s: %s", sid, e)
-
     def v2_charge_lab_credits_once(self, session_id: str, user_id: str, amount: int = 1) -> None:
         """Deduct `amount` credits once per willab Lab session at SEND.
 
@@ -10453,69 +10429,6 @@ class DatabaseService:
                            session_id, e)
             return []
 
-    def get_best_presentation_edits(self, arc_id: Optional[str]) -> dict:
-        """Per-slide text overrides for an arc's best-presentation (Prompt D —
-        the user's pencil-edits). Returns {slide_index: text}. {} on missing
-        table / none / error."""
-        if not arc_id:
-            return {}
-        try:
-            res = (
-                self.client.table("best_presentation_edits")
-                .select("slide_index, text")
-                .eq("arc_id", arc_id)
-                .execute()
-            )
-            return {
-                r.get("slide_index"): r.get("text")
-                for r in (res.data or [])
-                if isinstance(r.get("slide_index"), int)
-            }
-        except Exception as e:
-            err_low = str(e).lower()
-            if "best_presentation_edits" in err_low and (
-                "does not exist" in err_low or "pgrst" in err_low
-            ):
-                return {}
-            logger.warning("get_best_presentation_edits failed arc=%s: %s",
-                           arc_id, e)
-            return {}
-
-    def upsert_best_presentation_edit(
-        self, arc_id: str, slide_index: int, text: str,
-        user_id: Optional[str] = None,
-    ) -> bool:
-        """Save the user's edited text for one best-presentation slide (Prompt
-        D). Upserts on (arc_id, slide_index). Best-effort; missing table →
-        False, non-fatal."""
-        if not arc_id or not isinstance(slide_index, int) or not text:
-            return False
-        from datetime import datetime, timezone
-        row = {
-            "arc_id": arc_id, "slide_index": slide_index, "text": text,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        if user_id:
-            row["user_id"] = user_id
-        try:
-            self.client.table("best_presentation_edits").upsert(
-                row, on_conflict="arc_id,slide_index",
-            ).execute()
-            return True
-        except Exception as e:
-            err_low = str(e).lower()
-            if "best_presentation_edits" in err_low and (
-                "does not exist" in err_low or "pgrst" in err_low
-            ):
-                logger.warning(
-                    "upsert_best_presentation_edit: table missing (run "
-                    "migrations/add_best_presentation_edits.sql) arc=%s", arc_id,
-                )
-                return False
-            logger.error("upsert_best_presentation_edit failed arc=%s: %s",
-                         arc_id, e)
-            return False
-
     def get_user_transcript_edits(self, session_id: Optional[str]) -> list:
         """The user's own transcript corrections for a session (founder
         2026-07-07) — display layer only, the coach keeps the original.
@@ -10650,38 +10563,6 @@ class DatabaseService:
             logger.warning("get_best_presentation_cache failed arc=%s: %s",
                            arc_id, e)
             return None
-
-    def upsert_best_presentation_cache(
-        self, arc_id: str, signature: str, payload: dict,
-    ) -> bool:
-        """Store the composed best-presentation keyed by arc + content signature
-        (Part B). Upserts on arc_id. Best-effort; missing table → False (the
-        feature simply doesn't cache, never errors the GET)."""
-        if not arc_id or not signature:
-            return False
-        from datetime import datetime, timezone
-        row = {
-            "arc_id": arc_id, "signature": signature, "payload": payload,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        try:
-            self.client.table("best_presentation_cache").upsert(
-                row, on_conflict="arc_id",
-            ).execute()
-            return True
-        except Exception as e:
-            err_low = str(e).lower()
-            if "best_presentation_cache" in err_low and (
-                "does not exist" in err_low or "pgrst" in err_low
-            ):
-                logger.warning(
-                    "upsert_best_presentation_cache: table missing (run "
-                    "migrations/add_best_presentation_cache.sql) arc=%s", arc_id,
-                )
-                return False
-            logger.error("upsert_best_presentation_cache failed arc=%s: %s",
-                         arc_id, e)
-            return False
 
     def get_feelings_by_sessions(self, session_ids: list) -> list[dict]:
         """Pre-recording feelings for a BATCH of sessions (U10 — the coach

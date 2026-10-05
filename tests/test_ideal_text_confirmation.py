@@ -59,7 +59,6 @@ class IdealTextConfirmationTests(unittest.TestCase):
             "arc-1",
             database=database,
             require_target=False,
-            include_suggestion_anchors=False,
             source_session_id=SID,
         )
 
@@ -327,7 +326,7 @@ class IdealTextRetryJobTests(unittest.TestCase):
         _args, _kwargs = build.call_args
         self.assertEqual(_args, (database, "arc-1"))
         self.assertEqual(_kwargs["source_session_id"], SID)
-        self.assertTrue(_kwargs["include_suggestion_anchors"])
+        self.assertNotIn("include_suggestion_anchors", _kwargs)
         # The late-confirmation hook is the retry's own withdrawal path: a
         # document that lands after this attempt's deadline still has to
         # clear the terminal state and retract the card.

@@ -2,7 +2,7 @@
 Server-to-server hooks (no student JWT).
 
 - POST /v2/internal/student-credits/increment — X-Internal-Secret: INTERNAL_CREDITS_WEBHOOK_SECRET
-- POST /v2/internal/stripe/webhook — Stripe-Signature (STRIPE_WEBHOOK_SECRET); credits from STRIPE_CHECKOUT_PRICE_CREDITS_JSON
+- POST /v2/internal/stripe/webhook — Stripe-Signature (STRIPE_WEBHOOK_SECRET); one-time token packages only
 - POST /v2/internal/annotation-export — X-Internal-Secret: ANNOTATION_EXPORT_CRON_SECRET
 - POST /v2/internal/copilot-video/retrain — X-Internal-Secret: COPILOT_VIDEO_RETRAIN_SECRET
 
@@ -25,7 +25,6 @@ from flask import Blueprint, jsonify, request
 from config import Config
 from routes.phase2_guard import phase2_learning_disabled
 from services.db import db
-from services.stripe_checkout_credits import apply_paid_checkout_session_credits
 from utils.errors import safe_error, scrub
 
 logger = logging.getLogger(__name__)
@@ -91,13 +90,19 @@ def internal_increment_student_credits():
 @internal_webhooks_bp.route("/v2/internal/stripe/webhook", methods=["POST"])
 def stripe_checkout_webhook():
     """
-    Stripe webhook for Checkout (payment mode). On checkout.session.completed, adds credits to v2_student_details.
+    Stripe webhook. On checkout.session.completed for a one-time token package
+    (metadata.kind == token_package), grants the package (services/token_packages.py).
 
-    Configure in Stripe: endpoint URL, events checkout.session.completed.
-    Env: STRIPE_WEBHOOK_SECRET, STRIPE_SECRET_KEY, STRIPE_CHECKOUT_PRICE_CREDITS_JSON (Price id → credits).
+    Configure in Stripe: endpoint URL, event checkout.session.completed.
+    Env: STRIPE_WEBHOOK_SECRET, STRIPE_SECRET_KEY.
 
-    Checkout Session must include client_reference_id or metadata.user_id = Supabase auth user id (uuid).
-    Credit amount is derived only from paid line item Price IDs present in STRIPE_CHECKOUT_PRICE_CREDITS_JSON.
+    REMOVED (founder 2026-10-05, N48.3 Q13 A; contract 50 and 52): the
+    subscription events (monthly tiers), the arc checkout (metadata.arc_id) and
+    the legacy credit packs (STRIPE_CHECKOUT_PRICE_CREDITS_JSON). Nothing is
+    sold through them any more, so any such event is acknowledged with 200 and
+    a reason, logged, and grants nothing: a non-2xx would only make Stripe
+    retry an event no code here will ever apply. If one arrives, a live
+    subscription or Payment Link is still open in the Stripe dashboard.
     """
     import stripe
 
@@ -118,22 +123,11 @@ def stripe_checkout_webhook():
         logger.warning("stripe webhook bad signature: %s", e)
         return jsonify({"code": "INVALID_SIGNATURE", "error": "Invalid signature"}), 400
 
-    # Token pricing Phase 1: the three paid tiers are RECURRING prices, so they
-    # arrive as subscription events rather than checkout completions. Handled
-    # BEFORE the checkout branch and returning early, so the legacy credit-pack
-    # path below is byte-for-byte unchanged.
-    from services.stripe_subscription_tiers import (
-        apply_subscription_event, is_subscription_event,
-    )
-    if is_subscription_event(event.get("type")):
-        sub_result = apply_subscription_event(
-            event, getattr(config, "STRIPE_PRICE_TIER_JSON", "") or "",
-        )
-        # Always 200: a mapping we cannot resolve is ours to fix from the logs,
-        # and telling Stripe to retry forever fixes nothing.
-        return jsonify({"received": True, **sub_result}), 200
-
-    if event.get("type") != "checkout.session.completed":
+    etype = event.get("type") or ""
+    if etype != "checkout.session.completed":
+        if etype.startswith("customer.subscription."):
+            logger.error("stripe webhook: %s received but subscriptions are "
+                         "retired (N48.3 Q13 A) — nothing applied", etype)
         return jsonify({"received": True}), 200
 
     obj = (event.get("data") or {}).get("object") or {}
@@ -141,30 +135,21 @@ def stripe_checkout_webhook():
     if not session_id:
         return jsonify({"code": "INVALID_EVENT", "error": "missing session id"}), 400
 
-    # willab Paid Audits (A3): a session tagged with metadata.arc_id is an
-    # AUDIT purchase, not a credits top-up. Route it to the arc path and return
-    # BEFORE the credits branch (which stays exactly as it was). The metadata is
-    # on the event object, so no extra retrieve to discriminate.
-    md = obj.get("metadata") or {}
     # A one-time token package (contract §8; N44), granted from the re-read session.
+    md = obj.get("metadata") or {}
     from services.token_packages import PACKAGE_KIND, webhook_reply
     if isinstance(md, dict) and md.get("kind") == PACKAGE_KIND:
         package_payload, package_status = webhook_reply(str(session_id), config)
         return jsonify(package_payload), package_status
 
-    if isinstance(md, dict) and md.get("arc_id"):
-        from services.arc_checkout import apply_completed_arc_checkout
-        arc_result = apply_completed_arc_checkout(str(session_id), config)
-        arc_payload = dict(arc_result.payload)
-        if arc_result.ok:
-            arc_payload["received"] = True
-        return jsonify(arc_payload), arc_result.http_status
-
-    result = apply_paid_checkout_session_credits(str(session_id), auth_user_id=None, app_config=config)
-    payload = dict(result.payload)
-    if result.ok:
-        payload["received"] = True
-    return jsonify(payload), result.http_status
+    # Not a package: an arc checkout, a credit pack, or a sale of something
+    # that is not willab's. None of them is applied any more.
+    retired = isinstance(md, dict) and bool(md.get("arc_id"))
+    log = logger.error if retired else logger.info
+    log("stripe webhook: checkout %s is not a token package (arc=%s) — "
+        "nothing applied", session_id, retired)
+    return jsonify({"received": True, "granted": False,
+                    "reason": "not_a_package"}), 200
 
 
 @internal_webhooks_bp.route("/v2/internal/annotation-export", methods=["POST"])

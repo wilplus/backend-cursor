@@ -399,8 +399,6 @@ def _run_full_analysis_impl(
                             db,
                             arc_id,
                             source_session_id=session_id,
-                            include_suggestion_anchors=(
-                                _moment_suggestions_enabled()),
                             degradation=_deg,
                             on_late_confirmation=_late_ideal_text,
                         )

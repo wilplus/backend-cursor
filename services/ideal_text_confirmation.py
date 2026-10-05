@@ -128,7 +128,6 @@ def build_initial_ideal_text_from_stored_artifacts(
     arc_id: str,
     *,
     source_session_id: Optional[str] = None,
-    include_suggestion_anchors: bool = False,
     timeout_seconds: float = IDEAL_TEXT_CONFIRM_TIMEOUT_SECONDS,
     degradation: Optional[Any] = None,
     on_late_confirmation: Optional[Callable[[dict], None]] = None,
@@ -190,7 +189,6 @@ def build_initial_ideal_text_from_stored_artifacts(
                     str(arc_id),
                     database=database,
                     require_target=False,
-                    include_suggestion_anchors=include_suggestion_anchors,
                     source_session_id=source_session_id,
                     # Only when the caller shares a log: the assembler
                     # creates its own otherwise, and the call stays as it

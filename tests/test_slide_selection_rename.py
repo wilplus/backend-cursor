@@ -37,5 +37,5 @@ def test_nothing_imports_the_retired_name():
 def test_the_live_readers_are_where_the_pipeline_looks():
     from services import slide_selection
 
-    for name in ("spoken_arc_sessions", "select_best_per_slide", "TAKES_TARGET"):
+    for name in ("spoken_arc_sessions", "presentation_progress", "TAKES_TARGET"):
         assert hasattr(slide_selection, name), name

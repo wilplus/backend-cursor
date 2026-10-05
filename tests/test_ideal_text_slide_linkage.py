@@ -150,11 +150,7 @@ class SlideLinkageTests(unittest.TestCase):
     def test_no_cache_row_serves_null_indexes_without_composing(self):
         sessions = [_sess("t1", 1, presentation_ref=DECK)]
         row = _row(auto_text="Para one.\n\nPara two.")
-        from services import slide_selection as bp
-        with patch.object(bp, "build_best_presentation",
-                          side_effect=AssertionError(
-                              "composer must never run on the GET")):
-            body, status = self._get(sessions=sessions, row=row, cache=None)
+        body, status = self._get(sessions=sessions, row=row, cache=None)
         self.assertEqual(status, 200)
         self.assertEqual(body["presentation_ref"], DECK)
         self.assertEqual(len(body["pieces"]), 2)
