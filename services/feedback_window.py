@@ -34,6 +34,12 @@ never withheld. A praise or a rewrite rides its own paragraph's open moment
 and is withheld with it, so no paragraph holds a note without the judgement
 that carries it (24f).
 
+AFTER DELETE (founder 2026-10-05, N48.2 Q6 A; lock B4-5). Deleting a
+paragraph's helper words unlocks it, so it leaves `saved_paragraphs` on the
+next read: its answered moment was never withheld and is there to show, and
+the notes riding it come back. The page makes that paragraph a walk stop at
+once, on its earlier answer; nothing here re-opens the answer.
+
 AC-9: the score orders the slots and never leaves this module; the served
 row carries the tier name and nothing else.
 """

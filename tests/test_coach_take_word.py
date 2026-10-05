@@ -3,8 +3,9 @@
 Pins:
   * one word per (Take, coach): a save replaces it; share stamps it once;
   * a word needs words or a video;
-  * the speaker's coach message prefers the latest shared Take word and
-    falls back to the arc-level publish only where none exists;
+  * the speaker's coach message is the shared word of the Take on screen
+    (N48.3 Q11 A), never another Take's, and falls back to that Take's
+    arc-level publish only where it has no word;
   * sharing brings the project's Ideal Text bubble back, best-effort;
   * the route needs a coach and a real session.
 """
@@ -78,7 +79,7 @@ class SaveTests(unittest.TestCase):
 
 
 class SpeakerTests(unittest.TestCase):
-    def test_the_speaker_reads_the_latest_shared_word_first(self):
+    def _three_takes(self):
         db = _Db()
         db.words[("take-1", "c")] = {"take_session_id": "take-1", "coach_id": "c",
                                      "text": "Take one word", "shared_at": "2026-09-30T10:00"}
@@ -87,11 +88,31 @@ class SpeakerTests(unittest.TestCase):
         db.words[("take-3", "c")] = {"take_session_id": "take-3", "coach_id": "c",
                                      "text": "unshared", "shared_at": None}
         sessions = [{"id": "take-1", "take_index": 1}, {"id": "take-2", "take_index": 2},
-                    {"id": "take-3", "take_index": 3, "results_published_at": "x"}]
-        out = cmr.coach_message_for(db, sessions)
+                    {"id": "take-3", "take_index": 3}]
+        return db, sessions
+
+    def test_the_speaker_reads_the_shared_word_of_the_take_on_screen(self):
+        db, sessions = self._three_takes()
+        out = cmr.coach_message_for(db, sessions, "take-2")
         self.assertEqual(out["text"], "Take two word")
         self.assertEqual(out["take_index"], 2)
         self.assertEqual(out["published_at"], "2026-09-30T11:00")
+        self.assertEqual(out["take_session_id"], "take-2")
+
+    def test_a_word_belongs_to_its_take(self):
+        """N48.3 Q11 A: Take 1 on screen reads Take 1's word, not the later
+        Take 2 word; Take 3 on screen, whose word is unshared, reads none."""
+        db, sessions = self._three_takes()
+        self.assertEqual(cmr.coach_message_for(db, sessions, "take-1")["text"],
+                         "Take one word")
+        self.assertIsNone(cmr.coach_message_for(db, sessions, "take-3"))
+
+    def test_the_latest_of_two_coaches_on_one_take(self):
+        db, sessions = self._three_takes()
+        db.words[("take-2", "c2")] = {"take_session_id": "take-2", "coach_id": "c2",
+                                      "text": "Second coach", "shared_at": "2026-09-30T12:00"}
+        self.assertEqual(cmr.coach_message_for(db, sessions, "take-2")["text"],
+                         "Second coach")
 
     def test_without_a_word_the_publish_still_serves(self):
         class _Pub(_Db):
@@ -100,7 +121,8 @@ class SpeakerTests(unittest.TestCase):
         db = _Pub()
         sessions = [{"id": "take-1", "take_index": 1, "results_published_at": "x",
                      "coach_review_revision_id": "rev"}]
-        self.assertEqual(cmr.coach_message_for(db, sessions)["text"], "Published words")
+        self.assertEqual(cmr.coach_message_for(db, sessions, "take-1")["text"],
+                         "Published words")
 
     def test_a_failed_word_read_never_costs_the_message(self):
         class _Down(_Db):
