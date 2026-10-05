@@ -93,6 +93,24 @@ carries a provisional reference for 02 until the registration script runs,
 as the 3.2 publish did. Neither signature makes either document
 counsel-reviewed; both say so on their first page.
 
+## Awaiting signature (rendered 2026-10-05)
+
+One render for the founder's PAdES signature, made by
+`scripts/render_doc_pdf.py` from the markdown in the same commit as this
+table. The founder decided the period in chat that day ("It should be kept
+for 5 years", decisions log N43). The hash is of the **unsigned** render, so
+the signed file can be checked to be that render plus a signature and nothing
+else; it is never the value to register.
+
+| # | `object_key` | source | `sha256` of the UNSIGNED render |
+|---|---|---|---|
+| 06 v1.3 | `phase1-2026.1/legal/retention-schedule-v1.3.pdf` | `19-retention-schedule-v1.3-financial-records-DRAFT.md` | `9a94ebe930f68db2a6e8959859af5019d6feb479672ecb87f41de1ac43a2c046` |
+
+Once signed: upload the file to its `object_key`, put the signed file's
+sha256 in the **Current** table and in `scripts/phase1_retention_rules_v1_3.sql`,
+and run that script once. Until then `financial_evidence` stays unresolved
+and an account erasure still stops.
+
 ## Why 02 and 03 were re-signed (closed 2026-09-22)
 
 Neither is a change of substance to what the founder decided. Both are

@@ -1420,3 +1420,24 @@ Choices, Drawn" page).**
 4. **The pace panel's pair jar only grows.** It counts every releasable
    pair ever written, not the pairs still waiting for export, which every
    weekly export emptied.
+
+
+**N43 · Financial records are kept five years (founder 2026-10-05, "It
+should be kept for 5 years").**
+1. **The answer to retention schedule v1.0 §3.** `financial_evidence`
+   (`token_ledger`, `llm_usage`) is retained five years from the end of the
+   financial year in which a record was made: option 2, a bounded period, at
+   the period v1.0 §3 names for accounting records in Poland. The same day
+   purchases became one-time packages (N44), so the token ledger records
+   each sale.
+2. **It reaches the database the way every rule does.** Retention schedule
+   v1.3 (`legal/phase1-2026.1/19-…`) carries the one row; the founder signs
+   its PDF, and `scripts/phase1_retention_rules_v1_3.sql` registers it and
+   seeds `financial-evidence-v1`, refusing while the signed hash is a
+   placeholder. Not a migration.
+3. **What it unblocks, and what it does not.** With the rule active, an
+   account erasure is no longer stopped by these two tables. Nothing yet
+   deletes them when the five years end (the scheduled clean-up is its own
+   decision), and an account holding rows the registry marks
+   `external_review` (an arc purchase, a coach AI conversation, Life Panel
+   consent) still stops for an operator, as before.
