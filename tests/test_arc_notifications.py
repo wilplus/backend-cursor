@@ -265,10 +265,14 @@ class VoiceAlbumBubbleTests(unittest.TestCase):
 
         from routes.v2 import coach
         src = inspect.getsource(coach.v2_coach_put_confidence_label)
-        self.assertIn("_reconcile_album_after_judgement(", src)
+        # The judgment of record sets the reconcile off (W6: a plain
+        # reconsideration changes nothing of record and skips it).
+        self.assertIn("_after_coach_judgement(", src)
+        after = inspect.getsource(coach._after_coach_judgement)
+        self.assertIn("_reconcile_album_after_judgement(", after)
         hook = inspect.getsource(coach._reconcile_album_after_judgement)
         self.assertIn("reconcile_voice_album_clip", hook)
-        self.assertNotIn("fire_voice_album_ready", src + hook)
+        self.assertNotIn("fire_voice_album_ready", src + after + hook)
         self.assertFalse(
             (pathlib.Path(__file__).resolve().parents[1]
              / "services/coach_publish_delivery.py").exists())

@@ -457,13 +457,22 @@ class PersistenceAndJourneyFenceTests(unittest.TestCase):
                 fields={**base, "acoustic_problem_tags": ["mumbling"]})
         self.assertEqual(ctx.exception.code, "TAG_NOT_DETECTED")
 
+        # A new coach exercise names its main error too (E5; W6 2026-10-05).
+        with self.assertRaises(cat.CatalogueRefusal) as ctx:
+            cat.file_coach_exercise(
+                _Db(), practice_id="p1",
+                fields={**base, "acoustic_problem_tags": ["ending_compression"]})
+        self.assertEqual(ctx.exception.code, "MAIN_TARGET_REQUIRED")
+
         row = cat.file_coach_exercise(
             _Db(), practice_id="p1",
-            fields={**base, "acoustic_problem_tags": ["ending_compression"]})
+            fields={**base, "acoustic_problem_tags": ["ending_compression"],
+                    "main_target": "ending_compression"})
         self.assertEqual(row["exercise_id"], "coach-custom-p1")
         self.assertEqual(row["acoustic_problem_tags"], ["ending_compression"])
         # Once per take is the library default, which is the budget already.
         self.assertEqual(row["matching_criteria"]["max_per_take"], 1)
+        self.assertFalse(row["matching_criteria"]["requires_multiple_acoustic_signals"])
 
     def test_a_main_target_must_be_one_of_the_exercise_s_own_tags(self):
         from services import diagnostic_exercise_catalogue as cat

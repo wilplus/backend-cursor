@@ -698,9 +698,18 @@ with this contract, this contract wins.
     instruction and, once it arrives, the video's transcript the same way.
     Three surfaces, never mixed. A pair is provenance for a later,
     separately authorised preference export; it is never a label (L3),
-    never a score (AC-9), and never shown. The coach may also name a
-    pattern on the moment itself from the walk, without a practice row;
-    the shadow-cue validation reads both.
+    never a score (AC-9), and never shown. **As built 2026-10-05 (W6):**
+    the model's draft a pair stands on is the one the server kept on the
+    request, never a text the client calls a draft; the walk's exercise
+    answer is paired when the request resolves to the exercise filed for
+    it, stamped with the request, the moment, the owner and the model
+    version (the transcript pair with the exercise version and the moment);
+    a coach answering a moment of their own Take is the owner and leaves no
+    pair; the Library, which has no moment and starts from past finals,
+    records none. Only pairs the export can release (the speaker's yes, the
+    passage, the model version) fill the bar of 200. Naming a pattern on the
+    moment itself was retired (N45 Q9); the shadow-cue bar reads the blind
+    error audit (35g-3a, N48.5 Q24 A).
 35g-3. **Did the practice sound more confident?** (founder 2026-09-28,
     option A; rule `exercise-more-confident-v1`, migration 0388.) For each
     practice session, the attempt the coach judged is recorded as **helped**
@@ -728,10 +737,17 @@ with this contract, this contract wins.
     A clip that cannot be measured honestly gets no verdict, never a false
     "absent". Promotion to detected is a separate, deliberate change, made
     only after the verdicts have been compared with coaches' independent
-    judgments against the founder's bar (D3a): at least 30 moments a coach
-    named the pattern on, and the detector fired on at least 80% of them.
-    Coaches record only what is present, so this bar measures what the
-    detector catches, not how often it fires falsely.
+    judgments against the founder's bar (D3a). **Amended 2026-10-05
+    (founder, decisions log N48.5 Q24 A: "coaches' Yes answers in the blind
+    error audit are what promote a shadow cue"):** at least 30 coaches' Yes
+    answers in the blind error audit (35g-9) for the pattern, on clips
+    sampled under the detector version being judged, and the detector fired
+    on at least 80% of those moments (the audit's catch rate, each answer
+    weighted by its clip's sampling probability). The bar of 30 moments a
+    coach named the pattern on is retired with naming on the moment (N45
+    Q9); named moments are reported as history only. The audit's No
+    answers measure how often it fires falsely. A pattern the audit does
+    not sample has no Yes to count and cannot clear the bar.
 35g-4. **The speaker's own history breaks ties** (founder 2026-09-28). Among
     exercises of equal fit that cover as much of what was spotted, one for a
     problem this speaker showed on at least two earlier Takes comes first,

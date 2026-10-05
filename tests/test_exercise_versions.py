@@ -23,6 +23,7 @@ from services.diagnostic_exercise_catalogue import save_exercise
 
 LIBRARY = [{"error_id": "rushing", "status": "detected", "active": True},
            {"error_id": "ending_compression", "status": "detected", "active": True}]
+MAIN = {"primary_problem_tag": "ending_compression"}
 
 
 def _row(**over):
@@ -93,7 +94,9 @@ class VersionRuleTests(unittest.TestCase):
 class CatalogueVersioningTests(unittest.TestCase):
     def test_every_save_writes_one_version_row_with_its_source(self):
         db = _Db()
-        saved = save_exercise(db, _row(), source="coach_panel", created_by="coach-1",
+        # A new coach exercise names its main error (E5, W6 2026-10-05).
+        saved = save_exercise(db, _row(matching_criteria=MAIN), source="coach_panel",
+                              created_by="coach-1",
                               ai_draft_text="Draft words", ai_draft_model_version="m1")
         self.assertEqual(saved["version"], 1)
         self.assertEqual(len(db.versions), 1)
@@ -141,7 +144,7 @@ class CatalogueVersioningTests(unittest.TestCase):
     def test_the_answered_call_files_under_its_own_source(self):
         from services.diagnostic_exercise_catalogue import file_coach_exercise
         db = _Db()
-        file_coach_exercise(db, practice_id="p1", fields=_row())
+        file_coach_exercise(db, practice_id="p1", fields=_row(matching_criteria=MAIN))
         self.assertEqual(db.versions[0]["source"], "coach_review")
         self.assertEqual(db.versions[0]["exercise_id"], "coach-custom-p1")
 

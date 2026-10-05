@@ -56,7 +56,7 @@ class TheMomentsQueueTests(unittest.TestCase):
         self.app = Flask(__name__)
 
     def _get(self, *, recording_language, coach_languages, feedback_set,
-             events=None, answers=None):
+             events=None, answers=None, labels=None, own=None):
         opened = [{"take_session_id": SID, "snippet_id": SNIP, "event": "opened"}]
         with self.app.test_request_context():
             request.user_id = "coach1"
@@ -73,7 +73,9 @@ class TheMomentsQueueTests(unittest.TestCase):
                  patch.object(db, "list_exercise_coach_requests_for_sessions",
                               return_value={}), \
                  patch.object(db, "get_own_state_ratings_for_session",
-                              return_value={}), \
+                              return_value=own or {}), \
+                 patch.object(db, "get_confidence_labels_by_snippet_ids",
+                              return_value=labels or {}), \
                  patch.object(db, "get_ideal_text_feedback_set",
                               return_value=feedback_set):
                 with self.assertLogs(level="INFO") as logs:
@@ -128,6 +130,30 @@ class TheMomentsQueueTests(unittest.TestCase):
         self.assertEqual(take["moments"], [])
         self.assertEqual(take["waiting"], 0)
         self.assertIn("filter=not_reached_speaker", logged)
+
+    def test_a_moment_this_coach_reported_audio_unclear_goes_to_another_coach(self):
+        # K5 (W6 2026-10-05): one Audio unclear routes the clip to a
+        # DIFFERENT coach; the reporter no longer sees "Judge it" (whose
+        # every retry was a 409), and the log names the filter.
+        unclear = {"rater_id": "coach1", "value": "audio_unclear", "unrateable": True,
+                   "lane": "coach", "state_id": "confidence"}
+        body, status, logged = self._get(
+            recording_language="en", coach_languages=["en"],
+            feedback_set=self._frozen(), labels={SNIP: [unclear]},
+            own={SNIP: {"value": "audio_unclear", "unrateable": True}})
+        self.assertEqual(status, 200)
+        self.assertEqual(body[0]["takes"][0]["moments"], [])
+        self.assertIn("filter=audio_unclear_reported", logged)
+
+    def test_another_coach_s_audio_unclear_lists_the_moment_for_this_one(self):
+        unclear = {"rater_id": "coach9", "value": "audio_unclear", "unrateable": True,
+                   "lane": "coach", "state_id": "confidence"}
+        body, status, _ = self._get(
+            recording_language="en", coach_languages=["en"],
+            feedback_set=self._frozen(), labels={SNIP: [unclear]})
+        self.assertEqual(status, 200)
+        self.assertEqual(body[0]["takes"][0]["moments"],
+                         [{"snippet_id": SNIP, "state": "judge_it"}])
 
     def test_an_answered_bookmark_is_listed_without_the_answer(self):
         body, status, _ = self._get(

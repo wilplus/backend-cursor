@@ -31,6 +31,7 @@ def test_the_db_writer_accepts_the_five():
     class _Q:
         def update(self, *_a, **_k): return self
         def eq(self, *_a, **_k): return self
+        def is_(self, *_a, **_k): return self   # written once (W6, §5c)
         def execute(self): return _Res()
 
     class _Client:

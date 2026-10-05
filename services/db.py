@@ -306,6 +306,28 @@ def _carried_root(previous: Optional[dict], text: str) -> dict:
     }
 
 
+#: K9 (decisions log K9; W6 2026-10-05): why a clip was in front of the
+#: rater, stamped on the rating server-side and never shown before it.
+SELECTION_COLUMNS = ("selection_policy_version", "selection_reason",
+                     "sampling_probability")
+
+
+def _selection_columns(selection: Any) -> dict:
+    """The K9 stamps from a stamp dict, only those set; a probability
+    outside (0, 1] is dropped, never coerced (the column's CHECK)."""
+    if not isinstance(selection, dict):
+        return {}
+    out: dict = {}
+    for key in ("selection_policy_version", "selection_reason"):
+        value = selection.get(key)
+        if isinstance(value, str) and value.strip():
+            out[key] = value.strip()
+    p = selection.get("sampling_probability")
+    if isinstance(p, (int, float)) and not isinstance(p, bool) and 0 < float(p) <= 1:
+        out["sampling_probability"] = float(p)
+    return out
+
+
 class IdealTextCoreReadError(RuntimeError):
     """The cold-open Ideal Text read FAILED, as opposed to finding nothing.
 
@@ -11064,6 +11086,7 @@ class DatabaseService:
         probe_score_at_time: Optional[float] = None,
         machine_value: Optional[str] = None,
         self_report: bool = False,
+        selection: Optional[dict] = None,
     ) -> bool:
         """Store (or replace) one rater's TERNARY rating on one snippet
         (SPEC.md v3 §3.2). ``row`` is the validated shape from
@@ -11102,9 +11125,73 @@ class DatabaseService:
         whose recording it was, and a coach rating their own session is a
         self-report on the coach lane.
 
-        Best-effort, missing-column-safe; NEVER raises."""
+        Best-effort, missing-column-safe; NEVER raises.
+
+        ``selection`` is the K9 stamp (founder 2026-10-05, W6): the policy
+        version, the reason and the sampling probability that put this clip
+        in front of the rater, computed server-side, never shown before the
+        judgment (services.coach_moments_queue.selection_stamp)."""
         if not snippet_id or not isinstance(row, dict):
             return False
+        payload = self._rating_payload(
+            snippet_id=snippet_id, row=row, rater_id=rater_id,
+            session_id=session_id, lane=lane, intensity=intensity,
+            model_version_at_time=model_version_at_time,
+            probe_score_at_time=probe_score_at_time,
+            machine_value=machine_value, self_report=self_report,
+            selection=selection)
+        try:
+            (self.client.table("confidence_labels")
+                 .upsert(payload,
+                         on_conflict="snippet_id,rater_id").execute())
+            # The append-only shadow (SPEC-immutable-provenance §3.2). AFTER
+            # the upsert succeeds, never instead of it and never gating it:
+            # confidence_labels remains the current-answer read, this is the
+            # history the upsert destroys.
+            self._append_label_revision(payload)
+            return True
+        except Exception as e:
+            err_low = str(e).lower()
+            # LEDGER COLUMNS MISSING -> RETRY WITHOUT THEM, don't lose the
+            # rating. The migration lands on web boot (MIGRATE_ON_BOOT), so a
+            # worker or a cron container can legitimately run this code for a
+            # few seconds against the older schema. The human answer is the
+            # irreplaceable half; the provenance stamps are re-derivable
+            # (machine_value from the stored acoustic read, self_report from
+            # ownership). Dropping the answer to protect a stamp is backwards.
+            retried = self._retry_rating_without_stamps(
+                payload, snippet_id, err_low)
+            if retried is not None:
+                return retried
+            if ("column" in err_low and (
+                    "state_id" in err_low or "unrateable" in err_low
+                    or "question_version" in err_low or "lane" in err_low)):
+                logger.warning(
+                    "upsert_state_rating: ternary columns missing (run "
+                    "migrations/add_state_generic_ratings.sql)",
+                )
+                return False
+            if "42p10" in err_low or "on conflict" in err_low:
+                logger.warning(
+                    "upsert_state_rating: unique constraint shape does not "
+                    "match ON CONFLICT — re-run "
+                    "migrations/add_confidence_labels.sql",
+                )
+                return False
+            logger.warning("upsert_state_rating failed snip=%s: %s",
+                           snippet_id, e)
+            return False
+
+    def _rating_payload(
+        self, *, snippet_id: str, row: dict, rater_id: Optional[str],
+        session_id: Optional[str], lane: str, intensity: Optional[int],
+        model_version_at_time: Optional[str],
+        probe_score_at_time: Optional[float], machine_value: Optional[str],
+        self_report: bool, selection: Optional[dict],
+    ) -> dict:
+        """One rating write's row, as ``upsert_state_rating`` and
+        ``append_label_reconsideration`` both store it (see the former for
+        what each column means)."""
         value = row.get("value")
         payload: dict = {
             "snippet_id": str(snippet_id),
@@ -11161,47 +11248,39 @@ class DatabaseService:
         # RATING down with it — the human answer is the thing worth saving.
         if machine_value in ("yes", "in_between", "no"):
             payload["machine_value"] = machine_value
-        try:
-            (self.client.table("confidence_labels")
-                 .upsert(payload,
-                         on_conflict="snippet_id,rater_id").execute())
-            # The append-only shadow (SPEC-immutable-provenance §3.2). AFTER
-            # the upsert succeeds, never instead of it and never gating it:
-            # confidence_labels remains the current-answer read, this is the
-            # history the upsert destroys.
-            self._append_label_revision(payload)
-            return True
-        except Exception as e:
-            err_low = str(e).lower()
-            # LEDGER COLUMNS MISSING -> RETRY WITHOUT THEM, don't lose the
-            # rating. The migration lands on web boot (MIGRATE_ON_BOOT), so a
-            # worker or a cron container can legitimately run this code for a
-            # few seconds against the older schema. The human answer is the
-            # irreplaceable half; the provenance stamps are re-derivable
-            # (machine_value from the stored acoustic read, self_report from
-            # ownership). Dropping the answer to protect a stamp is backwards.
-            retried = self._retry_rating_without_stamps(
-                payload, snippet_id, err_low)
-            if retried is not None:
-                return retried
-            if ("column" in err_low and (
-                    "state_id" in err_low or "unrateable" in err_low
-                    or "question_version" in err_low or "lane" in err_low)):
-                logger.warning(
-                    "upsert_state_rating: ternary columns missing (run "
-                    "migrations/add_state_generic_ratings.sql)",
-                )
-                return False
-            if "42p10" in err_low or "on conflict" in err_low:
-                logger.warning(
-                    "upsert_state_rating: unique constraint shape does not "
-                    "match ON CONFLICT — re-run "
-                    "migrations/add_confidence_labels.sql",
-                )
-                return False
-            logger.warning("upsert_state_rating failed snip=%s: %s",
-                           snippet_id, e)
-            return False
+        payload.update(_selection_columns(selection))
+        return payload
+
+    def append_label_reconsideration(
+        self, *, snippet_id: str, row: dict, rater_id: str,
+        session_id: Optional[str] = None, lane: str = "coach",
+        intensity: Optional[int] = None,
+        machine_value: Optional[str] = None,
+        self_report: bool = False,
+        selection: Optional[dict] = None,
+    ) -> Optional[dict]:
+        """A coach's later answer on a clip they already judged (LOCKIN
+        §5c; contract 34; W6 2026-10-05): appended to ``label_revision`` as a
+        reconsideration, superseding the newest revision of the same
+        (snippet, rater, state), and NEVER written over the original
+        judgment in ``confidence_labels``. Raises on failure: the route
+        names it rather than report a revision it did not keep."""
+        payload = self._rating_payload(
+            snippet_id=snippet_id, row=row, rater_id=rater_id,
+            session_id=session_id, lane=lane, intensity=intensity,
+            model_version_at_time=None, probe_score_at_time=None,
+            machine_value=machine_value, self_report=self_report,
+            selection=selection)
+        state_id = payload.get("state_id") or "confidence"
+        prior = (self.client.table("label_revision").select("id")
+                 .eq("snippet_id", str(snippet_id)).eq("state_id", state_id)
+                 .eq("rater_id", str(rater_id))
+                 .order("id", desc=True).limit(1).execute())
+        revision = self._label_revision_row(payload)
+        revision["reconsideration"] = True
+        revision["supersedes_id"] = (prior.data or [{}])[0].get("id")
+        res = self.client.table("label_revision").insert(revision).execute()
+        return (res.data or [None])[0]
 
     def _retry_rating_without_stamps(
         self, payload: dict, snippet_id: str, err_low: str,
@@ -11228,7 +11307,8 @@ class DatabaseService:
         ceiling and adding the third column name tipped it over. The retry is
         one self-contained concern, so it is the right piece to lift out.
         """
-        stamps = ("machine_value", "self_report", "saw_slide", "blind")
+        stamps = ("machine_value", "self_report", "saw_slide", "blind",
+                  *SELECTION_COLUMNS)
         if not any(name in err_low for name in stamps):
             return None
         if "column" not in err_low and "pgrst204" not in err_low:
@@ -11250,6 +11330,45 @@ class DatabaseService:
             logger.warning("upsert_state_rating retry failed snip=%s: %s",
                            snippet_id, retry_err)
             return False
+
+    @staticmethod
+    def _label_revision_row(payload: dict) -> dict:
+        """One ``label_revision`` row from a rating write's row (§3.2)."""
+        row = {
+            "snippet_id": payload["snippet_id"],
+            "rater_id": payload.get("rater_id"),
+            "state_id": payload.get("state_id") or "confidence",
+            "value": payload.get("value"),
+            "unrateable": bool(payload.get("unrateable")),
+            "confident": payload.get("confident"),
+            "intensity": payload.get("intensity"),
+            "note": payload.get("note"),
+            "lane": payload.get("lane"),
+            "source": payload.get("source"),
+            "question_id": payload.get("question_id"),
+            "question_version": payload.get("question_version"),
+            "saw_model_output": bool(payload.get("saw_model_output")),
+            # Same stamp, same reason: the revision is the only record of
+            # what the upsert replaced, so it must say which instrument
+            # collected the row it is shadowing.
+            "saw_slide": bool(payload.get("saw_slide")),
+            "latency_ms": payload.get("latency_ms"),
+            "session_id": payload.get("session_id"),
+            "model_version_at_time": payload.get("model_version_at_time"),
+            "probe_score_at_time": payload.get("probe_score_at_time"),
+            # Ledger provenance (rules 1/2). The CURRENT row keeps only
+            # the latest stamps, so without these the machine proposal a
+            # rater actually disagreed with is lost the moment they
+            # re-rate — which is exactly the row active learning wants.
+            "machine_value": payload.get("machine_value"),
+            "self_report": bool(payload.get("self_report")),
+            "origin": "live",
+            # The judgment's own timestamp — created_at is the INSERT's.
+            "rated_at": payload.get("updated_at"),
+        }
+        # K9 (W6): why the clip was in front of the rater, where stamped.
+        row.update({k: payload[k] for k in SELECTION_COLUMNS if k in payload})
+        return row
 
     def _append_label_revision(self, payload: dict) -> None:
         """Append ONE revision row shadowing a rating write (§3.2).
@@ -11281,39 +11400,8 @@ class DatabaseService:
                     prev_id = res.data[0].get("id")
             except Exception:
                 pass
-            row = {
-                "snippet_id": payload["snippet_id"],
-                "rater_id": rater_id,
-                "state_id": state_id,
-                "value": payload.get("value"),
-                "unrateable": bool(payload.get("unrateable")),
-                "confident": payload.get("confident"),
-                "intensity": payload.get("intensity"),
-                "note": payload.get("note"),
-                "lane": payload.get("lane"),
-                "source": payload.get("source"),
-                "question_id": payload.get("question_id"),
-                "question_version": payload.get("question_version"),
-                "saw_model_output": bool(payload.get("saw_model_output")),
-                # Same stamp, same reason: the revision is the only record of
-                # what the upsert replaced, so it must say which instrument
-                # collected the row it is shadowing.
-                "saw_slide": bool(payload.get("saw_slide")),
-                "latency_ms": payload.get("latency_ms"),
-                "session_id": payload.get("session_id"),
-                "model_version_at_time": payload.get("model_version_at_time"),
-                "probe_score_at_time": payload.get("probe_score_at_time"),
-                # Ledger provenance (rules 1/2). The CURRENT row keeps only
-                # the latest stamps, so without these the machine proposal a
-                # rater actually disagreed with is lost the moment they
-                # re-rate — which is exactly the row active learning wants.
-                "machine_value": payload.get("machine_value"),
-                "self_report": bool(payload.get("self_report")),
-                "origin": "live",
-                "supersedes_id": prev_id,
-                # The judgment's own timestamp — created_at is the INSERT's.
-                "rated_at": payload.get("updated_at"),
-            }
+            row = self._label_revision_row(payload)
+            row["supersedes_id"] = prev_id
             self.client.table("label_revision").insert(row).execute()
         except Exception as e:
             err_low = str(e).lower()
@@ -14105,6 +14193,25 @@ class DatabaseService:
                            exercise_id, e, exc_info=True)
             return []
 
+    def get_exercise_version_transcript(
+        self, exercise_id: str, version: int,
+    ) -> Optional[dict]:
+        """One version row's transcript state (0399): {transcript_status,
+        transcript}. The walk's pair reads the video's transcript here as
+        the second final. None when absent or unreadable."""
+        if not exercise_id:
+            return None
+        try:
+            res = (self.client.table("diagnostic_exercise_version")
+                   .select("exercise_id,version,transcript_status,transcript")
+                   .eq("exercise_id", str(exercise_id))
+                   .eq("version", int(version)).limit(1).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("get_exercise_version_transcript failed id=%s v=%s: %s",
+                           exercise_id, version, e, exc_info=True)
+            return None
+
     def upsert_diagnostic_exercise(self, row: dict) -> Optional[dict]:
         if not isinstance(row, dict) or not row.get("exercise_id"):
             return None
@@ -14784,6 +14891,22 @@ class DatabaseService:
                            take_session_id, e)
             return None
 
+    def get_exercise_coach_request_by_id(self, request_id: str) -> Optional[dict]:
+        """One request by its id: the walk's exercise is filed under
+        ``coach-request-<id>`` (the upload seam), and the server reads the
+        model draft the pair stands on from the request itself, never from
+        the client (C5, FL-L3). None when absent or unreadable."""
+        if not request_id:
+            return None
+        try:
+            res = (self.client.table("exercise_coach_requests").select("*")
+                   .eq("id", str(request_id)).limit(1).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("get_exercise_coach_request_by_id failed id=%s: %s",
+                           request_id, e, exc_info=True)
+            return None
+
     def resolve_exercise_coach_request(
         self, *, request_id: str, coach_id: str, resolution: str,
         exercise_id: Optional[str], exercise_version: Optional[int],
@@ -15330,12 +15453,17 @@ class DatabaseService:
     def list_releasable_pairs(self, surface: str, *, limit: int = 5000) -> list[dict]:
         """Releasable, unexported pairs of one surface, oldest first: the
         candidates the release decides again, item by item (PLF-P5), so the
-        Take is selected for the project check. Raises."""
+        Take is selected for the project check. Only pairs that carry what
+        the export contract needs beyond the speaker's yes are candidates:
+        the passage they were drafted from and the model version that
+        drafted them (C5, C9; W6 2026-10-05). Raises."""
         res = (self.client.table("feedback_pairs")
                .select("id,surface,draft_text,final_text,final_kind,draft_model_version,"
                        "pattern_key,owner_principal_id,consent_state,consent_grant_event_id,"
                        "consent_policy_version,take_session_id,created_at")
                .eq("surface", str(surface)).eq("releasable", True)
+               .not_.is_("passage_text", "null")
+               .not_.is_("draft_model_version", "null")
                .is_("exported_at", "null").order("created_at").limit(int(limit)).execute())
         return list(res.data or [])
 
@@ -15588,6 +15716,30 @@ class DatabaseService:
             out[surface] = {"total": int(total.count or 0),
                             "unexported": int(waiting.count or 0),
                             "releasable": int(releasable.count or 0)}
+        return out
+
+    def count_exportable_pairs(self) -> dict[str, dict[str, int]]:
+        """{surface: {exportable, exportable_unexported}} for the ledger,
+        for every pair surface (C9; W6 2026-10-05): the pairs the export
+        contract can release, the speaker's training yes in force AND the
+        passage the draft was written from AND the model version that wrote
+        it, ever and still awaiting export. The pace jar and a run's bar of
+        200 read these, beside ``count_feedback_pairs``'s three views.
+        Raises on failure so the ledger names the source as unavailable."""
+        from services.feedback_pairs import SURFACES
+        out: dict[str, dict[str, int]] = {}
+        for surface in SURFACES:
+            def stamped(*, unexported: bool) -> int:
+                q = (self.client.table("feedback_pairs")
+                     .select("id", count="exact").eq("surface", surface)
+                     .eq("releasable", True)
+                     .not_.is_("passage_text", "null")
+                     .not_.is_("draft_model_version", "null"))
+                if unexported:
+                    q = q.is_("exported_at", "null")
+                return int(q.limit(1).execute().count or 0)
+            out[surface] = {"exportable": stamped(unexported=False),
+                            "exportable_unexported": stamped(unexported=True)}
         return out
 
     def count_draft_exposures(self) -> dict[str, int]:
@@ -16138,7 +16290,10 @@ class DatabaseService:
         coach_user_id: str,
     ) -> Optional[dict]:
         # The coach answers the speaker's five ways (0390, founder
-        # 2026-09-29 Q3a).
+        # 2026-09-29 Q3a). WRITTEN ONCE (LOCKIN §5c; contract 34; W6
+        # 2026-10-05): "the original coach judgment is never editable". An
+        # attempt that already carries a coach decision keeps it; the row
+        # comes back as it stands, marked ``already_decided``.
         from services.practice_adoption import ANSWERS
         if decision not in ANSWERS:
             return None
@@ -16151,8 +16306,18 @@ class DatabaseService:
                            timezone.utc).isoformat(),
                    })
                    .eq("id", str(attempt_id))
-                   .eq("practice_id", str(practice_id)).execute())
-            return (res.data or [None])[0]
+                   .eq("practice_id", str(practice_id))
+                   .is_("coach_confidence_decision", "null").execute())
+            written = (res.data or [None])[0]
+            if written:
+                return written
+            standing = (self.client.table("confident_voice_practice_attempt")
+                        .select("*").eq("id", str(attempt_id))
+                        .eq("practice_id", str(practice_id)).limit(1).execute())
+            row = (standing.data or [None])[0]
+            if isinstance(row, dict) and row.get("coach_confidence_decision"):
+                return {**row, "already_decided": True}
+            return None
         except Exception as e:
             logger.warning(
                 "set practice attempt coach decision failed id=%s: %s",

@@ -13,6 +13,11 @@ share, no decision on the moment: those stay where they are.
 BLIND COACH: the route serves this only after the coach's own rating of the
 original moment (the moment gate). The machine's read of the attempt is
 never shown; the coach sees only their own saved answer.
+
+WRITTEN ONCE (LOCKIN §5c; contract 34; W6 2026-10-05): "the original coach
+judgment is never editable". A recording that already carries a coach's
+answer keeps it: a second answer is refused (409, with the answer that
+stands) and never overwrites the attempt's coach decision.
 """
 from __future__ import annotations
 
@@ -75,6 +80,12 @@ def judge_selected_attempt(database: Any, *, take_session_id: str, snippet_id: s
         str(practice.get("id")), selected, str(answer), str(coach_id))
     if not written:
         return 503, {"code": "V2_ERROR", "error": "Could not save the judgement."}
+    if isinstance(written, dict) and written.get("already_decided"):
+        # LOCKIN §5c, contract 34 (W6 2026-10-05): the original judgement
+        # of this recording stands; this route never writes over it.
+        return 409, {"code": "PRACTICE_ALREADY_JUDGED",
+                     "error": "This moment already has your answer; it cannot be changed.",
+                     "answer": written.get("coach_confidence_decision")}
     from services.practice_more_confident import record_after_coach_decision
     record_after_coach_decision(database, str(practice.get("id")), selected)
     _reconcile_album(database, practice)

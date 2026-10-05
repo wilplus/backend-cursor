@@ -207,8 +207,23 @@ class CatalogueTests(unittest.TestCase):
     def test_matching_criteria_and_exclusions_get_working_defaults(self):
         # The CMS should not have to know these exist to save an exercise.
         saved = self.save(_Db())
-        self.assertTrue(saved["matching_criteria"]["requires_multiple_acoustic_signals"])
+        # One fired problem it targets is the fit (35g-1; C4, W6 2026-10-05):
+        # the default says what routing does, never "several signals".
+        self.assertFalse(saved["matching_criteria"]["requires_multiple_acoustic_signals"])
+        self.assertEqual(saved["matching_criteria"]["max_per_take"], 1)
         self.assertTrue(saved["exclusions"]["exclude_noise"])
+
+    def test_a_named_main_target_is_never_stored_as_needing_several_signals(self):
+        """The coach panel mirrors the old default (true) in what it sends; a
+        row that names its main target is stored false, because the main
+        target firing is the whole fit (C4)."""
+        saved = self.save(_Db(), acoustic_problem_tags=["ending_compression"],
+                          matching_criteria={"requires_multiple_acoustic_signals": True,
+                                             "max_per_take": 1,
+                                             "primary_problem_tag": "ending_compression"})
+        self.assertFalse(saved["matching_criteria"]["requires_multiple_acoustic_signals"])
+        self.assertEqual(saved["matching_criteria"]["primary_problem_tag"],
+                         "ending_compression")
 
     def test_active_must_be_stated(self):
         for bad in (None, "yes", 1):

@@ -37,7 +37,7 @@ from __future__ import annotations
 import logging
 import random
 from collections import Counter, defaultdict
-from typing import Any, Iterable, Optional
+from typing import Any, Callable, Iterable, Optional
 
 _log = logging.getLogger(__name__)
 
@@ -204,19 +204,61 @@ def preference_rates(rows: Iterable[Any]) -> dict[tuple[str, str], dict]:
     return out
 
 
+def _train_rates(rows: Iterable[Any]) -> dict[tuple[str, str], dict]:
+    """``preference_rates`` over study-group ("train") speakers only."""
+    from services.exercise_fair_test import split_of
+    return preference_rates(
+        r for r in rows or []
+        if isinstance(r, dict) and split_of(str(r.get("speaker_user_id") or "")) == "train")
+
+
+def _ordered(rates: dict, pool_ids: Iterable[str], draw: str) -> Optional[list[str]]:
+    ids = [str(i) for i in pool_ids]
+    if not ids or any(not rates.get((i, draw), {}).get("trusted") for i in ids):
+        return None
+    return sorted(ids, key=lambda i: (-float(rates[(i, draw)]["rate"] or 0.0), i))
+
+
 def coach_preferred_order(database: Any, pool_ids: Iterable[str], *,
                           draw: str) -> Optional[list[str]]:
     """The pool ordered by trusted keep rate within `draw`, learned from
     train-split speakers only; None unless every exercise in the pool has
     a trusted rate (a partial order is no order). Never served live."""
-    from services.exercise_fair_test import split_of
-    rows = [r for r in (database.list_coach_exercise_preferences() or [])
-            if isinstance(r, dict) and split_of(str(r.get("speaker_user_id") or "")) == "train"]
-    rates = preference_rates(rows)
-    ids = [str(i) for i in pool_ids]
-    if not ids or any(not rates.get((i, draw), {}).get("trusted") for i in ids):
-        return None
-    return sorted(ids, key=lambda i: (-float(rates[(i, draw)]["rate"] or 0.0), i))
+    return _ordered(_train_rates(database.list_coach_exercise_preferences() or []),
+                    pool_ids, draw)
+
+
+def preferred_choose(rows: Iterable[Any]) -> Callable[[dict], Optional[str]]:
+    """exercise-coach-preferred-v1 as the fair test's candidate (35g-7, W6
+    2026-10-05: "graded by the same fair test"). On each evaluation unit:
+    the top of its own pool by trusted keep rate within the unit's own draw
+    (``coach_preferred_order``'s rule, learned from study-group speakers);
+    where any pooled exercise has no trusted rate, today's fixed ranking (a
+    partial order is no order). Graded on exam-group speakers by
+    ``exercise_fair_test.compare``; it never serves and never promotes."""
+    from services.exercise_fair_test import fixed_ranking
+    rates = _train_rates(rows)
+
+    def choose(unit: dict) -> Optional[str]:
+        order = _ordered(rates, unit.get("pool") or (), str(unit.get("draw") or "top"))
+        return order[0] if order else fixed_ranking(unit)
+    return choose
+
+
+def graded(rows: Iterable[Any], units: list[dict]) -> dict:
+    """The ranker's fair test, beside what it learned from. Pure."""
+    from services.exercise_fair_test import compare, split_of
+    rows = [r for r in rows or [] if isinstance(r, dict)]
+    train = [r for r in rows
+             if split_of(str(r.get("speaker_user_id") or "")) == "train"]
+    rates = _train_rates(rows)
+    return {
+        "version": RANKER_VERSION,
+        "learned_from": {"actions": len(train),
+                         "speakers": len({str(r.get("speaker_user_id") or "") for r in train}),
+                         "trusted_rates": sum(1 for v in rates.values() if v.get("trusted"))},
+        "fair_test": compare(units, preferred_choose(rows)),
+    }
 
 
 def ledger(database: Any) -> dict:
