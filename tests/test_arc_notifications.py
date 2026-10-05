@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import pathlib
 import unittest
+from unittest import mock
 import uuid
 
 from services.arc_notifications import (
@@ -118,16 +119,24 @@ class BestPresentationCardTests(unittest.TestCase):
         self.assertEqual(
             maybe_fire_best_presentation_ready(db, "a1"), "transcript_ready")
 
-    def test_finalized_and_paid_fires_best_presentation_ready(self):
+    def test_finalized_and_paid_gets_the_transcript_card_too(self):
+        # Best Presentation is retired (L1; second plan, Phase 1, 2026-10-05):
+        # the paid, coach-finalised arc no longer gets its hero card.
         db = _FakeDB(sessions=self._sessions(3), snips_by_sid=self._snips(3),
                      purchase={"arc_id": "a1", "user_id": "u1"},
                      coach_edits={0: "coach's corrected line"})
         self.assertEqual(
-            maybe_fire_best_presentation_ready(db, "a1"),
-            "best_presentation_ready")
-        _, msg = db.inserted[0]
-        self.assertEqual(msg["kind"], "best_presentation_ready")
-        self.assertIn("My talk", msg["body"])
+            maybe_fire_best_presentation_ready(db, "a1"), "transcript_ready")
+        kinds = [m["kind"] for _, m in db.inserted]
+        self.assertNotIn("best_presentation_ready", kinds)
+
+    def test_no_best_presentation_is_composed_to_decide_the_card(self):
+        import services.slide_selection as selection
+        db = _FakeDB(sessions=self._sessions(3), snips_by_sid=self._snips(3))
+        with mock.patch.object(selection, "build_best_presentation",
+                               side_effect=AssertionError("composed")):
+            self.assertEqual(
+                maybe_fire_best_presentation_ready(db, "a1"), "transcript_ready")
 
     def test_idempotent_client_id_per_arc_and_kind(self):
         db = _FakeDB(sessions=self._sessions(3), snips_by_sid=self._snips(3))

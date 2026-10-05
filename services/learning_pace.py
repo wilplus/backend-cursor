@@ -24,10 +24,14 @@ def _count(snapshot: Any, path: tuple[str, ...]) -> Optional[int]:
 
 
 #: Every jar the panel draws: (jar id, the path in a snapshot, the bar).
+#: A pair jar counts every releasable pair ever written (second plan,
+#: 2026-10-05): it counted pairs not yet exported, so each weekly export
+#: emptied it and the panel could never show it filling. Snapshots taken
+#: before the count existed read as unknown, not zero.
 JARS: tuple[tuple[str, tuple[str, ...], int], ...] = (
-    ("pairs.praise_line", ("pairs", "praise_line", "unexported"), 200),
-    ("pairs.clearer_version", ("pairs", "clearer_version", "unexported"), 200),
-    ("pairs.exercise_script", ("pairs", "exercise_script", "unexported"), 200),
+    ("pairs.praise_line", ("pairs", "praise_line", "releasable"), 200),
+    ("pairs.clearer_version", ("pairs", "clearer_version", "releasable"), 200),
+    ("pairs.exercise_script", ("pairs", "exercise_script", "releasable"), 200),
     ("exercise_jar.counted", ("exercise_jar", "counted"), 300),
 )
 

@@ -1398,3 +1398,25 @@ refusal of N35.4 and N39.4 for protected Paragraphs.
    block away: the page gets `feedback_status: failed`
    (`feedback_set_claim_failed`) and shows its notice and Try again. A block
    that falls over for any other reason says so too (`changes_failed`).
+
+
+**N42 · Second plan, Phase 1 (founder "go", 2026-10-05, after the "Nine
+Choices, Drawn" page).**
+1. **A coach's draft takes the speaker's permit.** The three coach drafts (a
+   request answer, the Take word, a moment line) send the speaker's
+   transcript to the provider from /v2/coach/, outside the core gate.
+   `speaker_provider_route` binds each to the SPEAKER's current authority:
+   it resolves the Take's owner, requires current authorization and opens
+   the protected scope that every provider call inside reads its permit
+   from. A speaker without authority gets no draft; the coach writes by
+   hand. Inert while the gate is off.
+2. **Switches with nothing behind them go off (as N29).**
+   `PRAISE_AFTER_PRACTICE_ENABLED` is off: no screen renders the sentence,
+   the encouragement, Bold voices or the coach readings.
+3. **Best Presentation leaves the surface (L1).** Its Lounge card is never
+   fired again: every arc with three Takes gets the transcript card, and no
+   Best Presentation is composed to decide it. Rows already written stay;
+   the frontend hides them, and its doors open the Ideal Text.
+4. **The pace panel's pair jar only grows.** It counts every releasable
+   pair ever written, not the pairs still waiting for export, which every
+   weekly export emptied.

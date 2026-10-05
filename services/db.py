@@ -15494,7 +15494,9 @@ class DatabaseService:
         return (res.data or [None])[0]
 
     def count_feedback_pairs(self) -> dict[str, dict[str, int]]:
-        """{surface: {total, unexported}} for the ledger. Raises on failure
+        """{surface: {total, unexported, releasable}} for the ledger.
+        ``releasable`` counts every pair ever written with the speaker's
+        training yes, exported or not, so it only grows. Raises on failure
         so the ledger names the source as unavailable rather than zero."""
         out: dict[str, dict[str, int]] = {}
         for surface in ("praise_line", "clearer_version", "exercise_script"):
@@ -15504,8 +15506,12 @@ class DatabaseService:
             waiting = (self.client.table("feedback_pairs")
                        .select("id", count="exact").eq("surface", surface)
                        .is_("exported_at", "null").limit(1).execute())
+            releasable = (self.client.table("feedback_pairs")
+                          .select("id", count="exact").eq("surface", surface)
+                          .eq("releasable", True).limit(1).execute())
             out[surface] = {"total": int(total.count or 0),
-                            "unexported": int(waiting.count or 0)}
+                            "unexported": int(waiting.count or 0),
+                            "releasable": int(releasable.count or 0)}
         return out
 
     def get_confident_voice_exercise_assignment(

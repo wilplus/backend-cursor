@@ -30,6 +30,7 @@ from routes.phase2_guard import (
     phase2_learning_disabled,
 )
 from routes.v2.blueprint import v2_bp
+from routes.v2.processing_authorization import speaker_provider_route
 from services.rate_limits import heavy_limit, llm_limit, whisper_limit
 # Module scope on purpose: `except DeadlineExceeded` in the upload routes
 # must resolve even when the failure happens BEFORE the try body reaches
@@ -1677,6 +1678,7 @@ def _moment_gate(session_id, snippet_id):
 @require_admin_or_coach
 @operational_purpose_disabled("personalized_exercise_recommendation")
 @llm_limit
+@speaker_provider_route
 def v2_coach_exercise_request_draft(session_id, snippet_id):
     """A first draft for the coach's answer, by the request's kind (founder
     2026-09-30, C2; P2-2): a script, a praise line or a clearer version.

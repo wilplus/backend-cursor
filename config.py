@@ -363,7 +363,11 @@ class Config:
     # (own attempt, then a coach's published readings; plays only) may show
     # once per Take, and coaches may record and publish readings (migration
     # 0409). Off, nothing is said, written or served; the routes answer 404.
-    PRAISE_AFTER_PRACTICE_ENABLED = True
+    # OFF again since 2026-10-05 (second plan, Phase 1, founder "go"): no
+    # screen renders the sentence, the encouragement, Bold voices or the
+    # coach readings, so the switch acted with nothing behind it (as N29).
+    # Back on when a screen ships.
+    PRAISE_AFTER_PRACTICE_ENABLED = False
 
     # PHASE 4 of the after-practice paths (founder 2026-10-01, F3, F4): the
     # peer lane. On, a Voice Album moment can be lent to other ears (share

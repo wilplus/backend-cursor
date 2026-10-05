@@ -129,6 +129,72 @@ def phase1_provider_route(function):
     return wrapped
 
 
+def speaker_provider_route(function):
+    """Bind a coach's AI draft to the SPEAKER's current authority.
+
+    Second plan, Phase 1 (founder "go", 2026-10-05). The coach's drafts (a
+    request answer, the Take word, a moment line) send the speaker's own
+    transcript to the provider. Those routes live under /v2/coach/, outside
+    the core gate, so the call went out with no permit, no snapshot and no
+    provider record even in enforce mode. The permit is the speaker's: it is
+    their words, their Take, their acceptance. A speaker without current
+    authority gets no draft; the coach writes by hand.
+
+    Wraps a view taking ``session_id`` (the speaker's Take). Inert while the
+    gate is off, exactly as ``phase1_provider_route``.
+    """
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        service = ProcessingAuthorizationService(db)
+        if not service.enforced:
+            return function(*args, **kwargs)
+        session_id = str(kwargs.get("session_id") or "")
+        session = db.v2_get_session_by_id(session_id) or {}
+        principal_id = service.resolve_acquisition_principal(
+            str(session.get("owner_principal_id") or ""),
+            user_id=str(session.get("user_id") or "") or None,
+        )
+        if not principal_id:
+            return jsonify({
+                "code": "PROCESSING_PRINCIPAL_UNRESOLVED",
+                "error": "The speaker of this Take could not be resolved.",
+            }), 403
+        from services.authorized_provider import (
+            AuthorizedProviderAdapter,
+            ProviderCoordinates,
+            protected_provider_scope,
+        )
+        import uuid
+
+        try:
+            service.require_current(principal_id, operation="coach_draft")
+        except ProcessingAuthorizationError as error:
+            return jsonify({"code": error.code, "error": error.message}), error.status
+        adapter = AuthorizedProviderAdapter(
+            db,
+            ProviderCoordinates(principal_id, session_id or None, None),
+            authorization=service,
+        )
+        refused: ProcessingAuthorizationError | None = None
+        with protected_provider_scope(
+            adapter,
+            idempotency_prefix=f"coach-draft:{session_id}:{uuid.uuid4()}",
+        ):
+            # Caught INSIDE the scope: the error is a frozen dataclass, and
+            # contextlib cannot re-raise it through a generator (it sets
+            # __traceback__, which a frozen instance refuses).
+            try:
+                return function(*args, **kwargs)
+            except ProcessingAuthorizationError as error:
+                refused = error
+        return jsonify({"code": refused.code, "error": refused.message}), refused.status
+    raw = function
+    while getattr(raw, "__wrapped__", None) is not None:
+        raw = raw.__wrapped__
+    wrapped.__wrapped__ = raw
+    return wrapped
+
+
 @v2_bp.before_request
 def enforce_phase1_processing_gate():
     """One route-independent core-service gate.
