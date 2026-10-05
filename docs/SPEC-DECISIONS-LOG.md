@@ -1491,3 +1491,13 @@ should be kept for 5 years").**
    retention cleaner (audio 12 months after last use, logs 90 days) that
    reports what it would delete before its first real run, which waits for
    the founder's word.
+
+
+**N46 · "Last use" of a recording (founder 2026-10-05, "12 months without
+the activity is the last used").** Nothing records when a recording was last
+opened or played, so last use is the later of when the recording was made
+and the last change to any project of its owner (a claimed guest's
+recordings count under the account that claimed them). Audio goes when that
+is more than 12 months ago. `scripts/retention_report.sql` already counts by
+this rule; the real deletion run still waits for the founder's word on the
+report's numbers (N45).

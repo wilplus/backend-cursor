@@ -10,8 +10,9 @@
 --   1. An unclaimed guest's recordings go 30 days after the guest was created
 --      (a guest who signed up is claimed and is never counted).
 --   2. Audio goes 12 months after last use. NOTHING RECORDS "LAST USE": no
---      column says when a recording was last opened or played. Until the
---      founder confirms a definition, this report uses the later of
+--      column says when a recording was last opened or played. The founder
+--      defined it (2026-10-05, decisions log N46: "12 months without the
+--      activity is the last used") as the later of
 --        (a) when the recording was made, and
 --        (b) the last change to any project of its owner
 --      (a claimed guest's recordings count under the account that claimed
