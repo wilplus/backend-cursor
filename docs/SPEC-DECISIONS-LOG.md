@@ -1362,3 +1362,26 @@ and this session confirmed is fixed here.
    awaiting the answer; the refusal stands meanwhile.
 5. **A moment the machine could not read, with a rewrite**, opens on Accept and
    practise / Keep my words with no Skip ("acceptable").
+
+**N40 · Accept on a Paragraph with helper words or a lock (founder
+2026-10-05: "it is possible that helper words are attached to the words
+that are not visible - but exist only in the history; that should be the
+logic of it"; "yes, relax the guard and build it").** Supersedes the
+refusal of N35.4 and N39.4 for protected Paragraphs.
+1. **The words go in, the lock and the helper words stay.** Accepting a
+   rewrite on a locked Paragraph, or one with helper words, writes the new
+   words as a Paragraph version ("Correction accepted"). Helper words picked
+   in the text move to the Slide row, locked, and the in-text span is
+   cleared: they show as the Paragraph's helper words with nothing marked in
+   the text, pointing at the version they came from, which stays in
+   History -- the same rule as words picked from an earlier Take. They stay
+   until the speaker picks new ones (contract 14).
+2. **One door in the writer (0418).** `compare_and_set_user_ideal_edit_v1`
+   still refuses every change to a protected Paragraph, except a text change
+   -- never a move or a removal -- to the one Paragraph that
+   `accept_rewrite_into_part_v1` names for that transaction. The patch edits
+   that single line in place and refuses loudly if it is not found.
+3. **Nothing is lost on a failure.** If the helper words cannot be carried
+   to the Slide row (no Slide proof), nothing is written and Accept answers
+   `protected` as before.
+

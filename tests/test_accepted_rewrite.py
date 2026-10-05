@@ -55,9 +55,30 @@ class _Db:
         return [dict(p) for p in self.parts]
 
     slide_words: list = []
+    door_calls: list = []
+    root_clears: list = []
 
     def get_slide_helper_words(self, _arc, _user):
         return self.slide_words
+
+    def get_ideal_text_document_core(self, _arc, _user):
+        # The core pairs each Paragraph with its piece; both are on Slide 0.
+        return {"payload": {"parts": [{"id": "p-1"}, {"id": "p-2"}],
+                            "pieces": [{"slide_index": 0}, {"slide_index": 0}]}}
+
+    def replace_slide_helper_words(self, _arc, _user, slide, rows):
+        self.slide_words = [dict(r, slide_index=slide) for r in rows]
+        return True
+
+    def set_ideal_text_part_root(self, **kw):
+        self.root_clears = [*self.root_clears, kw]
+        return True
+
+    def accept_rewrite_into_part(self, **kw):
+        self.door_calls = [*self.door_calls, kw]
+        if self.cas_error:
+            raise RuntimeError(self.cas_error)
+        return {"saved": True}
 
     def compare_and_set_user_ideal_edit(self, **kw):
         self.cas_calls.append(kw)
@@ -104,16 +125,6 @@ class AcceptRewriteTests(unittest.TestCase):
         db = _Db(served="We start here.\n\nOther words.")
         self.assertEqual(_accept(db)[0], ar.STALE)
         self.assertEqual(db.cas_calls, [])
-
-    def test_a_paragraph_with_helper_words_is_refused(self):
-        parts = [PARTS[0], dict(PARTS[1], root_phrase="data is")]
-        db = _Db(parts=parts)
-        self.assertEqual(_accept(db)[0], ar.PROTECTED)
-        self.assertEqual(db.cas_calls, [])
-
-    def test_a_locked_paragraph_is_refused(self):
-        parts = [PARTS[0], dict(PARTS[1], locked_at="t")]
-        self.assertEqual(_accept(_Db(parts=parts))[0], ar.PROTECTED)
 
     def test_the_writer_refusing_a_protected_paragraph_is_protected(self):
         db = _Db(cas_error="IDEAL_TEXT_PART_REQUIRES_UNLOCK")
@@ -197,13 +208,18 @@ class AuditTwentyTenFourTests(unittest.TestCase):
         outcome, parts = ar.rewritten_parts(rows, "p-2", "We grow.", "We keep growing.")
         self.assertEqual((outcome, parts), (ar.STALE, None))
 
-    def test_slide_saved_helper_words_protect_the_paragraph(self):
+    def test_slide_saved_helper_words_stay_and_the_words_go_in(self):
+        """Founder 2026-10-05: helper words may point at words that live only
+        in History. Slide-row words stay as they are; the rewrite is written
+        through the protected door."""
         db = _Db()
         db.slide_words = [{"slide_index": 0, "phrase": "data is clear",
                            "source_part_id": "P-2"}]
         outcome, _ = _accept(db)
-        self.assertEqual(outcome, ar.PROTECTED)
+        self.assertEqual(outcome, ar.APPLIED)
         self.assertEqual(db.cas_calls, [])
+        self.assertEqual(db.door_calls[0]["part_id"], "p-2")
+        self.assertEqual([r["phrase"] for r in db.slide_words], ["data is clear"])
 
     def test_another_paragraphs_slide_words_do_not_protect_this_one(self):
         db = _Db()
@@ -226,3 +242,55 @@ class AuditTwentyTenFourTests(unittest.TestCase):
         parts = [dict(PARTS[0], text="We start here.  "), dict(PARTS[1])]
         outcome, _ = _accept(_Db(parts=parts))
         self.assertEqual(outcome, ar.APPLIED)
+
+
+class HelperWordsMayPointIntoHistory(unittest.TestCase):
+    """Founder 2026-10-05: "it is possible that helper words are attached to
+    the words that are not visible - but exist only in the history; that
+    should be the logic of it." Accept on a Paragraph with helper words or a
+    lock writes the new words, keeps the lock and keeps the helper words."""
+
+    def test_in_text_helper_words_move_to_the_slide_row_before_the_write(self):
+        parts = [PARTS[0], dict(PARTS[1], root_phrase="the data",
+                                locked_at="t")]
+        db = _Db(parts=parts)
+        outcome, _ = _accept(db)
+        self.assertEqual(outcome, ar.APPLIED)
+        # Carried, locked, on the Paragraph's own Slide row.
+        self.assertEqual([(r["phrase"], r["source_part_id"], bool(r["locked_at"]))
+                          for r in db.slide_words],
+                         [("the data", "p-2", True)])
+        # The in-text span is cleared: the words now point at the earlier
+        # version, which stays in History.
+        self.assertEqual(db.root_clears, [{"arc_id": "arc", "user_id": "u",
+                                           "part_id": "p-2", "phrase": None,
+                                           "start": None, "end": None}])
+        # The write goes through the one door, naming the Paragraph.
+        self.assertEqual(db.cas_calls, [])
+        call = db.door_calls[0]
+        self.assertEqual(call["part_id"], "p-2")
+        self.assertEqual(call["desired_user_text"],
+                         "We start here.\n\nThe data is clear.")
+
+    def test_a_locked_paragraph_without_helper_words_takes_the_words(self):
+        parts = [PARTS[0], dict(PARTS[1], locked_at="t")]
+        db = _Db(parts=parts)
+        self.assertEqual(_accept(db)[0], ar.APPLIED)
+        self.assertEqual(db.root_clears, [])
+        self.assertEqual(len(db.door_calls), 1)
+
+    def test_words_that_cannot_be_carried_change_nothing(self):
+        parts = [PARTS[0], dict(PARTS[1], root_phrase="the data")]
+        db = _Db(parts=parts)
+        db.get_ideal_text_document_core = lambda _a, _u: None  # no Slide proof
+        self.assertEqual(_accept(db)[0], ar.PROTECTED)
+        self.assertEqual(db.root_clears, [])
+        self.assertEqual(db.door_calls, [])
+        self.assertEqual(db.cas_calls, [])
+
+    def test_an_unprotected_paragraph_keeps_the_ordinary_writer(self):
+        db = _Db()
+        self.assertEqual(_accept(db)[0], ar.APPLIED)
+        self.assertEqual(db.door_calls, [])
+        self.assertEqual(len(db.cas_calls), 1)
+
