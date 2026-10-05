@@ -455,3 +455,4 @@
 0417	an_attempt_after_the_third_saves.sql
 0418	an_accepted_rewrite_may_change_a_protected_paragraph.sql
 0419	a_guest_take_claims_its_feedback_set.sql
+0420	a_package_is_bought_once.sql

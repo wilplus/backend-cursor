@@ -457,6 +457,7 @@ class PeriodArithmeticTests(unittest.TestCase):
         self.assertEqual(months_elapsed(start, datetime(2025, 1, 1, tzinfo=UTC)), 0)
 
 
+@patch("services.token_account.PERIOD_RESET_ENABLED", True)  # the roll is off since 2026-10-05 (contract §8, N44); these describe it
 class PeriodResetTests(unittest.TestCase):
     def setUp(self):
         import services.token_account as ta
@@ -796,6 +797,7 @@ class MidPeriodTierChangeTests(unittest.TestCase):
         self.assertEqual(db.store["row"]["tier"], "starter")
         self.assertEqual(db.store["row"]["token_balance"], 1_400_000)
 
+    @patch("services.token_account.PERIOD_RESET_ENABLED", True)  # the roll is off since 2026-10-05 (contract §8, N44); these describe it
     def test_the_smaller_grant_lands_at_the_next_roll(self):
         """The other half of the above: the downgrade is real, just deferred."""
         import services.token_account as ta
@@ -952,6 +954,7 @@ class LegacyCreditConversionTests(unittest.TestCase):
         self.assertIn("'legacy-credits-1600-v1'", sql)
 
     # ── the bucket ───────────────────────────────────────────────────
+    @patch("services.token_account.PERIOD_RESET_ENABLED", True)  # the roll is off since 2026-10-05 (contract §8, N44); these describe it
     def test_honoured_tokens_survive_the_monthly_roll(self):
         """THE reason this is not just added to token_balance. The roll SETS
         the tier grant, so 688,000 honoured into it would be gone inside 30
@@ -1220,6 +1223,7 @@ class AdminGrantTests(unittest.TestCase):
         self.assertEqual(db.store["row"]["token_balance"], 9_000)
         self.assertEqual(acct["balance"], 1_009_000)
 
+    @patch("services.token_account.PERIOD_RESET_ENABLED", True)  # the roll is off since 2026-10-05 (contract §8, N44); these describe it
     def test_the_grant_survives_the_monthly_roll(self):
         import services.token_account as ta
         start = datetime.now(UTC) - timedelta(days=40)

@@ -1,5 +1,7 @@
 # willab token pricing — plan (no code)
 
+> **SUPERSEDED IN PART 2026-10-05 (decisions log N44).** Purchases are one-time packages (contract §8): no subscriptions, no monthly reset, the free grant once. Read the monthly model below as history.
+
 Date: 2026-07-27 · Status: **Phase 0 + Phase 1 BE BUILT** (flag-gated, `TOKEN_PRICING_ENABLED=0`).
 FE pending — see [PROMPT-FE-token-pricing.md](PROMPT-FE-token-pricing.md).
 
