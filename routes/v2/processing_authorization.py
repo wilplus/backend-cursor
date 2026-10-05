@@ -175,19 +175,14 @@ def speaker_provider_route(function):
             ProviderCoordinates(principal_id, session_id or None, None),
             authorization=service,
         )
-        refused: ProcessingAuthorizationError | None = None
-        with protected_provider_scope(
-            adapter,
-            idempotency_prefix=f"coach-draft:{session_id}:{uuid.uuid4()}",
-        ):
-            # Caught INSIDE the scope: the error is a frozen dataclass, and
-            # contextlib cannot re-raise it through a generator (it sets
-            # __traceback__, which a frozen instance refuses).
-            try:
+        try:
+            with protected_provider_scope(
+                adapter,
+                idempotency_prefix=f"coach-draft:{session_id}:{uuid.uuid4()}",
+            ):
                 return function(*args, **kwargs)
-            except ProcessingAuthorizationError as error:
-                refused = error
-        return jsonify({"code": refused.code, "error": refused.message}), refused.status
+        except ProcessingAuthorizationError as error:
+            return jsonify({"code": error.code, "error": error.message}), error.status
     raw = function
     while getattr(raw, "__wrapped__", None) is not None:
         raw = raw.__wrapped__

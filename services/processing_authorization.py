@@ -24,11 +24,37 @@ SENSITIVE_INFORMATION = "sensitive_information"
 CONSENT_CHOICES = (PERSONALISED_PRACTICE, SENSITIVE_INFORMATION)
 
 
-@dataclass(frozen=True)
 class ProcessingAuthorizationError(RuntimeError):
-    code: str
-    message: str
-    status: int = 403
+    """A typed refusal: ``code``, ``message`` and ``status``, all read-only.
+
+    Not a frozen dataclass, on purpose. Python writes to an exception after it
+    is raised: ``contextlib`` sets ``__traceback__`` when it re-raises through
+    a ``@contextmanager`` (``protected_provider_scope``,
+    ``ProcessingStageRecorder.stage``), ``ExitStack`` sets ``__context__`` and
+    ``add_note`` sets ``__notes__``. A frozen dataclass refuses each of those
+    writes, so a refusal raised inside the provider scope reached its caller
+    as ``FrozenInstanceError``, without its code, and no handler for this
+    class ever saw it. Read-only properties keep the fields fixed without
+    refusing the interpreter.
+    """
+
+    def __init__(self, code: str, message: str, status: int = 403) -> None:
+        super().__init__(code, message, status)
+        self._code = code
+        self._message = message
+        self._status = status
+
+    @property
+    def code(self) -> str:
+        return self._code
+
+    @property
+    def message(self) -> str:
+        return self._message
+
+    @property
+    def status(self) -> int:
+        return self._status
 
     def __str__(self) -> str:
         return self.message
