@@ -162,34 +162,85 @@ def record_moment_line_pair(database: Any, *, request_row: Any, coach_id: str,
                        request_id=str(request_row.get("id") or ""))
 
 
+def _speaker_permit_adapter(database: Any, take_session_id: str) -> Any:
+    """The provider door for the coach's Take-word video (PLF1, founder
+    2026-10-05, N48.1).
+
+    The video is the coach's, but it is about the speaker's Take and its
+    transcript lands beside the speaker's words, so the permit is the
+    SPEAKER's, exactly as ``speaker_provider_route`` binds the coach's text
+    drafts: the Take's acquisition principal, ``require_current``, then a
+    per-call permit. Coordinates are the Take and ``recording_id=None``: no
+    recording of the speaker is sent, and naming one would claim it was.
+
+    The operation is ``transcription`` (purpose ``transcription_feedback``),
+    the one the RPC accepts for an OpenAI Whisper call. ``coach_review`` is
+    reachable only through ``coach_delivery``, the willab_coach hand-off of
+    a Take to a coach, which this is not.
+
+    Raises ProcessingAuthorizationError when enforce mode refuses. Inert
+    while the gate is off: no principal lookup, no permit, same code path.
+    """
+    from services.authorized_provider import AuthorizedProviderAdapter, ProviderCoordinates
+    from services.processing_authorization import (
+        ProcessingAuthorizationError, ProcessingAuthorizationService,
+    )
+    authorization = ProcessingAuthorizationService(database)
+    principal_id = ""
+    if authorization.enforced:
+        session = database.v2_get_session_by_id(take_session_id) or {}
+        principal_id = authorization.resolve_acquisition_principal(
+            str(session.get("owner_principal_id") or ""),
+            user_id=str(session.get("user_id") or "") or None)
+        if not principal_id:
+            raise ProcessingAuthorizationError(
+                "PROCESSING_PRINCIPAL_UNRESOLVED",
+                "The speaker of this Take could not be resolved.", 403)
+        authorization.require_current(principal_id, operation="coach_draft")
+    return AuthorizedProviderAdapter(
+        database, ProviderCoordinates(principal_id, take_session_id or None, None),
+        authorization=authorization)
+
+
 def transcribe_take_word_video(database: Any, *, word_row: Any, coach_id: str) -> Optional[str]:
     """The word's video, transcribed (the coach video pipeline's own path:
-    audio extracted, Whisper), saved as the second final. Best-effort,
-    never raises; None when there is no video or it could not be read."""
+    audio extracted, Whisper through the speaker's permit), saved as the
+    second final. Best-effort, never raises; None when there is no video,
+    it could not be read, or enforce mode refused the permit. A refusal
+    costs only the transcript draft: the word and its video are already
+    saved, and the coach types the words."""
     if not word_pairs_enabled() or not isinstance(word_row, dict) or not word_row.get("video_ref"):
         return None
+    from services.processing_authorization import ProcessingAuthorizationError
+    take = str(word_row.get("take_session_id") or "")
     try:
-        from io import BytesIO
         from services.coach_video_storage import get_coach_object_bytes
         from services.ffmpeg_audio_extract import extract_audio_mp3_for_whisper
-        from services.openai_service import openai_service
         ref = str(word_row["video_ref"])
         if not ref.startswith("s3://"):
             return None
+        adapter = _speaker_permit_adapter(database, take)
         bucket, _, key = ref[len("s3://"):].partition("/")
         audio = extract_audio_mp3_for_whisper(get_coach_object_bytes(bucket, key), max_seconds=600)
-        tr = openai_service.transcribe_audio(BytesIO(audio), "take-word.mp3")
+        # usage_surface stays "whisper_take", the ledger label this call
+        # always carried (the transcriber's default); relabelling is a
+        # separate cost-report change.
+        tr = adapter.transcribe_audio(audio, "take-word.mp3", usage_surface="whisper_take",
+                                      usage_user_id=None, usage_session_id=take)
         text = (tr.get("text") or "").strip() if isinstance(tr, dict) else ""
         if not text:
             return None
-        database.set_coach_take_word_transcript(take_session_id=str(word_row.get("take_session_id")),
+        database.set_coach_take_word_transcript(take_session_id=take,
                                                 coach_id=str(coach_id), transcript=text)
         record_take_word_pair(database, word_row=word_row, coach_id=coach_id,
                               final_text=text, final_kind="transcript")
         return text
+    except ProcessingAuthorizationError as refused:
+        _log.warning("take word transcript refused take=%s code=%s; the word is saved",
+                     take, refused.code, exc_info=True)
+        return None
     except Exception as e:  # noqa: BLE001 — the word is saved either way
-        _log.warning("take word transcript failed take=%s: %s",
-                     (word_row or {}).get("take_session_id"), e, exc_info=True)
+        _log.warning("take word transcript failed take=%s: %s", take, e, exc_info=True)
         return None
 
 
