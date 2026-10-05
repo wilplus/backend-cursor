@@ -772,58 +772,25 @@ def _album_note_json(saved):
     }
 
 
+# ── Best Presentation: RETIRED (L1; founder 2026-10-05, N48.3 Q13 A) ──────
+# Its builder sent every pick's transcript to the model with no permit
+# (N48.1 step 6). The read answers 410 and composes nothing; the FE's deck
+# ref now comes from the Ideal Text payload or the project's /setup read.
+# The cache and edit tables stay as history.
+
+def best_presentation_gone():
+    """The one 410 both Best Presentation reads answer (student + coach)."""
+    return jsonify({
+        "code": "GONE",
+        "error": "Best Presentation was retired (L1); the Ideal Text is the "
+                 "presentation document.",
+    }), 410
+
+
 @v2_bp.route("/explore/arc/<arc_id>/best-presentation", methods=["GET"])
 @require_owner_or_guest
 def v2_explore_arc_best_presentation(arc_id):
-    """Best-Presentation (willab Prompt D) — REPLACES the audit. After the arc's
-    3 takes, the user's strongest-supported delivery of each slide is lightly
-    stitched into 'ideal presentation' text, with coach-confirmed markers.
-
-    SCORE-FREE (AC-9). Ownership: the arc must contain a session owned by the
-    caller, else 404. Not-ready (<3 takes) still returns 200 with populated
-    slides + progress.takes_remaining — the FE drives its 'need 3 takes' notice
-    off ready / takes_remaining (not off a 404 or an empty body).
-
-    Founder 2026-07-06: 402 gates this endpoint (paid deliverable). PAST the
-    gate, ``coach_finalized`` is a SEPARATE, harder gate on CONTENT — the raw
-    auto-assembled draft is NEVER served to the student; every slide's `text`
-    is "" until the coach has corrected EVERY slide (build_best_presentation
-    handles this transparently), regardless of payment. The FE shows "still
-    being prepared by your coach" when paid but not yet coach_finalized —
-    distinct from the 402 paywall.
-
-    Response 200 {
-        arc_id, ready, coach_finalized, presentation_ref,
-        progress: { takes_done, takes_target, takes_remaining, ready },
-        slides: [ { index, title, body, text, audio_ref,
-                    start_offset_ms, duration_ms, take_index,
-                    coach_edited, edited } ]
-    }
-             404 NOT_FOUND · 500 V2_ERROR
-    """
-    try:
-        from services.slide_selection import build_best_presentation
-        if request.args.get("source") == "deck-ref-fallback":
-            # Retirement watch (founder 2026-09-14): the FE's third deck-ref
-            # source (useArcDeckRef) marks its GET. A day of logs with no hit
-            # retires the fallback, then this route.
-            logger.warning("deck_ref_fallback arc=%s", arc_id)
-        owned, _ = _arc_owned_by_caller(arc_id)
-        if not owned:
-            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        # Single-deliverable (founder 2026-07-17): the best presentation is
-        # free — no paywall. (audit_paid stays true for FE back-compat.)
-        return jsonify({
-            "arc_id": arc_id, "audit_paid": True,
-            **build_best_presentation(arc_id),
-        }), 200
-    except Exception as e:
-        logger.error("explore/arc best-presentation failed arc=%s: %s", arc_id,
-                     e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({
-            "code": "V2_ERROR", "error": "Failed to build best presentation",
-        }), 500
+    return best_presentation_gone()
 
 
 @v2_bp.route("/explore/arc/<arc_id>/best-presentation/slides/<int:index>",

@@ -68,7 +68,7 @@
     "db_calls": 1
   },
   "routes/v2/admin.py:v2_admin_regenerate_next_session_icebreaker": {
-    "lines": 89,
+    "lines": 85,
     "db_calls": 0
   },
   "routes/v2/admin.py:v2_admin_update_next_session_icebreaker": {

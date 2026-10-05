@@ -26,7 +26,9 @@ constrained LLM pass — "mostly verbatim, a few words per slide for
 continuity, never new claims" (the founder-sanctioned light polish, i.e.
 seam-smoothing, not a free rewrite). Under POLISH_AS_SUGGESTIONS_ENABLED
 even that polish stops being silent: the VERBATIM words are served and the
-polish is offered as an approvable star. The coach's one-block edit then
+polish is offered as an approvable star. Since 2026-10-05 the compose step
+calls no model at all (N48.3 Q13 A): the picks are served verbatim and no
+polish star is ever offered. The coach's one-block edit then
 owns the canonical. The user's notebook copy is a separate personal row
 (user_arc_ideal_notes) — editing it never touches this canonical. AC-9:
 text only, no scores anywhere.
