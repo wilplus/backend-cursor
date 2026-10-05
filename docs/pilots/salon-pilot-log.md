@@ -9,7 +9,7 @@ until the product is settled).
 
 ---
 
-## Where things stand (updated 2026-09-30)
+## Where things stand (updated 2026-10-05)
 
 - **Format agreed with Katie:** informal, one person at a time, WhatsApp. No
   formal emails or reports to her.
@@ -31,7 +31,14 @@ until the product is settled).
 - **Timing caveat given:** the app needs more exercises and training first. A
   Warsaw tester group goes first, so the product stays the same during the
   salon pilot.
-- **Waiting on:** Katie's reply.
+- **Katie's reply (09-30):** enthusiastic, and fine with the app being early. She
+  read it as giving users a "stress score". That expectation needs resetting:
+  the product shows no scores (AC-9). The read is qualitative.
+- **Next:** Katie is setting up a Zoom with Ariel and her cousin "this coming
+  week" (week of 10-05). These are the first two testers. No tester has used
+  the app yet, because development is delayed.
+- **Name check:** earlier notes say "Aileen", Katie writes "Ariel". Confirm
+  which is right.
 
 ---
 
@@ -74,3 +81,37 @@ until the product is settled).
 5. Who is in the first group and who is in the waitlist group? Split them fairly across locations.
 6. When will the product be ready after the Warsaw round, which sets the pilot start date?
 7. Consent: a light written OK from each employee to be recorded, and a deletion promise.
+
+---
+
+## The relationship has three tracks (recorded 2026-10-05)
+
+| Track | Who | What's exchanged | Status |
+|---|---|---|---|
+| Coaching | Levia (Katie's daughter) | Public speaking and motivation, $35 / week, paid by Stripe link | One session on 09-29, paid on 09-30 after Stripe failed. No next session booked. |
+| Consulting | Katie (salon group) | Software and digital-marketing advice. A possible IT-outsourcing / website project | Website feedback and a wireframe sent on 10-02. Katie passed them to her developer. A strategy meeting was offered but isn't booked. |
+| App testing | Katie's team | Early testers for WillpowerLab | Zoom with Ariel and her cousin pending this week. |
+
+Proposed rules (2026-10-05):
+- Advice is a fair swap for their testing. Building things (e.g. website
+  development) is a separate paid project with a written scope.
+- Coaching gets a fixed weekly slot and a recurring weekly payment, so nobody
+  has to chase it.
+- Send one short round-up message a week covering all three tracks. Every
+  track ends with a next step and a date.
+
+## 2026-09-29 → 10-05 — WhatsApp highlights
+
+- 09-29: coaching session with Levia, and the payment link sent.
+- 09-29: Stripe declined Katie's cards (billing zip). It went through on 09-30
+  after a Stripe fraud setting was turned off.
+- 09-30: replied about the IT-outsourcing idea. Proposed starting with a small
+  website project and a strategy meeting.
+- 09-30: sent the two pilot messages (above).
+- 09-30: Katie: excited, "Don't worry about your app isn't perfect".
+- 10-01: Katie suggests a Zoom with Ariel first. It moves because of Ariel's
+  birthday, aiming for Monday.
+- 10-01: Katie asks for website feedback. Feedback on strategy, SEO and blog,
+  CTAs and location choice sent 10-02, with a wireframe.
+- 10-05: Katie sent it to her developer, and is setting up the Zoom with Ariel
+  and her cousin this week.
