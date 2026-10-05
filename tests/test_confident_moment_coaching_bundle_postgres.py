@@ -3223,6 +3223,85 @@ def test_d23_legacy_parts_are_server_normalized_and_missing_parts_cannot_resegme
     rows(db, "ROLLBACK TO SAVEPOINT legacy_without_parts")
 
 
+def test_0418_an_accepted_rewrite_changes_only_the_named_protected_paragraph(db):
+    """0418 (founder 2026-10-05): helper words may point at words that live
+    only in History. The owner-edit writer still refuses every change to a
+    protected Paragraph, except a TEXT change to the one Paragraph that
+    accept_rewrite_into_part_v1 names; the lock stays, nothing moves."""
+    # Other tests in this module re-run 0327 and commit, which reinstalls the
+    # unpatched writer; apply 0418 here, inside this rolled-back transaction,
+    # so the test never depends on their order. A no-op when already applied.
+    migration = (Path(__file__).resolve().parents[1]
+                 / "migrations/an_accepted_rewrite_may_change_a_protected_paragraph.sql")
+    body = "\n".join(line for line in migration.read_text().splitlines()
+                     if line.strip() not in ("BEGIN;", "COMMIT;"))
+    with db.cursor() as cur:
+        cur.execute(body)
+    context, _feedback = _positive_projection_context(db)
+    owner_user_id = one(
+        db, "SELECT user_id FROM owner_principals WHERE id=%s", (context["owner"],)
+    )["user_id"]
+    arc_id = context["project"]
+    first, second = str(uuid4()), str(uuid4())
+    created = one(
+        db,
+        "SELECT compare_and_set_user_ideal_edit_v1(%s,%s,1,NULL,NULL,%s,%s::jsonb,NULL) result",
+        (owner_user_id, arc_id, "Nobody believed it.\n\nWe grew.",
+         Json([{"id": first, "ord": 0, "text": "Nobody believed it."},
+               {"id": second, "ord": 1, "text": "We grew."}])),
+    )["result"]
+    assert created["saved"] is True
+    rows(db, "UPDATE ideal_text_part SET locked_at=now(),root_phrase='believed' "
+             "WHERE id=%s", (first,))
+    rows(db, "UPDATE ideal_text_part SET locked_at=now() WHERE id=%s", (second,))
+
+    def legacy(texts):
+        return Json([{"id": pid, "ord": n, "text": t}
+                     for n, (pid, t) in enumerate(texts)])
+
+    accepted = [(first, "Nobody trusted the figures."), (second, "We grew.")]
+    accepted_text = "Nobody trusted the figures.\n\nWe grew."
+
+    # The ordinary writer still refuses the protected Paragraph.
+    rows(db, "SAVEPOINT ordinary")
+    with pytest.raises(psycopg2.Error, match="IDEAL_TEXT_PART_REQUIRES_UNLOCK"):
+        one(db, "SELECT compare_and_set_user_ideal_edit_v1(%s,%s,1,NULL,NULL,%s,%s::jsonb,NULL)",
+            (owner_user_id, arc_id, accepted_text, legacy(accepted)))
+    rows(db, "ROLLBACK TO SAVEPOINT ordinary")
+
+    # Naming a different protected Paragraph opens nothing.
+    rows(db, "SAVEPOINT other")
+    with pytest.raises(psycopg2.Error, match="IDEAL_TEXT_PART_REQUIRES_UNLOCK"):
+        one(db, "SELECT accept_rewrite_into_part_v1(%s,%s,1,%s,%s,%s::jsonb)",
+            (owner_user_id, arc_id, second, accepted_text, legacy(accepted)))
+    rows(db, "ROLLBACK TO SAVEPOINT other")
+
+    # The named Paragraph may not be removed or moved either.
+    rows(db, "SAVEPOINT moved")
+    with pytest.raises(psycopg2.Error, match="IDEAL_TEXT_PART_REQUIRES_UNLOCK"):
+        one(db, "SELECT accept_rewrite_into_part_v1(%s,%s,1,%s,%s,%s::jsonb)",
+            (owner_user_id, arc_id, first, "We grew.\n\nNobody trusted the figures.",
+             legacy([(second, "We grew."), (first, "Nobody trusted the figures.")])))
+    rows(db, "ROLLBACK TO SAVEPOINT moved")
+
+    # The accepted words go in; the lock stays; the old words stay in History.
+    result = one(db, "SELECT accept_rewrite_into_part_v1(%s,%s,1,%s,%s,%s::jsonb) result",
+                 (owner_user_id, arc_id, first, accepted_text, legacy(accepted)))["result"]
+    assert result["saved"] is True
+    assert [r["action"] for r in result["part_revisions"]] == ["owner_part_text_updated"]
+    after = one(db, "SELECT text,locked_at IS NOT NULL locked FROM ideal_text_part WHERE id=%s",
+                (first,))
+    assert (after["text"], after["locked"]) == ("Nobody trusted the figures.", True)
+    history = [r["text"] for r in rows(
+        db, "SELECT text FROM ideal_text_part_revision WHERE part_id=%s ORDER BY id", (first,))]
+    assert history[0] == "Nobody believed it." and history[-1] == "Nobody trusted the figures."
+    # The name is cleared before the call returns.
+    assert one(db, "SELECT current_setting('willab.accepted_rewrite_part', true) v")["v"] in ("", None)
+    assert one(db, "SELECT has_function_privilege('anon', "
+                   "'public.accept_rewrite_into_part_v1(uuid,text,integer,uuid,text,jsonb)', "
+                   "'EXECUTE') v")["v"] is False
+
+
 def test_d29_d37_scheduler_schema_permissions_and_retired_identity(db):
     with db.cursor() as cur:
         cur.execute(SQL)

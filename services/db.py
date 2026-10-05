@@ -8262,6 +8262,28 @@ class DatabaseService:
             raise TypeError("compare_and_set_user_ideal_edit_v1 returned non-object")
         return data
 
+    def accept_rewrite_into_part(
+        self, *, owner_user_id: str, arc_id: str, source_document_version: int,
+        part_id: str, desired_user_text: str, desired_parts_lineage: Any,
+    ) -> Optional[dict]:
+        """The owner edit for an accepted rewrite (0418): the same writer,
+        allowed to change the TEXT of the one protected Paragraph it names."""
+        result = self.client.rpc(
+            "accept_rewrite_into_part_v1",
+            {
+                "p_owner_user_id": owner_user_id,
+                "p_arc_id": arc_id,
+                "p_source_document_version": source_document_version,
+                "p_part_id": part_id,
+                "p_desired_user_text": desired_user_text,
+                "p_desired_parts_lineage": desired_parts_lineage,
+            },
+        ).execute()
+        data = getattr(result, "data", result)
+        if not isinstance(data, dict):
+            raise TypeError("accept_rewrite_into_part_v1 returned non-object")
+        return data
+
     # ── ideal_text_part — the document as an ordered list with stable ids ──
     # SPEC-parts-locking-and-layers §3.1, Step 0. Identity only; PR 3 adds the
     # lock. Both of these are best-effort in the same sense as the edit lane

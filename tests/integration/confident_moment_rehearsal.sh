@@ -519,6 +519,10 @@ hard migrations/a_take_rewrite_is_a_paragraph_revision.sql
 # 0417: the practice attempt table's 1..3 cap gives way to >= 1. Twice.
 hard migrations/an_attempt_after_the_third_saves.sql
 hard migrations/an_attempt_after_the_third_saves.sql
+# 0418: the owner-edit writer lets accept_rewrite_into_part_v1 change the
+# text of the one protected Paragraph it names. Twice.
+hard migrations/an_accepted_rewrite_may_change_a_protected_paragraph.sql
+hard migrations/an_accepted_rewrite_may_change_a_protected_paragraph.sql
 
 # R-1 (audit 2026-09-22). 0299 created the two learning-surface tables with
 # the same GRANT ALL TO service_role as 0296, and was never in this chain, so

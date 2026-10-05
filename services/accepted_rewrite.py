@@ -24,9 +24,19 @@ writes the result through the one sanctioned owner-edit writer,
 which the next Take supersedes (Q5 A) -- the "next Take replaces them" of
 clause 9.
 
-WHAT IT REFUSES, and says so: a Paragraph that carries helper words or a
-lock (the writer refuses to change a protected Paragraph; helper words stay
-until the user picks new ones, contract 14), a quote that is no longer in
+A PARAGRAPH WITH HELPER WORDS OR A LOCK (founder 2026-10-05: "it is possible
+that helper words are attached to the words that are not visible - but
+exist only in the history; that should be the logic of it"). The accepted
+words go in and the Paragraph stays locked. Its helper words stay too:
+words picked in the text move to the Slide row -- where words from an
+earlier Take already live, shown as the Paragraph's helper words with
+nothing marked in the text -- and the in-text span is cleared, so they
+point at the version they were picked from, which stays in History. The
+write goes through `accept_rewrite_into_part_v1` (0418), the one door the
+owner-edit writer opens for a protected Paragraph's text. If the words
+cannot be carried, nothing is written (`protected`).
+
+WHAT IT REFUSES, and says so: a quote that is no longer in
 the Paragraph, a quote found more than once (the freeze carries no span,
 so the server never guesses which), and a document whose Paragraphs do not
 join to the text the speaker is reading. Each is an outcome the page shows
@@ -145,12 +155,63 @@ def rewritten_parts(parts: list, part_id: str, quote: str,
 def _slide_words_on(database: Any, arc_id: str, owner_user_id: str,
                     part_id: str) -> bool:
     """Helper words saved on the Slide row for this Paragraph (from practice
-    or an earlier Take) protect it as its own words do (contract 14)."""
+    or an earlier Take)."""
     reader = getattr(database, "get_slide_helper_words", None)
     rows = reader(str(arc_id), str(owner_user_id)) if reader else []
     return any(str(r.get("source_part_id") or "").lower() == part_id.lower()
                and str(r.get("phrase") or "").strip()
                for r in rows or [] if isinstance(r, dict))
+
+
+def _protected(database: Any, arc_id: str, owner_user_id: str,
+               target: dict) -> bool:
+    return bool(target.get("locked_at") or target.get("root_phrase")
+                or _slide_words_on(database, arc_id, owner_user_id,
+                                   str(target.get("id") or "")))
+
+
+def _carry_helper_words(database: Any, arc_id: str, owner_user_id: str,
+                        target: dict, take_session_id: str) -> bool:
+    """Before a protected Paragraph's text changes: its in-text helper words
+    move to the Slide row, locked, and the span is cleared. True when the
+    words are safe on the Slide row (or there were none in the text)."""
+    from services.slide_helper_words import record_lock, record_pick
+    part_id = str(target.get("id") or "")
+    phrase = str(target.get("root_phrase") or "").strip()
+    if not phrase:
+        return True
+    if not _slide_words_on(database, arc_id, owner_user_id, part_id):
+        record_pick(database, arc_id, owner_user_id, part_id,
+                    take_session_id, phrase)
+        record_lock(database, arc_id, owner_user_id, part_id,
+                    take_session_id, True)
+        if not _slide_words_on(database, arc_id, owner_user_id, part_id):
+            logger.warning("accept_rewrite: helper words not carried "
+                           "arc=%s part=%s", arc_id, part_id)
+            return False
+    return bool(database.set_ideal_text_part_root(
+        arc_id=arc_id, user_id=owner_user_id, part_id=part_id,
+        phrase=None, start=None, end=None))
+
+
+def _write(database: Any, *, arc_id: str, owner_user_id: str, version: int,
+           desired: list, protected_part: Optional[str]) -> Any:
+    from services.ideal_text_parts import joined
+    text = joined(desired)
+    if protected_part:
+        return database.accept_rewrite_into_part(
+            owner_user_id=str(owner_user_id), arc_id=str(arc_id),
+            source_document_version=version, part_id=protected_part,
+            desired_user_text=text, desired_parts_lineage=desired)
+    return database.compare_and_set_user_ideal_edit(
+        owner_user_id=str(owner_user_id), arc_id=str(arc_id),
+        source_document_version=version,
+        expected_user_text_revision=None,
+        expected_user_text_sha256=None,
+        desired_user_text=text,
+        desired_parts_lineage=desired,
+        idempotency_key=None,
+    )
 
 
 def accept_rewrite(database: Any, *, arc_id: str, owner_user_id: str,
@@ -175,27 +236,23 @@ def accept_rewrite(database: Any, *, arc_id: str, owner_user_id: str,
             return STALE
         target = next((p for p in parts
                        if str(p.get("id")) == item["part_id"]), None)
-        if target is not None and (
-                target.get("locked_at") or target.get("root_phrase")
-                or _slide_words_on(database, arc_id, owner_user_id,
-                                   item["part_id"])):
-            return PROTECTED
         outcome, desired = rewritten_parts(
             parts, item["part_id"], item["quote"], item["proposed_text"])
         if outcome != APPLIED or desired is None:
             return outcome
-        from services.ideal_text_parts import joined
-        text = joined(desired)
+        protected = False
+        if target is not None and _protected(database, arc_id,
+                                             owner_user_id, target):
+            protected = True
+            if not _carry_helper_words(database, arc_id, owner_user_id,
+                                       target, take_session_id):
+                return PROTECTED
         try:
-            result = database.compare_and_set_user_ideal_edit(
-                owner_user_id=str(owner_user_id), arc_id=str(arc_id),
-                source_document_version=version,
-                expected_user_text_revision=None,
-                expected_user_text_sha256=None,
-                desired_user_text=text,
-                desired_parts_lineage=desired,
-                idempotency_key=None,
-            )
+            result = _write(database, arc_id=arc_id,
+                            owner_user_id=owner_user_id, version=version,
+                            desired=desired,
+                            protected_part=(item["part_id"] if protected
+                                            else None))
         except Exception as error:
             if any(code in str(error) for code in _PROTECTED_CODES):
                 return PROTECTED
