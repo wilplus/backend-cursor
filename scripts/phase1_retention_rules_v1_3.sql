@@ -11,15 +11,20 @@
 -- this rule.
 --
 -- ⚠ RUN BY HAND, ONCE, IN THE SUPABASE SQL EDITOR (service role), AFTER the
--- signed PDF is uploaded to its object_key and its hash and signing day are
--- in legal/phase1-2026.1/SIGNED-ARTIFACTS.md. Nothing here runs on merge:
--- this file is deliberately absent from migrations/manifest.txt, as v1.2's
--- script is. It refuses to run while either placeholder is in the file.
+-- signed PDF is uploaded to its object_key. Nothing here runs on merge: this
+-- file is deliberately absent from migrations/manifest.txt, as v1.2's script
+-- is. It refuses to run while either placeholder is in the file.
+--
+-- The hash and the day are those of legal/phase1-2026.1/SIGNED-ARTIFACTS.md
+-- (row 06 v1.3): signed 2026-10-05 13:42:28 UTC (PAdES), 110,851 bytes. A
+-- first run with the placeholder still in the file stopped at the guard, as
+-- designed. Check the uploaded object's sha256 against v_sha256 before
+-- running; the guard stays for a future version.
 
 DO $$
 DECLARE
     v_object_key TEXT := 'phase1-2026.1/legal/retention-schedule-v1.3.pdf';
-    v_sha256 TEXT := '[[sha256 of the signed PDF, from SIGNED-ARTIFACTS.md]]';
+    v_sha256 TEXT := '59a25f9409e85e2289e8484baa4cc0fc74d5c6ed98dca2d22be443175473cfb4';
     v_authority TEXT := 'Artur Willoński';
     -- The day the controller decided the period, as the document records it.
     v_approved_at_text TEXT := '2026-10-05';
