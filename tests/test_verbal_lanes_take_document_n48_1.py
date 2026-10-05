@@ -533,3 +533,61 @@ def test_location_evidence_still_reaches_the_client():
                                       "rank_key": [-1, 0]}])
     assert row["evidence"] == location
     assert "rank_key" not in row
+
+
+#: The top-level keys the frontend reads from one served `changes` /
+#: `style_changes` row: every `record.<key>` in `mapDocumentSuggestion`
+#: (frontend src/services/api/idealText.ts, origin/main df875245, FE #602),
+#: plus `start` / `end`, which `readSuggestionSpan` accepts at top level when
+#: `span` is absent. That function is the frontend's only reader of these
+#: rows; its helpers read only inside the value they are handed. When the
+#: frontend starts reading a new key, add it here AND to the allowlist.
+FRONTEND_READS_FROM_A_CHANGE_ROW = {
+    "id", "candidate_id", "feedback_membership_id", "feedback_exposure_id",
+    "span", "start", "end", "quote", "kind", "proposed_text", "device",
+    "snippet_id", "take_session_id", "source", "block_key", "why_key", "why",
+    "feedback_family", "tentative", "bookmark_tier", "practice_prompt",
+    "coach_request", "open_card", "problem_recognised", "block_id",
+    "coach_note", "status", "evidence", "take_index", "visual",
+    "pending_better_version", "pending_copy", "cue_keys", "praise_line",
+    "rewrite_move", "snippet_audio_ref", "start_offset_ms", "duration_ms",
+    "practice_exercise", "mlc3_service", "learning_exposures",
+}
+
+
+def test_the_allowlist_is_exactly_what_the_frontend_reads_plus_reserved():
+    from services.take_feedback_manager import (
+        CLIENT_READ_ROW_FIELDS, CLIENT_ROW_FIELDS, UNRENDERED_ROW_FIELDS,
+    )
+    assert CLIENT_READ_ROW_FIELDS == FRONTEND_READS_FROM_A_CHANGE_ROW
+    # Data that rides unrendered for the design (N45 Q7): the coach's
+    # answer in words on the speaker's item.
+    assert UNRENDERED_ROW_FIELDS == {"coach_answer"}
+    assert CLIENT_ROW_FIELDS == CLIENT_READ_ROW_FIELDS | UNRENDERED_ROW_FIELDS
+
+
+def test_the_coach_answer_rides_the_speakers_item():
+    answer = {"kind": "line", "text": "That landed.",
+              "video_url": "https://example.invalid/v.mp4"}
+    [row] = strip_internal_evidence([{**_praise(), "coach_answer": answer}])
+    assert row["coach_answer"] == answer
+
+
+def test_a_stored_bake_passes_the_same_boundary(monkeypatch):
+    from services import ideal_text_feedback_bake as bake
+
+    stored = {"changes": [{**_praise(), "rank_key": [-1, 0],
+                           "evidence": {"specificity": 4}}],
+              "style_changes": [{**_rewrite(), "rank_key": [0]}]}
+
+    class _Db:
+        def read_ideal_text_feedback_bake(self, *_args):
+            return stored
+
+    monkeypatch.setattr(bake, "_bake_enabled", lambda: True)
+    monkeypatch.setattr(bake, "_with_fresh_playback", lambda block: block)
+    block = bake.changes_block_for(_Db(), "arc-1", "user-1", "snap-1", {})
+    for row in [*block["changes"], *block["style_changes"]]:
+        assert "rank_key" not in row and "evidence" not in row
+        assert not any(key.startswith("_manager_") for key in row)
+        assert row["quote"]

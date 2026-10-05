@@ -351,16 +351,31 @@ def _machine_readings(raw: dict) -> dict:
     }
 
 
-#: THE FIELDS A SERVED ROW MAY CARRY (AC-9; N48.1, Wave 1). Exactly the
-#: keys the frontend's one reader of the `changes` / `style_changes` lanes
-#: reads (`mapDocumentSuggestion` in frontend src/services/api/idealText.ts,
-#: checked 2026-10-05). An ALLOWLIST, because the denylist it replaces let
-#: every internal field through by default: served V3 verbal rows are copies
-#: of exposure-ledger rows and carried `evidence` (the Manager's specificity,
-#: detector rank, cue count), `rank_key` (negated rank numbers), versions and
-#: machine readings to the browser. A field the client starts reading is
-#: added here the same day, and nothing that grades the speaker ever is.
-CLIENT_ROW_FIELDS = frozenset({
+#: THE FIELDS A SERVED ROW MAY CARRY (AC-9; N48.1, Wave 1). An ALLOWLIST,
+#: because the denylist it replaces let every internal field through by
+#: default: served V3 verbal rows are copies of exposure-ledger rows and
+#: carried `evidence` (the Manager's specificity, detector rank, cue count),
+#: `rank_key` (negated rank numbers), versions and machine readings to the
+#: browser.
+#:
+#: WHERE THE LIST COMES FROM (checked against frontend origin/main df875245,
+#: 2026-10-05). The frontend has exactly one reader of served `changes` /
+#: `style_changes` rows: `mapDocumentSuggestion` in
+#: src/services/api/idealText.ts (called only by `mapDocumentSuggestions`,
+#: on `body.changes`, `body.style_changes`, `layers.changes`,
+#: `layers.style_changes`). `CLIENT_READ_ROW_FIELDS` is every top-level key it
+#: reads, including `readSuggestionSpan`'s legacy top-level `start` / `end`.
+#: Its helpers (`mapCoachRequest`, `mapSuggestionEvidence`,
+#: `mapPracticeExercise`, `mapFirstClientService`, `mapLearningExposures`,
+#: `mapCueKeys`) read only inside the value they are handed. Every component
+#: downstream consumes the mapped object, never the raw row.
+#: `tests/test_verbal_lanes_take_document_n48_1.py` pins this list.
+#:
+#: `UNRENDERED_ROW_FIELDS` ride the speaker's item without being read yet, by
+#: decision: data may reach the design-locked screens unrendered for the
+#: designer (N45 Q7). Neither set may ever hold a field that grades the
+#: speaker; a field the client starts reading is added the same day.
+CLIENT_READ_ROW_FIELDS = frozenset({
     "id", "candidate_id", "feedback_membership_id", "feedback_exposure_id",
     "span", "start", "end", "quote", "kind", "proposed_text",
     "feedback_family", "tentative", "bookmark_tier", "practice_prompt",
@@ -371,6 +386,10 @@ CLIENT_ROW_FIELDS = frozenset({
     "praise_line", "rewrite_move", "snippet_audio_ref", "start_offset_ms",
     "duration_ms", "practice_exercise", "mlc3_service", "learning_exposures",
 })
+#: The coach's shared answer in words, `{kind, text, video_url?}`
+#: (`confident_voice_practice.coach_shared_answer`). No number, no draft.
+UNRENDERED_ROW_FIELDS = frozenset({"coach_answer"})
+CLIENT_ROW_FIELDS = CLIENT_READ_ROW_FIELDS | UNRENDERED_ROW_FIELDS
 
 
 def _client_evidence(value: Any) -> Optional[dict]:

@@ -144,7 +144,7 @@ def changes_block_for(
     )
     if is_a_bake(baked):
         logger.info("ideal-text bookmarks served from storage arc=%s", arc_id)
-        return _with_fresh_playback(baked)
+        return _client_rows_only(_with_fresh_playback(baked))
     # A MISS IS NOT A FAILURE, but it IS the four and a half seconds the
     # speaker waits, so it says which kind it is. Off means the flag; absent
     # means nothing was ever stored for this document; stale means an answer
@@ -165,6 +165,19 @@ def changes_block_for(
     _backfill(database, arc_id, actor_id, document_snapshot_id, block,
               int((perf_counter() - _started) * 1000))
     return block
+
+
+def _client_rows_only(block: dict) -> dict:
+    """A stored block passes the same serving boundary as a live one (AC-9;
+    N48.1, Wave 1). A bake written before the allowlist still holds rows
+    with the Manager's evidence and rank numbers, and the live path's strip
+    never sees a stored block. Idempotent on rows already stripped."""
+    from services.take_feedback_manager import strip_internal_evidence
+    out = dict(block)
+    for lane in ("changes", "style_changes"):
+        if isinstance(out.get(lane), list):
+            out[lane] = strip_internal_evidence(out[lane])
+    return out
 
 
 #: Fields inside one `changes` row that are a SIGNATURE, not an answer, and so
