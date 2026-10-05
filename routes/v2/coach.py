@@ -582,7 +582,7 @@ def v2_coach_moments_queue():
     (opened or skipped) or answered are listed (N48.2, Q1 A). Same language
     filter and pseudonyms as the review queue; the shape is
     services.coach_moments_queue'."""
-    from services.coach_moments_queue import moments_queue
+    from services.coach_moments_queue import moments_queue, reached_for_sessions
     try:
         rater_id = str(getattr(request, "user_id", "") or "")
         proficient = db.get_user_proficient_languages(rater_id)
@@ -594,8 +594,8 @@ def v2_coach_moments_queue():
             [str(r.get("id")) for r in matched])
         return jsonify(moments_queue(
             matched, moments_for=_queue_moments_for(snips),
-            reached_for=_queue_reached_for(
-                [str(r.get("id")) for r in matched], requests),
+            reached_for=reached_for_sessions(
+                db, [str(r.get("id")) for r in matched], requests),
             ratings_for=lambda sid: db.get_own_state_ratings_for_session(sid, rater_id),
             request_for=lambda sid, snip: requests.get((sid, snip)),
             pseudonym_for=_coach_pseudonym)), 200
@@ -648,19 +648,6 @@ def _queue_moments_for(snips):
         return [str(s.get("id")) for s in snips.get(sid) or []
                 if str(s.get("id")) in marked]
     return moments_for
-
-
-def _queue_reached_for(session_ids, requests):
-    """The queue's `reached_for`: per take, the moments that reached the
-    speaker (N48.2, Q1 A; `services.coach_moments_queue.reached_moments`).
-    Two batch reads for the whole queue. A failed read raises, so the
-    queue answers 500 rather than listing moments no speaker met."""
-    from services.coach_moments_queue import reached_moments
-    reached = reached_moments(
-        db.list_moment_events_for_sessions(session_ids),
-        db.list_confident_voice_answered_moments(session_ids),
-        (requests or {}).keys())
-    return lambda sid: reached.get(str(sid), set())
 
 
 def _bookmarked_snippet_ids(session, session_id):
@@ -1775,7 +1762,7 @@ def v2_coach_walk_take(session_id):
     profile the walk may show the name; the kind still rides only once this
     coach has rated the moment (BLIND COACH). Same language gate as the
     queue. 404 while COACH_STUDENTS_ENABLED is off."""
-    from services.coach_moments_queue import moments_queue
+    from services.coach_moments_queue import moments_queue, reached_for_sessions
     from services.coach_students import load_walk_take
     if not _is_valid_uuid(session_id):
         return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a UUID"}), 400
@@ -1794,7 +1781,7 @@ def v2_coach_walk_take(session_id):
         sid = str(loaded["row"]["id"])
         speakers = moments_queue(
             [loaded["row"]], moments_for=_queue_moments_for({sid: loaded["snippets"]}),
-            reached_for=_queue_reached_for([sid], loaded["requests"]),
+            reached_for=reached_for_sessions(db, [sid], loaded["requests"]),
             ratings_for=lambda _sid: loaded["ratings"],
             request_for=lambda _sid, snip: loaded["requests"].get((_sid, snip)),
             pseudonym_for=_coach_pseudonym)
