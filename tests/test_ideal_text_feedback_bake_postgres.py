@@ -25,12 +25,22 @@ answer stayed off the page until the speaker answered something else. The
 lane applies the released request chain (0385, 0397, 0402, 0403, 0408), so
 the coach here answers and shares through the real writers.
 
+The last two are the speaker's again, settling a moment without an answer
+(the_bake_knows_about_skips_and_practice.sql). With judgement after feedback
+on, the block marks a bookmark settled from a skip (``moment_events``) or a
+closed practice (``confident_voice_practice``), in
+``_mark_settled_without_answer``. Neither table was in the rule, so a reload
+served the moment as still waiting. The practice writes below send the
+statements ``update_confident_voice_practice`` sends, dated by the app's own
+clock as it dates them.
+
 The target must be a disposable local database whose name starts with
 ``willab_bake_``. Nothing here writes media or activates any service.
 """
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import psycopg2
@@ -84,6 +94,8 @@ def _clean(db):
         cursor.execute("DELETE FROM public.user_suggestion_feedback")
         cursor.execute("DELETE FROM public.intervention_decisions")
         cursor.execute("DELETE FROM public.exercise_coach_requests")
+        cursor.execute("DELETE FROM public.moment_events")
+        cursor.execute("DELETE FROM public.confident_voice_practice")
 
 
 def _publish(db, version: int = 1) -> str:
@@ -185,6 +197,60 @@ def _coach_answers(db, request_id: str, resolution: str, *, share: bool,
             "%s,%s,%s,%s,%s,%s,%s)",
             (request_id, COACH, resolution, exercise_id,
              1 if exercise_id else None, share, answer_text))
+
+
+def _moment_event(db, event: str, take: str = TAKE) -> None:
+    """The speaker opened or skipped a bookmark: the statement
+    `record_moment_event` sends (an upsert that ignores duplicates)."""
+    with db.cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO public.moment_events(owner_user_id,take_session_id,"
+            "snippet_id,event,co_exposed) VALUES(%s,%s,%s,%s,%s) "
+            "ON CONFLICT (take_session_id,snippet_id,event) DO NOTHING",
+            (ACTOR, take, SNIPPET, event, Json({"shown": []})))
+
+
+def _start_practice(db, take: str = TAKE) -> str:
+    """The practice route's insert: status and `created_at` are the
+    database's defaults, as the route leaves them."""
+    with db.cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO public.confident_voice_practice("
+            "owner_user_id,take_session_id,snippet_id) VALUES(%s,%s,%s) "
+            "RETURNING id", (ACTOR, take, SNIPPET))
+        return str(cursor.fetchone()[0])
+
+
+#: Stands for the route's `now` inside a patch.
+_NOW = object()
+
+
+def _patch_practice(db, practice_id: str, patch: dict) -> None:
+    """`update_confident_voice_practice`: the patch plus `updated_at`, both
+    dated by the app's own clock, scoped to the owner."""
+    now = datetime.now(timezone.utc)
+    row = {**{key: (now if value is _NOW else value)
+              for key, value in patch.items()}, "updated_at": now}
+    columns = ", ".join(f"{key} = %s" for key in row)
+    with db.cursor() as cursor:
+        cursor.execute(
+            f"UPDATE public.confident_voice_practice SET {columns} "
+            "WHERE id = %s AND owner_user_id = %s",
+            (*row.values(), practice_id, ACTOR))
+
+
+def _land_practice(db, practice_id: str, answer: str = "yes") -> None:
+    """A judged attempt closes the practice (`judge_attempt`)."""
+    _patch_practice(db, practice_id, {
+        "status": "completed", "selected_attempt_id": str(uuid4()),
+        "final_user_answer": answer, "landed_attempt_index": 1,
+        "closed_at": _NOW})
+
+
+def _dismiss_practice(db, practice_id: str) -> None:
+    """The speaker leaves the practice (the complete route's dismiss)."""
+    _patch_practice(db, practice_id, {"status": "dismissed",
+                                      "closed_at": _NOW})
 
 
 # ── the stored set is served only while it is still true ──────────────────
@@ -469,6 +535,113 @@ def test_a_coach_share_is_never_taken_back(db):
                 "UPDATE public.exercise_coach_requests SET shared_at = NULL "
                 "WHERE id = %s", (request,))
     assert "ALREADY_SHARED" in str(caught.value)
+
+
+# ── a moment settled without an answer: a skip, a practice ────────────────
+#
+# `_mark_settled_without_answer` marks a bookmark settled from the Take's
+# skips and closed practices, and the exercise offer reads the moment's
+# practice. Until the_bake_knows_about_skips_and_practice.sql the rule read
+# neither table, so every case that retires a bake below served the block
+# from before the speaker's act.
+
+
+def test_a_skip_after_the_bake_retires_it(db):
+    """THE DEFECT. The speaker skipped a bookmark; the reload served the
+    stored block, in which the moment was still waiting on them."""
+    _clean(db)
+    snapshot = _publish(db)
+    _write(db, snapshot)
+    _moment_event(db, "skipped")
+    assert _read(db, snapshot) is None
+
+
+def test_opening_a_moment_leaves_the_bake_fresh(db):
+    """An open settles nothing, and opening bookmarks is what a speaker does
+    most, so the rule counts the skip alone. Under F1 an open may also raise
+    the moment's coach request, a write of its own, counted since 0428."""
+    _clean(db)
+    snapshot = _publish(db)
+    _write(db, snapshot)
+    _moment_event(db, "opened")
+    assert _read(db, snapshot) is not None
+
+
+def test_a_practice_that_lands_after_the_bake_retires_it(db):
+    """The practice was open when the bake ran; a judged attempt then closed
+    it. The stored block still had the moment waiting and its exercise
+    still on offer."""
+    _clean(db)
+    snapshot = _publish(db)
+    practice = _start_practice(db)
+    _write(db, snapshot)
+    _land_practice(db, practice)
+    assert _read(db, snapshot) is None
+
+
+def test_a_practice_dismissed_after_the_bake_retires_it(db):
+    """Leaving a practice settles its moment as well (the page's bar and the
+    lock gate read it)."""
+    _clean(db)
+    snapshot = _publish(db)
+    practice = _start_practice(db)
+    _write(db, snapshot)
+    _dismiss_practice(db, practice)
+    assert _read(db, snapshot) is None
+
+
+def test_a_practice_started_after_the_bake_retires_it(db):
+    """The exercise offer names the practice it resumes (`practice_id`,
+    `resume`), so a start changes the stored block too."""
+    _clean(db)
+    snapshot = _publish(db)
+    _write(db, snapshot)
+    _start_practice(db)
+    assert _read(db, snapshot) is None
+
+
+def test_a_practice_write_that_settles_nothing_leaves_the_bake_fresh(db):
+    """WHY NOT `updated_at`. Every write to a practice moves it: a coach's
+    review, the chat receipt, the after-practice line. None of them changes
+    the block, so the rule reads the start and the close alone. An attempt
+    writes its own table and leaves the practice row untouched."""
+    _clean(db)
+    snapshot = _publish(db)
+    practice = _start_practice(db)
+    _write(db, snapshot)
+    _patch_practice(db, practice, {})
+    assert _read(db, snapshot) is not None
+
+
+def test_a_skip_during_the_computation_retires_the_bake(db):
+    """0351's window holds here too: a skip committed while the Manager ran
+    was never seen by it."""
+    _clean(db)
+    snapshot = _publish(db)
+    _moment_event(db, "skipped")
+    _write(db, snapshot, computed_over_ms=60_000)
+    assert _read(db, snapshot) is None
+
+
+def test_a_skip_and_a_close_before_the_bake_leave_it_fresh(db):
+    """The flip side: both are already in the block the bake stored."""
+    _clean(db)
+    snapshot = _publish(db)
+    _moment_event(db, "skipped")
+    _dismiss_practice(db, _start_practice(db))
+    _write(db, snapshot)
+    assert _read(db, snapshot) is not None
+
+
+def test_another_arc_s_skip_and_practice_leave_this_bake_alone(db):
+    """Per arc, like every other branch of the rule."""
+    _clean(db)
+    snapshot = _publish(db)
+    _write(db, snapshot)
+    other = _other_arc_take(db)
+    _moment_event(db, "skipped", take=other)
+    _land_practice(db, _start_practice(db, take=other))
+    assert _read(db, snapshot) is not None
 
 
 # ── the guards 0345 established, re-checked against the new signature ─────
