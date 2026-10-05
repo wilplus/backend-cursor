@@ -122,15 +122,26 @@ Setup (CONFIG-FIRST: the web service first):
    scripts/run_due_deletions.py` in a shell). When it lists only what should
    go, set `PHASE1_PURGE_EXECUTION_ENABLED=true` on the web service.
 
-Known limit (found by the 0422 rehearsal, not changed by it): the purge
-deletes `phase1_processing_jobs`, `phase1_processing_outbox`,
+Known limit, found by the 0422 rehearsal and fixed by 0425 for the account
+purge: the purge deletes `phase1_processing_outbox`,
 `processing_job_carryovers` and `processing_orphan_objects` rows directly as
-service_role, and 0310 revoked DELETE on them. A person with processing jobs
-is stopped earlier, at the jobs' events (external_review, N14.3), before
-anything is deleted; once a rule decides those events, or for a person with
-an orphan-object row and no job, those deletes fail with
-InsufficientPrivilege mid-run and the request waits for a person. They need
-an executor (a scoped function, or a grant) before that.
+service_role (with the account, as the registry has always listed them), and
+0310 left service_role SELECT on them and nothing else. 0425
+(`the_purge_can_delete_job_plumbing.sql`, decided 2026-10-05) grants DELETE
+on exactly those three, so an account purge that reaches them deletes them;
+a project purge reaches its project's outbox rows and carry-overs the same
+way. `phase1_processing_jobs` and `phase1_processing_job_events` get no
+grant: once retention schedule v1.4's rules are active the purge keeps them
+as job evidence (`job-evidence-v1`) and never deletes them. 0425 ships with
+the purge change that acts on those rules (0424) and must never be left out
+of it; `scripts/phase1_retention_rules_v1_4.sql`, which activates the rules,
+runs only after both are deployed. Until the rules are active a person with
+processing jobs still stops earlier, at the jobs' events (external_review,
+N14.3), before anything is deleted.
+One case is left until v1.4 is active: a job with no event yet (an intake
+never processed) and nothing else undecided; the purge would still try to
+delete that job row and fail on it (InsufficientPrivilege), and the request
+waits for a person.
 
 ## Production gates
 

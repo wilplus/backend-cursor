@@ -578,6 +578,16 @@ if [ "$LANE" = "released" ]; then
   hard migrations/a_purge_deletes_the_product_records_it_froze.sql
 fi
 
+# 0425 gives the service role DELETE on the three job-plumbing tables the
+# purge deletes with the account (phase1_processing_outbox,
+# processing_job_carryovers, processing_orphan_objects), which 0310 left it
+# SELECT on. Released lane only, after 0424, as in the manifest. Twice:
+# apply/reapply idempotency.
+if [ "$LANE" = "released" ]; then
+  hard migrations/the_purge_can_delete_job_plumbing.sql
+  hard migrations/the_purge_can_delete_job_plumbing.sql
+fi
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

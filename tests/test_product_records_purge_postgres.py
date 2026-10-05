@@ -19,7 +19,12 @@ released rehearsal lane:
     events are kept under job-evidence-v1;
   * a project erasure deletes that project's records and keeps the other
     project's; a stranger's rows are never reached, and outside a running
-    purge the trigger refuses even with the rules active.
+    purge the trigger refuses even with the rules active;
+  * the job plumbing (0425): with the rules active the account erasure
+    deletes the person's outbox row, carry-over and orphaned object's
+    metadata, as the registry always listed them, and keeps the job and its
+    events as job evidence; without them it stops for review exactly as on
+    main, with the plumbing untouched.
 
 Named stand-ins: object storage is faked (tests/test_take_purge_postgres.py).
 The lane never applied 0293, so the two Take tables, the three immutable
@@ -28,7 +33,9 @@ revision table) are laid down here exactly as those files write them. The
 lane's ACCOUNT graph is a pre-0313 stand-in that lists no job
 (tests/integration/mlc3_exercise_foundation_prerequisites.sql); production's
 (0312) lists every job of the person. So job events are proved through the
-PROJECT graph, which is the released one (0380) and lists the project's jobs.
+PROJECT graph, which is the released one (0380) and lists the project's jobs,
+and the job-plumbing cases lay production's job list over the stand-in for
+their length (`production_job_list`), then put the stand-in back.
 """
 from __future__ import annotations
 
@@ -164,6 +171,42 @@ def no_v1_4_rules(db):
     withdraw()
 
 
+@pytest.fixture
+def production_job_list(db):
+    """The account graph with production's job list (0312: every job whose
+    principal is the person's) laid over the lane's stand-in, which lists
+    none. The stand-in is renamed and wrapped, never rewritten, and put back
+    after the case: the rest of the lane keeps the graph it was built on."""
+    with db.cursor() as cur:
+        cur.execute("""
+            ALTER FUNCTION public.resolve_phase1_purge_subject_graph_v1(uuid)
+                RENAME TO resolve_phase1_purge_subject_graph_v1_lane_stand_in""")
+        cur.execute("""
+            CREATE FUNCTION public.resolve_phase1_purge_subject_graph_v1(
+                p_acquisition_principal_id UUID
+            ) RETURNS JSONB LANGUAGE sql STABLE AS $$
+            SELECT base.graph || jsonb_build_object('job_ids', COALESCE((
+                       SELECT jsonb_agg(job.id::text ORDER BY job.id::text)
+                         FROM public.phase1_processing_jobs job
+                        WHERE job.acquisition_principal_id::text IN (
+                              SELECT jsonb_array_elements_text(
+                                         base.graph -> 'principal_ids'))),
+                   '[]'::jsonb))
+              FROM (SELECT public.resolve_phase1_purge_subject_graph_v1_lane_stand_in(
+                               p_acquisition_principal_id) AS graph) base
+            $$""")
+    try:
+        yield
+    finally:
+        with db.cursor() as cur:
+            cur.execute("""
+                DROP FUNCTION public.resolve_phase1_purge_subject_graph_v1(uuid)""")
+            cur.execute("""
+                ALTER FUNCTION
+                    public.resolve_phase1_purge_subject_graph_v1_lane_stand_in(uuid)
+                    RENAME TO resolve_phase1_purge_subject_graph_v1""")
+
+
 def _records(db, subject: dict) -> dict:
     """What a Take showed, the speaker's answers, two versions of a
     Paragraph (the second naming the first, as 0327's chain does), and the
@@ -213,6 +256,66 @@ def _records(db, subject: dict) -> dict:
                 processing_job_id, status, attempts)
             VALUES (%s, 'processing', 1), (%s, 'completed', 1)""", (job, job))
     return {**subject, "job": str(job), "part": part}
+
+
+def _plumbing(db, records: dict) -> dict:
+    """The three rows 0425 lets the purge delete: the job's delivery row
+    (intake writes one with every Phase-1 job, 0310), a carry-over of that job
+    to a newer policy, and the metadata of an upload that never became a
+    recording, its object still in storage."""
+    principal, job = records["principal"], records["job"]
+    outbox = _one(db, """
+        INSERT INTO public.phase1_processing_outbox (
+            processing_job_id, event_type, idempotency_key, payload)
+        VALUES (%s, 'phase1_recording_ready', %s, '{}'::jsonb)
+        RETURNING id""", (job, str(uuid.uuid4())))
+    old_policy = _one(db, """
+        SELECT policy_id FROM public.processing_authorization_receipts
+         WHERE acquisition_principal_id = %s LIMIT 1""", (principal,))
+    new_policy = _one(db, """
+        INSERT INTO public.processing_policy_versions (
+            id, version, status, terms_version, terms_copy, terms_copy_sha256,
+            privacy_version, privacy_copy, privacy_copy_sha256,
+            ai_notice_version, ai_notice_copy, ai_notice_copy_sha256,
+            agreement_copy, agreement_copy_sha256, allowed_countries,
+            created_by)
+        VALUES (gen_random_uuid(), 'carry-over-' || gen_random_uuid(), 'draft',
+                'terms-v2', 'terms', repeat('1', 64), 'privacy-v2', 'privacy',
+                repeat('2', 64), 'ai-v2', 'ai', repeat('3', 64), 'agreement',
+                repeat('4', 64), ARRAY['PL'], 'rehearsal')
+        RETURNING id""")
+    carryover = _one(db, """
+        INSERT INTO public.processing_job_carryovers (
+            acquisition_principal_id, old_policy_id, new_policy_id,
+            processing_job_id, exact_operation, cutoff_at, expires_at)
+        VALUES (%s, %s, %s, %s, 'recording_transcription_ranking_feedback',
+                now(), now() + interval '1 day')
+        RETURNING id""", (principal, old_policy, new_policy, job))
+    key = f"{principal}/never-finalized.wav"
+    orphan = _one(db, """
+        INSERT INTO public.processing_orphan_objects (
+            acquisition_principal_id, storage_provider, bucket, object_key,
+            exact_bytes_sha256, reason_code, not_before)
+        VALUES (%s, 'r2', 'take-audio', %s, repeat('8', 64),
+                'upload_not_finalized', now())
+        RETURNING id""", (principal, key))
+    return {"outbox": str(outbox), "carryover": str(carryover),
+            "orphan": str(orphan), "orphan_key": key}
+
+
+def _plumbing_rows(db, plumbing: dict) -> dict:
+    return {
+        "outbox": _one(db, """SELECT count(*) FROM public.phase1_processing_outbox
+                               WHERE id = %s""", (plumbing["outbox"],)),
+        "carryover": _one(db, """SELECT count(*) FROM public.processing_job_carryovers
+                                  WHERE id = %s""", (plumbing["carryover"],)),
+        "orphan": _one(db, """SELECT count(*) FROM public.processing_orphan_objects
+                               WHERE id = %s""", (plumbing["orphan"],)),
+    }
+
+
+#: The registry codes of the three tables 0425 opens.
+THE_PLUMBING = ("phase1_outbox", "policy_carryovers", "orphan_metadata")
 
 
 def _phase1_attempt(db, principal: str, project: str) -> str:
@@ -388,3 +491,86 @@ class TestWithTheSignedRulesTheErasureFinishes:
                 "rule": "job-evidence-v1"}, code
         assert _rows(db, kept) == {
             "shown": 1, "answers": 2, "versions": 2, "job": 1, "events": 2}
+
+
+class TestTheJobPlumbingGoesWithTheAccount:
+    """0425 (decided 2026-10-05 on W3-B1's finding): the purge deletes the
+    outbox row, the carry-over and the orphaned object's metadata with the
+    account, as the registry has always listed them; v1.4 keeps the job and
+    its events. Proved on production's job list, without which the lane's
+    account erasure never reaches a job (`production_job_list`)."""
+
+    @pytest.fixture(autouse=True)
+    def _shape(self, db, no_v1_4_rules, production_job_list):
+        _production_shape(db)
+        takes._seed_every_retention_rule(db)
+
+    def test_without_v1_4_the_erasure_stops_and_the_plumbing_stays(
+            self, db, fake_storage):
+        records = _records(db, takes._account_with_one_take(db))
+        plumbing = _plumbing(db, records)
+        before = (_rows(db, records), _plumbing_rows(db, plumbing))
+
+        DataPurgeOrchestrator(_Database(db)).run(records["request"])
+
+        assert _one(db, "SELECT state FROM public.data_purge_requests WHERE id = %s",
+                    (records["request"],)) == "review_required"
+        # As on main: the three product tables and, with the jobs listed,
+        # the jobs' events stop the erasure before anything is touched.
+        assert _left(db, records["request"]) == {
+            code: "EXPLICIT_RESOLVER_REQUIRED" for code in THE_FOUR}
+        for code in THE_PLUMBING + ("phase1_jobs",):
+            assert _target(db, records["request"], code) == {
+                "state": "pending", "reason": None, "disposition": "delete",
+                "rule": None}, code
+        assert (_rows(db, records), _plumbing_rows(db, plumbing)) == before
+        assert not fake_storage, "nothing may be erased before review"
+
+    def test_with_v1_4_the_erasure_deletes_the_plumbing_and_keeps_the_job(
+            self, db, fake_storage):
+        _v1_4_registered(db)
+        records = _records(db, takes._account_with_one_take(db))
+        plumbing = _plumbing(db, records)
+
+        DataPurgeOrchestrator(_Database(db)).run(records["request"])
+
+        assert takes._left_for_review(db, records["request"]) == []
+        assert _one(db, "SELECT state FROM public.data_purge_requests WHERE id = %s",
+                    (records["request"],)) == "done"
+        assert _plumbing_rows(db, plumbing) == {
+            "outbox": 0, "carryover": 0, "orphan": 0}
+        for code in THE_PLUMBING:
+            assert _target(db, records["request"], code) == {
+                "state": "deleted", "reason": None, "disposition": "delete",
+                "rule": None}, code
+        assert _rows(db, records) == {
+            "shown": 0, "answers": 0, "versions": 0, "job": 1, "events": 2}
+        for code in ("phase1_jobs", "phase1_job_events"):
+            assert _target(db, records["request"], code) == {
+                "state": "retained", "reason": None, "disposition": "retain",
+                "rule": "job-evidence-v1"}, code
+        # The orphaned upload's object went from storage before its row.
+        assert ("take-audio", plumbing["orphan_key"]) in fake_storage
+
+    def test_a_project_erasure_deletes_its_outbox_row_and_carry_over(
+            self, db, fake_storage):
+        """The project graph lists the project's jobs (0380): their outbox
+        rows and carry-overs go with the project, the job and its events
+        stay, and the orphaned upload, which belongs to the account, stays
+        for the account's erasure (the runbook's account of 0425)."""
+        projects._production_columns(db)
+        _v1_4_registered(db)
+        records = _records(db, takes._account_with_one_take(db))
+        plumbing = _plumbing(db, records)
+        _request, purge = projects._confirmed_project_deletion(db, records)
+
+        ProjectPurgeOrchestrator(_Database(db)).run(purge)
+
+        assert takes._left_for_review(db, purge) == []
+        assert _one(db, "SELECT state FROM public.data_purge_requests WHERE id = %s",
+                    (purge,)) == "done"
+        assert _plumbing_rows(db, plumbing) == {
+            "outbox": 0, "carryover": 0, "orphan": 1}
+        assert _rows(db, records)["job"] == 1
+        assert _rows(db, records)["events"] == 2
+

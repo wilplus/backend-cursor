@@ -112,3 +112,17 @@ def test_the_proposals_are_not_adopted_by_the_signature():
     assert "(a proposal, for the founder)" in section
     signature = FLAT.split("## 7. Signature", 1)[1]
     assert "the proposals in §5 are not adopted by this signature" in signature
+
+
+def test_it_says_the_purge_change_lands_with_0425():
+    """0425 gives the service role DELETE on the three job-plumbing tables
+    the purge deletes with the account; without it an erasure these rules
+    let through would stop part-way, after the audio is gone. The script is
+    run by hand, possibly before the purge change is deployed, so it says so
+    rather than checking for it."""
+    header = SCRIPT.split("DO $$", 1)[0]
+    assert "migrations/the_purge_can_delete_job_plumbing.sql" in header
+    for table in ("phase1_processing_outbox", "processing_job_carryovers",
+                  "processing_orphan_objects"):
+        assert table in header, table
+
