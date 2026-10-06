@@ -16,13 +16,26 @@ from exactly what was said in the latest Take; locked helper words persist until
 user picks new ones, and every version stays in the Paragraph's history.
 - **Three load-bearing pieces:** **(a)** perfect per-slide transcription,
   **(b)** coherent initial Ideal Text with stable Paragraph identity, and
-  **(c)** versioned Manager arbitration. The currently served V2 policy returns
+  **(c)** versioned Manager arbitration. **V3 is served today** (founder
+  cutover 2026-09-18; V2 is retained but is no longer a fallback). **V4, when
+  built, replaces it for every speaker by the founder's switch** (founder
+  2026-10-06, Navigation Panel QG3 A, V22a B: "there are no users"); a block V4
+  is very unsure of gets V3's pick, logged, never silent (V15a). V3 partitions
+  each Slide run into deterministic blocks closest to 75 words and surfaces
+  exactly one relative-best Confident Voice item per valid block on **every**
+  Take, Take 1 included (contract 24b). On top, each Take carries anchored
+  notes, one per block by the machine's read (founder 2026-09-29, caps
+  lifted): praise on any item read confident, a rewrite on any item read weak,
+  and an exercise on any bookmark whose clip the machine reads weak and a
+  library exercise matches, each only where an evidence-backed one exists
+  (24f). An honest empty rewrite or praise lane shows no card. *Amended
+  2026-10-06 (founder, Navigation Panel QG3 A; ledger N29, CA01; decisions log
+  N51): this replaces the stale text "The currently served V2 policy returns
   exactly three evidence-ranked items. The founder-locked, not-yet-activated
-  Feedback Policy V3 instead partitions each Slide run into deterministic
-  blocks closest to 75 words: Take 1 returns one relative-best Confident Voice
-  item per valid block; Take 2+ adds at most one global actionable improvement
-  and at most one global evidence-backed praise. An honest empty rewrite or
-  praise lane shows no card. Weak evidence uses tentative language; it is never
+  Feedback Policy V3 ... Take 2+ adds at most one global actionable
+  improvement and at most one global evidence-backed praise", which V3's
+  cutover of 2026-09-18 and the 2026-09-29 lifting of the caps had
+  superseded.* Weak evidence uses tentative language; it is never
   invented. The record → process → Ideal Text → next-Take loop never waits for
   a coach or exercise.
 
@@ -45,11 +58,21 @@ eligible pool. Owner answers are routing signals, never blind training labels.
   keeps the helper words, which persist until the user picks new ones. Every
   version stays in the Paragraph's history. Best Presentation remains retired.
 - **L2 — Manager-gated, versioned Feedback.** Detectors create Candidates;
-  only Manager-approved Candidates surface. V2 keeps its exact-three budget
-  until a separate V3 cutover. V3 uses one relative-best Confident Voice item
-  per valid 75-word block; Take 1 has no rewrite/praise, while Take 2+ has at
-  most one global rewrite and one global praise. Each active-policy lane ranks
-  its complete pool. It never invents evidence or fills an honest
+  only Manager-approved Candidates surface under the active versioned budget.
+  V3 (served since 2026-09-18; replaced by V4 for every speaker once V4 is
+  built and switched by the founder, with V3's pick on any block V4 is very
+  unsure of, logged — QG3 A, 2026-10-06) uses one relative-best Confident
+  Voice item per valid 75-word block on every Take, plus one anchored note per
+  block by its read: praise where read confident, a rewrite where read weak,
+  an exercise on any matched bookmark (founder 2026-09-29, caps lifted; 24f).
+  V2 kept exactly one item from each of three families and is retained only
+  as superseded history — never a silent substitute (24h). Each active-policy
+  lane ranks its complete pool. *Amended 2026-10-06 (founder, Navigation Panel
+  QG3 A; ledger N29, CA01; decisions log N51): this replaces the stale text
+  "V2 keeps its exact-three budget until a separate V3 cutover. V3 uses one
+  relative-best Confident Voice item per valid 75-word block; Take 1 has no
+  rewrite/praise, while Take 2+ has at most one global rewrite and one global
+  praise."* It never invents evidence or fills an honest
   `no_defensible_candidate` lane.
 - **L3 — Provenance walls.** Machine prediction, owner routing, blind peer
   rating, coach judgment, and detector verdict remain separate. Voice Album

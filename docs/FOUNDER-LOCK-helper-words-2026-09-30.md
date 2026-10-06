@@ -67,6 +67,10 @@ Done when:
 - [ ] Recording Mode shows the cue on one or two lines at the large size, never as a paragraph.
 - [ ] Contract 13 states the limit of four.
 
+*Amended 2026-10-06 (founder, Navigation Panel QA8 B; ledger A005; decisions log N51): exception to the third line — a phrase saved before the four-word limit is shown whole in Recording Mode, even where that takes more than two lines. The limit of four and the other lines stand.*
+
+*Amended 2026-10-06 (founder, Navigation Panel QA4 A; ledger A004a, A004b; decisions log N51): B3's tap-by-tap model stands — each tap adds one word, the fifth tap does nothing and the untapped words grey out. The 26 September two-tap rule (the run-based picking A004a and A004b describe) is retired; the designer rebuilds the picker to this lock.*
+
 ### B4 — Helper words have their own overlay.
 
 Done when:

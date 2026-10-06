@@ -324,7 +324,7 @@ server-side (a client-supplied proposal would mean the rater's screen carried it
 
 *Why storage and not just exclusion:* "which prediction did this human disagree with" is
 unanswerable after the fact without it, and that disagreement is the whole of J3's active
-learning. Excluding the machine from the vote and keeping its proposal are the same decision.
+learning. Excluding the machine from the vote and keeping its proposal are the same decision. *Amended 2026-10-06 (founder, Navigation Panel QG1 A; ledger CA02; decisions log N51): J1 still holds for the label ledger and for the sound confidence read — the machine stays a router, quorum stays two humans, and `label_quorum.resolve` keeps `machine_votes: 0` (rule 1 of `services/label_quorum.py`). Willfidence (SPEC §17, `willfidence-v1`) is a separate, internal measure; its S term averages the coach, peer and machine votes for that measure alone — a carve-out for the measure, not a vote in the ledger.*
 
 **J2 · The owner is not a peer.** Rating your own clip is a **self-report**: flagged
 (`self_report`), excluded from the 2-peer quorum ground truth, kept for **rater calibration
@@ -341,7 +341,7 @@ A coach rating a session they own writes `lane='coach'` and is still a self-repo
 evaluation — it is calibration signal. **Active-learning priority:** when the lone rating
 *disagrees with the machine's proposal*, that clip is the most informative unrated thing in the
 corpus (either a model miss or a rater miss, and one more peer says which) — it routes
-**immediately** for a 2nd peer.
+**immediately** for a 2nd peer. *Amended 2026-10-06 (founder, Navigation Panel QG1 A; ledger CA06; decisions log N51): J3 still holds for the label ledger and for the sound confidence read — a singleton is never gold and never evaluation, and only a settled clip is gold or evaluation data (rule 3 of `services/label_quorum.py`). Willfidence (SPEC §17, `willfidence-v1`) is a separate, internal measure computed from stored answers; it is not a label, not gold and not an evaluation set. This note changes nothing about training labels.*
 
 **J4 · IDK is a RESPONSE, not a null.** Counted like any other answer:
 - **1 definite + 1 IDK** = not a quorum → **route to a 3rd rater**.
@@ -875,7 +875,7 @@ practices are excluded from every outcome measure. Opens and skips are
 recorded under either flow, so the coach-load report (requests per opened
 moment, by kind, before and after the switch) has its "before". The flip of
 each switch is a reviewed change after the founder's yes; the speaker's
-screens follow the designer session's build of the flow.
+screens follow the designer session's build of the flow. **Amended 2026-10-06 (founder, Navigation Panel QA15 B; ledger A042a; decisions log N51):** the before/after comparison is dropped. The coach-load report shows "after" only — requests per opened moment, by kind. No open or skip was recorded while the switch was off, so there is no "before" to compare.
 
 **N20 · The coach panel's learning additions built dark (founder
 2026-10-01, F8, C5-a, F6, C5-b, task 4; "go until you finish the whole
@@ -1688,3 +1688,137 @@ P4 A / P5 A / P6 A / P7 A / C1 A / C2 A / C3 A / C4 B").**
 7. **The founder's check** (Supabase, read-only, the same evening):
    migrations 0422 and 0423 are in production; no account deletion has been
    asked for.
+
+**N51 · The founder's answers of 6 October 2026 (Navigation Panel; two
+exports, 07:59 and 13:10 UTC).** The answers are verbatim, with the
+founder's notes, in `docs/audit/PANEL-ANSWERS-2026-10-06.md` and
+`docs/audit/PANEL-ANSWERS-2026-10-06-b.md`, and the rows they decide are in
+`docs/audit/LEDGER.md`, all three on branch `claude/audit-ledger`. Each answer
+is listed here by its panel ID with the ledger rows it decides (in brackets;
+"—" where the answer sets process or a build-plan item and no ledger row
+carries it).
+1. **The morning five (first export).** R1 A undo it, revert #907 [N01].
+   R2 A merge #908 and #616 first [N04a, N05, B1.1]. R3 A fix the
+   shadow-frame writer now [N20, B1.1]. R4 A delete
+   mlc2-confidence-readiness after a check [N17], superseded by R4a A keep
+   the alarm and find the cause [N17]. R5 A land the B6 patch [A002, A006].
+2. **How the work runs (W, M, H).** W1 A the ledger is the list, W2 A most
+   serious problem first, W3 A a fresh session per row (note on outside
+   agents and model choice, verbatim in the export), W4 A questions only
+   come to the panel, W5 A a Done screen in the panel with the app's real
+   screens [X7]. M1 and M2 not answered; M2a B keep copy-paste for a while.
+   M3 A a different model writes the test, M3a A one model writes tests and
+   the other checks, M3b A the fixer flags and never edits the test, M4 A
+   task files copied by hand (note verbatim in the export), M5 A other
+   models write fixes for small rows, M6 A one fresh outside read now
+   [N22]. H1–H7 A build X1, X2, X3, X4 a/b/c, X5 [X1–X5, B2.2]; H8 A
+   screens, database changes and every tenth other PR [X6]; H9–H12 A build
+   X7, X8, X9, X10 [X7–X10].
+3. **The V4 page (V).** V1 A every speaker [B1.1]. V2 A from all moments
+   [B1.2]. V3 A round up [B1.2]. V4 A stretch evenly [B1.3, B1.6, BEXIT,
+   BG01]. V5 B stricter filler scale [B1.3]. V6 A spread stays empty [B1.3].
+   V7 A phone clock [B1.4]. V8 A any single blind coach answer [B1.4b]. V9 A
+   In-between counts half [B1.4b]. V10 B a paragraph ID that survives
+   rewording [B1.5] (note: a slide has more than one paragraph; follow-up
+   V10a open). V11 B only a clear rise [B1.5]. V12 A all the paragraph's
+   moments [B1.5]. V13 A Claude drafts the importance list, the founder
+   approves [B1.6, BO1]. V14 A cut-off from dark-run data [B1.6, BO2]. V15 A
+   fallback per block [B1.6, B2.1]; V15a A falling back too often fails the
+   exit gate (4 of 5 blocks) [B1.6, BEXIT]. V16 explain it more simply;
+   V16a A V4 picks moment and kind, the exercise picker picks the video
+   [B1.6]. V17 A In-between counts half [B1.7]. V18 A "None needs it" by
+   both is agreement [CA07]. V19 A "Is the new version surer? Yes / No /
+   Can't tell" [B1.9]. V20 A speaker's words vs a machine version [B1.9].
+   V21 A simple rule with a minimum [BEXIT]. V22 B show V4 to a few speakers
+   [BEXIT]; V22a B skip the dark run, a few speakers now, then everyone,
+   note "Cause there are no users" [BEXIT]; V22b not answered. V23 A leave
+   Keep/Swap on [N23]. V24 A weekly, as lock C6 says [N24]. L1 A still at
+   most 3 orange bars [B2.2]. L2 A the practice attempt that reached the
+   bar [B2.2].
+4. **The gap and clash questions (QG).** QG1 A one paperwork PR now [BG04,
+   CA02, CA03, CA06, N25]. QG2 explain more simply [CA04] (follow-up QG2a
+   open). QG3 A rewrite "V3 is the served policy" as decided [CA01, N29].
+   QG4 B the golden set is the founder's picks alone, lock L6 [CA07, B1.8].
+   QG5 A Claude drafts, founder signs [BG05, CA10]. QG6 A add a small dark
+   check [BG10]. QG7 A no past-data estimate [BG01, BEXIT]. QG8 A add Take
+   and speaker willfidence to 1.3 [BG03]. QG9 A coach re-picks 1 in 10 in
+   1.8 [BG02, B1.8]. QG10 A D3 covers the sound question only [CA05].
+   QG11 A write Phase 2 changes when each step starts [CA08, CA11]. QG12
+   explain more simply [BG09] (follow-up QG12a open). QG13 A Album machine
+   Yes stays today's sound read [BG06]. QG14 A both doors [CA12].
+5. **The audit rows (QA, QB).** QA1 A answers can change [A018a]. QA2 not
+   answered [A055b]. QA3 A praise gets its own switch [A045, A053b]. QA4 A
+   follow lock B3 [A004a, A004b]. QA5 A keep Next only [A055a, A056c]. QA6
+   A light the coach dot from today's answers, with the founder's design
+   note [A014a]. QA7 B no dot on answered paragraphs [A014b]. QA8 B show old
+   long phrases whole [A005]. QA9 A Practise again after Takes 1 and 2
+   [A019a]. QA10 A show "done before" [A057]. QA11 and QA12 not answered
+   [A050a, A060]. QA13 B wait for the designer session [A063b]. QA14 A
+   reword the two audit questions [A072b, A092]. QA15 B drop the comparison
+   [A042a]. QA16 B keep pre-6 Oct pairs out [A098b]. QA17 A accept
+   #606/#607/#613/#615 [A021]. QA18 A stand-ins are fine [A003b]. QA19
+   explain more simply [A003c]. QA20 A show coach-work numbers on the pace
+   panel [A042b]. QA21 B leave old practice rows out of History [A058].
+   QA22 A accept [A074a]. QA23 A accept [A018b]. QA24 A mark DONE-1
+   replaced [A052a]. QB1 B others keep recording, with the founder's note on
+   settling the architecture first [A192]. QB2 explain more simply [A163].
+   QB3 A switch the training_corpus rule off until training starts [A126a].
+   QB4 A remove the copy job [A123b, A124, N09]. QB5 A marking is enough
+   [A217b]. QB6 A sound reads only [B1.6]. QB7 A any feedback, praise too,
+   with the founder's note [B1.8]. QB8 A the reached bar splits above/below
+   [B1.9]. QB12 A six years like consent proof [A214a]. QB13 A keep the
+   walk as is [A230]. QB14 A fold gate 5 into the outside read [A118].
+   QB15 A Claude drafts the DPIA, counsel reviews [A139]. QB16 A linking is
+   enough [A180b]. QB17 explain more simply, with the founder's note that it
+   is now willfidence, not confidence [A114]. QB18 A same project as today,
+   with the founder's note [A151c]. QB19 B add the disagreement exercise to
+   the designer's list [A151b, A169c]. QB20 A remove the two old routes
+   [A187a, A187b]. QB21 A reword Privacy 4b [A225b]. QB22 B every Take
+   [B2.3].
+6. **The product rows (P).** P1 not answered [A025, A050a]. P2 A nothing
+   goes to the coach [A175b]. P5 A remove the Replace PDF offer [A157].
+   P9–P20 B none of the twelve praise and rewrite lines signed as written
+   [A053a, A068a]. P21 A it is the signed after-practice list. P23 A accept
+   [A185a]. P24 A keep the standard sentence. P25 B hide the two wrong
+   lines. P26 explain more simply [A169a]. P28 B keep the machine read
+   hidden from the coach [A151a]. P31 A answer by kind is enough [A181].
+   P33 B wait for the re-landed v1.5 PDF [N21]. P34 A calendar year,
+   Warsaw. P35 B exempt, remember "already paid" [N21]. P36 A the answer
+   goes with the item [N21]. P37 A the job goes with the bundle [N21]. P38 A
+   add paid project records now [N21]. P39 A remove the bundle's exercise
+   panel [A093a]. P43 A confirm. P44 not answered. P46 A sign the jar
+   fallback reason line. P50 A keep one name. P51 B and P52 B the founder
+   writes the words [A077a, A077b]. P53 A a pair trains once [A107]. P54 not
+   answered. P55 A counts are enough [A238b]. P57 A leave it [N04b].
+7. **Paperwork landed with this entry (QG1 A, "one paperwork PR now").**
+   SPEC D8, §7.2, D19, §9.1 and the lexical-dilution rule carry dated notes
+   that the old rule still holds for the sound confidence read and that
+   willfidence is a separate, internal measure; SPEC §17 gains the
+   founder-signed written definition `willfidence-v1`, the WORDS qualities
+   open under O3 (QG1 A; BG04, CA02, CA03, CA06, N25). J1 and J3 above carry
+   the same note (CA02, CA06). SPEC D3 says it governs the sound confidence
+   question only (QG10 A; CA05). "V3 is the served policy" is rewritten in
+   the backend CLAUDE.md, `docs/willab_decision_filter.md`, contract 24, 24h
+   and the clause 47 note: V3 is served today; V4, when built, replaces it
+   for every speaker by the founder's switch (V22a B); a block V4 is very
+   unsure of gets V3's pick, logged, never silent (V15a); the filter copy's
+   stale V2 "exactly three items" text is brought up to date (QG3 A; CA01,
+   N29). Coach-panel lock L6 notes that the golden set stays the founder's
+   picks alone and coach picks are compared with them, which narrows the V4
+   page's M9 and V18 (QG4 B; CA07). Contract 35g-2: no coach request for a
+   clip the machine could not read (P2 A; A175b). Contract 34: the coach
+   does not see the machine's read after submitting; the comparison happens
+   off-screen, for analysis only (P28 B; A151a). Contract 36: the coach's
+   answer by kind is the review history for rewrite and praise items (P31 A;
+   A181). Contract 35j: the record is linked to the speaker's action and the
+   coach's judgement (QB16 A; A180b). N19 above: the before/after comparison
+   is dropped (QA15 B; A042a). Helper-words lock B3: phrases saved before
+   the four-word limit show whole in Recording Mode (QA8 B; A005), and B3's
+   tap-by-tap model stands with the 26 September two-tap rule retired
+   (QA4 A; A004a, A004b). The frontend CLAUDE.md's filter copy is brought to
+   the same text in its own PR.
+8. **Not in this entry.** QG2 and SPEC D7 (still being decided, QG2a);
+   DONE-1 and DONE-5 (the build plan is not in this repository); Privacy 4b
+   and the DPIA (legal drafts, QB21 A and QB15 A); the retention schedule
+   (re-lands with v1.5, P33 B); the Phase 2 texts (QG11 A: written when
+   each step starts).
