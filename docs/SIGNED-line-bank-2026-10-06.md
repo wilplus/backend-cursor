@@ -137,8 +137,12 @@ the gentle line for when no single cue stands out.
 - Not quite yet. Here's another practice to try!
 - Keep going! I have another practice for you to try.
 
-**After the third try that isn't praise** (CM3a A: up to 3 tries) — on
-the panel to sign (CM3b); nothing ships until it is signed.
+**After the third try that isn't praise** (CM3a A: up to 3 tries; CM3b A,
+sixth export, 20:11 UTC); the app then moves on to "Judgement time!"
+- Great effort! Let's move on and come back to this one later.
+- Thanks for giving it your all. On to the next step!
+- You worked hard on this one. Let's keep going!
+- Nice persistence! We'll move on for now.
 
 ## The judgements
 

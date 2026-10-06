@@ -1985,3 +1985,16 @@ may read them from.
    answer toast is the answer with a tick. WQ5 A and WQ6 A: the sharing
    screen's choices and its four messages are signed (CM2 B: they go live
    with the screen).
+
+**N55 · Practise becomes part of the service (founder, 6 October 2026,
+sixth export, 20:11 UTC).** WQ3a B, against Claude's pick: personalised
+practice stops being a consent choice the speaker can switch off and
+becomes part of what people sign up for. Today it is the consent choice
+`personalised_practice`, withdrawable at any time; a consent cannot be
+made permanent, so the change is a change of legal basis: Claude drafts
+the Privacy Policy and Terms change, counsel reviews it, and only then
+does the switch leave Settings and the code stop asking
+(`consent_choice_required("personalised_practice")`). Until then nothing
+changes in the app. CM3b A: the four lines after the third try that is
+not praise are signed (`docs/SIGNED-line-bank-2026-10-06.md`). WQ3b A
+arrived without a letter; asked again (WQ3c).
