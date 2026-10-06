@@ -11,7 +11,6 @@ from scripts import run_phase1_data_purge
 from services import lab_audio_storage
 from services.data_purge import DataPurgeOrchestrator, SubjectGraph
 from services.data_purge_registry import (
-    before_its_rule,
     CASCADE_RELATIONS,
     DEPENDENCIES,
     DYNAMIC_RUNTIME_RELATIONS,
@@ -124,11 +123,7 @@ def test_confident_moment_relations_are_deletion_registered():
 def test_ambiguous_shared_and_mixed_purpose_paths_fail_closed():
     by_relation = {dependency.relation: dependency for dependency in DEPENDENCIES}
     assert by_relation["charisma_snippets"].disposition == "external_review"
-    # Retention schedule v1.5 (N50 P6) decided the MLC-2 speaker binding;
-    # until v1.5 is registered it fails closed exactly as before.
-    assert by_relation["ml_speaker_principals"].schedule == "1.5"
-    assert before_its_rule(
-        by_relation["ml_speaker_principals"]).disposition == "external_review"
+    assert by_relation["ml_speaker_principals"].disposition == "external_review"
     # Retention schedule v1.4 decided the Life Panel (a product record,
     # deleted with the account); it still fails closed until that signed
     # rule is active, as `before_rule` says.
@@ -385,9 +380,7 @@ def test_n1_dependencies_are_acquisition_principal_scoped():
         dependency = by_code[code]
         assert dependency.selector_column == "acquisition_principal_id"
         assert dependency.locator_kind == "principal"
-        # Decided by v1.5 (N50 P6); fail closed until it is registered.
-        assert dependency.schedule == "1.5"
-        assert before_its_rule(dependency).disposition == "external_review"
+        assert dependency.disposition == "external_review"
     assert "exercise_n1_version_compatibility_profiles" in NON_SUBJECT_RELATIONS
 
 
@@ -421,9 +414,7 @@ def test_restored_practice_feedback_and_root_ledgers_fail_closed_by_principal():
         dependency = by_code[code]
         assert dependency.selector_column == "acquisition_principal_id"
         assert dependency.locator_kind == "principal"
-        # Decided by v1.5 (N50 P1, P6); fail closed until it is registered.
-        assert dependency.schedule == "1.5"
-        assert before_its_rule(dependency).disposition == "external_review"
+        assert dependency.disposition == "external_review"
     assert by_code["exercise_pair_assignment_reviewers"].selector_column == (
         "reviewer_principal_id"
     )
@@ -471,8 +462,7 @@ def test_first_client_allowlist_and_reviewer_edges_are_deletion_attributed():
         assert dependency.selector_column == selector
         assert dependency.locator_kind == "principal"
         assert dependency.target_kind == target_kind
-        assert dependency.schedule == "1.5"
-        assert before_its_rule(dependency).disposition == "external_review"
+        assert dependency.disposition == "external_review"
 
 
 def test_subject_graph_keeps_practice_and_m3_lineage_coordinates_separate():
@@ -651,12 +641,7 @@ def test_every_dependency_target_kind_is_one_the_freeze_accepts():
     relations = frozenset(dependency.relation for dependency in DEPENDENCIES)
     for dependency in DEPENDENCIES:
         target = orchestrator._dependency_target(dependency, graph, relations)
-        if target is None:
-            # A carve-out (v1.5) builds nothing until it is decided; its
-            # rows are its original entry's, which is checked here too.
-            assert dependency.carved_from, dependency.code
-            continue
-        assert target.target_kind in FREEZE_TARGET_KINDS, (
+        assert target is not None and target.target_kind in FREEZE_TARGET_KINDS, (
             dependency.code, target)
 
 

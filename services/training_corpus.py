@@ -7,7 +7,9 @@ of thing into `training_corpus_items` (0375) — separate copies, never pointers
 * the AUDIO SEGMENT of each Confident Voice item the speaker was shown, cut
   from the Take's own recording and stored under `training-corpus/`;
 * its TRANSCRIPT SPAN, the words of that segment;
-* a professional COACH LABEL on it, if one exists when the job runs.
+* a professional COACH LABEL on it, if one exists when the job runs: the
+  coach's blind judgement as the confidence chain recorded it (``ml_judgments``,
+  0430), never the mixed-purpose ``confidence_labels`` (DA-PROHIBIT).
 
 Which items were shown is read from the frozen feedback set, which the bake or
 the first open writes a little after processing ends. If it is not there yet,
@@ -164,6 +166,11 @@ def _copy_audio(database: Any, base: dict, snippet: dict,
         whole = get_exact_storage_object_bytes(
             str(source["object_key"]), bucket=str(source["bucket"]),
             storage_provider=str(source.get("storage_provider") or "r2"))
+        # F-8: a download of a confidence-chain object appends its
+        # verification (nothing for any other key; never fails the copy).
+        from services.object_verification import note_download
+        note_download(database, bucket=str(source["bucket"]),
+                      object_key=str(source["object_key"]), data=whole)
         if _sha(whole) != str(source.get("exact_bytes_sha256") or ""):
             logger.warning("training corpus: source bytes changed snip=%s",
                            snippet_id)
@@ -190,10 +197,25 @@ def _copy_audio(database: Any, base: dict, snippet: dict,
     return False
 
 
-def _copy_coach_label(database: Any, base: dict, snippet_id: str) -> bool:
-    from services.professional_confidence import professional_verdicts
+#: The chain's blind coach decisions this copy keeps, as the value it
+#: stores: the professional Yes and No the copy always kept (0430).
+_COACH_DECISIONS = {"rating_yes": "yes", "rating_no": "no"}
 
-    value = professional_verdicts(database, [snippet_id]).get(snippet_id)
+
+def _copy_coach_label(database: Any, base: dict, snippet_id: str) -> bool:
+    """The coach's blind judgement on this moment, from the confidence
+    chain's own record (``ml_judgments`` through
+    ``get_mlc2_blind_coach_ratings_v1``, 0430; DA-PROHIBIT). Never from
+    ``confidence_labels``: that table is product state shared with owner,
+    peer and machine answers, and canonical training code must not read it.
+    So a label is copied only for a moment the walk judged blind on a Take
+    the chain admitted (the training yes is the same authority for both)."""
+    reader = getattr(database, "get_mlc2_blind_coach_ratings", None)
+    if reader is None:
+        return False
+    decision = (reader(base["source_take_id"], [snippet_id]) or {}).get(
+        str(snippet_id))
+    value = _COACH_DECISIONS.get(str(decision or ""))
     if value is None:
         return False
     return _record(database, {

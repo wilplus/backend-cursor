@@ -612,17 +612,18 @@ if [ "$LANE" = "released" ]; then
   hard migrations/a_coach_judgement_stands.sql
 fi
 
-# 0429 lets a running purge delete what retention schedule v1.5 decided
-# (N50 P1-P6), once v1.5 is registered: nine guard functions gain the
-# governed DELETE branch in place, three unguarded tables gain a guard, the
-# service role gains DELETE and the selecting columns, the read-only delete
-# check, the project graph's V3 memberships, and a nullable reference-video
-# owner. Released lane only, where the purge tables and every table it opens
-# live. After the migrations before it in the manifest. Twice:
-# apply/reapply idempotency.
+# 0429: the confidence chain hears the training yes (N48.5 Q27 A). It
+# re-issues ring_consent_is_current_v1, ring_consent_policy_exists_v1 and
+# get_ring_confidence_readiness_v1 (0394), get_mlc2_confidence_canary_
+# readiness_v1 (0377) and promote_recording_attempt_with_mlc2_confidence_v1
+# (0392), all applied above, and adds the training snapshot, the speaker
+# binding and the blind-rating reader. Released lane only, where its suite
+# (tests/test_the_chain_hears_the_training_yes_postgres.py) and the chain's
+# end-to-end suite run. After the migrations before it in the manifest.
+# Twice: apply/reapply idempotency.
 if [ "$LANE" = "released" ]; then
-  hard migrations/the_purge_reaches_what_v1_5_decided.sql
-  hard migrations/the_purge_reaches_what_v1_5_decided.sql
+  hard migrations/the_chain_hears_the_training_yes.sql
+  hard migrations/the_chain_hears_the_training_yes.sql
 fi
 
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no

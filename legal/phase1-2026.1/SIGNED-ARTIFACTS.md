@@ -161,37 +161,6 @@ signed for their versions (04 §5). Neither signature makes either document
 counsel-reviewed; both say so on their first page, and both are put to
 counsel (`21-counsel-questions-2026-10.md`, questions 2 and 3).
 
-## Awaiting signature (rendered 2026-10-05)
-
-One render made on 2026-10-05 by `scripts/render_doc_pdf.py` from the
-markdown in the same commit as this table, for the founder's PAdES
-signature: the founder's answers to v1.4 §5, "P1 A / P2 A / P3 A / P4 A /
-P5 A / P6 A / P7 A" (decisions log N50, item 5). The hash of the
-**unsigned** render is recorded so that the signed file can be checked to be
-that render plus a signature and nothing else; it is never the value to
-register.
-
-| # | `object_key` | source | `sha256` of the UNSIGNED render |
-|---|---|---|---|
-| 06 v1.5 | `phase1-2026.1/legal/retention-schedule-v1.5.pdf` | `22-retention-schedule-v1.5-what-v1.4-left-open-DRAFT.md` | `380e1e4aa2c694ba0295a4e369b0f02db3c47fd81d46ba172a80f532218d729a` |
-
-The render is 79,403 bytes. It is not reproducible byte for byte (the PDF
-carries the time it was made), so the file to sign is the one with this
-hash, not a fresh render of the same markdown; if the markdown changes, it
-is rendered again and this row replaced.
-
-**Not signed, not registered.** Once it is signed: check that this render
-is a byte-identical prefix of the signed file; the founder uploads the
-signed file to its `object_key`; its sha256 goes into the **Current** table
-and into `scripts/phase1_retention_schedule_v1_5.sql`, which refuses to run
-while the placeholder is there. Before registering, run
-`scripts/phase1_retention_v1_5_counts.sql` (one SELECT, read only; it says
-which of the document's §4 stops are real). The registration runs only
-once 0429 (`migrations/the_purge_reaches_what_v1_5_decided.sql`) is in the
-database and the v1.2, v1.3 and v1.4 rules are active; the script refuses
-otherwise. The signature does not make the document counsel-reviewed; it
-says so on its first page.
-
 ## Why 02 and 03 were re-signed (closed 2026-09-22)
 
 Neither is a change of substance to what the founder decided. Both are

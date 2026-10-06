@@ -12,7 +12,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, NamedTuple, Optional
 
 from services.feedback_data_contract import FEATURE_SCHEMA_VERSION
 from services.reasonable_confidence import selection_summary
@@ -133,6 +133,11 @@ def _piece(raw: Any, ordinal: int) -> Optional[dict]:
         # only these may be used for a span the client draws on.
         "served_start": _integer(row.get("served_start")),
         "served_end": _integer(row.get("served_end")),
+        # The Paragraph the binding proved for these words, RAW, exactly as
+        # the serve path reads it off the same piece: servable selection
+        # (24b) asks the serve path's own predicate, so both must hand it the
+        # same value. Internal to the partition; it never reaches the frame.
+        "part_id": row.get("part_id"),
     }
 
 
@@ -732,6 +737,227 @@ def _confidence_rank(candidate: dict) -> tuple:
     )
 
 
+# ── SERVABILITY IS PART OF SELECTION (contract 24b, audit 2026-10-05) ────────
+#
+# The frame used to choose each block's item by rank alone, and only after it
+# had chosen did the serve path try to prove that item's Paragraph and served
+# span (`take_feedback_policy_v3_service._row_rejection`). A winner it could
+# not prove was dropped there, and the block came out EMPTY although a
+# lower-ranked clip in the same block could have been served: 24b's "one
+# item per valid block" lost to an ordering accident.
+#
+# So the serve path's proof now runs INSIDE selection, through one predicate
+# both sides call (`unservable`). Two copies of the rule are exactly how the
+# frame and the serve path came to disagree; one cannot.
+
+#: Why the serve path cannot prove a lineage-eligible Confident Voice
+#: candidate: the typed exclusion the frame records. Internal arbitration
+#: record, never surfaced (AC-9, 24i).
+#:   unservable_paragraph  the binding proved no Paragraph for its words
+#:                         (`ideal_text_parts.bind_pieces_to_parts`)
+#:   unservable_span       no span on the served Ideal Text holds its words
+UNSERVABLE_PARAGRAPH = "unservable_paragraph"
+UNSERVABLE_SPAN = "unservable_span"
+
+
+class Unservable(NamedTuple):
+    """Why one candidate cannot be served, in the two forms its readers use.
+
+    ``reason`` is the typed exclusion the frame records; ``detail`` is the
+    exact failed condition the serve path logs (`detail=` in `_decline`),
+    unchanged from the strings that log has always carried."""
+
+    reason: str
+    detail: str
+
+
+def span_rejection(span: dict, text: str, *, prefix: str) -> Optional[str]:
+    """A ``{start, end}`` span that is not integer, not forward, or runs
+    past ``text``; ``prefix`` names which document ("" or "served_").
+
+    The one span check of the V3 serve path, used for the transcript span
+    there and for the served span here."""
+    start, end = span.get("start"), span.get("end")
+    if not isinstance(start, int) or not isinstance(end, int):
+        return f"{prefix}span_bounds_not_integers"
+    if start < 0 or end <= start:
+        return f"{prefix}span_inverted:{start}..{end}"
+    if end > len(text):
+        return f"{prefix}span_past_document_end:{end}>{len(text)}"
+    return None
+
+
+def unservable(part_id: Any, target_span: Any,
+               served_text: Any) -> Optional[Unservable]:
+    """THE servability predicate: None when the serve path can prove this
+    Confident Voice candidate, else why it cannot.
+
+    Two proofs, checked in the order the serve path has always checked them:
+
+      1. Its Paragraph. ``part_id`` is the binding's answer for the piece
+         (slide first, span to refine, never a guess). No Paragraph is an
+         item attached to nothing: ``source_ideal_part_id`` is required.
+      2. Its served span, which is not the span measured. ``document_span``
+         locates the spoken words in the TRANSCRIPT; ``target_span`` is where
+         the bookmark is drawn, on the SERVED Ideal Text. Two documents, two
+         spans; conflating them once put V3's highlight past the end of the
+         served text in production, and silently on the wrong words whenever
+         it happened to fit.
+
+    Called by servable selection (`_winner`) with the frame's own candidate
+    and piece, and by the serve path (`take_feedback_policy_v3_service.
+    _row_rejection`) with the same candidate row and the same piece off the
+    same document. One rule, so the item a block selects is an item the
+    serve path will prove. It never stretches a span or guesses a Paragraph
+    to make a candidate pass (L2): what cannot be proven is excluded.
+    """
+    if not part_id:
+        return Unservable(UNSERVABLE_PARAGRAPH, "piece_has_no_part_id")
+    if not isinstance(target_span, dict):
+        return Unservable(UNSERVABLE_SPAN, "piece_has_no_served_span")
+    text = served_text if isinstance(served_text, str) else ""
+    detail = span_rejection(target_span, text, prefix="served_")
+    return Unservable(UNSERVABLE_SPAN, detail) if detail else None
+
+
+class _Servability(NamedTuple):
+    """What servable selection reads: the served Ideal Text a bookmark is
+    drawn on, and this Take's already frozen selection (by candidate id)."""
+
+    served_text: Any
+    frozen_ids: frozenset
+
+
+def _servability(select_servable: bool, served_text: Any,
+                 frozen_candidate_ids: Any) -> Optional[_Servability]:
+    """None selects by rank alone, as the dark frame always has."""
+    if not select_servable:
+        return None
+    return _Servability(served_text, frozenset(
+        str(value) for value in (frozen_candidate_ids or ())))
+
+
+def _winner(
+    ranked: list[tuple[dict, dict]], servability: Optional[_Servability],
+) -> tuple[Optional[dict], list[tuple[dict, str]]]:
+    """The block's selected candidate, and the candidates passed over for it.
+
+    ``ranked`` is the block's lineage-eligible ``(candidate, piece)`` pairs,
+    best first (`_confidence_rank`). Without ``servability`` the winner is
+    the first, exactly the rule the frame has always had.
+
+    With it, the winner is the best-ranked candidate the serve path can
+    prove (`unservable`). WHEN THE BEST IS PROVABLE, NOTHING CHANGES: it is
+    the first pair asked, it wins, and nothing is passed over. Every
+    unprovable candidate ranked above the winner is passed over with its
+    typed reason, never dropped in silence; candidates below the winner were
+    never in contention and are not re-judged. When nothing is provable the
+    block is empty and every eligible candidate carries its reason. Nothing
+    is stretched or invented to fill it: 24c/24d make coverage a target,
+    never a floor.
+
+    A FROZEN TAKE DOES NOT GROW. On a Take whose selection is already frozen
+    (`take_feedback_set`, insert-once per Take), a fallback the freeze does
+    not hold is not taken, and the block keeps the choice it was frozen
+    with, which the serve path drops exactly as before. Taking it would
+    gain the speaker nothing: the frozen set filters every row it does not
+    name out of the page. And it would cost the Take its lineage: the fresh
+    candidate set would no longer be the one the membership for this Ideal
+    Text snapshot was frozen from (one membership per Take and snapshot),
+    so the freeze would be refused and every row served without the
+    `feedback_membership_id` its answers' canonical record needs (L3). A
+    fallback chosen before the freeze is in the frozen set, so it is chosen
+    again on every later read.
+    """
+    if servability is None:
+        return (ranked[0][0] if ranked else None), []
+    passed_over: list[tuple[dict, str]] = []
+    for candidate, piece in ranked:
+        verdict = unservable(piece.get("part_id"), candidate.get("target_span"),
+                             servability.served_text)
+        if verdict is not None:
+            passed_over.append((candidate, verdict.reason))
+            continue
+        if (passed_over and servability.frozen_ids
+                and candidate["candidate_id"] not in servability.frozen_ids):
+            return ranked[0][0], []
+        return candidate, passed_over
+    return None, passed_over
+
+
+def _select_in_block(block: dict, candidates: list[dict], pieces: list[dict],
+                     servability: Optional[_Servability]) -> Optional[dict]:
+    """Write the block's candidates and its one selected item (24b: at most
+    one Confident Voice item per valid block); return the item.
+
+    ``candidates`` are built from ``pieces`` one for one, in order. `sorted`
+    is stable, so the first of the ranking is exactly the item `min` chose
+    before servability was part of selection."""
+    ranked = sorted(
+        (pair for pair in zip(candidates, pieces)
+         if pair[0]["eligibility"] == "eligible"),
+        key=lambda pair: _confidence_rank(pair[0]),
+    )
+    selected, passed_over = _winner(ranked, servability)
+    for row, reason in passed_over:
+        row["eligibility"] = "excluded"
+        row["exclusion_reason"] = reason
+    block["confidence_candidates"] = candidates
+    block["selected_candidate_id"] = (
+        selected["candidate_id"] if selected else None
+    )
+    # An empty block names why: the typed reason of its best candidate when
+    # none could be proven, otherwise that no clip had exact lineage.
+    block["selection_reason"] = (
+        selected["selection_language"] if selected
+        else passed_over[0][1] if passed_over
+        else "no_exact_clip_lineage_candidate"
+    )
+    return selected
+
+
+def _select_confidence(
+    blocks: list[dict], exclusions: list[dict], *, snippet_map: dict,
+    suggestion_map: dict, take_id: str, recording_id: str,
+    servability: Optional[_Servability],
+) -> list[dict]:
+    """Every block's Confident Voice inventory and selection, and the Take's
+    selected ``{block_id, candidate_id}`` rows; each excluded clip is also
+    named in ``exclusions``.
+
+    Lifted out of `build_shadow_frame` (grandfathered at the complexity
+    ratchet, which only lets it come down) unchanged, apart from the winner
+    now being asked of `_winner`."""
+    selections: list[dict] = []
+    for block in blocks:
+        pieces = block.pop("pieces")
+        candidates = [
+            _confidence_candidate(
+                piece,
+                snippet_map.get(piece["snippet_id"], {}),
+                suggestion_map.get(piece["snippet_id"], {}),
+                expected_take_id=take_id,
+                expected_recording_id=recording_id,
+            )
+            for piece in pieces
+        ]
+        selected = _select_in_block(block, candidates, pieces, servability)
+        if selected:
+            selections.append({
+                "block_id": block["block_id"],
+                "candidate_id": selected["candidate_id"],
+            })
+        for row in candidates:
+            if row["eligibility"] == "excluded":
+                exclusions.append({
+                    "candidate_kind": "confidence_clip",
+                    "snippet_id": row["snippet_id"],
+                    "reason": row["exclusion_reason"],
+                    "block_id": block["block_id"],
+                })
+    return selections
+
+
 def _owner_declined(row: dict, candidate_id: str, declined: Any) -> bool:
     """A rewrite the speaker declined on an earlier Take, on a Paragraph
     whose words have not changed since (N48.2, Q3 A;
@@ -932,6 +1158,7 @@ def build_shadow_frame(
     served_text: Any = None,
     declined_rewrites: Any = frozenset(),
     frozen_candidate_ids: Any = frozenset(),
+    select_servable: bool = False,
 ) -> Optional[dict]:
     """Build the complete v3 frame; return None for an unusable Take.
 
@@ -944,6 +1171,16 @@ def build_shadow_frame(
     excluded as ``declined_by_owner`` unless its id is in
     ``frozen_candidate_ids``, this Take's already frozen selection (N48.2,
     Q3 A).
+
+    ``select_servable`` makes the serve path's proof part of selection
+    (contract 24b; `_winner`): each block's item is its best-ranked
+    candidate whose Paragraph and served span can be proven against
+    ``served_text``. Only the service frame sets it
+    (`build_service_candidate_frame`), whose document the live path binds
+    to Paragraphs first (`ideal_text_changes._ask_v3`,
+    `ideal_text_parts.bind_pieces_to_parts`). The dark frame's document is
+    never bound, so judged there every clip would be unprovable; it keeps
+    selecting by rank alone, unchanged.
     """
     doc = take_document if isinstance(take_document, dict) else {}
     take_id = str(doc.get("take_session_id") or "")
@@ -968,41 +1205,13 @@ def build_shadow_frame(
         for row in (snippets or []) if isinstance(row, dict) and row.get("id")
     }
     suggestion_map = suggestions if isinstance(suggestions, dict) else {}
-    confidence_selections: list[dict] = []
-    for block in blocks:
-        candidates = [
-            _confidence_candidate(
-                piece,
-                snippet_map.get(piece["snippet_id"], {}),
-                suggestion_map.get(piece["snippet_id"], {}),
-                expected_take_id=take_id,
-                expected_recording_id=recording_id,
-            )
-            for piece in block.pop("pieces")
-        ]
-        eligible = [row for row in candidates if row["eligibility"] == "eligible"]
-        selected = min(eligible, key=_confidence_rank) if eligible else None
-        block["confidence_candidates"] = candidates
-        block["selected_candidate_id"] = (
-            selected["candidate_id"] if selected else None
-        )
-        block["selection_reason"] = (
-            selected["selection_language"]
-            if selected else "no_exact_clip_lineage_candidate"
-        )
-        if selected:
-            confidence_selections.append({
-                "block_id": block["block_id"],
-                "candidate_id": selected["candidate_id"],
-            })
-        for row in candidates:
-            if row["eligibility"] == "excluded":
-                exclusions.append({
-                    "candidate_kind": "confidence_clip",
-                    "snippet_id": row["snippet_id"],
-                    "reason": row["exclusion_reason"],
-                    "block_id": block["block_id"],
-                })
+    confidence_selections = _select_confidence(
+        blocks, exclusions, snippet_map=snippet_map,
+        suggestion_map=suggestion_map, take_id=take_id,
+        recording_id=recording_id,
+        servability=_servability(
+            select_servable, served_text, frozen_candidate_ids),
+    )
 
     # THE ONLY PLACE THE REASON LAYER IS OBSERVABLE (24j). Everything else it
     # does is internal ordering that leaves no trace: the failure it can have
@@ -1158,8 +1367,12 @@ def build_service_candidate_frame(**kwargs: Any) -> Optional[dict]:
     The shared calculator preserves the accepted 75-word and Take budgets, but
     the returned identity is explicitly service preparation.  It is never read
     from, nor written to, the dark-frame table.
+
+    Its selection is servable (contract 24b; `build_shadow_frame`'s
+    ``select_servable``): this frame chooses what the serve path then
+    proves, so it chooses only what the serve path can prove.
     """
-    shadow = build_shadow_frame(**kwargs)
+    shadow = build_shadow_frame(**kwargs, select_servable=True)
     if shadow is None:
         return None
     frame = {

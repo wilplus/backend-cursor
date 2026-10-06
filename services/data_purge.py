@@ -13,17 +13,13 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from postgrest.types import ReturnMethod
-
 from services.data_purge_registry import (
-    DEPENDENCIES, DETACH_LINKS, LINEAGE_TOMBSTONES,
+    DEPENDENCIES, LINEAGE_TOMBSTONES,
     PurgeDependency,
     before_its_rule,
-    carve_outs,
     classified_relations,
     dependency_by_code,
     dependency_manifest_sha256,
-    row_matches,
 )
 from services.lab_audio_storage import (
     delete_verified_lab_audio_object,
@@ -138,9 +134,8 @@ class DataPurgeOrchestrator:
     def __init__(self, database: Any) -> None:
         self.database = database
         self.client = database.client
-        # Read once per inventory: each rule's active rows, each schedule.
+        # Active rows of each v1.4 rule_code, read once per inventory.
         self._rulings: dict[str, list[dict]] = {}
-        self._schedules: dict[str, bool] = {}
 
     def _request(self, purge_request_id: str) -> dict:
         row = _one(
@@ -220,10 +215,18 @@ class DataPurgeOrchestrator:
         payload = _one(result.data)
         if not payload:
             raise RuntimeError("PURGE_SUBJECT_GRAPH_RESOLUTION_FAILED")
-        if any(not isinstance(payload.get(key), list) for key in GRAPH_KEYS):
+        keys: tuple[str, ...] = (
+            "principal_ids", "user_ids", "project_ids", "take_ids",
+            "recording_ids", "snippet_ids", "permit_ids", "job_ids",
+            "speaker_ids", "practice_ids", "practice_attempt_ids",
+            "exercise_audio_lineage_ids", "exercise_blind_packet_ids",
+            "delivery_job_ids",
+            "unresolved_legacy_take_ids",
+        )
+        if any(not isinstance(payload.get(key), list) for key in keys):
             raise RuntimeError("PURGE_SUBJECT_GRAPH_INVALID")
         graph = SubjectGraph(**{
-            key: tuple(str(item) for item in payload[key]) for key in GRAPH_KEYS
+            key: tuple(str(item) for item in payload[key]) for key in keys
         })
         if principal_id not in graph.principal_ids:
             raise RuntimeError("PURGE_SUBJECT_GRAPH_PRINCIPAL_MISMATCH")
@@ -240,8 +243,7 @@ class DataPurgeOrchestrator:
         return next((row for row in rows if row.get("active") is True), None)
 
     def _ruling_rule(
-        self, dependency: PurgeDependency,
-        existing_relations: frozenset[str] | None,
+        self, dependency: PurgeDependency, existing_relations: frozenset[str],
     ) -> dict | None:
         """The ACTIVE signed row that decides a ruled dependency (retention
         schedule v1.4): its rule_code AND its evidence category, or None."""
@@ -263,47 +265,20 @@ class DataPurgeOrchestrator:
             if row.get("evidence_category") == dependency.retention_category
         ), None)
 
-    def _schedule_registered(
-        self, version: str | None,
-        existing_relations: frozenset[str] | None,
-    ) -> bool:
-        """Retention schedule `version` is registered: its row in
-        processing_legal_artifacts, which only its signed script writes
-        (scripts/phase1_retention_schedule_v1_5.sql). No version asked for:
-        nothing to check. A read that fails answers no."""
-        if not version:
-            return True
-        if version not in self._schedules:
-            try:
-                rows = self._rows(
-                    "processing_legal_artifacts", "id,artifact_kind,version",
-                    selector="version", values=(version,),
-                    existing_relations=existing_relations,
-                )
-            except RuntimeError:
-                rows = []
-            self._schedules[version] = any(
-                row.get("artifact_kind") == "retention_schedule"
-                and row.get("version") == version for row in rows
-            )
-        return self._schedules[version]
-
     def _decided(
-        self, dependency: PurgeDependency,
-        existing_relations: frozenset[str] | None,
+        self, dependency: PurgeDependency, existing_relations: frozenset[str],
     ) -> tuple[PurgeDependency, dict | None]:
         """What a dependency does in THIS inventory, and the rule behind it.
 
-        A ruled dependency acts on its disposition only while its rule is
-        active, and a v1.5 one only while v1.5 is registered as well. Until
-        then it is exactly the registry entry it was before (`before_its_rule`):
-        an `external_review` row still stops the erasure, a job row is still
+        A ruled dependency acts on its disposition only while its v1.4 rule
+        is active. Until the founder runs the v1.4 script it is exactly the
+        registry entry it was before v1.4 (`before_its_rule`): an
+        `external_review` row still stops the erasure, a job row is still
         deleted. Every other dependency is unchanged and has no ruling."""
         if not dependency.ruled_by:
             return dependency, None
         rule = self._ruling_rule(dependency, existing_relations)
-        if rule is None or not self._schedule_registered(
-                dependency.schedule, existing_relations):
+        if rule is None:
             return before_its_rule(dependency), None
         return dependency, rule
 
@@ -351,10 +326,6 @@ class DataPurgeOrchestrator:
         if dependency.relation not in existing_relations:
             return None
         dependency, ruling = self._decided(dependency, existing_relations)
-        if dependency.carved_from and ruling is None:
-            # Not decided yet: its rows are still the original entry's, which
-            # counts them and stops the erasure for review, as before.
-            return None
         values = graph.values(dependency.locator_kind)
         count = self._count(dependency, values, existing_relations)
         metadata: dict[str, Any] = {
@@ -366,10 +337,6 @@ class DataPurgeOrchestrator:
             "disposition": dependency.disposition,
             "delete_order": dependency.delete_order,
         }
-        if dependency.schedule:
-            metadata["retention_schedule"] = dependency.schedule
-        if dependency.row_filter:
-            metadata["row_filter"] = [list(c) for c in dependency.row_filter]
         if count and dependency.disposition == "external_review":
             return PurgeTarget(
                 "unknown", f"dependency:{dependency.code}", count,
@@ -415,8 +382,6 @@ class DataPurgeOrchestrator:
         """
         if not values:
             return 0
-        if dependency.row_filter or carve_outs(dependency.code):
-            return self._split_count(dependency, values, existing_relations)
         try:
             return len(self._rows(
                 dependency.relation, dependency.selector_column,
@@ -439,35 +404,6 @@ class DataPurgeOrchestrator:
         if not isinstance(count, int) or isinstance(count, bool) or count < 0:
             raise RuntimeError(f"PURGE_COUNT_INVALID:{dependency.relation}")
         return count
-
-    def _split_count(
-        self,
-        dependency: PurgeDependency,
-        values: Sequence[str],
-        existing_relations: frozenset[str] | None,
-    ) -> int:
-        """The rows of a split table (v1.5, N50 P2 and P4) this entry holds:
-        the ones its row_filter keeps, less, for the table's original entry,
-        every row a decided carve-out claims. Read as rows by the row's own
-        columns, never counted in SQL; a read that fails raises, and the
-        inventory files the entry as unknown."""
-        claimed = [
-            carve for carve in carve_outs(dependency.code)
-            if self._decided(carve, existing_relations)[1] is not None
-        ]
-        columns = {dependency.selector_column}
-        for entry in (dependency, *claimed):
-            columns.update(column for column, _op, _value in entry.row_filter)
-        rows = self._rows(
-            dependency.relation, ",".join(sorted(columns)),
-            selector=dependency.selector_column, values=values,
-            existing_relations=existing_relations,
-        )
-        return sum(
-            1 for row in rows
-            if row_matches(dependency, row)
-            and not any(row_matches(carve, row) for carve in claimed)
-        )
 
     def _practice_targets(
         self,
@@ -689,117 +625,8 @@ class DataPurgeOrchestrator:
             ))
         return targets
 
-    def _reference_video_targets(
-        self,
-        graph: SubjectGraph,
-        existing_relations: frozenset[str],
-    ) -> list[PurgeTarget]:
-        """A reference video made for the speaker that is not library content
-        goes with the account (v1.5, N50 P4). Its file has no recorded hash or
-        provider, so the purge cannot prove it deleted the right bytes: each
-        one stops the erasure for review first, as an upload does. Nothing
-        here before v1.5 decides the entry."""
-        own = dependency_by_code("reference_videos_own")
-        if own is None or own.relation not in existing_relations:
-            return []
-        if self._decided(own, existing_relations)[1] is None:
-            return []
-        try:
-            rows = self._rows(
-                own.relation, "id,is_universal",
-                selector=own.selector_column,
-                values=graph.values(own.locator_kind),
-                existing_relations=existing_relations,
-            )
-        except Exception as error:  # noqa: BLE001 - fail-closed inventory
-            return [PurgeTarget(
-                "unknown", "reference-video:inventory", 1,
-                {"reason_code": "REFERENCE_VIDEO_INVENTORY_FAILED",
-                 "error_code": _error_code(error)},
-            )]
-        return [
-            PurgeTarget(
-                "unknown", f"reference-video:{row.get('id')}", 1,
-                {"reason_code": "REFERENCE_VIDEO_PROVIDER_AND_SHA256_UNRESOLVED",
-                 "source_relation": own.relation,
-                 "source_id": str(row.get("id") or "")},
-            )
-            for row in rows if row_matches(own, row)
-        ]
-
-    def _checked_v1_5_deletes(
-        self, targets: list[PurgeTarget],
-    ) -> list[PurgeTarget]:
-        """Retention schedule v1.5's deletes, checked before anything is
-        frozen (0429, check_phase1_purge_delete_v1). A delete whose rows the
-        service may not delete, or that a row this purge does not delete
-        first still points at (a kept decision, a kept job, a lineage row
-        no graph reaches), would fail part-way, after the audio is gone: it
-        stops the whole erasure for review instead."""
-        deletes = sorted(
-            (target for target in targets
-             if target.target_ref.startswith("dependency:")
-             and target.target_kind != "unknown"
-             and target.metadata.get("disposition") == "delete"
-             and target.initial_match_count > 0),
-            key=lambda target: _execution_key(
-                target.metadata.get("delete_order"), target.target_kind,
-                target.target_ref),
-        )
-        if not any(t.metadata.get("retention_schedule") for t in deletes):
-            return targets
-        # A filtered entry deletes only some of the rows its selector
-        # reaches, so it never counts as covering another table's rows.
-        plan = [
-            {"relation": target.metadata.get("relation"),
-             "selector_column": target.metadata.get("selector_column"),
-             "locator_values": list(target.metadata.get("locator_values") or []),
-             "rank": rank}
-            for rank, target in enumerate(deletes)
-            if not target.metadata.get("row_filter")
-        ]
-        checked = {
-            target.target_ref: self._checked_delete(target, plan, rank)
-            for rank, target in enumerate(deletes)
-            if target.metadata.get("retention_schedule")
-        }
-        return [checked.get(target.target_ref, target) for target in targets]
-
-    def _checked_delete(
-        self, target: PurgeTarget, plan: list[dict], rank: int,
-    ) -> PurgeTarget:
-        metadata = dict(target.metadata)
-        try:
-            result = self.client.rpc("check_phase1_purge_delete_v1", {
-                "p_relation": str(metadata.get("relation") or ""),
-                "p_selector_column": str(metadata.get("selector_column") or ""),
-                "p_values": [str(value) for value in
-                             metadata.get("locator_values") or []],
-                "p_rank": rank,
-                "p_plan": plan,
-            }).execute()
-            verdict = _one(result.data) or {}
-        except Exception as error:  # noqa: BLE001 - fail-closed inventory
-            return PurgeTarget(
-                "unknown", target.target_ref, target.initial_match_count,
-                {**metadata, "reason_code": "DELETE_CHECK_UNAVAILABLE",
-                 "error_code": _error_code(error)},
-            )
-        blocked = verdict.get("blocked_by") or {}
-        if verdict.get("can_delete") is not True:
-            reason = "PURGE_CANNOT_DELETE_HERE"
-        elif blocked:
-            reason = "KEPT_ROWS_STILL_POINT_HERE"
-        else:
-            return target
-        return PurgeTarget(
-            "unknown", target.target_ref, target.initial_match_count,
-            {**metadata, "reason_code": reason, "blocked_by": blocked},
-        )
-
     def build_inventory(self, purge_request_id: str) -> dict[str, Any]:
         self._rulings = {}
-        self._schedules = {}
         request = self._request(purge_request_id)
         # A project request is never run account-wide, nor an account
         # request project-wide (0380; the manifest guard refuses it too).
@@ -833,9 +660,7 @@ class DataPurgeOrchestrator:
                     {"reason_code": "DEPENDENCY_INVENTORY_FAILED",
                      "error_code": _error_code(error)},
                 ))
-        targets = self._checked_v1_5_deletes(targets)
         targets.extend(self._storage_targets(graph, existing))
-        targets.extend(self._reference_video_targets(graph, existing))
         targets.extend(self._provider_targets(graph, existing))
         targets.sort(key=lambda item: (item.target_kind, item.target_ref))
         return {
@@ -1051,13 +876,13 @@ class DataPurgeOrchestrator:
                           error_code="RETENTION_RULE_INACTIVE")
             return
         try:
-            # Nothing asked back: the service may hold DELETE and SELECT on
-            # the selecting columns alone (0429); the rows left are counted.
-            _filtered(
-                self.client.table(dependency.relation).delete(
-                    returning=ReturnMethod.minimal),
-                dependency, values,
-            ).execute()
+            query = self.client.table(dependency.relation).delete()
+            query = (
+                query.eq(dependency.selector_column, values[0])
+                if len(values) == 1 else
+                query.in_(dependency.selector_column, list(values))
+            )
+            query.execute()
             remaining = self._count(dependency, values)
             state = "deleted" if remaining == 0 else "failed"
             self._resolve(
@@ -1094,26 +919,20 @@ class DataPurgeOrchestrator:
         take session included (0379, founder N12). Each database function
         scrubs exactly the rows inside this request's frozen graph and reports
         how many are still not blank; anything but zero is a failure. Both
-        are idempotent, so every target of the kind may call its own. A third
-        keeps library content and clears only its link to the speaker
-        (DETACH_LINKS, v1.5 P4), under the same not-blank check."""
+        are idempotent, so every target of the kind may call its own."""
         metadata = target.get("metadata") or {}
         rule_id = str(metadata.get("retention_rule_id") or "")
         try:
-            if dependency.relation in DETACH_LINKS:
-                outcome = self._detach(target, dependency)
+            if dependency.relation == "projects":
+                function = "tombstone_phase1_purge_projects_v1"
+            elif dependency.relation in LINEAGE_TOMBSTONES:
+                function = "tombstone_phase1_purge_lineage_v1"
             else:
-                if dependency.relation == "projects":
-                    function = "tombstone_phase1_purge_projects_v1"
-                elif dependency.relation in LINEAGE_TOMBSTONES:
-                    function = "tombstone_phase1_purge_lineage_v1"
-                else:
-                    raise RuntimeError("TOMBSTONE_RELATION_UNSUPPORTED")
-                result = self.client.rpc(function, {
-                    "p_purge_request_id": str(
-                        target.get("purge_request_id") or ""),
-                }).execute()
-                outcome = _one(result.data) or {}
+                raise RuntimeError("TOMBSTONE_RELATION_UNSUPPORTED")
+            result = self.client.rpc(function, {
+                "p_purge_request_id": str(target.get("purge_request_id") or ""),
+            }).execute()
+            outcome = _one(result.data) or {}
             if int(outcome.get("not_blank") or 0) != 0:
                 raise RuntimeError("TOMBSTONE_CONTENT_REMAINS")
             self._resolve(target, state="retained", remaining=initial,
@@ -1122,25 +941,6 @@ class DataPurgeOrchestrator:
         except Exception as error:  # noqa: BLE001 - database boundary
             self._resolve(target, state="failed", remaining=initial,
                           error_code=_error_code(error))
-
-    def _detach(
-        self, target: Mapping[str, Any], dependency: PurgeDependency,
-    ) -> dict:
-        """Library content (v1.5, N50 P4): clear only the columns that link
-        each frozen row to the speaker; the row and its video stay. Reports,
-        as the tombstone functions do, how many rows still name the
-        speaker."""
-        metadata = target.get("metadata") or {}
-        values = [str(value) for value in metadata.get("locator_values") or []]
-        if values:
-            _filtered(
-                self.client.table(dependency.relation).update(
-                    {column: None for column in DETACH_LINKS[dependency.relation]},
-                    returning=ReturnMethod.minimal),
-                dependency, values,
-            ).execute()
-        return {"tombstoned": int(target.get("initial_match_count") or 0),
-                "not_blank": self._count(dependency, values)}
 
     def _resolve_provider(self, target: Mapping[str, Any]) -> None:
         metadata = target.get("metadata") or {}
@@ -1169,7 +969,18 @@ class DataPurgeOrchestrator:
             return
         manifest = self._manifest(purge_request_id)
         self._assert_frozen_contract(manifest, purge_request_id)
-        graph = self._graph_from_manifest(manifest.get("subject_graph") or {})
+        raw_graph = manifest.get("subject_graph") or {}
+        graph = SubjectGraph(**{
+            key: tuple(str(item) for item in raw_graph.get(key, []))
+            for key in (
+                "principal_ids", "user_ids", "project_ids", "take_ids",
+                "recording_ids", "snippet_ids", "permit_ids", "job_ids",
+                "speaker_ids", "practice_ids", "practice_attempt_ids",
+                "exercise_audio_lineage_ids", "exercise_blind_packet_ids",
+                "delivery_job_ids",
+                "unresolved_legacy_take_ids",
+            )
+        })
         storage = [
             row for row in targets
             if row.get("state") == "pending"
@@ -1191,9 +1002,7 @@ class DataPurgeOrchestrator:
             self._resolve_provider(target)
         for target in sorted(
             dependencies,
-            key=lambda row: _execution_key(
-                (row.get("metadata") or {}).get("delete_order"),
-                row.get("target_kind"), row.get("target_ref")),
+            key=lambda row: int((row.get("metadata") or {}).get("delete_order") or 0),
         ):
             self._resolve_dependency(target, graph)
 
@@ -1229,50 +1038,5 @@ class DataPurgeOrchestrator:
     def _dependency(self, code: str) -> PurgeDependency | None:
         return dependency_by_code(code)
 
-    def _graph_from_manifest(self, raw_graph: Mapping[str, Any]) -> SubjectGraph:
-        return SubjectGraph(**{
-            key: tuple(str(item) for item in raw_graph.get(key, []))
-            for key in GRAPH_KEYS
-        })
-
     def _dependency_manifest_sha(self) -> str:
         return dependency_manifest_sha256()
-
-
-#: The keys of the account subject graph, in the order the freeze stores them.
-GRAPH_KEYS: tuple[str, ...] = (
-    "principal_ids", "user_ids", "project_ids", "take_ids",
-    "recording_ids", "snippet_ids", "permit_ids", "job_ids",
-    "speaker_ids", "practice_ids", "practice_attempt_ids",
-    "exercise_audio_lineage_ids", "exercise_blind_packet_ids",
-    "delivery_job_ids",
-    "unresolved_legacy_take_ids",
-)
-
-
-def _execution_key(delete_order: Any, target_kind: Any, target_ref: Any,
-                   ) -> tuple[int, str, str]:
-    """The order resolve_targets runs dependency targets in: by delete order,
-    ties by kind then reference, the order the freeze inserted them."""
-    return (int(delete_order or 0), str(target_kind or ""),
-            str(target_ref or ""))
-
-
-def _filtered(query: Any, dependency: PurgeDependency,
-              values: Sequence[str]) -> Any:
-    """A PostgREST query narrowed to exactly the rows this entry selects:
-    its selector over the frozen values, and every row_filter condition."""
-    query = (
-        query.eq(dependency.selector_column, values[0]) if len(values) == 1
-        else query.in_(dependency.selector_column, list(values))
-    )
-    for column, operator, value in dependency.row_filter:
-        if operator == "eq":
-            query = query.eq(column, value)
-        elif operator == "is_null":
-            query = query.is_(column, "null")
-        elif operator == "in":
-            query = query.in_(column, value.split(","))
-        else:
-            raise ValueError(f"ROW_FILTER_OPERATOR_UNKNOWN:{operator}")
-    return query
