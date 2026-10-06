@@ -23,7 +23,10 @@ bucket with a manifest the job signs:
     so a file and its manifest can be checked against each other and
     against the key later;
   * a release whose owner withdraws is voided by the weekly refresh and
-    its object deleted by the sweep here (revocation purges the copies).
+    its object deleted by the sweep here (revocation purges the copies);
+    a release holding a pair of a person or a project being erased is
+    voided at the erasure request itself (0454), and the hourly deletion
+    run sweeps too (services/deletion_completion.py).
 
 Counts about the system; a pair's texts leave only inside the file. AC-9:
 nothing here reaches a speaker or a coach.
@@ -243,9 +246,10 @@ def export_surface(database: Any, storage: Any, *, surface: str,
 
 
 def sweep_voided(database: Any, storage: Any) -> dict:
-    """Delete the objects of voided releases (an owner withdrew) and mark
-    them purged. Runs every week whatever the door says: revocation is
-    honoured even where nothing new leaves."""
+    """Delete the objects of voided releases (an owner withdrew, or an
+    erasure was asked for) and mark them purged. Runs every week whatever
+    the door says, and at the end of every executing deletion run:
+    revocation is honoured even where nothing new leaves."""
     lister = getattr(database, "list_voided_unpurged_pair_releases", None)
     if lister is None:
         return {"purged": 0, "unavailable": "no release ledger on this database"}

@@ -798,6 +798,16 @@ hard migrations/a_coach_may_change_their_answer.sql
 # Its suite: tests/test_a_skip_keeps_an_empty_receipt_postgres.py.
 hard migrations/a_skip_keeps_an_empty_receipt.sql
 hard migrations/a_skip_keeps_an_empty_receipt.sql
+# 0454 voids a release at the erasure request: one new void, one for the
+# releases holding a project's pairs, and one statement each in
+# stop_phase1_learning_v1 (0422), request_project_deletion_v1 (0364),
+# start_due_project_deletion_v1 (0422) and confirm_project_deletion_v1
+# (0380), all applied above. Released lane only, where its suite runs; after
+# 0448 (0449-0453 are not applied by this recipe), as in the manifest. Twice: apply/reapply idempotency.
+if [ "$LANE" = "released" ]; then
+  hard migrations/an_erasure_voids_the_released_copies.sql
+  hard migrations/an_erasure_voids_the_released_copies.sql
+fi
 
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
