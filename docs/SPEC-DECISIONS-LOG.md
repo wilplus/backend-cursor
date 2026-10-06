@@ -1999,3 +1999,38 @@ changes in the app. CM3b A: the four lines after the third try that is
 not praise are signed (`docs/SIGNED-line-bank-2026-10-06.md`). WQ3b A
 arrived without a letter; asked again: WQ3c A, the button says "Accept"
 (seventh export, 20:14 UTC).
+
+**N56 · The coach panel redrawn; the training corpus switched on
+(founder, 6 October 2026, chat 20:37 to 21:44 UTC and the panel export of
+21:46 UTC).** The founder corrected the coach panel screen by screen on a
+clickable prototype of today's panel and then on its redesign; the layout
+is agreed ("rest looks ok") and locked in
+`docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`.
+
+1. **One action per screen; diagnosis before cure** (chat). An error
+   moment asks "What kind of error is it?" (what the machine heard marked;
+   "Something else" names a new error; "I don't hear an error" makes a
+   note) before "Choose exercise", which offers only exercises for that
+   error. The coach's words are shown where the speaker will see them,
+   editable with a pencil. The queue lists speakers; the Lounge pins
+   Speakers and Training corpus. Choice cards shade by position.
+2. **CP2 A: the new words are signed** as listed in the lock.
+3. **CP3 A: the exercise library and the speaking errors page move to the
+   founder's admin area**, next to the pace panel; they leave the coach's
+   app.
+4. **CO1 A: the training corpus is switched on and built properly.** This
+   is the separate authorization CLAUDE.md requires for the Phase-2
+   corpus path, scoped to: the coach-only import of audio the founder has
+   the rights to; the same confident-moment spotting a Take gets (V3
+   blocks of about 75 words, the machine's pick per block, stored and
+   never shown so coaches judge blind); a split of the corpus labels by
+   speaker ("Whose voice this is"; an import without a speaker name is a
+   speaker of its own), 80% to learn from and 20% held out for testing,
+   decided by a fixed hash and never re-shuffled; tests over the whole
+   path. **Nothing trains on the labels** until the founder says so: the
+   dataset, training, evaluation and promotion paths stay off.
+5. **The speaker side: a paragraph without a bookmark does not open on
+   tap** (chat, 20:37 UTC), amending B7.
+6. **JP2 A: the Journal post was never saved** in the editor; Claude checks
+   the editor's save and sends shorter steps.
+
