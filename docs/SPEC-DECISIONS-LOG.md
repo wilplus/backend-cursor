@@ -1997,4 +1997,5 @@ does the switch leave Settings and the code stop asking
 (`consent_choice_required("personalised_practice")`). Until then nothing
 changes in the app. CM3b A: the four lines after the third try that is
 not praise are signed (`docs/SIGNED-line-bank-2026-10-06.md`). WQ3b A
-arrived without a letter; asked again (WQ3c).
+arrived without a letter; asked again: WQ3c A, the button says "Accept"
+(seventh export, 20:14 UTC).

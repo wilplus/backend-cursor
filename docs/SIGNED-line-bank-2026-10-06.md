@@ -144,6 +144,11 @@ sixth export, 20:11 UTC); the app then moves on to "Judgement time!"
 - You worked hard on this one. Let's keep going!
 - Nice persistence! We'll move on for now.
 
+**The button when personalised practice is off** (WQ3c A, 20:14 UTC): the
+clearer version can be taken into the text but not practised.
+- Accept
+- (below it, unchanged) Keep my words
+
 ## The judgements
 
 **The answer toast** (WQ4 A): the answer the speaker chose, with a tick:
