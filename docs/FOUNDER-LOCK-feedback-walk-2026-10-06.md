@@ -122,6 +122,37 @@ founder's sign-off.
 - **Sharing consent** is per Take; taking it back removes that Take from
   every community queue.
 
+## Communities will work
+
+Founder, 6 October: "the community will be working". The sharing question,
+the four choices and the judging order in the flow and engines above are
+part of the product, not an experiment. Community answers are peer
+ratings, kept apart from the coach's, the speaker's own and the machine's
+(L3). The sharing screen asks for consent, so its words go to counsel
+before it goes live, and they never rotate. CM1 and CM2 below are the
+parts still to decide. Decisions log N52.4.
+
+## Words signed in this round
+
+Written by the founder in chat, signed (decisions log N52.5):
+
+- "It was better, and I have yet another practice for you to try!"
+- "Judgement time!"
+- "If you are honest when judging others, it will help you find your
+  confident voice and calm the inner critic 😌"
+- "More about self-modeling theory"
+- "I am going to judge them honestly"
+- "Skip"
+- "Here is a slightly more polished option:"
+- "Do you accept and want to practise it?"
+- "Practise" (the exercise video's button)
+- "After all, it's about speaking publicly!"
+- "Do you agree to share this take with others?"
+
+Every other word on these screens is already in the signed copy
+(`CHUNK_SHEET_COPY`). Not yet signed: the line bank B01 to B14, the
+community options' words (held for counsel) and the Journal post.
+
 ## Amendments to older locks
 
 - **Helper-words lock (2026-09-30), B2 and the walk order:** the

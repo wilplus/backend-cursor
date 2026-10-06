@@ -1844,3 +1844,69 @@ carries it).
    as soon as the first moment enters. P54 A keep it by hand. These answers
    change no clause in this entry's paperwork; the work they call for is in
    the ledger.
+
+**N52 · The Feedback walk is locked, communities will work, and the words
+the founder wrote in the prototype are signed (founder, 6 October 2026, in
+chat over prototype rounds 1 to 4).** The prototype is
+<https://claude.ai/artifact/C2CTBmU1bfSSDQgJUHTKkE> (version 10); its
+written record is `docs/FOUNDER-LOCK-feedback-walk-2026-10-06.md`, which
+wins over older design locks where they disagree.
+1. **The walk, its look and its motion are locked** ("the design we have
+   now is good! it should be unified everywhere across the app"; "please
+   lock in also the small interactions, the smoothing, how the screens
+   change"). The panel closes R2b A (the speaker's words hidden beside
+   the player, shown only on the clearer version), PR3 A (all praise
+   first), R4d A (round 4 accepted) and R4e (the app's messages carry a
+   grey profile picture like the coach's: "make it grey as it was").
+2. **The order of the walk.** The coach's note for the Take, then all the
+   praise (helper words right after each), then the practising (clearer
+   version, exercise), then "Judgement time!", the judgements and
+   sharing. Helper words before judging ("it makes no sense that helper
+   words are after the judge them"). This amends helper-words lock B2
+   and the judgement-first order of 24e-1; contract 24e and 29a are
+   amended when the walk is built.
+3. **The practise loop.** No self-judgement after a practise ("don't ask
+   me right away does my last take sound confident to me, you need to
+   check it yourself"): the machine compares each try with the moment.
+   Praise ends the loop; otherwise the encouragement line and another
+   try, until praise or Skip. Never a number on screen (AC-9). Whether
+   the loop has a limit is CM3 (open).
+4. **Communities will work** (founder, 6 October: "the community will be
+   working"; first locked in round 4: "please lock it, it is very
+   important feature!!!"). After every finished review the speaker is
+   asked whether to share that Take; several choices may be ticked:
+   the general community, only my community (with a pass code), or a
+   community of their own (a name and a pass code); "None" stands alone.
+   A shared Take is judged by the community chosen; with "None" only the
+   coach judges it. When judging, the speaker hears their community's
+   Takes first, then their own mixed with training clips. Consent is per
+   Take, and taking it back removes the Take from every community queue.
+   Community answers are peer ratings, a provenance of their own (L3),
+   never coach labels, owner routing or training labels by themselves.
+   Still open: CM1 (whose training clips may be played to others) and
+   CM2 (now asked as: when the sharing goes live, given that the sharing
+   screen's words need counsel's approval first).
+5. **Words signed by the founder in this round** (written by the founder
+   in chat; verbatim, punctuation as shown in the prototype):
+   - "It was better, and I have yet another practice for you to try!"
+     (the encouragement after a try that is not yet better; "keep this
+     one", it never rotates).
+   - "Judgement time!" · "If you are honest when judging others, it will
+     help you find your confident voice and calm the inner critic 😌" ·
+     "More about self-modeling theory" (grey link to a Journal post, not
+     to the PDF: "don't use the PDF anywhere") · "I am going to judge them
+     honestly" · "Skip".
+   - "Here is a slightly more polished option:" · "Do you accept and want
+     to practise it?" (the clearer version, with the changed words crossed
+     out and the new words in orange).
+   - "Practise" on the exercise video's button.
+   - "After all, it's about speaking publicly!" · "Do you agree to share
+     this take with others?"
+   Every other word on the walk's screens is already in the signed copy
+   (`CHUNK_SHEET_COPY`, N48.3 Q8 and Q9).
+6. **Not yet signed.** The line bank B01 to B14 (praise and rewrite
+   messages, three phrasings each, rotated, never the same twice in a
+   row; one panel screen each); the community options' words (the
+   founder's own, held for counsel because they ask for consent, and so
+   never rotated); the Journal post on self-modeling (Dowrick, WIREs
+   Cognitive Science, 2012), to be written and signed.
