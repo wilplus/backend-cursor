@@ -157,6 +157,14 @@ with this contract, this contract wins.
     substituting it silently. Removing V2 outright is deliberately deferred
     until V3 has run clean; deleting it while V3 still has open defects would
     turn every V3 failure into permanent silence rather than a bad afternoon.
+    **Amended 2026-10-06 (founder, Navigation Panel QG3 A, V22a B, V15a A;
+    ledger CA01, N29; decisions log N51):** V3 is served today. V4, when built,
+    replaces it for every speaker by the founder's switch — no dark run
+    (V22a B: "skip the dark run, a few speakers now, then everyone", the
+    founder's note "Cause there are no users"). A block V4 is
+    very unsure of gets V3's pick for that block, logged as a fallback, never
+    silent (V15a A: falling back on more than one block in five fails V4's
+    exit gate). V2 stays retained history and is never a fallback for either.
 24a. Under Feedback Policy V3, the Manager deterministically partitions each
     contiguous Slide run at persisted snippet/Paragraph boundaries into blocks
     closest to 75 words, normally 60-90 words. It never cuts words, fabricates
@@ -343,6 +351,11 @@ with this contract, this contract wins.
     policy version. On failure the client retries once automatically, then shows
     a short notice with a retry control. **A feedback failure never blocks
     recording, transcription, Ideal Text, or the next Take.**
+    **Amended 2026-10-06 (founder, Navigation Panel QG3 A, V15a A; ledger
+    CA01; decisions log N51):** this clause holds for V4 as it holds for V3. Once V4
+    is served (24), a block V4 is very unsure of gets V3's pick for that
+    block, logged, never silent; falling back on more than one block in five
+    fails V4's exit gate (V15a). Neither policy ever substitutes V2.
 
 24i. **AC-9 applies to everything this section computes.** Coverage
     percentages, delivery bands, PPV estimates, priority values and block counts
@@ -529,7 +542,11 @@ with this contract, this contract wins.
     selected practice attempt itself.
 34. The coach must not see the user label, machine prediction, or other ratings
     before submitting an immutable independent judgment. After submission they
-    are revealed for comparison and training analysis. The original coach
+    are revealed for comparison and training analysis. **Amended 2026-10-06
+    (founder, Navigation Panel P28 B; ledger A151a; decisions log N51):** the coach
+    does not see the machine's read after submitting either; nothing is
+    revealed to the coach. The comparison happens off-screen, for analysis
+    only. The original coach
     judgment is never editable; reconsideration is a separately timestamped,
     provenance-bearing revision. User Yes / Coach Yes admits silently. User
     No / Coach Yes may later become
@@ -662,7 +679,12 @@ with this contract, this contract wins.
     **praise** (read confident, on Yes or In-between), **rewrite** (read
     weak, nothing acoustic fired, on In-between or No), or **ambiguity**
     (the speaker and the machine disagree: a Yes read weak, a No read
-    confident, every Not sure, and a clip the machine could not read). The
+    confident, every Not sure, and a clip the machine could not read). **Amended
+    2026-10-06 (founder, Navigation Panel P2 A; ledger A175b; decisions log N51):**
+    no coach request is raised for a clip the machine could not read —
+    nothing goes to the coach for it, and "a clip the machine could not
+    read" leaves the ambiguity list above. This matches 24e-1 ("Nothing
+    rises for ... a clip the machine could not read"). The
     coach records a video for errors by default and may for the rest; a
     shared video rides that same moment. On an error with no library match
     the item reads "Your coach is working on your exercise." (founder-signed
@@ -872,13 +894,19 @@ with this contract, this contract wins.
 35j. Every surfaced set writes an immutable exposure ledger containing the
     complete candidate set, evidence and internal scores, selected candidate,
     model and prompt version, user action, and later coach-judgment provenance.
+    **Amended 2026-10-06 (founder, Navigation Panel QB16 A; ledger A180b; decisions log N51):**
+    the record is *linked to* the speaker's action and the coach's judgement;
+    linking is enough, the row need not carry them in its own columns.
 35k. Evidence-backed verbal corrections and praise wording/explanations may
     create surface-specific DPO pairs. Praise selection/ranking is not trained
     until the exposure ledger is complete. The three families are never merged
     into one undifferentiated training set.
 36. Every Machine Feedback item retains a review lineage. The coach may confirm
     it, refine its explanation, reject it, or materially correct it. The
-    original machine output remains in history.
+    original machine output remains in history. **Amended 2026-10-06 (founder,
+    Navigation Panel P31 A; ledger A181; decisions log N51):** for rewrite and praise
+    items the coach's answer by kind (35g-2) is the review history; the
+    answer by kind is enough.
 37. Routine agreement is silent. Explanation refinement does not change user
     text. A material correction becomes a new accept/reject proposal if the
     user has seen or acted on the original.
@@ -928,6 +956,11 @@ with this contract, this contract wins.
     decisions log N48.3 Q12 A):** V3 serves every Take (24b to 24d), so
     "Unshown low-priority queues end after Take 3" is superseded: every Take
     is selected in full and surfaced through the window of three (24b).
+    **Amended 2026-10-06 (founder, Navigation Panel QG3 A; ledger CA01; decisions log N51):**
+    "V3 serves every Take" reads as "the served policy serves every Take":
+    V3 today, and V4 for every speaker once built and switched by the
+    founder (24, V22a B), with V3's pick on any block V4 is very unsure of,
+    logged (V15a).
 
 ## 8. Commercial model
 

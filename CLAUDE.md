@@ -9,8 +9,11 @@ the sole canonical presentation document. Each Take rewrites each Slide it spoke
 from exactly what was said in the latest Take; locked helper words persist until the
 user picks new ones, and every version stays in the Paragraph's history. The load-bearing pieces are per-slide
 transcription, coherent initial Ideal Text with stable Paragraph identity, and
-versioned Manager arbitration. **V3 is the served policy** (founder cutover
-2026-09-18; V2 is retained but is no longer a fallback). It partitions each
+versioned Manager arbitration. **V3 is served today** (founder cutover
+2026-09-18; V2 is retained but is no longer a fallback). **V4, when built,
+replaces it for every speaker by the founder's switch** (founder 2026-10-06,
+Navigation Panel QG3 A, V22a B: "there are no users"); a block V4 is very
+unsure of gets V3's pick, logged, never silent (V15a). V3 partitions each
 Slide run into deterministic blocks closest to 75 words and surfaces exactly
 one relative-best Confident Voice item per valid block on **every** Take,
 Take 1 included (contract 24b). Every item carries the delivery read; after Yes, In-between or
@@ -49,7 +52,9 @@ a best-of pick; an unspoken Slide keeps its last version (N29). The lock keeps t
 helper words, which persist until the user picks new ones. Every version stays in
 the Paragraph's history. Best Presentation is retired.
 **L2** Detectors create Candidates and only Manager-approved Candidates surface
-under the active versioned budget. V3 (served since 2026-09-18) uses one
+under the active versioned budget. V3 (served since 2026-09-18; replaced by
+V4 for every speaker once V4 is built and switched by the founder, with V3's
+pick on any block V4 is very unsure of, logged — QG3 A, 2026-10-06) uses one
 relative-best Confident Voice item per valid 75-word block on every Take,
 plus one anchored note per block by its read: praise where read confident, a
 rewrite where read weak, an exercise on any matched bookmark (founder
