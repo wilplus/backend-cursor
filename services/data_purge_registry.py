@@ -1282,6 +1282,10 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     # The communities' live view (0432): no row of its own; its rows are
     # take_shares, communities and snippets, each purged on its own.
     "community_clips_live",
+    # The corpus's speaker splits (0433, N56.4): a digest of a licensed
+    # corpus speaker's key and its learn/test side. No user id, no name, no
+    # recording; the import sessions it groups are purged on their own.
+    "corpus_speaker_splits",
     "admin_users", "coach_users", "admin_annotation_export_runs",
     "admin_notifications", "arc_invite_codes", "casual_voice_benchmarks",
     "chat_question_pool", "coach_video_assets",

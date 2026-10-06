@@ -274,6 +274,18 @@ class Config:
     # code constant, flipped only by a reviewed change at P5 (counsel +
     # founder), never by a dashboard.
     MLC2_TRAINING_CORPUS_COPY_ENABLED = False
+    # THE CORPUS IMPORT (founder 2026-10-06, panel answer CO1 A, decisions log
+    # N56.4: "switch the training corpus on and build it properly"). On, the
+    # coach-only POST /v2/coach/training-imports (and the CLI behind
+    # services/training_import.py) imports audio the founder holds the rights
+    # to: each import runs the Take's V3 spotting (75-word blocks, the
+    # machine's pick per block, stored and never shown) and its speaker gets
+    # one fixed 80/20 learn/test assignment (services/corpus_split.py,
+    # migration 0433). Off, the route answers 410 PHASE2_DISABLED exactly as
+    # before. A code constant the founder flips by a reviewed change, never an
+    # env variable. It opens the import only: dataset releases, training,
+    # evaluation and promotion keep their own constants above, all closed.
+    TRAINING_IMPORT_ENABLED = False
     # The training switch route (P5 packet §4 item 6). A code constant,
     # flipped only by a reviewed change; never an env variable.
     # DOOR 1 OPENED 2026-10-01 by the founder's sentence "open door 1"

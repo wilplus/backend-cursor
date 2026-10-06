@@ -28,6 +28,31 @@ def phase2_learning_disabled(function):
     return disabled
 
 
+def training_import_enabled(function):
+    """The corpus import's door (founder 2026-10-06, CO1 A, N56.4).
+
+    While ``Config.TRAINING_IMPORT_ENABLED`` is False this answers exactly
+    what ``phase2_learning_disabled`` answered on the import route: the same
+    410 body, without entering the handler. On, the handler runs, behind the
+    authentication and coach/admin check it carries itself. It reads the
+    constant on every request, so a test or a reviewed flip needs no
+    re-import. Importing a corpus creates no dataset release and starts no
+    training: those doors keep their own constants, all closed.
+    """
+    @wraps(function)
+    def gated(*args, **kwargs):
+        from config import Config
+
+        if Config.TRAINING_IMPORT_ENABLED is not True:
+            return jsonify({
+                "code": "PHASE2_DISABLED",
+                "error": "Pooled datasets, training, and promotion are not active.",
+            }), 410
+        return function(*args, **kwargs)
+
+    return gated
+
+
 def confidence_chain_alive(function):
     """410 while the Confidence writer state is ``killed``; otherwise enter.
 
