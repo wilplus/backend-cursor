@@ -148,9 +148,11 @@ w('')
 w('| ID | Source | Claim in one line | Status |')
 w('|---|---|---|---|')
 for i, g in enumerate(mapB.get('brief_gaps', []), 1):
-    w(f"| BG{i:02d} | V4 mapping 6 Oct, brief gaps | {cell(g, 400)} | FOUNDER (add a brief item or drop) |")
+    k=f"BG{i:02d}"; dd=DEC.get(k)
+    w(f"| {k} | V4 mapping 6 Oct, brief gaps | {cell(g, 400)} | {status_cell(dd['status'], 'DECIDED ' + dd['note']) if dd else 'FOUNDER (add a brief item or drop)'} |")
 for i, g in enumerate(mapB.get('contract_amendments_needed', []), 1):
-    w(f"| CA{i:02d} | V4 mapping 6 Oct, contract/lock clash | {cell(g, 400)} | FOUNDER (amend the text, or narrow the decision) |")
+    k=f"CA{i:02d}"; dd=DEC.get(k)
+    w(f"| {k} | V4 mapping 6 Oct, contract/lock clash | {cell(g, 400)} | {status_cell(dd['status'], 'DECIDED ' + dd['note']) if dd else 'FOUNDER (amend the text, or narrow the decision)'} |")
 w('')
 
 if mapB.get('decisions'):
