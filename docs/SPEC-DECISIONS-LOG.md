@@ -1822,3 +1822,25 @@ carries it).
    and the DPIA (legal drafts, QB21 A and QB15 A); the retention schedule
    (re-lands with v1.5, P33 B); the Phase 2 texts (QG11 A: written when
    each step starts).
+9. **The third export, 13:38 UTC** (verbatim in
+   `docs/audit/PANEL-ANSWERS-2026-10-06-b.md`, "Third export"). V10b A a
+   paragraph is placed by its place on the slide, the slide as backup.
+   V22c B V4 alone: no V3 running silently beside it for comparison; the
+   founder accepted that V4 cannot then be compared with V3 on the same
+   Takes. This does not touch V15a above: a block V4 is very unsure of still
+   gets V3's pick, logged. QG2a A yes, with a fair comparison (its SPEC D7
+   text follows in its own change). QB2a B the speaker's own words to say
+   again. QB7a B the mix follows what was heard. P9a A Claude redrafts the
+   twelve praise and rewrite lines, short and in simple words with no slang;
+   they wait on the founder's signature, one panel screen each (S1 to S12).
+   QG12a A the one answer can flag a disagreement. P26a and QB17a: P26 was
+   explained more simply (P26b, open); QB17a A leave it. P51a: the note
+   arrived empty, so the line is asked again (P51b, open). P52a B keep the
+   old label. P44a A keep clip picking as built. QN1 B rename confidence to
+   willfidence (sound) everywhere, code too, with the founder's note
+   "willfidence is words and sound; the sound is the sound of the
+   willfidence"; how far into the database the rename goes is asked on
+   QN1a (open). QA19a A a server test is enough. QB18a A the welcome shows
+   as soon as the first moment enters. P54 A keep it by hand. These answers
+   change no clause in this entry's paperwork; the work they call for is in
+   the ledger.
