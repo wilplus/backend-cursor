@@ -40,6 +40,30 @@ normal review surface with zero new endpoints, and the speaker still never
 sees a project, because the project LIST is source-filtered. "Not a project"
 turns out to mean "an arc that isn't yours to see", not "no arc".
 
+SWITCHED ON, PROPERLY (founder 2026-10-06, panel answer CO1 A, decisions
+log N56.4). Behind ``Config.TRAINING_IMPORT_ENABLED`` (off: the fail-closed
+tombstone this lane answered since Phase 1), for coaches and admins only,
+for audio the founder holds the rights to, with the language required:
+
+  * each import runs the same confident-moment spotting as a Take, V3's
+    blocks of about 75 words and the machine's pick per block
+    (services/corpus_spotting.py), stored on the session and never shown;
+  * its label queue holds each block's pick and one rival from the same
+    block, then the mixed queue over the rest
+    (confidence_labels.corpus_label_queue);
+  * its speaker (the "Whose voice this is" field; no name = a speaker of
+    its own) gets one fixed 80/20 learn/test split, stored once and never
+    re-shuffled (services/corpus_split.py, migration 0433).
+
+Nothing trains on any of it: dataset releases, training, evaluation and
+promotion keep their own constants, all closed.
+
+PROVIDER CALLS. The transcription runs inside ``process_lab_recording``, the
+one wrapper that puts every provider call of a recording through the
+canonical authorization/permit path when
+``PLF1_PROCESSING_AUTHORIZATION_MODE=enforce``. The spotting and the split
+call no provider.
+
 FENCES. AC-9 — nothing here surfaces a score; imports are not user-facing at
 all. BLIND COACH — imports flow to the SAME blind labeling surface as real
 takes and carry no machine verdict. LIVE LOOP — a separate source value and
@@ -109,6 +133,14 @@ def normalize_stages(raw: Any) -> set:
     return picked
 
 
+def import_enabled() -> bool:
+    """The founder's switch (``Config.TRAINING_IMPORT_ENABLED``), read on
+    every call."""
+    from config import Config
+
+    return Config.TRAINING_IMPORT_ENABLED is True
+
+
 _AUDIO_EXTS = (".webm", ".mp3", ".m4a", ".wav", ".ogg", ".flac", ".mp4",
                ".aac", ".oga", ".opus")
 
@@ -167,6 +199,7 @@ def import_training_audio(
     stages: Any = None,
     queue_per_band: int = 5,
     idempotency_key: Optional[str] = None,
+    language: Optional[str] = None,
 ) -> dict:
     """Import ONE audio file as a coach-reviewable training take.
 
@@ -186,7 +219,7 @@ def import_training_audio(
         audio_bytes=audio_bytes, filename=filename, user_id=user_id,
         topic=topic, speaker_label=speaker_label, source_note=source_note,
         content_type=content_type, database=database, run_gate=run_gate,
-        stages=stages, idempotency_key=idempotency_key,
+        stages=stages, idempotency_key=idempotency_key, language=language,
     )
     if not prepared.get("ok") or prepared.get("duplicate"):
         return prepared
@@ -194,6 +227,48 @@ def import_training_audio(
         prepared=prepared, audio_bytes=audio_bytes, filename=filename,
         database=database, queue_per_band=queue_per_band,
     )
+
+
+def _refusal(language: Optional[str]) -> Optional[dict]:
+    """Why an import may not start, or None: the switch is closed (the
+    fail-closed tombstone this lane answered since Phase 1), or no language
+    was given (N56.4: the language is required)."""
+    if not import_enabled():
+        return {
+            "ok": False,
+            "reason": "phase2_training_disabled",
+            "detail": "Legacy training imports are unavailable under Phase 1.",
+        }
+    if not (isinstance(language, str) and language.strip()):
+        return {"ok": False, "reason": "no_language",
+                "detail": "language is required (ISO-639-1, e.g. pl)"}
+    return None
+
+
+def _duplicate_import(database, idem: str, picked_stages: set,
+                      filename: str) -> Optional[dict]:
+    """The import this idempotency key already produced, or None."""
+    if not idem:
+        return None
+    try:
+        existing = database.takes.find_training_import_by_key(idem)
+        if existing:
+            ctx = existing.get("intake_context") or {}
+            from services.confidence_labels import stored_selection_records
+            return {
+                "ok": True, "duplicate": True,
+                "session_id": existing.get("id"),
+                "arc_id": existing.get("arc_id"),
+                "stages": sorted(picked_stages),
+                "queue_count": len(stored_selection_records(ctx)),
+                "filename": filename,
+            }
+    except Exception as e:
+        # A failed lookup must not block the import; the worst case is
+        # the duplicate this key existed to prevent, which is strictly
+        # better than refusing a legitimate first import.
+        logger.warning("training_import: idempotency lookup failed: %s", e)
+    return None
 
 
 def prepare_training_import(
@@ -231,18 +306,15 @@ def prepare_training_import(
     creating a second one (``{"ok": True, "duplicate": True, ...}``).
 
     Returns the prepared context for run_training_import_analysis, or an
-    ``{"ok": False, "reason": ...}`` the caller can surface. Never raises."""
-    # Phase 2 is intentionally dark.  This legacy route used to create a
-    # corpus directly and therefore bypassed the immutable release boundary.
-    # It stays callable only as an explicit, fail-closed compatibility tombstone.
-    return {
-        "ok": False,
-        "reason": "phase2_training_disabled",
-        "detail": "Legacy training imports are unavailable under Phase 1.",
-    }
+    ``{"ok": False, "reason": ...}`` the caller can surface. Never raises.
 
-    # Unreachable legacy implementation retained temporarily for the checked-
-    # in dependency audit; it is not an executable training path.
+    OPEN ONLY WHILE ``Config.TRAINING_IMPORT_ENABLED`` (founder 2026-10-06,
+    CO1 A, N56.4). Closed, this answers the fail-closed tombstone it answered
+    before, for the route and the CLI alike, and touches nothing. An import
+    creates corpus rows only: no dataset release, no training."""
+    refused = _refusal(language)
+    if refused is not None:
+        return refused
     if database is None:
         from services.db import db as database
 
@@ -261,25 +333,9 @@ def prepare_training_import(
     # Idempotency FIRST — before the gate, the upload, and any row. A retry
     # after a proxy timeout must cost nothing and create nothing.
     idem = (str(idempotency_key).strip() if idempotency_key else "")
-    if idem:
-        try:
-            existing = database.takes.find_training_import_by_key(idem)
-            if existing:
-                ctx = existing.get("intake_context") or {}
-                from services.confidence_labels import stored_selection_records
-                return {
-                    "ok": True, "duplicate": True,
-                    "session_id": existing.get("id"),
-                    "arc_id": existing.get("arc_id"),
-                    "stages": sorted(picked_stages),
-                    "queue_count": len(stored_selection_records(ctx)),
-                    "filename": filename,
-                }
-        except Exception as e:
-            # A failed lookup must not block the import; the worst case is
-            # the duplicate this key existed to prevent, which is strictly
-            # better than refusing a legitimate first import.
-            logger.warning("training_import: idempotency lookup failed: %s", e)
+    duplicate = _duplicate_import(database, idem, picked_stages, filename)
+    if duplicate is not None:
+        return duplicate
 
     # 1. The same gate the live path runs — silence and corrupt containers are
     #    rejected identically, so the corpus can't fill with unusable rows.
@@ -443,6 +499,69 @@ def prepare_training_import(
     }
 
 
+def _spot(database, prepared: dict, filename: str) -> Optional[dict]:
+    """The import's V3 spotting record, or None when it could not run. A
+    failure costs the spotting only: the pieces are labellable either way
+    and the queue falls back to the mixed policy."""
+    try:
+        from services.corpus_spotting import spot_import
+        return spot_import(
+            database, arc_id=prepared["arc_id"],
+            session_id=prepared["session_id"],
+            recording_id=prepared.get("recording_id"))
+    except Exception as e:  # noqa: BLE001 - logged with the traceback
+        logger.warning("training_import: V3 spotting failed for %s: %s",
+                       filename, e, exc_info=True)
+        return None
+
+
+def _assign_split(database, session_context: dict, session_id: str) -> None:
+    """Store this import's speaker split if the speaker has none yet."""
+    try:
+        from services.corpus_split import (
+            assign_speaker_split, speaker_key_for,
+        )
+        assign_speaker_split(database, speaker_key_for(
+            (session_context or {}).get("speaker_label"), session_id))
+    except Exception as e:  # noqa: BLE001 - logged with the traceback
+        logger.warning("training_import: split assignment failed sid=%s: %s",
+                       session_id, e, exc_info=True)
+
+
+def _store_queue(database, session_id: str, session_context: dict,
+                 spotting: Optional[dict], queue_per_band: int,
+                 filename: str) -> list:
+    """Build the import's label queue and store it beside the spotting on
+    the session; the queued snippet ids. Never raises: a failure leaves every
+    piece labellable (the queue route then builds the cohort itself)."""
+    try:
+        from services.confidence_labels import (
+            corpus_label_queue, selection_records,
+        )
+        from services.corpus_spotting import CONTEXT_KEY
+        picked = corpus_label_queue(
+            database.get_snippets_by_session(session_id) or [],
+            spotting,
+            target_size=max(0, int(queue_per_band)) * 3,
+            seed=session_id,
+        )
+        records = selection_records(picked)
+        stored: dict = {}
+        if records:
+            stored["label_queue_selection"] = records
+        if spotting is not None:
+            stored[CONTEXT_KEY] = spotting
+        if stored:
+            database.takes.set_session_intake_context(
+                session_id, {**(session_context or {}), **stored})
+        return [str(p.get("id")) for p in picked if p.get("id")]
+    except Exception as e:  # noqa: BLE001 - logged with the traceback
+        logger.warning("training_import: queue build failed for %s: %s "
+                       "(non-fatal — every piece is still labellable)",
+                       filename, e, exc_info=True)
+        return []
+
+
 def run_training_import_analysis(
     *, prepared: dict, audio_bytes: bytes, filename: str,
     database=None, queue_per_band: int = 5,
@@ -484,31 +603,18 @@ def run_training_import_analysis(
         return {"ok": False, "reason": "analysis_failed", "detail": str(e),
                 "session_id": session_id, "arc_id": arc_id}
 
-    # 6. The label queue — mixed boundary/balance/random selection. Persisted
-    #    with auditable reason/probability metadata so the blind payload can
-    #    remain clean while later evaluation can identify its random slice.
-    queue_ids: list = []
-    try:
-        from services.confidence_labels import (
-            mixed_label_queue, selection_records,
-        )
-        picked = mixed_label_queue(
-            database.get_snippets_by_session(session_id) or [],
-            target_size=max(0, int(queue_per_band)) * 3,
-            seed=session_id,
-        )
-        queue_ids = [str(p.get("id")) for p in picked if p.get("id")]
-        records = selection_records(picked)
-        if records:
-            database.takes.set_session_intake_context(
-                session_id, {
-                    **session_context,
-                    "label_queue_selection": records,
-                })
-    except Exception as e:
-        logger.warning("training_import: queue build failed for %s: %s "
-                       "(non-fatal — every piece is still labellable)",
-                       filename, e)
+    # 6. The V3 spotting (founder 2026-10-06, CO1 A, N56.4): the Take's own
+    #    75-word blocks and the machine's pick per block, over this import's
+    #    words. Stored on the session, never shown (BLIND COACH).
+    spotting = _spot(database, prepared, filename)
+
+    # 7. The label queue — each V3 block's pick and one rival from the same
+    #    block, then the mixed boundary/balance/random selection over the
+    #    rest. Persisted with auditable reason/probability metadata so the
+    #    blind payload can remain clean while later evaluation can identify
+    #    its random slice.
+    queue_ids = _store_queue(database, session_id, session_context,
+                             spotting, queue_per_band, filename)
 
     if STAGE_IDEAL_TEXT in picked_stages:
         try:
@@ -563,6 +669,11 @@ def run_training_import_analysis(
             "language": (session_context or {}).get("language"),
             "filename": filename,
         }
+
+    # 8. The speaker's learn/test split (N56.4): assigned once per speaker
+    #    and never re-shuffled (services/corpus_split.py). Nothing trains on
+    #    it; a failed write is assigned again by the speaker's next import.
+    _assign_split(database, session_context, session_id)
 
     try:
         database.takes.set_session_analysis_state(session_id, "ready")

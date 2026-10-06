@@ -13,13 +13,18 @@ A 20-file batch is a coffee break, not a spinner.
 
 Usage:
   ./venv/bin/python scripts/import_training_audio.py \\
-      --dir ~/talks --user-id <uuid> --topic "Conference talks"
+      --dir ~/talks --user-id <uuid> --topic "Conference talks" --language en
 
   # per-file speaker labels via a manifest (filename,speaker,topic):
   ./venv/bin/python scripts/import_training_audio.py \\
-      --dir ~/talks --user-id <uuid> --manifest ~/talks/manifest.csv
+      --dir ~/talks --user-id <uuid> --manifest ~/talks/manifest.csv \\
+      --language pl
 
   --dry-run   list what WOULD be imported (no upload, no analysis, no rows)
+
+Only for audio the founder holds the rights to, and only while
+Config.TRAINING_IMPORT_ENABLED is True (founder 2026-10-06, CO1 A, N56.4);
+closed, every file fails with phase2_training_disabled and nothing is written.
 """
 from __future__ import annotations
 
@@ -72,6 +77,8 @@ def main() -> int:
     ap.add_argument("--manifest", default="",
                     help="CSV: filename,speaker,topic")
     ap.add_argument("--note", default="", help="provenance note on every row")
+    ap.add_argument("--language", required=True,
+                    help="ISO-639-1 code of the speech (e.g. en, pl)")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
@@ -121,7 +128,7 @@ def main() -> int:
         result = import_training_audio(
             audio_bytes=audio, filename=name, user_id=args.user_id,
             topic=topic, speaker_label=speaker,
-            source_note=args.note or None,
+            source_note=args.note or None, language=args.language,
         )
         if result.get("ok"):
             ok += 1

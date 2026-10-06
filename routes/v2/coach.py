@@ -27,7 +27,7 @@ from config import Config
 from routes.admin import is_admin, require_admin_or_coach
 from routes.phase2_guard import (
     operational_purpose_disabled,
-    phase2_learning_disabled,
+    training_import_enabled,
 )
 from routes.v2.blueprint import v2_bp
 from routes.v2.processing_authorization import speaker_provider_route
@@ -169,8 +169,9 @@ def _coach_state_map(session_id, rater_id=None, *, draft_rows=None):
 def _confidence_queue_selection(session_id, session, snippets):
     """One source of truth for the blind queue and its post-label audit."""
     from services.confidence_labels import (
-        mixed_label_queue, selection_records, stored_selection_records,
+        corpus_label_queue, selection_records, stored_selection_records,
     )
+    from services.corpus_spotting import stored_spotting
 
     ctx = session.get("intake_context") if isinstance(
         session.get("intake_context"), dict) else {}
@@ -186,7 +187,10 @@ def _confidence_queue_selection(session_id, session, snippets):
         return [by_id[record["snippet_id"]] for record in stored
                 if record["snippet_id"] in by_id]
 
-    selected = mixed_label_queue(snippets, seed=str(session_id))
+    # An import's V3 spotting, when it has one, puts each block's pick and a
+    # rival first (N56.4); without one this is the mixed queue, unchanged.
+    selected = corpus_label_queue(
+        snippets, stored_spotting(ctx), seed=str(session_id))
     records = selection_records(selected)
     if records:
         # Freeze the cohort and its selection provenance on first build.
@@ -2066,7 +2070,7 @@ def _int_or(raw, default: int) -> int:
 
 
 @v2_bp.route("/coach/training-imports", methods=["POST"])
-@phase2_learning_disabled
+@training_import_enabled
 @whisper_limit
 @require_admin_or_coach
 def v2_coach_training_import():
@@ -2077,16 +2081,14 @@ def v2_coach_training_import():
     Multipart form:
       audio_file    (required) any container ffmpeg reads (webm/mp3/m4a/wav…)
       topic         (required) what the talk is about — labels it for review
-      speaker_label (optional) whose voice this is. Worth filling for a
-                    multi-speaker corpus: it is the only grouping key a
-                    per-speaker model will have.
+      speaker_label (optional) whose voice this is: the grouping key of the
+                    80/20 split; absent, the import is a speaker of its own.
       user_id       (optional) who the corpus row belongs to; defaults to the
                     uploading coach
       note          (optional) free-text provenance (where it came from)
-      language      (optional) ISO-639-1 ('pl', 'de', …). Absent =
-                    auto-detect. Non-English NEEDS this: our Whisper prompt
-                    is an English disfluency primer and Whisper follows its
-                    prompt's language.
+      language      (required since N56.4) ISO-639-1 ('pl', 'de', …): our
+                    Whisper prompt is an English disfluency primer and
+                    Whisper follows its prompt's language.
       stages        (optional) comma-separated ticks — the COACH-ONLY choice
                     of how much analysis to run. Default 'confidence':
                       confidence  always on — transcript, pieces, acoustics,
@@ -2103,19 +2105,18 @@ def v2_coach_training_import():
                     policy targets three times this value (default 5 → 15),
                     divided across boundary, balance, and random exploration.
 
-    ONE FILE PER REQUEST, on purpose: a batch endpoint would either block for
-    minutes or need a job queue, and per-file requests give the FE real
-    progress and per-file failures instead of one opaque 500.
-
-    The import is marked source='training_import', which keeps it out of the
-    speaker's project list AND out of their acoustic baseline (imports are
-    z-scored against themselves) — see services/training_import.py.
+    ONE FILE PER REQUEST: per-file progress and failures, no job queue.
+    OPEN ONLY WHILE Config.TRAINING_IMPORT_ENABLED (founder 2026-10-06, CO1
+    A, N56.4); off, 410 PHASE2_DISABLED as before. Each import runs the V3
+    spotting and its speaker's fixed 80/20 split. source='training_import'
+    keeps it out of the speaker's project list AND their acoustic baseline
+    (imports are z-scored against themselves): services/training_import.py.
 
     200 { ok, session_id, arc_id, snippet_count, ... }  → review at
          GET /v2/coach/arc/<arc_id>/stars
     422 { code: "AUDIO_REJECTED", reason }   the min-content gate (silence /
          corrupt / too short) — the same gate live takes pass
-    400 · 500
+    400 (audio_file, topic or language missing) · 500
     """
     audio_file = request.files.get("audio_file")
     if not audio_file:
@@ -2125,6 +2126,10 @@ def v2_coach_training_import():
     if not topic:
         return jsonify({"code": "INVALID_INPUT",
                         "error": "topic is required"}), 400
+    language = (request.form.get("language") or "").strip()
+    if not language:
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "language is required"}), 400
     try:
         audio_bytes = audio_file.read()
         from services.training_import import (
@@ -2143,15 +2148,12 @@ def v2_coach_training_import():
                           or None,
             source_note=(request.form.get("note") or "").strip() or None,
             stages=(request.form.get("stages") or None),
-            # BOTH spellings (fix 2026-07-29): I documented
-            # `upload_idempotency_key` (the coach-video lane's name) but the
-            # FE shipped `idempotency_key`, so the key was being silently
-            # ignored and the dedupe it exists for never ran. Accepting both
-            # costs nothing and neither side has to redeploy to be correct.
+            # BOTH spellings (fix 2026-07-29): the FE ships `idempotency_key`,
+            # the coach-video lane's name is `upload_idempotency_key`.
             idempotency_key=((request.form.get("idempotency_key")
                               or request.form.get("upload_idempotency_key")
                               or "").strip() or None),
-            language=(request.form.get("language") or "").strip() or None,
+            language=language,
         )
         if not prepared.get("ok"):
             _reason = prepared.get("reason") or "failed"

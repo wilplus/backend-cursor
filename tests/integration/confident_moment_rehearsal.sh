@@ -648,6 +648,14 @@ fi
 hard migrations/a_take_may_be_shared_with_a_community.sql
 hard migrations/a_take_may_be_shared_with_a_community.sql
 
+# 0433 (N56.4, 2026-10-06): a corpus speaker keeps its split. One table
+# (a digest of the speaker key and its learn/test side, insert-once) and the
+# trigger that refuses UPDATE and DELETE; no dependency, so both lanes. After
+# 0432, as in the manifest. Twice: apply/reapply idempotency. Its suite:
+# tests/test_a_corpus_speaker_keeps_its_split_postgres.py.
+hard migrations/a_corpus_speaker_keeps_its_split.sql
+hard migrations/a_corpus_speaker_keeps_its_split.sql
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

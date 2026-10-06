@@ -156,7 +156,7 @@
   "services/token_account.py": 14,
   "services/tracked_changes.py": 2,
   "services/training_corpus.py": 2,
-  "services/training_import.py": 14,
+  "services/training_import.py": 13,
   "services/transcript_document.py": 6,
   "services/tutor_video_url.py": 5,
   "services/upload_guard.py": 1,
