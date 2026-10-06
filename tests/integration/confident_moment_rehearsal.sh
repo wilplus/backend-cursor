@@ -640,6 +640,14 @@ if [ "$LANE" = "released" ]; then
   hard migrations/the_shadow_writer_accepts_the_frame_the_code_builds.sql
 fi
 
+# 0432 (N52.4, 2026-10-06): a Take may be shared with a community. Four
+# tables (the general community seeded once) and the live view over
+# snippets, which both lanes carry; a lane without snippets gets the tables
+# and a notice. After 0431, as in the manifest. Twice: apply/reapply
+# idempotency. Its suite: tests/test_a_take_may_be_shared_with_a_community_postgres.py.
+hard migrations/a_take_may_be_shared_with_a_community.sql
+hard migrations/a_take_may_be_shared_with_a_community.sql
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

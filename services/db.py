@@ -15398,6 +15398,127 @@ class DatabaseService:
         labels = (self.get_confidence_labels_by_snippet_ids([str(snippet_id)]) or {}).get(str(snippet_id), [])
         return any(isinstance(r, dict) and str(r.get("rater_id") or "") == str(coach_id) for r in labels)
 
+    # ── Communities (0432, N52.4) ─────────────────────────────────────────
+
+    def get_general_community(self) -> Optional[dict]:
+        """The one open community (seeded by 0432)."""
+        res = (self.client.table("communities").select("*")
+               .eq("kind", "general").limit(1).execute())
+        return (res.data or [None])[0]
+
+    def insert_community(self, row: dict) -> Optional[dict]:
+        """A private community; a pass code already in use answers None (the
+        unique digest is the rule). Raises on any other failure."""
+        try:
+            res = self.client.table("communities").insert(dict(row)).execute()
+        except Exception as e:  # noqa: BLE001 — the unique key is the rule
+            if "23505" in str(e) or "duplicate" in str(e).lower():
+                return None
+            raise
+        return (res.data or [None])[0]
+
+    def get_community_by_pass_code_digest(self, digest: str) -> Optional[dict]:
+        res = (self.client.table("communities").select("*")
+               .eq("pass_code_digest", str(digest)).is_("closed_at", "null")
+               .limit(1).execute())
+        return (res.data or [None])[0]
+
+    def get_communities_by_ids(self, community_ids: list[str]) -> list[dict]:
+        ids = [str(c) for c in community_ids or [] if c]
+        if not ids:
+            return []
+        res = self.client.table("communities").select("*").in_("id", ids).execute()
+        return list(res.data or [])
+
+    def add_community_member(self, *, community_id: str, user_id: str,
+                             role: str) -> bool:
+        """One row per person per community; joining again keeps the row
+        (and an owner stays owner). Raises on failure."""
+        (self.client.table("community_members").upsert({
+            "community_id": str(community_id), "user_id": str(user_id), "role": str(role),
+        }, on_conflict="community_id,user_id", ignore_duplicates=True).execute())
+        return True
+
+    def list_community_memberships(self, user_id: str) -> list[dict]:
+        """[{community_id, role, joined_at}] for one person."""
+        res = (self.client.table("community_members")
+               .select("community_id,role,joined_at")
+               .eq("user_id", str(user_id)).limit(500).execute())
+        return list(res.data or [])
+
+    def list_take_shares(self, take_session_id: str) -> list[dict]:
+        res = (self.client.table("take_shares").select("*")
+               .eq("take_session_id", str(take_session_id)).execute())
+        return list(res.data or [])
+
+    def upsert_take_share(self, *, take_session_id: str, owner_user_id: str,
+                          community_id: str, consent_version: str) -> Optional[dict]:
+        """Share one Take with one community: one row per pair; a share
+        clears revoked_at and stamps the consent version. Raises on failure."""
+        res = (self.client.table("take_shares").upsert({
+            "take_session_id": str(take_session_id), "owner_user_id": str(owner_user_id),
+            "community_id": str(community_id), "consent_version": str(consent_version),
+            "shared_at": datetime.now(timezone.utc).isoformat(), "revoked_at": None,
+        }, on_conflict="take_session_id,community_id").execute())
+        return (res.data or [None])[0]
+
+    def revoke_take_shares(self, take_session_id: str, *,
+                           keep_community_ids: list[str]) -> int:
+        """Withdraw the Take from every community not kept; the rows stay
+        with revoked_at stamped. Raises on failure."""
+        query = (self.client.table("take_shares")
+                 .update({"revoked_at": datetime.now(timezone.utc).isoformat()})
+                 .eq("take_session_id", str(take_session_id))
+                 .is_("revoked_at", "null"))
+        keep = [str(c) for c in keep_community_ids or [] if c]
+        if keep:
+            query = query.not_.in_("community_id", keep)
+        return len(query.execute().data or [])
+
+    def list_community_clips_live(self, community_ids: list[str]) -> list[dict]:
+        """The live moments shared with these communities (the view, 0432),
+        newest share first."""
+        ids = [str(c) for c in community_ids or [] if c]
+        if not ids:
+            return []
+        res = (self.client.table("community_clips_live").select("*")
+               .in_("community_id", ids).order("shared_at", desc=True)
+               .limit(500).execute())
+        return list(res.data or [])
+
+    def list_community_clips_for_snippet(self, snippet_id: str) -> list[dict]:
+        res = (self.client.table("community_clips_live").select("*")
+               .eq("snippet_id", str(snippet_id)).execute())
+        return list(res.data or [])
+
+    def list_community_answered_clip_ids(self, listener_id: str) -> list[str]:
+        """Every clip this listener answered in a community queue: the
+        snippet of a community clip, the corpus id of a training clip."""
+        res = (self.client.table("community_answers")
+               .select("snippet_id,corpus_clip_id")
+               .eq("listener_user_id", str(listener_id)).limit(5000).execute())
+        out: list[str] = []
+        for row in res.data or []:
+            for key in ("snippet_id", "corpus_clip_id"):
+                if row.get(key):
+                    out.append(str(row[key]))
+        return out
+
+    def insert_community_answer(self, row: dict) -> Optional[dict]:
+        """One per person per clip: a duplicate answers None."""
+        try:
+            res = self.client.table("community_answers").insert(dict(row)).execute()
+        except Exception as e:  # noqa: BLE001 — the unique key is the rule
+            if "23505" in str(e) or "duplicate" in str(e).lower():
+                return None
+            raise
+        return (res.data or [None])[0]
+
+    def get_corpus_clip(self, clip_id: str) -> Optional[dict]:
+        res = (self.client.table("corpus_clips").select("*")
+               .eq("id", str(clip_id)).limit(1).execute())
+        return (res.data or [None])[0]
+
     def upsert_coach_take_word(
         self, *, take_session_id: str, coach_id: str, text: Optional[str],
         video_ref: Optional[str], share: bool,

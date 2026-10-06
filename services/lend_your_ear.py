@@ -63,8 +63,17 @@ def _accepted_share_terms(database: Any, owner_user_id: Any) -> bool:
     it, or a later one. False while no such version is published
     (PEER_SHARE_POLICY_VERSION None), and false when the read fails."""
     from config import Config
+    return accepted_policy_at_least(
+        database, owner_user_id, getattr(Config, "PEER_SHARE_POLICY_VERSION", None))
+
+
+def accepted_policy_at_least(database: Any, owner_user_id: Any,
+                             version: Optional[str]) -> bool:
+    """Whether the speaker's current Phase-1 authorization is on `version`
+    or a later one. False when no version is named, and false when the read
+    fails: unknown reads as not accepted. Shared with the communities' share
+    (services/communities.py), which names its own version."""
     from services.processing_authorization import ProcessingAuthorizationService
-    version = getattr(Config, "PEER_SHARE_POLICY_VERSION", None)
     if not version:
         return False
     try:
