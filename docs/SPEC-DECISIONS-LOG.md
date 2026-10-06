@@ -1910,3 +1910,45 @@ wins over older design locks where they disagree.
    founder's own, held for counsel because they ask for consent, and so
    never rotated); the Journal post on self-modeling (Dowrick, WIREs
    Cognitive Science, 2012), to be written and signed.
+
+**N53 · The founder's answers of 6 October 2026, fourth export (19:28
+UTC; Navigation Panel).** Verbatim, with the notes, in
+`docs/audit/PANEL-ANSWERS-2026-10-06-c.md`; the ledger rows carry DECIDED
+notes (A053a, A068a, A060, A077a, A169a).
+1. **The line bank.** B11, B13 and B14 are signed as drafted. For B01,
+   B05 to B10 and B12 the founder wrote a line of their own; in chat:
+   "The examples I gave for a sign-off are just single examples. If you
+   could create three more similar ones, similar vibe, I could sign off
+   them too." Each goes back to the panel as the founder's line (speech-to-
+   text tidied only, the change named on the screen) plus three more
+   (B01b to B12b). B06's "all the delivery" is shown as "this part",
+   because the line is about one moment, and B09's strong line is flagged
+   against the rule that weak evidence uses gentle words; the founder
+   decides both on the screen. B02 to B04 are not answered. Nothing from
+   the bank ships until it is signed (N52.6).
+2. **Communities.** CM1 A: only the voices of people who agreed to share
+   reach others; the training clips mixed into judging are the licensed
+   corpus (0410, F4), never a speaker's training-corpus clip. CM2 B: build
+   now and switch on at once, against Claude's pick, with the risk stated
+   on the screen ("people's voices reach others under words counsel has
+   not checked, in the EU"); sharing switches on with the sharing screen,
+   under the founder's own words for it, without waiting for counsel. The
+   consent stays per Take and revocable, and is stamped with the version
+   of the words the speaker saw. CM3 A with the note "Up to 3": asked again
+   (CM3a).
+3. **The walk's screens.** NX1 A: this session builds the walk's screens
+   and their motion from the locked prototype, nothing added, each screen
+   shown in the panel's Done list with pictures before it goes live. This
+   amends the frontend design lock's "a designer's session builds these
+   screens" for the walk. NX2 B: one grey picture for the coach and the app;
+   no photos. NX3 A: "It was better, and I have yet another practice for you
+   to try!" only when something moved between tries; the line for a try
+   where nothing moved goes to signature (NX3a).
+4. **Everything else.** D4: skipped for now; it waits for a live prototype
+   of the coach panel (A060 parked). JP1 A: the Journal post on
+   self-modeling is signed as drafted. P51b A: the errors page reads
+   "Coaches heard it on {n} of {bar} checked moments." (A077a). P26b A:
+   the coach is asked to listen again in their usual work list; the words
+   say neither why nor what the speaker answered, so the coach stays blind
+   (P26c, to sign) (A169a). QN1a A: docs and code are renamed to
+   willfidence (sound); database names stay.
