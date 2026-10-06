@@ -1952,3 +1952,36 @@ notes (A053a, A068a, A060, A077a, A169a).
    say neither why nor what the speaker answered, so the coach stays blind
    (P26c, to sign) (A169a). QN1a A: docs and code are renamed to
    willfidence (sound); database names stay.
+
+**N54 · The line bank is signed, and the walk's open questions (founder,
+6 October 2026, fifth export, 20:03 UTC).** Verbatim in
+`docs/audit/PANEL-ANSWERS-2026-10-06-d.md`; every signed line is in
+`docs/SIGNED-line-bank-2026-10-06.md`, which is the only source the code
+may read them from.
+1. **The line bank.** On the founder's request ("for each you should
+   create 4"), four new lines per screen went to the panel beside the
+   founder's own. All fourteen screens are now signed: B01b with the
+   founder's later line ("This sounded more confident than on Take {n}"),
+   B05b with the founder's wording for two of its lines, the rest as
+   drafted; B11, B13 and B14 gain four lines each. B10's last line and
+   B14's fifth are noted as the founder's favourites. The line after a try
+   where nothing moved is signed (NX3a, four lines); the founder's
+   "It was better, …" shows only when something moved (NX3 A). The coach's
+   listen-again words are signed (P26c, three lines, blind by wording).
+2. **The practise loop has a limit: up to three tries** (CM3a A). After the
+   third try that is not praise the app thanks the speaker and moves on to
+   "Judgement time!"; Skip still works at any time. Its lines are on the
+   panel to sign (CM3b). This amends lock D2 (no attempt cap) for the walk.
+3. **The walk's open questions.** WQ1 A: Skip on "Judgement time!" finishes
+   the walk; the moments' bars clear and nothing asks again (a paragraph
+   can still be opened and judged later). WQ2 B: "Your coach is working on
+   your exercise." is not shown in the walk; the moment waits silently
+   (amends N48.3 Q10 for the walk). WQ3 A: with personalised practice off,
+   a clearer version offers one word to accept it (to sign, WQ3b) and
+   "Keep my words", no practise. The founder's note "But it should not be
+   turned off ever" is asked back (WQ3a): the switch is a consent choice
+   that the law requires to stay withdrawable, so removing it means making
+   practise part of the service, a Privacy and Terms change. WQ4 A: the
+   answer toast is the answer with a tick. WQ5 A and WQ6 A: the sharing
+   screen's choices and its four messages are signed (CM2 B: they go live
+   with the screen).
