@@ -108,7 +108,7 @@ for r in rows:
     source = f"{src['area_title']} · {src['line_id']} ({src['status']}): “{r['quote']}”"
     why = r.get('why') or ''
     if r.get('unclear'): why += ' · QUESTION: ' + r['unclear']
-    w(f"| {r['aid']} | {cell(source)} | {cell(r['claim'])} | {r['area']} | no | {cell(' · '.join(ev), 220)} | — | {r['severity'][:2]} | — | — | — | {status_cell(r['status'], why) if (r['status']!='OPEN' or why.startswith('DECIDED')) else 'OPEN' + (' · QUESTION: ' + cell(r['unclear']) if r.get('unclear') else '')} |")
+    w(f"| {r['aid']} | {cell(source)} | {cell(r['claim'])} | {r['area']} | no | {cell(' · '.join(ev), 220)} | — | {r['severity'][:2]} | — | {cell(DEC.get(r['aid'],{}).get('pr')) } | {cell(DEC.get(r['aid'],{}).get('test'))} | {status_cell(r['status'], why) if (r['status']!='OPEN' or why.startswith('DECIDED')) else 'OPEN' + (' · QUESTION: ' + cell(r['unclear']) if r.get('unclear') else '')} |")
 w('')
 
 w('## B · V4 Developer brief')

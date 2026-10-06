@@ -20,19 +20,23 @@
  },
  "N18": {
   "status": "FOUNDER",
-  "note": "R5 A: founder deletes the stray branch on GitHub after the B6 patch lands"
+  "note": "#617 merged: the founder deletes the stray branch hold/b6-coach-reviewed-moment on GitHub"
  },
  "N20": {
   "status": "OPEN",
   "note": "R3 A: fix now — one idempotent migration so the writer accepts the frame the code builds; test by Grok (handoff HO-2)"
  },
  "A002": {
-  "status": "OPEN",
-  "note": "R5 A: land the B6 patch (amends design-lock answer 2A)"
+  "status": "DONE",
+  "pr": "frontend #617",
+  "test": "src/components/willab/paragraphSheet.test.tsx (fails without the fix, passes with it)",
+  "note": "R5 A: landed in frontend #617 (merged 6 Oct); checker PASS"
  },
  "A006": {
-  "status": "OPEN",
-  "note": "R5 A: land the B6 patch"
+  "status": "DONE",
+  "pr": "frontend #617",
+  "test": "src/components/willab/paragraphSheet.test.tsx (fails without the fix, passes with it)",
+  "note": "R5 A: landed in frontend #617 (merged 6 Oct); checker PASS"
  },
  "X1": {
   "status": "OPEN",

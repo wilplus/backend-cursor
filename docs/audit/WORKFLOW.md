@@ -24,7 +24,7 @@ Most serious first: S1 live loop broken, S2 data loss, S3 fence breach, S4 wrong
   - Otherwise: the session's current model.
   - An external coding agent may take small rows (M5 A): a few files, no database change, no design-locked screen. Frontend chunks and repetitive code are the best fit (W3 note). Its work is pasted back into the panel and integrated by a fixer session.
 - **The fixer never edits the done-test** (M3b A). If it thinks the test is wrong, it stops and writes why, and the test author or the founder decides. A check fails any PR in which the fixer changed the test file (X3/X1).
-- **Checker: the second model** (M3a A). It reviews every screen PR, every migration PR and every 10th other PR against the row and the design lock (H8 A). Its verdict goes into the PR word for word.
+- **Checker: GPT (through use.ai today; M1a), the second model** (M3a A). It reviews every screen PR, every migration PR and every 10th other PR against the row and the design lock (H8 A). Its verdict goes into the PR word for word.
 
 ## Hand-offs (M4 A)
 For now hand-offs are manual: the coordinator writes a task in the panel's Hand-offs screen, and the founder copies it to the other model and pastes the answer back. If this works well but takes too much manual work, the founder sets up API access later (keys as environment variables, never in chat).
