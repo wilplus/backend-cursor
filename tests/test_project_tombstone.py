@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 from services.data_purge import DataPurgeOrchestrator
 from services.data_purge_registry import (
-    DEPENDENCIES, DETACH_LINKS, LINEAGE_TOMBSTONES, dependency_by_code,
+    DEPENDENCIES, LINEAGE_TOMBSTONES, dependency_by_code,
 )
 
 
@@ -22,17 +22,10 @@ def test_projects_is_a_tombstone_under_the_deletion_evidence_rule():
     # N12 (2026-09-26, "keep an empty receipt") adds the take's permanent
     # record. Exactly these, nothing else, and every one under the
     # deletion-evidence rule.
-    # Retention schedule v1.5 (N50 P4) adds one more of another kind: a
-    # library video keeps its row and loses only its link to the speaker,
-    # under product-records-v1 (DETACH_LINKS).
     tombstones = {d.relation for d in DEPENDENCIES if d.disposition == "tombstone"}
-    assert tombstones == {"projects"} | LINEAGE_TOMBSTONES | set(DETACH_LINKS)
+    assert tombstones == {"projects"} | LINEAGE_TOMBSTONES
     assert {d.retention_category for d in DEPENDENCIES
-            if d.disposition == "tombstone"
-            and d.relation not in DETACH_LINKS} == {"deletion_evidence"}
-    assert {d.retention_category for d in DEPENDENCIES
-            if d.relation in DETACH_LINKS
-            and d.disposition == "tombstone"} == {"product_records"}
+            if d.disposition == "tombstone"} == {"deletion_evidence"}
     assert LINEAGE_TOMBSTONES == {
         "v2_sessions", "recording_attempts", "takes",
         "processing_transition_events", "transcript_versions", "slides",
