@@ -30,6 +30,12 @@ request resumes, a finished purge is never run again (its finalize would
 write a second 'completed' event), and a request left for a person is not
 retried.
 
+THE RELEASED COPIES (0447). An erasure request voids every pair release
+holding one of its pairs at once. A run that executes ends by sweeping the
+voided releases (services/pair_release.py), so their objects go within the
+hour rather than only at the weekly learning job; a sweep that cannot run
+is reported and never fails the run.
+
 AC-9: internal. The report carries ids, states and reason codes, never
 anyone's words or audio, and is never proxied to a speaker.
 """
@@ -272,6 +278,21 @@ def _handle(database: Any, work: Work, *, execute: bool) -> dict:
     return outcome
 
 
+def _sweep_releases(database: Any, storage: Any = None) -> dict:
+    """Delete the objects of voided pair releases and mark them purged."""
+    from services.pair_release import R2ReleaseStorage, sweep_voided
+
+    try:
+        if storage is None:
+            from config import Config
+
+            storage = R2ReleaseStorage(Config())
+        return sweep_voided(database, storage)
+    except Exception as error:  # noqa: BLE001 -- reported, the weekly sweep retries
+        logger.warning("pair release sweep failed: %s", error, exc_info=True)
+        return {"purged": 0, "unavailable": _code(error)}
+
+
 def _left_for_a_person(database: Any, work: list[Work]) -> list[dict]:
     out = []
     for item in work:
@@ -289,8 +310,10 @@ def _left_for_a_person(database: Any, work: list[Work]) -> list[dict]:
 
 def run_due_deletions(database: Any, *, execute: bool,
                       limit: int = DEFAULT_LIMIT,
-                      now: Optional[datetime] = None) -> dict:
-    """One completion run. Returns the report for the cron's log."""
+                      now: Optional[datetime] = None,
+                      release_storage: Any = None) -> dict:
+    """One completion run. Returns the report for the cron's log.
+    ``release_storage`` is the release bucket's storage (default: R2)."""
     limit = max(1, min(int(limit), MAX_LIMIT))
     work = collect(database, now)
     actionable = [item for item in work if item.action != "review"]
@@ -321,6 +344,8 @@ def run_due_deletions(database: Any, *, execute: bool,
                 report["stopped"] = "LEASE_LOST"
                 break
             outcomes.append(_handle(database, item, execute=True))
+        if "stopped" not in report:
+            report["release_sweep"] = _sweep_releases(database, release_storage)
     finally:
         _lease(client, "release_deletion_completion_lease_v1", {"p_holder": holder})
     # Read again: a request this run stopped is now one a person must see.

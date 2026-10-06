@@ -5,7 +5,10 @@ Delete creates a REQUEST. For seven days (``due_at``) the project is locked
 and its owner may cancel; after that the deletion completes by itself
 (services/deletion_completion.py confirms it as the system and runs the
 one-project purge). An operator may still confirm one by hand (0380).
-Nothing here deletes anything.
+Nothing here deletes anything. The request, and each confirm, voids every
+pair release holding one of the project's pairs (0447); the release sweep
+then deletes those copies, and the export's eligibility decision keeps the
+pairs out of any new release while the project is leaving.
 
 Storage is ``project_deletion_requests`` (migration 0364), deliberately apart
 from ``data_purge_requests`` so a project request can never be run as an

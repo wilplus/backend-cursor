@@ -24,6 +24,14 @@ nothing left.
   a yes given later makes older pairs releasable; a withdrawal makes them
   not, and **voids any release that carried them**; the job's sweep then
   deletes the object. Revocation purges the copies, whatever door 2 says.
+- An erasure does not wait for that refresh (0447): an account deletion or
+  project deletion **request** voids every release holding one of its pairs
+  at once (`owner_erasure_requested`, `project_erasure_requested`), so the
+  void no longer needs the rows the purge deletes. The project's void runs
+  again when its purge request is made. The pairs go back to waiting, and
+  the export's eligibility decision keeps them out while the project is
+  leaving; each executing hourly deletion run sweeps the voided objects
+  too.
 - The speaker's settings card (`TrainingConsentCard`) already exists and
   hides itself while the route answers 410. It shows counsel's sentence as
   the backend serves it, fingerprinted.

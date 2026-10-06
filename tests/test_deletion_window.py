@@ -401,6 +401,46 @@ class RunTests(unittest.TestCase):
         report, orchestrator, _ = self._run(database, "done")
         self.assertEqual((report["stopped"], report["outcomes"]), ("LEASE_LOST", []))
         orchestrator.run.assert_not_called()
+        self.assertNotIn("release_sweep", report)
+
+    def test_an_executing_run_ends_by_sweeping_the_voided_releases(self):
+        database = self._db(_tables())
+        key = "pair-releases/praise_line/2026-10-05/pairs.jsonl"
+        marked: list = []
+        database.list_voided_unpurged_pair_releases = lambda: [
+            {"id": "r1", "storage_bucket": "releases", "storage_key": key}]
+        database.mark_pair_release_purged = marked.append
+        storage = mock.Mock()
+
+        report = dc.run_due_deletions(database, execute=True, now=NOW,
+                                      release_storage=storage)
+
+        self.assertEqual(report["release_sweep"], {"purged": 1, "failed": []})
+        self.assertEqual(storage.delete.call_args_list, [
+            mock.call("releases", key),
+            mock.call("releases", key.replace("pairs.jsonl", "manifest.json"))])
+        self.assertEqual(marked, ["r1"])
+        self.assertEqual(database.client.calls[-1][0], "release_deletion_completion_lease_v1")
+        dry = dc.run_due_deletions(database, execute=False, now=NOW,
+                                   release_storage=storage)
+        self.assertNotIn("release_sweep", dry)
+        self.assertEqual(storage.delete.call_count, 2)
+
+    def test_a_sweep_that_cannot_run_is_reported_and_never_fails_the_run(self):
+        database = self._db(_tables())
+        database.list_voided_unpurged_pair_releases = mock.Mock(
+            side_effect=RuntimeError("ledger down"))
+        with self.assertLogs("services.pair_release", "WARNING"):
+            report = dc.run_due_deletions(database, execute=True, now=NOW,
+                                          release_storage=mock.Mock())
+        self.assertEqual(report["release_sweep"],
+                         {"purged": 0, "unavailable": "ledger down"})
+        with mock.patch("services.pair_release.sweep_voided",
+                        side_effect=RuntimeError("boom")), \
+                self.assertLogs("services.deletion_completion", "WARNING"):
+            report = dc.run_due_deletions(database, execute=True, now=NOW,
+                                          release_storage=mock.Mock())
+        self.assertEqual(report["release_sweep"], {"purged": 0, "unavailable": "boom"})
 
     def test_fresh_starts_come_before_resumptions(self):
         tables = _tables(
