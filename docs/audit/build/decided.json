@@ -1,0 +1,493 @@
+{
+ "N01": {
+  "status": "IN-PR",
+  "pr": "#909",
+  "note": "R1 A: revert #907; a new row re-lands v1.5 (N21)"
+ },
+ "N04a": {
+  "status": "IN-PR",
+  "pr": "#908",
+  "note": "R2 A: renumber 0430→0429, 0431→0430 after #909, then merge commit"
+ },
+ "N05": {
+  "status": "IN-PR",
+  "pr": "#908",
+  "note": "R2 A: merge after #909"
+ },
+ "N17": {
+  "status": "FOUNDER",
+  "note": "R4a A: keep the alarm; the founder pastes the /admin/research readiness line (hand-off HO-5), then a session finds the cause"
+ },
+ "N18": {
+  "status": "FOUNDER",
+  "note": "#617 merged: the founder deletes the stray branch hold/b6-coach-reviewed-moment on GitHub"
+ },
+ "N20": {
+  "status": "OPEN",
+  "note": "R3 A: fix now — one idempotent migration so the writer accepts the frame the code builds; test by Grok (handoff HO-2)"
+ },
+ "A002": {
+  "status": "DONE",
+  "pr": "frontend #617",
+  "test": "src/components/willab/paragraphSheet.test.tsx (fails without the fix, passes with it)",
+  "note": "R5 A: landed in frontend #617 (merged 6 Oct); checker PASS"
+ },
+ "A006": {
+  "status": "DONE",
+  "pr": "frontend #617",
+  "test": "src/components/willab/paragraphSheet.test.tsx (fails without the fix, passes with it)",
+  "note": "R5 A: landed in frontend #617 (merged 6 Oct); checker PASS"
+ },
+ "X1": {
+  "status": "OPEN",
+  "note": "H1 A approved; test by Grok (handoff HO-1)"
+ },
+ "X2": {
+  "status": "OPEN",
+  "note": "H2 A approved"
+ },
+ "X3": {
+  "status": "OPEN",
+  "note": "H3 A approved"
+ },
+ "X4": {
+  "status": "OPEN",
+  "note": "H4, H5, H6 A approved; the signed-words list needs the founder's confirmation once built"
+ },
+ "X5": {
+  "status": "OPEN",
+  "note": "H7 A approved; the locked-file list comes to the panel for approval"
+ },
+ "X6": {
+  "status": "OPEN",
+  "note": "H8 A: screens, migrations and every 10th other PR"
+ },
+ "X7": {
+  "status": "OPEN",
+  "note": "H9 A approved; W5 note: Done screens show real app screens for speaker and coach flows"
+ },
+ "X8": {
+  "status": "OPEN",
+  "note": "H10 A approved"
+ },
+ "X9": {
+  "status": "OPEN",
+  "note": "H11 A approved"
+ },
+ "X10": {
+  "status": "OPEN",
+  "note": "H12 A approved"
+ },
+ "B1.1": {
+  "status": "OPEN",
+  "note": "V1 A: every speaker, through the processing-authorization path; after R2 (#908) and R3 (N20)"
+ },
+ "B1.2": {
+  "status": "OPEN",
+  "note": "V2 A: from all moments; V3 A: round up, at least one"
+ },
+ "B1.3": {
+  "status": "OPEN",
+  "note": "V4 A: S = (read+1)/2; V5 B: filler and hedging 1 at 0 per 100 words, 0 at 10 or more, linear (10 adjustable); V6 A: spread stays empty"
+ },
+ "B1.4": {
+  "status": "OPEN",
+  "note": "V7 A: phone clock from Stop, server time stored too"
+ },
+ "B1.4b": {
+  "status": "OPEN",
+  "note": "V8 A: any single blind coach answer; V9 A: In-between counts half"
+ },
+ "B1.5": {
+  "status": "OPEN",
+  "note": "V10 B + V10b A: match a paragraph by its place on the slide; when the slide's number of paragraphs changed, measure the whole slide and note it; V11 B; V12 A"
+ },
+ "B1.6": {
+  "status": "OPEN",
+  "note": "V13 A (Claude drafts O1), V14 A, V15 A + V15a A (falling back on more than 1 in 5 blocks fails the exit gate), V16a A (V4 picks moment and kind; the exercise picker picks the video), QB6 A (sureness disagreement = sound reads only)"
+ },
+ "B1.7": {
+  "status": "OPEN",
+  "note": "V17 A: In-between counts half"
+ },
+ "B1.8": {
+  "status": "OPEN",
+  "note": "QB7 A + QB7a B: the coach may pick any feedback incl. praise; a Take's mix follows what was heard (at most 3); QG4 B golden set = founder; QG9 A re-picks"
+ },
+ "B1.9": {
+  "status": "FOUNDER",
+  "note": "V19 A, V20 A, QB8 A (the reached bar splits above/below); O3 still open"
+ },
+ "BEXIT": {
+  "status": "OPEN",
+  "note": "V21 A (any margin, min 100 golden blocks); V15a A (falling back on more than 1 in 5 blocks fails the gate); V22/V22a/V22b: V4 goes to every speaker once built (no users yet); V22c B: V4 alone, no silent V3 beside it (founder accepts there is no V3 comparison); QG7 A; QG2a A (only the rise beyond the random-20% baseline counts)"
+ },
+ "BO1": {
+  "status": "OPEN",
+  "note": "V13 A: Claude drafts the role list with weights; one panel screen per role"
+ },
+ "BO2": {
+  "status": "PARKED",
+  "note": "V14 A: placeholder, then set from dark-run data (data_volume)"
+ },
+ "B2.1": {
+  "status": "FOUNDER",
+  "note": "V15 A: fallback per block"
+ },
+ "B2.2": {
+  "status": "FOUNDER",
+  "note": "L1 A: still at most 3 orange bars; L2 A: H1 asks about the practice attempt that reached the bar; design lock: designer session"
+ },
+ "BG04": {
+  "status": "OPEN",
+  "note": "QG1 A: one paperwork-only PR before Phase 1 code, incl. the SPEC §17 willfidence definition (N25)"
+ },
+ "CA02": {
+  "status": "OPEN",
+  "note": "QG1 A: one paperwork-only PR before Phase 1 code, incl. the SPEC §17 willfidence definition (N25)"
+ },
+ "CA03": {
+  "status": "OPEN",
+  "note": "QG1 A: one paperwork-only PR before Phase 1 code, incl. the SPEC §17 willfidence definition (N25)"
+ },
+ "CA06": {
+  "status": "OPEN",
+  "note": "QG1 A: one paperwork-only PR before Phase 1 code, incl. the SPEC §17 willfidence definition (N25)"
+ },
+ "N25": {
+  "status": "OPEN",
+  "note": "QG1 A: SPEC §17 definition in the paperwork PR"
+ },
+ "CA04": {
+  "status": "OPEN",
+  "note": "QG2a A: the picker may learn from the next-Take read, counting only the rise beyond the baseline rise on the random 20%; D7 dated note (paperwork)"
+ },
+ "A018a": {
+  "status": "OPEN",
+  "note": "QA1 A: answers can change; first answer kept, the new one stored beside it; designer draws the reopened question"
+ },
+ "A192": {
+  "status": "FALSE",
+  "note": "QB1 B: others keep recording; legal documents follow the architecture (\"there are no users either way\"); document 02 to be re-signed later"
+ },
+ "A045": {
+  "status": "OPEN",
+  "note": "QA3 A: praise detectors get their own switch, turned on in a reviewed change; old star step stays off"
+ },
+ "A053b": {
+  "status": "OPEN",
+  "note": "QA3 A: praise detectors get their own switch, turned on in a reviewed change; old star step stays off"
+ },
+ "CA01": {
+  "status": "OPEN",
+  "note": "QG3 A: rewrite \"V3 is the served policy\" in both CLAUDE.md files, the filter doc, contract 24/24h and clause 47 note; update the V2 \"three items\" text"
+ },
+ "N29": {
+  "status": "OPEN",
+  "note": "QG3 A: rewrite \"V3 is the served policy\" in both CLAUDE.md files, the filter doc, contract 24/24h and clause 47 note; update the V2 \"three items\" text"
+ },
+ "CA07": {
+  "status": "OPEN",
+  "note": "QG4 B: the golden set is the founder's picks alone (lock L6); coach picks are compared; M9 and V18 narrowed"
+ },
+ "BG05": {
+  "status": "OPEN",
+  "note": "QG5 A: Claude drafts the two coach-sheet lock entries; words come to the panel for sign-off before 1.8/1.9"
+ },
+ "CA10": {
+  "status": "OPEN",
+  "note": "QG5 A: Claude drafts the two coach-sheet lock entries; words come to the panel for sign-off before 1.8/1.9"
+ },
+ "BG10": {
+  "status": "OPEN",
+  "note": "QG6 A: add a founder-only weekly dark check of machine read vs blind coach"
+ },
+ "BG01": {
+  "status": "FALSE",
+  "note": "QG7 A: no past-data estimate; the speakers who see V4 answer it"
+ },
+ "A163": {
+  "status": "OPEN",
+  "note": "QB2a B: no coach and no video: the practise card is the speaker's own words to say again; no clearer version on these moments; contract 24f line"
+ },
+ "A126a": {
+  "status": "FOUNDER",
+  "note": "QB3 A: the founder runs one prepared script that switches the training_corpus rule off until training starts (script to be prepared)"
+ },
+ "A004a": {
+  "status": "OPEN",
+  "note": "QA4 A: follow lock B3 tap-by-tap, fifth tap does nothing; designer rebuilds the picker; the 26 Sep two-tap rule retired"
+ },
+ "A004b": {
+  "status": "OPEN",
+  "note": "QA4 A: follow lock B3 tap-by-tap, fifth tap does nothing; designer rebuilds the picker; the 26 Sep two-tap rule retired"
+ },
+ "A123b": {
+  "status": "OPEN",
+  "note": "QB4 A: remove the training copy job (table stays)"
+ },
+ "A124": {
+  "status": "OPEN",
+  "note": "QB4 A: remove the training copy job (table stays)"
+ },
+ "N09": {
+  "status": "OPEN",
+  "note": "QB4 A: remove the training copy job (table stays)"
+ },
+ "A055a": {
+  "status": "OPEN",
+  "note": "QA5 A: keep Next only; reword DONE-5 to No and Not sure (paperwork)"
+ },
+ "A056c": {
+  "status": "OPEN",
+  "note": "QA5 A: keep Next only; reword DONE-5 to No and Not sure (paperwork)"
+ },
+ "A217b": {
+  "status": "FALSE",
+  "note": "QB5 A: marking pairs is enough; training copies that left are deleted"
+ },
+ "A014a": {
+  "status": "OPEN",
+  "note": "QA6 A: the coach dot lights from today's coach answers; founder design (note): an orange stroke around the paragraph bubble, no number, and an orange label with white \"new\" at the bubble's top right"
+ },
+ "A014b": {
+  "status": "FALSE",
+  "note": "QA7 B: no dot on answered paragraphs; lock B7 unchanged"
+ },
+ "A175b": {
+  "status": "OPEN",
+  "note": "P2 A: no coach request for an unreadable clip; contract 35g-2 amended (paperwork)"
+ },
+ "A157": {
+  "status": "OPEN",
+  "note": "P5 A: remove \"Replace PDF\" before Take 1; the bot's new words come to the founder"
+ },
+ "A068a": {
+  "status": "FOUNDER",
+  "note": "P9a A: redrafted short and simple (founder: \"short ... for a 13 years old without slang\"); 12 sign screens S1-S12"
+ },
+ "A053a": {
+  "status": "FOUNDER",
+  "note": "P9a A: redrafted short and simple (founder: \"short ... for a 13 years old without slang\"); 12 sign screens S1-S12"
+ },
+ "BG03": {
+  "status": "OPEN",
+  "note": "QG8 A: Take and speaker willfidence in 1.3 with \"not enough data\" / \"audio problem\""
+ },
+ "BG02": {
+  "status": "OPEN",
+  "note": "QG9 A: re-pick 1 in 10 blocks after 2-3 weeks, in 1.8"
+ },
+ "CA05": {
+  "status": "OPEN",
+  "note": "QG10 A: D3 note, sound question only (paperwork)"
+ },
+ "CA08": {
+  "status": "PARKED",
+  "note": "QG11 A: written when each Phase 2 step starts"
+ },
+ "CA11": {
+  "status": "PARKED",
+  "note": "QG11 A: written when each Phase 2 step starts"
+ },
+ "BG09": {
+  "status": "OPEN",
+  "note": "QG12a A: in the new walk, a No/Not sure after a \"reached\" practice flags the moment to the coach as \"they disagree\" (Phase 2 row)"
+ },
+ "BG06": {
+  "status": "FALSE",
+  "note": "QG13 A: Album machine Yes stays today's sound read; contract 32 unchanged"
+ },
+ "A005": {
+  "status": "OPEN",
+  "note": "QA8 B: show old long phrases whole; lock B3 gets an exception (paperwork)"
+ },
+ "A019a": {
+  "status": "OPEN",
+  "note": "QA9 A: Practise again after Takes 1 and 2 too; every Take's experience is the same whatever its number (founder note)"
+ },
+ "A057": {
+  "status": "OPEN",
+  "note": "QA10 A: a \"done before\" mark on the practise card (designer session; new words need sign-off)"
+ },
+ "A214a": {
+  "status": "OPEN",
+  "note": "QB12 A: six years after the account ends; into the next schedule version"
+ },
+ "A063b": {
+  "status": "PARKED",
+  "note": "QA13 B: waits for the designer session (brief question 1.1)"
+ },
+ "A230": {
+  "status": "FALSE",
+  "note": "QB13 A: the walk stays as is; K9 gets a note"
+ },
+ "A072b": {
+  "status": "OPEN",
+  "note": "QA14 A: reword the two audit questions so Yes means the problem is there; the founder writes the words"
+ },
+ "A092": {
+  "status": "OPEN",
+  "note": "QA14 A: reword the two audit questions so Yes means the problem is there; the founder writes the words"
+ },
+ "A118": {
+  "status": "OPEN",
+  "note": "QB14 A: gate 5 folds into the outside read (N22)"
+ },
+ "A042a": {
+  "status": "OPEN",
+  "note": "QA15 B: drop the before/after comparison; N19 amended (paperwork)"
+ },
+ "A139": {
+  "status": "OPEN",
+  "note": "QB15 A: Claude drafts the DPIA update, counsel reviews"
+ },
+ "A098b": {
+  "status": "FALSE",
+  "note": "QA16 B: pre-6 Oct pairs stay out"
+ },
+ "A180b": {
+  "status": "OPEN",
+  "note": "QB16 A: contract 35j says \"linked to\" (paperwork)"
+ },
+ "A021": {
+  "status": "FALSE",
+  "note": "QA17 A: #606, #607, #613, #615 accepted"
+ },
+ "A003b": {
+  "status": "FALSE",
+  "note": "QA18 A: stand-ins are fine"
+ },
+ "A185a": {
+  "status": "FALSE",
+  "note": "P23 A: accepted"
+ },
+ "A169a": {
+  "status": "FOUNDER",
+  "note": "P26: explain more simply (follow-up P26b)"
+ },
+ "A151a": {
+  "status": "OPEN",
+  "note": "P28 B: keep the machine read hidden from the coach; contract 34 amended (paperwork)"
+ },
+ "A181": {
+  "status": "OPEN",
+  "note": "P31 A: contract 36 amended (paperwork)"
+ },
+ "N21": {
+  "status": "FOUNDER",
+  "note": "P33 B: wait for the re-landed v1.5 PDF; P36 A, P37 A, P38 A, P35 B (exempt: remember \"already paid\") go into it"
+ },
+ "A093a": {
+  "status": "OPEN",
+  "note": "P39 A: remove the bundle's exercise panel"
+ },
+ "CA12": {
+  "status": "FALSE",
+  "note": "QG14 A: both doors stay"
+ },
+ "A114": {
+  "status": "FALSE",
+  "note": "QB17a A: leave it until training opens"
+ },
+ "A151c": {
+  "status": "OPEN",
+  "note": "QB18a A: the Voice Album welcome shows as soon as the first moment enters the Album, any Take; contract 34 amended"
+ },
+ "A003c": {
+  "status": "FALSE",
+  "note": "QA19a A: the server test is enough"
+ },
+ "A169c": {
+  "status": "PARKED",
+  "note": "QB19 B: on the designer's list after the current one"
+ },
+ "A151b": {
+  "status": "PARKED",
+  "note": "QB19 B: on the designer's list after the current one"
+ },
+ "A042b": {
+  "status": "OPEN",
+  "note": "QA20 A: a founder-only block on the pace panel; its labels need the founder's words"
+ },
+ "A187a": {
+  "status": "OPEN",
+  "note": "QB20 A: remove the two uncalled confidence routes"
+ },
+ "A187b": {
+  "status": "OPEN",
+  "note": "QB20 A: remove the two uncalled confidence routes"
+ },
+ "A058": {
+  "status": "FALSE",
+  "note": "QA21 B: old practice rows stay out of History"
+ },
+ "A225b": {
+  "status": "OPEN",
+  "note": "QB21 A: reword Privacy 4b in the next version"
+ },
+ "A074a": {
+  "status": "FALSE",
+  "note": "QA22 A: accepted; the weekly job schedule is an ops check"
+ },
+ "B2.3": {
+  "status": "FOUNDER",
+  "note": "QB22 B: the coach sees every Take, older ones folded (Phase 2)"
+ },
+ "A018b": {
+  "status": "FALSE",
+  "note": "QA23 A: accepted"
+ },
+ "A052a": {
+  "status": "OPEN",
+  "note": "QA24 A: DONE-1 reworded (paperwork)"
+ },
+ "A077a": {
+  "status": "FOUNDER",
+  "note": "P51a A but the note arrived empty; follow-up P51b"
+ },
+ "A077b": {
+  "status": "FALSE",
+  "note": "P52a B: keep the old pace-panel label for now"
+ },
+ "A107": {
+  "status": "FALSE",
+  "note": "P53 A: a pair trains once"
+ },
+ "A238b": {
+  "status": "FALSE",
+  "note": "P55 A: counts are enough"
+ },
+ "N04b": {
+  "status": "FALSE",
+  "note": "P57 A: leave it"
+ },
+ "A055b": {
+  "status": "OPEN",
+  "note": "QA2 (founder note): help comes first (exercise or rewrite, then practice); praise comes when the speaker sounds good or improved; praise is first only when it is the only feedback; on a weak moment the practise card comes before any praise"
+ },
+ "A025": {
+  "status": "FOUNDER",
+  "note": "P1: the founder asked to see screens and the flow first; design pack in progress (N30)"
+ },
+ "A050a": {
+  "status": "FOUNDER",
+  "note": "QA11 (leans: retire P1-6d; redesign the card from scratch): the founder asked to see screens and the flow first; design pack in progress (N30)"
+ },
+ "A060": {
+  "status": "FOUNDER",
+  "note": "QA12: the founder asked to see screens and the flow first; design pack in progress (N30)"
+ },
+ "N26": {
+  "status": "OPEN",
+  "note": "V22c B: V4 serves every speaker by the founder's switch; no subset, no silent V3"
+ },
+ "A120": {
+  "status": "FALSE",
+  "note": "P44a A: keep clip picking as built until about 100 coach judgements"
+ },
+ "A242b": {
+  "status": "FALSE",
+  "note": "P54 A: switching off a failing model stays manual"
+ }
+}
