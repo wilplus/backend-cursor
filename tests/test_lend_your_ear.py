@@ -501,8 +501,8 @@ class WiringTests(unittest.TestCase):
         from services.data_purge_registry import DEPENDENCIES
         by = {d.relation: (d.selector_column, d.locator_kind) for d in DEPENDENCIES}
         self.assertEqual(by["voice_album_shares"], ("take_session_id", "take"))
-        self.assertEqual(by["lend_your_ear_answers"], ("listener_user_id", "principal"))
-        self.assertEqual(by["delayed_measure_votes"], ("rater_id", "principal"))
+        self.assertEqual(by["lend_your_ear_answers"], ("listener_user_id", "user"))
+        self.assertEqual(by["delayed_measure_votes"], ("rater_id", "user"))
 
     def test_nothing_trains_on_it(self):
         for name in ("services/lend_your_ear.py", "services/delayed_measure.py"):
