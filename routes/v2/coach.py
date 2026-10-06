@@ -2803,7 +2803,10 @@ def v2_coach_confidence_queue(session_id):
     voice_confidence, acoustic_read, or tone word). Transcript content remains
     absent even for answered rows; only the separate complete-batch reveal
     endpoint may return it. If no cohort exists, one mixed-policy cohort is
-    built and persisted exactly once (any take, not just an import).
+    built and persisted exactly once (any take, not just an import). A corpus
+    import (switch on) has no canonical handles: its rows carry no
+    playback_reference_id and play from
+    GET /v2/coach/corpus/clips/<snippet_id>/playback.
 
     200 { session_id, queue: [{snippet_id, playback_reference_id, label}],
           count, labelled }
@@ -2855,28 +2858,8 @@ def v2_coach_confidence_queue(session_id):
         ))
         for row in visible_rows:
             row.pop("_queue_priority", None)
-        # Canonical blind presentations. Assignment and packet preparation are
-        # idempotent and remain distinct from exposure: only the browser ACK
-        # after a row paints creates the receipt. No transcript, prediction or
-        # prior label enters this pre-judgment packet.
-        _coach_id = str(getattr(request, "user_id", "") or "")
-        _owner_id = str(sess.get("owner_principal_id") or "")
-        _project_id = str(sess.get("project_id") or "")
-        _blind_candidates = [{
-            "candidate_key": str(row.get("snippet_id") or ""),
-        } for row in visible_rows]
-        # The MLC-3 inline blind assignment is retired (founder 2026-09-30,
-        # L8; contract 66): _inline_authoring_for is False for every coach,
-        # so the queue is the blind presentation queue or nothing.
-        if (_coach_id and _owner_id and _project_id and
-                not _inline_authoring_for(_coach_id)):
-            visible_rows = _coach_legacy_blind_presentation_queue(
-                visible_rows, session_id=session_id, _project_id=_project_id,
-                _owner_id=_owner_id, _coach_id=_coach_id,
-                _blind_candidates=_blind_candidates,
-            )
-        else:
-            visible_rows = []
+        visible_rows = _confidence_queue_presented(
+            visible_rows, sess=sess, session_id=session_id)
         return jsonify({"session_id": session_id, "queue": visible_rows,
                         "count": len(visible_rows),
                         "labelled": labelled}), 200
@@ -2884,6 +2867,89 @@ def v2_coach_confidence_queue(session_id):
         logger.warning("confidence queue failed sid=%s: %s", session_id, e)
         return jsonify({"code": "SERVER_ERROR",
                         "error": "could not load the queue"}), 500
+
+
+def _confidence_queue_presented(visible_rows, *, sess, session_id):
+    """The queue's rows as the coach receives them, blind.
+
+    A corpus import, while the import switch is on, is presented from its own
+    frozen cohort (services/corpus_coach_queue.py, founder 2026-10-06, CO1 A,
+    N56.4): it has no owner principal, project or evidence span, and is not
+    given any. Every other Take: the canonical blind presentation.
+    """
+    from services.corpus_coach_queue import (
+        corpus_presented_rows, corpus_queue_open,
+    )
+    if corpus_queue_open(sess):
+        return corpus_presented_rows(visible_rows)
+    # Canonical blind presentations. Assignment and packet preparation are
+    # idempotent and remain distinct from exposure: only the browser ACK
+    # after a row paints creates the receipt. No transcript, prediction or
+    # prior label enters this pre-judgment packet.
+    _coach_id = str(getattr(request, "user_id", "") or "")
+    _owner_id = str(sess.get("owner_principal_id") or "")
+    _project_id = str(sess.get("project_id") or "")
+    _blind_candidates = [{
+        "candidate_key": str(row.get("snippet_id") or ""),
+    } for row in visible_rows]
+    # The MLC-3 inline blind assignment is retired (founder 2026-09-30,
+    # L8; contract 66): _inline_authoring_for is False for every coach,
+    # so the queue is the blind presentation queue or nothing.
+    if (_coach_id and _owner_id and _project_id and
+            not _inline_authoring_for(_coach_id)):
+        return _coach_legacy_blind_presentation_queue(
+            visible_rows, session_id=session_id, _project_id=_project_id,
+            _owner_id=_owner_id, _coach_id=_coach_id,
+            _blind_candidates=_blind_candidates,
+        )
+    return []
+
+
+@v2_bp.route("/coach/corpus/clips/<snippet_id>/playback", methods=["GET"])
+@training_import_enabled
+@require_admin_or_coach
+def v2_coach_corpus_clip_playback(snippet_id):
+    """Play one queued clip of a corpus import (founder 2026-10-06, CO1 A,
+    N56.4). Replaces, for imports, the retired ``/v2/coach/mlc3/
+    source-playback/<id>`` the corpus page still points at.
+
+    Open only while ``Config.TRAINING_IMPORT_ENABLED`` (off: the import's
+    410 PHASE2_DISABLED), coaches and admins only, language-matched like the
+    queue and the label. Only a clip in an import's frozen label queue
+    plays; anything else (unknown, an ordinary Take's clip, a clip the
+    cohort did not draw) is the same 404.
+
+    200 { snippet_id, url, start_offset_ms, duration_ms, expires_in_s }
+        ``url`` is a signed URL to the import's audio, valid
+        ``expires_in_s`` seconds; play ``duration_ms`` from
+        ``start_offset_ms``. No pick, block, policy, score or transcript.
+    400 · 401 · 403 · 404 · 409/428 (language routing) · 410 · 503 · 500
+    """
+    if not _is_valid_uuid(snippet_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "snippet_id must be a valid UUID"}), 400
+    try:
+        from services.corpus_coach_queue import playback_body, queued_corpus_clip
+        snip, sess = queued_corpus_clip(db, str(snippet_id))
+        if snip is None:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "clip not found"}), 404
+        outcome, language = _rater_language_outcome(sess, [snip])
+        language_error = _rater_language_error(outcome, language)
+        if language_error is not None:
+            return language_error
+        body = playback_body(snip)
+        if body is None:
+            return jsonify({"code": "PLAYBACK_UNAVAILABLE",
+                            "error": "the clip's audio could not be signed"}), 503
+        response = jsonify(body)
+        response.headers["Cache-Control"] = "private, no-store, max-age=0"
+        return response, 200
+    except Exception as e:
+        logger.warning("corpus clip playback failed snip=%s: %s", snippet_id, e,
+                       exc_info=True)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not play the clip"}), 500
 
 
 def _inline_authoring_for(coach_id: str) -> bool:
@@ -3074,6 +3140,12 @@ def _after_coach_judgement(sess, *, snippet_id, session_id, lane, self_report,
     reconsideration changes nothing of record, so the route skips it; a
     re-review is the one later answer the policy reads (contract 34)."""
     if lane != "coach" or self_report or not sess or not sess.get("user_id"):
+        return
+    # A corpus import has no speaker in the product: its user_id is the
+    # importer, never the voice on the clip, and it has no owner answer and
+    # no Album (L3; founder 2026-10-06, CO1 A, N56.4). Its label stays a
+    # coach label and sets off nothing of an owner's.
+    if sess.get("source") == "training_import":
         return
     from services.confidence_review_policy import reconcile_confidence_review
     reconcile_confidence_review(

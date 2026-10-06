@@ -128,9 +128,18 @@ def strip_sql_comments(sql: str) -> str:
     return sql
 
 
+# A trigger's EVENT, not a statement: `BEFORE TRUNCATE ON t`, `AFTER
+# TRUNCATE`, `BEFORE UPDATE OR TRUNCATE`. A trigger that REFUSES truncation
+# (0434) is the opposite of destructive, and flagging it would abort the
+# Railway migrate step (#359). Nothing else is exempt: a TRUNCATE statement,
+# anywhere, including inside a PL/pgSQL body, is still flagged.
+_TRUNCATE_TRIGGER_EVENT = re.compile(r"\b(BEFORE|AFTER|OR)(\s+)TRUNCATE\b", re.I)
+
+
 def destructive_statements(sql: str) -> list[str]:
     """Destructive statement kinds present in `sql`, comments excluded."""
-    body = strip_sql_comments(sql)
+    body = _TRUNCATE_TRIGGER_EVENT.sub(r"\1\2trigger_event",
+                                       strip_sql_comments(sql))
     return [label for pattern, label in _DESTRUCTIVE_PATTERNS if pattern.search(body)]
 
 

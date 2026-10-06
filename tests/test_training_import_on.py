@@ -299,10 +299,16 @@ def test_on_prepare_refuses_a_missing_language_too(on):
 
 
 def test_only_the_import_route_moved_off_the_phase2_guard():
+    """The switch guards the import and, since the corpus queue was made
+    judgeable, the corpus clip's playback; nothing else."""
     source = (ROOT / "routes" / "v2" / "coach.py").read_text()
-    head = source[source.index('@v2_bp.route("/coach/training-imports", methods=["POST"])'):]
-    assert head.splitlines()[1] == "@training_import_enabled"
-    assert source.count("@training_import_enabled") == 1
+    guarded = ('@v2_bp.route("/coach/training-imports", methods=["POST"])',
+               '@v2_bp.route("/coach/corpus/clips/<snippet_id>/playback", '
+               'methods=["GET"])')
+    for route in guarded:
+        head = source[source.index(route):]
+        assert head.splitlines()[1] == "@training_import_enabled"
+    assert source.count("@training_import_enabled") == len(guarded)
     assert "@phase2_learning_disabled" not in source
 
 

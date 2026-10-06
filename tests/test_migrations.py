@@ -230,6 +230,29 @@ class DestructiveDetectionTests(unittest.TestCase):
             with self.subTest(sql=sql):
                 self.assertEqual(destructive_statements(sql), [])
 
+    def test_a_trigger_refusing_truncate_is_not_destructive(self):
+        """0434: a BEFORE TRUNCATE trigger refuses truncation. Its event
+        clause is not a TRUNCATE statement; every real one still is."""
+        for sql in [
+            "CREATE TRIGGER t BEFORE TRUNCATE ON public.foo "
+            "FOR EACH STATEMENT EXECUTE FUNCTION public.refuse();",
+            "CREATE TRIGGER t AFTER truncate ON public.foo "
+            "FOR EACH STATEMENT EXECUTE FUNCTION public.f();",
+            "CREATE TRIGGER t BEFORE UPDATE OR DELETE OR TRUNCATE ON public.foo "
+            "FOR EACH STATEMENT EXECUTE FUNCTION public.refuse();",
+        ]:
+            with self.subTest(sql=sql[:50]):
+                self.assertEqual(destructive_statements(sql), [])
+        for sql in [
+            "TRUNCATE public.foo;",
+            "TRUNCATE TABLE public.foo CASCADE;",
+            "DO $$ BEGIN TRUNCATE public.foo; END $$;",
+            "CREATE TRIGGER t BEFORE TRUNCATE ON public.foo "
+            "FOR EACH STATEMENT EXECUTE FUNCTION public.f();\nTRUNCATE public.bar;",
+        ]:
+            with self.subTest(sql=sql[:50]):
+                self.assertIn("TRUNCATE", destructive_statements(sql))
+
     def test_real_repo_files_flagged_are_the_known_set(self):
         """Pins the live-tree result so a scanner regression shows up here."""
         flagged = {
