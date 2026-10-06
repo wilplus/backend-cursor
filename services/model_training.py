@@ -107,10 +107,16 @@ def example_for(pair: dict) -> Optional[dict]:
     ]}
 
 
-def split_examples(pairs: list[dict]) -> dict:
-    """{train: [...], validation: [...], held_out: n, skipped: n} by owner
-    principal, speaker-disjoint; the test bucket never trains."""
-    from services.dataset_releases import speaker_split
+def split_examples(pairs: list[dict], splits: Optional[dict] = None,
+                   sources: Optional[dict] = None) -> dict:
+    """{train: [...], validation: [...], held_out: n, skipped: n},
+    speaker-disjoint by the split door 2 released each pair under
+    (services/speaker_split.py, F-3). With ``sources`` (each release's
+    ``split_source``, which start_run reads), a pair takes exactly its
+    release's split and is skipped when that cannot be known; without, the
+    owner's speaker assignment or the owner-principal hash. The test bucket
+    never trains."""
+    from services.speaker_split import released_split, split_for
     out: dict[str, Any] = {"train": [], "validation": [], "held_out": 0, "skipped": 0,
                            "train_pairs": [], "validation_pairs": []}
     for pair in pairs:
@@ -119,7 +125,14 @@ def split_examples(pairs: list[dict]) -> dict:
         if example is None or not owner:
             out["skipped"] += 1
             continue
-        split, _ = speaker_split(owner)
+        if sources is not None:
+            known = released_split(pair, splits or {}, sources)
+            if known is None:
+                out["skipped"] += 1
+                continue
+            split = known
+        else:
+            split, _ = split_for(owner, splits or {})
         if split == "train":
             out["train"].append(example)
             out["train_pairs"].append(pair)
@@ -164,7 +177,10 @@ def start_run(database: Any, provider: Any, *, surface: str, config: Any,
     if len(pairs) < PAIRS_PER_RUN:
         return {"surface": surface, "started": False, "waiting": len(pairs),
                 "why": f"{len(pairs)} of {PAIRS_PER_RUN} trainable pairs"}
-    split = split_examples(pairs)
+    from services.speaker_split import release_split_sources, speaker_splits
+    split = split_examples(
+        pairs, speaker_splits(database, [p.get("owner_principal_id") for p in pairs]),
+        release_split_sources(database, [p.get("release_id") for p in pairs]))
     if len(split["train"]) < PAIRS_PER_RUN // 2:
         return {"surface": surface, "started": False, "waiting": len(pairs),
                 "why": f"only {len(split['train'])} examples fall in the training split"}

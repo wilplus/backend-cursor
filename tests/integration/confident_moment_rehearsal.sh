@@ -612,6 +612,20 @@ if [ "$LANE" = "released" ]; then
   hard migrations/a_coach_judgement_stands.sql
 fi
 
+# 0429: the confidence chain hears the training yes (N48.5 Q27 A). It
+# re-issues ring_consent_is_current_v1, ring_consent_policy_exists_v1 and
+# get_ring_confidence_readiness_v1 (0394), get_mlc2_confidence_canary_
+# readiness_v1 (0377) and promote_recording_attempt_with_mlc2_confidence_v1
+# (0392), all applied above, and adds the training snapshot, the speaker
+# binding and the blind-rating reader. Released lane only, where its suite
+# (tests/test_the_chain_hears_the_training_yes_postgres.py) and the chain's
+# end-to-end suite run. After the migrations before it in the manifest.
+# Twice: apply/reapply idempotency.
+if [ "$LANE" = "released" ]; then
+  hard migrations/the_chain_hears_the_training_yes.sql
+  hard migrations/the_chain_hears_the_training_yes.sql
+fi
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

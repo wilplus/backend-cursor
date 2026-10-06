@@ -88,6 +88,11 @@ class _Db:
     def list_take_projects(self, takes):
         return {t: p for t, p in self.takes.items() if t in takes}
 
+    def get_speaker_splits_for_principals(self, owners, policy):
+        # Every owner here holds a bound speaker (F-3): the split is the
+        # speaker's assignment, read after this decision; not under test here.
+        return {o: "train" for o in owners}
+
     def insert_pair_release(self, **fields):
         row = {"id": f"rel-{len(self.releases) + 1}", **fields}
         self.releases.append(row)

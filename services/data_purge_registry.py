@@ -1279,6 +1279,9 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     # pair_release_owners, a dependency below, and the refresh voids the
     # release itself when an owner withdraws.
     "pair_releases",
+    # The checks of a release's file and manifest (0430, F-8): hashes, sizes
+    # and verdicts keyed by the release, never a person.
+    "pair_release_verifications",
     # The research role, like admin_users and coach_users (0404).
     "research_users",
     # A surface's sealed golden set: a count and a hash (0404).

@@ -2703,8 +2703,19 @@ def _confidence_chain_judgment(
     blind_coach judgment, revealed in the same transaction, while the chain
     writes. Never on a self-report (the owner is not a peer) and never a
     reason to refuse the legacy save: a failed canonical write is logged and
-    the readiness counters show it. Returns identifiers only, or None."""
+    the readiness counters show it. Returns identifiers only, or None.
+
+    The walk's Judge screen carries the same handle since 2026-10-05
+    (N48.5 Q27 A: "the coach walk's blind labels as its judgements";
+    routes/v2/confidence_chain_coach.py prepares it). Only a blind answer
+    becomes the chain's blind_coach judgement: one given after this coach
+    saw the clip's non-blind side is stamped not blind (35g-11) and stays
+    out of the chain."""
     if mlc2_handle is None or self_report:
+        return None
+    from services.coach_exposure import rating_is_blind
+    if not rating_is_blind(db, coach_id=str(rater_id or ""),
+                           snippet_id=str(snippet_id)):
         return None
     try:
         from services.confidence_chain_consumer import (

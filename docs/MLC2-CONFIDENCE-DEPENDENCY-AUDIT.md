@@ -98,19 +98,37 @@ model/version hints.
   `dark` / `founder_canary` / `killed` state machine so rollback cannot
   resurrect a retired learning writer.
 - No route, product service, worker or UI imports `services.mlc2_confidence`.
-- The founder consent route (`/v2/user/mlc2-consent`) is open in `dark`
+- ~~The founder consent route (`/v2/user/mlc2-consent`) is open in `dark`
   and answers 410 only when the writer state is `killed` (0392 / Q1,
   2026-09-29); recording the grant creates no corpus and starts nothing,
-  and the canonical promotion freezes a snapshot of it for every Take.
+  and the canonical promotion freezes a snapshot of it for every Take.~~
+  Retired 2026-10-05 (N48.5 Q27 A, 0430): the training yes
+  (`get_mlc2_training_consent_status_v2`) is the chain's one consent
+  authority. `POST /v2/user/mlc2-consent` answers 410
+  `BUNDLED_CONSENT_RETIRED` and records nothing; GET answers a holder of a
+  bundled grant and never errors; DELETE still lets that holder withdraw.
+  The canonical promotion freezes a snapshot of the TRAINING grant
+  (`create_mlc2_training_consent_snapshot_v1`); a bundled-era yes counts for
+  nothing (N2, N10.6).
 - The legacy coach card consumes the chain through the three 0393 wrappers
   (`services/confidence_chain_consumer.py`, Q2, 2026-09-29): blind packet,
   render receipt, judgment and reveal. A no-op while the writer state is
-  `dark`; the packet never leaves the server, the handle is four ids.
+  `dark`; the packet never leaves the server, the handle is four ids. Since
+  2026-10-05 the coach walk's Judge screen, the coach surface in use, does
+  the same (see "As built 2026-10-05" below).
 - No learning provenance is dual-written to an old and new learning store.
 - The old product-state writers remain unchanged.
 - No historical row is imported or relabeled.
 - Canonical dataset/release/training code is prohibited from reading every
-  object named in this audit.
+  object named in this audit. Enforced since 2026-10-05 (DA-PROHIBIT) by
+  `tests/test_mlc2_legacy_isolation.py` for the `mlc2_*` modules and for the
+  doors' modules outside that prefix (pair consent, the release and its
+  release-time decision, the speaker split, training, the golden set and
+  evaluation, promotion, the dataset and DPO release lanes, the
+  training-corpus copy, the object checks, and the two promotion scripts),
+  code only, with method names such as
+  `get_confidence_labels_by_snippet_ids` and the professional-verdict module
+  counted as reads.
 - ML/data review is required before producer activation.
 - A later atomic cutover must enable the canonical producer as the legacy
   learning writer deactivates.  Rollback may disable the canonical producer but
@@ -185,6 +203,76 @@ route behind `MLC3_COACH_INLINE_AUTHORING_ENABLED`. Activation is still the
 reviewed change of `MLC2_CONFIDENCE_CUTOVER_MODE` to `founder_canary`, gated
 by the readiness report; this section adds the code path that change needs
 and nothing that runs before it.
+
+## As built 2026-10-05: the chain is connected (N48.5 Q27 A)
+
+Founder, decisions log N48.5 Q27 A: "the confidence-learning chain is
+connected: one consent authority (the training yes) and the coach walk's
+blind labels as its judgements; training stays closed." Migration 0430 and
+the application changes beside it:
+
+- **One consent authority (TC-3.5, N2, TC-3.1).** The ring row's consent
+  door, the Phase-2 policy check, both readiness reports and the canonical
+  promotion read the training yes only. 0394's guard used
+  `to_regproc('<reader>(uuid)')`, which is NULL on every PostgreSQL version,
+  so the consent half never said yes and no Take entered the canonical
+  promotion after 2026-10-03; the chain's branch now uses
+  `to_regprocedure`. The `personalised_practice` branch keeps 0394's text
+  (it gates the retired exercise loop) and is reported to the founder.
+- **The speaker is bound through the training yes (F-3).** The training
+  switch's yes and the speaker binding are one transaction
+  (`accept_mlc2_training_consent_v1`); a yes given earlier is bound the next
+  time the switch is read (the recording overlay and the data-consent page
+  read it). Door 2 releases a pair only under its owner's speaker
+  assignment (`services/speaker_split.py`) and door 3 reads the same split.
+- **The coach walk's blind label is the chain's judgement (CHAIN-E2E, DA-10,
+  F-6, DA-6).** The Judge screen asks
+  `POST /v2/coach/snippets/<id>/mlc2-packet` when it paints a moment of a
+  chain Take, acknowledges the paint after two animation frames
+  (`ack_mlc2_confidence_coach_render_v1`, an `ml_rendered_exposures` row),
+  and echoes the four-id handle on the label PUT, which writes the immutable
+  `blind_coach` judgement and its reveal after the legacy save. A coach who
+  already rated the moment, or saw its non-blind side (35g-11), gets no
+  packet and writes no judgement. What the coach sees is unchanged. The
+  consumer's handle never formed before this (it asked for
+  `visible_payload_sha256`, a key the packet RPC does not return).
+- **Render-confirmed exposure (DA-FA, F-7): mapped for the coach, a gap for
+  the speaker.** A canonical Take now has a reachable rendered exposure: the
+  walk's post-paint ACK. Preparing the packet is a presentation, never
+  "shown". The speaker's Feedback receipts stay in the 0299 lane
+  (`learning_surface_presentations`, `learning_surface_exposure_receipts`),
+  keyed to the ED-1 `evidence_spans`, `candidate_sets` and `generation_runs`,
+  and nothing but the purge registry reads them. They are not mapped: the
+  item a speaker is served is the Manager's V3 pick per 75-word block, while
+  the chain's frame selects one clip per Take for blind review, so a mapping
+  needs a typed payload tying the served item to the Take's canonical
+  event, an `ml_presentations` row and token issued when the Feedback sheet
+  paints (a design-locked screen), ML/data review and a cutover decision.
+  That is the speaker surface's own cutover, which Q27 A did not take.
+- **Paragraph and orange decisions (F-2b): still no writer.** An
+  `ml_product_actions` row must hang off an `ml_canonical_events` row of the
+  surface whose output the speaker acted on. A Paragraph lock acts on Ideal
+  Text and the helper words act on the helper-word step; neither surface has
+  a canonical producer, and the confidence frame is the wrong parent (its
+  clip is not what the speaker decided about). Writing them waits for that
+  surface's cutover (the foundation's Next gates: dependency audit, typed
+  payload, one-transaction outbox, ML/data review, separate authorization).
+  What matters today holds by construction: no paragraph or orange decision
+  is written to `ml_judgments` or any label table.
+- **Verifications (F-8) and health (F-9).** Every download or release check
+  appends a verification judged by the database
+  (`services/object_verification.py`), and the weekly job keeps
+  `get_mlc2_foundation_health_v1` in its row.
+- **Stays closed.** Training, dataset release and promotion
+  (`MLC2_TRAINING_ENABLED`, `MLC2_DATASET_RELEASES_ENABLED`,
+  `MLC2_PROMOTION_ENABLED`, `DETECTOR_TRAINING_AUTHORISED`: K10, K11, K12,
+  TC-4.x). The training-corpus copy stays dark
+  (`MLC2_TRAINING_CORPUS_COPY_ENABLED`); when it runs it copies the chain's
+  blind coach judgement, never `confidence_labels` (DA-PROHIBIT). The writer
+  state stays the code constant, and the `confidence_learning_writes` row
+  still reaches ring 5 only: moving it is the founder's panel act. K9's
+  third selection component (balanced predicted regions) and `MIN_CLIP_MS`
+  are a founder decision (DA-9), not built.
 
 ## Tests required before Slice 3 acceptance
 

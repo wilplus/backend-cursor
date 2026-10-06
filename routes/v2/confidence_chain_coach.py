@@ -1,10 +1,25 @@
-"""The coach card's render receipt for a confidence-chain blind packet (Q2).
+"""The confidence chain's blind packet and render receipt, for the coach (Q2).
 
-One route. The browser calls it once per painted card, with the handle the
-queue row carried and its own stable render instance; the exposure id it
-returns is what the coach's answer must echo on the legacy label PUT for the
-canonical judgment to be written. Closed (404) unless the writer state is
-``founder_canary``, so the surface is not discoverable while dark.
+Two routes, in the order the coach's screen uses them:
+
+  POST /coach/snippets/<snippet_id>/mlc2-packet
+      THE WALK'S ADAPTER (founder 2026-10-05, N48.5 Q27 A: "the coach walk's
+      blind labels as its judgements"). The walk's Judge screen asks, when
+      it paints a moment, whether the chain holds a selected candidate for
+      that moment; if so the blind packet is prepared for THIS coach (0393's
+      wrapper) and the four identifiers come back, else null. Nothing about
+      the moment is in the answer (BLIND COACH), and the coach sees nothing
+      new. A coach who already rated the moment, or who has seen its
+      non-blind side (35g-11), gets null: a second listen is never a blind
+      judgement.
+  POST /coach/mlc2/assignments/<assignment_id>/render
+      The browser's post-paint receipt for that packet; the exposure id it
+      returns is what the coach's answer echoes on the label PUT, which then
+      writes the chain's immutable blind_coach judgement and its reveal, in
+      that order, after the legacy save (routes/v2/coach.py).
+
+The receipt is closed (404) unless the writer state is ``founder_canary``, so
+the surface is not discoverable while dark; the packet route answers null.
 """
 from __future__ import annotations
 
@@ -15,10 +30,12 @@ from flask import jsonify, request
 from routes.admin import require_admin_or_coach
 from routes.v2.blueprint import v2_bp
 from services.confidence_chain_consumer import (
+    HANDLE_KEY,
     ConfidenceChainConsumerError,
     ConfidenceChainConsumerStore,
     consumer_enabled,
 )
+from services.confidence_chain_walk import walk_packet
 from services.db import db
 from utils.ids import parse_uuid
 
@@ -86,3 +103,16 @@ def v2_coach_confidence_chain_render(assignment_id: str):
     if not row or not row.get("id"):
         return jsonify({"code": "CONFIDENCE_CHAIN_RENDER_NOT_RECORDED"}), 409
     return jsonify({"exposure_id": str(row["id"])}), 201
+
+
+@v2_bp.post("/coach/snippets/<snippet_id>/mlc2-packet")
+@require_admin_or_coach
+def v2_coach_confidence_chain_packet(snippet_id: str):
+    """The walk's blind packet for this coach on this moment, or null
+    (services/confidence_chain_walk.py decides who gets one)."""
+    try:
+        snippet = parse_uuid(snippet_id, "snippet_id")
+    except (TypeError, ValueError):
+        return jsonify({"code": "INVALID_INPUT"}), 400
+    coach_id = str(getattr(request, "user_id", "") or "")
+    return jsonify({HANDLE_KEY: walk_packet(db, coach_id=coach_id, snippet_id=snippet)}), 200

@@ -97,9 +97,13 @@ class _Db:
         return {"storage_provider": "r2", "bucket": "lab", "object_key": "k",
                 "exact_bytes_sha256": hashlib.sha256(WHOLE).hexdigest()}
 
-    def get_confidence_labels_by_snippet_ids(self, ids):
-        return {i: [{"lane": "coach", "state_id": "confidence",
-                     "value": "yes", "self_report": False}] for i in ids}
+    def get_mlc2_blind_coach_ratings(self, take_id, ids):
+        # The chain's blind coach judgement (0430), never confidence_labels.
+        assert take_id == "take-1"
+        return {i: "rating_yes" for i in ids}
+
+    def get_confidence_labels_by_snippet_ids(self, ids):  # pragma: no cover
+        raise AssertionError("the copy job must not read confidence_labels")
 
     def record_training_corpus_item(self, item):
         if self.refuse:
@@ -166,6 +170,22 @@ class JobTests(unittest.TestCase):
         self.delete.assert_called_once()
         self.assertEqual(self.delete.call_args.args[0],
                          "training-corpus/principal-1/grant-1/snip-1.wav")
+
+    def test_the_download_appends_its_verification(self):
+        """F-8: the copy's download of a chain object appends one
+        verification row stating what it read (0430's writer judges it)."""
+        db = _Db()
+        rows: list[dict] = []
+        db.record_mlc2_object_verification = (
+            lambda **kw: rows.append(kw) or {"verified": True})
+        with mock.patch("services.object_verification.chain_writes_enabled",
+                        return_value=True):
+            tc.run_corpus_copy("take-1", "arc", database=db)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]["bucket"], rows[0]["object_key"]), ("lab", "k"))
+        self.assertEqual(rows[0]["observed_sha256"], hashlib.sha256(WHOLE).hexdigest())
+        self.assertEqual(rows[0]["observed_byte_size"], len(WHOLE))
+        self.assertEqual(rows[0]["verification_method"], "download_sha256")
 
     def test_changed_source_bytes_are_not_copied(self):
         db = _Db()
