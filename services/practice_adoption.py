@@ -187,8 +187,10 @@ def helper_words_from_practice(database: Any, practice: Mapping,
     from services.intervention_spend import latest_spoken_take_sid
     from services.slide_helper_words import record_pick
 
-    if practice.get("status") != "completed" \
-            or practice.get("final_user_answer") not in DONE_ANSWERS:
+    from services.practice_check import machine_closed
+    if practice.get("status") != "completed" or not (
+            practice.get("final_user_answer") in DONE_ANSWERS
+            or machine_closed(practice)):
         return 409, {"code": "NOT_ADOPTED",
                      "error": "Judge a practice attempt first."}
     if not isinstance(part_id, str) or not part_id:

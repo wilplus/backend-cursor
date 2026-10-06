@@ -15131,7 +15131,7 @@ class DatabaseService:
         """Every practice on this Take (one per moment since 0400), with the
         fields that say whether it settled its moment. Raises on failure."""
         query = (self.client.table("confident_voice_practice")
-                 .select("id,snippet_id,status,final_user_answer")
+                 .select("id,snippet_id,status,final_user_answer,after_practice")
                  .eq("take_session_id", str(take_session_id)))
         if owner_user_id:
             query = query.eq("owner_user_id", str(owner_user_id))

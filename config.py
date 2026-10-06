@@ -376,6 +376,15 @@ class Config:
     # Back on when a screen ships.
     PRAISE_AFTER_PRACTICE_ENABLED = False
 
+    # THE MACHINE CHECKS EACH PRACTISE TRY (founder lock 2026-10-06, the
+    # Feedback walk; decisions log N52.3): "don't ask me right away does my
+    # last take sound confident to me, you need to check it yourself". On,
+    # the walk posts each try to /attempts/<id>/check and the machine says
+    # praise or again (services/practice_check.py); the five-answer route
+    # stays for the screens that still use it. Off until the walk's
+    # screens ship: no screen calls the route yet.
+    MACHINE_PRACTICE_CHECK_ENABLED = False
+
     # PHASE 4 of the after-practice paths (founder 2026-10-01, F3, F4): the
     # peer lane. On, a Voice Album moment can be lent to other ears (share
     # toggle, revocable), Lend your ear serves up to three blind clips once

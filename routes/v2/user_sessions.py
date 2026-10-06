@@ -1683,8 +1683,18 @@ def _practice_user_payload(practice, attempts=None):
         "judgeable_attempt_id": _judgeable_id(rows),
         # Phase 3 (F5): the sentence the speaker heard after this practice,
         # from the signed closed set; null until the switch, and off it.
-        "after_practice": practice.get("after_practice"),
+        "after_practice": _after_practice_public(practice.get("after_practice")),
     }
+
+
+def _after_practice_public(said):
+    """The after-practice blob as the owner may see it. A machine check
+    (founder lock 2026-10-06) shows only its outcome and line key; its
+    lane and the try it read stay on the row (AC-9)."""
+    from services.practice_check import public_check
+    if isinstance(said, dict) and said.get("decided_by") == "machine":
+        return public_check(said)
+    return said
 
 
 def _dismissed(updated: dict) -> dict:
@@ -2313,6 +2323,32 @@ def v2_judge_confident_voice_practice_attempt(practice_id, attempt_id):
     body = request.get_json(silent=True) or {}
     status, result = judge_attempt(db, practice, attempt_id,
                                    body.get("user_answer"),
+                                   str(request.user_id))
+    row = result.pop("practice_row", None)
+    if status == 200:
+        result["practice"] = _practice_user_payload(row or practice)
+    return jsonify(result), status
+
+
+@v2_bp.route("/user/confidence-practice/<practice_id>/attempts/"
+             "<attempt_id>/check", methods=["POST"])
+@require_auth
+@operational_purpose_disabled("personalized_exercise_recommendation")
+@consent_choice_required("personalised_practice")
+def v2_check_confident_voice_practice_attempt(practice_id, attempt_id):
+    """The machine checks the latest try (founder lock 2026-10-06, N52.3):
+    praise ends the loop on it, again asks for another. Never a number."""
+    from services.practice_check import check_attempt, machine_practice_check_enabled
+    if not machine_practice_check_enabled():
+        return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
+    if not _is_valid_uuid(practice_id) or not _is_valid_uuid(attempt_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "ids must be valid UUIDs"}), 400
+    practice = db.get_confident_voice_practice(
+        practice_id, str(request.user_id))
+    if not practice:
+        return jsonify({"code": "NOT_FOUND", "error": "practice not found"}), 404
+    status, result = check_attempt(db, practice, attempt_id,
                                    str(request.user_id))
     row = result.pop("practice_row", None)
     if status == 200:
