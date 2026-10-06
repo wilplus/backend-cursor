@@ -341,7 +341,7 @@ class WiringTests(unittest.TestCase):
         by = {d.relation: (d.selector_column, d.locator_kind) for d in DEPENDENCIES}
         self.assertEqual(by["after_practice_steps"], ("take_session_id", "take"))
         self.assertEqual(by["bold_voices_plays"], ("take_session_id", "take"))
-        self.assertEqual(by["coach_readings"], ("coach_id", "principal"))
+        self.assertEqual(by["coach_readings"], ("coach_id", "user"))
 
     def test_no_scorer_reads_the_sentence(self):
         for name in ("services/exercise_adequacy_labels.py", "services/exercise_fair_test.py",

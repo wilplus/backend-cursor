@@ -336,9 +336,13 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("bold_voices_plays", "bold_voices_plays",
                     "take_session_id", "take", "delete", "derived_feedback", 59),
     # A coach's own model readings (0409): their voice, under the coach
-    # agreement; they go with the coach.
+    # agreement; they go with the coach. coach_id, and the 0410 listener and
+    # rater ids and the 0411 coach ids below, hold the signed-in user's id
+    # (request.user_id), never an owner principal's: they are addressed by
+    # the `user` locator. Under `principal` they matched nothing and outlived
+    # a deleted account (found 2026-10-06 while building 0432).
     PurgeDependency("coach_readings", "coach_readings", "coach_id",
-                    "principal", "delete", "derived_feedback", 35),
+                    "user", "delete", "derived_feedback", 35),
     # Phase 4 and 5 (0410). The share of a moment and the measure's pair
     # are about the speaker's Take: they go with it. A set is the listener's
     # Take's; the answers and the votes are the rater's own words about
@@ -350,9 +354,9 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("lend_your_ear_sets", "lend_your_ear_sets",
                     "take_session_id", "take", "delete", "derived_feedback", 59),
     PurgeDependency("lend_your_ear_answers", "lend_your_ear_answers",
-                    "listener_user_id", "principal", "delete", "derived_feedback", 35),
+                    "listener_user_id", "user", "delete", "derived_feedback", 35),
     PurgeDependency("delayed_measure_votes", "delayed_measure_votes",
-                    "rater_id", "principal", "delete", "derived_feedback", 35),
+                    "rater_id", "user", "delete", "derived_feedback", 35),
     # Communities (0432, N52.4). A share is the speaker's consent about one
     # Take: it goes with the Take, and with its owner (a share whose Take is
     # already gone). An answer is the listener's own words: it goes with the
@@ -383,17 +387,17 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("coach_exercise_preference", "coach_exercise_preference",
                     "take_session_id", "take", "delete", "derived_feedback", 59),
     PurgeDependency("coach_exercise_preference_by_coach", "coach_exercise_preference",
-                    "coach_id", "principal", "delete", "derived_feedback", 35),
+                    "coach_id", "user", "delete", "derived_feedback", 35),
     PurgeDependency("error_presence_audit", "error_presence_audit",
                     "take_session_id", "take", "delete", "derived_feedback", 59),
     PurgeDependency("error_presence_audit_by_coach", "error_presence_audit",
-                    "coach_id", "principal", "delete", "derived_feedback", 35),
+                    "coach_id", "user", "delete", "derived_feedback", 35),
     PurgeDependency("coach_block_pick", "coach_block_pick",
                     "take_session_id", "take", "delete", "derived_feedback", 59),
     PurgeDependency("coach_block_pick_by_coach", "coach_block_pick",
-                    "coach_id", "principal", "delete", "derived_feedback", 35),
+                    "coach_id", "user", "delete", "derived_feedback", 35),
     PurgeDependency("coach_clip_exposures", "coach_clip_exposures",
-                    "coach_id", "principal", "delete", "derived_feedback", 35),
+                    "coach_id", "user", "delete", "derived_feedback", 35),
     # The (draft, final) pairs a coach's answer about one speaker's moment
     # made (0402). The words are about that passage: they go with the Take.
     # Pairs from the exercise library (no take) are about the library.
