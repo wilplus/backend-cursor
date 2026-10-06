@@ -12,7 +12,7 @@ Status values: OPEN, VERIFYING, CONFIRMED, FALSE, DUPLICATE, FOUNDER, PARKED, IN
 
 - The audit (6 October) graded **707** lines: 387 LIVE and 75 SUPERSEDED are "no finding"; the other **245** are findings.
 - Audit findings **245 → ledger 370 A-rows** (245 + 125 splits). Every audit line maps to at least one row; every quote is checked verbatim against the audit text by the build script.
-- Overnight findings (the audit's "First" and "What the checks found" sections, and the morning list): **25 N-rows**, duplicates marked.
+- Overnight findings (the audit's "First" and "What the checks found" sections, and the morning list): **30 N-rows**, duplicates marked.
 - V4 Developer brief: **21 B-rows** (1.1–1.9 with 1.4b, the exit gate, 2.1–2.4, the six park items), plus the open questions O1–O3 as FOUNDER rows. Every decision row (M, P, W, Q, H, O, screens, rule changes) is mapped in the coverage table at the end.
 - Harness: **10 X-rows**, for approval.
 
@@ -47,6 +47,11 @@ A-rows by status: FOUNDER 184, PARKED 95, OPEN 91.
 | N22 | Panel M6 A, 6 Oct | One outside read of the whole project by another model; its findings become rows marked 'outside read', each verified before any fix. | both | no | — | — | S0 | — | — | — | FOUNDER (waits on M1/M2 (which model and how it gets the repo)) |
 | N23 | Panel V23 A, 6 Oct | The V4 decision page says Keep it / Swap it / Make a new one is dark; it is on and stays on. The page needs correcting. | both | no | — | — | S5 | — | — | — | FOUNDER (the V4 page is the founder's) |
 | N24 | Panel V24 A, 6 Oct | M5 'the recognizer teaches the picker every day' is read as weekly, matching coach-panel lock C6; the V4 page needs the same correction. | both | no | — | — | S5 | — | — | — | FOUNDER (the V4 page is the founder's) |
+| N25 | Panel helpers, 6 Oct (QG1) | Willfidence has no written operational definition in SPEC §17; under the CONSTRUCT fence nothing measured may ship without one, so B1.3 is blocked until the definition lands. | BE | no | — | — | S3 | — | — | — | FOUNDER (panel QG1) |
+| N26 | Panel helpers, 6 Oct (V22 B) | Showing V4 to a few speakers (V22 B) needs a way to serve V4 to a subset before Phase 2; no build row carries it (B2.1 is Phase 2). | BE | no | — | — | S0 | — | — | — | FOUNDER (waits on panel V22a/V22b) |
+| N27 | Panel helpers, 6 Oct | Stale ledger rows: A120 says MIN_CLIP_MS is unset (it is 1000 on main); A127c, A132b and A140b say 0429 is on main (#909 reverted it). Re-verify these rows before working them. | BE | no | — | — | S5 | — | — | — | OPEN |
+| N28 | Panel helpers, 6 Oct | The saved retention v1.5 PDF names migration 0429 three times; after #908 that number belongs to another migration, so the re-landed v1.5 text and its hash change (sign only the re-landed version). | BE | no | — | — | S4 | — | — | — | OPEN |
+| N29 | Panel helpers, 6 Oct (QG3) | The decision-filter text has drifted between repos: frontend CLAUDE.md still says every Take gets exactly three items (V2) and backend docs/willab_decision_filter.md calls V3 not yet activated. | both | no | — | — | S5 | — | — | — | FOUNDER (panel QG3 (CLAUDE.md edits need the founder)) |
 
 ## A · Audit findings
 
