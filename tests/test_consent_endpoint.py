@@ -353,18 +353,21 @@ STATUS = {
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"full app deps required: {_IMPORT_ERROR}")
 class Mlc2ConsentEndpointTests(unittest.TestCase):
+    """The bundled route, retired as a door (founder 2026-10-05, N48.5 Q27 A;
+    N2; N10.6): it records no grant, answers every reader without an error,
+    and still lets a holder withdraw a bundled grant."""
+
     def setUp(self):
         self.app = Flask(__name__)
         self.originals = []
-        self._patch(route.config, "ADMIN_EMAIL", "artur@willonski.com")
-        # Rings (0394): the founder is also a person the
-        # confidence_learning_writes row REACHES; the baked-in email is gone.
-        self._patch(
-            route.rings, "principal_for_user",
-            lambda user_id: "11111111-1111-4111-8111-111111111111",
-        )
-        self._patch(route.rings, "feature_reaches", lambda feature, p: True)
-        self._patch(route, "_owner_and_status", lambda: ("principal-1", dict(STATUS)))
+        self._patch(route.db, "get_owner_principal_for_user",
+                    lambda user_id: {"id": "principal-1"})
+        self.statuses = [dict(STATUS)]
+        self._patch(route.db, "get_mlc2_principal_consent_status",
+                    lambda principal_id: self.statuses[0] if len(self.statuses) == 1
+                    else self.statuses.pop(0))
+        self._patch(route.db, "record_mlc2_consent_withdrawal",
+                    lambda **kwargs: self.fail("no withdrawal expected"))
 
     def tearDown(self):
         for target, name, original in reversed(self.originals):
@@ -374,7 +377,7 @@ class Mlc2ConsentEndpointTests(unittest.TestCase):
         self.originals.append((target, name, getattr(target, name)))
         setattr(target, name, replacement)
 
-    def _invoke(self, method, body=None, email="artur@willonski.com"):
+    def _invoke(self, method, body=None):
         with self.app.test_request_context(
             "/v2/user/mlc2-consent",
             method=method,
@@ -384,196 +387,125 @@ class Mlc2ConsentEndpointTests(unittest.TestCase):
             request.user_id = "founder-user-id"
             request.token_payload = {
                 "sub": "founder-user-id",
-                "email": email,
+                "email": "artur@willonski.com",
                 "iss": "https://auth.example/auth/v1",
             }
             response, status = v2_mlc2_consent.v2_user_mlc2_consent.__wrapped__()
             return status, response.get_json()
 
-    def test_an_account_the_ring_row_does_not_reach_is_not_modified_or_gated(self):
-        self._patch(route.rings, "feature_reaches", lambda feature, p: False)
-        self._patch(
-            route,
-            "_owner_and_status",
-            lambda: self.fail("an unreached account must not resolve a principal"),
-        )
-        status, payload = self._invoke("GET", email="student@example.com")
+    def _holding(self):
+        held = {**STATUS, "granted": True, "speaker_bound": True,
+                "grant_event_id": "grant-1"}
+        self.statuses = [held]
+        return held
+
+    def test_post_records_nothing_and_answers_410_with_a_code_only(self):
+        for name in ("get_owner_principal_for_user",
+                     "get_mlc2_principal_consent_status"):
+            self._patch(route.db, name,
+                        lambda *a, **k: self.fail("a retired POST reads nothing"))
+        status, payload = self._invoke("POST", {
+            "accepted": True,
+            "idempotency_key": "consent-1",
+            "consent_policy_version": STATUS["consent_policy_version"],
+            "copy_sha256": STATUS["approved_copy_sha256"],
+        })
+        self.assertEqual(status, 410)
+        self.assertEqual(payload, {"code": "BUNDLED_CONSENT_RETIRED"})
+
+    def test_no_route_records_a_bundled_grant_any_more(self):
+        import inspect
+        source = inspect.getsource(route)
+        source = source[source.index('"""', 3) + 3:]  # the code, not the history
+        for writer in ("accept_mlc2_founder_consent", "record_mlc2_consent_grant",
+                       "register_ml_speaker_principal", "rings."):
+            self.assertNotIn(writer, source)
+        self.assertFalse(hasattr(route.db, "accept_mlc2_founder_consent"))
+
+    def test_get_without_a_bundled_grant_is_not_applicable(self):
+        status, payload = self._invoke("GET")
         self.assertEqual(status, 200)
         self.assertFalse(payload["applicable"])
+        self.assertFalse(payload["granted"])
+        self.assertTrue(payload["retired"])
 
-    def test_the_founder_email_alone_no_longer_opens_the_door(self):
-        # Q7 (founder 2026-09-29): the ring decides, not the email.
-        self._patch(route.rings, "feature_reaches", lambda feature, p: False)
-        status, payload = self._invoke("GET", email="artur@willonski.com")
-        self.assertEqual(status, 200)
-        self.assertFalse(payload["applicable"])
-
-    def test_a_person_the_ring_row_reaches_is_applicable_whatever_the_email(self):
-        status, payload = self._invoke("GET", email="tester@example.com")
-        self.assertEqual(status, 200)
-        self.assertTrue(payload["applicable"])
-        self.assertTrue(payload["configured"])
-        self.assertNotIn("acquisition_principal_id", payload)
-
-    def test_an_account_without_a_principal_is_not_applicable(self):
-        self._patch(route.rings, "principal_for_user", lambda user_id: None)
-        status, payload = self._invoke("GET", email="tester@example.com")
-        self.assertEqual(status, 200)
-        self.assertFalse(payload["applicable"])
-
-    def test_get_returns_approved_policy_without_internal_principal_id(self):
+    def test_get_for_a_holder_is_applicable_and_granted_so_it_can_be_withdrawn(self):
+        self._holding()
         status, payload = self._invoke("GET")
         self.assertEqual(status, 200)
         self.assertTrue(payload["applicable"])
-        self.assertFalse(payload["granted"])
-        self.assertEqual(payload["terms_version"], "1.2")
+        self.assertTrue(payload["granted"])
         self.assertNotIn("acquisition_principal_id", payload)
+        self.assertNotIn("grant_event_id", payload)
 
-    def test_post_requires_explicit_unambiguous_checkbox(self):
-        self._patch(
-            route.db,
-            "accept_mlc2_founder_consent",
-            lambda **kwargs: self.fail("identity must not bind without consent"),
-        )
-        status, payload = self._invoke("POST", {
-            "accepted": False,
-            "idempotency_key": "consent-1",
-        })
-        self.assertEqual(status, 400)
-        self.assertEqual(payload["code"], "EXPLICIT_CONSENT_REQUIRED")
+    def test_get_never_answers_with_an_error(self):
+        """The founder gate reads this route before the Lounge; an error
+        there would stop recording (LIVE LOOP)."""
+        def broken(principal_id):
+            raise RuntimeError("active MLC-2 consent policy count must equal one")
 
-    def test_post_rejects_stale_copy_before_any_canonical_write(self):
-        self._patch(
-            route.db,
-            "accept_mlc2_founder_consent",
-            lambda **kwargs: self.fail("stale copy must not bind identity"),
-        )
-        status, payload = self._invoke("POST", {
-            "accepted": True,
-            "idempotency_key": "consent-2",
-            "consent_policy_version": STATUS["consent_policy_version"],
-            "copy_sha256": "b" * 64,
-        })
-        self.assertEqual(status, 409)
-        self.assertEqual(payload["code"], "CONSENT_VERSION_MISMATCH")
+        self._patch(route.db, "get_mlc2_principal_consent_status", broken)
+        status, payload = self._invoke("GET")
+        self.assertEqual((status, payload["applicable"]), (200, False))
+        self._patch(route.db, "get_owner_principal_for_user",
+                    lambda user_id: (_ for _ in ()).throw(RuntimeError("down")))
+        status, payload = self._invoke("GET")
+        self.assertEqual((status, payload["applicable"]), (200, False))
 
-    def test_post_binds_verified_identity_and_records_both_purposes(self):
-        calls = {}
-        def accept(**kwargs):
-            calls["accept"] = kwargs
-            return {"consent_event_id": "grant-1", "binding_id": "binding-1"}
-
-        self._patch(route.db, "accept_mlc2_founder_consent", accept)
-        granted = {**STATUS, "granted": True, "speaker_bound": True}
-        self._patch(
-            route.db,
-            "get_mlc2_principal_consent_status",
-            lambda principal_id: granted,
-        )
-        status, payload = self._invoke("POST", {
-            "accepted": True,
-            "idempotency_key": "consent-3",
-            "consent_policy_version": STATUS["consent_policy_version"],
-            "copy_sha256": STATUS["approved_copy_sha256"],
-        })
+    def test_an_account_without_a_principal_is_not_applicable(self):
+        self._patch(route.db, "get_owner_principal_for_user", lambda user_id: None)
+        status, payload = self._invoke("GET")
         self.assertEqual(status, 200)
-        self.assertTrue(payload["granted"])
-        self.assertEqual(calls["accept"]["binding_kind"], "verified_account_link")
-        self.assertEqual(
-            calls["accept"]["affirmative_action"]["purposes"],
-            ["personalized_coaching", "pooled_model_improvement"],
-        )
-        self.assertTrue(calls["accept"]["article_9_applies"])
+        self.assertFalse(payload["applicable"])
 
-    def test_post_refuses_a_principal_the_ring_row_does_not_reach(self):
-        # The founder check passes (a stub above); the principal about to be
-        # bound is not reached by the confidence_learning_writes row.
-        self._patch(
-            route, "_canary_principal_matches", lambda owner_principal_id: False,
-        )
-        self._patch(
-            route.db,
-            "accept_mlc2_founder_consent",
-            lambda **kwargs: self.fail("a mismatched principal must not bind"),
-        )
-        status, payload = self._invoke("POST", {
-            "accepted": True,
-            "idempotency_key": "consent-4",
-            "consent_policy_version": STATUS["consent_policy_version"],
-            "copy_sha256": STATUS["approved_copy_sha256"],
-        })
-        self.assertEqual(status, 403)
-        self.assertEqual(payload["code"], "CANARY_PRINCIPAL_MISMATCH")
-
-    def test_post_binds_when_the_ring_row_reaches_this_principal(self):
-        asked = []
-        self._patch(
-            route.rings, "feature_reaches",
-            lambda feature, p: asked.append((feature, p)) or True,
-        )
-        calls = {}
-
-        def accept(**kwargs):
-            calls["accept"] = kwargs
-            return {"consent_event_id": "grant-1", "binding_id": "binding-1"}
-
-        self._patch(route.db, "accept_mlc2_founder_consent", accept)
-        self._patch(
-            route.db,
-            "get_mlc2_principal_consent_status",
-            lambda principal_id: {**STATUS, "granted": True},
-        )
-        status, payload = self._invoke("POST", {
-            "accepted": True,
-            "idempotency_key": "consent-5",
-            "consent_policy_version": STATUS["consent_policy_version"],
-            "copy_sha256": STATUS["approved_copy_sha256"],
-        })
-        self.assertEqual(status, 200)
-        self.assertTrue(payload["granted"])
-        self.assertEqual(calls["accept"]["acquisition_principal_id"], "principal-1")
-        self.assertIn(("confidence_learning_writes", "principal-1"), asked)
-
-    def test_withdrawal_is_never_blocked_by_the_canary_scope(self):
-        self._patch(
-            route, "_canary_principal_matches", lambda owner_principal_id: False,
-        )
-        status_with_grant = {**STATUS, "granted": True, "grant_event_id": "grant-1"}
-        self._patch(route, "_owner_and_status", lambda: ("principal-1", status_with_grant))
-        self._patch(
-            route.db,
-            "record_mlc2_consent_withdrawal",
-            lambda **kwargs: {"id": "withdraw-1", "supersedes_event_id": "grant-1"},
-        )
-        self._patch(
-            route.db,
-            "get_mlc2_principal_consent_status",
-            lambda principal_id: STATUS,
-        )
-        status, payload = self._invoke("DELETE", {"idempotency_key": "withdraw-2"})
-        self.assertEqual(status, 200)
-        self.assertFalse(payload["granted"])
-
-    def test_delete_appends_withdrawal_and_never_erases_grant(self):
-        status_with_grant = {**STATUS, "granted": True, "grant_event_id": "grant-1"}
-        self._patch(route, "_owner_and_status", lambda: ("principal-1", status_with_grant))
+    def test_delete_withdraws_a_held_grant_and_never_erases_it(self):
+        self._holding()
         calls = {}
 
         def withdraw(**kwargs):
             calls.update(kwargs)
+            self.statuses[0] = dict(STATUS)  # withdrawn: no longer held
             return {"id": "withdraw-1", "supersedes_event_id": "grant-1"}
 
         self._patch(route.db, "record_mlc2_consent_withdrawal", withdraw)
-        self._patch(
-            route.db,
-            "get_mlc2_principal_consent_status",
-            lambda principal_id: STATUS,
-        )
         status, payload = self._invoke("DELETE", {"idempotency_key": "withdraw-1"})
         self.assertEqual(status, 200)
         self.assertFalse(payload["granted"])
+        self.assertFalse(payload["applicable"])
         self.assertEqual(calls["grant_event_id"], "grant-1")
+        self.assertEqual(calls["acquisition_principal_id"], "principal-1")
         self.assertTrue(calls["affirmative_action"]["service_access_ends"])
+
+    def test_delete_needs_a_bounded_idempotency_key(self):
+        self._holding()
+        status, payload = self._invoke("DELETE", {"idempotency_key": ""})
+        self.assertEqual(status, 400)
+        self.assertEqual(payload["code"], "INVALID_INPUT")
+
+    def test_delete_without_a_held_grant_writes_nothing(self):
+        status, payload = self._invoke("DELETE", {"idempotency_key": "withdraw-2"})
+        self.assertEqual(status, 200)
+        self.assertFalse(payload["applicable"])
+
+    def test_a_failed_withdrawal_says_so_in_the_routes_existing_words(self):
+        self._holding()
+
+        def refuse(**kwargs):
+            raise RuntimeError("database down")
+
+        self._patch(route.db, "record_mlc2_consent_withdrawal", refuse)
+        status, payload = self._invoke("DELETE", {"idempotency_key": "withdraw-3"})
+        self.assertEqual(status, 500)
+        self.assertEqual(payload["code"], "MLC2_CONSENT_FAILED")
+        self.assertEqual(payload["error"],
+                         "We could not save this consent safely. Please try again.")
+
+    def test_neither_the_ring_nor_the_writer_state_stands_before_a_withdrawal(self):
+        import inspect
+        source = inspect.getsource(route)
+        self.assertNotIn("@confidence_chain_alive", source)
+        self.assertNotIn("feature_reaches", source)
+        self.assertIn("@require_auth", source)
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"full app deps required: {_IMPORT_ERROR}")
@@ -595,11 +527,14 @@ class ConfidenceChainAliveDoorTests(unittest.TestCase):
         Config.MLC2_CONFIDENCE_CUTOVER_MODE = mode
         self.addCleanup(setattr, Config, "MLC2_CONFIDENCE_CUTOVER_MODE", original)
 
-    def test_the_route_is_wrapped_by_the_writer_state_door(self):
+    def test_the_retired_route_needs_no_door_and_the_door_stays_available(self):
+        """0430: the bundled route records nothing and keeps only the
+        withdrawal, which no door may stand in front of; the decorator
+        stays for any future route that records a chain consent."""
         from routes.phase2_guard import confidence_chain_alive
         import inspect
         source = inspect.getsource(v2_mlc2_consent)
-        self.assertIn("@confidence_chain_alive", source)
+        self.assertNotIn("@confidence_chain_alive", source)
         self.assertNotIn("phase2_learning_disabled", source)
         self.assertTrue(callable(confidence_chain_alive))
 

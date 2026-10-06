@@ -1,3 +1,7 @@
+import ast
+import io
+import re
+import tokenize
 from pathlib import Path
 
 
@@ -128,3 +132,125 @@ def test_confidence_cutover_is_hard_disabled_not_environment_controlled():
     # The flip (founder 2026-09-29): still a literal constant, never env.
     assert 'MLC2_CONFIDENCE_CUTOVER_MODE = "founder_canary"' in config
     assert 'os.getenv("MLC2_CONFIDENCE_CUTOVER_MODE")' not in config
+
+
+# ── DA-PROHIBIT: the doors read no object the audit names (2026-10-05) ─────
+#
+# The guard above covers the mlc2_*.py modules only. The code that builds,
+# releases, evaluates, trains on or promotes learning data lives outside
+# that prefix, and the dark training-corpus copy job read confidence_labels
+# (through services.professional_confidence) until 0430 gave it the chain's
+# own blind judgement. Every module below is held to the same prohibition.
+
+#: The canonical dataset, release, training, evaluation and promotion code.
+CANONICAL_LEARNING_DOORS = (
+    "services/pair_consent.py",          # door 1: a pair's releasability
+    "services/pair_release.py",          # door 2: the weekly release
+    "services/pair_release_eligibility.py",  # door 2: the release-time decision
+    "services/speaker_split.py",         # doors 2 and 3: the split (F-3)
+    "services/model_training.py",        # door 3: the fine-tune run
+    "services/golden_set.py",            # doors 3 and 4: the sealed set
+    "services/golden_evaluation.py",
+    "services/model_promotion.py",       # door 4
+    "services/dataset_releases.py",      # K10's release lane (dark)
+    "services/confidence_dataset.py",
+    "services/ml_dpo_release.py",
+    "services/training_corpus.py",       # TC-4 copies (dark)
+    "services/object_verification.py",   # F-8
+    "scripts/promote_pair_surface.py",
+    "scripts/promote_openai_model.py",
+)
+
+#: Read paths the audit's objects hide behind: the product modules that read
+#: them for the product (professional verdicts are confidence_labels rows,
+#: evaluation-only by the foundation's own rule).
+LABEL_READER_MODULES = ("professional_confidence", "professional_verdicts")
+
+
+def _audit_named_objects() -> set[str]:
+    """Every object the confidence audit's storage table names."""
+    audit = (ROOT / "docs" / "MLC2-CONFIDENCE-DEPENDENCY-AUDIT.md").read_text()
+    section = audit.split("## Legacy storage classification and migration owners", 1)[1]
+    section = section.split("\n## ", 1)[0]
+    names: set[str] = set()
+    for line in section.splitlines():
+        if not line.startswith("| `") and not line.startswith("| old"):
+            continue
+        first_cell = line.split("|")[1]
+        names.update(re.findall(r"`([a-z_]+)`", first_cell))
+    return names
+
+
+def _code_tokens(source: str) -> list[tuple[int, str]]:
+    """The module's tokens without comments and docstrings: prose may name
+    what the code must not read."""
+    tree = ast.parse(source)
+    docstring_lines: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                             ast.AsyncFunctionDef)):
+            body = node.body
+            if (body and isinstance(body[0], ast.Expr)
+                    and isinstance(body[0].value, ast.Constant)
+                    and isinstance(body[0].value.value, str)):
+                docstring_lines.update(range(body[0].lineno,
+                                             (body[0].end_lineno or body[0].lineno) + 1))
+    kept = []
+    for token in tokenize.generate_tokens(io.StringIO(source).readline):
+        if token.type == tokenize.COMMENT:
+            continue
+        if token.type == tokenize.STRING and token.start[0] in docstring_lines:
+            continue
+        kept.append((token.start[0], token.string))
+    return kept
+
+
+def _mentions(text: str, name: str) -> bool:
+    """``name`` as a table, module or method part (``get_<name>_by_ids``
+    counts), but never the foundation's own ``ml_<name>``."""
+    return re.search(rf"(?<![A-Za-z0-9])(?<!ml_){re.escape(name)}", text) is not None
+
+
+def test_the_audit_table_still_names_the_mixed_purpose_objects():
+    names = _audit_named_objects()
+    assert {"moment_suggestions", "confidence_labels", "take_feedback_exposure",
+            "feedback_candidates", "owner_voice_album_routing", "star_verdicts",
+            "training_labels", "confidence_rereview_queue"} <= names
+    assert len(names) >= 25, sorted(names)
+
+
+def test_every_guarded_door_exists():
+    missing = [path for path in CANONICAL_LEARNING_DOORS if not (ROOT / path).exists()]
+    assert missing == []
+
+
+def test_canonical_learning_doors_never_read_an_object_the_audit_names():
+    prohibited = (_audit_named_objects() | set(LEGACY_LEARNING_OBJECTS)
+                  | set(LABEL_READER_MODULES))
+    violations = []
+    for path in CANONICAL_LEARNING_DOORS:
+        for line, text in _code_tokens((ROOT / path).read_text()):
+            for name in sorted(prohibited):
+                if _mentions(text, name):
+                    violations.append(f"{path}:{line}: {name}")
+    assert violations == [], (
+        "Canonical dataset/release/training code must not read an object the "
+        "MLC-2 confidence audit names:\n" + "\n".join(violations))
+
+
+def test_the_guard_catches_the_read_it_was_written_for():
+    """The copy job before 0430, verbatim: the indirect read through the
+    professional module, and a direct one through the database adapter."""
+    before = (
+        "def _copy_coach_label(database, base, snippet_id):\n"
+        "    from services.professional_confidence import professional_verdicts\n"
+        "    return professional_verdicts(database, [snippet_id])\n"
+        "rows = database.get_confidence_labels_by_snippet_ids(ids)\n"
+    )
+    hits = {name for _line, text in _code_tokens(before)
+            for name in ("professional_confidence", "confidence_labels")
+            if _mentions(text, name)}
+    assert hits == {"professional_confidence", "confidence_labels"}
+    assert not _mentions("ml_candidate_sets", "candidate_sets")
+    assert not _mentions("ml_evidence_spans", "evidence_spans")
+    assert _mentions('table("candidate_sets")', "candidate_sets")

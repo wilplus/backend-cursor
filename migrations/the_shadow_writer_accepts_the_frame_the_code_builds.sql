@@ -1,4 +1,4 @@
--- 0429 · The shadow writer accepts the frame the code builds (ledger N20).
+-- 0431 · The shadow writer accepts the frame the code builds (ledger N20).
 --
 -- FOUND 2026-10-06 (V4 Phase 1 mapping): after every Take, V3 builds a hidden
 -- shadow frame (services/take_feedback_policy_v3.py, build_shadow_frame) and

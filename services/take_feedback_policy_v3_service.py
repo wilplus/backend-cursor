@@ -10,6 +10,8 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from typing import Any
 
+from services.take_feedback_policy_v3 import span_rejection, unservable
+
 _FAMILIES = {"confident_voice", "rewrite_clarity", "great_formulation"}
 
 
@@ -154,15 +156,16 @@ def _row_rejection(
 
     The conditions are checked in this order, and the first that holds is
     the answer: the row's own lineage, its transcript span, the clip
-    against the piece, the piece's Paragraph, and its served span.
+    against the piece, the piece's Paragraph, and its served span. The last
+    two are the servability predicate the frame's selection asked first
+    (contract 24b), so a block's selected item passes them by construction.
     """
     return (
         _lineage_gap(raw, candidate_key=candidate_key, snippet_id=snippet_id,
                      source=source, span=span, lineage=lineage)
-        or _span_rejection(span, document_text, prefix="")
+        or span_rejection(span, document_text, prefix="")
         or _clip_mismatch(source, lineage)
-        or (None if source.get("part_id") else "piece_has_no_part_id")
-        or _served_span_rejection(raw.get("target_span"), served_text)
+        or _unservable_detail(source, raw, served_text)
     )
 
 
@@ -180,19 +183,6 @@ def _lineage_gap(
         return "clip_identity_missing"
     if raw.get("eligibility") not in {"eligible", "excluded"}:
         return f"eligibility_unknown:{raw.get('eligibility')!r}"
-    return None
-
-
-def _span_rejection(span: dict, text: str, *, prefix: str) -> str | None:
-    """A ``{start, end}`` span that is not integer, not forward, or runs
-    past ``text``; ``prefix`` names which document ("" or "served_")."""
-    start, end = span.get("start"), span.get("end")
-    if not isinstance(start, int) or not isinstance(end, int):
-        return f"{prefix}span_bounds_not_integers"
-    if start < 0 or end <= start:
-        return f"{prefix}span_inverted:{start}..{end}"
-    if end > len(text):
-        return f"{prefix}span_past_document_end:{end}>{len(text)}"
     return None
 
 
@@ -218,16 +208,18 @@ def _clip_mismatch(source: dict, lineage: dict) -> str | None:
     return None
 
 
-def _served_span_rejection(target: Any, served_text: str) -> str | None:
-    # THE SPAN THE BOOKMARK IS DRAWN ON, which is not the one measured. The
-    # checks above validate `document_span` against the TRANSCRIPT; these
-    # validate `target_span` against the SERVED Ideal Text. Two documents,
-    # two spans, and conflating them put V3's highlight at transcript
-    # offsets inside a shorter document -- past its end in production, and
-    # silently on the wrong words whenever it happened to fit.
-    if not isinstance(target, dict):
-        return "piece_has_no_served_span"
-    return _span_rejection(target, served_text, prefix="served_")
+def _unservable_detail(source: dict, raw: dict, served_text: str) -> str | None:
+    """The piece's Paragraph and the row's served span, judged by THE
+    servability predicate (`take_feedback_policy_v3.unservable`).
+
+    ONE PREDICATE, NOT TWO COPIES (contract 24b, 2026-10-05). The frame now
+    asks this same function when it chooses each block's item, so the item it
+    selects is one this check passes. Two copies of the rule are how the
+    frame came to select a winner this path then dropped, emptying its
+    block. The log keeps its exact condition strings (``detail``)."""
+    verdict = unservable(source.get("part_id"), raw.get("target_span"),
+                         served_text)
+    return verdict.detail if verdict is not None else None
 
 
 def _v3_confidence_candidate_row(

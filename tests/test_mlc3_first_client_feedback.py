@@ -87,6 +87,11 @@ def test_service_frame_and_bundle_preserve_75_word_budget_without_labels():
         feedback_candidates=[],
         take_index=1,
         expected_recording_id=RECORDING,
+        # The frame is handed the served text the inventory is, as
+        # `prepare_first_client_feedback` always does: its selection now
+        # proves each item's served span against it (contract 24b), so a
+        # frame told no served text can prove none.
+        served_text=document["text"],
     )
     inventory = prepare_v3_service_inventory(
         frame=frame, take_document=document, served_text=document["text"],

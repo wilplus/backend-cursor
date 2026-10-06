@@ -63,8 +63,14 @@ def _pair(i, owner="p-1", state="yes"):
 
 
 class _Db:
-    def __init__(self, pairs=None, voided=None, grants=None, stopped=(), takes=None):
+    # F-3: every owner below has a bound speaker unless a test says not.
+    SPEAKER_SPLITS = {"p-1": "train", "p-2": "test", "p-9": "validation"}
+
+    def __init__(self, pairs=None, voided=None, grants=None, stopped=(), takes=None,
+                 speaker_splits=None):
         self.pairs = pairs or []
+        self.speaker_splits = dict(self.SPEAKER_SPLITS if speaker_splits is None
+                                   else speaker_splits)
         self.releases: list[dict] = []
         self.owners: list[tuple[str, list]] = []
         self.marked: list[tuple[str, list]] = []
@@ -89,6 +95,10 @@ class _Db:
 
     def list_take_projects(self, takes):
         return {t: p for t, p in self.takes.items() if t in takes}
+
+    def get_speaker_splits_for_principals(self, owners, policy):
+        assert policy == "speaker-sha256-80-10-10-v1"
+        return {o: self.speaker_splits[o] for o in owners if o in self.speaker_splits}
 
     def insert_pair_release(self, **fields):
         row = {"id": f"rel-{len(self.releases) + 1}", **fields}
@@ -260,6 +270,68 @@ class ExportTests(unittest.TestCase):
         self.assertEqual(a[0]["owner_split_key"], a[1]["owner_split_key"])
         self.assertEqual(pr.lines_for([_pair(3, owner="p-9")])[0]["split"], a[0]["split"])
 
+    def test_the_split_is_the_owners_speaker_assignment_not_the_principal_hash(self):
+        """F-3: the release reads ml_speaker_split_assignments through the
+        owner's bound speaker; the owner-principal hash no longer decides."""
+        from services.dataset_releases import speaker_split
+        owner = next(f"p-x{i}" for i in range(1000) if speaker_split(f"p-x{i}")[0] == "train")
+        db = _Db(pairs=[_pair(1, owner=owner)], speaker_splits={owner: "test"},
+                 grants={owner: "training-v1"})
+        storage = _Storage()
+        out = pr.export_surface(db, storage, surface="praise_line", week_start=date(2026, 9, 28),
+                                config=_open("praise_line"))
+        self.assertEqual(out["exported"], 1)
+        body = storage.objects[("willab-pair-releases", "pair-releases/praise_line/2026-09-28/pairs.jsonl")]
+        self.assertEqual(json.loads(body.decode().strip())["split"], "test")
+        manifest = json.loads(storage.objects[("willab-pair-releases",
+                                               "pair-releases/praise_line/2026-09-28/manifest.json")])
+        self.assertEqual(manifest["split_counts"], {"train": 0, "validation": 0, "test": 1})
+        self.assertEqual(manifest["split_source"], "speaker_assignment")
+
+    def test_a_pair_whose_owner_has_no_speaker_waits_and_the_job_says_why(self):
+        db = _Db(pairs=[_pair(1, owner="p-1"), _pair(2, owner="p-unbound")],
+                 grants={"p-1": "training-v1", "p-unbound": "training-v1"})
+        storage = _Storage()
+        out = pr.export_surface(db, storage, surface="praise_line", week_start=date(2026, 9, 28),
+                                config=_open("praise_line"))
+        self.assertEqual((out["exported"], out["waiting"]), (1, 1))
+        self.assertIn("speaker binding", out["why_waiting"])
+        # The signed manifest says how many eligible pairs waited.
+        manifest = db.releases[0]["manifest"]
+        self.assertEqual(manifest["eligibility"]["waiting_for_speaker"], 1)
+        self.assertEqual(manifest["eligibility"]["eligible"], 2)
+        self.assertEqual(manifest["item_count"], 1)
+        self.assertEqual(db.marked, [("rel-1", ["pair-1"])])
+        self.assertEqual(db.owners, [("rel-1", ["p-1"])])
+
+    def test_when_no_owner_is_bound_nothing_is_written(self):
+        db = _Db(pairs=[_pair(1, owner="p-1")], speaker_splits={})
+        storage = _Storage()
+        out = pr.export_surface(db, storage, surface="praise_line", week_start=date(2026, 9, 28),
+                                config=_open("praise_line"))
+        self.assertEqual((out["exported"], out["waiting"]), (0, 1))
+        self.assertIn("speaker binding", out["why"])
+        self.assertEqual((storage.objects, db.releases, db.marked), ({}, [], []))
+
+    def test_an_unreadable_speaker_table_reads_as_nobody_bound(self):
+        db = _Db(pairs=[_pair(1, owner="p-1")])
+
+        def broken(owners, policy):
+            raise RuntimeError("table away")
+        db.get_speaker_splits_for_principals = broken
+        out = pr.export_surface(db, _Storage(), surface="praise_line", week_start=date(2026, 9, 28),
+                                config=_open("praise_line"))
+        self.assertEqual(out["exported"], 0)
+        self.assertEqual(db.releases, [])
+
+    def test_door_3_reads_the_same_split_door_2_released_under(self):
+        from services import model_training as mt
+        pair = {**_pair(1, owner="p-2"), "passage_text": "the passage as spoken", "releasable": True}
+        released = pr.lines_for([pair], {"p-2": "test"})[0]["split"]
+        trained = mt.split_examples([pair], {"p-2": "test"})
+        self.assertEqual(released, "test")
+        self.assertEqual((trained["held_out"], trained["train"], trained["validation"]), (1, [], []))
+
     def test_nothing_waiting_is_said_not_written(self):
         db = _Db(pairs=[])
         storage = _Storage()
@@ -305,6 +377,46 @@ class WeeklyTests(unittest.TestCase):
         self.assertEqual(db.releases, [])
         self.assertTrue(export.called)
         self.assertEqual(db.snapshot["snapshot"]["doors_pass"]["consent_refresh"]["refreshed"], 3)
+
+
+class FoundationHealthTests(unittest.TestCase):
+    """F-9: the weekly job reads get_mlc2_foundation_health_v1 and keeps it,
+    aggregate only, beside the doors; a failure is named, never fatal."""
+
+    HEALTH = {"generated_at": "2026-10-05T06:00:00Z", "pending_outbox_count": 2,
+              "failed_outbox_count": 0, "oldest_pending_outbox_at": None,
+              "unresolved_principal_count": 40, "unverified_object_count": 3,
+              "pending_purge_count": 0, "learning_surface_count": 8,
+              "dataset_creation_enabled": False, "training_enabled": False,
+              "promotion_enabled": False}
+
+    def test_the_weekly_row_carries_the_foundation_health(self):
+        db = _Db(pairs=[])
+        db.get_mlc2_foundation_health = lambda: dict(self.HEALTH)
+        ledger = {"ledger_version": "learning-ledger-v1", "pairs": {},
+                  "exercise_jar": {}, "shadow_cues": {}, "doors": {}, "unavailable": []}
+        with mock.patch("services.learning_ledger.ledger", return_value=ledger):
+            report = lw.run_weekly(db, config=_Config(), now=datetime(2026, 10, 5, tzinfo=timezone.utc))
+        health = report["foundation_health"]
+        self.assertEqual(health["pending_outbox_count"], 2)
+        self.assertEqual(health["unverified_object_count"], 3)
+        self.assertTrue(health["learning_capabilities_closed"])
+        self.assertNotIn("learning_surface_count", health)
+        self.assertEqual(db.snapshot["snapshot"]["foundation_health"], health)
+
+    def test_an_open_capability_is_visible(self):
+        db = _Db()
+        db.get_mlc2_foundation_health = lambda: {**self.HEALTH, "training_enabled": True}
+        self.assertFalse(lw.foundation_health(db)["learning_capabilities_closed"])
+
+    def test_a_failure_is_named_and_never_stops_the_job(self):
+        db = _Db()
+
+        def broken():
+            raise RuntimeError("rpc down")
+        db.get_mlc2_foundation_health = broken
+        self.assertIn("rpc down", lw.foundation_health(db)["unavailable"])
+        self.assertIn("unavailable", lw.foundation_health(object()))
 
 
 if __name__ == "__main__":

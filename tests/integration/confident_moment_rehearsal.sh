@@ -612,12 +612,26 @@ if [ "$LANE" = "released" ]; then
   hard migrations/a_coach_judgement_stands.sql
 fi
 
-# 0429 (N20, 2026-10-06): the shadow writer accepts the frame the code builds.
+# 0429: the confidence chain hears the training yes (N48.5 Q27 A). It
+# re-issues ring_consent_is_current_v1, ring_consent_policy_exists_v1 and
+# get_ring_confidence_readiness_v1 (0394), get_mlc2_confidence_canary_
+# readiness_v1 (0377) and promote_recording_attempt_with_mlc2_confidence_v1
+# (0392), all applied above, and adds the training snapshot, the speaker
+# binding and the blind-rating reader. Released lane only, where its suite
+# (tests/test_the_chain_hears_the_training_yes_postgres.py) and the chain's
+# end-to-end suite run. After the migrations before it in the manifest.
+# Twice: apply/reapply idempotency.
+if [ "$LANE" = "released" ]; then
+  hard migrations/the_chain_hears_the_training_yes.sql
+  hard migrations/the_chain_hears_the_training_yes.sql
+fi
+
+# 0431 (N20, 2026-10-06): the shadow writer accepts the frame the code builds.
 # Re-issues record_take_feedback_policy_v3_shadow_v3 from 0311 with the frame
 # schema check on 'take-feedback-policy-v3-frame-v5', the version
 # services/take_feedback_policy_v3.py has built since #893; -v3 and -v4 stay
 # refused. Released lane only: 0311, which it replaces, is applied there and
-# the function's tables live there. After 0427, as in the manifest. Twice:
+# the function's tables live there. After 0430, as in the manifest. Twice:
 # apply/reapply idempotency. Its suite,
 # tests/test_the_shadow_writer_accepts_the_frame_the_code_builds_postgres.py,
 # feeds the function a frame build_shadow_frame really made.

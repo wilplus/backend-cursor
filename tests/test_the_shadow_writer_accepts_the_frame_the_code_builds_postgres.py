@@ -1,4 +1,4 @@
-"""0429 on a real database: the shadow writer stores the frame the V3 picker
+"""0431 on a real database: the shadow writer stores the frame the V3 picker
 builds, and still refuses every other frame (ledger N20, founder R3 A).
 
 Since #893 the code builds frame schema `take-feedback-policy-v3-frame-v5`;
@@ -12,7 +12,7 @@ Pins:
   * the frame the code builds is STORED, byte for byte, and read back;
   * the same frame relabelled -v3 or -v4, or carrying another detector or
     policy version, is still refused with 0311's error;
-  * re-applying 0429 inside a transaction (twice) leaves the writer accepting
+  * re-applying 0431 inside a transaction (twice) leaves the writer accepting
     the code's frame: the migration is idempotent;
   * SECURITY DEFINER, search_path = public and the grants are as 0311 left
     them: service_role may execute, anon and authenticated may not.
@@ -66,7 +66,7 @@ def cur():
 
 
 def _migration_body() -> str:
-    """0429 without its own BEGIN/COMMIT, to run inside a test's transaction."""
+    """0431 without its own BEGIN/COMMIT, to run inside a test's transaction."""
     return "\n".join(
         line for line in MIGRATION.read_text().splitlines()
         if line.strip() not in ("BEGIN;", "COMMIT;"))

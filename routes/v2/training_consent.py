@@ -8,6 +8,10 @@ answers 410 only if a reviewed change sets the constant back to False.
 While no training policy row is active it answers ``available: false`` and
 the Settings card hides itself. Responses carry codes only; the words are
 the frontend's, signed by the founder (N10).
+
+The speaker identity is computed here, from the verified token, and handed
+to the switch: the training yes binds the speaker it admits into the
+confidence chain (founder 2026-10-05, N48.5 Q27 A; migration 0430).
 """
 from __future__ import annotations
 
@@ -20,6 +24,7 @@ from auth import require_auth
 from routes.v2.blueprint import v2_bp
 from services.db import db
 from services.project_repository import ProjectOwnershipError, ProjectRepository
+from services.speaker_identity import identity_coordinates
 from services.training_consent import (
     TrainingSwitchError, handle, switch_enabled,
 )
@@ -41,10 +46,13 @@ def v2_user_training_consent():
     if not switch_enabled():
         return jsonify({"code": "TRAINING_SWITCH_DISABLED"}), 410
     try:
-        owner = _repository.owner_for_user(
-            str(getattr(request, "user_id", "")).strip())
+        user_id = str(getattr(request, "user_id", "")).strip()
+        owner = _repository.owner_for_user(user_id)
+        identity = identity_coordinates(
+            getattr(request, "token_payload", None) or {}, user_id)
         state = handle(db, owner.id, request.method,
-                       request.get_json(silent=True), _client_version())
+                       request.get_json(silent=True), _client_version(),
+                       identity=identity)
         return jsonify(state), 200
     except TrainingSwitchError as error:
         return jsonify({"code": error.code}), error.status
