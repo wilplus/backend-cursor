@@ -23,6 +23,8 @@ for i in range(1, 7):
 N = json.load(open(os.path.join(HERE, 'n_rows.json')))
 X = json.load(open(os.path.join(HERE, 'x_rows.json')))
 mapA = json.load(open(os.path.join(HERE, 'mapA.out.json'))) if os.path.exists(os.path.join(HERE, 'mapA.out.json')) else []
+DEC = json.load(open(os.path.join(HERE, 'decided.json')))
+N += json.load(open(os.path.join(HERE, 'new_rows.json')))
 mapB = json.load(open(os.path.join(HERE, 'mapB.out.json'))) if os.path.exists(os.path.join(HERE, 'mapB.out.json')) else {}
 
 # ---- integrity checks
@@ -54,6 +56,8 @@ w('Status values: OPEN, VERIFYING, CONFIRMED, FALSE, DUPLICATE, FOUNDER, PARKED,
 w('')
 w('"Verified?" is **no** on every A-row: the audit is a claim until §2 checks it against the code. The audit evidence column is the audit\'s claimed evidence, kept as a lead for the verifier. The audit\'s `switch` field was not re-read on 6 October, so it is left out here.')
 w('')
+w('**Approved by the founder 6 October (Navigation Panel W1 A).** Decisions from the panel are applied as DECIDED notes; the full answers are in `docs/audit/PANEL-ANSWERS-2026-10-06.md`.')
+w('')
 w('## Count check')
 w('')
 w(f'- The audit (6 October) graded **{total_lines}** lines: {live} LIVE and {sup} SUPERSEDED are "no finding"; the other **{len(lines)}** are findings.')
@@ -69,6 +73,20 @@ w('')
 hdr = '| ID | Source (audit section + exact quote) | Claim in one line | Area | Verified? | Evidence | Filter verdict | Severity | Plan | PR | Test | Status |'
 sep = '|---|---|---|---|---|---|---|---|---|---|---|---|'
 
+for n in N:
+    if n['id'] in DEC:
+        dd = DEC[n['id']]; n['status'] = dd['status']; n['why'] = 'DECIDED ' + dd['note']
+        if dd.get('pr'): n['pr'] = dd['pr']
+for r in rows:
+    if r['aid'] in DEC:
+        dd = DEC[r['aid']]; r['status'] = dd['status']; r['why'] = 'DECIDED ' + dd['note']
+for x in X:
+    if x['id'] in DEC:
+        dd = DEC[x['id']]; x['status'] = dd['status']; x['why'] = 'DECIDED ' + dd['note']
+for b in list(mapA) + list(mapB.get('build', [])):
+    k = 'B' + b['id']
+    if k in DEC:
+        dd = DEC[k]; b['status'] = dd['status']; b['why'] = 'DECIDED ' + dd['note']; b['unclear'] = ''
 w('## N · Overnight findings')
 w('')
 w(hdr); w(sep)
@@ -90,7 +108,7 @@ for r in rows:
     source = f"{src['area_title']} · {src['line_id']} ({src['status']}): “{r['quote']}”"
     why = r.get('why') or ''
     if r.get('unclear'): why += ' · QUESTION: ' + r['unclear']
-    w(f"| {r['aid']} | {cell(source)} | {cell(r['claim'])} | {r['area']} | no | {cell(' · '.join(ev), 220)} | — | {r['severity'][:2]} | — | — | — | {status_cell(r['status'], why) if r['status']!='OPEN' else 'OPEN' + (' · QUESTION: ' + cell(r['unclear']) if r.get('unclear') else '')} |")
+    w(f"| {r['aid']} | {cell(source)} | {cell(r['claim'])} | {r['area']} | no | {cell(' · '.join(ev), 220)} | — | {r['severity'][:2]} | — | — | — | {status_cell(r['status'], why) if (r['status']!='OPEN' or why.startswith('DECIDED')) else 'OPEN' + (' · QUESTION: ' + cell(r['unclear']) if r.get('unclear') else '')} |")
 w('')
 
 w('## B · V4 Developer brief')
@@ -111,7 +129,9 @@ for b in list(mapA) + list(mapB.get('build', [])):
     if b.get('unclear'): why += ' · QUESTION: ' + cell(b['unclear'], 200)
     w(f"| B{b['id']} | {cell(b.get('title'), 160)} | {b.get('grade','?')}: {cell(ex, 220)} | {cell(b.get('gap'), 220)} | {p} | {cell(b.get('estimate'), 40)} | {cell(dep, 80)} | {clash or '—'} | {status_cell(b.get('status','OPEN'), why)} |")
 for o, t in [('O1', 'The exact role list and values for importance (1.6)'), ('O2', 'The "very low sureness" cut-off that triggers the V3 fallback (1.6)'), ('O3', 'Written definitions for each WORDS dimension, one question each, and the external anchor for the sales link (Phase 2 full W; CONSTRUCT fence)')]:
-    w(f"| {o} | Decision page, Still open: {cell(t)} | open question | a founder decision | — | — | — | — | FOUNDER (decide before the task that needs it) |")
+    dd = DEC.get('B' + o)
+    st = f"{dd['status']} (DECIDED {cell(dd['note'], 120)})" if dd else 'FOUNDER (decide before the task that needs it)'
+    w(f"| {o} | Decision page, Still open: {cell(t)} | open question | a founder decision | — | — | — | — | {st} |")
 w('')
 
 w('## X · The harness (for approval)')

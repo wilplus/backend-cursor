@@ -1,0 +1,6 @@
+[
+ {"id":"N21","source":"Panel R1 A, 6 Oct","claim":"Fix migration 0429 from the Railway pre-deploy log and re-land retention v1.5 (the reverted #907) as a new PR.","area":"BE","severity":"S4","status":"FOUNDER","why":"needs the pre-deploy log text from Railway (only the founder can read it)","pr":"","test":""},
+ {"id":"N22","source":"Panel M6 A, 6 Oct","claim":"One outside read of the whole project by another model; its findings become rows marked 'outside read', each verified before any fix.","area":"both","severity":"S0","status":"FOUNDER","why":"waits on M1/M2 (which model and how it gets the repo)","pr":"","test":""},
+ {"id":"N23","source":"Panel V23 A, 6 Oct","claim":"The V4 decision page says Keep it / Swap it / Make a new one is dark; it is on and stays on. The page needs correcting.","area":"both","severity":"S5","status":"FOUNDER","why":"the V4 page is the founder's","pr":"","test":""},
+ {"id":"N24","source":"Panel V24 A, 6 Oct","claim":"M5 'the recognizer teaches the picker every day' is read as weekly, matching coach-panel lock C6; the V4 page needs the same correction.","area":"both","severity":"S5","status":"FOUNDER","why":"the V4 page is the founder's","pr":"","test":""}
+]
