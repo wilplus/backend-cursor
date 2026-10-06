@@ -14,6 +14,12 @@ AUDIT_URL = "https://claude.ai/artifact/DwAgAoxxszUSd3WV5EJfMk"
 DECISION_URL = "https://claude.ai/artifact/UXiVaBvGLRTg83kjmHKY6E"
 
 
+def aid3(text: str) -> str:
+    m = re.match(r"A\d{3}", text)
+    assert m, text
+    return m.group(0)
+
+
 def cell(s, n=None):
     s = re.sub(r"\s+", " ", str(s if s is not None else "")).strip()
     if n and len(s) > n:
@@ -45,11 +51,11 @@ mapB = (
 # ---- integrity checks
 base_ids = [r["aid"] for r in rows]
 assert len(base_ids) == len(set(base_ids)), "duplicate row ids"
-covered = {re.match(r"A\d{3}", a).group(0) for a in base_ids}
+covered = {aid3(a) for a in base_ids}
 missing = [ln["aid"] for ln in lines if ln["aid"] not in covered]
 assert not missing, f"audit lines without a row: {missing}"
 for r in rows:
-    src = by_aid[re.match(r"A\d{3}", r["aid"]).group(0)]
+    src = by_aid[aid3(r["aid"])]
     hay = src.get("unmet") or src.get("title") or ""
     assert r["quote"] in hay, f"quote not verbatim: {r['aid']}"
 
@@ -63,7 +69,7 @@ def status_cell(st, why):
     return f"{st} ({cell(why, 90)})" if why else st
 
 
-out = []
+out: list[str] = []
 w = out.append
 w("# Audit ledger")
 w("")
@@ -144,7 +150,7 @@ w("## A · Audit findings")
 w("")
 cur = None
 for r in rows:
-    src = by_aid[re.match(r"A\d{3}", r["aid"]).group(0)]
+    src = by_aid[aid3(r["aid"])]
     if src["area"] != cur:
         cur = src["area"]
         w("")
@@ -210,13 +216,13 @@ for o, t in [
     ),
 ]:
     dd = DEC.get("B" + o)
-    st = (
+    status_text = (
         f"{dd['status']} (DECIDED {cell(dd['note'], 120)})"
         if dd
         else "FOUNDER (decide before the task that needs it)"
     )
     w(
-        f"| {o} | Decision page, Still open: {cell(t)} | open question | a founder decision | — | — | — | — | {st} |"
+        f"| {o} | Decision page, Still open: {cell(t)} | open question | a founder decision | — | — | — | — | {status_text} |"
     )
 w("")
 

@@ -37,7 +37,7 @@ def kind(t):
             return k
 
 
-out = []
+out: list[str] = []
 w = out.append
 w("# Founder queue (from LEDGER.md)")
 w("")
