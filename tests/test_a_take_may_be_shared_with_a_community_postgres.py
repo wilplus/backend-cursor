@@ -120,8 +120,14 @@ def test_the_keys_hold(db):
                         "listener_user_id, snippet_id, take_session_id, value) "
                         "VALUES ('community', %s, %s, 's2', %s, 'maybe')", (community, listener, take))
         cur.execute("INSERT INTO public.community_answers (clip_source, listener_user_id, "
-                    "corpus_clip_id, value, label_outcome) VALUES ('corpus', %s, 'c1', 'no', 'corpus')",
+                    "corpus_clip_id, value) VALUES ('corpus', %s, 'c1', 'no')",
                     (listener,))
+        # A training answer carries no label of any kind: not an id, not an
+        # outcome (GPT's check of 0432, rule 6).
+        with pytest.raises(psycopg2.errors.CheckViolation):
+            cur.execute("INSERT INTO public.community_answers (clip_source, listener_user_id, "
+                        "corpus_clip_id, value, label_outcome) VALUES ('corpus', %s, 'c4', 'no', 'x')",
+                        (listener,))
         with pytest.raises(psycopg2.errors.CheckViolation):
             cur.execute("INSERT INTO public.community_answers (clip_source, listener_user_id, "
                         "corpus_clip_id, snippet_id, value) VALUES ('corpus', %s, 'c2', 's9', 'no')",
@@ -142,6 +148,28 @@ def test_the_view_reads_with_the_caller_s_rights(db):
             pytest.skip("this lane has no snippets; the view waits for it")
         probe.execute("SELECT reloptions FROM pg_class WHERE relname = 'community_clips_live'")
         assert "security_invoker=true" in (probe.fetchone()[0] or [])
+
+
+def test_browser_roles_get_nothing_on_the_tables_or_the_view(db):
+    names = ["communities", "community_members", "take_shares", "community_answers"]
+    with db.cursor() as probe:
+        probe.execute("SELECT to_regclass('public.community_clips_live') IS NOT NULL")
+        if probe.fetchone()[0]:
+            names.append("community_clips_live")
+        for role in ("anon", "authenticated"):
+            probe.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role,))
+            if not probe.fetchone():
+                continue
+            for name in names:
+                for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE"):
+                    probe.execute("SELECT has_table_privilege(%s, %s, %s)",
+                                  (role, f"public.{name}", privilege))
+                    assert probe.fetchone()[0] is False, (role, name, privilege)
+        for name in names:
+            probe.execute("SELECT relacl FROM pg_class WHERE oid = %s::regclass",
+                          (f"public.{name}",))
+            acl = probe.fetchone()[0] or []
+            assert not any(str(entry).startswith("=") for entry in acl), (name, acl)
 
 
 def _a_moment(cur):

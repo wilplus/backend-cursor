@@ -409,7 +409,7 @@ def answer(database: Any, *, listener_id: str, body: Any) -> tuple[int, dict]:
     # nothing about it can be mistaken for a peer label on a speaker's Take.
     saved = database.insert_community_answer({
         "clip_source": "corpus", "listener_user_id": me, "corpus_clip_id": clip_id,
-        "value": row["value"], "label_id": None, "label_outcome": "corpus"})
+        "value": row["value"], "label_id": None, "label_outcome": None})
     if saved is None:
         return 409, {"code": "ALREADY_ANSWERED"}
     if not isinstance(saved, dict):

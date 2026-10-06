@@ -130,7 +130,7 @@ CREATE TABLE IF NOT EXISTS public.community_answers (
     CONSTRAINT community_answers_corpus_shape CHECK (
         clip_source <> 'corpus'
         OR (corpus_clip_id IS NOT NULL AND snippet_id IS NULL AND community_id IS NULL
-            AND take_session_id IS NULL AND label_id IS NULL)),
+            AND take_session_id IS NULL AND label_id IS NULL AND label_outcome IS NULL)),
     CONSTRAINT community_answers_once UNIQUE (listener_user_id, snippet_id),
     CONSTRAINT community_answers_corpus_once UNIQUE (listener_user_id, corpus_clip_id)
 );
@@ -172,6 +172,7 @@ BEGIN
                     ON sn.session_id::text = s.take_session_id
                  WHERE s.revoked_at IS NULL
         $view$;
+        REVOKE ALL ON public.community_clips_live FROM PUBLIC;
         IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
             REVOKE ALL ON public.community_clips_live FROM anon;
         END IF;
@@ -181,6 +182,27 @@ BEGIN
     ELSE
         RAISE NOTICE 'community_clips_live: public.snippets is not here; the view waits for it';
     END IF;
+END $$;
+
+-- Browser roles get nothing on the four tables, whatever default
+-- privileges the schema carries: RLS with no policy already returns no row,
+-- and this makes the boundary explicit. The app reads and writes them with
+-- the service key, which keeps its privileges.
+DO $$
+DECLARE
+    v_table text;
+    v_role  text;
+BEGIN
+    FOREACH v_table IN ARRAY ARRAY[
+        'communities', 'community_members', 'take_shares', 'community_answers'
+    ] LOOP
+        EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC', v_table);
+        FOREACH v_role IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_role) THEN
+                EXECUTE format('REVOKE ALL ON TABLE public.%I FROM %I', v_table, v_role);
+            END IF;
+        END LOOP;
+    END LOOP;
 END $$;
 
 COMMIT;

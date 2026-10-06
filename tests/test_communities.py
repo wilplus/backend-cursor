@@ -525,7 +525,7 @@ def test_a_training_answer_takes_no_label():
     assert db.ratings == []
     assert db.answers[0] == {"clip_source": "corpus", "listener_user_id": "listener",
                              "corpus_clip_id": _uuid(51), "value": "no", "label_id": None,
-                             "label_outcome": "corpus"}
+                             "label_outcome": None}
 
 
 def test_the_listener_s_own_clip_and_bad_input_are_refused():
