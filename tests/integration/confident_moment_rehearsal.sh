@@ -626,6 +626,20 @@ if [ "$LANE" = "released" ]; then
   hard migrations/the_chain_hears_the_training_yes.sql
 fi
 
+# 0431 (N20, 2026-10-06): the shadow writer accepts the frame the code builds.
+# Re-issues record_take_feedback_policy_v3_shadow_v3 from 0311 with the frame
+# schema check on 'take-feedback-policy-v3-frame-v5', the version
+# services/take_feedback_policy_v3.py has built since #893; -v3 and -v4 stay
+# refused. Released lane only: 0311, which it replaces, is applied there and
+# the function's tables live there. After 0430, as in the manifest. Twice:
+# apply/reapply idempotency. Its suite,
+# tests/test_the_shadow_writer_accepts_the_frame_the_code_builds_postgres.py,
+# feeds the function a frame build_shadow_frame really made.
+if [ "$LANE" = "released" ]; then
+  hard migrations/the_shadow_writer_accepts_the_frame_the_code_builds.sql
+  hard migrations/the_shadow_writer_accepts_the_frame_the_code_builds.sql
+fi
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing
