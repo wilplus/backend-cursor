@@ -99,8 +99,8 @@
   "note": "V8 A: any single blind coach answer; V9 A: In-between counts half"
  },
  "B1.5": {
-  "status": "FOUNDER",
-  "note": "V10 B, V10a (founder: words can change entirely, so words cannot identify a paragraph); follow-up V10b (place on the slide with the slide as backup, or always the slide); V11 B; V12 A"
+  "status": "OPEN",
+  "note": "V10 B + V10b A: match a paragraph by its place on the slide; when the slide's number of paragraphs changed, measure the whole slide and note it; V11 B; V12 A"
  },
  "B1.6": {
   "status": "OPEN",
@@ -112,15 +112,15 @@
  },
  "B1.8": {
   "status": "OPEN",
-  "note": "QB7 A: the coach may pick any feedback, praise included (follow-up QB7a on the 2-improve + 1-praise rule); QG4 B golden set = founder; QG9 A re-picks 1 in 10"
+  "note": "QB7 A + QB7a B: the coach may pick any feedback incl. praise; a Take's mix follows what was heard (at most 3); QG4 B golden set = founder; QG9 A re-picks"
  },
  "B1.9": {
   "status": "FOUNDER",
   "note": "V19 A, V20 A, QB8 A (the reached bar splits above/below); O3 still open"
  },
  "BEXIT": {
-  "status": "FOUNDER",
-  "note": "V21 A; V15a A (falling back on more than 1 in 5 blocks fails the gate); V22/V22a B and V22b 'everyone, there are no users'; follow-up V22c (keep V3 silently beside V4); QG7 A"
+  "status": "OPEN",
+  "note": "V21 A (any margin, min 100 golden blocks); V15a A (falling back on more than 1 in 5 blocks fails the gate); V22/V22a/V22b: V4 goes to every speaker once built (no users yet); V22c B: V4 alone, no silent V3 beside it (founder accepts there is no V3 comparison); QG7 A; QG2a A (only the rise beyond the random-20% baseline counts)"
  },
  "BO1": {
   "status": "OPEN",
@@ -159,8 +159,8 @@
   "note": "QG1 A: SPEC §17 definition in the paperwork PR"
  },
  "CA04": {
-  "status": "FOUNDER",
-  "note": "QG2: explain more simply (follow-up QG2a)"
+  "status": "OPEN",
+  "note": "QG2a A: the picker may learn from the next-Take read, counting only the rise beyond the baseline rise on the random 20%; D7 dated note (paperwork)"
  },
  "A018a": {
   "status": "OPEN",
@@ -207,8 +207,8 @@
   "note": "QG7 A: no past-data estimate; the speakers who see V4 answer it"
  },
  "A163": {
-  "status": "FOUNDER",
-  "note": "QB2: explain more simply (follow-up QB2a)"
+  "status": "OPEN",
+  "note": "QB2a B: no coach and no video: the practise card is the speaker's own words to say again; no clearer version on these moments; contract 24f line"
  },
  "A126a": {
   "status": "FOUNDER",
@@ -264,11 +264,11 @@
  },
  "A068a": {
   "status": "FOUNDER",
-  "note": "P9-P20 B: none of the 12 lines signed as written (follow-up P9a)"
+  "note": "P9a A: redrafted short and simple (founder: \"short ... for a 13 years old without slang\"); 12 sign screens S1-S12"
  },
  "A053a": {
   "status": "FOUNDER",
-  "note": "P9-P20 B: none of the 12 lines signed as written (follow-up P9a)"
+  "note": "P9a A: redrafted short and simple (founder: \"short ... for a 13 years old without slang\"); 12 sign screens S1-S12"
  },
  "BG03": {
   "status": "OPEN",
@@ -291,8 +291,8 @@
   "note": "QG11 A: written when each Phase 2 step starts"
  },
  "BG09": {
-  "status": "FOUNDER",
-  "note": "QG12: explain more simply (follow-up QG12a)"
+  "status": "OPEN",
+  "note": "QG12a A: in the new walk, a No/Not sure after a \"reached\" practice flags the moment to the coach as \"they disagree\" (Phase 2 row)"
  },
  "BG06": {
   "status": "FALSE",
@@ -364,7 +364,7 @@
  },
  "A169a": {
   "status": "FOUNDER",
-  "note": "P26: explain more simply (follow-up P26a)"
+  "note": "P26: explain more simply (follow-up P26b)"
  },
  "A151a": {
   "status": "OPEN",
@@ -387,16 +387,16 @@
   "note": "QG14 A: both doors stay"
  },
  "A114": {
-  "status": "FOUNDER",
-  "note": "QB17: explain more simply, with the founder's note on willfidence vs confidence (follow-up QB17a)"
+  "status": "FALSE",
+  "note": "QB17a A: leave it until training opens"
  },
  "A151c": {
-  "status": "FOUNDER",
-  "note": "QB18 A with the founder's note \"why should it wait?\" (follow-up QB18a)"
+  "status": "OPEN",
+  "note": "QB18a A: the Voice Album welcome shows as soon as the first moment enters the Album, any Take; contract 34 amended"
  },
  "A003c": {
-  "status": "FOUNDER",
-  "note": "QA19: explain more simply (follow-up QA19a)"
+  "status": "FALSE",
+  "note": "QA19a A: the server test is enough"
  },
  "A169c": {
   "status": "PARKED",
@@ -444,11 +444,11 @@
  },
  "A077a": {
   "status": "FOUNDER",
-  "note": "P51 B, P52 B: the founder writes the words (follow-ups P51a, P52a)"
+  "note": "P51a A but the note arrived empty; follow-up P51b"
  },
  "A077b": {
-  "status": "FOUNDER",
-  "note": "P51 B, P52 B: the founder writes the words (follow-ups P51a, P52a)"
+  "status": "FALSE",
+  "note": "P52a B: keep the old pace-panel label for now"
  },
  "A107": {
   "status": "FALSE",
@@ -477,5 +477,17 @@
  "A060": {
   "status": "FOUNDER",
   "note": "QA12: the founder asked to see screens and the flow first; design pack in progress (N30)"
+ },
+ "N26": {
+  "status": "OPEN",
+  "note": "V22c B: V4 serves every speaker by the founder's switch; no subset, no silent V3"
+ },
+ "A120": {
+  "status": "FALSE",
+  "note": "P44a A: keep clip picking as built until about 100 coach judgements"
+ },
+ "A242b": {
+  "status": "FALSE",
+  "note": "P54 A: switching off a failing model stays manual"
  }
 }

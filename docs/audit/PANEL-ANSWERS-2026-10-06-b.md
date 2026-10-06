@@ -19,3 +19,8 @@ QG14 A both doors. QB17 explain more simply. Note: "but like I said it is now th
 P46 A sign the jar fallback reason line. P50 A keep one name. P51 B and P52 B the founder writes the words. P53 A a pair trains once. P55 A counts are enough. P57 A leave it.
 
 Not answered yet: V10a, V22b, QA2, P1, QA11, QA12, P44, P54.
+
+## Third export, 13:38 UTC
+
+V10b A place on the slide, slide as backup. V22c B V4 alone (no silent V3). QG2a A yes, with a fair comparison. QB2a B their own words to say again. QB7a B the mix follows what was heard. P9a A Claude redrafts. Note: "give me the lines to rewrite; basically make them short and as for a 13 years old wihtout a slang simple words ; and give me all fo them to sign off". QG12a A the one answer can flag disagreement. P26a explain more simply. P51a A (note arrived empty). P52a B keep the old label. P44a A keep clip picking as built. QN1 B rename everywhere, code too. Note: "willfidence is words and sound; the sound is the sound of the willfidence". QB17a A leave it. QA19a A server test is enough. QB18a A welcome as soon as the first moment enters. P54 A keep it by hand.
+Not answered yet: D1-D5.

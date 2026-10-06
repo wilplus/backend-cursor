@@ -108,5 +108,16 @@
   "why": "",
   "pr": "",
   "test": ""
+ },
+ {
+  "id": "N31",
+  "source": "Panel QN1 B, 6 Oct",
+  "claim": "Rename 'confidence' to 'willfidence (sound)' everywhere, code too (founder: willfidence is words and sound; the sound is the sound of the willfidence). Scope of database names asked on QN1a.",
+  "area": "both",
+  "severity": "S0",
+  "status": "FOUNDER",
+  "why": "QN1a (database names)",
+  "pr": "",
+  "test": ""
  }
 ]
