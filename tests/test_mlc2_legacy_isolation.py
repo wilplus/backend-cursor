@@ -139,7 +139,7 @@ def test_confidence_cutover_is_hard_disabled_not_environment_controlled():
 # The guard above covers the mlc2_*.py modules only. The code that builds,
 # releases, evaluates, trains on or promotes learning data lives outside
 # that prefix, and the dark training-corpus copy job read confidence_labels
-# (through services.professional_confidence) until 0431 gave it the chain's
+# (through services.professional_confidence) until 0430 gave it the chain's
 # own blind judgement. Every module below is held to the same prohibition.
 
 #: The canonical dataset, release, training, evaluation and promotion code.
@@ -239,7 +239,7 @@ def test_canonical_learning_doors_never_read_an_object_the_audit_names():
 
 
 def test_the_guard_catches_the_read_it_was_written_for():
-    """The copy job before 0431, verbatim: the indirect read through the
+    """The copy job before 0430, verbatim: the indirect read through the
     professional module, and a direct one through the database adapter."""
     before = (
         "def _copy_coach_label(database, base, snippet_id):\n"

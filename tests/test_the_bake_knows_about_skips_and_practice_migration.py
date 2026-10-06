@@ -31,7 +31,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = ROOT / "migrations"
 NAME = "the_bake_knows_about_skips_and_practice.sql"
-NUMBER = "0430"
+NUMBER = "0429"
 SQL = (MIGRATIONS / NAME).read_text()
 PREVIOUS = "the_bake_knows_about_the_coach.sql"
 FUNCTION = "ideal_text_feedback_surface_touched_at_v1"

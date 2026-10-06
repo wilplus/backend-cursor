@@ -229,7 +229,7 @@ def test_the_late_label_sweep_copies_only_missing_labels():
     assert copied == [("grant-1", "s1"), ("grant-2", "s3")]
 
 
-# ── The one consent authority binds the speaker (N48.5 Q27 A; 0431; F-3) ───
+# ── The one consent authority binds the speaker (N48.5 Q27 A; 0430; F-3) ───
 
 IDENTITY = ("i" * 64, "p" * 64)
 

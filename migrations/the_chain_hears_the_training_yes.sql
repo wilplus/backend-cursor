@@ -1,4 +1,4 @@
--- 0431 · The confidence chain hears the training yes and the coach's walk
+-- 0430 · The confidence chain hears the training yes and the coach's walk
 --        (founder 2026-10-05, decisions log N48.5 Q27 A: "the
 --        confidence-learning chain is connected: one consent authority (the
 --        training yes) and the coach walk's blind labels as its judgements;
@@ -117,7 +117,7 @@ BEGIN;
 
 -- Whether the named consent is current for this person. READ ONLY, and
 -- through the doors that already exist: the Phase-1 tick, or the training
--- yes (0431; the bundled grant no longer answers). A door this database
+-- yes (0430; the bundled grant no longer answers). A door this database
 -- does not have, an unknown principal or a policy in an invalid state all
 -- answer false (closed).
 CREATE OR REPLACE FUNCTION public.ring_consent_is_current_v1(
@@ -145,7 +145,7 @@ BEGIN
         RETURN COALESCE((answer ->> 'has_receipt')::boolean, false)
            AND COALESCE((answer ->> 'personalised_practice')::boolean, false);
     ELSIF p_purpose = 'pooled_model_improvement' THEN
-        -- 0431 (N48.5 Q27 A): the one authority is the training yes. A
+        -- 0430 (N48.5 Q27 A): the one authority is the training yes. A
         -- bundled-era grant counts for nothing (N2, N10.6). The speaker
         -- binding is the half the bundled reader's "granted" also required:
         -- the canonical promotion cannot bind a Take without it.
@@ -177,7 +177,7 @@ GRANT EXECUTE ON FUNCTION public.ring_consent_is_current_v1(UUID, TEXT)
 
 -- Whether the legal policy behind a consent purpose exists yet. The panel's
 -- "yes" for a Phase-2 purpose stays disabled until this says true. Reads
--- only; registers nothing. 0431: for pooled model improvement that policy
+-- only; registers nothing. 0430: for pooled model improvement that policy
 -- is the training-only one.
 CREATE OR REPLACE FUNCTION public.ring_consent_policy_exists_v1(
     p_purpose TEXT
@@ -413,7 +413,7 @@ BEGIN
 
     -- Q1 (founder, 2026-09-29). The promotion freezes the consent state it
     -- runs under: when no snapshot exists for this attempt yet, one is taken
-    -- now from the current training yes (0431, N48.5 Q27 A: the bundled
+    -- now from the current training yes (0430, N48.5 Q27 A: the bundled
     -- grant admits nothing). Without a yes the snapshot RPC raises and the
     -- whole promotion rolls back with it, so a Take is never promoted
     -- canonically without the consent it needs.
@@ -679,7 +679,7 @@ GRANT EXECUTE ON FUNCTION public.get_mlc2_blind_coach_ratings_v1(UUID, UUID[])
 -- the retired founder email and principal variable. Aggregate counts only,
 -- never a recording, a transcript or a packet. Every learning table is
 -- guarded: a database without it (a narrow lane) reports 0 and says so
--- with `tables_present`. 0431: the training yes is the count readiness
+-- with `tables_present`. 0430: the training yes is the count readiness
 -- gates on; the bundled count stays in the payload as a record.
 CREATE OR REPLACE FUNCTION public.get_ring_confidence_readiness_v1()
 RETURNS JSONB
@@ -1216,40 +1216,40 @@ GRANT EXECUTE ON FUNCTION public.record_pair_release_verification_v1(
 ) TO service_role;
 
 COMMENT ON FUNCTION public.ring_consent_is_current_v1(UUID, TEXT) IS
-    '0431: pooled_model_improvement is current only for an active training yes '
+    '0430: pooled_model_improvement is current only for an active training yes '
     '(get_mlc2_training_consent_status_v2) with a bound speaker; a bundled-era '
     'grant counts for nothing (N2, N10.6). Read only.';
 COMMENT ON FUNCTION public.create_mlc2_training_consent_snapshot_v1(
     UUID, UUID, UUID, UUID
-) IS '0431: the per-Take consent snapshot the canonical promotion freezes, '
+) IS '0430: the per-Take consent snapshot the canonical promotion freezes, '
      'taken from the training yes. The coaching key records that this grant '
      'does not authorise coaching.';
 COMMENT ON FUNCTION public.accept_mlc2_training_consent_v1(
     UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, JSONB, TIMESTAMPTZ, TEXT,
     TEXT, TEXT, TEXT, TEXT
-) IS '0431: the training switch''s yes (record_mlc2_training_consent_grant_v2) '
+) IS '0430: the training switch''s yes (record_mlc2_training_consent_grant_v2) '
      'and the speaker binding, one transaction.';
 COMMENT ON FUNCTION public.get_mlc2_blind_coach_ratings_v1(UUID, UUID[]) IS
-    '0431: the latest blind_coach judgement per snippet of one Take, from '
+    '0430: the latest blind_coach judgement per snippet of one Take, from '
     'ml_judgments. Read only; never an owner, peer or machine answer.';
 
 COMMENT ON FUNCTION public.get_mlc2_speaker_splits_v1(UUID[], TEXT) IS
-    '0431 (F-3): each principal''s bound speaker''s assignment under one split '
+    '0430 (F-3): each principal''s bound speaker''s assignment under one split '
     'policy, for the two data doors. Read only; an unbound principal is absent.';
 COMMENT ON FUNCTION public.record_mlc2_object_verification_v1(
     TEXT, TEXT, TEXT, BIGINT, TEXT, TEXT
-) IS '0431 (F-8): appends one ml_object_verifications row for a chain object '
+) IS '0430 (F-8): appends one ml_object_verifications row for a chain object '
      'a job downloaded; the database compares the observation with the '
      'artifact. NULL for a key that is not a chain object.';
 COMMENT ON FUNCTION public.list_mlc2_objects_due_verification_v1(INTEGER) IS
-    '0431 (F-8): the weekly check''s capped work list, never-checked first. '
+    '0430 (F-8): the weekly check''s capped work list, never-checked first. '
     'Coordinates only.';
 COMMENT ON TABLE public.pair_release_verifications IS
-    '0431 (F-8): append-only checks of a door 2 release''s file and signed '
+    '0430 (F-8): append-only checks of a door 2 release''s file and signed '
     'manifest, read back from the release bucket. Counts and hashes, no person.';
 COMMENT ON FUNCTION public.record_pair_release_verification_v1(
     UUID, TEXT, TEXT, BIGINT, BOOLEAN, TEXT, TEXT
-) IS '0431 (F-8): appends one pair_release_verifications row; the database '
+) IS '0430 (F-8): appends one pair_release_verifications row; the database '
      'compares the observation with the release row.';
 
 NOTIFY pgrst, 'reload schema';

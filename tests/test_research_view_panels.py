@@ -57,7 +57,7 @@ def _release(surface, week, splits, voided=False):
 
 HEALTH = {"readiness_contract_version": "mlc2-confidence-canary-readiness-v1",
           "active_consent_policy_count": 1, "valid_active_consent_policy_count": 1,
-          # The chain's one consent authority is the training yes (0431).
+          # The chain's one consent authority is the training yes (0430).
           "active_training_consent_policy_count": 1,
           "valid_active_training_consent_policy_count": 1,
           "pending_confidence_outbox_count": 0, "failed_confidence_outbox_count": 0,

@@ -8,7 +8,7 @@ training yes)") and the earlier locks (N2 / C2: the v1 grant and withdrawal
 functions do not stay; N10 item 6: bundled-era yeses count for nothing) make
 the training yes the only authority: ``/v2/user/training-consent`` on its own
 screen, read through ``get_mlc2_training_consent_status_v2`` (migration
-0431). So this route records no new bundled grant.
+0430). So this route records no new bundled grant.
 
 It still answers, because two screens read it: the founder gate in front of
 the Lounge and ``/account/model-improvement``. And it keeps one write: a

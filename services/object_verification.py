@@ -4,7 +4,7 @@ The foundation (0302) keeps each chain object's R2 coordinates and the
 hash and size the bytes had when the Take was promoted
 (``ml_object_artifacts``), and promises that every later download or
 release check appends an ``ml_object_verifications`` row, never touching
-the artifact. Until 2026-10-05 nothing wrote one. Migration 0431 adds the
+the artifact. Until 2026-10-05 nothing wrote one. Migration 0430 adds the
 writers; this module is their one caller:
 
   * ``note_download``: a job that downloaded a recording for its own use

@@ -102,7 +102,7 @@ model/version hints.
   and answers 410 only when the writer state is `killed` (0392 / Q1,
   2026-09-29); recording the grant creates no corpus and starts nothing,
   and the canonical promotion freezes a snapshot of it for every Take.~~
-  Retired 2026-10-05 (N48.5 Q27 A, 0431): the training yes
+  Retired 2026-10-05 (N48.5 Q27 A, 0430): the training yes
   (`get_mlc2_training_consent_status_v2`) is the chain's one consent
   authority. `POST /v2/user/mlc2-consent` answers 410
   `BUNDLED_CONSENT_RETIRED` and records nothing; GET answers a holder of a
@@ -208,7 +208,7 @@ and nothing that runs before it.
 
 Founder, decisions log N48.5 Q27 A: "the confidence-learning chain is
 connected: one consent authority (the training yes) and the coach walk's
-blind labels as its judgements; training stays closed." Migration 0431 and
+blind labels as its judgements; training stays closed." Migration 0430 and
 the application changes beside it:
 
 - **One consent authority (TC-3.5, N2, TC-3.1).** The ring row's consent

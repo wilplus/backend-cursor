@@ -1,4 +1,4 @@
--- 0430 · A skip or a practice settles a bookmark, and retires the stored set.
+-- 0429 · A skip or a practice settles a bookmark, and retires the stored set.
 --
 -- FOUND 2026-10-05, beside the coach's share (0428): a skip or a finished
 -- practice came back as undecided after a reload. With judgement after

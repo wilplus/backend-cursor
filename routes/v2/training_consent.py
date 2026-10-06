@@ -11,7 +11,7 @@ the frontend's, signed by the founder (N10).
 
 The speaker identity is computed here, from the verified token, and handed
 to the switch: the training yes binds the speaker it admits into the
-confidence chain (founder 2026-10-05, N48.5 Q27 A; migration 0431).
+confidence chain (founder 2026-10-05, N48.5 Q27 A; migration 0430).
 """
 from __future__ import annotations
 

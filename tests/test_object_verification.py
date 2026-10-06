@@ -4,7 +4,7 @@ Unit cases for services/object_verification.py and its callers (the weekly
 job, which reads door 2's new releases back right after its export and
 checks every standing one, and the dark training-corpus copy). Door 2's
 export path itself is unchanged. The database's judgement is played by a
-fake that compares exactly as 0431's writers do; the released lane executes
+fake that compares exactly as 0430's writers do; the released lane executes
 the writers themselves (tests/test_the_chain_hears_the_training_yes_postgres.py).
 """
 from __future__ import annotations
@@ -36,7 +36,7 @@ def writing(monkeypatch):
 
 
 class _ChainDb:
-    """ml_object_artifacts and the 0431 writer, judged as the SQL judges."""
+    """ml_object_artifacts and the 0430 writer, judged as the SQL judges."""
 
     def __init__(self, artifacts=None, due=None):
         self.artifacts = artifacts or {("lab", "take.webm"): (_sha(WHOLE), len(WHOLE))}
@@ -177,7 +177,7 @@ class _Storage:
 
 
 class _ReleaseDb:
-    """A one-surface door 2 ledger and the 0431 release writer, judged as
+    """A one-surface door 2 ledger and the 0430 release writer, judged as
     the SQL judges (file against file_sha256; manifest against
     manifest_sha256 and the signature)."""
 

@@ -5,7 +5,7 @@ assigned to; an acquisition principal is the account or guest the data came
 through. They are bound only by an authenticated act of the person (the
 foundation's rule), never inferred. Since 2026-10-05 that act is the
 training yes (founder, decisions log N48.5 Q27 A): the training switch binds
-the speaker in the same transaction as the yes (0431,
+the speaker in the same transaction as the yes (0430,
 ``accept_mlc2_training_consent_v1``).
 
 The coordinates are computed on the server from the verified token, never

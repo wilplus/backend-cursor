@@ -38,7 +38,7 @@ PINS = {
             "           AND COALESCE((answer ->> 'granted')::boolean, false);",
         ],
         [
-            '        -- 0431 (N48.5 Q27 A): the one authority is the training yes. A',
+            '        -- 0430 (N48.5 Q27 A): the one authority is the training yes. A',
             '        -- bundled-era grant counts for nothing (N2, N10.6). The speaker',
             '        -- binding is the half the bundled reader\'s "granted" also required:',
             '        -- the canonical promotion cannot bind a Take without it.',
@@ -135,7 +135,7 @@ PINS = {
             '        PERFORM public.create_mlc2_consent_snapshot_v1(',
         ],
         [
-            '    -- now from the current training yes (0431, N48.5 Q27 A: the bundled',
+            '    -- now from the current training yes (0430, N48.5 Q27 A: the bundled',
             '    -- grant admits nothing). Without a yes the snapshot RPC raises and the',
             '    -- whole promotion rolls back with it, so a Take is never promoted',
             '    -- canonically without the consent it needs.',

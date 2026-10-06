@@ -88,7 +88,7 @@ def test_the_database_seam_reads_in_chunks():
 
 
 def test_no_table_is_read_directly():
-    """The two ml_* tables are joined in SQL (0431): no literal table read
+    """The two ml_* tables are joined in SQL (0430): no literal table read
     that the purge registry would have to classify."""
     source = (ROOT / "services" / "db.py").read_text()
     method = source[source.index("def get_speaker_splits_for_principals("):]

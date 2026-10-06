@@ -9,7 +9,7 @@ gives the speaker ONE deterministic assignment per split policy
 ``assign_ml_speaker_split_v1`` when the speaker is bound, never changed).
 
 Since the training yes binds the speaker (founder 2026-10-05, N48.5 Q27 A;
-migration 0431; ``services/speaker_identity.py``), every person whose pairs
+migration 0430; ``services/speaker_identity.py``), every person whose pairs
 can leave has, or gets at their next visit to the switch, a speaker. So:
 
   * door 2 releases a pair only when its owner's speaker has an assignment,

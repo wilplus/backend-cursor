@@ -163,7 +163,7 @@ def test_database_evidence_gates_fail_closed(health_key, blocker):
 def test_ring_evidence_gates_fail_closed(override, blocker):
     """The canary's "who" is the ring row (0394): the row must exist, be
     one-way and not killed, reach at least one principal with a training
-    yes and a bound speaker (0431), and nobody the row does NOT reach may
+    yes and a bound speaker (0430), and nobody the row does NOT reach may
     have written a receipt or a canonical event."""
     ring_health = {**_ring_health(), **override}
     report = _assess(ring_health=ring_health)
@@ -246,7 +246,7 @@ def test_normal_feedback_selection_precedes_and_does_not_depend_on_writer_gate()
 
 
 def test_the_bundled_era_neither_admits_nor_blocks():
-    """0431 (N48.5 Q27 A; N2, N10.6): a bundled grant without a training
+    """0430 (N48.5 Q27 A; N2, N10.6): a bundled grant without a training
     yes leaves the canary blocked, and retiring the bundled policy (count
     0) blocks nothing. Both stay in the evidence, for the record."""
     bundled_only = {**_ring_health(), "eligible_training_consent_grant_count": 0}
@@ -261,7 +261,7 @@ def test_the_bundled_era_neither_admits_nor_blocks():
 
 
 def test_a_missing_training_key_fails_closed():
-    """A database still on the pre-0431 functions reports no training
+    """A database still on the pre-0430 functions reports no training
     count: that reads as -1, a blocker, never as ready."""
     ring_health = _ring_health()
     del ring_health["eligible_training_consent_grant_count"]

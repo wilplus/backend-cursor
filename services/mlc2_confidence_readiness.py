@@ -13,7 +13,7 @@ writer state (``MLC2_CONFIDENCE_CUTOVER_MODE``) is not a "who" and stays a
 code constant; readiness still requires it dark, and the one-way row's kill
 reads as ``killed`` through ``configured_confidence_cutover``.
 
-ONE CONSENT AUTHORITY (founder 2026-10-05, N48.5 Q27 A; migration 0431). The
+ONE CONSENT AUTHORITY (founder 2026-10-05, N48.5 Q27 A; migration 0430). The
 consent half of the "who" is the training yes: readiness wants at least one
 ring-eligible principal holding an active training yes with a bound speaker,
 and exactly one valid active training-only policy. The bundled grant and the
@@ -90,7 +90,7 @@ def _ring_blockers(ring_health: Mapping[str, Any], *,
         blockers.append("canonical_take_rows_row_killed")
     if _count(ring_health, "eligible_principal_count") < 1:
         blockers.append("no_ring_eligible_principal")
-    # 0431: the training yes is the one consent authority; a bundled grant
+    # 0430: the training yes is the one consent authority; a bundled grant
     # admits nothing, so it no longer satisfies (or blocks) readiness.
     if _count(ring_health, "eligible_training_consent_grant_count") < 1:
         blockers.append("eligible_training_consent_missing")
@@ -110,7 +110,7 @@ def _health_blockers(health: Mapping[str, Any]) -> list[str]:
     blockers: list[str] = []
     if health.get("readiness_contract_version") != READINESS_CONTRACT_VERSION:
         blockers.append("readiness_health_contract_mismatch")
-    # 0431: the policy that matters is the training-only one.
+    # 0430: the policy that matters is the training-only one.
     if _count(health, "active_training_consent_policy_count") != 1:
         blockers.append("active_training_consent_policy_count_invalid")
     if _count(health, "valid_active_training_consent_policy_count") != 1:

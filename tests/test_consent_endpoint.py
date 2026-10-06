@@ -528,7 +528,7 @@ class ConfidenceChainAliveDoorTests(unittest.TestCase):
         self.addCleanup(setattr, Config, "MLC2_CONFIDENCE_CUTOVER_MODE", original)
 
     def test_the_retired_route_needs_no_door_and_the_door_stays_available(self):
-        """0431: the bundled route records nothing and keeps only the
+        """0430: the bundled route records nothing and keeps only the
         withdrawal, which no door may stand in front of; the decorator
         stays for any future route that records a chain consent."""
         from routes.phase2_guard import confidence_chain_alive

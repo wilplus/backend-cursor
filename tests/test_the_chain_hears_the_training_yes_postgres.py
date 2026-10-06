@@ -1,4 +1,4 @@
-"""0431 on the released lane: the confidence chain hears the training yes.
+"""0430 on the released lane: the confidence chain hears the training yes.
 
 Founder 2026-10-05 (decisions log N48.5 Q27 A): one consent authority, the
 training yes; bundled-era yeses count for nothing (N2, N10.6). Executed
@@ -46,7 +46,7 @@ MANIFEST = {
     "audio": {
         "object_store": "cloudflare_r2",
         "bucket": "mlc2-rehearsal",
-        "object_key": "confidence/0431-source.webm",
+        "object_key": "confidence/0430-source.webm",
         "sha256": "8" * 64,
         "byte_size": 4096,
         "content_type": "audio/webm",
@@ -135,7 +135,7 @@ def _processing_version(cur):
          ORDER BY created_at LIMIT 1""")
     if version:
         return version
-    version = f"phase1-0431-{uuid.uuid4()}"
+    version = f"phase1-0430-{uuid.uuid4()}"
     digest = hashlib.sha256(b"rehearsal").hexdigest()
     cur.execute("""
         INSERT INTO public.processing_policy_versions (
@@ -145,7 +145,7 @@ def _processing_version(cur):
             agreement_copy, agreement_copy_sha256, allowed_countries,
             created_by)
         VALUES (%s, 'draft', 't', 'terms', %s, 'p', 'privacy', %s, 'a',
-                'notice', %s, 'agree', %s, ARRAY['pl'], 'rehearsal-0431')""",
+                'notice', %s, 'agree', %s, ARRAY['pl'], 'rehearsal-0430')""",
         (version, digest, digest, digest, digest))
     return version
 
@@ -170,11 +170,11 @@ def _training_policy(cur):
     processing = _processing_version(cur)
     _one(cur, """
         SELECT public.configure_mlc2_training_consent_policy_v1(
-            'training-approval-0431', %s, %s, 'training-only-0431-v1',
+            'training-approval-0430', %s, %s, 'training-only-0430-v1',
             'terms-t', 'privacy-t', 'founder+counsel', now(), ARRAY['PL'],
             'evidence/training.pdf', %s, %s, now() - interval '1 minute')""",
         (TOGGLE_SHA, TOGGLE_COPY, "e" * 64, processing))
-    return {"version": "training-only-0431-v1", "sha": TOGGLE_SHA,
+    return {"version": "training-only-0430-v1", "sha": TOGGLE_SHA,
             "terms": "terms-t", "privacy": "privacy-t",
             "processing": processing}
 
@@ -233,7 +233,7 @@ def _bundled_grant(cur, principal):
     """A bundled-era two-purpose grant, as the retired route recorded it
     (inserted directly: the v1 configure refuses while a training policy
     is active)."""
-    version = f"bundled-0431-{uuid.uuid4()}"
+    version = f"bundled-0430-{uuid.uuid4()}"
     sha = "b" * 64
     approval = _one(cur, """
         INSERT INTO public.ml_product_legal_approvals (
@@ -354,18 +354,18 @@ def _attempt(cur, owner):
     project, attempt, recording = (str(uuid.uuid4()) for _ in range(3))
     tag = uuid.uuid4().hex[:8]
     cur.execute("INSERT INTO public.projects (id, owner_principal_id, display_name) "
-                "VALUES (%s, %s, %s)", (project, owner, "0431"))
+                "VALUES (%s, %s, %s)", (project, owner, "0430"))
     cur.execute("INSERT INTO public.recordings (id) VALUES (%s)", (recording,))
     cur.execute(
         "INSERT INTO public.v2_sessions (id, user_id, owner_principal_id, project_id, arc_id, "
         "take_index, analysis_state, recording_kind, recording_1_id) "
         "VALUES (%s, %s, %s, %s, %s, 1, 'ready', 'spoken', %s)",
-        (attempt, str(uuid.uuid4()), owner, project, f"arc-0431-{tag}", recording))
+        (attempt, str(uuid.uuid4()), owner, project, f"arc-0430-{tag}", recording))
     cur.execute(
         "INSERT INTO public.recording_attempts (id, owner_principal_id, project_id, "
         "upload_idempotency_key, recording_id, storage_bucket, storage_key, recording_kind, status) "
         "VALUES (%s, %s, %s, %s, %s, %s, %s, 'spoken', 'processing')",
-        (attempt, owner, project, f"upload-0431-{tag}", recording,
+        (attempt, owner, project, f"upload-0430-{tag}", recording,
          MANIFEST["audio"]["bucket"], MANIFEST["audio"]["object_key"]))
     return attempt, project
 
@@ -374,7 +374,7 @@ def _promote(cur, attempt):
     return _one(cur, """
         SELECT public.promote_recording_attempt_with_mlc2_confidence_v1(
             %s, %s, NULL, 1, %s, %s, %s, %s)""",
-        (attempt, "5" * 64, "6" * 64, "7" * 64, f"promotion-0431-{attempt}",
+        (attempt, "5" * 64, "6" * 64, "7" * 64, f"promotion-0430-{attempt}",
          psycopg2.extras.Json(MANIFEST)))
 
 
@@ -664,7 +664,7 @@ class TestBrowserRolesCallNothingNew:
 # ── F-8: every download or release check appends a verification ───────────
 
 BUCKET = "mlc2-rehearsal"
-VERIFIER = "rehearsal-verifier-0431"
+VERIFIER = "rehearsal-verifier-0430"
 
 
 def _artifact(cur, *, sha="9" * 64, size=4096, status="eligible"):
@@ -678,14 +678,14 @@ def _artifact(cur, *, sha="9" * 64, size=4096, status="eligible"):
                          "snapshot_v1(%s, %s, NULL, %s)", (owner, attempt, project))
     speaker = _one(cur, "SELECT speaker_id FROM public.ml_speaker_principals "
                         "WHERE acquisition_principal_id = %s", (owner,))
-    key = f"confidence/0431-{uuid.uuid4()}.webm"
+    key = f"confidence/0430-{uuid.uuid4()}.webm"
     artifact = _one(cur, """
         INSERT INTO public.ml_object_artifacts (
             acquisition_principal_id, speaker_id, consent_snapshot_id,
             object_store, bucket, object_key, sha256, byte_size, content_type,
             artifact_kind, retention_status, created_by)
         VALUES (%s, %s, %s, 'cloudflare_r2', %s, %s, %s, %s, 'audio/webm',
-                'audio', %s, 'rehearsal-0431')
+                'audio', %s, 'rehearsal-0430')
         RETURNING id""", (owner, speaker, snapshot["id"], BUCKET, key, sha, size,
                           status))
     return {"id": str(artifact), "key": key, "owner": owner, "project": project}
@@ -782,7 +782,7 @@ class TestAChainObjectCheckIsAppended:
 
     def test_a_key_that_is_no_chain_object_writes_nothing(self, cur):
         artifact = _artifact(cur)
-        assert _check(cur, f"confidence/0431-{uuid.uuid4()}.webm") is None
+        assert _check(cur, f"confidence/0430-{uuid.uuid4()}.webm") is None
         assert _check(cur, artifact["key"], bucket="another-bucket") is None
         assert _checks_of(cur, artifact["id"]) == []
 

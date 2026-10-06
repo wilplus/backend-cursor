@@ -14421,7 +14421,7 @@ class DatabaseService:
         binding_proof_hash: str, bound_by: str,
     ) -> Optional[dict]:
         """The training yes and the speaker binding in one transaction
-        (0431, N48.5 Q27 A; F-3). Raises when the database refuses the yes;
+        (0430, N48.5 Q27 A; F-3). Raises when the database refuses the yes;
         every refusal of record_mlc2_training_consent_grant_v2 stands."""
         result = self.client.rpc("accept_mlc2_training_consent_v1", {
             "p_acquisition_principal_id": str(acquisition_principal_id),
@@ -14447,7 +14447,7 @@ class DatabaseService:
         identity_version: str, binding_proof_hash: str, bound_by: str,
     ) -> Optional[dict]:
         """Bind the speaker of a person who already holds an active training
-        yes (0431). Writes nothing without a yes; keeps an existing binding.
+        yes (0430). Writes nothing without a yes; keeps an existing binding.
         None when nothing is bound or the call fails (never raises)."""
         try:
             result = self.client.rpc("bind_mlc2_training_speaker_v1", {
@@ -14468,7 +14468,7 @@ class DatabaseService:
         self, take_id: str, snippet_ids: list[str],
     ) -> dict[str, str]:
         """``{snippet_id: decision}``: the latest blind coach judgement per
-        snippet of one Take, from the chain's ml_judgments (0431). Empty on
+        snippet of one Take, from the chain's ml_judgments (0430). Empty on
         any failure. Never an owner, peer or machine answer."""
         ids = [str(s) for s in (snippet_ids or []) if s]
         if not take_id or not ids:
@@ -14491,7 +14491,7 @@ class DatabaseService:
     ) -> dict[str, str]:
         """``{acquisition_principal_id: split}``: each principal's bound
         speaker's assignment under the split policy (MLC-2 F-3,
-        ``get_mlc2_speaker_splits_v1``, 0431; services/speaker_split.py). A
+        ``get_mlc2_speaker_splits_v1``, 0430; services/speaker_split.py). A
         principal with no bound speaker is absent. Raises on a failed read;
         the caller names it."""
         ids = sorted({str(p) for p in (principal_ids or []) if p})
@@ -15646,7 +15646,7 @@ class DatabaseService:
         (self.client.table("pair_releases").update({"purged_at": "now()"})
          .eq("id", str(release_id)).execute())
 
-    # ── F-8: every download or release check appends a verification (0431) ──
+    # ── F-8: every download or release check appends a verification (0430) ──
 
     def list_live_pair_releases(self, limit: int = 500) -> list[dict]:
         """Releases that stand (not voided, not purged), for the weekly

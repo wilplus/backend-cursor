@@ -21,13 +21,13 @@ makes the route answer 410 again. The training policy row the yes rests on
 document; whenever no training policy is active, `_read` answers
 `available: false` and there is nothing to turn on.
 
-THE ONE CONSENT AUTHORITY (founder 2026-10-05, N48.5 Q27 A; migration 0431).
+THE ONE CONSENT AUTHORITY (founder 2026-10-05, N48.5 Q27 A; migration 0430).
 This yes is also what admits a person's Takes into the confidence chain; the
 bundled grant no longer does. So turning it on binds the person's speaker
 (their verified account identity, ``services.speaker_identity``) in the same
 transaction (``accept_mlc2_training_consent_v1``; F-3): the chain and the
 speaker-disjoint split both need a speaker. A person who said yes before
-0431 is bound the next time their card reads the switch (``_bind_speaker``,
+0430 is bound the next time their card reads the switch (``_bind_speaker``,
 best effort, never a reason for the card to fail). Turning it off is
 unchanged.
 """

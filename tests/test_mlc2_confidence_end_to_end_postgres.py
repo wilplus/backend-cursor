@@ -23,7 +23,7 @@ additionally requires those to equal the Phase-1 registered
 suite does not seed. Rehearsing the join is a follow-up that seeds the
 Phase-1 chain.
 
-Since 0431 (founder 2026-10-05, N48.5 Q27 A) the owner enters the chain by
+Since 0430 (founder 2026-10-05, N48.5 Q27 A) the owner enters the chain by
 the training yes alone: the fixture records it through the one training
 writer, and an owner holding only a bundled-era grant is refused (N2,
 N10.6). The coach card's judgement is read back through
@@ -145,7 +145,7 @@ def _count(cur, sql, params=()):
 
 def _training_yes(cur, owner):
     """The owner's training yes (0373/0412), the one consent authority the
-    chain reads since 0431. Reuses the active training-only policy another
+    chain reads since 0430. Reuses the active training-only policy another
     suite left in the lane, or registers one inside this rolled-back
     transaction (the database allows one at a time); the receipt is for the
     processing version that policy requires (C1)."""
@@ -232,7 +232,7 @@ def chain(conn):
         (attempt, owner, project, f"g6-upload-{tag}", recording, BUCKET, OBJECT_KEY),
     )
 
-    # 0431 (N48.5 Q27 A): the chain is admitted by the training yes alone.
+    # 0430 (N48.5 Q27 A): the chain is admitted by the training yes alone.
     # The owner's speaker is bound, the owner holds a processing receipt for
     # the version the training policy requires (C1) and says yes through the
     # one training writer; the pre-made snapshot is the training snapshot.
@@ -296,7 +296,7 @@ def _candidate_set_id(chain):
 
 
 class TestThePromotionFreezesTheConsentSnapshot:
-    """0392 (Q1), read through 0431: a second attempt of the same owner
+    """0392 (Q1), read through 0430: a second attempt of the same owner
     promotes with no pre-made snapshot, and the promotion takes one from the
     training yes; an owner with no training yes is still refused, and the
     refusal rolls the Take promotion back."""
@@ -371,7 +371,7 @@ class TestThePromotionFreezesTheConsentSnapshot:
 
 
     def test_an_owner_with_only_a_bundled_grant_is_refused(self, chain):
-        """0431 (N2, N10.6): a bundled-era grant, two purposes and a bound
+        """0430 (N2, N10.6): a bundled-era grant, two purposes and a bound
         speaker, admits nothing; the Take promotion rolls back with it and
         the application promotes plainly (take_lifecycle)."""
         cur = chain["cur"]
@@ -638,7 +638,7 @@ class TestTheCoachCardConsumesTheChain:
 
 
     def test_the_chain_reads_the_blind_rating_back_for_the_training_copy(self, chain, coach):
-        """0431: get_mlc2_blind_coach_ratings_v1 gives the training-corpus
+        """0430: get_mlc2_blind_coach_ratings_v1 gives the training-corpus
         copy job the coach's blind judgement from ml_judgments, so it never
         reads the mixed-purpose confidence_labels. Only the judged snippet
         answers; a snippet nobody judged is absent."""

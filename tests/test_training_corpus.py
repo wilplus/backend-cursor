@@ -98,7 +98,7 @@ class _Db:
                 "exact_bytes_sha256": hashlib.sha256(WHOLE).hexdigest()}
 
     def get_mlc2_blind_coach_ratings(self, take_id, ids):
-        # The chain's blind coach judgement (0431), never confidence_labels.
+        # The chain's blind coach judgement (0430), never confidence_labels.
         assert take_id == "take-1"
         return {i: "rating_yes" for i in ids}
 
@@ -173,7 +173,7 @@ class JobTests(unittest.TestCase):
 
     def test_the_download_appends_its_verification(self):
         """F-8: the copy's download of a chain object appends one
-        verification row stating what it read (0431's writer judges it)."""
+        verification row stating what it read (0430's writer judges it)."""
         db = _Db()
         rows: list[dict] = []
         db.record_mlc2_object_verification = (

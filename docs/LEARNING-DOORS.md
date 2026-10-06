@@ -152,19 +152,19 @@ without the withdrawn pairs.
   or take in the file; the pairs are marked released atomically and leave
   once. `pair_releases` and `pair_release_owners` are the ledger; the
   research screen lists them.
-- **The split is the owner's speaker assignment (F-3, 2026-10-05, 0431).**
+- **The split is the owner's speaker assignment (F-3, 2026-10-05, 0430).**
   Until then it hashed the owner principal, an account or a guest rather
   than a person. Now a pair leaves only when its owner's speaker
   (`ml_speaker_principals`) has its one assignment
   (`ml_speaker_split_assignments`, `speaker-sha256-80-10-10-v1`), and leaves
   under it; the manifest says `split_source: speaker_assignment`. The
-  training yes binds the speaker (in the same transaction since 0431; a yes
+  training yes binds the speaker (in the same transaction since 0430; a yes
   given earlier is bound the next time the switch is read, which every
   entry to the recording screen does). A pair whose owner is not bound yet
   waits, and the job's row says "waiting for the owner's speaker binding".
   Door 3 reads the same assignment (`services/speaker_split.py`), so a pair
   released as test is never trained on.
-- **Every release is checked (F-8, 0431).** The file and its manifest are
+- **Every release is checked (F-8, 0430).** The file and its manifest are
   read back right after they are written, and every week while the release
   stands; each read appends one `pair_release_verifications` row, which the
   database judges against the release row (the file's sha256; the

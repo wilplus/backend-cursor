@@ -140,7 +140,7 @@ new eligible snapshot.
 No Product/legal approval row or active policy is seeded by migration `0302`.
 This is intentional: a chat statement is not an operational approval artifact.
 
-**One consent authority since 2026-10-05 (N48.5 Q27 A, migration 0431).** The
+**One consent authority since 2026-10-05 (N48.5 Q27 A, migration 0430).** The
 bundled two-purpose acceptance above is retired: its route records nothing
 (`POST /v2/user/mlc2-consent` answers 410) and a bundled-era yes counts for
 nothing (N2, N10.6). The learning foundation hears only the training yes
@@ -197,7 +197,7 @@ speakers may legitimately produce identical content. Every download or release
 check appends an `ml_object_verifications` row; the original artifact is never
 overwritten.
 
-As built 2026-10-05 (audit F-8, migration 0431): until then nothing wrote a
+As built 2026-10-05 (audit F-8, migration 0430): until then nothing wrote a
 verification. `record_mlc2_object_verification_v1` appends one; the caller
 states the hash and size it read and the database decides "verified", so no
 caller can declare an object verified. `services/object_verification.py` is
