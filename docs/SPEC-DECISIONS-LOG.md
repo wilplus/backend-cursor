@@ -1910,3 +1910,92 @@ wins over older design locks where they disagree.
    founder's own, held for counsel because they ask for consent, and so
    never rotated); the Journal post on self-modeling (Dowrick, WIREs
    Cognitive Science, 2012), to be written and signed.
+
+**N53 · The founder's answers of 6 October 2026, fourth export (19:28
+UTC; Navigation Panel).** Verbatim, with the notes, in
+`docs/audit/PANEL-ANSWERS-2026-10-06-c.md`; the ledger rows carry DECIDED
+notes (A053a, A068a, A060, A077a, A169a).
+1. **The line bank.** B11, B13 and B14 are signed as drafted. For B01,
+   B05 to B10 and B12 the founder wrote a line of their own; in chat:
+   "The examples I gave for a sign-off are just single examples. If you
+   could create three more similar ones, similar vibe, I could sign off
+   them too." Each goes back to the panel as the founder's line (speech-to-
+   text tidied only, the change named on the screen) plus three more
+   (B01b to B12b). B06's "all the delivery" is shown as "this part",
+   because the line is about one moment, and B09's strong line is flagged
+   against the rule that weak evidence uses gentle words; the founder
+   decides both on the screen. B02 to B04 are not answered. Nothing from
+   the bank ships until it is signed (N52.6).
+2. **Communities.** CM1 A: only the voices of people who agreed to share
+   reach others; the training clips mixed into judging are the licensed
+   corpus (0410, F4), never a speaker's training-corpus clip. CM2 B: build
+   now and switch on at once, against Claude's pick, with the risk stated
+   on the screen ("people's voices reach others under words counsel has
+   not checked, in the EU"); sharing switches on with the sharing screen,
+   under the founder's own words for it, without waiting for counsel. The
+   consent stays per Take and revocable, and is stamped with the version
+   of the words the speaker saw. CM3 A with the note "Up to 3": asked again
+   (CM3a).
+3. **The walk's screens.** NX1 A: this session builds the walk's screens
+   and their motion from the locked prototype, nothing added, each screen
+   shown in the panel's Done list with pictures before it goes live. This
+   amends the frontend design lock's "a designer's session builds these
+   screens" for the walk. NX2 B: one grey picture for the coach and the app;
+   no photos. NX3 A: "It was better, and I have yet another practice for you
+   to try!" only when something moved between tries; the line for a try
+   where nothing moved goes to signature (NX3a).
+4. **Everything else.** D4: skipped for now; it waits for a live prototype
+   of the coach panel (A060 parked). JP1 A: the Journal post on
+   self-modeling is signed as drafted. P51b A: the errors page reads
+   "Coaches heard it on {n} of {bar} checked moments." (A077a). P26b A:
+   the coach is asked to listen again in their usual work list; the words
+   say neither why nor what the speaker answered, so the coach stays blind
+   (P26c, to sign) (A169a). QN1a A: docs and code are renamed to
+   willfidence (sound); database names stay.
+
+**N54 · The line bank is signed, and the walk's open questions (founder,
+6 October 2026, fifth export, 20:03 UTC).** Verbatim in
+`docs/audit/PANEL-ANSWERS-2026-10-06-d.md`; every signed line is in
+`docs/SIGNED-line-bank-2026-10-06.md`, which is the only source the code
+may read them from.
+1. **The line bank.** On the founder's request ("for each you should
+   create 4"), four new lines per screen went to the panel beside the
+   founder's own. All fourteen screens are now signed: B01b with the
+   founder's later line ("This sounded more confident than on Take {n}"),
+   B05b with the founder's wording for two of its lines, the rest as
+   drafted; B11, B13 and B14 gain four lines each. B10's last line and
+   B14's fifth are noted as the founder's favourites. The line after a try
+   where nothing moved is signed (NX3a, four lines); the founder's
+   "It was better, …" shows only when something moved (NX3 A). The coach's
+   listen-again words are signed (P26c, three lines, blind by wording).
+2. **The practise loop has a limit: up to three tries** (CM3a A). After the
+   third try that is not praise the app thanks the speaker and moves on to
+   "Judgement time!"; Skip still works at any time. Its lines are on the
+   panel to sign (CM3b). This amends lock D2 (no attempt cap) for the walk.
+3. **The walk's open questions.** WQ1 A: Skip on "Judgement time!" finishes
+   the walk; the moments' bars clear and nothing asks again (a paragraph
+   can still be opened and judged later). WQ2 B: "Your coach is working on
+   your exercise." is not shown in the walk; the moment waits silently
+   (amends N48.3 Q10 for the walk). WQ3 A: with personalised practice off,
+   a clearer version offers one word to accept it (to sign, WQ3b) and
+   "Keep my words", no practise. The founder's note "But it should not be
+   turned off ever" is asked back (WQ3a): the switch is a consent choice
+   that the law requires to stay withdrawable, so removing it means making
+   practise part of the service, a Privacy and Terms change. WQ4 A: the
+   answer toast is the answer with a tick. WQ5 A and WQ6 A: the sharing
+   screen's choices and its four messages are signed (CM2 B: they go live
+   with the screen).
+
+**N55 · Practise becomes part of the service (founder, 6 October 2026,
+sixth export, 20:11 UTC).** WQ3a B, against Claude's pick: personalised
+practice stops being a consent choice the speaker can switch off and
+becomes part of what people sign up for. Today it is the consent choice
+`personalised_practice`, withdrawable at any time; a consent cannot be
+made permanent, so the change is a change of legal basis: Claude drafts
+the Privacy Policy and Terms change, counsel reviews it, and only then
+does the switch leave Settings and the code stop asking
+(`consent_choice_required("personalised_practice")`). Until then nothing
+changes in the app. CM3b A: the four lines after the third try that is
+not praise are signed (`docs/SIGNED-line-bank-2026-10-06.md`). WQ3b A
+arrived without a letter; asked again: WQ3c A, the button says "Accept"
+(seventh export, 20:14 UTC).

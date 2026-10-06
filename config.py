@@ -426,6 +426,21 @@ class Config:
     # has read the line, never before the publish.
     BLIND_CHECK_POLICY_VERSION: str | None = "phase1-2026-10-02"
 
+    # COMMUNITIES (founder 2026-10-06, decisions log N52.4; migration 0432):
+    # after every finished review the speaker may share that Take with the
+    # general community, a private community joined with a pass code, or one
+    # of their own; "None" stands alone and only the coach judges. A shared
+    # Take is judged by its community; community answers are peer ratings
+    # (L3). Built DARK: off, every /user/communities and take-share route
+    # answers 404 and nothing is read or written (services/communities.py).
+    COMMUNITIES_ENABLED = False
+    # CM2 (N52.4): sharing asks for consent, so its words go to counsel
+    # first. This names the Phase-1 policy version that carries them; None
+    # until counsel approves and the version is published, and while None
+    # every share answers 409 TERMS_REACCEPT_REQUIRED ("None" still revokes).
+    # Each share row is stamped with it (take_shares.consent_version).
+    COMMUNITY_SHARE_POLICY_VERSION: str | None = None
+
     # THE COACH PANEL'S LEARNING ADDITIONS (founder 2026-10-01; migration
     # 0411), each dark behind its own constant, each a reviewed flip after
     # the founder's yes. Off, every route answers 404 and nothing is written.

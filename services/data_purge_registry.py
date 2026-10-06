@@ -353,6 +353,29 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "listener_user_id", "principal", "delete", "derived_feedback", 35),
     PurgeDependency("delayed_measure_votes", "delayed_measure_votes",
                     "rater_id", "principal", "delete", "derived_feedback", 35),
+    # Communities (0432, N52.4). A share is the speaker's consent about one
+    # Take: it goes with the Take, and with its owner (a share whose Take is
+    # already gone). An answer is the listener's own words: it goes with the
+    # listener, like the 0410 answers; a community answer is also about the
+    # speaker's Take, so it goes with that Take too, as the label it wrote
+    # goes with the snippet. A membership is the member's. A private
+    # community, its name and its pass-code digest are its creator's: it
+    # goes with them, after their own shares and memberships (order 60);
+    # its cascade then withdraws other speakers' shares to it, the safe
+    # direction (less shared, never more). The user_id columns are user
+    # ids, so they are addressed by the `user` locator.
+    PurgeDependency("take_shares", "take_shares",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("take_shares_by_owner", "take_shares",
+                    "owner_user_id", "user", "delete", "derived_feedback", 59),
+    PurgeDependency("community_answers", "community_answers",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("community_answers_by_listener", "community_answers",
+                    "listener_user_id", "user", "delete", "derived_feedback", 35),
+    PurgeDependency("community_members", "community_members",
+                    "user_id", "user", "delete", "database_row", 35),
+    PurgeDependency("communities_created", "communities",
+                    "created_by", "user", "delete", "database_row", 60),
     # The coach panel's learning additions (0411). The preference, the
     # audit and the block pick are about one speaker's Take (they go with
     # it) AND are one coach's own words (they go with the coach too). The
@@ -1252,6 +1275,9 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     # The licensed corpus (0410): clips licensed from elsewhere, not about
     # any speaker; the live view of shares reads tables purged on their own.
     "corpus_clips", "shared_clips_live",
+    # The communities' live view (0432): no row of its own; its rows are
+    # take_shares, communities and snippets, each purged on its own.
+    "community_clips_live",
     "admin_users", "coach_users", "admin_annotation_export_runs",
     "admin_notifications", "arc_invite_codes", "casual_voice_benchmarks",
     "chat_question_pool", "coach_video_assets",

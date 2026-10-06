@@ -87,6 +87,8 @@ PROJECT_SELECTORS: Mapping[str, tuple[str, str]] = {
     # active; until then they count as unplaced, exactly as before v1.4.
     "moment_unlocks_review": ("arc_id", "project"),
     "arc_deliveries_review": ("arc_id", "project"),
+    # A share by its owner (0432): the shares of this project's Takes.
+    "take_shares_by_owner": ("take_session_id", "take"),
 }
 
 #: Account-keyed dependencies that belong to the person, not to a project:
@@ -115,6 +117,10 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     "coach_readings",
     # A rater's own answers on others' clips (0410): the rater's account.
     "lend_your_ear_answers", "delayed_measure_votes",
+    # Communities (0432): a listener's own answers, a membership, and a
+    # private community its creator set up belong to the account; the
+    # Take-keyed answers and shares go with the Take under their own codes.
+    "community_answers_by_listener", "community_members", "communities_created",
     # A coach's own choices, blind answers and exposures (0411): the
     # coach's account; the Take-keyed twins of three of them go with the
     # Take under their own codes.
