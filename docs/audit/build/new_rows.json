@@ -97,5 +97,16 @@
   "why": "panel QG3 (CLAUDE.md edits need the founder)",
   "pr": "",
   "test": ""
+ },
+ {
+  "id": "N30",
+  "source": "Panel P1, QA11, QA12, QA6 notes, 6 Oct",
+  "claim": "Design pack: real-looking screens and flows for the coach's words on the speaker side (P1, Take-level note before the overlay), the exercise card redesign (QA11, 3 options), the coach note's Home step (QA12), and the founder's coach-dot design (QA6) — for the founder to decide on.",
+  "area": "FE",
+  "severity": "S0",
+  "status": "OPEN",
+  "why": "",
+  "pr": "",
+  "test": ""
  }
 ]

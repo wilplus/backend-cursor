@@ -99,8 +99,8 @@
   "note": "V8 A: any single blind coach answer; V9 A: In-between counts half"
  },
  "B1.5": {
-  "status": "OPEN",
-  "note": "V10 B: a paragraph lineage ID that survives rewording (a slide can hold several paragraphs; follow-up V10a in the panel); V11 B: only a clear rise; V12 A: all the paragraph's moments"
+  "status": "FOUNDER",
+  "note": "V10 B, V10a (founder: words can change entirely, so words cannot identify a paragraph); follow-up V10b (place on the slide with the slide as backup, or always the slide); V11 B; V12 A"
  },
  "B1.6": {
   "status": "OPEN",
@@ -120,7 +120,7 @@
  },
  "BEXIT": {
   "status": "FOUNDER",
-  "note": "V21 A; V15a A; V22 B + V22a B (\"there are no users\"): skip the dark run, V4 goes to speakers once built; QG7 A (no past-data estimate); who sees it: follow-up V22c"
+  "note": "V21 A; V15a A (falling back on more than 1 in 5 blocks fails the gate); V22/V22a B and V22b 'everyone, there are no users'; follow-up V22c (keep V3 silently beside V4); QG7 A"
  },
  "BO1": {
   "status": "OPEN",
@@ -461,5 +461,21 @@
  "N04b": {
   "status": "FALSE",
   "note": "P57 A: leave it"
+ },
+ "A055b": {
+  "status": "OPEN",
+  "note": "QA2 (founder note): help comes first (exercise or rewrite, then practice); praise comes when the speaker sounds good or improved; praise is first only when it is the only feedback; on a weak moment the practise card comes before any praise"
+ },
+ "A025": {
+  "status": "FOUNDER",
+  "note": "P1: the founder asked to see screens and the flow first; design pack in progress (N30)"
+ },
+ "A050a": {
+  "status": "FOUNDER",
+  "note": "QA11 (leans: retire P1-6d; redesign the card from scratch): the founder asked to see screens and the flow first; design pack in progress (N30)"
+ },
+ "A060": {
+  "status": "FOUNDER",
+  "note": "QA12: the founder asked to see screens and the flow first; design pack in progress (N30)"
  }
 }
