@@ -320,7 +320,7 @@ class WiringTests(unittest.TestCase):
         routes = (ROOT / "routes/v2/user_sessions.py").read_text()
         self.assertIn("_practice_user_payload(_dismissed(updated))", routes)
         self.assertIn("comparison = _attempt_comparison(", routes)
-        self.assertIn('"after_practice": practice.get("after_practice")', routes)
+        self.assertIn('"after_practice": _after_practice_public(practice.get("after_practice"))', routes)
         self.assertIn('"after_practice": after', (ROOT / "services/learning_ledger.py").read_text())
 
     def test_the_contract_the_config_the_migration_and_the_routes_record_f5(self):

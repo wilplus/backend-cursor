@@ -79,6 +79,7 @@ def settled_status_by_moment(database: Any, *, take_session_id: str,
     or a bookmark skipped, is dismissed. A practice outranks a skip. Empty on
     any failure: the page then keeps its bar, which is the safe side."""
     from services.practice_adoption import DONE_ANSWERS
+    from services.practice_check import machine_closed
 
     out: dict[str, str] = {}
     try:
@@ -90,7 +91,8 @@ def settled_status_by_moment(database: Any, *, take_session_id: str,
             if not isinstance(row, dict) or not row.get("snippet_id"):
                 continue
             status = row.get("status")
-            if status == "completed" and row.get("final_user_answer") in DONE_ANSWERS:
+            if status == "completed" and (row.get("final_user_answer") in DONE_ANSWERS
+                                          or machine_closed(row)):
                 out[str(row["snippet_id"])] = "approved"
             elif status in ("completed", "dismissed"):
                 out[str(row["snippet_id"])] = "dismissed"
