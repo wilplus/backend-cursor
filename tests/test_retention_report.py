@@ -156,12 +156,9 @@ def test_no_evidence_or_financial_table_or_the_bug_list_is_a_log():
 
 
 def test_rule_4_takes_exactly_the_financial_records_and_no_evidence():
-    # v1.3's financial records. v1.5's paid arc (N50 P2 A) is under the same
-    # rule but not in Rule 4: P7 named the ledger and the LLM usage only, and
-    # v1.5 §4 puts the arc to the founder.
     assert _financial_tables() == FINANCIAL == {
         d.relation for d in DEPENDENCIES
-        if d.retention_category == "financial_evidence" and d.schedule is None}
+        if d.retention_category == "financial_evidence"}
     assert not _financial_tables() & NEVER
     _, report = function("retention_report_v1")
     assert "SELECT 4, 'financial records whose five years have ended: '" in report

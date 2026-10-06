@@ -22,26 +22,6 @@ its ``disposition`` only while the signed rule it names is ACTIVE in
 ``data_retention_rules``; until the founder runs
 ``scripts/phase1_retention_rules_v1_4.sql`` it acts exactly as
 ``before_rule`` says, which is what it did before v1.4 (fail closed).
-
-A dependency that also names a ``schedule`` is one retention schedule v1.5
-decided (legal/phase1-2026.1/22-retention-schedule-v1.5-what-v1.4-left-open-DRAFT.md;
-founder 2026-10-05, decisions log N50 item 5, P1-P6 A). v1.5 seeds no rule:
-each of its entries points at a rule an earlier signed version already
-seeded (product-records-v1, v1.2's consent-evidence-v1, v1.3's
-financial-evidence-v1). Such an entry acts on its ``disposition`` only while
-that rule is active AND ``processing_legal_artifacts`` holds
-``(retention_schedule, <schedule>)``, which only
-``scripts/phase1_retention_schedule_v1_5.sql`` writes; until both hold it
-acts exactly as ``before_rule`` says (fail closed). Migration 0429's guard
-branches check the same registration, so the database refuses the deletes
-too until it exists.
-
-A ``row_filter`` splits one table between several entries by the row's own
-columns (an arc purchase: a free founding pass, or one paid for). Each such
-entry is ``carved_from`` the table's original entry: until it is decided it
-builds no target and the original entry counts its rows, so before v1.5 the
-table acts exactly as it did; once it is decided, the original entry counts
-only the rows no decided entry claims.
 """
 from __future__ import annotations
 
@@ -54,15 +34,8 @@ Disposition = Literal["delete", "retain", "tombstone", "external_review"]
 LocatorKind = Literal[
     "principal", "user", "project", "take", "recording", "snippet",
     "permit", "job", "speaker", "practice", "practice_attempt",
-    "exercise_audio_lineage", "exercise_blind_packet", "delivery_job",
-    # The project's V3 feedback memberships (0429). Only the project graph
-    # lists them, so only a project purge's re-pointed entries use it.
-    "feedback_v3_membership",
+    "exercise_audio_lineage", "exercise_blind_packet", "delivery_job"
 ]
-#: (column, operator, value): "eq" compares the column's text with value,
-#: "is_null" holds when the column is NULL, "in" when its text is one of
-#: value's comma-separated words.
-RowCondition = tuple[str, str, str]
 
 
 @dataclass(frozen=True)
@@ -81,15 +54,6 @@ class PurgeDependency:
     #: as `before_rule` says; once it is, `disposition` applies.
     ruled_by: str | None = None
     before_rule: Disposition = "external_review"
-    #: The retention schedule version that decided this dependency, when it
-    #: is a later one than the rule's own (v1.5): the decision acts only once
-    #: that version is registered as well as the rule active.
-    schedule: str | None = None
-    #: Which of the table's rows this entry decides, by their own columns
-    #: (all of them must hold). Empty: every row the selector reaches.
-    row_filter: tuple[RowCondition, ...] = ()
-    #: The table's original entry this one's rows are carved out of.
-    carved_from: str | None = None
 
 
 #: Retention schedule v1.4's two rules (founder 2026-10-05, N48.4 Q15 A),
@@ -101,22 +65,10 @@ PRODUCT_RECORDS = "product_records"
 PRODUCT_RECORDS_RULE = "product-records-v1"
 JOB_EVIDENCE = "job_evidence"
 JOB_EVIDENCE_RULE = "job-evidence-v1"
-#: The two earlier rules v1.5 points entries at (founder 2026-10-05, N50
-#: P2 and P3): consent evidence, kept six years (v1.2), and financial
-#: evidence, kept five years from the end of its financial year (v1.3).
-CONSENT_EVIDENCE = "consent_evidence"
-CONSENT_EVIDENCE_RULE = "consent-evidence-v1"
-FINANCIAL_EVIDENCE = "financial_evidence"
-FINANCIAL_EVIDENCE_RULE = "financial-evidence-v1"
 RULE_CATEGORY: dict[str, str] = {
     PRODUCT_RECORDS_RULE: PRODUCT_RECORDS,
     JOB_EVIDENCE_RULE: JOB_EVIDENCE,
-    CONSENT_EVIDENCE_RULE: CONSENT_EVIDENCE,
-    FINANCIAL_EVIDENCE_RULE: FINANCIAL_EVIDENCE,
 }
-#: Retention schedule v1.5 (N50 item 5). It seeds no rule of its own; its
-#: entries act once it is registered as `(retention_schedule, 1.5)`.
-SCHEDULE_V1_5 = "1.5"
 
 
 def _product_record(code: str, relation: str, selector_column: str,
@@ -141,54 +93,13 @@ def _job_evidence(code: str, relation: str, selector_column: str,
                            ruled_by=JOB_EVIDENCE_RULE, before_rule=before_rule)
 
 
-def _v1_5_record(code: str, relation: str, selector_column: str,
-                 locator_kind: LocatorKind, target_kind: str,
-                 delete_order: int) -> PurgeDependency:
-    """Retention schedule v1.5 (N50 P1, P5, P6): deleted with the account or
-    the project once product-records-v1 is active AND v1.5 is registered;
-    until both hold it stops the erasure for review, as before v1.5. The
-    append-only tables let the purge delete exactly the rows its sealed
-    inventory names (migration 0429)."""
-    return PurgeDependency(code, relation, selector_column, locator_kind,
-                           "delete", target_kind, delete_order,
-                           PRODUCT_RECORDS, ruled_by=PRODUCT_RECORDS_RULE,
-                           schedule=SCHEDULE_V1_5)
-
-
 def before_its_rule(dependency: PurgeDependency) -> PurgeDependency:
-    """The dependency as it acts while its rule (and, for v1.5, its
-    schedule) is not in force: exactly the registry entry it had before
-    (same disposition, no category, no schedule)."""
+    """The dependency as it acts while its v1.4 rule is not active: exactly
+    the registry entry it had before v1.4 (same disposition, no category)."""
     if not dependency.ruled_by:
         return dependency
     return replace(dependency, disposition=dependency.before_rule,
-                   retention_category=None, ruled_by=None, schedule=None)
-
-
-def _row_text(value: object) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    return str(value)
-
-
-def row_matches(dependency: PurgeDependency, row: dict) -> bool:
-    """True when every condition of the entry's row_filter holds for the row
-    (an entry without a filter matches every row)."""
-    for column, operator, value in dependency.row_filter:
-        text = _row_text(row.get(column))
-        if operator == "eq":
-            held = text == value
-        elif operator == "is_null":
-            held = text is None
-        elif operator == "in":
-            held = text in value.split(",")
-        else:
-            raise ValueError(f"ROW_FILTER_OPERATOR_UNKNOWN:{operator}")
-        if not held:
-            return False
-    return True
+                   retention_category=None, ruled_by=None)
 
 
 DEPENDENCIES: tuple[PurgeDependency, ...] = (
@@ -683,28 +594,9 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "database_row"),
     _product_record("admin_annotation_log_review", "admin_annotations_log",
                     "user_id", "user", "dataset_lineage"),
-    # A reference video made for this speaker (retention schedule v1.5, N50
-    # P4): it goes with the account unless it is library content
-    # (is_universal), when only the speaker's link goes and the video stays.
-    # Library content: the link (user, session, draft) is cleared, under
-    # product-records-v1 (DETACH_LINKS; 0429 lets user_id be empty). Not
-    # library content: the row is deleted with the account, and its file,
-    # which has no recorded hash or provider, stops the erasure for review
-    # first, as the speaker's own uploads do. Until v1.5 is registered both
-    # carve-outs build nothing and the original entry below stops the
-    # erasure for review on every row, exactly as before.
-    PurgeDependency("reference_videos_library",
-                    "admin_uploaded_reference_videos", "user_id", "user",
-                    "tombstone", "dataset_lineage", 300, PRODUCT_RECORDS,
-                    ruled_by=PRODUCT_RECORDS_RULE, schedule=SCHEDULE_V1_5,
-                    row_filter=(("is_universal", "eq", "true"),),
-                    carved_from="admin_uploaded_reference_review"),
-    PurgeDependency("reference_videos_own",
-                    "admin_uploaded_reference_videos", "user_id", "user",
-                    "delete", "dataset_lineage", 300, PRODUCT_RECORDS,
-                    ruled_by=PRODUCT_RECORDS_RULE, schedule=SCHEDULE_V1_5,
-                    row_filter=(("is_universal", "eq", "false"),),
-                    carved_from="admin_uploaded_reference_review"),
+    # Not decided by v1.4 (proposed to the founder): a reference video made
+    # for this speaker may since have become library content (is_universal),
+    # and its stored file has no storage target in this purge.
     PurgeDependency("admin_uploaded_reference_review",
                     "admin_uploaded_reference_videos", "user_id", "user",
                     "external_review", "dataset_lineage", 300),
@@ -713,29 +605,8 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                   "processing_queue"),
     _product_record("arc_deliveries_review", "arc_batch_deliveries", "user_id",
                     "user", "database_row"),
-    # An arc purchase (retention schedule v1.5, N50 P2), told apart by the
-    # row's own columns (`source` names the payment path: 0007, 0008). A
-    # free founding pass, redeemed with an invite code and
-    # recording no payment, is a product record: deleted with the account or
-    # its project. A row paid for, in credits or through Stripe, is a
-    # financial record: kept five years under v1.3's financial-evidence-v1,
-    # as the token ledger is. Any other row (a manual grant, or a pass that
-    # records a payment) matches neither and still stops the erasure for
-    # review through the original entry, which before v1.5 counts every row.
-    PurgeDependency("arc_purchases_founding_pass", "arc_purchases", "user_id",
-                    "user", "delete", "database_row", 300, PRODUCT_RECORDS,
-                    ruled_by=PRODUCT_RECORDS_RULE, schedule=SCHEDULE_V1_5,
-                    row_filter=(("kind", "eq", "founding_pass"),
-                                ("source", "eq", "invite_code"),
-                                ("amount_minor", "is_null", ""),
-                                ("credits_charged", "is_null", ""),
-                                ("stripe_session_id", "is_null", "")),
-                    carved_from="arc_purchases_review"),
-    PurgeDependency("arc_purchases_paid", "arc_purchases", "user_id", "user",
-                    "retain", "database_row", 300, FINANCIAL_EVIDENCE,
-                    ruled_by=FINANCIAL_EVIDENCE_RULE, schedule=SCHEDULE_V1_5,
-                    row_filter=(("source", "in", "credits,stripe"),),
-                    carved_from="arc_purchases_review"),
+    # Not decided by v1.4 (proposed to the founder): a purchase is a
+    # financial record, which v1.3's financial-evidence-v1 keeps five years.
     PurgeDependency("arc_purchases_review", "arc_purchases", "user_id", "user",
                     "external_review", "database_row", 300),
     PurgeDependency("student_tasks_review", "tasks", "user_id", "user",
@@ -792,35 +663,25 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     _product_record("life_user_copy_review", "life_user_copy", "user_id",
                     "user", "database_row", 295),
 
-    # Learning lineage and the switched-off paths (retention schedule v1.5,
-    # N50 P6, and the nine live records of P1): deleted with the account or
-    # the project once v1.5 is registered and product-records-v1 is active.
-    # Every table below is append-only or written only by its own database
-    # functions; 0429 lets a running purge delete exactly the rows its sealed
-    # inventory names, and nothing else. Each order puts a row before every
-    # row it points at (a foreign key that refuses the delete otherwise);
-    # tests/test_v1_5_purge_postgres.py checks them against the schema.
-    # Until v1.5 is registered a matching row stops the erasure for review,
-    # exactly as before.
-    #
-    # MLC-2 learning lineage (dark).
-    _v1_5_record("ml_speaker_binding", "ml_speaker_principals",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 299),
-    _v1_5_record("ml_purge", "ml_purge_requests", "acquisition_principal_id",
-                 "principal", "model_lineage", 298),
-    # V3 evaluation frames (the founder's own Takes, dark mode): before the
-    # recording (50) and the snippet (45) they point at.
-    _v1_5_record("v3_shadow", "take_feedback_policy_v3_shadow_frames",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 49),
-    _v1_5_record("v3_detector_reconciliation",
-                 "take_feedback_detector_reconciliation", "take_session_id",
-                 "take", "dataset_lineage", 44),
+    # MLC-2 is dark, but any lineage already attached to this principal must
+    # enter its separately reviewed exceptional-purge traversal.
+    PurgeDependency("ml_speaker_binding", "ml_speaker_principals",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("ml_purge", "ml_purge_requests",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "model_lineage", 300),
+    PurgeDependency("v3_shadow", "take_feedback_policy_v3_shadow_frames",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("v3_detector_reconciliation",
+                    "take_feedback_detector_reconciliation",
+                    "take_session_id", "take", "external_review",
+                    "dataset_lineage", 300),
 
-    # Canonical feedback/learning ledgers are append-only by design. The
-    # take's own record is kept as an empty receipt (N12, tombstone below);
-    # the dataset lineage and the learning surfaces are v1.5 records.
+    # Canonical feedback/learning ledgers are append-only by design. Their
+    # subject paths are fully classified here, but they enter the separately
+    # reviewed exceptional-purge traversal instead of ordinary DELETE calls.
     PurgeDependency("canonical_transcript_versions", "transcript_versions",
                     "owner_principal_id", "principal", "tombstone",
                     "derived_feedback", 200, "deletion_evidence"),
@@ -845,43 +706,41 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("canonical_processing_stage_runs", "processing_stage_runs",
                     "owner_principal_id", "principal", "tombstone",
                     "derived_feedback", 200, "deletion_evidence"),
-    _v1_5_record("canonical_split_assignments", "dataset_split_assignments",
-                 "owner_principal_id", "principal", "dataset_lineage", 299),
-    _v1_5_record("canonical_release_items", "dataset_release_items",
-                 "owner_principal_id", "principal", "dataset_lineage", 298),
-    _v1_5_record("canonical_dataset_exclusions", "dataset_exclusions",
-                 "owner_principal_id", "principal", "dataset_lineage", 299),
-    _v1_5_record("learning_surface_presentations",
-                 "learning_surface_presentations", "owner_principal_id",
-                 "principal", "dataset_lineage", 299),
-    _v1_5_record("learning_surface_exposure_receipts",
-                 "learning_surface_exposure_receipts", "owner_principal_id",
-                 "principal", "dataset_lineage", 298),
-    _v1_5_record("ml_canonical_events", "ml_canonical_events",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 298),
-    _v1_5_record("ml_object_artifacts", "ml_object_artifacts",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 299),
-    _v1_5_record("ml_evidence_spans", "ml_evidence_spans",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 297),
+    PurgeDependency("canonical_split_assignments", "dataset_split_assignments",
+                    "owner_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("canonical_release_items", "dataset_release_items",
+                    "owner_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("canonical_dataset_exclusions", "dataset_exclusions",
+                    "owner_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("learning_surface_presentations",
+                    "learning_surface_presentations", "owner_principal_id",
+                    "principal", "external_review", "dataset_lineage", 300),
+    PurgeDependency("learning_surface_exposure_receipts",
+                    "learning_surface_exposure_receipts", "owner_principal_id",
+                    "principal", "external_review", "dataset_lineage", 300),
+    PurgeDependency("ml_canonical_events", "ml_canonical_events",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("ml_object_artifacts", "ml_object_artifacts",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("ml_evidence_spans", "ml_evidence_spans",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
     # The record of a person's yes and no to training (founder 2026-09-26:
     # N10 counsel answer 9, N11 answer 1) is kept after an account erasure
     # as consent evidence, under the signed `consent_evidence` rule
     # (retention schedule v1.1). Until that rule is seeded the erasure still
     # stops for review (RETENTION_RULE_UNRESOLVED), as it did before.
-    # The snapshot of that yes taken with each piece of learning lineage is
-    # the same evidence (retention schedule v1.5, N50 P3): kept six years
-    # under consent-evidence-v1 once v1.5 is registered; until then it stops
-    # the erasure for review, as before.
     PurgeDependency("ml_consent_events", "ml_consent_events",
                     "acquisition_principal_id", "principal", "retain",
                     "dataset_lineage", 300, "consent_evidence"),
     PurgeDependency("ml_consent_snapshots", "ml_consent_snapshots",
-                    "acquisition_principal_id", "principal", "retain",
-                    "dataset_lineage", 300, CONSENT_EVIDENCE,
-                    ruled_by=CONSENT_EVIDENCE_RULE, schedule=SCHEDULE_V1_5),
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
     # Training copies (P3 0375, P4 0376). Account erasure always deletes them
     # (C3): their audio first, as storage targets (_corpus_targets), then the
     # rows here. Keeping them through a PROJECT delete for someone with an
@@ -890,214 +749,235 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("training_corpus_items", "training_corpus_items",
                     "acquisition_principal_id", "principal", "delete",
                     "dataset_lineage", 57),
-    _v1_5_record("ml_product_actions", "ml_product_actions",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 297),
-    _v1_5_record("ml_candidate_sets", "ml_candidate_sets",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 297),
-    _v1_5_record("ml_confidence_producer_receipts",
-                 "ml_confidence_producer_receipts", "acquisition_principal_id",
-                 "principal", "dataset_lineage", 298),
-    _v1_5_record("exercise_authorization_checks",
-                 "exercise_authorization_checks", "acquisition_principal_id",
-                 "principal", "dataset_lineage", 299),
-    _v1_5_record("exercise_learning_profiles", "learning_profiles",
-                 "speaker_id", "speaker", "dataset_lineage", 298),
-    _v1_5_record("exercise_audio_lineages", "exercise_audio_lineages", "id",
-                 "exercise_audio_lineage", "dataset_lineage", 44),
-    _v1_5_record("exercise_blind_packets", "exercise_blind_packets", "id",
-                 "exercise_blind_packet", "coach_packet", 43),
-    _v1_5_record("exercise_blind_packet_events",
-                 "exercise_blind_packet_events", "blind_packet_id",
-                 "exercise_blind_packet", "coach_packet", 42),
+    PurgeDependency("ml_product_actions", "ml_product_actions",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("ml_candidate_sets", "ml_candidate_sets",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("ml_confidence_producer_receipts",
+                    "ml_confidence_producer_receipts",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_authorization_checks",
+                    "exercise_authorization_checks",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_learning_profiles", "learning_profiles",
+                    "speaker_id", "speaker", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_audio_lineages", "exercise_audio_lineages",
+                    "id", "exercise_audio_lineage", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_blind_packets", "exercise_blind_packets",
+                    "id", "exercise_blind_packet", "external_review",
+                    "coach_packet", 300),
+    PurgeDependency("exercise_blind_packet_events",
+                    "exercise_blind_packet_events", "blind_packet_id",
+                    "exercise_blind_packet", "external_review",
+                    "coach_packet", 300),
     # M3-3 dark frames carry direct, RPC-derived acquisition ownership. They
-    # are inventoried even though serving/learning is disabled (v1.5 P6).
+    # are inventoried even though serving/learning is disabled. Matching rows
+    # block purge completion pending the separate canonical retention review.
     # Observations/history (including exclusion IDs) cannot cross principals;
     # the deferred finalizer enforces this. Shared profile identity is already
     # inventoried above by speaker. Any future cross-principal feature reuse
     # needs explicit authorization AND a new dependency traversal before use.
-    _v1_5_record("exercise_profile_observations",
-                 "learning_profile_observations", "acquisition_principal_id",
-                 "principal", "dataset_lineage", 43),
-    _v1_5_record("exercise_feature_snapshots",
-                 "exercise_selection_feature_snapshots",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 42),
-    _v1_5_record("exercise_candidate_sets", "exercise_candidate_sets",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 41),
-    _v1_5_record("exercise_candidates", "exercise_candidates",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 40),
-    _v1_5_record("exercise_assignments", "exercise_assignments",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 39),
-    _v1_5_record("exercise_randomization",
-                 "exercise_randomization_assignments",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 38),
-    _v1_5_record("exercise_requests", "exercise_requests",
-                 "acquisition_principal_id", "principal", "coach_packet", 38),
+    PurgeDependency("exercise_profile_observations", "learning_profile_observations",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_feature_snapshots", "exercise_selection_feature_snapshots",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_candidate_sets", "exercise_candidate_sets",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_candidates", "exercise_candidates",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_assignments", "exercise_assignments",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_randomization", "exercise_randomization_assignments",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_requests", "exercise_requests",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "coach_packet", 300),
     # N1 pattern results and frozen companion inventories are exact-clip ML
-    # provenance. They remain non-serving/non-dataset (v1.5 P6).
-    _v1_5_record("exercise_n1_source_patterns",
-                 "exercise_n1_source_pattern_results",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 42),
-    _v1_5_record("exercise_n1_pattern_snapshots",
-                 "exercise_n1_pattern_snapshots", "acquisition_principal_id",
-                 "principal", "dataset_lineage", 40),
-    _v1_5_record("exercise_n1_pattern_candidates",
-                 "exercise_n1_pattern_candidates", "acquisition_principal_id",
-                 "principal", "dataset_lineage", 39),
+    # provenance. They remain non-serving/non-dataset, but any matching row
+    # must block ordinary deletion until its canonical purge path is reviewed.
+    PurgeDependency("exercise_n1_source_patterns",
+                    "exercise_n1_source_pattern_results",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_n1_pattern_snapshots",
+                    "exercise_n1_pattern_snapshots",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_n1_pattern_candidates",
+                    "exercise_n1_pattern_candidates",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
 
     # Restored MLC-3 P1/P2 and RPQ ledgers are synthetic and non-serving, but
-    # they still contain exact subject/audio provenance (v1.5 P6). The V3
-    # feedback memberships, their items, the speaker's answers and their
-    # receipts are written on the live path (v1.5 P1).
-    _v1_5_record("exercise_practice_sessions", "exercise_practice_sessions",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 38),
-    _v1_5_record("exercise_practice_upload_recoveries",
-                 "exercise_practice_upload_recoveries",
-                 "acquisition_principal_id", "principal", "storage_object", 37),
-    _v1_5_record("exercise_practice_attempts", "exercise_practice_attempts",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 35),
-    _v1_5_record("exercise_practice_measurements",
-                 "exercise_practice_measurement_revisions",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 34),
-    _v1_5_record("exercise_practice_validity",
-                 "exercise_practice_validity_assessments",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 33),
-    _v1_5_record("exercise_practice_selections",
-                 "exercise_practice_selection_revisions",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 34),
-    _v1_5_record("exercise_practice_events", "exercise_practice_events",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 34),
-    _v1_5_record("exercise_service_offers", "exercise_service_offers",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 39),
-    _v1_5_record("exercise_service_offer_candidates",
-                 "exercise_service_offer_candidates",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 38),
-    _v1_5_record("exercise_service_offer_events",
-                 "exercise_service_offer_events", "acquisition_principal_id",
-                 "principal", "dataset_lineage", 38),
-    _v1_5_record("exercise_pair_revisions", "exercise_pair_revisions",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 32),
-    _v1_5_record("exercise_pair_assignments", "exercise_pair_assignments",
-                 "acquisition_principal_id", "principal", "coach_packet", 31),
-    _v1_5_record("exercise_pair_assignment_reviewers",
-                 "exercise_pair_assignments", "reviewer_principal_id",
-                 "principal", "coach_packet", 31),
-    _v1_5_record("exercise_pair_judgments", "exercise_pair_judgments",
-                 "acquisition_principal_id", "principal", "coach_packet", 30),
-    _v1_5_record("exercise_pair_judgment_reviewers", "exercise_pair_judgments",
-                 "reviewer_principal_id", "principal", "coach_packet", 30),
-    _v1_5_record("exercise_reviewer_context",
-                 "exercise_reviewer_context_events", "reviewer_principal_id",
-                 "principal", "coach_packet", 34),
-    _v1_5_record("exercise_service_requests", "exercise_service_requests",
-                 "acquisition_principal_id", "principal", "coach_packet", 38),
-    _v1_5_record("exercise_authoring_drafts", "exercise_authoring_drafts",
-                 "acquisition_principal_id", "principal", "coach_packet", 37),
-    _v1_5_record("exercise_authoring_draft_authors",
-                 "exercise_authoring_drafts", "author_principal_id",
-                 "principal", "coach_packet", 37),
-    _v1_5_record("feedback_v3_memberships", "feedback_v3_memberships",
-                 "acquisition_principal_id", "principal", "derived_feedback",
-                 53),
-    _v1_5_record("feedback_v3_membership_items",
-                 "feedback_v3_membership_items", "acquisition_principal_id",
-                 "principal", "derived_feedback", 44),
-    _v1_5_record("feedback_v3_owner_responses", "feedback_v3_owner_responses",
-                 "acquisition_principal_id", "principal", "derived_feedback",
-                 43),
-    _v1_5_record("feedback_v3_service_render_receipts",
-                 "feedback_v3_service_render_receipts",
-                 "acquisition_principal_id", "principal", "derived_feedback",
-                 43),
-    _v1_5_record("feedback_v3_service_response_bindings",
-                 "feedback_v3_service_response_bindings",
-                 "acquisition_principal_id", "principal", "derived_feedback",
-                 42),
-    _v1_5_record("confident_moment_bundle_attachments",
-                 "confident_moment_bundle_attachments",
-                 "acquisition_principal_id", "principal", "derived_feedback",
-                 43),
-    _v1_5_record("confident_moment_owner_decision_bindings",
-                 "confident_moment_owner_decision_bindings",
-                 "acquisition_principal_id", "principal", "derived_feedback",
-                 41),
-    _v1_5_record("root_phrase_coverage_frames", "root_phrase_coverage_frames",
-                 "acquisition_principal_id", "principal", "derived_feedback",
-                 52),
-    _v1_5_record("root_phrase_coverage_items", "root_phrase_coverage_items",
-                 "acquisition_principal_id", "principal", "derived_feedback",
-                 31),
-    _v1_5_record("feedback_language_revision_deliveries",
-                 "feedback_language_revision_deliveries",
-                 "acquisition_principal_id", "principal", "derived_feedback",
-                 42),
-    _v1_5_record("feedback_language_delivery_recipients",
-                 "feedback_language_revision_deliveries",
-                 "recipient_principal_id", "principal", "derived_feedback", 42),
-    _v1_5_record("feedback_language_delivery_reviewers",
-                 "feedback_language_revision_deliveries",
-                 "reviewer_principal_id", "principal", "derived_feedback", 42),
-    _v1_5_record("feedback_revision_subjects", "feedback_revisions",
-                 "acquisition_principal_id", "principal", "derived_feedback",
-                 43),
-    _v1_5_record("feedback_revision_reviewers", "feedback_revisions",
-                 "rater_id", "principal", "derived_feedback", 43),
-    _v1_5_record("confident_moment_bundle_projections",
-                 "confident_moment_bundle_projections",
-                 "acquisition_principal_id", "principal", "derived_feedback",
-                 52),
-    _v1_5_record("confident_moment_bundle_projection_items",
-                 "confident_moment_bundle_projection_items",
-                 "acquisition_principal_id", "principal", "derived_feedback",
-                 41),
-    _v1_5_record("ideal_text_user_edit_cas_operations",
-                 "ideal_text_user_edit_cas_operations",
-                 "acquisition_principal_id", "principal", "derived_feedback",
-                 310),
-    _v1_5_record("confident_moment_bundle_text_update_bindings",
-                 "confident_moment_bundle_text_update_bindings",
-                 "acquisition_principal_id", "principal", "derived_feedback",
-                 42),
-    _v1_5_record("confident_moment_text_update_capabilities",
-                 "confident_moment_text_update_capabilities",
-                 "acquisition_principal_id", "principal", "derived_feedback",
-                 300),
-    _v1_5_record("confident_moment_coach_authorability_inventories",
-                 "confident_moment_coach_authorability_inventories",
-                 "acquisition_principal_id", "principal", "coach_packet", 52),
-    _v1_5_record("confident_moment_coach_authorability_items",
-                 "confident_moment_coach_authorability_items",
-                 "acquisition_principal_id", "principal", "coach_packet", 42),
-    _v1_5_record("confident_moment_blind_assignment_bindings",
-                 "confident_moment_blind_assignment_bindings",
-                 "acquisition_principal_id", "principal", "coach_packet", 42),
-    _v1_5_record("confident_moment_coach_wording_subjects",
-                 "confident_moment_coach_wording_authority_bindings",
-                 "acquisition_principal_id", "principal", "coach_packet", 41),
-    _v1_5_record("confident_moment_coach_wording_reviewers",
-                 "confident_moment_coach_wording_authority_bindings",
-                 "reviewer_principal_id", "principal", "coach_packet", 41),
+    # they still contain exact subject/audio provenance.  Every acquisition-
+    # owned row therefore fails closed through the canonical purge review.
+    PurgeDependency("exercise_practice_sessions", "exercise_practice_sessions",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_practice_upload_recoveries",
+                    "exercise_practice_upload_recoveries",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "storage_object", 300),
+    PurgeDependency("exercise_practice_attempts", "exercise_practice_attempts",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_practice_measurements",
+                    "exercise_practice_measurement_revisions",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_practice_validity",
+                    "exercise_practice_validity_assessments",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_practice_selections",
+                    "exercise_practice_selection_revisions",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_practice_events", "exercise_practice_events",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_service_offers", "exercise_service_offers",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_service_offer_candidates",
+                    "exercise_service_offer_candidates",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_service_offer_events",
+                    "exercise_service_offer_events",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_pair_revisions", "exercise_pair_revisions",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("exercise_pair_assignments", "exercise_pair_assignments",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "coach_packet", 300),
+    PurgeDependency("exercise_pair_assignment_reviewers",
+                    "exercise_pair_assignments", "reviewer_principal_id",
+                    "principal", "external_review", "coach_packet", 300),
+    PurgeDependency("exercise_pair_judgments", "exercise_pair_judgments",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "coach_packet", 300),
+    PurgeDependency("exercise_pair_judgment_reviewers",
+                    "exercise_pair_judgments", "reviewer_principal_id",
+                    "principal", "external_review", "coach_packet", 300),
+    PurgeDependency("exercise_reviewer_context",
+                    "exercise_reviewer_context_events", "reviewer_principal_id",
+                    "principal", "external_review", "coach_packet", 300),
+    PurgeDependency("exercise_service_requests", "exercise_service_requests",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "coach_packet", 300),
+    PurgeDependency("exercise_authoring_drafts", "exercise_authoring_drafts",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "coach_packet", 300),
+    PurgeDependency("exercise_authoring_draft_authors",
+                    "exercise_authoring_drafts", "author_principal_id",
+                    "principal", "external_review", "coach_packet", 300),
+    PurgeDependency("feedback_v3_memberships", "feedback_v3_memberships",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "derived_feedback", 300),
+    PurgeDependency("feedback_v3_membership_items",
+                    "feedback_v3_membership_items", "acquisition_principal_id",
+                    "principal", "external_review", "derived_feedback", 300),
+    PurgeDependency("feedback_v3_owner_responses",
+                    "feedback_v3_owner_responses", "acquisition_principal_id",
+                    "principal", "external_review", "derived_feedback", 300),
+    PurgeDependency("feedback_v3_service_render_receipts",
+                    "feedback_v3_service_render_receipts",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "derived_feedback", 300),
+    PurgeDependency("feedback_v3_service_response_bindings",
+                    "feedback_v3_service_response_bindings",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "derived_feedback", 300),
+    PurgeDependency("confident_moment_bundle_attachments",
+                    "confident_moment_bundle_attachments",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "derived_feedback", 300),
+    PurgeDependency("confident_moment_owner_decision_bindings",
+                    "confident_moment_owner_decision_bindings",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "derived_feedback", 300),
+    PurgeDependency("root_phrase_coverage_frames",
+                    "root_phrase_coverage_frames", "acquisition_principal_id",
+                    "principal", "external_review", "derived_feedback", 300),
+    PurgeDependency("root_phrase_coverage_items",
+                    "root_phrase_coverage_items", "acquisition_principal_id",
+                    "principal", "external_review", "derived_feedback", 300),
+    PurgeDependency("feedback_language_revision_deliveries",
+                    "feedback_language_revision_deliveries",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "derived_feedback", 300),
+    PurgeDependency("feedback_language_delivery_recipients",
+                    "feedback_language_revision_deliveries",
+                    "recipient_principal_id", "principal",
+                    "external_review", "derived_feedback", 300),
+    PurgeDependency("feedback_language_delivery_reviewers",
+                    "feedback_language_revision_deliveries",
+                    "reviewer_principal_id", "principal",
+                    "external_review", "derived_feedback", 300),
+    PurgeDependency("feedback_revision_subjects", "feedback_revisions",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "derived_feedback", 300),
+    PurgeDependency("feedback_revision_reviewers", "feedback_revisions",
+                    "rater_id", "principal", "external_review",
+                    "derived_feedback", 300),
+    PurgeDependency("confident_moment_bundle_projections",
+                    "confident_moment_bundle_projections",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "derived_feedback", 300),
+    PurgeDependency("confident_moment_bundle_projection_items",
+                    "confident_moment_bundle_projection_items",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "derived_feedback", 300),
+    PurgeDependency("ideal_text_user_edit_cas_operations",
+                    "ideal_text_user_edit_cas_operations",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "derived_feedback", 300),
+    PurgeDependency("confident_moment_bundle_text_update_bindings",
+                    "confident_moment_bundle_text_update_bindings",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "derived_feedback", 300),
+    PurgeDependency("confident_moment_text_update_capabilities",
+                    "confident_moment_text_update_capabilities",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "derived_feedback", 300),
+    PurgeDependency("confident_moment_coach_authorability_inventories",
+                    "confident_moment_coach_authorability_inventories",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "coach_packet", 300),
+    PurgeDependency("confident_moment_coach_authorability_items",
+                    "confident_moment_coach_authorability_items",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "coach_packet", 300),
+    PurgeDependency("confident_moment_blind_assignment_bindings",
+                    "confident_moment_blind_assignment_bindings",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "coach_packet", 300),
+    PurgeDependency("confident_moment_coach_wording_subjects",
+                    "confident_moment_coach_wording_authority_bindings",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "coach_packet", 300),
+    PurgeDependency("confident_moment_coach_wording_reviewers",
+                    "confident_moment_coach_wording_authority_bindings",
+                    "reviewer_principal_id", "principal",
+                    "external_review", "coach_packet", 300),
     # The delivery jobs, their events and claims are job evidence (v1.4):
-    # kept 12 months, only counted, never touched. A kept job still points
-    # at the bundle row it delivers, so for a person with one the erasure
-    # stops for review at that row (KEPT_ROWS_STILL_POINT_HERE): a question
-    # v1.5 leaves to the founder.
+    # kept 12 months, only counted, never touched. The bundle lineage they
+    # deliver stays external_review above.
     _job_evidence("feedback_language_delivery_materialization_jobs",
                   "feedback_language_delivery_materialization_jobs",
                   "acquisition_principal_id", "principal",
@@ -1114,229 +994,242 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     _job_evidence("feedback_language_delivery_job_due_heads",
                   "feedback_language_delivery_job_due_heads",
                   "job_id", "delivery_job", "processing_queue"),
-    _v1_5_record("exercise_service_acquisition_receipts",
-                 "exercise_service_acquisition_receipts",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 298),
-    _v1_5_record("exercise_practice_transcription_runs",
-                 "exercise_practice_transcription_runs",
-                 "acquisition_principal_id", "principal", "provider_artifact",
-                 36),
-    _v1_5_record("mlc3_service_principal_allowlist_subjects",
-                 "mlc3_service_principal_allowlist",
-                 "acquisition_principal_id", "principal",
-                 "authorization_receipt", 299),
-    _v1_5_record("mlc3_service_principal_allowlist_approvers",
-                 "mlc3_service_principal_allowlist",
-                 "approved_by_principal_id", "principal",
-                 "authorization_receipt", 299),
+    PurgeDependency("exercise_service_acquisition_receipts",
+                    "exercise_service_acquisition_receipts",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "dataset_lineage", 300),
+    PurgeDependency("exercise_practice_transcription_runs",
+                    "exercise_practice_transcription_runs",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "provider_artifact", 300),
+    PurgeDependency("mlc3_service_principal_allowlist_subjects",
+                    "mlc3_service_principal_allowlist",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "authorization_receipt", 300),
+    PurgeDependency("mlc3_service_principal_allowlist_approvers",
+                    "mlc3_service_principal_allowlist",
+                    "approved_by_principal_id", "principal",
+                    "external_review", "authorization_receipt", 300),
     # D4 rollout access and speaker-routing provenance. Global rollout/risk
     # configuration is classified separately below; these rows are bound to
-    # one exact acquisition principal (v1.5 P6).
-    _v1_5_record("mlc3_service_cohort_members", "mlc3_service_cohort_members",
-                 "acquisition_principal_id", "principal",
-                 "authorization_receipt", 299),
-    _v1_5_record("mlc3_service_enrollment_revisions",
-                 "mlc3_service_enrollment_revisions",
-                 "acquisition_principal_id", "principal",
-                 "authorization_receipt", 299),
-    _v1_5_record("mlc3_service_access_events", "mlc3_service_access_events",
-                 "acquisition_principal_id", "principal",
-                 "authorization_receipt", 298),
-    _v1_5_record("mlc3_speaker_acquisition_revisions",
-                 "mlc3_speaker_acquisition_revisions",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 299),
-    _v1_5_record("mlc3_self_speaker_assertions",
-                 "mlc3_self_speaker_assertions", "acquisition_principal_id",
-                 "principal", "dataset_lineage", 299),
-    _v1_5_record("mlc3_target_speaker_bindings",
-                 "mlc3_target_speaker_bindings", "acquisition_principal_id",
-                 "principal", "dataset_lineage", 34),
-    _v1_5_record("mlc3_comparison_speaker_eligibility_revisions",
-                 "mlc3_comparison_speaker_eligibility_revisions",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 33),
-    _v1_5_record("exercise_service_confidence_assignments",
-                 "exercise_service_confidence_assignments",
-                 "acquisition_principal_id", "principal", "coach_packet", 34),
-    _v1_5_record("exercise_service_confidence_assignment_reviewers",
-                 "exercise_service_confidence_assignments",
-                 "reviewer_principal_id", "principal", "coach_packet", 34),
-    _v1_5_record("exercise_service_confidence_render_receipts",
-                 "exercise_service_confidence_render_receipts",
-                 "acquisition_principal_id", "principal", "coach_packet", 33),
-    _v1_5_record("exercise_service_confidence_render_reviewers",
-                 "exercise_service_confidence_render_receipts",
-                 "reviewer_principal_id", "principal", "coach_packet", 33),
-    _v1_5_record("exercise_service_confidence_judgments",
-                 "exercise_service_confidence_judgments",
-                 "acquisition_principal_id", "principal", "coach_packet", 32),
-    _v1_5_record("exercise_service_confidence_judgment_reviewers",
-                 "exercise_service_confidence_judgments",
-                 "reviewer_principal_id", "principal", "coach_packet", 32),
-    _v1_5_record("exercise_service_blind_review_sets",
-                 "exercise_service_blind_review_sets",
-                 "acquisition_principal_id", "principal", "coach_packet", 30),
-    _v1_5_record("exercise_service_blind_review_set_reviewers",
-                 "exercise_service_blind_review_sets", "reviewer_principal_id",
-                 "principal", "coach_packet", 30),
-    _v1_5_record("exercise_service_blind_reveal_grants",
-                 "exercise_service_blind_reveal_grants",
-                 "acquisition_principal_id", "principal", "coach_packet", 29),
-    _v1_5_record("exercise_service_blind_reveal_grant_reviewers",
-                 "exercise_service_blind_reveal_grants",
-                 "reviewer_principal_id", "principal", "coach_packet", 29),
-    _v1_5_record("exercise_service_blind_reveal_accesses",
-                 "exercise_service_blind_reveal_accesses",
-                 "acquisition_principal_id", "principal", "coach_packet", 28),
-    _v1_5_record("exercise_service_blind_reveal_access_reviewers",
-                 "exercise_service_blind_reveal_accesses",
-                 "reviewer_principal_id", "principal", "coach_packet", 28),
-    # D3 coach-guidance records remain product evidence, not labels; they
-    # are subject-linked (v1.5 P6).
-    _v1_5_record("coach_guidance_review_frames",
-                 "coach_guidance_review_frames", "acquisition_principal_id",
-                 "principal", "coach_packet", 298),
-    _v1_5_record("coach_guidance_review_frame_items",
-                 "coach_guidance_review_frame_items",
-                 "acquisition_principal_id", "principal", "coach_packet", 42),
-    _v1_5_record("coach_guidance_review_batches",
-                 "coach_guidance_review_batches", "acquisition_principal_id",
-                 "principal", "coach_packet", 297),
-    _v1_5_record("coach_guidance_reveal_grants",
-                 "coach_guidance_reveal_grants", "acquisition_principal_id",
-                 "principal", "coach_packet", 296),
-    _v1_5_record("coach_guidance_reveal_grant_judgments",
-                 "coach_guidance_reveal_grant_judgments",
-                 "acquisition_principal_id", "principal", "coach_packet", 295),
-    _v1_5_record("coach_guidance_reveal_accesses",
-                 "coach_guidance_reveal_accesses", "acquisition_principal_id",
-                 "principal", "coach_packet", 294),
-    _v1_5_record("coach_guidance_media_bindings",
-                 "coach_guidance_media_bindings", "acquisition_principal_id",
-                 "principal", "storage_object", 25),
-    _v1_5_record("coach_guidance_upload_permits",
-                 "coach_guidance_upload_permits", "acquisition_principal_id",
-                 "principal", "storage_object", 27),
-    _v1_5_record("coach_guidance_upload_recoveries",
-                 "coach_guidance_upload_recoveries",
-                 "acquisition_principal_id", "principal", "storage_object", 26),
-    _v1_5_record("coach_guidance_upload_events",
-                 "coach_guidance_upload_events", "acquisition_principal_id",
-                 "principal", "storage_object", 25),
-    _v1_5_record("coach_guidance_media_validity_events",
-                 "coach_guidance_media_validity_events",
-                 "acquisition_principal_id", "principal", "storage_object",
-                 298),
-    _v1_5_record("coach_guidance_independent_media_reviews",
-                 "coach_guidance_independent_media_reviews",
-                 "acquisition_principal_id", "principal", "storage_object", 26),
-    _v1_5_record("coach_guidance_independent_media_reviewers",
-                 "coach_guidance_independent_media_reviews",
-                 "reviewer_principal_id", "principal", "coach_packet", 26),
-    _v1_5_record("coach_guidance_media_source_dependencies",
-                 "coach_guidance_media_bindings",
-                 "source_acquisition_principal_id", "principal",
-                 "storage_object", 25),
-    _v1_5_record("coach_guidance_attachments", "coach_guidance_attachments",
-                 "acquisition_principal_id", "principal", "derived_feedback",
-                 27),
-    _v1_5_record("coach_guidance_attachment_versions",
-                 "coach_guidance_attachment_versions",
-                 "acquisition_principal_id", "principal", "derived_feedback",
-                 24),
-    _v1_5_record("coach_guidance_lifecycle_events",
-                 "coach_guidance_lifecycle_events", "acquisition_principal_id",
-                 "principal", "derived_feedback", 23),
-    _v1_5_record("coach_guidance_publications", "coach_guidance_publications",
-                 "source_acquisition_principal_id", "principal",
-                 "dataset_lineage", 23),
-    _v1_5_record("coach_guidance_publication_invalidations",
-                 "coach_guidance_publication_invalidations",
-                 "source_acquisition_principal_id", "principal",
-                 "dataset_lineage", 22),
-    # D5 inline authoring remains product-only; every row is tied to the
-    # exact acquisition principal (v1.5 P6).
-    _v1_5_record("coach_inline_source_roles", "coach_inline_source_roles",
-                 "acquisition_principal_id", "principal", "coach_packet", 42),
-    _v1_5_record("coach_inline_source_role_reviewers",
-                 "coach_inline_source_roles", "reviewer_principal_id",
-                 "principal", "coach_packet", 42),
-    _v1_5_record("coach_inline_exercise_drafts",
-                 "coach_inline_exercise_drafts", "acquisition_principal_id",
-                 "principal", "derived_feedback", 23),
-    _v1_5_record("coach_inline_exercise_draft_authors",
-                 "coach_inline_exercise_drafts", "author_principal_id",
-                 "principal", "derived_feedback", 23),
-    _v1_5_record("coach_inline_context_assessments",
-                 "coach_inline_context_assessments",
-                 "acquisition_principal_id", "principal", "coach_packet", 42),
-    _v1_5_record("coach_inline_context_assessment_reviewers",
-                 "coach_inline_context_assessments", "reviewer_principal_id",
-                 "principal", "coach_packet", 42),
-    _v1_5_record("coach_inline_exercise_eligibility_reviews",
-                 "coach_inline_exercise_eligibility_reviews",
-                 "acquisition_principal_id", "principal", "dataset_lineage",
-                 22),
-    _v1_5_record("root_phrase_content_versions",
-                 "root_phrase_content_versions", "acquisition_principal_id",
-                 "principal", "derived_feedback", 43),
-    _v1_5_record("root_phrase_semantic_input_snapshots",
-                 "root_phrase_semantic_input_snapshots",
-                 "acquisition_principal_id", "principal", "derived_feedback",
-                 42),
-    _v1_5_record("root_phrase_semantic_results",
-                 "root_phrase_semantic_results", "acquisition_principal_id",
-                 "principal", "derived_feedback", 41),
-    _v1_5_record("root_phrase_owner_alignment_actions",
-                 "root_phrase_owner_alignment_actions",
-                 "acquisition_principal_id", "principal", "derived_feedback",
-                 40),
-    _v1_5_record("root_phrase_qualification_revisions",
-                 "root_phrase_qualification_revisions",
-                 "acquisition_principal_id", "principal", "derived_feedback",
-                 33),
-    _v1_5_record("root_phrase_product_actions", "root_phrase_product_actions",
-                 "acquisition_principal_id", "principal", "derived_feedback",
-                 32),
-    _v1_5_record("root_phrase_block_heads", "root_phrase_block_heads",
-                 "acquisition_principal_id", "principal", "derived_feedback",
-                 31),
+    # one exact acquisition principal and must participate in purge review.
+    PurgeDependency("mlc3_service_cohort_members",
+                    "mlc3_service_cohort_members",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "authorization_receipt", 300),
+    PurgeDependency("mlc3_service_enrollment_revisions",
+                    "mlc3_service_enrollment_revisions",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "authorization_receipt", 300),
+    PurgeDependency("mlc3_service_access_events",
+                    "mlc3_service_access_events",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "authorization_receipt", 300),
+    PurgeDependency("mlc3_speaker_acquisition_revisions",
+                    "mlc3_speaker_acquisition_revisions",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "dataset_lineage", 300),
+    PurgeDependency("mlc3_self_speaker_assertions",
+                    "mlc3_self_speaker_assertions",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "dataset_lineage", 300),
+    PurgeDependency("mlc3_target_speaker_bindings",
+                    "mlc3_target_speaker_bindings",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "dataset_lineage", 300),
+    PurgeDependency("mlc3_comparison_speaker_eligibility_revisions",
+                    "mlc3_comparison_speaker_eligibility_revisions",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "dataset_lineage", 300),
+    PurgeDependency("exercise_service_confidence_assignments",
+                    "exercise_service_confidence_assignments",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "coach_packet", 300),
+    PurgeDependency("exercise_service_confidence_assignment_reviewers",
+                    "exercise_service_confidence_assignments",
+                    "reviewer_principal_id", "principal",
+                    "external_review", "coach_packet", 300),
+    PurgeDependency("exercise_service_confidence_render_receipts",
+                    "exercise_service_confidence_render_receipts",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "coach_packet", 300),
+    PurgeDependency("exercise_service_confidence_render_reviewers",
+                    "exercise_service_confidence_render_receipts",
+                    "reviewer_principal_id", "principal",
+                    "external_review", "coach_packet", 300),
+    PurgeDependency("exercise_service_confidence_judgments",
+                    "exercise_service_confidence_judgments",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "coach_packet", 300),
+    PurgeDependency("exercise_service_confidence_judgment_reviewers",
+                    "exercise_service_confidence_judgments",
+                    "reviewer_principal_id", "principal",
+                    "external_review", "coach_packet", 300),
+    PurgeDependency("exercise_service_blind_review_sets",
+                    "exercise_service_blind_review_sets",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "coach_packet", 300),
+    PurgeDependency("exercise_service_blind_review_set_reviewers",
+                    "exercise_service_blind_review_sets",
+                    "reviewer_principal_id", "principal",
+                    "external_review", "coach_packet", 300),
+    PurgeDependency("exercise_service_blind_reveal_grants",
+                    "exercise_service_blind_reveal_grants",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "coach_packet", 300),
+    PurgeDependency("exercise_service_blind_reveal_grant_reviewers",
+                    "exercise_service_blind_reveal_grants",
+                    "reviewer_principal_id", "principal",
+                    "external_review", "coach_packet", 300),
+    PurgeDependency("exercise_service_blind_reveal_accesses",
+                    "exercise_service_blind_reveal_accesses",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "coach_packet", 300),
+    PurgeDependency("exercise_service_blind_reveal_access_reviewers",
+                    "exercise_service_blind_reveal_accesses",
+                    "reviewer_principal_id", "principal",
+                    "external_review", "coach_packet", 300),
+    # D3 coach-guidance records remain product evidence, not labels. They are
+    # still subject-linked and therefore block ordinary purge completion until
+    # the reviewed adapter resolves or invalidates their exact lineage.
+    PurgeDependency("coach_guidance_review_frames",
+                    "coach_guidance_review_frames", "acquisition_principal_id",
+                    "principal", "external_review", "coach_packet", 300),
+    PurgeDependency("coach_guidance_review_frame_items",
+                    "coach_guidance_review_frame_items", "acquisition_principal_id",
+                    "principal", "external_review", "coach_packet", 300),
+    PurgeDependency("coach_guidance_review_batches",
+                    "coach_guidance_review_batches", "acquisition_principal_id",
+                    "principal", "external_review", "coach_packet", 300),
+    PurgeDependency("coach_guidance_reveal_grants",
+                    "coach_guidance_reveal_grants", "acquisition_principal_id",
+                    "principal", "external_review", "coach_packet", 300),
+    PurgeDependency("coach_guidance_reveal_grant_judgments",
+                    "coach_guidance_reveal_grant_judgments",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "coach_packet", 300),
+    PurgeDependency("coach_guidance_reveal_accesses",
+                    "coach_guidance_reveal_accesses",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "coach_packet", 300),
+    PurgeDependency("coach_guidance_media_bindings",
+                    "coach_guidance_media_bindings", "acquisition_principal_id",
+                    "principal", "external_review", "storage_object", 300),
+    PurgeDependency("coach_guidance_upload_permits",
+                    "coach_guidance_upload_permits", "acquisition_principal_id",
+                    "principal", "external_review", "storage_object", 300),
+    PurgeDependency("coach_guidance_upload_recoveries",
+                    "coach_guidance_upload_recoveries",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "storage_object", 300),
+    PurgeDependency("coach_guidance_upload_events",
+                    "coach_guidance_upload_events", "acquisition_principal_id",
+                    "principal", "external_review", "storage_object", 300),
+    PurgeDependency("coach_guidance_media_validity_events",
+                    "coach_guidance_media_validity_events",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "storage_object", 300),
+    PurgeDependency("coach_guidance_independent_media_reviews",
+                    "coach_guidance_independent_media_reviews",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "storage_object", 300),
+    PurgeDependency("coach_guidance_independent_media_reviewers",
+                    "coach_guidance_independent_media_reviews",
+                    "reviewer_principal_id", "principal",
+                    "external_review", "coach_packet", 300),
+    PurgeDependency("coach_guidance_media_source_dependencies",
+                    "coach_guidance_media_bindings",
+                    "source_acquisition_principal_id", "principal",
+                    "external_review", "storage_object", 300),
+    PurgeDependency("coach_guidance_attachments",
+                    "coach_guidance_attachments", "acquisition_principal_id",
+                    "principal", "external_review", "derived_feedback", 300),
+    PurgeDependency("coach_guidance_attachment_versions",
+                    "coach_guidance_attachment_versions",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "derived_feedback", 300),
+    PurgeDependency("coach_guidance_lifecycle_events",
+                    "coach_guidance_lifecycle_events", "acquisition_principal_id",
+                    "principal", "external_review", "derived_feedback", 300),
+    PurgeDependency("coach_guidance_publications",
+                    "coach_guidance_publications",
+                    "source_acquisition_principal_id", "principal",
+                    "external_review", "dataset_lineage", 300),
+    PurgeDependency("coach_guidance_publication_invalidations",
+                    "coach_guidance_publication_invalidations",
+                    "source_acquisition_principal_id", "principal",
+                    "external_review", "dataset_lineage", 300),
+    # D5 inline authoring remains product-only, but every row is tied to the
+    # exact acquisition principal and must participate in deletion traversal.
+    PurgeDependency("coach_inline_source_roles",
+                    "coach_inline_source_roles", "acquisition_principal_id",
+                    "principal", "external_review", "coach_packet", 300),
+    PurgeDependency("coach_inline_source_role_reviewers",
+                    "coach_inline_source_roles", "reviewer_principal_id",
+                    "principal", "external_review", "coach_packet", 300),
+    PurgeDependency("coach_inline_exercise_drafts",
+                    "coach_inline_exercise_drafts", "acquisition_principal_id",
+                    "principal", "external_review", "derived_feedback", 300),
+    PurgeDependency("coach_inline_exercise_draft_authors",
+                    "coach_inline_exercise_drafts", "author_principal_id",
+                    "principal", "external_review", "derived_feedback", 300),
+    PurgeDependency("coach_inline_context_assessments",
+                    "coach_inline_context_assessments",
+                    "acquisition_principal_id",
+                    "principal", "external_review", "coach_packet", 300),
+    PurgeDependency("coach_inline_context_assessment_reviewers",
+                    "coach_inline_context_assessments", "reviewer_principal_id",
+                    "principal", "external_review", "coach_packet", 300),
+    PurgeDependency("coach_inline_exercise_eligibility_reviews",
+                    "coach_inline_exercise_eligibility_reviews",
+                    "acquisition_principal_id", "principal",
+                    "external_review", "dataset_lineage", 300),
+    PurgeDependency("root_phrase_content_versions",
+                    "root_phrase_content_versions", "acquisition_principal_id",
+                    "principal", "external_review", "derived_feedback", 300),
+    PurgeDependency("root_phrase_semantic_input_snapshots",
+                    "root_phrase_semantic_input_snapshots",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "derived_feedback", 300),
+    PurgeDependency("root_phrase_semantic_results",
+                    "root_phrase_semantic_results", "acquisition_principal_id",
+                    "principal", "external_review", "derived_feedback", 300),
+    PurgeDependency("root_phrase_owner_alignment_actions",
+                    "root_phrase_owner_alignment_actions",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "derived_feedback", 300),
+    PurgeDependency("root_phrase_qualification_revisions",
+                    "root_phrase_qualification_revisions",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "derived_feedback", 300),
+    PurgeDependency("root_phrase_product_actions",
+                    "root_phrase_product_actions", "acquisition_principal_id",
+                    "principal", "external_review", "derived_feedback", 300),
+    PurgeDependency("root_phrase_block_heads", "root_phrase_block_heads",
+                    "acquisition_principal_id", "principal", "external_review",
+                    "derived_feedback", 300),
 
     # Historical corpora and review stores are frozen or mixed-purpose. They
-    # are named explicitly so catalog audit is complete. Retention schedule
-    # v1.5 (N50 P5): a person's own rows go with the account, each table by
-    # its own reviewed, previewed clean-up. Four have one unambiguous owner
-    # column and no stored file, so the purge deletes them once v1.5 is
-    # registered (scripts/phase1_retention_v1_5_counts.sql previews them):
-    # a review of the speaker's own Take (owned through the Take, which the
-    # foreign key names; before the recording it points at, 50), and the
-    # reflection clips and strong sides, owned by `user_id` (0429 lets the
-    # retired-write guard pass exactly the rows a running purge names). The
-    # rest keep stopping the erasure for review: rows from more than one
-    # producer or owner, files without a recorded hash, a key the database
-    # does not check, or a production shape this repository cannot show.
-    # Nine of the ten are listed by the
-    # bundled-era erasure (migrations/pending/erase_bundled_era_corpus.sql),
-    # which is their own authorized, previewed clean-up.
+    # are named explicitly so catalog audit is complete, while their matches
+    # block until a dedicated retention/purge decision exists.
     PurgeDependency("legacy_acoustic_labels", "acoustic_labels",
                     "recording_id", "recording", "external_review",
                     "dataset_lineage", 300),
-    _v1_5_record("legacy_recording_review_annotations",
-                 "recording_review_annotations", "session_id", "take",
-                 "dataset_lineage", 49),
-    _v1_5_record("legacy_recording_reviews", "recording_reviews",
-                 "session_id", "take", "dataset_lineage", 48),
-    _v1_5_record("legacy_reflection_clips", "reflection_clips", "user_id",
-                 "user", "dataset_lineage", 300),
+    PurgeDependency("legacy_recording_review_annotations",
+                    "recording_review_annotations", "session_id", "take",
+                    "external_review", "dataset_lineage", 300),
+    PurgeDependency("legacy_recording_reviews", "recording_reviews",
+                    "session_id", "take", "external_review",
+                    "dataset_lineage", 300),
+    PurgeDependency("legacy_reflection_clips", "reflection_clips", "user_id",
+                    "user", "external_review", "dataset_lineage", 300),
     PurgeDependency("legacy_shadow_predictions", "shadow_predictions",
                     "session_id", "take", "external_review",
                     "dataset_lineage", 300),
     PurgeDependency("legacy_snippet_labels", "snippet_labels", "snippet_id",
                     "snippet", "external_review", "dataset_lineage", 300),
-    _v1_5_record("legacy_strong_sides", "strong_sides_library", "user_id",
-                 "user", "dataset_lineage", 300),
+    PurgeDependency("legacy_strong_sides", "strong_sides_library", "user_id",
+                    "user", "external_review", "dataset_lineage", 300),
     PurgeDependency("legacy_training_labels", "training_labels", "session_id",
                     "take", "external_review", "dataset_lineage", 300),
 
@@ -1515,19 +1408,6 @@ def dependency_manifest_sha256() -> str:
 
 def dependency_by_code(code: str) -> PurgeDependency | None:
     return next((item for item in DEPENDENCIES if item.code == code), None)
-
-
-def carve_outs(code: str) -> tuple[PurgeDependency, ...]:
-    """The entries whose rows are carved out of this one's (row_filter)."""
-    return tuple(item for item in DEPENDENCIES if item.carved_from == code)
-
-
-#: Library content (retention schedule v1.5, N50 P4): a tombstone that clears
-#: only the columns that link the row to the speaker; the row, and the video
-#: it names, stay as the library's.
-DETACH_LINKS: dict[str, tuple[str, ...]] = {
-    "admin_uploaded_reference_videos": ("user_id", "session_id", "draft_id"),
-}
 
 #: Relations kept as an empty receipt by tombstone_phase1_purge_lineage_v1
 #: (migration 0379, founder N12). The only other tombstone is the project row.

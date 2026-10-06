@@ -49,28 +49,13 @@ class _Query:
         self.bounds: tuple[int, int] | None = None
         self.cap: int | None = None
         self.deleting = False
-        # PostgREST's `return=minimal`: nothing asked back, so the role
-        # needs SELECT only on the columns the filters name (0429).
-        self.minimal = False
-        self.updating: dict | None = None
 
     def select(self, columns: str) -> "_Query":
         self.columns = columns
         return self
 
-    def delete(self, returning: Any = None) -> "_Query":
+    def delete(self) -> "_Query":
         self.deleting = True
-        self.minimal = getattr(returning, "value", returning) == "minimal"
-        return self
-
-    def update(self, values: dict, returning: Any = None) -> "_Query":
-        self.updating = dict(values)
-        self.minimal = getattr(returning, "value", returning) == "minimal"
-        return self
-
-    def is_(self, column: str, value: Any) -> "_Query":
-        assert str(value) == "null", "only IS NULL is spoken here"
-        self.filters.append((column, "is", None))
         return self
 
     def eq(self, column: str, value: Any) -> "_Query":
@@ -100,27 +85,13 @@ class _Query:
             if op == "=":
                 where.append(sql.SQL("{}::text = %s").format(sql.Identifier(column)))
                 args.append(str(value))
-            elif op == "is":
-                where.append(sql.SQL("{} IS NULL").format(sql.Identifier(column)))
             else:
                 where.append(sql.SQL("{}::text = ANY(%s)").format(sql.Identifier(column)))
                 args.append([str(v) for v in value])
-        returning = sql.SQL("" if self.minimal else " RETURNING *")
-        if self.updating is not None:
-            assert where, "an unfiltered UPDATE never reaches the database"
-            assignments = sql.SQL(", ").join(
-                sql.SQL("{} = %s").format(sql.Identifier(column))
-                for column in self.updating)
-            statement = sql.SQL("UPDATE public.{} SET {} WHERE {}").format(
-                sql.Identifier(self.relation), assignments,
-                sql.SQL(" AND ").join(where)) + returning
-            return _Result(self.client.fetch(
-                statement, [*self.updating.values(), *args]))
         if self.deleting:
             assert where, "an unfiltered DELETE never reaches the database"
-            statement = sql.SQL("DELETE FROM public.{} WHERE {}").format(
-                sql.Identifier(self.relation),
-                sql.SQL(" AND ").join(where)) + returning
+            statement = sql.SQL("DELETE FROM public.{} WHERE {} RETURNING *").format(
+                sql.Identifier(self.relation), sql.SQL(" AND ").join(where))
             return _Result(self.client.fetch(statement, args))
         query = sql.SQL("SELECT {} FROM public.{}").format(
             columns, sql.Identifier(self.relation))
@@ -182,10 +153,7 @@ class _SqlClient:
             cur.execute("SET ROLE service_role")
             try:
                 cur.execute(query, args)
-                # A statement that returns nothing (`return=minimal`) has no
-                # result to fetch.
-                return ([dict(row) for row in cur.fetchall()]
-                        if cur.description else [])
+                return [dict(row) for row in cur.fetchall()]
             finally:
                 cur.execute("RESET ROLE")
 

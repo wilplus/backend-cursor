@@ -37,7 +37,6 @@ from tests.test_purge_registry_selectors_exist import (  # noqa: E402
 PLACED = (
     set(scope.PROJECT_SELECTORS) | scope.ACCOUNT_LEVEL
     | set(scope.WIPED_WITH_PARENT) | set(scope.PROJECT_HOLDS)
-    | scope.PROJECT_REVIEW
 )
 
 
@@ -49,7 +48,6 @@ def test_no_code_is_placed_twice():
     lists = (
         set(scope.PROJECT_SELECTORS), set(scope.ACCOUNT_LEVEL),
         set(scope.WIPED_WITH_PARENT), set(scope.PROJECT_HOLDS),
-        set(scope.PROJECT_REVIEW),
     )
     assert sum(len(item) for item in lists) == len(PLACED)
 
@@ -66,20 +64,11 @@ def test_every_deleted_retained_or_tombstoned_account_table_is_placed():
     assert unplaced == []
 
 
-#: A tombstone that belongs to the account, not to any project: a library
-#: video loses its link to the speaker when the ACCOUNT goes (v1.5, N50 P4).
-ACCOUNT_TOMBSTONES = {"reference_videos_library"}
-
-
 def test_every_tombstone_reaches_the_project():
     """A tombstone counted zero is never wiped; each must count the project's
-    rows, or be wiped and counted through its parent - unless the decision
-    that made it is the account's alone."""
+    rows, or be wiped and counted through its parent."""
     for dependency in DEPENDENCIES:
         if dependency.disposition != "tombstone":
-            continue
-        if dependency.code in ACCOUNT_TOMBSTONES:
-            assert dependency.code in scope.ACCOUNT_LEVEL
             continue
         assert (
             dependency.code in scope.PROJECT_SELECTORS
@@ -102,16 +91,6 @@ def test_every_re_pointed_column_exists_in_its_table():
         if not found:
             missing.append(f"{code}: {dependency.relation}.{column}")
     assert missing == []
-
-
-def test_review_in_a_project_purge_is_kept_for_what_no_project_column_reaches():
-    """v1.5's PROJECT_REVIEW is unplaced on purpose: a project purge counts
-    the account's rows there and stops for review when it holds any."""
-    for code in scope.PROJECT_REVIEW:
-        dependency = dependency_by_code(code)
-        assert dependency is not None and dependency.schedule == "1.5", code
-        assert dependency.locator_kind in {"principal", "user", "speaker",
-                                           "permit"}, code
 
 
 def test_every_re_pointed_locator_is_one_the_project_graph_fills():
