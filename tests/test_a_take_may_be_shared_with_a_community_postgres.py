@@ -165,11 +165,12 @@ def test_browser_roles_get_nothing_on_the_tables_or_the_view(db):
                     probe.execute("SELECT has_table_privilege(%s, %s, %s)",
                                   (role, f"public.{name}", privilege))
                     assert probe.fetchone()[0] is False, (role, name, privilege)
+        # PUBLIC is grantee 0 in an ACL; nothing may be granted to it.
         for name in names:
-            probe.execute("SELECT relacl FROM pg_class WHERE oid = %s::regclass",
+            probe.execute("SELECT count(*) FROM pg_class c, aclexplode(c.relacl) a "
+                          "WHERE c.oid = %s::regclass AND a.grantee = 0",
                           (f"public.{name}",))
-            acl = probe.fetchone()[0] or []
-            assert not any(str(entry).startswith("=") for entry in acl), (name, acl)
+            assert probe.fetchone()[0] == 0, name
 
 
 def _a_moment(cur):
