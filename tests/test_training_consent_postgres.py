@@ -382,3 +382,49 @@ def test_a_receipt_for_a_version_activated_earlier_does_not_count(db, training_p
     _receipt(db, principal, earlier)
     with pytest.raises(psycopg2.Error, match="TRAINING_CONSENT_NEEDS_POLICY_RECEIPT"):
         _grant(db, principal)
+
+
+# ── 0436: the acceptance the account is processed under ────────────────────
+
+def _claim(db, guest, account):
+    """A guest claimed into the account at sign-in (owner_claim_events)."""
+    _one(db, """
+        INSERT INTO public.owner_claim_events (
+            source_owner_principal_id, target_owner_principal_id,
+            claimed_user_id, claim_proof_hash, idempotency_key,
+            source_created_at)
+        VALUES (%s, %s, gen_random_uuid(), %s, %s, now() - interval '1 hour')
+        RETURNING id""",
+        (guest, account, "c" * 64, f"claim-{uuid.uuid4()}"))
+
+
+def test_a_receipt_on_the_claimed_guest_the_account_resolves_to_counts(
+        db, training_policy, processing_version):
+    """The founder's case (2026-10-07): the current Terms were accepted as a
+    guest, then the guest was claimed at sign-in. The yes is recorded under
+    the account, as before."""
+    account, guest = _principal(db), _principal(db)
+    _receipt(db, guest, processing_version)
+    _claim(db, guest, account)
+    assert _one(db, "SELECT public.resolve_phase1_acquisition_principal_v1(%s)",
+                (account,)) == guest
+    grant = _grant(db, account)
+    assert grant["acquisition_principal_id"] == account
+    assert grant["event_kind"] == "grant"
+
+
+def test_an_unclaimed_receipt_elsewhere_still_does_not_count(
+        db, training_policy, processing_version):
+    account, stranger = _principal(db), _principal(db)
+    _receipt(db, stranger, processing_version)
+    with pytest.raises(psycopg2.Error, match="TRAINING_CONSENT_NEEDS_POLICY_RECEIPT"):
+        _grant(db, account)
+
+
+def test_a_claimed_guest_with_no_receipt_does_not_count(
+        db, training_policy, processing_version):
+    account, guest = _principal(db), _principal(db)
+    _claim(db, guest, account)
+    with pytest.raises(psycopg2.Error, match="TRAINING_CONSENT_NEEDS_POLICY_RECEIPT"):
+        _grant(db, account)
+

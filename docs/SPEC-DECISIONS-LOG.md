@@ -2111,3 +2111,14 @@ change, signed in the same message: "Two things to confirm" becomes "Three
 things to confirm". The frontend's CLAUDE.md carries the rule ("Design lock
 — the consent screens"); `docs/FOUNDER-LOCK-consent-screens-2026-10-07.md`
 is the written record.
+
+**N61 · A training yes counts the acceptance the account is processed under
+(founder's bug report, chat, 7 October 2026).** "Couldn't save that. Try
+again." on Help improve WillpowerLab, every time. The yes is recorded under
+the account, but its receipt check (0373 C1, 0412) read the account only,
+while the account's processing is authorised by the principal
+resolve_phase1_acquisition_principal_v1 returns: a guest claimed into the
+account at sign-in, after the current Terms were accepted as a first-time
+visitor. Migration 0436 lets C1 accept a receipt held by the account or by
+that resolved principal; nothing else changes, and no one else's acceptance
+can count. Ships after a GPT check (HO-14).

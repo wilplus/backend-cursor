@@ -680,6 +680,14 @@ psql -q -d "$DB" -c "ALTER TABLE public.recordings
 hard migrations/a_corpus_import_is_processed_under_the_founders_basis.sql
 hard migrations/a_corpus_import_is_processed_under_the_founders_basis.sql
 
+# 0436 (2026-10-07): a training yes counts the acceptance the account is
+# processed under (0412's C1 also reads the principal 0414's resolver returns:
+# a guest claimed into the account). Both lanes, after 0435, as in the
+# manifest. Twice: apply/reapply idempotency. Its cases are in
+# tests/test_training_consent_postgres.py.
+hard migrations/a_training_yes_counts_the_acceptance_the_account_is_processed_under.sql
+hard migrations/a_training_yes_counts_the_acceptance_the_account_is_processed_under.sql
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing
