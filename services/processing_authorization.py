@@ -135,6 +135,7 @@ def _domain_code(error: Exception, fallback: str) -> str:
         "IDEMPOTENCY_CONFLICT", "PROVIDER_PERMIT_INVALID",
         "PROCESSING_BOUNDARY_INCOMPLETE", "CONSENT_CHOICE_INVALID",
         "PROCESSING_PRINCIPAL_UNRESOLVED",
+        "PROCESSING_SOURCE_IS_CORPUS_IMPORT",
     )
     for code in known:
         if code in text:
@@ -174,15 +175,19 @@ def _optional_purposes(payload: Any) -> list[str]:
     return out
 
 
+def _gate_mode() -> str:
+    """``PLF1_PROCESSING_AUTHORIZATION_MODE``, read on every call."""
+    return os.getenv(
+        "PLF1_PROCESSING_AUTHORIZATION_MODE", "off").strip().lower()
+
+
 class ProcessingAuthorizationService:
     """The only application API for Phase-1 processing authority."""
 
     def __init__(self, database: Any, *, mode: str | None = None) -> None:
         self.database = database
         self.client = database.client
-        self.mode = (mode if mode is not None else os.getenv(
-            "PLF1_PROCESSING_AUTHORIZATION_MODE", "off"
-        )).strip().lower()
+        self.mode = (mode if mode is not None else _gate_mode())
 
     @property
     def enforced(self) -> bool:
@@ -984,6 +989,182 @@ class ProcessingAuthorizationService:
             if _is_missing(error):
                 return []
             raise
+
+
+# ── Corpus imports: the founder's corpus basis (N58, 0435) ─────────────────
+# FOUNDER 2026-10-07, panel answer CO2, decisions log N58: "no need for
+# license check pls; we have it legally recorded and we don't need license
+# to prove it! this version is agreed with the counsel and it is my executive
+# decision". A training-corpus import (v2_sessions.source='training_import',
+# created by a coach through POST /v2/coach/training-imports) has no
+# acquiring principal and no acceptance: the voice on it is not a user, and
+# the importing coach's own acceptance covers the coach's recordings, never a
+# third party's audio (B-2, 0355). Its provider calls are permitted instead
+# under ONE founder-recorded corpus basis, by the database
+# (issue_corpus_provider_permit_v1), in a ledger of its own. Nothing here
+# reads or writes a principal, a receipt or a Phase-1 permit; a person's
+# recording can never be permitted this way (0435 says why, in the
+# database, where it is enforced).
+
+CORPUS_IMPORT_SOURCE = "training_import"
+CORPUS_BASIS_DECISION = "N58"
+
+
+def is_corpus_import_session(session: Any) -> bool:
+    """A training import by its session source. Only ROUTES a call to the
+    corpus permit writer; the database decides whether it is one."""
+    return (isinstance(session, Mapping)
+            and session.get("source") == CORPUS_IMPORT_SOURCE)
+
+
+def _import_switch_on() -> bool:
+    from services.training_import import import_enabled
+
+    return import_enabled()
+
+
+class CorpusImportAuthorization(ProcessingAuthorizationService):
+    """The canonical boundary for a corpus import's provider calls.
+
+    A drop-in for :class:`ProcessingAuthorizationService` inside
+    :class:`services.authorized_provider.AuthorizedProviderAdapter`: the
+    adapter asks for permits and records events exactly as for a Take, and
+    this answers from the corpus basis instead of a receipt. It holds no
+    acquisition principal and refuses one if handed one, so the importing
+    coach's identity can never ride on a corpus permit.
+    """
+
+    def require_current(
+        self, acquisition_principal_id: str, *, operation: str
+    ) -> ProcessingAuthority:
+        raise ProcessingAuthorizationError(
+            "CORPUS_IMPORT_HAS_NO_PRINCIPAL",
+            "A corpus import is authorized by the corpus basis, not a person.",
+            403,
+        )
+
+    def issue_provider_permit(
+        self, *, acquisition_principal_id: str, take_id: str | None,
+        recording_id: str | None, provider: str, operation_kind: str,
+        minimum_data_manifest: Mapping[str, Any], idempotency_key: str,
+        _reissued: bool = False,
+    ) -> dict | None:
+        if not self.enforced:
+            return None
+        if acquisition_principal_id:
+            raise ProcessingAuthorizationError(
+                "CORPUS_IMPORT_HAS_NO_PRINCIPAL",
+                "A corpus import is never processed under a person.", 403,
+            )
+        if not _import_switch_on():
+            raise ProcessingAuthorizationError(
+                "CORPUS_IMPORT_DISABLED",
+                "Training imports are switched off.", 403,
+            )
+        if not take_id:
+            raise ProcessingAuthorizationError(
+                "CORPUS_IMPORT_UNREGISTERED",
+                "A corpus permit names the import it is for.", 403,
+            )
+        try:
+            result = self.client.rpc("issue_corpus_provider_permit_v1", {
+                "p_session_id": str(take_id),
+                "p_recording_id": str(recording_id) if recording_id else None,
+                "p_provider": provider,
+                "p_operation_kind": operation_kind,
+                "p_minimum_data_manifest": dict(minimum_data_manifest),
+                "p_idempotency_key": idempotency_key,
+                "p_ttl_seconds": 900,
+            }).execute()
+            row = _one(result.data)
+            if not row:
+                raise RuntimeError("empty corpus permit")
+        except Exception as error:
+            raise ProcessingAuthorizationError(
+                _corpus_code(error, "PROVIDER_PERMIT_DENIED"),
+                "Provider processing of this import is not authorized.", 403,
+            ) from error
+        if row.get("basis_decision_ref") != CORPUS_BASIS_DECISION:
+            # Any other basis needs its own decision before code honours it.
+            raise ProcessingAuthorizationError(
+                "CORPUS_BASIS_ABSENT",
+                "The corpus permit does not name the recorded basis.", 403,
+            )
+        if not _reissued and _permit_expired(row):
+            return self.issue_provider_permit(
+                acquisition_principal_id="", take_id=take_id,
+                recording_id=recording_id, provider=provider,
+                operation_kind=operation_kind,
+                minimum_data_manifest=minimum_data_manifest,
+                idempotency_key=f"{idempotency_key}:reissue:{uuid.uuid4().hex[:12]}",
+                _reissued=True,
+            )
+        return row
+
+    def record_provider_event(
+        self, permit_id: str | None, event_kind: str, *,
+        provider_operation_ref: str | None = None,
+        error_code: str | None = None, metadata: Mapping[str, Any] | None = None,
+    ) -> None:
+        if not self.enforced or not permit_id:
+            return
+        self.client.rpc("record_corpus_provider_operation_v1", {
+            "p_permit_id": permit_id, "p_event_kind": event_kind,
+            "p_provider_operation_ref": provider_operation_ref,
+            "p_error_code": error_code,
+            "p_metadata": dict(metadata or {}),
+        }).execute()
+
+
+_CORPUS_CODES = (
+    "CORPUS_IMPORT_UNREGISTERED", "CORPUS_SOURCE_NOT_IMPORT",
+    "CORPUS_SESSION_HAS_OWNER", "CORPUS_RECORDING_NOT_IMPORT",
+    "CORPUS_RECORDING_ACQUIRED", "CORPUS_BASIS_ABSENT",
+    "CORPUS_OPERATION_NOT_COVERED", "CORPUS_IMPORT_CONFLICT",
+    "IDEMPOTENCY_CONFLICT", "INVALID_PERMIT_TTL",
+)
+
+
+def _corpus_code(error: Exception, fallback: str) -> str:
+    text = str(error or "")
+    return next((code for code in _CORPUS_CODES if code in text), fallback)
+
+
+def register_corpus_import(
+    database: Any, *, session_id: str, recording_id: str | None,
+) -> dict | None:
+    """Record that the coach import route created this import, under the
+    corpus basis (``register_corpus_import_v1``). Called by that route and
+    nothing else; an import without it is never permitted.
+
+    Enforcing, a refusal raises (the import cannot be analysed, so it should
+    not start). Off, it is recorded where it can be and a failure is logged:
+    nothing is permitted while the gate is off, and an import must not stop
+    working for the state it was off for.
+    """
+    enforced = _gate_mode() in _ENFORCED_VALUES
+    try:
+        if not recording_id:
+            raise RuntimeError("CORPUS_IMPORT_UNREGISTERED: no recording")
+        result = database.client.rpc("register_corpus_import_v1", {
+            "p_session_id": str(session_id),
+            "p_recording_id": str(recording_id),
+        }).execute()
+        row = _one(result.data)
+        if not row:
+            raise RuntimeError("empty corpus registration")
+        return row
+    except Exception as error:
+        if not enforced:
+            logger.warning("corpus import registration failed sid=%s: %s",
+                           session_id, error)
+            return None
+        code = _corpus_code(error, "")
+        raise ProcessingAuthorizationError(
+            code or "CORPUS_IMPORT_UNREGISTERED",
+            "The import could not be registered for processing.",
+            403 if code else 503,
+        ) from error
 
 
 def evidence_sha256(value: Mapping[str, Any]) -> str:

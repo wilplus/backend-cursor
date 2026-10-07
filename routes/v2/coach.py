@@ -2069,6 +2069,33 @@ def _int_or(raw, default: int) -> int:
         return default
 
 
+def _register_corpus_import(prepared: dict):
+    """Record that THIS route created the import, under the founder's corpus
+    basis (N58, 0435): an import's provider calls are permitted only for a
+    session registered here. None when recorded (or the gate is off, where
+    nothing is permitted anyway); else the refusal, with the import marked
+    failed, because under enforce nothing could analyse it."""
+    from services.processing_authorization import (
+        ProcessingAuthorizationError, register_corpus_import,
+    )
+    try:
+        register_corpus_import(db, session_id=prepared["session_id"],
+                               recording_id=prepared.get("recording_id"))
+        return None
+    except ProcessingAuthorizationError as refusal:
+        logger.warning("training import not registered sid=%s code=%s",
+                       prepared.get("session_id"), refusal.code)
+        try:
+            db.takes.set_session_analysis_state(
+                prepared["session_id"], "failed", error=refusal.code)
+        except Exception:
+            logger.warning("could not mark the unregistered import failed",
+                           exc_info=True)
+        return jsonify({"code": refusal.code,
+                        "error": "the import could not be registered"}), \
+            refusal.status
+
+
 @v2_bp.route("/coach/training-imports", methods=["POST"])
 @training_import_enabled
 @whisper_limit
@@ -2173,6 +2200,8 @@ def v2_coach_training_import():
         # labelled twice and trains twice, invisibly).
         if prepared.get("duplicate"):
             return jsonify({**prepared, "status": "duplicate"}), 200
+        if (unregistered := _register_corpus_import(prepared)) is not None:
+            return unregistered
 
         # ── 202, then analyse in the background ───────────────────────────
         # Whisper + the cutting pass is MINUTES on a long talk, and the FE's
@@ -3252,13 +3281,13 @@ def v2_coach_put_confidence_label(snippet_id):
         # RULE 2 (founder 2026-08-11) — the owner is not a peer, and that is
         # about WHOSE CLIP it is, not which surface rated it. A coach rating a
         # session they own writes lane='coach' and is still a self-report, so
-        # ownership is compared explicitly here rather than read off the lane.
+        # ownership is compared explicitly rather than read off the lane; a
+        # corpus import is not its importer's voice (CO3 A, N58).
         rater_id = getattr(request, "user_id", None)
-        self_report = bool(
-            rater_id and sess and str(sess.get("user_id")) == str(rater_id))
         from services.label_quorum import (
-            machine_proposal, rater_submission_access,
+            machine_proposal, rater_submission_access, rating_is_self_report,
         )
+        self_report = rating_is_self_report(sess, rater_id)
         existing_by_snippet = db.get_confidence_labels_by_snippet_ids(
             [snippet_id]) or {}
         existing_labels = existing_by_snippet.get(str(snippet_id), [])

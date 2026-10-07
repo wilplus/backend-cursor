@@ -1286,6 +1286,13 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     # corpus speaker's key and its learn/test side. No user id, no name, no
     # recording; the import sessions it groups are purged on their own.
     "corpus_speaker_splits",
+    # The founder's corpus processing basis and what was permitted under it
+    # (0435, N58): the basis row, each import's registration by the coach
+    # import route, and the import's provider permits and their events. No
+    # principal, no user id, no content; the import sessions they name are
+    # corpus audio, not an account's, and are purged on their own.
+    "corpus_processing_bases", "corpus_import_registrations",
+    "corpus_provider_permits", "corpus_provider_operations",
     "admin_users", "coach_users", "admin_annotation_export_runs",
     "admin_notifications", "arc_invite_codes", "casual_voice_benchmarks",
     "chat_question_pool", "coach_video_assets",

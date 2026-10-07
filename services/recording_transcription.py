@@ -162,36 +162,45 @@ def transcribe_recording(
         from services.authorized_provider import (
             AuthorizedProviderAdapter,
             ProviderCoordinates,
+            corpus_import_adapter,
         )
         from services.db import db
         from services.processing_authorization import ProcessingAuthorizationService
 
         authorization = ProcessingAuthorizationService(db)
         whisper_bytes, whisper_name = _transcription_audio(state, log=log)
+        adapter = None
         if authorization.enforced:
             session = db.v2_get_session_by_id(state.session_id) or {}
-            principal_id = authorization.resolve_acquisition_principal(
-                str(session.get("owner_principal_id") or ""),
-                user_id=str(state.user_id) if state.user_id else None,
-                recording_id=state.recording_id,
-            )
-            if not principal_id:
-                from services.processing_authorization import ProcessingAuthorizationError
-                raise ProcessingAuthorizationError(
-                    "PROCESSING_PRINCIPAL_UNRESOLVED",
-                    "The recording owner could not be resolved.", 403,
+            # A training-corpus import: the founder's corpus basis (N58,
+            # 0435), never a principal.
+            adapter = corpus_import_adapter(
+                db, session, take_id=state.session_id,
+                recording_id=state.recording_id)
+            if adapter is None:
+                principal_id = authorization.resolve_acquisition_principal(
+                    str(session.get("owner_principal_id") or ""),
+                    user_id=str(state.user_id) if state.user_id else None,
+                    recording_id=state.recording_id,
                 )
+                if not principal_id:
+                    from services.processing_authorization import ProcessingAuthorizationError
+                    raise ProcessingAuthorizationError(
+                        "PROCESSING_PRINCIPAL_UNRESOLVED",
+                        "The recording owner could not be resolved.", 403,
+                    )
         else:
             principal_id = "phase1-gate-inactive"
-        adapter = AuthorizedProviderAdapter(
-            db,
-            ProviderCoordinates(
-                acquisition_principal_id=principal_id,
-                take_id=state.session_id,
-                recording_id=state.recording_id,
-            ),
-            authorization=authorization,
-        )
+        if adapter is None:
+            adapter = AuthorizedProviderAdapter(
+                db,
+                ProviderCoordinates(
+                    acquisition_principal_id=principal_id,
+                    take_id=state.session_id,
+                    recording_id=state.recording_id,
+                ),
+                authorization=authorization,
+            )
         transcription = adapter.transcribe_audio(
             whisper_bytes,
             whisper_name,

@@ -2046,3 +2046,40 @@ without the founder. The frontend's CLAUDE.md carries the rule
 ("Design lock — the coach panel"); `docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`
 stays the written record. The panel's training-corpus questions CO2 and
 CO3 are open and do not change the screens.
+
+**N58 · Corpus imports are processed under one founder basis, and an
+importer's judgement counts (founder, Navigation Panel export, 7 October
+2026, 08:14 UTC).**
+1. **CO2: no per-import licence record; one corpus processing basis.** The
+   founder's note is the answer, verbatim: "no need for license check pls;
+   we have it legally recorded and we don't need license to prove it! this
+   version is agreed with the counsel and it is my executive decision". An
+   executive decision, agreed with counsel. A training-corpus import
+   (`source='training_import'`, created by a coach through
+   `POST /v2/coach/training-imports` while `Config.TRAINING_IMPORT_ENABLED`)
+   may be analysed (Whisper and the rest) under
+   `PLF1_PROCESSING_AUTHORIZATION_MODE=enforce` on the strength of ONE
+   durable basis the founder recorded (`corpus_processing_bases`, decision
+   N58, 2026-10-07, "legal basis recorded by the founder, agreed with
+   counsel"; migration 0435), never a user's consent and never the
+   importing coach's own acceptance. It sits inside the canonical
+   authorization path: the same provider adapter and permit scope, with
+   its own database permit writer (`issue_corpus_provider_permit_v1`) and
+   ledger beside the Phase-1 one; every permit names the basis (id and
+   N58) and the session. A permit is refused when the switch is off, the
+   session is not a training import, the import route did not register it,
+   the session has an owner or a project, its recording was acquired
+   through the Phase-1 intake, or no basis is in force. No ordinary Take,
+   guest Take or user recording can ever be authorized by the corpus basis
+   (the B-2 hole closed by 0355 stays closed), and the other way round the
+   Phase-1 permit writer now refuses a corpus import under any principal,
+   the importing coach's included (its one added check; the rest of 0355
+   is unchanged, as is the resolver). Phase 2 stays closed: dataset release,
+   training, evaluation and promotion are untouched; nothing trains.
+2. **CO3 A: a coach's blind judgement on a clip they imported counts like
+   any other coach's.** An import's `user_id` is the corpus row's owner,
+   the importing coach by default, never the voice on the clip, so their
+   label is not a self-report and counts toward quorum
+   (`label_quorum.rating_is_self_report`). "A coach still can't judge their
+   own voice anywhere": a coach or user rating their own Take is still a
+   self-report, unchanged.
