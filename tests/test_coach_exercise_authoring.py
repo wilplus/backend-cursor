@@ -336,13 +336,14 @@ class DraftTests(unittest.TestCase):
 
 
 class RouteTests(unittest.TestCase):
-    def test_the_module_is_registered_and_every_route_is_coach_or_admin_only(self):
+    def test_the_module_is_registered_and_every_route_is_gated(self):
         from routes.v2 import DOMAIN_MODULES
         self.assertIn("coach_exercises", DOMAIN_MODULES)
         source = (ROOT / "routes" / "v2" / "coach_exercises.py").read_text()
         routes = source.count("@v2_bp.route(")
-        self.assertEqual(routes, 4)
-        self.assertEqual(source.count("@require_admin_or_coach"), routes)
+        self.assertEqual(routes, 5)
+        self.assertEqual(source.count("@require_admin_or_coach"), 4)
+        self.assertEqual(source.count("@require_founder"), 1)
         for fn in ("library_for_authoring", "save_from_coach_panel",
                    "attach_video", "draft_script"):
             self.assertIn(f"{fn}(", source)
