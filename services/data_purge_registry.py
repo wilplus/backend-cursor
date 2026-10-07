@@ -340,6 +340,12 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("practice_exercise_coach_request",
                     "exercise_coach_requests", "take_session_id",
                     "take", "delete", "derived_feedback", 59),
+    # The answers a request had and no longer has (0446, Q-B12 A): the
+    # coach's words about the speaker's Take, so they go with the Take,
+    # before the request (whose cascade would take them too).
+    PurgeDependency("exercise_coach_request_answer_versions",
+                    "exercise_coach_request_answer_versions", "take_session_id",
+                    "take", "delete", "derived_feedback", 58),
     # The speaker's opens and skips of their bookmarks (0408). About one
     # speaker's Take: they go with it.
     PurgeDependency("moment_events", "moment_events", "take_session_id",

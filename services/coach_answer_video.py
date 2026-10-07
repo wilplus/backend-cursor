@@ -16,13 +16,16 @@ _EXTENSIONS = (".mp4", ".mov", ".webm", ".m4v")
 
 
 def store_answer_video(database: Any, *, request_row: Any, video_file: Any,
-                       max_mb: int) -> tuple[int, dict]:
-    """(status, payload): 200 {video_url}, or the refusal named."""
+                       max_mb: int, coach_id: Any = None) -> tuple[int, dict]:
+    """(status, payload): 200 {video_url}, or the refusal named. A coach
+    changing their own answer (0446) may add a new video; another coach's
+    resolved request is closed."""
     if not isinstance(request_row, dict) or not request_row.get("id"):
         return 404, {"code": "NOT_FOUND", "error": "No request for this moment."}
-    if request_row.get("resolution"):
+    from services.coach_request_drafts import changed_by_another_coach
+    if changed_by_another_coach(request_row, coach_id):
         return 409, {"code": "ALREADY_RESOLVED",
-                     "error": "This moment already has your answer."}
+                     "error": "This moment already has another coach's answer."}
     if video_file is None or not getattr(video_file, "filename", ""):
         return 400, {"code": "INVALID_INPUT", "error": "video_file is required"}
     ext = os.path.splitext(secure_filename(video_file.filename))[1].lower()

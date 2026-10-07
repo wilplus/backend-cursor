@@ -781,6 +781,14 @@ hard migrations/a_coach_is_asked_to_listen_again.sql
 hard migrations/the_coach_s_diagnosis_comes_first.sql
 hard migrations/the_coach_s_diagnosis_comes_first.sql
 
+# 0446 (coach panel lock flows 7 and 12; Q-B12 A; D-CP-7): a coach may change
+# their answer. The history table, the guard with its one door and the v3
+# resolver over exercise_coach_requests (0385, 0402, 0403), which both lanes
+# carry. Both lanes, after 0445, as in the manifest. Twice: apply/reapply
+# idempotency. Its suite: tests/test_a_coach_may_change_their_answer_postgres.py.
+hard migrations/a_coach_may_change_their_answer.sql
+hard migrations/a_coach_may_change_their_answer.sql
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

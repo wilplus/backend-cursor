@@ -15108,25 +15108,30 @@ class DatabaseService:
         exercise_id: Optional[str], exercise_version: Optional[int],
         share: bool, answer_text: Optional[str] = None,
     ) -> Optional[dict]:
-        """Resolve once, share once (migration 0385; in words 0402). Raises the
-        database's refusal (e.g. EXERCISE_COACH_REQUEST_ALREADY_RESOLVED) to
-        the caller."""
-        params = {
+        """The coach's answer (migration 0385; in words 0402; changeable
+        0446): the first answer is written; the same again is a no-op that
+        may add the share; a different answer by the SAME coach replaces it
+        and keeps the old one in exercise_coach_request_answer_versions
+        (Q-B12 A); another coach's is refused. Raises the database's refusal
+        (e.g. EXERCISE_COACH_REQUEST_ALREADY_RESOLVED) to the caller."""
+        result = self.client.rpc("resolve_exercise_coach_request_v3", {
             "p_request_id": str(request_id),
             "p_coach_id": str(coach_id),
             "p_resolution": str(resolution),
             "p_exercise_id": exercise_id,
             "p_exercise_version": exercise_version,
             "p_share": bool(share),
-        }
-        if answer_text is None:
-            result = self.client.rpc(
-                "resolve_exercise_coach_request_v1", params).execute()
-        else:
-            # An answer in words (0402): a praise line or a clearer version.
-            result = self.client.rpc("resolve_exercise_coach_request_v2", {
-                **params, "p_answer_text": str(answer_text)}).execute()
+            "p_answer_text": None if answer_text is None else str(answer_text),
+        }).execute()
         return self._rpc_row(result.data)
+
+    def list_exercise_coach_request_answer_versions(self, request_id: str) -> list[dict]:
+        """The answers a request had and no longer has (0446), oldest
+        first: the coach's own history for the Summary screen, never the
+        speaker's. Raises on failure."""
+        res = (self.client.table("exercise_coach_request_answer_versions").select("*")
+               .eq("request_id", str(request_id)).order("version").execute())
+        return list(res.data or [])
 
     def set_exercise_coach_request_draft(
         self, *, request_id: str, surface: str, text: str,
