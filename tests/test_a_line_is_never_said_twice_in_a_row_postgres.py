@@ -138,6 +138,9 @@ def test_bad_input_is_refused(db):
             cur.execute("SELECT public.pick_line_bank_line_v1('', 'B02', 4, false)")
         with pytest.raises(psycopg2.Error):
             cur.execute("SELECT public.pick_line_bank_line_v1('u', 'B02', 0, false)")
+        with pytest.raises(psycopg2.Error, match="LINE_BANK_SIZE_INVALID"):
+            # GPT-0438: a bank of one line would say it twice in a row.
+            cur.execute("SELECT public.pick_line_bank_line_v1('u', 'B02', 1, false)")
         with pytest.raises(psycopg2.errors.CheckViolation):
             cur.execute("SELECT public.pick_line_bank_line_v1('u', 'not a bank!', 4, false)")
 

@@ -34,8 +34,8 @@
 -- (services/data_purge_registry.py, feedback_self_report_revision).
 -- Nothing here is a score or a label (AC-9, L3).
 --
--- Additive; idempotent; no env var. Adding the foreign key validates it
--- against an empty new table.
+-- Additive; idempotent; no env var. The foreign key is added last, NOT
+-- VALID, then validated against the empty new table.
 -- Rollback (a new forward migration): drop the function, the trigger, its
 -- function and the table.
 
@@ -67,21 +67,6 @@ COMMENT ON TABLE public.take_feedback_self_report_revision IS
     'Readers take the highest revision as the latest answer; the first stays '
     'auditable. Self-report provenance (L3). Purged with the Take.';
 
-DO $$
-BEGIN
-    IF to_regclass('public.take_feedback_self_report') IS NOT NULL
-       AND NOT EXISTS (
-           SELECT 1 FROM pg_constraint
-            WHERE conname = 'take_feedback_self_report_revision_report_fkey'
-       ) THEN
-        ALTER TABLE public.take_feedback_self_report_revision
-            ADD CONSTRAINT take_feedback_self_report_revision_report_fkey
-            FOREIGN KEY (report_id) REFERENCES public.take_feedback_self_report (id)
-            ON DELETE CASCADE;
-    ELSIF to_regclass('public.take_feedback_self_report') IS NULL THEN
-        RAISE NOTICE 'take_feedback_self_report_revision: take_feedback_self_report is not here; the foreign key waits for it';
-    END IF;
-END $$;
 
 CREATE OR REPLACE FUNCTION public.take_feedback_self_report_revision_never_changes()
 RETURNS trigger
@@ -184,6 +169,36 @@ BEGIN
         GRANT EXECUTE ON FUNCTION public.revise_take_feedback_response_v1(text, text, text, text) TO service_role;
         GRANT SELECT, INSERT, DELETE ON TABLE public.take_feedback_self_report_revision TO service_role;
         GRANT USAGE, SELECT ON SEQUENCE public.take_feedback_self_report_revision_id_seq TO service_role;
+        -- The function locks the first answer's row (SELECT ... FOR UPDATE)
+        -- as the app's role, which needs UPDATE on the parent. 0293 granted
+        -- ALL; it is stated here so this file does not lean on it
+        -- (GPT-0440 blocker).
+        IF to_regclass('public.take_feedback_self_report') IS NOT NULL THEN
+            GRANT SELECT, UPDATE ON TABLE public.take_feedback_self_report TO service_role;
+        END IF;
+    END IF;
+END $$;
+
+-- The foreign key goes last, so the share lock it takes on the live
+-- take_feedback_self_report is held only for the moment before COMMIT
+-- (GPT-0440 should-fix). It is added NOT VALID (no scan) and then
+-- validated: the new table is empty, and validating takes only a light
+-- lock on the parent.
+DO $$
+BEGIN
+    IF to_regclass('public.take_feedback_self_report') IS NOT NULL
+       AND NOT EXISTS (
+           SELECT 1 FROM pg_constraint
+            WHERE conname = 'take_feedback_self_report_revision_report_fkey'
+       ) THEN
+        ALTER TABLE public.take_feedback_self_report_revision
+            ADD CONSTRAINT take_feedback_self_report_revision_report_fkey
+            FOREIGN KEY (report_id) REFERENCES public.take_feedback_self_report (id)
+            ON DELETE CASCADE NOT VALID;
+        ALTER TABLE public.take_feedback_self_report_revision
+            VALIDATE CONSTRAINT take_feedback_self_report_revision_report_fkey;
+    ELSIF to_regclass('public.take_feedback_self_report') IS NULL THEN
+        RAISE NOTICE 'take_feedback_self_report_revision: take_feedback_self_report is not here; the foreign key waits for it';
     END IF;
 END $$;
 

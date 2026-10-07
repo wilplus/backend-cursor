@@ -7919,13 +7919,20 @@ class DatabaseService:
         except Exception as e:
             logger.warning("judgement revisions unreadable: %s", e, exc_info=True)
             return rows
+        def number(rev: dict) -> int:
+            # A malformed revision counts as none, so it never raises into
+            # the reader (GPT-0440 nit): the first answer stands instead.
+            try:
+                return int(rev.get("revision") or 0)
+            except (TypeError, ValueError):
+                return -1
+
         latest: dict[str, dict] = {}
         for rev in revisions:
-            if not isinstance(rev, dict):
+            if not isinstance(rev, dict) or number(rev) < 1:
                 continue
             key = str(rev.get("report_id"))
-            if key not in latest or int(rev.get("revision") or 0) > int(
-                    latest[key].get("revision") or 0):
+            if key not in latest or number(rev) > number(latest[key]):
                 latest[key] = rev
         out = []
         for row in rows:

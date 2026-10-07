@@ -19,7 +19,8 @@
 --     on, the cue measurably weaker then) and the last line shown was not
 --     already that later line -> -1, the later line;
 --   * otherwise the next ordinary line after the last ordinary one,
---     (last + 1) mod p_size, starting at 0. With p_size >= 2 this is never
+--     (last + 1) mod p_size, starting at 0. p_size must be >= 2 (a bank
+--     of one line is refused), so this is never
 --     the index shown just before.
 -- The bank's lines live in code (services/line_bank.py, byte-identical to
 -- the signed file); this table holds indexes only: no text, no score, no
@@ -70,7 +71,7 @@ BEGIN
     IF p_user_id IS NULL OR btrim(p_user_id) = '' THEN
         RAISE EXCEPTION 'LINE_BANK_USER_REQUIRED';
     END IF;
-    IF p_size IS NULL OR p_size < 1 THEN
+    IF p_size IS NULL OR p_size < 2 THEN
         RAISE EXCEPTION 'LINE_BANK_SIZE_INVALID';
     END IF;
     -- The first line of a speaker's bank: make the row exist so it can be

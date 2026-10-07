@@ -212,3 +212,36 @@ def test_closed_to_the_browser_and_idempotent(db):
         cur.execute("SELECT count(*) FROM pg_constraint WHERE conname = "
                     "'take_feedback_self_report_revision_report_fkey'")
         assert cur.fetchone()[0] == 1
+
+
+def test_the_apps_role_can_change_a_judgement(db):
+    """GPT-0440 blocker: the function locks the first answer's row as the
+    caller, so the app's role (service_role) needs UPDATE on the parent.
+    It holds it, and a change made as that role is stored."""
+    with db.cursor() as cur:
+        cur.execute("SELECT 1 FROM pg_roles WHERE rolname = 'service_role'")
+        if cur.fetchone() is None:
+            pytest.skip("no service_role in this cluster")
+        cur.execute("SELECT has_table_privilege('service_role', "
+                    "'public.take_feedback_self_report', 'SELECT, UPDATE')")
+        assert cur.fetchone()[0] is True
+        take, owner, report_id = _first(cur, response="no")
+        cur.execute("BEGIN")
+        try:
+            # Supabase's service_role bypasses RLS; the rehearsal cluster's
+            # stand-in does not, so it is given that here, rolled back below.
+            cur.execute("ALTER ROLE service_role BYPASSRLS")
+            cur.execute("SET LOCAL ROLE service_role")
+            result = _revise(cur, take, owner, "yes")
+        finally:
+            cur.execute("ROLLBACK")
+        assert result["outcome"] == "revised"
+        assert result["row"]["response"] == "yes"
+
+
+def test_the_foreign_key_is_validated(db):
+    with db.cursor() as cur:
+        cur.execute(MIGRATION.read_text())
+        cur.execute("SELECT convalidated FROM pg_constraint WHERE conname = "
+                    "'take_feedback_self_report_revision_report_fkey'")
+        assert cur.fetchone()[0] is True
