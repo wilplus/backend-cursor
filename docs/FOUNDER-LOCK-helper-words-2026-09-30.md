@@ -51,6 +51,12 @@ Done when:
 
 ### B2 — The helper words step opens on Yes and In-between only.
 
+> **Amended 2026-10-07 (decisions log N52.2; contract 24e).** Inside the
+> Feedback walk the helper-words step follows a praise, or a practise whose
+> try the machine reads as praise; the judgements come after the
+> practising, under "Judgement time!". B2 stands as written outside the
+> walk and until the walk's switch.
+
 Done when:
 
 - [ ] Judging Not sure in the walk: no "Choose your helper words" step; the sheet moves on.
@@ -174,6 +180,11 @@ Done when:
 *Amended 2026-10-05 (founder, decisions log N48.3 Q10 A): "Your coach is working on your exercise." shows only while a coach is active.*
 
 ### D2 — No attempt cap.
+
+> **Amended 2026-10-07 (decisions log N54.2, N55 CM3b A; contract 29a).**
+> Inside the Feedback walk the practise loop stops after the third try that
+> is not praise, with a signed thank-you line, and moves on to "Judgement
+> time!". D2 stands as written outside the walk and until the walk's switch.
 
 Done when:
 

@@ -104,3 +104,14 @@ green); the app shows the speaker's own slides, unchanged.
   Navigation Panel, with a clickable prototype of the change.
 - LIVE LOOP: this is the record → Take surface; every change keeps
   recording, saving and processing working.
+
+## Amendments
+
+- **2026-10-07 · one close button (Q-B14 A, N63; build plan D-RC-6).** The
+  app's one small grey close X (`OverlayCloseButton`) is the close button
+  everywhere, the recording screen included; the ⋯ beside it on the text
+  page uses the same style.
+- **2026-10-07 · the fade (Q-B14 A, N63; build plan D-RC-7).** Recording
+  Mode is entered and left with a soft 0.4 s fade into and out of these
+  white screens; instant with reduce motion. The fade never delays the
+  recording.
