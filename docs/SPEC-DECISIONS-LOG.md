@@ -2253,3 +2253,51 @@ its rules from.
   frontend's CLAUDE.md and the lock file already say.
 - `docs/COACH-PANEL-BUILD-PLAN-P2-P7.md` maps the coach panel rebuild to
   steps, screens and endpoints.
+
+**N65 · Wave 2's signatures are given, and V4 may measure every
+speaker (founder, Navigation Panel, 7 October 2026, 21:04 UTC).** The
+founder signed the five Wave 2 items, each with Claude's pick, and
+confirmed again the five N63 answers (Q-B3, Q-B5, Q-B9, Q-B10, Q-B14 A).
+- **S-B1 A.** The four word signals inside V4's private read
+  (willfidence-v1) are signed as written. Each runs on one moment of about
+  75 words, gives a value from 0 to 1 and never reaches a screen (AC-9):
+  - *Filler*: how free the moment is of filler words. The share of its
+    words that are unambiguous fillers (um, uh, erm, basically, literally),
+    turned into 0 to 1 on the stricter scale (V5 B), so a few fillers
+    already lower it. "So", "like" and "right" never count.
+  - *Hedging*: how directly the speaker commits to what they say. The
+    share of its words that are unambiguous hedges that lower certainty
+    (sort of, I think, maybe, probably, perhaps), turned into 0 to 1 the
+    same way. Modal words like "might" or "could" never count.
+  - *Slide fit*: whether the moment says what its slide is about. 1 if it
+    fully makes at least one of the slide's points, 0.5 if it partly does,
+    0 if it makes none, by the point-by-point check the app already runs.
+  - *Holding together*: whether the moment's sentences follow on from each
+    other as one line of thought. 1 yes, 0.5 partly, 0 no, read by one
+    fixed, versioned instruction in the same single call per Take that
+    tags the moment's role. New: nothing measures it today.
+  The fifth, naturalness, comes to the founder separately.
+- **S-B1b A.** The moment roles and their weights are stored as version 1:
+  Opening 1.0 (the first moment, where the speaker wins attention); Main
+  point 1.0 (states what the slide is there to say); Close 1.0 (the last
+  moment, or the one that asks the audience to act); Evidence 0.7 (a
+  number, story or example that backs a point); Transition 0.4 (moves from
+  one point or slide to the next); Aside 0.2 (a side remark, housekeeping
+  or a repeat). One call per Take tags each moment with exactly one role.
+  A later change is version 2; older picks keep the version they used. The
+  weights stay inside the machine.
+- **S-B6 A.** "None" is signed for the sharing screen and the ⋯ menu's
+  Sharing screen.
+- **S-B8 A.** V4's two blind coach sheets are signed as the prototype
+  shows them (<https://claude.ai/artifact/4keT4hRL73HGNeNVGH2VEt>), built
+  behind the coach panel switch (D-ML-13, D-ML-14) and off until V4 is
+  measuring.
+- **S-V1 A.** V4's pick log is recorded for every speaker's Takes, not only
+  the founder's: once GPT-0441 passes and 0441 merges, the dark-frame gate
+  (`take_feedback_policy_v3.dark_enabled`) widens to every speaker in its
+  own change with its own test, and V4 starts measuring. The frame stays
+  internal (serves_user_feedback false, dataset_eligible false), is purged
+  with the Take (`take_feedback_policy_v3_shadow_frames` in the purge
+  registry) and never reaches a payload (AC-9). Config first:
+  `TAKE_FEEDBACK_POLICY_V3_MODE=dark` on every service that runs the Take
+  pipeline (V4 row B1.1b).
