@@ -139,6 +139,18 @@ class Config:
     # exactly (_env_flag: on = "1"/"true"/"yes"; _env_not_off: default-on).
     INSTANT_IDEAL_TEXT_ENABLED = _env_flag("INSTANT_IDEAL_TEXT_ENABLED", "0")
     MOMENT_SUGGESTIONS_ENABLED = _env_flag("MOMENT_SUGGESTIONS_ENABLED", "0")
+    # THE PRAISE DETECTORS' OWN SWITCH (founder 2026-10-06, Navigation Panel
+    # QA3 A: "praise detectors get their own switch, turned on in a reviewed
+    # change"; ledger A045, A053b). It gates ONLY detector praise -- the
+    # structural device and the impeccable delivery read: whether the worker
+    # runs them (`moment_suggestions.generate_praise_for_session`, when
+    # MOMENT_SUGGESTIONS_ENABLED is off) and whether the read path stamps
+    # their evidence so the Manager may serve them
+    # (`tracked_changes._detector_praise_evidence`). Independent of
+    # MOMENT_SUGGESTIONS_ENABLED, which keeps the rest of the star lane.
+    # DEFAULT ON IN CODE, so a service that never got the variable (web,
+    # worker or cron) still reads it on (CONFIG-FIRST); "0" switches it off.
+    PRAISE_DETECTORS_ENABLED = _env_flag("PRAISE_DETECTORS_ENABLED", "1")
     POLISH_AS_SUGGESTIONS_ENABLED = _env_flag("POLISH_AS_SUGGESTIONS_ENABLED", "0")
     LIVING_TRANSCRIPT_ENABLED = _env_flag("LIVING_TRANSCRIPT_ENABLED", "0")
     # ON since #595, on evidence rather than on hope this time.

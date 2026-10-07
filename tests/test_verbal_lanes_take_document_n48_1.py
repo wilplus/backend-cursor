@@ -359,8 +359,10 @@ class TestDetectorPraiseEvidence:
             assert "_manager_evidence" not in row
             assert "detector_version" not in row
 
-    def test_rewrites_stay_without_evidence(self):
-        # LLM rewrites are NOT made servable here (a separate decision).
+    def test_a_retired_polish_rewrite_stays_without_evidence(self):
+        # The model's clearer versions carry their weak read since D-ML-3
+        # (tests/test_clearer_versions_reach_the_manager.py); the retired
+        # polish lane (N48.3 Q13 A) is not one of them and stays excluded.
         [row] = _tracked({"kind": "replace", "trigger": "polish",
                           "replacement_text": "Scores rose this spring."})
         assert "_manager_evidence" not in row

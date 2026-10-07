@@ -8,6 +8,8 @@ video is transcribed at upload through the authorized provider path under
 the coach's own processing authorization (services/exercise_versions). The
 AI script draft is a candidate the coach edits; it is returned to the coach
 and stored only beside the coach's final when they save, never served.
+The founder retires an exercise or brings it back at
+PUT /admin/exercises/<exercise_id>/active (coach panel lock CP3 A).
 
 Thin on purpose (route fence): validate, authorise, one service call,
 serialise. Coach or admin only; nothing here is a speaker route.
@@ -22,7 +24,7 @@ from flask import jsonify, request
 from werkzeug.utils import secure_filename
 
 from config import Config
-from routes.admin import require_admin_or_coach
+from routes.admin import require_admin_or_coach, require_founder
 from routes.v2.blueprint import v2_bp
 from services.db import db
 from services.rate_limits import heavy_limit, llm_limit
@@ -118,4 +120,17 @@ def v2_coach_exercise_script_draft():
     from services.coach_exercise_authoring import draft_script
     status, payload = draft_script(
         db, request.get_json(silent=True) or {}, coach_id=str(request.user_id))
+    return jsonify(payload), status
+
+
+@v2_bp.route("/admin/exercises/<exercise_id>/active", methods=["PUT"])
+@require_founder
+def v2_admin_exercise_active(exercise_id):
+    """Retire an exercise from the library, or bring it back (coach panel
+    lock CP3 A, the founder's Library page). Body {active: bool}. A retired
+    exercise is never matched or offered. Founder only.
+    200 {exercise_id, active, changed} · 400 · 403 · 404 · 409 · 500"""
+    from services.exercise_retirement import set_exercise_active
+    status, payload = set_exercise_active(
+        db, str(exercise_id), request.get_json(silent=True))
     return jsonify(payload), status

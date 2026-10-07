@@ -41,6 +41,7 @@ from routes.v2.common import (
 )
 from services.db import db
 from services.coach_queue import load_review_queue
+from services.training_import_setup import setup_complete
 from services.coach_review_claim import claim_review_and_reread
 from services.coach_video_storage import refreshed_media_url
 from services.coach_moment_errors import (
@@ -603,6 +604,31 @@ def v2_coach_moments_queue():
         logger.error("coach/queue/moments GET failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch the queue"}), 500
+
+
+@v2_bp.route("/coach/speakers", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_speakers():
+    """The Speakers button (coach panel lock, founder 2026-10-07): every
+    speaker this coach may hear, by pseudonym, with their goal, what waits
+    and which Takes are answered. Same language gate as the queue; never a
+    name, email or user_id; nothing about any moment (BLIND COACH)."""
+    from services.coach_speakers import speakers_for_coach
+    try:
+        rater_id = str(getattr(request, "user_id", "") or "")
+        proficient = db.get_user_proficient_languages(rater_id)
+        if not proficient:
+            return _rater_language_error("profile_required")
+        rows, snips, _states = load_review_queue(db, _coach_state_map)
+        matched = _language_matched_rows(rows, snips, proficient)
+        return jsonify(speakers_for_coach(
+            db, matched, rater_id=rater_id,
+            moments_for=_queue_moments_for(snips),
+            pseudonym_for=_coach_pseudonym)), 200
+    except Exception as e:
+        logger.error("coach/speakers GET failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch the speakers"}), 500
 
 
 # Phase 4 / Prompt 2 — the AI-Commentator draft the coach's comment
@@ -2331,7 +2357,7 @@ def v2_coach_list_training_imports():
 
     200 { imports: [{session_id, arc_id, topic, speaker_label, created_at,
           status, queue_count, labelled_count, language,
-          duration_sec, archived_at}], count }
+          duration_sec, archived_at, setup_complete}], count }
     """
     try:
         proficient = db.get_user_proficient_languages(
@@ -2379,7 +2405,7 @@ def v2_coach_list_training_imports():
                 # it outlives the browser session, so this is the surface
                 # where that question gets asked.
                 "language": ctx.get("language"),
-                # Same class of question for the confidence composite: one
+                "setup_complete": setup_complete(ctx),
                 "duration_sec": ctx.get("duration_sec"),
                 # null on live rows; set = when it was archived. Present on
                 # every row so the shape doesn't shift with the query param.
@@ -2466,6 +2492,31 @@ def v2_coach_restore_training_import(session_id):
                        session_id, e)
         return jsonify({"code": "SERVER_ERROR",
                         "error": "could not restore the import"}), 500
+
+
+@v2_bp.route("/coach/training-imports/<session_id>", methods=["PUT"])
+@require_admin_or_coach
+def v2_coach_training_import_setup(session_id):
+    """Finish (or correct) an import's set-up without re-importing it
+    (coach panel lock, training corpus CO1 A): topic, whose voice it is,
+    where it came from, and the language. Body {topic, language,
+    speaker_label?, source?}. An import whose set-up is not complete serves
+    no moments. 200 {session_id, topic, language, speaker_label, source,
+    setup_complete} · 400 · 404 · 409 NOT_AN_IMPORT · 500"""
+    if not _is_valid_uuid(session_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "session_id must be a valid UUID"}), 400
+    from services.training_import_setup import apply_setup
+    try:
+        status, payload = apply_setup(
+            db, str(session_id), request.get_json(silent=True))
+        return jsonify(payload), status
+    except Exception as e:
+        logger.warning("training import setup failed sid=%s: %s",
+                       session_id, e, exc_info=True)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not save the set-up"}), 500
 
 
 def _confidence_queue_snippets_and_language_error(session_id, sess):

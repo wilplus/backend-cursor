@@ -14186,6 +14186,20 @@ class DatabaseService:
                            row.get("exercise_id"), e)
             return None
 
+    def set_diagnostic_exercise_active(self, exercise_id: str, active: bool) -> Optional[dict]:
+        """Retire (False) or bring back (True) one exercise: the flag only,
+        nothing else on the row changes (D-CP-9). None on failure."""
+        try:
+            res = (self.client.table("diagnostic_exercise")
+                   .update({"active": bool(active),
+                            "updated_at": datetime.now(timezone.utc).isoformat()})
+                   .eq("exercise_id", str(exercise_id)).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("set_diagnostic_exercise_active failed id=%s: %s",
+                           exercise_id, e, exc_info=True)
+            return None
+
     # ── A coach names the error on one moment, and teaches the library ────
     # migrations/a_coach_names_the_error_and_teaches_the_library.sql. Every
     # method here degrades to "nothing" on failure — a pending migration, or a

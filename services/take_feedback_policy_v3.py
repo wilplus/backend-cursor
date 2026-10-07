@@ -541,16 +541,18 @@ def _lane_outcome(anchors: list[dict], read_blocks: list[dict]) -> dict:
 
 def _log_verbal_lanes(take_id: Any, rewrite_ranked: list,
                       rewrite_selected: list, praise_ranked: list,
-                      praise_selected: list) -> None:
+                      praise_selected: list, *, weak_blocks: int = 0) -> None:
     """Why a lane came out empty, in counts only (founder 2026-09-28: "no
     praise and no corrections"). No detector finding (candidates=0) and a
     finding outside every block its read would anchor it to (candidates>0,
-    anchored=0) are different causes."""
+    anchored=0) are different causes. `weak_blocks` is how many blocks were
+    read weak, so `selected` over it is the share of weak blocks carrying a
+    clearer version (D-ML-3). Internal log only, never a payload (AC-9)."""
     logger.info(
-        "v3 lanes take=%s rewrite candidates=%d selected=%d "
+        "v3 lanes take=%s rewrite candidates=%d selected=%d weak_blocks=%d "
         "praise candidates=%d anchored=%d",
         take_id or "?", len(rewrite_ranked), len(rewrite_selected),
-        len(praise_ranked), len(praise_selected),
+        weak_blocks, len(praise_ranked), len(praise_selected),
     )
 
 
@@ -1252,14 +1254,15 @@ def build_shadow_frame(
     # candidate sits inside the block. The green mark stays on the top two
     # (24g); it no longer decides where praise goes.
     _mark_top_confidence(blocks, MOST_CONFIDENT_LIMIT)
-    rewrite_anchors = _anchored_notes(
-        rewrite_ranked, _blocks_read(blocks, confident=False))
+    weak_blocks = _blocks_read(blocks, confident=False)
+    rewrite_anchors = _anchored_notes(rewrite_ranked, weak_blocks)
     praise_anchors = _anchored_notes(
         praise_ranked, _blocks_read(blocks, confident=True))
     rewrite_selected_ids = [row["candidate_id"] for row in rewrite_anchors]
     praise_selected_ids = [row["candidate_id"] for row in praise_anchors]
     _log_verbal_lanes(take_id, rewrite_ranked, rewrite_selected_ids,
-                      praise_ranked, praise_selected_ids)
+                      praise_ranked, praise_selected_ids,
+                      weak_blocks=len(weak_blocks))
 
     generator_versions = sorted({
         version

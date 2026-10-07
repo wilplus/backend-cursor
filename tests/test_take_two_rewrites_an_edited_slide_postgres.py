@@ -477,3 +477,141 @@ def test_an_edit_on_a_slide_take_two_did_not_speak_is_its_last_version(
             if r["action"] == "owner_part_text_updated"] == [SLIDE1_EDITED]
     assert live.prior_edit == {
         "text": f"{SLIDE0_TAKE1}\n\n{SLIDE1_EDITED}", "version": 1}
+
+
+# D-ML-2 (contract 12; helper-words lock B1; V10b A; ledger B1.5): an
+# UNLOCKED Paragraph that Take 2 rewords keeps its id and its helper words
+# through BOTH identity paths -- `take_rebuild` and the snapshot publish
+# (`ideal_text_core_snapshot._settle_parts` -> `compose_locked`), which runs
+# whenever any Paragraph of the document is locked.
+SLIDE1_PICK = "believed the numbers"
+SLIDE1_TAKE2 = "Nobody believed the numbers until the second quarter."
+
+
+def _publish(s, arc_id=None, actor_id=None, **_kw) -> dict:
+    """The snapshot publish's build, run for real against the lane:
+    `build_snapshot` -> `_settle_parts` -> `compose_locked`, which may
+    store a recomposed Paragraph list. Only the two edges this lane does
+    not carry are left out: the sessions read (`get_arc_sessions` selects
+    released columns the narrow `v2_sessions` lacks; the rows are read
+    here instead) and the append-only publish RPC, which stores the
+    payload this returns and decides nothing about identity."""
+    from services.ideal_text_core_snapshot import build_snapshot
+
+    sessions = _rows(s["conn"], """SELECT id::text, user_id::text,
+            owner_principal_id::text, project_id::text, arc_id::text,
+            take_index, recording_kind, paired_session_id
+        FROM v2_sessions WHERE arc_id=%s ORDER BY take_index""", (s["arc"],))
+    payload, _seed, _lineage = build_snapshot(
+        s["db"], s["arc"], s["owner"], sessions)
+    s.setdefault("published", []).append(payload)
+    return payload
+
+
+def _pick_unlocked(s, part_id: str, slide: int, phrase: str) -> None:
+    """The helper-words pick with no lock: the Paragraph's phrase and the
+    Slide's selected row, the Paragraph left open."""
+    from services import slide_helper_words as words
+
+    database = s["db"]
+    text = next(p["text"] for p in _parts(s) if p["id"] == part_id)
+    start = text.index(phrase)
+    assert database.set_ideal_text_part_root(
+        arc_id=s["arc"], user_id=s["owner"], part_id=part_id, phrase=phrase,
+        start=start, end=start + len(phrase))
+    rows = [r for r in database.get_slide_helper_words(s["arc"], s["owner"])
+            if r.get("slide_index") == slide]
+    rows = words.pick(rows, take_id=s["take1"], part_id=part_id, phrase=phrase)
+    assert database.replace_slide_helper_words(s["arc"], s["owner"], slide, rows)
+
+
+def test_a_reworded_open_paragraph_keeps_its_id_through_the_snapshot_publish(
+        speaker, monkeypatch):
+    s = speaker
+    first, second = _take_one_paragraphs(s)
+
+    # Slide 0's Paragraph is locked with its helper words (so the publish's
+    # `compose_locked` runs); Slide 1's Paragraph is edited by its owner and
+    # given helper words, and stays OPEN.
+    _choose_and_lock(s, first, 0, "in March")
+    _edit(s, [(first, SLIDE0_TAKE1), (second, SLIDE1_EDITED)])
+    _pick_unlocked(s, second, 1, SLIDE1_PICK)
+    before = {p["id"]: p for p in _parts(s)}
+    assert before[second]["locked_at"] is None
+    assert before[first]["locked_at"] is not None
+
+    # Take 2 speaks Slide 1 only, rewording the open Paragraph.
+    import services.ideal_text_core_snapshot as core
+    import services.transcript_document as transcript
+    from services.take_review import finalize_later_take_review
+
+    import services.ideal_text_parts as parts_module
+
+    _text, doc2 = _document([(1, SLIDE1_TAKE2)], s["take2"], 2)
+    monkeypatch.setattr(transcript, "build_transcript_document",
+                        lambda arc_id, *, database=None, session_id=None: doc2)
+    # The publish must really compose: a lock is stored, so `_settle_parts`
+    # hands the rows to `compose_locked`, and it returns a composition.
+    real_compose = parts_module.compose_locked
+    composed: list = []
+
+    def _spy_compose(base_text, rows):
+        result = real_compose(base_text, rows)
+        composed.append(result)
+        return result
+
+    monkeypatch.setattr(parts_module, "compose_locked", _spy_compose)
+    monkeypatch.setattr(
+        core, "publish_for_arc",
+        lambda database, arc_id, actor_id=None, **kw: _publish(s))
+    receipt = finalize_later_take_review(
+        s["db"], arc_id=s["arc"], owner_user_id=s["owner"],
+        take_session_id=s["take2"], take_index=2)
+    assert receipt["review_finalized"] is True and receipt["version"] == 2
+    assert len(s["published"]) == 1
+
+    expected = f"{SLIDE0_TAKE1}\n\n{SLIDE1_TAKE2}"
+
+    def _assert_identity(rows: list[dict]) -> None:
+        assert [p["id"] for p in rows] == [first, second]
+        assert [p["text"] for p in rows] == [SLIDE0_TAKE1, SLIDE1_TAKE2]
+        # The open Paragraph stays open and keeps its helper words.
+        assert rows[1]["locked_at"] is None
+        assert rows[1]["root_phrase"] == SLIDE1_PICK
+        # The locked one keeps its lock and its helper words.
+        assert rows[0]["locked_at"] == before[first]["locked_at"]
+        assert rows[0]["root_phrase"] == "in March"
+
+    # Through take_rebuild (and the publish the finalizer ran) ...
+    _assert_identity(_parts(s))
+
+    # ... and through a further publish, where `compose_locked` composes
+    # the locked Paragraph onto Take 2's text once more.
+    _publish(s)
+    _assert_identity(_parts(s))
+    assert len(composed) == 2 and all(c is not None for c in composed)
+    assert [[p["id"] for p in c["parts"]] for c in composed] == [
+        [first, second]] * 2
+    for payload in s["published"]:
+        assert payload["text"] == expected
+        assert [p["id"] for p in payload["parts"] or []] == [first, second]
+
+    slide_words = {(r["slide_index"], r["phrase"], r["locked_at"] is not None)
+                   for r in s["db"].get_slide_helper_words(s["arc"], s["owner"])}
+    assert slide_words == {(0, "in March", True), (1, SLIDE1_PICK, False)}
+
+    # HISTORY KEEPS EVERY VERSION (L1): the edit and the Take 2 rewrite are
+    # both on the open Paragraph's revision chain, in that order.
+    chain = _rows(s["conn"], """SELECT action, text FROM ideal_text_part_revision
+        WHERE arc_id=%s AND part_id=%s ORDER BY id""", (s["arc"], second))
+    actions = [r["action"] for r in chain]
+    assert [r["text"] for r in chain
+            if r["action"] == "owner_part_text_updated"] == [SLIDE1_EDITED]
+    assert chain[-1] == {"action": "take_rewrite", "text": SLIDE1_TAKE2}
+    assert actions.index("owner_part_text_updated") < len(actions) - 1
+    versions = _rows(s["conn"], "SELECT version, text FROM ideal_text_versions "
+                                "WHERE arc_id=%s ORDER BY version", (s["arc"],))
+    assert versions == [
+        {"version": 1, "text": f"{SLIDE0_TAKE1}\n\n{SLIDE1_TAKE1}"},
+        {"version": 2, "text": expected},
+    ]
