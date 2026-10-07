@@ -46,7 +46,11 @@ for the screens below.
    down to start**. A swipe, a scroll, ↓, Page Down, Space or Enter starts
    the recording; the slide then glides in.
 2. **A later Take:** **Getting your mic ready**, then the recording screen
-   glides in. No learning screen.
+   glides in. No learning screen, and nothing to approve: "Record Take N"
+   goes straight here and the Take starts by itself. (Amended the same
+   day, founder: the old "Your slides and speaking anchors are ready." /
+   orange **Start recording** screen is deleted. The optional training
+   question, which is consent, may still ask first.)
 3. **The recording screen.**
    - Top bar: **Take N · Slide n of m** on the left (no "Recording"
      label), the close button on the right.
