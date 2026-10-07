@@ -504,13 +504,30 @@ with this contract, this contract wins.
     else nothing; a rewrite practice (29b) compares only attempts of the
     same accepted text, never the original. A practice that did not land
     hears an encouragement: a real step between tries, else the effort
-    alone. After the first practice ending the speaker may hear Bold voices
-    once per Take: their own landed attempt, then a coach's published
+    alone. *Bold voices is RETIRED (founder 2026-10-07, Q-B11 A, N62):
+    the walk lock (N52) has no such screen; its routes answer 404 whatever
+    the switch says and nothing is written to its tables, which are not
+    dropped.* It had let the speaker hear, once per Take after the first
+    practice ending, their own landed attempt, then a coach's published
     readings, without names; plays only, nothing judged, a heard receipt
-    kept. Others' shared clips and Lend your ear wait for Phase 4 and
-    counsel (C1 to C3, F3, F4).
-29d. **Lend your ear and the share** (founder 2026-10-01, F3, F4; Phase 4,
-    served once `PEER_LANE_ENABLED` is on — on from 2026-10-02 after the
+    kept. The coach's readings tool stays as it is.
+29d. **Lend your ear and the share** *(amended 2026-10-07, founder Q-B11 A,
+    N62: "At most 3 other voices per walk, community first, then training
+    clips, on the same judgement screen without the slide bar. Lend your
+    ear's engine serves them under the per-Take consent only. The Album
+    share switch and Bold voices are retired." The Voice Album share switch
+    and the per-Take blind set it fed are retired: their routes answer 404
+    whatever `PEER_LANE_ENABLED` says, nothing reads the share view, and
+    their tables are not dropped. The engine (`services/lend_your_ear.py`)
+    now serves the communities' queue (47, N52.4): at most three other
+    voices per walk, the community's clips first, then licensed training
+    clips for the places left, under the per-Take community share as the
+    one consent path; answers are peer ratings, lane `game_peer`, never
+    coach labels, owner routing or training labels (L3). The delayed
+    measure's pair (29e) rode the retired share and has no door into any
+    queue. `PEER_LANE_ENABLED` gates only the coach's licensed-corpus tool.
+    What follows is the retired design as it was.)* (founder 2026-10-01, F3,
+    F4; Phase 4, served once `PEER_LANE_ENABLED` is on — on from 2026-10-02 after the
     founder's own answers to C1, C2 and C3 (N23) and Privacy 3.3 (N24, N25),
     off again from 2026-10-03 until the share switch and Lend your ear have
     a screen (N29);

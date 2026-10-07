@@ -27,15 +27,20 @@ not belong to cannot be chosen; the general community is open to everyone.
 Withdrawal (fewer communities, or "None") never waits for the policy
 version: taking consent back is always possible.
 
-THE QUEUE is the community clips first (the speaker's private communities,
-then the general one), never the listener's own, never one they answered,
-never one the coach + peer quorum already settled (``label_quorum``, as
-``lend_your_ear._shared_candidates``); then up to three training clips from
-the licensed corpus, machine-picked by stratum (``lend_your_ear.build_set``).
-The speaker's own moments are judged in the existing owner judgement flow,
-which this module does not touch. Audio only (AC-9): the clip id, the
-sound, where it starts, how long it is and which kind it is. No names, no
-words, no machine read, no numbers about anyone's voice.
+THE QUEUE is the walk's other voices, served by the Lend your ear engine
+(``lend_your_ear.other_voices``; founder 2026-10-07, Q-B11 A, N62): at most
+three per walk, the community clips first (the speaker's private
+communities, then the general one), never the listener's own, never one
+they answered, never one the coach + peer quorum already settled
+(``label_quorum``), then training clips from the licensed corpus for the
+places left, machine-picked by stratum (``lend_your_ear.build_set``). The
+per-Take share above is the ONE consent path that admits a speaker's
+moment to this queue: ``community_clips`` reads ``community_clips_live``
+and nothing else (the Album share switch is retired). The speaker's own
+moments are judged in the existing owner judgement flow, which this
+module does not touch. Audio only (AC-9): the clip id, the sound, where it
+starts, how long it is and which kind it is. No names, no words, no
+machine read, no numbers about anyone's voice.
 
 THE ANSWER is one per person per clip, the same five answers
 (``state_ratings.validate_rating``). A community clip's answer is a PEER
@@ -52,7 +57,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
-import random
 import unicodedata
 import uuid
 from typing import Any, Optional
@@ -64,10 +68,6 @@ PRIVATE = "private"
 PASS_CODE_MIN = 6
 PASS_CODE_MAX = 128
 NAME_MAX = 80
-#: Community clips served in one queue read; the screen asks again after.
-COMMUNITY_CLIPS_MAX = 10
-#: Training clips after the community's, machine-picked by stratum.
-TRAINING_CLIPS = 3
 #: Domain separation for the pass-code key derived from the server secret.
 _KEY_LABEL = b"willab/community-pass-code/v1"
 
@@ -322,25 +322,31 @@ def order_community_clips(rows: list[dict], *, listener_id: str, answered: set[s
 
 def _clip_audio(database: Any, snippet: dict) -> Optional[str]:
     from services.lend_your_ear import _audio
-    return _audio(database, {"source": "shared", "snippet": snippet})
+    return _audio(database, {"source": "community", "snippet": snippet})
 
 
-def queue_for(database: Any, *, listener_id: str, rng: Any = None) -> tuple[int, dict]:
-    """The listener's queue: community clips first, then training clips.
-    Audio only (AC-9)."""
-    if not communities_enabled():
-        return _not_found()
+def answered_clip_ids(database: Any, listener_id: str) -> set[str]:
+    """Every clip this listener answered in the queue: the snippet of a
+    community clip, the corpus id of a training clip."""
+    return {str(c) for c in database.list_community_answered_clip_ids(str(listener_id)) or []}
+
+
+def community_clips(database: Any, *, listener_id: str, answered: set[str],
+                    limit: int) -> list[dict]:
+    """Up to `limit` community clips the listener may hear, in the queue's
+    order. THE ONE DOOR for another speaker's moment into a peer queue:
+    only a Take shared under the per-Take consent (``community_clips_live``)
+    is read here. Audio only (AC-9)."""
     me = str(listener_id)
     general_id, private_ids = _hearable(database, me)
     hearable = ([general_id] if general_id else []) + sorted(private_ids)
-    answered = {str(c) for c in database.list_community_answered_clip_ids(me) or []}
     rows = [r for r in database.list_community_clips_live(hearable) or [] if isinstance(r, dict)]
     ids = list(dict.fromkeys(str(r["snippet_id"]) for r in rows if r.get("snippet_id")))
     labels = (database.get_confidence_labels_by_snippet_ids(ids) or {}) if ids else {}
     clips: list[dict] = []
     for row in order_community_clips(rows, listener_id=me, answered=answered,
                                      labels=labels, private_ids=private_ids):
-        if len(clips) >= COMMUNITY_CLIPS_MAX:
+        if len(clips) >= limit:
             break
         snippet = database.get_snippet_by_id(str(row["snippet_id"]))
         if not isinstance(snippet, dict) or snippet.get("is_skipped"):
@@ -354,24 +360,17 @@ def queue_for(database: Any, *, listener_id: str, rng: Any = None) -> tuple[int,
                       "audio_ref": audio,
                       "start_offset_ms": snippet.get("start_offset_ms"),
                       "duration_ms": snippet.get("duration_ms")})
-    clips.extend(_training_clips(database, answered=answered, rng=rng))
-    return 200, {"clips": clips}
+    return clips
 
 
-def _training_clips(database: Any, *, answered: set[str], rng: Any) -> list[dict]:
-    """Up to TRAINING_CLIPS licensed corpus clips, one per stratum where one
-    exists (the machine's pick; the stratum itself never leaves here)."""
-    from services.lend_your_ear import build_set
-    pool = [{"clip_id": str(row["id"]), "stratum": row.get("machine_stratum") or "unknown",
-             "pair_id": None, "corpus": row}
-            for row in database.list_corpus_clips_active() or []
-            if isinstance(row, dict) and row.get("id") and row.get("audio_url")
-            and str(row["id"]) not in answered]
-    chosen = build_set(pool, recent_pairs=[], size=TRAINING_CLIPS,
-                       rng=rng or random.Random())
-    return [{"clip_id": c["clip_id"], "source": "training",
-             "audio_ref": c["corpus"].get("audio_url"), "start_offset_ms": 0,
-             "duration_ms": c["corpus"].get("duration_ms")} for c in chosen]
+def queue_for(database: Any, *, listener_id: str, rng: Any = None) -> tuple[int, dict]:
+    """The listener's queue: the walk's other voices, at most three,
+    community clips first, then training clips (Q-B11 A), served by the
+    Lend your ear engine. Audio only (AC-9)."""
+    if not communities_enabled():
+        return _not_found()
+    from services.lend_your_ear import other_voices
+    return 200, {"clips": other_voices(database, listener_id=str(listener_id), rng=rng)}
 
 
 # ── the answer ────────────────────────────────────────────────────────────
@@ -391,7 +390,7 @@ def answer(database: Any, *, listener_id: str, body: Any) -> tuple[int, dict]:
     if err or row is None:
         return 400, {"code": "INVALID_INPUT"}
     me = str(listener_id)
-    answered = {str(c) for c in database.list_community_answered_clip_ids(me) or []}
+    answered = answered_clip_ids(database, me)
     shared = [r for r in database.list_community_clips_for_snippet(clip_id) or []
               if isinstance(r, dict)]
     if shared:
