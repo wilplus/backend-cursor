@@ -3,7 +3,8 @@
 `LOCKED 2026-10-07 · founder in chat: "Lock the recording screens" · decisions log N59`
 
 Clickable prototype (the reference for every screen, phone and desktop):
-<https://claude.ai/artifact/9CFAAP2Ue7pvRdLvdesn9h>, version 6. A copy of the
+<https://claude.ai/artifact/9CFAAP2Ue7pvRdLvdesn9h>, version 7 (version 6
+as locked, amended the same day, below). A copy of the
 page as locked is kept in `docs/design/recording-screens-2026-10-07.html`.
 The frontend's CLAUDE.md carries the rule ("Design lock — the recording
 screens"). This lock wins over the Ideal Text lock's line on Recording Mode
@@ -28,6 +29,15 @@ for the screens below.
 6. The stand-in deck fits any talk: introduce the subject, the main
    points, sum up and what to remember.
 
+## Amended the same day (founder, chat, 7 October, after seeing the live build)
+
+- "Make them orange!": every helper word is orange; the live screen had
+  greyed the ones the data marks neutral.
+- "Tighten the space below the Take 2 · Slide 2 of 3 and the slide; the
+  margin there is too big, at least half that": the gap under the top bar
+  is more than halved (about 44px to about 20px on a phone). Prototype
+  version 7.
+
 ## The flow
 
 1. **First recording (Take 1): the learning screen.** No slide, no clock,
@@ -40,8 +50,9 @@ for the screens below.
 3. **The recording screen.**
    - Top bar: **Take N · Slide n of m** on the left (no "Recording"
      label), the close button on the right.
-   - The slide, then the speaker's helper words in orange below it (none
-     on Take 1), the slide dots on the right.
+   - The slide, sitting close under the top bar, then the speaker's helper
+     words below it, every one of them orange (none on Take 1), the slide
+     dots on the right.
    - The strip at the bottom: the recording dot, the clock, the bar,
      **Finish take**. No line above the strip.
 4. **Close:** **Discard this take?** / "This recording has not been saved."

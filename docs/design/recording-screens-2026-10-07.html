@@ -127,6 +127,7 @@ html,body{touch-action:none}
 .scroller,.tipsc{touch-action:pan-y}
 .mv{display:flex;flex-direction:column;flex:1;min-height:0}
 .rec .slidebox,.rec .scroller{will-change:transform,opacity}
+.band.rec{padding-top:0}
 .learn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;will-change:transform,opacity}
 .learn .t{font-size:var(--hf,30px);font-weight:600;line-height:1.15;color:var(--fg);opacity:.55}
 .learn .chev{width:44px;height:44px;color:var(--fg);opacity:.55}
@@ -149,7 +150,7 @@ html,body{touch-action:none}
       <button data-dev="desk" aria-pressed="false">Desktop</button>
     </div>
     <button class="pbtn" id="restart">Restart</button>
-    <span class="pnote" id="pnote">v6 · The mock deck fits any talk: introduce, main points, sum up. Each slide has its own colour, with a title and one short line; no line above the strip. "Take · Slide" sits in the top bar. Only the slide and its helper words move; the top bar, the slide dots and the strip stay still. First recording opens on "Scroll down to start". Swipe, scroll, or press ↓ ↑ / Space — no click needed. Pulling down never reloads.</span>
+    <span class="pnote" id="pnote">v7 · The slide sits close under "Take · Slide" (half the gap); every helper word is orange. The mock deck fits any talk: introduce, main points, sum up. Each slide has its own colour, with a title and one short line; no line above the strip. "Take · Slide" sits in the top bar. Only the slide and its helper words move; the top bar, the slide dots and the strip stay still. First recording opens on "Scroll down to start". Swipe, scroll, or press ↓ ↑ / Space — no click needed. Pulling down never reloads.</span>
   </div>
   <div class="stagewrap" id="stagewrap">
     <div class="device" id="device"><div class="app" id="app"></div></div>
