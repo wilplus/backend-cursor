@@ -765,6 +765,14 @@ hard migrations/answer_counts_per_clip_are_soft_label_data.sql
 hard migrations/a_share_records_the_words_the_speaker_saw.sql
 hard migrations/a_share_records_the_words_the_speaker_saw.sql
 
+# 0444 (QG12a A, P26b A, N53.4; P26c, N54.1; D-CP-10): a coach is asked to
+# listen again, blind. One table and two functions over confidence_labels,
+# which both lanes carry. Both lanes, after 0443, as in the manifest. Twice:
+# apply/reapply idempotency. Its suite:
+# tests/test_a_coach_is_asked_to_listen_again_postgres.py.
+hard migrations/a_coach_is_asked_to_listen_again.sql
+hard migrations/a_coach_is_asked_to_listen_again.sql
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

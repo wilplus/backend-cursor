@@ -164,6 +164,16 @@ def _coach_state_map(session_id, rater_id=None, *, draft_rows=None):
             "rating_value": r.get("value"),
             "rating_unrateable": bool(r.get("unrateable")),
         }
+    if rater_id:
+        # LISTEN AGAIN (0444; QG12a A, P26b A). While this coach has an open
+        # ask on a moment, their earlier answer is masked here, the one map
+        # every blind door keys on (the moment gate, the transcript and
+        # owner-answer release, the practice door): the moment is blind
+        # again until the new answer lands. The key of the signed line rides
+        # as `listen_again`; nothing says why (BLIND COACH).
+        from services.coach_listen_again import mask_states, open_asks
+        asks = open_asks(db, coach_id=rater_id, session_ids=[session_id])
+        out = mask_states(out, asks.get(str(session_id), {}))
     return out
 
 
@@ -3188,6 +3198,11 @@ def _reconsider_coach_rating(*, snippet_id, row, rater_id, session_id, lane,
                        snippet_id, e, exc_info=True)
         kept = None
     if isinstance(kept, dict):
+        # LISTEN AGAIN (0444): a new blind answer closes this coach's open
+        # ask on the moment, if one was there. Best-effort; the revision is
+        # kept either way.
+        from services.coach_listen_again import mark_heard
+        mark_heard(db, snippet_id=snippet_id, coach_id=rater_id)
         return None
     # The route's own words for a rating not kept (no new copy).
     return jsonify({"code": "SERVER_ERROR",

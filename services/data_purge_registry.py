@@ -454,6 +454,13 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "derived_feedback", 35),
     PurgeDependency("coach_take_words", "coach_take_words",
                     "take_session_id", "take", "delete", "derived_feedback", 58),
+    # A coach asked to listen to a moment again (0444): about the speaker's
+    # Take, so it goes with the Take; the coach_id is the coach's user id,
+    # so it goes with the coach too.
+    PurgeDependency("coach_listen_again_requests", "coach_listen_again_requests",
+                    "take_session_id", "take", "delete", "derived_feedback", 58),
+    PurgeDependency("coach_listen_again_requests_by_coach", "coach_listen_again_requests",
+                    "coach_id", "user", "delete", "derived_feedback", 35),
     PurgeDependency("feedback_pairs_by_take", "feedback_pairs",
                     "take_session_id", "take", "delete", "derived_feedback", 58),
     # A pattern the coach named on the moment itself rather than on a
