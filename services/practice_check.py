@@ -4,12 +4,17 @@ Feedback walk; decisions log N52.3), dark behind
 
 The founder: "don't ask me right away does my last take sound confident to
 me, you need to check it yourself". After each try the machine decides one
-of two things, never a number (AC-9):
+of three things, never a number (AC-9):
 
   - ``praise``: the try is measurably better. The loop ends on this try,
     the helper words are tapped from its words, then the walk goes on.
-  - ``again``: not yet. The encouragement and another try, until praise
-    or Skip. There is no cap (lock D2; CM3 is still open).
+  - ``again``: not yet. The encouragement and another try, until praise,
+    Skip, or the third try.
+  - ``moved_on``: the third try that is not praise (CM3a A: up to three
+    tries; CM3b A, decisions log N55). The loop stops: the practice closes
+    with no try selected, so no helper words are tapped from it and its
+    bar clears, and the walk moves on to "Judgement time!" with a CM3b
+    line. Praise on the third try still wins.
 
 WHAT "MEASURABLY BETTER" MEANS is after_practice's rule, unchanged, read
 on the try just made (its lanes 1 to 3 against the original clip): the
@@ -39,9 +44,13 @@ from typing import Any, Iterable, Optional
 
 _log = logging.getLogger(__name__)
 
-RULE_VERSION = "practice-check-v1"
-#: The two outcomes. Nothing else is ever decided.
-NEXT = ("praise", "again")
+RULE_VERSION = "practice-check-v2"
+#: The three outcomes. Nothing else is ever decided.
+NEXT = ("praise", "again", "moved_on")
+#: CM3a A: the loop stops after the third try that is not praise.
+TRY_CAP = 3
+#: The signed bank said when it does (CM3b A, N55; services/line_bank.py).
+MOVED_ON_KEY = "CM3b"
 #: The after_practice lanes that count as measurably better.
 _BETTER_LANES = frozenset({"cleared", "cue", "machine_leg"})
 
@@ -59,8 +68,9 @@ def decide(practice: Any, attempts: Iterable[Any], attempt_id: Any) -> dict:
     """The decision for one try. Pure.
 
     {"next", "key", "lane", "attempt_id", "attempt_index", "rule_version",
-     "decided_by"}; ``key`` names the praise line on ``praise`` and the
-    encouragement ("step" or "effort") on ``again``."""
+     "decided_by"}; ``key`` names the praise line on ``praise``, the
+    encouragement ("step" or "effort") on ``again``, and the signed CM3b
+    bank on ``moved_on`` (the third try or later that is not praise)."""
     from services.after_practice import (
         _original_praise, _rewrite_praise, encouragement,
     )
@@ -78,6 +88,8 @@ def decide(practice: Any, attempts: Iterable[Any], attempt_id: Any) -> dict:
     if said.get("lane") in _BETTER_LANES:
         return {**base, "next": "praise", "key": said["key"], "lane": said["lane"]}
     upto = [r for r in rows if _index(r) <= _index(tried)]
+    if len(upto) >= TRY_CAP:
+        return {**base, "next": "moved_on", "key": MOVED_ON_KEY, "lane": "none"}
     step = encouragement(upto)
     return {**base, "next": "again", "key": step["key"], "lane": "none"}
 
@@ -91,11 +103,15 @@ def checkable_attempt(attempts: list) -> Optional[dict]:
 
 def check_attempt(database: Any, practice: Mapping, attempt_id: str,
                   owner_user_id: str) -> tuple[int, dict]:
-    """Decide the latest try and, on praise, close the practice on it.
+    """Decide the latest try; on praise close the practice on it, on
+    moved_on close it with no try selected.
 
     Returns (status, body) like ``practice_adoption.judge_attempt``:
-    ``outcome`` is "done" on praise and "again" otherwise, so the walk
-    reads it the same way; ``check`` is the decision the walk shows."""
+    ``outcome`` is "done" on praise, "moved_on" when the loop stopped at the
+    third try, and "again" otherwise; ``check`` is the decision the walk
+    shows. A moved-on practice keeps no ``selected_attempt_id`` and no
+    answer, so ``machine_closed`` stays False (no helper words), the
+    moment settles like a Skip and its bar clears."""
     from services.practice_adoption import practice_words
 
     if practice.get("status") != "open":
@@ -108,10 +124,16 @@ def check_attempt(database: Any, practice: Mapping, attempt_id: str,
         return 409, {"code": "NOT_CHECKABLE",
                      "error": "Check your latest attempt."}
     check = decide(practice, attempts, attempt_id)
-    result: dict = {"outcome": "done" if check["next"] == "praise" else "again",
+    outcome = {"praise": "done", "moved_on": "moved_on"}.get(check["next"], "again")
+    result: dict = {"outcome": outcome,
                     "check": public_check(check), "attempt_transcript": None,
                     "practice_row": practice}
     fields: dict = {"after_practice": check}
+    if check["next"] == "moved_on":
+        fields.update({
+            "status": "completed",
+            "closed_at": datetime.now(timezone.utc).isoformat(),
+        })
     if check["next"] == "praise":
         fields.update({
             "status": "completed",
@@ -130,6 +152,11 @@ def check_attempt(database: Any, practice: Mapping, attempt_id: str,
         result["attempt_transcript"] = practice_words(target.get("transcript"))
         # Phase 5: the closed practice's pair for the delayed measure (off,
         # nothing). The endpoint is the first valid attempt, not this one.
+        from services.delayed_measure import enrol
+        enrol(database, updated)
+    elif check["next"] == "moved_on":
+        # Like a dismissed practice: its first valid try may still pair
+        # for the delayed measure (off, nothing).
         from services.delayed_measure import enrol
         enrol(database, updated)
     return 200, result
