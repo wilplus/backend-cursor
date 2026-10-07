@@ -40,6 +40,8 @@ resolver the coach review packet plays every snippet through
 BLIND COACH and AC-9. Nothing here reads or returns the V3 pick, a block, a
 selection reason, a policy version, a score or a transcript. The queue rows
 and the playback body are allowlists.
+
+An unfinished import (topic and language not both set) serves no moments.
 """
 from __future__ import annotations
 
@@ -69,8 +71,10 @@ def corpus_queue_open(session: Any) -> bool:
     founder's switch is on; off, the queue route answers what it answered
     before (no canonical evidence, so nothing)."""
     from services.training_import import import_enabled
+    from services.training_import_setup import setup_complete
 
-    return is_corpus_import(session) and import_enabled()
+    return (is_corpus_import(session) and import_enabled()
+            and setup_complete(session.get("intake_context")))
 
 
 def corpus_presented_rows(rows: Any) -> list:
@@ -109,6 +113,9 @@ def queued_corpus_clip(database: Any, snippet_id: str
         return None, None
     session = database.v2_get_session_by_id(str(snippet["session_id"]))
     if not is_corpus_import(session):
+        return None, None
+    from services.training_import_setup import setup_complete
+    if not setup_complete(session.get("intake_context")):
         return None, None
     if str(snippet.get("id") or snippet_id) not in _queued_ids(session):
         return None, None
