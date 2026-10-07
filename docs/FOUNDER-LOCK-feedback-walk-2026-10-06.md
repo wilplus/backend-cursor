@@ -73,7 +73,11 @@ founder's sign-off.
 - The slide and moment bar (‹ Slide 2 · moment 1 of 4 ›) on every feedback
   screen; none on the recording screen.
 - Recording uses the Take's own recording bar.
-- Orange marks only new words and the Lounge's "new".
+- Orange marks only new words and the Lounge's "new". *(Amended 2026-10-07,
+  Q-B9 A, N63: this rule applies inside the walk only. Outside it, the
+  bars, the helper-word headlines on the page, in Presentation Mode, in the
+  export and in Recording Mode, and the coach panel's "Something else" stay
+  orange.)*
 
 ## How screens move, everywhere in the app
 
@@ -91,7 +95,10 @@ founder's sign-off.
   apart ("Judgement time!", sharing) and for one moment changing state
   (recording, then checking, then praise or encouragement).
 - **Lounge and the text:** a short sideways push. **Recording Mode:** fades
-  to dark, 0.4 s.
+  to dark, 0.4 s. *(Amended 2026-10-07, Q-B14 A, N63: a soft 0.4 s fade
+  into and out of the white Recording Mode screens, as the recording lock
+  draws them; instant with reduce motion, and the fade never delays the
+  recording.)*
 - **End card:** the page dims and the card rises; leaving, the card sinks and
   the dim fades.
 - **Small touches:** a pressed button gives way slightly (scale 0.98); a
@@ -173,13 +180,27 @@ community options' words (held for counsel) and the Journal post.
 
 ## Still open
 
-- **CM1:** whose training clips may be played to others (proposed: only from
-  people who share).
-- **CM2:** communities built but switched off until counsel approves the
-  sharing wording.
-- **CM3:** a limit on the practise loop.
-- **B01 to B14:** sign the line bank.
-- **The Journal post** on self-modeling (Dowrick, "Self model theory:
-  learning from the future", WIREs Cognitive Science, 2012): to write and
-  sign.
-- **The sharing screen's words:** to sign after counsel.
+*Updated 2026-10-07 (build plan D-OP-3).* Settled since this lock was
+written:
+
+- **CM1 A** (N53.2): only the voices of people who agreed to share reach
+  others; the training clips mixed into judging are the licensed corpus.
+- **CM2 B** (N53.2): sharing is built and switches on with the sharing
+  screen, under the founder's own words for it, without waiting for
+  counsel; the consent stays per Take, revocable, and stamped with the
+  version of the words the speaker saw.
+- **CM3 A, CM3a A, CM3b A** (N53.2, N54.2, N55): up to three tries; after
+  the third try that is not praise, a signed thank-you line and on to
+  "Judgement time!".
+- **B01 to B14** (N54.1): the line bank is signed
+  (`docs/SIGNED-line-bank-2026-10-06.md`).
+- **The Journal post** (N53.4, JP1 A): signed as drafted; publishing it is
+  build plan D-OP-2.
+- **The sharing screen's words** (N54.3, WQ5 A, WQ6 A): signed.
+- **Q-B3, Q-B5, Q-B9, Q-B10, Q-B14** (N63): how a tap on a paragraph opens,
+  the connected helper-word phrase, orange inside the walk only, the bars
+  and buttons after the walk, and five small look choices.
+
+Still open:
+
+- **"None"** on the sharing screen (Q-B6 A): to sign; on the panel as S-B6.

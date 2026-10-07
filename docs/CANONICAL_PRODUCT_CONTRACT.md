@@ -229,7 +229,13 @@ with this contract, this contract wins.
     Confident Voice, Actionable Improvement and Evidence-backed Praise. No
     bookmark is ever empty, because the judgement and the Paragraph's history
     are always there. (Founder 2026-09-25; supersedes the 2026-09-24 "keep the
-    emphasis open for every answer" ruling.)
+    emphasis open for every answer" ruling.) **Amended 2026-10-07 (the
+    Feedback walk; decisions log N52.2, N54.2; build plan D-OP-3):** inside
+    the walk, served once `NEXT_PUBLIC_FEEDBACK_WALK` is on, the helper-words
+    step follows a praise, or a practise whose try the machine reads as
+    praise, instead of a Yes or In-between judgement; the judgements come
+    after all the praise and practising, under "Judgement time!". Until the
+    walk's switch, 24e is served as written above.
 
 24e-1. **Judgement after feedback** (founder 2026-10-01, F1; Phase 2 of the
     after-practice paths, served only once `JUDGEMENT_AFTER_FEEDBACK_ENABLED`
@@ -246,7 +252,13 @@ with this contract, this contract wins.
     a clip the machine could not read, or Audio unclear. A practice may
     start before any judgement (29a); a practice that lands, a practice
     dismissed, or a bookmark skipped settles the item without a Path 1
-    answer. Until the switch, 24e above is served as written.
+    answer. Until the switch, 24e above is served as written. **Amended
+    2026-10-07 (the Feedback walk; N52.2; D-OP-3):** inside the walk the
+    judgement no longer follows each feedback: all the Take's praise comes
+    first (helper words right after each), then the practising, then
+    "Judgement time!" asks the judgement of every moment in turn. The coach
+    request still rises at the open, under the machine's kind, and the
+    judgement still sets its answer kind.
 
 24f. **On top of that, each Take carries anchored notes**, each attached to
     the item it concerns and never floating free of a Slide. **The caps are
@@ -458,7 +470,16 @@ with this contract, this contract wins.
     Paragraph** (B6): the words on the page change only with a Take, or
     with the user's own acceptance of a rewrite (29b). Each
     answer is stored against the practice attempt it judges, never against
-    the Take (clause 31).
+    the Take (clause 31). **Amended 2026-10-07 (the Feedback walk; N52.3,
+    N54.2, N55 CM3b A; D-OP-3):** inside the walk the speaker is not asked to
+    judge a practise: the machine checks each try against the moment. A try
+    it reads as praise ends the loop and opens the helper-words step over
+    that try's own words; otherwise the encouragement line from the signed
+    line bank and another try, **up to three tries** (CM3a A). After the
+    third try that is not praise the app thanks the speaker with a signed
+    CM3b line and moves on to "Judgement time!"; Skip works at any time.
+    This replaces "no attempt cap" (lock D2) for the walk only; until the
+    walk's switch, the loop above is served as written.
 29b. **Accepting a rewrite** (founder 2026-09-30, the rewrite amendment and
     C11). A rewrite card shows the clearer words as text. The one primary
     action is to accept them and practise: the acceptance is the owner's
@@ -731,7 +752,24 @@ with this contract, this contract wins.
     records none. Only pairs the export can release (the speaker's yes, the
     passage, the model version) fill the bar of 200. Naming a pattern on the
     moment itself was retired (N45 Q9); the shadow-cue bar reads the blind
-    error audit (35g-3a, N48.5 Q24 A).
+    error audit (35g-3a, N48.5 Q24 A). **Amended 2026-10-07 (the coach
+    panel redesign; N56, N57; Q-B7 A, Q-B12 A, Q-B13 A; build plan D-CP-1):**
+    (1) *Naming on the moment returns, as a signal only.* On an error
+    moment the coach first answers "What kind of error is it?"; an error
+    the coach names in one field ("Something else · Name a new error") is
+    stored as "named by a coach" on that moment until the founder writes
+    its definition and question in admin. The exercise made for it reaches
+    the speaker now and waits in the library under that name; naming is a
+    signal for the founder only, and readiness for a detector still comes
+    from blind "Do you hear it?" answers (35g-3a). (2) *A coach may change
+    an answer.* "Change my answer" re-answers a moment; when the speaker
+    already has the old answer, the new one replaces the card, and every
+    earlier answer stays in history for audit. (3) *Library filing.* A
+    clearer version never goes to the exercise library; its kind only labels
+    the coach's work and its screen offers "Share with {p}" alone. A note
+    goes straight to "Ready for {p}". An error answered without a video goes
+    to the speaker without the library. The draft-and-pair rules above are
+    unchanged.
 35g-3. **Did the practice sound more confident?** (founder 2026-09-28,
     option A; rule `exercise-more-confident-v1`, migration 0388.) For each
     practice session, the attempt the coach judged is recorded as **helped**

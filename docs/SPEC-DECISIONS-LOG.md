@@ -2229,3 +2229,27 @@ Nothing is left open. Wave 3 (the Feedback walk behind its switch) can start
 once Wave 1 closes; Wave 2 still owes the founder three signatures first
 (the four word-signal definitions and moment roles, Q-B1; the V4 coach-sheets
 prototype, Q-B8; the "None" word, Q-B6).
+
+**N64 · The contract and the locks catch up with the walk, the coach
+panel and N63 (build plan D-OP-3, D-CP-1, D-RC-6; 7 October 2026).** No
+new decision: the answers already given are written where the code reads
+its rules from.
+- Contract 24e, 24e-1 and 29a carry dated amendments for the Feedback
+  walk (N52.2, N54.2, N55 CM3b A): inside the walk helper words follow a
+  praise or a practise the machine reads as praise, the judgements come
+  under "Judgement time!", and the machine checks each try, up to three.
+  Outside the walk and until its switch they are served as written.
+- Helper-words lock B2 and D2 carry the same dated notes.
+- Contract 35g-2a carries the coach panel's amendments (N56, N57; Q-B7 A,
+  Q-B12 A, Q-B13 A): naming on the moment returns as a signal only, a coach
+  may change an answer with every earlier answer kept, and a clearer
+  version never goes to the library.
+- The walk lock's "orange only" line applies inside the walk (Q-B9 A); its
+  Recording Mode fade is a soft 0.4 s fade into the white screens
+  (Q-B14 A); its "Still open" list now names what was settled and leaves
+  only "None" (S-B6).
+- The recording lock records the one close button and the fade (Q-B14 A).
+  N59 named the prototype's version 6; the lock is version 7, as the
+  frontend's CLAUDE.md and the lock file already say.
+- `docs/COACH-PANEL-BUILD-PLAN-P2-P7.md` maps the coach panel rebuild to
+  steps, screens and endpoints.
