@@ -458,6 +458,13 @@ STRUCTURAL_DEVICE_DETECTOR_VERSION = "structural-device-v1"
 DELIVERY_IMPECCABLE_DETECTOR_VERSION = "delivery-impeccable-v1"
 
 
+def praise_detectors_enabled() -> bool:
+    """The praise detectors' own switch (QA3 A), read at call time through
+    `Config` so a test or a restart sees the current value."""
+    from config import Config
+    return bool(getattr(Config, "PRAISE_DETECTORS_ENABLED", True))
+
+
 def _detector_praise_evidence(source: str, device: Any,
                               cues: list) -> dict:
     """The Manager evidence a detector praise row honestly carries, or {}.
@@ -476,7 +483,14 @@ def _detector_praise_evidence(source: str, device: Any,
     Any other advice row (a delivery issue, an unknown device) gets nothing
     and stays excluded. `_manager_evidence` never rides a student payload
     (`strip_internal_evidence`).
+
+    ITS OWN SWITCH (QA3 A): `Config.PRAISE_DETECTORS_ENABLED`, default on,
+    independent of MOMENT_SUGGESTIONS_ENABLED. Off, every detector praise
+    row stays unstamped and excluded, and the lane falls back to the
+    Manager's tentative praise exactly as before W1-A.
     """
+    if not praise_detectors_enabled():
+        return {}
     if source == "structural":
         from services.moment_suggestions import STRUCTURAL_DEVICES
         if device in STRUCTURAL_DEVICES:

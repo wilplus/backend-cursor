@@ -65,6 +65,11 @@ GATE_FLAGS: tuple[str, ...] = (
     "LIVING_TRANSCRIPT_ENABLED",
     "IDEAL_TEXT_FEEDBACK_BAKE_ENABLED",
     "PIPELINE_QUEUE_ENABLED",
+    # Detector praise (QA3 A): read by the worker that writes the praise
+    # rows and by the web read path that stamps their evidence; default on
+    # in code. Printed beside the star-lane switch it is independent of.
+    "PRAISE_DETECTORS_ENABLED",
+    "MOMENT_SUGGESTIONS_ENABLED",
     # Read by the web start script, not by the worker or the crons. Not a
     # secret. Printed so the web boot line shows whether this process was
     # asked to migrate; the report does not compare it across services.
