@@ -2,6 +2,8 @@
 
 `LOCKED 2026-10-06 · layout agreed in chat ("rest looks ok", 21:26 UTC) · words signed CP2 A · library and errors to admin CP3 A · corpus switched on CO1 A (21:46 UTC export)`
 
+**Design locked 2026-10-07 (N57):** every coach screen is built to the prototype below exactly, as the speaker's screens are to the Ideal Text Final Screens; the frontend's CLAUDE.md carries the rule.
+
 Clickable prototype (the reference for every screen):
 <https://claude.ai/artifact/TEBvGMehRF6wXCvJTEYTUA>. A copy of the page as
 locked is kept in `docs/design/coach-panel-redesign-2026-10-06.html`.
