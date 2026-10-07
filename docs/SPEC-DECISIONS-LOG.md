@@ -2189,3 +2189,43 @@ green, and post every finished piece in Done").
 
 Still open: Q-B3, Q-B5, Q-B9, Q-B10 and Q-B14, which go to the founder with
 a clickable side-by-side prototype.
+
+**N63 · The last five build-plan questions are answered, and Wave 3 is
+unblocked (founder, Navigation Panel, 7 October 2026, 20:09 UTC).** The
+founder answered the five questions N62 left open, each with Claude's pick,
+after the side-by-side prototype
+(<https://claude.ai/artifact/PnCmGJaKDper6SgTiw3rpY>). All 15 of the build
+plan's questions are now answered.
+
+- **Q-B3 A.** When the walk goes live, tapping a paragraph with an open
+  moment opens the walk at that moment. An answered or saved paragraph opens
+  "This paragraph" or "Helper words saved", redrawn in the walk's look and
+  keeping History and Edit. Neither screen is retired (unblocks D-FW-14,
+  D-IT-6).
+- **Q-B5 A.** Tap-by-tap picking keeps one connected phrase: each tap adds a
+  word next to the others, up to four (B3), saved and shown in italics
+  exactly as today. Both pickers follow this one rule; the server's single
+  phrase and the single italic run stay as they are (unblocks D-IT-5,
+  D-IT-11, D-FW-14).
+- **Q-B9 A.** The walk's orange rule (orange marks only new words and the
+  Lounge's "new" tag) applies inside the walk only. Outside it the bars, the
+  helper-word headlines (page, Presentation Mode, export, Recording Mode) and
+  the coach panel's "Something else" stay orange (unblocks D-IT-10, D-OP-3).
+- **Q-B10 A.** After the walk the text page keeps the 30 Sep bars: only open
+  moments, green or orange by the machine's read (B7). The bottom is
+  "● Record Take N" with a "Review feedback" link under it, as the walk
+  prototype draws; "See next steps" is removed (unblocks D-IT-8).
+- **Q-B14 A.** The five small look choices apply as listed: (1) the app's one
+  small grey close X everywhere; (2) Presentation Mode dark, as in its
+  frame, with no slide dots; (3) a soft 0.4-second fade into and out of the
+  white Recording Mode screens; (4) the coach panel on a computer uses the
+  same phone-width screens, centred; (5) the Support card shows
+  contact@willpowerlab.com as plain text with a copy button and no mail
+  link. Each screen is shown to the founder in the panel's Done list before
+  it goes live (unblocks D-RC-6, D-RC-7, D-IT-9, D-FW-21, D-CP-23, D-CS-7,
+  D-OP-3).
+
+Nothing is left open. Wave 3 (the Feedback walk behind its switch) can start
+once Wave 1 closes; Wave 2 still owes the founder three signatures first
+(the four word-signal definitions and moment roles, Q-B1; the V4 coach-sheets
+prototype, Q-B8; the "None" word, Q-B6).
