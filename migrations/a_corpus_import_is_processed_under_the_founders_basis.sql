@@ -50,7 +50,8 @@
 --
 -- AND THE OTHER WAY ROUND. issue_phase1_provider_permit_v1 (0355) is
 -- restated with ONE check added first: it refuses a corpus import (a
--- training_import session, or a registered import's session or recording)
+-- training_import session, a recording whose own session is one, or a
+-- registered import's session or recording)
 -- with PROCESSING_SOURCE_IS_CORPUS_IMPORT. 0355's ownership check stays
 -- silent for a Take with no owner, and an import has none, so until now a
 -- permit for an import could have been minted under any principal holding a
@@ -220,34 +221,59 @@ DO $$
 DECLARE
     missing text;
 BEGIN
-    SELECT string_agg(name, ', ') INTO missing
-      FROM unnest(ARRAY[
-          'corpus_processing_bases_imports_only',
-          'corpus_processing_bases_never_pooled',
-          'corpus_processing_bases_founder_only',
-          'corpus_processing_bases_id_decision',
-          'corpus_import_registrations_route_only',
-          'corpus_provider_permits_analysis_only',
-          'corpus_provider_permits_status_check',
-          'corpus_provider_permits_revocation_matches_status',
-          'corpus_provider_permits_finish_matches_status',
-          'corpus_provider_permits_never_pooled',
-          'corpus_provider_permits_basis_pair',
-          'corpus_provider_operations_event_check'
-      ]) AS name
-     WHERE NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conname = name);
+    -- Each rule: its table, its kind (c check, u unique, f foreign key), and
+    -- a fragment its definition must contain. Fragments, not whole texts, so
+    -- the guard does not depend on how a server version prints a definition.
+    SELECT string_agg(rule.name, ', ') INTO missing
+      FROM (VALUES
+          ('corpus_processing_bases', 'corpus_processing_bases_decision_shape', 'c', 'decision_ref'),
+          ('corpus_processing_bases', 'corpus_processing_bases_founder_only', 'c', '''founder'''),
+          ('corpus_processing_bases', 'corpus_processing_bases_basis_present', 'c', 'founder_note'),
+          ('corpus_processing_bases', 'corpus_processing_bases_imports_only', 'c', '''training_import'''),
+          ('corpus_processing_bases', 'corpus_processing_bases_never_pooled', 'c', 'NOT pooled_learning_eligible'),
+          ('corpus_processing_bases', 'corpus_processing_bases_id_decision', 'u', 'UNIQUE (id, decision_ref)'),
+          ('corpus_import_registrations', 'corpus_import_registrations_route_only', 'c', '''coach_import_route'''),
+          ('corpus_provider_permits', 'corpus_provider_permits_analysis_only', 'c', 'operation_kind'),
+          ('corpus_provider_permits', 'corpus_provider_permits_status_check', 'c', 'status'),
+          ('corpus_provider_permits', 'corpus_provider_permits_expiry_check', 'c', 'expires_at > issued_at'),
+          ('corpus_provider_permits', 'corpus_provider_permits_revocation_matches_status', 'c', 'revoked_at IS NOT NULL'),
+          ('corpus_provider_permits', 'corpus_provider_permits_finish_matches_status', 'c', 'finished_at IS NOT NULL'),
+          ('corpus_provider_permits', 'corpus_provider_permits_never_pooled', 'c', 'NOT pooled_learning_eligible'),
+          ('corpus_provider_permits', 'corpus_provider_permits_basis_pair', 'f', 'corpus_processing_bases(id, decision_ref)'),
+          ('corpus_provider_operations', 'corpus_provider_operations_event_check', 'c', 'event_kind')
+      ) AS rule(tbl, name, kind, fragment)
+     WHERE NOT EXISTS (
+         SELECT 1 FROM pg_constraint c
+          WHERE c.conname = rule.name
+            AND c.conrelid = to_regclass('public.' || rule.tbl)
+            AND c.contype = rule.kind
+            AND position(rule.fragment IN pg_get_constraintdef(c.oid)) > 0);
     IF missing IS NOT NULL THEN
-        RAISE EXCEPTION 'CORPUS_SCHEMA_MISMATCH: missing %', missing;
+        RAISE EXCEPTION 'CORPUS_SCHEMA_MISMATCH: missing or different %', missing;
     END IF;
-    IF to_regclass('public.corpus_processing_bases_one_in_force') IS NULL THEN
-        RAISE EXCEPTION 'CORPUS_SCHEMA_MISMATCH: missing corpus_processing_bases_one_in_force';
+    -- One basis in force per source: a UNIQUE index on covers_source, only
+    -- over rows not retired.
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_index i
+         WHERE i.indexrelid = to_regclass('public.corpus_processing_bases_one_in_force')
+           AND i.indrelid = to_regclass('public.corpus_processing_bases')
+           AND i.indisunique
+           AND pg_get_indexdef(i.indexrelid) LIKE '%(covers_source)%'
+           AND pg_get_expr(i.indpred, i.indrelid) = '(retired_at IS NULL)'
+    ) THEN
+        RAISE EXCEPTION 'CORPUS_SCHEMA_MISMATCH: missing or different corpus_processing_bases_one_in_force';
     END IF;
+    -- The whole N58 row as the founder recorded it. retired_at is not
+    -- compared: retiring N58 later is allowed, and a rerun must not fail then.
     IF NOT EXISTS (
         SELECT 1 FROM public.corpus_processing_bases
          WHERE id = '0d580435-5858-4058-8058-000000000058'
            AND decision_ref = 'N58' AND decided_on = DATE '2026-10-07'
            AND recorded_by = 'founder' AND covers_source = 'training_import'
            AND legal_basis = 'legal basis recorded by the founder, agreed with counsel'
+           AND founder_note = 'no need for license check pls; we have it legally recorded and we don''t '
+                              'need license to prove it! this version is agreed with the counsel and it '
+                              'is my executive decision'
            AND NOT pooled_learning_eligible
     ) THEN
         RAISE EXCEPTION 'CORPUS_BASIS_SEED_MISMATCH: the N58 row is not the founder''s';
@@ -319,6 +345,36 @@ DROP TRIGGER IF EXISTS corpus_provider_operations_never_truncate
 CREATE TRIGGER corpus_provider_operations_never_truncate
     BEFORE TRUNCATE ON public.corpus_provider_operations
     FOR EACH STATEMENT EXECUTE FUNCTION public.corpus_provider_ledger_keeps_history();
+-- A permit's request never changes after it is issued; only its state does
+-- (status, started_at, finished_at, revoked_at, written by the event
+-- recorder above).
+CREATE OR REPLACE FUNCTION public.corpus_provider_permit_request_never_changes()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF (NEW.id, NEW.basis_id, NEW.basis_decision_ref, NEW.session_id,
+        NEW.recording_id, NEW.provider, NEW.operation_kind,
+        NEW.minimum_data_manifest, NEW.issued_at, NEW.expires_at,
+        NEW.idempotency_key, NEW.pooled_learning_eligible)
+       IS DISTINCT FROM
+       (OLD.id, OLD.basis_id, OLD.basis_decision_ref, OLD.session_id,
+        OLD.recording_id, OLD.provider, OLD.operation_kind,
+        OLD.minimum_data_manifest, OLD.issued_at, OLD.expires_at,
+        OLD.idempotency_key, OLD.pooled_learning_eligible)
+    THEN
+        RAISE EXCEPTION 'CORPUS_LEDGER_IMMUTABLE: a permit keeps its request'
+            USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS corpus_provider_permits_request_never_changes
+    ON public.corpus_provider_permits;
+CREATE TRIGGER corpus_provider_permits_request_never_changes
+    BEFORE UPDATE ON public.corpus_provider_permits
+    FOR EACH ROW EXECUTE FUNCTION public.corpus_provider_permit_request_never_changes();
 DROP TRIGGER IF EXISTS corpus_provider_permits_never_removed
     ON public.corpus_provider_permits;
 CREATE TRIGGER corpus_provider_permits_never_removed
@@ -524,7 +580,8 @@ BEGIN
         'basis_id', permit.basis_id,
         'basis_decision_ref', permit.basis_decision_ref,
         'session_id', permit.session_id,
-        'recording_id', permit.recording_id
+        'recording_id', permit.recording_id,
+        'status', permit.status
     );
 END;
 $$;
@@ -621,12 +678,21 @@ BEGIN
     -- check below stays silent for a Take with no owner, and an import has
     -- none. Its provider calls are permitted only by
     -- issue_corpus_provider_permit_v1, under the founder's corpus basis.
-    -- Refused on positive evidence only (the session's source, the import
-    -- route's registration), so every Take of a person passes as before.
+    -- Refused on positive evidence only (the named session's source, the
+    -- recording's own session's source, the import route's registration), so
+    -- every Take of a person passes as before. The recording's own session is
+    -- read too, so naming another session beside an import's recording
+    -- cannot get it through.
     IF EXISTS (
            SELECT 1 FROM v2_sessions take
             WHERE take.id = p_source_take_id
               AND to_jsonb(take)->>'source' = 'training_import'
+       ) OR EXISTS (
+           SELECT 1 FROM recordings rec
+             JOIN v2_sessions own
+               ON own.id::text = to_jsonb(rec)->>'session_v2_id'
+            WHERE rec.id = p_source_recording_id
+              AND to_jsonb(own)->>'source' = 'training_import'
        ) OR EXISTS (
            SELECT 1 FROM corpus_import_registrations registration
             WHERE registration.session_id = p_source_take_id
@@ -804,6 +870,7 @@ REVOKE ALL ON FUNCTION public.corpus_import_refusal_v1(uuid, uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.corpus_processing_bases_retire_only() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.corpus_import_registrations_never_change() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.corpus_provider_ledger_keeps_history() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.corpus_provider_permit_request_never_changes() FROM PUBLIC;
 REVOKE ALL ON TABLE public.corpus_processing_bases FROM PUBLIC;
 REVOKE ALL ON TABLE public.corpus_import_registrations FROM PUBLIC;
 REVOKE ALL ON TABLE public.corpus_provider_permits FROM PUBLIC;
@@ -822,6 +889,7 @@ BEGIN
             EXECUTE format('REVOKE ALL ON FUNCTION public.corpus_processing_bases_retire_only() FROM %I', v_role);
             EXECUTE format('REVOKE ALL ON FUNCTION public.corpus_import_registrations_never_change() FROM %I', v_role);
             EXECUTE format('REVOKE ALL ON FUNCTION public.corpus_provider_ledger_keeps_history() FROM %I', v_role);
+            EXECUTE format('REVOKE ALL ON FUNCTION public.corpus_provider_permit_request_never_changes() FROM %I', v_role);
             EXECUTE format('REVOKE ALL ON TABLE public.corpus_processing_bases FROM %I', v_role);
             EXECUTE format('REVOKE ALL ON TABLE public.corpus_import_registrations FROM %I', v_role);
             EXECUTE format('REVOKE ALL ON TABLE public.corpus_provider_permits FROM %I', v_role);

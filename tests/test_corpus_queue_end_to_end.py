@@ -1032,6 +1032,14 @@ def test_0435_is_manifested_after_0434_with_its_rehearsal():
     assert ours[:first] + ours[rest:] == permit_writer(
         (root / "migrations" / "authorization_binds_to_acquirer.sql").read_text())
     assert "RAISE EXCEPTION 'PROCESSING_SOURCE_IS_CORPUS_IMPORT'" in ours[first:rest]
+    # Its grants are 0355's own lines, restated unchanged (HO-13c rule 2).
+    def grants(text: str) -> str:
+        a = text.index(
+            "REVOKE ALL ON FUNCTION public.issue_phase1_provider_permit_v1(")
+        b = text.index(") TO service_role;", a) + len(") TO service_role;")
+        return text[a:b]
+    assert grants(body) == grants(
+        (root / "migrations" / "authorization_binds_to_acquirer.sql").read_text())
     outside = body.replace(ours, "")
     for untouched in ("resolve_phase1_acquisition_principal_v1",
                       "processing_provider_permits",

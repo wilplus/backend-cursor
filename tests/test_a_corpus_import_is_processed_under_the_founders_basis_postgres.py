@@ -541,3 +541,61 @@ def test_a_permit_cannot_name_a_decision_its_basis_is_not(db):
                 VALUES (%s, 'N99', %s, %s, 'openai', 'transcription',
                         '{}'::jsonb, now() + interval '5 minutes', %s)""",
                 (BASIS_ID, sid, rid, f"k-{uuid.uuid4()}"))
+
+
+# ── HO-13c: the recording's own session; the guard reads definitions ──────
+
+def test_naming_another_take_beside_an_imports_recording_is_refused(db, policy):
+    importer = _principal(db)
+    _accept(db, policy, importer)
+    _sid, rid = _import(db)                      # never registered
+    other = _session(db, source="lab", owner=importer)
+    _refused(db, "PROCESSING_SOURCE_IS_CORPUS_IMPORT", _permit,
+             importer, other, rid)
+
+
+def test_a_rule_with_the_right_name_but_another_definition_stops_the_migration():
+    with rolled_back() as cur:
+        cur.execute("ALTER TABLE public.corpus_provider_permits "
+                    "DROP CONSTRAINT corpus_provider_permits_never_pooled")
+        cur.execute("ALTER TABLE public.corpus_provider_permits "
+                    "ADD CONSTRAINT corpus_provider_permits_never_pooled CHECK (true)")
+        with pytest.raises(psycopg2.errors.RaiseException,
+                           match="CORPUS_SCHEMA_MISMATCH"):
+            cur.execute(_shape_guard())
+
+
+def test_an_index_that_is_not_partial_stops_the_migration():
+    with rolled_back() as cur:
+        cur.execute("DROP INDEX public.corpus_processing_bases_one_in_force")
+        cur.execute("CREATE UNIQUE INDEX corpus_processing_bases_one_in_force "
+                    "ON public.corpus_processing_bases (covers_source, id)")
+        with pytest.raises(psycopg2.errors.RaiseException,
+                           match="CORPUS_SCHEMA_MISMATCH"):
+            cur.execute(_shape_guard())
+
+
+def test_another_founder_note_stops_the_migration():
+    with rolled_back() as cur:
+        cur.execute("ALTER TABLE public.corpus_processing_bases "
+                    "DISABLE TRIGGER corpus_processing_bases_retire_only")
+        cur.execute("UPDATE public.corpus_processing_bases "
+                    "SET founder_note = 'another note' WHERE decision_ref = 'N58'")
+        with pytest.raises(psycopg2.errors.RaiseException,
+                           match="CORPUS_BASIS_SEED_MISMATCH"):
+            cur.execute(_shape_guard())
+
+
+def test_a_permits_request_never_changes(db):
+    sid, rid = _import(db)
+    _register(db, sid, rid)
+    permit = _corpus_permit(db, sid, rid)
+    assert permit["status"] == "issued"
+    for column, value in (("provider", "'cloudflare_r2'"),
+                          ("expires_at", "now() + interval '1 day'"),
+                          ("minimum_data_manifest", "'{}'::jsonb")):
+        with rolled_back() as cur:
+            with pytest.raises(psycopg2.errors.CheckViolation,
+                               match="CORPUS_LEDGER_IMMUTABLE"):
+                cur.execute(f"UPDATE public.corpus_provider_permits SET {column} = "
+                            f"{value} WHERE id = %s", (permit["permit_id"],))
