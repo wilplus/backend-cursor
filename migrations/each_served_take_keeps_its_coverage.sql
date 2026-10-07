@@ -68,7 +68,7 @@ COMMENT ON TABLE public.take_feedback_coverage IS
 
 -- Browser roles get nothing, whatever default privileges the schema
 -- carries: RLS with no policy already returns no row, and this makes the
--- boundary explicit. The app writes it with the service key.
+-- boundary explicit. The app writes it with the service key, granted below.
 DO $$
 DECLARE
     v_role text;
@@ -79,6 +79,12 @@ BEGIN
             EXECUTE format('REVOKE ALL ON TABLE public.take_feedback_coverage FROM %I', v_role);
         END IF;
     END LOOP;
+    -- The writer's grant is explicit, not left to default privileges
+    -- (GPT-0437 should-fix): a database without those defaults would
+    -- otherwise fail closed and keep no coverage at all.
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.take_feedback_coverage TO service_role;
+    END IF;
 END $$;
 
 COMMIT;

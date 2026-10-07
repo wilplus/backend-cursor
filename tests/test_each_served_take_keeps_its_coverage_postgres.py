@@ -105,6 +105,17 @@ def test_the_table_exists_closed_to_the_browser(db):
             assert cur.fetchone()[0] is False
 
 
+def test_the_writer_holds_its_grant_explicitly(db):
+    with db.cursor() as cur:
+        cur.execute("SELECT 1 FROM pg_roles WHERE rolname = 'service_role'")
+        if cur.fetchone() is None:
+            pytest.skip("no service_role in this cluster")
+        cur.execute(
+            "SELECT has_table_privilege('service_role', "
+            "'public.take_feedback_coverage', 'SELECT, INSERT, UPDATE, DELETE')")
+        assert cur.fetchone()[0] is True
+
+
 def test_the_row_the_serve_path_builds_fits_and_types_the_empty_lane(db):
     row = _row(covered=False)
     with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
