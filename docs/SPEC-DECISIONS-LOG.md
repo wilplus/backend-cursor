@@ -2083,3 +2083,18 @@ importer's judgement counts (founder, Navigation Panel export, 7 October
    (`label_quorum.rating_is_self_report`). "A coach still can't judge their
    own voice anywhere": a coach or user rating their own Take is still a
    self-report, unchanged.
+
+**N59 · The recording screens' design is locked (founder, chat, 7 October
+2026).** "Lock the recording screens." The recording screen prototype
+(<https://claude.ai/artifact/9CFAAP2Ue7pvRdLvdesn9h>, version 6, copy in
+`docs/design/recording-screens-2026-10-07.html`) is now the design the
+speaker's recording screens are built to, exactly as the Ideal Text Final
+Screens and the coach panel are for theirs: the first recording's learning
+screen ("Scroll down to start"; on a desktop "Click down to start"), "Take
+N · Slide n of m" in the top bar, only the slide and its helper words
+moving under a still frame, calmer gestures that land softly, the keyboard
+without a click, and never a reload from a scroll to the top. The words new
+with it are locked with the screens. The frontend's CLAUDE.md carries the
+rule ("Design lock — the recording screens");
+`docs/FOUNDER-LOCK-recording-screens-2026-10-07.md` is the written record.
+It wins over the Ideal Text lock's line on Recording Mode for these screens.

@@ -1,0 +1,440 @@
+<title>Recording Screen Prototype</title>
+<style>
+:root{
+  --bg:#ffffff; --fg:#121212; --muted:#f5f5f5; --muted-fg:#737373; --border:#ebebeb;
+  --primary:#ff6a0a; --record:#e0453a; --record-fg:#fff;
+  --proto-bg:#e9e9ec; --proto-fg:#2a2a30; --proto-line:#d4d4da; --proto-chip:#ffffff;
+  color-scheme:light;
+}
+html,body{height:100%;overscroll-behavior:none}
+body{margin:0;background:var(--proto-bg);color:var(--fg);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
+*{box-sizing:border-box}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+@media (hover:none){button:not(:disabled):active{opacity:.72}}
+@media (hover:none) and (prefers-reduced-motion:no-preference){button:not(:disabled):active{transform:scale(.97)}}
+
+/* ---------- prototype chrome (not part of the product) ---------- */
+.proto{position:fixed;inset:0;display:flex;flex-direction:column}
+.pbar{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:10px 16px;border-bottom:1px solid var(--proto-line);color:var(--proto-fg);font-size:13px}
+.pbar b{font-weight:650;letter-spacing:.01em}
+.seg{display:inline-flex;background:#dcdce1;border-radius:999px;padding:2px}
+.seg button{padding:5px 11px;border-radius:999px;font-size:12.5px;font-weight:550;color:#55555c}
+.seg button[aria-pressed="true"]{background:var(--proto-chip);color:var(--proto-fg);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.pbtn{padding:5px 11px;border-radius:999px;border:1px solid var(--proto-line);background:var(--proto-chip);font-size:12.5px;font-weight:550}
+.pnote{font-size:12px;color:#6b6b73}
+.stagewrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+.device{position:relative;background:var(--bg);overflow:hidden;transform-origin:center center;box-shadow:0 0 0 10px #111,0 20px 60px rgba(0,0,0,.25);border-radius:44px}
+.device.desk{border-radius:12px;box-shadow:0 0 0 1px #c9c9cf,0 20px 60px rgba(0,0,0,.18)}
+.toast-proto{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);background:#2a2a30;color:#fff;font-size:12px;padding:6px 12px;border-radius:999px;opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap}
+.toast-proto.on{opacity:.92}
+/* on a real phone the app fills the screen under the bar */
+.full .device{border-radius:0;box-shadow:none;transform:none!important;width:100%!important;height:100%!important}
+.full .stagewrap{align-items:stretch}
+.full .pnote{display:none}
+.full .pbar{padding:6px 10px;gap:6px;font-size:12px}
+.full .pbar b{display:none}
+.full .seg button,.full .pbtn{padding:4px 8px;font-size:11.5px}
+
+/* ---------- the app ---------- */
+.app{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg);padding-top:env(safe-area-inset-top,0px)}
+.device:not(.desk) .app{padding-top:44px}
+.full .device .app{padding-top:env(safe-area-inset-top,0px)}
+header.h{height:48px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 16px}
+.kicker{font-size:11px;font-weight:500;letter-spacing:.16em;text-transform:uppercase;color:var(--muted-fg)}
+.x{width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:999px;margin-right:-8px}
+.x svg{width:20px;height:20px}
+.band{flex:1;min-height:0;display:flex;flex-direction:column;width:100%;max-width:42rem;margin:0 auto;padding:24px 16px 20px;overflow:hidden}
+.col{display:flex;flex-direction:column;min-height:0;flex:1;width:100%;max-width:36rem;margin:0 auto}
+.where{margin:0;font-size:13px;font-weight:600;color:var(--muted-fg);font-variant-numeric:tabular-nums}
+.stage{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+.slidebox{flex:none;padding-bottom:16px}
+.slide{position:relative;width:100%;aspect-ratio:16/9;border-radius:16px;border:1px solid var(--border);overflow:hidden;background:#061a3a;background-size:cover;background-position:center}
+.slide .orb{position:absolute;right:-12%;top:-30%;width:62%;aspect-ratio:1;border-radius:999px;background:rgba(255,255,255,.08)}
+.slide .pg{position:absolute;right:5%;bottom:7%;font-size:var(--sb,9.5px);font-weight:600;color:rgba(255,255,255,.7);font-variant-numeric:tabular-nums}
+.slide .txt{position:absolute;top:0;bottom:0;left:0;width:78%;display:flex;flex-direction:column;justify-content:center;padding:5% 6%;color:#fff}
+.slide .bar{height:4px;width:12%;border-radius:999px;background:var(--mark,var(--primary));margin-bottom:5%}
+.slide h3{margin:0;font-weight:600;line-height:1.05;letter-spacing:-.025em;font-size:var(--st,22px)}
+.slide p{margin:5% 0 0;font-size:var(--sl,12px);line-height:1.35;color:rgba(255,255,255,.92);text-wrap:balance}
+.road{position:relative;flex:1;min-height:0}
+.scroller{height:100%;overflow-y:auto;overscroll-behavior:contain;padding-right:36px;outline:none;scrollbar-width:none}
+.scroller::-webkit-scrollbar{display:none}
+.roots{display:flex;flex-direction:column;justify-content:center;min-height:100%;padding:24px 0}
+.root{margin:0;font-size:var(--rf,26px);line-height:1.35;font-weight:600;color:var(--primary)}
+.root+.root{margin-top:24px}
+.rail{position:absolute;top:0;bottom:0;right:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.rail button{width:32px;height:32px;display:flex;align-items:center;justify-content:center}
+.rail span{display:block;width:6px;height:6px;border-radius:999px;background:rgba(115,115,115,.35);transition:height .2s}
+.rail button[aria-current] span{height:24px;background:var(--fg)}
+.hint{align-self:center;display:flex;flex-direction:column;align-items:center;opacity:.5;color:var(--fg)}
+.hint .t{font-size:var(--hf,30px);font-weight:600;line-height:1.15}
+.hint-touch{display:flex;flex-direction:column;align-items:center;gap:8px}
+.hint-touch svg{width:40px;height:40px}
+.hint-keys{display:flex;flex-direction:column;align-items:center;gap:16px}
+.keys{display:grid;grid-template-columns:repeat(3,44px);gap:6px}
+.key{width:44px;height:44px;border-radius:8px;border:2px solid rgba(115,115,115,.4);color:var(--muted-fg);display:flex;align-items:center;justify-content:center}
+.key svg{width:20px;height:20px}
+.key.on{border-color:var(--primary);color:var(--primary)}
+@media (prefers-reduced-motion:no-preference){.bounce{animation:bounce 1s infinite}}
+@keyframes bounce{0%,100%{transform:translateY(-25%);animation-timing-function:cubic-bezier(.8,0,1,1)}50%{transform:none;animation-timing-function:cubic-bezier(0,0,.2,1)}}
+.dock{flex:none;position:relative;z-index:10;margin:0 -4px;padding:16px 4px 0;background:var(--bg)}
+.strip{display:flex;align-items:center;gap:12px;border-radius:16px;background:var(--muted);padding:12px 16px}
+.dot{width:10px;height:10px;flex:none;border-radius:999px;background:rgba(224,69,58,.5)}
+@media (prefers-reduced-motion:no-preference){.pulse{animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite}}
+@keyframes pulse{50%{opacity:.5}}
+.clock{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
+.clock.over{color:var(--record)}
+.track{flex:1;height:4px;border-radius:999px;background:var(--border);overflow:hidden}
+.fill{height:100%;border-radius:999px;background:var(--primary);transition:width .2s}
+.fill.over{background:var(--record)}
+.finish{height:40px;flex:none;display:flex;align-items:center;gap:8px;border-radius:999px;background:var(--record);color:var(--record-fg);padding:0 16px;font-size:13px;font-weight:600}
+.finish i{width:12px;height:12px;border-radius:2px;background:currentColor}
+/* loading + processing */
+.center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center}
+.lbl{font-size:15px;color:var(--muted-fg)}
+.vm{position:relative;display:flex;align-items:center;justify-content:center}
+.vm .r{position:absolute;border-radius:999px;border:1px solid rgba(18,18,18,.1)}
+@media (prefers-reduced-motion:no-preference){.vm .r{animation:breath 3.6s ease-in-out infinite}.vm circle{transform-box:fill-box;transform-origin:center;animation:vdot 1.4s ease-in-out infinite}.vm circle:nth-child(2){animation-delay:.15s}.vm circle:nth-child(3){animation-delay:.3s}}
+@keyframes breath{0%{transform:scale(.92);opacity:0}50%{opacity:1}100%{transform:scale(1.04);opacity:0}}
+@keyframes vdot{0%,60%,100%{transform:scaleY(.5);opacity:.6}30%{transform:scaleY(1);opacity:1}}
+.proc{flex:1;display:flex;flex-direction:column;justify-content:center;padding-bottom:12vh;width:100%;max-width:34rem;margin:0 auto}
+.proc .vmw{display:flex;justify-content:center;margin-bottom:40px}
+.plab{display:flex;justify-content:space-between;gap:16px;margin-bottom:16px;font-size:15px;font-weight:500}
+.plab span:last-child{font-family:ui-monospace,Menlo,monospace;color:var(--muted-fg)}
+.ptrack{height:3px;background:var(--border);overflow:hidden;margin-bottom:56px}
+.ptrack div{height:100%;background:var(--primary);transition:width .7s ease-out}
+.wyw{font-size:11px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:var(--muted-fg);margin:0 0 24px}
+.tips{position:relative}
+.tipsc{height:clamp(9rem,26vh,13rem);overflow-y:auto;scroll-snap-type:y mandatory;overscroll-behavior:contain;padding-right:36px;scrollbar-width:none}
+.tipsc::-webkit-scrollbar{display:none}
+.tipsc p{margin:0;min-height:100%;scroll-snap-align:start;font-size:clamp(1.45rem,5.2vw,2.05rem);font-weight:500;line-height:1.28;letter-spacing:-.015em;text-wrap:balance}
+.discard{margin-top:-16px;min-height:44px;padding:0 16px;font-size:13px;font-weight:500;color:var(--muted-fg);text-decoration:underline;text-underline-offset:4px}
+/* dialog */
+.scrim{position:absolute;inset:0;z-index:50;display:flex;align-items:flex-end;justify-content:center;background:rgba(18,18,18,.35);padding:16px}
+.desk .scrim{align-items:center}
+.dlg{width:100%;max-width:24rem;border-radius:24px;background:var(--bg);padding:20px;box-shadow:0 20px 25px -5px rgba(0,0,0,.1),0 8px 10px -6px rgba(0,0,0,.1)}
+.dlg h2{margin:0;font-size:18px;font-weight:600}
+.dlg p{margin:8px 0 0;font-size:14px;color:var(--muted-fg)}
+.dlg .row{margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btn{height:40px;border-radius:999px;font-size:14px;font-weight:500;display:flex;align-items:center;justify-content:center}
+.btn.o{border:1px solid var(--border);background:var(--bg)}
+.btn.r{background:var(--record);color:var(--record-fg)}
+.btn.p{background:var(--fg);color:#fff;padding:0 28px}
+/* prototype-only stub */
+.stub{border:1.5px dashed #c4c4cc;border-radius:16px;padding:20px;max-width:20rem;color:#6b6b73;font-size:14px;line-height:1.45;text-align:center;display:flex;flex-direction:column;gap:14px;align-items:center}
+
+/* ---------- v2: learning screen, finger-following moves ---------- */
+html,body{touch-action:none}
+.scroller,.tipsc{touch-action:pan-y}
+.mv{display:flex;flex-direction:column;flex:1;min-height:0}
+.rec .slidebox,.rec .scroller{will-change:transform,opacity}
+.learn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;will-change:transform,opacity}
+.learn .t{font-size:var(--hf,30px);font-weight:600;line-height:1.15;color:var(--fg);opacity:.55}
+.learn .chev{width:44px;height:44px;color:var(--fg);opacity:.55}
+.learn .keys{margin-bottom:6px}
+.learn .key{opacity:.7}
+@media (prefers-reduced-motion:no-preference){.nudge{animation:nudge 1.6s ease-in-out infinite}}
+@keyframes nudge{0%,100%{transform:translateY(0)}45%{transform:translateY(10px)}60%{transform:translateY(4px)}}
+.pull{position:absolute;left:0;right:0;height:3px;border-radius:999px;background:var(--primary);opacity:0;transform-origin:center;transform:scaleX(0);transition:opacity .2s}
+</style>
+
+<div class="proto" id="proto">
+  <div class="pbar">
+    <b>Recording screen</b>
+    <div class="seg" role="group" aria-label="Which Take">
+      <button data-take="1" aria-pressed="true">Take 1 · first time</button>
+      <button data-take="2" aria-pressed="false">Take 2 · helper words</button>
+    </div>
+    <div class="seg" role="group" aria-label="Device">
+      <button data-dev="phone" aria-pressed="true">Phone</button>
+      <button data-dev="desk" aria-pressed="false">Desktop</button>
+    </div>
+    <button class="pbtn" id="restart">Restart</button>
+    <span class="pnote" id="pnote">v6 · The mock deck fits any talk: introduce, main points, sum up. Each slide has its own colour, with a title and one short line; no line above the strip. "Take · Slide" sits in the top bar. Only the slide and its helper words move; the top bar, the slide dots and the strip stay still. First recording opens on "Scroll down to start". Swipe, scroll, or press ↓ ↑ / Space — no click needed. Pulling down never reloads.</span>
+  </div>
+  <div class="stagewrap" id="stagewrap">
+    <div class="device" id="device"><div class="app" id="app"></div></div>
+    <div class="toast-proto" id="ptoast"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+var SLIDES = [
+  {title:"Introduce your subject", line:"Say what you'll talk about and why it matters to them.", bg:"#0B2350", mark:"#F26B21"},
+  {title:"Make your main points", line:"Give each point, with an example that backs it up.", bg:"#E2621B", mark:"#FFFFFF"},
+  {title:"Sum it up", line:"Repeat your points and the one thing they should remember.", bg:"#0F4A33", mark:"#F26B21"}
+];
+var ROOTS = [
+  ["Picture last Friday","nobody remembered it","one hour back"],
+  ["the Lisbon pilot","three teams, one rule","fewer meetings, more done","what the numbers hid","the quiet engineer"],
+  ["start in March","one ask"]
+];
+var TARGET = 180;
+var STAGES = ["Processing your recording","Transcribing your take","Building your Ideal Text","Finding feedback moments","Finding your anchors"];
+var TIPS = [
+  "Try naming the feeling as excitement. The physical energy can stay while your interpretation of it becomes more useful.",
+  "Move before you rehearse. A short walk or a few loose shoulder rolls can help interrupt the loop of overthinking.",
+  "Shrink the room into one conversation. Picture one real person who needs the idea, and speak to them."
+];
+/* Gesture tuning: deliberately less sensitive than v1 (48px / any wheel tick). */
+var TOUCH_COMMIT = 90;      // finger travel (px) needed to move a slide
+var WHEEL_COMMIT = 140;     // accumulated wheel delta that moves at once
+var WHEEL_SOFT = 90;        // ...or this much, if the wheel then rests
+var WHEEL_REST_MS = 220;    // a pause that ends a wheel gesture
+var MOMENTUM_MS = 450;      // after a move, swallow the momentum tail
+var REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+var S = {take:1, dev:"phone", screen:"learn", slide:0, elapsed:0, discard:false, stage:0, pct:5, tip:0, busy:false};
+var timers = [], clockTimer = null;
+var app = document.getElementById("app"), device = document.getElementById("device"), proto = document.getElementById("proto");
+
+function clearTimers(){ timers.forEach(function(t){clearInterval(t);clearTimeout(t);}); timers=[]; if(clockTimer){clearInterval(clockTimer);clockTimer=null;} }
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+function fmt(n){var m=Math.floor(n/60),s=n%60;return m+":"+(s<10?"0":"")+s;}
+function clock(){ var e=S.elapsed, over=e>TARGET; var mag=over?Math.floor(e-TARGET):Math.ceil(TARGET-e); return {label:(over?"-":"")+fmt(mag), over:over}; }
+function ptoast(msg){var t=document.getElementById("ptoast");t.textContent=msg;t.classList.add("on");clearTimeout(ptoast._t);ptoast._t=setTimeout(function(){t.classList.remove("on");},1600);}
+
+var ICON_X='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+function chev(d){var p={down:"m6 9 6 6 6-6",up:"m18 15-6-6-6 6",left:"m15 18-6-6 6-6",right:"m9 18 6-6-6-6"}[d];return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="'+p+'"/></svg>';}
+function voiceMark(size){
+  var i1=Math.max(1,Math.round(size*.094)), i2=Math.max(2,Math.round(size*.1875)), w=Math.round(size*.42);
+  return '<div class="vm" style="width:'+size+'px;height:'+size+'px"><span class="r" style="inset:0"></span><span class="r" style="inset:'+i1+'px;border-color:rgba(18,18,18,.15);animation-delay:.6s"></span><span class="r" style="inset:'+i2+'px;border-color:rgba(255,106,10,.3);animation-delay:1.2s"></span><svg width="'+w+'" height="'+w+'" viewBox="0 0 56 56"><circle cx="12" cy="28" r="4" fill="#121212"/><circle cx="28" cy="28" r="6" fill="#121212"/><circle cx="44" cy="28" r="4" fill="#121212"/></svg></div>';
+}
+function header(kicker){ return '<header class="h"><span class="kicker">'+(kicker||"")+'</span><button class="x" data-act="close" aria-label="Close">'+ICON_X+'</button></header>'; }
+function slideHTML(i){
+  var s=SLIDES[i];
+  return '<div class="slide" style="background:'+s.bg+';--mark:'+s.mark+'"><span class="orb"></span><div class="txt"><span class="bar"></span><h3>'+esc(s.title)+'</h3><p>'+esc(s.line)+'</p></div><span class="pg">'+(i+1)+'</span></div>';
+}
+
+/* ------------------------------ screens ------------------------------ */
+function renderLearn(){
+  var inner = S.dev==="phone"
+    ? '<button class="learn" data-act="start" aria-label="Start recording"><span class="t">Scroll down to start</span><span class="chev nudge">'+chev("down")+'</span></button>'
+    : '<button class="learn" data-act="start" aria-label="Start recording"><span class="keys"><span></span><span class="key">'+chev("up")+'</span><span></span><span class="key">'+chev("left")+'</span><span class="key on nudge">'+chev("down")+'</span><span class="key">'+chev("right")+'</span></span><span class="t">Click down to start</span></button>';
+  app.innerHTML = header("") + '<div class="band" id="band">'+inner+'</div>';
+}
+function renderMic(){ app.innerHTML = header("") + '<div class="band"><div class="center">'+voiceMark(64)+'<p class="lbl">Getting your mic ready</p></div></div>'; }
+function renderRecording(){
+  var c=clock(), roots = S.take===2 ? ROOTS[S.slide] : [], fill=Math.min(100,(S.elapsed/TARGET)*100);
+  var rail = SLIDES.map(function(_,i){return '<button data-go="'+i+'" aria-label="Go to slide '+(i+1)+' of '+SLIDES.length+'"'+(i===S.slide?' aria-current="step"':'')+'><span></span></button>';}).join("");
+  app.innerHTML = '<header class="h"><p class="where" id="where">Take '+S.take+' · Slide '+(S.slide+1)+' of '+SLIDES.length+'</p><button class="x" data-act="close" aria-label="Close">'+ICON_X+'</button></header>' +
+    '<div class="band rec"><div class="col">'+
+      '<div class="stage" id="stg"><div class="mv" id="mv">'+
+        '<div class="slidebox">'+slideHTML(S.slide)+'</div>'+
+        '<div class="road"><div class="scroller" id="sc" tabindex="-1" aria-label="Speaking anchors for slide '+(S.slide+1)+'"><div class="roots">'+
+          roots.map(function(r){return '<p class="root">'+esc(r)+'</p>';}).join("")+
+        '</div></div><nav class="rail" aria-label="Presentation slide position">'+rail+'</nav></div>'+
+      '</div></div>'+
+      '<div class="dock"><div class="strip"><span class="dot pulse"></span><span class="clock'+(c.over?" over":"")+'" id="clk">'+c.label+'</span><div class="track"><div class="fill'+(c.over?" over pulse":"")+'" id="fill" style="width:'+fill+'%"></div></div><button class="finish" data-act="finish" aria-label="Finish take"><i></i>Finish take</button></div></div>'+
+    '</div></div>' + (S.discard ? '<div class="scrim" role="dialog" aria-modal="true"><div class="dlg"><h2>Discard this take?</h2><p>This recording has not been saved.</p><div class="row"><button class="btn o" data-act="keep">Keep recording</button><button class="btn r" data-act="discard">Discard take</button></div></div></div>' : "");
+  var sc=document.getElementById("sc");
+  sc.scrollTop = S.enterDir===-1 ? Math.max(0, sc.scrollHeight-sc.clientHeight) : 0;
+}
+function renderProcessing(){
+  var tipsRail = TIPS.map(function(_,i){return '<button data-tip="'+i+'" aria-label="Go to advice '+(i+1)+' of '+TIPS.length+'" style="width:32px;height:14px;display:flex;align-items:center;justify-content:center"><span style="display:block;width:6px;border-radius:999px;height:'+(i===S.tip?12:6)+'px;background:'+(i===S.tip?'#121212':'rgba(115,115,115,.35)')+'"></span></button>';}).join("");
+  app.innerHTML = header("") + '<div class="band" style="align-items:center"><div class="proc">'+
+    '<div class="vmw">'+voiceMark(64)+'</div>'+
+    '<div class="plab"><span id="plabel">'+STAGES[S.stage]+'</span><span id="ppct">'+S.pct+'%</span></div>'+
+    '<div class="ptrack"><div id="pbar" style="width:'+S.pct+'%"></div></div>'+
+    '<p class="wyw">While you wait</p>'+
+    '<div class="tips"><div class="tipsc" id="tipsc">'+TIPS.map(function(t){return '<p>'+esc(t)+'</p>';}).join("")+'</div><nav class="rail" aria-label="Advice position">'+tipsRail+'</nav></div>'+
+    '</div><button class="discard" data-act="discard">Discard this take</button></div>';
+  var tc=document.getElementById("tipsc");
+  tc.addEventListener("scroll",function(){var at=Math.round(tc.scrollTop/Math.max(1,tc.clientHeight));if(at!==S.tip){S.tip=at;updateTipRail();}},{passive:true});
+}
+function updateTipRail(){ app.querySelectorAll("[data-tip]").forEach(function(b,i){var sp=b.firstChild;sp.style.height=(i===S.tip?12:6)+"px";sp.style.background=i===S.tip?"#121212":"rgba(115,115,115,.35)";}); }
+function renderDone(){
+  var next=S.take===1;
+  app.innerHTML = header("") + '<div class="band"><div class="center"><div class="stub"><span>Prototype ends here. In the app the speaker now lands on the Ideal Text page'+(next?' and taps “Review feedback”.':'.')+'</span>'+
+    (next?'<span>After Take 1 the speaker picks helper words. Next, record Take 2 with them:</span><button class="btn p" data-act="take2">Record Take 2</button>':'<button class="btn p" data-act="restart">Start again</button>')+'</div></div></div>';
+}
+function renderLounge(){ app.innerHTML = '<div class="band"><div class="center"><div class="stub"><span>Take discarded. The speaker is back in the Lounge.</span><button class="btn p" data-act="restart">Start again</button></div></div></div>'; }
+function render(){
+  ({learn:renderLearn,mic:renderMic,rec:renderRecording,proc:renderProcessing,done:renderDone,lounge:renderLounge}[S.screen])();
+  sizeType();
+}
+
+/* ------------------------------ motion ------------------------------ */
+/* Only the slide and its helper words move; the top bar, the "Take · Slide"
+   line, the slide dots and the strip stay exactly where they are. */
+function moving(){ if(S.screen==="learn"){ var l=app.querySelector(".learn"); return l?[l]:[]; } var b=app.querySelector(".rec .slidebox"), s=sc(); return (b&&s)?[b,s]:[]; }
+function each(fn){ moving().forEach(fn); }
+function rubber(d, free){ var k = free ? 0.42 : 0.16; var v=Math.abs(d)*k; v = v>140?140+(v-140)*0.2:v; return d<0?-v:v; }
+function follow(d, free){ if(REDUCED) return; var y=-rubber(d,free), o=String(1-Math.min(Math.abs(y)/420,.35)); each(function(el){ el.style.transition="none"; el.style.transform="translateY("+y+"px)"; el.style.opacity=o; }); }
+function springBack(){ each(function(el){ el.style.transition=REDUCED?"none":"transform .34s cubic-bezier(.2,.9,.25,1.15), opacity .3s ease"; el.style.transform="translateY(0)"; el.style.opacity="1"; }); }
+function travel(){ var st=document.getElementById("stg"); return st ? Math.round(st.clientHeight*0.3) : 160; }
+/* Out in the direction of travel, swap the content in place, land from the other side. */
+function glide(dir, swap){
+  if(S.busy) return;
+  if(REDUCED||!moving().length){ swap(); return; }
+  S.busy=true; var d=travel();
+  each(function(el){ el.style.transition="transform .2s cubic-bezier(.4,0,1,1), opacity .2s ease-in"; el.style.transform="translateY("+(dir>0?-d:d)+"px)"; el.style.opacity="0"; });
+  setTimeout(function(){
+    swap();
+    var els=moving(); if(!els.length){ S.busy=false; return; }
+    d=travel();
+    els.forEach(function(el){ el.style.transition="none"; el.style.transform="translateY("+(dir>0?d:-d)+"px)"; el.style.opacity="0"; });
+    void els[0].offsetHeight;
+    els.forEach(function(el){ el.style.transition="transform .42s cubic-bezier(.16,1,.3,1), opacity .3s ease-out"; el.style.transform="translateY(0)"; el.style.opacity="1"; });
+    setTimeout(function(){ S.busy=false; }, 420);
+  }, 200);
+}
+/* A slide change rewrites only the content; nothing around it is rebuilt. */
+function showSlide(i, dir){
+  S.slide=i; S.enterDir=dir;
+  var w=document.getElementById("where"), b=app.querySelector(".rec .slidebox"), s=sc();
+  if(!w||!b||!s){ renderRecording(); sizeType(); return; }
+  w.textContent="Take "+S.take+" · Slide "+(i+1)+" of "+SLIDES.length;
+  b.innerHTML=slideHTML(i);
+  var roots = S.take===2 ? ROOTS[i] : [];
+  s.querySelector(".roots").innerHTML = roots.map(function(r){return '<p class="root">'+esc(r)+'</p>';}).join("");
+  s.setAttribute("aria-label","Speaking anchors for slide "+(i+1));
+  app.querySelectorAll(".rec .rail button").forEach(function(btn,k){ if(k===i) btn.setAttribute("aria-current","step"); else btn.removeAttribute("aria-current"); });
+  sizeType();
+  s.scrollTop = dir===-1 ? Math.max(0, s.scrollHeight-s.clientHeight) : 0;
+}
+function canGo(dir){ if(S.screen==="learn") return dir>0; if(S.screen!=="rec"||S.discard) return false; var n=S.slide+dir; return n>=0 && n<SLIDES.length; }
+function go(dir){
+  if(!canGo(dir)){ springBack(); return; }
+  if(S.screen==="learn"){ glide(1, beginRecording); return; }
+  glide(dir, function(){ showSlide(S.slide+dir, dir); });
+}
+function goTo(i){ if(i===S.slide||S.busy) return; var dir=i>S.slide?1:-1; glide(dir,function(){ showSlide(i, dir); }); }
+
+/* ------------------------------ flow ------------------------------ */
+function startClock(){
+  clockTimer=setInterval(function(){
+    if(S.screen!=="rec"||S.discard) return; S.elapsed+=1;
+    var c=clock(), el=document.getElementById("clk"), f=document.getElementById("fill");
+    if(el){el.textContent=c.label;el.classList.toggle("over",c.over);}
+    if(f){f.style.width=Math.min(100,(S.elapsed/TARGET)*100)+"%";f.classList.toggle("over",c.over);f.classList.toggle("pulse",c.over);}
+  },1000);
+}
+function beginRecording(){ S.screen="rec"; S.slide=0; S.enterDir=1; render(); startClock(); }
+function start(){
+  clearTimers(); S.busy=false;
+  S.slide=0; S.elapsed=0; S.discard=false; S.stage=0; S.pct=5; S.tip=0;
+  if(S.take===1){ S.screen="learn"; render(); }
+  else { S.screen="mic"; render(); timers.push(setTimeout(function(){ glideIn(); },1200)); }
+  focusKeys();
+}
+function glideIn(){ S.screen="rec"; S.enterDir=1; render(); var els=moving(); if(els.length&&!REDUCED){ els.forEach(function(el){ el.style.transform="translateY(24px)"; el.style.opacity="0"; }); void els[0].offsetHeight; els.forEach(function(el){ el.style.transition="transform .42s cubic-bezier(.16,1,.3,1), opacity .3s ease-out"; el.style.transform="translateY(0)"; el.style.opacity="1"; }); } startClock(); }
+function finish(){
+  clearTimers(); S.screen="proc"; S.stage=0; S.pct=5; render();
+  [[1,22],[2,48],[3,71],[4,90],[4,100]].forEach(function(s,i){
+    timers.push(setTimeout(function(){ S.stage=s[0]; S.pct=s[1]; var l=document.getElementById("plabel"),p=document.getElementById("ppct"),b=document.getElementById("pbar"); if(l){l.textContent=STAGES[S.stage];p.textContent=S.pct+"%";b.style.width=S.pct+"%";} },1600*(i+1)));
+  });
+  timers.push(setTimeout(function(){S.screen="done";render();},1600*5+700));
+}
+
+/* ------------------------------ input ------------------------------ */
+function sc(){ return document.getElementById("sc"); }
+function edge(el){ if(!el) return "both"; var top=el.scrollTop<=1, bottom=el.scrollTop+el.clientHeight>=el.scrollHeight-1; return top&&bottom?"both":top?"top":bottom?"bottom":"middle"; }
+function innerCanTake(dir){ var e=edge(sc()); return !(e==="both" || (dir>0?e==="bottom":e==="top")); }
+var gestureScreens = {learn:1, rec:1};
+
+/* Touch: the content follows the finger, lands on release. */
+var T=null;
+app.addEventListener("touchstart",function(ev){
+  if(!gestureScreens[S.screen]||S.discard||S.busy){ T=null; return; }
+  var s=sc(); T={y:ev.touches[0].clientY, inSc:!!(s&&s.contains(ev.target)), dy:0, native:false};
+},{passive:true});
+app.addEventListener("touchmove",function(ev){
+  var onScroller = ev.target.closest && ev.target.closest(".scroller,.tipsc");
+  if(!T){ if(!onScroller) ev.preventDefault(); return; }   // never a page pull
+  var dy=T.y-ev.touches[0].clientY, dir=dy>0?1:-1;
+  if(T.inSc && innerCanTake(dir)){ T.native=true; T.y=ev.touches[0].clientY; return; } // the helper words scroll first
+  ev.preventDefault();
+  T.dy=dy; follow(dy, canGo(dir));
+},{passive:false});
+function touchEnd(){
+  if(!T) return; var dy=T.dy, dir=dy>0?1:-1; T=null;
+  if(Math.abs(dy)>=TOUCH_COMMIT && canGo(dir)) go(dir); else springBack();
+}
+app.addEventListener("touchend",touchEnd,{passive:true});
+app.addEventListener("touchcancel",function(){T=null;springBack();},{passive:true});
+
+/* Wheel and trackpad: accumulate, follow a little, commit on a clear push. */
+var W={acc:0,last:0,locked:false,rest:null};
+app.addEventListener("wheel",function(ev){
+  if(ev.ctrlKey) return; ev.preventDefault();
+  if(!gestureScreens[S.screen]||S.discard) return;
+  var dy=ev.deltaY*(ev.deltaMode===1?16:ev.deltaMode===2?app.clientHeight:1); if(!dy) return;
+  var now=performance.now(), dir=dy>0?1:-1;
+  if(W.locked){ if(now-W.last<MOMENTUM_MS){ W.last=now; return; } W.locked=false; }
+  W.last=now;
+  if(S.screen==="rec" && innerCanTake(dir) && W.acc===0){ sc().scrollTop+=dy; return; }
+  if(S.busy) return;
+  W.acc+=dy; follow(W.acc*0.6, canGo(dir));
+  clearTimeout(W.rest);
+  if(Math.abs(W.acc)>=WHEEL_COMMIT){ commitWheel(); return; }
+  W.rest=setTimeout(function(){ if(Math.abs(W.acc)>=WHEEL_SOFT) commitWheel(); else { W.acc=0; springBack(); } }, WHEEL_REST_MS);
+},{passive:false});
+function commitWheel(){ var dir=W.acc>0?1:-1; W.acc=0; W.locked=true; clearTimeout(W.rest); if(canGo(dir)) go(dir); else springBack(); }
+
+/* Keyboard: works without clicking the screen first. */
+function focusKeys(){ try{ window.focus(); document.body.focus({preventScroll:true}); }catch(e){} }
+document.body.setAttribute("tabindex","-1");
+document.addEventListener("keydown",function(ev){
+  if(ev.repeat||S.busy||S.discard) return;
+  var k=ev.key, down=(k==="ArrowDown"||k==="PageDown"||k===" "||k==="Spacebar"), up=(k==="ArrowUp"||k==="PageUp");
+  if(S.screen==="learn"){ if(down||k==="Enter"){ ev.preventDefault(); go(1); } return; }
+  if(S.screen!=="rec"||!(down||up)) return;
+  ev.preventDefault();
+  var dir=down?1:-1;
+  if(innerCanTake(dir)){ var s=sc(); s.scrollBy({top:dir*s.clientHeight*(k.indexOf("Page")===0?0.8:0.3),behavior:REDUCED?"auto":"smooth"}); return; }
+  if(canGo(dir)) go(dir); else { follow(dir*60,false); setTimeout(springBack,120); }
+});
+
+app.addEventListener("click",function(ev){
+  var b=ev.target.closest("button"); if(!b) return; var a=b.getAttribute("data-act");
+  if(b.hasAttribute("data-go")){ goTo(+b.getAttribute("data-go")); return; }
+  if(b.hasAttribute("data-tip")){ var tc=document.getElementById("tipsc"); S.tip=+b.getAttribute("data-tip"); tc.scrollTo({top:S.tip*tc.clientHeight,behavior:"smooth"}); updateTipRail(); return; }
+  if(a==="start") go(1);
+  else if(a==="finish") finish();
+  else if(a==="close"){
+    if(S.screen==="rec"){ S.discard=true; renderRecording(); sizeType(); }
+    else if(S.screen==="proc"){ ptoast("Closing here parks the Take; it keeps processing"); }
+    else { clearTimers(); S.screen="lounge"; render(); }
+  }
+  else if(a==="keep"){ S.discard=false; renderRecording(); sizeType(); }
+  else if(a==="discard"){ clearTimers(); S.discard=false; S.screen="lounge"; render(); }
+  else if(a==="take2"){ setTake(2); }
+  else if(a==="restart"){ start(); }
+  focusKeys();
+});
+
+/* ------------------------------ chrome ------------------------------ */
+function setTake(n){ S.take=n; document.querySelectorAll("[data-take]").forEach(function(b){b.setAttribute("aria-pressed",String(+b.getAttribute("data-take")===n));}); start(); }
+function setDev(d){ S.dev=d; document.querySelectorAll("[data-dev]").forEach(function(b){b.setAttribute("aria-pressed",String(b.getAttribute("data-dev")===d));}); layout(); render(); focusKeys(); }
+document.querySelectorAll("[data-take]").forEach(function(b){b.addEventListener("click",function(){setTake(+b.getAttribute("data-take"));});});
+document.querySelectorAll("[data-dev]").forEach(function(b){b.addEventListener("click",function(){setDev(b.getAttribute("data-dev"));});});
+document.getElementById("restart").addEventListener("click",start);
+/* The prototype bar must not start a page pull either. */
+document.querySelector(".pbar").addEventListener("touchmove",function(ev){ev.preventDefault();},{passive:false});
+
+var currentScale=1;
+function sizeType(){
+  var w=device.getBoundingClientRect().width/(currentScale||1), vw=w/100;
+  device.style.setProperty("--rf", Math.min(Math.max(1.4*16,4.2*vw),1.9*16)+"px");
+  device.style.setProperty("--hf", S.dev==="phone" ? Math.min(Math.max(1.6*16,6*vw),2.2*16)+"px" : Math.min(Math.max(1.6*16,3*vw),2.2*16)+"px");
+  var sw=app.querySelector(".slide"); if(sw){ var sww=sw.getBoundingClientRect().width/(currentScale||1);
+    device.style.setProperty("--st", Math.min(Math.max(20, sww*.075), 42)+"px");
+    device.style.setProperty("--sl", Math.min(Math.max(12, sww*.036), 20)+"px");
+    device.style.setProperty("--sb", Math.min(Math.max(9.3, sww*.028), 16)+"px"); }
+}
+function layout(){
+  var wrap=document.getElementById("stagewrap"), r=wrap.getBoundingClientRect();
+  var small = window.innerWidth<560 && S.dev==="phone";
+  proto.classList.toggle("full", small); device.classList.toggle("desk", S.dev==="desk");
+  if(small){ currentScale=1; device.style.width=""; device.style.height=""; device.style.transform=""; return; }
+  var Wd = S.dev==="phone"?390:1180, H = S.dev==="phone"?844:860;
+  device.style.width=Wd+"px"; device.style.height=H+"px";
+  currentScale=Math.min(1,(r.width-48)/Wd,(r.height-48)/H);
+  device.style.transform="scale("+currentScale+")";
+}
+window.addEventListener("resize",function(){layout();sizeType();});
+layout(); start();
+})();
+</script>
