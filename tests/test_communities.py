@@ -436,14 +436,41 @@ def _queue(db, listener="listener"):
     return payload["clips"]
 
 
-def test_community_first_then_training_and_never_own():
+def test_community_first_then_training_at_most_three_and_never_own():
+    # Q-B11 A (N62): at most 3 other voices per walk, community first, then
+    # training clips for the places left, served by the Lend your ear engine.
     db, _ = _world()
     clips = _queue(db)
     assert [c["clip_id"] for c in clips[:2]] == [_uuid(21), _uuid(11)]
-    assert [c["source"] for c in clips] == ["community", "community", "training", "training"]
+    assert [c["source"] for c in clips] == ["community", "community", "training"]
     assert _uuid(31) not in {c["clip_id"] for c in clips}
     # A moment shared with two communities is heard once.
     assert len({c["clip_id"] for c in clips}) == len(clips)
+    # Enough community clips fill the three; no training clip then.
+    for n in (4, 5, 6):
+        db.sessions[_uuid(900 + n)] = f"owner-{n}"
+        db.snippets[_uuid(10 * n)] = _snippet(_uuid(10 * n), _uuid(900 + n), user=f"owner-{n}")
+        _share(db, _uuid(900 + n), owner=f"owner-{n}", general=True)
+    clips = _queue(db)
+    assert len(clips) == 3
+    assert [c["source"] for c in clips] == ["community"] * 3
+
+
+def test_the_per_take_share_is_the_one_door_into_the_queue():
+    # Q-B11 A: the Album share switch is retired. A moment lent through it
+    # (the 0410 view) and never shared per Take is not served; the engine
+    # and this module read community_clips_live and nothing else.
+    db, _ = _world()
+    db.snippets[_uuid(41)] = _snippet(_uuid(41), _uuid(904), user="owner-4")
+    db.list_shared_clips_live = lambda: [{"snippet_id": _uuid(41), "owner_user_id": "owner-4"}]
+    assert _uuid(41) not in {c["clip_id"] for c in _queue(db)}
+    from services import lend_your_ear as lye
+    assert cm.queue_for(db, listener_id="listener", rng=random.Random(4))[1]["clips"] == \
+        lye.other_voices(db, listener_id="listener", rng=random.Random(4))
+    for name in ("services/communities.py", "services/lend_your_ear.py"):
+        source = (ROOT / name).read_text()
+        assert "list_shared_clips_live" not in source
+    assert "community_clips_live" in (ROOT / "services/db.py").read_text()
 
 
 def test_the_payload_is_audio_only():

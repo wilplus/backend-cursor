@@ -1,17 +1,19 @@
-"""Lend your ear, the share, the licensed corpus and the delayed measure
-(founder 2026-10-01, F3, F4; Phases 4 and 5 of the after-practice paths),
-dark behind PEER_LANE_ENABLED and DELAYED_MEASURE_ENABLED, both gated on
-counsel (C1 to C3) and, for the measure, the founder's signature.
+"""Lend your ear, the one engine of the walk's other voices (founder
+2026-10-07, Q-B11 A, N62), the licensed corpus and the delayed measure.
 
-Pins: off, nothing is served or written; the share is a toggle on an Album
-moment only, revocable; the set is at most three, stratified, random,
-never own, never answered, never two clips of one pair, never a pair the
-listener heard within the gap; the payload carries only the id and the
-sound; one answer per person per clip, a shared recording's answer lands
-under lane game_peer through the quorum's access rule; corpus answers stay
-local; the measure's pair is the first valid attempt, excludes fallbacks and
-rewrites, is judged after seven days, refuses the speaker, the coach who
-handled the moment and an exposed rater, and settles only by quorum.
+Pins: the Album share switch, the per-Take blind set it fed and Bold voices
+are RETIRED, their service doors gone and their routes 404 whatever the
+switches say, nothing written; the one consent path that admits a
+speaker's moment to a peer queue is the per-Take community share
+(services/communities.py, community_clips_live), read by the engine's
+``other_voices`` and nothing else; at most three other voices per walk,
+community first, then training clips; a blind stratified pick (build_set)
+that never holds two clips of one pair; the payload carries only the id,
+the kind and the sound; a peer label lands under lane game_peer through
+the quorum's access rule; the measure's pair is the first valid attempt,
+excludes fallbacks and rewrites, is judged after seven days, refuses the
+speaker, the coach who handled the moment and an exposed rater, settles
+only by quorum, and no longer has a door into any queue.
 """
 from __future__ import annotations
 
@@ -201,22 +203,77 @@ class _Db:
 @PEER_OFF
 @MEASURE_OFF
 class OffTests(unittest.TestCase):
-    """The off behaviour, with both switches patched off: on from 2026-10-02
-    (N25), after the founder's own C1 to C3 and the 3.3 wording."""
+    """The coach's corpus tool and the measure, with both switches patched
+    off: nothing is served or written."""
     def test_off_nothing_is_served_or_written(self):
         db = _Db()
-        self.assertEqual(lye.set_share(db, owner_user_id="owner-1", snippet_id="snip-a",
-                                       body={"shared": True})[0], 404)
-        self.assertEqual(lye.open_set(db, listener_id="owner-1", take_session_id="take-1")[0], 404)
-        self.assertEqual(lye.answer(db, listener_id="owner-1", set_id="s",
-                                    body={"clip_id": "x", "value": "yes"})[0], 404)
-        self.assertEqual(lye.others_for_bold_voices(db, listener_id="owner-1"), [])
         self.assertEqual(cc.list_clips(db)[0], 404)
         self.assertIsNone(dm.enrol(db, {"id": "p-1", "kind": "exercise"}))
         self.assertEqual(dm.vote(db, pair_id="p", clip="before", rater_id="r",
                                  rater_kind="peer", value="yes")[0], 404)
         self.assertEqual(dm.clips_for_listener(db, listener_id="x"), [])
         self.assertEqual((db.shares, db.sets, db.answers, db.pairs, db.votes), ({}, [], [], [], []))
+
+
+class _Refuses:
+    """A database no retired door may touch."""
+    def __getattr__(self, name):
+        raise AssertionError(f"retired door read the database: {name}")
+
+
+RETIRED_ROUTES = {
+    "v2_voice_album_share": ("/user/voice-album/<snippet_id>/share", "PUT", ("snip-a",)),
+    "v2_lend_your_ear": ("/user/takes/<take_session_id>/lend-your-ear", "GET", ("take-1",)),
+    "v2_lend_your_ear_answer": ("/user/lend-your-ear/<set_id>/answers", "POST", ("set-1",)),
+}
+
+
+class RetiredTests(unittest.TestCase):
+    """Q-B11 A (N62): the Album share switch, the per-Take set it fed and
+    Bold voices are retired. No service door, and the routes answer 404
+    whatever the switches say, before any read."""
+    def test_the_service_doors_are_gone(self):
+        for door in ("set_share", "open_set", "answer", "others_for_bold_voices",
+                     "_candidates", "_shared_candidates", "_set_payload"):
+            self.assertFalse(hasattr(lye, door), door)
+        self.assertEqual(lye.SOURCES, ("community", "training"))
+        self.assertEqual(lye.OTHER_VOICES_MAX, 3)
+
+    @PEER_ON
+    @MEASURE_ON
+    @patch("config.Config.COMMUNITIES_ENABLED", True)
+    @patch("config.Config.PEER_SHARE_POLICY_VERSION", "phase1-2026-11-01", create=True)
+    def test_the_routes_answer_404_whatever_the_switches_say(self):
+        from flask import Flask, request
+        import routes.v2.lend_your_ear as route
+        app = Flask(__name__)
+        source = (ROOT / "routes/v2/lend_your_ear.py").read_text()
+        with patch.object(route, "db", _Refuses()):
+            for name, (path, method, args) in RETIRED_ROUTES.items():
+                self.assertIn(f'@v2_bp.route("{path}", methods=["{method}"])', source)
+                with app.test_request_context("/v2/x", method=method,
+                                              json={"shared": True, "clip_id": "x", "value": "yes"}):
+                    request.user_id = "owner-1"
+                    response, status = getattr(route, name).__wrapped__(*args)
+                self.assertEqual(status, 404, name)
+                self.assertEqual(response.get_json()["code"], "NOT_FOUND", name)
+        # Nothing in the engine or the communities reads the retired share.
+        for name in ("services/lend_your_ear.py", "services/communities.py"):
+            text = (ROOT / name).read_text()
+            for retired in ("list_shared_clips_live", "voice_album_shares", "shared_clips_live",
+                            "set_voice_album_share", "insert_lend_your_ear_set",
+                            "insert_lend_your_ear_answer", "clips_for_listener",
+                            "mark_after_practice_step"):
+                self.assertNotIn(f"database.{retired}(", text, (name, retired))
+                self.assertNotIn(f"{retired}(database", text, (name, retired))
+
+    def test_the_measure_has_no_door_into_any_queue(self):
+        # The pair rode the Album share (Q3-A); with the share retired, no
+        # queue reads the measure's clips.
+        source = (ROOT / "services").glob("*.py")
+        callers = [f.name for f in source
+                   if "clips_for_listener(" in f.read_text() and f.name != "delayed_measure.py"]
+        self.assertEqual(callers, [])
 
 
 class SetTests(unittest.TestCase):
@@ -249,103 +306,104 @@ class SetTests(unittest.TestCase):
         self.assertEqual(lye.stratum(None), "unknown")
 
 
-@PEER_ON
-class PeerLaneTests(unittest.TestCase):
-    @SERVICE
-    def test_the_switch_waits_for_the_re_accepted_terms(self):
-        # Q4-A (founder 2026-10-02): no published version, no switch; a
-        # speaker who has not accepted it, no switch.
-        db = _Db()
-        with patch("config.Config.PEER_SHARE_POLICY_VERSION", None, create=True):
-            self.assertEqual(lye.set_share(db, owner_user_id="owner-1", snippet_id="snip-a",
-                                           body={"shared": True})[1]["code"], "TERMS_REACCEPT_REQUIRED")
-        db.accepted = {"owner-1": "phase1-2026-10-01"}
-        self.assertEqual(lye.set_share(db, owner_user_id="owner-1", snippet_id="snip-a",
-                                       body={"shared": True})[1]["code"], "TERMS_REACCEPT_REQUIRED")
-        with patch("config.Config.PEER_SHARE_POLICY_VERSION", "phase1-2026-11-01", create=True):
-            self.assertEqual(lye.set_share(db, owner_user_id="owner-1", snippet_id="snip-a",
-                                           body={"shared": True})[0], 409)
+class _Community(_Db):
+    """The engine's reads: the per-Take community share (the one consent
+    path), the corpus, and, as a trap, an Album share and a ripe measure
+    pair that must never be served."""
+    def __init__(self):
+        super().__init__()
+        self.community_live: list = []
+        self.community_answers: list = []
+        self.general = {"id": "general-1", "kind": "general", "closed_at": None}
 
-    @SERVICE
-    @patch("config.Config.PEER_SHARE_POLICY_VERSION", "phase1-2026-11-01", create=True)
-    def test_the_share_is_a_toggle_on_an_album_moment_only(self):
-        db = _Db()
-        self.assertEqual(lye.set_share(db, owner_user_id="owner-1", snippet_id="snip-a",
-                                       body={"shared": True}), (200, {"snippet_id": "snip-a", "shared": True}))
-        self.assertEqual(lye.set_share(db, owner_user_id="owner-1", snippet_id="snip-a",
-                                       body={"shared": False})[1]["shared"], False)
-        self.assertEqual(lye.set_share(db, owner_user_id="owner-1", snippet_id="snip-z",
-                                       body={"shared": True})[0], 409)
-        self.assertEqual(lye.set_share(db, owner_user_id="else", snippet_id="snip-a",
-                                       body={"shared": True})[0], 404)
-        self.assertEqual(lye.set_share(db, owner_user_id="owner-1", snippet_id="snip-a",
-                                       body={"shared": "yes"})[0], 400)
+    def get_general_community(self):
+        return self.general
 
-    def test_the_set_opens_once_per_take_after_a_landing_and_carries_only_the_sound(self):
-        db = _Db()
-        db.live = [{"snippet_id": "snip-c", "owner_user_id": "other"},
-                   {"snippet_id": "snip-w", "owner_user_id": "other"},
-                   {"snippet_id": "snip-mine", "owner_user_id": "owner-1"}]
-        db.corpus = [{"id": "corp-1", "audio_url": "https://c/1.mp3", "duration_ms": 2000,
-                      "machine_stratum": "unknown", "active": True}]
-        status, payload = lye.open_set(db, listener_id="owner-1", take_session_id="take-1")
-        self.assertEqual(status, 200)
-        ids = {c["clip_id"] for c in payload["clips"]}
-        self.assertEqual(ids, {"snip-c", "snip-w", "corp-1"})
-        self.assertNotIn("snip-mine", ids)
-        for clip in payload["clips"]:
-            self.assertEqual(set(clip), {"clip_id", "audio_ref", "duration_ms", "answered"})
-        self.assertEqual(db.steps, ["lend_your_ear"])
-        again = lye.open_set(db, listener_id="owner-1", take_session_id="take-1")
-        self.assertEqual(again[1]["set_id"], payload["set_id"])
-        self.assertEqual(len(db.sets), 1)
-        db2 = _Db()
-        db2.landed = False
-        self.assertEqual(lye.open_set(db2, listener_id="owner-1", take_session_id="take-1")[0], 409)
+    def list_community_memberships(self, user_id):
+        return []
 
-    def test_an_empty_pool_opens_an_empty_set_so_the_sheet_skips_the_step(self):
-        db = _Db()
-        self.assertEqual(lye.open_set(db, listener_id="owner-1", take_session_id="take-1")[1]["clips"], [])
+    def get_communities_by_ids(self, ids):
+        return []
 
-    def test_one_answer_per_clip_and_a_shared_one_becomes_a_peer_label(self):
-        db = _Db()
-        db.live = [{"snippet_id": "snip-c", "owner_user_id": "other"}]
-        db.corpus = [{"id": "corp-1", "audio_url": "https://c/1.mp3", "active": True}]
-        _, payload = lye.open_set(db, listener_id="owner-1", take_session_id="take-1")
-        set_id = payload["set_id"]
-        out = lye.answer(db, listener_id="owner-1", set_id=set_id,
-                         body={"clip_id": "snip-c", "value": "in_between"})
-        self.assertEqual(out, (200, {"recorded": True, "answered": 1, "of": 2}))
+    def list_community_clips_live(self, community_ids):
+        return [r for r in self.community_live if r["community_id"] in community_ids]
+
+    def list_community_answered_clip_ids(self, listener):
+        return [a for a in self.community_answers]
+
+    def get_snippet_by_id(self, sid):
+        return {**_snippet(sid), "user_id": "other" if sid != "snip-mine" else "owner-1",
+                "start_offset_ms": 10}
+
+
+class OneConsentPathTests(unittest.TestCase):
+    """Only the per-Take community share admits a speaker's moment to the
+    walk's queue; the Album share and the measure's pair never do."""
+    def _world(self):
+        db = _Community()
+        # The trap: lent through the retired switch, and a ripe pair.
+        db.live = [{"snippet_id": "snip-album", "owner_user_id": "other"}]
+        db.pairs = [{"id": "pair-1", "owner_user_id": "other", "take_session_id": "t",
+                     "before_snippet_id": "snip-album", "after_attempt_id": "a-9", "status": "open",
+                     "practice_closed_at": (datetime.now(timezone.utc) - timedelta(days=9)).isoformat()}]
+        db.corpus = [{"id": f"corp-{i}", "audio_url": f"https://c/{i}.mp3", "duration_ms": 2000,
+                      "machine_stratum": s, "active": True}
+                     for i, s in enumerate(("confident", "weak", "unknown", "unknown"), start=1)]
+        return db
+
+    @MEASURE_ON
+    @PEER_ON
+    def test_an_album_share_and_a_measure_pair_never_reach_the_queue(self):
+        db = self._world()
+        voices = lye.other_voices(db, listener_id="owner-1", rng=random.Random(3))
+        self.assertEqual([v["source"] for v in voices], ["training"] * 3)
+        self.assertEqual(db.sets, [])
+        self.assertEqual(db.answers, [])
+
+    def test_a_take_shared_with_a_community_is_the_one_door(self):
+        db = self._world()
+        db.community_live = [
+            {"snippet_id": "snip-c", "take_session_id": "take-9", "community_id": "general-1",
+             "owner_user_id": "other"},
+            {"snippet_id": "snip-mine", "take_session_id": "take-1", "community_id": "general-1",
+             "owner_user_id": "owner-1"},
+        ]
+        voices = lye.other_voices(db, listener_id="owner-1", rng=random.Random(3))
+        self.assertEqual([v["source"] for v in voices], ["community", "training", "training"])
+        self.assertEqual(voices[0]["clip_id"], "snip-c")
+        self.assertNotIn("snip-mine", {v["clip_id"] for v in voices})
+        self.assertNotIn("snip-album", {v["clip_id"] for v in voices})
+
+    def test_at_most_three_community_first_and_audio_only(self):
+        db = self._world()
+        db.community_live = [
+            {"snippet_id": f"snip-{i}", "take_session_id": f"take-{i}", "community_id": "general-1",
+             "owner_user_id": "other"} for i in range(5)]
+        voices = lye.other_voices(db, listener_id="owner-1", rng=random.Random(3))
+        self.assertEqual(len(voices), 3)
+        self.assertEqual([v["source"] for v in voices], ["community"] * 3)
+        for clip in voices:
+            self.assertEqual(set(clip), {"clip_id", "source", "audio_ref", "start_offset_ms",
+                                         "duration_ms"})
+        self.assertEqual(lye.other_voices(db, listener_id="owner-1", limit=0), [])
+        # Answered clips leave the queue, community and training alike.
+        db.community_answers = ["snip-0", "snip-1", "snip-2", "snip-3", "snip-4", "corp-1", "corp-2"]
+        voices = lye.other_voices(db, listener_id="owner-1", rng=random.Random(3))
+        self.assertEqual(sorted(v["clip_id"] for v in voices), ["corp-3", "corp-4"])
+        self.assertEqual([v["source"] for v in voices], ["training", "training"])
+
+    def test_a_peer_label_lands_under_lane_game_peer_through_the_quorum(self):
+        db = self._world()
+        label_id, outcome = lye._peer_label(db, listener_id="owner-1", snippet_id="snip-c",
+                                            row={"state_id": "confidence", "value": "in_between"})
+        self.assertEqual((label_id, outcome), ("written", "new"))
         self.assertEqual(db.ratings[0]["lane"], "game_peer")
-        self.assertEqual(db.ratings[0]["row"]["value"], "in_between")
         self.assertFalse(db.ratings[0]["self_report"])
-        self.assertEqual(db.answers[0]["label_outcome"], "new")
-        self.assertEqual(lye.answer(db, listener_id="owner-1", set_id=set_id,
-                                    body={"clip_id": "snip-c", "value": "yes"})[0], 409)
-        out = lye.answer(db, listener_id="owner-1", set_id=set_id,
-                         body={"clip_id": "corp-1", "value": "no"})
-        self.assertEqual(out[1]["answered"], 2)
-        self.assertEqual(len(db.ratings), 1)
-        self.assertEqual(db.answers[1]["label_outcome"], "corpus")
-        self.assertEqual(lye.answer(db, listener_id="owner-1", set_id=set_id,
-                                    body={"clip_id": "stranger", "value": "no"})[0], 400)
-        self.assertEqual(lye.answer(db, listener_id="owner-1", set_id=set_id,
-                                    body={"clip_id": "corp-1", "value": "maybe"})[0], 400)
+        self.assertEqual(db.ratings[0]["rater_id"], "owner-1")
 
-    def test_a_settled_clip_takes_no_more_ears_and_a_settled_yes_reaches_bold_voices(self):
-        db = _Db()
-        db.live = [{"snippet_id": "snip-c", "owner_user_id": "other"}]
-        db.labels = {"snip-c": [{"value": "yes", "lane": "coach", "rater_id": "c1"},
-                                {"value": "yes", "lane": "game_peer", "rater_id": "p1"}]}
-        self.assertEqual(lye.open_set(db, listener_id="owner-1", take_session_id="take-1")[1]["clips"], [])
-        others = lye.others_for_bold_voices(db, listener_id="owner-1")
-        self.assertEqual([o["clip_id"] for o in others], ["snip-c"])
-        self.assertEqual(set(others[0]), {"clip_id", "audio_ref", "duration_ms"})
-        db.corpus = [{"id": "corp-1", "audio_url": "https://c/1.mp3", "coach_value": "yes", "active": True},
-                     {"id": "corp-2", "audio_url": "https://c/2.mp3", "coach_value": None, "active": True}]
-        self.assertEqual([o["clip_id"] for o in lye.others_for_bold_voices(db, listener_id="owner-1")],
-                         ["snip-c", "corp-1"])
 
+@PEER_ON
+class CorpusToolTests(unittest.TestCase):
     def test_the_corpus_tool(self):
         class _File:
             filename = "clip.mp3"
@@ -433,34 +491,23 @@ class MeasureTests(unittest.TestCase):
         self.assertEqual(dm.vote(db, pair_id="pair-1", clip="after", rater_id="peer-seen",
                                  rater_kind="peer", value="yes")[1]["reason"], "exposed")
 
-    @PEER_ON
-    def test_the_pair_s_clips_enter_lend_your_ear_as_separate_clips_and_votes_not_labels(self):
+    @MEASURE_ON
+    def test_the_pair_s_clips_are_listed_only_under_the_retired_share_and_reach_no_queue(self):
         db = _Db()
         db.pairs = [{"id": "pair-1", "owner_user_id": "other", "take_session_id": "t",
                      "before_snippet_id": "snip-b", "after_attempt_id": "a-9", "status": "open",
                      "practice_closed_at": (datetime.now(timezone.utc) - timedelta(days=9)).isoformat()}]
-        # Q3-A (founder 2026-10-02): the pair rides the original's share;
-        # unshared, nobody hears either clip.
+        # Q3-A (founder 2026-10-02): the pair rode the original's Album
+        # share; unshared, nobody hears either clip.
         self.assertEqual(dm.clips_for_listener(db, listener_id="owner-1"), [])
         db.live = [{"snippet_id": "snip-b", "owner_user_id": "other"}]
         cands = dm.clips_for_listener(db, listener_id="owner-1")
         self.assertEqual({c["clip_id"] for c in cands}, {"pair-1:before", "pair-1:after"})
         self.assertEqual(dm.clips_for_listener(db, listener_id="other"), [])
-        # The shared entry of snip-b and the pair's before are one voice:
-        # one pair id, so a set holds one of the three, never two.
-        shared = [c for c in lye._candidates(db, listener_id="owner-1") if c["source"] == "shared"]
-        self.assertEqual([c["pair_id"] for c in shared], ["pair-1"])
-        with patch("services.lend_your_ear._shared_candidates", return_value=[]):
-            _, payload = lye.open_set(db, listener_id="owner-1", take_session_id="take-1")
-        self.assertEqual(len(payload["clips"]), 1)
-        clip_id = payload["clips"][0]["clip_id"]
-        self.assertTrue(clip_id.startswith("pair-1:"))
-        out = lye.answer(db, listener_id="owner-1", set_id=payload["set_id"],
-                         body={"clip_id": clip_id, "value": "yes"})
-        self.assertEqual(out[0], 200)
-        self.assertEqual(db.ratings, [])
-        self.assertEqual(db.votes[0]["rater_kind"], "peer")
-        self.assertEqual(db.answers[0]["label_outcome"], "vote")
+        # Q-B11 A retired that share, and with it the measure's only door
+        # into a queue: the engine never reads these candidates.
+        self.assertEqual(lye.other_voices(_Community(), listener_id="owner-1"), [])
+        self.assertEqual(db.votes, [])
 
     def test_the_report_counts_per_exercise(self):
         db = _Db()
@@ -495,6 +542,9 @@ class WiringTests(unittest.TestCase):
             self.assertIn(f"CREATE TABLE IF NOT EXISTS public.{table}", sql)
         self.assertIn("CREATE OR REPLACE VIEW public.shared_clips_live", sql)
         self.assertIn('"lend_your_ear"', (ROOT / "routes/v2/__init__.py").read_text())
+        # Q-B11 A: the communities' queue is served by the engine.
+        self.assertIn("from services.lend_your_ear import other_voices",
+                      (ROOT / "services/communities.py").read_text())
         self.assertIn("enrol(database, result[\"practice_row\"])",
                       (ROOT / "services/practice_adoption.py").read_text())
         self.assertIn("enrol(db, updated)", (ROOT / "routes/v2/user_sessions.py").read_text())

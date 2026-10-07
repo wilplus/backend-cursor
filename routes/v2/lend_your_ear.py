@@ -1,8 +1,20 @@
-"""Phase 4 of the after-practice paths (founder 2026-10-01, F3, F4): the
-share toggle on a Voice Album moment, Lend your ear, and the licensed
-corpus the coaches keep. Every route answers 404 while ``PEER_LANE_ENABLED``
-is off (it stays off until counsel answers C1 to C3). The work is
-``services.lend_your_ear``' and ``services.corpus_clips``'.
+"""The retired share switch and per-Take Lend your ear set (404
+tombstones), and the licensed corpus the coaches keep.
+
+Founder 2026-10-07, Q-B11 A (decisions log N62): "Lend your ear's engine
+serves them [the walk's other voices] under the per-Take consent only. The
+Album share switch and Bold voices are retired." The Voice Album share
+switch and the per-Take set it fed are gone: the three speaker routes
+below stay registered so the URL map keeps its shape and answer 404
+whatever ``PEER_LANE_ENABLED`` says, before any read or write. The walk's
+other voices are served by ``GET /v2/user/communities/queue``
+(``services/lend_your_ear.other_voices`` under ``services/communities``).
+The ``voice_album_shares``, ``lend_your_ear_sets`` and
+``lend_your_ear_answers`` tables are not dropped.
+
+The coach's licensed-corpus tool (``services/corpus_clips.py``) stays,
+still behind ``PEER_LANE_ENABLED``: its clips are the walk's training
+clips.
 """
 from __future__ import annotations
 
@@ -31,45 +43,30 @@ def _run(name: str, call):
     return jsonify(payload), status
 
 
+def _retired():
+    """Every call: 404, nothing read, nothing written."""
+    return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
+
+
 @v2_bp.route("/user/voice-album/<snippet_id>/share", methods=["PUT"])
 @require_auth
 def v2_voice_album_share(snippet_id):
-    """Body {shared: true | false}: lend this Voice Album moment to other
-    speakers' ears, or take it back; a withdrawal leaves both pools at once."""
-    from services.lend_your_ear import set_share
-    if not _is_valid_uuid(snippet_id):
-        return jsonify({"code": "INVALID_INPUT",
-                        "error": "snippet_id must be a valid UUID"}), 400
-    return _run("voice-album share", lambda: set_share(
-        db, owner_user_id=str(request.user_id), snippet_id=snippet_id,
-        body=request.get_json(silent=True)))
+    """The Album share switch: retired (Q-B11 A), 404."""
+    return _retired()
 
 
 @v2_bp.route("/user/takes/<take_session_id>/lend-your-ear", methods=["GET"])
 @require_auth
 def v2_lend_your_ear(take_session_id):
-    """The Take's set of up to three clips, audio only, built once after a
-    practice that lands; 409 NOT_YET before one."""
-    from services.lend_your_ear import open_set
-    if not _is_valid_uuid(take_session_id):
-        return jsonify({"code": "INVALID_INPUT",
-                        "error": "take_session_id must be a valid UUID"}), 400
-    return _run("lend-your-ear", lambda: open_set(
-        db, listener_id=str(request.user_id), take_session_id=take_session_id))
+    """The per-Take blind set the share switch fed: retired (Q-B11 A), 404."""
+    return _retired()
 
 
 @v2_bp.route("/user/lend-your-ear/<set_id>/answers", methods=["POST"])
 @require_auth
 def v2_lend_your_ear_answer(set_id):
-    """Body {clip_id, value}: one of the five answers on one clip of the
-    set, once per person per clip."""
-    from services.lend_your_ear import answer
-    if not _is_valid_uuid(set_id):
-        return jsonify({"code": "INVALID_INPUT",
-                        "error": "set_id must be a valid UUID"}), 400
-    return _run("lend-your-ear answer", lambda: answer(
-        db, listener_id=str(request.user_id), set_id=set_id,
-        body=request.get_json(silent=True)))
+    """An answer on the retired set: retired (Q-B11 A), 404."""
+    return _retired()
 
 
 @v2_bp.route("/coach/licensed-clips", methods=["GET"])
@@ -96,7 +93,7 @@ def v2_corpus_clip_create():
 @require_admin_or_coach
 def v2_corpus_clip_label(clip_id):
     """Body {value: "yes" | "no" | null}: the coach's own read of a licensed
-    clip; a Yes lets it into Bold voices (F4)."""
+    clip, kept on the row (Bold voices, which a Yes once opened, is retired)."""
     from services.corpus_clips import label_clip
     if not _is_valid_uuid(clip_id):
         return jsonify({"code": "INVALID_INPUT",

@@ -397,7 +397,9 @@ class Config:
     # OFF again since 2026-10-05 (second plan, Phase 1, founder "go"): no
     # screen renders the sentence, the encouragement, Bold voices or the
     # coach readings, so the switch acted with nothing behind it (as N29).
-    # Back on when a screen ships.
+    # Back on when a screen ships. Bold voices no longer rides it: RETIRED
+    # 2026-10-07 (founder, Q-B11 A, N62); its three routes answer 404
+    # whatever this says (routes/v2/after_practice.py).
     PRAISE_AFTER_PRACTICE_ENABLED = False
 
     # THE MACHINE CHECKS EACH PRACTISE TRY (founder lock 2026-10-06, the
@@ -421,8 +423,15 @@ class Config:
     # or later, so nothing is lent before the speaker has read 4b. Off, the
     # routes answer 404 and nothing is written. OFF again from 2026-10-03
     # (founder, F1 Repair Plan Phase 0, N29): no screen renders the share
-    # switch or Lend your ear, so nothing could be lent. It comes back on
-    # with those screens.
+    # switch or Lend your ear, so nothing could be lent. RETIRED as a
+    # speaker switch 2026-10-07 (founder, Q-B11 A, N62): the Album share
+    # switch, the per-Take set it fed and Bold voices are gone and their
+    # routes answer 404 whatever this says; the walk's other voices are the
+    # communities' queue (COMMUNITIES_ENABLED below), served by the Lend
+    # your ear engine under the per-Take consent only. This now gates only
+    # the coach's licensed-corpus tool (/v2/coach/licensed-clips, whose
+    # clips are the walk's training clips) and the ledger's historical
+    # counts of the retired lane.
     PEER_LANE_ENABLED = False
 
     # PHASE 5 (founder 2026-10-01): the delayed blind human measure
@@ -457,6 +466,11 @@ class Config:
     # Take is judged by its community; community answers are peer ratings
     # (L3). Built DARK: off, every /user/communities and take-share route
     # answers 404 and nothing is read or written (services/communities.py).
+    # Q-B11 A (founder 2026-10-07, N62): this is THE ONE PEER LANE. The
+    # queue serves at most 3 other voices per walk, community clips first,
+    # then training clips, through the Lend your ear engine
+    # (services/lend_your_ear.other_voices); the per-Take share is the one
+    # consent path that admits a speaker's moment to it.
     COMMUNITIES_ENABLED = False
     # CM2 (N52.4): sharing asks for consent, so its words go to counsel
     # first. This names the Phase-1 policy version that carries them; None
