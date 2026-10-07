@@ -732,6 +732,32 @@ if [ "$LANE" = "released" ]; then
   hard migrations/the_shadow_writer_keeps_the_pick_log.sql
 fi
 
+# 0442 (V4 brief 1.7, D-ML-11): answer counts per clip as soft-label data.
+# One derived table and the function that rebuilds a clip's row from
+# confidence_labels, which both lanes carry; the quorum is untouched. Both
+# lanes, after 0441, as in the manifest. Twice: apply/reapply idempotency.
+# Its suite: tests/test_answer_counts_per_clip_are_soft_label_data_postgres.py.
+# The narrow confidence_labels copy (tests/integration/mlc3_exercise_
+# foundation_prerequisites.sql) omits the released columns the function
+# below reads (lane, self_report, machine_value, source, confident) and
+# keeps the three-value check that version_confidence_rating_instrument_v2
+# replaced in production. Added back as NULLABLE trailing columns and the
+# released five-value check, as the widen steps above do. Disposable-only.
+psql -q -d "$DB" -c "ALTER TABLE public.confidence_labels
+    ADD COLUMN IF NOT EXISTS lane text,
+    ADD COLUMN IF NOT EXISTS source text,
+    ADD COLUMN IF NOT EXISTS self_report boolean NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS machine_value text,
+    ADD COLUMN IF NOT EXISTS confident boolean,
+    ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now()" >>"$log" 2>&1
+psql -q -d "$DB" -c "ALTER TABLE public.confidence_labels
+    DROP CONSTRAINT IF EXISTS confidence_labels_value_check,
+    DROP CONSTRAINT IF EXISTS ck_confidence_labels_value,
+    ADD CONSTRAINT ck_confidence_labels_value CHECK (value IS NULL OR value IN
+        ('yes', 'in_between', 'no', 'not_sure', 'audio_unclear', 'neutral'))" >>"$log" 2>&1
+hard migrations/answer_counts_per_clip_are_soft_label_data.sql
+hard migrations/answer_counts_per_clip_are_soft_label_data.sql
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

@@ -3156,6 +3156,11 @@ def _first_coach_rating(*, snippet_id, row, rater_id, session_id, lane,
         self_report=self_report, machine_value=machine_value,
         selection=selection)
     if saved:
+        # V4 brief 1.7 (0442): the clip's soft-label counts follow the
+        # judgment of record. A side write, never in the rating's way; the
+        # function counts only the quorum's human lanes (Q3).
+        from services.clip_answer_counts import refresh
+        refresh(db, snippet_id)
         return None
     return jsonify({
         "code": "SERVER_ERROR",

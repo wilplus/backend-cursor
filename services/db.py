@@ -11786,6 +11786,16 @@ class DatabaseService:
             logger.warning("insert_reference_distribution failed: %s", e)
             return 0
 
+    def refresh_clip_answer_counts(self, snippet_id: str) -> Optional[dict]:
+        """Rebuild one clip's soft-label counts from the ledger (migration
+        0442, V4 brief 1.7): the database function counts only the quorum's
+        human lanes, never a self-report, never the machine. Returns the row.
+        Raises on failure: the caller (services.clip_answer_counts.refresh)
+        logs it and the rating stands."""
+        result = self.client.rpc("refresh_clip_answer_counts_v1",
+                                 {"p_snippet_id": str(snippet_id)}).execute()
+        return self._rpc_row(result.data)
+
     def get_confidence_labels_by_snippet_ids(self, snippet_ids: list, *,
                                              strict: bool = False) -> dict:
         """{snippet_id: [label rows]} for the given snippets. {} on anything

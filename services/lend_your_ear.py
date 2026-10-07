@@ -199,4 +199,9 @@ def _peer_label(database: Any, *, listener_id: str, snippet_id: str,
     except Exception as e:  # noqa: BLE001 — the answer is still kept
         _log.warning("peer label write failed snip=%s: %s", snippet_id, e, exc_info=True)
         return None, "label_failed"
+    if saved:
+        # V4 brief 1.7 (0442): the clip's soft-label counts follow the peer
+        # label. A side write that never raises (services.clip_answer_counts).
+        from services.clip_answer_counts import refresh
+        refresh(database, snippet_id)
     return ("written" if saved else None), ("new" if saved else "label_failed")
