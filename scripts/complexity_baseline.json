@@ -17,7 +17,6 @@
   "routes/v2/user_sessions.py:v2_add_confident_voice_practice_attempt": 37,
   "routes/v2/user_sessions.py:v2_post_take_feedback_response": 38,
   "routes/v2/user_sessions.py:v2_start_confident_voice_practice": 44,
-  "routes/v2/user_sessions.py:v2_user_list_trainings": 30,
   "routes/v2/user_sessions.py:v2_user_put_transcript_edit": 30,
   "routes/v2/user_sessions.py:v2_user_suggestion_feedback": 51,
   "services/analysis_worker.py:_run_full_analysis_impl": 31,

@@ -9508,6 +9508,16 @@ class DatabaseService:
                            arc_id, e)
             return None
 
+    def get_moment_suggestion(self, snippet_id: Optional[str]) -> Optional[dict]:
+        """The one suggestion row of a moment (moment_suggestions is keyed
+        by snippet), or None. Raises on a real read failure."""
+        if not snippet_id:
+            return None
+        res = (self.client.table("moment_suggestions")
+               .select("snippet_id,kind,trigger,cue_keys")
+               .eq("snippet_id", str(snippet_id)).limit(1).execute())
+        return (res.data or [None])[0]
+
     def delete_moment_suggestion(self, snippet_id: Optional[str]) -> bool:
         """Drop one star row — a DISMISSED star must not survive to the
         next serve/anchor pass (founder 2026-07-20 rule 2; the ledger
@@ -10317,6 +10327,31 @@ class DatabaseService:
             logger.warning("get_coach_best_presentation_edits failed arc=%s: %s",
                            arc_id, e)
             return {}
+
+    def get_coach_best_presentation_edits_for_arcs(
+        self, arc_ids: list[str],
+    ) -> dict[str, dict]:
+        """{arc_id: {slide_index: text}} for many arcs in ONE read (D-CS-4):
+        the every-project read asks once instead of once per project. A
+        missing table is {}; any other failure raises."""
+        ids = sorted({str(a) for a in arc_ids or [] if a})
+        if not ids:
+            return {}
+        try:
+            res = (self.client.table("coach_best_presentation_edits")
+                   .select("arc_id, slide_index, text")
+                   .in_("arc_id", ids).execute())
+        except Exception as e:
+            err_low = str(e).lower()
+            if "coach_best_presentation_edits" in err_low and (
+                    "does not exist" in err_low or "pgrst205" in err_low):
+                return {}
+            raise
+        out: dict[str, dict] = {}
+        for r in res.data or []:
+            if isinstance(r, dict) and isinstance(r.get("slide_index"), int):
+                out.setdefault(str(r.get("arc_id")), {})[r["slide_index"]] = r.get("text")
+        return out
 
     def get_coach_best_presentation_key_phrases(self, arc_id) -> dict:
         """{slide_index: [phrases]} — the coach-corrected key phrases (Engine

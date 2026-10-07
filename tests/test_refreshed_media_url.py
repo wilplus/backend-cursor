@@ -225,7 +225,8 @@ class ServedEverywhereTests(unittest.TestCase):
             ("routes/v2/coach.py", '"video_ref"'),
             ("services/readout_context.py", '"presentation_ref"'),
             ("services/readout_context.py", 'result["presentation_ref"]'),
-            ("routes/v2/user_sessions.py", '"cover_ref"'),
+            # The Trainings-page cover moved with the build (D-CS-4).
+            ("services/user_trainings.py", '"cover_ref"'),
         ):
             with open(path, encoding="utf-8") as fh:
                 src = fh.read()

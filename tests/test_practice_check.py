@@ -200,3 +200,91 @@ def test_the_owner_payload_shows_only_the_outcome_of_a_machine_check():
     old = {"key": "good_job", "sentence": "Good job."}
     assert _after_practice_public(old) == old
     assert _after_practice_public(None) is None
+
+
+# ── the third try that is not praise (CM3a A, CM3b A; decisions log N55) ──
+
+def test_tries_one_and_two_that_are_not_praise_ask_again():
+    one = [_attempt(1)]
+    assert pc.decide(PRACTICE, one, "a-1")["next"] == "again"
+    two = [_attempt(1), _attempt(2)]
+    assert pc.decide(PRACTICE, two, "a-2")["next"] == "again"
+
+
+def test_the_third_try_that_is_not_praise_moves_on_with_the_cm3b_key():
+    from services.line_bank import BANKS, PRACTISE_BANKS
+
+    three = [_attempt(1), _attempt(2), _attempt(3)]
+    check = pc.decide(PRACTICE, three, "a-3")
+    assert (check["next"], check["key"], check["lane"]) == ("moved_on", "CM3b", "none")
+    assert check["key"] in PRACTISE_BANKS and BANKS[check["key"]]
+    assert pc.public_check(check) == {"next": "moved_on", "key": "CM3b"}
+    # From try 3 onward: a later try (were one ever saved) moves on too.
+    four = three + [_attempt(4)]
+    assert pc.decide(PRACTICE, four, "a-4")["next"] == "moved_on"
+
+
+def test_praise_on_the_third_try_still_wins():
+    three = [_attempt(1), _attempt(2), _attempt(3, snapshot={"pause_ratio": 0.2})]
+    check = pc.decide(PRACTICE, three, "a-3")
+    assert (check["next"], check["key"]) == ("praise", "cleared:rushing")
+    db = _Db(three)
+    with patch("services.delayed_measure.enrol"):
+        status, body = pc.check_attempt(db, PRACTICE, "a-3", "owner-1")
+    assert body["outcome"] == "done"
+    assert db.updates[-1][2]["selected_attempt_id"] == "a-3"
+
+
+def test_moving_on_closes_the_practice_with_no_try_selected():
+    db = _Db([_attempt(1), _attempt(2), _attempt(3)])
+    with patch("services.delayed_measure.enrol") as enrol:
+        status, body = pc.check_attempt(db, PRACTICE, "a-3", "owner-1")
+    assert status == 200 and body["outcome"] == "moved_on"
+    assert body["check"] == {"next": "moved_on", "key": "CM3b"}
+    assert body["attempt_transcript"] is None
+    fields = db.updates[-1][2]
+    assert fields["status"] == "completed" and fields["closed_at"]
+    assert "selected_attempt_id" not in fields and "landed_attempt_index" not in fields
+    assert "final_user_answer" not in fields and "user_answer" not in fields
+    enrol.assert_called_once()
+    closed = body["practice_row"]
+    # No helper words from a practice the machine moved on from.
+    assert pc.machine_closed(closed) is False
+    status, body = helper_words_from_practice(object(), closed, "part-1", "doubled", "owner-1")
+    assert (status, body["code"]) == (409, "NOT_ADOPTED")
+    # The loop is over: no fourth check.
+    status, body = pc.check_attempt(db, closed, "a-3", "owner-1")
+    assert (status, body["code"]) == (409, "PRACTICE_CLOSED")
+
+
+def test_a_moved_on_practice_settles_like_a_skip_so_the_bar_clears():
+    moved_on = {**PRACTICE, "status": "completed", "final_user_answer": None,
+                "after_practice": {"decided_by": "machine", "next": "moved_on",
+                                   "key": "CM3b"}}
+
+    class _Moments:
+        def list_moment_events_for_take(self, _take):
+            return [{"event": "skipped", "snippet_id": "s-skip"}]
+
+        def list_confident_voice_practice_for_take(self, _take, _owner):
+            return [{**moved_on, "snippet_id": "s-1"},
+                    {**PRACTICE, "status": "dismissed", "snippet_id": "s-2"}]
+    settled = settled_status_by_moment(_Moments(), take_session_id="take-1",
+                                       owner_user_id="owner-1")
+    # The moved-on moment, a Skip of the bookmark and a dismissed (Skip)
+    # practice all settle the same way.
+    assert settled == {"s-1": "dismissed", "s-skip": "dismissed", "s-2": "dismissed"}
+
+
+def test_skip_before_the_third_try_ends_the_loop_and_no_check_follows():
+    skipped = {**PRACTICE, "status": "dismissed"}
+    db = _Db([_attempt(1), _attempt(2)])
+    status, body = pc.check_attempt(db, skipped, "a-2", "owner-1")
+    assert (status, body["code"]) == (409, "PRACTICE_CLOSED")
+    assert db.updates == []
+
+
+def test_the_no_cap_promise_is_gone():
+    source = (ROOT / "services/practice_check.py").read_text()
+    assert "There is no cap" not in source
+    assert "CM3a" in source and "moved_on" in source

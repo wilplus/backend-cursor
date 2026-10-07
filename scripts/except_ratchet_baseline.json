@@ -151,7 +151,7 @@
   "services/swap_offer.py": 5,
   "services/take_feedback_candidates.py": 1,
   "services/take_rebuild.py": 4,
-  "services/take_repository.py": 56,
+  "services/take_repository.py": 55,
   "services/take_review.py": 1,
   "services/token_account.py": 14,
   "services/tracked_changes.py": 2,
