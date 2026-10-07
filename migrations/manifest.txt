@@ -472,3 +472,4 @@
 0434	a_corpus_split_survives_a_truncate.sql
 0435	a_corpus_import_is_processed_under_the_founders_basis.sql
 0436	a_training_yes_counts_the_acceptance_the_account_is_processed_under.sql
+0437	each_served_take_keeps_its_coverage.sql

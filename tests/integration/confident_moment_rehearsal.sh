@@ -688,6 +688,13 @@ hard migrations/a_corpus_import_is_processed_under_the_founders_basis.sql
 hard migrations/a_training_yes_counts_the_acceptance_the_account_is_processed_under.sql
 hard migrations/a_training_yes_counts_the_acceptance_the_account_is_processed_under.sql
 
+# 0437 (D-ML-5, 2026-10-07): each served Take keeps its coverage and its
+# lane outcomes. One table, no dependency, so both lanes. After 0436, as in
+# the manifest. Twice: apply/reapply idempotency. Its suite:
+# tests/test_each_served_take_keeps_its_coverage_postgres.py.
+hard migrations/each_served_take_keeps_its_coverage.sql
+hard migrations/each_served_take_keeps_its_coverage.sql
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

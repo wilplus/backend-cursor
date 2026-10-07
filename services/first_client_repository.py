@@ -7,6 +7,7 @@ keeping the shared DatabaseService from becoming workflow glue.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
@@ -298,6 +299,35 @@ class FirstClientRepository:
             return data if isinstance(data, dict) else None
         except Exception as error:
             logger.warning("Feedback V3 service context failed: %s", error)
+            return None
+
+    def record_take_feedback_coverage(self, row: dict) -> Optional[bool]:
+        """One row per served Take (0437, D-ML-5; contract 24c/24d/25).
+
+        True when this serve wrote the Take's first row, False when the Take
+        already had one (its counts are refreshed and `last_served_at`
+        moves), None when the write failed. Best-effort: never raises, so a
+        database fault can never block serving (LIVE LOOP). Internal only,
+        never read by a route (AC-9)."""
+        take_id = str(row.get("take_session_id") or "")
+        if not take_id:
+            return None
+        try:
+            inserted = (self.client.table("take_feedback_coverage")
+                        .upsert(row, on_conflict="take_session_id",
+                                ignore_duplicates=True)
+                        .execute().data or [])
+            if inserted:
+                return True
+            refresh = {key: value for key, value in row.items()
+                       if key not in ("take_session_id", "first_served_at")}
+            refresh["last_served_at"] = datetime.now(timezone.utc).isoformat()
+            (self.client.table("take_feedback_coverage")
+             .update(refresh).eq("take_session_id", take_id).execute())
+            return False
+        except Exception as error:  # noqa: BLE001 -- best-effort, logged
+            logger.warning("take coverage write failed take=%s: %s",
+                           take_id, _error_head(error))
             return None
 
     def ack_feedback_v3_service_render(self, payload: dict) -> Optional[dict]:

@@ -380,6 +380,10 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "user_id", "user", "delete", "database_row", 35),
     PurgeDependency("communities_created", "communities",
                     "created_by", "user", "delete", "database_row", 60),
+    # A served Take's coverage and lane outcomes (0437, D-ML-5): counts,
+    # Slide indexes and type names about one Take; it goes with the Take.
+    PurgeDependency("take_feedback_coverage", "take_feedback_coverage",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
     # The coach panel's learning additions (0411). The preference, the
     # audit and the block pick are about one speaker's Take (they go with
     # it) AND are one coach's own words (they go with the coach too). The
