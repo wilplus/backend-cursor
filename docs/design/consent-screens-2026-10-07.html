@@ -1,0 +1,576 @@
+<title>Consent Screens Prototype</title>
+<style>
+:root{
+  --bg:#ffffff; --fg:#121212; --fg90:rgba(18,18,18,.9); --muted:#f5f5f5; --muted-fg:#737373; --border:#ebebeb;
+  --primary:#ff6a0a; --record:#e0453a; --record-fg:#fff; --destructive:#ef4444; --success:#16a162; --red500:#ef4444;
+  --proto-bg:#e9e9ec; --proto-fg:#2a2a30; --proto-line:#d4d4da; --proto-chip:#ffffff;
+  color-scheme:light;
+}
+html,body{height:100%;overscroll-behavior:none}
+html{line-height:1.5}
+body{margin:0;background:var(--proto-bg);color:var(--fg);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
+*{box-sizing:border-box}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+button:disabled{cursor:default}
+p,h1,h2,ul{margin:0}
+a{color:inherit}
+
+/* ---------- prototype chrome (not part of the product) ---------- */
+.proto{position:fixed;inset:0;display:flex;flex-direction:column}
+.pbar{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:10px 16px;border-bottom:1px solid var(--proto-line);color:var(--proto-fg);font-size:13px}
+.pbar b{font-weight:650;letter-spacing:.01em}
+.seg{display:inline-flex;flex-wrap:wrap;background:#dcdce1;border-radius:999px;padding:2px}
+.seg button{padding:5px 11px;border-radius:999px;font-size:12.5px;font-weight:550;color:#55555c}
+.seg button[aria-pressed="true"]{background:var(--proto-chip);color:var(--proto-fg);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.pbtn{padding:5px 11px;border-radius:999px;border:1px solid var(--proto-line);background:var(--proto-chip);font-size:12.5px;font-weight:550}
+.pchip{font-size:12px;color:#55555c;padding:4px 10px;border-radius:999px;border:1px dashed #b9b9c1}
+.pchip strong{font-weight:650}
+.pnote{font-size:12px;color:#6b6b73;flex-basis:100%}
+.stagewrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+.device{position:relative;background:var(--bg);overflow:hidden;transform-origin:center center;box-shadow:0 0 0 10px #111,0 20px 60px rgba(0,0,0,.25);border-radius:44px;flex:none}
+.device.desk{border-radius:12px;box-shadow:0 0 0 1px #c9c9cf,0 20px 60px rgba(0,0,0,.18)}
+.toast-proto{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);background:#2a2a30;color:#fff;font-size:12px;padding:6px 12px;border-radius:999px;opacity:0;transition:opacity .25s;pointer-events:none;max-width:calc(100% - 32px);text-align:center;z-index:5}
+.toast-proto.on{opacity:.94}
+.full .device{border-radius:0;box-shadow:none;transform:none!important;width:100%!important;height:100%!important}
+.full .stagewrap{align-items:stretch}
+.full .pnote{display:none}
+.full .pbar{padding:6px 10px;gap:6px;font-size:12px}
+.full .pbar b{display:none}
+.full .seg button,.full .pbtn{padding:4px 8px;font-size:11.5px}
+.full .pchip{font-size:11px;padding:3px 8px}
+.stub{border:1.5px dashed #c4c4cc;border-radius:16px;padding:20px;max-width:21rem;color:#6b6b73;font-size:14px;line-height:1.45;text-align:center;display:flex;flex-direction:column;gap:14px;align-items:center}
+.stub .tag{font-size:11px;font-weight:650;letter-spacing:.12em;text-transform:uppercase;color:#9a9aa2}
+.pb{height:36px;padding:0 16px;border-radius:999px;border:1.5px dashed #a9a9b1;color:#55555c;font-size:13px;font-weight:550}
+
+/* ---------- the app ---------- */
+.app{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg)}
+.device:not(.desk) .app{padding-top:44px}
+.full .device .app{padding-top:env(safe-area-inset-top,0px)}
+.scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column}
+@media (prefers-reduced-motion:no-preference){.enter{animation:enter .22s ease-out both}}
+@keyframes enter{from{opacity:0}to{opacity:1}}
+.leaving{opacity:0;transition:opacity .2s}
+.muted{color:var(--muted-fg)}
+
+/* breathing voice mark */
+.vm{position:relative;display:flex;align-items:center;justify-content:center;flex:none}
+.vm .r{position:absolute;border-radius:999px;border:1px solid rgba(18,18,18,.1)}
+@media (prefers-reduced-motion:no-preference){.vm .r{animation:breath 3.6s ease-in-out infinite}.vm circle{transform-box:fill-box;transform-origin:center;animation:vdot 1.4s ease-in-out infinite}.vm circle:nth-child(2){animation-delay:.15s}.vm circle:nth-child(3){animation-delay:.3s}}
+@keyframes breath{0%{transform:scale(.92);opacity:0}50%{opacity:1}100%{transform:scale(1.04);opacity:0}}
+@keyframes vdot{0%,60%,100%{transform:scaleY(.5);opacity:.6}30%{transform:scaleY(1);opacity:1}}
+
+/* the one primary action, with the orange dot */
+.cta{display:inline-flex;height:48px;align-items:center;gap:8px;border-radius:999px;background:var(--fg);padding:0 28px;font-size:14px;font-weight:500;color:var(--bg);transition:background .15s,transform .1s}
+.cta:hover:not(:disabled){background:rgba(18,18,18,.9)}
+.cta:active:not(:disabled){transform:scale(.98)}
+.cta:disabled{opacity:.35}
+.cta i{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--primary);transition:transform .15s}
+.cta:hover:not(:disabled) i{transform:translateX(2px)}
+.sec{margin-top:4px;height:44px;padding:0 8px;font-size:14px;color:var(--muted-fg);transition:color .15s}
+.sec:hover{color:var(--fg)}
+.btns{margin-top:40px;display:flex;flex-direction:column;align-items:center}
+
+/* footer + header */
+.foot{flex:none;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--muted-fg)}
+.foot span+span{display:flex;gap:12px}
+.desk .foot{font-size:12px;padding:12px 24px}
+.desk .foot span+span{gap:16px}
+.hdr{flex:none;border-bottom:1px solid rgba(235,235,235,.6);background:rgba(255,255,255,.95)}
+.hdr .in{max-width:56rem;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:16px 15px}
+.logo{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:600;letter-spacing:-.01em}
+.burger{width:40px;height:40px;border:1px solid var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center}
+.burger svg{width:18px;height:18px}
+
+/* welcome */
+.wel{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 24px;text-align:center}
+.wel h1{font-size:40px;font-weight:600;line-height:1.05;letter-spacing:-.025em}
+.desk .wel h1{font-size:48px}
+.wel p{margin-top:14px;max-width:36ch;font-size:15px;line-height:1.625;color:var(--muted-fg)}
+
+/* acceptance */
+.acc{min-height:100%;display:flex;flex-direction:column;padding:32px 24px}
+.acc .col{margin:auto;width:100%;max-width:400px;display:flex;flex-direction:column;align-items:center;text-align:center}
+.acc .col.wide{max-width:none}
+.h27{max-width:22ch;font-size:27px;font-weight:600;line-height:1.25;letter-spacing:-.025em}
+.lede{margin-top:14px;max-width:44ch;font-size:14.5px;line-height:1.625;color:var(--muted-fg)}
+.agree{max-width:46ch;white-space:pre-wrap;text-align:left;font-size:14.5px;line-height:1.625;color:var(--muted-fg)}
+.docs{margin-top:28px;width:100%;max-width:400px;display:flex;flex-direction:column;gap:8px}
+.docrow{display:flex;width:100%;align-items:center;justify-content:space-between;gap:12px;border:1px solid var(--border);border-radius:12px;padding:16px;text-align:left;font-size:14.5px;transition:background .15s}
+.docrow:hover,.choice:hover{background:var(--muted)}
+.docrow small{font-size:12.5px;color:var(--muted-fg)}
+.docrow .ok{font-size:12px;color:var(--success);white-space:nowrap}
+.choices{margin-top:24px;width:100%;display:flex;flex-direction:column;gap:8px}
+.choice{display:flex;width:100%;align-items:flex-start;gap:12px;border:1px solid var(--border);border-radius:12px;padding:16px;text-align:left;transition:background .15s,border-color .15s}
+.choice[aria-pressed="true"]{border-color:var(--fg)}
+.choice .ind{margin-top:2px;width:18px;height:18px;flex:none;display:flex;align-items:center;justify-content:center;border:1.5px solid rgba(115,115,115,.6);background:var(--bg);transition:background .15s,border-color .15s}
+.choice .ind.radio{border-radius:999px}
+.choice .ind.check{border-radius:5px}
+.choice[aria-pressed="true"] .ind{border-color:var(--fg);background:var(--fg)}
+.choice .ind.radio i{width:8px;height:8px;border-radius:999px;background:var(--bg)}
+.choice .lab{min-width:0;flex:1;display:block}
+.choice .country{font-size:15px;font-weight:500}
+.choice .tick{font-size:14.5px;line-height:1.375}
+.optlab{text-align:left;font-size:12px;font-weight:500;text-transform:uppercase;letter-spacing:.025em;color:var(--muted-fg)}
+.optblock{margin-top:20px;width:100%;display:flex;flex-direction:column;gap:8px}
+
+/* document pane */
+.doc{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;padding:32px 24px 24px}
+.doc .top{flex:none;border-bottom:1px solid var(--border);padding-bottom:16px}
+.doc h1{font-size:24px;font-weight:600;letter-spacing:-.025em}
+.doc .ver{margin-top:4px;font-size:12.5px;color:var(--muted-fg)}
+.doc .body{flex:1;min-height:0;overflow-y:auto;white-space:pre-wrap;padding:20px 0;font-size:15px;line-height:1.7;color:var(--fg90);overscroll-behavior:contain}
+.doc .bot{flex:none;display:flex;flex-direction:column;align-items:center;padding-top:16px}
+
+/* lounge */
+.lounge{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 24px;text-align:center}
+.lounge .w{width:100%;max-width:23rem;display:flex;flex-direction:column;align-items:center}
+.kick{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.2em;color:var(--muted-fg)}
+.lounge h1{margin-top:12px;font-size:clamp(1.5rem,6vw,2rem);font-weight:600;line-height:1.18;letter-spacing:-.03em;text-wrap:balance}
+.desk .lounge h1{font-size:2rem}
+.lounge p{margin-top:12px;max-width:20rem;font-size:15px;line-height:1.55;color:var(--muted-fg);text-wrap:balance}
+.startbtn{margin-top:28px;display:flex;height:48px;align-items:center;justify-content:center;gap:10px;white-space:nowrap;border-radius:999px;background:var(--fg);padding:0 24px;font-size:15px;font-weight:500;color:var(--bg)}
+.startbtn:hover{background:rgba(18,18,18,.9)}
+.rdot{width:10px;height:10px;flex:none;border-radius:999px;background:var(--red500)}
+.composer{flex:none;display:flex;gap:8px;padding:12px 16px 16px;width:100%;max-width:56rem;margin:0 auto}
+.composer .in{flex:1;height:48px;border:1px solid var(--border);border-radius:999px;display:flex;align-items:center;padding:0 16px;font-size:16px;color:#a3a3a3}
+.composer .rec{height:48px;border:1px solid var(--border);border-radius:999px;display:flex;align-items:center;gap:8px;padding:0 15px;font-size:15px}
+
+/* the Lab overlay's top bar + training question */
+.labbar{flex:none;height:56px;display:flex;align-items:center;justify-content:flex-end;padding:0 12px}
+.xbtn{width:36px;height:36px;border-radius:999px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:#555}
+.xbtn svg{width:16px;height:16px}
+.ask{flex:1;display:flex;overflow-y:auto;padding:20px 24px}
+.desk .ask{padding:32px 24px}
+.ask .w{margin:auto;width:100%;max-width:38rem;padding:20px 0;text-align:left}
+.ask h2{font-size:20px;font-weight:600}
+.ask ul{margin-top:20px;padding-left:20px;font-size:15px;line-height:1.625;color:var(--muted-fg)}
+.ask li+li{margin-top:4px}
+.ask .sent{margin-top:20px;font-size:15px;line-height:1.65}
+.yes{margin-top:28px;height:48px;width:100%;border-radius:999px;background:var(--fg);padding:0 24px;font-size:14px;font-weight:500;color:var(--bg)}
+.skip{margin-top:12px;height:44px;width:100%;font-size:14px;color:var(--muted-fg);text-decoration:underline;text-underline-offset:4px}
+.center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px;text-align:center}
+
+/* Data & consent */
+.dc{width:100%;max-width:42rem;margin:0 auto;padding:48px 24px}
+.dc h1{font-size:30px;font-weight:600;line-height:1.2;letter-spacing:-.025em}
+.dc .ch{margin-top:16px;display:flex;flex-direction:column;gap:24px}
+.dc .t14{font-size:14px;line-height:1.625}
+.card{border:1px solid var(--border);border-radius:16px;padding:20px}
+.card h2{font-size:16px;font-weight:600;line-height:1.5}
+.card .stack{margin-top:8px;display:flex;flex-direction:column;gap:16px}
+.card ul{padding-left:20px;font-size:14px;line-height:1.625;color:var(--muted-fg)}
+.card li+li{margin-top:4px}
+.ob{display:inline-flex;height:40px;align-items:center;border-radius:999px;border:1px solid var(--border);background:var(--bg);padding:0 20px;font-size:14px;font-weight:500}
+.pb2{display:inline-flex;height:40px;align-items:center;border-radius:999px;background:var(--fg);padding:0 20px;font-size:14px;font-weight:500;color:var(--bg)}
+.ob:hover{background:var(--muted)}
+.conf{border-radius:12px;background:var(--muted);padding:16px}
+.conf .row{margin-top:16px;display:flex;flex-wrap:wrap;gap:12px}
+.mt6{margin-top:24px}
+.del{margin-top:32px;border:1px solid var(--border);border-radius:12px;padding:16px}
+.del h2{font-size:16px;font-weight:600}
+.sbtn{margin-top:12px;display:inline-flex;height:40px;align-items:center;justify-content:center;border-radius:6px;border:1px solid var(--border);background:var(--bg);padding:0 16px;font-size:14px;font-weight:500}
+.sbtn:hover{background:var(--muted)}
+.sbtn.red{color:var(--destructive)}
+.plist{margin-top:12px;list-style:none;padding:0!important;color:var(--fg)!important}
+.plist li{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:12px 0;border-top:1px solid var(--border)}
+.plist li:first-child{border-top:0}
+.plist li+li{margin-top:0}
+.plist .nm{min-width:0;word-break:break-word;font-size:15px}
+.plist .nm small{margin-left:8px;font-size:13px;color:var(--muted-fg)}
+.obs{display:inline-flex;height:36px;align-items:center;border-radius:999px;border:1px solid var(--border);background:var(--bg);padding:0 12px;font-size:14px;font-weight:500}
+.links{margin-top:32px;font-size:14px;color:var(--muted-fg)}
+.links button{text-decoration:underline;text-underline-offset:4px;color:var(--muted-fg)}
+/* the delete confirm */
+.scrim{position:absolute;inset:0;z-index:50;display:flex;align-items:flex-end;justify-content:center;background:rgba(18,18,18,.35);padding:16px}
+.desk .scrim{align-items:center}
+.dlg{width:100%;max-width:24rem;border-radius:24px;background:var(--bg);padding:20px;box-shadow:0 20px 25px -5px rgba(0,0,0,.1),0 8px 10px -6px rgba(0,0,0,.1)}
+.dlg h2{font-size:18px;font-weight:600;word-break:break-word}
+.dlg p{margin-top:8px;font-size:14px;color:var(--muted-fg)}
+.dlg .err{font-size:13px;color:var(--record)}
+.dlg .row{margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btn{height:40px;border-radius:999px;font-size:14px;font-weight:500;display:flex;align-items:center;justify-content:center;padding:0 8px;white-space:nowrap}
+.btn.o{border:1px solid var(--border);background:var(--bg)}
+.btn.r{background:var(--record);color:var(--record-fg)}
+</style>
+
+<div class="proto" id="proto">
+  <div class="pbar">
+    <b>Consent screens</b>
+    <div class="seg" role="group" aria-label="Which screens">
+      <button data-mode="first" aria-pressed="true">First time</button>
+      <button data-mode="data" aria-pressed="false">Data &amp; consent</button>
+      <button data-mode="take" aria-pressed="false">Before each Take</button>
+    </div>
+    <div class="seg" role="group" aria-label="Device">
+      <button data-dev="phone" aria-pressed="true">Phone</button>
+      <button data-dev="desk" aria-pressed="false">Desktop</button>
+    </div>
+    <button class="pbtn" id="restart">Restart</button>
+    <span class="pchip" id="pchip">Learning: <strong>off</strong></span>
+    <span class="pnote">Live words, unchanged. Skip the learning question and it returns before the next Take; Yes turns it on for good and Data &amp; consent shows it. Switches remember until Restart. Documents are excerpts; dashed boxes are stand-ins.</span>
+  </div>
+  <div class="stagewrap" id="stagewrap">
+    <div class="device" id="device"><div class="app" id="app"></div></div>
+    <div class="toast-proto" id="ptoast"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+/* ---------------------------------------------------------------------------
+   Every user-facing word below is today's live wording, copied from the
+   frontend (Phase1AcceptanceFlow.tsx, TrainingAsk.tsx, dataConsentCopy.ts,
+   deleteAccountCopy.ts, leavingCopy.ts, projectArchiveCopy.ts, Lounge.tsx,
+   WelcomeConsent.tsx, Footer.tsx) and, for the policy record, from the
+   backend's legal/phase1-2026.1/copy/ files (agreement 3.1, Terms 3.3,
+   Privacy 3.3, AI notice 3.1) and the signed training sentence (13-...-SIGNED).
+--------------------------------------------------------------------------- */
+var AGREEMENT = "I have read the Terms of Service and the Privacy Policy and I agree to them.\n\nI understand that WillpowerLab is hybrid coaching, and that a WillpowerLab coach — a person — may listen to my recordings in order to review my feedback. That is part of the service, not an extra I am switching on.";
+var DOCS = {
+  terms:{title:"Terms of Service", version:"3.3", copy:"WillpowerLab — Terms of Service\nVersion 3.3. Effective 2 October 2026.\n\nThese terms are an agreement between you and Artur Willoński, operating under\nthe name \"WillpowerLab\" from Poland (\"WillpowerLab\", \"we\", \"us\"). They govern\nyour use of willpowerlab.com and the WillpowerLab application.\n\nVersion 3.3 replaces every earlier version. Under these terms your recordings\nare processed to deliver your own coaching and are never used to train models.\nTwo things are yours to choose, and both are off unless you choose them: the\nwords you practise and your coach's notes on them may train WillpowerLab's own\nfeedback models when you turn on Help improve WillpowerLab (section 8 and the\nPrivacy Policy, section 4a), and a short clip of a recording may be played to\nother users when you lend that recording (section 8 and the Privacy Policy,\nsection 4b). A coach may also hear a short clip of a recording to check our\nautomated listening (section 11). If anything else changes, it changes in a\nnew version you are asked to accept — see section 15.\n\n\n1. WHAT THE SERVICE DOES\n\nYou record yourself presenting. WillpowerLab transcribes the recording, lines\nthe transcript up with your slides, writes an Ideal Text — a presentation\ndocument built from what you actually said — and gives you feedback after each\nattempt.\n\nWillpowerLab is hybrid coaching: automated work and a human coach, together.\nThe transcription and the written documents are produced by artificial\nintelligence, and a WillpowerLab coach — a person — may listen to your\nrecordings in order to review the feedback you were given and to prepare\npractice for you. Both halves are the service. If you are not willing for a\nperson to hear your recordings, WillpowerLab is not the product for you, and\nyou should not accept these terms.\n\nYour audio is sent to a third-party AI provider to be transcribed. The AI\nnotice tells you who receives it and what happens to it, and the Privacy Policy\nsets out the detail.\n\n\n2. WHAT IT COSTS\n\nThere is a free plan and there are paid plans. You can use the free plan for as\nlong as you like without paying.\n\nWork in the app is measured in tokens. Each plan gives you an allowance of them\nfor the month. The allowance is SET at the start of each month rather than\nadded to what you had, so unused tokens do not carry over.\n\n  Free         12,000 tokens a month     no coach reviews     no charge\n  Practice    150,000 tokens a month     no coach reviews     USD 12 a month\n  Coaching    150,000 tokens a month     3 coach reviews      USD 39 a month\n  Intensive   400,000 tokens a month     8 coach reviews      USD 89 a month\n\nReviews by a human coach are a separate limit from tokens, and the tighter of\nthe two applies: you can have tokens left and no reviews left.\n\nThe price and what it includes are shown before you pay. We will tell you\nbefore any price changes. Payments are taken by our payment provider; we do not\nsee or store your card details. A paid plan renews each month until you cancel,\nand you can cancel at any time.\n\nIf you are a consumer in the EU or EEA, you have 14 days to withdraw from a\npaid plan. We give you that full 14 days with no questions asked, even once you\nhave started using it.\n\n\n3. YOU MUST BE 18\n\nThe service is for adults. You must be 18 or older to use it. When you accept\nthese terms you confirm that you are. We do not knowingly provide the service\nto anyone under 18, and we will close an account if we learn that its holder is\nunder 18."},
+  privacy:{title:"Privacy Policy", version:"3.3", copy:"WillpowerLab — Privacy Policy\nVersion 3.3. Effective 2 October 2026.\n\nThis policy explains what WillpowerLab does with your personal data, who else\nreceives it, how long we keep it, and how you get it deleted.\n\nVersion 3.3 replaces every earlier version. It adds two things. First, a\nWillpowerLab coach may hear a short clip of a recording to check that our\nautomated listening is right; section 4 describes it, and you can turn it off.\nSecond, and only if you choose it for a particular recording, you can lend a\nshort clip of your voice to other users; section 4b describes it. The training\nchoice in section 4a is unchanged: off unless you turn it on, text only, never\nyour voice.\n\n\n1. WHO IS RESPONSIBLE FOR YOUR DATA\n\nWillpowerLab is operated by an individual based in Poland. The controller of\nthe personal data described here is:\n\nArtur Willoński, operating under the name \"WillpowerLab\"\nPoland, European Union\nContact: contact@willpowerlab.com (a postal address is provided on request to\ndata subjects and to the supervisory authority)\n\nThe lead supervisory authority under Article 56 GDPR is the President of the\nPersonal Data Protection Office (UODO), ul. Stawki 2, 00-193 Warsaw, Poland.\n\nGiven the scale of processing we have not appointed a Data Protection Officer,\nwhich GDPR Article 37 does not require of us. Privacy requests are handled\ndirectly at the address above.\n\n\n2. WHAT WE COLLECT\n\nThings you give us\n- Your email address and account details.\n- Your slides and presentation materials.\n- Audio recordings of you presenting.\n- Edits you make to your Ideal Text, and your responses to feedback.\n\nThings produced from your recordings\n- Transcripts of what you said.\n- Measurements taken from the sound of your voice: how much your pitch varies,\n  how loud and how varied your delivery is, how fast you speak, how you pause,\n  and how your energy and pitch move across a sentence.\n- Your Ideal Text and your feedback.\n\nThings collected automatically\n- Technical and security logs: IP address, device and browser information,\n  timestamps, and error records.\n- The version of the app you used, the country you told us you live in, and the\n  language your app was set to, recorded as part of your agreement to this\n  policy.\n\n\n3. THE SOUND OF YOUR VOICE\n\nWe take measurements from how your voice sounds and compare them against your\nown earlier recordings — never against other people. We use them to help choose\nwhich of your own sentences to show back to you.\n\nWe do not produce a score, a rating, a grade or a verdict about you, and no such\nthing is shown to you, to a coach, or to anyone else. We do not use your voice\nto identify you. We do not infer, record or guess your sex, gender, age, health,\nethnicity, or any other characteristic about you from the sound of your voice.\n\nIf the measurements cannot be taken reliably from a recording, we record that\nthey could not be taken. We do not fill in a value.\n\nOther users never hear your voice unless you lend a particular recording to\nthem yourself, as section 4b describes."},
+  ai:{title:"How AI is used here", version:"3.1", copy:"WillpowerLab — how the automated part works\n\nYour transcript, the written version of your talk, and the feedback on your\ndelivery are produced by automated systems, including AI models.\n\nThe feedback is a reading, not a measurement. It describes how a passage came\nacross; it does not score you, rank you, or decide anything about you. You are\nfree to disagree with any of it, and disagreeing changes nothing about your\naccount.\n\nA person may review that automated feedback afterwards. Nothing about you is\ndecided automatically."}
+};
+var MIN_AGE = 18;
+var COUNTRIES = ["Poland","Austria","Czechia","France","Germany","Ireland","Italy","Netherlands","Spain"];
+var TRAINING_SENTENCE = "Use my practice text and my coach's notes on it to train the models that write WillpowerLab's feedback.";
+var C = {
+  introWithTraining:"Your recordings are used to run your own coaching. They are used to train models only if you turn on Help improve WillpowerLab.",
+  practiceTitle:"Personalised practice",
+  practiceDescription:"Use my recordings to choose short exercises that fit them, to keep the fragments I re-record, and to remember what I am working on so the exercises get more personal.",
+  turnOff:"Turn off", turnOn:"Turn on",
+  turnOffConfirm:"Turn off personalised practice? You keep using everything else. Your practice recordings will be deleted.",
+  practiceOff:"Personalised practice is off.", practiceOn:"Personalised practice is on.",
+  sensitiveTitle:"Sensitive information in recordings",
+  sensitiveText:"You agreed that a recording of you speaking may reveal sensitive information about you. Withdrawing this ends your use of recording. Everything you already made stays readable.",
+  withdraw:"Withdraw", withdrawConfirm:"Withdraw and stop recording?", cancel:"Cancel",
+  recordingOff:"Recording is off.", agreeAgain:"Agree again",
+  trainingTitle:"Help improve WillpowerLab", trainingOffTitle:"Turn off training?",
+  trainingOffBody:"Your training copies will be deleted. Anything already used to train stays in that training, but it won’t be used again.",
+  trainingBeforeLines:[
+    "Text only. Never your voice.",
+    "Off unless you turn it on. Saying no costs you nothing.",
+    "OpenAI trains the models for us, in the United States, under the European Commission’s standard contractual clauses.",
+    "Turning it off deletes your training copies and keeps you out of any new training. A model already trained stays."
+  ],
+  recordScreenOff:"Recording is off because you withdrew your consent. You can turn it back on in Data & consent."
+};
+var DEL = {
+  title:"Delete my account",
+  body:"This permanently deletes your recordings, your texts and your feedback. Records of what you bought are kept for 5 years, as the law requires.",
+  button:"Delete my account", confirmTitle:"Delete your account?",
+  confirmBody:"Everything you recorded and wrote here will be permanently deleted after 7 days. Until then you can cancel. From now on nothing new is processed.",
+  modelStays:"A model already trained stays.",
+  cancelDeletion:"Cancel deletion", cancelled:"Your account will not be deleted."
+};
+var ARCHIVE = {listTitle:"Your projects", archived:"Archived", unarchive:"Unarchive"};
+/* Stand-in data: the live list shows the person's own project names. */
+var EXAMPLE_PROJECTS = [{name:"Quarterly team update", archived:false},{name:"Conference keynote", archived:true}];
+
+var ORDER = ["notice","terms","privacy","ai","country","confirm"];
+var COUNTRY_ADVANCE_MS = 260;
+
+var S, advanceTimer = null;
+function fresh(){
+  return {
+    mode:"first", dev:(S&&S.dev)||"phone", screen:"welcome",
+    /* acceptance */
+    step:"notice", seen:{}, country:null, age:false, sens:false, practiceTick:false, declined:false, saving:false,
+    /* the person's choices, shared by every screen */
+    accepted:false, practice:true, sensitive:true, training:false,
+    /* Data & consent page */
+    outcome:null, pConfirm:false, sConfirm:false, tConfirm:false,
+    projOpen:false, projects:EXAMPLE_PROJECTS.map(function(p){return {name:p.name, archived:p.archived};}),
+    delConfirm:false, delPending:null, delCancelled:false,
+    /* Takes */
+    take:1, asked:0
+  };
+}
+
+var app = document.getElementById("app"), device = document.getElementById("device"), proto = document.getElementById("proto");
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+function ptoast(msg){var t=document.getElementById("ptoast");t.textContent=msg;t.classList.add("on");clearTimeout(ptoast._t);ptoast._t=setTimeout(function(){t.classList.remove("on");},2200);}
+
+/* ------------------------------ pieces ------------------------------ */
+function voiceMark(size, mb){
+  var big = size>=160, i1 = big?12:6, i2 = big?24:12, w = big?56:(size>=80?32:Math.round(size*.42));
+  if(size<80){ i1=Math.round(size*.094); i2=Math.round(size*.1875); }
+  return '<div class="vm" aria-hidden="true" style="width:'+size+'px;height:'+size+'px'+(mb?';margin-bottom:'+mb+'px':'')+'"><span class="r" style="inset:0"></span><span class="r" style="inset:'+i1+'px;border-color:rgba(18,18,18,.15);animation-delay:.6s"></span><span class="r" style="inset:'+i2+'px;border-color:rgba(255,106,10,.3);animation-delay:1.2s"></span><svg width="'+w+'" height="'+w+'" viewBox="0 0 56 56"><circle cx="12" cy="28" r="4" fill="#121212"/><circle cx="28" cy="28" r="6" fill="#121212"/><circle cx="44" cy="28" r="4" fill="#121212"/></svg></div>';
+}
+function cta(label, act, disabled){ return '<button type="button" class="cta" data-act="'+act+'"'+(disabled?' disabled':'')+'>'+esc(label)+'<i aria-hidden="true"></i></button>'; }
+function sec(label, act){ return '<button type="button" class="sec" data-act="'+act+'">'+esc(label)+'</button>'; }
+var LOGO = '<span class="logo" aria-label="WillpowerLab"><svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><circle cx="3" cy="11" r="2.2" fill="currentColor"/><circle cx="11" cy="11" r="3.2" fill="currentColor"/><circle cx="19" cy="11" r="2.2" fill="currentColor"/></svg>WillpowerLab</span>';
+var BURGER = '<button type="button" class="burger" data-act="menu" aria-label="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>';
+var ICON_X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+function header(){ return '<header class="hdr"><div class="in">'+LOGO+BURGER+'</div></header>'; }
+function footer(){ return '<footer class="foot"><span>WillpowerLab 2026</span><span><button type="button" data-act="footlink">About us</button><button type="button" data-act="footlink">Blog</button><button type="button" data-act="footlink">Privacy</button></span></footer>'; }
+function choice(selected, act, kind, inner){
+  var ind = selected ? (kind==="radio" ? '<i></i>' : '<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2 6.2 4.6 8.8 10 3.4" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>') : '';
+  return '<button type="button" class="choice" data-act="'+act+'" aria-pressed="'+selected+'"><span class="ind '+kind+'" aria-hidden="true">'+ind+'</span><span class="lab">'+inner+'</span></button>';
+}
+
+/* ------------------------------ first time ------------------------------ */
+function renderWelcome(){
+  app.innerHTML = '<div class="scroll"><div class="wel" id="wel">'+voiceMark(160,40)+
+    '<h1>WillpowerLab</h1><p>Public speaking excellence tool.</p>'+
+    '<div class="btns">'+cta("Enter the lab","enter")+'</div></div></div>'+footer();
+}
+function vmSmall(){ return voiceMark(80,20); }
+function renderAccept(){
+  if(S.declined){
+    app.innerHTML = '<div class="scroll"><div class="acc"><div class="col">'+vmSmall()+
+      '<h1 class="h27">Nothing was recorded</h1>'+
+      '<p class="lede">You can read the documents again, and you can come back and agree at any time. Until then recording stays closed.</p>'+
+      '<div class="btns">'+cta("Go back","decl-back")+sec("Read the documents again","decl-read")+'</div></div></div></div>';
+    return;
+  }
+  var st = S.step;
+  if(st==="terms"||st==="privacy"||st==="ai"){
+    var d = DOCS[st];
+    app.innerHTML = '<div class="doc"><div class="top"><h1>'+esc(d.title)+'</h1><p class="ver">Version '+esc(d.version)+'</p></div>'+
+      '<div class="body" id="docbody" tabindex="0">'+esc(d.copy)+'</div>'+
+      '<div class="bot">'+cta("Done reading","doc-done")+sec("Back","doc-back")+'</div></div>';
+    return;
+  }
+  if(st==="country"){
+    var rows = COUNTRIES.map(function(c){ return choice(S.country===c, "country:"+c, "radio", '<span class="country">'+esc(c)+'</span>'); }).join("");
+    app.innerHTML = '<div class="scroll" id="scroll"><div class="acc"><div class="col">'+vmSmall()+
+      '<h1 class="h27">Where do you live?</h1>'+
+      '<p class="lede">This decides which law applies to your recording, so it has to be your real country of residence.</p>'+
+      '<div class="choices">'+rows+'</div>'+
+      '<div class="btns">'+cta("Continue","country-continue", S.country===null)+sec("Back","country-back")+'</div></div></div></div>';
+    return;
+  }
+  if(st==="confirm"){
+    var ready = S.age && S.sens && S.country!==null;
+    app.innerHTML = '<div class="scroll" id="scroll"><div class="acc"><div class="col">'+vmSmall()+
+      '<h1 class="h27">Three things to confirm</h1>'+
+      '<div class="choices">'+
+        choice(S.age,"tick-age","check",'<span class="tick">I am '+MIN_AGE+' or older.</span>')+
+        choice(S.sens,"tick-sens","check",'<span class="tick">I agree that a recording of me speaking may reveal sensitive information about me, and I consent to WillpowerLab processing my recordings where it does. I can withdraw this at any time, which ends my use of recording.</span>')+
+      '</div>'+
+      '<div class="optblock"><p class="optlab">Optional</p>'+
+        choice(S.practiceTick,"tick-practice","check",'<span class="tick">Personalised practice. Use my recordings to choose short exercises that fit them, to keep the fragments I re-record, and to remember what I am working on so the exercises get more personal. I can turn this off at any time and keep using everything else.</span>')+
+      '</div>'+
+      '<div class="btns">'+cta(S.saving?"Saving…":"Agree and continue","agree", !ready||S.saving)+sec("Do not agree","decline")+'</div></div></div></div>';
+    return;
+  }
+  /* notice */
+  var docs = [["terms","Terms of Service",DOCS.terms.version],["privacy","Privacy Policy",DOCS.privacy.version],["ai","How AI is used here",DOCS.ai.version]].map(function(r){
+    return '<button type="button" class="docrow" data-act="open:'+r[0]+'"><span>'+esc(r[1])+' <small>v'+esc(r[2])+'</small></span>'+(S.seen[r[0]]?'<span class="ok">read ✓</span>':'')+'</button>';
+  }).join("");
+  app.innerHTML = '<div class="scroll" id="scroll"><div class="acc"><div class="col">'+vmSmall()+
+    '<div class="agree">'+esc(AGREEMENT)+'</div>'+
+    '<div class="docs">'+docs+'</div>'+
+    '<div class="btns">'+cta("Continue","notice-continue")+'</div></div></div></div>';
+}
+function go(step){
+  if(advanceTimer){clearTimeout(advanceTimer);advanceTimer=null;}
+  S.step = step; S.seen[step] = true; render();
+}
+function nextStep(s){ var i=ORDER.indexOf(s); return ORDER[Math.min(i+1,ORDER.length-1)]; }
+function prevStep(s){ var i=ORDER.indexOf(s); return ORDER[Math.max(i-1,0)]; }
+
+/* ------------------------------ Lounge + Takes ------------------------------ */
+function renderLounge(){
+  app.innerHTML = header()+
+    '<div class="lounge"><div class="w"><p class="kick">Your first take</p><h1>Create your first Ideal Text</h1>'+
+    '<p>Record your talk as it is today. We’ll shape it into a clear text and prepare focused feedback for you to review.</p>'+
+    '<button type="button" class="startbtn" data-act="start-first"><span class="rdot" aria-hidden="true"></span>Start your first recording</button></div></div>'+
+    '<div class="composer"><div class="in">Type here</div><button type="button" class="rec" data-act="start-first"><span class="rdot" aria-hidden="true"></span>Record</button></div>'+
+    footer();
+}
+function labbar(){ return '<div class="labbar"><button type="button" class="xbtn" data-act="close-lab" aria-label="Close">'+ICON_X+'</button></div>'; }
+function renderAsk(){
+  app.innerHTML = labbar()+
+    '<div class="ask"><div class="w"><h2>Turn on the learning?</h2>'+
+    '<ul>'+C.trainingBeforeLines.map(function(l){return '<li>'+esc(l)+'</li>';}).join("")+'</ul>'+
+    '<p class="sent">'+esc(TRAINING_SENTENCE)+'</p>'+
+    '<button type="button" class="yes" data-act="ask-yes">Yes</button>'+
+    '<button type="button" class="skip" data-act="ask-skip">Skip</button></div></div>';
+}
+function renderRec(){
+  var body = S.sensitive
+    ? '<div class="stub"><span class="tag">Prototype stand-in</span><span>Take '+S.take+' starts recording here. The recording screen has its own prototype.</span><button type="button" class="pb" data-act="finish-take">Finish Take '+S.take+'</button></div>'
+    : '<div class="stub"><span class="tag">Prototype stand-in</span><span>Sensitive information was withdrawn in Data &amp; consent, so the recording is refused. The app shows its live line:</span><span style="color:#121212">'+esc(C.recordScreenOff)+'</span><button type="button" class="pb" data-act="close-lab">Back</button></div>';
+  app.innerHTML = labbar()+'<div class="center">'+voiceMark(64)+body+'</div>';
+}
+function renderIdeal(){
+  app.innerHTML = '<div class="labbar"></div>'+'<div class="center"><div class="stub"><span class="tag">Prototype stand-in</span><span>Take '+S.take+' is saved. The speaker is on the Ideal Text page; the Feedback walk has its own prototype. Its end card’s primary button:</span>'+
+    '<button type="button" class="startbtn" style="margin-top:0" data-act="next-take">Record Take '+(S.take+1)+'</button></div></div>';
+}
+/* The question before every Take while the switch is off. Skip is not remembered. */
+function beginTake(n){
+  S.take = n;
+  if(!S.training){ S.screen="ask"; S.asked++; }
+  else { S.screen="rec"; }
+  render();
+}
+
+/* ------------------------------ Data & consent ------------------------------ */
+function confirmBox(question, label, yes, no){
+  return '<div class="conf" role="group" aria-label="'+esc(question)+'"><p class="t14">'+esc(question)+'</p><div class="row"><button type="button" class="pb2" data-act="'+yes+'">'+esc(label)+'</button><button type="button" class="ob" data-act="'+no+'">'+esc(C.cancel)+'</button></div></div>';
+}
+function practiceCard(){
+  var out = (S.outcome && S.outcome.c==="p") ? '<p class="t14" role="status">'+(S.outcome.on?C.practiceOn:C.practiceOff)+'</p>' : '';
+  return '<section class="card" aria-label="'+C.practiceTitle+'"><h2>'+C.practiceTitle+'</h2><div class="stack">'+
+    '<p class="t14 muted">'+C.practiceDescription+'</p>'+out+
+    (S.pConfirm ? confirmBox(C.turnOffConfirm, C.turnOff, "p-off", "p-cancel")
+                : '<div><button type="button" class="ob" data-act="p-toggle">'+(S.practice?C.turnOff:C.turnOn)+'</button></div>')+
+    '</div></section>';
+}
+function sensitiveCard(){
+  return '<section class="card" aria-label="'+C.sensitiveTitle+'"><h2>'+C.sensitiveTitle+'</h2><div class="stack">'+
+    '<p class="t14 muted">'+C.sensitiveText+'</p>'+
+    (!S.sensitive ? '<p class="t14" role="status">'+C.recordingOff+'</p>' : '')+
+    (S.sConfirm ? confirmBox(C.withdrawConfirm, C.withdraw, "s-off", "s-cancel")
+                : '<div><button type="button" class="ob" data-act="s-toggle">'+(S.sensitive?C.withdraw:C.agreeAgain)+'</button></div>')+
+    '</div></section>';
+}
+function trainingCard(){
+  var confirm = '<div class="conf" role="group" aria-label="'+C.trainingOffTitle+'"><p class="t14" style="font-weight:600">'+C.trainingOffTitle+'</p><p class="t14" style="margin-top:4px">'+esc(C.trainingOffBody)+'</p><div class="row"><button type="button" class="pb2" data-act="t-off">'+C.turnOff+'</button><button type="button" class="ob" data-act="t-cancel">'+C.cancel+'</button></div></div>';
+  return '<section class="card" aria-label="'+C.trainingTitle+'"><h2>'+C.trainingTitle+'</h2><div class="stack">'+
+    '<ul>'+C.trainingBeforeLines.map(function(l){return '<li>'+esc(l)+'</li>';}).join("")+'</ul>'+
+    '<p class="t14">'+esc(TRAINING_SENTENCE)+'</p>'+
+    (S.tConfirm ? confirm : '<div><button type="button" class="ob" role="switch" aria-checked="'+S.training+'" data-act="t-toggle">'+(S.training?C.turnOff:C.turnOn)+'</button></div>')+
+    '</div></section>';
+}
+function projectsCard(){
+  if(!S.projOpen) return '<section class="card mt6" aria-label="'+ARCHIVE.listTitle+'"><button type="button" class="ob" style="padding:0 16px" data-act="proj-open">'+ARCHIVE.listTitle+'</button></section>';
+  var rows = S.projects.map(function(p,i){
+    return '<li><span class="nm">'+esc(p.name)+(p.archived?'<small>'+ARCHIVE.archived+'</small>':'')+'</span><span>'+(p.archived?'<button type="button" class="obs" data-act="unarchive:'+i+'">'+ARCHIVE.unarchive+'</button>':'')+'</span></li>';
+  }).join("");
+  return '<section class="card mt6" aria-label="'+ARCHIVE.listTitle+'"><h2>'+ARCHIVE.listTitle+'</h2><ul class="plist">'+rows+'</ul></section>';
+}
+function deleteCard(){
+  var inner;
+  if(S.delPending){
+    inner = '<p class="t14" style="margin-top:8px" role="status">Your account will be deleted on '+esc(S.delPending)+'.</p>'+
+      '<button type="button" class="sbtn" data-act="del-cancel">'+DEL.cancelDeletion+'</button>';
+  } else {
+    inner = (S.delCancelled ? '<p class="t14" style="margin-top:8px" role="status">'+DEL.cancelled+'</p>' : '')+
+      '<p class="t14 muted" style="margin-top:8px;line-height:1.43">'+DEL.body+'</p>'+
+      '<button type="button" class="sbtn red" data-act="del-open">'+DEL.button+'</button>';
+  }
+  return '<section class="del"><h2>'+DEL.title+'</h2>'+inner+'</section>';
+}
+function deleteDialog(){
+  var body = DEL.confirmBody + (S.training ? " "+DEL.modelStays : "");
+  return '<div class="scrim" role="dialog" aria-modal="true" aria-labelledby="dlgt"><div class="dlg"><h2 id="dlgt">'+DEL.confirmTitle+'</h2><p>'+esc(body)+'</p>'+
+    '<div class="row"><button type="button" class="btn o" data-act="del-dismiss">Cancel</button><button type="button" class="btn r" data-act="del-confirm">'+DEL.button+'</button></div></div></div>';
+}
+function renderData(){
+  app.innerHTML = header()+
+    '<div class="scroll" id="scroll"><div class="dc"><h1>Data &amp; consent</h1>'+
+    '<div class="ch"><p class="t14 muted">'+C.introWithTraining+'</p>'+practiceCard()+sensitiveCard()+'</div>'+
+    '<div class="mt6">'+trainingCard()+'</div>'+
+    projectsCard()+deleteCard()+
+    '<p class="links"><button type="button" data-act="doclink:privacy">Privacy Policy</button> · <button type="button" data-act="doclink:terms">Terms of Service</button></p>'+
+    '</div></div>'+footer()+(S.delConfirm?deleteDialog():"");
+}
+function deletionDate(){
+  var d = new Date(Date.now()+7*24*3600*1000);
+  return d.toLocaleDateString("en-GB",{day:"numeric",month:"long"});
+}
+
+/* ------------------------------ render ------------------------------ */
+var lastKey = "";
+function render(){
+  var key = S.screen+"|"+S.step+"|"+S.declined;
+  var keep = key===lastKey;
+  var sc = document.getElementById("scroll"), top = keep && sc ? sc.scrollTop : 0;
+  ({welcome:renderWelcome, accept:renderAccept, lounge:renderLounge, ask:renderAsk, rec:renderRec, ideal:renderIdeal, data:renderData}[S.screen])();
+  var sc2 = document.getElementById("scroll"); if(sc2) sc2.scrollTop = top;
+  if(!keep){ Array.prototype.forEach.call(app.children,function(el){ if(!el.classList.contains("scrim")) el.classList.add("enter"); }); }
+  lastKey = key;
+  document.getElementById("pchip").innerHTML = 'Learning: <strong>'+(S.training?"on":"off")+'</strong>';
+  document.querySelectorAll("[data-mode]").forEach(function(b){b.setAttribute("aria-pressed",String(b.getAttribute("data-mode")===S.mode));});
+}
+
+app.addEventListener("click", function(ev){
+  var el = ev.target.closest("[data-act]"); if(!el || el.disabled) return;
+  var a = el.getAttribute("data-act"), arg = null, k = a.indexOf(":");
+  if(k>0){ arg = a.slice(k+1); a = a.slice(0,k); }
+  switch(a){
+    /* welcome + acceptance */
+    case "enter":
+      var w=document.getElementById("wel"); if(w) w.classList.add("leaving");
+      setTimeout(function(){ S.screen = "accept"; S.step="notice"; render(); }, 220); return;
+    case "open": go(arg); return;
+    case "notice-continue": go(S.seen.terms&&S.seen.privacy&&S.seen.ai ? "country" : "terms"); return;
+    case "doc-done": go(nextStep(S.step)); return;
+    case "doc-back": go(prevStep(S.step)); return;
+    case "country":
+      S.country = arg; render();
+      if(advanceTimer) clearTimeout(advanceTimer);
+      advanceTimer = setTimeout(function(){ advanceTimer=null; go("confirm"); }, COUNTRY_ADVANCE_MS); return;
+    case "country-continue": go("confirm"); return;
+    case "country-back": go(prevStep("country")); return;
+    case "tick-age": S.age=!S.age; render(); return;
+    case "tick-sens": S.sens=!S.sens; render(); return;
+    case "tick-practice": S.practiceTick=!S.practiceTick; render(); return;
+    case "agree":
+      S.saving = true; render();
+      setTimeout(function(){ S.saving=false; S.accepted=true; S.sensitive=true; S.practice=S.practiceTick; S.screen="lounge"; render(); }, 600); return;
+    case "decline": S.declined = true; render(); return;
+    case "decl-back": S.declined=false; go("confirm"); return;
+    case "decl-read": S.declined=false; go("terms"); return;
+    /* Lounge + Takes */
+    case "start-first": beginTake(1); return;
+    case "ask-yes": S.training = true; S.screen="rec"; render(); ptoast("Learning is on. The question will not be asked again."); return;
+    case "ask-skip": S.screen="rec"; render(); ptoast("Skipped. Nothing is saved; it asks again before the next Take."); return;
+    case "close-lab": S.screen = S.take>1 ? "ideal" : "lounge"; if(S.take>1) S.take--; render(); return;
+    case "finish-take": S.screen="ideal"; render(); return;
+    case "next-take": beginTake(S.take+1); return;
+    /* Data & consent */
+    case "p-toggle": if(S.practice){ S.pConfirm=true; } else { S.practice=true; S.outcome={c:"p",on:true}; } render(); return;
+    case "p-off": S.pConfirm=false; S.practice=false; S.outcome={c:"p",on:false}; render(); return;
+    case "p-cancel": S.pConfirm=false; render(); return;
+    case "s-toggle": if(S.sensitive){ S.sConfirm=true; } else { S.sensitive=true; S.outcome={c:"s",on:true}; } render(); return;
+    case "s-off": S.sConfirm=false; S.sensitive=false; S.outcome={c:"s",on:false}; render(); return;
+    case "s-cancel": S.sConfirm=false; render(); return;
+    case "t-toggle": if(S.training){ S.tConfirm=true; } else { S.training=true; } render(); return;
+    case "t-off": S.tConfirm=false; S.training=false; render(); return;
+    case "t-cancel": S.tConfirm=false; render(); return;
+    case "proj-open": S.projOpen=true; render(); return;
+    case "unarchive": S.projects[+arg].archived=false; render(); return;
+    case "del-open": S.delConfirm=true; render(); return;
+    case "del-dismiss": S.delConfirm=false; render(); return;
+    case "del-confirm": S.delConfirm=false; S.delCancelled=false; S.delPending=deletionDate(); render(); return;
+    case "del-cancel": S.delPending=null; S.delCancelled=true; render(); return;
+    case "doclink": ptoast("Opens the published "+(arg==="privacy"?"Privacy Policy":"Terms of Service")+" (/"+arg+") in the app."); return;
+    case "menu": ptoast("The menu is not part of this prototype. Use the bar above."); return;
+    case "footlink": ptoast("Footer links are not part of this prototype."); return;
+  }
+});
+document.addEventListener("keydown", function(ev){ if(ev.key==="Escape" && S.delConfirm){ S.delConfirm=false; render(); } });
+
+/* ------------------------------ chrome ------------------------------ */
+function setMode(m){
+  if(advanceTimer){clearTimeout(advanceTimer);advanceTimer=null;}
+  S.mode = m; S.delConfirm=false;
+  if(m==="first"){ S.screen = "welcome"; S.step="notice"; S.seen={}; S.country=null; S.age=false; S.sens=false; S.practiceTick=false; S.declined=false; S.saving=false; S.take=1; }
+  else if(m==="data"){ S.screen = "data"; }
+  else { S.accepted = true; S.take = 1; S.screen = "lounge"; }
+  render();
+}
+function setDev(d){ S.dev=d; document.querySelectorAll("[data-dev]").forEach(function(b){b.setAttribute("aria-pressed",String(b.getAttribute("data-dev")===d));}); layout(); }
+document.querySelectorAll("[data-mode]").forEach(function(b){b.addEventListener("click",function(){setMode(b.getAttribute("data-mode"));});});
+document.querySelectorAll("[data-dev]").forEach(function(b){b.addEventListener("click",function(){setDev(b.getAttribute("data-dev"));});});
+document.getElementById("restart").addEventListener("click",function(){ var m=S.mode; S=fresh(); lastKey=""; setMode(m); });
+
+function layout(){
+  var wrap=document.getElementById("stagewrap"), r=wrap.getBoundingClientRect();
+  var small = window.innerWidth<560 && S.dev==="phone";
+  proto.classList.toggle("full", small); device.classList.toggle("desk", S.dev==="desk");
+  if(small){ device.style.width=""; device.style.height=""; device.style.transform=""; return; }
+  var Wd = S.dev==="phone"?390:1180, H = S.dev==="phone"?844:820;
+  device.style.width=Wd+"px"; device.style.height=H+"px";
+  var sc=Math.min(1,(r.width-48)/Wd,(r.height-48)/H);
+  device.style.transform="scale("+sc+")";
+}
+window.addEventListener("resize",layout);
+S = fresh(); layout(); render();
+})();
+</script>

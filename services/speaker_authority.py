@@ -50,11 +50,13 @@ def _owner_of_user(database: Any, user_id: str | None) -> str:
 
 def speaker_of_session(database: Any, session_id: Any) -> Speaker:
     """The speaker of one Take/session. A historical row without an owner
-    principal falls back to its user's principal."""
+    principal falls back to its user's principal; a training-corpus import
+    never does: its user is the importing coach, not the voice on it, and it
+    is never processed under a person (N58)."""
     session = database.v2_get_session_by_id(str(session_id or "")) or {}
     user_id = str(session.get("user_id") or "") or None
     owner = str(session.get("owner_principal_id") or "")
-    if not owner:
+    if not owner and session.get("source") != "training_import":
         owner = _owner_of_user(database, user_id)
     return Speaker(owner, user_id, str(session.get("id") or "") or None)
 

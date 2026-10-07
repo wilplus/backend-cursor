@@ -2046,3 +2046,85 @@ without the founder. The frontend's CLAUDE.md carries the rule
 ("Design lock — the coach panel"); `docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`
 stays the written record. The panel's training-corpus questions CO2 and
 CO3 are open and do not change the screens.
+
+**N58 · Corpus imports are processed under one founder basis, and an
+importer's judgement counts (founder, Navigation Panel export, 7 October
+2026, 08:14 UTC).**
+1. **CO2: no per-import licence record; one corpus processing basis.** The
+   founder's note is the answer, verbatim: "no need for license check pls;
+   we have it legally recorded and we don't need license to prove it! this
+   version is agreed with the counsel and it is my executive decision". An
+   executive decision, agreed with counsel. A training-corpus import
+   (`source='training_import'`, created by a coach through
+   `POST /v2/coach/training-imports` while `Config.TRAINING_IMPORT_ENABLED`)
+   may be analysed (Whisper and the rest) under
+   `PLF1_PROCESSING_AUTHORIZATION_MODE=enforce` on the strength of ONE
+   durable basis the founder recorded (`corpus_processing_bases`, decision
+   N58, 2026-10-07, "legal basis recorded by the founder, agreed with
+   counsel"; migration 0435), never a user's consent and never the
+   importing coach's own acceptance. It sits inside the canonical
+   authorization path: the same provider adapter and permit scope, with
+   its own database permit writer (`issue_corpus_provider_permit_v1`) and
+   ledger beside the Phase-1 one; every permit names the basis (id and
+   N58) and the session. A permit is refused when the switch is off, the
+   session is not a training import, the import route did not register it,
+   the session has an owner or a project, its recording was acquired
+   through the Phase-1 intake, or no basis is in force. No ordinary Take,
+   guest Take or user recording can ever be authorized by the corpus basis
+   (the B-2 hole closed by 0355 stays closed), and the other way round the
+   Phase-1 permit writer now refuses a corpus import under any principal,
+   the importing coach's included (its one added check; the rest of 0355
+   is unchanged, as is the resolver). Phase 2 stays closed: dataset release,
+   training, evaluation and promotion are untouched; nothing trains.
+2. **CO3 A: a coach's blind judgement on a clip they imported counts like
+   any other coach's.** An import's `user_id` is the corpus row's owner,
+   the importing coach by default, never the voice on the clip, so their
+   label is not a self-report and counts toward quorum
+   (`label_quorum.rating_is_self_report`). "A coach still can't judge their
+   own voice anywhere": a coach or user rating their own Take is still a
+   self-report, unchanged.
+
+**N59 · The recording screens' design is locked (founder, chat, 7 October
+2026).** "Lock the recording screens." The recording screen prototype
+(<https://claude.ai/artifact/9CFAAP2Ue7pvRdLvdesn9h>, version 6, copy in
+`docs/design/recording-screens-2026-10-07.html`) is now the design the
+speaker's recording screens are built to, exactly as the Ideal Text Final
+Screens and the coach panel are for theirs: the first recording's learning
+screen ("Scroll down to start"; on a desktop "Click down to start"), "Take
+N · Slide n of m" in the top bar, only the slide and its helper words
+moving under a still frame, calmer gestures that land softly, the keyboard
+without a click, and never a reload from a scroll to the top. The words new
+with it are locked with the screens. The frontend's CLAUDE.md carries the
+rule ("Design lock — the recording screens");
+`docs/FOUNDER-LOCK-recording-screens-2026-10-07.md` is the written record.
+It wins over the Ideal Text lock's line on Recording Mode for these screens.
+
+**N60 · The consent screens' design is locked (founder, chat, 7 October
+2026).** "The consent screens are great; but right now they are not
+scrollable like that in the real app; so lock it like that." The consent
+screens prototype (<https://claude.ai/artifact/TuMKSE2BH364ZQ1Eq4UMdd>,
+version 2, copy in `docs/design/consent-screens-2026-10-07.html`) is now the
+design the first-time agreement, the Data & consent page and the "Turn on
+the learning?" question are built to. Every step scrolls from its true top;
+a document's title and buttons stay still while its text scrolls. One word
+change, signed in the same message: "Two things to confirm" becomes "Three
+things to confirm". The frontend's CLAUDE.md carries the rule ("Design lock
+— the consent screens"); `docs/FOUNDER-LOCK-consent-screens-2026-10-07.md`
+is the written record.
+Amended the same day (ST1 A): the Data & consent page follows the settings
+page prototype (<https://claude.ai/artifact/4jDJsvBAquMUgaGkJgHR76>, copy in
+`docs/design/settings-page-2026-10-07.html`): a Support card with
+contact@willpowerlab.com, Back from Privacy and Terms returns to it, the menu
+loses Support and Community and marks the current page. "Support" and "Back"
+are signed.
+
+**N61 · A training yes counts the acceptance the account is processed under
+(founder's bug report, chat, 7 October 2026).** "Couldn't save that. Try
+again." on Help improve WillpowerLab, every time. The yes is recorded under
+the account, but its receipt check (0373 C1, 0412) read the account only,
+while the account's processing is authorised by the principal
+resolve_phase1_acquisition_principal_v1 returns: a guest claimed into the
+account at sign-in, after the current Terms were accepted as a first-time
+visitor. Migration 0436 lets C1 accept a receipt held by the account or by
+that resolved principal; nothing else changes, and no one else's acceptance
+can count. Ships after a GPT check (HO-14).

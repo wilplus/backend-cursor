@@ -499,6 +499,7 @@ def process_lab_recording(**kwargs) -> dict:
     from services.authorized_provider import (
         AuthorizedProviderAdapter,
         ProviderCoordinates,
+        corpus_import_adapter,
         protected_provider_scope,
     )
     from services.db import db
@@ -514,22 +515,28 @@ def process_lab_recording(**kwargs) -> dict:
     session_id = str(kwargs.get("session_id") or "")
     recording_id = str(kwargs.get("recording_id") or "")
     session = db.v2_get_session_by_id(session_id) or {}
-    principal_id = authorization.resolve_acquisition_principal(
-        str(session.get("owner_principal_id") or ""),
-        user_id=str(kwargs.get("user_id") or "") or None,
-        recording_id=recording_id,
-    )
-    if authorization.enforced and not principal_id:
-        raise ProcessingAuthorizationError(
-            "PROCESSING_PRINCIPAL_UNRESOLVED",
-            "The recording owner could not be resolved.",
-            403,
+    # A training-corpus import is permitted under the founder's corpus basis
+    # (N58, 0435), never under a principal: not the importing coach's, and
+    # the import has no owner to resolve.
+    adapter = corpus_import_adapter(
+        db, session, take_id=session_id, recording_id=recording_id)
+    if adapter is None:
+        principal_id = authorization.resolve_acquisition_principal(
+            str(session.get("owner_principal_id") or ""),
+            user_id=str(kwargs.get("user_id") or "") or None,
+            recording_id=recording_id,
         )
-    adapter = AuthorizedProviderAdapter(
-        db,
-        ProviderCoordinates(principal_id, session_id, recording_id),
-        authorization=authorization,
-    )
+        if authorization.enforced and not principal_id:
+            raise ProcessingAuthorizationError(
+                "PROCESSING_PRINCIPAL_UNRESOLVED",
+                "The recording owner could not be resolved.",
+                403,
+            )
+        adapter = AuthorizedProviderAdapter(
+            db,
+            ProviderCoordinates(principal_id, session_id, recording_id),
+            authorization=authorization,
+        )
     import uuid
 
     with protected_provider_scope(

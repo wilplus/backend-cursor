@@ -664,6 +664,30 @@ hard migrations/a_corpus_speaker_keeps_its_split.sql
 hard migrations/a_corpus_split_survives_a_truncate.sql
 hard migrations/a_corpus_split_survives_a_truncate.sql
 
+# 0435 (N58, 2026-10-07): a corpus import is processed under the founder's
+# corpus basis. Its eligibility rule reads v2_sessions.source and the
+# import's recordings.session_v2_id / recording_origin, columns production
+# has (add_foundation_discriminators.sql, add_admin_import_fields_to_
+# recordings.sql) and the narrow copies here omit: added as NULLABLE trailing
+# columns, disposable-only. Both lanes, after 0434, as in the manifest.
+# Twice: apply/reapply idempotency. Its suite:
+# tests/test_a_corpus_import_is_processed_under_the_founders_basis_postgres.py.
+psql -q -d "$DB" -c "ALTER TABLE public.v2_sessions
+    ADD COLUMN IF NOT EXISTS source text DEFAULT 'interview'" >>"$log" 2>&1
+psql -q -d "$DB" -c "ALTER TABLE public.recordings
+    ADD COLUMN IF NOT EXISTS session_v2_id uuid,
+    ADD COLUMN IF NOT EXISTS recording_origin text" >>"$log" 2>&1
+hard migrations/a_corpus_import_is_processed_under_the_founders_basis.sql
+hard migrations/a_corpus_import_is_processed_under_the_founders_basis.sql
+
+# 0436 (2026-10-07): a training yes counts the acceptance the account is
+# processed under (0412's C1 also reads the principal 0414's resolver returns:
+# a guest claimed into the account). Both lanes, after 0435, as in the
+# manifest. Twice: apply/reapply idempotency. Its cases are in
+# tests/test_training_consent_postgres.py.
+hard migrations/a_training_yes_counts_the_acceptance_the_account_is_processed_under.sql
+hard migrations/a_training_yes_counts_the_acceptance_the_account_is_processed_under.sql
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

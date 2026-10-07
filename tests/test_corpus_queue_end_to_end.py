@@ -13,9 +13,15 @@ against fakes, through the real routes and their real decorators:
   label -> the speaker's split is recorded.
 
 Plus: playback refuses a speaker, an anonymous caller, a clip outside an
-import's queue and a closed switch; an ordinary Take's queue is unchanged;
-under PLF1 enforce mode an ownerless import is refused before any provider
-call and is never processed under the importing coach's principal.
+import's queue and a closed switch; an ordinary Take's queue is unchanged.
+
+Under PLF1 enforce mode (founder 2026-10-07, CO2, decisions log N58) an
+import registered by the coach import route is analysed under the founder's
+corpus basis: its permit names N58 and the session, the provider is called
+and the spotting stored; never under the importing coach's principal. Refused:
+the switch off, an ordinary or guest Take, a forged source flag, an import
+the route did not create, no basis in force. CO3 A: the importer's own blind
+judgement on their import is not a self-report.
 """
 from __future__ import annotations
 
@@ -569,16 +575,46 @@ def test_an_ordinary_take_label_still_reaches_the_owner_leg(fake):
     album.assert_called_once()
 
 
-# ── PLF1: an import under enforce mode ─────────────────────────────────────
+# ── PLF1: an import under enforce mode, on the corpus basis (N58) ──────────
+
+BASIS_ID = "0d580435-5858-4058-8058-000000000058"
+ACQUIRER = "55555555-5555-4555-8555-555555555555"
+_CORPUS_RPCS = {"register_corpus_import_v1", "issue_corpus_provider_permit_v1",
+                "record_corpus_provider_operation_v1"}
+_PHASE1_RPCS = {"resolve_phase1_acquisition_principal_v1",
+                "issue_phase1_provider_permit_v1"}
+
+
+class _Exec:
+    def __init__(self, run):
+        self.run = run
+
+    def execute(self):
+        return _Result(self.run())
+
 
 class _EnforceClient:
-    """No acquisition attempt for the import's recording; the principal RPC
-    refuses an empty product owner, as Postgres does for '' as a UUID."""
+    """The database half under enforce mode, as 0435 and 0355 decide it:
+    the corpus RPCs keep 0435's rule (registered by the route, a training
+    import, no owner or project, its own admin_import recording, no Phase-1
+    intake, a basis in force); the Phase-1 resolver resolves an owned Take
+    to its owner, and the Phase-1 permit writer refuses (no receipt here).
+    The SQL itself runs in
+    tests/test_a_corpus_import_is_processed_under_the_founders_basis_postgres.py."""
 
-    def __init__(self):
+    def __init__(self, store: FakeDB, *, basis: bool = True):
+        self.store = store
+        self.basis = basis
         self.rpcs: list = []
+        self.registrations: dict = {}
+        self.permits: list = []
+        self.events: list = []
+        self.splits = store.client.splits
 
-    def table(self, _name):
+    def table(self, name):
+        if name == "corpus_speaker_splits":
+            return _SplitQuery(self.splits)
+
         class Q:
             def select(self, *_a):
                 return self
@@ -594,62 +630,438 @@ class _EnforceClient:
         return Q()
 
     def rpc(self, name, params):
-        self.rpcs.append((name, params))
-        raise RuntimeError('invalid input syntax for type uuid: ""')
+        self.rpcs.append((name, dict(params)))
+        return _Exec(lambda: getattr(self, "_" + name)(params))
+
+    def _refusal(self, sid, rid):
+        take = self.store.sessions.get(str(sid))
+        if not take or take.get("source") != "training_import":
+            return "CORPUS_SOURCE_NOT_IMPORT"
+        if take.get("owner_principal_id") or take.get("project_id"):
+            return "CORPUS_SESSION_HAS_OWNER"
+        rec = self.store.recordings_rows.get(str(rid))
+        if (not rec or rec.get("session_v2_id") != str(sid)
+                or rec.get("recording_origin") != "admin_import"):
+            return "CORPUS_RECORDING_NOT_IMPORT"
+        return None
+
+    def _register_corpus_import_v1(self, p):
+        sid, rid = p["p_session_id"], p["p_recording_id"]
+        if sid not in self.registrations:
+            refusal = self._refusal(sid, rid)
+            if refusal:
+                raise RuntimeError(refusal)
+            if not self.basis:
+                raise RuntimeError("CORPUS_BASIS_ABSENT")
+            self.registrations[sid] = rid
+        return {"session_id": sid, "recording_id": rid, "basis_id": BASIS_ID,
+                "basis_decision_ref": "N58"}
+
+    def _issue_corpus_provider_permit_v1(self, p):
+        sid = p["p_session_id"]
+        rid = self.registrations.get(sid)
+        if rid is None or (p["p_recording_id"] and p["p_recording_id"] != rid):
+            raise RuntimeError("CORPUS_IMPORT_UNREGISTERED")
+        refusal = self._refusal(sid, rid)
+        if refusal:
+            raise RuntimeError(refusal)
+        if not self.basis:
+            raise RuntimeError("CORPUS_BASIS_ABSENT")
+        permit = {"permit_id": str(uuid.uuid4()), "provider": p["p_provider"],
+                  "operation_kind": p["p_operation_kind"],
+                  "expires_at": "2999-01-01T00:00:00+00:00",
+                  "basis_id": BASIS_ID, "basis_decision_ref": "N58",
+                  "session_id": sid, "recording_id": rid}
+        self.permits.append(permit)
+        return permit
+
+    def _record_corpus_provider_operation_v1(self, p):
+        self.events.append((p["p_permit_id"], p["p_event_kind"]))
+        return str(uuid.uuid4())
+
+    def _resolve_phase1_acquisition_principal_v1(self, p):
+        owner = p["p_product_owner_principal_id"]
+        if not owner:
+            raise RuntimeError('invalid input syntax for type uuid: ""')
+        return owner
+
+    def _issue_phase1_provider_permit_v1(self, _p):
+        raise RuntimeError("PROCESSING_AUTHORIZATION_REQUIRED")
 
 
-def test_under_enforce_an_ownerless_import_is_refused_before_any_provider(
-        on, fake, monkeypatch):
-    """The import's acquisition principal resolves from the session's product
-    owner, which an import does not have. Enforce mode therefore refuses the
-    analysis before any provider call (PROCESSING_PRINCIPAL_UNRESOLVED); the
-    importing coach's own principal is never used as the acquirer of a third
-    party's audio. The import reads failed, with no spotting and no queue."""
+class _Whisper:
+    """The transcription provider, as the permitted adapter reaches it."""
+
+    calls: list = []
+
+    def __init__(self):
+        self.client = object()
+
+    def transcribe_audio(self, _audio, filename, **kwargs):
+        _Whisper.calls.append((filename, kwargs.get("usage_session_id")))
+        words = [{"word": w, "start": i * 0.4, "end": i * 0.4 + 0.3}
+                 for i, w in enumerate(_WORDS[:12])]
+        return {"segments": [{"start": 0.0, "end": 5.0,
+                              "text": " ".join(_WORDS[:12])}],
+                "words": words, "language": "en", "duration": 120.0}
+
+
+def _through_whisper(fake: FakeDB):
+    """The analysis body: the REAL transcription stage (its adapter, its
+    permit, its provider call), then the pieces the cutter leaves behind."""
+    pieces = _stub_analysis(fake)
+
+    def impl(**kwargs):
+        from services.recording_state import RecordingState
+        from services.recording_transcription import transcribe_recording
+        state = transcribe_recording(RecordingState(
+            session_id=kwargs["session_id"], user_id=kwargs["user_id"],
+            recording_id=kwargs["recording_id"],
+            audio_bytes=kwargs["audio_bytes"], filename=kwargs["filename"],
+            session_context=kwargs["session_context"],
+            parent_audio_url=kwargs["parent_audio_url"],
+            recording_kind="spoken", paired_session_id=None,
+            run_analytics=False))
+        assert state.words_all, "the transcript came back"
+        return pieces(**kwargs)
+    return impl
+
+
+@pytest.fixture
+def enforce(on, fake, monkeypatch):
     monkeypatch.setenv("PLF1_PROCESSING_AUTHORIZATION_MODE", "enforce")
-    client = _EnforceClient()
-    _splits = fake.client
+    client = _EnforceClient(fake)
     fake.client = client  # type: ignore[assignment]
+    fake.set_recording_transcription_language_if_missing = (  # type: ignore[attr-defined]
+        lambda _rid, language: language)
+    _Whisper.calls = []
+    with patch("services.openai_service.OpenAIService", _Whisper), \
+            patch("services.token_account.charge"):
+        yield client
+
+
+def _route_import(fake: FakeDB) -> tuple:
+    """POST /v2/coach/training-imports as the importing coach; the
+    background analysis is captured instead of threaded."""
+    form = {"audio_file": (io.BytesIO(b"RIFF....WAVE"), "talk.wav"),
+            "topic": "Quarterly plan", "language": "en",
+            "speaker_label": "Jane Doe"}
+    app = Flask(__name__)
     with patch("services.min_content_gate.evaluate_min_content_bytes",
                return_value={"ok": True, "duration_sec": 120.0}), \
             patch("services.coach_video_storage.put_coach_object_bytes"), \
             patch("services.coach_video_storage.coach_media_public_url",
-                  return_value=None):
-        prepared = training_import.prepare_training_import(
-            audio_bytes=b"x", filename="talk.wav", user_id=IMPORTER,
-            topic="Plan", speaker_label="Jane Doe", language="en", database=fake)
-    impl = _stub_analysis(fake)
+                  return_value=None), \
+            patch.object(training_import, "run_training_import_analysis") as run, \
+            app.test_request_context(
+                "/v2/coach/training-imports", method="POST",
+                headers={"Authorization": "Bearer t"}, data=form,
+                content_type="multipart/form-data"), \
+            patch.object(auth, "verify_supabase_token",
+                         return_value={"sub": IMPORTER, "email": "c@x"}), \
+            patch.object(admin_mod, "is_admin", return_value=False), \
+            patch.object(admin_mod, "is_coach", return_value=True):
+        result = v2_coach.v2_coach_training_import()
+    resp, status = result if isinstance(result, tuple) else (result, result.status_code)
+    return resp.get_json(), status, run
+
+
+def _analyse(fake: FakeDB, run) -> dict:
+    kwargs = run.call_args.kwargs
     with patch("services.lab_recording._process_lab_recording_impl",
-               side_effect=impl) as body:
-        out = training_import.run_training_import_analysis(
-            prepared=prepared, audio_bytes=b"x", filename="talk.wav",
-            database=fake)
-    fake.client = _splits
-    body.assert_not_called()
+               side_effect=_through_whisper(fake)):
+        return training_import.run_training_import_analysis(
+            prepared=kwargs["prepared"], audio_bytes=kwargs["audio_bytes"],
+            filename=kwargs["filename"], database=fake, queue_per_band=5)
+
+
+def _names(client) -> set:
+    return {name for name, _ in client.rpcs}
+
+
+def test_under_enforce_an_import_is_analysed_under_the_corpus_basis(enforce, fake):
+    """N58: the route registers the import under the founder's corpus basis;
+    the transcription's permit is granted under that basis (N58) for that
+    session; the provider is called; the spotting is stored. No principal is
+    resolved and no Phase-1 permit asked for: not the importing coach's,
+    not anyone's."""
+    body, status, run = _route_import(fake)
+    assert status == 202, body
+    sid = body["session_id"]
+    assert enforce.registrations == {sid: fake.sessions[sid]["recording_id"]}
+
+    out = _analyse(fake, run)
+    assert out["ok"] is True, out
+
+    (permit,) = enforce.permits
+    assert permit["basis_decision_ref"] == "N58" and permit["basis_id"] == BASIS_ID
+    assert permit["session_id"] == sid and permit["operation_kind"] == "transcription"
+    assert _Whisper.calls == [("talk.wav", sid)]
+    assert [kind for _, kind in enforce.events] == ["started", "completed"]
+    assert _names(enforce) <= _CORPUS_RPCS
+    assert IMPORTER not in json.dumps(enforce.rpcs)
+
+    sess = fake.sessions[sid]
+    assert sess["analysis_state"] == "ready"
+    assert sess["intake_context"]["corpus_v3_spotting"]["outcome"] == "spotted"
+    assert sess["intake_context"]["label_queue_selection"]
+
+
+def test_with_the_switch_off_no_corpus_permit_is_issued(enforce, fake):
+    body, status, run = _route_import(fake)
+    assert status == 202, body
+    with patch("config.Config.TRAINING_IMPORT_ENABLED", False):
+        out = _analyse(fake, run)
     assert out["ok"] is False and out["reason"] == "analysis_failed"
-    sid = prepared["session_id"]
-    assert fake.sessions[sid]["analysis_state"] == "failed"
-    ctx = fake.sessions[sid]["intake_context"]
-    assert "corpus_v3_spotting" not in ctx and "label_queue_selection" not in ctx
-    # The resolver was asked about an EMPTY product owner, never the coach's
-    # principal, and no permit was requested.
-    assert [name for name, _ in client.rpcs] == [
-        "resolve_phase1_acquisition_principal_v1"]
-    assert client.rpcs[0][1]["p_product_owner_principal_id"] == ""
+    assert "Training imports are switched off" in out["detail"]
+    assert enforce.permits == [] and _Whisper.calls == []
+    assert "issue_corpus_provider_permit_v1" not in _names(enforce)
+    assert "corpus_v3_spotting" not in fake.sessions[body["session_id"]]["intake_context"]
 
 
-def test_the_wrapper_raises_the_typed_refusal(fake, monkeypatch):
-    monkeypatch.setenv("PLF1_PROCESSING_AUTHORIZATION_MODE", "enforce")
-    sid = str(uuid.uuid4())
-    fake.sessions[sid] = {"id": sid, "source": "training_import", "user_id": IMPORTER}
-    fake.client = _EnforceClient()  # type: ignore[assignment]
+def _owned_take(fake: FakeDB, *, source: str, user_id) -> tuple:
+    sid, rid = str(uuid.uuid4()), str(uuid.uuid4())
+    fake.sessions[sid] = {"id": sid, "source": source, "user_id": user_id,
+                          "owner_principal_id": ACQUIRER,
+                          "project_id": str(uuid.uuid4()), "recording_id": rid}
+    fake.recordings_rows[rid] = {"id": rid, "session_v2_id": sid}
+    return sid, rid
+
+
+def _process(fake: FakeDB, sid: str, rid: str, user_id=None):
     from services.lab_recording import process_lab_recording
-    with patch("services.lab_recording._process_lab_recording_impl") as body:
-        with pytest.raises(ProcessingAuthorizationError) as refused:
-            process_lab_recording(session_id=sid, user_id=IMPORTER,
-                                  recording_id=str(uuid.uuid4()),
-                                  audio_bytes=io.BytesIO(b"x").read())
-    body.assert_not_called()
-    assert refused.value.code == "PROCESSING_PRINCIPAL_UNRESOLVED"
+    with patch("services.lab_recording._process_lab_recording_impl",
+               side_effect=_through_whisper(fake)):
+        return process_lab_recording(
+            session_id=sid, user_id=user_id, recording_id=rid,
+            audio_bytes=b"x", filename="take.webm", session_context={},
+            parent_audio_url="s3://b/k")
+
+
+def _corpus_permit(fake: FakeDB, sid: str, rid, principal: str = ""):
+    from services.processing_authorization import CorpusImportAuthorization
+    return CorpusImportAuthorization(fake).issue_provider_permit(
+        acquisition_principal_id=principal, take_id=sid, recording_id=rid,
+        provider="openai", operation_kind="transcription",
+        minimum_data_manifest={}, idempotency_key="corpus-test-key")
+
+
+@pytest.mark.parametrize("user_id", [SPEAKER, None], ids=["user", "guest"])
+def test_an_ordinary_or_guest_take_is_never_authorized_by_the_corpus_basis(
+        enforce, fake, user_id):
+    """A Take of a user, or of a guest (no account yet), goes the Phase-1 way
+    (its owner's receipt) and is refused there; the corpus basis is never
+    asked. Asked directly, it refuses both registration and permit."""
+    sid, rid = _owned_take(fake, source="audit_upload", user_id=user_id)
+    with pytest.raises(ProcessingAuthorizationError) as refused:
+        _process(fake, sid, rid, user_id)
+    assert refused.value.code == "PROCESSING_AUTHORIZATION_REQUIRED"
+    assert _Whisper.calls == []
+    assert not _names(enforce) & _CORPUS_RPCS
+
+    from services.processing_authorization import register_corpus_import
+    with pytest.raises(ProcessingAuthorizationError) as refused:
+        register_corpus_import(fake, session_id=sid, recording_id=rid)
+    assert refused.value.code == "CORPUS_SOURCE_NOT_IMPORT"
+    with pytest.raises(ProcessingAuthorizationError) as refused:
+        _corpus_permit(fake, sid, rid)
+    assert refused.value.code == "CORPUS_IMPORT_UNREGISTERED"
+    assert enforce.permits == []
+
+
+def test_a_forged_source_flag_on_a_take_is_refused(enforce, fake):
+    """An owned Take whose source was flipped to 'training_import' is routed
+    to the corpus writer, which refuses it; its owner's receipt is not
+    consulted either, and nothing reaches the provider."""
+    sid, rid = _owned_take(fake, source="training_import", user_id=SPEAKER)
+    fake.recordings_rows[rid]["recording_origin"] = "admin_import"
+    from services.processing_authorization import register_corpus_import
+    with pytest.raises(ProcessingAuthorizationError) as refused:
+        register_corpus_import(fake, session_id=sid, recording_id=rid)
+    assert refused.value.code == "CORPUS_SESSION_HAS_OWNER"
+    with pytest.raises(ProcessingAuthorizationError) as refused:
+        _process(fake, sid, rid, SPEAKER)
+    assert refused.value.code == "CORPUS_IMPORT_UNREGISTERED"
+    assert _Whisper.calls == [] and enforce.permits == []
+    assert not _names(enforce) & _PHASE1_RPCS
+
+
+def test_an_import_the_route_did_not_create_is_refused(enforce, fake):
+    """Ownerless, marked, with its own recording, but never registered by
+    the coach import route (a hand-set flag, the CLI): no permit, and the
+    importing coach's principal is never asked for."""
+    sid, rid = str(uuid.uuid4()), str(uuid.uuid4())
+    fake.sessions[sid] = {"id": sid, "source": "training_import",
+                          "user_id": IMPORTER, "recording_id": rid}
+    fake.recordings_rows[rid] = {"id": rid, "session_v2_id": sid,
+                                 "recording_origin": "admin_import"}
+    with pytest.raises(ProcessingAuthorizationError) as refused:
+        _process(fake, sid, rid, IMPORTER)
+    assert refused.value.code == "CORPUS_IMPORT_UNREGISTERED"
+    assert _Whisper.calls == [] and enforce.permits == []
+    assert not _names(enforce) & _PHASE1_RPCS
+
+
+def test_without_the_corpus_basis_the_import_is_refused(enforce, fake):
+    """No basis in force: the route cannot register the import (403, marked
+    failed, never analysed), and an import registered before the basis was
+    retired gets no permit."""
+    enforce.basis = False
+    body, status, run = _route_import(fake)
+    assert status == 403 and body["code"] == "CORPUS_BASIS_ABSENT"
+    run.assert_not_called()
+    (sid,) = [s for s, row in fake.sessions.items()
+              if row.get("source") == "training_import"]
+    assert fake.sessions[sid]["analysis_state"] == "failed"
+
+    enforce.basis = True
+    body, status, run = _route_import(fake)
+    assert status == 202, body
+    enforce.basis = False
+    out = _analyse(fake, run)
+    assert out["ok"] is False and out["reason"] == "analysis_failed"
+    assert _Whisper.calls == [] and enforce.permits == []
+
+
+def test_a_corpus_permit_never_carries_a_principal(enforce, fake):
+    with pytest.raises(ProcessingAuthorizationError) as refused:
+        _corpus_permit(fake, str(uuid.uuid4()), None, principal=ACQUIRER)
+    assert refused.value.code == "CORPUS_IMPORT_HAS_NO_PRINCIPAL"
+    from services.processing_authorization import CorpusImportAuthorization
+    with pytest.raises(ProcessingAuthorizationError):
+        CorpusImportAuthorization(fake).require_current(
+            ACQUIRER, operation="recording")
+    assert enforce.rpcs == []
+
+
+def test_an_admin_tool_never_speaks_for_an_import_as_its_importer(fake):
+    """speaker_authority's fallback to a session's user principal (for
+    historical Takes with no owner) never applies to an import: its user is
+    the importing coach, not the voice on it."""
+    from services.speaker_authority import speaker_of_session
+    fake.get_owner_principal_for_user = (  # type: ignore[attr-defined]
+        lambda _uid: {"id": ACQUIRER})
+    sid = str(uuid.uuid4())
+    fake.sessions[sid] = {"id": sid, "source": "training_import",
+                          "user_id": IMPORTER}
+    assert speaker_of_session(fake, sid).owner_principal_id == ""
+    fake.sessions[sid]["source"] = "audit_upload"
+    assert speaker_of_session(fake, sid).owner_principal_id == ACQUIRER
+
+
+def test_gate_off_registration_is_best_effort(on, fake):
+    """Off, nothing is permitted at all (as for every Take); registering
+    never fails the import."""
+    from services.processing_authorization import register_corpus_import
+    assert register_corpus_import(fake, session_id=str(uuid.uuid4()),
+                                  recording_id=None) is None
+
+
+# ── CO3 A: a coach's judgement on a clip they imported counts ──────────────
+
+def test_the_importer_judging_their_import_is_not_a_self_report(on, fake):
+    sid = _import(fake)
+    assert fake.sessions[sid]["user_id"] == IMPORTER
+    pick = fake.sessions[sid]["intake_context"]["label_queue_selection"][0]["snippet_id"]
+    resp, status = _call(
+        v2_coach.v2_coach_put_confidence_label,
+        f"/v2/coach/snippets/{pick}/confidence-label", method="PUT",
+        user=IMPORTER, json_body={"state_id": "confidence", "value": "yes"},
+        args=(pick,))
+    assert status == 200, resp.get_json()
+    (upsert,) = fake.upserts
+    assert upsert["rater_id"] == IMPORTER and upsert["lane"] == "coach"
+    assert upsert["self_report"] is False
+    from services.label_quorum import resolve
+    assert resolve(fake.labels[pick])["n_self_report"] == 0
+
+
+def test_a_coach_judging_their_own_take_is_still_a_self_report(fake):
+    sid = _ordinary_take(fake, owned=True)
+    fake.sessions[sid]["user_id"] = COACH
+    snippet_id = fake.sessions[sid]["intake_context"]["label_queue_selection"][0]["snippet_id"]
+    with patch("services.confidence_review_policy.reconcile_confidence_review"), \
+            patch.object(v2_coach, "_reconcile_album_after_judgement"):
+        resp, status = _call(
+            v2_coach.v2_coach_put_confidence_label,
+            f"/v2/coach/snippets/{snippet_id}/confidence-label", method="PUT",
+            json_body={"state_id": "confidence", "value": "yes"},
+            args=(snippet_id,))
+    assert status == 200, resp.get_json()
+    (upsert,) = fake.upserts
+    assert upsert["rater_id"] == COACH and upsert["self_report"] is True
+
+
+def test_rule_2_reads_the_take_owner_except_on_an_import():
+    from services.label_quorum import rating_is_self_report
+    take = {"source": "audit_upload", "user_id": COACH}
+    assert rating_is_self_report(take, COACH) is True
+    assert rating_is_self_report(take, SPEAKER) is False
+    assert rating_is_self_report({**take, "source": "training_import"}, COACH) is False
+    assert rating_is_self_report(take, None) is False
+    assert rating_is_self_report(None, COACH) is False
+
+
+# ── 0435: the corpus basis, in the database ────────────────────────────────
+
+def test_0435_is_manifested_after_0434_with_its_rehearsal():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    manifest = (root / "migrations" / "manifest.txt").read_text()
+    name = "a_corpus_import_is_processed_under_the_founders_basis.sql"
+    assert ("0434\ta_corpus_split_survives_a_truncate.sql\n"
+            f"0435\t{name}\n") in manifest
+    sql = (root / "migrations" / name).read_text()
+    body = sql.split("BEGIN;", 1)[1]
+    for fn in ("register_corpus_import_v1", "issue_corpus_provider_permit_v1",
+               "record_corpus_provider_operation_v1"):
+        assert f"CREATE OR REPLACE FUNCTION public.{fn}(" in body
+    assert body.count("LANGUAGE plpgsql SECURITY DEFINER\n"
+                      "SET search_path = public, pg_temp") == 3
+    assert "'N58', DATE '2026-10-07'" in body
+    assert "ON CONFLICT (decision_ref) DO NOTHING" in body
+    # The Phase-1 permit writer is 0355's, byte for byte, with one refusal
+    # added first; nothing else of the Phase-1 boundary is touched.
+    def permit_writer(text: str) -> str:
+        a = text.index(
+            "CREATE OR REPLACE FUNCTION public.issue_phase1_provider_permit_v1(")
+        return text[a:text.index(
+            "REVOKE ALL ON FUNCTION public.issue_phase1_provider_permit_v1(", a)]
+    ours = permit_writer(body)
+    first, rest = ours.index("    -- 0435 (N58"), ours.index("    -- B-2 (audit")
+    assert ours[:first] + ours[rest:] == permit_writer(
+        (root / "migrations" / "authorization_binds_to_acquirer.sql").read_text())
+    assert "RAISE EXCEPTION 'PROCESSING_SOURCE_IS_CORPUS_IMPORT'" in ours[first:rest]
+    # Its grants are 0355's own lines, restated unchanged (HO-13c rule 2).
+    def grants(text: str) -> str:
+        a = text.index(
+            "REVOKE ALL ON FUNCTION public.issue_phase1_provider_permit_v1(")
+        b = text.index(") TO service_role;", a) + len(") TO service_role;")
+        return text[a:b]
+    assert grants(body) == grants(
+        (root / "migrations" / "authorization_binds_to_acquirer.sql").read_text())
+    outside = body.replace(ours, "")
+    for untouched in ("resolve_phase1_acquisition_principal_v1",
+                      "processing_provider_permits",
+                      "processing_authorization_receipts",
+                      "processing_authorization_snapshots"):
+        assert untouched not in outside, untouched
+    for destructive in ("DROP TABLE", "DROP FUNCTION", "DELETE FROM",
+                        "ALTER TABLE public.v2_sessions", "GRANT ALL"):
+        assert destructive not in body, destructive
+    rehearsal = (root / "tests" / "integration"
+                 / "confident_moment_rehearsal.sh").read_text()
+    assert rehearsal.count(f"hard migrations/{name}") == 2
+    tier = (root / "scripts" / "rehearsal_tier.sh").read_text()
+    assert ("tests/test_a_corpus_import_is_processed_under_the_founders_basis"
+            "_postgres.py") in tier
+
+
+def test_the_registry_names_the_corpus_basis_tables_non_subject():
+    from services.data_purge_registry import NON_SUBJECT_RELATIONS
+    assert {"corpus_processing_bases", "corpus_import_registrations",
+            "corpus_provider_permits", "corpus_provider_operations"
+            } <= NON_SUBJECT_RELATIONS
 
 
 # ── 0434: a TRUNCATE cannot re-shuffle the splits either ───────────────────

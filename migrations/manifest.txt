@@ -470,3 +470,5 @@
 0432	a_take_may_be_shared_with_a_community.sql
 0433	a_corpus_speaker_keeps_its_split.sql
 0434	a_corpus_split_survives_a_truncate.sql
+0435	a_corpus_import_is_processed_under_the_founders_basis.sql
+0436	a_training_yes_counts_the_acceptance_the_account_is_processed_under.sql
