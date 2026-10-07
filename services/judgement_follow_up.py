@@ -165,6 +165,37 @@ def follow_up_for_judgement(
     return now
 
 
+def follow_up_for_revision(
+    database: Any, *, take_session_id: str, snippet_id: str,
+    owner_user_id: str, answer: Any,
+) -> str:
+    """The matrix for a CHANGED judgement (D-FW-9; QA1 A): coach routing
+    follows the latest answer. Where no request rose yet (the first answer
+    was Audio unclear, say), this is the ordinary judgement path. Where one
+    waits unanswered, its `answer_kind` becomes the latest answer's kind;
+    a request the coach already answered keeps what the coach answered,
+    and Audio unclear changes nothing. Never raises."""
+    if not take_session_id or not snippet_id:
+        return "none"
+    if answer not in ANSWERS:
+        return "none"
+    request = _request_on_moment(database, take_session_id, snippet_id)
+    if request is None or judgement_after_feedback_enabled():
+        return follow_up_for_judgement(
+            database, take_session_id=take_session_id, snippet_id=snippet_id,
+            owner_user_id=owner_user_id, answer=answer)
+    if answer == "audio_unclear":
+        return "none"
+    clip = _clip_read(database, take_session_id, snippet_id)
+    if clip is None:
+        return "none"
+    matched = _exercise_on_moment(database, take_session_id, snippet_id)
+    now, kind = decide(answer, clip["read"], bool(clip["observed"]), matched)
+    if kind is not None and request.get("resolution") is None:
+        _set_answer_kind(database, take_session_id, snippet_id, kind)
+    return now
+
+
 def follow_up_for_open(
     database: Any, *, take_session_id: str, snippet_id: str,
     owner_user_id: str,

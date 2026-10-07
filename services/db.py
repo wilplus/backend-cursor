@@ -7877,6 +7877,74 @@ class DatabaseService:
             logger.warning("atomic take feedback self-report failed: %s", e)
             return None
 
+    def revise_take_feedback_self_report(
+        self, *, take_session_id: str, owner_user_id: str, feedback_id: str,
+        response: str,
+    ) -> Optional[dict]:
+        """A later answer to a Confident Voice judgement, kept beside the
+        first (0440, D-FW-9; QA1 A). ``{outcome, row}``: 'revised',
+        'replayed', 'not_answered' or 'not_revisable'; None on failure."""
+        if not all((take_session_id, owner_user_id, feedback_id, response)):
+            return None
+        try:
+            data = self.client.rpc("revise_take_feedback_response_v1", {
+                "p_take_session_id": str(take_session_id),
+                "p_owner_user_id": str(owner_user_id),
+                "p_feedback_id": str(feedback_id),
+                "p_response": str(response),
+            }).execute().data
+            if isinstance(data, list):
+                data = data[0] if data else None
+            return data if isinstance(data, dict) else None
+        except Exception as e:
+            logger.warning("take feedback revision failed: %s", e, exc_info=True)
+            return None
+
+    def _latest_self_reports(self, rows: Any) -> list:
+        """The speaker's answers with each changed judgement at its latest
+        (0440, D-FW-9). The first answer's row stays the row; `response`
+        becomes the newest revision's and `first_response` keeps the first.
+        Unreadable revisions leave the first answers, logged: the readers
+        then see what they saw before 0440, never nothing."""
+        rows = [row for row in (rows or []) if isinstance(row, dict)]
+        ids = sorted({row["id"] for row in rows if row.get("id") is not None
+                      and row.get("feedback_family") == "confident_voice"},
+                     key=str)
+        if not ids:
+            return rows
+        try:
+            revisions = (self.client.table("take_feedback_self_report_revision")
+                         .select("report_id,response,revision,created_at")
+                         .in_("report_id", ids).execute().data) or []
+        except Exception as e:
+            logger.warning("judgement revisions unreadable: %s", e, exc_info=True)
+            return rows
+        def number(rev: dict) -> int:
+            # A malformed revision counts as none, so it never raises into
+            # the reader (GPT-0440 nit): the first answer stands instead.
+            try:
+                return int(rev.get("revision") or 0)
+            except (TypeError, ValueError):
+                return -1
+
+        latest: dict[str, dict] = {}
+        for rev in revisions:
+            if not isinstance(rev, dict) or number(rev) < 1:
+                continue
+            key = str(rev.get("report_id"))
+            if key not in latest or number(rev) > number(latest[key]):
+                latest[key] = rev
+        out = []
+        for row in rows:
+            rev = latest.get(str(row.get("id")))
+            if rev is None:
+                out.append(row)
+                continue
+            out.append({**row, "response": rev.get("response"),
+                        "first_response": row.get("response"),
+                        "revised_at": rev.get("created_at")})
+        return out
+
     def list_take_feedback_self_reports(
         self, take_session_id: str, owner_user_id: Optional[str] = None,
     ) -> list:
@@ -7888,7 +7956,8 @@ class DatabaseService:
                      .eq("take_session_id", str(take_session_id)))
             if owner_user_id:
                 query = query.eq("owner_user_id", str(owner_user_id))
-            return query.order("created_at").execute().data or []
+            return self._latest_self_reports(
+                query.order("created_at").execute().data or [])
         except Exception as e:
             if "take_feedback_self_report" not in str(e).lower():
                 logger.warning("take feedback self-report read failed: %s", e)
@@ -7922,11 +7991,12 @@ class DatabaseService:
         if not snippet_id:
             return []
         try:
-            return (self.client.table("take_feedback_self_report")
-                    .select("*")
-                    .eq("snippet_id", str(snippet_id))
-                    .order("created_at")
-                    .execute().data) or []
+            return self._latest_self_reports(
+                (self.client.table("take_feedback_self_report")
+                 .select("*")
+                 .eq("snippet_id", str(snippet_id))
+                 .order("created_at")
+                 .execute().data) or [])
         except Exception as e:
             if "take_feedback_self_report" not in str(e).lower():
                 logger.warning("clip self-report read failed: %s", e)
@@ -7939,12 +8009,13 @@ class DatabaseService:
         if not arc_id:
             return []
         try:
-            return (self.client.table("take_feedback_self_report")
-                    .select("*")
-                    .eq("arc_id", str(arc_id))
-                    .eq("feedback_family", "confident_voice")
-                    .order("created_at")
-                    .execute().data) or []
+            return self._latest_self_reports(
+                (self.client.table("take_feedback_self_report")
+                 .select("*")
+                 .eq("arc_id", str(arc_id))
+                 .eq("feedback_family", "confident_voice")
+                 .order("created_at")
+                 .execute().data) or [])
         except Exception as e:
             if "take_feedback_self_report" not in str(e).lower():
                 logger.warning("confident self-report read failed: %s", e)
@@ -15523,6 +15594,48 @@ class DatabaseService:
         if keep:
             query = query.not_.in_("community_id", keep)
         return len(query.execute().data or [])
+
+    def pick_line_bank_line(self, *, user_id: str, bank: str, size: int,
+                            later_true: bool) -> int:
+        """The index of the signed line to show next in one bank for one
+        speaker, recorded in the same call (0438): -1 is the bank's later
+        line. Raises on failure."""
+        res = self.client.rpc("pick_line_bank_line_v1", {
+            "p_user_id": str(user_id), "p_bank": str(bank),
+            "p_size": int(size), "p_later_true": bool(later_true),
+        }).execute()
+        data = res.data
+        if isinstance(data, list):
+            data = data[0] if data else None
+        if isinstance(data, dict):
+            data = next(iter(data.values()), None)
+        if isinstance(data, bool) or not isinstance(data, int):
+            raise ValueError("pick_line_bank_line_v1 returned no index")
+        return data
+
+    def new_coach_feedback_by_project(self, user_id: str) -> dict[str, bool]:
+        """{project id: True while a published coach word or answer for
+        one of its Takes is newer than the walk's last show of it} for every
+        project of this speaker (0439). A yes/no, never a count. Raises on
+        failure."""
+        res = self.client.rpc("new_coach_feedback_by_project_v1",
+                              {"p_owner": str(user_id)}).execute()
+        out: dict[str, bool] = {}
+        for row in res.data or []:
+            if isinstance(row, dict) and row.get("arc_id"):
+                out[str(row["arc_id"])] = row.get("has_new") is True
+        return out
+
+    def mark_coach_feedback_seen(self, *, user_id: str, take_session_id: str,
+                                 item: str) -> Any:
+        """Record that the walk showed this speaker the Take's coach note
+        (item 'take_word') or one moment (item = its snippet id) (0439).
+        Raises on failure, including COACH_FEEDBACK_TAKE_NOT_OWNED."""
+        res = self.client.rpc("mark_coach_feedback_seen_v1", {
+            "p_owner": str(user_id), "p_take": str(take_session_id),
+            "p_item": str(item),
+        }).execute()
+        return res.data
 
     def list_community_clips_live(self, community_ids: list[str]) -> list[dict]:
         """The live moments shared with these communities (the view, 0432),

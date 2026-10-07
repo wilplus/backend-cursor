@@ -89,6 +89,8 @@ PROJECT_SELECTORS: Mapping[str, tuple[str, str]] = {
     "arc_deliveries_review": ("arc_id", "project"),
     # A share by its owner (0432): the shares of this project's Takes.
     "take_shares_by_owner": ("take_session_id", "take"),
+    # What the walk showed of this project's Takes (0439).
+    "coach_feedback_seen_by_owner": ("take_session_id", "take"),
 }
 
 #: Account-keyed dependencies that belong to the person, not to a project:
@@ -121,6 +123,9 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     # private community its creator set up belong to the account; the
     # Take-keyed answers and shares go with the Take under their own codes.
     "community_answers_by_listener", "community_members", "communities_created",
+    # The signed line last shown per bank (0438): the speaker's, not a
+    # project's.
+    "line_bank_memory",
     # A coach's own choices, blind answers and exposures (0411): the
     # coach's account; the Take-keyed twins of three of them go with the
     # Take under their own codes.

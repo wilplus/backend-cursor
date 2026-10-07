@@ -23,7 +23,7 @@
   "routes/v2/projects.py": 1,
   "routes/v2/rings.py": 3,
   "routes/v2/user_account.py": 1,
-  "routes/v2/user_sessions.py": 7,
+  "routes/v2/user_sessions.py": 6,
   "services/acoustic_baseline.py": 5,
   "services/analysis_worker.py": 1,
   "services/annotation_export.py": 1,

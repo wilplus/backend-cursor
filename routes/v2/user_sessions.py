@@ -1429,13 +1429,16 @@ def v2_post_take_feedback_response(take_session_id):
                 "code": "INVALID_INPUT",
                 "error": "snippet provenance does not match the feedback item",
             }), 400
+        # A changed judgement is kept beside the first (QA1 A, D-FW-9).
+        outcome, result = _changed_judgement(row, outcome, result,
+                                             str(take_session_id), str(request.user_id))
         if outcome == "conflict":
             return jsonify({
                 "code": "RESPONSE_ALREADY_FINAL",
                 "error": "This response is already final.",
             }), 409
         saved = result.get("row")
-        if outcome not in ("saved", "replayed") or not isinstance(saved, dict):
+        if outcome not in ("saved", "replayed", *_REVISED) or not isinstance(saved, dict):
             return jsonify({
                 "code": "V2_ERROR",
                 "error": "Could not save this response.",
@@ -1447,71 +1450,14 @@ def v2_post_take_feedback_response(take_session_id):
             "snippet_id": saved.get("snippet_id"),
         }
         feedback_set = {"selected_keys": result.get("selected_keys") or []}
+        if outcome in _REVISED:
+            return _revised_judgement(row, arc_id, str(take_session_id),
+                                      str(request.user_id))
 
-        # Typed canonical dual-write. In particular, `edit_myself` is not
-        # converted into a correction preference: opening an editor leaves
-        # the correction unresolved until the owner actually chooses the
-        # proposal or the original. Compatibility persistence above remains
-        # unchanged during the parity window.
-        try:
-            from services.feedback_data_contract import (
-                canonical_feedback_decision,
-            )
-
-            canonical_decision = canonical_feedback_decision(
-                take_id=str(take_session_id),
-                rater_id=str(request.user_id),
-                feedback_id=row["feedback_id"],
-                feedback_family=row["feedback_family"],
-                response=row["response"],
-                candidate_id=canonical_identity["candidate_id"],
-                feedback_membership_id=canonical_identity[
-                    "feedback_membership_id"],
-                feedback_exposure_id=canonical_identity[
-                    "feedback_exposure_id"],
-            )
-            if canonical_decision is not None and session.get("project_id"):
-                canonical_saved = db.record_canonical_feedback_decision(
-                    project_id=str(session["project_id"]),
-                    take_id=str(take_session_id),
-                    rater_id=str(request.user_id),
-                    decision=canonical_decision,
-                )
-                if canonical_saved is None:
-                    logger.warning(
-                        "canonical feedback response missing take=%s item=%s",
-                        take_session_id, row["feedback_id"],
-                    )
-                else:
-                    from services.processing_stages import recorder_for_take
-
-                    response_rows = db.list_take_feedback_self_reports(
-                        str(take_session_id), str(request.user_id)) or []
-                    response_count = len({
-                        str(item.get("feedback_id"))
-                        for item in response_rows
-                        if isinstance(item, dict) and item.get("feedback_id")
-                    })
-                    decision_recorder = recorder_for_take(
-                        database=db,
-                        session=session,
-                        input_provenance={
-                            "selected_keys": feedback_set.get(
-                                "selected_keys") or [],
-                        },
-                    )
-                    if decision_recorder is not None:
-                        decision_recorder.record(
-                            "human_decisions",
-                            "succeeded" if response_count >= 3 else "running",
-                            output={"response_count": response_count},
-                        )
-        except Exception as canonical_error:
-            logger.warning(
-                "canonical feedback response dual-write failed take=%s "
-                "item=%s: %s", take_session_id, row["feedback_id"],
-                canonical_error,
-            )
+        from services.take_feedback_responses import canonical_dual_write
+        canonical_dual_write(db, session, str(take_session_id),
+                             str(request.user_id), row, canonical_identity,
+                             feedback_set)
 
         # The budget/spend row records that the item was explicitly resolved;
         # shown and skipped still mean nothing. Its key includes the frozen
@@ -1561,6 +1507,71 @@ def v2_post_take_feedback_response(take_session_id):
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR",
                         "error": "Failed to save the response"}), 500
+
+
+_REVISED = ("revised", "revised_replay")
+
+
+def _changed_judgement(row: dict, outcome: str, result: dict,
+                       take_session_id: str, owner_user_id: str) -> tuple[str, dict]:
+    """A changed Confident Voice judgement is kept BESIDE the first (founder
+    QA1 A, D-FW-9): the first answer's row is never touched; the latest is
+    a revision every reader overlays. Only a Confident Voice judgement
+    reopens: a rewrite's answer wrote the Paragraph (L1). The first writer
+    compares with the FIRST answer, so a speaker going back to it after a
+    change reads there as a replay; the revision function compares with
+    the latest. Returns (outcome, result): "revised" or "revised_replay"
+    with the revision's result, "revision_failed" when a change could not
+    be saved, else what the first writer said."""
+    if (outcome not in ("conflict", "replayed")
+            or row["feedback_family"] != "confident_voice"):
+        return outcome, result
+    change = db.revise_take_feedback_self_report(
+        take_session_id=take_session_id, owner_user_id=owner_user_id,
+        feedback_id=row["feedback_id"], response=row["response"]) or {}
+    revision = str(change.get("outcome") or "")
+    try:
+        changed_before = int((change.get("row") or {}).get("revision") or 0) > 0
+    except (TypeError, ValueError):
+        changed_before = False
+    if revision == "revised":
+        return "revised", change
+    if revision == "replayed" and (outcome == "conflict" or changed_before):
+        return "revised_replay", change
+    if not revision:
+        # GPT-0440: going back to the first answer after a change reads as a
+        # replay at the first writer; if the revision cannot be saved the
+        # latest answer is stale, so the speaker is told it did not save.
+        return "revision_failed", result
+    return outcome, result
+
+
+def _revised_judgement(row: dict, arc_id: str, take_session_id: str,
+                       owner_user_id: str):
+    """A changed Confident Voice judgement (D-FW-9): the Album and coach
+    routing follow the latest answer. The canonical decision ledger and the
+    spend keep the first resolution: the item was resolved once, and the
+    revision table holds the change beside it (L3)."""
+    if row.get("snippet_id"):
+        _route_owner_voice_album(
+            db, row=row, arc_id=arc_id, owner_user_id=owner_user_id)
+        from services.voice_album import refresh_voice_album
+        refresh_voice_album(arc_id, database=db)
+    follow_up = "none"
+    if row.get("snippet_id"):
+        from services.judgement_follow_up import follow_up_for_revision
+        follow_up = follow_up_for_revision(
+            db, take_session_id=take_session_id,
+            snippet_id=str(row["snippet_id"]),
+            owner_user_id=owner_user_id, answer=row["response"])
+    return jsonify({
+        "saved": True,
+        "revised": True,
+        "feedback_id": row["feedback_id"],
+        "feedback_family": row["feedback_family"],
+        "response": row["response"],
+        "follow_up": follow_up,
+    }), 200
 
 
 def _practice_kind(practice) -> str:

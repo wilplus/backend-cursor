@@ -688,6 +688,38 @@ hard migrations/a_corpus_import_is_processed_under_the_founders_basis.sql
 hard migrations/a_training_yes_counts_the_acceptance_the_account_is_processed_under.sql
 hard migrations/a_training_yes_counts_the_acceptance_the_account_is_processed_under.sql
 
+# 0437 (D-ML-5, 2026-10-07): each served Take keeps its coverage and its
+# lane outcomes. One table, no dependency, so both lanes. After 0436, as in
+# the manifest. Twice: apply/reapply idempotency. Its suite:
+# tests/test_each_served_take_keeps_its_coverage_postgres.py.
+hard migrations/each_served_take_keeps_its_coverage.sql
+hard migrations/each_served_take_keeps_its_coverage.sql
+
+# 0438 (D-FW-3, 2026-10-07): a signed line is never said twice in a row.
+# One table and its picking function, no dependency, so both lanes. After
+# 0437, as in the manifest. Twice: apply/reapply idempotency. Its suite:
+# tests/test_a_line_is_never_said_twice_in_a_row_postgres.py.
+hard migrations/a_line_is_never_said_twice_in_a_row.sql
+hard migrations/a_line_is_never_said_twice_in_a_row.sql
+
+# 0439 (D-FW-5, 2026-10-07): new coach feedback waits on the Lounge bubble
+# until the walk shows it. One table and two functions; the functions read
+# v2_sessions, coach_take_words and exercise_coach_requests at call time,
+# which both lanes carry. After 0438, as in the manifest. Twice:
+# apply/reapply idempotency. Its suite:
+# tests/test_new_coach_feedback_waits_on_the_lounge_bubble_postgres.py.
+hard migrations/new_coach_feedback_waits_on_the_lounge_bubble.sql
+hard migrations/new_coach_feedback_waits_on_the_lounge_bubble.sql
+
+# 0440 (D-FW-9, 2026-10-07): a speaker may change a judgement; the first
+# answer stays. A revision table, its no-edit trigger and the revising
+# function. Its foreign key to take_feedback_self_report is added where
+# that table is present (released); the narrow lane gets the table and a
+# notice. After 0439, as in the manifest. Twice: apply/reapply idempotency.
+# Its suite: tests/test_a_speaker_may_change_a_judgement_postgres.py.
+hard migrations/a_speaker_may_change_a_judgement.sql
+hard migrations/a_speaker_may_change_a_judgement.sql
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

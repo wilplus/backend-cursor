@@ -545,6 +545,107 @@ def _log_coverage(take_id: Any, take_index: Any, frame: Any) -> None:
     )
 
 
+#: The verbal lanes a frame types (contract 25), and the Confident Voice lane
+#: the coverage counts (24b/24c). One outcome each, never a number.
+_COVERAGE_LANES = ("confident_voice", "rewrite_clarity", "great_formulation")
+
+
+def coverage_row(take: dict, frame: Any) -> Optional[dict]:
+    """The Take's coverage row (0437, D-ML-5), or None without a frame.
+
+    Counts, Slide indexes and type names only: no transcript, no candidate
+    text, no score. The Confident Voice lane is `selected` when any block
+    carries a selected item and `no_defensible_candidate` otherwise; a Take
+    with no valid block at all has nothing to type there (`no_valid_block`).
+    """
+    if not isinstance(frame, dict):
+        return None
+    coverage = frame.get("coverage")
+    take_id = str(take.get("id") or "")
+    if not isinstance(coverage, dict) or not take_id:
+        return None
+    lanes = _lane_outcomes(frame)
+    take_index = take.get("take_index")
+    return {
+        "take_session_id": take_id,
+        "project_id": str(take.get("project_id") or "") or None,
+        "take_index": (take_index if isinstance(take_index, int)
+                       and not isinstance(take_index, bool) else None),
+        "policy_version": str(frame.get("policy_version") or "unknown"),
+        "slides_with_blocks": int(coverage.get("assessable_slides") or 0),
+        "slides_covered": int(coverage.get("covered_slides") or 0),
+        "required_floor": float(coverage.get("required_floor") or 0.0),
+        "floor_met": bool(coverage.get("meets_floor")),
+        "uncovered": [
+            {"slide_index": item.get("slide_index"),
+             "reasons": [str(reason) for reason in item.get("reasons") or []]}
+            for item in coverage.get("uncovered") or []
+            if isinstance(item, dict)
+        ],
+        "lane_outcomes": lanes,
+    }
+
+
+def _lane_outcomes(frame: dict) -> dict:
+    """Each lane's typed outcome: the Confident Voice lane is `selected`
+    when any block carries a selected item, `no_defensible_candidate`
+    otherwise, `no_valid_block` when there is no block at all; the verbal
+    lanes as the frame typed them (contract 25), `absent` if missing."""
+    from services.take_feedback_policy_v3 import NO_DEFENSIBLE_CANDIDATE
+    _, verbal = _frame_record(frame)
+    blocks = [block for block in frame.get("blocks") or []
+              if isinstance(block, dict)]
+    if not blocks:
+        voice = "no_valid_block"
+    elif any(block.get("selected_candidate_id") for block in blocks):
+        voice = "selected"
+    else:
+        voice = NO_DEFENSIBLE_CANDIDATE
+    lanes = {"confident_voice": voice}
+    for name in _COVERAGE_LANES[1:]:
+        lanes[name] = str(verbal.get(name) or "absent")
+    return lanes
+
+
+def _record_coverage(database: Any, take: dict, frame: Any) -> None:
+    """Store the served Take's coverage and flag a shortfall (D-ML-5).
+
+    BEST-EFFORT, BOTH HALVES. The write and the warning each swallow their
+    own failure: coverage is a target on selection, never a gate on output
+    (24d), so nothing here may stop a Take from being served (LIVE LOOP).
+
+    A shortfall raises the warning event once per Take, on the serve that
+    wrote its first row; a reread of a Take already recorded refreshes the
+    row quietly. When the write itself fails the warning still fires, since
+    nothing then says it fired before."""
+    row = coverage_row(take, frame)
+    if row is None:
+        return
+    first: Optional[bool] = None
+    record = getattr(database, "record_take_feedback_coverage", None)
+    if callable(record):
+        try:
+            first = record(row)
+        except Exception as error:  # noqa: BLE001 -- best-effort, logged
+            logger.warning("take coverage write raised take=%s: %s",
+                           row["take_session_id"], type(error).__name__)
+            first = None
+    if row["floor_met"] or first is False:
+        return
+    try:
+        from services.f1_observability import observe_f1_degrade
+        observe_f1_degrade(
+            "feedback_coverage_shortfall",
+            take=row["take_session_id"], take_index=row["take_index"],
+            policy=row["policy_version"],
+            slides_with_blocks=row["slides_with_blocks"],
+            slides_covered=row["slides_covered"],
+            floor=row["required_floor"],
+        )
+    except Exception:  # noqa: BLE001 -- observability never raises
+        pass
+
+
 def _frame_record(frame: dict) -> tuple[list, dict]:
     """The frame's typed partition exceptions (contract 24a) and the typed
     outcome of each verbal lane (contract 25, `no_defensible_candidate`), for
@@ -724,4 +825,7 @@ def prepare_first_client_feedback(
         return _decline(take_id, "inventory_returned_no_visible_rows")
     _note_learning(learning, bundle=bundle, inventory=inventory)
     _log_served(visible, lineage=lineage, take_id=take_id)
+    # Written at serve time, after the rows exist and before they leave:
+    # one row per served Take, best-effort (D-ML-5, contract 24c/24d/25).
+    _record_coverage(database, take, frame)
     return visible
