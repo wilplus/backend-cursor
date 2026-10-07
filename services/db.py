@@ -9508,6 +9508,16 @@ class DatabaseService:
                            arc_id, e)
             return None
 
+    def get_moment_suggestion(self, snippet_id: Optional[str]) -> Optional[dict]:
+        """The one suggestion row of a moment (moment_suggestions is keyed
+        by snippet), or None. Raises on a real read failure."""
+        if not snippet_id:
+            return None
+        res = (self.client.table("moment_suggestions")
+               .select("snippet_id,kind,trigger,cue_keys")
+               .eq("snippet_id", str(snippet_id)).limit(1).execute())
+        return (res.data or [None])[0]
+
     def delete_moment_suggestion(self, snippet_id: Optional[str]) -> bool:
         """Drop one star row — a DISMISSED star must not survive to the
         next serve/anchor pass (founder 2026-07-20 rule 2; the ledger
