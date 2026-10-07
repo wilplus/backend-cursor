@@ -2098,3 +2098,16 @@ with it are locked with the screens. The frontend's CLAUDE.md carries the
 rule ("Design lock — the recording screens");
 `docs/FOUNDER-LOCK-recording-screens-2026-10-07.md` is the written record.
 It wins over the Ideal Text lock's line on Recording Mode for these screens.
+
+**N60 · The consent screens' design is locked (founder, chat, 7 October
+2026).** "The consent screens are great; but right now they are not
+scrollable like that in the real app; so lock it like that." The consent
+screens prototype (<https://claude.ai/artifact/TuMKSE2BH364ZQ1Eq4UMdd>,
+version 2, copy in `docs/design/consent-screens-2026-10-07.html`) is now the
+design the first-time agreement, the Data & consent page and the "Turn on
+the learning?" question are built to. Every step scrolls from its true top;
+a document's title and buttons stay still while its text scrolls. One word
+change, signed in the same message: "Two things to confirm" becomes "Three
+things to confirm". The frontend's CLAUDE.md carries the rule ("Design lock
+— the consent screens"); `docs/FOUNDER-LOCK-consent-screens-2026-10-07.md`
+is the written record.
