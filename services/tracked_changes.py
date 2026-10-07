@@ -423,6 +423,7 @@ def _change_entry(p: dict, sid: str, kind: str, source: str, sug: dict,
             return None   # a replace with nothing to propose is dead
         entry["proposed_text"] = _repl
         entry["why"] = sug.get("why")
+        entry.update(_clearer_version_evidence(source, sug))
     elif kind == "bold":
         entry["why"] = sug.get("why")
         if source == "confident_voice":
@@ -496,6 +497,67 @@ def _detector_praise_evidence(source: str, device: Any,
             },
         }
     return {}
+
+
+#: THE AI CLEARER VERSION'S EVIDENCE (D-ML-3; contract 24f, 25, 27, 29b;
+#: ledger A059a/A066). The generator (`moment_suggestions`, the replace
+#: kind) writes a clearer version only for a moment one of the machine's own
+#: reads flagged, and stores that trigger on the row. These are the triggers
+#: this reader vouches for, each named by a fixed reason key. INTERNAL ONLY:
+#: the keys ride `_manager_evidence`, which never leaves the server
+#: (`strip_internal_evidence`, AC-9), and no surface renders them. Bump the
+#: list's version when a reason is added, removed or redefined.
+CLEARER_VERSION_REASONS_VERSION = "clearer-version-reasons-v1"
+CLEARER_VERSION_REASONS = {
+    # `moment_confidence.resolve_moment_confidence` read the moment
+    # UNCONFIDENT.
+    "unconfident": "weak_delivery_read",
+    # The slide-stickiness read is at or under the low band
+    # (MOMENT_REPLACE_STICKINESS_MAX_PCT).
+    "stickiness": "weak_slide_fit_read",
+    # `text_flags.has_profanity` found profanity in the words.
+    "profanity": "profanity_read",
+}
+#: The generator contract this reader vouches for: the replace kind of
+#: `moment_suggestions.generate_moment_suggestion` (its prompt is the
+#: registry's hash-locked `moment_suggestions` SYSTEM) behind the triggers
+#: above. `moment_suggestions` stores no version column, so, as for the
+#: praise detectors below, the version is named in code. Bump it when the
+#: prompt or the trigger rules change.
+CLEARER_VERSION_GENERATOR_VERSION = "moment-suggestion-clearer-v1"
+
+
+def _clearer_version_evidence(source: str, sug: dict) -> dict:
+    """The Manager evidence an AI clearer version honestly carries, or {}.
+
+    WHY THIS EXISTS (D-ML-3; A059a/A066). The model's own clearer versions
+    reached the Manager with no `_manager_evidence` and no version, so V3
+    excluded every one and the rewrite lane was one structural rule plus the
+    tentative fallback.
+
+    ONLY WHAT THE PIPELINE COMPUTED: the weak read that made the generator
+    write the row, named by its fixed reason key. No specificity and no
+    rank: nothing measured one, so the structural repair still outranks it
+    inside a block. Admission is not selection: V3 still anchors at most one
+    rewrite per block read weak, and none where its words are not this
+    Take's (L2, contract 25). A row with any other trigger (the retired
+    polish lane, the acoustic swap, an unknown or missing trigger) gets
+    nothing and stays excluded."""
+    if source not in ("wording", "profanity"):
+        return {}
+    reason = CLEARER_VERSION_REASONS.get(str(sug.get("trigger") or ""))
+    if reason is None:
+        return {}
+    return {
+        "suggestion_version": CLEARER_VERSION_GENERATOR_VERSION,
+        "_manager_evidence": {
+            "detector": "clearer_version",
+            "read": "weak",
+            "basis": reason,
+            "reasons_version": CLEARER_VERSION_REASONS_VERSION,
+            "fallback": False,
+        },
+    }
 
 
 def _change_for_piece(doc: str, p: Any, suggestions: Any, applied: set,
