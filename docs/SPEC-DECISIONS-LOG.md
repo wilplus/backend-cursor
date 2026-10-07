@@ -2034,3 +2034,15 @@ is agreed ("rest looks ok") and locked in
 6. **JP2 A: the Journal post was never saved** in the editor; Claude checks
    the editor's save and sends shorter steps.
 
+
+**N57 · The coach panel's design is locked (founder, chat, 7 October
+2026).** "Generally you can lock the design of the coach panel, it's
+done; lock it just like you locked the ideal text design." The coach panel
+prototype (<https://claude.ai/artifact/TEBvGMehRF6wXCvJTEYTUA>, copy in
+`docs/design/coach-panel-redesign-2026-10-06.html`) is now the design every
+coach screen is built to, exactly as the Ideal Text Final Screens are for
+the speaker's: no layout, flow or wording change and no added element
+without the founder. The frontend's CLAUDE.md carries the rule
+("Design lock — the coach panel"); `docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`
+stays the written record. The panel's training-corpus questions CO2 and
+CO3 are open and do not change the screens.

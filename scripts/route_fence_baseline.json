@@ -96,7 +96,7 @@
     "db_calls": 2
   },
   "routes/v2/coach.py:v2_coach_confidence_queue": {
-    "lines": 92,
+    "lines": 75,
     "db_calls": 3
   },
   "routes/v2/coach.py:v2_coach_confident_voice_practice": {
