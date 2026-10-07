@@ -380,6 +380,12 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "user_id", "user", "delete", "database_row", 35),
     PurgeDependency("communities_created", "communities",
                     "created_by", "user", "delete", "database_row", 60),
+    # When the walk last showed a speaker a coach item (0439, D-FW-5): about
+    # one of their Takes; it goes with the Take, and with the speaker.
+    PurgeDependency("coach_feedback_seen", "coach_feedback_seen",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("coach_feedback_seen_by_owner", "coach_feedback_seen",
+                    "owner_user_id", "user", "delete", "derived_feedback", 59),
     # The signed line last shown per bank (0438, D-FW-3): indexes into the
     # signed bank, about one speaker; it goes with the account.
     PurgeDependency("line_bank_memory", "line_bank_memory",

@@ -702,6 +702,15 @@ hard migrations/each_served_take_keeps_its_coverage.sql
 hard migrations/a_line_is_never_said_twice_in_a_row.sql
 hard migrations/a_line_is_never_said_twice_in_a_row.sql
 
+# 0439 (D-FW-5, 2026-10-07): new coach feedback waits on the Lounge bubble
+# until the walk shows it. One table and two functions; the functions read
+# v2_sessions, coach_take_words and exercise_coach_requests at call time,
+# which both lanes carry. After 0438, as in the manifest. Twice:
+# apply/reapply idempotency. Its suite:
+# tests/test_new_coach_feedback_waits_on_the_lounge_bubble_postgres.py.
+hard migrations/new_coach_feedback_waits_on_the_lounge_bubble.sql
+hard migrations/new_coach_feedback_waits_on_the_lounge_bubble.sql
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

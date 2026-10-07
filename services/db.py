@@ -15542,6 +15542,30 @@ class DatabaseService:
             raise ValueError("pick_line_bank_line_v1 returned no index")
         return data
 
+    def new_coach_feedback_by_project(self, user_id: str) -> dict[str, bool]:
+        """{project id: True while a published coach word or answer for
+        one of its Takes is newer than the walk's last show of it} for every
+        project of this speaker (0439). A yes/no, never a count. Raises on
+        failure."""
+        res = self.client.rpc("new_coach_feedback_by_project_v1",
+                              {"p_owner": str(user_id)}).execute()
+        out: dict[str, bool] = {}
+        for row in res.data or []:
+            if isinstance(row, dict) and row.get("arc_id"):
+                out[str(row["arc_id"])] = row.get("has_new") is True
+        return out
+
+    def mark_coach_feedback_seen(self, *, user_id: str, take_session_id: str,
+                                 item: str) -> Any:
+        """Record that the walk showed this speaker the Take's coach note
+        (item 'take_word') or one moment (item = its snippet id) (0439).
+        Raises on failure, including COACH_FEEDBACK_TAKE_NOT_OWNED."""
+        res = self.client.rpc("mark_coach_feedback_seen_v1", {
+            "p_owner": str(user_id), "p_take": str(take_session_id),
+            "p_item": str(item),
+        }).execute()
+        return res.data
+
     def list_community_clips_live(self, community_ids: list[str]) -> list[dict]:
         """The live moments shared with these communities (the view, 0432),
         newest share first."""

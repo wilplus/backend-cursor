@@ -474,3 +474,4 @@
 0436	a_training_yes_counts_the_acceptance_the_account_is_processed_under.sql
 0437	each_served_take_keeps_its_coverage.sql
 0438	a_line_is_never_said_twice_in_a_row.sql
+0439	new_coach_feedback_waits_on_the_lounge_bubble.sql

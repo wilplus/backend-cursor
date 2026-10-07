@@ -89,6 +89,8 @@ PROJECT_SELECTORS: Mapping[str, tuple[str, str]] = {
     "arc_deliveries_review": ("arc_id", "project"),
     # A share by its owner (0432): the shares of this project's Takes.
     "take_shares_by_owner": ("take_session_id", "take"),
+    # What the walk showed of this project's Takes (0439).
+    "coach_feedback_seen_by_owner": ("take_session_id", "take"),
 }
 
 #: Account-keyed dependencies that belong to the person, not to a project:
