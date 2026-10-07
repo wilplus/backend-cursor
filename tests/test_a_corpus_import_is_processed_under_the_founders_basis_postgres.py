@@ -493,3 +493,51 @@ def test_the_provider_ledger_keeps_its_history(db):
             with pytest.raises(psycopg2.errors.CheckViolation,
                                match="CORPUS_LEDGER_IMMUTABLE"):
                 cur.execute(statement, args)
+
+
+# ── HO-13b: an older shape or another N58 row stops the migration ──────────
+
+def _shape_guard() -> str:
+    text = MIGRATION.read_text()
+    start = text.index("DO $$", text.index("-- ── refuse an older shape"))
+    return text[start:text.index("END $$;", start) + len("END $$;")]
+
+
+def test_the_shape_guard_passes_on_the_real_schema():
+    with rolled_back() as cur:
+        cur.execute(_shape_guard())
+
+
+def test_a_missing_rule_stops_the_migration():
+    with rolled_back() as cur:
+        cur.execute("ALTER TABLE public.corpus_provider_permits "
+                    "DROP CONSTRAINT corpus_provider_permits_never_pooled")
+        with pytest.raises(psycopg2.errors.RaiseException,
+                           match="CORPUS_SCHEMA_MISMATCH"):
+            cur.execute(_shape_guard())
+
+
+def test_another_n58_row_stops_the_migration():
+    with rolled_back() as cur:
+        cur.execute("ALTER TABLE public.corpus_processing_bases "
+                    "DISABLE TRIGGER corpus_processing_bases_retire_only")
+        cur.execute("UPDATE public.corpus_processing_bases "
+                    "SET legal_basis = 'something else' WHERE decision_ref = 'N58'")
+        with pytest.raises(psycopg2.errors.RaiseException,
+                           match="CORPUS_BASIS_SEED_MISMATCH"):
+            cur.execute(_shape_guard())
+
+
+def test_a_permit_cannot_name_a_decision_its_basis_is_not(db):
+    sid, rid = _import(db)
+    _register(db, sid, rid)
+    with rolled_back() as cur:
+        with pytest.raises(psycopg2.errors.ForeignKeyViolation):
+            cur.execute("""
+                INSERT INTO public.corpus_provider_permits (
+                    basis_id, basis_decision_ref, session_id, recording_id,
+                    provider, operation_kind, minimum_data_manifest,
+                    expires_at, idempotency_key)
+                VALUES (%s, 'N99', %s, %s, 'openai', 'transcription',
+                        '{}'::jsonb, now() + interval '5 minutes', %s)""",
+                (BASIS_ID, sid, rid, f"k-{uuid.uuid4()}"))

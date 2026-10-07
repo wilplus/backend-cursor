@@ -97,7 +97,9 @@ CREATE TABLE IF NOT EXISTS public.corpus_processing_bases (
     CONSTRAINT corpus_processing_bases_imports_only
         CHECK (covers_source = 'training_import'),
     CONSTRAINT corpus_processing_bases_never_pooled
-        CHECK (NOT pooled_learning_eligible)
+        CHECK (NOT pooled_learning_eligible),
+    -- The pair a permit names, so its decision can never disagree with its id.
+    CONSTRAINT corpus_processing_bases_id_decision UNIQUE (id, decision_ref)
 );
 ALTER TABLE public.corpus_processing_bases ENABLE ROW LEVEL SECURITY;
 -- At most ONE basis is in force for a source at any moment, so which basis an
@@ -124,6 +126,7 @@ INSERT INTO public.corpus_processing_bases (
     'training_import'
 ) ON CONFLICT (decision_ref) DO NOTHING;
 
+
 -- ── the import's registration ──────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS public.corpus_import_registrations (
@@ -146,8 +149,7 @@ COMMENT ON TABLE public.corpus_import_registrations IS
 
 CREATE TABLE IF NOT EXISTS public.corpus_provider_permits (
     id                       uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-    basis_id                 uuid        NOT NULL REFERENCES
-        public.corpus_processing_bases(id) ON DELETE RESTRICT,
+    basis_id                 uuid        NOT NULL,
     basis_decision_ref       text        NOT NULL,
     session_id               uuid        NOT NULL REFERENCES
         public.corpus_import_registrations(session_id) ON DELETE RESTRICT,
@@ -180,7 +182,11 @@ CREATE TABLE IF NOT EXISTS public.corpus_provider_permits (
     CONSTRAINT corpus_provider_permits_expiry_check
         CHECK (expires_at > issued_at),
     CONSTRAINT corpus_provider_permits_never_pooled
-        CHECK (NOT pooled_learning_eligible)
+        CHECK (NOT pooled_learning_eligible),
+    CONSTRAINT corpus_provider_permits_basis_pair
+        FOREIGN KEY (basis_id, basis_decision_ref)
+        REFERENCES public.corpus_processing_bases (id, decision_ref)
+        ON DELETE RESTRICT
 );
 ALTER TABLE public.corpus_provider_permits ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_corpus_provider_permits_session
@@ -204,6 +210,49 @@ CREATE TABLE IF NOT EXISTS public.corpus_provider_operations (
                               'deleted', 'delete_failed'))
 );
 ALTER TABLE public.corpus_provider_operations ENABLE ROW LEVEL SECURITY;
+
+-- ── refuse an older shape ──────────────────────────────────────────────────
+-- CREATE ... IF NOT EXISTS and ON CONFLICT DO NOTHING keep whatever already
+-- exists. So, on every run, the rules this file relies on must be present and
+-- the N58 row must be the founder's, or the migration stops here (the
+-- deploy fails loudly; nothing is half-applied, the file is one transaction).
+DO $$
+DECLARE
+    missing text;
+BEGIN
+    SELECT string_agg(name, ', ') INTO missing
+      FROM unnest(ARRAY[
+          'corpus_processing_bases_imports_only',
+          'corpus_processing_bases_never_pooled',
+          'corpus_processing_bases_founder_only',
+          'corpus_processing_bases_id_decision',
+          'corpus_import_registrations_route_only',
+          'corpus_provider_permits_analysis_only',
+          'corpus_provider_permits_status_check',
+          'corpus_provider_permits_revocation_matches_status',
+          'corpus_provider_permits_finish_matches_status',
+          'corpus_provider_permits_never_pooled',
+          'corpus_provider_permits_basis_pair',
+          'corpus_provider_operations_event_check'
+      ]) AS name
+     WHERE NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conname = name);
+    IF missing IS NOT NULL THEN
+        RAISE EXCEPTION 'CORPUS_SCHEMA_MISMATCH: missing %', missing;
+    END IF;
+    IF to_regclass('public.corpus_processing_bases_one_in_force') IS NULL THEN
+        RAISE EXCEPTION 'CORPUS_SCHEMA_MISMATCH: missing corpus_processing_bases_one_in_force';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM public.corpus_processing_bases
+         WHERE id = '0d580435-5858-4058-8058-000000000058'
+           AND decision_ref = 'N58' AND decided_on = DATE '2026-10-07'
+           AND recorded_by = 'founder' AND covers_source = 'training_import'
+           AND legal_basis = 'legal basis recorded by the founder, agreed with counsel'
+           AND NOT pooled_learning_eligible
+    ) THEN
+        RAISE EXCEPTION 'CORPUS_BASIS_SEED_MISMATCH: the N58 row is not the founder''s';
+    END IF;
+END $$;
 
 -- ── what never changes ─────────────────────────────────────────────────────
 
