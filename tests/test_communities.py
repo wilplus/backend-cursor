@@ -88,13 +88,15 @@ class _Db:
     def v2_get_session_by_id(self, sid):
         return {"id": sid, "user_id": self.sessions[sid]} if sid in self.sessions else None
 
-    def upsert_take_share(self, *, take_session_id, owner_user_id, community_id, consent_version):
+    def upsert_take_share(self, *, take_session_id, owner_user_id, community_id,
+                          consent_version, share_words_version):
         row = next((s for s in self.shares if s["take_session_id"] == take_session_id
                     and s["community_id"] == community_id), None)
         if row is None:
             row = {"take_session_id": take_session_id, "community_id": community_id}
             self.shares.append(row)
-        row.update(owner_user_id=owner_user_id, consent_version=consent_version, revoked_at=None)
+        row.update(owner_user_id=owner_user_id, consent_version=consent_version,
+                   share_words_version=share_words_version, revoked_at=None)
         return row
 
     def revoke_take_shares(self, take_session_id, *, keep_community_ids):
@@ -187,18 +189,29 @@ def _private(db, owner="owner-1", code="friends-of-mine"):
     return payload["community"]["id"]
 
 
+WORDS = "sharing-screen-2026-10-06"
+
+
 def _share(db, take, owner="owner-1", **body):
+    if not body.get("none") and "share_words_version" not in body:
+        body["share_words_version"] = WORDS
     with POLICY, ACCEPTED:
         return cm.share_take(db, owner_user_id=owner, take_session_id=take, body=body)
 
 
 # ── the switches ──────────────────────────────────────────────────────────
 
-def test_both_switches_default_off():
+def test_the_switch_is_off_and_sharing_names_the_current_privacy_terms():
+    """COMMUNITIES_ENABLED stays False (D-FW-6). CM2 B / Q-B6 A: the share
+    policy version names the current Privacy/Terms, the same version the
+    peer share and the blind check are on."""
     source = (ROOT / "config.py").read_text()
     assert "    COMMUNITIES_ENABLED = False\n" in source
-    assert "    COMMUNITY_SHARE_POLICY_VERSION: str | None = None\n" in source
-    assert "N52.4" in source and "CM2" in source
+    assert ('    COMMUNITY_SHARE_POLICY_VERSION: str | None = "phase1-2026-10-02"\n'
+            in source)
+    assert Config.COMMUNITY_SHARE_POLICY_VERSION == Config.PEER_SHARE_POLICY_VERSION
+    assert "N52.4" in source and "CM2 B" in source and "Q-B6 A" in source
+    assert "share_words_version" in source
 
 
 def test_off_every_call_is_404_before_any_read():
@@ -364,7 +377,8 @@ def test_sharing_waits_for_the_policy_version_and_none_never_waits():
     db = _Db()
     with patch.object(Config, "COMMUNITY_SHARE_POLICY_VERSION", None):
         assert cm.share_take(db, owner_user_id="owner-1", take_session_id=_uuid(901),
-                             body={"general": True}) == (409, {"code": "TERMS_REACCEPT_REQUIRED"})
+                             body={"general": True, "share_words_version": WORDS}
+                             ) == (409, {"code": "TERMS_REACCEPT_REQUIRED"})
         assert db.shares == []
         assert cm.share_take(db, owner_user_id="owner-1", take_session_id=_uuid(901),
                              body={"none": True})[0] == 200
@@ -379,7 +393,7 @@ def test_the_policy_check_reads_the_community_version_not_the_peer_one():
     db = _Db()
     with POLICY, patch("services.lend_your_ear.accepted_policy_at_least", _accepted):
         status, _ = cm.share_take(db, owner_user_id="owner-1", take_session_id=_uuid(901),
-                                  body={"general": True})
+                                  body={"general": True, "share_words_version": WORDS})
     assert status == 409 and seen == ["phase1-2026-11-01"]
 
 
@@ -389,8 +403,10 @@ def test_a_share_is_per_take_stamped_and_revocable():
     status, payload = _share(db, _uuid(901), general=True, community_ids=[mine])
     assert status == 200
     assert payload == {"take_session_id": _uuid(901), "community_ids": [GENERAL_ID, mine],
-                       "none": False}
+                       "none": False, "share_words_version": WORDS}
     assert {s["consent_version"] for s in db.shares} == {"phase1-2026-11-01"}
+    # CM2 B / Q-B6 A (0443): each share records the words the speaker saw.
+    assert {s["share_words_version"] for s in db.shares} == {WORDS}
     # Fewer choices withdraw the Take from the rest.
     _share(db, _uuid(901), community_ids=[mine])
     live = {s["community_id"] for s in db.shares if s["revoked_at"] is None}
@@ -596,3 +612,44 @@ def test_the_migration_and_the_purge_know_the_tables():
     assert {"community_answers_by_listener", "community_members",
             "communities_created"} <= scope.ACCOUNT_LEVEL
     assert scope.PROJECT_SELECTORS["take_shares_by_owner"] == ("take_session_id", "take")
+
+
+# ── the words the speaker saw (CM2 B, N53.2; Q-B6 A, N62; 0443) ───────────
+
+def test_a_share_records_the_words_the_speaker_saw_and_none_needs_none():
+    db = _Db()
+    # A share without the words version is refused before any write; the
+    # policy check comes after it, so the refusal is the same on or off it.
+    with POLICY, ACCEPTED:
+        for body in ({"general": True}, {"general": True, "share_words_version": ""},
+                     {"general": True, "share_words_version": 7},
+                     {"general": True, "share_words_version": "has a space"},
+                     {"general": True, "share_words_version": "x" * 65}):
+            assert cm.share_take(db, owner_user_id="owner-1", take_session_id=_uuid(901),
+                                 body=body) == (400, {"code": "SHARE_WORDS_VERSION_REQUIRED"})
+    assert db.shares == []
+    # The version the screen sends is what is recorded, as sent.
+    status, payload = _share(db, _uuid(901), general=True,
+                             share_words_version="sharing-screen-2026-10-06")
+    assert status == 200 and payload["share_words_version"] == "sharing-screen-2026-10-06"
+    assert db.shares[0]["share_words_version"] == "sharing-screen-2026-10-06"
+    # A later share under newer words re-stamps the live row.
+    _share(db, _uuid(901), general=True, share_words_version="sharing-screen-v2")
+    assert db.shares[0]["share_words_version"] == "sharing-screen-v2"
+    # "None" revokes with no version, and reads none.
+    status, payload = cm.share_take(db, owner_user_id="owner-1", take_session_id=_uuid(901),
+                                    body={"none": True})
+    assert (status, payload) == (200, {"take_session_id": _uuid(901), "community_ids": [],
+                                       "none": True})
+    assert db.shares[0]["revoked_at"] is not None
+    assert db.shares[0]["share_words_version"] == "sharing-screen-v2"  # history keeps it
+
+
+def test_the_words_version_is_a_short_id():
+    assert cm.share_words_version_from({"share_words_version": "sharing-screen-2026-10-06"}) \
+        == "sharing-screen-2026-10-06"
+    assert cm.share_words_version_from({"share_words_version": "v1.2_a-b"}) == "v1.2_a-b"
+    for bad in (None, "", " ", "-x", "a b", "x" * 65, 1, ["v1"], {"v": 1}):
+        assert cm.share_words_version_from({"share_words_version": bad}) is None
+    assert cm.share_words_version_from(None) is None
+    assert cm.share_words_version_from({}) is None

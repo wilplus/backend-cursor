@@ -15582,12 +15582,16 @@ class DatabaseService:
         return list(res.data or [])
 
     def upsert_take_share(self, *, take_session_id: str, owner_user_id: str,
-                          community_id: str, consent_version: str) -> Optional[dict]:
+                          community_id: str, consent_version: str,
+                          share_words_version: str) -> Optional[dict]:
         """Share one Take with one community: one row per pair; a share
-        clears revoked_at and stamps the consent version. Raises on failure."""
+        clears revoked_at and stamps the consent version (Privacy/Terms) and
+        the version of the sharing screen's words the speaker saw (0443,
+        CM2 B). Raises on failure."""
         res = (self.client.table("take_shares").upsert({
             "take_session_id": str(take_session_id), "owner_user_id": str(owner_user_id),
             "community_id": str(community_id), "consent_version": str(consent_version),
+            "share_words_version": str(share_words_version),
             "shared_at": datetime.now(timezone.utc).isoformat(), "revoked_at": None,
         }, on_conflict="take_session_id,community_id").execute())
         return (res.data or [None])[0]
