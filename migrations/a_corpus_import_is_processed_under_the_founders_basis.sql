@@ -75,9 +75,17 @@
 
 BEGIN;
 
--- ── the basis ──────────────────────────────────────────────────────────────
-
-CREATE TABLE IF NOT EXISTS public.corpus_processing_bases (
+-- ── the four tables, written once ──────────────────────────────────────────
+-- One text, with the names unqualified: run under search_path = public it
+-- builds the real tables; run under search_path = pg_temp with ON COMMIT
+-- DROP (%1$s) it builds the reference copy the guard at the end of this file
+-- compares them with. A temporary function, gone with this session.
+CREATE OR REPLACE FUNCTION pg_temp.corpus_shape_0435(on_commit text)
+RETURNS text
+LANGUAGE sql IMMUTABLE
+AS $shape$
+SELECT format($ddl$
+CREATE TABLE IF NOT EXISTS corpus_processing_bases (
     id                       uuid        PRIMARY KEY,
     decision_ref             text        NOT NULL UNIQUE,
     decided_on               date        NOT NULL,
@@ -101,59 +109,32 @@ CREATE TABLE IF NOT EXISTS public.corpus_processing_bases (
         CHECK (NOT pooled_learning_eligible),
     -- The pair a permit names, so its decision can never disagree with its id.
     CONSTRAINT corpus_processing_bases_id_decision UNIQUE (id, decision_ref)
-);
-ALTER TABLE public.corpus_processing_bases ENABLE ROW LEVEL SECURITY;
+)%1$s;
+ALTER TABLE corpus_processing_bases ENABLE ROW LEVEL SECURITY;
 -- At most ONE basis is in force for a source at any moment, so which basis an
 -- import is registered under is never a choice by recency.
 CREATE UNIQUE INDEX IF NOT EXISTS corpus_processing_bases_one_in_force
-    ON public.corpus_processing_bases (covers_source)
+    ON corpus_processing_bases (covers_source)
     WHERE retired_at IS NULL;
-COMMENT ON TABLE public.corpus_processing_bases IS
-    'The founder''s processing basis for training-corpus imports (0435, N58). '
-    'Not a person''s consent and not a per-import licence: one recorded basis, '
-    'agreed with counsel, under which an import registered by the coach import '
-    'route may be analysed. Retire-only. Authorizes no Phase-2 use.';
 
-INSERT INTO public.corpus_processing_bases (
-    id, decision_ref, decided_on, recorded_by, legal_basis, founder_note,
-    covers_source
-) VALUES (
-    '0d580435-5858-4058-8058-000000000058', 'N58', DATE '2026-10-07',
-    'founder',
-    'legal basis recorded by the founder, agreed with counsel',
-    'no need for license check pls; we have it legally recorded and we don''t '
-    'need license to prove it! this version is agreed with the counsel and it '
-    'is my executive decision',
-    'training_import'
-) ON CONFLICT (decision_ref) DO NOTHING;
-
-
--- ── the import's registration ──────────────────────────────────────────────
-
-CREATE TABLE IF NOT EXISTS public.corpus_import_registrations (
+CREATE TABLE IF NOT EXISTS corpus_import_registrations (
     session_id     uuid        PRIMARY KEY,
     recording_id   uuid        NOT NULL UNIQUE,
     basis_id       uuid        NOT NULL REFERENCES
-        public.corpus_processing_bases(id) ON DELETE RESTRICT,
+        corpus_processing_bases(id) ON DELETE RESTRICT,
     registered_via text        NOT NULL,
     registered_at  timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT corpus_import_registrations_route_only
         CHECK (registered_via = 'coach_import_route')
-);
-ALTER TABLE public.corpus_import_registrations ENABLE ROW LEVEL SECURITY;
-COMMENT ON TABLE public.corpus_import_registrations IS
-    'One row per training-corpus import created by POST '
-    '/v2/coach/training-imports (0435, N58): the session, its recording and '
-    'the basis it is processed under. No principal, no user id. Immutable.';
+)%1$s;
+ALTER TABLE corpus_import_registrations ENABLE ROW LEVEL SECURITY;
 
--- ── the permits ────────────────────────────────────────────────────────────
-
-CREATE TABLE IF NOT EXISTS public.corpus_provider_permits (
+CREATE TABLE IF NOT EXISTS corpus_provider_permits (
     id                       uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
     basis_id                 uuid        NOT NULL,
     basis_decision_ref       text        NOT NULL,
     session_id               uuid        NOT NULL REFERENCES
-        public.corpus_import_registrations(session_id) ON DELETE RESTRICT,
+        corpus_import_registrations(session_id) ON DELETE RESTRICT,
     recording_id             uuid        NOT NULL,
     provider                 text        NOT NULL,
     operation_kind           text        NOT NULL,
@@ -186,21 +167,17 @@ CREATE TABLE IF NOT EXISTS public.corpus_provider_permits (
         CHECK (NOT pooled_learning_eligible),
     CONSTRAINT corpus_provider_permits_basis_pair
         FOREIGN KEY (basis_id, basis_decision_ref)
-        REFERENCES public.corpus_processing_bases (id, decision_ref)
+        REFERENCES corpus_processing_bases (id, decision_ref)
         ON DELETE RESTRICT
-);
-ALTER TABLE public.corpus_provider_permits ENABLE ROW LEVEL SECURITY;
+)%1$s;
+ALTER TABLE corpus_provider_permits ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_corpus_provider_permits_session
-    ON public.corpus_provider_permits (session_id);
-COMMENT ON TABLE public.corpus_provider_permits IS
-    'A provider permit for one call on a training-corpus import (0435, N58), '
-    'granted under the corpus basis it names, never under a person''s '
-    'acceptance. Separate from the Phase-1 permit ledger by design.';
+    ON corpus_provider_permits (session_id);
 
-CREATE TABLE IF NOT EXISTS public.corpus_provider_operations (
+CREATE TABLE IF NOT EXISTS corpus_provider_operations (
     id                     uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
     permit_id              uuid        NOT NULL REFERENCES
-        public.corpus_provider_permits(id) ON DELETE RESTRICT,
+        corpus_provider_permits(id) ON DELETE RESTRICT,
     provider_operation_ref text,
     event_kind             text        NOT NULL,
     error_code             text,
@@ -209,76 +186,82 @@ CREATE TABLE IF NOT EXISTS public.corpus_provider_operations (
     CONSTRAINT corpus_provider_operations_event_check
         CHECK (event_kind IN ('started', 'completed', 'failed', 'cancelled',
                               'deleted', 'delete_failed'))
-);
-ALTER TABLE public.corpus_provider_operations ENABLE ROW LEVEL SECURITY;
+)%1$s;
+ALTER TABLE corpus_provider_operations ENABLE ROW LEVEL SECURITY;
+$ddl$, on_commit)
+$shape$;
 
--- ── refuse an older shape ──────────────────────────────────────────────────
--- CREATE ... IF NOT EXISTS and ON CONFLICT DO NOTHING keep whatever already
--- exists. So, on every run, the rules this file relies on must be present and
--- the N58 row must be the founder's, or the migration stops here (the
--- deploy fails loudly; nothing is half-applied, the file is one transaction).
+-- Every column (type, NOT NULL, default), constraint, index and the RLS flag
+-- of the four tables in schema s, one line each, schema names removed so the
+-- public tables and the pg_temp copy print alike.
+CREATE OR REPLACE FUNCTION pg_temp.corpus_shape_seen_0435(s text)
+RETURNS SETOF text
+LANGUAGE sql STABLE
+AS $seen$
+WITH t(name) AS (VALUES ('corpus_processing_bases'),
+                        ('corpus_import_registrations'),
+                        ('corpus_provider_permits'),
+                        ('corpus_provider_operations')),
+r AS (SELECT t.name, to_regclass(s || '.' || t.name) AS rel FROM t)
+SELECT regexp_replace(line, '(public|pg_temp(_[0-9]+)?)\.', '', 'g')
+  FROM (
+    SELECT r.name || ' column ' || a.attname || ' '
+           || format_type(a.atttypid, a.atttypmod)
+           || CASE WHEN a.attnotnull THEN ' not null' ELSE '' END
+           || COALESCE(' default ' || pg_get_expr(d.adbin, d.adrelid), '') AS line
+      FROM r
+      JOIN pg_attribute a ON a.attrelid = r.rel AND a.attnum > 0
+                         AND NOT a.attisdropped
+      LEFT JOIN pg_attrdef d ON d.adrelid = r.rel AND d.adnum = a.attnum
+    UNION ALL
+    SELECT r.name || ' constraint ' || c.conname || ' '
+           || pg_get_constraintdef(c.oid)
+      FROM r JOIN pg_constraint c ON c.conrelid = r.rel
+    UNION ALL
+    SELECT r.name || ' index ' || pg_get_indexdef(i.indexrelid)
+      FROM r JOIN pg_index i ON i.indrelid = r.rel
+    UNION ALL
+    SELECT r.name || ' row level security ' || k.relrowsecurity
+      FROM r JOIN pg_class k ON k.oid = r.rel
+    UNION ALL
+    SELECT r.name || ' missing' FROM r WHERE r.rel IS NULL
+  ) shape(line)
+$seen$;
+
 DO $$
 DECLARE
-    missing text;
+    caller_path text := current_setting('search_path');
 BEGIN
-    -- Each rule: its table, its kind (c check, u unique, f foreign key), and
-    -- a fragment its definition must contain. Fragments, not whole texts, so
-    -- the guard does not depend on how a server version prints a definition.
-    SELECT string_agg(rule.name, ', ') INTO missing
-      FROM (VALUES
-          ('corpus_processing_bases', 'corpus_processing_bases_decision_shape', 'c', 'decision_ref'),
-          ('corpus_processing_bases', 'corpus_processing_bases_founder_only', 'c', '''founder'''),
-          ('corpus_processing_bases', 'corpus_processing_bases_basis_present', 'c', 'founder_note'),
-          ('corpus_processing_bases', 'corpus_processing_bases_imports_only', 'c', '''training_import'''),
-          ('corpus_processing_bases', 'corpus_processing_bases_never_pooled', 'c', 'NOT pooled_learning_eligible'),
-          ('corpus_processing_bases', 'corpus_processing_bases_id_decision', 'u', 'UNIQUE (id, decision_ref)'),
-          ('corpus_import_registrations', 'corpus_import_registrations_route_only', 'c', '''coach_import_route'''),
-          ('corpus_provider_permits', 'corpus_provider_permits_analysis_only', 'c', 'operation_kind'),
-          ('corpus_provider_permits', 'corpus_provider_permits_status_check', 'c', 'status'),
-          ('corpus_provider_permits', 'corpus_provider_permits_expiry_check', 'c', 'expires_at > issued_at'),
-          ('corpus_provider_permits', 'corpus_provider_permits_revocation_matches_status', 'c', 'revoked_at IS NOT NULL'),
-          ('corpus_provider_permits', 'corpus_provider_permits_finish_matches_status', 'c', 'finished_at IS NOT NULL'),
-          ('corpus_provider_permits', 'corpus_provider_permits_never_pooled', 'c', 'NOT pooled_learning_eligible'),
-          ('corpus_provider_permits', 'corpus_provider_permits_basis_pair', 'f', 'corpus_processing_bases(id, decision_ref)'),
-          ('corpus_provider_operations', 'corpus_provider_operations_event_check', 'c', 'event_kind')
-      ) AS rule(tbl, name, kind, fragment)
-     WHERE NOT EXISTS (
-         SELECT 1 FROM pg_constraint c
-          WHERE c.conname = rule.name
-            AND c.conrelid = to_regclass('public.' || rule.tbl)
-            AND c.contype = rule.kind
-            AND position(rule.fragment IN pg_get_constraintdef(c.oid)) > 0);
-    IF missing IS NOT NULL THEN
-        RAISE EXCEPTION 'CORPUS_SCHEMA_MISMATCH: missing or different %', missing;
-    END IF;
-    -- One basis in force per source: a UNIQUE index on covers_source, only
-    -- over rows not retired.
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_index i
-         WHERE i.indexrelid = to_regclass('public.corpus_processing_bases_one_in_force')
-           AND i.indrelid = to_regclass('public.corpus_processing_bases')
-           AND i.indisunique
-           AND pg_get_indexdef(i.indexrelid) LIKE '%(covers_source)%'
-           AND pg_get_expr(i.indpred, i.indrelid) = '(retired_at IS NULL)'
-    ) THEN
-        RAISE EXCEPTION 'CORPUS_SCHEMA_MISMATCH: missing or different corpus_processing_bases_one_in_force';
-    END IF;
-    -- The whole N58 row as the founder recorded it. retired_at is not
-    -- compared: retiring N58 later is allowed, and a rerun must not fail then.
-    IF NOT EXISTS (
-        SELECT 1 FROM public.corpus_processing_bases
-         WHERE id = '0d580435-5858-4058-8058-000000000058'
-           AND decision_ref = 'N58' AND decided_on = DATE '2026-10-07'
-           AND recorded_by = 'founder' AND covers_source = 'training_import'
-           AND legal_basis = 'legal basis recorded by the founder, agreed with counsel'
-           AND founder_note = 'no need for license check pls; we have it legally recorded and we don''t '
-                              'need license to prove it! this version is agreed with the counsel and it '
-                              'is my executive decision'
-           AND NOT pooled_learning_eligible
-    ) THEN
-        RAISE EXCEPTION 'CORPUS_BASIS_SEED_MISMATCH: the N58 row is not the founder''s';
-    END IF;
+    PERFORM set_config('search_path', 'public', true);
+    EXECUTE pg_temp.corpus_shape_0435('');
+    PERFORM set_config('search_path', caller_path, true);
 END $$;
+COMMENT ON TABLE public.corpus_processing_bases IS
+    'The founder''s processing basis for training-corpus imports (0435, N58). '
+    'Not a person''s consent and not a per-import licence: one recorded basis, '
+    'agreed with counsel, under which an import registered by the coach import '
+    'route may be analysed. Retire-only. Authorizes no Phase-2 use.';
+COMMENT ON TABLE public.corpus_import_registrations IS
+    'One row per training-corpus import created by POST '
+    '/v2/coach/training-imports (0435, N58): the session, its recording and '
+    'the basis it is processed under. No principal, no user id. Immutable.';
+COMMENT ON TABLE public.corpus_provider_permits IS
+    'A provider permit for one call on a training-corpus import (0435, N58), '
+    'granted under the corpus basis it names, never under a person''s '
+    'acceptance. Separate from the Phase-1 permit ledger by design.';
+
+INSERT INTO public.corpus_processing_bases (
+    id, decision_ref, decided_on, recorded_by, legal_basis, founder_note,
+    covers_source
+) VALUES (
+    '0d580435-5858-4058-8058-000000000058', 'N58', DATE '2026-10-07',
+    'founder',
+    'legal basis recorded by the founder, agreed with counsel',
+    'no need for license check pls; we have it legally recorded and we don''t '
+    'need license to prove it! this version is agreed with the counsel and it '
+    'is my executive decision',
+    'training_import'
+) ON CONFLICT (decision_ref) DO NOTHING;
 
 -- ── what never changes ─────────────────────────────────────────────────────
 
@@ -470,9 +453,12 @@ BEGIN
         refusal := public.corpus_import_refusal_v1(p_session_id, p_recording_id);
         IF refusal IS NOT NULL THEN RAISE EXCEPTION '%', refusal; END IF;
         -- The one basis in force for imports (a unique index allows no
-        -- second); none in force refuses.
+        -- second); none in force refuses. FOR SHARE: a retirement running at
+        -- the same moment waits for this registration, or wins and leaves
+        -- no basis in force here.
         SELECT * INTO basis FROM public.corpus_processing_bases
-         WHERE covers_source = 'training_import' AND retired_at IS NULL;
+         WHERE covers_source = 'training_import' AND retired_at IS NULL
+           FOR SHARE;
         IF basis.id IS NULL THEN RAISE EXCEPTION 'CORPUS_BASIS_ABSENT'; END IF;
         INSERT INTO public.corpus_import_registrations (
             session_id, recording_id, basis_id, registered_via
@@ -535,10 +521,13 @@ BEGIN
     refusal := public.corpus_import_refusal_v1(
         registration.session_id, registration.recording_id);
     IF refusal IS NOT NULL THEN RAISE EXCEPTION '%', refusal; END IF;
+    -- FOR SHARE, as at registration: no permit is issued under a basis
+    -- being retired at the same moment.
     SELECT * INTO basis FROM public.corpus_processing_bases
      WHERE id = registration.basis_id
        AND covers_source = 'training_import'
-       AND retired_at IS NULL;
+       AND retired_at IS NULL
+       FOR SHARE;
     IF basis.id IS NULL THEN RAISE EXCEPTION 'CORPUS_BASIS_ABSENT'; END IF;
     IF p_operation_kind IS NULL OR p_operation_kind NOT IN (
         'audio_download', 'transcription', 'feedback_generation',
@@ -904,6 +893,54 @@ BEGIN
         GRANT SELECT ON TABLE public.corpus_import_registrations TO service_role;
         GRANT SELECT ON TABLE public.corpus_provider_permits TO service_role;
         GRANT SELECT ON TABLE public.corpus_provider_operations TO service_role;
+    END IF;
+END $$;
+
+
+
+-- ── refuse an older shape ──────────────────────────────────────────────────
+-- CREATE ... IF NOT EXISTS and ON CONFLICT DO NOTHING keep whatever already
+-- exists. So, on every run, the four tables must be exactly the shape above
+-- and the N58 row must be the founder's, or the migration stops here (the
+-- deploy fails loudly; nothing is half-applied, the file is one transaction).
+-- The shape is compared with a reference copy built from the same text on the
+-- same server, so it never depends on how a server version prints a
+-- definition, and any difference counts: a column, a type, a default, a
+-- CHECK body, a UNIQUE, a foreign key, an index or RLS, missing or extra.
+-- Last in the file: the copy lives in pg_temp until COMMIT drops it, and
+-- nothing runs after it that could mistake it for the real tables.
+DO $$
+DECLARE
+    caller_path text := current_setting('search_path');
+    differences text;
+BEGIN
+    PERFORM set_config('search_path', 'pg_temp', true);
+    EXECUTE pg_temp.corpus_shape_0435(' ON COMMIT DROP');
+    PERFORM set_config('search_path', caller_path, true);
+    SELECT string_agg(line, '; ' ORDER BY line) INTO differences
+      FROM ((SELECT * FROM pg_temp.corpus_shape_seen_0435('public')
+             EXCEPT SELECT * FROM pg_temp.corpus_shape_seen_0435('pg_temp'))
+            UNION
+            (SELECT * FROM pg_temp.corpus_shape_seen_0435('pg_temp')
+             EXCEPT SELECT * FROM pg_temp.corpus_shape_seen_0435('public'))
+           ) AS d(line);
+    IF differences IS NOT NULL THEN
+        RAISE EXCEPTION 'CORPUS_SCHEMA_MISMATCH: %', differences;
+    END IF;
+    -- The whole N58 row as the founder recorded it. retired_at is not
+    -- compared: retiring N58 later is allowed, and a rerun must not fail then.
+    IF NOT EXISTS (
+        SELECT 1 FROM public.corpus_processing_bases
+         WHERE id = '0d580435-5858-4058-8058-000000000058'
+           AND decision_ref = 'N58' AND decided_on = DATE '2026-10-07'
+           AND recorded_by = 'founder' AND covers_source = 'training_import'
+           AND legal_basis = 'legal basis recorded by the founder, agreed with counsel'
+           AND founder_note = 'no need for license check pls; we have it legally recorded and we don''t '
+                              'need license to prove it! this version is agreed with the counsel and it '
+                              'is my executive decision'
+           AND NOT pooled_learning_eligible
+    ) THEN
+        RAISE EXCEPTION 'CORPUS_BASIS_SEED_MISMATCH: the N58 row is not the founder''s';
     END IF;
 END $$;
 

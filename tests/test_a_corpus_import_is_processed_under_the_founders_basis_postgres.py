@@ -498,9 +498,13 @@ def test_the_provider_ledger_keeps_its_history(db):
 # ── HO-13b: an older shape or another N58 row stops the migration ──────────
 
 def _shape_guard() -> str:
+    """The shape text and its reader, then the guard from the end of the
+    file: the reference copy is built (ON COMMIT DROP) and compared."""
     text = MIGRATION.read_text()
-    start = text.index("DO $$", text.index("-- ── refuse an older shape"))
-    return text[start:text.index("END $$;", start) + len("END $$;")]
+    start = text.index("-- ── the four tables, written once")
+    helpers = text[start:text.index("$seen$;", start) + len("$seen$;")]
+    guard = text.index("DO $$", text.index("-- ── refuse an older shape"))
+    return helpers + "\n" + text[guard:text.index("END $$;", guard) + len("END $$;")]
 
 
 def test_the_shape_guard_passes_on_the_real_schema():
@@ -599,3 +603,83 @@ def test_a_permits_request_never_changes(db):
                                match="CORPUS_LEDGER_IMMUTABLE"):
                 cur.execute(f"UPDATE public.corpus_provider_permits SET {column} = "
                             f"{value} WHERE id = %s", (permit["permit_id"],))
+
+
+# ── HO-13d: the whole shape is compared, and a retirement waits ────────────
+
+def _guard_refuses(*statements):
+    with rolled_back() as cur:
+        for statement in statements:
+            cur.execute(statement)
+        with pytest.raises(psycopg2.errors.RaiseException,
+                           match="CORPUS_SCHEMA_MISMATCH"):
+            cur.execute(_shape_guard())
+
+
+def test_a_check_that_still_names_its_column_but_says_less_stops_the_migration():
+    _guard_refuses(
+        "ALTER TABLE public.corpus_provider_permits "
+        "DROP CONSTRAINT corpus_provider_permits_analysis_only",
+        "ALTER TABLE public.corpus_provider_permits "
+        "ADD CONSTRAINT corpus_provider_permits_analysis_only "
+        "CHECK (operation_kind IS NOT NULL)")
+
+
+def test_a_missing_unique_stops_the_migration():
+    _guard_refuses(
+        "ALTER TABLE public.corpus_provider_permits "
+        "DROP CONSTRAINT corpus_provider_permits_idempotency_key_key")
+
+
+def test_a_missing_foreign_key_stops_the_migration():
+    _guard_refuses(
+        "ALTER TABLE public.corpus_provider_permits "
+        "DROP CONSTRAINT corpus_provider_permits_session_id_fkey")
+
+
+def test_another_column_type_stops_the_migration():
+    _guard_refuses(
+        "ALTER TABLE public.corpus_provider_operations "
+        "ALTER COLUMN error_code TYPE varchar(40)")
+
+
+def test_an_extra_rule_stops_the_migration():
+    _guard_refuses(
+        "ALTER TABLE public.corpus_import_registrations "
+        "ADD CONSTRAINT corpus_import_registrations_extra CHECK (true)")
+
+
+def test_the_migration_drops_nothing():
+    from scripts.migrate import destructive_statements
+    assert destructive_statements(MIGRATION.read_text()) == []
+
+
+def test_the_real_tables_are_not_the_reference_copy():
+    with rolled_back() as cur:
+        cur.execute(_shape_guard())
+        cur.execute("SELECT count(*) FROM pg_class c "
+                    "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "WHERE n.nspname = 'public' AND c.relpersistence = 'p' "
+                    "AND c.relname IN ('corpus_processing_bases', "
+                    "'corpus_import_registrations', 'corpus_provider_permits', "
+                    "'corpus_provider_operations')")
+        assert cur.fetchone()[0] == 4
+
+
+def test_a_retirement_waits_for_a_registration_in_progress(db):
+    sid, rid = _import(db)
+    registering = psycopg2.connect(DSN)
+    try:
+        with registering.cursor() as cur:
+            cur.execute("SELECT public.register_corpus_import_v1(%s, %s)",
+                        (sid, rid))
+            with rolled_back() as other:
+                other.execute("SET lock_timeout = '300ms'")
+                with pytest.raises(psycopg2.errors.LockNotAvailable):
+                    other.execute("UPDATE public.corpus_processing_bases "
+                                  "SET retired_at = now() "
+                                  "WHERE decision_ref = 'N58'")
+    finally:
+        registering.rollback()
+        registering.close()
+
