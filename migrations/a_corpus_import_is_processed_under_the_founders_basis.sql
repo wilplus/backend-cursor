@@ -100,6 +100,11 @@ CREATE TABLE IF NOT EXISTS public.corpus_processing_bases (
         CHECK (NOT pooled_learning_eligible)
 );
 ALTER TABLE public.corpus_processing_bases ENABLE ROW LEVEL SECURITY;
+-- At most ONE basis is in force for a source at any moment, so which basis an
+-- import is registered under is never a choice by recency.
+CREATE UNIQUE INDEX IF NOT EXISTS corpus_processing_bases_one_in_force
+    ON public.corpus_processing_bases (covers_source)
+    WHERE retired_at IS NULL;
 COMMENT ON TABLE public.corpus_processing_bases IS
     'The founder''s processing basis for training-corpus imports (0435, N58). '
     'Not a person''s consent and not a per-import licence: one recorded basis, '
@@ -154,14 +159,24 @@ CREATE TABLE IF NOT EXISTS public.corpus_provider_permits (
     expires_at               timestamptz NOT NULL,
     revoked_at               timestamptz,
     status                   text        NOT NULL DEFAULT 'issued',
+    started_at               timestamptz,
+    finished_at              timestamptz,
     idempotency_key          text        NOT NULL UNIQUE,
     pooled_learning_eligible boolean     NOT NULL DEFAULT false,
     CONSTRAINT corpus_provider_permits_analysis_only
         CHECK (operation_kind IN ('audio_download', 'transcription',
                                   'feedback_generation',
                                   'ideal_text_generation')),
+    -- One provider call per permit: issued -> (started) -> used | failed, or
+    -- issued -> cancelled. Expiry is expires_at alone (no status mirrors it).
+    -- revoked_at is set exactly when the permit is cancelled.
     CONSTRAINT corpus_provider_permits_status_check
-        CHECK (status IN ('issued', 'used', 'revoked', 'expired', 'cancelled')),
+        CHECK (status IN ('issued', 'used', 'failed', 'cancelled')),
+    CONSTRAINT corpus_provider_permits_revocation_matches_status
+        CHECK ((status = 'cancelled') = (revoked_at IS NOT NULL)),
+    CONSTRAINT corpus_provider_permits_finish_matches_status
+        CHECK ((status IN ('used', 'failed')) = (finished_at IS NOT NULL)
+               AND (finished_at IS NULL OR started_at IS NOT NULL)),
     CONSTRAINT corpus_provider_permits_expiry_check
         CHECK (expires_at > issued_at),
     CONSTRAINT corpus_provider_permits_never_pooled
@@ -192,8 +207,9 @@ ALTER TABLE public.corpus_provider_operations ENABLE ROW LEVEL SECURITY;
 
 -- ── what never changes ─────────────────────────────────────────────────────
 
--- A basis may be retired once; nothing else about it ever changes and it is
--- never removed. Raised before anything could be returned for any other
+-- A basis may be retired once, with immediate effect (retired_at is the
+-- moment it was retired, never a date in the future); nothing else about it
+-- ever changes and it is never removed. Raised before anything could be returned for any other
 -- operation, so the same function serves the statement-level trigger.
 CREATE OR REPLACE FUNCTION public.corpus_processing_bases_retire_only()
 RETURNS trigger
@@ -203,6 +219,7 @@ AS $$
 BEGIN
     IF TG_OP = 'UPDATE'
        AND OLD.retired_at IS NULL AND NEW.retired_at IS NOT NULL
+       AND NEW.retired_at <= now()
        AND (NEW.id, NEW.decision_ref, NEW.decided_on, NEW.recorded_by,
             NEW.legal_basis, NEW.founder_note, NEW.covers_source,
             NEW.pooled_learning_eligible, NEW.created_at)
@@ -228,6 +245,41 @@ BEGIN
         USING ERRCODE = 'check_violation';
 END;
 $$;
+
+-- The permit and operation ledgers keep their history: an operation is never
+-- changed or removed, and a permit is never removed (only the permit writer
+-- and the event recorder above change a permit's state).
+CREATE OR REPLACE FUNCTION public.corpus_provider_ledger_keeps_history()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    RAISE EXCEPTION 'CORPUS_LEDGER_IMMUTABLE: the corpus provider ledger keeps its history'
+        USING ERRCODE = 'check_violation';
+END;
+$$;
+
+DROP TRIGGER IF EXISTS corpus_provider_operations_never_change
+    ON public.corpus_provider_operations;
+CREATE TRIGGER corpus_provider_operations_never_change
+    BEFORE UPDATE OR DELETE ON public.corpus_provider_operations
+    FOR EACH ROW EXECUTE FUNCTION public.corpus_provider_ledger_keeps_history();
+DROP TRIGGER IF EXISTS corpus_provider_operations_never_truncate
+    ON public.corpus_provider_operations;
+CREATE TRIGGER corpus_provider_operations_never_truncate
+    BEFORE TRUNCATE ON public.corpus_provider_operations
+    FOR EACH STATEMENT EXECUTE FUNCTION public.corpus_provider_ledger_keeps_history();
+DROP TRIGGER IF EXISTS corpus_provider_permits_never_removed
+    ON public.corpus_provider_permits;
+CREATE TRIGGER corpus_provider_permits_never_removed
+    BEFORE DELETE ON public.corpus_provider_permits
+    FOR EACH ROW EXECUTE FUNCTION public.corpus_provider_ledger_keeps_history();
+DROP TRIGGER IF EXISTS corpus_provider_permits_never_truncate
+    ON public.corpus_provider_permits;
+CREATE TRIGGER corpus_provider_permits_never_truncate
+    BEFORE TRUNCATE ON public.corpus_provider_permits
+    FOR EACH STATEMENT EXECUTE FUNCTION public.corpus_provider_ledger_keeps_history();
 
 DROP TRIGGER IF EXISTS corpus_processing_bases_retire_only
     ON public.corpus_processing_bases;
@@ -312,9 +364,10 @@ BEGIN
     IF existing.session_id IS NULL THEN
         refusal := public.corpus_import_refusal_v1(p_session_id, p_recording_id);
         IF refusal IS NOT NULL THEN RAISE EXCEPTION '%', refusal; END IF;
+        -- The one basis in force for imports (a unique index allows no
+        -- second); none in force refuses.
         SELECT * INTO basis FROM public.corpus_processing_bases
-         WHERE retired_at IS NULL OR retired_at > now()
-         ORDER BY created_at DESC, id DESC LIMIT 1;
+         WHERE covers_source = 'training_import' AND retired_at IS NULL;
         IF basis.id IS NULL THEN RAISE EXCEPTION 'CORPUS_BASIS_ABSENT'; END IF;
         INSERT INTO public.corpus_import_registrations (
             session_id, recording_id, basis_id, registered_via
@@ -355,11 +408,21 @@ DECLARE
     permit public.corpus_provider_permits;
     refusal text;
 BEGIN
+    -- Every input that defines the request is required.
+    IF p_session_id IS NULL OR p_recording_id IS NULL THEN
+        RAISE EXCEPTION 'CORPUS_IMPORT_UNREGISTERED';
+    END IF;
+    IF p_provider IS NULL OR char_length(btrim(p_provider)) = 0 THEN
+        RAISE EXCEPTION 'CORPUS_PROVIDER_REQUIRED';
+    END IF;
+    IF p_minimum_data_manifest IS NULL
+       OR jsonb_typeof(p_minimum_data_manifest) <> 'object' THEN
+        RAISE EXCEPTION 'CORPUS_MANIFEST_REQUIRED';
+    END IF;
     SELECT * INTO registration FROM public.corpus_import_registrations
      WHERE session_id = p_session_id;
     IF registration.session_id IS NULL
-       OR (p_recording_id IS NOT NULL
-           AND registration.recording_id <> p_recording_id) THEN
+       OR registration.recording_id <> p_recording_id THEN
         RAISE EXCEPTION 'CORPUS_IMPORT_UNREGISTERED';
     END IF;
     -- Re-checked on every permit: a session that has since been given an
@@ -369,7 +432,8 @@ BEGIN
     IF refusal IS NOT NULL THEN RAISE EXCEPTION '%', refusal; END IF;
     SELECT * INTO basis FROM public.corpus_processing_bases
      WHERE id = registration.basis_id
-       AND (retired_at IS NULL OR retired_at > now());
+       AND covers_source = 'training_import'
+       AND retired_at IS NULL;
     IF basis.id IS NULL THEN RAISE EXCEPTION 'CORPUS_BASIS_ABSENT'; END IF;
     IF p_operation_kind IS NULL OR p_operation_kind NOT IN (
         'audio_download', 'transcription', 'feedback_generation',
@@ -389,13 +453,19 @@ BEGIN
     ) VALUES (
         basis.id, basis.decision_ref, registration.session_id,
         registration.recording_id, p_provider, p_operation_kind,
-        COALESCE(p_minimum_data_manifest, '{}'::jsonb),
+        p_minimum_data_manifest,
         now() + make_interval(secs => p_ttl_seconds), p_idempotency_key
     ) ON CONFLICT (idempotency_key) DO NOTHING;
     SELECT * INTO permit FROM public.corpus_provider_permits
      WHERE idempotency_key = p_idempotency_key;
-    IF permit.session_id <> registration.session_id
-       OR permit.operation_kind <> p_operation_kind THEN
+    -- A replayed key returns its permit only when the request is the same
+    -- request: same import, recording, provider, operation, manifest and
+    -- basis. Anything else is a different request under a reused key.
+    IF (permit.session_id, permit.recording_id, permit.provider,
+        permit.operation_kind, permit.minimum_data_manifest, permit.basis_id)
+       IS DISTINCT FROM
+       (registration.session_id, p_recording_id, p_provider,
+        p_operation_kind, p_minimum_data_manifest, basis.id) THEN
         RAISE EXCEPTION 'IDEMPOTENCY_CONFLICT';
     END IF;
     RETURN jsonb_build_object(
@@ -417,29 +487,58 @@ CREATE OR REPLACE FUNCTION public.record_corpus_provider_operation_v1(
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
-DECLARE event_id uuid;
+DECLARE
+    event_id uuid;
+    permit public.corpus_provider_permits;
 BEGIN
-    IF p_event_kind NOT IN (
+    IF p_event_kind IS NULL OR p_event_kind NOT IN (
         'started', 'completed', 'failed', 'cancelled', 'deleted', 'delete_failed'
     ) THEN RAISE EXCEPTION 'INVALID_PROVIDER_EVENT'; END IF;
-    IF NOT EXISTS (
-        SELECT 1 FROM public.corpus_provider_permits
-         WHERE id = p_permit_id AND revoked_at IS NULL AND expires_at > now()
-    ) THEN RAISE EXCEPTION 'PROVIDER_PERMIT_INVALID'; END IF;
+    -- Locked, so two events for one permit can never both pass the order
+    -- check below.
+    SELECT * INTO permit FROM public.corpus_provider_permits
+     WHERE id = p_permit_id FOR UPDATE;
+    IF permit.id IS NULL THEN RAISE EXCEPTION 'PROVIDER_PERMIT_INVALID'; END IF;
+    -- The one order a permit's events may take (one provider call each):
+    --   started              only on an issued, unexpired permit, once;
+    --   completed | failed   only after started, once, ending it (used | failed);
+    --   cancelled            only on an issued permit never started;
+    --   deleted | delete_failed  (removing the provider's copy) only after
+    --                        the call ended, at any time after.
+    IF p_event_kind = 'started' THEN
+        IF permit.status <> 'issued' OR permit.started_at IS NOT NULL
+           OR permit.expires_at <= now() THEN
+            RAISE EXCEPTION 'PROVIDER_PERMIT_INVALID';
+        END IF;
+        UPDATE public.corpus_provider_permits SET started_at = now()
+         WHERE id = p_permit_id;
+    ELSIF p_event_kind IN ('completed', 'failed') THEN
+        IF permit.status <> 'issued' OR permit.started_at IS NULL THEN
+            RAISE EXCEPTION 'PROVIDER_EVENT_OUT_OF_ORDER';
+        END IF;
+        UPDATE public.corpus_provider_permits
+           SET status = CASE p_event_kind WHEN 'completed' THEN 'used'
+                                          ELSE 'failed' END,
+               finished_at = now()
+         WHERE id = p_permit_id;
+    ELSIF p_event_kind = 'cancelled' THEN
+        IF permit.status <> 'issued' OR permit.started_at IS NOT NULL THEN
+            RAISE EXCEPTION 'PROVIDER_EVENT_OUT_OF_ORDER';
+        END IF;
+        UPDATE public.corpus_provider_permits
+           SET status = 'cancelled', revoked_at = now()
+         WHERE id = p_permit_id;
+    ELSE
+        IF permit.status NOT IN ('used', 'failed') THEN
+            RAISE EXCEPTION 'PROVIDER_EVENT_OUT_OF_ORDER';
+        END IF;
+    END IF;
     INSERT INTO public.corpus_provider_operations (
         permit_id, provider_operation_ref, event_kind, error_code, metadata
     ) VALUES (
         p_permit_id, p_provider_operation_ref, p_event_kind, p_error_code,
         COALESCE(p_metadata, '{}'::jsonb)
     ) RETURNING id INTO event_id;
-    IF p_event_kind = 'completed' THEN
-        UPDATE public.corpus_provider_permits SET status = 'used'
-         WHERE id = p_permit_id AND status = 'issued';
-    ELSIF p_event_kind = 'cancelled' THEN
-        UPDATE public.corpus_provider_permits SET status = 'cancelled',
-               revoked_at = now()
-         WHERE id = p_permit_id;
-    END IF;
     RETURN event_id;
 END;
 $$;
@@ -655,6 +754,7 @@ REVOKE ALL ON FUNCTION public.record_corpus_provider_operation_v1(uuid, text, te
 REVOKE ALL ON FUNCTION public.corpus_import_refusal_v1(uuid, uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.corpus_processing_bases_retire_only() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.corpus_import_registrations_never_change() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.corpus_provider_ledger_keeps_history() FROM PUBLIC;
 REVOKE ALL ON TABLE public.corpus_processing_bases FROM PUBLIC;
 REVOKE ALL ON TABLE public.corpus_import_registrations FROM PUBLIC;
 REVOKE ALL ON TABLE public.corpus_provider_permits FROM PUBLIC;
@@ -672,6 +772,7 @@ BEGIN
             EXECUTE format('REVOKE ALL ON FUNCTION public.corpus_import_refusal_v1(uuid, uuid) FROM %I', v_role);
             EXECUTE format('REVOKE ALL ON FUNCTION public.corpus_processing_bases_retire_only() FROM %I', v_role);
             EXECUTE format('REVOKE ALL ON FUNCTION public.corpus_import_registrations_never_change() FROM %I', v_role);
+            EXECUTE format('REVOKE ALL ON FUNCTION public.corpus_provider_ledger_keeps_history() FROM %I', v_role);
             EXECUTE format('REVOKE ALL ON TABLE public.corpus_processing_bases FROM %I', v_role);
             EXECUTE format('REVOKE ALL ON TABLE public.corpus_import_registrations FROM %I', v_role);
             EXECUTE format('REVOKE ALL ON TABLE public.corpus_provider_permits FROM %I', v_role);

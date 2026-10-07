@@ -178,6 +178,26 @@ def test_a_basis_is_only_ever_retired():
         assert cur.rowcount == 1
 
 
+def test_a_retirement_takes_effect_at_once():
+    # retired_at is when it was retired, never a date ahead (HO-13 finding 1).
+    with rolled_back() as cur:
+        with pytest.raises(psycopg2.errors.CheckViolation,
+                           match="CORPUS_BASIS_IMMUTABLE"):
+            cur.execute("UPDATE public.corpus_processing_bases SET retired_at "
+                        "= now() + interval '1 day' WHERE decision_ref = 'N58'")
+
+
+def test_only_one_basis_is_ever_in_force():
+    with rolled_back() as cur:
+        with pytest.raises(psycopg2.errors.UniqueViolation):
+            cur.execute("""
+                INSERT INTO public.corpus_processing_bases (
+                    id, decision_ref, decided_on, recorded_by, legal_basis,
+                    founder_note, covers_source)
+                VALUES (gen_random_uuid(), 'N99', CURRENT_DATE, 'founder',
+                        'another basis', 'another note', 'training_import')""")
+
+
 # ── a registered import is permitted under N58 ─────────────────────────────
 
 def test_a_registered_import_is_permitted_under_n58(db):
@@ -191,8 +211,8 @@ def test_a_registered_import_is_permitted_under_n58(db):
     assert permit["basis_decision_ref"] == "N58" and permit["basis_id"] == BASIS_ID
     assert permit["session_id"] == sid and permit["recording_id"] == rid
     assert permit["operation_kind"] == "transcription"
-    # A permit with no recording named is for the registered one.
-    assert _corpus_permit(db, sid, None)["recording_id"] == rid
+    # A permit must name the registered recording (HO-13).
+    _refused(db, "CORPUS_IMPORT_UNREGISTERED", _corpus_permit, sid, None)
 
     for event in ("started", "completed"):
         _one(db, "SELECT public.record_corpus_provider_operation_v1("
@@ -390,3 +410,86 @@ def test_a_registration_never_changes(db):
             with pytest.raises(psycopg2.errors.CheckViolation,
                                match="CORPUS_REGISTRATION_IMMUTABLE"):
                 cur.execute(statement, (sid,))
+
+
+# ── HO-13: a permit is one exact request, used for one call ────────────────
+
+def _event(db, permit_id, kind):
+    return _one(db, "SELECT public.record_corpus_provider_operation_v1("
+                    "%s, %s, NULL, NULL, '{}'::jsonb)", (permit_id, kind))
+
+
+def _permit_with(db, sid, rid, *, provider="openai", manifest=None, key):
+    return _one(db, """
+        SELECT public.issue_corpus_provider_permit_v1(
+            %s, %s, %s, 'transcription', %s::jsonb, %s, 900)""",
+        (sid, rid, provider,
+         None if manifest is False else json.dumps(manifest or {"content": ["audio_bytes"]}),
+         key))
+
+
+def test_every_request_defining_input_is_required(db):
+    sid, rid = _import(db)
+    _register(db, sid, rid)
+    _refused(db, "CORPUS_PROVIDER_REQUIRED", _permit_with, sid, rid,
+             provider="", key=f"k-{uuid.uuid4()}")
+    _refused(db, "CORPUS_MANIFEST_REQUIRED", _permit_with, sid, rid,
+             manifest=False, key=f"k-{uuid.uuid4()}")
+
+
+def test_a_replayed_key_returns_its_permit_only_for_the_same_request(db):
+    sid, rid = _import(db)
+    _register(db, sid, rid)
+    key = f"k-{uuid.uuid4()}"
+    first = _permit_with(db, sid, rid, key=key)
+    assert _permit_with(db, sid, rid, key=key)["permit_id"] == first["permit_id"]
+    _refused(db, "IDEMPOTENCY_CONFLICT", _permit_with, sid, rid,
+             provider="cloudflare_r2", key=key)
+    _refused(db, "IDEMPOTENCY_CONFLICT", _permit_with, sid, rid,
+             manifest={"content": ["everything"]}, key=key)
+
+
+def test_a_permit_serves_one_call_in_order(db):
+    sid, rid = _import(db)
+    _register(db, sid, rid)
+    permit = _corpus_permit(db, sid, rid)["permit_id"]
+    _refused(db, "PROVIDER_EVENT_OUT_OF_ORDER", _event, permit, "completed")
+    _refused(db, "PROVIDER_EVENT_OUT_OF_ORDER", _event, permit, "deleted")
+    _event(db, permit, "started")
+    _refused(db, "PROVIDER_PERMIT_INVALID", _event, permit, "started")
+    _refused(db, "PROVIDER_EVENT_OUT_OF_ORDER", _event, permit, "cancelled")
+    _event(db, permit, "failed")
+    for kind in ("started", "completed", "failed", "cancelled"):
+        _refused(db, "PROVIDER_", _event, permit, kind)
+    _event(db, permit, "deleted")
+    with db.cursor() as cur:
+        cur.execute("SELECT status, started_at IS NOT NULL, finished_at IS NOT NULL, "
+                    "revoked_at IS NULL FROM public.corpus_provider_permits "
+                    "WHERE id = %s", (permit,))
+        assert cur.fetchone() == ("failed", True, True, True)
+
+    unused = _corpus_permit(db, sid, rid)["permit_id"]
+    _event(db, unused, "cancelled")
+    _refused(db, "PROVIDER_PERMIT_INVALID", _event, unused, "started")
+    with db.cursor() as cur:
+        cur.execute("SELECT status, revoked_at IS NOT NULL FROM "
+                    "public.corpus_provider_permits WHERE id = %s", (unused,))
+        assert cur.fetchone() == ("cancelled", True)
+
+
+def test_the_provider_ledger_keeps_its_history(db):
+    sid, rid = _import(db)
+    _register(db, sid, rid)
+    permit = _corpus_permit(db, sid, rid)["permit_id"]
+    event = _event(db, permit, "started")
+    for statement, args in (
+        ("UPDATE public.corpus_provider_operations SET error_code = 'x' WHERE id = %s", (event,)),
+        ("DELETE FROM public.corpus_provider_operations WHERE id = %s", (event,)),
+        ("TRUNCATE public.corpus_provider_operations", ()),
+        ("DELETE FROM public.corpus_provider_permits WHERE id = %s", (permit,)),
+        ("TRUNCATE public.corpus_provider_permits CASCADE", ()),
+    ):
+        with rolled_back() as cur:
+            with pytest.raises(psycopg2.errors.CheckViolation,
+                               match="CORPUS_LEDGER_IMMUTABLE"):
+                cur.execute(statement, args)
