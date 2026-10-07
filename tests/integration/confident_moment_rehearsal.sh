@@ -711,6 +711,15 @@ hard migrations/a_line_is_never_said_twice_in_a_row.sql
 hard migrations/new_coach_feedback_waits_on_the_lounge_bubble.sql
 hard migrations/new_coach_feedback_waits_on_the_lounge_bubble.sql
 
+# 0440 (D-FW-9, 2026-10-07): a speaker may change a judgement; the first
+# answer stays. A revision table, its no-edit trigger and the revising
+# function. Its foreign key to take_feedback_self_report is added where
+# that table is present (released); the narrow lane gets the table and a
+# notice. After 0439, as in the manifest. Twice: apply/reapply idempotency.
+# Its suite: tests/test_a_speaker_may_change_a_judgement_postgres.py.
+hard migrations/a_speaker_may_change_a_judgement.sql
+hard migrations/a_speaker_may_change_a_judgement.sql
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

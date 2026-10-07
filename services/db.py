@@ -7877,6 +7877,67 @@ class DatabaseService:
             logger.warning("atomic take feedback self-report failed: %s", e)
             return None
 
+    def revise_take_feedback_self_report(
+        self, *, take_session_id: str, owner_user_id: str, feedback_id: str,
+        response: str,
+    ) -> Optional[dict]:
+        """A later answer to a Confident Voice judgement, kept beside the
+        first (0440, D-FW-9; QA1 A). ``{outcome, row}``: 'revised',
+        'replayed', 'not_answered' or 'not_revisable'; None on failure."""
+        if not all((take_session_id, owner_user_id, feedback_id, response)):
+            return None
+        try:
+            data = self.client.rpc("revise_take_feedback_response_v1", {
+                "p_take_session_id": str(take_session_id),
+                "p_owner_user_id": str(owner_user_id),
+                "p_feedback_id": str(feedback_id),
+                "p_response": str(response),
+            }).execute().data
+            if isinstance(data, list):
+                data = data[0] if data else None
+            return data if isinstance(data, dict) else None
+        except Exception as e:
+            logger.warning("take feedback revision failed: %s", e, exc_info=True)
+            return None
+
+    def _latest_self_reports(self, rows: Any) -> list:
+        """The speaker's answers with each changed judgement at its latest
+        (0440, D-FW-9). The first answer's row stays the row; `response`
+        becomes the newest revision's and `first_response` keeps the first.
+        Unreadable revisions leave the first answers, logged: the readers
+        then see what they saw before 0440, never nothing."""
+        rows = [row for row in (rows or []) if isinstance(row, dict)]
+        ids = sorted({row["id"] for row in rows if row.get("id") is not None
+                      and row.get("feedback_family") == "confident_voice"},
+                     key=str)
+        if not ids:
+            return rows
+        try:
+            revisions = (self.client.table("take_feedback_self_report_revision")
+                         .select("report_id,response,revision,created_at")
+                         .in_("report_id", ids).execute().data) or []
+        except Exception as e:
+            logger.warning("judgement revisions unreadable: %s", e, exc_info=True)
+            return rows
+        latest: dict[str, dict] = {}
+        for rev in revisions:
+            if not isinstance(rev, dict):
+                continue
+            key = str(rev.get("report_id"))
+            if key not in latest or int(rev.get("revision") or 0) > int(
+                    latest[key].get("revision") or 0):
+                latest[key] = rev
+        out = []
+        for row in rows:
+            rev = latest.get(str(row.get("id")))
+            if rev is None:
+                out.append(row)
+                continue
+            out.append({**row, "response": rev.get("response"),
+                        "first_response": row.get("response"),
+                        "revised_at": rev.get("created_at")})
+        return out
+
     def list_take_feedback_self_reports(
         self, take_session_id: str, owner_user_id: Optional[str] = None,
     ) -> list:
@@ -7888,7 +7949,8 @@ class DatabaseService:
                      .eq("take_session_id", str(take_session_id)))
             if owner_user_id:
                 query = query.eq("owner_user_id", str(owner_user_id))
-            return query.order("created_at").execute().data or []
+            return self._latest_self_reports(
+                query.order("created_at").execute().data or [])
         except Exception as e:
             if "take_feedback_self_report" not in str(e).lower():
                 logger.warning("take feedback self-report read failed: %s", e)
@@ -7922,11 +7984,12 @@ class DatabaseService:
         if not snippet_id:
             return []
         try:
-            return (self.client.table("take_feedback_self_report")
-                    .select("*")
-                    .eq("snippet_id", str(snippet_id))
-                    .order("created_at")
-                    .execute().data) or []
+            return self._latest_self_reports(
+                (self.client.table("take_feedback_self_report")
+                 .select("*")
+                 .eq("snippet_id", str(snippet_id))
+                 .order("created_at")
+                 .execute().data) or [])
         except Exception as e:
             if "take_feedback_self_report" not in str(e).lower():
                 logger.warning("clip self-report read failed: %s", e)
@@ -7939,12 +8002,13 @@ class DatabaseService:
         if not arc_id:
             return []
         try:
-            return (self.client.table("take_feedback_self_report")
-                    .select("*")
-                    .eq("arc_id", str(arc_id))
-                    .eq("feedback_family", "confident_voice")
-                    .order("created_at")
-                    .execute().data) or []
+            return self._latest_self_reports(
+                (self.client.table("take_feedback_self_report")
+                 .select("*")
+                 .eq("arc_id", str(arc_id))
+                 .eq("feedback_family", "confident_voice")
+                 .order("created_at")
+                 .execute().data) or [])
         except Exception as e:
             if "take_feedback_self_report" not in str(e).lower():
                 logger.warning("confident self-report read failed: %s", e)

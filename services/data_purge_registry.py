@@ -145,6 +145,15 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "take_session_id", "take", "derived_feedback"),
     _product_record("feedback_self_report", "take_feedback_self_report",
                     "take_session_id", "take", "derived_feedback"),
+    # A changed judgement kept beside the first (0440, D-FW-9): deleted with
+    # the Take. Its foreign key also cascades from the first answer's row,
+    # which stays under the v1.4 product-records rule; until that rule is
+    # active the first answer stops the erasure for review, so this never
+    # deletes ahead of it. (Not a ruled entry: the signed schedule does not
+    # name it yet.)
+    PurgeDependency("feedback_self_report_revision",
+                    "take_feedback_self_report_revision", "take_session_id",
+                    "take", "delete", "derived_feedback", 59),
     PurgeDependency("suggestion_feedback", "user_suggestion_feedback",
                     "session_id", "take", "delete", "derived_feedback", 35),
     PurgeDependency("moment_suggestions", "moment_suggestions",
