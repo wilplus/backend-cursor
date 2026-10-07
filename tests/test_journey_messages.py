@@ -30,13 +30,48 @@ class JourneyMessageTests(unittest.TestCase):
             "confident moments.",
             "Use the helper words and record the second take of your presentation ⬇️",
         ])
-        self.assertEqual(row["metadata"]["actions"], ["prepare_take_2"])
+        self.assertEqual(row["metadata"]["actions"],
+                         ["prepare_take_2", "keep_practising"])
 
-    def test_take_three_has_completion_actions(self):
-        row = journey_message("u1", "a1", 3)
-        self.assertEqual(row["metadata"]["actions"], [
-            "presentation_mode", "export", "keep_practising",
+    def test_take_two_copy_and_actions_are_locked(self):
+        row = journey_message("u1", "a1", 2)
+        self.assertEqual(row["body"].split("\n\n"), [
+            "Your presentation is stronger now.",
+            "We’ve seen your message become clearer. Now let’s focus on making "
+            "the delivery feel natural and confident.",
+            "Use the orange-marked text as your anchors - not a script - and "
+            "try to speak as to a friend.",
         ])
+        self.assertEqual(row["metadata"]["actions"],
+                         ["prepare_take_3", "keep_practising"])
+
+    def test_take_three_copy_lost_its_last_sentence_and_keeps_export_and_practise(self):
+        # Q-B15 A (N62): the Take 3 message loses its last sentence; nothing
+        # else in it changes. J5 (N37.4): no presentation_mode door.
+        row = journey_message("u1", "a1", 3)
+        self.assertEqual(row["body"].split("\n\n"), [
+            "Your presentation is ready.",
+            "We’ve seen your message become much more clear and your delivery "
+            "grow more natural across three takes.",
+            "Use the orange-marked text as your anchors - not a script - and "
+            "try to speak as to a friend.",
+        ])
+        self.assertNotIn("keep practising", row["body"])
+        self.assertEqual(row["metadata"]["actions"], ["export", "keep_practising"])
+
+    def test_practise_again_is_offered_after_every_guided_take(self):
+        # QA9 A (N51.5; ledger A019a): Practise again after Takes 1 and 2
+        # too, not Take 3 alone.
+        for take in (1, 2, 3):
+            actions = journey_message("u1", "a1", take)["metadata"]["actions"]
+            self.assertIn("keep_practising", actions, take)
+            self.assertEqual(actions[-1], "keep_practising", take)
+
+    def test_presentation_mode_is_never_a_journey_action(self):
+        # J5 (N37.4): the ⋯ menu is Presentation Mode's only door.
+        for take in (1, 2, 3):
+            self.assertNotIn("presentation_mode",
+                             journey_message("u1", "a1", take)["metadata"]["actions"])
 
     def test_fourth_take_has_no_guided_next_steps(self):
         self.assertIsNone(journey_message("u1", "a1", 4))
