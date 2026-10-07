@@ -15175,6 +15175,35 @@ class DatabaseService:
                .in_("take_session_id", ids).execute())
         return list(res.data or [])
 
+    def set_coach_moment_diagnosis(self, *, take_session_id: str, snippet_id: str,
+                                   coach_id: str, kind: str, error_id: Optional[str],
+                                   new_name: Optional[str]) -> Optional[dict]:
+        """The coach's diagnosis of a moment (migration 0445): a library
+        error, a coach-named error or no error; the same again is a no-op, a
+        change supersedes and versions (Q-B12 A). Raises the database's
+        refusal to the caller (services.coach_diagnosis names it)."""
+        result = self.client.rpc("set_coach_moment_diagnosis_v1", {
+            "p_take_session_id": str(take_session_id), "p_snippet_id": str(snippet_id),
+            "p_coach_id": str(coach_id), "p_kind": str(kind),
+            "p_error_id": error_id, "p_new_name": new_name,
+        }).execute()
+        return self._rpc_row(result.data)
+
+    def get_coach_moment_diagnosis(self, *, snippet_id: str, coach_id: str) -> Optional[dict]:
+        """This coach's current diagnosis of the moment (0445), or None."""
+        res = (self.client.table("coach_moment_diagnoses").select("*")
+               .eq("snippet_id", str(snippet_id)).eq("coach_id", str(coach_id))
+               .is_("superseded_at", "null").limit(1).execute())
+        return (res.data or [None])[0]
+
+    def list_coach_named_errors(self, *, unlinked_only: bool = True) -> list[dict]:
+        """The errors coaches named in one field (0445, Q-B7 A); by default
+        only those the founder has not yet linked to a library entry."""
+        query = self.client.table("coach_named_errors").select("*").order("first_named_at")
+        if unlinked_only:
+            query = query.is_("speaking_error_id", "null")
+        return list(query.execute().data or [])
+
     def list_exercise_coach_requests_for_sessions(
         self, session_ids: list[str],
     ) -> dict[tuple[str, str], dict]:

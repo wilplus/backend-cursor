@@ -461,6 +461,14 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "take_session_id", "take", "delete", "derived_feedback", 58),
     PurgeDependency("coach_listen_again_requests_by_coach", "coach_listen_again_requests",
                     "coach_id", "user", "delete", "derived_feedback", 35),
+    # A coach's diagnosis of a moment (0445): about the speaker's Take, so it
+    # goes with the Take; the coach_id is the coach's user id, so with the
+    # coach too. The coach-named errors it may point at are library content
+    # (NON_SUBJECT_RELATIONS, like speaking_error).
+    PurgeDependency("coach_moment_diagnoses", "coach_moment_diagnoses",
+                    "take_session_id", "take", "delete", "derived_feedback", 58),
+    PurgeDependency("coach_moment_diagnoses_by_coach", "coach_moment_diagnoses",
+                    "coach_id", "user", "delete", "derived_feedback", 35),
     PurgeDependency("feedback_pairs_by_take", "feedback_pairs",
                     "take_session_id", "take", "delete", "derived_feedback", 58),
     # A pattern the coach named on the moment itself rather than on a
@@ -1342,6 +1350,10 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     # occurred in a particular take, so there is nothing here to purge when a
     # person asks to be deleted.
     "speaking_error",
+    # An error a coach named in one field (0445, Q-B7 A): library content
+    # waiting for the founder's definition, like speaking_error; no recording,
+    # no speaker.
+    "coach_named_errors",
     # The catalogue of signed lines (0401): one sentence per pattern, written
     # by the founder or a coach. Copy, never a speaker's words or recording;
     # nothing here names a person.

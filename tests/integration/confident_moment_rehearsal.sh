@@ -773,6 +773,14 @@ hard migrations/a_share_records_the_words_the_speaker_saw.sql
 hard migrations/a_coach_is_asked_to_listen_again.sql
 hard migrations/a_coach_is_asked_to_listen_again.sql
 
+# 0445 (coach panel lock flow 6; Q-B7 A, Q-B12 A; D-CP-4): the coach's
+# diagnosis comes first. Two tables (the coach-named errors, the versioned
+# diagnoses) and one writer over speaking_error (0332), which both lanes
+# carry. Both lanes, after 0444, as in the manifest. Twice: apply/reapply
+# idempotency. Its suite: tests/test_the_coach_s_diagnosis_comes_first_postgres.py.
+hard migrations/the_coach_s_diagnosis_comes_first.sql
+hard migrations/the_coach_s_diagnosis_comes_first.sql
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

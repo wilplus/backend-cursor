@@ -1891,6 +1891,30 @@ def v2_coach_moment_read(session_id, snippet_id):
     return jsonify(payload), 200
 
 
+@v2_bp.route(
+    "/coach/sessions/<session_id>/snippets/<snippet_id>/diagnosis",
+    methods=["GET", "PUT"],
+)
+@require_admin_or_coach
+def v2_coach_moment_diagnosis(session_id, snippet_id):
+    """The diagnosis first (coach panel lock flow 6; Q-B7 A; Q-B12 A; D-CP-4;
+    0445). GET: the errors in the lock's order, the machine-heard ones first
+    and flagged, then the library's, then the coach-named ones, with THIS
+    coach's current diagnosis. PUT {error_id} | {new_name} | {no_error}: one
+    diagnosis per coach per moment, re-settable with the history kept. Coach
+    provenance only, never a label; behind the blind gate (BLIND COACH). The
+    work is services.coach_diagnosis'."""
+    error, owner_sid = _moment_gate(session_id, snippet_id)
+    if error:
+        return error
+    from services.coach_diagnosis import review
+    status, payload = review(
+        db, take_session_id=owner_sid, snippet_id=snippet_id,
+        coach_id=str(getattr(request, "user_id", "")), method=request.method,
+        body=request.get_json(silent=True) if request.method == "PUT" else None)
+    return jsonify(payload), status
+
+
 # ── willab — the arc-level delivery: RETIRED ─────────────────────────────
 # Founder 2026-09-30, B3 to B6 (contract 65; docs/FOUNDER-LOCK-coach-panel-
 # 2026-10.md), removed 2026-10-01 on the founder's "do P2-19 now". The
