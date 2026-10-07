@@ -605,6 +605,31 @@ def v2_coach_moments_queue():
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch the queue"}), 500
 
 
+@v2_bp.route("/coach/speakers", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_speakers():
+    """The Speakers button (coach panel lock, founder 2026-10-07): every
+    speaker this coach may hear, by pseudonym, with their goal, what waits
+    and which Takes are answered. Same language gate as the queue; never a
+    name, email or user_id; nothing about any moment (BLIND COACH)."""
+    from services.coach_speakers import speakers_for_coach
+    try:
+        rater_id = str(getattr(request, "user_id", "") or "")
+        proficient = db.get_user_proficient_languages(rater_id)
+        if not proficient:
+            return _rater_language_error("profile_required")
+        rows, snips, _states = load_review_queue(db, _coach_state_map)
+        matched = _language_matched_rows(rows, snips, proficient)
+        return jsonify(speakers_for_coach(
+            db, matched, rater_id=rater_id,
+            moments_for=_queue_moments_for(snips),
+            pseudonym_for=_coach_pseudonym)), 200
+    except Exception as e:
+        logger.error("coach/speakers GET failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch the speakers"}), 500
+
+
 # Phase 4 / Prompt 2 — the AI-Commentator draft the coach's comment
 # field opens PRE-FILLED with (frozen; the coach types over it). {} when
 # the migration hasn't run → blank field, same as before.

@@ -60,7 +60,7 @@ class QueueTests(unittest.TestCase):
             [{"id": "t", "user_id": "u", "created_at": "x"}],
             moments_for=lambda r: [], reached_for=ALL, ratings_for=lambda s: {},
             request_for=lambda s, n: None, pseudonym_for=lambda u: "Calm Heron")
-        self.assertEqual(set(out[0]), {"pseudonym", "takes", "waiting", "waiting_for_text"})
+        self.assertEqual(set(out[0]), {"pseudonym", "goal", "takes", "waiting", "waiting_for_text"})
         self.assertNotIn("user_id", out[0]["takes"][0])
 
     def test_a_take_whose_bookmarks_are_not_frozen_rides_as_waiting_for_text(self):
