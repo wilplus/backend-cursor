@@ -695,6 +695,13 @@ hard migrations/a_training_yes_counts_the_acceptance_the_account_is_processed_un
 hard migrations/each_served_take_keeps_its_coverage.sql
 hard migrations/each_served_take_keeps_its_coverage.sql
 
+# 0438 (D-FW-3, 2026-10-07): a signed line is never said twice in a row.
+# One table and its picking function, no dependency, so both lanes. After
+# 0437, as in the manifest. Twice: apply/reapply idempotency. Its suite:
+# tests/test_a_line_is_never_said_twice_in_a_row_postgres.py.
+hard migrations/a_line_is_never_said_twice_in_a_row.sql
+hard migrations/a_line_is_never_said_twice_in_a_row.sql
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

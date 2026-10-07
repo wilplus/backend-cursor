@@ -15524,6 +15524,24 @@ class DatabaseService:
             query = query.not_.in_("community_id", keep)
         return len(query.execute().data or [])
 
+    def pick_line_bank_line(self, *, user_id: str, bank: str, size: int,
+                            later_true: bool) -> int:
+        """The index of the signed line to show next in one bank for one
+        speaker, recorded in the same call (0438): -1 is the bank's later
+        line. Raises on failure."""
+        res = self.client.rpc("pick_line_bank_line_v1", {
+            "p_user_id": str(user_id), "p_bank": str(bank),
+            "p_size": int(size), "p_later_true": bool(later_true),
+        }).execute()
+        data = res.data
+        if isinstance(data, list):
+            data = data[0] if data else None
+        if isinstance(data, dict):
+            data = next(iter(data.values()), None)
+        if isinstance(data, bool) or not isinstance(data, int):
+            raise ValueError("pick_line_bank_line_v1 returned no index")
+        return data
+
     def list_community_clips_live(self, community_ids: list[str]) -> list[dict]:
         """The live moments shared with these communities (the view, 0432),
         newest share first."""

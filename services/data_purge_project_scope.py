@@ -121,6 +121,9 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     # private community its creator set up belong to the account; the
     # Take-keyed answers and shares go with the Take under their own codes.
     "community_answers_by_listener", "community_members", "communities_created",
+    # The signed line last shown per bank (0438): the speaker's, not a
+    # project's.
+    "line_bank_memory",
     # A coach's own choices, blind answers and exposures (0411): the
     # coach's account; the Take-keyed twins of three of them go with the
     # Take under their own codes.

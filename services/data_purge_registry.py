@@ -380,6 +380,10 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "user_id", "user", "delete", "database_row", 35),
     PurgeDependency("communities_created", "communities",
                     "created_by", "user", "delete", "database_row", 60),
+    # The signed line last shown per bank (0438, D-FW-3): indexes into the
+    # signed bank, about one speaker; it goes with the account.
+    PurgeDependency("line_bank_memory", "line_bank_memory",
+                    "user_id", "user", "delete", "database_row", 35),
     # A served Take's coverage and lane outcomes (0437, D-ML-5): counts,
     # Slide indexes and type names about one Take; it goes with the Take.
     PurgeDependency("take_feedback_coverage", "take_feedback_coverage",
