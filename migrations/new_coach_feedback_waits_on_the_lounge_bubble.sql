@@ -89,11 +89,12 @@ BEGIN
          WHERE w.shared_at IS NOT NULL
          GROUP BY t.arc, w.take_session_id
         UNION ALL
-        SELECT t.arc, r.take_session_id, r.snippet_id,
+        SELECT t.arc, r.take_session_id, r.snippet_id::text,
                GREATEST(r.shared_at, r.answered_at, r.resolved_at)
           FROM public.exercise_coach_requests r
           JOIN takes t ON t.take_id = r.take_session_id
          WHERE r.shared_at IS NOT NULL
+           AND r.snippet_id IS NOT NULL
            AND r.owner_user_id = p_owner
     ),
     unseen AS (

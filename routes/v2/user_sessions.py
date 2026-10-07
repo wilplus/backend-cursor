@@ -1530,12 +1530,18 @@ def _changed_judgement(row: dict, outcome: str, result: dict,
         take_session_id=take_session_id, owner_user_id=owner_user_id,
         feedback_id=row["feedback_id"], response=row["response"]) or {}
     revision = str(change.get("outcome") or "")
-    changed_before = int((change.get("row") or {}).get("revision") or 0) > 0
+    try:
+        changed_before = int((change.get("row") or {}).get("revision") or 0) > 0
+    except (TypeError, ValueError):
+        changed_before = False
     if revision == "revised":
         return "revised", change
     if revision == "replayed" and (outcome == "conflict" or changed_before):
         return "revised_replay", change
-    if not revision and outcome == "conflict":
+    if not revision:
+        # GPT-0440: going back to the first answer after a change reads as a
+        # replay at the first writer; if the revision cannot be saved the
+        # latest answer is stale, so the speaker is told it did not save.
         return "revision_failed", result
     return outcome, result
 

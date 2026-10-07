@@ -277,6 +277,17 @@ def test_a_rewrites_answer_is_still_final_and_a_failed_revision_is_an_error():
     assert (status, body["code"]) == (409, "RESPONSE_ALREADY_FINAL")
 
 
+def test_going_back_when_the_revision_cannot_save_is_an_error():
+    """GPT-0440 should-fix: going back to the first answer after a change
+    reads as a replay at the first writer; when the revision write fails
+    the latest answer is stale, so the speaker is not told it saved."""
+    status, body, _ = _post(_RouteDb("replayed", None), response="no")
+    assert (status, body["code"]) == (500, "V2_ERROR")
+    bad = {"outcome": "replayed", "row": {"revision": "not a number"}}
+    status, body, _ = _post(_RouteDb("replayed", bad), response="no")
+    assert status == 200 and "revised" not in body
+
+
 def test_the_migration_is_listed_and_the_purge_knows_the_table():
     from services.data_purge_registry import DEPENDENCIES
 

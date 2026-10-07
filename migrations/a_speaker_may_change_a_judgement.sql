@@ -190,6 +190,7 @@ BEGIN
        AND NOT EXISTS (
            SELECT 1 FROM pg_constraint
             WHERE conname = 'take_feedback_self_report_revision_report_fkey'
+              AND conrelid = 'public.take_feedback_self_report_revision'::regclass
        ) THEN
         ALTER TABLE public.take_feedback_self_report_revision
             ADD CONSTRAINT take_feedback_self_report_revision_report_fkey
