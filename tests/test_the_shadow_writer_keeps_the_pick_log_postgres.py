@@ -76,6 +76,10 @@ def _first_eligible(frame):
     {"lane": "unknown_lane"},
     {"candidate_id": ""},
     {"eligible": "yes"},
+    {"pick_probability": 0.5},
+    {"pick_probability": "1"},
+    {"lane": None},
+    {"block_id": None},
 ])
 def test_a_bad_pick_log_entry_is_refused(cur, change):
     seed = _fresh(cur)
@@ -94,7 +98,70 @@ def test_a_selection_missing_from_the_log_is_refused(cur):
         if entry["candidate_id"] == selected:
             entry["pick_probability"] = 0.0
     with pytest.raises(psycopg2.errors.RaiseException,
-                       match="universal-v3 pick log misses a selection"):
+                       match="universal-v3 pick log does not match the inventory"):
+        _write(cur, seed, frame)
+
+
+def test_an_entry_without_its_lane_is_refused(cur):
+    """GPT-0441 blocker: a missing lane made the NOT IN check unknown."""
+    seed = _fresh(cur)
+    frame = copy.deepcopy(seed["frame"])
+    _first_eligible(frame).pop("lane")
+    with pytest.raises(psycopg2.errors.RaiseException,
+                       match="invalid universal-v3 pick log"):
+        _write(cur, seed, frame)
+
+
+def _mismatch(cur, mutate):
+    seed = _fresh(cur)
+    frame = copy.deepcopy(seed["frame"])
+    mutate(frame)
+    with pytest.raises(psycopg2.errors.RaiseException,
+                       match="universal-v3 pick log does not match the inventory"):
+        _write(cur, seed, frame)
+
+
+def test_a_dropped_or_doubled_entry_is_refused(cur):
+    _mismatch(cur, lambda f: f["pick_log"]["candidates"].pop())
+    cur.connection.rollback()
+    _mismatch(cur, lambda f: f["pick_log"]["candidates"].append(
+        copy.deepcopy(f["pick_log"]["candidates"][0])))
+
+
+def test_a_selection_bound_to_another_block_is_refused(cur):
+    """GPT-0441 blocker: a chance-1 row must sit under its own block."""
+    def move(frame):
+        blocks = [b["block_id"] for b in frame["blocks"]]
+        assert len(set(blocks)) > 1, "fixture needs two blocks"
+        selected = frame["blocks"][0]["selected_candidate_id"]
+        for entry in frame["pick_log"]["candidates"]:
+            if entry["candidate_id"] == selected:
+                entry["block_id"] = blocks[1]
+    _mismatch(cur, move)
+
+
+def test_a_verbal_selection_must_be_logged_at_chance_one(cur):
+    seed = _fresh(cur)
+    frame = copy.deepcopy(seed["frame"])
+    picked = [(lane, cid) for lane in ("rewrite_clarity", "great_formulation")
+              for cid in frame["verbal_lanes"][lane]["selected_candidate_ids"]]
+    if not picked:
+        pytest.skip("fixture selects no verbal candidate")
+    lane, cid = picked[0]
+    for entry in frame["pick_log"]["candidates"]:
+        if entry["lane"] == lane and entry["candidate_id"] == cid:
+            entry["pick_probability"] = 0.0
+    with pytest.raises(psycopg2.errors.RaiseException,
+                       match="universal-v3 pick log does not match the inventory"):
+        _write(cur, seed, frame)
+
+
+def test_the_seed_must_be_the_takes_own(cur):
+    seed = _fresh(cur)
+    frame = copy.deepcopy(seed["frame"])
+    frame["pick_log"]["seed"] = str(int(frame["pick_log"]["seed"]) ^ 1)
+    with pytest.raises(psycopg2.errors.RaiseException,
+                       match="invalid universal-v3 pick log"):
         _write(cur, seed, frame)
 
 

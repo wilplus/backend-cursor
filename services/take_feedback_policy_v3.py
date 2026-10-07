@@ -60,9 +60,8 @@ _VERBAL_FAMILIES = set(VERBAL_FAMILIES)
 def dark_enabled(acquisition_principal_id: Any) -> bool:
     """True only for the exact configured founder in explicit dark mode.
 
-    V4 B1.1 widens pick logging to every speaker (V1 A). That widening is a
-    separate, founder-confirmed change; until then the dark frame, now with
-    its pick log, is still written for the founder's Takes only.
+    This gate decides whose Takes get a dark frame (with its pick log).
+    Any change to it is its own founder-approved change with its own test.
     """
     mode = (config.TAKE_FEEDBACK_POLICY_V3_SHADOW_WRITE_MODE or "off").strip()
     founder = (config.TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID or "").strip()
@@ -82,8 +81,9 @@ def pick_seed(take_id: Any) -> str:
     replay draw the same numbers. A decimal string of at most 16 digits
     (52 bits): exact in JSON and in JavaScript.
     """
+    take = str(take_id or "").strip().lower()
     digest = hashlib.sha256(
-        f"{PICK_SEED_VERSION}:{take_id}".encode("utf-8")).hexdigest()
+        f"{PICK_SEED_VERSION}:{take}".encode("utf-8")).hexdigest()
     return str(int(digest[:13], 16))
 
 
@@ -106,6 +106,10 @@ def _pick_entry(lane: str, block_id: Any, item: dict,
 def _pick_log(take_id: str, blocks: list[dict],
               lanes: Iterable[tuple[str, list[dict], list[str]]]) -> dict:
     """Every candidate with its chance of being picked (V4 B1.1).
+
+    The writer (0441) refuses a log that is not the inventory exactly: every
+    confidence candidate under its block, every verbal candidate under its
+    lane, each once.
 
     V3 picks deterministically, so the chance is 1.0 for the candidate it
     selected and 0.0 for every other eligible one; an excluded candidate has
