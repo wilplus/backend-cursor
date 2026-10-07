@@ -2128,3 +2128,64 @@ account at sign-in, after the current Terms were accepted as a first-time
 visitor. Migration 0436 lets C1 accept a receipt held by the account or by
 that resolved principal; nothing else changes, and no one else's acceptance
 can count. Ships after a GPT check (HO-14).
+
+**N62 · The build plan's questions are answered, and Wave 1 starts
+(founder, Navigation Panel, 7 October 2026, 16:36 UTC).** The audit of
+every agreed design against `main` (`docs/audit/build/BUILD-PLAN-2026-10-07.md`)
+asked 15 questions; the founder answered 11, all with Claude's pick, and
+gave Wave 1 its green light (GO-W1 A: "I start now, merge each PR when it's
+green, and post every finished piece in Done").
+
+- **Q-B1 A.** The machine may use its private willfidence read (sound times
+  words) to rank which moment gets feedback, inside the machine only; no
+  number ever reaches a screen (AC-9). Before V4 ranks with it, Claude writes
+  a one-line operational definition of each of the four word signals and the
+  list of moment roles for the founder's signature (CONSTRUCT). This settles
+  the clash with SPEC §17's "never a ranking term" for this internal use.
+- **Q-B2 A.** With several slides the Feedback walk spans the whole Take: all
+  praise from every slide, then all the practising, then one "Judgement
+  time!" for every moment. The top bar names each moment's slide.
+- **Q-B4 A.** Every word a locked prototype shows is signed with its design.
+  Where a signed list differs, the list wins ("Choose a file"); signed words
+  with no place are not used. "Journal" shows above the post in the walk, and
+  "Getting your mic ready" becomes visible text.
+- **Q-B6 A.** Skip on "Judgement time!" clears the bars and still asks to
+  share, then the end card (amends WQ1 A). Sharing names the current
+  Privacy/Terms, and each share records the words the speaker saw. A
+  "Sharing" row in the ⋯ menu reopens the same screen; "None" takes the
+  share back. "None" needs the founder's signature before it ships.
+- **Q-B7 A.** An error a coach names in one field is stored as "named by a
+  coach" until the founder writes its definition and question in admin. The
+  exercise reaches the speaker now and waits in the library. The coach's
+  list shows every active error plus coach-named ones. Naming is a signal for
+  the founder only; readiness for a detector still comes from blind "Do you
+  hear it?" answers.
+- **Q-B8 A.** V4's two blind coach questions ("Pick the moment for feedback",
+  "Which sounds surer") go under "Also waiting · blind" on the coach panel,
+  in its look; "listen again" arrives as a normal moment in that speaker's
+  queue with its signed line. A clickable prototype goes to the founder to
+  sign first (amends the coach panel lock once signed).
+- **Q-B11 A.** At most 3 other voices per walk, community first, then
+  training clips, on the same judgement screen without the slide bar. Lend
+  your ear's engine serves them under the per-Take consent only. The Album
+  share switch and Bold voices are retired.
+- **Q-B12 A.** When a coach changes an answer the speaker already has, the
+  new answer replaces the card; the old one stays in history for audit.
+- **Q-B13 A.** A clearer version never goes to the exercise library; its kind
+  only labels the coach's work, and the screen shows "Share with {p}" alone.
+  A note goes straight to "Ready for {p}" (closes D4).
+- **Q-B15 A.** The twelve smaller choices apply as listed in the plan: the
+  picker notes ("These words show while you record your next take"; "These
+  replace your Take N words. Those stay in Earlier Takes." with the real
+  Take number), the library video when a coach has none, B10–B12 not shown
+  for now, the "done before" mark dropped (amends QA10 A), the Lounge's Take
+  3 message loses its last sentence, corpus hide/delete/restore move to
+  admin, "Do you hear it?" stays on, single-project delete stays off,
+  "What's changed since you agreed" stays as signed, "No projects yet." for
+  an empty list, a refused "Turn on" keeps today's words with the reason
+  logged, and the Personalised practice tick goes only after counsel clears
+  N55 and the founder signs the changed prototype. "No projects yet." and
+  the Take N note are signed by this answer.
+
+Still open: Q-B3, Q-B5, Q-B9, Q-B10 and Q-B14, which go to the founder with
+a clickable side-by-side prototype.
