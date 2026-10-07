@@ -720,6 +720,18 @@ hard migrations/new_coach_feedback_waits_on_the_lounge_bubble.sql
 hard migrations/a_speaker_may_change_a_judgement.sql
 hard migrations/a_speaker_may_change_a_judgement.sql
 
+# 0441 (D-ML-6, V4 B1.1, 2026-10-07): the shadow writer keeps the pick log.
+# Re-issues 0431's record_take_feedback_policy_v3_shadow_v3 with the frame
+# schema check on 'take-feedback-policy-v3-frame-v6' and the pick_log shape
+# checks. Released lane only, like 0431 (its tables live there). After 0440,
+# as in the manifest. Twice: apply/reapply idempotency. Its suites:
+# tests/test_the_shadow_writer_keeps_the_pick_log_postgres.py and
+# tests/test_the_shadow_writer_accepts_the_frame_the_code_builds_postgres.py.
+if [ "$LANE" = "released" ]; then
+  hard migrations/the_shadow_writer_keeps_the_pick_log.sql
+  hard migrations/the_shadow_writer_keeps_the_pick_log.sql
+fi
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

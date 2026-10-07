@@ -476,3 +476,4 @@
 0438	a_line_is_never_said_twice_in_a_row.sql
 0439	new_coach_feedback_waits_on_the_lounge_bubble.sql
 0440	a_speaker_may_change_a_judgement.sql
+0441	the_shadow_writer_keeps_the_pick_log.sql

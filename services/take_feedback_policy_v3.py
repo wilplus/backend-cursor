@@ -38,7 +38,12 @@ logger = logging.getLogger(__name__)
 
 POLICY_VERSION = "take-feedback-policy-v3-universal-dark-v3"
 SERVICE_POLICY_VERSION = "take-feedback-policy-v3-serving-v1"
-FRAME_SCHEMA_VERSION = "take-feedback-policy-v3-frame-v5"
+FRAME_SCHEMA_VERSION = "take-feedback-policy-v3-frame-v6"
+#: V4 Phase 1, B1.1 (pick logging). The frame carries every candidate with its
+#: chance of being picked, the Take's seed and the policy version, so V4 can be
+#: evaluated against what V3 would have done. Internal only (AC-9).
+PICK_LOG_VERSION = "v4-pick-log-v1"
+PICK_SEED_VERSION = "v4-pick-seed-v1"
 SUGGESTION_GENERATOR_CONTRACT_VERSION = "feedback-candidate-generator-v1"
 TARGET_WORDS = 75
 MIN_WORDS = 60
@@ -53,7 +58,12 @@ _VERBAL_FAMILIES = set(VERBAL_FAMILIES)
 
 
 def dark_enabled(acquisition_principal_id: Any) -> bool:
-    """True only for the exact configured founder in explicit dark mode."""
+    """True only for the exact configured founder in explicit dark mode.
+
+    V4 B1.1 widens pick logging to every speaker (V1 A). That widening is a
+    separate, founder-confirmed change; until then the dark frame, now with
+    its pick log, is still written for the founder's Takes only.
+    """
     mode = (config.TAKE_FEEDBACK_POLICY_V3_SHADOW_WRITE_MODE or "off").strip()
     founder = (config.TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID or "").strip()
     owner = str(acquisition_principal_id or "").strip()
@@ -63,6 +73,67 @@ def dark_enabled(acquisition_principal_id: Any) -> bool:
         and owner
         and hmac.compare_digest(founder, owner)
     )
+
+
+def pick_seed(take_id: Any) -> str:
+    """The Take's random seed for V4 Phase 1 (B1.1, B1.2).
+
+    Deterministic from the Take id, so the seeded random 20% (B1.2) and any
+    replay draw the same numbers. A decimal string of at most 16 digits
+    (52 bits): exact in JSON and in JavaScript.
+    """
+    digest = hashlib.sha256(
+        f"{PICK_SEED_VERSION}:{take_id}".encode("utf-8")).hexdigest()
+    return str(int(digest[:13], 16))
+
+
+def _pick_entry(lane: str, block_id: Any, item: dict,
+                chosen: Any) -> Optional[dict]:
+    candidate_id = str(item.get("candidate_id") or "")
+    if not candidate_id:
+        return None
+    eligible = item.get("eligibility") == "eligible"
+    return {
+        "lane": lane,
+        "block_id": block_id,
+        "candidate_id": candidate_id,
+        "eligible": eligible,
+        "pick_probability": (
+            (1.0 if candidate_id in chosen else 0.0) if eligible else None),
+    }
+
+
+def _pick_log(take_id: str, blocks: list[dict],
+              lanes: Iterable[tuple[str, list[dict], list[str]]]) -> dict:
+    """Every candidate with its chance of being picked (V4 B1.1).
+
+    V3 picks deterministically, so the chance is 1.0 for the candidate it
+    selected and 0.0 for every other eligible one; an excluded candidate has
+    no chance (None) and keeps its reason in the inventory. Internal only
+    (AC-9): the service frame drops this section, and no route reads it.
+    """
+    entries: list[dict] = []
+    for block in blocks:
+        chosen = {str(block.get("selected_candidate_id") or "")}
+        for item in block.get("confidence_candidates") or []:
+            entry = _pick_entry(
+                "confident_voice", block.get("block_id"), item, chosen)
+            if entry is not None:
+                entries.append(entry)
+    for lane, inventory, selected_ids in lanes:
+        chosen = set(selected_ids)
+        for item in inventory:
+            entry = _pick_entry(lane, None, item, chosen)
+            if entry is not None:
+                entries.append(entry)
+    return {
+        "version": PICK_LOG_VERSION,
+        "policy_version": POLICY_VERSION,
+        "seed": pick_seed(take_id),
+        "seed_version": PICK_SEED_VERSION,
+        "selection": "deterministic_relative_best",
+        "candidates": entries,
+    }
 
 
 def _words(value: Any) -> int:
@@ -1340,6 +1411,10 @@ def build_shadow_frame(
             },
         },
         "excluded_candidates": exclusions,
+        "pick_log": _pick_log(take_id, blocks, (
+            ("rewrite_clarity", rewrite_inventory, rewrite_selected_ids),
+            ("great_formulation", praise_inventory, praise_selected_ids),
+        )),
         "exposure_semantics": {
             "shadow_computation_is_exposure": False,
             "delivery_is_exposure": False,
@@ -1385,6 +1460,9 @@ def build_service_candidate_frame(**kwargs: Any) -> Optional[dict]:
         "operation_mode": "allowlisted_service_preparation",
     }
     frame.pop("frame_hash", None)
+    # The pick log is the dark frame's alone (V4 B1.1): the service frame
+    # chooses what is served and must not carry a pick chance (AC-9).
+    frame.pop("pick_log", None)
     encoded = json.dumps(
         frame, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")
