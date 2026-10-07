@@ -2111,6 +2111,12 @@ change, signed in the same message: "Two things to confirm" becomes "Three
 things to confirm". The frontend's CLAUDE.md carries the rule ("Design lock
 — the consent screens"); `docs/FOUNDER-LOCK-consent-screens-2026-10-07.md`
 is the written record.
+Amended the same day (ST1 A): the Data & consent page follows the settings
+page prototype (<https://claude.ai/artifact/4jDJsvBAquMUgaGkJgHR76>, copy in
+`docs/design/settings-page-2026-10-07.html`): a Support card with
+contact@willpowerlab.com, Back from Privacy and Terms returns to it, the menu
+loses Support and Community and marks the current page. "Support" and "Back"
+are signed.
 
 **N61 · A training yes counts the acceptance the account is processed under
 (founder's bug report, chat, 7 October 2026).** "Couldn't save that. Try

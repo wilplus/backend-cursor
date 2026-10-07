@@ -57,3 +57,23 @@ screens), the two invented project names, the country list and its order
   from the prototype's excerpts.
 - These screens are the processing boundary in front of the live loop
   (LIVE LOOP): a change here must keep a person able to agree and record.
+
+## Amended the same day: the settings page (founder, ST1 A, 7 October)
+
+The Data & consent page follows the **settings page prototype**:
+<https://claude.ai/artifact/4jDJsvBAquMUgaGkJgHR76> (copy in
+`docs/design/settings-page-2026-10-07.html`). From the founder's message:
+"remove the support from the hamburger and add it to the settings page with
+just an email to contact@willpowerlab.com; remove the community btn; when
+you are on the page show it orange text light orange background not only
+when you hover over it; when I am on the Privacy policy and terms pages, and
+I click back I am brought back to the lounge and I should have been brought
+to the settings screen".
+
+- A **Support** card (title and contact@willpowerlab.com) between Your
+  projects and Delete my account.
+- Privacy Policy and Terms of Service opened from this page show **Back**
+  and return here; opened from anywhere else they keep "Back home".
+- The ☰ menu has no Support and no Community row; the row for the page you
+  are on stays orange on light orange, not only on hover.
+- "Support" and "Back" are signed (ST1 A).

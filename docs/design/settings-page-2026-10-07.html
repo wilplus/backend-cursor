@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings Page Prototype</title>
+<style>
+:root{
+  --bg:#ffffff; --fg:#121212; --muted:#f5f5f5; --muted-fg:#737373; --border:#ebebeb;
+  --accent:hsl(22 100% 96%); --accent-fg:hsl(22 100% 42%);
+  --record:#e0453a; --record-fg:#fff; --destructive:#ef4444;
+  --proto-bg:#e9e9ec; --proto-fg:#2a2a30; --proto-line:#d4d4da; --proto-chip:#ffffff;
+  color-scheme:light;
+}
+html,body{height:100%;overscroll-behavior:none}
+html{line-height:1.5}
+body{margin:0;background:var(--proto-bg);color:var(--fg);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
+*{box-sizing:border-box}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+button:disabled{cursor:default}
+p,h1,h2,ul{margin:0}
+
+/* ---------- prototype chrome (not part of the product) ---------- */
+.proto{position:fixed;inset:0;display:flex;flex-direction:column}
+.pbar{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:10px 16px;border-bottom:1px solid var(--proto-line);color:var(--proto-fg);font-size:13px}
+.pbar b{font-weight:650;letter-spacing:.01em}
+.seg{display:inline-flex;flex-wrap:wrap;background:#dcdce1;border-radius:999px;padding:2px}
+.seg button{padding:5px 11px;border-radius:999px;font-size:12.5px;font-weight:550;color:#55555c}
+.seg button[aria-pressed="true"]{background:var(--proto-chip);color:var(--proto-fg);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.pbtn{padding:5px 11px;border-radius:999px;border:1px solid var(--proto-line);background:var(--proto-chip);font-size:12.5px;font-weight:550}
+.pnote{font-size:12px;color:#6b6b73;flex-basis:100%}
+.stagewrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+.device{position:relative;background:var(--bg);overflow:hidden;transform-origin:center center;box-shadow:0 0 0 10px #111,0 20px 60px rgba(0,0,0,.25);border-radius:44px;flex:none}
+.device.desk{border-radius:12px;box-shadow:0 0 0 1px #c9c9cf,0 20px 60px rgba(0,0,0,.18)}
+.toast-proto{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);background:#2a2a30;color:#fff;font-size:12px;padding:6px 12px;border-radius:999px;opacity:0;transition:opacity .25s;pointer-events:none;max-width:calc(100% - 32px);text-align:center;z-index:5}
+.toast-proto.on{opacity:.94}
+.full .device{border-radius:0;box-shadow:none;transform:none!important;width:100%!important;height:100%!important}
+.full .stagewrap{align-items:stretch}
+.full .pnote{display:none}
+.full .pbar{padding:6px 10px;gap:6px;font-size:12px}
+.full .pbar b{display:none}
+.full .seg button,.full .pbtn{padding:4px 8px;font-size:11.5px}
+.stub{margin:auto;border:1.5px dashed #c4c4cc;border-radius:16px;padding:20px;max-width:21rem;color:#6b6b73;font-size:14px;line-height:1.45;text-align:center;display:flex;flex-direction:column;gap:12px;align-items:center}
+.stub .tag{font-size:11px;font-weight:650;letter-spacing:.12em;text-transform:uppercase;color:#9a9aa2}
+
+/* ---------- the app ---------- */
+.app{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg)}
+.device:not(.desk) .app{padding-top:44px}
+.full .device .app{padding-top:env(safe-area-inset-top,0px)}
+.scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column}
+@media (prefers-reduced-motion:no-preference){.enter{animation:enter .22s ease-out both}}
+@keyframes enter{from{opacity:0}to{opacity:1}}
+.muted{color:var(--muted-fg)}
+
+/* footer + header */
+.foot{flex:none;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--muted-fg)}
+.foot span+span{display:flex;gap:12px}
+.foot button:hover{color:var(--fg)}
+.desk .foot{font-size:12px;padding:12px 24px}
+.desk .foot span+span{gap:16px}
+.hdr{flex:none;position:relative;z-index:30;border-bottom:1px solid rgba(235,235,235,.6);background:rgba(255,255,255,.95)}
+.hdr .in{max-width:56rem;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:16px 15px}
+.logo{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:600;letter-spacing:-.01em}
+.mwrap{position:relative;display:flex;flex:none}
+.burger{width:40px;height:40px;border:1px solid var(--border);border-radius:6px;background:var(--bg);display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s}
+.burger:hover{background:var(--accent);color:var(--accent-fg)}
+.burger svg{width:20px;height:20px}
+
+/* the ☰ menu (AppMenu) */
+.menu{position:absolute;right:0;top:100%;margin-top:8px;width:16rem;min-width:14rem;border:1px solid var(--border);border-radius:8px;background:var(--bg);padding:8px 0;box-shadow:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1);z-index:50}
+.memail{margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-bottom:1px solid var(--border);padding:10px 16px;font-size:13px;color:var(--muted-fg)}
+.mi{display:block;width:100%;padding:14px 16px;text-align:left;font-size:16px;font-weight:600;line-height:1.5;color:var(--fg)}
+.mi:hover,.mi:focus-visible,.mi[aria-current="page"]{background:var(--accent);color:var(--accent-fg);outline:none}
+.mi:disabled{opacity:.5}
+.mi.tok{display:flex;align-items:center;justify-content:space-between}
+.mi.tok span+span{font-weight:400;color:var(--muted-fg)}
+
+/* Data & consent */
+.dc{width:100%;max-width:42rem;margin:0 auto;padding:48px 24px}
+.dc h1{font-size:30px;font-weight:600;line-height:1.2;letter-spacing:-.025em}
+.dc .ch{margin-top:16px;display:flex;flex-direction:column;gap:24px}
+.t14{font-size:14px;line-height:1.625}
+.card{border:1px solid var(--border);border-radius:16px;padding:20px}
+.card h2{font-size:16px;font-weight:600;line-height:1.5}
+.card .stack{margin-top:8px;display:flex;flex-direction:column;gap:16px}
+.card ul{padding-left:20px;font-size:14px;line-height:1.625;color:var(--muted-fg)}
+.card li+li{margin-top:4px}
+.ob{display:inline-flex;height:40px;align-items:center;border-radius:999px;border:1px solid var(--border);background:var(--bg);padding:0 20px;font-size:14px;font-weight:500}
+.ob:hover{background:var(--muted)}
+.pb2{display:inline-flex;height:40px;align-items:center;border-radius:999px;background:var(--fg);padding:0 20px;font-size:14px;font-weight:500;color:var(--bg)}
+.conf{border-radius:12px;background:var(--muted);padding:16px}
+.conf .row{margin-top:16px;display:flex;flex-wrap:wrap;gap:12px}
+.mt6{margin-top:24px}
+.plist{margin-top:12px;list-style:none;padding:0!important;color:var(--fg)!important}
+.plist li{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:12px 0;border-top:1px solid var(--border)}
+.plist li:first-child{border-top:0}
+.plist li+li{margin-top:0}
+.plist .nm{min-width:0;word-break:break-word;font-size:15px}
+.plist .nm small{margin-left:8px;font-size:13px;color:var(--muted-fg)}
+.obs{display:inline-flex;height:36px;align-items:center;border-radius:999px;border:1px solid var(--border);background:var(--bg);padding:0 12px;font-size:14px;font-weight:500}
+.obs:hover{background:var(--muted)}
+/* Support (new, for sign-off) */
+.sup{margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.addr{font-size:14px;line-height:1.625;-webkit-user-select:all;user-select:all;word-break:break-all;cursor:text}
+.copyb{width:36px;height:36px;flex:none;border-radius:999px;border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;color:#555;background:var(--bg)}
+.copyb:hover{background:var(--muted)}
+.copyb svg{width:16px;height:16px}
+.del{margin-top:32px;border:1px solid var(--border);border-radius:12px;padding:16px}
+.del h2{font-size:16px;font-weight:600}
+.sbtn{margin-top:12px;display:inline-flex;height:40px;align-items:center;justify-content:center;border-radius:6px;border:1px solid var(--border);background:var(--bg);padding:0 16px;font-size:14px;font-weight:500}
+.sbtn:hover{background:var(--muted)}
+.sbtn.red{color:var(--destructive)}
+.links{margin-top:32px;font-size:14px;color:var(--muted-fg)}
+.links button{text-decoration:underline;text-underline-offset:4px;color:var(--muted-fg)}
+/* the delete confirm */
+.scrim{position:absolute;inset:0;z-index:60;display:flex;align-items:flex-end;justify-content:center;background:rgba(18,18,18,.35);padding:16px}
+.desk .scrim{align-items:center}
+.dlg{width:100%;max-width:24rem;border-radius:24px;background:var(--bg);padding:20px;box-shadow:0 20px 25px -5px rgba(0,0,0,.1),0 8px 10px -6px rgba(0,0,0,.1)}
+.dlg h2{font-size:18px;font-weight:600;word-break:break-word}
+.dlg p{margin-top:8px;font-size:14px;color:var(--muted-fg)}
+.dlg .row{margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btn{height:40px;border-radius:999px;font-size:14px;font-weight:500;display:flex;align-items:center;justify-content:center;padding:0 8px;white-space:nowrap}
+.btn.o{border:1px solid var(--border);background:var(--bg)}
+.btn.r{background:var(--record);color:var(--record-fg)}
+
+/* /privacy and /terms */
+.lp{width:100%;max-width:48rem;margin:0 auto;padding:48px 24px}
+.back{margin-bottom:24px;display:inline-flex;align-items:center;gap:6px;font-size:14px;color:var(--muted-fg);transition:color .15s}
+.back:hover{color:var(--fg)}
+.back svg{width:16px;height:16px}
+.lp .ver{font-size:12px;line-height:1.625;color:var(--muted-fg)}
+.lp .txt{margin-top:24px;white-space:pre-wrap;font-size:14px;line-height:1.625}
+</style>
+</head>
+<body>
+<div class="proto" id="proto">
+  <div class="pbar">
+    <b>Settings page</b>
+    <div class="seg" role="group" aria-label="Device">
+      <button data-dev="phone" aria-pressed="true">Phone</button>
+      <button data-dev="desk" aria-pressed="false">Desktop</button>
+    </div>
+    <button class="pbtn" id="restart">Restart</button>
+    <span class="pnote">Live words, except the Support card (its title and the address), new and for your sign-off. Project names, the email and the token number are stand-ins; the documents are excerpts.</span>
+  </div>
+  <div class="stagewrap" id="stagewrap">
+    <div class="device" id="device"><div class="app" id="app"></div></div>
+    <div class="toast-proto" id="ptoast"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+/* ---------------------------------------------------------------------------
+   Every user-facing word is the live wording, copied from the frontend:
+   AppMenu.tsx + DashboardHeader.tsx (the menu: no Support, no Community,
+   the current page marked), tokens/copy.ts ("Tokens"), data-consent/page.tsx,
+   dataConsentCopy.ts, TrainingConsentCard.tsx, ProjectsCard.tsx,
+   projectArchiveCopy.ts, DeleteAccountCard.tsx, deleteAccountCopy.ts,
+   leavingCopy.ts, LegalBackLink.tsx ("Back" when opened from Data & consent),
+   PublishedPolicyText.tsx and Footer.tsx; the documents from the backend's
+   legal/phase1-2026.1/copy/ (Terms 3.3, Privacy 3.3, first sections).
+   NEW, for the founder's sign-off: the Support card ("Support" and the
+   address contact@willpowerlab.com).
+--------------------------------------------------------------------------- */
+var DOCS = {
+  terms:{version:"3.3", copy:"WillpowerLab — Terms of Service\nVersion 3.3. Effective 2 October 2026.\n\nThese terms are an agreement between you and Artur Willoński, operating under\nthe name \"WillpowerLab\" from Poland (\"WillpowerLab\", \"we\", \"us\"). They govern\nyour use of willpowerlab.com and the WillpowerLab application.\n\nVersion 3.3 replaces every earlier version. Under these terms your recordings\nare processed to deliver your own coaching and are never used to train models.\nTwo things are yours to choose, and both are off unless you choose them: the\nwords you practise and your coach's notes on them may train WillpowerLab's own\nfeedback models when you turn on Help improve WillpowerLab (section 8 and the\nPrivacy Policy, section 4a), and a short clip of a recording may be played to\nother users when you lend that recording (section 8 and the Privacy Policy,\nsection 4b). A coach may also hear a short clip of a recording to check our\nautomated listening (section 11). If anything else changes, it changes in a\nnew version you are asked to accept — see section 15.\n\n\n1. WHAT THE SERVICE DOES\n\nYou record yourself presenting. WillpowerLab transcribes the recording, lines\nthe transcript up with your slides, writes an Ideal Text — a presentation\ndocument built from what you actually said — and gives you feedback after each\nattempt.\n\nWillpowerLab is hybrid coaching: automated work and a human coach, together.\nThe transcription and the written documents are produced by artificial\nintelligence, and a WillpowerLab coach — a person — may listen to your\nrecordings in order to review the feedback you were given and to prepare\npractice for you. Both halves are the service. If you are not willing for a\nperson to hear your recordings, WillpowerLab is not the product for you, and\nyou should not accept these terms.\n\nYour audio is sent to a third-party AI provider to be transcribed. The AI\nnotice tells you who receives it and what happens to it, and the Privacy Policy\nsets out the detail.\n\n\n2. WHAT IT COSTS\n\nThere is a free plan and there are paid plans. You can use the free plan for as\nlong as you like without paying.\n\nWork in the app is measured in tokens. Each plan gives you an allowance of them\nfor the month. The allowance is SET at the start of each month rather than\nadded to what you had, so unused tokens do not carry over.\n\n  Free         12,000 tokens a month     no coach reviews     no charge\n  Practice    150,000 tokens a month     no coach reviews     USD 12 a month\n  Coaching    150,000 tokens a month     3 coach reviews      USD 39 a month\n  Intensive   400,000 tokens a month     8 coach reviews      USD 89 a month\n\nReviews by a human coach are a separate limit from tokens, and the tighter of\nthe two applies: you can have tokens left and no reviews left.\n\nThe price and what it includes are shown before you pay. We will tell you\nbefore any price changes. Payments are taken by our payment provider; we do not\nsee or store your card details. A paid plan renews each month until you cancel,\nand you can cancel at any time.\n\nIf you are a consumer in the EU or EEA, you have 14 days to withdraw from a\npaid plan. We give you that full 14 days with no questions asked, even once you\nhave started using it.\n\n\n3. YOU MUST BE 18\n\nThe service is for adults. You must be 18 or older to use it. When you accept\nthese terms you confirm that you are. We do not knowingly provide the service\nto anyone under 18, and we will close an account if we learn that its holder is\nunder 18."},
+  privacy:{version:"3.3", copy:"WillpowerLab — Privacy Policy\nVersion 3.3. Effective 2 October 2026.\n\nThis policy explains what WillpowerLab does with your personal data, who else\nreceives it, how long we keep it, and how you get it deleted.\n\nVersion 3.3 replaces every earlier version. It adds two things. First, a\nWillpowerLab coach may hear a short clip of a recording to check that our\nautomated listening is right; section 4 describes it, and you can turn it off.\nSecond, and only if you choose it for a particular recording, you can lend a\nshort clip of your voice to other users; section 4b describes it. The training\nchoice in section 4a is unchanged: off unless you turn it on, text only, never\nyour voice.\n\n\n1. WHO IS RESPONSIBLE FOR YOUR DATA\n\nWillpowerLab is operated by an individual based in Poland. The controller of\nthe personal data described here is:\n\nArtur Willoński, operating under the name \"WillpowerLab\"\nPoland, European Union\nContact: contact@willpowerlab.com (a postal address is provided on request to\ndata subjects and to the supervisory authority)\n\nThe lead supervisory authority under Article 56 GDPR is the President of the\nPersonal Data Protection Office (UODO), ul. Stawki 2, 00-193 Warsaw, Poland.\n\nGiven the scale of processing we have not appointed a Data Protection Officer,\nwhich GDPR Article 37 does not require of us. Privacy requests are handled\ndirectly at the address above.\n\n\n2. WHAT WE COLLECT\n\nThings you give us\n- Your email address and account details.\n- Your slides and presentation materials.\n- Audio recordings of you presenting.\n- Edits you make to your Ideal Text, and your responses to feedback.\n\nThings produced from your recordings\n- Transcripts of what you said.\n- Measurements taken from the sound of your voice: how much your pitch varies,\n  how loud and how varied your delivery is, how fast you speak, how you pause,\n  and how your energy and pitch move across a sentence.\n- Your Ideal Text and your feedback.\n\nThings collected automatically\n- Technical and security logs: IP address, device and browser information,\n  timestamps, and error records.\n- The version of the app you used, the country you told us you live in, and the\n  language your app was set to, recorded as part of your agreement to this\n  policy.\n\n\n3. THE SOUND OF YOUR VOICE\n\nWe take measurements from how your voice sounds and compare them against your\nown earlier recordings — never against other people. We use them to help choose\nwhich of your own sentences to show back to you.\n\nWe do not produce a score, a rating, a grade or a verdict about you, and no such\nthing is shown to you, to a coach, or to anyone else. We do not use your voice\nto identify you. We do not infer, record or guess your sex, gender, age, health,\nethnicity, or any other characteristic about you from the sound of your voice.\n\nIf the measurements cannot be taken reliably from a recording, we record that\nthey could not be taken. We do not fill in a value.\n\nOther users never hear your voice unless you lend a particular recording to\nthem yourself, as section 4b describes."}
+};
+var TRAINING_SENTENCE = "Use my practice text and my coach's notes on it to train the models that write WillpowerLab's feedback.";
+var C = {
+  title:"Data & consent",
+  introWithTraining:"Your recordings are used to run your own coaching. They are used to train models only if you turn on Help improve WillpowerLab.",
+  practiceTitle:"Personalised practice",
+  practiceDescription:"Use my recordings to choose short exercises that fit them, to keep the fragments I re-record, and to remember what I am working on so the exercises get more personal.",
+  turnOff:"Turn off", turnOn:"Turn on",
+  turnOffConfirm:"Turn off personalised practice? You keep using everything else. Your practice recordings will be deleted.",
+  practiceOff:"Personalised practice is off.", practiceOn:"Personalised practice is on.",
+  sensitiveTitle:"Sensitive information in recordings",
+  sensitiveText:"You agreed that a recording of you speaking may reveal sensitive information about you. Withdrawing this ends your use of recording. Everything you already made stays readable.",
+  withdraw:"Withdraw", withdrawConfirm:"Withdraw and stop recording?", cancel:"Cancel",
+  recordingOff:"Recording is off.", agreeAgain:"Agree again",
+  trainingTitle:"Help improve WillpowerLab", trainingOffTitle:"Turn off training?",
+  trainingOffBody:"Your training copies will be deleted. Anything already used to train stays in that training, but it won’t be used again.",
+  trainingBeforeLines:[
+    "Text only. Never your voice.",
+    "Off unless you turn it on. Saying no costs you nothing.",
+    "OpenAI trains the models for us, in the United States, under the European Commission’s standard contractual clauses.",
+    "Turning it off deletes your training copies and keeps you out of any new training. A model already trained stays."
+  ]
+};
+var DEL = {
+  title:"Delete my account",
+  body:"This permanently deletes your recordings, your texts and your feedback. Records of what you bought are kept for 5 years, as the law requires.",
+  button:"Delete my account", confirmTitle:"Delete your account?",
+  confirmBody:"Everything you recorded and wrote here will be permanently deleted after 7 days. Until then you can cancel. From now on nothing new is processed.",
+  modelStays:"A model already trained stays.",
+  cancelDeletion:"Cancel deletion", cancelled:"Your account will not be deleted."
+};
+var ARCHIVE = {listTitle:"Your projects", archived:"Archived", unarchive:"Unarchive"};
+/* NEW words, held for the founder's sign-off. */
+var SUPPORT = {title:"Support", email:"contact@willpowerlab.com"};
+/* Stand-ins: the live menu shows the person's own email and balance; the
+   live list shows the person's own project names. */
+var EMAIL = "alex.morgan@example.com";
+var TOKENS = {label:"Tokens", value:"12,000"};
+var EXAMPLE_PROJECTS = [
+  {name:"Quarterly team update", archived:false},
+  {name:"Conference keynote", archived:true},
+  {name:"Investor pitch", archived:false}
+];
+var PATH = {lab:"/chat", dc:"/account/data-consent"};
+
+var S;
+function fresh(){
+  return {
+    dev:(S&&S.dev)||"phone", screen:"data", doc:null, menu:false, loggingOut:false,
+    practice:true, sensitive:true, training:false,
+    outcome:null, pConfirm:false, sConfirm:false, tConfirm:false,
+    projOpen:false, projects:EXAMPLE_PROJECTS.map(function(p){return {name:p.name, archived:p.archived};}),
+    delConfirm:false, delPending:null, delCancelled:false,
+    copied:false, dataTop:0
+  };
+}
+
+var app = document.getElementById("app"), device = document.getElementById("device"), proto = document.getElementById("proto");
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+function ptoast(msg){var t=document.getElementById("ptoast");t.textContent=msg;t.classList.add("on");clearTimeout(ptoast._t);ptoast._t=setTimeout(function(){t.classList.remove("on");},2400);}
+
+/* ------------------------------ chrome pieces ------------------------------ */
+var LOGO = '<span class="logo" aria-label="WillpowerLab home"><svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><circle cx="3" cy="11" r="2.2" fill="currentColor"/><circle cx="11" cy="11" r="3.2" fill="currentColor"/><circle cx="19" cy="11" r="2.2" fill="currentColor"/></svg>WillpowerLab</span>';
+var ICON_MENU = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 12h16M4 6h16M4 18h16"/></svg>';
+var ICON_BACK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7M19 12H5"/></svg>';
+var ICON_COPY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';
+var ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+
+/* The page the person is on, as the menu sees it (usePathname). */
+function pathname(){ return S.screen==="lounge" ? PATH.lab : S.screen==="data" ? PATH.dc : "/"+S.doc; }
+function item(act, label, href){
+  var cur = pathname()===href;
+  return '<button type="button" class="mi" data-act="'+act+'"'+(cur?' aria-current="page"':'')+'>'+esc(label)+'</button>';
+}
+function menu(){
+  if(!S.menu) return "";
+  return '<div class="menu" id="app-header-menu">'+
+    '<div class="memail" title="'+esc(EMAIL)+'">'+esc(EMAIL)+'</div>'+
+    item("m-lab","Lab",PATH.lab)+
+    item("m-dc","Data & consent",PATH.dc)+
+    '<button type="button" class="mi tok" data-act="m-tokens"><span>'+TOKENS.label+'</span><span>'+TOKENS.value+'</span></button>'+
+    '<button type="button" class="mi" data-act="m-logout"'+(S.loggingOut?' disabled':'')+'>'+(S.loggingOut?"Logging out…":"Log out")+'</button>'+
+  '</div>';
+}
+function header(){
+  return '<header class="hdr"><div class="in">'+LOGO+
+    '<div class="mwrap" id="mwrap"><button type="button" class="burger" data-act="menu" aria-label="'+(S.menu?"Close menu":"Open menu")+'" aria-expanded="'+S.menu+'" aria-haspopup="true"'+(S.menu?' aria-controls="app-header-menu"':'')+'>'+ICON_MENU+'</button>'+menu()+'</div>'+
+  '</div></header>';
+}
+function footer(){ return '<footer class="foot"><span>WillpowerLab 2026</span><span><button type="button" data-act="footlink">About us</button><button type="button" data-act="footlink">Blog</button><button type="button" data-act="footlink">Privacy</button></span></footer>'; }
+
+/* ------------------------------ Data & consent ------------------------------ */
+function confirmBox(question, label, yes, no){
+  return '<div class="conf" role="group" aria-label="'+esc(question)+'"><p class="t14">'+esc(question)+'</p><div class="row"><button type="button" class="pb2" data-act="'+yes+'">'+esc(label)+'</button><button type="button" class="ob" data-act="'+no+'">'+esc(C.cancel)+'</button></div></div>';
+}
+function practiceCard(){
+  var out = (S.outcome && S.outcome.c==="p") ? '<p class="t14" role="status">'+(S.outcome.on?C.practiceOn:C.practiceOff)+'</p>' : '';
+  return '<section class="card" aria-label="'+C.practiceTitle+'"><h2>'+C.practiceTitle+'</h2><div class="stack">'+
+    '<p class="t14 muted">'+C.practiceDescription+'</p>'+out+
+    (S.pConfirm ? confirmBox(C.turnOffConfirm, C.turnOff, "p-off", "p-cancel")
+                : '<div><button type="button" class="ob" data-act="p-toggle">'+(S.practice?C.turnOff:C.turnOn)+'</button></div>')+
+    '</div></section>';
+}
+function sensitiveCard(){
+  return '<section class="card" aria-label="'+C.sensitiveTitle+'"><h2>'+C.sensitiveTitle+'</h2><div class="stack">'+
+    '<p class="t14 muted">'+C.sensitiveText+'</p>'+
+    (!S.sensitive ? '<p class="t14" role="status">'+C.recordingOff+'</p>' : '')+
+    (S.sConfirm ? confirmBox(C.withdrawConfirm, C.withdraw, "s-off", "s-cancel")
+                : '<div><button type="button" class="ob" data-act="s-toggle">'+(S.sensitive?C.withdraw:C.agreeAgain)+'</button></div>')+
+    '</div></section>';
+}
+function trainingCard(){
+  var confirm = '<div class="conf" role="group" aria-label="'+C.trainingOffTitle+'"><p class="t14" style="font-weight:600">'+C.trainingOffTitle+'</p><p class="t14" style="margin-top:4px">'+esc(C.trainingOffBody)+'</p><div class="row"><button type="button" class="pb2" data-act="t-off">'+C.turnOff+'</button><button type="button" class="ob" data-act="t-cancel">'+C.cancel+'</button></div></div>';
+  return '<section class="card" aria-label="'+C.trainingTitle+'"><h2>'+C.trainingTitle+'</h2><div class="stack">'+
+    '<ul>'+C.trainingBeforeLines.map(function(l){return '<li>'+esc(l)+'</li>';}).join("")+'</ul>'+
+    '<p class="t14">'+esc(TRAINING_SENTENCE)+'</p>'+
+    (S.tConfirm ? confirm : '<div><button type="button" class="ob" role="switch" aria-checked="'+S.training+'" data-act="t-toggle">'+(S.training?C.turnOff:C.turnOn)+'</button></div>')+
+    '</div></section>';
+}
+function projectsCard(){
+  if(!S.projOpen) return '<section class="card mt6" aria-label="'+ARCHIVE.listTitle+'"><button type="button" class="ob" style="padding:0 16px" data-act="proj-open">'+ARCHIVE.listTitle+'</button></section>';
+  var rows = S.projects.map(function(p,i){
+    return '<li><span class="nm">'+esc(p.name)+(p.archived?'<small>'+ARCHIVE.archived+'</small>':'')+'</span><span>'+(p.archived?'<button type="button" class="obs" data-act="unarchive:'+i+'">'+ARCHIVE.unarchive+'</button>':'')+'</span></li>';
+  }).join("");
+  return '<section class="card mt6" aria-label="'+ARCHIVE.listTitle+'"><h2>'+ARCHIVE.listTitle+'</h2><ul class="plist">'+rows+'</ul></section>';
+}
+function supportCard(){
+  return '<section class="card mt6" aria-label="'+SUPPORT.title+'" data-new="support"><h2>'+SUPPORT.title+'</h2>'+
+    '<div class="sup"><span class="addr" id="supaddr">'+esc(SUPPORT.email)+'</span>'+
+    '<button type="button" class="copyb" data-act="copy" aria-label="Copy">'+(S.copied?ICON_CHECK:ICON_COPY)+'</button></div></section>';
+}
+function deleteCard(){
+  var inner;
+  if(S.delPending){
+    inner = '<p class="t14" style="margin-top:8px" role="status">Your account will be deleted on '+esc(S.delPending)+'.</p>'+
+      '<button type="button" class="sbtn" data-act="del-cancel">'+DEL.cancelDeletion+'</button>';
+  } else {
+    inner = (S.delCancelled ? '<p class="t14" style="margin-top:8px" role="status">'+DEL.cancelled+'</p>' : '')+
+      '<p class="t14 muted" style="margin-top:8px;line-height:1.43">'+DEL.body+'</p>'+
+      '<button type="button" class="sbtn red" data-act="del-open">'+DEL.button+'</button>';
+  }
+  return '<section class="del" data-testid="delete-account-card"><h2>'+DEL.title+'</h2>'+inner+'</section>';
+}
+function deleteDialog(){
+  var body = DEL.confirmBody + (S.training ? " "+DEL.modelStays : "");
+  return '<div class="scrim" role="dialog" aria-modal="true" aria-labelledby="dlgt"><div class="dlg"><h2 id="dlgt">'+DEL.confirmTitle+'</h2><p>'+esc(body)+'</p>'+
+    '<div class="row"><button type="button" class="btn o" data-act="del-dismiss">Cancel</button><button type="button" class="btn r" data-act="del-confirm">'+DEL.button+'</button></div></div></div>';
+}
+function renderData(){
+  app.innerHTML = header()+
+    '<div class="scroll" id="scroll"><div class="dc"><h1>'+esc(C.title)+'</h1>'+
+    '<div class="ch"><p class="t14 muted">'+C.introWithTraining+'</p>'+practiceCard()+sensitiveCard()+'</div>'+
+    '<div class="mt6">'+trainingCard()+'</div>'+
+    projectsCard()+supportCard()+deleteCard()+
+    '<p class="links"><button type="button" data-act="doc:privacy">Privacy Policy</button> · <button type="button" data-act="doc:terms">Terms of Service</button></p>'+
+    '</div></div>'+footer()+(S.delConfirm?deleteDialog():"");
+}
+function deletionDate(){
+  var d = new Date(Date.now()+7*24*3600*1000);
+  return d.toLocaleDateString("en-GB",{day:"numeric",month:"long"});
+}
+
+/* ------------------------------ the other pages ------------------------------ */
+function renderLounge(){
+  app.innerHTML = header()+
+    '<div class="scroll" id="scroll"><div class="stub"><span class="tag">Prototype stand-in</span><span>The Lounge (/chat). Open the ☰ menu and choose Data &amp; consent to come back.</span></div></div>'+footer();
+}
+/* /privacy and /terms: the live LegalBackLink reads "Back" and returns to
+   Data & consent when opened from there; no header on these pages. */
+function renderDoc(){
+  var d = DOCS[S.doc];
+  app.innerHTML = '<div class="scroll" id="scroll"><div class="lp">'+
+    '<button type="button" class="back" data-act="doc-back">'+ICON_BACK+'Back</button>'+
+    '<article><p class="ver">Version '+esc(d.version)+'</p><div class="txt">'+esc(d.copy)+'</div></article>'+
+    '</div></div>'+footer();
+}
+
+/* ------------------------------ render ------------------------------ */
+var lastKey = "";
+function render(){
+  var key = S.screen+"|"+S.doc;
+  var keep = key===lastKey;
+  var sc = document.getElementById("scroll"), top = keep && sc ? sc.scrollTop : 0;
+  ({data:renderData, lounge:renderLounge, doc:renderDoc}[S.screen])();
+  var sc2 = document.getElementById("scroll");
+  if(sc2){ sc2.scrollTop = keep ? top : (S.screen==="data" ? S.dataTop : 0); }
+  if(!keep){ Array.prototype.forEach.call(app.children,function(el){ if(!el.classList.contains("scrim")) el.classList.add("enter"); }); }
+  lastKey = key;
+}
+function goTo(screen, doc){
+  if(S.screen==="data"){ var sc=document.getElementById("scroll"); if(sc) S.dataTop = sc.scrollTop; }
+  if(screen==="data" && S.screen!=="doc") S.dataTop = 0; /* arriving from the menu starts at the top */
+  S.screen = screen; S.doc = doc||null; S.menu = false; S.delConfirm = false;
+  render();
+}
+
+/* The copy button: the clipboard where the browser allows it, otherwise the
+   address is selected so it can be copied by hand. */
+function copyAddress(){
+  function done(){ S.copied = true; render(); clearTimeout(copyAddress._t); copyAddress._t = setTimeout(function(){ S.copied=false; if(S.screen==="data") render(); }, 1600); }
+  function fallback(){
+    try{
+      var el = document.getElementById("supaddr"), r = document.createRange(); r.selectNodeContents(el);
+      var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      var ok = false; try{ ok = document.execCommand("copy"); }catch(e){ ok = false; }
+      if(ok) done(); else ptoast("Selected. Copy it with your keyboard.");
+    }catch(e){ ptoast("Select the address to copy it."); }
+  }
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(SUPPORT.email).then(done, fallback);
+    } else fallback();
+  }catch(e){ fallback(); }
+}
+
+app.addEventListener("click", function(ev){
+  var el = ev.target.closest("[data-act]"); if(!el || el.disabled) return;
+  var a = el.getAttribute("data-act"), arg = null, k = a.indexOf(":");
+  if(k>0){ arg = a.slice(k+1); a = a.slice(0,k); }
+  switch(a){
+    /* the ☰ menu */
+    case "menu": S.menu = !S.menu; render(); return;
+    case "m-lab": if(S.screen==="lounge"){ S.menu=false; render(); } else goTo("lounge"); return;
+    case "m-dc": if(S.screen==="data"){ S.menu=false; render(); } else goTo("data"); return;
+    case "m-tokens": S.menu=false; render(); ptoast("Tokens opens /dashboard/pricing, not part of this prototype."); return;
+    case "m-logout":
+      S.loggingOut = true; render();
+      setTimeout(function(){ S.loggingOut=false; S.menu=false; render(); ptoast("Log out is not part of this prototype."); }, 600); return;
+    /* Data & consent */
+    case "p-toggle": if(S.practice){ S.pConfirm=true; } else { S.practice=true; S.outcome={c:"p",on:true}; } render(); return;
+    case "p-off": S.pConfirm=false; S.practice=false; S.outcome={c:"p",on:false}; render(); return;
+    case "p-cancel": S.pConfirm=false; render(); return;
+    case "s-toggle": if(S.sensitive){ S.sConfirm=true; } else { S.sensitive=true; S.outcome={c:"s",on:true}; } render(); return;
+    case "s-off": S.sConfirm=false; S.sensitive=false; S.outcome={c:"s",on:false}; render(); return;
+    case "s-cancel": S.sConfirm=false; render(); return;
+    case "t-toggle": if(S.training){ S.tConfirm=true; } else { S.training=true; } render(); return;
+    case "t-off": S.tConfirm=false; S.training=false; render(); return;
+    case "t-cancel": S.tConfirm=false; render(); return;
+    case "proj-open": S.projOpen=true; render(); return;
+    case "unarchive": S.projects[+arg].archived=false; render(); return;
+    case "copy": copyAddress(); return;
+    case "del-open": S.delConfirm=true; render(); return;
+    case "del-dismiss": S.delConfirm=false; render(); return;
+    case "del-confirm": S.delConfirm=false; S.delCancelled=false; S.delPending=deletionDate(); render(); return;
+    case "del-cancel": S.delPending=null; S.delCancelled=true; render(); return;
+    case "doc": goTo("doc", arg); return;
+    case "doc-back": goTo("data"); return;
+    case "footlink": ptoast("Footer links are not part of this prototype."); return;
+  }
+});
+/* The menu closes on a press outside it and on Escape, as AppMenu does. */
+document.addEventListener("pointerdown", function(ev){
+  if(!S.menu) return;
+  var w = document.getElementById("mwrap");
+  if(w && !w.contains(ev.target)){ S.menu=false; render(); }
+}, true);
+document.addEventListener("keydown", function(ev){
+  if(ev.key!=="Escape") return;
+  if(S.delConfirm){ S.delConfirm=false; render(); }
+  else if(S.menu){ S.menu=false; render(); var b=app.querySelector(".burger"); if(b) b.focus(); }
+});
+
+/* ------------------------------ chrome ------------------------------ */
+function setDev(d){ S.dev=d; S.menu=false; document.querySelectorAll("[data-dev]").forEach(function(b){b.setAttribute("aria-pressed",String(b.getAttribute("data-dev")===d));}); layout(); render(); }
+document.querySelectorAll("[data-dev]").forEach(function(b){b.addEventListener("click",function(){setDev(b.getAttribute("data-dev"));});});
+document.getElementById("restart").addEventListener("click",function(){ S=fresh(); lastKey=""; render(); });
+
+function layout(){
+  var wrap=document.getElementById("stagewrap"), r=wrap.getBoundingClientRect();
+  var small = window.innerWidth<560 && S.dev==="phone";
+  proto.classList.toggle("full", small); device.classList.toggle("desk", S.dev==="desk");
+  if(small){ device.style.width=""; device.style.height=""; device.style.transform=""; return; }
+  var Wd = S.dev==="phone"?390:1180, H = S.dev==="phone"?844:820;
+  device.style.width=Wd+"px"; device.style.height=H+"px";
+  var sc=Math.min(1,(r.width-48)/Wd,(r.height-48)/H);
+  device.style.transform="scale("+sc+")";
+}
+window.addEventListener("resize",layout);
+S = fresh(); layout(); render();
+})();
+</script>
+</body>
+</html>
