@@ -253,6 +253,36 @@ class DestructiveDetectionTests(unittest.TestCase):
             with self.subTest(sql=sql[:50]):
                 self.assertIn("TRUNCATE", destructive_statements(sql))
 
+    def test_truncate_words_outside_a_trigger_header_are_still_destructive(self):
+        """The exemption is scoped to a CREATE TRIGGER header's event list
+        (independent check HO-12): the same words anywhere else still count."""
+        for sql in [
+            "SELECT 1; BEFORE TRUNCATE public.foo;",
+            "DO $$ BEGIN PERFORM 1; END $$; AFTER TRUNCATE public.foo;",
+            "DO $$ BEGIN IF a OR TRUNCATE public.foo; END $$;",
+            "IF x THEN PERFORM before; TRUNCATE public.foo; END IF;",
+            "IF x THEN PERFORM before\n TRUNCATE public.foo; END IF;",
+            "CREATE TRIGGER t BEFORE TRUNCATE public.foo;",  # no ON: not a header
+            "CREATE TRIGGER t BEFORE TRUNCATE ON public.foo FOR EACH STATEMENT "
+            "EXECUTE FUNCTION public.f(); DO $$ BEGIN TRUNCATE public.bar; END $$;",
+            "CREATE TRIGGER t BEFORE UPDATE OR TRUNCATE ON public.foo FOR EACH "
+            "STATEMENT EXECUTE FUNCTION public.f(); SELECT 1 OR TRUNCATE public.bar;",
+        ]:
+            with self.subTest(sql=sql[:60]):
+                self.assertIn("TRUNCATE", destructive_statements(sql))
+
+    def test_trigger_headers_with_every_event_form_are_not_destructive(self):
+        for sql in [
+            "CREATE OR REPLACE TRIGGER t AFTER INSERT OR UPDATE OF a, b OR "
+            "TRUNCATE ON public.foo FOR EACH STATEMENT EXECUTE FUNCTION public.f();",
+            "CREATE CONSTRAINT TRIGGER \"T x\" AFTER TRUNCATE ON public.foo "
+            "FOR EACH ROW EXECUTE FUNCTION public.f();",
+            "create trigger t\n  before\n  truncate\n  on public.foo for each "
+            "statement execute function public.f();",
+        ]:
+            with self.subTest(sql=sql[:60]):
+                self.assertEqual(destructive_statements(sql), [])
+
     def test_real_repo_files_flagged_are_the_known_set(self):
         """Pins the live-tree result so a scanner regression shows up here."""
         flagged = {

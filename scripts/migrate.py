@@ -128,18 +128,42 @@ def strip_sql_comments(sql: str) -> str:
     return sql
 
 
-# A trigger's EVENT, not a statement: `BEFORE TRUNCATE ON t`, `AFTER
-# TRUNCATE`, `BEFORE UPDATE OR TRUNCATE`. A trigger that REFUSES truncation
-# (0434) is the opposite of destructive, and flagging it would abort the
-# Railway migrate step (#359). Nothing else is exempt: a TRUNCATE statement,
-# anywhere, including inside a PL/pgSQL body, is still flagged.
-_TRUNCATE_TRIGGER_EVENT = re.compile(r"\b(BEFORE|AFTER|OR)(\s+)TRUNCATE\b", re.I)
+# A trigger's EVENT, not a statement. `CREATE TRIGGER t BEFORE TRUNCATE ON x`
+# names TRUNCATE as the event the trigger fires on; a trigger that REFUSES
+# truncation (0434) is the opposite of destructive, and flagging it would
+# abort the Railway migrate step (#359). The exemption is scoped to the
+# event list of a complete CREATE TRIGGER header and nothing else: the
+# match must start at CREATE [OR REPLACE] [CONSTRAINT] TRIGGER <name>, then
+# BEFORE | AFTER | INSTEAD OF, then only event keywords joined by OR (UPDATE
+# may carry OF <columns>), and must end at ON. Only the word TRUNCATE inside
+# that event list is masked. Every other TRUNCATE (a statement on its own,
+# one inside a PL/pgSQL body, one after a trigger in the same file, or the
+# words BEFORE/AFTER/OR TRUNCATE outside a trigger header) is still flagged.
+_IDENT = r'(?:"[^"]+"|[A-Za-z_][\w$]*)'
+_EVENT = (r"(?:INSERT|DELETE|TRUNCATE|UPDATE(?:\s+OF\s+" + _IDENT
+          + r"(?:\s*,\s*" + _IDENT + r")*)?)")
+_TRIGGER_HEADER = re.compile(
+    r"\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:CONSTRAINT\s+)?TRIGGER\s+" + _IDENT
+    + r"\s+(?:BEFORE|AFTER|INSTEAD\s+OF)\s+"
+    + r"(?P<events>" + _EVENT + r"(?:\s+OR\s+" + _EVENT + r")*)"
+    + r"\s+ON\b",
+    re.I,
+)
+
+
+def _mask_trigger_events(sql: str) -> str:
+    """Mask TRUNCATE where it is only a trigger's event, nowhere else."""
+    def _mask(m: re.Match[str]) -> str:
+        whole, start = m.group(0), m.start()
+        a, b = m.start("events") - start, m.end("events") - start
+        events = re.sub(r"\bTRUNCATE\b", "trigger_event", whole[a:b], flags=re.I)
+        return whole[:a] + events + whole[b:]
+    return _TRIGGER_HEADER.sub(_mask, sql)
 
 
 def destructive_statements(sql: str) -> list[str]:
     """Destructive statement kinds present in `sql`, comments excluded."""
-    body = _TRUNCATE_TRIGGER_EVENT.sub(r"\1\2trigger_event",
-                                       strip_sql_comments(sql))
+    body = _mask_trigger_events(strip_sql_comments(sql))
     return [label for pattern, label in _DESTRUCTIVE_PATTERNS if pattern.search(body)]
 
 
