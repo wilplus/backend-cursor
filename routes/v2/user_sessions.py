@@ -31,10 +31,8 @@ from routes.v2.arcs import (
 )
 from routes.v2.blueprint import v2_bp
 from routes.v2.common import _is_valid_uuid, _resolve_snippet_audio_url
-from services.coach_video_storage import refreshed_media_url
 from services.db import db
 from services.create_take import session_owned_by_principal
-from services.project_deletion import with_deletion_state
 from services.project_ownership import GUEST_OWNER_HEADER
 from services.project_repository import ProjectRepository
 from services.snippet_values import resolve_all
@@ -1136,85 +1134,23 @@ def v2_user_list_trainings():
         takes_target, takes:[{session_id, take_index, created_at, has_slides,
         coach_reviewed}], batch_verified, delivered_at, ideal_ready } ] }
     """
+    from time import perf_counter
+    from services.user_trainings import list_trainings
+    started = perf_counter()
+    # DATA & CONSENT'S EVERY-PROJECT READ (include_archived=1; D-CS-4) is
+    # strict and batched (services.user_trainings); the picker read keeps
+    # today's behaviour exactly (LIVE LOOP).
+    every_project = _archived()
     try:
-        from services.slide_selection import TAKES_TARGET
-        rows = db.takes.list_user_arc_sessions(request.user_id) or []
-        by_arc: dict = {}
-        for r in rows:
-            _aid = r.get("arc_id")
-            if _aid:
-                by_arc.setdefault(str(_aid), []).append(r)
-        deliveries = db.list_arc_batch_deliveries(list(by_arc.keys())) or {}
-
-        trainings = []
-        for aid, sess in by_arc.items():
-            # Reads are paired variants of their spoken take (2026-07-14) —
-            # they must not appear/count as takes of their own.
-            sess = [s for s in sess
-                    if s.get("recording_kind") != "read"
-                    and not s.get("paired_session_id")]
-            sess.sort(key=lambda s: (s.get("take_index") or 0))
-            if not sess:
-                continue
-            topic = None
-            n_slides = 0
-            cover_ref = None
-            for s in sess:
-                ctx = s.get("intake_context") if isinstance(
-                    s.get("intake_context"), dict) else {}
-                t = ctx.get("topic")
-                if isinstance(t, str) and t.strip():
-                    topic = t.strip()  # latest take wins (take order)
-                n_slides = max(n_slides, len((ctx or {}).get("slides") or []))
-                # Trainings-page header image (founder 2026-07-15) — the deck
-                # PDF; first non-null across takes; null → FE mock picture.
-                if cover_ref is None and ctx.get("presentation_ref"):
-                    cover_ref = ctx.get("presentation_ref")
-            takes = [{
-                "session_id": str(s.get("id")),
-                "take_index": s.get("take_index"),
-                "created_at": s.get("created_at"),
-                "has_slides": bool((
-                    s.get("intake_context")
-                    if isinstance(s.get("intake_context"), dict) else {}
-                ).get("slides")),
-                "coach_reviewed": bool(s.get("results_published_at")),
-                # The take opens its FEEDBACK page once published (founder
-                # 2026-07-15) — alias kept beside coach_reviewed for the FE.
-                "feedback_available": bool(s.get("results_published_at")),
-            } for s in sess]
-            delivered = deliveries.get(aid)
-            # Cheap coach_finalized mirror (same rule as /progress): every
-            # deck slide coach-corrected. Deckless arcs (no deck) become
-            # ideal_ready via the batch delivery itself (whose publish
-            # already required the full coach_finalized).
-            coach_finalized = False
-            if n_slides:
-                _edits = db.get_coach_best_presentation_edits(aid) or {}
-                coach_finalized = all(
-                    isinstance(_edits.get(i), str) and _edits[i].strip()
-                    for i in range(n_slides)
-                )
-            trainings.append({
-                "arc_id": aid,
-                # FE also accepts "title"; the ideal-presentation deep link
-                # uses best_presentation_arc_id (== arc_id here) — sent
-                # explicitly though the FE falls back to arc_id if omitted.
-                "topic": topic,
-                "best_presentation_arc_id": aid,
-                "cover_ref": refreshed_media_url(cover_ref),
-                "created_at": sess[0].get("created_at") if sess else None,
-                "take_count": len(sess),
-                "takes_target": TAKES_TARGET,
-                "takes": takes,
-                "batch_verified": bool(delivered),
-                "delivered_at": (delivered or {}).get("published_at"),
-                "ideal_ready": bool(delivered) or coach_finalized,
-            })
-        trainings.sort(key=lambda t: t.get("created_at") or "", reverse=True)
-        return jsonify({"trainings": with_deletion_state(db, trainings, _archived())}), 200
+        listed = list_trainings(db, request.user_id, every_project=every_project)
+        logger.info("user/trainings include_archived=%s projects=%d elapsed_ms=%.0f",
+                    int(every_project), len(listed),
+                    (perf_counter() - started) * 1000)
+        return jsonify({"trainings": listed}), 200
     except Exception as e:
-        logger.error("user/trainings failed: %s", e, exc_info=True)
+        logger.error("user/trainings failed include_archived=%s elapsed_ms=%.0f: %s",
+                     int(every_project), (perf_counter() - started) * 1000, e,
+                     exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({
             "code": "V2_ERROR", "error": "Failed to load trainings",

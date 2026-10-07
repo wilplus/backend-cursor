@@ -10318,6 +10318,31 @@ class DatabaseService:
                            arc_id, e)
             return {}
 
+    def get_coach_best_presentation_edits_for_arcs(
+        self, arc_ids: list[str],
+    ) -> dict[str, dict]:
+        """{arc_id: {slide_index: text}} for many arcs in ONE read (D-CS-4):
+        the every-project read asks once instead of once per project. A
+        missing table is {}; any other failure raises."""
+        ids = sorted({str(a) for a in arc_ids or [] if a})
+        if not ids:
+            return {}
+        try:
+            res = (self.client.table("coach_best_presentation_edits")
+                   .select("arc_id, slide_index, text")
+                   .in_("arc_id", ids).execute())
+        except Exception as e:
+            err_low = str(e).lower()
+            if "coach_best_presentation_edits" in err_low and (
+                    "does not exist" in err_low or "pgrst205" in err_low):
+                return {}
+            raise
+        out: dict[str, dict] = {}
+        for r in res.data or []:
+            if isinstance(r, dict) and isinstance(r.get("slide_index"), int):
+                out.setdefault(str(r.get("arc_id")), {})[r["slide_index"]] = r.get("text")
+        return out
+
     def get_coach_best_presentation_key_phrases(self, arc_id) -> dict:
         """{slide_index: [phrases]} — the coach-corrected key phrases (Engine
         2, 2026-07-11). {} on missing table/column / none / error (the auto-

@@ -227,10 +227,6 @@
     "lines": 104,
     "db_calls": 1
   },
-  "routes/v2/user_sessions.py:v2_user_list_trainings": {
-    "lines": 96,
-    "db_calls": 2
-  },
   "routes/v2/user_sessions.py:v2_user_put_session_intake_context": {
     "lines": 81,
     "db_calls": 1
