@@ -49,7 +49,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from services.feedback_pairs import ANSWER_SURFACES as SURFACES
+from services.feedback_pairs import DOOR_SURFACES as SURFACES
 
 _log = logging.getLogger(__name__)
 
@@ -86,12 +86,28 @@ def _json(value: Any) -> str:
 
 def example_for(pair: dict) -> Optional[dict]:
     """One chat-format training example, the serving prompt verbatim, or
-    None when the pair cannot be prompted (no passage)."""
+    None when the pair cannot be prompted (no passage).
+
+    The coach's own words (coach_moment_line, coach_take_word; known to
+    this door since Privacy/Terms 3.5, N68) are prompted by their own
+    drafter (services.coach_word_pairs), rebuilt from the snapshot the
+    drafter kept; a coach-word pair without that snapshot is no example."""
+    from services.feedback_pairs import COACH_WORD_SURFACES
+    surface = str(pair.get("surface") or "")
+    final = str(pair.get("final_text") or "").strip()
+    if surface in COACH_WORD_SURFACES:
+        from services.coach_word_pairs import prompt_from
+        prompt = prompt_from(surface, pair.get("passage_text"), pair.get("prompt_context"))
+        if prompt is None or not final:
+            return None
+        return {"messages": [
+            {"role": "system", "content": prompt[0]},
+            {"role": "user", "content": prompt[1]},
+            {"role": "assistant", "content": final},
+        ]}
     from services.coach_request_drafts import _SYSTEM
     from services.prompts.coach_answer_drafts import user as user_prompt
-    surface = str(pair.get("surface") or "")
     passage = " ".join(str(pair.get("passage_text") or "").split())
-    final = str(pair.get("final_text") or "").strip()
     system = _SYSTEM.get(surface)
     if not passage or not final or system is None:
         return None

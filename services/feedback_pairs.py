@@ -35,15 +35,23 @@ from typing import Any, Optional
 _log = logging.getLogger(__name__)
 
 #: The three answer surfaces, and (Phase 7, C5-a; dark behind
-#: COACH_WORD_PAIRS_ENABLED) the coach's own two: never in
-#: PAIR_RELEASE_SURFACES until a qualified lawyer answers and the founder's
-#: sentence follows.
+#: COACH_WORD_PAIRS_ENABLED) the coach's own two.
 SURFACES = ("praise_line", "clearer_version", "exercise_script",
             "coach_moment_line", "coach_take_word")
-#: The three answer surfaces the doors (2, 3, 4) know. The two coach-word
-#: surfaces (Phase 7, C5-a) are recorded and counted but stand outside every
-#: door until a qualified lawyer's answer and the founder's sentence.
+#: The three answer surfaces: the drafts of services.coach_request_drafts.
 ANSWER_SURFACES = ("praise_line", "clearer_version", "exercise_script")
+#: The coach's own words (Phase 7, C5-a): the drafts of
+#: services.coach_word_pairs, under their own prompts.
+COACH_WORD_SURFACES = ("coach_moment_line", "coach_take_word")
+#: The surfaces doors 2, 3 and 4 know: all five. Privacy/Terms 3.5, signed
+#: by the founder 2026-10-08 (decisions log N68; legal/phase1-2026.1/22-…
+#: SIGNED, E2), covers the coach's own words as training data under the
+#: speaker's training yes, and the coach agreement covers the coach's side.
+#: Knowing a surface opens nothing: each door still opens for a surface only
+#: when its switch is on AND the founder named the surface in its config
+#: set (PAIR_RELEASE_SURFACES, TRAINING_SURFACES, PROMOTION_SURFACES), and
+#: every one of them needs the speaker's yes (pair_consent).
+DOOR_SURFACES = ANSWER_SURFACES + COACH_WORD_SURFACES
 FINAL_KINDS = ("final", "transcript")
 _WS = re.compile(r"\s+")
 
@@ -66,10 +74,15 @@ def record_pair(
     snippet_id: Optional[str] = None, request_id: Optional[str] = None,
     exercise_id: Optional[str] = None, exercise_version: Optional[int] = None,
     final_kind: str = "final", take_word_id: Optional[str] = None,
+    prompt_snapshot: Optional[dict] = None,
 ) -> Optional[dict]:
     """The one write. None when the rule says no row, or the write failed:
     a pair that is not recorded never breaks the answer it rode on. A pair
-    hangs on a request, an exercise, or (Phase 7, C5-a) a Take word."""
+    hangs on a request, an exercise, or (Phase 7, C5-a) a Take word.
+
+    ``prompt_snapshot`` ({passage_text, prompt_context}) is what the draft's
+    prompt was given, kept by the drafter itself; the coach's own words pass
+    it (services.coach_word_pairs), the answer surfaces read the clip."""
     if surface not in SURFACES or final_kind not in FINAL_KINDS:
         return None
     coach = str(coach_id or "").strip()
@@ -90,9 +103,16 @@ def record_pair(
     # The pair remembers the passage it was drafted from and what the
     # prompt was told (0406): a training example needs the prompt, and a
     # pair without one is never an example.
-    prompt = _prompt_snapshot(database, take_session_id=take_session_id,
-                              snippet_id=snippet_id, surface=surface,
-                              pattern_key=pattern_key)
+    if surface in COACH_WORD_SURFACES:
+        # The coach's words were drafted from what the drafter kept; a pair
+        # without that snapshot carries no passage and is never released,
+        # judged or trained on (fail closed: a clip's transcript is not the
+        # prompt these drafts were written from).
+        prompt = _given_snapshot(prompt_snapshot)
+    else:
+        prompt = _prompt_snapshot(database, take_session_id=take_session_id,
+                                  snippet_id=snippet_id, surface=surface,
+                                  pattern_key=pattern_key)
     try:
         row = writer(
             **consent, **prompt,
@@ -142,6 +162,18 @@ def _prompt_snapshot(database: Any, *, take_session_id: Any, snippet_id: Any,
     return {"passage_text": passage,
             "prompt_context": {"kind": KIND_FOR_SURFACE.get(surface, "error"),
                                "pattern_key": pattern_key or None}}
+
+
+def _given_snapshot(snapshot: Any) -> dict:
+    """{passage_text, prompt_context} from a drafter's own snapshot, or
+    neither when it is missing or carries no passage."""
+    if not isinstance(snapshot, dict):
+        return {"passage_text": None, "prompt_context": None}
+    passage = " ".join(str(snapshot.get("passage_text") or "").split())
+    context = snapshot.get("prompt_context")
+    if not passage or not isinstance(context, dict):
+        return {"passage_text": None, "prompt_context": None}
+    return {"passage_text": passage, "prompt_context": dict(context)}
 
 
 def _mirror(database: Any, row: dict, coach: str) -> None:

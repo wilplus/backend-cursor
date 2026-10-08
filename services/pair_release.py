@@ -19,7 +19,11 @@ bucket with a manifest the job signs:
     was written;
   * a surface leaves only when the door is open in code AND the founder
     named the surface (Config.PAIR_RELEASE_SURFACES) by a reviewed change
-    carrying his sentence; every other surface reports why it stayed;
+    carrying his sentence; every other surface reports why it stayed. The
+    door knows the three answer surfaces and, since Privacy/Terms 3.5
+    (signed 2026-10-08, N68), the coach's own two (coach_moment_line,
+    coach_take_word): every one of them needs the speaker's training yes
+    (pair_consent.CONSENT_REQUIRED_SURFACES);
   * the manifest carries the file's sha256, the split counts (speaker-
     disjoint 80/10/10 by the owner's SPEAKER assignment,
     ml_speaker_split_assignments through services/speaker_split.py, F-3;
@@ -46,7 +50,7 @@ import logging
 from datetime import date, datetime, timezone
 from typing import Any, Optional
 
-from services.feedback_pairs import ANSWER_SURFACES as SURFACES
+from services.feedback_pairs import DOOR_SURFACES as SURFACES
 
 _log = logging.getLogger(__name__)
 

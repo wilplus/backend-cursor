@@ -11,8 +11,12 @@ Two kinds of surface, one instrument each:
     blind, judged with the same one question the coach answers. The
     founder never sees those labels, nor a machine read (BLIND COACH holds
     for the founder too).
-  * the three coach-answer surfaces (``praise_line``, ``clearer_version``,
-    ``exercise_script``; ML-10): the pool is the (draft, final) pairs that
+  * the pair surfaces: the three coach-answer surfaces (``praise_line``,
+    ``clearer_version``, ``exercise_script``; ML-10) and, since
+    Privacy/Terms 3.5 (signed 2026-10-08, N68), the coach's own words
+    (``coach_moment_line``, ``coach_take_word``, whose pairs count only
+    when they carry the snapshot their drafter kept, so the evaluation can
+    rebuild the prompt verbatim): the pool is the (draft, final) pairs that
     still carry their passage. The founder sees the passage and the coach's
     final — never the machine's draft — and answers one question: is this
     the right answer for this passage? Yes, no, not sure. A "yes" makes the
@@ -30,7 +34,8 @@ from typing import Any, Optional
 
 #: The confidence surface judges clips; the pair surfaces judge texts.
 CLIP_SURFACES = ("confidence",)
-PAIR_SURFACES = ("praise_line", "clearer_version", "exercise_script")
+PAIR_SURFACES = ("praise_line", "clearer_version", "exercise_script",
+                 "coach_moment_line", "coach_take_word")
 SURFACES = CLIP_SURFACES + PAIR_SURFACES
 SET_SIZE = 50
 VALUES = ("yes", "in_between", "no", "not_sure", "audio_unclear")
@@ -52,6 +57,20 @@ def _check_surface(surface: Any) -> str:
 
 def is_pair_surface(surface: Any) -> bool:
     return surface in PAIR_SURFACES
+
+
+def promptable(surface: Any, pair: Any) -> bool:
+    """A pair can stand in the set only when the evaluation can put its
+    prompt to a model: a coach-word pair needs its drafter's snapshot
+    (services.coach_word_pairs.prompt_from); an answer-surface pair its
+    passage, as before."""
+    from services.feedback_pairs import COACH_WORD_SURFACES
+    if not isinstance(pair, dict):
+        return False
+    if surface in COACH_WORD_SURFACES:
+        from services.coach_word_pairs import prompt_from
+        return prompt_from(str(surface), pair.get("passage_text"), pair.get("prompt_context")) is not None
+    return bool(" ".join(str(pair.get("passage_text") or "").split()))
 
 
 def _judged_ids(database: Any, *, surface: str, judge: str) -> set[str]:
@@ -91,6 +110,8 @@ def _next_pair(database: Any, *, surface: str, judged: set[str]) -> Optional[dic
         passage = " ".join(str((pair or {}).get("passage_text") or "").split())
         final = str((pair or {}).get("final_text") or "").strip()
         if not pair_id or pair_id in judged or not passage or not final:
+            continue
+        if not promptable(surface, pair):
             continue
         judged.add(pair_id)
         return {
@@ -150,7 +171,7 @@ def _pair_moment(database: Any, *, surface: str, pair_id: str) -> Optional[dict]
         return None
     passage = " ".join(str(pair.get("passage_text") or "").split())
     final = str(pair.get("final_text") or "").strip()
-    if not passage or not final:
+    if not passage or not final or not promptable(surface, pair):
         return None
     return {"passage": passage, "final": final,
             "prompt_context": pair.get("prompt_context") or {},

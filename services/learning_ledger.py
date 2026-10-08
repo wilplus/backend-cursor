@@ -59,9 +59,11 @@ def doors(config: Any) -> dict:
                             "constant": "MLC2_PAIR_RELEASES_ENABLED",
                             "surfaces": sorted(getattr(config, "PAIR_RELEASE_SURFACES", ()) or ())},
         "training": {"open": bool(getattr(config, "MLC2_TRAINING_ENABLED", False)),
-                     "constant": "MLC2_TRAINING_ENABLED"},
+                     "constant": "MLC2_TRAINING_ENABLED",
+                     "surfaces": sorted(getattr(config, "TRAINING_SURFACES", ()) or ())},
         "promotion": {"open": bool(getattr(config, "MLC2_PROMOTION_ENABLED", False)),
-                      "constant": "MLC2_PROMOTION_ENABLED"},
+                      "constant": "MLC2_PROMOTION_ENABLED",
+                      "surfaces": sorted(getattr(config, "PROMOTION_SURFACES", ()) or ())},
     }
 
 

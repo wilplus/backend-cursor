@@ -16,14 +16,20 @@ Take (the Take word) or rated the moment (the line); the drafter's inputs
 are the transcript and the coach's own text, never acoustics, never the
 read; the draft states nothing about the read and carries no number.
 Pre-fill returns for these two fields only (reversing 2026-07-14 for them).
-TEXT ONLY: pairs are stored as text; whether a delivery note is "practice
-text" is open with counsel, so nothing filters or rewrites the coach's
-words.
+TEXT ONLY: pairs are stored as text; nothing filters or rewrites the
+coach's words.
 
-DOOR 2 ON HOLD: neither surface is in PAIR_RELEASE_SURFACES until a
-qualified lawyer answers question 2 and the founder's sentence follows.
-Door 3 needs the sealed golden set and 200 pairs. The ledger reports, per
-surface, the share of drafts sent unchanged.
+THE DOORS (Privacy/Terms 3.5, signed by the founder 2026-10-08, decisions
+log N68; legal/phase1-2026.1/22-…SIGNED, E2): the coach's own words are
+training data under the SPEAKER's training yes, and the coach agreement
+covers the coach's side. Doors 2, 3 and 4 know both surfaces
+(feedback_pairs.DOOR_SURFACES), and each still opens for one only when its
+switch is on and the founder named it in the door's config set. The
+drafter keeps what its prompt was given (``draft_prompt`` on the row,
+0459), the pair carries it, and a training example or a golden evaluation
+rebuilds this module's prompt from it verbatim; a pair without it is never
+released, judged or trained on. Door 3 needs the sealed golden set and 200
+pairs. The ledger reports, per surface, the share of drafts sent unchanged.
 """
 from __future__ import annotations
 
@@ -35,6 +41,10 @@ _log = logging.getLogger(__name__)
 SURFACES = ("coach_moment_line", "coach_take_word")
 LABEL = "Drafted from this Take · edit every word"
 _MAX_PASSAGE = 1200
+#: The prompt family a coach-word pair's ``prompt_context`` names; a pair
+#: whose context does not name it was not drafted under this module's
+#: prompts as kept, and is never an example or a reference.
+PROMPT_FAMILY = "coach_word_drafts"
 
 
 def word_pairs_enabled() -> bool:
@@ -54,6 +64,37 @@ def _every_moment_judged(database: Any, *, take_session_id: str, coach_id: str) 
     return all(str(s) in {str(k) for k in ratings} for s in bookmarked)
 
 
+def passage_for(transcript: Any) -> str:
+    """The transcript exactly as the prompt is given it: whitespace
+    collapsed, cut at _MAX_PASSAGE characters, never ending on a space (so
+    a kept passage collapses to itself and its prompt rebuilds verbatim)."""
+    return " ".join(str(transcript or "").split())[:_MAX_PASSAGE].rstrip()
+
+
+def prompt_snapshot(*, transcript: Any, coach_text: Optional[str]) -> dict:
+    """What the draft's prompt was given, kept on the draft's row and then
+    on its pair: {passage_text, prompt_context}."""
+    return {"passage_text": passage_for(transcript),
+            "prompt_context": {"prompt": PROMPT_FAMILY,
+                               "coach_text": str(coach_text).strip() if coach_text else None}}
+
+
+def prompt_from(surface: str, passage: Any, context: Any) -> Optional[tuple[str, str]]:
+    """(system, user) for a coach-word surface, rebuilt verbatim from a kept
+    snapshot; None when the surface is not one of these two, or the
+    snapshot is missing, from another prompt family, or has no passage."""
+    from services.prompts.coach_word_drafts import SYSTEM, user
+    system = SYSTEM.get(str(surface or ""))
+    text = " ".join(str(passage or "").split())
+    if system is None or not text or not isinstance(context, dict):
+        return None
+    if context.get("prompt") != PROMPT_FAMILY or "coach_text" not in context:
+        return None
+    coach_text = context.get("coach_text")
+    return system, user(surface=str(surface), transcript=text,
+                        coach_text=str(coach_text) if coach_text else None)
+
+
 def compose(*, surface: str, transcript: str, coach_text: Optional[str],
             user_id: Optional[str] = None) -> Optional[dict]:
     """The one model call, text only: the transcript and the coach's own
@@ -62,7 +103,7 @@ def compose(*, surface: str, transcript: str, coach_text: Optional[str],
     from services.llm_config import SPEC_COACH_ANSWER_DRAFT
     from services.prompts.coach_word_drafts import SYSTEM, user
     system = SYSTEM.get(surface)
-    passage = " ".join(str(transcript or "").split())[:_MAX_PASSAGE]
+    passage = passage_for(transcript)
     if system is None or not passage:
         return None
     result = chat_complete(spec=SPEC_COACH_ANSWER_DRAFT, system=system,
@@ -87,12 +128,14 @@ def draft_take_word(database: Any, *, take_session_id: str, coach_id: str,
     transcript = " ".join(str(s.get("transcript") or "") for s in
                           (database.get_snippets_by_session(str(take_session_id)) or [])
                           if isinstance(s, dict))
+    notes = str(fields.get("notes") or "").strip() or None
     draft = compose(surface="coach_take_word", transcript=transcript,
-                    coach_text=str(fields.get("notes") or "").strip() or None, user_id=coach_id)
+                    coach_text=notes, user_id=coach_id)
     if draft is None:
         return 503, {"code": "DRAFT_UNAVAILABLE", "error": "A draft could not be written right now."}
     database.set_coach_take_word_draft(take_session_id=str(take_session_id), coach_id=str(coach_id),
-                                       text=draft["text"], model_version=draft["model_version"])
+                                       text=draft["text"], model_version=draft["model_version"],
+                                       prompt=prompt_snapshot(transcript=transcript, coach_text=notes))
     return 200, {"draft": {"surface": "coach_take_word", "text": draft["text"],
                            "model_version": draft["model_version"], "label": LABEL}}
 
@@ -112,13 +155,17 @@ def draft_moment_line(database: Any, *, request_row: Any, coach_id: str,
                      "error": "This moment already has another coach's answer."}
     fields: dict = body if isinstance(body, dict) else {}
     snippet = database.get_snippet_by_id(str(request_row.get("snippet_id") or "")) or {}
-    draft = compose(surface="coach_moment_line", transcript=str(snippet.get("transcript") or ""),
-                    coach_text=str(fields.get("notes") or "").strip() or None, user_id=coach_id)
+    notes = str(fields.get("notes") or "").strip() or None
+    transcript = str(snippet.get("transcript") or "")
+    draft = compose(surface="coach_moment_line", transcript=transcript,
+                    coach_text=notes, user_id=coach_id)
     if draft is None:
         return 503, {"code": "DRAFT_UNAVAILABLE", "error": "A draft could not be written right now."}
     database.set_exercise_coach_request_draft(request_id=str(request_row["id"]),
                                               surface="coach_moment_line", text=draft["text"],
-                                              model_version=draft["model_version"])
+                                              model_version=draft["model_version"],
+                                              prompt=prompt_snapshot(transcript=transcript,
+                                                                     coach_text=notes))
     return 200, {"draft": {"surface": "coach_moment_line", "text": draft["text"],
                            "model_version": draft["model_version"], "label": LABEL}}
 
@@ -142,7 +189,8 @@ def record_take_word_pair(database: Any, *, word_row: Any, coach_id: str,
     return record_pair(database, surface="coach_take_word", draft=draft, final=final_text,
                        coach_id=coach_id, model_version=word_row.get("draft_model_version"),
                        owner_user_id=session.get("user_id"), take_session_id=take,
-                       take_word_id=str(word_row.get("id") or ""), final_kind=final_kind)
+                       take_word_id=str(word_row.get("id") or ""), final_kind=final_kind,
+                       prompt_snapshot=word_row.get("draft_prompt"))
 
 
 def record_moment_line_pair(database: Any, *, request_row: Any, coach_id: str,
@@ -161,7 +209,8 @@ def record_moment_line_pair(database: Any, *, request_row: Any, coach_id: str,
                        owner_user_id=request_row.get("owner_user_id"),
                        take_session_id=request_row.get("take_session_id"),
                        snippet_id=request_row.get("snippet_id"),
-                       request_id=str(request_row.get("id") or ""))
+                       request_id=str(request_row.get("id") or ""),
+                       prompt_snapshot=request_row.get("draft_prompt"))
 
 
 def _speaker_permit_adapter(database: Any, take_session_id: str) -> Any:

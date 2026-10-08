@@ -34,6 +34,10 @@ JARS: tuple[tuple[str, tuple[str, ...], int], ...] = (
     ("pairs.praise_line", ("pairs", "praise_line", "exportable"), 200),
     ("pairs.clearer_version", ("pairs", "clearer_version", "exportable"), 200),
     ("pairs.exercise_script", ("pairs", "exercise_script", "exportable"), 200),
+    # The coach's own words fill their own jars to the same bar (doors 2 to
+    # 4 know them since Privacy/Terms 3.5, N68).
+    ("pairs.coach_moment_line", ("pairs", "coach_moment_line", "exportable"), 200),
+    ("pairs.coach_take_word", ("pairs", "coach_take_word", "exportable"), 200),
     ("exercise_jar.counted", ("exercise_jar", "counted"), 300),
 )
 

@@ -55,8 +55,10 @@ MODEL_CONFIG_KEYS = frozenset({
     "openai_surface_model_praise_line",
     "openai_surface_model_clearer_version",
     "openai_surface_model_exercise_script",
-    # The coach's own words (C5-a, Phase 7, 2026-10-01): slots that serve
-    # the stock model while the doors stay shut.
+    # The coach's own words (C5-a, Phase 7, 2026-10-01; doors 3 and 4 know
+    # them since Privacy/Terms 3.5, N68), promoted through the same RPC;
+    # migration 0459 widened the database allowlist to match. They serve the
+    # stock model until the founder names them and opens door 4.
     "openai_surface_model_coach_moment_line",
     "openai_surface_model_coach_take_word",
     # The two ungoverned chat surfaces (R-13). Neither is a learned surface
