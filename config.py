@@ -471,7 +471,9 @@ class Config:
     # then training clips, through the Lend your ear engine
     # (services/lend_your_ear.other_voices); the per-Take share is the one
     # consent path that admits a speaker's moment to it.
-    COMMUNITIES_ENABLED = False
+    # ON from 2026-10-08 (founder, D-FW-20, N66): the sharing screen ships
+    # in the Feedback walk; counsel's review of its words was not obtained.
+    COMMUNITIES_ENABLED = True
     # CM2 B (founder 2026-10-06, N53.2; Q-B6 A, N62): sharing switches on
     # with the sharing screen, under the founder's own signed words for it
     # (N54, WQ5 A / WQ6 A), without waiting for counsel; the founder took the
@@ -484,7 +486,7 @@ class Config:
     # any version. Each share row is stamped with it (take_shares.
     # consent_version) and with the version of the sharing screen's words
     # the speaker saw (take_shares.share_words_version, 0443), which the
-    # screen sends. Still dark: COMMUNITIES_ENABLED above is the switch.
+    # screen sends. COMMUNITIES_ENABLED above is the switch (on, N66).
     COMMUNITY_SHARE_POLICY_VERSION: str | None = "phase1-2026-10-02"
     # The versions of the sharing screen's words a share may record (0443):
     # the server's own list, so a share can only name words that were really

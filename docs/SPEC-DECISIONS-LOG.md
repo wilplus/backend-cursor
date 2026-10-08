@@ -2301,3 +2301,24 @@ confirmed again the five N63 answers (Q-B3, Q-B5, Q-B9, Q-B10, Q-B14 A).
   registry) and never reaches a payload (AC-9). Config first:
   `TAKE_FEEDBACK_POLICY_V3_MODE=dark` on every service that runs the Take
   pipeline (V4 row B1.1b).
+
+**N66 · Sharing goes live in the Feedback walk (founder, 8 October 2026;
+build plan D-FW-20).** The founder, in the build chat: "I want the sharing
+built and switched on"; "you have my OK". CM2 had held the sharing screen's
+consent words for counsel; CM2 B (N53.2) let sharing switch on with the
+screen under the founder's own signed words (N54, WQ5 A, WQ6 A; "None"
+S-B6 A, N65). This is the founder's decision: **counsel's review of the
+sharing words was not obtained**, and the founder takes the risk stated on
+the panel (people's voices reach others under words counsel has not
+checked, in the EU).
+- The walk asks to share after the judgements, and after Skip on
+  "Judgement time!" (Q-B6 A), then shows the end card. The screen is the
+  locked prototype's step 11 with the signed words of version
+  `sharing-screen-2026-10-06`, which every share records
+  (`take_shares.share_words_version`, 0443). "None" takes the share back.
+  A share names the current Privacy/Terms (`COMMUNITY_SHARE_POLICY_VERSION`,
+  phase1-2026-10-02; 409 TERMS_REACCEPT_REQUIRED before it).
+- `COMMUNITIES_ENABLED` turns on. Community answers stay peer ratings, kept
+  apart from the coach's, the speaker's own and the machine's (L3); nothing
+  about anyone's voice reaches a screen as a number (AC-9).
+- Not in this step: the "Sharing" row in the ⋯ menu (Q-B6 A), its own task.
