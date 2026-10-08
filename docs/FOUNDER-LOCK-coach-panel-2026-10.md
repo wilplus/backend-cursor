@@ -55,7 +55,7 @@ Contract: 41 (amended), 63–66 (new retirements).
 | C7 | yes | The coach can name a new speaking error from the panel: name, definition, the one question. It enters as observed, routes nothing. |
 | C8 | no | The adequacy endpoint stays the detectors on the attempt, as the signed label spec says; the coach's naming feeds only the shadow-cue validation. |
 | C9 | yes | The ledger (jar, per-exercise counts, shadow cues, pairs) is a founder-only page. |
-| C10 | yes | A shadow cue is promoted by a person, after the weekly report shows READY (30 named, 80% caught), with the report drafting the migration text. |
+| C10 | yes | A shadow cue is promoted by a person, after the weekly report shows READY (30 named, 80% caught), with the report drafting the migration text. *Amended 2026-10-05 (decisions log N48.5 Q24 A): READY is 30 coaches' Yes answers in the blind error audit, 80% of them caught; naming on the moment was retired (N45 Q9).* |
 | C11 | yes | Accept writes a new version of the Paragraph, labelled "Correction accepted" (the rewrite amendment: show the text, Accept, then record the accepted text). |
 
 Contract: 29b, 35f, 35g-2, 35g-2a, 35g-3a (shadow), 35k.
@@ -73,7 +73,7 @@ Contract: 29b, 35f, 35g-2, 35g-2a, 35g-3a (shadow), 35k.
 | E7 | yes | One weekly job runs readiness, the shadow-cue validation and the ledger snapshot, and writes a founder-only report. It promotes nothing. |
 | E8 | yes | Once the fair test clears its bar and the founder promotes, learned adequacy orders exercises of equal fit. Not before. |
 | E9 | no | The bar (300 attempts, 30 per exercise) stays; a descriptive weekly view instead. |
-| E10 | yes | Next recognitions: promote the three shadow verbal cues through coach naming, then add low volume and flat pitch into shadow. |
+| E10 | yes | Next recognitions: promote the three shadow verbal cues through coach naming, then add low volume and flat pitch into shadow. *Amended 2026-10-05 (N48.5 Q24 A): through coaches' Yes answers in the blind error audit, not naming. Low volume and flat pitch are not in the audit (their library questions ask about the absence of the error), so they cannot reach READY until the founder decides how they are asked.* |
 
 Contract: 24f, 35a–35c, 35f, 35g-2, 35g-3a (shadow), 35k.
 
@@ -86,7 +86,7 @@ Contract: 24f, 35a–35c, 35f, 35g-2, 35g-3a (shadow), 35k.
 | L3 | The failing daily annotation cron is replaced by the weekly export job; its Dockerfile is removed. |
 | L4 | The weekly readiness job and the founder's pace panel exist before any door opens. |
 | L5 | Doors 2, 3 and 4 open one surface at a time, exercise script first, each by a reviewed change the founder authorises, never a toggle. |
-| L6 | The golden evaluation set is the founder's: fifty moments judged per surface, sealed, before door 3 opens. |
+| L6 | The golden evaluation set is the founder's: fifty moments judged per surface, sealed, before door 3 opens. *Amended 2026-10-06 (founder, Navigation Panel QG4 B; ledger CA07; decisions log N51): unchanged — the golden set is the founder's picks alone. Coach picks are compared with the founder's, never added to the set; the V4 page's M9 ("golden = coach and founder agree") and V18 ("'None needs it' by both is agreement") are narrowed to that comparison.* |
 | L7 | The four small things fixed (the unexpected-receipt rule, the stale dark comments, the label map, the dead cron). |
 | L8 | The MLC-3 exercise service loop is retired in favour of the unified walk: routes 410, tables stay, monitors off. |
 | L9 | The confidence read stays rules until the SPEC's evaluation (two blind humans per clip, the kill rule at 100 labels) passes. |

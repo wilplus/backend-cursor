@@ -1,0 +1,700 @@
+<title>Coach Panel Redesign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+:root{
+  --bg:#eef0f3; --surface:#ffffff; --ink:#15171c; --ink-2:#4b5160; --ink-3:#7d8492; --line:#dde1e7;
+  --sel:#15171c; --sel-ink:#ffffff; --phone:#111318; --phone-edge:#2a2e36; --mark:#b4530a; --mark-bg:#fff6ed;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#121418; --surface:#1c1f25; --ink:#eceef2; --ink-2:#b5bac4; --ink-3:#808796; --line:#2e323b;
+  --sel:#eceef2; --sel-ink:#121418; --phone:#000; --phone-edge:#3a3f49; --mark:#f0a061; --mark-bg:#2a2017; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#121418; --surface:#1c1f25; --ink:#eceef2; --ink-2:#b5bac4; --ink-3:#808796; --line:#2e323b;
+  --sel:#eceef2; --sel-ink:#121418; --phone:#000; --phone-edge:#3a3f49; --mark:#f0a061; --mark-bg:#2a2017; color-scheme:dark;}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 "IBM Plex Sans",system-ui,sans-serif;padding-inline:16px;padding-block:16px}
+.layout{display:flex;gap:28px;justify-content:center;align-items:flex-start;max-width:1140px;margin:0 auto}
+.side{width:330px;flex:none;display:flex;flex-direction:column;gap:14px;padding-top:8px;min-width:0}
+.side h1{font-size:20px;line-height:1.2;margin:0;text-wrap:balance}
+.side p{margin:0;color:var(--ink-2);font-size:13.5px}
+.lab{font:500 11px "IBM Plex Mono",monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.jump{display:flex;flex-wrap:wrap;gap:6px}
+.jump button,.tog{font:500 12.5px "IBM Plex Sans",sans-serif;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:99px;padding:5px 11px;cursor:pointer}
+.tog[aria-pressed="true"]{background:var(--sel);color:var(--sel-ink);border-color:var(--sel)}
+.jump button:focus-visible,.restart:focus-visible,.tog:focus-visible{outline:2px solid #6b7280;outline-offset:2px}
+.where{font:500 12px "IBM Plex Mono",monospace;color:var(--ink-2);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:44px}
+.fix{font-size:12.5px;color:var(--ink-2);background:var(--mark-bg);border:1px solid var(--line);border-left:3px solid var(--mark);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:5px}
+.fix b{color:var(--mark);font:600 11px "IBM Plex Mono",monospace;letter-spacing:.1em;text-transform:uppercase}
+.fix:empty{display:none}
+.restart{align-self:flex-start;font:600 13px "IBM Plex Sans",sans-serif;border:0;background:var(--sel);color:var(--sel-ink);border-radius:99px;padding:8px 16px;cursor:pointer}
+.notes{font-size:12.5px;color:var(--ink-3);border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:6px}
+.notes b{color:var(--ink-2);font-weight:600}
+.stage{flex:none;display:flex;justify-content:center}
+.phonewrap{transform-origin:top center}
+.ph{width:402px;height:860px;border-radius:52px;background:var(--phone);padding:10px;border:1px solid var(--phone-edge);box-shadow:0 20px 50px rgba(0,0,0,.18)}
+.below{max-width:1140px;margin:40px auto 24px;display:flex;flex-direction:column;gap:16px}
+.below h2{font-size:22px;line-height:1.2;margin:0}
+.below .lede{margin:0;color:var(--ink-2);font-size:14px;max-width:75ch}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:16px}
+.col{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;min-width:0}
+.col h3{margin:0 0 8px;font:600 11px "IBM Plex Mono",monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.col ol,.col ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;font-size:13.5px;color:var(--ink-2)}
+.col b{color:var(--ink);font-weight:600}
+@media (max-width:860px){.layout{flex-direction:column;align-items:center}.side{width:100%;max-width:420px;padding-top:0}}
+
+/* ---------------- the app (the Feedback walk's look) ---------------- */
+.sc{--bg:#fff;--fg:#121212;--mut:#737373;--line:#e5e5e5;--mutbg:#f4f4f5;--pri:#ff6a14;--pri-soft:rgba(255,106,20,.07);--green:#2f8a5e;--rec:#e2463a;
+  --ease-in:cubic-bezier(.2,.8,.2,1);--ease-out:cubic-bezier(.4,0,1,1);
+  position:relative;height:100%;border-radius:42px;overflow:hidden;background:var(--bg);color:var(--fg);
+  font:17px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;user-select:none;-webkit-user-select:none}
+.sc button,.sc input,.sc textarea{font:inherit;color:inherit}
+.sc button{background:none;border:0;padding:0;cursor:pointer;text-align:inherit}
+.status{position:relative;z-index:30;height:44px;display:flex;justify-content:space-between;align-items:center;padding:6px 28px 0;font-size:15px;font-weight:600;background:var(--bg)}
+.status i{font-style:normal;letter-spacing:2px;font-size:12px}
+.view{position:absolute;inset:44px 0 0 0;display:flex;flex-direction:column;background:var(--bg)}
+.ltop{display:flex;align-items:center;justify-content:space-between;padding:10px 16px 10px 20px;font-size:16px;font-weight:600;border-bottom:1px solid var(--line)}
+.burger{width:34px;height:34px;border-radius:99px;display:inline-flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer}
+.lounge{flex:1;display:flex;flex-direction:column;gap:10px;padding:8px 16px;overflow:hidden;justify-content:flex-end}
+.lb{max-width:85%;border-radius:16px;padding:8px 12px;font-size:15px;line-height:1.45}
+.lb.me{margin-left:auto;background:var(--pri);color:#fff}
+.itcard{margin-right:auto;width:82%;border:1px solid var(--line);border-radius:18px;padding:10px 12px;display:flex;gap:10px;align-items:center;position:relative;background:var(--bg)}
+.itcard.marked{outline:2px solid var(--pri);outline-offset:3px}
+.itcard .newtag{position:absolute;right:-6px;top:-14px;background:var(--pri);color:#fff;font-size:11px;font-weight:600;border-radius:99px;padding:1px 9px;line-height:1.5}
+.itcard .mini{width:64px;aspect-ratio:16/9;border-radius:6px;background:linear-gradient(135deg,#dde3ee,#c7d0e0);flex:none}
+.itcard b{display:block;font-size:15px}
+.itcard small{display:block;font-size:12px;color:var(--mut)}
+.pinned{display:flex;gap:10px;padding:6px 14px 0}
+.sc .pinned button{flex:1;height:48px;border:1.5px solid var(--line);border-radius:16px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:15px;font-weight:600;background:var(--bg)}
+.pinned svg{width:20px;height:20px;fill:none;stroke:var(--fg);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.composer{margin:8px 14px 26px;border:1px solid var(--line);border-radius:24px;padding:12px 16px;font-size:15px;color:var(--mut)}
+.menu{position:absolute;right:12px;top:50px;z-index:20;background:var(--bg);border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.14);padding:6px;min-width:200px;animation:fadeUp .2s var(--ease-in)}
+.menu button{display:block;width:100%;padding:10px 12px;border-radius:9px;font-size:15px}
+.menu button:hover{background:var(--mutbg)}
+
+.ov{position:absolute;inset:0;background:var(--bg);display:flex;flex-direction:column;z-index:10}
+.ovtop{display:flex;align-items:center;justify-content:space-between;padding:8px 10px 0 10px;min-height:44px}
+.ovtop .nav{display:flex;align-items:center;gap:2px;font-size:13.5px;font-weight:600}
+.ovtop .nav span{width:36px;height:36px;border-radius:99px;display:inline-flex;align-items:center;justify-content:center;color:var(--mut);font-size:20px;cursor:pointer}
+.ovtop .nav span.off{opacity:.25;cursor:default}
+.ovtop .x{margin-right:10px}
+.x{width:30px;height:30px;border-radius:99px;background:var(--mutbg);color:var(--mut);display:inline-flex;align-items:center;justify-content:center;font-size:15px;flex:none;cursor:pointer}
+.ttl{font-size:22px;font-weight:700;letter-spacing:-.01em;line-height:1.2;padding:12px 20px 4px}
+.cap{font-size:13.5px;color:var(--mut);padding:0 20px}
+.sb{flex:1;padding:12px 20px;display:flex;flex-direction:column;gap:18px;overflow-y:auto}
+.sfoot{padding:8px 20px 30px;display:flex;flex-direction:column;gap:4px}
+.sc .pill{height:54px;border-radius:99px;background:var(--fg);color:var(--bg);display:flex;align-items:center;justify-content:center;gap:9px;font-size:16px;font-weight:600;width:100%;text-align:center}
+.sc .pill:disabled{opacity:.3;cursor:default}
+.sc .pill .rd{width:10px;height:10px;border-radius:99px;background:#ef4444}
+.sc .lnk{height:40px;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--mut);width:100%}
+.q{font-size:16px;font-weight:600;margin:0}
+.ans{display:flex;flex-direction:column;gap:8px}
+.ans button{border:1.5px solid rgba(18,18,18,.16);border-radius:99px;padding:14px;text-align:center;font-size:16px;font-weight:600;width:100%}
+.ans .two{display:flex;gap:8px;margin-top:2px}
+.ans .two button{padding:9px;font-size:14px;font-weight:500;color:var(--mut)}
+.ans button.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.toast{position:absolute;left:50%;transform:translateX(-50%);bottom:120px;background:#121212;color:#fff;border-radius:99px;padding:8px 16px;font-size:14px;white-space:nowrap;z-index:40;box-shadow:0 6px 16px rgba(0,0,0,.3);animation:toast 1.7s ease forwards;pointer-events:none}
+@keyframes toast{0%{opacity:0;transform:translate(-50%,8px)}12%{opacity:1;transform:translate(-50%,0)}80%{opacity:1}100%{opacity:0}}
+
+/* the speaker's passage and the one player */
+.you{background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.you .words{font-size:16.5px;line-height:1.55}
+.you .words s{color:var(--mut);text-decoration-thickness:1.5px}
+.thumb{width:48%;aspect-ratio:16/9;border-radius:8px;background:linear-gradient(135deg,#dde3ee,#c7d0e0);color:#4b5670;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none}
+.play{display:flex;align-items:center;gap:10px;width:100%}
+.play .pb{width:34px;height:34px;border-radius:99px;background:var(--fg);flex:none;position:relative}
+.play .pb::after{content:"";position:absolute;left:13px;top:10px;border-left:11px solid var(--bg);border-top:7px solid transparent;border-bottom:7px solid transparent}
+.play.on .pb::after{left:11px;border:0;width:12px;height:14px;background:linear-gradient(90deg,var(--bg) 0 4px,transparent 4px 8px,var(--bg) 8px 12px)}
+.wave{display:flex;align-items:center;gap:2.5px;height:22px;flex:1}
+.wave i{width:3px;border-radius:2px;background:var(--fg);opacity:.22;display:block;transition:opacity .2s}
+.wave i.on{opacity:.9}
+.play .tm{font-size:12.5px;color:var(--mut);font-variant-numeric:tabular-nums}
+
+/* the coach's words, where the speaker sees them, with the pencil */
+.fb{font-size:17px;line-height:1.55;margin:0;color:var(--fg)}
+.fb.coach{display:flex;gap:10px;align-items:flex-start;position:relative}
+.av{width:24px;height:24px;border-radius:99px;flex:none;display:inline-flex;align-items:flex-end;justify-content:center;overflow:hidden;background:#d9d9de;margin-top:1px}
+.av svg{width:19px;height:19px;fill:#8a8a93}
+.fb .msg{display:flex;flex-direction:column;gap:10px;min-width:0;flex:1}
+.fb .new{font-size:18px;line-height:1.45;font-weight:600}
+.fb .new em{font-style:normal;color:var(--pri)}
+.editable{position:relative;border:1.5px dashed transparent;border-radius:14px;padding:10px 40px 10px 10px;margin:-10px -10px;transition:border-color .16s ease,background-color .16s ease}
+.editable.editing{border-color:var(--fg);border-style:solid;background:var(--bg)}
+.pencil{position:absolute;right:6px;top:6px;width:30px;height:30px;border-radius:99px;background:var(--mutbg);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.pencil svg{width:15px;height:15px;stroke:var(--fg);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.editing .pencil{background:var(--fg)}
+.editing .pencil svg{stroke:var(--bg)}
+.msg textarea{width:100%;border:0;outline:none;resize:none;background:transparent;font-size:17px;line-height:1.55;padding:0;min-height:110px}
+.vid{position:relative;aspect-ratio:16/9;border-radius:14px;background:linear-gradient(135deg,#30343c,#17191e);display:flex;align-items:center;justify-content:center;width:100%;overflow:hidden;flex:none;cursor:pointer;color:#cfd3db;font-size:14px}
+.vid.tall{aspect-ratio:4/5}
+.vid .pl{width:52px;height:52px;border-radius:99px;background:rgba(255,255,255,.94);position:relative}
+.vid .pl::after{content:"";position:absolute;left:21px;top:16px;border-left:16px solid #121212;border-top:10px solid transparent;border-bottom:10px solid transparent}
+.vid .len{position:absolute;right:10px;bottom:8px;font-size:11.5px;color:#fff}
+.vid .recdot{position:absolute;top:12px;left:12px;display:flex;gap:6px;align-items:center;font:600 13px ui-monospace,monospace;color:#fff}
+.vid .recdot i{width:10px;height:10px;border-radius:99px;background:var(--rec);display:block;animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.35}}
+
+/* one list of choices (queue, decision, kind) */
+.list{display:flex;flex-direction:column;gap:8px}
+.sc .row{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1.5px solid var(--line);border-radius:16px;padding:13px 14px;width:100%;cursor:pointer;background:var(--bg)}
+.row b{display:block;font-size:16px;font-weight:600}
+.row small{display:block;font-size:13.5px;color:var(--mut);margin-top:1px}
+.row .chev{color:var(--mut);font-size:18px}
+.row.done{cursor:default}
+.row.done .chev{color:var(--green);font-size:15px}
+.sc .row.on{border-color:var(--fg)}
+.fld{display:flex;flex-direction:column;gap:6px}
+.fl{font-size:14px;color:var(--mut)}
+.fh{font-size:12.5px;line-height:1.45;color:var(--mut)}
+.runbox{border:1.5px solid var(--line);border-radius:16px;padding:10px 14px;display:flex;flex-direction:column;gap:10px}
+.runrow{display:flex;gap:10px;align-items:flex-start;font-size:15px;cursor:pointer}
+.runrow input{margin-top:4px;width:16px;height:16px;accent-color:#121212}
+.runrow b{display:block;font-weight:600}.runrow small{display:block;font-size:12.5px;color:var(--mut)}
+select.nefield{appearance:auto}
+.nefield{width:100%;border:1.5px solid var(--line);border-radius:14px;padding:14px;font-size:17px;outline:none;background:var(--bg)}
+.nefield:focus{border-color:var(--fg)}
+.choices small,.choices .chev{color:var(--fg)!important}
+/* every list of choices in the coach panel: white, then a step darker each card, so neighbours never blend */
+.sc .list>.row,.sc .list>.rowwrap{background:var(--bg)}
+.sc .list>:nth-child(2):not(.on){background:#f7f7f8;border-color:#f7f7f8}
+.sc .list>:nth-child(3):not(.on){background:#efeff1;border-color:#efeff1}
+.sc .list>:nth-child(n+4):not(.on){background:#e4e4e7;border-color:#e4e4e7}
+.sc .list .row small,.sc .list .rowwrap small,.sc .list .row .chev{color:var(--fg)}
+.sc .list>.on{background:var(--bg)}
+.choices .rowwrap small{color:var(--fg)}
+.sc .row.g1{background:#f7f7f8;border-color:#f7f7f8}
+.sc .row.g2{background:#efeff1;border-color:#efeff1}
+.sc .row.g3{background:#e4e4e7;border-color:#e4e4e7}
+.sc .row.g3 b{color:var(--fg)}
+.sc .row.else{background:var(--mutbg);border-color:var(--mutbg)}
+.sc .row.else .lead{margin:0 0 1px;color:var(--pri)!important;font-weight:400}
+.sc .row.else b{color:var(--fg)}
+.sc .row.noerr{background:#e4e4e7;border-color:#e4e4e7}
+.sc .row.noerr b{color:#3f3f46}
+.sc .det{font-size:13.5px;font-weight:600;border:1.5px solid var(--line);border-radius:99px;padding:5px 12px;flex:none;background:var(--bg)}
+.rowwrap{display:flex;align-items:center;gap:8px;border:1.5px solid var(--line);border-radius:16px;padding:6px 8px 6px 14px;transition:border-color .16s ease}
+.rowwrap.on{border-color:var(--fg)}
+.rowwrap .pickarea{flex:1;padding:7px 0;cursor:pointer;min-width:0}
+.rowwrap b{display:block;font-size:16px;font-weight:600}
+.rowwrap small{display:block;font-size:13.5px;color:var(--mut);margin-top:1px}
+.row .dotn{width:9px;height:9px;border-radius:99px;background:var(--pri);flex:none}
+.grp{display:flex;flex-direction:column;gap:8px}
+.gl{font-size:11.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--mut)}
+.facts{display:flex;flex-direction:column;gap:8px;font-size:15.5px}
+.facts div{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:8px}
+.facts span:first-child{color:var(--mut)}
+.facts span:last-child{font-weight:600;text-align:right}
+.vm{position:relative;width:64px;height:64px;display:flex;align-items:center;justify-content:center}
+.vm .ring{position:absolute;border-radius:99px;animation:breath 3.6s ease-in-out infinite}
+.vm .r1{inset:0;border:1px solid rgba(18,18,18,.10)}.vm .r2{inset:6px;border:1px solid rgba(18,18,18,.15);animation-delay:.6s}.vm .r3{inset:12px;border:1px solid rgba(255,106,20,.30);animation-delay:1.2s}
+@keyframes breath{0%{transform:scale(.92);opacity:0}50%{opacity:1}100%{transform:scale(1.18);opacity:0}}
+.center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:0 28px}
+.center h2{margin:0;font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-.02em}
+.center p{margin:0;font-size:15.5px;color:var(--mut)}
+.clip{display:flex;flex-direction:column;gap:10px;border:1.5px solid var(--line);border-radius:16px;padding:12px 14px}
+.clip.on{border-color:var(--fg)}
+.clip .hd{display:flex;justify-content:space-between;align-items:center;font-size:15px;font-weight:600}
+.clip .hd button{font-size:13.5px;font-weight:600;border:1.5px solid var(--line);border-radius:99px;padding:4px 12px}
+.clip.on .hd button{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.sub{font-size:14.5px;color:var(--mut);margin:0}
+.page{flex:1;overflow-y:auto;padding:14px 20px 120px;display:flex;flex-direction:column;gap:12px}
+.page h1{margin:4px 0 0;font-size:24px;font-weight:700;letter-spacing:-.01em}
+.back{font-size:15px;color:var(--mut);cursor:pointer;align-self:flex-start}
+.fixed{position:absolute;left:20px;right:20px;bottom:30px}
+/* new words (proposed, need your signature) */
+.shownew .nw{background:rgba(255,106,20,.14);box-shadow:0 1.5px 0 var(--pri);border-radius:3px}
+
+/* ---------- motion: the walk's one set of moves ---------- */
+.ghost{pointer-events:none!important}
+.ov.m-open{animation:sheetUp .38s var(--ease-in) both}
+.ov.ghost.m-close{z-index:10;animation:sheetDown .28s var(--ease-out) forwards}
+.ov.ghost.m-swap{background:transparent;z-index:11}
+.ov.ghost.m-swap>.ovtop{visibility:hidden}
+.ov.m-next>:not(.ovtop){animation:inR .3s var(--ease-in) .1s both}
+.ov.m-back>:not(.ovtop){animation:inL .3s var(--ease-in) .1s both}
+.ov.ghost.m-next>:not(.ovtop){animation:outL .14s var(--ease-out) forwards}
+.ov.ghost.m-back>:not(.ovtop){animation:outR .14s var(--ease-out) forwards}
+.ov.m-fade>:not(.ovtop){animation:fadeUp .34s var(--ease-in) .1s both}
+.ov.ghost.m-fade>:not(.ovtop){animation:fadeOut .14s var(--ease-out) forwards}
+.view.m-next{animation:inR .32s var(--ease-in) .08s both}
+.view.m-back{animation:inL .32s var(--ease-in) .08s both}
+.view.ghost.m-next{z-index:1;animation:outL .16s var(--ease-out) forwards}
+.view.ghost.m-back{z-index:1;animation:outR .16s var(--ease-out) forwards}
+@keyframes sheetUp{from{transform:translateY(100%)}to{transform:none}}
+@keyframes sheetDown{from{transform:none}to{transform:translateY(100%)}}
+@keyframes inR{from{transform:translateX(26px);opacity:0}to{transform:none;opacity:1}}
+@keyframes inL{from{transform:translateX(-26px);opacity:0}to{transform:none;opacity:1}}
+@keyframes outL{to{transform:translateX(-22px);opacity:0}}
+@keyframes outR{to{transform:translateX(22px);opacity:0}}
+@keyframes fadeUp{from{transform:translateY(8px) scale(.985);opacity:0}to{transform:none;opacity:1}}
+@keyframes fadeOut{to{opacity:0}}
+.sc .pill,.ans button,.row,.clip,.itcard,.ovtop .nav span,.x,.lnk,.pencil{transition:transform .12s ease,background-color .16s ease,color .16s ease,border-color .16s ease,opacity .16s ease}
+.sc .pill:active,.ans button:active,.row:active,.itcard:active{transform:scale(.98)}
+.ovtop .nav span:active,.x:active,.pencil:active{transform:scale(.92)}
+@media (prefers-reduced-motion:reduce){.sc *{animation-duration:.001s!important;animation-delay:0s!important;transition:none!important}.ghost{display:none!important}}
+</style>
+
+<div class="layout">
+  <aside class="side" aria-label="Prototype controls">
+    <h1>The coach panel, redrawn</h1>
+    <p>Your corrections applied: one action per screen, the Feedback walk's look and motion, and your words always shown where the speaker will see them. Start in the Lounge and tap through as a coach.</p>
+    <div style="display:flex;flex-direction:column;gap:7px"><span class="lab">Jump to</span>
+      <div class="jump" id="jump">
+        <button data-go="lounge">Lounge</button><button data-go="queue">Queue</button><button data-go="speakers">Speakers</button>
+        <button data-go="m0">Error</button><button data-go="m1">Praise</button><button data-go="m2">Clearer version</button><button data-go="m3">Note</button>
+        <button data-go="takeword">Word for the Take</button><button data-go="audit">Do you hear it?</button><button data-go="pick">Pick the most confident</button><button data-go="corpushome">Training corpus</button><button data-go="library">Library</button><button data-go="errors">Speaking errors</button>
+      </div></div>
+    <div style="display:flex;align-items:center;gap:8px"><button class="tog" id="shownew" type="button" aria-pressed="false">Mark new words</button><span class="lab" style="letter-spacing:.06em;text-transform:none;font-family:'IBM Plex Sans',sans-serif">orange underline = not signed yet</span></div>
+    <div class="where" id="where" aria-live="polite"></div>
+    <div class="fix" id="fix"></div>
+    <button class="restart" id="restart" type="button">Start again</button>
+    <div class="notes">
+      <span><b>Sample content:</b> the speakers, passages and drafts are made up. Words without the orange mark are the app's signed words.</span>
+      <span><b>Your first correction</b> (a paragraph without a bookmark doesn't open) is on the speaker's Ideal Text page, not here; it is locked and goes into the build.</span>
+    </div>
+  </aside>
+  <div class="stage"><div class="phonewrap" id="pw"><div class="ph"><div class="sc" id="app"></div></div></div></div>
+</div>
+
+<section class="below" aria-labelledby="ch">
+  <h2 id="ch">What changed from the coach panel today</h2>
+  <p class="lede">Your eight corrections, and what each screen now asks of the coach. Everything you pointed at is fixed here first; nothing is built until you sign it.</p>
+  <div class="cols">
+    <div class="col"><h3>Your corrections</h3><ol>
+      <li><b>One action per screen.</b> "What you judged" is now three screens: what happened, what you'll do, then your words.</li>
+      <li><b>Your words where the speaker sees them.</b> Their passage and player on top, your words below with the grey picture, a pencil in the corner to edit.</li>
+      <li><b>"Summary"</b> is the title of an answered moment.</li>
+      <li><b>No orange line</b> on the judging screen.</li>
+      <li><b>One plain question</b> instead of "Where it lives": "What kind of error is it?", "What did Quiet Heron do well?", "What kind of fix is it?".</li>
+      <li><b>No "Keep it to this speaker" box:</b> the one way is "Share without the library".</li>
+    </ol></div>
+    <div class="col"><h3>Also fixed on the way</h3><ul>
+      <li><b>The counter counts moments only:</b> "moment 1 of 4" on every screen of that moment.</li>
+      <li><b>An error without a video is no longer stuck:</b> it goes to the speaker, without the library.</li>
+      <li><b>The queue lists your speakers only;</b> their Takes are one tap in. Blind work sits below; the training corpus has its own pinned button.</li>
+      <li><b>The word for the Take</b> looks like the speaker's first screen, with its own video step.</li>
+    </ul></div>
+    <div class="col"><h3>Still to decide</h3><ul>
+      <li><b>The new words</b> (marked orange) need your signature.</li>
+      <li><b>A note</b> still has no library question (D4); it goes straight to sharing.</li>
+      <li><b>"Pick the most confident"</b> and <b>"Do you hear it?"</b> are built and switched off; they turn on with your word.</li>
+    </ul></div>
+  </div>
+</section>
+
+<script>
+(function(){
+"use strict";
+const app=document.getElementById("app"),where=document.getElementById("where"),fixEl=document.getElementById("fix");
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const nw=s=>`<span class="nw">${s}</span>`;
+const P="Quiet Heron";
+const AV=`<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="4.2"/><path d="M3.5 24c.6-5 4.1-8 8.5-8s7.9 3 8.5 8z"/></svg>`;
+const PEN=`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg>`;
+const IC_PEOPLE=`<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.4"/><path d="M2.8 19.5c.6-3.6 3.2-5.6 6.2-5.6s5.6 2 6.2 5.6"/><circle cx="17" cy="9" r="2.6"/><path d="M15.6 13.9c2.6.2 4.6 2 5.1 5"/></svg>`;
+const IC_WAVE=`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h1.5M7 8v8M10.5 5v14M14 9v6M17.5 7v10M21 12h-1"/></svg>`;
+const OK=`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
+
+/* The Take being walked: four moments, one of each kind. Sample content. */
+const M=[
+  {kind:"error",label:"Error",passage:"We grew revenue forty percent last quarter, and we're ready to scale.",heard:"rushing · ending compression",heardList:["rushing","ending compression"],spk:"Not confident",t:"0:07",
+    served:"Land the last word",draft:"Slow down on the last three words and let “ready to scale” land before you breathe. Say it twice: once fast, once slow, and keep the slow one."},
+  {kind:"praise",label:"Praise",passage:"This is the moment the board leans in.",heard:"landed the ending · settled pitch",spk:"Confident",t:"0:04",
+    draft:"You brought the ending down and let it sit. That is the board leaning in."},
+  {kind:"rewrite",label:"Clearer version",passage:"So basically what we're kind of trying to do is grow the team.",heard:"hedging",spk:"In-between",t:"0:05",
+    draft:"We are growing the team.",struck:"<s>So basically what we're kind of trying to do is</s> grow the team.",neu:"<em>We are growing</em> the team."},
+  {kind:"ambiguity",label:"Note",passage:"And then, well, the numbers.",heard:"nothing",spk:"Not sure",t:"0:03",
+    draft:"Take a breath before “the numbers” and say them as if they were the headline."},
+];
+const N=M.length;
+/* The library's praise lines and the error catalogue. Sample content. */
+const PRAISE_LINES={"landed the ending":["You brought the ending down and let it sit.","The last word landed; nobody had to guess where the sentence ended.","You finished the thought before you took a breath."]};
+const ERRS=[
+  {name:"Rushing",state:"det",def:"Too little silence between words for a listener to keep up.",heard:[9,10]},
+  {name:"Ending compression",state:"det",def:"The last words of a sentence are swallowed or hurried.",heard:[7,10]},
+  {name:"Hedging",state:"test",def:"Softening words that take the weight off a claim.",heard:[6,10]},
+  {name:"Word compression",state:"test",def:"Words run together so single words are lost.",heard:[4,10]},
+  {name:"Filler words",state:"named",def:"“Um”, “like”, “you know” between ideas.",heard:[3,10]},
+];
+const ESTATE={det:["Detected in audio · routes exercises","Detected"],test:["Being tested · routes nothing yet","Being tested silently"],named:["Named only · waiting on a detector","Observed"]};
+/* Every speaker this coach has. Sample content. */
+const SPK=[{name:"Quiet Heron",live:true},{name:"Calm Otter",note:"Waiting for the text"},{name:"Bold Finch",note:"All answered · 3 Takes",takes:[["Take 3","All answered"],["Take 2","All answered"],["Take 1","All answered"]],goal:"Open the keynote without notes."},{name:"Quick Wren",note:"All answered · 1 Take",takes:[["Take 1","All answered"]],goal:"Pitch to investors in five minutes."}];
+/* The library's exercises that fit moment 1. Sample content. */
+const EX={
+  "Land the last word":{treats:"ending compression",len:"0:42",instr:"Slow down on the last three words of the sentence and let them land before you breathe. Say it twice: once fast, once slow, and keep the slow one."},
+  "One breath to the end":{treats:"rushing",len:"0:35",instr:"Take one full breath before the sentence and spend it all the way to the last word. No new breath in the middle."},
+  "Slow finish":{treats:"ending compression",len:"0:28",instr:"Say the sentence at your normal pace, then say only its last four words at half speed. Join them together on the third try."},
+};
+const ANS=["Yes — Confident","In-between","No — Not confident","Not sure","Audio unclear"];
+const SHORT={"Yes — Confident":"Confident","In-between":"In-between","No — Not confident":"Not confident","Not sure":"Not sure","Audio unclear":"Audio unclear"};
+const WORDS_TITLE={error:"Your instruction",praise:"Your praise",rewrite:"Your clearer version",ambiguity:"Your note"};
+const KIND_Q={error:"What kind of error is it?",praise:`What did ${P} do well?`,rewrite:"What kind of fix is it?"};
+const KIND_OPTS={error:["rushing","ending compression","word compression","hedging"],praise:["confident read","opened strong","landed the ending","kept moving","settled pitch","no hesitation","full volume","wide range"],rewrite:["drop the filler","split the clause","repair the structure"]};
+const TAKE_DRAFT="Strong Take. Your endings are yours now; next time, give the numbers the same calm you gave the close.";
+
+let S,hist,timers=[];
+function fresh(){return {k:"lounge",m:0,menu:false,judged:{},done:{},words:{},video:{},kindPick:{},swapPick:null,editing:false,toast:null,take:{words:TAKE_DRAFT,video:"idle"},auditDone:false,pick:null,corpus:0,corpusAns:null,lib:{words:"",video:"idle",kind:null},sent:false,named:{},newErr:"",noErr:{},kindSkipped:{},libEdits:{},retired:{},libItem:null,errName:null,ci:0,imp:{file:"",topic:"",speaker:"",lang:"",source:"",run:{conf:true,ana:false,ideal:false},setupOf:null},
+  imports:[{topic:"Workshop recording",speaker:"",n:5,done:0,setup:false,file:"workshop-0912.mp4"},{topic:"Board update, March",speaker:"Jane Doe",n:3,done:0,setup:true},{topic:"Keynote rehearsal",speaker:"Sam Lee",n:8,done:8,setup:true}]};}
+function corpusOpen(){return S.imports.reduce((a,im)=>a+(im.setup?im.n-im.done:0),0);}
+
+/* ---------- atoms ---------- */
+let seed=0;
+function wave(n){let h="";for(let i=0;i<n;i++)h+=`<i style="height:${5+((i*7+seed)%15)}px"></i>`;return `<div class="wave">${h}</div>`;}
+const player=t=>`<button class="play" data-play type="button" aria-label="Play"><span class="pb"></span>${wave(30)}<span class="tm">${t}</span></button>`;
+const pill=(t,act,o={})=>`<button class="pill" type="button" data-act="${act}" ${o.disabled?"disabled":""}>${o.dot?'<span class="rd"></span>':""}${t}</button>`;
+const lnk=(t,act)=>`<button class="lnk" type="button" data-act="${act}">${t}</button>`;
+const you=(m,o={})=>`<div class="you">${o.noWords?"":`<div class="words">${o.html||esc(m.passage)}</div>`}${player(m.t)}</div>`;
+/* the coach's words, exactly where the speaker reads them, with the pencil */
+function coachWords(text,o={}){
+  const edit=S.editing;
+  const inner=edit?`<textarea id="wt" aria-label="Your words">${esc(text)}</textarea>`:(o.html||`<span>${esc(text)}</span>`);
+  return `<div class="fb coach editable ${edit?"editing":""}"><span class="av" aria-label="your profile picture">${AV}</span><div class="msg">${inner}</div><span class="pencil" role="button" aria-label="${edit?"Done editing":"Edit"}" data-act="pencil">${edit?OK:PEN}</span></div>`;
+}
+function ov(o){
+  return `<div class="ov"><div class="ovtop">${o.nav?`<span class="nav"><span class="${o.noBack?"off":""}" data-act="${o.noBack?"":"back"}">‹</span>${o.nav}<span class="${o.noFwd?"off":""}" data-act="${o.noFwd?"":(o.fwd||"skipMoment")}">›</span></span>`:`<span class="nav">${o.noBack?"":`<span data-act="back">‹</span>`}${o.navText||""}</span>`}<span class="x" data-act="close" role="button" aria-label="Close">✕</span></div>
+  ${o.title?`<div class="ttl">${o.title}</div>`:""}${o.cap?`<div class="cap">${o.cap}</div>`:""}<div class="sb">${o.body}</div><div class="sfoot">${o.foot||""}</div></div>`;
+}
+const mnav=i=>`${P} · moment ${i+1} of ${N}`;
+
+/* ---------- the Lounge (under every overlay) ---------- */
+function openCount(){return M.filter((_,i)=>!S.done[i]).length;}
+function lounge(){
+  const open=openCount();
+  return `<div class="view"><div class="ltop"><span>WillpowerLab</span><span class="burger" data-act="menu" role="button" aria-label="Menu">☰</span></div><div class="lounge">
+    <div class="lb me">Morning! Opening today’s speakers.</div>
+    <button class="itcard ${open&&!S.sent?"marked":""}" type="button" data-act="toQueue"><span class="mini"></span><span><b>${open&&!S.sent?"2 speakers waiting":"Nobody is waiting for you."}</b><small>Open your queue</small></span>${open&&!S.sent?`<span class="newtag">new</span>`:""}</button>
+  </div><div class="pinned"><button type="button" data-act="toSpeakers">${IC_PEOPLE}${nw("Speakers")}</button><button type="button" data-act="menuCorpus">${IC_WAVE}Training corpus</button></div><div class="composer">Message</div>
+  ${S.menu?`<div class="menu"><button type="button" data-act="toLibrary">Library</button><button type="button" data-act="toErrors">Speaking errors</button></div>`:""}</div>`;
+}
+
+/* ---------- screens ---------- */
+const SCR={
+  lounge(){return lounge();},
+  queue(){
+    const open=openCount();
+    return lounge()+ov({navText:"",noBack:true,title:"Your queue",body:`
+      <div class="grp"><span class="gl">${nw("Your speakers")}</span><div class="list">
+        <button class="row" type="button" data-act="toSpeaker"><span><b>${P}</b><small>${open?nw(open===1?"1 moment waiting":open+" moments waiting"):"Answered"}</small></span><span class="chev">${open?"›":"✓"}</span></button>
+        <div class="row done" style="opacity:.6"><span><b>Calm Otter</b><small>Waiting for the text</small></span></div>
+      </div></div>
+      <div class="grp"><span class="gl">Also waiting · blind</span><div class="list">
+        <button class="row" type="button" data-act="toAudit"><span><b>Do you hear it?</b><small>${S.auditDone?"Done":"1 waiting"}</small></span><span class="chev">${S.auditDone?"✓":"›"}</span></button>
+        <button class="row" type="button" data-act="toPick"><span><b>Pick the most confident moment</b><small>${S.pick?"Done":"1 waiting"}</small></span><span class="chev">${S.pick?"✓":"›"}</span></button>
+      </div></div>`});
+  },
+  corpushome(){
+    return lounge()+ov({navText:"",title:"Training corpus",cap:nw("Import audio, label it, then judge its moments blind"),body:`<div class="list">${S.imports.map((im,i)=>{const left=im.n-im.done;return `<button class="row ${left?"":"done"}" type="button" data-act="${left?"judgeImport":""}" data-i="${i}"><span><b>${esc(im.topic)}</b><small>${im.setup?`${esc(im.speaker||"No speaker label")} · ${left?nw(`${left} of ${im.n} moments to judge`):`All ${im.n} labelled`}`:nw("Set-up not finished · finish it before judging")}</small></span><span class="chev">${left?"›":"✓"}</span></button>`;}).join("")}</div>`,
+      foot:pill("Import audio","toImport")});},
+  corpusimport(){const f=S.imp;const ready=f.file&&f.topic.trim()&&f.lang;
+    const run=(k,label,hint,locked)=>`<label class="runrow"><input type="checkbox" data-run="${k}" ${f.run[k]?"checked":""} ${locked?"disabled":""}><span><b>${label}</b><small>${hint}</small></span></label>`;
+    return lounge()+ov({navText:"",title:f.setupOf!=null?nw("Finish the set-up"):"Import audio",cap:f.setupOf!=null?nw("Before its moments can be judged"):"",body:`
+      <button class="row ${f.file?"on":""}" type="button" data-act="pickFile"><span><b>${f.file?esc(f.file):"Choose files"}</b><small>${f.file?nw("3:12 · audio"):nw("Audio or video, up to 30 minutes")}</small></span><span class="chev">${f.file?"✓":"›"}</span></button>
+      <div class="fld"><span class="fl">What the talk is about</span><input id="imTopic" class="nefield" placeholder="The topic" value="${esc(f.topic)}"></div>
+      <div class="fld"><span class="fl">Whose voice this is</span><input id="imSpeaker" class="nefield" placeholder="Speaker name" value="${esc(f.speaker)}"><span class="fh">Optional, but it is the only way the corpus can tell whose voice a piece is. Worth filling in per batch.</span></div>
+      <div class="fld"><span class="fl">What language it is in</span><select id="imLang" class="nefield"><option value="" ${f.lang?"":"selected"}>Choose…</option>${["English","Polish","German","Spanish","Auto-detect"].map(l=>`<option ${f.lang===l?"selected":""}>${l}</option>`).join("")}</select><span class="fh">Required — auto-detect is a choice, not a default. Whisper is primed with an English prompt, so a talk left on auto-detect can come back <i>translated</i> into English rather than transcribed: the audio is right, the words are not, and nothing says so.</span></div>
+      <div class="fld"><span class="fl">Where it came from</span><input id="imSource" class="nefield" placeholder="2019 conference, YouTube" value="${esc(f.source)}"></div>
+      <div class="fld"><span class="fl" style="text-transform:uppercase;letter-spacing:.12em;font-size:11.5px">What to run</span><div class="runbox">
+        ${run("conf","Confidence","Always on — this is what produces the pieces and the label queue, i.e. the corpus itself.",true)}
+        ${run("ana","Analytics","The advice layers. ~16 model calls per file — only for training the advice model.")}
+        ${run("ideal","Ideal text","The assembled ideal text. A user deliverable, not training data.")}
+      </div></div>`,
+      foot:pill("Import","doImport",{disabled:!ready})});},
+  corpusanalyse(){return lounge()+ov({navText:"",body:`<div class="center"><div class="vm" role="status" aria-label="Loading"><span class="ring r1"></span><span class="ring r2"></span><span class="ring r3"></span><svg width="27" height="27" viewBox="0 0 56 56"><circle cx="12" cy="28" r="4" fill="#121212"/><circle cx="28" cy="28" r="6" fill="#121212"/><circle cx="44" cy="28" r="4" fill="#121212"/></svg></div><p>Analysing on the server…</p></div>`});},
+  speakers(){const open=openCount();
+    return lounge()+ov({navText:"",noBack:true,title:nw("Your speakers"),body:`<div class="list">${SPK.map((sp,i)=>{
+      if(sp.live)return `<button class="row" type="button" data-act="toSpeakerI" data-i="${i}"><span><b>${esc(sp.name)}</b><small>${open?nw(open+" moments waiting"):"Answered"}</small></span><span style="display:flex;align-items:center;gap:8px">${open?'<span class="dotn"></span>':""}<span class="chev">›</span></span></button>`;
+      if(!sp.takes)return `<div class="row done" style="opacity:.6"><span><b>${esc(sp.name)}</b><small>${esc(sp.note)}</small></span></div>`;
+      return `<button class="row" type="button" data-act="toSpeakerI" data-i="${i}"><span><b>${esc(sp.name)}</b><small>${nw(sp.note)}</small></span><span class="chev">›</span></button>`;}).join("")}</div>`});},
+  speaker(){const sp=SPK[S.sp||0];
+    if(!sp.live)return lounge()+ov({navText:"",title:esc(sp.name),cap:`${nw("Goal")}: ${esc(sp.goal)}`,body:`<div class="list">${sp.takes.map(t=>`<div class="row done"><span><b>${t[0]}</b><small>${nw(t[1])}</small></span><span class="chev">✓</span></div>`).join("")}</div>`});
+    const open=openCount();
+    return lounge()+ov({navText:"",title:P,cap:`${nw("Goal")}: Sound calm and sure in the board meeting.`,body:`<div class="list">
+      <button class="row" type="button" data-act="openTake"><span><b>Take 2</b><small>${open?nw(`${open} of ${N} moments waiting`):nw("All moments answered")}</small></span><span class="chev">${open?"›":"✓"}</span></button>
+      <div class="row done"><span><b>Take 1</b><small>${nw("Answered · 3 moments")}</small></span><span class="chev">✓</span></div>
+    </div>`});},
+  judge(){const m=M[S.m];const a=S.judged[S.m];const b=x=>`<button type="button" data-ans="${esc(x)}" class="${a===x?"on":""}">${esc(x)}</button>`;
+    return lounge()+ov({nav:mnav(S.m),noBack:S.m===0&&!hist.length,title:"Judge this moment",body:`${you(m,{noWords:true})}<p class="q">Does the speaker sound confident here?</p><div class="ans">${b(ANS[0])}${b(ANS[1])}${b(ANS[2])}<div class="two">${b(ANS[3])}${b(ANS[4])}</div></div>`});},
+  reveal(){const m=M[S.m];
+    return lounge()+ov({nav:mnav(S.m),title:nw("What happened"),body:`<div class="thumb">Slide 3</div>${you(m)}
+      <div class="facts"><div><span>You</span><span>${esc(SHORT[S.judged[S.m]]||"—")}</span></div><div><span>${P}</span><span>${esc(m.spk)}</span></div><div><span>${nw("The machine heard")}</span><span>${esc(m.heard)}</span></div></div>`,
+      foot:pill("Next","afterReveal")});},
+  diagnose(){const m=M[S.m];const pk=S.kindPick[S.m];const heard=m.heardList||[];
+    const row=o=>`<button class="row ${pk===o?"on":""}" type="button" data-diag="${esc(o)}"><span><b>${esc(o)}</b>${heard.includes(o)?`<small>${nw("The machine heard this")}</small>`:""}</span><span class="chev">›</span></button>`;
+    const opts=[...heard,...KIND_OPTS.error.filter(o=>!heard.includes(o))];
+    return lounge()+ov({nav:mnav(S.m),title:nw("What kind of error is it?"),body:`<div class="list">${opts.map(row).join("")}
+      <button class="row else" type="button" data-act="toNameError"><span><small class="lead">${nw("Something else")}</small><b>${nw("Name a new error")}</b></span><span class="chev">›</span></button>
+      <button class="row noerr ${S.noErr[S.m]?"on":""}" type="button" data-act="noError"><span><b>${nw("I don't hear an error")}</b></span><span class="chev">›</span></button></div>`});},
+  decide(){const m=M[S.m];const diag=S.kindPick[S.m];const asErr=m.kind==="error"&&!S.noErr[S.m];
+    const matches=asErr?Object.keys(EX).filter(t=>EX[t].treats===diag):[];
+    const served=S.swapPick&&matches.includes(S.swapPick)?S.swapPick:(matches.includes(m.served)?m.served:null);
+    const opt=(b,s,act,tone="")=>`<button class="row ${tone}" type="button" data-act="${act}"><span><b>${b}</b>${s?`<small>${s}</small>`:""}</span><span class="chev">›</span></button>`;
+    const others=matches.filter(t=>t!==served);
+    const list=asErr
+      ?(served?`<div class="rowwrap"><span class="pickarea" data-act="keepIt"><b>Keep it</b><small>${nw("Served")}: ${esc(served)}</small></span><button class="det" type="button" data-detail="${esc(served)}">${nw("Details")}</button></div>`:"")
+        +(others.length?opt("Swap it",nw(`${others.length} more for ${diag} in the library`),"toSwap","g1"):"")
+        +opt("Make a new one",nw("Your own words and video"),"toWords","g2")+opt("Nothing to add","","nothingToAdd","g3")
+      :opt("Answer",nw(m.kind==="praise"?"Write your praise":m.kind==="rewrite"?"Write a clearer version":"Write a note"),"toWords")+opt("Nothing to add","","nothingToAdd","g3");
+    const cap=asErr?`${nw("Your diagnosis")}: ${esc(diag)}${matches.length?"":" · "+nw("nothing in the library treats it yet")}`:(m.kind==="error"?nw("You don't hear an error"):"");
+    return lounge()+ov({nav:mnav(S.m),title:nw(asErr?"Choose exercise":"What will you do?"),body:`<div class="list choices">${list}</div>`});},
+  swap(){const m=M[S.m];const diag=S.kindPick[S.m];
+    const ex=Object.keys(EX).filter(t=>EX[t].treats===diag);const pick=S.swapPick&&ex.includes(S.swapPick)?S.swapPick:ex[0];
+    return lounge()+ov({nav:mnav(S.m),title:"Swap it",cap:`${nw("All treat "+esc(diag))} · shown in random order`,body:`<div class="list">${ex.map(t=>`<div class="rowwrap ${pick===t?"on":""}"><span class="pickarea" data-swap="${esc(t)}"><b>${esc(t)}</b><small>${t===m.served?nw("Served now")+" · ":""}${nw("Treats")}: ${esc(EX[t].treats)}</small></span><button class="det" type="button" data-detail="${esc(t)}">${nw("Details")}</button></div>`).join("")}</div>`,
+      foot:pill("Use this one","useSwap")+lnk("Make a new one","toWords")});},
+  exdetail(){const t=S.detail;const e=EX[t];
+    return lounge()+ov({nav:mnav(S.m),title:esc(t),cap:`${nw("Treats")}: ${esc(e.treats)}`,body:`<div class="vid tall"><span class="pl"></span><span class="len">${e.len}</span></div><div class="fb coach"><span class="av">${AV}</span><div class="msg"><span>${esc(e.instr)}</span></div></div>`,
+      foot:pill("Use this one","useDetail")+lnk(nw("Back to the list"),"back")});},
+  words(){const m=M[S.m];const text=S.words[S.m]!==undefined?S.words[S.m]:m.draft;
+    let body;
+    if(m.kind==="rewrite"){const neu=`<em>${esc(text)}</em>`;body=you(m,{html:m.struck})+coachWords(text,{html:`<span>Here is a slightly more polished option:</span><span class="new">${neu}</span><span>Do you accept and want to practise it?</span>`});}
+    else body=you(m)+coachWords(text);
+    return lounge()+ov({nav:mnav(S.m),title:(m.kind==="error"&&S.noErr[S.m])?WORDS_TITLE.ambiguity:WORDS_TITLE[m.kind],cap:nw(`As ${P} will see it · the pencil edits every word`),body,foot:pill("Next","toVideo",{disabled:S.editing})});},
+  video(){const m=M[S.m];const v=S.video[S.m]||"idle";const isErr=m.kind==="error";
+    let body,foot;
+    const cap=nw(isErr?"Say the instruction in your own words · under a minute":"Optional · under a minute");
+    if(v==="idle"){body=`<div class="vid tall"><span>${nw("Camera")}</span></div>`;foot=pill("Record","vidRec",{dot:true})+lnk(isErr?"Skip the video":"Skip","vidSkip");}
+    else if(v==="rec"){body=`<div class="vid tall"><span class="recdot"><i></i>0:12</span><span>${nw("Recording")}</span></div>`;foot=pill("Stop","vidStop");}
+    else {body=`<div class="vid tall"><span class="pl"></span><span class="len">0:12</span></div>`;foot=pill("Keep","vidKeep")+lnk("Record again","vidRec");}
+    return lounge()+ov({nav:mnav(S.m),title:"Your video",cap,body,foot});},
+  kind(){const m=M[S.m];const pk=S.kindPick[S.m];
+    const other="";
+    return lounge()+ov({nav:mnav(S.m),title:nw(KIND_Q[m.kind]),body:`<div class="list">${KIND_OPTS[m.kind].map(o=>`<button class="row ${pk===o?"on":""}" type="button" data-kind="${esc(o)}"><span><b>${esc(o)}</b></span><span class="chev">${pk===o?"●":""}</span></button>`).join("")}${other}</div>`,
+      foot:pill("Next","toShare",{disabled:!pk})+lnk("Skip","kindSkip")});},
+  nameerr(){const v=S.newErr||"";
+    return lounge()+ov({nav:mnav(S.m),title:nw("Name the error"),cap:nw("A few words, as you would say it to another coach"),body:`<input id="ne" class="nefield" placeholder="e.g. trailing off" value="${esc(v)}" aria-label="The error's name">
+      <p class="sub">${nw("Your exercise goes to "+P+" now. The library offers it to other speakers once the machine can hear this error; every coach who names it brings that closer.")}</p>`,
+      foot:pill("Next","nameErrDone",{disabled:!v.trim()})});},
+  share(){const m=M[S.m];const v=S.video[S.m];const noLib=m.kind==="ambiguity"||S.kindSkipped[S.m]||(m.kind==="error"&&(v!=="kept"||S.noErr[S.m]));
+    const text=S.words[S.m]!==undefined?S.words[S.m]:m.draft;
+    return lounge()+ov({nav:mnav(S.m),title:nw(`Ready for ${P}`),body:`${you(m)}${`<div class="fb coach"><span class="av">${AV}</span><div class="msg">${m.kind==="rewrite"?`<span class="new"><em>${esc(text)}</em></span>`:`<span>${esc(text)}</span>`}${v==="kept"?`<div class="vid"><span class="pl"></span><span class="len">0:12</span></div>`:""}</div></div>`}
+      ${noLib&&m.kind==="error"&&!S.noErr[S.m]?`<p class="sub">${nw("Without a video it goes to "+P+" only, not to the library.")}</p>`:""}
+      ${!noLib&&S.named[S.m]?`<p class="sub">${nw("In the library under “"+esc(S.named[S.m])+"”, waiting until the machine can hear it.")}</p>`:""}`,
+      foot:pill(`Share with ${P}`,noLib?"shareNoLib":"shareLib")+(noLib?"":lnk("Share without the library","shareNoLib"))});},
+  summary(){const m=M[S.m];const d=S.done[S.m];
+    const what=d==="nothing"?"Nothing to add":d==="kept"?`Kept: ${S.swapPick||m.served}`:d==="swapped"?`Swapped: ${S.swapPick}`:d==="lib"?"Shared · in the library":"Shared";
+    return lounge()+ov({nav:mnav(S.m),title:"Summary",body:`<div class="thumb">Slide 3</div>${you(m)}
+      <div class="facts"><div><span>You</span><span>${esc(SHORT[S.judged[S.m]]||"—")}</span></div><div><span>${P}</span><span>${esc(m.spk)}</span></div><div><span>${nw("The machine heard")}</span><span>${esc(m.heard)}</span></div><div><span>${nw("Your answer")}</span><span>${esc(what)}</span></div></div>`,
+      foot:pill("Next","fromSummary")+lnk(nw("Change my answer"),"changeAnswer")});},
+  takeword(){
+    return lounge()+ov({navText:`${P} · Take 2`,title:"A word for this Take",cap:nw(`Optional · it opens first in ${P}’s feedback`),body:coachWords(S.take.words),foot:pill("Next","toTakeVideo",{disabled:S.editing})+lnk("Skip","takeSkip")});},
+  takevideo(){const v=S.take.video;let body,foot;
+    if(v==="idle"){body=`<div class="vid"><span>${nw("Camera")}</span></div>${coachWords(S.take.words)}`;foot=pill("Record","tvRec",{dot:true})+lnk(nw(`Send without a video`),"takeSend");}
+    else if(v==="rec"){body=`<div class="vid"><span class="recdot"><i></i>0:31</span><span>${nw("Recording")}</span></div>`;foot=pill("Stop","tvStop");}
+    else {body=`<div class="vid"><span class="pl"></span><span class="len">0:31</span></div>${coachWords(S.take.words)}`;foot=pill(`Send to ${P}`,"takeSend")+lnk("Record again","tvRec");}
+    return lounge()+ov({navText:`${P} · Take 2`,title:"Your video",cap:nw(`As ${P} will see it`),body,foot});},
+  audit(){
+    if(S.auditDone)return lounge()+ov({navText:"",body:`<div class="center"><h2>Thank you. That one is kept.</h2></div>`,foot:pill("Next","toQueue")});
+    return lounge()+ov({navText:"",title:"Do you hear it?",body:`${player("0:05")}<p class="q">Does this passage leave too little silence between words for a listener to keep up?</p><div class="ans"><button type="button" data-act="auditAns">Yes</button><button type="button" data-act="auditAns">No</button><div class="two"><button type="button" data-act="auditAns">Can't tell</button></div></div>`});},
+  pick(){const p=S.pickSel;
+    const clip=l=>`<div class="clip ${p===l?"on":""}"><div class="hd"><span>Clip ${l}</span><button type="button" data-pick="${l}">${p===l?"Most confident":"This one"}</button></div>${player(l==="A"?"0:06":l==="B"?"0:05":"0:07")}</div>`;
+    return lounge()+ov({navText:"Block 1 of 1",title:"Pick the most confident moment",cap:"Audio only. No words, no names, no hint of the machine's pick.",body:`<p class="q">Which of these sounds most confident?</p>${clip("A")}${clip("B")}${clip("C")}`,
+      foot:pill("Save my pick","savePick",{disabled:!p})+lnk("Can't tell","savePick")});},
+  corpus(){const im=S.imports[S.ci];const i=im.done;const b=x=>`<button type="button" data-cans="${esc(x)}">${esc(x)}</button>`;
+    return lounge()+ov({navText:`${esc(im.topic)} · moment ${Math.min(i+1,im.n)} of ${im.n}`,title:"Judge this moment",body:`${player("0:0"+(5+i%4))}<p class="q">Does the speaker sound confident here?</p><div class="ans">${b(ANS[0])}${b(ANS[1])}${b(ANS[2])}<div class="two">${b(ANS[3])}${b(ANS[4])}</div></div>`});},
+  library(){return `<div class="view"><div class="ltop"><span class="back" data-act="toLounge">‹ Lounge</span><span></span></div><div class="page">
+    <h1>Your library</h1>
+    <div class="list">
+      <button class="row" type="button" data-libitem="Land the last word"><span><b>Land the last word</b><small>ending compression · transcribed</small></span><span class="chev">›</span></button>
+      <button class="row" type="button" data-libitem="One breath to the end"><span><b>One breath to the end</b><small>rushing · transcribing…</small></span><span class="chev">›</span></button>
+      <button class="row" type="button" data-libitem="Slow finish"><span><b>Slow finish</b><small>ending compression · retired</small></span><span class="chev">›</span></button>
+      <button class="row" type="button" data-libpraise="landed the ending"><span><b>landed the ending</b><small>${nw("3 praise lines")}</small></span><span class="chev">›</span></button>
+    </div></div><div class="fixed">${pill("New","libNew")}</div></div>`;},
+  libitem(){const t=S.libItem;const e=EX[t];const retired=S.retired[t]??(t==="Slow finish");
+    return SCR.library()+ov({navText:"Library",title:esc(t),cap:`${nw("Treats")}: ${esc(e.treats)} · ${t==="One breath to the end"?"transcribing…":"transcribed"}${retired?" · retired":""}`,
+      body:`<div class="vid tall"><span class="pl"></span><span class="len">${e.len}</span></div>${coachWords(S.libEdits[t]??e.instr)}`,
+      foot:pill(retired?nw("Bring it back"):"Done",retired?"unretire":"libItemDone",{disabled:S.editing})+(retired?"":lnk(nw("Retire it"),"retire"))});},
+  libpraise(){const t=S.libItem;const lines=PRAISE_LINES[t];
+    return SCR.library()+ov({navText:"Library",title:esc(t),cap:nw("Praise lines the library offers when the machine hears this"),
+      body:`<div class="list">${lines.map(l=>`<div class="row"><span><b style="font-weight:500">${esc(l)}</b></span></div>`).join("")}</div>`,
+      foot:pill("Done","libItemDone")});},
+  errors(){const grp=st=>{const es=ERRS.filter(e=>e.state===st);return `<div class="grp"><span class="gl">${ESTATE[st][0]}</span><div class="list">${es.map(e=>`<button class="row" type="button" data-err="${esc(e.name)}"><span><b>${esc(e.name)}</b><small>${ESTATE[st][1]}</small></span><span class="chev">›</span></button>`).join("")}</div></div>`;};
+    return lounge()+ov({navText:"",noBack:true,title:"Speaking errors",cap:"The patterns coaches name in moments. A pattern routes exercises only once a detector can hear it.",body:grp("det")+grp("test")+grp("named")});},
+  error(){const e=ERRS.find(x=>x.name===S.errName);const ex=Object.keys(EX).filter(t=>EX[t].treats===e.name.toLowerCase());
+    return lounge()+ov({navText:"Speaking errors",title:esc(e.name),cap:ESTATE[e.state][1],body:`<p class="q" style="font-weight:500">${esc(e.def)}</p>
+      <p class="q">Coaches heard it on ${e.heard[0]} of ${e.heard[1]} checked moments.</p>
+      <div class="grp"><span class="gl">${nw("Exercises that treat it")}</span>${ex.length?`<div class="list">${ex.map(t=>`<button class="row" type="button" data-libitem="${esc(t)}"><span><b>${esc(t)}</b></span><span class="chev">›</span></button>`).join("")}</div>`:`<p class="q" style="font-weight:500">${nw("None yet.")}</p>`}</div>`,
+      foot:""});},
+  libkind(){const pk=S.lib.kind;
+    return SCR.library()+ov({navText:"New",title:nw("What kind of error is it?"),cap:nw("One error · the library offers it when the machine hears it"),body:`<div class="list">${KIND_OPTS.error.map(o=>`<button class="row ${pk===o?"on":""}" type="button" data-libkind="${esc(o)}"><span><b>${esc(o)}</b></span><span class="chev">${pk===o?"●":""}</span></button>`).join("")}</div>`,foot:pill("Next","libWords",{disabled:!pk})});},
+  libwords(){return SCR.library()+ov({navText:"New",title:"Your instruction",cap:nw("As a speaker will see it · the pencil edits every word"),body:coachWords(S.lib.words||"Slow down on the last three words and let them land before you breathe."),foot:pill("Next","libVideo",{disabled:S.editing})});},
+  libvideo(){const v=S.lib.video;let body,foot;
+    if(v==="idle"){body=`<div class="vid tall"><span>${nw("Camera")}</span></div>`;foot=pill("Record","lvRec",{dot:true});}
+    else if(v==="rec"){body=`<div class="vid tall"><span class="recdot"><i></i>0:20</span><span>${nw("Recording")}</span></div>`;foot=pill("Stop","lvStop");}
+    else {body=`<div class="vid tall"><span class="pl"></span><span class="len">0:20</span></div>`;foot=pill("Save","libSave")+lnk("Record again","lvRec");}
+    return SCR.library()+ov({navText:"New",title:"Your video",cap:nw("An exercise needs its video"),body,foot});},
+  corpuspage(){return `<div class="view"><div class="ltop"><span class="back" data-act="toLounge">‹ Lounge</span><span></span></div><div class="page">
+    <h1>Training corpus</h1><p class="sub">Import audio · it is cut into moments you judge blind.</p>
+    <div class="list"><div class="row"><span><b>Board update, March</b><small>12 moments</small></span><span class="chev">›</span></div>
+    <div class="row"><span><b>Keynote rehearsal</b><small>8 moments</small></span><span class="chev">›</span></div></div></div>
+    <div class="fixed">${pill("Import audio","noop")}</div></div>`;},
+};
+
+/* ---------- what each screen fixes ---------- */
+const FIX={
+  queue:["Your correction: only your speakers here, each with how many moments wait; their Takes are on the next screen.","The blind work sits below: Do you hear it? and the block pick, one tap each. The training corpus has its own pinned button in the Lounge."],
+  speakers:["Your correction: a pinned Speakers button in the Lounge shows all your speakers, not only those waiting; an orange dot marks who is waiting."],
+  speaker:["One speaker: their goal and their Takes. Tapping a Take opens its first open moment; ‹ › move between moments."],
+  judge:["Your correction: the orange 'Private · training · saved on tap' line is gone.","The counter counts moments only: 'moment 1 of 4'."],
+  reveal:["Your correction: one thing per screen. 'What you judged' was seven boxes; this screen only shows what happened."],
+  diagnose:["Your correction: the error first, then the cure. You name the error before choosing an exercise.","What the machine heard is marked, so this also asks whether you hear it too. 'Something else' names a new error; 'I don't hear an error' turns the answer into a note."],
+  decide:["The exercises offered treat the error you diagnosed; 'Swap it' lists only those.","One choice. For an error the served exercise is one option among four, not a box with three buttons inside it.","Your choice moves on by itself; ‹ brings you back here to change it."],
+  swap:["Your correction: each exercise has 'Details', so you don't choose by title alone.","'Make a new one' is at the bottom when none of them fits."],
+  exdetail:["One exercise: the coach's video, the instruction, what it treats. 'Use this one', or back to the list."],
+  words:["Your correction: the speaker's passage and player on top, your words below where they land for the speaker, with the grey picture and a pencil to edit.","The green 'The passage Quiet Heron will say' box is gone."],
+  video:["One action: Record. An error without a video now still reaches the speaker (without the library)."],
+  nameerr:["Your question: a new error is named right here. The exercise reaches the speaker now; the library offers it to others once a detector can hear the error, and each coach who names it moves it up the Errors page's count."],
+  kind:["'Skip' shares your words with the speaker without filing them in the library.","Your correction: one plain question instead of 'Where it lives' / 'A read or a cue' / 'Main target · one'."],
+  share:["Your correction: no 'Keep it to this speaker' box; the one way is 'Share without the library'.","You see exactly what the speaker will get before you share."],
+  summary:["Your correction: an answered moment is titled 'Summary'.","'Change my answer' reopens the choice; ‹ from the next moment does the same."],
+  takeword:["The word for the whole Take looks like the speaker's first screen, with the same pencil."],
+  takevideo:["Its video is its own step: Record, or send without one."],
+  audit:["One question, three answers; built and switched off."],
+  pick:["The block pick (your question): three clips, audio only, pick one. Built and switched off; its words are signed."],
+  corpus:["The same judging screen as a speaker's moment, blind; it moves on by itself."],
+  corpushome:["Your correction: the training corpus opens from its pinned button in the Lounge (not from the queue). Import, label, judge, in one place."],
+  corpusimport:["Your correction: the corpus page's own set-up fields (topic, whose voice, language, where it came from, what to run), in its own words.","An import whose set-up isn't finished opens here first; its moments can't be judged until the set-up is done. Language is required."],
+  corpusanalyse:["The app's one loader while the audio is cut into moments."],
+  libitem:["Your correction: a library entry opens. Its video, its instruction as a speaker sees it (the pencil edits it), what it treats; Retire it takes it out of what speakers are offered."],
+  libpraise:["The praise lines filed under one cue."],
+  errors:["Your correction: the speaking errors page works. Detected errors route exercises; the others wait for a detector."],
+  error:["One error: what it is, how often coaches heard it (the signed readiness line), and the exercises that treat it."],
+  library:["'New' walks the same screens as an answer: the kind question, your words, your video, Save."],
+  libkind:[],libwords:[],libvideo:[],corpuspage:["Importing audio stays here, from the menu."],lounge:["Your correction: two pinned buttons with icons, Speakers and Training corpus. The bubble above still opens what is waiting."],
+};
+const NAMES={lounge:"Lounge",queue:"Your queue",judge:"Judge this moment (blind)",reveal:"What happened",decide:"What will you do?",swap:"Swap the exercise",speaker:"One speaker: their Takes",speakers:"All your speakers",libitem:"Library · one exercise",libpraise:"Library · praise lines",errors:"Speaking errors",error:"Speaking errors · one error",corpushome:"Training corpus",corpusimport:"Training corpus · import and label",corpusanalyse:"Training corpus · analysing",exdetail:"An exercise's details",diagnose:"The diagnosis: what kind of error",nameerr:"Name a new error",words:"Your words, as the speaker sees them",video:"Your video",kind:"The kind question",share:"Ready to share",summary:"Summary (an answered moment)",takeword:"A word for this Take",takevideo:"The Take's video",audit:"Blind: Do you hear it?",pick:"Blind: Pick the most confident moment",corpus:"Training corpus · judge a moment",library:"Library",libkind:"Library · new · kind",libwords:"Library · new · words",libvideo:"Library · new · video",corpuspage:"Training corpus (import)"};
+
+/* ---------- render + motion ---------- */
+const OVLESS=new Set(["lounge","library","corpuspage"]);
+let lastKey=null,lastSig=null;
+const sig=()=>[S.k,S.m,S.editing?1:0].join(":");
+function ghost(node,cls,parent){if(!node)return;const g=node.cloneNode(true);g.classList.remove("m-open","m-next","m-back","m-fade");g.classList.add("ghost",...cls.split(" ").filter(Boolean));
+  g.querySelectorAll("[id]").forEach(x=>x.removeAttribute("id"));(parent||app).appendChild(g);setTimeout(()=>g.remove(),360);}
+function render(dir){
+  const live=sel=>app.querySelector(sel+":not(.ghost)");
+  const old={key:lastKey,sig:lastSig,ov:live(".ov"),view:live(".view")};
+  seed=S.m*5;
+  app.innerHTML=`<div class="status"><span>9:41</span><i>▮▮▮ ◖</i></div>`+SCR[S.k]()+(S.toast?`<div class="toast">${esc(S.toast)}</div>`:"");
+  {const v=app.querySelector(".view");app.querySelectorAll(":scope>.ov").forEach(o=>v.appendChild(o));}
+  const inMoment=["judge","reveal","diagnose","decide","swap","exdetail","nameerr","words","video","kind","share","summary"].includes(S.k);
+  where.textContent=(inMoment?`Moment ${S.m+1} · ${M[S.m].label} · `:"")+NAMES[S.k];
+  const f=FIX[S.k]||[];fixEl.innerHTML=f.length?`<b>What changed here</b>${f.map(x=>`<span>${esc(x)}</span>`).join("")}`:"";
+  /* motion */
+  const ovN=app.querySelector(".ov"),viewN=app.querySelector(".view");
+  if(old.key&&dir!=="none"&&!(old.sig===sig()&&!dir)){
+    if(old.ov&&ovN){const d=dir==="back"?"m-back":dir==="fade"?"m-fade":"m-next";ovN.classList.add(d);ghost(old.ov,"m-swap "+d,viewN);}
+    else if(!old.ov&&ovN)ovN.classList.add("m-open");
+    else if(old.ov&&!ovN)ghost(old.ov,"m-close",viewN);
+    else if(old.key!==S.k&&viewN){const d=S.k==="lounge"?"m-back":"m-next";viewN.classList.add(d);ghost(old.view,d);}
+  }
+  lastKey=S.k;lastSig=sig();
+  [["imTopic","topic"],["imSpeaker","speaker"],["imSource","source"],["imLang","lang"]].forEach(([id,k])=>{const el=document.getElementById(id);if(el){const on=()=>{S.imp[k]=el.value;const b=app.querySelector('[data-act="doImport"]');if(b)b.disabled=!(S.imp.file&&S.imp.topic.trim()&&S.imp.lang);};el.addEventListener("input",on);el.addEventListener("change",on);}});
+  app.querySelectorAll("[data-run]").forEach(el=>el.addEventListener("change",()=>{S.imp.run[el.dataset.run]=el.checked;}));
+  const ne=document.getElementById("ne");if(ne){ne.focus();ne.addEventListener("input",()=>{S.newErr=ne.value;const b=app.querySelector('[data-act="nameErrDone"]');if(b)b.disabled=!ne.value.trim();});}
+  const wt=document.getElementById("wt");if(wt){wt.focus();wt.setSelectionRange(wt.value.length,wt.value.length);wt.addEventListener("input",()=>setWords(wt.value));}
+  S.toast=null; /* a toast plays once, on the screen it arrives with */
+}
+function setWords(v){if(S.k==="libitem"){S.libEdits[S.libItem]=v;return;}if(S.k==="takeword"||S.k==="takevideo")S.take.words=v;else if(S.k==="libwords")S.lib.words=v;else S.words[S.m]=v;}
+function go(k,o={},dir){if(!o.noHist)hist.push({k:S.k,m:S.m});Object.assign(S,{k,menu:false,editing:false},o.set||{});render(dir);}
+const STEPS=new Set(["judge","reveal","diagnose","decide","swap","exdetail","nameerr","words","video","kind","share"]);
+function back(){const h=hist.pop();if(!h){close();return;}
+  /* back into a moment already answered reopens its choice, so the coach can change it (walk lock: the back arrow returns to change it) */
+  const k=(STEPS.has(h.k)&&S.done[h.m]&&h.m!==S.m)?"decide":h.k;
+  if(k==="decide")delete S.done[h.m];
+  Object.assign(S,{k,m:h.m,editing:false});render("back");}
+function close(){hist=[];S.k="lounge";S.editing=false;render();}
+function nextOpen(from){for(let j=1;j<=N;j++){const k=(from+j)%N;if(!S.done[k])return k;}return -1;}
+function finishMoment(how,toast){S.done[S.m]=how;S.toast=toast;const k=nextOpen(S.m);
+  if(k<0){go("takeword",{},"next");}else go(S.judged[k]?"decide":"judge",{set:{m:k}},"next");}
+function openMoment(i){const k=S.done[i]?"summary":S.judged[i]?"decide":"judge";go(k,{set:{m:i}});}
+
+const ACT={
+  noop(){},menu(){S.menu=!S.menu;render("none");},
+  toQueue(){hist=[];go("queue",{noHist:true});},toLounge(){hist=[];go("lounge",{noHist:true});},close,back,
+  openMoment(b){openMoment(Number(b.dataset.i));},
+  skipMoment(){const k=(S.m+1)%N;openMoment(k);},
+  toSpeaker(){S.sp=0;go("speaker");},
+  toSpeakerI(b){S.sp=Number(b.dataset.i);go("speaker");},
+  toSpeakers(){hist=[];go("speakers",{noHist:true});},
+  openTake(){const k=nextOpen(N-1);openMoment(k<0?0:k);},
+  toDecide(){go("decide");},toSwap(){go("swap");},toWords(){go("words");},
+  keepIt(){finishMoment("kept","Kept");},
+  useDetail(){S.swapPick=S.detail;finishMoment("swapped","Swapped");},
+  useSwap(){const ex=Object.keys(EX).filter(t=>EX[t].treats===S.kindPick[S.m]);if(!S.swapPick||!ex.includes(S.swapPick))S.swapPick=ex[0];finishMoment("swapped","Swapped");},
+  nothingToAdd(){finishMoment("nothing","Saved · nothing to add");},
+  pencil(){S.editing=!S.editing;render("none");},
+  toVideo(){go("video");},
+  vidRec(){S.video[S.m]="rec";render("fade");},vidStop(){S.video[S.m]="stopped";render("fade");},
+  vidKeep(){S.video[S.m]="kept";afterVideo();},vidSkip(){S.video[S.m]="skipped";afterVideo();},
+  toShare(){delete S.kindSkipped[S.m];go("share");},
+  kindSkip(){S.kindSkipped[S.m]=true;delete S.kindPick[S.m];go("share");},
+  toNameError(){S.newErr="";go("nameerr");},
+  nameErrDone(){const v=(S.newErr||"").trim();if(!v)return;S.named[S.m]=v;S.kindPick[S.m]=v;delete S.noErr[S.m];go("decide");},
+  afterReveal(){go(M[S.m].kind==="error"?"diagnose":"decide");},
+  noError(){S.noErr[S.m]=true;delete S.kindPick[S.m];go("decide");},
+  shareLib(){finishMoment("lib",`Shared with ${P} · in the library`);},
+  shareNoLib(){finishMoment("shared",`Shared with ${P}`);},
+  changeAnswer(){delete S.done[S.m];go("decide",{},"back");},
+  fromSummary(){const k=nextOpen(S.m);if(k<0)go("takeword");else openMoment(k);},
+  toTakeVideo(){go("takevideo");},
+  tvRec(){S.take.video="rec";render("fade");},tvStop(){S.take.video="stopped";render("fade");},
+  takeSend(){S.sent=true;hist=[];S.k="lounge";S.editing=false;S.toast=`Sent to ${P}`;render();},
+  takeSkip(){S.sent=true;hist=[];S.k="lounge";render();},
+  toAudit(){go("audit");},auditAns(){S.auditDone=true;render("fade");},
+  toPick(){S.pickSel=null;go("pick");},savePick(){S.pick=S.pickSel||"cant";S.toast="Saved";hist=[];go("queue",{noHist:true},"back");},
+  toCorpusHome(){go("corpushome");},
+  judgeImport(b){const i=Number(b.dataset.i);const im=S.imports[i];S.ci=i;
+    if(!im.setup){S.imp={file:im.file,topic:im.topic,speaker:im.speaker,lang:"",source:"",run:{conf:true,ana:false,ideal:false},setupOf:i};go("corpusimport");return;}
+    go("corpus");},
+  toImport(){S.imp={file:"",topic:"",speaker:"",lang:"",source:"",run:{conf:true,ana:false,ideal:false},setupOf:null};go("corpusimport");},
+  pickFile(){S.imp.file="board-q3.m4a";render("none");},
+  doImport(){const f=S.imp;go("corpusanalyse",{},"fade");setTimeout(()=>{
+    if(f.setupOf!=null){const im=S.imports[f.setupOf];Object.assign(im,{topic:f.topic.trim(),speaker:f.speaker.trim(),setup:true});S.ci=f.setupOf;S.toast=nw(`Set up · ${im.n} moments`);hist=[];go("corpus",{noHist:true},"fade");return;}
+    S.imports.unshift({topic:f.topic.trim(),speaker:f.speaker.trim(),n:6,done:0,setup:true});S.toast=nw("Imported · 6 moments");hist=[];go("corpushome",{noHist:true},"fade");},1600);},
+  menuCorpus(){hist=[];go("corpushome",{noHist:true});},
+  toErrors(){hist=[];go("errors",{noHist:true});},
+  libItemDone(){S.toast=S.libEdits[S.libItem]!==undefined?"Saved":null;back();},
+  retire(){S.retired[S.libItem]=true;S.toast="Retired";render("none");},
+  unretire(){S.retired[S.libItem]=false;S.toast=nw("Back in the library");render("none");},
+  toLibrary(){hist=[];go("library",{noHist:true});},toCorpusPage(){hist=[];go("corpuspage",{noHist:true});},
+  libNew(){S.lib={words:"",video:"idle",kind:null};go("libkind");},libWords(){go("libwords");},libVideo(){go("libvideo");},
+  lvRec(){S.lib.video="rec";render("fade");},lvStop(){S.lib.video="stopped";render("fade");},
+  libSave(){hist=[];S.toast="Saved · in the library";go("library",{noHist:true});},
+};
+function afterVideo(){const m=M[S.m];
+  if(m.kind==="ambiguity"||m.kind==="error")go("share");else go("kind");}
+
+app.addEventListener("click",e=>{
+  const an=e.target.closest("[data-ans]");
+  if(an){S.judged[S.m]=an.dataset.ans;an.classList.add("on");setTimeout(()=>{S.toast="Answer saved";go("reveal");},260);return;}
+  const ca=e.target.closest("[data-cans]");
+  if(ca){ca.classList.add("on");setTimeout(()=>{const im=S.imports[S.ci];im.done+=1;S.toast="Answer saved";if(im.done>=im.n){hist=[];go("corpushome",{noHist:true},"back");}else render("next");},260);return;}
+  const li=e.target.closest("[data-libitem]");if(li){S.libItem=li.dataset.libitem;go("libitem");return;}
+  const lp=e.target.closest("[data-libpraise]");if(lp){S.libItem=lp.dataset.libpraise;go("libpraise");return;}
+  const er=e.target.closest("[data-err]");if(er){S.errName=er.dataset.err;go("error");return;}
+  const dt=e.target.closest("[data-detail]");if(dt){S.detail=dt.dataset.detail;go("exdetail");return;}
+  const sw=e.target.closest("[data-swap]");if(sw){S.swapPick=sw.dataset.swap;render("none");return;}
+  const dg=e.target.closest("[data-diag]");if(dg){S.kindPick[S.m]=dg.dataset.diag;delete S.noErr[S.m];delete S.named[S.m];dg.classList.add("on");setTimeout(()=>go("decide"),220);return;}
+  const kd=e.target.closest("[data-kind]");if(kd){S.kindPick[S.m]=kd.dataset.kind;render("none");return;}
+  const lk=e.target.closest("[data-libkind]");if(lk){S.lib.kind=lk.dataset.libkind;render("none");return;}
+  const pk=e.target.closest("[data-pick]");if(pk){S.pickSel=pk.dataset.pick;render("none");return;}
+  const pl=e.target.closest("[data-play]");if(pl){pl.classList.toggle("on");const bars=pl.querySelectorAll(".wave i");if(pl.classList.contains("on")){let i=0;const t=setInterval(()=>{if(!pl.isConnected||!pl.classList.contains("on")||i>=bars.length){clearInterval(t);pl.classList.remove("on");return;}bars[i++].classList.add("on");},120);}else bars.forEach(b=>b.classList.remove("on"));return;}
+  const b=e.target.closest("[data-act]");if(!b||b.disabled||!b.dataset.act)return;
+  const f=ACT[b.dataset.act];if(f)f(b);
+});
+document.getElementById("jump").addEventListener("click",e=>{
+  const b=e.target.closest("[data-go]");if(!b)return;const g=b.dataset.go;hist=[];
+  if(g.startsWith("m")){const i=Number(g.slice(1));Object.assign(S,{m:i,editing:false});S.k=S.done[i]?"summary":S.judged[i]?"decide":"judge";render();return;}
+  if(g==="pick")S.pickSel=null;
+  S.k=g;S.editing=false;S.menu=false;render();
+});
+const tog=document.getElementById("shownew");
+tog.addEventListener("click",()=>{const on=tog.getAttribute("aria-pressed")!=="true";tog.setAttribute("aria-pressed",String(on));app.classList.toggle("shownew",on);});
+document.getElementById("restart").addEventListener("click",()=>{S=fresh();hist=[];lastKey=null;render();});
+function fit(){const pw=document.getElementById("pw");const narrow=innerWidth<860;const availH=innerHeight-32;const availW=Math.min(innerWidth-32,420);
+  const s=Math.min(1,availW/404,narrow?1:availH/862);pw.style.transform=`scale(${s})`;pw.parentElement.style.height=(862*s)+"px";pw.parentElement.style.width=(404*s)+"px";}
+addEventListener("resize",fit);fit();
+S=fresh();hist=[];render();
+})();
+</script>

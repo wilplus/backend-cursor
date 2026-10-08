@@ -106,3 +106,93 @@ def test_the_route_sits_behind_the_blind_gate_and_the_speakers_choice():
 def test_the_read_screen_payload_names_the_practice():
     source = (ROOT / "services/coach_moment_read.py").read_text()
     assert '"practice": selected_practice(database, take, snip)' in source
+
+
+# ── LOCKIN §5c, contract 34 (W6 2026-10-05): written once ──────────────────
+
+class _Decided(_Db):
+    def set_confident_voice_practice_attempt_coach_decision(self, pid, aid, decision, coach):
+        self.decisions.append((pid, aid, decision, coach))
+        return {"id": aid, "coach_confidence_decision": "in_between",
+                "already_decided": True}
+
+
+def test_a_second_answer_never_overwrites_the_first(_quiet_side_effects):
+    after, album = _quiet_side_effects
+    status, payload = cpj.judge_selected_attempt(
+        _Decided(), take_session_id="take-1", snippet_id="snip-1",
+        body={"answer": "yes"}, coach_id="c1")
+    assert status == 409
+    assert payload["code"] == "PRACTICE_ALREADY_JUDGED"
+    assert payload["answer"] == "in_between"
+    after.assert_not_called()
+    album.assert_not_called()
+
+
+class _Query:
+    """A PostgREST builder double: records every filter, answers per table."""
+
+    def __init__(self, client, table):
+        self.client, self.table, self.filters, self.kind = client, table, [], None
+
+    def update(self, payload):
+        self.kind, self.payload = "update", payload
+        return self
+
+    def select(self, *_a):
+        self.kind = "select"
+        return self
+
+    def eq(self, column, value):
+        self.filters.append(("eq", column, value))
+        return self
+
+    def is_(self, column, value):
+        self.filters.append(("is", column, value))
+        return self
+
+    def limit(self, _n):
+        return self
+
+    def execute(self):
+        self.client.calls.append((self.kind, self.filters))
+        rows = self.client.answers[self.kind]
+        return type("R", (), {"data": rows})()
+
+
+class _Client:
+    def __init__(self, *, updated, standing):
+        self.calls: list = []
+        self.answers = {"update": updated, "select": standing}
+
+    def table(self, name):
+        assert name == "confident_voice_practice_attempt"
+        return _Query(self, name)
+
+
+def _service(client):
+    from services.db import DatabaseService
+    service = DatabaseService.__new__(DatabaseService)
+    service.client = client
+    return service
+
+
+def test_the_database_writes_the_coach_decision_only_where_none_stands():
+    client = _Client(updated=[{"id": "att-1", "coach_confidence_decision": "yes"}],
+                     standing=[])
+    row = _service(client).set_confident_voice_practice_attempt_coach_decision(
+        "pr-1", "att-1", "yes", "c1")
+    assert row == {"id": "att-1", "coach_confidence_decision": "yes"}
+    kind, filters = client.calls[0]
+    assert kind == "update"
+    assert ("is", "coach_confidence_decision", "null") in filters
+
+
+def test_the_database_returns_the_standing_decision_marked_already_decided():
+    client = _Client(updated=[], standing=[{"id": "att-1",
+                                            "coach_confidence_decision": "no"}])
+    row = _service(client).set_confident_voice_practice_attempt_coach_decision(
+        "pr-1", "att-1", "yes", "c1")
+    assert row == {"id": "att-1", "coach_confidence_decision": "no",
+                   "already_decided": True}
+    assert [k for k, _ in client.calls] == ["update", "select"]

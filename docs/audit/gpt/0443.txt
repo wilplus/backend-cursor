@@ -1,0 +1,249 @@
+INDEPENDENT CHECK, backend migration 0443 (Postgres 15 / Supabase). Merging runs it in production. Start fresh: judge only the text below, not any earlier message.
+
+
+CONTEXT. The app is willab (WillpowerLab): a speaker records a Take of a slide
+presentation; the backend transcribes it per slide, keeps one persistent Ideal
+Text document, and a Manager surfaces evidence-backed Feedback; blind coaches
+and peers rate moments of the recording. Fences that every change must keep:
+AC-9 (no number, score, ratio, count or classifier output ever reaches a user
+payload; every read a user sees is qualitative), BLIND COACH (nothing about a
+moment, not the speaker's answer, not the machine's read, reaches a coach
+before that coach's own blind answer on it), LIVE LOOP (record -> process ->
+Ideal Text -> next Take never waits on a coach or on a side write; a failing
+side write never blocks serving), CONSTRUCT (every measured state has one
+written operational definition and asks exactly one thing), and the
+provenance walls L3 (owner, peer, coach, machine and detector answers are
+stored and read apart, never mixed; speaker taps are never blind labels).
+Deployment: Railway with MIGRATE_ON_BOOT=1, so merging a migration to main
+applies it to the production database during the next container start,
+before the app process boots; migrations are append-only, idempotent and
+forward-only (rollback is a new migration). The database is Supabase
+Postgres 15: the browser roles anon and authenticated are granted on the
+public schema by default and PostgREST publishes every function in public at
+/rest/v1/rpc, so each file revokes those defaults itself and grants
+service_role exactly what the Flask app needs; the app reaches the database
+only with the service key (service_role), never as a browser role. The
+rehearsal tier applies every migration twice to a disposable cluster and runs
+a Postgres test against it before a push.
+
+THIS MIGRATION (0443). Communities (migration 0432) let a speaker share one Take with the general community or private ones, per Take and revocable; the share row take_shares already stamps consent_version, the Privacy/Terms version the speaker's authorization was on. The founder's CM2 B (N53.2) switches sharing on with the sharing screen, under the founder's own signed words for it and without waiting for counsel, with the consent stamped with the version of the words the speaker saw; Q-B6 A (N62) adds that sharing names the current Privacy/Terms and that 'None' takes the share back. This file adds one nullable text column, take_shares.share_words_version. The app (share_take) now refuses a share whose body has no well-formed share_words_version (400 SHARE_WORDS_VERSION_REQUIRED, before the policy check), requires the speaker's current authorization to be on the named Privacy/Terms version (409 TERMS_REACCEPT_REQUIRED otherwise; the config constant now names phase1-2026-10-02, Privacy 3.3 + Terms 3.3, the same version the peer share and the blind check use), and stamps both versions on each share row; 'None' still revokes every live row with no version. The queue reads the live view community_clips_live, which does not carry either version, so a revoked share leaves every queue as before. COMMUNITIES_ENABLED stays False in this PR: every community route still answers 404 and nothing is written in production; take_shares has never taken a production row, so the ALTER locks an empty dark table. Grants are 0432's, restated: browser roles and PUBLIC hold nothing on take_shares; service_role reads and writes it (the app writes shares with the service key; there is no function).
+
+THE MIGRATION, full text:
+----- BEGIN migrations/a_share_records_the_words_the_speaker_saw.sql -----
+-- 0443 · a share records the words the speaker saw (founder 2026-10-06, CM2
+-- B, decisions log N53.2; 2026-10-07, Q-B6 A, N62; build plan D-FW-6)
+--
+-- WHY. CM2 B: "build now and switch on at once ... sharing switches on with
+-- the sharing screen, under the founder's own words for it, without waiting
+-- for counsel. The consent stays per Take and revocable, and is stamped with
+-- the version of the words the speaker saw." Q-B6 A: "Sharing names the
+-- current Privacy/Terms, and each share records the words the speaker saw;
+-- 'None' takes the share back." A share row (take_shares, 0432) already
+-- carries consent_version, the Phase-1 policy version (Privacy/Terms) the
+-- speaker's authorization was on when they shared. The words on the sharing
+-- screen are a second thing with its own life: the founder's own choices and
+-- messages (signed, N54 WQ5 A / WQ6 A), which counsel may later change
+-- without the Privacy/Terms changing. A consent is only as good as the words
+-- it was given under, so each share records which words those were.
+--
+-- WHAT. One nullable column on take_shares:
+--
+--   take_shares.share_words_version   the version id of the sharing screen's
+--                                     words the speaker saw when they ticked
+--                                     the choice, as the screen sent it;
+--                                     NULL on a row written before this file
+--                                     and on nothing after it (the share
+--                                     route refuses a share without one).
+--
+-- "None" still revokes with no version: a revocation stamps revoked_at and
+-- reads no words. The live view community_clips_live is unchanged, so a
+-- revoked share leaves every queue as before. take_shares is a 0432 table
+-- that has never taken a write in production (COMMUNITIES_ENABLED is False):
+-- the ALTER takes its lock on an empty, dark table, never on a busy one.
+--
+-- WHAT DOES NOT CHANGE. Grants: 0432 revoked the browser roles and PUBLIC on
+-- take_shares and left the service key its privileges; a new column changes
+-- no ACL, and the door is restated below so the file is self-describing. No
+-- row is written or rewritten. Nothing reaches a listener: the queue reads
+-- the view, which does not carry this column.
+--
+-- Idempotent: ADD COLUMN IF NOT EXISTS; applied twice it changes nothing.
+--
+-- Rollback (a new forward migration): ALTER TABLE public.take_shares DROP
+-- COLUMN share_words_version. Nothing else reads it.
+
+BEGIN;
+
+ALTER TABLE public.take_shares
+    ADD COLUMN IF NOT EXISTS share_words_version text NULL;
+
+COMMENT ON COLUMN public.take_shares.share_words_version IS
+    'The version of the sharing screen''s words the speaker saw when they '
+    'shared (0443; CM2 B, N53.2; Q-B6 A, N62), as the screen sent it. '
+    'Beside consent_version (the Privacy/Terms version). NULL only on a row '
+    'written before 0443; a revocation stamps revoked_at and reads no words.';
+
+-- ── The door, restated (0432) ────────────────────────────────────────────
+-- Browser roles and PUBLIC hold nothing on take_shares; the app reads and
+-- writes it with the service key. Roles are guarded: they exist on Supabase,
+-- not on a bare Postgres.
+REVOKE ALL ON TABLE public.take_shares FROM PUBLIC;
+DO $$
+DECLARE
+    v_role text;
+BEGIN
+    FOREACH v_role IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_role) THEN
+            EXECUTE format('REVOKE ALL ON TABLE public.take_shares FROM %I', v_role);
+        END IF;
+    END LOOP;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.take_shares TO service_role;
+    END IF;
+END $$;
+
+COMMIT;
+----- END -----
+
+CALLING CODE excerpts (the app's side of the same change):
+----- The share, with the words version required and stamped (services/communities.py, lines 251-306) -----
+def share_words_version_from(body: Any) -> Optional[str]:
+    """The version of the sharing screen's words the speaker saw, as the
+    screen sends it (``share_words_version``); None when missing or not a
+    short id. Pure."""
+    fields: dict = body if isinstance(body, dict) else {}
+    value = fields.get("share_words_version")
+    if not isinstance(value, str) or not _WORDS_VERSION_RE.match(value):
+        return None
+    return value
+
+
+def share_take(database: Any, *, owner_user_id: str, take_session_id: str,
+               body: Any) -> tuple[int, dict]:
+    """Share one Take with the communities chosen and withdraw it from the
+    rest; "None" withdraws it from every community. A share names the
+    current Privacy/Terms (Q-B6 A) and records the words the speaker saw
+    (CM2 B, 0443); "None" needs neither."""
+    if not communities_enabled():
+        return _not_found()
+    session = database.v2_get_session_by_id(str(take_session_id))
+    if not isinstance(session, dict) or str(session.get("user_id")) != str(owner_user_id):
+        return 404, {"code": "TAKE_NOT_FOUND"}
+    choice, error = _share_choice(body)
+    if error or choice is None:
+        return error or (400, {"code": "INVALID_INPUT"})
+    take = str(take_session_id)
+    if choice["none"]:
+        database.revoke_take_shares(take, keep_community_ids=[])
+        return 200, {"take_session_id": take, "community_ids": [], "none": True}
+    words_version = share_words_version_from(body)
+    if words_version is None:
+        return 400, {"code": "SHARE_WORDS_VERSION_REQUIRED"}
+    version = share_policy_version()
+    from services.lend_your_ear import accepted_policy_at_least
+    if not version or not accepted_policy_at_least(database, owner_user_id, version):
+        return 409, {"code": "TERMS_REACCEPT_REQUIRED"}
+    general = database.get_general_community()
+    if not isinstance(general, dict) or not general.get("id"):
+        return 500, {"code": "V2_ERROR"}
+    general_id = str(general["id"]).lower()
+    wanted_private = [i for i in choice["community_ids"] if i != general_id]
+    want_general = choice["general"] or general_id in choice["community_ids"]
+    rows, _ = _open_private(database, owner_user_id)
+    mine = {str(r.get("id")).lower() for r in rows}
+    if any(i not in mine for i in wanted_private):
+        return 403, {"code": "NOT_A_MEMBER"}
+    chosen = ([general_id] if want_general else []) + wanted_private
+    for community_id in chosen:
+        database.upsert_take_share(take_session_id=take, owner_user_id=str(owner_user_id),
+                                   community_id=community_id, consent_version=version,
+                                   share_words_version=words_version)
+    database.revoke_take_shares(take, keep_community_ids=chosen)
+    return 200, {"take_session_id": take, "community_ids": chosen, "none": False,
+                 "share_words_version": words_version}
+----- The share write and the revocation (services/db.py, lines 15503-15530) -----
+    def upsert_take_share(self, *, take_session_id: str, owner_user_id: str,
+                          community_id: str, consent_version: str,
+                          share_words_version: str) -> Optional[dict]:
+        """Share one Take with one community: one row per pair; a share
+        clears revoked_at and stamps the consent version (Privacy/Terms) and
+        the version of the sharing screen's words the speaker saw (0443,
+        CM2 B). Raises on failure."""
+        res = (self.client.table("take_shares").upsert({
+            "take_session_id": str(take_session_id), "owner_user_id": str(owner_user_id),
+            "community_id": str(community_id), "consent_version": str(consent_version),
+            "share_words_version": str(share_words_version),
+            "shared_at": datetime.now(timezone.utc).isoformat(), "revoked_at": None,
+        }, on_conflict="take_session_id,community_id").execute())
+        return (res.data or [None])[0]
+
+    def revoke_take_shares(self, take_session_id: str, *,
+                           keep_community_ids: list[str]) -> int:
+        """Withdraw the Take from every community not kept; the rows stay
+        with revoked_at stamped. Raises on failure."""
+        query = (self.client.table("take_shares")
+                 .update({"revoked_at": datetime.now(timezone.utc).isoformat()})
+                 .eq("take_session_id", str(take_session_id))
+                 .is_("revoked_at", "null"))
+        keep = [str(c) for c in keep_community_ids or [] if c]
+        if keep:
+            query = query.not_.in_("community_id", keep)
+        return len(query.execute().data or [])
+----- The config: CM2 B, the current Privacy/Terms named, the switch still off (config.py, lines 453-474) -----
+    # COMMUNITIES (founder 2026-10-06, decisions log N52.4; migration 0432):
+    # after every finished review the speaker may share that Take with the
+    # general community, a private community joined with a pass code, or one
+    # of their own; "None" stands alone and only the coach judges. A shared
+    # Take is judged by its community; community answers are peer ratings
+    # (L3). Built DARK: off, every /user/communities and take-share route
+    # answers 404 and nothing is read or written (services/communities.py).
+    COMMUNITIES_ENABLED = False
+    # CM2 B (founder 2026-10-06, N53.2; Q-B6 A, N62): sharing switches on
+    # with the sharing screen, under the founder's own signed words for it
+    # (N54, WQ5 A / WQ6 A), without waiting for counsel; the founder took the
+    # risk stated on the panel ("people's voices reach others under words
+    # counsel has not checked, in the EU"). Sharing names the CURRENT
+    # Privacy/Terms: the Phase-1 policy version below (phase1-2026-10-02,
+    # Privacy 3.3 + Terms 3.3, scripts/phase1_policy_publish_3_3.sql). The
+    # share route refuses (409 TERMS_REACCEPT_REQUIRED) until the speaker's
+    # current authorization is on it or later; "None" still revokes without
+    # any version. Each share row is stamped with it (take_shares.
+    # consent_version) and with the version of the sharing screen's words
+    # the speaker saw (take_shares.share_words_version, 0443), which the
+    # screen sends. Still dark: COMMUNITIES_ENABLED above is the switch.
+    COMMUNITY_SHARE_POLICY_VERSION: str | None = "phase1-2026-10-02"
+----- The route (routes/v2/communities.py, lines 82-101) -----
+@v2_bp.route("/user/takes/<take_id>/share", methods=["PUT"])
+@require_auth
+def v2_take_share(take_id):
+    """Body {general, community_ids, none, share_words_version}: share this
+    Take with the communities chosen and withdraw it from the rest; "none"
+    stands alone and withdraws it from every community. A share records
+    the version of the sharing screen's words the speaker saw
+    (share_words_version, 0443; 400 SHARE_WORDS_VERSION_REQUIRED without
+    it) and answers 409 TERMS_REACCEPT_REQUIRED until the speaker's current
+    authorization is on the named Privacy/Terms (Q-B6 A). "none" needs
+    neither."""
+    off = _off()
+    if off:
+        return off
+    from services.communities import share_take
+    if not _is_valid_uuid(take_id):
+        return jsonify({"code": "INVALID_INPUT"}), 400
+    return _run("take share", lambda: share_take(
+        db, owner_user_id=str(request.user_id), take_session_id=take_id,
+        body=request.get_json(silent=True)))
+----- END OF CALLING CODE -----
+
+QUESTIONS. Answer each in order.
+1. Idempotency: does applying the file twice (and on a database where it already ran) succeed and change nothing? Any statement that fails on the second run, or silently changes rows?
+2. Grants and RLS: after the file runs, can the Supabase browser roles (anon, authenticated) or PUBLIC read or write the new table(s) or execute the new function(s)? Does service_role keep what the app needs? Any SECURITY DEFINER exposure or search_path hijack?
+3. Data exposure: can any person's data (another speaker's rows, transcript text, answers) leak through the new objects or the calling code? Does any user-facing payload gain a number, score, ratio, count or classifier output (AC-9 forbids that)?
+4. Locking: does anything take a lock on an existing, busy production table (ALTER TABLE on a large table, index builds without CONCURRENTLY on existing tables, validation scans)? Could the function itself deadlock or serialize hot paths?
+5. Rollback and destructiveness: does the file drop, truncate, delete or rewrite any existing data? Is the stated forward-only rollback realistic?
+6. Correctness of the rule the SQL implements, against the WHY below. Any edge case where it does the wrong thing?
+7. Anything else that would make you block the merge.
+
+Give a verdict line "PASS" or "FAIL", then numbered findings (severity: blocker / should-fix / nit).
+
+Finish your answer with the line END OF REVIEW.

@@ -403,11 +403,26 @@ class RouteTests(unittest.TestCase):
             "custom_exercise": {
                 "title": "Land the last word",
                 "instruction": "Say it at full volume.",
-                "explanation_video_url": "https://cdn.example/c.mp4"}})
+                "explanation_video_url": "https://cdn.example/c.mp4",
+                # A new coach exercise names its main error (E5; W6).
+                "main_target": "ending_compression"}})
         self.assertEqual(status, 200)
         self.assertEqual(fake.filed_fields[0]["acoustic_problem_tags"],
                          ["ending_compression"])
         self.assertEqual(fake.taught, [])
+
+    def test_a_new_exercise_here_without_its_main_error_is_refused(self):
+        # E5 / P2-4 (W6 2026-10-05): every door a coach saves through.
+        fake = _Db()
+        resp, status = self._put(fake, {
+            "professional_coach_decision": "yes", "share_with_user": True,
+            "custom_exercise": {
+                "title": "Land the last word",
+                "instruction": "Say it at full volume.",
+                "explanation_video_url": "https://cdn.example/c.mp4"}})
+        self.assertEqual(status, 400)
+        self.assertEqual(resp.get_json()["code"], "MAIN_TARGET_REQUIRED")
+        self.assertEqual(fake.filed_fields, [])
 
     def test_errors_the_coach_gave_their_exercise_are_kept(self):
         fake = _Db()
@@ -416,7 +431,7 @@ class RouteTests(unittest.TestCase):
             "custom_exercise": {
                 "title": "Pause", "instruction": "Breathe.",
                 "explanation_video_url": "https://cdn.example/c.mp4",
-                "acoustic_problem_tags": ["rushing"]}})
+                "acoustic_problem_tags": ["rushing"], "main_target": "rushing"}})
         self.assertEqual(fake.filed_fields[0]["acoustic_problem_tags"],
                          ["rushing"])
 

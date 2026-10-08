@@ -330,6 +330,10 @@ def _exposure_row(raw: dict, family: str) -> dict:
         "rule_version": raw.get("rule_version"),
         "model_version": raw.get("model_version"),
         "prompt_version": raw.get("prompt_version"),
+        # The generator version an AI clearer version is admitted by
+        # (D-ML-3, `tracked_changes._clearer_version_evidence`); without it
+        # V3 reads the exposure row as unversioned and excludes it.
+        "suggestion_version": raw.get("suggestion_version"),
         **_machine_readings(raw),
         "evidence": dict(raw.get("_manager_evidence") or {}),
         "_manager_evidence": dict(raw.get("_manager_evidence") or {}),

@@ -69,7 +69,7 @@ the table).
 | confident-moment released | `… confident_moment_rehearsal.sh released` | `willab_confident_moment_released` | `CONFIDENT_MOMENT_REHEARSAL_DSN` | production-shaped fixtures (9) | **verified 9/9** |
 | canary | released lane, checkpoint right after 0325 `add_mlc3_founder_canary_security_closure.sql`, cloned; then `personalized_exercise_recommendation` and `coach_review` in `processing_purpose_registry` made operational with the five control columns the CHECK demands | `willab_d3_canary` | `MLC3_CANARY_READINESS_REHEARSAL_DSN` | founder canary readiness (9) | **verified 9/9** |
 | freeze | `take_feedback_freeze_prerequisites.sql` → 0308, 0310, 0333, 0339, 0346, 0347, 0349 (each applied twice) | `willab_freeze_rehearsal` | `TAKE_FEEDBACK_FREEZE_REHEARSAL_DSN` | the freeze an answer is judged against (12) | **verified 12/12** |
-| bake | `ideal_text_core_snapshot_prerequisites.sql` → `ideal_text_feedback_bake_prerequisites.sql` (narrow copies of the four tables the freshness rule reads) → 0290, `fix_ideal_text_core_pgcrypto_search_path`, 0345, 0351 (each applied twice) | `willab_bake_rehearsal` | `IDEAL_TEXT_FEEDBACK_BAKE_REHEARSAL_DSN` | stored bookmark set and its freshness rule (15) | **verified 15/15** |
+| bake | `ideal_text_core_snapshot_prerequisites.sql` → `ideal_text_feedback_bake_prerequisites.sql` (narrow copies of the four answer tables and of `confident_voice_practice`, which the freshness rule reads) → 0290, `fix_ideal_text_core_pgcrypto_search_path`, 0345, 0351, then the coach's request chain as released (0385, 0397, 0402, 0403, 0408, which also lays down `moment_events`), then 0428 and `the_bake_knows_about_skips_and_practice` (each applied twice) | `willab_bake_rehearsal` | `IDEAL_TEXT_FEEDBACK_BAKE_REHEARSAL_DSN` | stored bookmark set and its freshness rule, a coach's answer and share, a skip and a practice included (32) | **verified 32/32 (2026-10-05)** |
 | d4 | narrow lane, checkpoint right after 0326 `add_mlc3_general_user_service_d4.sql`, cloned as the TEMPLATE the suite clones per test; two relaxations: `ml_judgments.id` gets a default, and every trigger on `reject_mlc2_immutable_mutation` / `reject_phase1_immutable_mutation` is disabled (the suite asserts nothing about immutability; the MLC-2 lanes do) | `willab_ga_template` | `MLC3_GENERAL_USER_REHEARSAL_DSN` | General-User Service D4 (34) | **verified 34/34** |
 | take-rewrite | narrow lane, cloned before any lane runs; `coach_arc_ideal_text.approved_at`/`updated_by` (0013) and `user_arc_ideal_notes.updated_at` added back as the released files define them; then 0032, 0034, 0035, 0064, 0270, 0291, 0369, 0370, 0371 (each applied twice) | `willab_confident_moment_take2` | `CONFIDENT_MOMENT_REHEARSAL_DSN` | the owner edits a Paragraph, then Take 2 rewrites the Slide; an edit on a Slide Take 2 did not speak is kept (B1-5, N29) (2) | **verified 2026-10-05** |
 
@@ -138,8 +138,12 @@ re-freeze-and-review rule as its own change, not this one.
 
 **The trigger is the change, not discipline.** `scripts/rehearsal_trigger.sh`
 exits 0 when the diff against `origin/main` touches `migrations/`,
-`tests/integration/`, the tier's own runner `scripts/rehearsal_tier.sh`, or an
-MLC-3 storage module (the list is in the script).
+`tests/integration/`, the tier's own runner `scripts/rehearsal_tier.sh`, a
+rehearsal suite (`tests/test_*_postgres.py`), an MLC-3 storage module, or the
+edit-then-Take-2 path the take-rewrite lane walks (`services/take_review.py`,
+`take_rebuild.py`, `slide_helper_words.py`, `ideal_text_parts.py`; founder
+lock 2026-09-30, B1-5: the test "runs in the gate"). The list is in the
+script.
 Both `scripts/local_ci.sh` and the `checks` job in
 `.github/workflows/tests.yml` consult it:
 

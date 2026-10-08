@@ -1,4 +1,4 @@
-"""The training switch (SPEC-training-corpus §3, P5 packet §4 item 6). DARK.
+"""The training switch (SPEC-training-corpus §3, P5 packet §4 item 6). OPEN.
 
 One person, one switch, its own screen: **Help improve WillpowerLab**. Turning
 it on records the training-only yes (`record_mlc2_training_consent_grant_v2`,
@@ -13,14 +13,28 @@ training (C1). This module adds no rule of its own; it maps the database's
 answers to stable codes. User-facing words for those codes live in the
 frontend and are the founder's (N10).
 
-DARK. `Config.MLC2_TRAINING_SWITCH_ENABLED` is a code constant, False until P5,
-and the route answers 410 while it is. Behind it the database holds no
-training policy, so there is nothing to turn on.
+OPEN since 2026-10-01 (door 1, the founder's sentence "open door 1";
+docs/LEARNING-DOORS.md). `Config.MLC2_TRAINING_SWITCH_ENABLED` is a code
+constant, True since then; only a reviewed change setting it back to False
+makes the route answer 410 again. The training policy row the yes rests on
+(`training-only-v1`) was registered by the founder the same day, per that
+document; whenever no training policy is active, `_read` answers
+`available: false` and there is nothing to turn on.
+
+THE ONE CONSENT AUTHORITY (founder 2026-10-05, N48.5 Q27 A; migration 0430).
+This yes is also what admits a person's Takes into the confidence chain; the
+bundled grant no longer does. So turning it on binds the person's speaker
+(their verified account identity, ``services.speaker_identity``) in the same
+transaction (``accept_mlc2_training_consent_v1``; F-3): the chain and the
+speaker-disjoint split both need a speaker. A person who said yes before
+0430 is bound the next time their card reads the switch (``_bind_speaker``,
+best effort, never a reason for the card to fail). Turning it off is
+unchanged.
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 SOURCE_ROUTE = "/v2/user/training-consent"
 CONTROL = "training_toggle"
@@ -79,10 +93,18 @@ def _refused(error: Exception) -> TrainingSwitchError:
 
 
 def handle(database: Any, owner_id: str, method: str, body: Any,
-           client_version: str) -> dict:
-    """GET reads, POST turns on, DELETE turns off. Returns the new state."""
+           client_version: str,
+           identity: Optional[tuple[str, str]] = None) -> dict:
+    """GET reads, POST turns on, DELETE turns off. Returns the new state.
+
+    ``identity`` is ``(identity_hash, binding_proof_hash)`` from the verified
+    token (``services.speaker_identity``). With it, a yes binds the speaker
+    in the same transaction, and a yes given before that existed is bound
+    when the card next reads the switch."""
     policy, state = _read(database, owner_id)
     if method == "GET":
+        if state.get("active"):
+            _bind_speaker(database, owner_id, identity)
         return state
     key = _key(body)
     now = datetime.now(timezone.utc).isoformat()
@@ -95,31 +117,61 @@ def handle(database: Any, owner_id: str, method: str, body: Any,
                 or body.get("copy_sha256") != policy["approved_copy_sha256"]):
             raise TrainingSwitchError("TRAINING_COPY_CHANGED", 409)
         if not state["active"]:
-            _turn_on(database, owner_id, policy, key, now, client_version)
+            _turn_on(database, owner_id, policy, key, now, client_version,
+                     identity)
+        else:
+            _bind_speaker(database, owner_id, identity)
     elif method == "DELETE":
         _turn_off(database, owner_id, key, now, client_version)
     return _read(database, owner_id)[1]
 
 
 def _turn_on(database: Any, owner_id: str, policy: dict, key: str, now: str,
-             client_version: str) -> None:
+             client_version: str,
+             identity: Optional[tuple[str, str]] = None) -> None:
+    grant = {
+        "acquisition_principal_id": owner_id,
+        "consent_policy_version": policy["version"],
+        "terms_version": policy["terms_version"],
+        "privacy_policy_version": policy["privacy_policy_version"],
+        "source_route": SOURCE_ROUTE, "client_version": client_version,
+        "affirmative_action": {
+            "accepted": True, "control": CONTROL,
+            "copy_sha256": policy["approved_copy_sha256"],
+            "preselected": False,
+        },
+        "occurred_at": now, "idempotency_key": key,
+    }
     try:
-        recorded = database.record_mlc2_training_consent_grant(
-            acquisition_principal_id=owner_id,
-            consent_policy_version=policy["version"],
-            terms_version=policy["terms_version"],
-            privacy_policy_version=policy["privacy_policy_version"],
-            source_route=SOURCE_ROUTE, client_version=client_version,
-            affirmative_action={
-                "accepted": True, "control": CONTROL,
-                "copy_sha256": policy["approved_copy_sha256"],
-                "preselected": False,
-            },
-            occurred_at=now, idempotency_key=key)
+        if identity:
+            from services.speaker_identity import BOUND_BY, IDENTITY_VERSION
+            recorded = database.accept_mlc2_training_consent(
+                **grant, identity_hash=identity[0],
+                identity_version=IDENTITY_VERSION,
+                binding_proof_hash=identity[1], bound_by=BOUND_BY)
+        else:
+            recorded = database.record_mlc2_training_consent_grant(**grant)
     except Exception as error:  # noqa: BLE001 — mapped to a stable code
         raise _refused(error) from error
     if not recorded:
         raise TrainingSwitchError("TRAINING_SWITCH_FAILED", 500)
+
+
+def _bind_speaker(database: Any, owner_id: str,
+                  identity: Optional[tuple[str, str]]) -> None:
+    """Best effort: bind the speaker of someone who already holds a yes.
+    The database writes nothing without an active yes and never rebinds a
+    principal; a failure is logged by the seam and never reaches the card."""
+    binder = getattr(database, "bind_mlc2_training_speaker", None)
+    if not identity or binder is None:
+        return
+    from services.speaker_identity import BOUND_BY, IDENTITY_VERSION
+    try:
+        binder(acquisition_principal_id=owner_id, identity_hash=identity[0],
+               identity_version=IDENTITY_VERSION,
+               binding_proof_hash=identity[1], bound_by=BOUND_BY)
+    except Exception:  # noqa: BLE001 — the switch's own answer stands
+        return
 
 
 def _turn_off(database: Any, owner_id: str, key: str, now: str,

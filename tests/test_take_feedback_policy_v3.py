@@ -319,13 +319,19 @@ def test_invalid_rewrite_and_praise_candidates_are_frozen_not_dropped():
     }
 
 
-def test_dark_activation_is_fail_closed_and_founder_exact(monkeypatch):
-    monkeypatch.setattr(Config, "TAKE_FEEDBACK_POLICY_V3_MODE", "dark")
+def test_dark_activation_covers_every_speaker_and_stays_fail_closed(monkeypatch):
+    # S-V1 A: every speaker's Takes, only in explicit dark mode.
+    monkeypatch.setattr(Config, "TAKE_FEEDBACK_POLICY_V3_SHADOW_WRITE_MODE", "dark")
     monkeypatch.setattr(Config, "TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID", "founder")
     assert dark_enabled("founder") is True
-    assert dark_enabled("someone-else") is False
-    monkeypatch.setattr(Config, "TAKE_FEEDBACK_POLICY_V3_MODE", "enabled")
-    assert dark_enabled("founder") is False
+    assert dark_enabled("someone-else") is True
+    assert dark_enabled("") is False
+    assert dark_enabled(None) is False
+    monkeypatch.setattr(Config, "TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID", "")
+    assert dark_enabled("someone-else") is True
+    for mode in ("enabled", "off", "", "Dark"):
+        monkeypatch.setattr(Config, "TAKE_FEEDBACK_POLICY_V3_SHADOW_WRITE_MODE", mode)
+        assert dark_enabled("someone-else") is False
 
 # ── merged from tests/test_take_feedback_policy_v3_integration.py (audit Q-T9) ──
 
@@ -640,6 +646,111 @@ def _rblock(block_id, score):
     }
 
 
+# ── 24a: an indivisible block stays whole, with a typed exception ──
+
+def _words_piece(index, slide, words):
+    return {"snippet_id": f"s{index}", "word_count": words, "slide_index": slide}
+
+
+def test_a_block_in_the_normal_range_has_no_exception():
+    from services.take_feedback_policy_v3 import _partition_exception
+
+    run = [_words_piece(0, 0, 40), _words_piece(1, 0, 35)]
+    assert _partition_exception(run, run) is None
+
+
+def test_a_single_piece_over_ninety_words_is_indivisible_long():
+    from services.take_feedback_policy_v3 import _partition_exception
+
+    long_one = [_words_piece(0, 0, 140)]
+    assert _partition_exception(long_one, long_one + [_words_piece(1, 0, 70)]) \
+        == "indivisible_long"
+
+
+def test_a_slide_run_under_sixty_words_is_a_short_slide_run():
+    from services.take_feedback_policy_v3 import _partition_exception
+
+    run = [_words_piece(0, 0, 20), _words_piece(1, 0, 15)]
+    assert _partition_exception(run, run) == "short_slide_run"
+
+
+def test_any_other_block_outside_the_range_is_named_too():
+    from services.take_feedback_policy_v3 import _partition_exception
+
+    pack = [_words_piece(0, 0, 50), _words_piece(1, 0, 50)]
+    run = pack + [_words_piece(2, 0, 75)]
+    assert _partition_exception(pack, run) == "closest_outside_range"
+
+
+def test_the_frame_types_every_block_outside_sixty_to_ninety_words():
+    """The fixture's slides partition into 75 and 70 words (no exception); a
+    Slide spoken in one short piece stays whole and says why (contract 24a)."""
+    from services.take_feedback_policy_v3 import (
+        PARTITION_EXCEPTIONS, _semantic_blocks,
+    )
+
+    assert [b["partition_exception"] for b in _frame()["blocks"]] == [None, None]
+    blocks, _ = _semantic_blocks([
+        _piece(0, 0, 25, 0.1),            # Slide 0: one short piece
+        _piece(1, 1, 120, 0.1),           # Slide 1: one long piece
+        _piece(2, 2, 40, 0.1), _piece(3, 2, 40, 0.1),   # Slide 2: 80 words
+    ])
+    assert [(b["slide_index"], b["word_count"], b["partition_exception"])
+            for b in blocks] == [
+        (0, 25, "short_slide_run"),
+        (1, 120, "indivisible_long"),
+        (2, 80, None),
+    ]
+    assert {b["partition_exception"] for b in blocks} - {None} <= set(
+        PARTITION_EXCEPTIONS)
+
+
+# ── 25: an honest empty lane is typed, never merely absent ──
+
+def test_a_lane_that_anchored_a_note_is_selected_and_names_the_blocks_without_one():
+    from services.take_feedback_policy_v3 import _lane_outcome
+
+    out = _lane_outcome(
+        [{"block_id": "b1", "candidate_id": "c1"}],
+        [{"block_id": "b1"}, {"block_id": "b2"}],
+    )
+    assert out == {
+        "outcome": "selected",
+        "blocks_without_note": [
+            {"block_id": "b2", "reason": "no_defensible_candidate"}],
+    }
+
+
+def test_a_lane_with_nothing_defensible_freezes_no_defensible_candidate():
+    from services.take_feedback_policy_v3 import (
+        NO_DEFENSIBLE_CANDIDATE, _lane_outcome,
+    )
+
+    assert _lane_outcome([], [{"block_id": "b1"}]) == {
+        "outcome": NO_DEFENSIBLE_CANDIDATE,
+        "blocks_without_note": [
+            {"block_id": "b1", "reason": NO_DEFENSIBLE_CANDIDATE}],
+    }
+    # No block read for the lane at all: still typed, nothing invented.
+    assert _lane_outcome([], []) == {
+        "outcome": NO_DEFENSIBLE_CANDIDATE, "blocks_without_note": []}
+
+
+def test_the_frame_records_each_lane_outcome():
+    lanes = _frame()["verbal_lanes"]
+    assert lanes["rewrite_clarity"]["outcome"] == "selected"
+    assert lanes["rewrite_clarity"]["selected_candidate_ids"] == ["best-rewrite"]
+    praise = lanes["great_formulation"]
+    assert praise["outcome"] in ("selected", "no_defensible_candidate")
+    # Every block read for a lane is either anchored or named without a note.
+    for lane in (lanes["rewrite_clarity"], praise):
+        anchored = {row["block_id"] for row in lane["anchors"]}
+        named = {row["block_id"] for row in lane["blocks_without_note"]}
+        assert not anchored & named
+        assert all(row["reason"] == "no_defensible_candidate"
+                   for row in lane["blocks_without_note"])
+
+
 def test_the_threshold_cuts_below_neutral():
     from services.take_feedback_policy_v3 import _practice_routing
 
@@ -659,17 +770,31 @@ def test_the_threshold_cuts_below_neutral():
     assert routing["low"]["practice_prompt"] is True
 
 
-def test_only_the_weakest_prompting_block_carries_the_exercise():
-    """Every below-neutral block says "Let's practice"; exactly one also gets
-    the drill, because four things to go and record is a to-do list."""
+def test_every_block_read_weak_carries_its_own_exercise():
+    """REVERSED 2026-10-05 (audit 24f-exercise), following contract 24f as the
+    founder amended it on 2026-09-29: "an exercise on any bookmark", each item
+    the machine reads weak gets the library exercise matched to its own clip
+    (35g-1). Until then exactly one block, the weakest below neutral, carried
+    the drill, and the frame still declared that after the serve path had
+    stopped following it. Read weak is the neutral band and below; a block read
+    confident carries none; the prompt still cuts below neutral."""
     from services.take_feedback_policy_v3 import _practice_routing
 
     routing = _practice_routing([
         _rblock("a", -0.2), _rblock("b", -0.9), _rblock("c", -0.4),
+        _rblock("neutral", 0.0), _rblock("mid_high", 0.2), _rblock("high", 0.8),
     ])
     carrying = [key for key, row in routing.items() if row["carries_exercise"]]
-    assert carrying == ["b"], "the weakest of the prompting blocks"
-    assert all(row["practice_prompt"] for row in routing.values())
+    assert carrying == ["a", "b", "c", "neutral"]
+    assert [key for key, row in routing.items() if row["practice_prompt"]] == [
+        "a", "b", "c"]
+
+
+def test_the_frame_declares_the_exercise_rule_the_serve_path_follows():
+    practice = _frame()["practice_policy"]
+    assert practice["exercise_budget"] == "one_per_block_read_weak"
+    assert practice["exercise_target"] == "each_block_read_weak_own_clip"
+    assert practice["threshold"] == "below_neutral_delivery_band"
 
 
 def test_a_take_with_nothing_below_neutral_offers_no_exercise():

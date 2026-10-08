@@ -87,6 +87,11 @@ def test_service_frame_and_bundle_preserve_75_word_budget_without_labels():
         feedback_candidates=[],
         take_index=1,
         expected_recording_id=RECORDING,
+        # The frame is handed the served text the inventory is, as
+        # `prepare_first_client_feedback` always does: its selection now
+        # proves each item's served span against it (contract 24b), so a
+        # frame told no served text can prove none.
+        served_text=document["text"],
     )
     inventory = prepare_v3_service_inventory(
         frame=frame, take_document=document, served_text=document["text"],
@@ -551,3 +556,30 @@ def test_coverage_is_written_down_per_take(caplog):
     assert "feedback_v3_coverage take=take-1 take_index=2" in line
     assert "assessable=5 covered=4 ratio=0.8 floor=0.8 meets_floor=True" in line
     assert "no_candidate" in line
+
+
+def test_the_coverage_line_names_partition_exceptions_and_lane_outcomes(caplog):
+    """Contracts 24a and 25: the typed partition exception and the typed
+    `no_defensible_candidate` lane are written down with the Take's coverage,
+    as Slide indexes and type names only (AC-9: nothing reaches a user)."""
+    import logging
+    from services.mlc3_first_client_feedback import _log_coverage
+
+    caplog.set_level(logging.INFO, logger="services.mlc3_first_client_feedback")
+    _log_coverage("take-1", 1, {
+        "coverage": {"assessable_slides": 2, "covered_slides": 2, "ratio": 1.0,
+                     "required_floor": 0.7, "meets_floor": True, "uncovered": []},
+        "blocks": [
+            {"slide_index": 0, "partition_exception": "short_slide_run"},
+            {"slide_index": 1, "partition_exception": None},
+        ],
+        "verbal_lanes": {
+            "enabled": True,
+            "rewrite_clarity": {"outcome": "selected"},
+            "great_formulation": {"outcome": "no_defensible_candidate"},
+        },
+    })
+    line = caplog.records[-1].getMessage()
+    assert "partition_exceptions=[(0, 'short_slide_run')]" in line
+    assert "'great_formulation': 'no_defensible_candidate'" in line
+    assert "'rewrite_clarity': 'selected'" in line

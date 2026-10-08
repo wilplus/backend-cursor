@@ -33,6 +33,11 @@ def v2_admin_learning_ledger():
         # B8): which pattern needs an exercise filmed, and how many coach
         # requests wait on it. It lives here now so nothing is lost.
         gaps = gap_view(db, days=30)
+        # The jar's evaluation rode the retired /cms/jar page (B8, C9, E9;
+        # founder 2026-09-29 decision 7, "two piles"): sealed, and why, until
+        # the bar (300 attempts, 30 per exercise) is met; then both piles.
+        # The live ledger's own count is the gate, so nothing is read twice.
+        jar_evaluation = _jar_evaluation(live.get("exercise_jar"))
         snapshots = db.list_ledger_snapshots(limit=WINDOW_WEEKS + 1) or []
         oldest_first = sorted(
             (s for s in snapshots if isinstance(s, dict)),
@@ -46,6 +51,7 @@ def v2_admin_learning_ledger():
                       for s in oldest_first],
             "pace": pace(live, history),
             "gaps": gaps,
+            "jar_evaluation": jar_evaluation,
         })
         response.headers["Cache-Control"] = "no-store"
         return response, 200
@@ -53,6 +59,22 @@ def v2_admin_learning_ledger():
         logger.error("learning ledger read failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to read the ledger"}), 500
+
+
+def _jar_evaluation(gate):
+    """``evaluate_jar`` unchanged, gated on the ledger's own readiness
+    (services.exercise_evaluation): sealed and why below the bar, both
+    piles above it. None when the jar's count could not be read (the ledger
+    names it in ``unavailable``); a failed evaluation is named, never
+    served as unsealed."""
+    if not isinstance(gate, dict):
+        return None
+    from services.exercise_evaluation import evaluate_jar
+    try:
+        return evaluate_jar(db, gate=gate)
+    except Exception as e:  # noqa: BLE001 -- the page still serves
+        logger.warning("jar evaluation failed: %s", e, exc_info=True)
+        return None
 
 
 @v2_bp.route("/admin/learning/weekly/run", methods=["POST"])

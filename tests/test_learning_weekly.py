@@ -30,14 +30,15 @@ class _Db:
         return row
 
 
-def _ledger(ready=False, unexported=3, releasable=None):
+def _ledger(ready=False, unexported=3, releasable=None, exportable=None):
     return {
         "ledger_version": "learning-ledger-v1",
         "pairs": {"praise_line": {"total": 5, "unexported": unexported, "run_bar": 200, "ready_for_run": False,
-                                  **({} if releasable is None else {"releasable": releasable})},
+                                  **({} if releasable is None else {"releasable": releasable}),
+                                  **({} if exportable is None else {"exportable": exportable})},
                   "clearer_version": {"total": 0, "unexported": 0}, "exercise_script": {"total": 0, "unexported": 0}},
         "exercise_jar": {"counted": 12},
-        "shadow_cues": {"hedging": {"named": 31 if ready else 4, "named_bar": 30, "caught_rate": 0.85 if ready else None,
+        "shadow_cues": {"hedging": {"audit_yes": 31 if ready else 4, "audit_yes_bar": 30, "caught_rate": 0.85 if ready else None,
                                     "caught_bar": 0.8, "clips_measured": 100, "false_alarm_rate": None, "ready": ready}},
         "doors": {"consent": {"open": False}, "dataset_release": {"open": False},
                   "training": {"open": False}, "promotion": {"open": False}},
@@ -86,8 +87,8 @@ class PaceTests(unittest.TestCase):
         self.assertIsNone(lp.weeks_to_bar(None, 200, 4.5))
 
     def test_the_pace_rows_read_the_snapshots_oldest_first(self):
-        weeks = [_ledger(releasable=0), _ledger(releasable=2)]
-        rows = {r["jar"]: r for r in lp.pace(_ledger(releasable=3), weeks)}
+        weeks = [_ledger(exportable=0), _ledger(exportable=2)]
+        rows = {r["jar"]: r for r in lp.pace(_ledger(exportable=3), weeks)}
         praise = rows["pairs.praise_line"]
         self.assertEqual((praise["current"], praise["bar"], praise["observed_rate"]), (3, 200, 1.5))
         self.assertEqual(praise["weeks_to_bar"], 132.0)
@@ -97,22 +98,31 @@ class PaceTests(unittest.TestCase):
 
 
 class PairJarTests(unittest.TestCase):
-    """Second plan, 2026-10-05: the pair jar counts every releasable pair
-    ever written, so a weekly export no longer empties it."""
+    """Second plan, 2026-10-05: the pair jar counts every pair ever written
+    that the export contract can release, so a weekly export no longer
+    empties it (C9, W6: and a pair that can never leave never fills it)."""
 
     def test_an_export_does_not_empty_the_jar(self):
         # Before: 40 waiting. The export takes them all (unexported 0); the
-        # releasable count keeps them, and the week's growth is the rate.
-        weeks = [_ledger(unexported=40, releasable=40)]
-        rows = {r["jar"]: r for r in lp.pace(_ledger(unexported=5, releasable=45), weeks)}
+        # exportable count keeps them, and the week's growth is the rate.
+        weeks = [_ledger(unexported=40, releasable=40, exportable=40)]
+        rows = {r["jar"]: r for r in lp.pace(
+            _ledger(unexported=5, releasable=45, exportable=45), weeks)}
         praise = rows["pairs.praise_line"]
         self.assertEqual((praise["current"], praise["observed_rate"]), (45, 5.0))
         self.assertEqual(praise["weeks_to_bar"], 31.0)
 
     def test_a_snapshot_from_before_the_count_is_unknown_not_zero(self):
-        weeks = [_ledger(unexported=40)]
-        rows = {r["jar"]: r for r in lp.pace(_ledger(releasable=45), weeks)}
+        weeks = [_ledger(unexported=40, releasable=40)]
+        rows = {r["jar"]: r for r in lp.pace(_ledger(releasable=45, exportable=45), weeks)}
         self.assertIsNone(rows["pairs.praise_line"]["observed_rate"])
+
+    def test_a_pair_the_export_cannot_release_never_fills_the_jar(self):
+        """C9 (W6 2026-10-05): the walk's exercise pairs carried no passage
+        or model version; with the speaker's yes they still counted toward
+        200 although nothing could release them."""
+        rows = {r["jar"]: r for r in lp.pace(_ledger(releasable=45, exportable=0), [])}
+        self.assertEqual(rows["pairs.praise_line"]["current"], 0)
 
 
 class RouteTests(unittest.TestCase):

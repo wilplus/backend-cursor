@@ -7,14 +7,24 @@ moment; the coach is its author; `owner_user_id` names whose passage the
 words are about, for the consent door later (L1 of the learning page).
 
 Three surfaces, and they never mix: the praise line, the clearer version,
-the exercise script. The exercise lane records two finals per version, the
-coach's text and the video's transcript.
+the exercise script. The walk's exercise answer records two finals, the
+saved instruction and the video's transcript, when its request resolves
+(services.exercise_coach_requests); a Library save records none: it has no
+moment, owner or passage, so no export could ever release it (W6).
 
 NEVER FROM AN OWNER'S ANSWER (L3): only coach routes call `record_pair`,
-and `coach_id` is required. Nothing here is a score, and no row reaches a
-speaker. Each recorded pair is also mirrored, best-effort, into the
+and `coach_id` is required. A coach answering a moment of their own Take is
+the owner answering, so no pair is recorded then either (founder 2026-10-05,
+W6: "a pair is recorded only when a model draft was shown and the final
+differs; never from the owner"). Nothing here is a score, and no row
+reaches a speaker. Each recorded pair is also mirrored, best-effort, into the
 annotation ledger the dark export reads, under the same surface name, so a
 release authorised later finds them where the exporter looks.
+
+THE MODEL DRAFT IS THE SERVER'S (FL-L3). The draft a pair stands on is the
+one the server itself kept: the request row's draft (the walk), the Take
+word's draft. A text a client calls a draft (the Library's past finals,
+which are a coach's or the founder's own words) is never recorded as one.
 """
 from __future__ import annotations
 
@@ -64,6 +74,9 @@ def record_pair(
         return None
     coach = str(coach_id or "").strip()
     if not coach or not differs(draft, final):
+        return None
+    if owner_user_id and str(owner_user_id).strip() == coach:
+        # The coach is the passage's owner: an owner's answer, never a pair.
         return None
     if not request_id and not exercise_id and not take_word_id:
         return None
@@ -152,16 +165,13 @@ def _mirror(database: Any, row: dict, coach: str) -> None:
 
 def counts(database: Any) -> dict:
     """Per surface: how many pairs exist, how many await export and how
-    many were ever releasable (the pace panel's jar, which only grows).
-    Every surface is named, at zero when nothing was written."""
+    many are releasable (the pace panel's jar). Every surface is named, at
+    zero when nothing was written. A count that cannot be read RAISES, so
+    the ledger names "pairs" unavailable instead of drawing zeros that read
+    as a measurement (ML-2); a database with no pair table at all (a test
+    double) reads as zero."""
     reader = getattr(database, "count_feedback_pairs", None)
-    raw: dict = {}
-    if reader is not None:
-        try:
-            raw = reader() or {}
-        except Exception as e:  # noqa: BLE001 -- a count, not a fault
-            _log.warning("feedback pair count failed: %s", e, exc_info=True)
-            raw = {}
+    raw: Any = reader() if reader is not None else {}
     out = {}
     for surface in SURFACES:
         entry = raw.get(surface) if isinstance(raw, dict) else None
@@ -170,5 +180,40 @@ def counts(database: Any) -> dict:
             "total": int(entry.get("total") or 0),
             "unexported": int(entry.get("unexported") or 0),
             "releasable": int(entry.get("releasable") or 0),
+        }
+    return out
+
+
+def exposures(database: Any) -> dict:
+    """Per surface: how many times a model's draft was shown to a coach
+    (ML-2; the first half of the C5 rule: a pair exists only where a draft
+    was shown AND the final differs, so ``pairs / exposures`` is how often
+    coaches change a draft). Every surface is named, at zero when nothing
+    was shown. Raises when the count cannot be read (named, never zero)."""
+    reader = getattr(database, "count_draft_exposures", None)
+    raw: Any = reader() if reader is not None else {}
+    raw = raw if isinstance(raw, dict) else {}
+    return {surface: int(raw.get(surface) or 0) for surface in SURFACES}
+
+
+def exportable(database: Any) -> dict:
+    """Per surface: how many pairs the export contract can actually release
+    (C9; W6 2026-10-05): the speaker's training yes AND the passage the draft
+    was written from AND the model version that wrote it, ever
+    (``exportable``) and still awaiting export (``exportable_unexported``).
+    The walk's exercise pairs carried no passage or model version before
+    W6, so with a yes they counted as releasable yet could never leave; the
+    pace panel's jar and a run's bar of 200 count these instead. Every
+    surface is named, at zero when nothing was written. Raises when the
+    count cannot be read (named, never zero; ML-2)."""
+    reader = getattr(database, "count_exportable_pairs", None)
+    raw: Any = reader() if reader is not None else {}
+    raw = raw if isinstance(raw, dict) else {}
+    out = {}
+    for surface in SURFACES:
+        entry = raw.get(surface) if isinstance(raw.get(surface), dict) else {}
+        out[surface] = {
+            "exportable": int(entry.get("exportable") or 0),
+            "exportable_unexported": int(entry.get("exportable_unexported") or 0),
         }
     return out

@@ -91,6 +91,32 @@ def authorize_protected_generation(surface: str) -> tuple[
     return scope.adapter.authorization, permit_id
 
 
+def corpus_import_adapter(
+    database: Any, session: Any, *, take_id: str, recording_id: str | None,
+) -> "AuthorizedProviderAdapter | None":
+    """The adapter for a training-corpus import's provider calls, or None
+    for anything else (founder 2026-10-07, CO2, decisions log N58).
+
+    Its permits come from the founder's corpus basis
+    (``CorpusImportAuthorization``), never from a principal: the coordinates
+    carry none, so the importing coach's acceptance is never used. Routed by
+    the session's source; whether the session really is a registered import
+    is the database's decision at every permit (0435).
+    """
+    from services.processing_authorization import (
+        CorpusImportAuthorization,
+        is_corpus_import_session,
+    )
+
+    if not is_corpus_import_session(session):
+        return None
+    return AuthorizedProviderAdapter(
+        database,
+        ProviderCoordinates("", str(take_id), recording_id or None),
+        authorization=CorpusImportAuthorization(database),
+    )
+
+
 class AuthorizedProviderAdapter:
     def __init__(
         self, database: Any, coordinates: ProviderCoordinates,

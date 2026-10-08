@@ -2,7 +2,7 @@
 fills and how many weeks to its bar, from the weekly snapshots.
 
 Pure. Every number is about the system (a count of pairs, of tries, of
-named moments), never about a person. A rate is the mean weekly change
+coaches' Yes answers in the blind audit), never about a person. A rate is the mean weekly change
 over the last four snapshots; with fewer than two snapshots there is no
 observed rate and the panel says so rather than guessing.
 """
@@ -24,14 +24,16 @@ def _count(snapshot: Any, path: tuple[str, ...]) -> Optional[int]:
 
 
 #: Every jar the panel draws: (jar id, the path in a snapshot, the bar).
-#: A pair jar counts every releasable pair ever written (second plan,
-#: 2026-10-05): it counted pairs not yet exported, so each weekly export
-#: emptied it and the panel could never show it filling. Snapshots taken
-#: before the count existed read as unknown, not zero.
+#: A pair jar counts every pair ever written that the export contract can
+#: release (second plan, 2026-10-05; C9, W6 the same night): it counted
+#: pairs not yet exported, so each weekly export emptied it, and then every
+#: pair with the speaker's yes, so walk pairs with no passage or model
+#: version filled a bar they could never meet. Snapshots taken before the
+#: count existed read as unknown, not zero.
 JARS: tuple[tuple[str, tuple[str, ...], int], ...] = (
-    ("pairs.praise_line", ("pairs", "praise_line", "releasable"), 200),
-    ("pairs.clearer_version", ("pairs", "clearer_version", "releasable"), 200),
-    ("pairs.exercise_script", ("pairs", "exercise_script", "releasable"), 200),
+    ("pairs.praise_line", ("pairs", "praise_line", "exportable"), 200),
+    ("pairs.clearer_version", ("pairs", "clearer_version", "exportable"), 200),
+    ("pairs.exercise_script", ("pairs", "exercise_script", "exportable"), 200),
     ("exercise_jar.counted", ("exercise_jar", "counted"), 300),
 )
 
@@ -77,15 +79,18 @@ def pace(ledger: dict, snapshots: list[dict]) -> list[dict]:
     for cue, row in (ledger.get("shadow_cues") or {}).items():
         if not isinstance(row, dict):
             continue
-        history = [_count(s, ("shadow_cues", cue, "named")) for s in snapshots]
-        current = row.get("named") if isinstance(row.get("named"), int) else None
+        # The cue's jar is the coaches' Yes answers in the blind error audit
+        # (N48.5 Q24 A); a snapshot from before that count reads unknown.
+        history = [_count(s, ("shadow_cues", cue, "audit_yes")) for s in snapshots]
+        current = row.get("audit_yes") if isinstance(row.get("audit_yes"), int) else None
         rate = observed_rate([*history, current])
+        bar = int(row.get("audit_yes_bar") or 0)
         rows.append({
             "jar": f"shadow_cues.{cue}",
             "current": current,
-            "bar": int(row.get("named_bar") or 0),
+            "bar": bar,
             "observed_rate": rate,
-            "weeks_to_bar": weeks_to_bar(current, int(row.get("named_bar") or 0), rate),
+            "weeks_to_bar": weeks_to_bar(current, bar, rate),
             "caught_rate": row.get("caught_rate"),
             "caught_bar": row.get("caught_bar"),
             "ready": bool(row.get("ready")),

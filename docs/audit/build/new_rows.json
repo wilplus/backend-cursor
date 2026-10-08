@@ -1,0 +1,123 @@
+[
+ {
+  "id": "N21",
+  "source": "Panel R1 A, 6 Oct",
+  "claim": "Fix migration 0429 from the Railway pre-deploy log and re-land retention v1.5 (the reverted #907) as a new PR.",
+  "area": "BE",
+  "severity": "S4",
+  "status": "FOUNDER",
+  "why": "needs the pre-deploy log text from Railway (only the founder can read it)",
+  "pr": "",
+  "test": ""
+ },
+ {
+  "id": "N22",
+  "source": "Panel M6 A, 6 Oct",
+  "claim": "One outside read of the whole project by another model; its findings become rows marked 'outside read', each verified before any fix.",
+  "area": "both",
+  "severity": "S0",
+  "status": "FOUNDER",
+  "why": "waits on M1/M2 (which model and how it gets the repo)",
+  "pr": "",
+  "test": ""
+ },
+ {
+  "id": "N23",
+  "source": "Panel V23 A, 6 Oct",
+  "claim": "The V4 decision page says Keep it / Swap it / Make a new one is dark; it is on and stays on. The page needs correcting.",
+  "area": "both",
+  "severity": "S5",
+  "status": "FOUNDER",
+  "why": "the V4 page is the founder's",
+  "pr": "",
+  "test": ""
+ },
+ {
+  "id": "N24",
+  "source": "Panel V24 A, 6 Oct",
+  "claim": "M5 'the recognizer teaches the picker every day' is read as weekly, matching coach-panel lock C6; the V4 page needs the same correction.",
+  "area": "both",
+  "severity": "S5",
+  "status": "FOUNDER",
+  "why": "the V4 page is the founder's",
+  "pr": "",
+  "test": ""
+ },
+ {
+  "id": "N25",
+  "source": "Panel helpers, 6 Oct (QG1)",
+  "claim": "Willfidence has no written operational definition in SPEC §17; under the CONSTRUCT fence nothing measured may ship without one, so B1.3 is blocked until the definition lands.",
+  "area": "BE",
+  "severity": "S3",
+  "status": "FOUNDER",
+  "why": "panel QG1",
+  "pr": "",
+  "test": ""
+ },
+ {
+  "id": "N26",
+  "source": "Panel helpers, 6 Oct (V22 B)",
+  "claim": "Showing V4 to a few speakers (V22 B) needs a way to serve V4 to a subset before Phase 2; no build row carries it (B2.1 is Phase 2).",
+  "area": "BE",
+  "severity": "S0",
+  "status": "FOUNDER",
+  "why": "waits on panel V22a/V22b",
+  "pr": "",
+  "test": ""
+ },
+ {
+  "id": "N27",
+  "source": "Panel helpers, 6 Oct",
+  "claim": "Stale ledger rows: A120 says MIN_CLIP_MS is unset (it is 1000 on main); A127c, A132b and A140b say 0429 is on main (#909 reverted it). Re-verify these rows before working them.",
+  "area": "BE",
+  "severity": "S5",
+  "status": "OPEN",
+  "why": "",
+  "pr": "",
+  "test": ""
+ },
+ {
+  "id": "N28",
+  "source": "Panel helpers, 6 Oct",
+  "claim": "The saved retention v1.5 PDF names migration 0429 three times; after #908 that number belongs to another migration, so the re-landed v1.5 text and its hash change (sign only the re-landed version).",
+  "area": "BE",
+  "severity": "S4",
+  "status": "OPEN",
+  "why": "",
+  "pr": "",
+  "test": ""
+ },
+ {
+  "id": "N29",
+  "source": "Panel helpers, 6 Oct (QG3)",
+  "claim": "The decision-filter text has drifted between repos: frontend CLAUDE.md still says every Take gets exactly three items (V2) and backend docs/willab_decision_filter.md calls V3 not yet activated.",
+  "area": "both",
+  "severity": "S5",
+  "status": "FOUNDER",
+  "why": "panel QG3 (CLAUDE.md edits need the founder)",
+  "pr": "",
+  "test": ""
+ },
+ {
+  "id": "N30",
+  "source": "Panel P1, QA11, QA12, QA6 notes, 6 Oct",
+  "claim": "Design pack: real-looking screens and flows for the coach's words on the speaker side (P1, Take-level note before the overlay), the exercise card redesign (QA11, 3 options), the coach note's Home step (QA12), and the founder's coach-dot design (QA6) — for the founder to decide on.",
+  "area": "FE",
+  "severity": "S0",
+  "status": "OPEN",
+  "why": "",
+  "pr": "",
+  "test": ""
+ },
+ {
+  "id": "N31",
+  "source": "Panel QN1 B, 6 Oct",
+  "claim": "Rename 'confidence' to 'willfidence (sound)' everywhere, code too (founder: willfidence is words and sound; the sound is the sound of the willfidence). Scope of database names asked on QN1a.",
+  "area": "both",
+  "severity": "S0",
+  "status": "FOUNDER",
+  "why": "QN1a (database names)",
+  "pr": "",
+  "test": ""
+ }
+]

@@ -32,6 +32,8 @@ def test_projects_is_a_tombstone_under_the_deletion_evidence_rule():
         "paragraphs", "evidence_spans", "acoustic_feature_snapshots",
         "candidate_sets", "machine_predictions", "generation_runs",
         "processing_stage_runs",
+        # 0448: a speaker's skips, erased with their evidence span.
+        "feedback_revisions",
     }
 
 

@@ -3,7 +3,7 @@
 J1-3 (minor), audit 2026-09-22. ``TAKE_FEEDBACK_POLICY_V3_MODE`` is commented
 "Take Feedback V3 dark mode" and reads like the switch between V2 and V3. It
 is not. Its only reader is ``take_feedback_policy_v3.dark_enabled``, which
-gates one founder-scoped *shadow frame write* and cannot change a single row
+gates one *shadow frame write* (every speaker since S-V1, 2026-10-08) and cannot change a single row
 a speaker sees. The switch that decides whether V3 serves is
 ``MLC3_SERVICE_ENABLED``, through ``coach_guidance_delivery.runtime_is_enabled``.
 
@@ -25,7 +25,7 @@ class TheV3ModeFlagOnlyGatesTheShadowWrite(unittest.TestCase):
         import config as config_module
         from services import ideal_text_changes, take_feedback_policy_v3
 
-        flag = "TAKE_FEEDBACK_POLICY_V3_MODE"
+        flag = "TAKE_FEEDBACK_POLICY_V3_SHADOW_WRITE_MODE"
 
         # 1. Exactly one module reads it, and that reader is the shadow gate.
         self.assertIn(flag, inspect.getsource(take_feedback_policy_v3.dark_enabled))
@@ -56,6 +56,18 @@ class TheV3ModeFlagOnlyGatesTheShadowWrite(unittest.TestCase):
         )
         context = source.split(declaration)[0].splitlines()[-1]
         self.assertIn("shadow", (context + declaration).lower())
+
+    def test_the_old_alias_is_gone_and_the_variable_keeps_its_name(self):
+        """Contract 52 (aliases are removed; audit 2026-10-05): the Python
+        alias `TAKE_FEEDBACK_POLICY_V3_MODE` is gone, so no reader can reach
+        the shadow gate under the name that read like the V2/V3 switch. The
+        environment variable keeps that name: it is set on live Railway
+        services, and renaming it is a config-first cutover, not this."""
+        import config as config_module
+
+        self.assertFalse(hasattr(config_module.Config, "TAKE_FEEDBACK_POLICY_V3_MODE"))
+        source = inspect.getsource(config_module)
+        self.assertIn('os.getenv("TAKE_FEEDBACK_POLICY_V3_MODE")', source)
 
     def test_the_served_policy_is_switched_by_the_service_flag(self):
         """The other half: name the flag that does decide."""

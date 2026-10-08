@@ -647,7 +647,7 @@ class _ChangesRun:
             return None
 
     def _v3_shadow(self) -> None:
-        # TAKE FEEDBACK V3 SHADOW. A real, founder-scoped comparison write
+        # TAKE FEEDBACK V3 SHADOW. A real comparison write (every speaker, S-V1)
         # over the complete current-Take inventory; not the serving path and
         # it cannot create a rendered exposure. Default OFF; ML/data reviews
         # these frames before any user-visible activation. Shadow evaluation
@@ -697,6 +697,12 @@ class _ChangesRun:
                         "take feedback v3 dark frame not stored "
                         "arc=%s take=%s", self.arc_id, _arm_sid,
                     )
+                else:
+                    # V4 B1.2: the Take's seeded random 20% of moments,
+                    # drawn by the database from the stored frame and kept
+                    # apart from the picks. A side write; never raises.
+                    from services.v4_random_moments import draw
+                    draw(db, _arm_sid)
 
     def _immutable_membership(self) -> None:
         # IMMUTABLE TAKE MEMBERSHIP (founder 2026-08-26). The first complete
@@ -1517,15 +1523,17 @@ class _ChangesRun:
         """One signed sentence per pattern, read before the sheet's constant
         (services/feedback_catalogue). The Manager's selection is untouched:
         this adds `praise_line` / `rewrite_move` to rows already chosen, and
-        an honest empty lane stays empty (24f)."""
-        from services.feedback_catalogue import decorate
+        an honest empty lane stays empty (24f). The proposed lines (N48.6,
+        Q29 A) join as the floor only once signed; until then an empty
+        table changes nothing, as before."""
+        from services.feedback_catalogue import decorate, floor_rows
         try:
             reader = getattr(self.db, "list_feedback_catalogue", None)
             rows = reader() if callable(reader) else []
         except Exception as e:  # noqa: BLE001 -- no table, no signed lines
             logger.info("catalogue unavailable arc=%s: %s", self.arc_id, e)
             rows = []
-        if rows:
+        if rows or floor_rows():
             self.changes = decorate(self.changes, rows)
 
     def _window(self) -> None:

@@ -1,10 +1,13 @@
 """Validation for immutable user responses to the frozen Take feedback set."""
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any, Optional
 
 from services.canonical_product import OWNER_RESPONSES
+
+logger = logging.getLogger(__name__)
 
 
 # One vocabulary for every module (audit D2): see OWNER_RESPONSES.
@@ -102,3 +105,73 @@ def _exact_feedback_identity(body: dict) -> tuple[dict, Optional[str]]:
         return {}, "canonical feedback identity must contain UUIDs"
 
 
+def canonical_dual_write(db: Any, session: dict, take_session_id: str,
+                         owner_user_id: str, row: dict,
+                         canonical_identity: dict, feedback_set: dict) -> None:
+    """The typed canonical decision for a first answer, and the Take's
+    human-decisions stage (moved verbatim from the feedback-response route,
+    D-FW-9). Best-effort, logged."""
+    # Typed canonical dual-write. In particular, `edit_myself` is not
+    # converted into a correction preference: opening an editor leaves
+    # the correction unresolved until the owner actually chooses the
+    # proposal or the original. Compatibility persistence above remains
+    # unchanged during the parity window.
+    try:
+        from services.feedback_data_contract import (
+            canonical_feedback_decision,
+        )
+
+        canonical_decision = canonical_feedback_decision(
+            take_id=str(take_session_id),
+            rater_id=owner_user_id,
+            feedback_id=row["feedback_id"],
+            feedback_family=row["feedback_family"],
+            response=row["response"],
+            candidate_id=canonical_identity["candidate_id"],
+            feedback_membership_id=canonical_identity[
+                "feedback_membership_id"],
+            feedback_exposure_id=canonical_identity[
+                "feedback_exposure_id"],
+        )
+        if canonical_decision is not None and session.get("project_id"):
+            canonical_saved = db.record_canonical_feedback_decision(
+                project_id=str(session["project_id"]),
+                take_id=str(take_session_id),
+                rater_id=owner_user_id,
+                decision=canonical_decision,
+            )
+            if canonical_saved is None:
+                logger.warning(
+                    "canonical feedback response missing take=%s item=%s",
+                    take_session_id, row["feedback_id"],
+                )
+            else:
+                from services.processing_stages import recorder_for_take
+
+                response_rows = db.list_take_feedback_self_reports(
+                    str(take_session_id), owner_user_id) or []
+                response_count = len({
+                    str(item.get("feedback_id"))
+                    for item in response_rows
+                    if isinstance(item, dict) and item.get("feedback_id")
+                })
+                decision_recorder = recorder_for_take(
+                    database=db,
+                    session=session,
+                    input_provenance={
+                        "selected_keys": feedback_set.get(
+                            "selected_keys") or [],
+                    },
+                )
+                if decision_recorder is not None:
+                    decision_recorder.record(
+                        "human_decisions",
+                        "succeeded" if response_count >= 3 else "running",
+                        output={"response_count": response_count},
+                    )
+    except Exception as canonical_error:
+        logger.warning(
+            "canonical feedback response dual-write failed take=%s "
+            "item=%s: %s", take_session_id, row["feedback_id"],
+            canonical_error, exc_info=True,
+        )

@@ -35,6 +35,6 @@ def owner_answers(database: Any, take_session_id: str,
             "feedback_id": str(row["feedback_id"]),
             "feedback_family": row.get("feedback_family"),
             "response": row.get("response"),
-            "at": row.get("created_at"),
+            "at": row.get("revised_at") or row.get("created_at"),
         }
     return list(latest.values())

@@ -299,10 +299,20 @@ class TestTheWiringInTheCoachRoutes:
 
     def test_the_label_route_writes_the_judgment_after_the_legacy_save_and_never_on_a_self_report(self):
         source = (ROOT / "routes" / "v2" / "coach.py").read_text()
-        save = source.index("saved = db.upsert_state_rating(")
-        judgment = source.index("canonical_judgment = _confidence_chain_judgment(")
-        reconcile = source.index("reconcile_confidence_review(\n")
+        route = source[source.index("def v2_coach_put_confidence_label("):]
+        route = route[:route.index("\n@v2_bp.route")]
+        # The original write (or a reconsideration's revision, W6 §5c), then
+        # the chain's immutable judgment (never on a reconsideration), then
+        # the reconcile the judgment of record sets off.
+        save = route.index("refused = write(")
+        judgment = route.index("_confidence_chain_judgment(")
+        reconcile = route.index("_after_coach_judgement(")
         assert save < judgment < reconcile
+        assert "canonical_judgment = None if reconsidering else _confidence_chain_judgment(" in route
+        first = source[source.index("def _first_coach_rating("):]
+        assert "db.upsert_state_rating(" in first[:first.index("\ndef ")]
+        after = source[source.index("def _after_coach_judgement("):]
+        assert "reconcile_confidence_review(" in after[:after.index("\ndef ")]
         assert "if mlc2_handle is None or self_report:" in source
         assert "mlc2_handle = _pop_confidence_chain_handle(body)" in source
         assert '"mlc2": canonical_judgment' in source

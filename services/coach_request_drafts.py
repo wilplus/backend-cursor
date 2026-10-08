@@ -80,15 +80,24 @@ def _spotted(database: Any, request: dict) -> list[str]:
     return [labels.get(str(tag), str(tag)) for tag in request.get("observed_tags") or []]
 
 
+def changed_by_another_coach(request: Any, coach_id: Any) -> bool:
+    """0446 (Q-B12 A): a resolved request is open again to the coach who
+    answered it (they may change their answer: a new draft, new words, a new
+    video), and closed to everyone else. Pure."""
+    if not isinstance(request, dict) or not request.get("resolution"):
+        return False
+    return str(request.get("resolved_by") or "") != str(coach_id or "")
+
+
 def draft_for_request(database: Any, request: dict, body: Any, *,
                       coach_id: str) -> tuple[int, dict]:
     """POST .../exercise-request/draft: write the draft, keep it on the row,
     return it to the coach. A second call re-drafts and replaces it."""
     if not isinstance(request, dict) or not request.get("id"):
         return 404, {"code": "NOT_FOUND", "error": "No request for this moment."}
-    if request.get("resolution"):
+    if changed_by_another_coach(request, coach_id):
         return 409, {"code": "ALREADY_RESOLVED",
-                     "error": "This moment already has your answer."}
+                     "error": "This moment already has another coach's answer."}
     surface = surface_for(request)
     if surface is None:
         return 409, {"code": "NO_DRAFT_FOR_KIND",

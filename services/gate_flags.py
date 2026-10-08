@@ -29,6 +29,13 @@ discipline is the last place to make an exception to it.
 NOTHING HERE PRINTS A SECRET. Names and values only. A flag whose value
 identifies a person goes in IDENTIFYING_FLAGS and is reported as `set` or
 `unset`, never by id — a deploy log is not a place to put one.
+
+CODE_SWITCHES are not environment variables. They are bool class constants
+on `Config`: a reviewed code change flips them, so every service built from
+the same deploy agrees, and a service still running an older deploy does
+not. They are printed on this same line so that stale deploy shows up
+without opening the panel. Truthy is `on`, falsy is `off`, and a missing
+attribute is `(unset)`.
 """
 from __future__ import annotations
 
@@ -58,6 +65,24 @@ GATE_FLAGS: tuple[str, ...] = (
     "LIVING_TRANSCRIPT_ENABLED",
     "IDEAL_TEXT_FEEDBACK_BAKE_ENABLED",
     "PIPELINE_QUEUE_ENABLED",
+    # Detector praise (QA3 A): read by the worker that writes the praise
+    # rows and by the web read path that stamps their evidence; default on
+    # in code. Printed beside the star-lane switch it is independent of.
+    "PRAISE_DETECTORS_ENABLED",
+    "MOMENT_SUGGESTIONS_ENABLED",
+    # Read by the web start script, not by the worker or the crons. Not a
+    # secret. Printed so the web boot line shows whether this process was
+    # asked to migrate; the report does not compare it across services.
+    "MIGRATE_ON_BOOT",
+)
+
+#: Code constants, not variables. A reviewed change flips them, so services
+#: on the same deploy agree; printed so a service on a stale deploy shows up.
+CODE_SWITCHES: tuple[str, ...] = (
+    "JUDGEMENT_AFTER_FEEDBACK_ENABLED",
+    "PRAISE_AFTER_PRACTICE_ENABLED",
+    "MACHINE_PRACTICE_CHECK_ENABLED",
+    "COMMUNITIES_ENABLED",
 )
 
 #: Reported as set/unset, never by value. Extend this rather than adding a
@@ -69,16 +94,28 @@ IDENTIFYING_FLAGS: tuple[str, ...] = ()
 _UNSET = "(unset)"
 
 
+def _code_switch(name: str) -> str:
+    """`on`/`off` for a Config constant; `(unset)` if this deploy lacks it."""
+    from config import Config
+
+    if not hasattr(Config, name):
+        return f"{name}={_UNSET}"
+    return f"{name}={'on' if getattr(Config, name, None) else 'off'}"
+
+
 def gate_summary() -> str:
     """One line: every gate flag, and the value this process read.
 
     One line rather than one per flag, so a single log filter answers the
     question on any service instead of a search that has to be run twice.
+    Code switches follow the environment gates and precede identifying
+    flags, so a stale deploy is on the same line as a missing variable.
     """
     from config import Config
 
     values = Config.current_env([*GATE_FLAGS, *IDENTIFYING_FLAGS])
     parts = [f"{name}={values[name] or _UNSET}" for name in GATE_FLAGS]
+    parts += [_code_switch(name) for name in CODE_SWITCHES]
     parts += [
         f"{name}={'set' if values[name] else 'unset'}"
         for name in IDENTIFYING_FLAGS

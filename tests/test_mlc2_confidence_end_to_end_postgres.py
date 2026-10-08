@@ -23,6 +23,12 @@ additionally requires those to equal the Phase-1 registered
 suite does not seed. Rehearsing the join is a follow-up that seeds the
 Phase-1 chain.
 
+Since 0430 (founder 2026-10-05, N48.5 Q27 A) the owner enters the chain by
+the training yes alone: the fixture records it through the one training
+writer, and an owner holding only a bundled-era grant is refused (N2,
+N10.6). The coach card's judgement is read back through
+``get_mlc2_blind_coach_ratings_v1``, the training-corpus copy job's source.
+
 Nothing here changes any application flag: the RPCs are invoked directly,
 exactly as ``tests/integration/mlc2_confidence_slice4_rehearsal.sql`` does,
 and everything rolls back. The database name must start with
@@ -30,9 +36,10 @@ and everything rolls back. The database name must start with
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import uuid
-from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import psycopg2
@@ -126,9 +133,67 @@ def _one(cur, sql, params=()):
     return dict(row) if row else None
 
 
+def _rows(cur, sql, params=()):
+    cur.execute(sql, params)
+    return [dict(r) for r in cur.fetchall()]
+
+
 def _count(cur, sql, params=()):
     cur.execute(sql, params)
     return list(cur.fetchone().values())[0]
+
+
+def _training_yes(cur, owner):
+    """The owner's training yes (0373/0412), the one consent authority the
+    chain reads since 0430. Reuses the active training-only policy another
+    suite left in the lane, or registers one inside this rolled-back
+    transaction (the database allows one at a time); the receipt is for the
+    processing version that policy requires (C1)."""
+    live = _one(cur, """
+        SELECT policy.version, policy.requires_processing_policy_version AS processing,
+               approval.approved_copy_sha256 AS sha, approval.terms_version AS terms,
+               approval.privacy_policy_version AS privacy
+          FROM public.ml_consent_policies policy
+          JOIN public.ml_product_legal_approvals approval
+            ON approval.id = policy.product_legal_approval_id
+         WHERE policy.grant_scope = 'training_only' AND policy.active_from <= now()
+           AND (policy.retired_at IS NULL OR policy.retired_at > now())
+         ORDER BY policy.active_from DESC LIMIT 1""")
+    if live is None:
+        processing = (_one(cur, "SELECT version FROM public.processing_policy_versions "
+                                "ORDER BY created_at LIMIT 1") or {}).get("version")
+        if not processing:
+            processing = f"phase1-g6-{uuid.uuid4()}"
+            digest = hashlib.sha256(b"g6").hexdigest()
+            cur.execute(
+                "INSERT INTO public.processing_policy_versions (version, status, terms_version, "
+                "terms_copy, terms_copy_sha256, privacy_version, privacy_copy, privacy_copy_sha256, "
+                "ai_notice_version, ai_notice_copy, ai_notice_copy_sha256, agreement_copy, "
+                "agreement_copy_sha256, allowed_countries, created_by) VALUES (%s, 'draft', 't', "
+                "'terms', %s, 'p', 'privacy', %s, 'a', 'notice', %s, 'agree', %s, ARRAY['pl'], 'g6')",
+                (processing, digest, digest, digest, digest))
+        copy = "G-6 rehearsal training sentence."
+        sha = hashlib.sha256(copy.encode()).hexdigest()
+        cur.execute(
+            "SELECT public.configure_mlc2_training_consent_policy_v1('g6-training-approval', %s, %s, "
+            "'g6-training-only-v1', 'terms-t', 'privacy-t', 'isolated-test', now(), ARRAY['PL'], "
+            "'legal/g6-training.pdf', %s, %s, now() - interval '1 minute')",
+            (sha, copy, SHA["2"], processing))
+        live = {"version": "g6-training-only-v1", "processing": processing, "sha": sha,
+                "terms": "terms-t", "privacy": "privacy-t"}
+    cur.execute(
+        "INSERT INTO public.processing_authorization_receipts (acquisition_principal_id, policy_id, "
+        "idempotency_key, explicit_action, age_18_attested, country_of_residence, locale, "
+        "client_version, accepted_at, evidence_sha256) SELECT %s, id, %s, 'agree_and_continue', "
+        "true, 'PL', 'en-GB', 'g6', now(), %s FROM public.processing_policy_versions WHERE version = %s",
+        (owner, f"g6-receipt-{uuid.uuid4()}", SHA["a"], live["processing"]))
+    cur.execute(
+        "SELECT * FROM public.record_mlc2_training_consent_grant_v2(%s, %s, 'PL', %s, %s, "
+        "'settings/training', 'rehearsal-client', %s::jsonb, now() - interval '1 second', %s)",
+        (owner, live["version"], live["terms"], live["privacy"],
+         json.dumps({"accepted": True, "control": "training_toggle", "copy_sha256": live["sha"]}),
+         f"g6-training-yes-{uuid.uuid4()}"))
+    return str(cur.fetchone()["id"])
 
 
 @pytest.fixture(scope="module")
@@ -146,7 +211,6 @@ def chain(conn):
     owner, reviewer = str(uuid.uuid4()), str(uuid.uuid4())
     project, attempt, recording = (str(uuid.uuid4()) for _ in range(3))
     tag = uuid.uuid4().hex[:8]
-    now = datetime(2026, 9, 28, 12, 0, tzinfo=timezone.utc)
 
     cur.execute("INSERT INTO public.owner_principals (id, guest_secret_hash) VALUES (%s, %s), (%s, %s)",
                 (owner, f"g6-owner-{tag}", reviewer, f"g6-reviewer-{tag}"))
@@ -168,40 +232,16 @@ def chain(conn):
         (attempt, owner, project, f"g6-upload-{tag}", recording, BUCKET, OBJECT_KEY),
     )
 
-    # The slice-4 pair, seeded fresh: the grant RPC matches the policy's own
-    # approval (terms, privacy and copy hash) and needs active_from at or
-    # before the grant time, so a policy another suite left in the lane can
-    # never be the one this grant names.
-    approval = str(uuid.uuid4())
-    active_from = datetime(2026, 9, 27, 12, 0, tzinfo=timezone.utc)
-    cur.execute(
-        "INSERT INTO public.ml_product_legal_approvals (id, approval_reference, approved_copy_sha256, "
-        "onboarding_copy, consent_policy_version, terms_version, privacy_policy_version, "
-        "approving_authority, approved_at, jurisdictions, article_6_basis, article_9_treatment, "
-        "evidence_object_key, evidence_sha256) VALUES (%s, %s, %s, 'Rehearsal copy', %s, 'terms-v1', "
-        "'privacy-v1', 'isolated-test', %s, ARRAY['EU'], '6(1)(a)', '9(2)(a)_when_special_category', "
-        "'legal/g6.json', %s)",
-        (approval, f"G6-REHEARSAL-{tag}", SHA["1"], f"g6-consent-{tag}", active_from, SHA["2"]),
-    )
-    cur.execute(
-        "INSERT INTO public.ml_consent_policies (version, product_legal_approval_id, "
-        "required_for_service, bundled_ui, active_from) VALUES (%s, %s, true, true, %s)",
-        (f"g6-consent-{tag}", approval, active_from),
-    )
-    policy = {"version": f"g6-consent-{tag}", "terms_version": "terms-v1",
-              "privacy_policy_version": "privacy-v1"}
-
+    # 0430 (N48.5 Q27 A): the chain is admitted by the training yes alone.
+    # The owner's speaker is bound, the owner holds a processing receipt for
+    # the version the training policy requires (C1) and says yes through the
+    # one training writer; the pre-made snapshot is the training snapshot.
     cur.execute(
         "SELECT public.register_ml_speaker_principal_v1(%s, %s, 'speaker-resolution-v1', 'initial', %s, "
         "'rehearsal', 'speaker-sha256-80-10-10-v1')", (owner, SHA["3"], SHA["4"]))
-    cur.execute(
-        "SELECT public.record_mlc2_consent_grant_v1(%s, %s, 'EU', %s, %s, '/g6', 'rehearsal-client', "
-        "%s, %s, true, %s)",
-        (owner, policy["version"], policy["terms_version"], policy["privacy_policy_version"],
-         psycopg2.extras.Json({"accepted": True, "copy_sha256": SHA["1"],
-                               "purposes": ["personalized_coaching", "pooled_model_improvement"]}),
-         now, f"g6-consent-grant-{tag}"))
-    cur.execute("SELECT public.create_mlc2_consent_snapshot_v1(%s, %s, NULL, NULL)", (owner, attempt))
+    _training_yes(cur, owner)
+    cur.execute("SELECT public.create_mlc2_training_consent_snapshot_v1(%s, %s, NULL, NULL)",
+                (owner, attempt))
     cur.execute(
         "SELECT public.promote_recording_attempt_with_mlc2_confidence_v1(%s, %s, NULL, 1, %s, %s, %s, %s)",
         (attempt, SHA["5"], SHA["6"], SHA["7"], f"g6-promotion-{tag}", psycopg2.extras.Json(MANIFEST)))
@@ -256,9 +296,10 @@ def _candidate_set_id(chain):
 
 
 class TestThePromotionFreezesTheConsentSnapshot:
-    """0392 (Q1): a second attempt of the same owner promotes with no
-    pre-made snapshot, and the promotion takes one; an owner with no grant
-    is still refused, and the refusal rolls the Take promotion back."""
+    """0392 (Q1), read through 0430: a second attempt of the same owner
+    promotes with no pre-made snapshot, and the promotion takes one from the
+    training yes; an owner with no training yes is still refused, and the
+    refusal rolls the Take promotion back."""
 
     def _attempt(self, chain, owner, project, label):
         cur = chain["cur"]
@@ -322,11 +363,56 @@ class TestThePromotionFreezesTheConsentSnapshot:
                 "SELECT public.promote_recording_attempt_with_mlc2_confidence_v1(%s, %s, NULL, 1, %s, %s, %s, %s)",
                 (attempt, SHA["5"], SHA["6"], SHA["7"], f"g6-promotion-{chain['tag']}-stranger",
                  psycopg2.extras.Json(MANIFEST)))
-        assert "no active bundled MLC-2 consent grant" in str(refusal.value)
+        assert "no active training yes" in str(refusal.value)
         cur.execute("ROLLBACK TO SAVEPOINT stranger_promotion")
         assert _one(cur, "SELECT 1 AS present FROM public.takes WHERE id = %s", (attempt,)) is None
         assert _one(cur, "SELECT 1 AS present FROM public.ml_consent_snapshots WHERE recording_attempt_id = %s",
                     (attempt,)) is None
+
+
+    def test_an_owner_with_only_a_bundled_grant_is_refused(self, chain):
+        """0430 (N2, N10.6): a bundled-era grant, two purposes and a bound
+        speaker, admits nothing; the Take promotion rolls back with it and
+        the application promotes plainly (take_lifecycle)."""
+        cur = chain["cur"]
+        holder, project = str(uuid.uuid4()), str(uuid.uuid4())
+        cur.execute("INSERT INTO public.owner_principals (id, guest_secret_hash) VALUES (%s, %s)",
+                    (holder, f"g6-bundled-{chain['tag']}"))
+        cur.execute("INSERT INTO public.projects (id, owner_principal_id, display_name) VALUES (%s, %s, %s)",
+                    (project, holder, "G-6 bundled only"))
+        cur.execute(
+            "SELECT public.register_ml_speaker_principal_v1(%s, %s, 'speaker-resolution-v1', 'initial', %s, "
+            "'rehearsal', 'speaker-sha256-80-10-10-v1')", (holder, SHA["b"], SHA["c"]))
+        version = f"g6-bundled-{chain['tag']}"
+        approval = str(uuid.uuid4())
+        cur.execute(
+            "INSERT INTO public.ml_product_legal_approvals (id, approval_reference, approved_copy_sha256, "
+            "onboarding_copy, consent_policy_version, terms_version, privacy_policy_version, "
+            "approving_authority, approved_at, jurisdictions, article_6_basis, article_9_treatment, "
+            "evidence_object_key, evidence_sha256) VALUES (%s, %s, %s, 'Rehearsal copy', %s, 'terms-v1', "
+            "'privacy-v1', 'isolated-test', now() - interval '2 days', ARRAY['EU'], '6(1)(a)', "
+            "'9(2)(a)_when_special_category', 'legal/g6.json', %s)",
+            (approval, f"G6-BUNDLED-{chain['tag']}", SHA["1"], version, SHA["2"]))
+        cur.execute(
+            "INSERT INTO public.ml_consent_policies (version, product_legal_approval_id, "
+            "required_for_service, bundled_ui, active_from) VALUES (%s, %s, true, true, "
+            "now() - interval '2 days')", (version, approval))
+        cur.execute(
+            "SELECT public.record_mlc2_consent_grant_v1(%s, %s, 'EU', 'terms-v1', 'privacy-v1', '/g6', "
+            "'rehearsal-client', %s, now() - interval '1 day', true, %s)",
+            (holder, version, psycopg2.extras.Json({"accepted": True, "copy_sha256": SHA["1"]}),
+             f"g6-bundled-grant-{chain['tag']}"))
+        attempt = self._attempt(chain, holder, project, "bundled")
+        cur.execute("SELECT public.create_mlc2_consent_snapshot_v1(%s, %s, NULL, NULL)", (holder, attempt))
+        cur.execute("SAVEPOINT bundled_promotion")
+        with pytest.raises(psycopg2.Error) as refusal:
+            cur.execute(
+                "SELECT public.promote_recording_attempt_with_mlc2_confidence_v1(%s, %s, NULL, 1, %s, %s, %s, %s)",
+                (attempt, SHA["5"], SHA["6"], SHA["7"], f"g6-promotion-{chain['tag']}-bundled",
+                 psycopg2.extras.Json(MANIFEST)))
+        assert "no active training yes" in str(refusal.value)
+        cur.execute("ROLLBACK TO SAVEPOINT bundled_promotion")
+        assert _one(cur, "SELECT 1 AS present FROM public.takes WHERE id = %s", (attempt,)) is None
 
 
 class TestThePromotionReachesTheOutbox:
@@ -549,6 +635,92 @@ class TestTheCoachCardConsumesTheChain:
                          (chain["owner"],))["r"]
         assert readiness["blind_assignment_without_packet_count"] == 0
         assert readiness["revealed_without_judgment_count"] == 0
+
+
+    def test_the_chain_reads_the_blind_rating_back_for_the_training_copy(self, chain, coach):
+        """0430: get_mlc2_blind_coach_ratings_v1 gives the training-corpus
+        copy job the coach's blind judgement from ml_judgments, so it never
+        reads the mixed-purpose confidence_labels. Only the judged snippet
+        answers; a snippet nobody judged is absent."""
+        cur = chain["cur"]
+        others = [s[0] for s in chain["snippets"] if s[0] != coach["snippet_id"]]
+        cur.execute("SELECT * FROM public.get_mlc2_blind_coach_ratings_v1(%s, %s::uuid[])",
+                    (chain["attempt"], [coach["snippet_id"], *others]))
+        rows = [dict(r) for r in cur.fetchall()]
+        assert [str(r["snippet_id"]) for r in rows] == [coach["snippet_id"]]
+        assert rows[0]["decision"] == "rating_yes"
+        cur.execute("SELECT * FROM public.get_mlc2_blind_coach_ratings_v1(%s, %s::uuid[])",
+                    (str(uuid.uuid4()), [coach["snippet_id"]]))
+        assert cur.fetchall() == []
+
+
+class TestTheWalkFeedsTheChain:
+    """N48.5 Q27 A: the walk's blind label becomes the chain's judgement,
+    through the application's own consumer (services/confidence_chain_
+    consumer.py) against the real wrappers, in the order the Judge screen
+    uses them: packet, post-paint receipt, judgement, reveal."""
+
+    def test_the_consumer_carries_a_walk_answer_into_the_chain(self, chain, monkeypatch):
+        from services import confidence_chain_consumer as consumer
+        cur = chain["cur"]
+        monkeypatch.setattr(consumer, "consumer_enabled", lambda: True)
+        walker = str(uuid.uuid4())
+        cur.execute("INSERT INTO public.owner_principals (id, guest_secret_hash) VALUES (%s, %s)",
+                    (walker, f"g6-walker-{chain['tag']}"))
+        selected = _one(cur, "SELECT clip_id FROM public.ml_candidates "
+                             "WHERE candidate_set_id = %s AND selected", (_candidate_set_id(chain),))
+        store = consumer.ConfidenceChainConsumerStore(_Client(cur))
+        row = consumer.attach_coach_packet(
+            {"label": None}, store=store, take_id=chain["attempt"],
+            snippet_id=str(selected["clip_id"]), reviewer_principal_id=walker)
+        handle = row[consumer.HANDLE_KEY]
+        assert set(handle) == {"review_assignment_id", "presentation_id",
+                               "acknowledgement_token", "visible_payload_sha256"}
+        exposure = store.ack_render(
+            review_assignment_id=handle["review_assignment_id"],
+            presentation_id=handle["presentation_id"],
+            acknowledgement_token=handle["acknowledgement_token"],
+            reviewer_principal_id=walker, render_instance_id=str(uuid.uuid4()),
+            client_rendered_at="2026-10-05T12:00:00Z",
+            visible_payload_sha256=handle["visible_payload_sha256"],
+            idempotency_key=f"g6-walk-render-{chain['tag']}")
+        assert exposure and exposure["id"]
+        written = consumer.record_coach_judgment(
+            store=store, handle={**handle, "exposure_id": str(exposure["id"])},
+            reviewer_principal_id=walker, value="in_between",
+            idempotency_key=f"g6-walk-judgment-{chain['tag']}")
+        assert written["revealed"] is True and written["replayed"] is False
+        judgment = _one(cur, "SELECT actor_provenance, decision, exposure_id "
+                             "FROM public.ml_judgments WHERE id = %s", (written["judgment_id"],))
+        assert judgment["actor_provenance"] == "blind_coach"
+        assert judgment["decision"] == "rating_in_between"
+        assert str(judgment["exposure_id"]) == str(exposure["id"])
+        kinds = {r["event_kind"] for r in _rows(cur,
+                 "SELECT event_kind FROM public.ml_review_assignment_events "
+                 "WHERE review_assignment_id = %s", (handle["review_assignment_id"],))}
+        assert {"assigned", "submitted", "revealed"} <= kinds
+
+    def test_a_walk_answer_without_a_painted_packet_is_refused(self, chain, monkeypatch):
+        from services import confidence_chain_consumer as consumer
+        cur = chain["cur"]
+        monkeypatch.setattr(consumer, "consumer_enabled", lambda: True)
+        walker = str(uuid.uuid4())
+        cur.execute("INSERT INTO public.owner_principals (id, guest_secret_hash) VALUES (%s, %s)",
+                    (walker, f"g6-walker-2-{chain['tag']}"))
+        selected = _one(cur, "SELECT clip_id FROM public.ml_candidates "
+                             "WHERE candidate_set_id = %s AND selected", (_candidate_set_id(chain),))
+        store = consumer.ConfidenceChainConsumerStore(_Client(cur))
+        handle = consumer.attach_coach_packet(
+            {"label": None}, store=store, take_id=chain["attempt"],
+            snippet_id=str(selected["clip_id"]),
+            reviewer_principal_id=walker)[consumer.HANDLE_KEY]
+        cur.execute("SAVEPOINT walk_without_receipt")
+        with pytest.raises(psycopg2.Error):
+            consumer.record_coach_judgment(
+                store=store, handle={**handle, "exposure_id": str(uuid.uuid4())},
+                reviewer_principal_id=walker, value="yes",
+                idempotency_key=f"g6-walk-no-receipt-{chain['tag']}")
+        cur.execute("ROLLBACK TO SAVEPOINT walk_without_receipt")
 
 
 class TestHealthStaysSafe:

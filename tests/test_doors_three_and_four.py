@@ -116,7 +116,8 @@ class _Db:
         self.promotions: list[dict] = []
         self.runtime: dict[str, str] = {}
         self.withdrawn_runs: list[dict] = []
-        self.trained_texts = {"trained": [], "withdrawn": []}
+        # The yes in force now, per owner (None: everyone's yes stands).
+        self.active: set | None = None
 
     # golden
     def list_golden_pair_pool(self, surface, limit=500):
@@ -143,6 +144,19 @@ class _Db:
     # training
     def list_trainable_pairs(self, surface, limit=5000):
         return [p for p in self.pairs if p["surface"] == surface]
+
+    #: rel-1 left before F-3: its manifest has no split_source, so its
+    #: pairs train under the owner-principal hash they were released under.
+    release_manifests: dict = {"rel-1": {"split_strategy": "speaker-sha256-80-10-10-v1"}}
+    speaker_assignments: dict = {}
+
+    def get_pair_release_manifests(self, release_ids):
+        return {r: self.release_manifests[r] for r in release_ids
+                if r in self.release_manifests}
+
+    def get_speaker_splits_for_principals(self, owners, policy):
+        return {o: self.speaker_assignments[o] for o in owners
+                if o in self.speaker_assignments}
 
     def insert_fine_tune_run(self, **fields):
         row = {"id": f"run-{len(self.runs) + 1}", "files_deleted_at": None, **fields}
@@ -171,8 +185,19 @@ class _Db:
     def list_fine_tune_runs_with_withdrawn_owner(self):
         return self.withdrawn_runs
 
-    def list_trained_texts(self, run_id):
-        return self.trained_texts
+    def list_trained_pairs(self, run_id):
+        return [p for p in self.pairs if p.get("trained_run_id") == run_id]
+
+    def list_active_training_grants(self, owners):
+        return [{"id": f"g-{o}", "acquisition_principal_id": o, "consent_policy_version": "v1"}
+                for o in owners if self.active is None or o in self.active]
+
+    def get_fine_tune_run(self, run_id):
+        return next((r for r in self.runs if r["id"] == run_id), None)
+
+    def get_latest_evaluation_report(self, run_id):
+        mine = [r for r in self.reports if r.get("run_id") == run_id]
+        return mine[-1] if mine else None
 
     def insert_evaluation_report(self, **fields):
         row = {"id": f"rep-{len(self.reports) + 1}", **fields}
@@ -359,6 +384,47 @@ class TrainingTests(unittest.TestCase):
         again = mt.start_run(db, provider, surface="praise_line", config=_open3("praise_line"), now=NOW)
         self.assertFalse(again["started"])
 
+    def _split_db(self):
+        db = _judged_db()
+        gs.seal(db, surface="praise_line", judge="founder@w.com")
+        return db
+
+    def test_each_pair_trains_under_the_split_its_release_used(self):
+        """F-3: a release made since the speaker split says so in its
+        manifest and its pairs train under that assignment; a release made
+        before keeps the owner-principal hash, even for an owner bound since,
+        so a pair released as test is never trained on."""
+        from services.dataset_releases import speaker_split
+        owner = next(f"o-x{i}" for i in range(1000) if speaker_split(f"o-x{i}")[0] == "test")
+        early = _pair(1, owner=owner, release_id="rel-1")
+        late = _pair(2, owner="o-late", release_id="rel-2")
+        sources = {"rel-1": "owner_principal_fallback", "rel-2": "speaker_assignment"}
+        out = mt.split_examples([early, late], {owner: "train", "o-late": "train"}, sources)
+        self.assertEqual(out["held_out"], 1)               # early: its release said test
+        self.assertEqual(out["train_pairs"], [late])        # late: its assignment
+
+    def test_a_split_that_cannot_be_known_now_is_never_guessed(self):
+        pair = _pair(1, owner="o-unbound", release_id="rel-2")
+        out = mt.split_examples([pair], {}, {"rel-2": "speaker_assignment"})
+        self.assertEqual((out["skipped"], out["train"]), (1, []))
+        out = mt.split_examples([pair], {}, {})               # release unreadable
+        self.assertEqual((out["skipped"], out["train"]), (1, []))
+
+    def test_the_run_reads_each_releases_split_source(self):
+        db = self._split_db()
+        db.pairs = [_pair(i, owner=f"o-{i % 40}", release_id="rel-2") for i in range(260)]
+        db.release_manifests = {"rel-2": {"split_source": "speaker_assignment"}}
+        db.speaker_assignments = {f"o-{i}": "train" for i in range(40)}
+        out = mt.start_run(db, _Provider(), surface="praise_line", config=_open3("praise_line"), now=NOW)
+        self.assertTrue(out["started"], out)
+        self.assertEqual((out["held_out"], out["trained"]), (0, 260))
+        db = self._split_db()
+        db.pairs = [_pair(i, owner=f"o-{i % 40}", release_id="rel-2") for i in range(260)]
+        db.release_manifests = {}
+        out = mt.start_run(db, _Provider(), surface="praise_line", config=_open3("praise_line"), now=NOW)
+        self.assertFalse(out["started"])
+        self.assertIn("training split", out["why"])
+
     def test_the_poll_finishes_deletes_files_and_evaluates(self):
         db = _judged_db()
         gs.seal(db, surface="praise_line", judge="founder@w.com")
@@ -430,6 +496,8 @@ class PromotionTests(unittest.TestCase):
     def _db_with_report(self, passed=True, lock=None):
         from services.ml_surface_contracts import locked_prompt_hash
         db = _Db()
+        db.runs.append({"id": "run-1", "surface": "praise_line", "status": "succeeded",
+                        "candidate_model": "ft:x"})
         db.reports.append({"id": "rep-1", "surface": "praise_line", "candidate_model": "ft:x",
                            "passed": passed, "run_id": "run-1",
                            "prompt_lock_sha256": lock or locked_prompt_hash("praise_line")})

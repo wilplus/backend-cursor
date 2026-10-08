@@ -4,13 +4,21 @@ ML-2).
 One read that says where every learning jar stands, in counts about the
 SYSTEM and never about a person:
 
-  * pairs per surface, total and awaiting export (feedback_pairs);
+  * pairs per surface, for every pair surface (the three answer surfaces
+    and the two coach-word ones): total, awaiting export, releasable, and
+    the EXPOSURES, the model drafts shown to a coach on that surface (C5:
+    a pair needs a draft shown and a final that differs); and beside them
+    the pairs the export contract can actually release (``exportable``:
+    the yes, the passage and the model version; C9, W6), which alone fill
+    a run's bar of 200;
   * the exercise learning jar: counted tries against 300, per exercise
     against 30 (services.exercise_learning_readiness);
-  * the shadow cues: coach-named moments against 30 and the caught rate
-    against 80% (services.verbal_cue_validation);
+  * the shadow cues: coaches' Yes answers in the blind error audit
+    against 30 and the audit's catch rate against 80% (N48.5 Q24 A;
+    services.verbal_cue_validation);
   * the four doors, as the code constants say them today;
-  * what last happened, where a table records it.
+  * what last happened, where a table records it: the newest pair
+    release, fine-tune run and promotion (``last``).
 
 A source that cannot be read is NAMED in `unavailable` rather than read as
 zero. Nothing here promotes, trains, exports or flips anything. Founder
@@ -57,25 +65,68 @@ def doors(config: Any) -> dict:
     }
 
 
-def cue_rows(report: Any, *, min_named: int, min_caught_rate: float) -> dict:
-    """Each cue with its bar and whether it is READY to be proposed."""
+def cue_rows(report: Any, *, min_yes: int, min_caught_rate: float) -> dict:
+    """Each cue with its bar and whether it is READY to be proposed: the
+    coaches' Yes answers in the blind error audit against ``min_yes`` and
+    the audit's catch rate against ``min_caught_rate`` (N48.5 Q24 A). The
+    moments coaches once named it on ride as history (``named``), never as
+    the bar."""
+    from services.verbal_cue_validation import meets_bar
     out = {}
     for cue, summary in (report or {}).items():
         if not isinstance(summary, dict):
             continue
-        named = int(summary.get("coach_named_measured") or 0)
-        rate = summary.get("caught_rate")
-        ready = named >= min_named and rate is not None and rate >= min_caught_rate
+        ready, why_not = meets_bar(summary, min_yes=min_yes,
+                                   min_caught_rate=min_caught_rate)
         out[str(cue)] = {
-            "named": named,
-            "named_bar": min_named,
-            "caught_rate": rate,
+            "audit_yes": int(summary.get("audit_yes") or 0),
+            "audit_yes_bar": min_yes,
+            "caught_rate": summary.get("caught_rate"),
             "caught_bar": min_caught_rate,
+            "audited": bool(summary.get("audited", True)),
             "clips_measured": int(summary.get("clips_measured") or 0),
             "false_alarm_rate": summary.get("false_alarm_rate"),
+            "named": int(summary.get("coach_named_measured") or 0),
             "ready": bool(ready),
+            "why_not": why_not,
         }
     return out
+
+
+def _newest(database: Any, method: str) -> dict | None:
+    """The newest row a ledger table holds, or None when it holds none. A
+    database double without the table reads as None; a failed read raises
+    (and `_read` names it)."""
+    reader = getattr(database, method, None)
+    if reader is None:
+        return None
+    rows = [r for r in (reader(limit=1) or []) if isinstance(r, dict)]
+    return rows[0] if rows else None
+
+
+def _pick(row: Any, keys: tuple[str, ...]) -> dict | None:
+    return {k: row.get(k) for k in keys} if isinstance(row, dict) else None
+
+
+def last_events(database: Any, unavailable: list[str]) -> dict:
+    """What last happened, where a table records it (build plan ML-2): the
+    newest pair release (door 2), fine-tune run (door 3) and promotion
+    (door 4). Surfaces, states, counts and dates about the machine; no
+    owner, no coach, no file key. None where nothing has happened yet."""
+    release = _read("last_pair_release",
+                    lambda: _newest(database, "list_pair_releases"), unavailable)
+    run = _read("last_fine_tune",
+                lambda: _newest(database, "list_fine_tune_runs"), unavailable)
+    promotion = _read("last_promotion",
+                      lambda: _newest(database, "list_model_promotions"), unavailable)
+    return {
+        "pair_release": _pick(release, ("surface", "week_start", "item_count",
+                                        "exported_at", "voided_at", "purged_at")),
+        "fine_tune": _pick(run, ("surface", "status", "item_count",
+                                 "started_at", "finished_at", "withdrawn_at")),
+        "promotion": _pick(promotion, ("surface", "candidate_model",
+                                       "promoted_at", "killed_at")),
+    }
 
 
 def _peer_lane_counts(database: Any, since: str) -> dict:
@@ -88,10 +139,12 @@ def _peer_lane_counts(database: Any, since: str) -> dict:
 
 def ledger(database: Any, *, config: Any = None) -> dict:
     """Everything the founder's page and the weekly job need, in one dict."""
-    from services.feedback_pairs import counts
+    from services.feedback_pairs import (
+        counts, exportable as exportable_pairs, exposures as draft_exposures,
+    )
     from services.exercise_learning_readiness import readiness
     from services.verbal_cue_validation import (
-        PROMOTION_MIN_CAUGHT_RATE, PROMOTION_MIN_NAMED, report,
+        PROMOTION_MIN_CAUGHT_RATE, PROMOTION_MIN_YES, report,
     )
     from services.verbal_cues import CUES, VERBAL_CUES_VERSION
 
@@ -112,9 +165,26 @@ def ledger(database: Any, *, config: Any = None) -> dict:
         "acoustic_cues",
         lambda: report(database, detector_version=ACOUSTIC_CUES_VERSION, cues=ACOUSTIC_CUES),
         unavailable) or {})
+    # Drafts shown per surface (ML-2): None on every surface when the count
+    # could not be read (named in `unavailable`), never a zero.
+    shown = _read("exposures", lambda: draft_exposures(database), unavailable)
+    # The pairs the export contract can release (C9; W6): None on every
+    # surface when the count could not be read (named), never a zero.
+    exportable = _read("exportable_pairs", lambda: exportable_pairs(database),
+                       unavailable)
     for surface, entry in pairs.items():
         entry["run_bar"] = PAIRS_PER_RUN
-        entry["ready_for_run"] = entry.get("unexported", 0) >= PAIRS_PER_RUN
+        # Only pairs the export contract can release fill the bar (C9; W6
+        # 2026-10-05): the speaker's yes, the passage and the model version.
+        # Unknown when that count could not be read: never "ready" on a guess.
+        can_leave = exportable.get(surface) if isinstance(exportable, dict) else None
+        entry["exportable"] = int(can_leave["exportable"]) if can_leave else None
+        entry["exportable_unexported"] = (int(can_leave["exportable_unexported"])
+                                          if can_leave else None)
+        entry["ready_for_run"] = bool(can_leave) and \
+            entry["exportable_unexported"] >= PAIRS_PER_RUN
+        entry["exposures"] = (int(shown.get(surface) or 0)
+                              if isinstance(shown, dict) else None)
     # Requests per opened moment, before and after the Phase 2 switch
     # (founder 2026-10-01): the last four weeks, split by kind.
     from services.coach_load import coach_load
@@ -141,9 +211,10 @@ def ledger(database: Any, *, config: Any = None) -> dict:
         "ledger_version": LEDGER_VERSION,
         "pairs": pairs,
         "exercise_jar": jar,
-        "shadow_cues": cue_rows(cues, min_named=PROMOTION_MIN_NAMED,
+        "shadow_cues": cue_rows(cues, min_yes=PROMOTION_MIN_YES,
                                 min_caught_rate=PROMOTION_MIN_CAUGHT_RATE),
         "doors": doors(config),
+        "last": last_events(database, unavailable),
         "coach_load": load,
         "after_practice": after,
         "peer_lane": peer,

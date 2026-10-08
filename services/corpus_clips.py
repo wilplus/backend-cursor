@@ -3,10 +3,13 @@ paths; migration 0410), dark behind ``Config.PEER_LANE_ENABLED``.
 
 F4: "Licensed corpus clips may be played to speakers, without names, in
 'Lend your ear' and 'Bold voices'." A coach files a clip with its licence
-(who licensed it, under what) and a passage; a coach's Yes on it lets it
-into Bold voices; Lend your ear answers on it stay in
-``lend_your_ear_answers`` (it is not a snippet and takes no quorum label).
-Nothing here is about any speaker.
+(who licensed it, under what) and a passage. Since Q-B11 A (founder
+2026-10-07, N62) these clips are the walk's TRAINING CLIPS: the Lend your
+ear engine serves up to three other voices per walk, community clips
+first, then these for the places left (``lend_your_ear.training_clips``);
+an answer on one stays in ``community_answers`` (it is not a snippet and
+takes no quorum label). Bold voices is retired; a coach's Yes is kept on
+the row and opens nothing. Nothing here is about any speaker.
 """
 from __future__ import annotations
 

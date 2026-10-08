@@ -109,6 +109,18 @@ jobs:
       - name: Silent-except ratchet
         run: python scripts/except_ratchet.py
 
+      # Audit ledger (row X1): unique IDs, the status vocabulary, no row
+      # deleted versus main, PR/Test cells on IN-PR/DONE. Only once the
+      # ledger exists. Static.
+      - name: Audit ledger check
+        run: |
+          if [ -f docs/audit/LEDGER.md ]; then
+            git fetch -q --depth=1 origin main
+            python scripts/ledger_check.py --base origin/main
+          else
+            echo "no docs/audit/LEDGER.md — skipped"
+          fi
+
       - name: Run unit-tier tests
         env:
           # Minimal env so import-time guards don't hard-crash. These
