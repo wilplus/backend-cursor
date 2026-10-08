@@ -124,7 +124,9 @@ class LabAudioStorageTests(unittest.TestCase):
         return cfg
 
     def test_inert_when_nothing_is_configured(self):
-        with patch.object(self.mod, "_config", return_value=self._cfg()):
+        with patch.object(self.mod, "_config", return_value=self._cfg()), \
+                patch("services.coach_video_storage.coach_videos_use_r2",
+                      return_value=False):
             self.assertFalse(self.mod.lab_audio_segregated())
             self.assertEqual(self.mod.target_bucket(), "coach_feedback_videos")
 
@@ -133,7 +135,9 @@ class LabAudioStorageTests(unittest.TestCase):
         with patch.object(self.mod, "_config",
                           return_value=self._cfg(bucket="willab-lab-audio")):
             with patch("services.coach_video_storage.coach_videos_use_r2",
-                       return_value=True):
+                       return_value=True), \
+                    patch("services.coach_video_storage.r2_bucket_name",
+                          return_value="coach_feedback_videos"):
                 self.assertFalse(self.mod.lab_audio_segregated())
                 self.assertEqual(self.mod.target_bucket(),
                                  "coach_feedback_videos")
@@ -148,7 +152,9 @@ class LabAudioStorageTests(unittest.TestCase):
                 self.assertEqual(self.mod.target_bucket(), "willab-lab-audio")
 
     def test_pre_cutover_write_uses_the_old_path_unchanged(self):
-        with patch.object(self.mod, "_config", return_value=self._cfg()):
+        with patch.object(self.mod, "_config", return_value=self._cfg()), \
+                patch("services.coach_video_storage.coach_videos_use_r2",
+                      return_value=False):
             with patch("services.coach_video_storage.put_coach_object_bytes") as put:
                 bucket = self.mod.put_lab_audio_bytes("k/a.webm", b"b", "audio/webm")
         put.assert_called_once()
