@@ -23,11 +23,13 @@
 --                             the resolver names the request it is changing
 --                             in a transaction-local setting
 --                             (willab.coach_answer_change); within that
---                             transaction, for that row, the resolution and
---                             the share may change. Every other UPDATE is
---                             refused exactly as before: what was requested
+--                             transaction, for that row, the resolution, the
+--                             video and the share may change. Every other
+--                             UPDATE is refused as before: what was requested
 --                             never changes, a resolution is never written
---                             over by hand, a share is never unset by hand.
+--                             over by hand, a share is never unset by hand,
+--                             and (new) a resolved answer's video is never
+--                             replaced by hand.
 --   resolve_exercise_coach_request_v3   0403's resolver, with the change.
 --                             An unresolved request takes the answer; the
 --                             same answer again changes nothing (and may now
@@ -40,9 +42,15 @@
 --                             with the answer it belonged to); a different
 --                             answer by ANOTHER coach is still refused
 --                             (ALREADY_RESOLVED): one coach's answer is not
---                             another's to change. The exercise ids, the
+--                             another's to change, and another coach's call
+--                             on a resolved request is refused even when it
+--                             repeats the answer (it cannot add the share).
+--                             p_video_ref carries the answer's video (NULL
+--                             keeps, '' clears, a ref replaces); a new video
+--                             is an answer change. The exercise ids, the
 --                             words and the video ref on the row at the time
---                             of the change are what the history keeps.
+--                             of the change are what the history keeps, and
+--                             the row's video changes in the same UPDATE.
 --
 -- THE SPEAKER'S CARD (Q-B12 A). The speaker reads the request row and only
 -- its shared, current answer (services/confident_voice_practice.py,
@@ -64,7 +72,7 @@
 -- Rollback (a new forward migration): recreate the 0385 trigger on
 -- guard_exercise_coach_request_update_v1; DROP FUNCTION
 -- public.resolve_exercise_coach_request_v3(uuid, text, text, text, integer,
--- boolean, text); DROP FUNCTION public.guard_exercise_coach_request_update_v2();
+-- boolean, text, text); DROP FUNCTION public.guard_exercise_coach_request_update_v2();
 -- DROP TABLE public.exercise_coach_request_answer_versions. Rows already
 -- changed keep their current answer.
 
@@ -129,12 +137,16 @@ BEGIN
     IF NULLIF(changing, '') IS NOT NULL AND changing = OLD.id::text THEN
         RETURN NEW;
     END IF;
+    -- The video is part of the answer (0446): once resolved, it changes
+    -- only through the resolver, so the history row and the request row
+    -- always agree on which video went with which answer.
     IF OLD.resolution IS NOT NULL AND (
         NEW.resolution IS DISTINCT FROM OLD.resolution
         OR NEW.resolved_exercise_id IS DISTINCT FROM OLD.resolved_exercise_id
         OR NEW.resolved_exercise_version IS DISTINCT FROM OLD.resolved_exercise_version
         OR NEW.resolved_by IS DISTINCT FROM OLD.resolved_by
-        OR NEW.resolved_at IS DISTINCT FROM OLD.resolved_at)
+        OR NEW.resolved_at IS DISTINCT FROM OLD.resolved_at
+        OR NEW.answer_video_ref IS DISTINCT FROM OLD.answer_video_ref)
     THEN
         RAISE EXCEPTION 'EXERCISE_COACH_REQUEST_ALREADY_RESOLVED';
     END IF;
@@ -154,6 +166,12 @@ CREATE TRIGGER exercise_coach_request_guard
     FOR EACH ROW EXECUTE FUNCTION public.guard_exercise_coach_request_update_v2();
 
 -- ── The resolver, with the change ─────────────────────────────────────────
+-- An earlier draft of this file (never merged) created v3 without the video
+-- parameter; that overload is replaced, not kept beside the new one, so
+-- PostgREST never has two v3s to choose between.
+DROP FUNCTION IF EXISTS public.resolve_exercise_coach_request_v3(
+    UUID, TEXT, TEXT, TEXT, INTEGER, BOOLEAN, TEXT);
+
 CREATE OR REPLACE FUNCTION public.resolve_exercise_coach_request_v3(
     p_request_id UUID,
     p_coach_id TEXT,
@@ -161,7 +179,10 @@ CREATE OR REPLACE FUNCTION public.resolve_exercise_coach_request_v3(
     p_exercise_id TEXT,
     p_exercise_version INTEGER,
     p_share BOOLEAN,
-    p_answer_text TEXT
+    p_answer_text TEXT,
+    -- The answer's video: NULL keeps the row's video as it is; '' clears
+    -- it; a ref replaces it. A video change is an answer change.
+    p_video_ref TEXT DEFAULT NULL
 ) RETURNS public.exercise_coach_requests
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
@@ -172,6 +193,7 @@ DECLARE
     answer TEXT := NULLIF(btrim(p_answer_text), '');
     same_answer BOOLEAN;
     next_version INTEGER;
+    new_video TEXT;
 BEGIN
     IF p_request_id IS NULL OR COALESCE(btrim(p_coach_id), '') = ''
        OR p_resolution IS NULL
@@ -198,28 +220,36 @@ BEGIN
         RAISE EXCEPTION 'EXERCISE_COACH_REQUEST_NOT_FOUND';
     END IF;
 
+    new_video := CASE WHEN p_video_ref IS NULL THEN current_row.answer_video_ref
+                      ELSE NULLIF(btrim(p_video_ref), '') END;
+
     IF current_row.resolution IS NULL THEN
-        -- The first answer, as 0403 wrote it.
+        -- The first answer, as 0403 wrote it (a video uploaded before it
+        -- stays unless this call names one).
         UPDATE public.exercise_coach_requests
            SET resolution = p_resolution,
                resolved_exercise_id = p_exercise_id,
                resolved_exercise_version = p_exercise_version,
                answer_text = answer,
+               answer_video_ref = new_video,
                resolved_by = p_coach_id,
                resolved_at = now()
          WHERE id = p_request_id
         RETURNING * INTO current_row;
     ELSE
+        -- One coach's answer is not another's to change, nor to share by
+        -- sending the same answer again.
+        IF current_row.resolved_by IS DISTINCT FROM p_coach_id THEN
+            RAISE EXCEPTION 'EXERCISE_COACH_REQUEST_ALREADY_RESOLVED';
+        END IF;
         same_answer := current_row.resolution IS NOT DISTINCT FROM p_resolution
             AND current_row.resolved_exercise_id IS NOT DISTINCT FROM p_exercise_id
             AND current_row.resolved_exercise_version IS NOT DISTINCT FROM p_exercise_version
-            AND current_row.answer_text IS NOT DISTINCT FROM answer;
+            AND current_row.answer_text IS NOT DISTINCT FROM answer
+            AND current_row.answer_video_ref IS NOT DISTINCT FROM new_video;
         IF NOT same_answer THEN
-            IF current_row.resolved_by IS DISTINCT FROM p_coach_id THEN
-                -- One coach's answer is not another's to change.
-                RAISE EXCEPTION 'EXERCISE_COACH_REQUEST_ALREADY_RESOLVED';
-            END IF;
-            -- Q-B12 A: the old answer goes into the history, whole.
+            -- Q-B12 A: the old answer goes into the history, whole, with the
+            -- video it had.
             SELECT COALESCE(max(version), 0) + 1 INTO next_version
               FROM public.exercise_coach_request_answer_versions
              WHERE request_id = p_request_id;
@@ -242,6 +272,9 @@ BEGIN
                    resolved_exercise_id = p_exercise_id,
                    resolved_exercise_version = p_exercise_version,
                    answer_text = answer,
+                   -- Replaced, cleared or kept in the same UPDATE as the
+                   -- answer it belongs to.
+                   answer_video_ref = new_video,
                    resolved_by = p_coach_id,
                    resolved_at = now(),
                    -- The old share belonged to the old answer: withdrawn with
@@ -265,11 +298,13 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.resolve_exercise_coach_request_v3(
-    UUID, TEXT, TEXT, TEXT, INTEGER, BOOLEAN, TEXT) IS
+    UUID, TEXT, TEXT, TEXT, INTEGER, BOOLEAN, TEXT, TEXT) IS
     'The coach''s answer to a request (0446; Q-B12 A): first answer as 0403; '
-    'the same again is a no-op that may add the share; a different answer by '
-    'the same coach replaces it and keeps the old one in '
-    'exercise_coach_request_answer_versions; another coach''s is refused. '
+    'the same again is a no-op that may add the share; a different answer '
+    '(words, exercise or video) by the same coach replaces it and keeps the '
+    'old one, video included, in exercise_coach_request_answer_versions; '
+    'another coach''s call on a resolved request is refused, the same answer '
+    'included. p_video_ref: NULL keeps, empty clears, a ref replaces. '
     'service_role only.';
 
 -- ── The door ───────────────────────────────────────────────────────────────
@@ -283,7 +318,7 @@ COMMENT ON FUNCTION public.resolve_exercise_coach_request_v3(
 -- Postgres.
 REVOKE ALL ON TABLE public.exercise_coach_request_answer_versions FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.resolve_exercise_coach_request_v3(
-    UUID, TEXT, TEXT, TEXT, INTEGER, BOOLEAN, TEXT) FROM PUBLIC;
+    UUID, TEXT, TEXT, TEXT, INTEGER, BOOLEAN, TEXT, TEXT) FROM PUBLIC;
 DO $$
 DECLARE
     v_role text;
@@ -291,14 +326,14 @@ BEGIN
     FOREACH v_role IN ARRAY ARRAY['anon', 'authenticated'] LOOP
         IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_role) THEN
             EXECUTE format('REVOKE ALL ON TABLE public.exercise_coach_request_answer_versions FROM %I', v_role);
-            EXECUTE format('REVOKE ALL ON FUNCTION public.resolve_exercise_coach_request_v3(uuid, text, text, text, integer, boolean, text) FROM %I', v_role);
+            EXECUTE format('REVOKE ALL ON FUNCTION public.resolve_exercise_coach_request_v3(uuid, text, text, text, integer, boolean, text, text) FROM %I', v_role);
         END IF;
     END LOOP;
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
         REVOKE ALL ON TABLE public.exercise_coach_request_answer_versions FROM service_role;
         GRANT SELECT, DELETE ON TABLE public.exercise_coach_request_answer_versions TO service_role;
         GRANT EXECUTE ON FUNCTION public.resolve_exercise_coach_request_v3(
-            uuid, text, text, text, integer, boolean, text) TO service_role;
+            uuid, text, text, text, integer, boolean, text, text) TO service_role;
     END IF;
 END $$;
 

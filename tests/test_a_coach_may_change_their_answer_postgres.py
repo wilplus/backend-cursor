@@ -10,7 +10,12 @@ Pins:
     that may add the share; a DIFFERENT answer by the same coach replaces the
     row's answer, resets the share to this call's, and moves the old answer
     (words, exercise, video, share) into the history as version 1, 2, ...;
-  * another coach's different answer is still ALREADY_RESOLVED;
+  * another coach's call on a resolved request is ALREADY_RESOLVED, the
+    same answer included (it cannot add the share);
+  * the answer's video goes with the answer: a new video (p_video_ref) is a
+    change that keeps the old video in the history and puts the new one on
+    the row in the same UPDATE; '' clears it; NULL keeps it; a hand UPDATE
+    of a resolved answer's video is refused by the guard;
   * the guard still refuses a hand UPDATE of a set resolution, a hand unset
     of a share, and any change to what was requested; the door is only the
     resolver's, in its own transaction;
@@ -36,7 +41,8 @@ pytestmark = pytest.mark.skipif(
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 MIGRATION = ROOT / "migrations" / "a_coach_may_change_their_answer.sql"
 HISTORY = "public.exercise_coach_request_answer_versions"
-RESOLVER = "public.resolve_exercise_coach_request_v3(uuid, text, text, text, integer, boolean, text)"
+RESOLVER = ("public.resolve_exercise_coach_request_v3"
+            "(uuid, text, text, text, integer, boolean, text, text)")
 
 
 @pytest.fixture(scope="module")
@@ -67,9 +73,9 @@ def _request(db):
 
 
 def _resolve(db, request_id, coach, resolution, *, exercise_id=None, version=None,
-             share=False, text=None):
-    return _row(db, f"SELECT * FROM {RESOLVER.split('(')[0]}(%s, %s, %s, %s, %s, %s, %s)",
-                (request_id, coach, resolution, exercise_id, version, share, text))
+             share=False, text=None, video=None):
+    return _row(db, f"SELECT * FROM {RESOLVER.split('(')[0]}(%s, %s, %s, %s, %s, %s, %s, %s)",
+                (request_id, coach, resolution, exercise_id, version, share, text, video))
 
 
 def _history(db, request_id):
@@ -138,17 +144,19 @@ def test_applied_again_the_file_changes_nothing(db):
 
 def test_the_same_coach_changes_the_answer_and_every_earlier_one_stays(db):
     request = _request(db)
+    # The coach uploads a video before answering (the app's seam: a direct
+    # write while the request is unresolved, as 0403).
+    with db.cursor() as cur:
+        cur.execute("UPDATE public.exercise_coach_requests SET answer_video_ref = 'v/1.mp4' "
+                    "WHERE id = %s", (request["id"],))
     first = _resolve(db, request["id"], "coach-1", "line_written", text="Well said.", share=True)
     assert (first["resolution"], first["answer_text"]) == ("line_written", "Well said.")
+    assert first["answer_video_ref"] == "v/1.mp4"
     assert first["shared_at"] is not None
     # The same answer again: nothing changes.
     again = _resolve(db, request["id"], "coach-1", "line_written", text="Well said.", share=True)
     assert (again["resolved_at"], again["shared_at"]) == (first["resolved_at"], first["shared_at"])
     assert _history(db, request["id"]) == []
-    # The coach adds a video to the answer they have (the app's seam).
-    with db.cursor() as cur:
-        cur.execute("UPDATE public.exercise_coach_requests SET answer_video_ref = 'v/1.mp4' "
-                    "WHERE id = %s", (request["id"],))
     # Q-B12 A: new words replace the card; the old answer, whole, is version 1.
     second = _resolve(db, request["id"], "coach-1", "version_written",
                       text="We think timing matters.", share=True)
@@ -188,11 +196,17 @@ def test_another_coach_s_different_answer_is_still_refused(db):
         _resolve(db, request["id"], "coach-2", "line_written", text="Other words.")
     with pytest.raises(psycopg2.Error, match="ALREADY_RESOLVED"):
         _resolve(db, request["id"], "coach-2", "no_safe_match")
-    # The same answer by another coach is the same no-op as before, and may
-    # carry the share (the words are the words).
-    same = _resolve(db, request["id"], "coach-2", "line_written", text="Well said.", share=True)
-    assert same["resolved_by"] == "coach-1" and same["shared_at"] is not None
+    # Review fix: the same answer by another coach is refused too, so it
+    # cannot add the share to an answer that is not theirs.
+    with pytest.raises(psycopg2.Error, match="ALREADY_RESOLVED"):
+        _resolve(db, request["id"], "coach-2", "line_written", text="Well said.", share=True)
+    row = _row(db, "SELECT * FROM public.exercise_coach_requests WHERE id = %s",
+               (request["id"],))
+    assert row["resolved_by"] == "coach-1" and row["shared_at"] is None
     assert _history(db, request["id"]) == []
+    # The coach who gave it still may share it by sending it again.
+    mine = _resolve(db, request["id"], "coach-1", "line_written", text="Well said.", share=True)
+    assert mine["shared_at"] is not None and _history(db, request["id"]) == []
 
 
 def test_the_guard_s_door_is_only_the_resolver_s(db):
@@ -258,3 +272,54 @@ def test_service_role_resolves_and_cannot_write_the_history_by_hand(db):
             assert cur.fetchone()["n"] == 0
     finally:
         conn.close()
+
+
+def test_changing_the_video_keeps_the_old_one_in_history_and_the_new_on_the_row(db):
+    request = _request(db)
+    first = _resolve(db, request["id"], "coach-1", "exercise_chosen",
+                     exercise_id="ex-1", version=1, share=True, video="v/old.mp4")
+    assert first["answer_video_ref"] == "v/old.mp4"
+    # The same answer with the same video is a no-op.
+    again = _resolve(db, request["id"], "coach-1", "exercise_chosen",
+                     exercise_id="ex-1", version=1, share=True, video="v/old.mp4")
+    assert again["resolved_at"] == first["resolved_at"] and _history(db, request["id"]) == []
+    # The guard: a resolved answer's video never changes by hand.
+    with db.cursor() as cur:
+        with pytest.raises(psycopg2.Error, match="ALREADY_RESOLVED"):
+            cur.execute("UPDATE public.exercise_coach_requests SET answer_video_ref = 'v/x.mp4' "
+                        "WHERE id = %s", (request["id"],))
+    # A new video (the app's upload on a given answer): an answer change.
+    second = _resolve(db, request["id"], "coach-1", "exercise_chosen",
+                      exercise_id="ex-1", version=1, share=False, video="v/new.mp4")
+    assert second["answer_video_ref"] == "v/new.mp4"
+    assert second["shared_at"] is None  # unshared until the coach shares again
+    history = _history(db, request["id"])
+    assert [(h["version"], h["answer_video_ref"], h["shared_at"] is not None)
+            for h in history] == [(1, "v/old.mp4", True)]
+    # New words-free change with the video kept (NULL): the row keeps the
+    # new video and the history keeps the one the old answer had.
+    third = _resolve(db, request["id"], "coach-1", "exercise_chosen",
+                     exercise_id="ex-1", version=2, share=True)
+    assert (third["resolved_exercise_version"], third["answer_video_ref"]) == (2, "v/new.mp4")
+    history = _history(db, request["id"])
+    assert [(h["version"], h["resolved_exercise_version"], h["answer_video_ref"])
+            for h in history] == [(1, 1, "v/old.mp4"), (2, 1, "v/new.mp4")]
+    # An empty ref clears the video, and the history keeps it.
+    fourth = _resolve(db, request["id"], "coach-1", "exercise_chosen",
+                      exercise_id="ex-1", version=2, share=True, video="")
+    assert fourth["answer_video_ref"] is None
+    assert _history(db, request["id"])[-1]["answer_video_ref"] == "v/new.mp4"
+    # Another coach cannot change the video either.
+    with pytest.raises(psycopg2.Error, match="ALREADY_RESOLVED"):
+        _resolve(db, request["id"], "coach-2", "exercise_chosen",
+                 exercise_id="ex-1", version=2, share=True, video="v/theirs.mp4")
+
+
+def test_only_the_eight_argument_resolver_exists(db):
+    with db.cursor() as cur:
+        cur.execute("SELECT pg_get_function_identity_arguments(oid) FROM pg_proc "
+                    "WHERE proname = 'resolve_exercise_coach_request_v3'")
+        assert [r[0] for r in cur.fetchall()] == [
+            "p_request_id uuid, p_coach_id text, p_resolution text, p_exercise_id text, "
+            "p_exercise_version integer, p_share boolean, p_answer_text text, "
+            "p_video_ref text"]

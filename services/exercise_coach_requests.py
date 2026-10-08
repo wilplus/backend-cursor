@@ -207,6 +207,15 @@ def _exercise_for(database: Any, request: dict, body: dict, resolution: str,
     return exercise, None
 
 
+def refusal_for(error: Exception) -> Optional[tuple[int, dict]]:
+    """The resolver's refusal, named (status, payload); None for anything
+    else, which the caller raises or reports."""
+    for code, (status, message) in _REFUSALS.items():
+        if code in str(error):
+            return _error(status, code, message)
+    return None
+
+
 def resolve_request(database: Any, request: dict, body: Any,
                     coach_id: str) -> tuple[int, dict]:
     """The coach's one answer to a request, and optionally the share."""
@@ -241,9 +250,9 @@ def resolve_request(database: Any, request: dict, body: Any,
                               if exercise else None),
             share=share, **kwargs)
     except Exception as e:  # the database's refusal, named
-        for code, (status, message) in _REFUSALS.items():
-            if code in str(e):
-                return _error(status, code, message)
+        refused = refusal_for(e)
+        if refused is not None:
+            return refused
         raise
     if not isinstance(resolved, dict):
         return _error(500, "V2_ERROR", "Could not save your answer.")
@@ -332,9 +341,10 @@ def _record_pairs(database: Any, request: dict, resolved: dict, fields: dict,
 
 
 def answer_unchanged(previous: Any, resolved: Any) -> bool:
-    """A changed answer (0446, Q-B12 A) that says the same words as the one
-    it replaces leaves no second trace: the praise line is already in the
-    catalogue and the pair already recorded. Pure."""
+    """A changed answer (0446, Q-B12 A) that says the same words, with the
+    same exercise at the same version, as the one it replaces leaves no
+    second trace: the praise line is already in the catalogue and the pair
+    already recorded. A new exercise version is a new answer. Pure."""
     if not isinstance(previous, dict) or not isinstance(resolved, dict):
         return False
     if not previous.get("resolution"):
@@ -343,7 +353,9 @@ def answer_unchanged(previous: Any, resolved: Any) -> bool:
             and " ".join(str(previous.get("answer_text") or "").split())
             == " ".join(str(resolved.get("answer_text") or "").split())
             and str(previous.get("resolved_exercise_id") or "")
-            == str(resolved.get("resolved_exercise_id") or ""))
+            == str(resolved.get("resolved_exercise_id") or "")
+            and str(previous.get("resolved_exercise_version") or "")
+            == str(resolved.get("resolved_exercise_version") or ""))
 
 
 def _file_answer(database: Any, request: dict, resolved: dict, fields: dict,

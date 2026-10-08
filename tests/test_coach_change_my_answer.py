@@ -62,6 +62,11 @@ class NoDuplicatePraiseTests(unittest.TestCase):
         self.assertFalse(ecr.answer_unchanged(previous, changed))
         other_kind = dict(previous, resolution="version_written")
         self.assertFalse(ecr.answer_unchanged(previous, other_kind))
+        # The same exercise at a new version is a new answer.
+        chosen = _request(resolution="exercise_chosen", resolved_exercise_id="ex-1",
+                          resolved_exercise_version=1, resolved_by="coach-1")
+        self.assertTrue(ecr.answer_unchanged(chosen, dict(chosen)))
+        self.assertFalse(ecr.answer_unchanged(chosen, dict(chosen, resolved_exercise_version=2)))
         self.assertFalse(ecr.answer_unchanged(_request(), same))  # a first answer always files
         self.assertFalse(ecr.answer_unchanged(None, same))
         db = _Db()
@@ -118,6 +123,78 @@ class DoorsTests(unittest.TestCase):
         self.assertEqual((status, payload["code"]), (400, "INVALID_INPUT"))
 
 
+    def test_a_new_video_on_a_given_answer_goes_through_the_resolver(self):
+        """0446 review fix: on a resolved request the video is never written
+        to the row directly (the old video would be lost from the history);
+        it is an answer change through v3, with the answer as it stands, and
+        unshared until the coach shares again. Before the answer, the upload
+        writes the row as before."""
+        import io
+        from unittest.mock import patch
+
+        from services import coach_answer_video as cav
+
+        class _VideoDb:
+            def __init__(self, refuse=None):
+                self.direct: list = []
+                self.resolved: list = []
+                self.refuse = refuse
+
+            def set_exercise_coach_request_video(self, **kw):
+                self.direct.append(kw)
+                return kw
+
+            def resolve_exercise_coach_request(self, **kw):
+                if self.refuse:
+                    raise RuntimeError(self.refuse)
+                self.resolved.append(kw)
+                return {"id": kw["request_id"], "answer_video_ref": kw["video_ref"]}
+
+        class _File:
+            filename = "clip.mp4"
+            content_type = "video/mp4"
+
+            def read(self):
+                return io.BytesIO(b"x" * 10).read()
+
+        with patch("services.coach_exercise_authoring.store_exercise_video",
+                   lambda *a: "https://media/new.mp4"):
+            # First answer: the row is written directly, as today.
+            db = _VideoDb()
+            status, payload = cav.store_answer_video(
+                db, request_row=_request(), video_file=_File(), max_mb=1, coach_id="coach-1")
+            self.assertEqual((status, payload), (200, {"video_url": "https://media/new.mp4"}))
+            self.assertEqual(db.direct, [{"request_id": "req-1",
+                                          "video_ref": "https://media/new.mp4"}])
+            self.assertEqual(db.resolved, [])
+            # A given answer: through the resolver, never directly.
+            given = _request(resolution="exercise_chosen", resolved_by="coach-1",
+                             resolved_exercise_id="ex-1", resolved_exercise_version=3,
+                             answer_video_ref="https://media/old.mp4",
+                             shared_at="2026-10-07T20:00:00Z")
+            db = _VideoDb()
+            status, payload = cav.store_answer_video(
+                db, request_row=given, video_file=_File(), max_mb=1, coach_id="coach-1")
+            self.assertEqual(status, 200)
+            self.assertEqual(db.direct, [])
+            self.assertEqual(db.resolved, [{
+                "request_id": "req-1", "coach_id": "coach-1",
+                "resolution": "exercise_chosen", "exercise_id": "ex-1",
+                "exercise_version": 3, "share": False, "answer_text": None,
+                "video_ref": "https://media/new.mp4"}])
+            # The resolver's refusal is named, not a 500.
+            status, payload = cav.store_answer_video(
+                _VideoDb(refuse="EXERCISE_COACH_REQUEST_ALREADY_RESOLVED"),
+                request_row=given, video_file=_File(), max_mb=1, coach_id="coach-1")
+            self.assertEqual((status, payload["code"]),
+                             (409, "EXERCISE_COACH_REQUEST_ALREADY_RESOLVED"))
+
+    def test_the_resolver_wrapper_passes_the_video(self):
+        from services import db as dbmod
+        source = inspect.getsource(dbmod.DatabaseService.resolve_exercise_coach_request)
+        self.assertIn('"p_video_ref": None if video_ref is None else str(video_ref)', source)
+
+
 class SpeakerCardTests(unittest.TestCase):
     def test_the_card_follows_the_row(self):
         """Q-B12 A: the speaker reads the row's current, shared answer; a
@@ -161,3 +238,24 @@ class WallsTests(unittest.TestCase):
         self.assertIn("Rollback (a new forward migration)", sql)
         for value in ecr.RESOLUTIONS:
             self.assertIn(f"'{value}'", sql)
+
+
+class ReviewFixSqlTests(unittest.TestCase):
+    def test_the_resolver_checks_the_coach_first_and_carries_the_video(self):
+        sql = (ROOT / "migrations/a_coach_may_change_their_answer.sql").read_text()
+        fn = sql[sql.index("CREATE OR REPLACE FUNCTION public.resolve_exercise_coach_request_v3("):]
+        fn = fn[:fn.index("$$;")]
+        self.assertIn("p_video_ref TEXT DEFAULT NULL", fn)
+        # Another coach is refused before the same-answer test, so a
+        # repeated answer cannot add the share.
+        self.assertLess(fn.index("IF current_row.resolved_by IS DISTINCT FROM p_coach_id THEN"),
+                        fn.index("same_answer := "))
+        self.assertIn("AND current_row.answer_video_ref IS NOT DISTINCT FROM new_video", fn)
+        change = fn[fn.index("IF NOT same_answer THEN"):]
+        self.assertIn("current_row.answer_text, current_row.answer_video_ref,", change)
+        self.assertIn("answer_video_ref = new_video,", change)
+        guard = sql[sql.index("FUNCTION public.guard_exercise_coach_request_update_v2()"):]
+        guard = guard[:guard.index("$$;")]
+        self.assertIn("OR NEW.answer_video_ref IS DISTINCT FROM OLD.answer_video_ref)", guard)
+        self.assertIn("DROP FUNCTION IF EXISTS public.resolve_exercise_coach_request_v3(\n"
+                      "    UUID, TEXT, TEXT, TEXT, INTEGER, BOOLEAN, TEXT);", sql)
