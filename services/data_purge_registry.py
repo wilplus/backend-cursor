@@ -364,6 +364,11 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "take_session_id", "take", "delete", "derived_feedback", 59),
     PurgeDependency("lend_your_ear_answers", "lend_your_ear_answers",
                     "listener_user_id", "user", "delete", "derived_feedback", 35),
+    # The clip's soft-label counts (0442, V4 brief 1.7): a derived row per
+    # clip, rebuilt from confidence_labels, with no words and no user id; it
+    # goes with the clip, before the labels it was built from.
+    PurgeDependency("clip_answer_counts", "clip_answer_counts",
+                    "snippet_id", "snippet", "delete", "derived_feedback", 35),
     PurgeDependency("delayed_measure_votes", "delayed_measure_votes",
                     "rater_id", "user", "delete", "derived_feedback", 35),
     # Communities (0432, N52.4). A share is the speaker's consent about one

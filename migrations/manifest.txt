@@ -477,3 +477,4 @@
 0439	new_coach_feedback_waits_on_the_lounge_bubble.sql
 0440	a_speaker_may_change_a_judgement.sql
 0441	the_shadow_writer_keeps_the_pick_log.sql
+0442	answer_counts_per_clip_are_soft_label_data.sql
