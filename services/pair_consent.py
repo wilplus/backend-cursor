@@ -14,12 +14,17 @@ module is the machinery, and it works whether the switch is open or not:
     or a termination) has no releasable pair whatever the ledger says
     (0422, PLF-T3): at the request, at the stamp and at every refresh.
 
-WHICH SURFACES NEED THE YES: all three, counsel 2026-10-01 (a coach's note
+WHICH SURFACES NEED THE YES: all of them, counsel 2026-10-01 (a coach's note
 about a speaker's passage is the speaker's personal data even without the
 passage attached; basis Art 6(1)(a) with Art 9(2)(a), never legitimate
-interest). The constant below changes only by a reviewed change carrying a
-new answer from counsel, never by a toggle. AC-9: nothing here reaches a
-speaker.
+interest). That covers the coach's own
+two (coach_moment_line, coach_take_word) too, Privacy/Terms 3.5 signed by the
+founder 2026-10-08 (decisions log N68; 22-…SIGNED, E2): the coach's words
+are training data under the SPEAKER's training yes, so the speaker's yes
+governs them exactly as it governs the rest (the coach agreement covers
+the coach's side, and is no substitute for the speaker's yes). The constant
+below changes only by a reviewed change carrying a new answer from counsel,
+never by a toggle. AC-9: nothing here reaches a speaker.
 """
 from __future__ import annotations
 
@@ -30,8 +35,10 @@ from services.feedback_pairs import SURFACES
 
 _log = logging.getLogger(__name__)
 
-#: The pair surfaces whose release needs the speaker's training yes. All
-#: three (counsel 2026-10-01; founder 2026-09-30, L1).
+#: The pair surfaces whose release needs the speaker's training yes: all
+#: five (counsel 2026-10-01; founder 2026-09-30, L1; the coach's own words
+#: by 3.5, N68). Every surface a door knows (feedback_pairs.DOOR_SURFACES)
+#: must be here; tests/test_coach_words_in_the_doors.py fails otherwise.
 CONSENT_REQUIRED_SURFACES: frozenset = frozenset(SURFACES)
 
 STATES = ("yes", "no", "not_needed", "unknown")

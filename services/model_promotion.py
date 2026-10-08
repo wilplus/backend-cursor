@@ -29,7 +29,11 @@ serves as the caller's own default) and the history row is marked killed.
 The kill works with the door shut, because closing is never gated.
 
 Only the named surface changes model; the coach's draft comes from the
-promoted id through ``compose_draft``; nothing a speaker sees changes shape.
+promoted id through ``compose_draft`` (an answer surface) or
+``coach_word_pairs.compose`` (the coach's own words, known to this door
+since Privacy/Terms 3.5, N68); nothing a speaker sees changes shape. Both
+drafters read SPEC_COACH_ANSWER_DRAFT, so the stock model a kill returns to
+is the same.
 """
 from __future__ import annotations
 
@@ -37,7 +41,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from services.feedback_pairs import ANSWER_SURFACES as SURFACES
+from services.feedback_pairs import DOOR_SURFACES as SURFACES
 
 _log = logging.getLogger(__name__)
 
@@ -61,7 +65,7 @@ def authorised_surfaces(config: Any) -> frozenset:
 
 def why_not(config: Any, surface: str) -> Optional[str]:
     if surface not in SURFACES:
-        return f"{surface} is not a coach-answer surface"
+        return f"{surface} is not a pair surface any door knows"
     if not door_open(config):
         return "door 4 closed (MLC2_PROMOTION_ENABLED)"
     if surface not in authorised_surfaces(config):
@@ -154,7 +158,7 @@ def kill(database: Any, *, surface: str, by: str, reason: str,
          now: Optional[datetime] = None) -> dict:
     """Back to the stock model, door or no door."""
     if surface not in SURFACES:
-        raise PromotionRefusal(f"{surface} is not a coach-answer surface", "UNKNOWN_SURFACE")
+        raise PromotionRefusal(f"{surface} is not a pair surface any door knows", "UNKNOWN_SURFACE")
     now = now or datetime.now(timezone.utc)
     stock = stock_model()
     written = database.promote_runtime_surface_model(

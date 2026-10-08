@@ -486,8 +486,10 @@ class TrainingTests(unittest.TestCase):
         with mock.patch("services.learning_ledger.ledger", return_value=ledger):
             out = lw.run_weekly(db, config=_Config(), now=NOW, provider=_Provider())
         self.assertEqual(out["training"]["withdrawn_sweep"]["swept"], 0)
+        # Door 3 knows the coach's own words too since 3.5 (N68).
         self.assertEqual([s["surface"] for s in out["training"]["surfaces"]],
-                         ["clearer_version", "exercise_script", "praise_line"])
+                         ["clearer_version", "coach_moment_line", "coach_take_word",
+                          "exercise_script", "praise_line"])
         self.assertTrue(all("door 3 closed" in s["why"] for s in out["training"]["surfaces"]))
         self.assertIn("training", db.row["snapshot"]["doors_pass"])
 

@@ -1,10 +1,12 @@
-"""The golden evaluation for a coach-answer surface (founder 2026-09-30, L6,
-L7; counsel 2026-10-01; build plan ML-10, ML-11).
+"""The golden evaluation for a pair surface (founder 2026-09-30, L6,
+L7; counsel 2026-10-01; build plan ML-10, ML-11; the coach's own words
+since Privacy/Terms 3.5, N68).
 
 A candidate model is compared with the baseline on the founder's sealed
 golden set, through the very adapter that serves the coach
-(``compose_draft`` under ``evaluation_model_override``), so a model that
-cannot answer in the serving shape fails here and never reaches a row:
+(``compose_draft``, or ``coach_word_pairs.compose`` for the coach's own
+words, under ``evaluation_model_override``), so a model that cannot answer
+in the serving shape fails here and never reaches a row:
 
   * the set must be sealed and still what was sealed (ML-10); only the
     moments the founder answered "yes" to carry a reference (the coach's
@@ -96,9 +98,47 @@ def references_from(rows: list[dict]) -> list[dict]:
     return out
 
 
+def _coach_word_compose(*, surface: str, passage: str, spotted: list, kind: str,
+                        coach_text: Optional[str] = None) -> Optional[dict]:
+    """The coach's own words' serving adapter (services.coach_word_pairs.
+    compose) in the answer adapter's shape; ``spotted`` and ``kind`` are not
+    part of these prompts."""
+    from services.coach_word_pairs import compose as compose_words
+    return compose_words(surface=surface, transcript=passage, coach_text=coach_text)
+
+
+def _serving_adapter(surface: str) -> Callable:
+    """The adapter that serves the coach on this surface: the coach's own
+    words' drafter, or the answer drafts' ``compose_draft``."""
+    from services.feedback_pairs import COACH_WORD_SURFACES
+    if surface in COACH_WORD_SURFACES:
+        return _coach_word_compose
+    from services.coach_request_drafts import compose_draft
+    return compose_draft
+
+
 def _answer(surface: str, moment: dict, *, model: Optional[str], compose: Callable) -> str:
+    from services.feedback_pairs import COACH_WORD_SURFACES
     from services.ml_surface_contracts import evaluation_model_override
     context = moment.get("prompt_context") or {}
+    if surface in COACH_WORD_SURFACES:
+        # The coach's own words (3.5, N68): the drafter's own prompt, with
+        # the coach's notes the drafter kept. A moment without them never
+        # reached the set (golden_set.promptable); refuse rather than guess.
+        from services.coach_word_pairs import prompt_from
+        if prompt_from(surface, moment.get("passage"), context) is None:
+            raise EvaluationRefusal(
+                f"a {surface} reference carries no kept prompt; re-seal the set",
+                "UNPROMPTABLE_REFERENCE")
+        notes = context.get("coach_text") or None
+        if model:
+            with evaluation_model_override(surface, model):
+                out = compose(surface=surface, passage=moment["passage"], spotted=[],
+                              kind="", coach_text=notes)
+        else:
+            out = compose(surface=surface, passage=moment["passage"], spotted=[],
+                          kind="", coach_text=notes)
+        return str((out or {}).get("text") or "") if isinstance(out, dict) else ""
     kind = str(context.get("kind") or {"exercise_script": "error", "praise_line": "praise",
                                        "clearer_version": "rewrite"}[surface])
     spotted = [str(context.get("pattern_key"))] if context.get("pattern_key") else []
@@ -137,8 +177,7 @@ def evaluate(database: Any, *, surface: str, candidate_model: str,
             f"only {len(refs)} confirmed references in the sealed set; {MIN_REFERENCES} needed",
             "TOO_FEW_REFERENCES")
     if compose is None:
-        from services.coach_request_drafts import compose_draft
-        compose = compose_draft
+        compose = _serving_adapter(surface)
     withdrawn = set()
     for text in withdrawn_texts or []:
         withdrawn |= windows(text)

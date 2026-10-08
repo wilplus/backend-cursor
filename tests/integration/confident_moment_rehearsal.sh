@@ -846,6 +846,17 @@ if [ "$LANE" = "released" ]; then
   hard migrations/a_new_training_wording_retires_the_old.sql
   hard migrations/a_new_training_wording_retires_the_old.sql
 fi
+# 0459 (3.5, N68): the coach's own words reach doors 2, 3 and 4. Widens the
+# surface CHECK of 0405's and 0406's door tables, 0406's promote allowlist
+# and alias rows, and adds draft_prompt to the coach request and Take-word
+# tables (0385+, 0411), all applied above. Released lane only, where the
+# door suites run; after 0457, as in the manifest. Twice: apply/reapply
+# idempotency. Its suite: tests/test_the_coach_s_words_reach_the_doors_postgres.py.
+if [ "$LANE" = "released" ]; then
+  hard migrations/the_coach_s_words_reach_the_doors.sql
+  hard migrations/the_coach_s_words_reach_the_doors.sql
+fi
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

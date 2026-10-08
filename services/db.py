@@ -15342,14 +15342,17 @@ class DatabaseService:
 
     def set_exercise_coach_request_draft(
         self, *, request_id: str, surface: str, text: str,
-        model_version: Optional[str],
+        model_version: Optional[str], prompt: Optional[dict] = None,
     ) -> Optional[dict]:
         """Keep the model's draft on the request row (0402), coach-only; a
-        re-draft replaces it. Raises on failure: the caller logs and the
-        draft still shows."""
+        re-draft replaces it, and with it what the draft's prompt was given
+        (``draft_prompt``, 0459: the coach-word drafter's snapshot, cleared
+        by any other surface's draft). Raises on failure: the caller logs
+        and the draft still shows."""
         res = (self.client.table("exercise_coach_requests")
                .update({"draft_surface": str(surface), "draft_text": str(text),
                         "draft_model_version": model_version or None,
+                        "draft_prompt": prompt if isinstance(prompt, dict) else None,
                         "drafted_at": datetime.now(timezone.utc).isoformat()})
                .eq("id", str(request_id)).execute())
         return (res.data or [None])[0]
@@ -17373,15 +17376,16 @@ class DatabaseService:
 
     def set_coach_take_word_draft(
         self, *, take_session_id: str, coach_id: str, text: str,
-        model_version: Optional[str],
+        model_version: Optional[str], prompt: Optional[dict] = None,
     ) -> Optional[dict]:
         """The model's draft of the Take word (7, 0411), on the coach's row,
-        created draft-only when the word is not written yet. Raises on
-        failure."""
+        created draft-only when the word is not written yet, with what its
+        prompt was given (``draft_prompt``, 0459). Raises on failure."""
         now = datetime.now(timezone.utc).isoformat()
         res = (self.client.table("coach_take_words")
                .upsert({"take_session_id": str(take_session_id), "coach_id": str(coach_id),
                         "draft_text": str(text), "draft_model_version": model_version or None,
+                        "draft_prompt": prompt if isinstance(prompt, dict) else None,
                         "drafted_at": now, "updated_at": now},
                        on_conflict="take_session_id,coach_id").execute())
         return (res.data or [None])[0]

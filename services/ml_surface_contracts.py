@@ -85,9 +85,12 @@ SURFACES: dict[str, SurfaceContract] = {
     ),
     # THE COACH'S OWN WORDS (founder 2026-10-01, C5-a; Phase 7, dark behind
     # COACH_WORD_PAIRS_ENABLED): the personal line on a moment and the Take
-    # word. Text only; their pairs never leave through door 2 until a
-    # qualified lawyer answers and the founder's sentence follows, and doors
-    # 3 and 4 stay closed for them like the rest.
+    # word. Text only. Privacy/Terms 3.5, signed by the founder 2026-10-08
+    # (decisions log N68), covers them as training data under the speaker's
+    # training yes: doors 2, 3 and 4 know them like the answer surfaces
+    # (feedback_pairs.DOOR_SURFACES), and each door opens for one only when
+    # its switch is on and the founder named the surface in its config set.
+    # Migration 0459 widens the promote RPC's allowlist to their keys.
     "coach_moment_line": SurfaceContract(
         id="coach_moment_line",
         annotation_fields=("coach_moment_line",),
