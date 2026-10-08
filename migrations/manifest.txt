@@ -493,4 +493,5 @@
 0455	a_failed_export_voids_its_release.sql
 0456	an_erasure_voids_the_released_copies.sql
 0457	the_v4_dark_writes_keep_their_word.sql
+0458	a_new_training_wording_retires_the_old.sql
 0459	the_coach_s_words_reach_the_doors.sql

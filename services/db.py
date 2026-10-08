@@ -16877,6 +16877,38 @@ class DatabaseService:
             raise RuntimeError("subject graph unavailable")
         return [str(item) for item in data["practice_ids"] if item]
 
+    def take_ids_for_principal(self, principal_id: str) -> list[str]:
+        """Every Take belonging to one person, as the governed purge sees it
+        (resolve_phase1_purge_subject_graph_v3, the graph data_purge
+        freezes). Raises on failure: a caller erasing data must not read
+        "none" into a failed read."""
+        result = self.client.rpc("resolve_phase1_purge_subject_graph_v3", {
+            "p_acquisition_principal_id": str(principal_id),
+        }).execute()
+        data = result.data
+        if isinstance(data, list):
+            data = data[0] if data else None
+        if not isinstance(data, dict) or not isinstance(data.get("take_ids"), list):
+            raise RuntimeError("subject graph unavailable")
+        return [str(item) for item in data["take_ids"] if item]
+
+    #: The coach sheets about a speaker's Takes that a training withdrawal
+    #: erases (3.5 pack, E4): each is a take-scoped delete in the purge
+    #: registry too (services/data_purge_registry.py).
+    LEARNING_SHEET_TABLES = ("v4_moment_pick_sheets", "v4_surer_sheets", "coach_block_pick")
+
+    def delete_learning_sheets_for_takes(self, take_ids: list[str]) -> dict[str, int]:
+        """Delete every V4 sheet and blind block pick about these Takes.
+        Rows deleted per table. Raises on failure."""
+        takes = sorted({str(t) for t in take_ids if t})
+        out = {table: 0 for table in self.LEARNING_SHEET_TABLES}
+        for table in self.LEARNING_SHEET_TABLES:
+            for i in range(0, len(takes), 200):
+                res = (self.client.table(table).delete()
+                       .in_("take_session_id", takes[i:i + 200]).execute())
+                out[table] += len(res.data or [])
+        return out
+
     def list_recent_practice_withdrawals(self, since: str, limit: int) -> list[str]:
         """People whose practice is off by a change made since `since`."""
         result = self.client.rpc("list_recent_practice_withdrawals_v1", {

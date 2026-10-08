@@ -25,6 +25,7 @@ unsigned render is never the right value.
 | 06 v1.3 | `phase1-2026.1/legal/retention-schedule-v1.3.pdf` | 2026-10-05 | `59a25f9409e85e2289e8484baa4cc0fc74d5c6ed98dca2d22be443175473cfb4` |
 | 06 v1.4 | `phase1-2026.1/legal/retention-schedule-v1.4.pdf` | 2026-10-05 | `f3a19127bd586913ebe5c0a1f2a97c5e24646c8e1fb44e3fef312346200afee6` |
 | 03 v1.1 | `phase1-2026.1/legal/article-50-assessment-v1.1.pdf` | 2026-10-05 | `97a88b6946957e5849c3fa80b3a39d6c480d35080b7b4fa792d768f85667ad6c` |
+| 23 | `phase1-2026.1/legal/training-consent-wording-v2.pdf` | 2026-10-08 | `cd62d7b11d43a1b7b0c0c928525fe4cc092162e8a29789eb3775d3e42fea3e7d` |
 
 `02 v1.1` and `06 v1.2` were rendered by `scripts/render_doc_pdf.py` on
 2026-10-02 (unsigned sha256 `dc175ffc…c40e8` and `cec455cb…dc85c`) and signed
@@ -40,6 +41,15 @@ The upload of each signed file to its `object_key` is the founder's; the
 hashes are of the signed files as received by the session. `02 v1.0` and
 `06 v1.0` are superseded by version (their signatures stand for their
 versions, 04 §5).
+
+`23` is the 2026-10-08 render below (unsigned sha256 `8472440c…5b45c0`,
+71,550 bytes), signed by the founder and uploaded to its `object_key` on
+2026-10-08; the hash above is the signed file's, as the founder reported it
+to the session that evening. The signed file itself did not reach the
+session, so the byte-identical-prefix check made for 13 was not made here.
+It is the value `PUBLISH-3.5-2026-10-08.sql` takes as `p_evidence_sha256`
+of training-only-v2 (its one placeholder; the repo copy keeps the
+placeholder).
 
 `01` and `06` were rendered from markdown that is byte-identical at
 `6f7ded6`, so those signatures stand and nothing about them needs redoing.
@@ -178,7 +188,9 @@ and nothing else; it is never the value to register.
 | 23 | `phase1-2026.1/legal/training-consent-wording-v2.pdf` | `23-training-consent-wording-v2-SIGNED-2026-10-08.md` | 71,550 | `8472440c56bbe0a38236d3f14c298ad6a95f4b31d688b8f9c5ee1f4b625b45c0` |
 | 02 v1.2 | `phase1-2026.1/legal/power-score-classification-v1.2.pdf` | `02-power-score-classification-v1.2-SIGNED-2026-10-08.md` (v1.1's full text with the signed note's three changes applied) | 100,288 | `e95e12bfda1249d34e4fa2308f145d911458aaabb5c2ea41d2f56f116b04e162` |
 
-**Not yet signed as PDFs, not uploaded, not registered.** The founder signs
+**23 is now signed and uploaded (2026-10-08): its signed hash is in
+Current above.** 02 v1.2 is **not yet signed as a PDF, not uploaded, not
+registered.** The founder signs
 each render (PAdES) and uploads it to its `object_key` in the R2 bucket
 `coach-feedback-videos` (as 13 was); the session then checks the
 byte-identical prefix and moves the signed hash into **Current**. Only the
