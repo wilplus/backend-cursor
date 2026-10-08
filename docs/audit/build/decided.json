@@ -39,8 +39,10 @@
   "note": "R5 A: landed in frontend #617 (merged 6 Oct); checker PASS"
  },
  "X1": {
-  "status": "OPEN",
-  "note": "H1 A approved; test by Grok (handoff HO-1)"
+  "status": "DONE",
+  "pr": "#911",
+  "test": "tests/test_audit_ledger.py (15 failed before, passes with the checker)",
+  "note": "H1 A approved; test by Grok (handoff HO-1); landed in #911, merged 6 Oct"
  },
  "X2": {
   "status": "OPEN",
