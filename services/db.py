@@ -15702,6 +15702,15 @@ class DatabaseService:
             raise ValueError("pick_line_bank_line_v1 returned no index")
         return data
 
+    def read_line_bank_memory(self, *, user_id: str) -> list[dict]:
+        """This speaker's rows of line_bank_memory (0438): bank,
+        last_index, last_plain_index. Indexes only. Raises on failure."""
+        res = (self.client.table("line_bank_memory")
+               .select("bank,last_index,last_plain_index")
+               .eq("user_id", str(user_id))
+               .execute())
+        return [row for row in (res.data or []) if isinstance(row, dict)]
+
     def new_coach_feedback_by_project(self, user_id: str) -> dict[str, bool]:
         """{project id: True while a published coach word or answer for
         one of its Takes is newer than the walk's last show of it} for every
