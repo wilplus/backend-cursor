@@ -4,12 +4,11 @@ Dark first: the switch is a code constant, False, and while it is the enqueue
 and the job both return at once. Then, with the switch forced on in-process
 only, what the job copies (SPEC §4.3, §10 invariant 7): nothing without an
 active training yes, only the Confident Voice moments the speaker was shown,
-never a snippet from another Take, and no bytes left behind when the database
-refuses the copy.
+never a snippet from another Take, and never any audio (3.5 pack, file 22
+D1, signed 2026-10-08: text and measurements only).
 """
 from __future__ import annotations
 
-import hashlib
 import inspect
 import unittest
 from unittest import mock
@@ -60,10 +59,6 @@ class DarkTests(unittest.TestCase):
         self.assertIn("training-corpus/", USER_CONTENT_PREFIXES)
 
 
-WHOLE = b"whole-take-audio"
-CLIP = b"clip-bytes"
-
-
 class _Db:
     def __init__(self, *, consent=None, frozen=True, refuse=False):
         self.consent = consent if consent is not None else {
@@ -100,9 +95,8 @@ class _Db:
                 "transcript": "Every word counts.",
                 "start_offset_ms": 1000, "duration_ms": 3000}
 
-    def get_take_audio_object(self, _take):
-        return {"storage_provider": "r2", "bucket": "lab", "object_key": "k",
-                "exact_bytes_sha256": hashlib.sha256(WHOLE).hexdigest()}
+    def get_take_audio_object(self, _take):  # pragma: no cover
+        raise AssertionError("D1: the copy job must not read a Take's audio")
 
     def get_mlc2_blind_coach_ratings(self, take_id, ids):
         # The chain's blind coach judgement (0430), never confidence_labels.
@@ -125,22 +119,19 @@ class JobTests(unittest.TestCase):
             # The job's own switch reader, not Config: other suites reload
             # the config module, and a patch on a stale class reaches nobody.
             mock.patch.object(tc, "copy_enabled", return_value=True),
+            # D1: any touch of audio storage fails the test.
             mock.patch("services.lab_audio_storage.get_exact_storage_object_bytes",
-                       return_value=WHOLE),
+                       side_effect=AssertionError("D1: no audio is read")),
             mock.patch("services.blind_review_media.render_blind_clip_wav",
-                       return_value=CLIP),
+                       side_effect=AssertionError("D1: no clip is cut")),
             mock.patch("services.lab_audio_storage.put_lab_audio_bytes",
-                       return_value="lab"),
-            mock.patch("services.lab_audio_storage.storage_provider",
-                       return_value="r2"),
-            mock.patch("services.lab_audio_storage.delete_verified_lab_audio_object"),
+                       side_effect=AssertionError("D1: no audio is stored")),
             mock.patch("services.job_queue.enqueue", return_value=True),
         ]
         self.mocks = [p.start() for p in patches]
         for p in patches:
             self.addCleanup(p.stop)
-        self.delete = self.mocks[5]
-        self.enqueue = self.mocks[6]
+        self.enqueue = self.mocks[4]
 
     def test_no_training_yes_copies_nothing(self):
         db = _Db(consent={"active": False})
@@ -148,17 +139,17 @@ class JobTests(unittest.TestCase):
                          {"status": "no_training_yes"})
         self.assertEqual(db.recorded, [])
 
-    def test_the_shown_moment_is_copied_three_ways_and_nothing_else(self):
+    def test_the_shown_moment_is_copied_as_text_and_label_and_never_audio(self):
         db = _Db()
         result = tc.run_corpus_copy("take-1", "arc", database=db)
-        self.assertEqual(result, {"status": "copied", "items": 3})
+        self.assertEqual(result, {"status": "copied", "items": 2})
         kinds = {item["item_kind"]: item for item in db.recorded}
-        self.assertEqual(set(kinds), {"transcript_span", "audio_segment", "coach_label"})
+        self.assertEqual(set(kinds), {"transcript_span", "coach_label"})
         self.assertTrue(all(item["source_take_id"] == "take-1" for item in db.recorded))
-        audio = kinds["audio_segment"]
-        self.assertEqual(audio["storage_key"],
-                         "training-corpus/principal-1/grant-1/snip-1.wav")
-        self.assertEqual(audio["object_sha256"], hashlib.sha256(CLIP).hexdigest())
+        for item in db.recorded:
+            for key in ("storage_key", "bucket", "storage_provider", "object_sha256"):
+                self.assertIsNone(item.get(key))
+        self.assertEqual(kinds["transcript_span"]["content"], {"text": "Every word counts."})
         self.assertEqual(kinds["coach_label"]["label_provenance"], "coach")
         self.assertNotIn("label_provenance", kinds["transcript_span"])
 
@@ -171,32 +162,28 @@ class JobTests(unittest.TestCase):
             tc.run_corpus_copy("take-1", "arc", attempt=tc.MAX_WAITS - 1,
                                database=db)["status"], "no_frozen_set")
 
-    def test_a_refused_copy_leaves_no_bytes_behind(self):
+    def test_a_refused_copy_is_simply_not_counted(self):
         db = _Db(refuse=True)
-        tc.run_corpus_copy("take-1", "arc", database=db)
-        self.delete.assert_called_once()
-        self.assertEqual(self.delete.call_args.args[0],
-                         "training-corpus/principal-1/grant-1/snip-1.wav")
+        self.assertEqual(tc.run_corpus_copy("take-1", "arc", database=db),
+                         {"status": "copied", "items": 0})
 
-    def test_the_download_appends_its_verification(self):
-        """F-8: the copy's download of a chain object appends one
-        verification row stating what it read (0430's writer judges it)."""
-        db = _Db()
-        rows: list[dict] = []
-        db.record_mlc2_object_verification = (
-            lambda **kw: rows.append(kw) or {"verified": True})
-        with mock.patch("services.object_verification.chain_writes_enabled",
-                        return_value=True):
-            tc.run_corpus_copy("take-1", "arc", database=db)
-        self.assertEqual(len(rows), 1)
-        self.assertEqual((rows[0]["bucket"], rows[0]["object_key"]), ("lab", "k"))
-        self.assertEqual(rows[0]["observed_sha256"], hashlib.sha256(WHOLE).hexdigest())
-        self.assertEqual(rows[0]["observed_byte_size"], len(WHOLE))
-        self.assertEqual(rows[0]["verification_method"], "download_sha256")
 
-    def test_changed_source_bytes_are_not_copied(self):
-        db = _Db()
-        self.mocks[1].return_value = b"different"
-        tc.run_corpus_copy("take-1", "arc", database=db)
-        self.assertNotIn("audio_segment",
-                         {item["item_kind"] for item in db.recorded})
+class NoAudioPinTests(unittest.TestCase):
+    """D1 pinned in the source: the copy path has no audio branch at all.
+    Only the erasure may touch storage (to delete)."""
+
+    def test_the_copy_path_names_no_audio_operation(self):
+        copy_path = "".join(inspect.getsource(fn) for fn in (
+            tc.run_corpus_copy, tc._copy_moment, tc._copy_coach_label,
+            tc._record, tc.sweep_late_coach_labels))
+        for banned in ("audio_segment", "get_take_audio_object",
+                       "get_exact_storage_object_bytes", "render_blind_clip_wav",
+                       "put_lab_audio_bytes", ".wav", "storage_key"):
+            self.assertNotIn(banned, copy_path, banned)
+        self.assertFalse(hasattr(tc, "_copy_audio"))
+
+    def test_the_module_never_writes_to_storage(self):
+        source = inspect.getsource(tc)
+        for banned in ("put_lab_audio_bytes", "render_blind_clip_wav",
+                       "get_exact_storage_object_bytes", "get_take_audio_object"):
+            self.assertNotIn(banned, source, banned)

@@ -21,6 +21,13 @@ client), the versions. Never mixed with confidence labels, owner answers or
 exercise outcomes (L3); never changes ideal_text_feedback_sets (L2). The
 ledger reports the match rate with Can't tell counted apart. No training:
 voice training waits for C1 and the founder's sentence.
+
+ONLY SPEAKERS WITH THE TRAINING YES (3.5 pack, file 22 item E4; Privacy 3.5
+§4a, signed 2026-10-08). A block reaches a sheet only while its speaker holds
+the training yes and has not objected to the blind check
+(``pair_consent.take_may_reach_a_coach_sheet``), read when the sheet is
+written, when the queue is served and when it is answered. Anyone else is
+skipped.
 """
 from __future__ import annotations
 
@@ -28,6 +35,8 @@ import logging
 import random
 from collections import Counter
 from typing import Any, Iterable
+
+from services import pair_consent
 
 _log = logging.getLogger(__name__)
 
@@ -56,6 +65,20 @@ WORDING = {
 def block_pick_enabled() -> bool:
     from config import Config
     return bool(getattr(Config, "COACH_BLOCK_PICK_ENABLED", False))
+
+
+def _admitted(database: Any, take_session_id: Any, memo: dict | None = None) -> bool:
+    """3.5 E4: this Take's speaker holds the training yes and has not
+    objected to the blind check. Memoised per call when given a dict."""
+    take = str(take_session_id or "")
+    if not take:
+        return False
+    if memo is not None and take in memo:
+        return memo[take]
+    ok = pair_consent.take_may_reach_a_coach_sheet(database, take)
+    if memo is not None:
+        memo[take] = ok
+    return ok
 
 
 # ── blocks worth asking about ─────────────────────────────────────────────
@@ -112,6 +135,7 @@ def sample_for_coach(database: Any, *, coach_id: str, week: str,
     done = {str(r.get("block_id")) for r in (database.list_coach_block_picks_by_coach(str(coach_id)) or [])
             if isinstance(r, dict)}
     walking = {str(t) for t in (database.list_takes_coach_is_walking(str(coach_id)) or [])}
+    admitted: dict = {}
     written: list[dict] = []
     for frame_row in database.list_recent_v3_frames(limit=200) or []:
         if len(written) >= room:
@@ -120,6 +144,8 @@ def sample_for_coach(database: Any, *, coach_id: str, week: str,
             continue
         take = str(frame_row.get("take_session_id") or "")
         if not take or take in walking:
+            continue
+        if not _admitted(database, take, admitted):
             continue
         for block in askable_blocks(frame_row.get("frame"), take_session_id=take):
             if len(written) >= room or block["block_id"] in done:
@@ -150,7 +176,9 @@ def queue(database: Any, *, coach_id: str) -> tuple[int, dict]:
     from services.snippet_audio_url import snippet_clip_playback
     if not block_pick_enabled():
         return 404, {"code": "NOT_FOUND", "error": "not found"}
-    rows = [r for r in (database.list_coach_block_picks_pending(str(coach_id)) or []) if isinstance(r, dict)]
+    memo: dict = {}
+    rows = [r for r in (database.list_coach_block_picks_pending(str(coach_id)) or [])
+            if isinstance(r, dict) and _admitted(database, r.get("take_session_id"), memo)]
     items = []
     for n, row in enumerate(rows, start=1):
         clips = []
@@ -174,7 +202,7 @@ def answer(database: Any, *, coach_id: str, pick_id: str, body: Any) -> tuple[in
     if cant_tell == bool(pick):
         return 400, {"code": "INVALID_INPUT", "error": "pick one clip, or say you can't tell"}
     row = database.get_coach_block_pick(str(pick_id), str(coach_id))
-    if not isinstance(row, dict):
+    if not isinstance(row, dict) or not _admitted(database, row.get("take_session_id")):
         return 404, {"code": "NOT_FOUND", "error": "pick not found"}
     if row.get("answered_at"):
         return 409, {"code": "ALREADY_ANSWERED", "error": "That block is already answered."}

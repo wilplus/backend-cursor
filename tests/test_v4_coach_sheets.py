@@ -21,6 +21,9 @@ def on(monkeypatch):
     from config import Config
     monkeypatch.setattr(Config, "V4_COACH_SHEETS_ENABLED", True, raising=False)
     monkeypatch.setattr(cs, "rater_role", lambda uid: "founder" if uid == "founder" else "coach")
+    # 3.5 E4: every speaker here holds the training yes; the gate itself is
+    # pinned in tests/test_learning_lanes_honour_3_5.py.
+    monkeypatch.setattr(cs.pair_consent, "take_may_reach_a_coach_sheet", lambda db, take: True)
 
 
 def test_the_switch_is_on_by_default_and_every_door_404s_when_off(monkeypatch):
@@ -183,7 +186,7 @@ def test_the_quality_least_answered_goes_first():
 
 def test_a_surer_answer_makes_its_pair():
     class Db:
-        row = {"id": "s", "said_text": "a", "new_text": "b"}
+        row = {"id": "s", "take_session_id": "t", "said_text": "a", "new_text": "b"}
 
         def get_v4_surer_sheet(self, sid, rater):
             return dict(self.row)

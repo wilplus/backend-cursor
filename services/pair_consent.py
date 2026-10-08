@@ -110,3 +110,77 @@ def refresh(database: Any) -> dict:
         _log.warning("pair consent refresh failed: %s", e, exc_info=True)
         return {"unavailable": str(e)[:200]}
     return dict(out) if isinstance(out, dict) else {}
+
+
+# ── The training yes for the other learning lanes (3.5 pack, E4 and E5) ──
+#
+# Privacy 3.5 §4a (signed 2026-10-08): anything that learns across people
+# uses a speaker's data only while that speaker holds the training yes. These
+# readers are the pairs' own rule, reused so every lane reads the same one:
+# the ledger's status (``get_mlc2_training_consent_status_v2``, which counts a
+# yes only under a training policy that is not retired and reads a withdrawal
+# as no; the database refuses the yes itself to anyone not on the processing
+# policy that introduced training, as door 1 does), and a
+# person whose service is ending has none (0422). They add no rule of their
+# own. Every doubt answers no: a missing principal, an unreadable ledger, a
+# database fault. A lane skips that speaker; it never waits or guesses.
+
+
+def holds_training_yes(database: Any, principal_id: Optional[str]) -> bool:
+    """True only while this principal holds an active training yes and
+    their service is not ending. Fails closed."""
+    if not principal_id:
+        return False
+    if consent_for_principal(database, principal_id).get("active") is not True:
+        return False
+    from services.account_deletion import learning_stopped
+
+    return not learning_stopped(database, principal_id)
+
+
+def user_holds_training_yes(database: Any, owner_user_id: Any) -> bool:
+    """``holds_training_yes`` for the principal behind a user id."""
+    return holds_training_yes(database, principal_for_user(database, owner_user_id))
+
+
+def take_principal(database: Any, take_session_id: Any) -> Optional[str]:
+    """The owner principal behind a Take, as the corpus copy resolves it:
+    the Take's own column, else its project's owner (always set), else the
+    principal of its user. None when none can be read."""
+    if not take_session_id:
+        return None
+    try:
+        session = database.v2_get_session_by_id(str(take_session_id)) or {}
+    except Exception as e:  # noqa: BLE001 -- unknown reads as no yes
+        _log.info("take owner read failed: %s", e, exc_info=True)
+        return None
+    if not isinstance(session, dict):
+        return None
+    owner = str(session.get("owner_principal_id") or "")
+    project = str(session.get("project_id") or session.get("arc_id") or "")
+    reader = getattr(database, "get_project_owner_principal", None)
+    if not owner and project and reader is not None:
+        try:
+            owner = str(reader(project) or "")
+        except Exception as e:  # noqa: BLE001
+            _log.info("project owner read failed: %s", e, exc_info=True)
+    return owner or principal_for_user(database, session.get("user_id"))
+
+
+def take_holds_training_yes(database: Any, take_session_id: Any) -> bool:
+    """``holds_training_yes`` for the speaker of a Take."""
+    return holds_training_yes(database, take_principal(database, take_session_id))
+
+
+def take_may_reach_a_coach_sheet(database: Any, take_session_id: Any) -> bool:
+    """3.5 E4 (``V4_COACH_SHEETS_ENABLED``, ``COACH_BLOCK_PICK_ENABLED``):
+    a coach hears a speaker's moment to answer a question that teaches the
+    software (Privacy 3.5 §4a; the switch's fifth line), so a Take's
+    moments go on a sheet only while its speaker holds the training yes and
+    has not objected to the blind check (0454; an objection that cannot be
+    read counts as one). Composes the two existing reads; no rule of its own."""
+    if not take_holds_training_yes(database, take_session_id):
+        return False
+    from services.error_presence_audit import _objected
+
+    return not _objected(database, str(take_session_id))

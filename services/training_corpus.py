@@ -1,15 +1,24 @@
 """The training-corpus copy job (SPEC-training-corpus-and-project-purge §4, P3).
 
 After a Take is processed, and only while its owner holds an active training
-yes (`get_mlc2_training_consent_status_v2`, migration 0373), copy three kinds
+yes (`get_mlc2_training_consent_status_v2`, migration 0373), copy two kinds
 of thing into `training_corpus_items` (0375) — separate copies, never pointers:
 
-* the AUDIO SEGMENT of each Confident Voice item the speaker was shown, cut
-  from the Take's own recording and stored under `training-corpus/`;
-* its TRANSCRIPT SPAN, the words of that segment;
+* the TRANSCRIPT SPAN of each Confident Voice item the speaker was shown, the
+  words of that moment;
 * a professional COACH LABEL on it, if one exists when the job runs: the
   coach's blind judgement as the confidence chain recorded it (``ml_judgments``,
   0430), never the mixed-purpose ``confidence_labels`` (DA-PROHIBIT).
+
+TEXT AND MEASUREMENTS ONLY, NEVER AUDIO (3.5 pack, file 22 decision D1, signed
+by the founder 2026-10-08; Privacy 3.5 §4a: "no recording of your voice, and no
+clip of one, is ever copied or sent for training"). The audio branch this job
+once had (``_copy_audio``: cut each shown moment's clip and store it under
+`training-corpus/`) is removed, not switched off: nothing here reads a Take's
+audio object, downloads bytes or writes to storage. Copying audio would need its
+own consent, retention row and consent-screen design, none of which exists.
+The erasure below still deletes any stored object a row names, so a row
+written before D1 (there are none: the switch never opened) is still erased.
 
 Which items were shown is read from the frozen feedback set, which the bake or
 the first open writes a little after processing ends. If it is not there yet,
@@ -144,57 +153,9 @@ def _copy_moment(database: Any, principal: str, grant_event_id: str,
             "source_sha256": _sha(text.encode("utf-8")),
             "item_kind": "transcript_span", "content": {"text": text}}):
         copied += 1
-    if _copy_audio(database, base, snippet, snippet_id):
-        copied += 1
     if _copy_coach_label(database, base, snippet_id):
         copied += 1
     return copied
-
-
-def _copy_audio(database: Any, base: dict, snippet: dict,
-                snippet_id: str) -> bool:
-    source = database.get_take_audio_object(base["source_take_id"])
-    if not isinstance(source, dict):
-        return False
-    try:
-        from services.blind_review_media import render_blind_clip_wav
-        from services.lab_audio_storage import (
-            get_exact_storage_object_bytes, put_lab_audio_bytes,
-            storage_provider,
-        )
-
-        whole = get_exact_storage_object_bytes(
-            str(source["object_key"]), bucket=str(source["bucket"]),
-            storage_provider=str(source.get("storage_provider") or "r2"))
-        # F-8: a download of a confidence-chain object appends its
-        # verification (nothing for any other key; never fails the copy).
-        from services.object_verification import note_download
-        note_download(database, bucket=str(source["bucket"]),
-                      object_key=str(source["object_key"]), data=whole)
-        if _sha(whole) != str(source.get("exact_bytes_sha256") or ""):
-            logger.warning("training corpus: source bytes changed snip=%s",
-                           snippet_id)
-            return False
-        clip = render_blind_clip_wav(
-            whole, start_offset_ms=int(snippet.get("start_offset_ms") or 0),
-            duration_ms=int(snippet.get("duration_ms") or 0))
-        key = (f"training-corpus/{base['acquisition_principal_id']}/"
-               f"{base['training_grant_event_id']}/{snippet_id}.wav")
-        bucket = put_lab_audio_bytes(key, clip, "audio/wav")
-        provider = storage_provider()
-    except Exception as error:  # noqa: BLE001 — a missed copy is not a fault
-        logger.warning("training corpus audio copy failed snip=%s: %s",
-                       snippet_id, error)
-        return False
-    if _record(database, {
-            **base, "source_ref": f"snippet:{snippet_id}:audio",
-            "source_sha256": _sha(clip), "item_kind": "audio_segment",
-            "storage_provider": provider, "bucket": bucket,
-            "storage_key": key, "object_sha256": _sha(clip)}):
-        return True
-    # Refused (a withdrawal won the race): the bytes must not stay behind.
-    _discard(key, bucket, provider, _sha(clip))
-    return False
 
 
 #: The chain's blind coach decisions this copy keeps, as the value it
@@ -232,17 +193,6 @@ def _record(database: Any, item: dict) -> Optional[dict]:
         logger.info("training corpus item refused %s: %s",
                     item.get("source_ref"), error)
         return None
-
-
-def _discard(key: str, bucket: str, provider: str, sha256: str) -> None:
-    try:
-        from services.lab_audio_storage import delete_verified_lab_audio_object
-
-        delete_verified_lab_audio_object(
-            key, bucket=bucket, storage_provider=provider,
-            expected_sha256=sha256)
-    except Exception as error:  # noqa: BLE001
-        logger.warning("training corpus orphan left key=%s: %s", key, error)
 
 
 # ── Erasure (SPEC §6.3, P4) ────────────────────────────────────────────────
