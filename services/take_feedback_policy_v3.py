@@ -7,7 +7,6 @@ policy examines is retained as eligible or excluded with a typed reason.
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
 import logging
 import re
@@ -58,20 +57,17 @@ _VERBAL_FAMILIES = set(VERBAL_FAMILIES)
 
 
 def dark_enabled(acquisition_principal_id: Any) -> bool:
-    """True only for the exact configured founder in explicit dark mode.
+    """True for every speaker's Take in explicit dark mode.
 
     This gate decides whose Takes get a dark frame (with its pick log).
-    Any change to it is its own founder-approved change with its own test.
+    Founder S-V1 A (2026-10-07, "Yes, every speaker's Takes"), widened
+    2026-10-08 once TAKE_FEEDBACK_POLICY_V3_MODE=dark was set on every
+    service. Still fail-closed: off unless the mode is exactly "dark", and
+    never for a Take with no owner. The frame stays backend-only (AC-9).
     """
     mode = (config.TAKE_FEEDBACK_POLICY_V3_SHADOW_WRITE_MODE or "off").strip()
-    founder = (config.TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID or "").strip()
     owner = str(acquisition_principal_id or "").strip()
-    return bool(
-        mode == "dark"
-        and founder
-        and owner
-        and hmac.compare_digest(founder, owner)
-    )
+    return bool(mode == "dark" and owner)
 
 
 def pick_seed(take_id: Any) -> str:

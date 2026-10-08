@@ -143,9 +143,12 @@ def test_the_writer_requires_the_frame_and_pick_log_the_code_builds():
     assert "0441\tthe_shadow_writer_keeps_the_pick_log.sql" in manifest
 
 
-def test_dark_frames_stay_founder_only_until_widened():
+def test_dark_frames_cover_every_speaker_after_s_v1():
+    # S-V1 A (widened 2026-10-08): no founder-only comparison remains;
+    # the explicit dark mode is still required.
     from services import take_feedback_policy_v3 as v3
     import inspect
     src = inspect.getsource(v3.dark_enabled)
-    assert "TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID" in src
-    assert "compare_digest" in src
+    assert "TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID" not in src
+    assert "compare_digest" not in src
+    assert 'mode == "dark"' in src

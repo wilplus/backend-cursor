@@ -647,7 +647,7 @@ class _ChangesRun:
             return None
 
     def _v3_shadow(self) -> None:
-        # TAKE FEEDBACK V3 SHADOW. A real, founder-scoped comparison write
+        # TAKE FEEDBACK V3 SHADOW. A real comparison write (every speaker, S-V1)
         # over the complete current-Take inventory; not the serving path and
         # it cannot create a rendered exposure. Default OFF; ML/data reviews
         # these frames before any user-visible activation. Shadow evaluation

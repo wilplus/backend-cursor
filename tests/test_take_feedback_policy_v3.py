@@ -319,13 +319,19 @@ def test_invalid_rewrite_and_praise_candidates_are_frozen_not_dropped():
     }
 
 
-def test_dark_activation_is_fail_closed_and_founder_exact(monkeypatch):
+def test_dark_activation_covers_every_speaker_and_stays_fail_closed(monkeypatch):
+    # S-V1 A: every speaker's Takes, only in explicit dark mode.
     monkeypatch.setattr(Config, "TAKE_FEEDBACK_POLICY_V3_SHADOW_WRITE_MODE", "dark")
     monkeypatch.setattr(Config, "TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID", "founder")
     assert dark_enabled("founder") is True
-    assert dark_enabled("someone-else") is False
-    monkeypatch.setattr(Config, "TAKE_FEEDBACK_POLICY_V3_SHADOW_WRITE_MODE", "enabled")
-    assert dark_enabled("founder") is False
+    assert dark_enabled("someone-else") is True
+    assert dark_enabled("") is False
+    assert dark_enabled(None) is False
+    monkeypatch.setattr(Config, "TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID", "")
+    assert dark_enabled("someone-else") is True
+    for mode in ("enabled", "off", "", "Dark"):
+        monkeypatch.setattr(Config, "TAKE_FEEDBACK_POLICY_V3_SHADOW_WRITE_MODE", mode)
+        assert dark_enabled("someone-else") is False
 
 # ── merged from tests/test_take_feedback_policy_v3_integration.py (audit Q-T9) ──
 
