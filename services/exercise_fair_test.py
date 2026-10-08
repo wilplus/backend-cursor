@@ -102,6 +102,10 @@ def units_from(records: list[dict]) -> list[dict]:
             "served": str(exposure.get("exercise_id") or ""),
             "pool": [str(r.get("exercise_id")) for r in ranked],
             "odds": logged_odds(assignment),
+            # The draw it came from (top, exploration, the singleton): a
+            # candidate that learned per draw (exercise-coach-preferred-v1)
+            # chooses within it.
+            "draw": str(assignment.get("selection_mode") or "top"),
             "trace": record["trace"],
             "attempted": counted,
             "helped": bool(label(record)["helped"]) if counted else None,

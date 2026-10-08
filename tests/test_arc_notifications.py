@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import pathlib
 import unittest
-from unittest import mock
 import uuid
 
 from services.arc_notifications import (
@@ -133,10 +132,10 @@ class BestPresentationCardTests(unittest.TestCase):
     def test_no_best_presentation_is_composed_to_decide_the_card(self):
         import services.slide_selection as selection
         db = _FakeDB(sessions=self._sessions(3), snips_by_sid=self._snips(3))
-        with mock.patch.object(selection, "build_best_presentation",
-                               side_effect=AssertionError("composed")):
-            self.assertEqual(
-                maybe_fire_best_presentation_ready(db, "a1"), "transcript_ready")
+        # The builder is removed (N48.3 Q13 A), so nothing can compose.
+        self.assertFalse(hasattr(selection, "build_best_presentation"))
+        self.assertEqual(
+            maybe_fire_best_presentation_ready(db, "a1"), "transcript_ready")
 
     def test_idempotent_client_id_per_arc_and_kind(self):
         db = _FakeDB(sessions=self._sessions(3), snips_by_sid=self._snips(3))
@@ -266,10 +265,14 @@ class VoiceAlbumBubbleTests(unittest.TestCase):
 
         from routes.v2 import coach
         src = inspect.getsource(coach.v2_coach_put_confidence_label)
-        self.assertIn("_reconcile_album_after_judgement(", src)
+        # The judgment of record sets the reconcile off (W6: a plain
+        # reconsideration changes nothing of record and skips it).
+        self.assertIn("_after_coach_judgement(", src)
+        after = inspect.getsource(coach._after_coach_judgement)
+        self.assertIn("_reconcile_album_after_judgement(", after)
         hook = inspect.getsource(coach._reconcile_album_after_judgement)
         self.assertIn("reconcile_voice_album_clip", hook)
-        self.assertNotIn("fire_voice_album_ready", src + hook)
+        self.assertNotIn("fire_voice_album_ready", src + after + hook)
         self.assertFalse(
             (pathlib.Path(__file__).resolve().parents[1]
              / "services/coach_publish_delivery.py").exists())

@@ -3,14 +3,21 @@
 Door 2. One file per surface per week, written to the private release
 bucket with a manifest the job signs:
 
-  * only RELEASABLE pairs leave (services/pair_consent.py: the owner's
-    training yes, or a surface counsel said needs none), and a pair leaves
-    once, marked under its release atomically (mark_feedback_pairs_released_v1);
+  * only RELEASABLE pairs are candidates (services/pair_consent.py: the
+    owner's training yes, or a surface counsel said needs none), and each
+    candidate is decided AGAIN at release time from the sources, not the
+    weekly flag (services/pair_release_eligibility.py, PLF-P5): the yes in
+    force now, the service not ending, the project not leaving, the texts
+    fingerprinted; the decision's counts are signed inside the manifest;
+  * a pair leaves once, marked under its release atomically
+    (mark_feedback_pairs_released_v1);
   * a surface leaves only when the door is open in code AND the founder
     named the surface (Config.PAIR_RELEASE_SURFACES) by a reviewed change
     carrying his sentence; every other surface reports why it stayed;
   * the manifest carries the file's sha256, the split counts (speaker-
-    disjoint 80/10/10 by owner principal, services/dataset_releases), the
+    disjoint 80/10/10 by the owner's SPEAKER assignment,
+    ml_speaker_split_assignments through services/speaker_split.py, F-3;
+    a pair whose owner has no bound speaker yet waits for it), the
     policy versions the pairs rest on, and a hash of the owner set; the
     manifest's own sha256 is signed with the release key (HMAC-SHA256),
     so a file and its manifest can be checked against each other and
@@ -90,17 +97,22 @@ def verify(manifest_sha256: str, signature: str, key: str) -> bool:
     return hmac.compare_digest(sign(manifest_sha256, key), str(signature or ""))
 
 
-def lines_for(pairs: list) -> list[dict]:
+def lines_for(pairs: list, splits: Optional[dict] = None) -> list[dict]:
     """One JSONL record per pair: the two texts, the pattern, the model
-    version, the split by owner and the consent the pair rests on. No
-    user id, no coach id, no take: the owner is a stable split key only."""
-    from services.dataset_releases import speaker_split
+    version, the split, the consent the pair rests on as the release
+    decided it, the fingerprint of the texts and when that decision was made
+    (PLF-P5). No user id, no coach id, no take: the owner is a stable split
+    key only. ``splits`` is ``{owner: split}`` from the owners' speaker
+    assignments (services.speaker_split, F-3); export_surface passes only
+    pairs it covers."""
+    from services.pair_release_eligibility import item_sha256
+    from services.speaker_split import split_for
     out = []
     for pair in pairs:
         if not isinstance(pair, dict):
             continue
         owner = str(pair.get("owner_principal_id") or "")
-        split, _digest = speaker_split(owner) if owner else ("train", "")
+        split, _source = split_for(owner, splits or {})
         out.append({
             "pair_id": str(pair.get("id")),
             "surface": str(pair.get("surface")),
@@ -114,13 +126,15 @@ def lines_for(pairs: list) -> list[dict]:
             "consent_state": pair.get("consent_state"),
             "consent_policy_version": pair.get("consent_policy_version"),
             "recorded_at": str(pair.get("created_at") or ""),
+            "item_sha256": str(pair.get("item_sha256") or item_sha256(pair)),
+            "eligibility_decided_at": pair.get("eligibility_decided_at"),
         })
     return out
 
 
 def manifest_for(*, surface: str, week_start: date, records: list[dict],
                  file_sha256: str, owners: list[str], now: datetime,
-                 storage_key: str) -> dict:
+                 storage_key: str, eligibility: Optional[dict] = None) -> dict:
     splits: dict[str, int] = {"train": 0, "validation": 0, "test": 0}
     policies: set[str] = set()
     for record in records:
@@ -137,9 +151,16 @@ def manifest_for(*, surface: str, week_start: date, records: list[dict],
         "storage_key": storage_key,
         "split_counts": splits,
         "split_strategy": "speaker-sha256-80-10-10-v1",
+        # F-3: the split is the owner's speaker assignment, never the
+        # owner-principal hash (services/speaker_split.py).
+        "split_source": "speaker_assignment",
         "consent_policy_versions": sorted(policies),
         "owners_sha256": sha256_text("\n".join(sorted(set(owners)))),
         "owner_count": len(set(owners)),
+        # The release-time decision (PLF-P5): inside the signed hash, so the
+        # record of who was checked, when and why some stayed out cannot be
+        # changed without breaking the signature.
+        "eligibility": eligibility,
     }
 
 
@@ -160,14 +181,39 @@ def export_surface(database: Any, storage: Any, *, surface: str,
         return {"surface": surface, "exported": 0, "waiting": waiting, "why": reason}
     if not pairs:
         return {"surface": surface, "exported": 0, "waiting": 0, "why": "nothing releasable waiting"}
-    records = lines_for(pairs)
+    # The weekly flag only nominates a pair; the release decides it afresh
+    # (PLF-P5): the yes in force now, the service not ending, the project
+    # not leaving, the texts fingerprinted. A source that cannot be read
+    # raises here, before anything is written, and nothing leaves.
+    from services.pair_consent import CONSENT_REQUIRED_SURFACES
+    from services.pair_release_eligibility import decide, summary_words
+    decision = decide(database, pairs, surface=surface,
+                      required_surfaces=CONSENT_REQUIRED_SURFACES, now=now)
+    pairs = decision["eligible"]
+    if not pairs:
+        return {"surface": surface, "exported": 0, "waiting": waiting,
+                "why": summary_words(decision["summary"]),
+                "eligibility": decision["summary"]}
+    # F-3: only a pair whose owner's speaker has an assignment leaves, under
+    # that assignment; the rest wait for the binding the training yes makes.
+    # How many eligible pairs waited is signed with the decision.
+    from services.speaker_split import WAITING_REASON, speaker_splits
+    splits = speaker_splits(database, [p.get("owner_principal_id") for p in pairs])
+    unbound = sum(1 for p in pairs if str(p.get("owner_principal_id") or "") not in splits)
+    pairs = [p for p in pairs if str(p.get("owner_principal_id") or "") in splits]
+    eligibility = {**decision["summary"], "waiting_for_speaker": unbound}
+    if not pairs:
+        return {"surface": surface, "exported": 0, "waiting": waiting,
+                "why": WAITING_REASON, "eligibility": eligibility}
+    records = lines_for(pairs, splits)
     body = "\n".join(_json(r) for r in records) + "\n"
     file_sha = sha256_text(body)
     owners = [str(p.get("owner_principal_id")) for p in pairs if p.get("owner_principal_id")]
     key = storage_key_for(surface, week_start)
     bucket = str(getattr(config, "R2_PAIR_RELEASE_BUCKET")).strip()
     manifest = manifest_for(surface=surface, week_start=week_start, records=records,
-                            file_sha256=file_sha, owners=owners, now=now, storage_key=key)
+                            file_sha256=file_sha, owners=owners, now=now, storage_key=key,
+                            eligibility=eligibility)
     manifest_sha = sha256_text(_json(manifest))
     signature = sign(manifest_sha, str(getattr(config, "PAIR_RELEASE_SIGNING_KEY")))
     key_id = str(getattr(config, "PAIR_RELEASE_SIGNING_KEY_ID", "pair-release-key-1"))
@@ -188,8 +234,12 @@ def export_surface(database: Any, storage: Any, *, surface: str,
     release_id = str((release or {}).get("id") or "")
     database.insert_pair_release_owners(release_id, owners)
     marked = database.mark_feedback_pairs_released(release_id, [str(p["id"]) for p in pairs])
-    return {"surface": surface, "exported": int(marked), "waiting": 0,
-            "release_id": release_id, "manifest_sha256": manifest_sha}
+    out = {"surface": surface, "exported": int(marked), "waiting": waiting - int(marked),
+           "release_id": release_id, "manifest_sha256": manifest_sha,
+           "eligibility": eligibility}
+    if unbound:
+        out["why_waiting"] = WAITING_REASON
+    return out
 
 
 def sweep_voided(database: Any, storage: Any) -> dict:

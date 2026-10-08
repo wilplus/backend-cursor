@@ -195,7 +195,7 @@ def _confidence_review_status_map(arc_id, moments):
 # (founder 2026-08-10: "older feedback system should be ripped off"). It had
 # no FE caller and no BFF proxy — the audits product it served is retired,
 # and the explore GET below is the one ideal-text read. Its builder
-# (services/ideal_text_report.py) stays for its own callers/tests.
+# (services/ideal_text_report.py) is removed too (N48.3 Q13 A).
 
 
 def _instant_ideal_enabled() -> bool:
@@ -384,8 +384,9 @@ def _ideal_piece_provenance_legacy_cache(arc_id):
             continue
         _edited = (s.get("text") or "").strip()
         _verbatim = (s.get("verbatim") or "").strip()
-        # Mirror assemble_ideal_text_block's paragraph filter exactly —
-        # a pick it skipped must not shift the alignment here.
+        # Mirror the (removed, N48.3 Q13 A) best-of assembly's paragraph
+        # filter exactly — a pick it skipped must not shift the alignment
+        # of a document it built.
         if not ((_verbatim if _polish_on else _edited) or _edited):
             continue
         out.append({
@@ -780,7 +781,7 @@ def v2_explore_get_ideal_text_enrichment(arc_id):
 
     def journey_section():
         from services.coach_message_read import journey_payload
-        return journey_payload(db, actor_id, arc_id, take_count, sessions)
+        return journey_payload(db, actor_id, arc_id, take_count, sessions, core.get("latest_take_session_id"))
 
     take_count = int(core.get("take_count") or 0)
     readers = {

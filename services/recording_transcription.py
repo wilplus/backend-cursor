@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from services.recording_state import RecordingState
 
@@ -152,6 +152,64 @@ def _normalize_words(
     return normalized
 
 
+def recording_provider_adapter(
+    database: Any,
+    authorization: Any,
+    *,
+    session_id: str,
+    recording_id: Optional[str],
+    user_id: Optional[str],
+) -> Any:
+    """The ONE authorized provider adapter for a recording's provider calls.
+
+    Built exactly as the live transcription stage builds it, and shared with
+    the founder's measurement script (scripts/measure_transcripts.py, D-ML-1)
+    so a measurement can never reach the provider by a second path. With the
+    Phase-1 gate enforced, a training-corpus import runs under the founder's
+    corpus basis (N58, 0435) and anything else under the recording owner's
+    resolved acquisition principal; an owner that cannot be resolved is a
+    terminal refusal. With the gate off, the adapter carries the inactive
+    marker the pipeline has always carried.
+    """
+    from services.authorized_provider import (
+        AuthorizedProviderAdapter,
+        ProviderCoordinates,
+        corpus_import_adapter,
+    )
+
+    if authorization.enforced:
+        session = database.v2_get_session_by_id(session_id) or {}
+        # A training-corpus import: the founder's corpus basis (N58,
+        # 0435), never a principal.
+        adapter = corpus_import_adapter(
+            database, session, take_id=session_id,
+            recording_id=recording_id)
+        if adapter is not None:
+            return adapter
+        principal_id = authorization.resolve_acquisition_principal(
+            str(session.get("owner_principal_id") or ""),
+            user_id=user_id,
+            recording_id=recording_id,
+        )
+        if not principal_id:
+            from services.processing_authorization import ProcessingAuthorizationError
+            raise ProcessingAuthorizationError(
+                "PROCESSING_PRINCIPAL_UNRESOLVED",
+                "The recording owner could not be resolved.", 403,
+            )
+    else:
+        principal_id = "phase1-gate-inactive"
+    return AuthorizedProviderAdapter(
+        database,
+        ProviderCoordinates(
+            acquisition_principal_id=principal_id,
+            take_id=session_id,
+            recording_id=recording_id,
+        ),
+        authorization=authorization,
+    )
+
+
 def transcribe_recording(
     state: RecordingState,
     *,
@@ -159,38 +217,16 @@ def transcribe_recording(
 ) -> RecordingState:
     """Return a new state containing the normalized Whisper transcript."""
     try:
-        from services.authorized_provider import (
-            AuthorizedProviderAdapter,
-            ProviderCoordinates,
-        )
         from services.db import db
         from services.processing_authorization import ProcessingAuthorizationService
 
         authorization = ProcessingAuthorizationService(db)
         whisper_bytes, whisper_name = _transcription_audio(state, log=log)
-        if authorization.enforced:
-            session = db.v2_get_session_by_id(state.session_id) or {}
-            principal_id = authorization.resolve_acquisition_principal(
-                str(session.get("owner_principal_id") or ""),
-                user_id=str(state.user_id) if state.user_id else None,
-                recording_id=state.recording_id,
-            )
-            if not principal_id:
-                from services.processing_authorization import ProcessingAuthorizationError
-                raise ProcessingAuthorizationError(
-                    "PROCESSING_PRINCIPAL_UNRESOLVED",
-                    "The recording owner could not be resolved.", 403,
-                )
-        else:
-            principal_id = "phase1-gate-inactive"
-        adapter = AuthorizedProviderAdapter(
-            db,
-            ProviderCoordinates(
-                acquisition_principal_id=principal_id,
-                take_id=state.session_id,
-                recording_id=state.recording_id,
-            ),
-            authorization=authorization,
+        adapter = recording_provider_adapter(
+            db, authorization,
+            session_id=state.session_id,
+            recording_id=state.recording_id,
+            user_id=str(state.user_id) if state.user_id else None,
         )
         transcription = adapter.transcribe_audio(
             whisper_bytes,

@@ -272,6 +272,79 @@ def mixed_label_queue(snippets: Any, *,
     ]
 
 
+#: The corpus queue's own rows (founder 2026-10-06, CO1 A, N56.4).
+CORPUS_SELECTION_POLICY_VERSION = "corpus-v3-block-pair-v1"
+REASON_BLOCK_PICK = "v3_block_pick"
+REASON_BLOCK_RIVAL = "v3_block_rival"
+
+
+def _block_pairs(rows_by_id: dict, spotting: Any, seed: str) -> list:
+    """Per V3 block, its pick and one rival from the same block: the choice
+    V3 made, put in front of the coach blind. The rival is a uniform hash
+    draw among the block's other clips, so its probability is exact."""
+    chosen: list[tuple[dict, str, float]] = []
+    taken: set[str] = set()
+    blocks = spotting.get("blocks") if isinstance(spotting, dict) else None
+    for block in blocks or []:
+        if not isinstance(block, dict):
+            continue
+        pick = str(block.get("selected_snippet_id") or "")
+        if pick not in rows_by_id or pick in taken:
+            continue
+        chosen.append((rows_by_id[pick], REASON_BLOCK_PICK, 1.0))
+        taken.add(pick)
+        rivals = sorted(
+            {str(s) for s in block.get("snippet_ids") or []
+             if str(s) in rows_by_id and str(s) not in taken},
+            key=lambda sid: _selection_key(seed, rows_by_id[sid], "block-rival"))
+        if rivals:
+            chosen.append((rows_by_id[rivals[0]], REASON_BLOCK_RIVAL,
+                           1.0 / len(rivals)))
+            taken.add(rivals[0])
+    return chosen
+
+
+def corpus_label_queue(snippets: Any, spotting: Any = None, *,
+                       target_size: int = DEFAULT_QUEUE_SIZE,
+                       seed: str = "") -> list:
+    """The label queue of an imported talk: V3's choices, then the mixed
+    queue (founder 2026-10-06, CO1 A, N56.4).
+
+    For every block of the import's V3 spotting (``services.corpus_spotting``)
+    the queue holds the block's pick AND one rival clip of the same block,
+    so the coach judges, blind, the moments V3 chose among, and a pick can
+    be compared with what it was preferred to. Every other clip then goes
+    through ``mixed_label_queue`` at ``target_size``, unchanged, which keeps
+    its boundary, balance and random-exploration slices (the last remains
+    the unbiased evaluation window).
+
+    With no spotting, or no block whose pick is a known clip, this IS
+    ``mixed_label_queue``. The final order is the same blind hash order, so
+    neither a block nor its pick can be read off the position. Each row's
+    ``_selection`` (reason ``v3_block_pick`` / ``v3_block_rival``, its exact
+    probability) is server-side only: ``queue_payload`` drops it.
+    """
+    rows = _unique_rows(snippets)
+    rows_by_id = {str(row["id"]): row for row in rows}
+    pairs = _block_pairs(rows_by_id, spotting, seed)
+    if not pairs:
+        return mixed_label_queue(rows, target_size=target_size, seed=seed)
+    taken = {str(row["id"]) for row, _reason, _p in pairs}
+    mixed = mixed_label_queue(
+        [row for row in rows if str(row["id"]) not in taken],
+        target_size=target_size, seed=seed)
+    out = [
+        {**row, "_selection": {
+            "policy_version": CORPUS_SELECTION_POLICY_VERSION,
+            "reason": reason,
+            "sampling_probability": round(float(probability), 6),
+        }}
+        for row, reason, probability in pairs
+    ] + mixed
+    out.sort(key=lambda row: _selection_key(seed, row, "blind-order"))
+    return out
+
+
 def selection_records(selected: Any) -> list[dict]:
     """Persistable queue provenance, separate from the blind payload."""
     out: list[dict] = []

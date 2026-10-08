@@ -170,6 +170,14 @@ step "Mypy (type-check)" "$VENV/bin/mypy" .
 step "Complexity ratchet" "$PY" scripts/complexity_ratchet.py
 step "Silent-except ratchet" "$PY" scripts/except_ratchet.py
 
+# Audit ledger (row X1). Same condition and same base as the workflow step.
+ledger_check() {
+  [ -f docs/audit/LEDGER.md ] || { echo "no docs/audit/LEDGER.md — skipped"; return 0; }
+  git fetch -q --depth=1 origin main 2>/dev/null || true
+  "$PY" scripts/ledger_check.py --base origin/main
+}
+step "Audit ledger check" ledger_check
+
 # Minimal placeholder env, same as the workflow: enough that import-time
 # guards don't hard-crash, and useless for reaching anything real.
 # CI=1 is what GitHub Actions exports on its own; tests marked CI-only (the

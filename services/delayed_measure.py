@@ -10,6 +10,12 @@ better (the quorum-settled ladder, after above before), who may not vote
 (the speaker; the coach who handled the moment; anyone already exposed).
 Fallback rungs and rewrite practices are excluded. Nothing here reaches a
 speaker, and nothing here trains anything.
+
+Since Q-B11 A (founder 2026-10-07, N62) the pair has no door into any
+queue: it rode the Voice Album share switch (Q3-A), which is retired, and
+the Lend your ear set that served its clips is gone. ``clips_for_listener``
+has no caller; where the measure's clips may be judged, if anywhere, is a
+founder decision this module does not take.
 """
 from __future__ import annotations
 

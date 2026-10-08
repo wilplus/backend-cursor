@@ -82,6 +82,15 @@ PROJECT_SELECTORS: Mapping[str, tuple[str, str]] = {
     "practice_object_metadata": ("practice_attempt_id", "practice_attempt"),
     "coaching_sessions": ("source_snippet_id", "snippet"),
     "coaching_attempts": ("snippet_id", "snippet"),
+    # Retention schedule v1.4's product records whose rows name the project
+    # (arc_id): deleted with it. Placed only while product-records-v1 is
+    # active; until then they count as unplaced, exactly as before v1.4.
+    "moment_unlocks_review": ("arc_id", "project"),
+    "arc_deliveries_review": ("arc_id", "project"),
+    # A share by its owner (0432): the shares of this project's Takes.
+    "take_shares_by_owner": ("take_session_id", "take"),
+    # What the walk showed of this project's Takes (0439).
+    "coach_feedback_seen_by_owner": ("take_session_id", "take"),
 }
 
 #: Account-keyed dependencies that belong to the person, not to a project:
@@ -110,11 +119,49 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     "coach_readings",
     # A rater's own answers on others' clips (0410): the rater's account.
     "lend_your_ear_answers", "delayed_measure_votes",
+    # Communities (0432): a listener's own answers, a membership, and a
+    # private community its creator set up belong to the account; the
+    # Take-keyed answers and shares go with the Take under their own codes.
+    "community_answers_by_listener", "community_members", "communities_created",
+    # The signed line last shown per bank (0438): the speaker's, not a
+    # project's.
+    "line_bank_memory",
     # A coach's own choices, blind answers and exposures (0411): the
     # coach's account; the Take-keyed twins of three of them go with the
     # Take under their own codes.
     "coach_exercise_preference_by_coach", "error_presence_audit_by_coach",
     "coach_block_pick_by_coach", "coach_clip_exposures",
+    # A coach asked to listen again (0444): the coach's own ask belongs to
+    # the coach's account; the Take-keyed twin goes with the Take.
+    "coach_listen_again_requests_by_coach",
+    # A coach's diagnosis of a moment (0445): the coach's own judgement
+    # belongs to the coach's account; the Take-keyed twin goes with the Take.
+    "coach_moment_diagnoses_by_coach",
+    # Who first named a coach-named error (0445): the coach's user id on
+    # shared library content; cleared with the coach's account, never with
+    # a project.
+    "coach_named_errors_named_by",
+    # Retention schedule v1.4: product records and job evidence that name
+    # only the person, never a project. Deleted with the account (or kept
+    # 12 months as job evidence); a project purge leaves them. Placed only
+    # while their rule is active; until then they count as unplaced and a
+    # row there stops a project purge for review, exactly as before v1.4.
+    "coach_ai_review", "content_exposure_review", "student_profile_review",
+    "student_memory_review", "student_overrides_review",
+    "student_post_questions_review", "admin_session_override_review",
+    "admin_archive_review", "admin_student_draft_review",
+    "admin_annotation_review", "admin_annotation_log_review",
+    "confidence_rereview", "dimension_evaluation_review",
+    "intervention_arm_review", "coaching_directives_review",
+    "life_consent_review", "life_setup_review", "life_notes_review",
+    "life_cases_review", "life_items_review", "life_strategy_review",
+    "life_proposals_review", "life_applications_review", "life_days_review",
+    "life_weeks_review", "life_period_reviews_review",
+    "life_setup_documents_review", "life_push_subscriptions_review",
+    "life_reminder_settings_review", "life_reminder_log_review",
+    "life_user_copy_review",
+    "few_shot_review", "copilot_upload_jobs_review",
+    "feedback_language_delivery_materialization_jobs",
 })
 
 #: Rows with no project column of their own that the take-record wipe
@@ -122,6 +169,9 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
 #: counts in its `not_blank` check: code -> the parent's code.
 WIPED_WITH_PARENT: Mapping[str, str] = {
     "canonical_acoustics": "evidence_spans",
+    # A speaker's skips (N12, 0448): the owner rows of feedback_revisions
+    # hang off the project's own evidence spans.
+    "feedback_revision_owner_raters": "evidence_spans",
 }
 
 #: Held by a project but outliving it under a rule that does not exist yet:
@@ -248,12 +298,19 @@ class ProjectPurgeOrchestrator(DataPurgeOrchestrator):
                      "dependency_code": code},
                 )
             return None
-        remapped = self._dependency(code) or dependency
+        placed = (
+            code in PROJECT_SELECTORS or code in ACCOUNT_LEVEL
+            or code in WIPED_WITH_PARENT
+        )
+        decided, _rule = self._decided(dependency, existing_relations)
+        if dependency.ruled_by and decided.disposition == "external_review":
+            # A v1.4 dependency whose rule is not active is the unplaced
+            # external_review entry it was before v1.4, and is counted so.
+            placed = False
+        remapped = (self._dependency(code) or dependency) if placed else dependency
         if (
             dependency.locator_kind in _ACCOUNT_LOCATORS
-            and code not in PROJECT_SELECTORS
-            and code not in ACCOUNT_LEVEL
-            and code not in WIPED_WITH_PARENT
+            and not placed
             and dependency.relation in existing_relations
         ):
             held_by_account = self._count(

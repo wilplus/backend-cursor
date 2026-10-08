@@ -31,7 +31,7 @@ founder re-lock 2026-08-13** — never reintroduce it; a CI probe and
 - **backend-cursor** — Flask + Supabase (Postgres, RLS) on **Railway**.
   Processes: web (`bin/railway-web.sh`), worker
   (`bin/railway-worker.sh`), and cron services (devbugs, drift,
-  life-reminders, learning-weekly — `bin/railway-*-cron.sh`,
+  life-reminders, learning-weekly, retention-cleaner — `bin/railway-*-cron.sh`,
   `Dockerfile.*-cron`, `Procfile`; the annotation-export cron was retired
   2026-09-30). **The two MLC-3 monitor cron services (founder canary,
   general service — `bin/railway-mlc3-*-monitor.sh`) are retired with the

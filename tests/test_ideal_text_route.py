@@ -1,9 +1,8 @@
 """GET /v2/talks/<talk_id>/ideal-text — ROUTE-level test of the
 coach_finalized content gate. (The 402 paywall that used to compose with this
 gate was retired with the single-deliverable flag — the ideal text is free
-now.) Only the service function was covered before this file — see
-test_ideal_text_report.py for the pure build_ideal_text_report mapping tests,
-and test_best_presentation.py's CoachFinalizedGateTests for the gate itself.
+now.) The report builder and the Best Presentation builder it read are
+removed too (N48.3 Q13 A).
 
 Run: python3 -m unittest tests.test_ideal_text_route
 """
@@ -44,10 +43,8 @@ def _snip(sid):
 class TalksRouteIsDeletedTests(unittest.TestCase):
     """/talks/<talk_id>/ideal-text is GONE (founder 2026-08-10: "older
     feedback system should be ripped off") — it had no FE caller and the
-    audits product it served is retired. The coach_finalized content gate
-    the old composition tests exercised through it stays covered where it
-    lives: test_best_presentation.py's CoachFinalizedGateTests (the gate)
-    and test_ideal_text_report.py (the pure builder mapping)."""
+    audits product it served is retired. Its builder and the Best
+    Presentation builder behind it are removed (N48.3 Q13 A)."""
 
     def test_the_route_function_is_gone_from_the_aggregator(self):
         # The aggregator itself is gone (audit Q-A3); nothing can re-export it.
@@ -57,61 +54,6 @@ class TalksRouteIsDeletedTests(unittest.TestCase):
     def test_the_route_function_is_gone_from_its_module(self):
         from routes.v2 import explore_ideal_text
         self.assertFalse(hasattr(explore_ideal_text, "v2_talk_ideal_text"))
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class PencilEditRichFormatTests(unittest.TestCase):
-    """Backlog 1.7 (B6): the pencil-edit route passes the marker subset
-    (**b** *i* __u__ ==hl==) through as plain text and strips raw HTML."""
-
-    def setUp(self):
-        self.app = Flask(__name__)
-        self._saved = {}
-
-        def _upsert(arc_id, index, text, user_id=None):
-            self._saved["text"] = text
-            return True
-
-        self._p = [
-            patch("routes.v2.arcs._arc_owned_by_caller", lambda a: (True, [])),
-            patch.object(db, "upsert_best_presentation_edit", _upsert),
-        ]
-        for p in self._p:
-            p.start()
-
-    def tearDown(self):
-        for p in self._p:
-            p.stop()
-
-    def _call(self, text):
-        with self.app.test_request_context(json={"text": text}):
-            request.user_id = "u1"
-            resp, status = v2_arcs.v2_explore_arc_edit_slide.__wrapped__("a1", 0)
-            return resp.get_json(), status
-
-    def test_marker_subset_passes_through(self):
-        _, status = self._call("**bold** and *italic* and __under__ ==hl==")
-        self.assertEqual(status, 200)
-        self.assertEqual(self._saved["text"],
-                         "**bold** and *italic* and __under__ ==hl==")
-
-    def test_html_tags_stripped(self):
-        _, status = self._call('<script>x()</script>**keep** <b>drop tags</b>')
-        self.assertEqual(status, 200)
-        self.assertNotIn("<", self._saved["text"])
-        self.assertIn("**keep**", self._saved["text"])
-        self.assertIn("drop tags", self._saved["text"])  # inner text kept
-
-    def test_tags_only_body_is_400(self):
-        body, status = self._call("<b></b><i></i>")
-        self.assertEqual(status, 400)
-
-    def test_tags_cannot_smuggle_past_length_cap(self):
-        # Post-strip length is what the cap checks.
-        _, status = self._call("<b>" + "x" * 2000 + "</b>")
-        self.assertEqual(status, 200)  # exactly at cap after strip
-        _, status = self._call("<b>" + "x" * 2001 + "</b>")
-        self.assertEqual(status, 400)
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")

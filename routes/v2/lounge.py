@@ -83,7 +83,13 @@ def v2_user_lounge_messages_get():
         rows_desc = db.get_lounge_messages_page(
             request.user_id, limit=limit, before=before,
         )
-        return jsonify(shape_lounge_page(rows_desc, limit)), 200
+        page = shape_lounge_page(rows_desc, limit)
+        if before is None:
+            # The Ideal Text bubble's "new" (D-FW-5, walk lock flow 1): one
+            # yes/no per project, never a count; {} when it cannot be read.
+            from services.coach_feedback_signal import lounge_flags
+            page["new_coach_feedback"] = lounge_flags(db, request.user_id)
+        return jsonify(page), 200
 
     except Exception as e:
         logger.error(
@@ -188,3 +194,20 @@ def v2_user_lounge_messages_delete():
             "code": "V2_ERROR",
             "error": "Failed to clear lounge thread",
         }), 500
+
+
+@v2_bp.route("/user/coach-feedback/seen", methods=["POST"])
+@require_auth
+def v2_user_coach_feedback_seen():
+    """The walk showed the speaker a coach item (D-FW-5): the Take's coach
+    note (body {take_session_id}) or one moment (body {take_session_id,
+    snippet_id}). Clears the Lounge bubble's "new" for that item until the
+    coach publishes something newer.
+
+    Responses: 200 {"seen": true}; 400 INVALID_INPUT; 404 NOT_FOUND (not the
+    caller's Take); 500 V2_ERROR."""
+    from services.coach_feedback_signal import mark_seen
+
+    status, body = mark_seen(db, request.user_id,
+                             request.get_json(silent=True))
+    return jsonify(body), status

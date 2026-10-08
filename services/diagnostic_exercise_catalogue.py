@@ -61,10 +61,28 @@ _REQUIRED_TEXT = (
 # nullability, and a later save that fills them in is an ordinary update.
 _OPTIONAL_TEXT = ("instruction", "introduction_copy")
 
+# ONE FIRED PROBLEM IS THE FIT (contract 35g-1, founder 2026-09-28, D1/D5;
+# C4, founder 2026-09-30). An exercise is offered when a detected problem it
+# targets fired on that exact clip: its main target for an exact fit, one of
+# its secondary targets for a trial. Matching never reads
+# `requires_multiple_acoustic_signals` (services.confident_voice_practice
+# ranks by exercise_fit alone); the legacy rush lane's two-or-three signal
+# gate is a property of the CLIP (exercise_eligibility), not of an exercise.
+# The default said `true` from the first single-exercise catalogue, so every
+# coach exercise filed from the walk claimed to need several signals while
+# the next speaker with its one pattern was served it anyway. It now says
+# what routing does (W6, 2026-10-05), and a row that names a main target is
+# stored `false` whatever the client mirrored.
 DEFAULT_MATCHING_CRITERIA = {
-    "requires_multiple_acoustic_signals": True,
+    "requires_multiple_acoustic_signals": False,
     "max_per_take": 1,
 }
+
+#: The doors a coach saves through (exercise_versions.SOURCES minus the
+#: retired CMS). A NEW exercise from any of them must name its main error
+#: (founder 2026-09-30, E5; build plan P2-4).
+COACH_SOURCES = ("coach_panel", "coach_request", "coach_review")
+MAIN_TARGET_MESSAGE = "Name the one pattern this exercise is written for."
 DEFAULT_EXCLUSIONS = {
     "exclude_noise": True,
     "exclude_semantic_or_structural_issue": True,
@@ -193,6 +211,11 @@ def _targeting(fields: dict, database: Any) -> dict:
             "matching_criteria.primary_problem_tag: must be one of this "
             "exercise's own acoustic_problem_tags — a main target it does not "
             "claim would make it the exact fit for nothing")
+    if primary is not None:
+        # The main target firing is the whole fit (35g-1): never a claim
+        # that several signals are needed (see DEFAULT_MATCHING_CRITERIA).
+        row["matching_criteria"] = {**row["matching_criteria"],
+                                    "requires_multiple_acoustic_signals": False}
 
     version = fields.get("version", 1)
     if not isinstance(version, int) or isinstance(version, bool) or version < 1:
@@ -273,20 +296,68 @@ def _avatar(fields: dict) -> dict:
     return {"avatar_training_eligible": True, "avatar_setup_label": label}
 
 
-def validate_exercise(database: Any, body: Any) -> dict:
+def fold_main_target(fields: dict) -> dict:
+    """``main_target`` is the short way to name it: folded into
+    ``matching_criteria.primary_problem_tag`` (over the defaults when no
+    criteria were sent) and into the tags when missing, the request lane's
+    rule since 2026-09-30, now the catalogue's for every door."""
+    target = fields.pop("main_target", None)
+    if not isinstance(target, str) or not target.strip():
+        return fields
+    target = target.strip()
+    supplied = fields.get("matching_criteria")
+    criteria = dict(supplied) if isinstance(supplied, dict) \
+        else dict(DEFAULT_MATCHING_CRITERIA)
+    criteria["primary_problem_tag"] = target
+    fields["matching_criteria"] = criteria
+    raw = fields.get("acoustic_problem_tags")
+    tags = [t for t in (raw if isinstance(raw, list) else []) if isinstance(t, str)]
+    if target not in tags:
+        fields["acoustic_problem_tags"] = [target, *tags]
+    return fields
+
+
+def _main_target_of(row: Any) -> Optional[str]:
+    criteria = row.get("matching_criteria") if isinstance(row, dict) else None
+    target = criteria.get("primary_problem_tag") if isinstance(criteria, dict) else None
+    return target if isinstance(target, str) and target.strip() else None
+
+
+def _require_main_target(database: Any, row: dict, source: str) -> None:
+    """A NEW COACH EXERCISE NAMES ITS MAIN ERROR (founder 2026-09-30, E5;
+    build plan P2-4), on every door a coach saves through: the walk's upload
+    seam and the Library (both ``/coach/exercises``, with or without the
+    video), the request's own exercise and the practice review's. It was
+    held by the frontend alone on the doors the walk uses. An exercise that
+    already names one cannot lose it; a library row from before the rule,
+    which names none, may still be edited without one."""
+    if source not in COACH_SOURCES or _main_target_of(row):
+        return
+    reader = getattr(database, "get_diagnostic_exercise", None)
+    existing = reader(row["exercise_id"]) if reader is not None else None
+    if isinstance(existing, dict) and not _main_target_of(existing):
+        return
+    raise CatalogueRefusal(MAIN_TARGET_MESSAGE, code="MAIN_TARGET_REQUIRED")
+
+
+def validate_exercise(database: Any, body: Any, *, source: str = "cms") -> dict:
     """The row a save would write, or CatalogueRefusal -- without writing.
 
     Split out so a door that stores something BEFORE the save (the coach
     panel's video, uploaded and then saved as the new version) can refuse a
-    bad definition first and leave nothing behind in storage.
+    bad definition first and leave nothing behind in storage. ``source`` is
+    the door (exercise_versions.SOURCES); a coach's door holds a new
+    exercise to its main error (``_require_main_target``).
     """
-    fields: dict = body if isinstance(body, dict) else {}
-    return {
+    fields: dict = fold_main_target(dict(body)) if isinstance(body, dict) else {}
+    row = {
         **_identity(fields),
         **_targeting(fields, database),
         **_placement(fields, database),
         **_avatar(fields),
     }
+    _require_main_target(database, row, source)
+    return row
 
 
 def save_exercise(
@@ -309,7 +380,7 @@ def save_exercise(
     the save came through (cms, coach_panel, coach_request, coach_review).
     """
     from services.exercise_versions import next_version, record_version
-    row = validate_exercise(database, body)
+    row = validate_exercise(database, body, source=source)
     reader = getattr(database, "get_diagnostic_exercise", None)
     before = reader(row["exercise_id"]) if reader is not None else None
     row["version"] = next_version(before, row)

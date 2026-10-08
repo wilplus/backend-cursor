@@ -51,6 +51,12 @@ Done when:
 
 ### B2 — The helper words step opens on Yes and In-between only.
 
+> **Amended 2026-10-07 (decisions log N52.2; contract 24e).** Inside the
+> Feedback walk the helper-words step follows a praise, or a practise whose
+> try the machine reads as praise; the judgements come after the
+> practising, under "Judgement time!". B2 stands as written outside the
+> walk and until the walk's switch.
+
 Done when:
 
 - [ ] Judging Not sure in the walk: no "Choose your helper words" step; the sheet moves on.
@@ -66,6 +72,10 @@ Done when:
 - [ ] A phrase saved before this change with more than four words is displayed unchanged.
 - [ ] Recording Mode shows the cue on one or two lines at the large size, never as a paragraph.
 - [ ] Contract 13 states the limit of four.
+
+*Amended 2026-10-06 (founder, Navigation Panel QA8 B; ledger A005; decisions log N51): exception to the third line — a phrase saved before the four-word limit is shown whole in Recording Mode, even where that takes more than two lines. The limit of four and the other lines stand.*
+
+*Amended 2026-10-06 (founder, Navigation Panel QA4 A; ledger A004a, A004b; decisions log N51): B3's tap-by-tap model stands — each tap adds one word, the fifth tap does nothing and the untapped words grey out. The 26 September two-tap rule (the run-based picking A004a and A004b describe) is retired; the designer rebuilds the picker to this lock.*
 
 ### B4 — Helper words have their own overlay.
 
@@ -170,6 +180,11 @@ Done when:
 *Amended 2026-10-05 (founder, decisions log N48.3 Q10 A): "Your coach is working on your exercise." shows only while a coach is active.*
 
 ### D2 — No attempt cap.
+
+> **Amended 2026-10-07 (decisions log N54.2, N55 CM3b A; contract 29a).**
+> Inside the Feedback walk the practise loop stops after the third try that
+> is not praise, with a signed thank-you line, and moves on to "Judgement
+> time!". D2 stands as written outside the walk and until the walk's switch.
 
 Done when:
 

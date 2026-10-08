@@ -112,6 +112,36 @@ def test_answered_rows_always_stay_and_a_withheld_moment_takes_its_note():
     assert ids == ["done", "c1", "c2", "w1", "n-done"]
 
 
+def test_a_paragraph_whose_helper_words_were_deleted_serves_its_answer():
+    """N48.2 Q6 A (lock B4-5): after Delete the paragraph rejoins the walk
+    at once on its earlier answer. The window keeps an answered moment on
+    any paragraph, saved or not, so the answer is there to show; the
+    Delete unlocks the paragraph and clears its words, it leaves the saved
+    set, and the praise riding its answered moment is served again. The
+    answer itself is never re-opened: it stays answered."""
+    from services.ideal_text_changes import saved_paragraphs
+
+    rows = [_m("yes", 0, "confident", 0.9, status="approved"),
+            _note("praise", 0, family="praise"),
+            _m("c1", 100, "confident", 0.8)]
+    locked = [{"id": "p0", "locked_at": "t", "root_phrase": "my words"},
+              {"id": "p1"}]
+    before = window_rows(rows, paragraph_of=_para,
+                         saved_paragraphs=saved_paragraphs(locked, set()),
+                         score_of=_score)
+    assert [r["id"] for r in before] == ["yes", "c1"]
+    # The Delete: the words and the lock go (set_ideal_text_part_lock clears
+    # the root with the lock; slide_helper_words.lock drops the Slide rows).
+    deleted = [{"id": "p0", "locked_at": None, "root_phrase": None},
+               {"id": "p1"}]
+    assert saved_paragraphs(deleted, set()) == set()
+    after = window_rows(rows, paragraph_of=_para,
+                        saved_paragraphs=saved_paragraphs(deleted, set()),
+                        score_of=_score)
+    assert [r["id"] for r in after] == ["yes", "praise", "c1"]
+    assert after[0]["status"] == "approved"
+
+
 def test_the_score_never_reaches_the_served_row():
     rows = [_m("c1", 0, "confident", 0.9)]
     out = window_rows(rows, paragraph_of=_para, saved_paragraphs=set(),

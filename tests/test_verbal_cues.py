@@ -192,19 +192,49 @@ class ShadowRoutesNothingTests(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "ALREADY_IN_SHADOW")
 
 
+def _answers(yes_fired: int, yes_quiet: int, *, no: int = 0, version="verbal-cues-v1",
+             probability=0.5):
+    """Blind audit rows for one cue: Yes on clips the detector fired on,
+    Yes on clips it stayed quiet on, and some No answers."""
+    rows = [{"answer": "yes", "fired_at_sampling": True, "detector_version": version,
+             "sampling_probability": probability} for _ in range(yes_fired)]
+    rows += [{"answer": "yes", "fired_at_sampling": False, "detector_version": version,
+              "sampling_probability": probability} for _ in range(yes_quiet)]
+    rows += [{"answer": "no", "fired_at_sampling": True, "detector_version": version,
+              "sampling_probability": probability} for _ in range(no)]
+    return rows
+
+
 class ValidationTests(unittest.TestCase):
     _OBS = [{"snippet_id": "a", "fired": True}, {"snippet_id": "b", "fired": False},
             {"snippet_id": "c", "fired": True}, {"snippet_id": "d", "fired": False}]
 
-    def test_caught_is_measured_against_coach_named_moments(self):
-        summary = validation.summarise(self._OBS, [
-            {"snippet_id": "a"}, {"snippet_id": "b"}, {"snippet_id": "zz"}])
+    def test_caught_is_measured_against_the_coaches_yes_in_the_blind_audit(self):
+        """N48.5 Q24 A (founder 2026-10-05): "coaches' Yes answers in the
+        blind error audit are what promote a shadow cue"."""
+        summary = validation.summarise(
+            self._OBS, [{"snippet_id": "a"}], _answers(3, 1, no=2),
+            detector_version="verbal-cues-v1")
         self.assertEqual(summary["clips_measured"], 4)
         self.assertEqual(summary["fire_rate"], 0.5)
-        self.assertEqual(summary["coach_named"], 3)
-        self.assertEqual(summary["coach_named_measured"], 2)
-        self.assertEqual(summary["caught"], 1)
+        self.assertEqual((summary["audit_yes"], summary["audit_no"]), (4, 2))
+        self.assertEqual(summary["caught"], 3)
+        self.assertEqual(summary["caught_rate"], 0.75)
+        # The moments a coach once named are history, never the bar.
+        self.assertEqual(summary["coach_named_measured"], 1)
+
+    def test_the_catch_rate_is_weighted_by_sampling_probability(self):
+        # Fired clips are oversampled (p=1.0), quiet ones undersampled
+        # (p=0.25): 4 caught and 1 missed raw, but the missed one stands for
+        # four clips, so half the present errors were caught.
+        rows = _answers(4, 0, probability=1.0) + _answers(0, 1, probability=0.25)
+        summary = validation.audit_summary(rows)
         self.assertEqual(summary["caught_rate"], 0.5)
+
+    def test_answers_under_another_detector_version_do_not_count(self):
+        rows = _answers(30, 0, version="verbal-cues-v2")
+        summary = validation.audit_summary(rows, detector_version="verbal-cues-v1")
+        self.assertEqual(summary["audit_yes"], 0)
 
     def test_false_alarms_are_reported_unknown_not_guessed(self):
         summary = validation.summarise(self._OBS, [])
@@ -213,31 +243,66 @@ class ValidationTests(unittest.TestCase):
         self.assertIsNone(summary["caught_rate"])
 
     def test_the_bar_is_the_founder_s(self):
-        # Founder 2026-09-28, D3a: 30 coach-named moments, 80% caught.
-        self.assertEqual((validation.PROMOTION_MIN_NAMED,
+        # D3a (2026-09-28) as amended by Q24 A (2026-10-05): 30 coaches' Yes
+        # answers in the blind audit, 80% of them caught.
+        self.assertEqual((validation.PROMOTION_MIN_YES,
                           validation.PROMOTION_MIN_CAUGHT_RATE), (30, 0.8))
-        summary = validation.summarise(
-            [{"snippet_id": str(i), "fired": i < 24} for i in range(30)],
-            [{"snippet_id": str(i)} for i in range(30)])
+        self.assertFalse(hasattr(validation, "PROMOTION_MIN_NAMED"))
+        summary = validation.summarise([], [], _answers(24, 6))
         self.assertEqual(validation.meets_bar(
-            summary, min_named=validation.PROMOTION_MIN_NAMED,
+            summary, min_yes=validation.PROMOTION_MIN_YES,
             min_caught_rate=validation.PROMOTION_MIN_CAUGHT_RATE), (True, None))
-        summary = validation.summarise(
-            [{"snippet_id": str(i), "fired": i < 23} for i in range(30)],
-            [{"snippet_id": str(i)} for i in range(30)])
+        summary = validation.summarise([], [], _answers(23, 7))
         self.assertFalse(validation.meets_bar(
-            summary, min_named=validation.PROMOTION_MIN_NAMED,
+            summary, min_yes=validation.PROMOTION_MIN_YES,
             min_caught_rate=validation.PROMOTION_MIN_CAUGHT_RATE)[0])
+        # Named moments, however many, never clear it.
+        summary = validation.summarise(
+            [{"snippet_id": str(i), "fired": True} for i in range(40)],
+            [{"snippet_id": str(i)} for i in range(40)], _answers(2, 0))
+        self.assertFalse(validation.meets_bar(
+            summary, min_yes=30, min_caught_rate=0.8)[0])
+
+    def test_a_cue_the_audit_does_not_sample_is_never_ready(self):
+        summary = validation.summarise([], [], _answers(40, 0), audited=False)
+        ok, why = validation.meets_bar(summary, min_yes=30, min_caught_rate=0.8)
+        self.assertFalse(ok)
+        self.assertIn("not in the blind error audit", why)
 
     def test_the_bar_is_never_a_silent_default(self):
-        summary = validation.summarise(self._OBS, [{"snippet_id": "a"}])
+        summary = validation.summarise(self._OBS, [], _answers(1, 0))
         self.assertEqual(validation.meets_bar(
-            summary, min_named=1, min_caught_rate=0.8), (True, None))
-        ok, why = validation.meets_bar(summary, min_named=30,
+            summary, min_yes=1, min_caught_rate=0.8), (True, None))
+        ok, why = validation.meets_bar(summary, min_yes=30,
                                        min_caught_rate=0.8)
         self.assertFalse(ok)
         self.assertIn("30", why)
         signature = inspect.signature(validation.meets_bar)
-        for name in ("min_named", "min_caught_rate"):
+        for name in ("min_yes", "min_caught_rate"):
             self.assertIs(signature.parameters[name].default,
                           inspect.Parameter.empty)
+
+    def test_the_report_reads_the_audit_only_for_audited_cues(self):
+        class _Db:
+            asked: list = []
+
+            def list_verbal_cue_shadow_observations(self, cue, version):
+                return []
+
+            def list_coach_named_moments(self, cue):
+                return []
+
+            def list_error_presence_audit_answered(self, cue):
+                self.asked.append(cue)
+                return _answers(1, 0)
+
+        db = _Db()
+        with mock.patch("services.error_presence_audit.false_alarm_rate", return_value=None), \
+                mock.patch("services.error_presence_audit.errors_in_scope",
+                      return_value=("rushing", "hedging")):
+            out = validation.report(db, detector_version="verbal-cues-v1",
+                                    cues=("hedging", "low_volume"))
+        self.assertEqual(db.asked, ["hedging"])
+        self.assertEqual(out["hedging"]["audit_yes"], 1)
+        self.assertFalse(out["low_volume"]["audited"])
+        self.assertEqual(out["low_volume"]["audit_yes"], 0)

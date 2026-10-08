@@ -7,25 +7,21 @@ routes/journal.py and routes/dev_bugs.py) rather than more routes in the
 15k-line v2_routes.py — this is a new, separable surface and it does not need to
 share that module's blast radius.
 
-  GET  /v2/tokens/balance         balance, tier, renewal date, coach allowance,
-                                  and `plan` — is this a managed subscription?
+  GET  /v2/tokens/balance         balance, tier and coach allowance
   GET  /v2/tokens/prices          THE price list — the FE must not hardcode it
   GET  /v2/tokens/recording-band  longest recording the balance covers
   GET  /v2/tokens/arc/<arc_id>    which per-arc actions this arc already paid for
-  POST /v2/tokens/checkout        start a subscription for a tier
-  POST /v2/tokens/portal          cancel / switch / change card, via Stripe
+  POST /v2/tokens/checkout        buy a one-time token package
+  POST /v2/tokens/portal          410 GONE: subscriptions are retired
   GET  /v2/tokens/history         paged ledger, newest first
 
 The reads charge nothing: charging happens at the action that is being paid for,
-so a balance read can never cost the user anything. The two POSTs move no tokens
-either — they open a door at Stripe and return a URL; entitlements are granted
-only by the subscription webhook.
+so a balance read can never cost the user anything. The checkout moves no tokens
+either — it opens a door at Stripe and returns a URL; the package is granted
+only by the webhook (services/token_packages.py).
 
-THE PAIR THAT MAKES A PLAN CHANGEABLE. `plan.managed` says whether the tier is a
-live Stripe subscription or just the default everyone starts on, and those need
-different controls: `false` → upgrade (checkout), `true` → manage (portal).
-Without it the FE can render a balance but cannot tell those two states apart,
-which is what left the published tiers unsellable (FE handoff 2026-07-31).
+No subscriptions (contract 50; founder 2026-10-05, N48.3 Q13 A): the balance
+no longer carries `plan`, and the billing portal answers 410.
 
 FLAG-OFF BEHAVIOUR. With TOKEN_PRICING_ENABLED unset, every endpoint answers 200
 with ``enabled: false`` and no numbers. It is deliberately not a 404: the FE
@@ -178,35 +174,12 @@ def tokens_checkout():
 @tokens_bp.route("/v2/tokens/portal", methods=["POST"])
 @require_auth
 def tokens_portal():
-    """Open the Stripe billing portal: cancel, switch tier, change card.
-
-    Body: {"return_url"?}
-    200 {portal_url} · 400 · 404 · 502 · 503
-
-    Render the button from ``plan.manage_available`` on /v2/tokens/balance and
-    call this on the click — the URL is minted per click because portal sessions
-    expire, and because putting a Stripe round-trip inside the balance read
-    would make a Stripe outage look like a missing balance.
-
-    A 404 ``NO_SUBSCRIPTION`` is not an error state to show: it means there is
-    nothing to manage, so render upgrade instead.
-
-    Whatever they do in there returns as a subscription webhook and is applied
-    by services/stripe_subscription_tiers.py. Nothing is decided here.
-
-    Not gated on TOKEN_PRICING_ENABLED, for the same reason as checkout: the
-    flag governs whether we CHARGE for actions, and it must never be the reason
-    someone cannot cancel.
-    """
-    body = request.get_json(silent=True) or {}
-    from config import Config as _config
-    from services.tier_checkout import create_billing_portal_session
-    result = create_billing_portal_session(
-        user_id=str(request.user_id),
-        app_config=_config,
-        return_url=(body.get("return_url") or None),
-    )
-    return jsonify(result.payload), result.http_status
+    """RETIRED (founder 2026-10-05, N48.3 Q13 A; contract 50): there are no
+    subscriptions to manage. Answers the house 410 rather than 404 because a
+    frontend deployed before this one, or a page left open, still calls it on
+    the click; the FE treats any refusal as "nothing to manage"."""
+    return jsonify({"code": "GONE", "error": "Plans are retired; purchases "
+                    "are one-time packages."}), 410
 
 
 @tokens_bp.route("/v2/tokens/history", methods=["GET"])

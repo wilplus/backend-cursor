@@ -16,6 +16,7 @@ from typing import Any
 from services.data_purge_registry import (
     DEPENDENCIES, LINEAGE_TOMBSTONES,
     PurgeDependency,
+    before_its_rule,
     classified_relations,
     dependency_by_code,
     dependency_manifest_sha256,
@@ -133,6 +134,8 @@ class DataPurgeOrchestrator:
     def __init__(self, database: Any) -> None:
         self.database = database
         self.client = database.client
+        # Active rows of each v1.4 rule_code, read once per inventory.
+        self._rulings: dict[str, list[dict]] = {}
 
     def _request(self, purge_request_id: str) -> dict:
         row = _one(
@@ -239,6 +242,46 @@ class DataPurgeOrchestrator:
         )
         return next((row for row in rows if row.get("active") is True), None)
 
+    def _ruling_rule(
+        self, dependency: PurgeDependency, existing_relations: frozenset[str],
+    ) -> dict | None:
+        """The ACTIVE signed row that decides a ruled dependency (retention
+        schedule v1.4): its rule_code AND its evidence category, or None."""
+        code = str(dependency.ruled_by or "")
+        if not code:
+            return None
+        if code not in self._rulings:
+            rows = self._rows(
+                "data_retention_rules", "id,rule_code,evidence_category,active",
+                selector="rule_code", values=(code,),
+                existing_relations=existing_relations,
+            )
+            self._rulings[code] = [
+                row for row in rows
+                if row.get("active") is True and row.get("rule_code") == code
+            ]
+        return next((
+            row for row in self._rulings[code]
+            if row.get("evidence_category") == dependency.retention_category
+        ), None)
+
+    def _decided(
+        self, dependency: PurgeDependency, existing_relations: frozenset[str],
+    ) -> tuple[PurgeDependency, dict | None]:
+        """What a dependency does in THIS inventory, and the rule behind it.
+
+        A ruled dependency acts on its disposition only while its v1.4 rule
+        is active. Until the founder runs the v1.4 script it is exactly the
+        registry entry it was before v1.4 (`before_its_rule`): an
+        `external_review` row still stops the erasure, a job row is still
+        deleted. Every other dependency is unchanged and has no ruling."""
+        if not dependency.ruled_by:
+            return dependency, None
+        rule = self._ruling_rule(dependency, existing_relations)
+        if rule is None:
+            return before_its_rule(dependency), None
+        return dependency, rule
+
     def _active_provider_contract(
         self, provider: str, operation_kind: str,
         existing_relations: frozenset[str],
@@ -282,6 +325,7 @@ class DataPurgeOrchestrator:
     ) -> PurgeTarget | None:
         if dependency.relation not in existing_relations:
             return None
+        dependency, ruling = self._decided(dependency, existing_relations)
         values = graph.values(dependency.locator_kind)
         count = self._count(dependency, values, existing_relations)
         metadata: dict[str, Any] = {
@@ -300,13 +344,18 @@ class DataPurgeOrchestrator:
             )
         if count and dependency.disposition in ("retain", "tombstone"):
             category = str(dependency.retention_category or "")
-            rule = self._retention_rule(category, existing_relations)
+            rule = ruling or self._retention_rule(category, existing_relations)
             if not rule:
                 return PurgeTarget(
                     "unknown", f"dependency:{dependency.code}", count,
                     {**metadata, "reason_code": "RETENTION_RULE_UNRESOLVED"},
                 )
             metadata["retention_rule_id"] = str(rule["id"])
+        elif count and ruling is not None:
+            # A ruled delete (a v1.4 product record) names the signed rule
+            # it is deleted under; the append-only tables' trigger reads it
+            # (0424) and the purge event records it.
+            metadata["retention_rule_id"] = str(ruling["id"])
         kind = dependency.target_kind
         if kind not in FREEZE_TARGET_KINDS:
             # The rows ARE database rows; the registry's label says what they
@@ -577,6 +626,7 @@ class DataPurgeOrchestrator:
         return targets
 
     def build_inventory(self, purge_request_id: str) -> dict[str, Any]:
+        self._rulings = {}
         request = self._request(purge_request_id)
         # A project request is never run account-wide, nor an account
         # request project-wide (0380; the manifest guard refuses it too).
@@ -791,6 +841,17 @@ class DataPurgeOrchestrator:
             self._resolve(target, state="unknown", remaining=1,
                           error_code="DEPENDENCY_CONTRACT_MISSING")
             return
+        if dependency.ruled_by:
+            # A ruled dependency resolves as the inventory decided it: its
+            # rule active (its disposition) or not (before_its_rule). Never
+            # anything else.
+            frozen = str(metadata.get("disposition") or "")
+            if frozen != dependency.disposition:
+                dependency = before_its_rule(dependency)
+            if frozen != dependency.disposition:
+                self._resolve(target, state="failed", remaining=1,
+                              error_code="DEPENDENCY_CONTRACT_MISSING")
+                return
         values = graph.values(dependency.locator_kind)
         initial = int(target.get("initial_match_count") or 0)
         if initial == 0:
@@ -808,8 +869,18 @@ class DataPurgeOrchestrator:
             self._resolve(target, state="unknown", remaining=initial,
                           error_code="EXPLICIT_RESOLVER_REQUIRED")
             return
+        delete_rule_id = str(metadata.get("retention_rule_id") or "") or None
+        if dependency.ruled_by and not self._rule_still_active(delete_rule_id):
+            # The signed rule was withdrawn after the freeze: delete nothing.
+            self._resolve(target, state="failed", remaining=initial,
+                          error_code="RETENTION_RULE_INACTIVE")
+            return
         try:
-            query = self.client.table(dependency.relation).delete()
+            table = self.client.table(dependency.relation)
+            query = (
+                table.update({dependency.selector_column: None})
+                if dependency.clears_selector else table.delete()
+            )
             query = (
                 query.eq(dependency.selector_column, values[0])
                 if len(values) == 1 else
@@ -821,10 +892,25 @@ class DataPurgeOrchestrator:
             self._resolve(
                 target, state=state, remaining=remaining,
                 error_code=None if remaining == 0 else "ROWS_REMAIN_AFTER_DELETE",
+                retention_rule_id=delete_rule_id,
             )
         except Exception as error:  # noqa: BLE001 - database boundary
             self._resolve(target, state="failed", remaining=initial,
                           error_code=_error_code(error))
+
+    def _rule_still_active(self, rule_id: str | None) -> bool:
+        """The rule a ruled delete was frozen under is still active now. A
+        read that fails answers no: the delete waits rather than guesses."""
+        if not rule_id:
+            return False
+        try:
+            rows = self._rows(
+                "data_retention_rules", "id,active", selector="id",
+                values=(rule_id,),
+            )
+        except RuntimeError:
+            return False
+        return any(row.get("active") is True for row in rows)
 
     def _resolve_tombstone(
         self, target: Mapping[str, Any], dependency: PurgeDependency,

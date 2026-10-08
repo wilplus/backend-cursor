@@ -14,9 +14,12 @@ cannot answer in the serving shape fails here and never reaches a row:
     averaged; "ahead" means the candidate's mean beats the baseline's;
   * counsel's regurgitation check: every candidate answer is searched for
     an 8-word window of any passage or final the run learned from whose
-    owner has since withdrawn; one hit fails the model, and the run is
-    retrained without those pairs (ML-11). The same windows are counted
-    against every trained text as a memorisation rate, for the record.
+    owner has since withdrawn; one hit fails the model for good, and the
+    retraining is the next run, built only from pairs no run has trained
+    on (services.model_training, DOOR-3-RETRAIN). The report keeps whose
+    withdrawals it covered, so a later withdrawal makes it stale. The same
+    windows are counted against every trained text as a memorisation rate,
+    for the record.
 
 The report is a row (``evaluation_reports``) and nothing else: no
 promotion, no runtime_config write. AC-9: a number here is about a model,
@@ -111,10 +114,17 @@ def evaluate(database: Any, *, surface: str, candidate_model: str,
              baseline_model: str, run_id: Optional[str] = None,
              withdrawn_texts: Optional[list[str]] = None,
              trained_texts: Optional[list[str]] = None,
+             withdrawn_basis: Optional[dict] = None,
              compose: Optional[Callable] = None,
              now: Optional[datetime] = None) -> dict:
     """Run the evaluation and store its report. Returns the stored row's
-    fields. Raises EvaluationRefusal (and GoldenRefusal for the set)."""
+    fields. Raises EvaluationRefusal (and GoldenRefusal for the set).
+
+    ``withdrawn_basis`` ({owners_sha256, owners}) names WHOSE withdrawn texts
+    the regurgitation check covered (services.model_training.withdrawn_basis):
+    the report keeps it so a withdrawal after this evaluation makes the
+    report stale (audit DOOR-4-WITHDRAWN). A digest of principal ids and a
+    count, never an id."""
     if surface not in PAIR_SURFACES:
         raise EvaluationRefusal(f"{surface} has no golden evaluation", "UNKNOWN_SURFACE")
     candidate = str(candidate_model or "").strip()
@@ -170,7 +180,9 @@ def evaluate(database: Any, *, surface: str, candidate_model: str,
         "candidate_answered": answered,
         "regurgitation": {"withdrawn_texts": len(withdrawn_texts or []),
                           "window_words": WINDOW_WORDS,
-                          "hits": regurgitated, "ok": regurgitation_ok},
+                          "hits": regurgitated, "ok": regurgitation_ok,
+                          "withdrawn_owners": (withdrawn_basis or {}).get("owners"),
+                          "withdrawn_owners_sha256": (withdrawn_basis or {}).get("owners_sha256")},
         "memorisation": {"trained_texts": len(trained_texts or []), "hits": memorised,
                          "rate": round(memorised / n, 4)},
         "per_moment": scored,

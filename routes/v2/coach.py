@@ -27,7 +27,7 @@ from config import Config
 from routes.admin import is_admin, require_admin_or_coach
 from routes.phase2_guard import (
     operational_purpose_disabled,
-    phase2_learning_disabled,
+    training_import_enabled,
 )
 from routes.v2.blueprint import v2_bp
 from routes.v2.processing_authorization import speaker_provider_route
@@ -41,6 +41,7 @@ from routes.v2.common import (
 )
 from services.db import db
 from services.coach_queue import load_review_queue
+from services.training_import_setup import setup_complete
 from services.coach_review_claim import claim_review_and_reread
 from services.coach_video_storage import refreshed_media_url
 from services.coach_moment_errors import (
@@ -163,14 +164,25 @@ def _coach_state_map(session_id, rater_id=None, *, draft_rows=None):
             "rating_value": r.get("value"),
             "rating_unrateable": bool(r.get("unrateable")),
         }
+    if rater_id:
+        # LISTEN AGAIN (0444; QG12a A, P26b A). While this coach has an open
+        # ask on a moment, their earlier answer is masked here, the one map
+        # every blind door keys on (the moment gate, the transcript and
+        # owner-answer release, the practice door): the moment is blind
+        # again until the new answer lands. The key of the signed line rides
+        # as `listen_again`; nothing says why (BLIND COACH).
+        from services.coach_listen_again import mask_states, open_asks
+        asks = open_asks(db, coach_id=rater_id, session_ids=[session_id])
+        out = mask_states(out, asks.get(str(session_id), {}))
     return out
 
 
 def _confidence_queue_selection(session_id, session, snippets):
     """One source of truth for the blind queue and its post-label audit."""
     from services.confidence_labels import (
-        mixed_label_queue, selection_records, stored_selection_records,
+        corpus_label_queue, selection_records, stored_selection_records,
     )
+    from services.corpus_spotting import stored_spotting
 
     ctx = session.get("intake_context") if isinstance(
         session.get("intake_context"), dict) else {}
@@ -186,7 +198,10 @@ def _confidence_queue_selection(session_id, session, snippets):
         return [by_id[record["snippet_id"]] for record in stored
                 if record["snippet_id"] in by_id]
 
-    selected = mixed_label_queue(snippets, seed=str(session_id))
+    # An import's V3 spotting, when it has one, puts each block's pick and a
+    # rival first (N56.4); without one this is the mixed queue, unchanged.
+    selected = corpus_label_queue(
+        snippets, stored_spotting(ctx), seed=str(session_id))
     records = selection_records(selected)
     if records:
         # Freeze the cohort and its selection provenance on first build.
@@ -578,9 +593,13 @@ def v2_coach_moments_queue():
     """The coach's walk (founder 2026-09-30, A1 to A8; P2-6): speakers
     oldest first, their takes, and each bookmarked moment with one word for
     where THIS coach is with it. The kind of a moment rides only once this
-    coach has rated it (BLIND COACH). Same language filter and pseudonyms as
-    the review queue; the shape is services.coach_moments_queue'."""
-    from services.coach_moments_queue import moments_queue
+    coach has rated it (BLIND COACH). Only moments the speaker was shown
+    (opened or skipped) or answered are listed (N48.2, Q1 A). Same language
+    filter and pseudonyms as the review queue; the shape is
+    services.coach_moments_queue'. The ledger routes the clip (K4, K5): a
+    moment this coach reported as Audio unclear goes to another coach, a
+    quarantined or settled one asks nobody new; routing only, never a value."""
+    from services.coach_moments_queue import queue_for_coach
     try:
         rater_id = str(getattr(request, "user_id", "") or "")
         proficient = db.get_user_proficient_languages(rater_id)
@@ -588,17 +607,38 @@ def v2_coach_moments_queue():
             return _rater_language_error("profile_required")
         rows, snips, _states = load_review_queue(db, _coach_state_map)
         matched = _language_matched_rows(rows, snips, proficient)
-        requests = db.list_exercise_coach_requests_for_sessions(
-            [str(r.get("id")) for r in matched])
-        return jsonify(moments_queue(
-            matched, moments_for=_queue_moments_for(snips),
-            ratings_for=lambda sid: db.get_own_state_ratings_for_session(sid, rater_id),
-            request_for=lambda sid, snip: requests.get((sid, snip)),
+        return jsonify(queue_for_coach(
+            db, matched, rater_id=rater_id, moments_for=_queue_moments_for(snips),
             pseudonym_for=_coach_pseudonym)), 200
     except Exception as e:
         logger.error("coach/queue/moments GET failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch the queue"}), 500
+
+
+@v2_bp.route("/coach/speakers", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_speakers():
+    """The Speakers button (coach panel lock, founder 2026-10-07): every
+    speaker this coach may hear, by pseudonym, with their goal, what waits
+    and which Takes are answered. Same language gate as the queue; never a
+    name, email or user_id; nothing about any moment (BLIND COACH)."""
+    from services.coach_speakers import speakers_for_coach
+    try:
+        rater_id = str(getattr(request, "user_id", "") or "")
+        proficient = db.get_user_proficient_languages(rater_id)
+        if not proficient:
+            return _rater_language_error("profile_required")
+        rows, snips, _states = load_review_queue(db, _coach_state_map)
+        matched = _language_matched_rows(rows, snips, proficient)
+        return jsonify(speakers_for_coach(
+            db, matched, rater_id=rater_id,
+            moments_for=_queue_moments_for(snips),
+            pseudonym_for=_coach_pseudonym)), 200
+    except Exception as e:
+        logger.error("coach/speakers GET failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to fetch the speakers"}), 500
 
 
 # Phase 4 / Prompt 2 — the AI-Commentator draft the coach's comment
@@ -1745,7 +1785,8 @@ def v2_coach_exercise_request_video(session_id, snippet_id):
     status, payload = store_answer_video(
         db, request_row=db.get_exercise_coach_request(owner_sid, snippet_id),
         video_file=request.files.get("video_file"),
-        max_mb=int(getattr(Config, "COACH_FEEDBACK_VIDEO_MAX_MB", 100) or 100))
+        max_mb=int(getattr(Config, "COACH_FEEDBACK_VIDEO_MAX_MB", 100) or 100),
+        coach_id=str(getattr(request, "user_id", "")))
     return jsonify(payload), status
 
 
@@ -1757,8 +1798,10 @@ def v2_coach_walk_take(session_id):
     state on each, plus the student's real name. Opened from a named
     profile the walk may show the name; the kind still rides only once this
     coach has rated the moment (BLIND COACH). Same language gate as the
-    queue. 404 while COACH_STUDENTS_ENABLED is off."""
-    from services.coach_moments_queue import moments_queue
+    queue. 404 while COACH_STUDENTS_ENABLED is off. Routed like the queue."""
+    from services.coach_moments_queue import (
+        labels_for_snippets, moments_queue, reached_for_sessions, remembered,
+    )
     from services.coach_students import load_walk_take
     if not _is_valid_uuid(session_id):
         return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a UUID"}), 400
@@ -1775,11 +1818,15 @@ def v2_coach_walk_take(session_id):
         if language_error is not None:
             return language_error
         sid = str(loaded["row"]["id"])
+        moments_for = remembered(_queue_moments_for({sid: loaded["snippets"]}))
         speakers = moments_queue(
-            [loaded["row"]], moments_for=_queue_moments_for({sid: loaded["snippets"]}),
+            [loaded["row"]], moments_for=moments_for,
+            reached_for=reached_for_sessions(db, [sid], loaded["requests"]),
             ratings_for=lambda _sid: loaded["ratings"],
             request_for=lambda _sid, snip: loaded["requests"].get((_sid, snip)),
-            pseudonym_for=_coach_pseudonym)
+            pseudonym_for=_coach_pseudonym,
+            labels_for=labels_for_snippets(db, moments_for(loaded["row"]) or []),
+            rater_id=rater_id)
         return jsonify({"speaker": speakers[0], "name": loaded["name"]}), 200
     except Exception as e:
         logger.error("coach/walk-take GET failed sid=%s: %s", session_id, e, exc_info=True)
@@ -1843,6 +1890,30 @@ def v2_coach_moment_read(session_id, snippet_id):
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to read the moment"}), 500
     return jsonify(payload), 200
+
+
+@v2_bp.route(
+    "/coach/sessions/<session_id>/snippets/<snippet_id>/diagnosis",
+    methods=["GET", "PUT"],
+)
+@require_admin_or_coach
+def v2_coach_moment_diagnosis(session_id, snippet_id):
+    """The diagnosis first (coach panel lock flow 6; Q-B7 A; Q-B12 A; D-CP-4;
+    0445). GET: the errors in the lock's order, the machine-heard ones first
+    and flagged, then the library's, then the coach-named ones, with THIS
+    coach's current diagnosis. PUT {error_id} | {new_name} | {no_error}: one
+    diagnosis per coach per moment, re-settable with the history kept. Coach
+    provenance only, never a label; behind the blind gate (BLIND COACH). The
+    work is services.coach_diagnosis'."""
+    error, owner_sid = _moment_gate(session_id, snippet_id)
+    if error:
+        return error
+    from services.coach_diagnosis import review
+    status, payload = review(
+        db, take_session_id=owner_sid, snippet_id=snippet_id,
+        coach_id=str(getattr(request, "user_id", "")), method=request.method,
+        body=request.get_json(silent=True) if request.method == "PUT" else None)
+    return jsonify(payload), status
 
 
 # ── willab — the arc-level delivery: RETIRED ─────────────────────────────
@@ -2059,8 +2130,35 @@ def _int_or(raw, default: int) -> int:
         return default
 
 
+def _register_corpus_import(prepared: dict):
+    """Record that THIS route created the import, under the founder's corpus
+    basis (N58, 0435): an import's provider calls are permitted only for a
+    session registered here. None when recorded (or the gate is off, where
+    nothing is permitted anyway); else the refusal, with the import marked
+    failed, because under enforce nothing could analyse it."""
+    from services.processing_authorization import (
+        ProcessingAuthorizationError, register_corpus_import,
+    )
+    try:
+        register_corpus_import(db, session_id=prepared["session_id"],
+                               recording_id=prepared.get("recording_id"))
+        return None
+    except ProcessingAuthorizationError as refusal:
+        logger.warning("training import not registered sid=%s code=%s",
+                       prepared.get("session_id"), refusal.code)
+        try:
+            db.takes.set_session_analysis_state(
+                prepared["session_id"], "failed", error=refusal.code)
+        except Exception:
+            logger.warning("could not mark the unregistered import failed",
+                           exc_info=True)
+        return jsonify({"code": refusal.code,
+                        "error": "the import could not be registered"}), \
+            refusal.status
+
+
 @v2_bp.route("/coach/training-imports", methods=["POST"])
-@phase2_learning_disabled
+@training_import_enabled
 @whisper_limit
 @require_admin_or_coach
 def v2_coach_training_import():
@@ -2071,16 +2169,14 @@ def v2_coach_training_import():
     Multipart form:
       audio_file    (required) any container ffmpeg reads (webm/mp3/m4a/wav…)
       topic         (required) what the talk is about — labels it for review
-      speaker_label (optional) whose voice this is. Worth filling for a
-                    multi-speaker corpus: it is the only grouping key a
-                    per-speaker model will have.
+      speaker_label (optional) whose voice this is: the grouping key of the
+                    80/20 split; absent, the import is a speaker of its own.
       user_id       (optional) who the corpus row belongs to; defaults to the
                     uploading coach
       note          (optional) free-text provenance (where it came from)
-      language      (optional) ISO-639-1 ('pl', 'de', …). Absent =
-                    auto-detect. Non-English NEEDS this: our Whisper prompt
-                    is an English disfluency primer and Whisper follows its
-                    prompt's language.
+      language      (required since N56.4) ISO-639-1 ('pl', 'de', …): our
+                    Whisper prompt is an English disfluency primer and
+                    Whisper follows its prompt's language.
       stages        (optional) comma-separated ticks — the COACH-ONLY choice
                     of how much analysis to run. Default 'confidence':
                       confidence  always on — transcript, pieces, acoustics,
@@ -2097,19 +2193,18 @@ def v2_coach_training_import():
                     policy targets three times this value (default 5 → 15),
                     divided across boundary, balance, and random exploration.
 
-    ONE FILE PER REQUEST, on purpose: a batch endpoint would either block for
-    minutes or need a job queue, and per-file requests give the FE real
-    progress and per-file failures instead of one opaque 500.
-
-    The import is marked source='training_import', which keeps it out of the
-    speaker's project list AND out of their acoustic baseline (imports are
-    z-scored against themselves) — see services/training_import.py.
+    ONE FILE PER REQUEST: per-file progress and failures, no job queue.
+    OPEN ONLY WHILE Config.TRAINING_IMPORT_ENABLED (founder 2026-10-06, CO1
+    A, N56.4); off, 410 PHASE2_DISABLED as before. Each import runs the V3
+    spotting and its speaker's fixed 80/20 split. source='training_import'
+    keeps it out of the speaker's project list AND their acoustic baseline
+    (imports are z-scored against themselves): services/training_import.py.
 
     200 { ok, session_id, arc_id, snippet_count, ... }  → review at
          GET /v2/coach/arc/<arc_id>/stars
     422 { code: "AUDIO_REJECTED", reason }   the min-content gate (silence /
          corrupt / too short) — the same gate live takes pass
-    400 · 500
+    400 (audio_file, topic or language missing) · 500
     """
     audio_file = request.files.get("audio_file")
     if not audio_file:
@@ -2119,6 +2214,10 @@ def v2_coach_training_import():
     if not topic:
         return jsonify({"code": "INVALID_INPUT",
                         "error": "topic is required"}), 400
+    language = (request.form.get("language") or "").strip()
+    if not language:
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "language is required"}), 400
     try:
         audio_bytes = audio_file.read()
         from services.training_import import (
@@ -2137,15 +2236,12 @@ def v2_coach_training_import():
                           or None,
             source_note=(request.form.get("note") or "").strip() or None,
             stages=(request.form.get("stages") or None),
-            # BOTH spellings (fix 2026-07-29): I documented
-            # `upload_idempotency_key` (the coach-video lane's name) but the
-            # FE shipped `idempotency_key`, so the key was being silently
-            # ignored and the dedupe it exists for never ran. Accepting both
-            # costs nothing and neither side has to redeploy to be correct.
+            # BOTH spellings (fix 2026-07-29): the FE ships `idempotency_key`,
+            # the coach-video lane's name is `upload_idempotency_key`.
             idempotency_key=((request.form.get("idempotency_key")
                               or request.form.get("upload_idempotency_key")
                               or "").strip() or None),
-            language=(request.form.get("language") or "").strip() or None,
+            language=language,
         )
         if not prepared.get("ok"):
             _reason = prepared.get("reason") or "failed"
@@ -2165,6 +2261,8 @@ def v2_coach_training_import():
         # labelled twice and trains twice, invisibly).
         if prepared.get("duplicate"):
             return jsonify({**prepared, "status": "duplicate"}), 200
+        if (unregistered := _register_corpus_import(prepared)) is not None:
+            return unregistered
 
         # ── 202, then analyse in the background ───────────────────────────
         # Whisper + the cutting pass is MINUTES on a long talk, and the FE's
@@ -2294,7 +2392,7 @@ def v2_coach_list_training_imports():
 
     200 { imports: [{session_id, arc_id, topic, speaker_label, created_at,
           status, queue_count, labelled_count, language,
-          duration_sec, archived_at}], count }
+          duration_sec, archived_at, setup_complete}], count }
     """
     try:
         proficient = db.get_user_proficient_languages(
@@ -2342,7 +2440,7 @@ def v2_coach_list_training_imports():
                 # it outlives the browser session, so this is the surface
                 # where that question gets asked.
                 "language": ctx.get("language"),
-                # Same class of question for the confidence composite: one
+                "setup_complete": setup_complete(ctx),
                 "duration_sec": ctx.get("duration_sec"),
                 # null on live rows; set = when it was archived. Present on
                 # every row so the shape doesn't shift with the query param.
@@ -2429,6 +2527,31 @@ def v2_coach_restore_training_import(session_id):
                        session_id, e)
         return jsonify({"code": "SERVER_ERROR",
                         "error": "could not restore the import"}), 500
+
+
+@v2_bp.route("/coach/training-imports/<session_id>", methods=["PUT"])
+@require_admin_or_coach
+def v2_coach_training_import_setup(session_id):
+    """Finish (or correct) an import's set-up without re-importing it
+    (coach panel lock, training corpus CO1 A): topic, whose voice it is,
+    where it came from, and the language. Body {topic, language,
+    speaker_label?, source?}. An import whose set-up is not complete serves
+    no moments. 200 {session_id, topic, language, speaker_label, source,
+    setup_complete} · 400 · 404 · 409 NOT_AN_IMPORT · 500"""
+    if not _is_valid_uuid(session_id):
+        return jsonify({
+            "code": "INVALID_INPUT",
+            "error": "session_id must be a valid UUID"}), 400
+    from services.training_import_setup import apply_setup
+    try:
+        status, payload = apply_setup(
+            db, str(session_id), request.get_json(silent=True))
+        return jsonify(payload), status
+    except Exception as e:
+        logger.warning("training import setup failed sid=%s: %s",
+                       session_id, e, exc_info=True)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not save the set-up"}), 500
 
 
 def _confidence_queue_snippets_and_language_error(session_id, sess):
@@ -2697,8 +2820,19 @@ def _confidence_chain_judgment(
     blind_coach judgment, revealed in the same transaction, while the chain
     writes. Never on a self-report (the owner is not a peer) and never a
     reason to refuse the legacy save: a failed canonical write is logged and
-    the readiness counters show it. Returns identifiers only, or None."""
+    the readiness counters show it. Returns identifiers only, or None.
+
+    The walk's Judge screen carries the same handle since 2026-10-05
+    (N48.5 Q27 A: "the coach walk's blind labels as its judgements";
+    routes/v2/confidence_chain_coach.py prepares it). Only a blind answer
+    becomes the chain's blind_coach judgement: one given after this coach
+    saw the clip's non-blind side is stamped not blind (35g-11) and stays
+    out of the chain."""
     if mlc2_handle is None or self_report:
+        return None
+    from services.coach_exposure import rating_is_blind
+    if not rating_is_blind(db, coach_id=str(rater_id or ""),
+                           snippet_id=str(snippet_id)):
         return None
     try:
         from services.confidence_chain_consumer import (
@@ -2784,7 +2918,10 @@ def v2_coach_confidence_queue(session_id):
     voice_confidence, acoustic_read, or tone word). Transcript content remains
     absent even for answered rows; only the separate complete-batch reveal
     endpoint may return it. If no cohort exists, one mixed-policy cohort is
-    built and persisted exactly once (any take, not just an import).
+    built and persisted exactly once (any take, not just an import). A corpus
+    import (switch on) has no canonical handles: its rows carry no
+    playback_reference_id and play from
+    GET /v2/coach/corpus/clips/<snippet_id>/playback.
 
     200 { session_id, queue: [{snippet_id, playback_reference_id, label}],
           count, labelled }
@@ -2836,28 +2973,8 @@ def v2_coach_confidence_queue(session_id):
         ))
         for row in visible_rows:
             row.pop("_queue_priority", None)
-        # Canonical blind presentations. Assignment and packet preparation are
-        # idempotent and remain distinct from exposure: only the browser ACK
-        # after a row paints creates the receipt. No transcript, prediction or
-        # prior label enters this pre-judgment packet.
-        _coach_id = str(getattr(request, "user_id", "") or "")
-        _owner_id = str(sess.get("owner_principal_id") or "")
-        _project_id = str(sess.get("project_id") or "")
-        _blind_candidates = [{
-            "candidate_key": str(row.get("snippet_id") or ""),
-        } for row in visible_rows]
-        # The MLC-3 inline blind assignment is retired (founder 2026-09-30,
-        # L8; contract 66): _inline_authoring_for is False for every coach,
-        # so the queue is the blind presentation queue or nothing.
-        if (_coach_id and _owner_id and _project_id and
-                not _inline_authoring_for(_coach_id)):
-            visible_rows = _coach_legacy_blind_presentation_queue(
-                visible_rows, session_id=session_id, _project_id=_project_id,
-                _owner_id=_owner_id, _coach_id=_coach_id,
-                _blind_candidates=_blind_candidates,
-            )
-        else:
-            visible_rows = []
+        visible_rows = _confidence_queue_presented(
+            visible_rows, sess=sess, session_id=session_id)
         return jsonify({"session_id": session_id, "queue": visible_rows,
                         "count": len(visible_rows),
                         "labelled": labelled}), 200
@@ -2865,6 +2982,89 @@ def v2_coach_confidence_queue(session_id):
         logger.warning("confidence queue failed sid=%s: %s", session_id, e)
         return jsonify({"code": "SERVER_ERROR",
                         "error": "could not load the queue"}), 500
+
+
+def _confidence_queue_presented(visible_rows, *, sess, session_id):
+    """The queue's rows as the coach receives them, blind.
+
+    A corpus import, while the import switch is on, is presented from its own
+    frozen cohort (services/corpus_coach_queue.py, founder 2026-10-06, CO1 A,
+    N56.4): it has no owner principal, project or evidence span, and is not
+    given any. Every other Take: the canonical blind presentation.
+    """
+    from services.corpus_coach_queue import (
+        corpus_presented_rows, corpus_queue_open,
+    )
+    if corpus_queue_open(sess):
+        return corpus_presented_rows(visible_rows)
+    # Canonical blind presentations. Assignment and packet preparation are
+    # idempotent and remain distinct from exposure: only the browser ACK
+    # after a row paints creates the receipt. No transcript, prediction or
+    # prior label enters this pre-judgment packet.
+    _coach_id = str(getattr(request, "user_id", "") or "")
+    _owner_id = str(sess.get("owner_principal_id") or "")
+    _project_id = str(sess.get("project_id") or "")
+    _blind_candidates = [{
+        "candidate_key": str(row.get("snippet_id") or ""),
+    } for row in visible_rows]
+    # The MLC-3 inline blind assignment is retired (founder 2026-09-30,
+    # L8; contract 66): _inline_authoring_for is False for every coach,
+    # so the queue is the blind presentation queue or nothing.
+    if (_coach_id and _owner_id and _project_id and
+            not _inline_authoring_for(_coach_id)):
+        return _coach_legacy_blind_presentation_queue(
+            visible_rows, session_id=session_id, _project_id=_project_id,
+            _owner_id=_owner_id, _coach_id=_coach_id,
+            _blind_candidates=_blind_candidates,
+        )
+    return []
+
+
+@v2_bp.route("/coach/corpus/clips/<snippet_id>/playback", methods=["GET"])
+@training_import_enabled
+@require_admin_or_coach
+def v2_coach_corpus_clip_playback(snippet_id):
+    """Play one queued clip of a corpus import (founder 2026-10-06, CO1 A,
+    N56.4). Replaces, for imports, the retired ``/v2/coach/mlc3/
+    source-playback/<id>`` the corpus page still points at.
+
+    Open only while ``Config.TRAINING_IMPORT_ENABLED`` (off: the import's
+    410 PHASE2_DISABLED), coaches and admins only, language-matched like the
+    queue and the label. Only a clip in an import's frozen label queue
+    plays; anything else (unknown, an ordinary Take's clip, a clip the
+    cohort did not draw) is the same 404.
+
+    200 { snippet_id, url, start_offset_ms, duration_ms, expires_in_s }
+        ``url`` is a signed URL to the import's audio, valid
+        ``expires_in_s`` seconds; play ``duration_ms`` from
+        ``start_offset_ms``. No pick, block, policy, score or transcript.
+    400 · 401 · 403 · 404 · 409/428 (language routing) · 410 · 503 · 500
+    """
+    if not _is_valid_uuid(snippet_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "snippet_id must be a valid UUID"}), 400
+    try:
+        from services.corpus_coach_queue import playback_body, queued_corpus_clip
+        snip, sess = queued_corpus_clip(db, str(snippet_id))
+        if snip is None:
+            return jsonify({"code": "NOT_FOUND",
+                            "error": "clip not found"}), 404
+        outcome, language = _rater_language_outcome(sess, [snip])
+        language_error = _rater_language_error(outcome, language)
+        if language_error is not None:
+            return language_error
+        body = playback_body(snip)
+        if body is None:
+            return jsonify({"code": "PLAYBACK_UNAVAILABLE",
+                            "error": "the clip's audio could not be signed"}), 503
+        response = jsonify(body)
+        response.headers["Cache-Control"] = "private, no-store, max-age=0"
+        return response, 200
+    except Exception as e:
+        logger.warning("corpus clip playback failed snip=%s: %s", snippet_id, e,
+                       exc_info=True)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not play the clip"}), 500
 
 
 def _inline_authoring_for(coach_id: str) -> bool:
@@ -2981,6 +3181,105 @@ def _reconcile_album_after_judgement(sess, snippet_id, session_id):
         take_session_id=session_id, database=db)
 
 
+def _first_coach_rating(*, snippet_id, row, rater_id, session_id, lane,
+                        intensity, self_report, machine_value, selection):
+    """The coach's original judgment on a clip: confidence_labels (and its
+    label_revision shadow). None when written, else the error response."""
+    saved = db.upsert_state_rating(
+        snippet_id=snippet_id, row=row, rater_id=rater_id,
+        session_id=session_id, lane=lane, intensity=intensity,
+        self_report=self_report, machine_value=machine_value,
+        selection=selection)
+    if saved:
+        # V4 brief 1.7 (0442): the clip's soft-label counts follow the
+        # judgment of record. A side write, never in the rating's way; the
+        # function counts only the quorum's human lanes (Q3).
+        from services.clip_answer_counts import refresh
+        refresh(db, snippet_id)
+        return None
+    return jsonify({
+        "code": "SERVER_ERROR",
+        "error": "could not save the rating (run "
+                 "migrations/add_state_generic_ratings.sql)",
+    }), 500
+
+
+def _reconsider_coach_rating(*, snippet_id, row, rater_id, session_id, lane,
+                             intensity, self_report, machine_value, selection):
+    """LOCKIN §5c, contract 34 (W6 2026-10-05): "The original coach judgment
+    is never editable; reconsideration is a separately timestamped,
+    provenance-bearing revision." A later answer by the same coach is
+    appended to label_revision as a reconsideration and the original row
+    stays as it was. None when kept, else the error response: a revision
+    that was not kept is never reported as saved."""
+    try:
+        kept = db.append_label_reconsideration(
+            snippet_id=snippet_id, row=row, rater_id=str(rater_id),
+            session_id=session_id, lane=lane, intensity=intensity,
+            machine_value=machine_value, self_report=self_report,
+            selection=selection)
+    except Exception as e:  # noqa: BLE001 -- named below
+        logger.warning("coach reconsideration not kept snip=%s: %s",
+                       snippet_id, e, exc_info=True)
+        kept = None
+    if isinstance(kept, dict):
+        # LISTEN AGAIN (0444): a new blind answer closes this coach's open
+        # ask on the moment, if one was there. Best-effort; the revision is
+        # kept either way.
+        from services.coach_listen_again import mark_heard
+        mark_heard(db, snippet_id=snippet_id, coach_id=rater_id)
+        return None
+    # The route's own words for a rating not kept (no new copy).
+    return jsonify({"code": "SERVER_ERROR",
+                    "error": "could not save the rating"}), 500
+
+
+def _rating_selection(sess, session_id, snippet_id):
+    """K9 (decisions log K9; W6 2026-10-05): what put this clip in front of
+    the coach, stamped on the rating server-side and never shown before it
+    (services.coach_moments_queue.selection_stamp). A clip of a corpus
+    labelling cohort keeps the cohort's own record; a speaker's Take, the
+    walk's census of the bookmarks that reached the speaker."""
+    from services.coach_moments_queue import reached_for_sessions, selection_stamp
+    from services.confidence_labels import stored_selection_records
+    ctx = sess.get("intake_context") if isinstance(sess, dict) else None
+    record = next((r for r in stored_selection_records(ctx)
+                   if r.get("snippet_id") == str(snippet_id)), None)
+    if record is not None or (sess or {}).get("source") == "training_import":
+        return selection_stamp(cohort_record=record, reached_bookmark=False)
+    try:
+        marked = _bookmarked_snippet_ids(sess, str(session_id)) or set()
+        requests = db.list_exercise_coach_requests_for_sessions([str(session_id)])
+        reached = reached_for_sessions(db, [str(session_id)], requests)(str(session_id))
+    except Exception as e:  # noqa: BLE001 -- the rating stands, stamped unknown
+        logger.warning("rating selection read failed sid=%s: %s", session_id, e)
+        return selection_stamp(reached_bookmark=None)
+    return selection_stamp(
+        reached_bookmark=str(snippet_id) in marked and str(snippet_id) in reached)
+
+
+def _after_coach_judgement(sess, *, snippet_id, session_id, lane, self_report,
+                           value, note, is_rereview):
+    """What a coach's judgment of record sets off: the User Yes / Coach No
+    re-review and the Album's coach leg. Never on a self-report. A plain
+    reconsideration changes nothing of record, so the route skips it; a
+    re-review is the one later answer the policy reads (contract 34)."""
+    if lane != "coach" or self_report or not sess or not sess.get("user_id"):
+        return
+    # A corpus import has no speaker in the product: its user_id is the
+    # importer, never the voice on the clip, and it has no owner answer and
+    # no Album (L3; founder 2026-10-06, CO1 A, N56.4). Its label stays a
+    # coach label and sets off nothing of an owner's.
+    if sess.get("source") == "training_import":
+        return
+    from services.confidence_review_policy import reconcile_confidence_review
+    reconcile_confidence_review(
+        db, snippet_id=snippet_id, session=sess,
+        owner_user_id=sess.get("user_id"), coach_value=value,
+        coach_note=note, coach_write=True, is_rereview=is_rereview)
+    _reconcile_album_after_judgement(sess, snippet_id, session_id)
+
+
 @v2_bp.route("/coach/snippets/<snippet_id>/confidence-label", methods=["PUT"])
 @require_admin_or_coach
 def v2_coach_put_confidence_label(snippet_id):
@@ -3005,11 +3304,16 @@ def v2_coach_put_confidence_label(snippet_id):
     side of the validation gate. A legacy body cannot express `neutral`; that
     is the whole reason the instrument changed.
 
-    Re-labelling normally REPLACES this rater's row (the corpus wants their
-    current view); other raters' rows are untouched, so multi-rater agreement
-    stays possible. A technical ``audio_unclear`` answer is the exception:
-    that artifact must go to a different eligible human and the first rater
-    cannot turn a second listen into a falsely independent answer.
+    THE ORIGINAL JUDGMENT IS NEVER EDITABLE (LOCKIN §5c; contract 34; W6
+    2026-10-05). A rater's first answer on a clip is their judgment of
+    record in confidence_labels; a later answer by the same rater is a
+    reconsideration, appended to label_revision with its own timestamp and
+    provenance, and never written over the original (which every quorum,
+    Album leg and measure reads). Other raters' rows are untouched, so
+    multi-rater agreement stays possible. A technical ``audio_unclear``
+    answer goes to a different eligible human, and the first rater cannot
+    turn a second listen into a falsely independent answer. Each rating is
+    stamped server-side with why the clip was in front of the rater (K9).
 
     LANE is derived, never sent by the client. It follows the verified rating
     act, not the clip source: this authenticated, blind, language-matched
@@ -3073,13 +3377,13 @@ def v2_coach_put_confidence_label(snippet_id):
         # RULE 2 (founder 2026-08-11) — the owner is not a peer, and that is
         # about WHOSE CLIP it is, not which surface rated it. A coach rating a
         # session they own writes lane='coach' and is still a self-report, so
-        # ownership is compared explicitly here rather than read off the lane.
+        # ownership is compared explicitly rather than read off the lane; a
+        # corpus import is not its importer's voice (CO3 A, N58).
         rater_id = getattr(request, "user_id", None)
-        self_report = bool(
-            rater_id and sess and str(sess.get("user_id")) == str(rater_id))
         from services.label_quorum import (
-            machine_proposal, rater_submission_access,
+            machine_proposal, rater_submission_access, rating_is_self_report,
         )
+        self_report = rating_is_self_report(sess, rater_id)
         existing_by_snippet = db.get_confidence_labels_by_snippet_ids(
             [snippet_id]) or {}
         existing_labels = existing_by_snippet.get(str(snippet_id), [])
@@ -3100,96 +3404,39 @@ def v2_coach_put_confidence_label(snippet_id):
                     "code": "RATING_CLOSED",
                     "error": "This clip no longer needs another blind rating.",
                 }), 409
-        saved = db.upsert_state_rating(
-            snippet_id=snippet_id, row=row,
-            rater_id=rater_id,
-            session_id=session_id, lane=lane,
-            intensity=legacy_intensity,
+        # THE ORIGINAL JUDGMENT STANDS (LOCKIN §5c; contract 34; W6
+        # 2026-10-05). A coach who already judged this clip reconsiders: the
+        # answer is appended as a revision and never written over the
+        # original in confidence_labels, which every quorum, Album leg and
+        # measure keeps reading.
+        reconsidering = access["outcome"] == "update"
+        write = _reconsider_coach_rating if reconsidering else _first_coach_rating
+        refused = write(
+            snippet_id=snippet_id, row=row, rater_id=rater_id,
+            session_id=session_id, lane=lane, intensity=legacy_intensity,
             self_report=self_report,
             # RULE 1 — the proposal that routed this clip here, stamped
             # server-side into its own column. The coach never saw it (BLIND
             # COACH / I1); it is stored so "which prediction did this human
             # disagree with" stays answerable, and it is never a vote.
             machine_value=machine_proposal(snip),
-        )
-        if not saved:
-            return jsonify({
-                "code": "SERVER_ERROR",
-                "error": "could not save the rating (run "
-                         "migrations/add_state_generic_ratings.sql)",
-            }), 500
+            selection=_rating_selection(sess, session_id, snippet_id))
+        if refused is not None:
+            return refused
         value = row["value"]
-        # Append-only canonical shadow. The legacy current-answer row remains
-        # the live read during parity; this row preserves the original blind
-        # judgment and any later reconsideration as a superseding revision.
-        # The lookup reads evidence only—never owner/machine/peer answers.
-        try:
-            from services.feedback_data_contract import (
-                TAXONOMY_VERSION,
-                blind_packet_hash,
-                content_hash,
-            )
-
-            canonical_evidence = db.ideal_text.get_canonical_confidence_evidence(
-                take_id=str(session_id), snippet_id=str(snippet_id),
-            )
-            if canonical_evidence is not None:
-                packet_hash = blind_packet_hash(canonical_evidence)
-                supplied_key = request_idempotency_key
-                canonical_key = (
-                    supplied_key.strip()
-                    if isinstance(supplied_key, str) and supplied_key.strip()
-                    else "coach-confidence:" + content_hash({
-                        "request_id": str(uuid.uuid4()),
-                        "take_id": str(session_id),
-                        "snippet_id": str(snippet_id),
-                        "coach_id": str(rater_id),
-                        "value": value,
-                    })
-                )
-                canonical_assignment = (
-                    db.assign_canonical_coach_confidence_evidence(
-                        take_id=str(session_id),
-                        evidence_span_id=str(
-                            canonical_evidence["evidence_span_id"]),
-                        coach_id=str(rater_id),
-                        blind_packet_hash=str(packet_hash),
-                        assignment_reason="blind_confidence_queue",
-                        idempotency_key=(
-                            "coach-assignment:" + canonical_key),
-                    ) if packet_hash else None
-                )
-                canonical_label = (
-                    db.record_canonical_coach_confidence_judgment(
-                        evidence_span_id=str(
-                            canonical_evidence["evidence_span_id"]),
-                        coach_id=str(rater_id),
-                        value=value,
-                        taxonomy_version=TAXONOMY_VERSION,
-                        blind_packet_hash=str(packet_hash),
-                        idempotency_key=canonical_key,
-                    ) if canonical_assignment is not None else None
-                )
-                if canonical_label is None:
-                    logger.warning("canonical coach label dual-write missing take=%s snippet=%s",
-                                   session_id, snippet_id)
-        except Exception as canonical_error:
-            logger.warning(
-                "canonical coach label dual-write failed take=%s "
-                "snippet=%s: %s", session_id, snippet_id, canonical_error,
-            )
-        canonical_judgment = _confidence_chain_judgment(
+        from services.coach_judgement_record import canonical_dual_write
+        canonical_dual_write(
+            db, session_id=session_id, snippet_id=snippet_id, rater_id=rater_id,
+            value=value, request_idempotency_key=request_idempotency_key)
+        # The chain's blind_coach judgment is immutable: a reconsideration
+        # is never a second one.
+        canonical_judgment = None if reconsidering else _confidence_chain_judgment(
             mlc2_handle, snippet_id=snippet_id, rater_id=rater_id, value=value, self_report=self_report)
-        if lane == "coach" and not self_report and sess and sess.get("user_id"):
-            from services.confidence_review_policy import (
-                reconcile_confidence_review,
-            )
-            reconcile_confidence_review(
-                db, snippet_id=snippet_id, session=sess,
-                owner_user_id=sess.get("user_id"), coach_value=value,
-                coach_note=row.get("note"), coach_write=True,
+        if is_rereview or not reconsidering:
+            _after_coach_judgement(
+                sess, snippet_id=snippet_id, session_id=session_id, lane=lane,
+                self_report=self_report, value=value, note=row.get("note"),
                 is_rereview=is_rereview)
-            _reconcile_album_after_judgement(sess, snippet_id, session_id)
         # BLINDNESS RELEASE. This read occurs only after the independent
         # judgment above was durably written. Queue/read payloads never call
         # it, so the coach cannot see the owner label or machine proposal

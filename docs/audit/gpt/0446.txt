@@ -1,0 +1,443 @@
+INDEPENDENT CHECK, backend migration 0446 (Postgres 15 / Supabase). Merging runs it in production. Start fresh: judge only the text below, not any earlier message.
+
+
+CONTEXT. The app is willab (WillpowerLab): a speaker records a Take of a slide
+presentation; the backend transcribes it per slide, keeps one persistent Ideal
+Text document, and a Manager surfaces evidence-backed Feedback; blind coaches
+and peers rate moments of the recording. Fences that every change must keep:
+AC-9 (no number, score, ratio, count or classifier output ever reaches a user
+payload; every read a user sees is qualitative), BLIND COACH (nothing about a
+moment, not the speaker's answer, not the machine's read, reaches a coach
+before that coach's own blind answer on it), LIVE LOOP (record -> process ->
+Ideal Text -> next Take never waits on a coach or on a side write; a failing
+side write never blocks serving), CONSTRUCT (every measured state has one
+written operational definition and asks exactly one thing), and the
+provenance walls L3 (owner, peer, coach, machine and detector answers are
+stored and read apart, never mixed; speaker taps are never blind labels).
+Deployment: Railway with MIGRATE_ON_BOOT=1, so merging a migration to main
+applies it to the production database during the next container start,
+before the app process boots; migrations are append-only, idempotent and
+forward-only (rollback is a new migration). The database is Supabase
+Postgres 15: the browser roles anon and authenticated are granted on the
+public schema by default and PostgREST publishes every function in public at
+/rest/v1/rpc, so each file revokes those defaults itself and grants
+service_role exactly what the Flask app needs; the app reaches the database
+only with the service key (service_role), never as a browser role. The
+rehearsal tier applies every migration twice to a disposable cluster and runs
+a Postgres test against it before a push.
+
+THIS MIGRATION (0446). The coach panel redesign lock (flows 7 and 12, signed words 'Change my answer') lets a coach reopen an answered moment and change their answer; Q-B12 A: the new answer replaces the speaker's card and the old one stays in history for audit. Today resolve_exercise_coach_request_v2 (0402/0403) resolves once and raises EXERCISE_COACH_REQUEST_ALREADY_RESOLVED on a different answer, and the 0385 UPDATE guard refuses any change to a set resolution or share. This file adds (1) exercise_coach_request_answer_versions, an insert-only history of the answers a request no longer has (resolution, exercise or words, video ref, who, when, whether and when shared, when and by whom replaced), (2) guard_exercise_coach_request_update_v2, the 0385 guard with one door: when the transaction-local setting willab.coach_answer_change holds this row's id, the resolution and share may change; everything else is refused exactly as before, and the trigger is swapped to it, (3) resolve_exercise_coach_request_v3: first answer as before; the same answer again is a no-op that may add the share; a DIFFERENT answer by the coach who gave the current one moves the current answer into the history, writes the new one with resolved_at = now() and the share from this call alone (an old share is withdrawn with the answer it belonged to), inside the guard's door; a different answer by another coach is still refused. The app calls v3 for every answer; a changed answer that repeats the same words files nothing again (no duplicate praise line in the catalogue; one (draft, final) pair per request is the pair table's own unique index); a clearer version still never goes to the library (Q-B13 A); the three doors that said 'already resolved' (the draft, the moment line, the answer video) now open to the coach who gave the answer and stay closed to any other coach. The speaker reads only the request row's current, shared answer, so a changed shared answer replaces the card on the next read and a withdrawn share removes it; the bake's freshness rule reads resolved_at and shared_at (0428) so the stored set refreshes. The history is never shown to the speaker; nothing is a score (AC-9). service_role: SELECT and DELETE on the history (the coach's Summary read; the purge, with the Take), EXECUTE on v3; no INSERT or UPDATE by hand. v1 and v2 of the resolver stay in the database, unused by the app. Note for the check: the trigger swap takes a brief exclusive lock on exercise_coach_requests, a small table written only through its functions.
+
+THE MIGRATION, full text:
+----- BEGIN migrations/a_coach_may_change_their_answer.sql -----
+-- 0446 · a coach may change their answer; every earlier answer stays
+-- (founder 2026-10-06, coach panel redesign lock flows 7 and 12, the words
+-- CP2 A "Change my answer"; Q-B12 A, N62; Q-B13 A; build plan D-CP-7)
+--
+-- WHY. The coach panel lock, flow 12: "Summary. An answered moment, reopened
+-- from the queue: what happened and 'Your answer'; 'Change my answer'."
+-- Q-B12 A: "When a coach changes an answer the speaker already has, the new
+-- answer replaces the card; the old one stays in history for audit." Today
+-- resolve_exercise_coach_request_v2 (0402, 0403) resolves once: a second
+-- answer by the same coach with different words raises
+-- EXERCISE_COACH_REQUEST_ALREADY_RESOLVED, and the UPDATE guard (0385)
+-- refuses any change to a set resolution or share from anyone.
+--
+-- WHAT. One history table, a new guard and a new resolver:
+--
+--   exercise_coach_request_answer_versions   every answer a request has had
+--                             and no longer has: the resolution, the
+--                             exercise or the words, the video, who gave it,
+--                             when, whether it was shared and when it was
+--                             replaced. Written only by the resolver, when
+--                             an answer is replaced. Insert-only.
+--   guard_exercise_coach_request_update_v2   0385's guard, with one door:
+--                             the resolver names the request it is changing
+--                             in a transaction-local setting
+--                             (willab.coach_answer_change); within that
+--                             transaction, for that row, the resolution and
+--                             the share may change. Every other UPDATE is
+--                             refused exactly as before: what was requested
+--                             never changes, a resolution is never written
+--                             over by hand, a share is never unset by hand.
+--   resolve_exercise_coach_request_v3   0403's resolver, with the change.
+--                             An unresolved request takes the answer; the
+--                             same answer again changes nothing (and may now
+--                             carry the share); a DIFFERENT answer by the
+--                             coach who gave the current one moves the
+--                             current answer into the history, writes the
+--                             new one with resolved_at = now(), and sets the
+--                             share from this call alone (shared when asked,
+--                             else not shared: the old share is withdrawn
+--                             with the answer it belonged to); a different
+--                             answer by ANOTHER coach is still refused
+--                             (ALREADY_RESOLVED): one coach's answer is not
+--                             another's to change. The exercise ids, the
+--                             words and the video ref on the row at the time
+--                             of the change are what the history keeps.
+--
+-- THE SPEAKER'S CARD (Q-B12 A). The speaker reads the request row and only
+-- its shared, current answer (services/confident_voice_practice.py,
+-- coach_shared_answer / coach_shared_exercise): a changed, shared answer
+-- replaces the card on the next read; a changed, unshared answer takes the
+-- card away. The bake's freshness rule reads the row's resolved_at and
+-- shared_at (0428), so a change refreshes the stored set. Nothing here is a
+-- score (AC-9); the history is the coach's own words, never shown to the
+-- speaker; a clearer version still never goes to the library (Q-B13 A: the
+-- library filing is the app's and unchanged).
+--
+-- Idempotent: IF NOT EXISTS, CREATE OR REPLACE, DROP TRIGGER IF EXISTS then
+-- CREATE TRIGGER; applied twice it changes nothing. Writes no row. Locks:
+-- the new table, and the trigger swap on exercise_coach_requests (a small
+-- table written only through its functions: a brief exclusive lock for the
+-- catalog change, no rewrite, no scan). v1 and v2 of the resolver stay as
+-- they are, unused by the app after this.
+--
+-- Rollback (a new forward migration): recreate the 0385 trigger on
+-- guard_exercise_coach_request_update_v1; DROP FUNCTION
+-- public.resolve_exercise_coach_request_v3(uuid, text, text, text, integer,
+-- boolean, text); DROP FUNCTION public.guard_exercise_coach_request_update_v2();
+-- DROP TABLE public.exercise_coach_request_answer_versions. Rows already
+-- changed keep their current answer.
+
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS public.exercise_coach_request_answer_versions (
+    id                        uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    request_id                uuid        NOT NULL
+                              REFERENCES public.exercise_coach_requests (id) ON DELETE CASCADE,
+    take_session_id           text        NOT NULL,
+    snippet_id                text        NOT NULL,
+    version                   integer     NOT NULL,
+    resolution                text        NOT NULL,
+    resolved_exercise_id      text        NULL,
+    resolved_exercise_version integer     NULL,
+    answer_text               text        NULL,
+    answer_video_ref          text        NULL,
+    resolved_by               text        NOT NULL,
+    resolved_at               timestamptz NOT NULL,
+    shared_at                 timestamptz NULL,
+    superseded_at             timestamptz NOT NULL DEFAULT now(),
+    superseded_by             text        NOT NULL,
+    CONSTRAINT exercise_coach_request_answer_versions_once UNIQUE (request_id, version),
+    CONSTRAINT exercise_coach_request_answer_versions_positive CHECK (version >= 1),
+    CONSTRAINT exercise_coach_request_answer_versions_resolution CHECK (resolution IN (
+        'exercise_chosen', 'exercise_authored', 'no_safe_match',
+        'line_written', 'version_written', 'note_written'))
+);
+CREATE INDEX IF NOT EXISTS exercise_coach_request_answer_versions_take_idx
+    ON public.exercise_coach_request_answer_versions (take_session_id);
+ALTER TABLE public.exercise_coach_request_answer_versions ENABLE ROW LEVEL SECURITY;
+COMMENT ON TABLE public.exercise_coach_request_answer_versions IS
+    'Every answer a coach request had and no longer has (0446; Q-B12 A): the '
+    'resolution, the exercise or the words, the video, who gave it and when, '
+    'whether it was shared, and when and by whom it was replaced. Written only '
+    'by resolve_exercise_coach_request_v3 when the same coach changes their '
+    'answer. The current answer is the request row itself. Never shown to the '
+    'speaker; purged with the Take and with its request.';
+
+-- ── The guard, with one door ──────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.guard_exercise_coach_request_update_v2()
+RETURNS TRIGGER LANGUAGE plpgsql SET search_path = public
+AS $$
+DECLARE
+    changing text := current_setting('willab.coach_answer_change', true);
+BEGIN
+    -- What was requested never changes, whoever asks.
+    IF NEW.id IS DISTINCT FROM OLD.id
+       OR NEW.owner_user_id IS DISTINCT FROM OLD.owner_user_id
+       OR NEW.take_session_id IS DISTINCT FROM OLD.take_session_id
+       OR NEW.snippet_id IS DISTINCT FROM OLD.snippet_id
+       OR NEW.reason IS DISTINCT FROM OLD.reason
+       OR NEW.pattern IS DISTINCT FROM OLD.pattern
+       OR NEW.observed_tags IS DISTINCT FROM OLD.observed_tags
+       OR NEW.request_trace IS DISTINCT FROM OLD.request_trace
+       OR NEW.created_at IS DISTINCT FROM OLD.created_at
+    THEN
+        RAISE EXCEPTION 'EXERCISE_COACH_REQUEST_IMMUTABLE';
+    END IF;
+    -- The resolver, changing this very row in this transaction, may replace
+    -- the answer and the share (0446). Nobody else may.
+    IF NULLIF(changing, '') IS NOT NULL AND changing = OLD.id::text THEN
+        RETURN NEW;
+    END IF;
+    IF OLD.resolution IS NOT NULL AND (
+        NEW.resolution IS DISTINCT FROM OLD.resolution
+        OR NEW.resolved_exercise_id IS DISTINCT FROM OLD.resolved_exercise_id
+        OR NEW.resolved_exercise_version IS DISTINCT FROM OLD.resolved_exercise_version
+        OR NEW.resolved_by IS DISTINCT FROM OLD.resolved_by
+        OR NEW.resolved_at IS DISTINCT FROM OLD.resolved_at)
+    THEN
+        RAISE EXCEPTION 'EXERCISE_COACH_REQUEST_ALREADY_RESOLVED';
+    END IF;
+    IF OLD.shared_at IS NOT NULL AND NEW.shared_at IS DISTINCT FROM OLD.shared_at THEN
+        RAISE EXCEPTION 'EXERCISE_COACH_REQUEST_ALREADY_SHARED';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.guard_exercise_coach_request_update_v2()
+    FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS exercise_coach_request_guard
+    ON public.exercise_coach_requests;
+CREATE TRIGGER exercise_coach_request_guard
+    BEFORE UPDATE ON public.exercise_coach_requests
+    FOR EACH ROW EXECUTE FUNCTION public.guard_exercise_coach_request_update_v2();
+
+-- ── The resolver, with the change ─────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.resolve_exercise_coach_request_v3(
+    p_request_id UUID,
+    p_coach_id TEXT,
+    p_resolution TEXT,
+    p_exercise_id TEXT,
+    p_exercise_version INTEGER,
+    p_share BOOLEAN,
+    p_answer_text TEXT
+) RETURNS public.exercise_coach_requests
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    current_row public.exercise_coach_requests;
+    in_words BOOLEAN := p_resolution IN ('line_written', 'version_written', 'note_written');
+    with_exercise BOOLEAN := p_resolution IN ('exercise_chosen', 'exercise_authored');
+    answer TEXT := NULLIF(btrim(p_answer_text), '');
+    same_answer BOOLEAN;
+    next_version INTEGER;
+BEGIN
+    IF p_request_id IS NULL OR COALESCE(btrim(p_coach_id), '') = ''
+       OR p_resolution IS NULL
+       OR p_resolution NOT IN ('exercise_chosen', 'exercise_authored',
+                               'no_safe_match', 'line_written', 'version_written',
+                               'note_written')
+       OR (p_resolution = 'no_safe_match'
+           AND (p_exercise_id IS NOT NULL OR p_exercise_version IS NOT NULL
+                OR COALESCE(p_share, false) OR answer IS NOT NULL))
+       OR (with_exercise
+           AND (COALESCE(btrim(p_exercise_id), '') = ''
+                OR p_exercise_version IS NULL OR p_exercise_version < 1
+                OR answer IS NOT NULL))
+       OR (in_words
+           AND (p_exercise_id IS NOT NULL OR p_exercise_version IS NOT NULL
+                OR answer IS NULL))
+    THEN
+        RAISE EXCEPTION 'EXERCISE_COACH_REQUEST_INPUT_INVALID';
+    END IF;
+
+    SELECT * INTO current_row FROM public.exercise_coach_requests
+     WHERE id = p_request_id FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'EXERCISE_COACH_REQUEST_NOT_FOUND';
+    END IF;
+
+    IF current_row.resolution IS NULL THEN
+        -- The first answer, as 0403 wrote it.
+        UPDATE public.exercise_coach_requests
+           SET resolution = p_resolution,
+               resolved_exercise_id = p_exercise_id,
+               resolved_exercise_version = p_exercise_version,
+               answer_text = answer,
+               resolved_by = p_coach_id,
+               resolved_at = now()
+         WHERE id = p_request_id
+        RETURNING * INTO current_row;
+    ELSE
+        same_answer := current_row.resolution IS NOT DISTINCT FROM p_resolution
+            AND current_row.resolved_exercise_id IS NOT DISTINCT FROM p_exercise_id
+            AND current_row.resolved_exercise_version IS NOT DISTINCT FROM p_exercise_version
+            AND current_row.answer_text IS NOT DISTINCT FROM answer;
+        IF NOT same_answer THEN
+            IF current_row.resolved_by IS DISTINCT FROM p_coach_id THEN
+                -- One coach's answer is not another's to change.
+                RAISE EXCEPTION 'EXERCISE_COACH_REQUEST_ALREADY_RESOLVED';
+            END IF;
+            -- Q-B12 A: the old answer goes into the history, whole.
+            SELECT COALESCE(max(version), 0) + 1 INTO next_version
+              FROM public.exercise_coach_request_answer_versions
+             WHERE request_id = p_request_id;
+            INSERT INTO public.exercise_coach_request_answer_versions (
+                request_id, take_session_id, snippet_id, version, resolution,
+                resolved_exercise_id, resolved_exercise_version, answer_text,
+                answer_video_ref, resolved_by, resolved_at, shared_at, superseded_by
+            ) VALUES (
+                current_row.id, current_row.take_session_id, current_row.snippet_id,
+                next_version, current_row.resolution,
+                current_row.resolved_exercise_id, current_row.resolved_exercise_version,
+                current_row.answer_text, current_row.answer_video_ref,
+                current_row.resolved_by, current_row.resolved_at, current_row.shared_at,
+                p_coach_id
+            );
+            -- The door in the guard, for this row, in this transaction only.
+            PERFORM set_config('willab.coach_answer_change', p_request_id::text, true);
+            UPDATE public.exercise_coach_requests
+               SET resolution = p_resolution,
+                   resolved_exercise_id = p_exercise_id,
+                   resolved_exercise_version = p_exercise_version,
+                   answer_text = answer,
+                   resolved_by = p_coach_id,
+                   resolved_at = now(),
+                   -- The old share belonged to the old answer: withdrawn with
+                   -- it. The new answer is shared only if this call says so.
+                   shared_at = CASE WHEN COALESCE(p_share, false) THEN now() END
+             WHERE id = p_request_id
+            RETURNING * INTO current_row;
+            PERFORM set_config('willab.coach_answer_change', '', true);
+            RETURN current_row;
+        END IF;
+    END IF;
+
+    IF COALESCE(p_share, false) AND current_row.shared_at IS NULL THEN
+        UPDATE public.exercise_coach_requests
+           SET shared_at = now()
+         WHERE id = p_request_id
+        RETURNING * INTO current_row;
+    END IF;
+    RETURN current_row;
+END;
+$$;
+
+COMMENT ON FUNCTION public.resolve_exercise_coach_request_v3(
+    UUID, TEXT, TEXT, TEXT, INTEGER, BOOLEAN, TEXT) IS
+    'The coach''s answer to a request (0446; Q-B12 A): first answer as 0403; '
+    'the same again is a no-op that may add the share; a different answer by '
+    'the same coach replaces it and keeps the old one in '
+    'exercise_coach_request_answer_versions; another coach''s is refused. '
+    'service_role only.';
+
+-- ── The door ───────────────────────────────────────────────────────────────
+-- Browser roles and PUBLIC get nothing on the history or the resolver,
+-- whatever default privileges the schema carries (Supabase grants
+-- anon/authenticated on public by default; PostgREST publishes every public
+-- function). The app reads the history and calls the resolver with the
+-- service key; the purge deletes history rows with the Take (and the
+-- request's cascade does the rest); the history is written only by the
+-- resolver. Roles are guarded: they exist on Supabase, not on a bare
+-- Postgres.
+REVOKE ALL ON TABLE public.exercise_coach_request_answer_versions FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.resolve_exercise_coach_request_v3(
+    UUID, TEXT, TEXT, TEXT, INTEGER, BOOLEAN, TEXT) FROM PUBLIC;
+DO $$
+DECLARE
+    v_role text;
+BEGIN
+    FOREACH v_role IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_role) THEN
+            EXECUTE format('REVOKE ALL ON TABLE public.exercise_coach_request_answer_versions FROM %I', v_role);
+            EXECUTE format('REVOKE ALL ON FUNCTION public.resolve_exercise_coach_request_v3(uuid, text, text, text, integer, boolean, text) FROM %I', v_role);
+        END IF;
+    END LOOP;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+        REVOKE ALL ON TABLE public.exercise_coach_request_answer_versions FROM service_role;
+        GRANT SELECT, DELETE ON TABLE public.exercise_coach_request_answer_versions TO service_role;
+        GRANT EXECUTE ON FUNCTION public.resolve_exercise_coach_request_v3(
+            uuid, text, text, text, integer, boolean, text) TO service_role;
+    END IF;
+END $$;
+
+COMMIT;
+----- END -----
+
+CALLING CODE excerpts (the app's side of the same change):
+----- The resolver call (services/db.py, lines 15025-15046) -----
+    def resolve_exercise_coach_request(
+        self, *, request_id: str, coach_id: str, resolution: str,
+        exercise_id: Optional[str], exercise_version: Optional[int],
+        share: bool, answer_text: Optional[str] = None,
+    ) -> Optional[dict]:
+        """The coach's answer (migration 0385; in words 0402; changeable
+        0446): the first answer is written; the same again is a no-op that
+        may add the share; a different answer by the SAME coach replaces it
+        and keeps the old one in exercise_coach_request_answer_versions
+        (Q-B12 A); another coach's is refused. Raises the database's refusal
+        (e.g. EXERCISE_COACH_REQUEST_ALREADY_RESOLVED) to the caller."""
+        result = self.client.rpc("resolve_exercise_coach_request_v3", {
+            "p_request_id": str(request_id),
+            "p_coach_id": str(coach_id),
+            "p_resolution": str(resolution),
+            "p_exercise_id": exercise_id,
+            "p_exercise_version": exercise_version,
+            "p_share": bool(share),
+            "p_answer_text": None if answer_text is None else str(answer_text),
+        }).execute()
+        return self._rpc_row(result.data)
+----- No duplicate praise on a repeated answer (services/exercise_coach_requests.py, lines 334-371) -----
+def answer_unchanged(previous: Any, resolved: Any) -> bool:
+    """A changed answer (0446, Q-B12 A) that says the same words as the one
+    it replaces leaves no second trace: the praise line is already in the
+    catalogue and the pair already recorded. Pure."""
+    if not isinstance(previous, dict) or not isinstance(resolved, dict):
+        return False
+    if not previous.get("resolution"):
+        return False
+    return (str(previous.get("resolution") or "") == str(resolved.get("resolution") or "")
+            and " ".join(str(previous.get("answer_text") or "").split())
+            == " ".join(str(resolved.get("answer_text") or "").split())
+            and str(previous.get("resolved_exercise_id") or "")
+            == str(resolved.get("resolved_exercise_id") or ""))
+
+
+def _file_answer(database: Any, request: dict, resolved: dict, fields: dict,
+                 exercise: Optional[dict], coach_id: str,
+                 previous: Any = None) -> None:
+    """What an answer leaves behind besides the resolution, all best-effort
+    and never in the answer's way:
+
+    * the (draft, final) pair, when a draft was shown and the final differs
+      (``_record_pairs``; services.feedback_pairs; founder C5); one pair per
+      request and surface is the table's own key, so a changed answer never
+      records a second one;
+    * a praise line lands in the catalogue of signed lines as the newest
+      version for the moment's pattern (35f; P2-3) unless the coach says
+      ``file_in_catalogue: false``. A clearer version never does: it is one
+      speaker's passage, not a move for every rewrite (Q-B13 A).
+
+    ``previous`` is the request row as it was before this answer (0446): an
+    answer that repeats it files nothing again (no duplicate praise), a
+    changed praise line files its new words as the next version.
+    """
+    if answer_unchanged(previous, resolved):
+        return
+    resolution = str(resolved.get("resolution") or "")
+    if resolution == "note_written":
+----- The doors open to the same coach only (services/coach_request_drafts.py, lines 83-90) -----
+def changed_by_another_coach(request: Any, coach_id: Any) -> bool:
+    """0446 (Q-B12 A): a resolved request is open again to the coach who
+    answered it (they may change their answer: a new draft, new words, a new
+    video), and closed to everyone else. Pure."""
+    if not isinstance(request, dict) or not request.get("resolution"):
+        return False
+    return str(request.get("resolved_by") or "") != str(coach_id or "")
+----- The speaker's card reads the row (services/confident_voice_practice.py, lines 1706-1720) -----
+def coach_shared_answer(request: Any) -> Optional[dict]:
+    """The coach's answer in words, shared for this moment (0402): ``{"kind":
+    "line" | "version", "text"}`` or None. The draft never rides."""
+    if not isinstance(request, dict) or not request.get("shared_at"):
+        return None
+    from services.exercise_coach_requests import WORD_RESOLUTIONS, answer_video_url
+    kind = WORD_RESOLUTIONS.get(str(request.get("resolution") or ""))
+    text = " ".join(str(request.get("answer_text") or "").split())
+    if kind is None or not text:
+        return None
+    answer: dict = {"kind": kind, "text": text}
+    video_url = answer_video_url(request)
+    if video_url:
+        answer["video_url"] = video_url
+    return answer
+----- The purge entry (services/data_purge_registry.py, lines 331-333) -----
+    PurgeDependency("exercise_coach_request_answer_versions",
+                    "exercise_coach_request_answer_versions", "take_session_id",
+                    "take", "delete", "derived_feedback", 58),
+----- END OF CALLING CODE -----
+
+QUESTIONS. Answer each in order.
+1. Idempotency: does applying the file twice (and on a database where it already ran) succeed and change nothing? Any statement that fails on the second run, or silently changes rows?
+2. Grants and RLS: after the file runs, can the Supabase browser roles (anon, authenticated) or PUBLIC read or write the new table(s) or execute the new function(s)? Does service_role keep what the app needs? Any SECURITY DEFINER exposure or search_path hijack?
+3. Data exposure: can any person's data (another speaker's rows, transcript text, answers) leak through the new objects or the calling code? Does any user-facing payload gain a number, score, ratio, count or classifier output (AC-9 forbids that)?
+4. Locking: does anything take a lock on an existing, busy production table (ALTER TABLE on a large table, index builds without CONCURRENTLY on existing tables, validation scans)? Could the function itself deadlock or serialize hot paths?
+5. Rollback and destructiveness: does the file drop, truncate, delete or rewrite any existing data? Is the stated forward-only rollback realistic?
+6. Correctness of the rule the SQL implements, against the WHY below. Any edge case where it does the wrong thing?
+7. Anything else that would make you block the merge.
+
+Give a verdict line "PASS" or "FAIL", then numbered findings (severity: blocker / should-fix / nit).
+
+Finish your answer with the line END OF REVIEW.

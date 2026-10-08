@@ -1,9 +1,11 @@
-"""Project deletion requests (P1-A, founder 2026-09-25, decisions log N8).
+"""Project deletion requests (P1-A, founder 2026-09-25, decisions log N8;
+seven-day window N48.4 Q17 A, migration 0422).
 
-The picker's ⋯ → Delete creates a REQUEST. An operator confirms it within 7
-days; until then the project is locked and its owner may cancel. Nothing here
-deletes anything: a confirmed request is executed by the governed Phase-1
-purge once it can scope to one project (P1-B, spec §6).
+Delete creates a REQUEST. For seven days (``due_at``) the project is locked
+and its owner may cancel; after that the deletion completes by itself
+(services/deletion_completion.py confirms it as the system and runs the
+one-project purge). An operator may still confirm one by hand (0380).
+Nothing here deletes anything.
 
 Storage is ``project_deletion_requests`` (migration 0364), deliberately apart
 from ``data_purge_requests`` so a project request can never be run as an
@@ -16,7 +18,8 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Any, Iterable
+from datetime import datetime, timezone
+from typing import Any, Iterable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +42,10 @@ _RPC_ERRORS = {
     # The operator's confirm (P1-B, 0380).
     "PROJECT_DELETION_NOT_FOUND": ("PROJECT_DELETION_NOT_FOUND", 404),
     "PURGE_PROJECT_NOT_OWNED": ("PURGE_PROJECT_NOT_OWNED", 409),
+    # The seven-day window (0422, N48.4 Q17 A): the owner cancels only
+    # before it closes; the system confirms only after.
+    "PROJECT_DELETION_WINDOW_CLOSED": ("PROJECT_DELETION_WINDOW_CLOSED", 409),
+    "PROJECT_DELETION_WINDOW_OPEN": ("PROJECT_DELETION_WINDOW_OPEN", 409),
 }
 
 
@@ -73,16 +80,40 @@ def _is_uuid(value: str) -> bool:
     return True
 
 
-def public_view(row: dict | None) -> dict | None:
-    """What a user or the picker sees: state and dates, never owner ids."""
+def _at(value: Any) -> Optional[datetime]:
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def cancellable(row: dict, now: Optional[datetime] = None) -> bool:
+    """Pending and still inside its seven days (0422, N48.4 Q17 A). The
+    database decides on the cancel itself; this tells the app whether to
+    offer it."""
+    ends = _at(row.get("due_at"))
+    moment = now or datetime.now(timezone.utc)
+    return row.get("state") == "pending" and ends is not None and moment < ends
+
+
+def public_view(row: dict | None, now: Optional[datetime] = None) -> dict | None:
+    """What a user or the picker sees: state and dates, never owner ids.
+
+    ``completes_after`` is ``due_at`` under the name the account deletion
+    uses: the end of the cancel window, after which the deletion completes
+    by itself (0422)."""
     if not row:
         return None
     return {
         "request_id": str(row.get("id")),
+        "kind": "project",
         "project_id": str(row.get("project_id")),
         "state": row.get("state"),
         "requested_at": row.get("requested_at"),
         "due_at": row.get("due_at"),
+        "completes_after": row.get("due_at"),
+        "cancellable": cancellable(row, now),
         "cancelled_at": row.get("cancelled_at"),
     }
 
@@ -132,6 +163,15 @@ class ProjectDeletionService:
             "p_project_id": str(project_id),
         })
 
+    def start_due(self, request_id: str) -> dict:
+        """The system's confirm once the seven days have passed (0422,
+        N48.4 Q17 A): the same one-project purge request the operator's
+        confirm makes. Deletes nothing; services/deletion_completion.py runs
+        the purge."""
+        return self._rpc("start_due_project_deletion_v1", {
+            "p_request_id": str(request_id),
+        })
+
     def confirm(self, request_id: str, operator_id: str) -> dict:
         """The operator's confirm (N8): creates the one-project purge request
         and ends the owner's chance to cancel. Deletes nothing; the purge
@@ -163,6 +203,27 @@ class ProjectDeletionService:
 
     def open_for_project(self, project_id: str) -> dict | None:
         return self.open_for_projects([project_id]).get(str(project_id))
+
+    def open_for_principal(self, principal_id: str) -> list[dict]:
+        """This owner's open requests, newest first. Empty before the table
+        exists."""
+        if not principal_id or self.client is None:
+            return []
+        try:
+            rows = (
+                self.client.table("project_deletion_requests")
+                .select(_COLUMNS)
+                .eq("acquisition_principal_id", str(principal_id))
+                .in_("state", list(OPEN_STATES))
+                .execute().data or []
+            )
+        except Exception as error:
+            if _is_missing(error):
+                return []
+            raise
+        rows = [row for row in rows if isinstance(row, dict)]
+        return sorted(rows, key=lambda row: str(row.get("requested_at") or ""),
+                      reverse=True)
 
     def erased_projects(self, project_ids: Iterable[str]) -> set[str]:
         """The given projects an erasure has reached: kept as a tombstone,

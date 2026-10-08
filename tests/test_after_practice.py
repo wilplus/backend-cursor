@@ -203,9 +203,6 @@ class OffTests(unittest.TestCase):
         self.assertIsNone(ap.after_landing(db, PRACTICE, [_attempt(1)], "a-1", "yes"))
         self.assertIsNone(ap.after_dismissal(db, PRACTICE))
         self.assertEqual(db.updates, [])
-        self.assertEqual(bv.bold_voices_for_take(db, take_session_id="take-1", owner_user_id="owner-1")[0], 404)
-        self.assertEqual(bv.mark_step(db, take_session_id="take-1", owner_user_id="owner-1",
-                                      body={"step": "bridge"})[0], 404)
         self.assertEqual(cr.list_readings(db, coach_id="c")[0], 404)
         self.assertEqual(cr.create_reading(db, coach_id="c", passage="x", media_file=None,
                                            media_kind="audio", max_mb=1)[0], 404)
@@ -232,34 +229,35 @@ class OnTests(unittest.TestCase):
                 raise RuntimeError("down")
         self.assertIsNone(ap.after_landing(_Down(), PRACTICE, [_attempt(1)], "a-1", "yes"))
 
-    def test_bold_voices_serve_the_own_attempt_and_the_readings_without_a_name(self):
+    def test_bold_voices_are_retired_whatever_the_switch_says(self):
+        # Q-B11 A (founder 2026-10-07, N62): "The Album share switch and
+        # Bold voices are retired." No service door, and the three routes
+        # answer 404 before any read, with the switch on.
+        from flask import Flask, request
+        import routes.v2.after_practice as route
+        for door in ("bold_voices_for_take", "mark_step", "record_heard", "STEPS", "CLIP_KINDS"):
+            self.assertFalse(hasattr(bv, door), door)
+        source = (ROOT / "routes/v2/after_practice.py").read_text()
+        routes_ = {
+            "v2_bold_voices": ("/user/takes/<take_session_id>/bold-voices", "GET"),
+            "v2_after_practice_step": ("/user/takes/<take_session_id>/after-practice-step", "POST"),
+            "v2_bold_voices_heard": ("/user/takes/<take_session_id>/bold-voices/heard", "POST"),
+        }
+        self.assertEqual(source.count("@v2_bp.route("), len(routes_))
+        self.assertNotIn("services.db", source)
+        app = Flask(__name__)
+        for name, (path, method) in routes_.items():
+            self.assertIn(f'@v2_bp.route("{path}", methods=["{method}"])', source)
+            with app.test_request_context("/v2/x", method=method,
+                                          json={"step": "bold_voices", "clip_kind": "own_attempt",
+                                                "clip_id": "a-1"}):
+                request.user_id = "owner-1"
+                response, status = getattr(route, name).__wrapped__("take-1")
+            self.assertEqual(status, 404, name)
+            self.assertEqual(response.get_json()["code"], "NOT_FOUND", name)
+        # The ledger's count stays (never a speaker-facing number).
         db = _Db()
-        status, payload = bv.bold_voices_for_take(db, take_session_id="take-1", owner_user_id="owner-1")
-        self.assertEqual(status, 200)
-        self.assertEqual(payload["own"][0]["clip_id"], "a-1")
-        self.assertEqual(payload["own"][0]["passage"], "the words")
-        self.assertEqual(payload["coach_readings"], [{
-            "clip_id": "r-1", "passage": "a line", "media_url": "https://m/r.mp3", "media_kind": "audio"}])
-        self.assertEqual(payload["steps_shown"], {"bold_voices": "t1"})
-        self.assertEqual(bv.bold_voices_for_take(db, take_session_id="take-1", owner_user_id="else")[0], 404)
-
-    def test_each_step_is_shown_once_per_take(self):
-        db = _Db()
-        self.assertEqual(bv.mark_step(db, take_session_id="take-1", owner_user_id="owner-1",
-                                      body={"step": "bold_voices"}), (200, {"recorded": True}))
-        self.assertEqual(bv.mark_step(db, take_session_id="take-1", owner_user_id="owner-1",
-                                      body={"step": "bold_voices"}), (200, {"recorded": False}))
-        self.assertEqual(bv.mark_step(db, take_session_id="take-1", owner_user_id="owner-1",
-                                      body={"step": "encore"})[0], 400)
-
-    def test_the_heard_receipt(self):
-        db = _Db()
-        self.assertEqual(bv.record_heard(db, take_session_id="take-1", owner_user_id="owner-1",
-                                         body={"clip_kind": "coach_reading", "clip_id": "r-1"}),
-                         (200, {"recorded": True}))
-        self.assertEqual(db.plays[0]["clip_id"], "r-1")
-        self.assertEqual(bv.record_heard(db, take_session_id="take-1", owner_user_id="owner-1",
-                                         body={"clip_kind": "stranger", "clip_id": "r-1"})[0], 400)
+        self.assertEqual(bv.after_practice_counts(db, since="t0")["since"], "t0")
 
     def test_the_coach_tool_records_and_publishes_a_reading(self):
         class _File:
@@ -320,7 +318,7 @@ class WiringTests(unittest.TestCase):
         routes = (ROOT / "routes/v2/user_sessions.py").read_text()
         self.assertIn("_practice_user_payload(_dismissed(updated))", routes)
         self.assertIn("comparison = _attempt_comparison(", routes)
-        self.assertIn('"after_practice": practice.get("after_practice")', routes)
+        self.assertIn('"after_practice": _after_practice_public(practice.get("after_practice"))', routes)
         self.assertIn('"after_practice": after', (ROOT / "services/learning_ledger.py").read_text())
 
     def test_the_contract_the_config_the_migration_and_the_routes_record_f5(self):
@@ -341,7 +339,7 @@ class WiringTests(unittest.TestCase):
         by = {d.relation: (d.selector_column, d.locator_kind) for d in DEPENDENCIES}
         self.assertEqual(by["after_practice_steps"], ("take_session_id", "take"))
         self.assertEqual(by["bold_voices_plays"], ("take_session_id", "take"))
-        self.assertEqual(by["coach_readings"], ("coach_id", "principal"))
+        self.assertEqual(by["coach_readings"], ("coach_id", "user"))
 
     def test_no_scorer_reads_the_sentence(self):
         for name in ("services/exercise_adequacy_labels.py", "services/exercise_fair_test.py",

@@ -12,6 +12,10 @@
 
 target-version = "py312"
 
+# One-shot ledger generators (docs/audit/build, PR #910): throwaway docs
+# tooling, not application code. Linting them is not what the gate is for.
+extend-exclude = ["docs/audit/build"]
+
 [lint]
 ignore = [
     # Mid-file module imports are a deliberate idiom in this codebase:

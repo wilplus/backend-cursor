@@ -139,6 +139,18 @@ class Config:
     # exactly (_env_flag: on = "1"/"true"/"yes"; _env_not_off: default-on).
     INSTANT_IDEAL_TEXT_ENABLED = _env_flag("INSTANT_IDEAL_TEXT_ENABLED", "0")
     MOMENT_SUGGESTIONS_ENABLED = _env_flag("MOMENT_SUGGESTIONS_ENABLED", "0")
+    # THE PRAISE DETECTORS' OWN SWITCH (founder 2026-10-06, Navigation Panel
+    # QA3 A: "praise detectors get their own switch, turned on in a reviewed
+    # change"; ledger A045, A053b). It gates ONLY detector praise -- the
+    # structural device and the impeccable delivery read: whether the worker
+    # runs them (`moment_suggestions.generate_praise_for_session`, when
+    # MOMENT_SUGGESTIONS_ENABLED is off) and whether the read path stamps
+    # their evidence so the Manager may serve them
+    # (`tracked_changes._detector_praise_evidence`). Independent of
+    # MOMENT_SUGGESTIONS_ENABLED, which keeps the rest of the star lane.
+    # DEFAULT ON IN CODE, so a service that never got the variable (web,
+    # worker or cron) still reads it on (CONFIG-FIRST); "0" switches it off.
+    PRAISE_DETECTORS_ENABLED = _env_flag("PRAISE_DETECTORS_ENABLED", "1")
     POLISH_AS_SUGGESTIONS_ENABLED = _env_flag("POLISH_AS_SUGGESTIONS_ENABLED", "0")
     LIVING_TRANSCRIPT_ENABLED = _env_flag("LIVING_TRANSCRIPT_ENABLED", "0")
     # ON since #595, on evidence rather than on hope this time.
@@ -233,9 +245,10 @@ class Config:
     TAKE_FEEDBACK_POLICY_V3_SHADOW_WRITE_MODE = (
         os.getenv("TAKE_FEEDBACK_POLICY_V3_MODE") or "off"
     ).strip()
-    # Compatibility alias for the existing readers and tests. Same value, and
-    # the name above is the one to use.
-    TAKE_FEEDBACK_POLICY_V3_MODE = TAKE_FEEDBACK_POLICY_V3_SHADOW_WRITE_MODE
+    # The Python alias `TAKE_FEEDBACK_POLICY_V3_MODE` is removed (contract
+    # 52: aliases are removed, not kept; audit 2026-10-05). The ENVIRONMENT
+    # variable keeps its name above, because it is set on live Railway
+    # services (config-first); only the duplicate attribute is gone.
     TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID = (
         os.getenv("TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID") or ""
     ).strip()
@@ -273,6 +286,18 @@ class Config:
     # code constant, flipped only by a reviewed change at P5 (counsel +
     # founder), never by a dashboard.
     MLC2_TRAINING_CORPUS_COPY_ENABLED = False
+    # THE CORPUS IMPORT (founder 2026-10-06, panel answer CO1 A, decisions log
+    # N56.4: "switch the training corpus on and build it properly"). On, the
+    # coach-only POST /v2/coach/training-imports (and the CLI behind
+    # services/training_import.py) imports audio the founder holds the rights
+    # to: each import runs the Take's V3 spotting (75-word blocks, the
+    # machine's pick per block, stored and never shown) and its speaker gets
+    # one fixed 80/20 learn/test assignment (services/corpus_split.py,
+    # migration 0433). Off, the route answers 410 PHASE2_DISABLED exactly as
+    # before. A code constant the founder flips by a reviewed change, never an
+    # env variable. It opens the import only: dataset releases, training,
+    # evaluation and promotion keep their own constants above, all closed.
+    TRAINING_IMPORT_ENABLED = False
     # The training switch route (P5 packet §4 item 6). A code constant,
     # flipped only by a reviewed change; never an env variable.
     # DOOR 1 OPENED 2026-10-01 by the founder's sentence "open door 1"
@@ -330,7 +355,9 @@ class Config:
     # know their own students; the walk stays blind to the machine's read)
     # and one Take can be read in the walk's shape from a profile. Off, the
     # routes answer exactly as before and the walk-take read is 404. A
-    # reviewed change flips it after the founder's yes.
+    # reviewed change flips it after the founder's yes. The founder said no
+    # on 2026-10-05 (decisions log N48.5, Q26 A: "the Students screens stay
+    # off"); tests/test_coach_students.py pins it False and unset elsewhere.
     COACH_STUDENTS_ENABLED = False
 
     # PHASE 1 of the after-practice paths (founder 2026-10-01, F2): the
@@ -343,7 +370,11 @@ class Config:
     # Plan Phase 0, N29): the ladder had no rungs (no exercise carries
     # matching_criteria.general_for and the warm-up is seeded inactive) and
     # no screen reads its caption. It comes back on with the three general
-    # exercises, the active warm-up and the caption's screen.
+    # exercises, the active warm-up and the caption's screen. Q30 A (founder
+    # 2026-10-05, decisions log N48.6): "the exercise fallback ladder stays
+    # off until three general exercises are filmed". A code constant, never
+    # an environment variable, so only a reviewed change can turn it on;
+    # tests/test_exercise_fallback_ladder.py pins it.
     EXERCISE_FALLBACK_LADDER_ENABLED = False
 
     # PHASE 2 of the after-practice paths (founder 2026-10-01, F1): the
@@ -366,8 +397,19 @@ class Config:
     # OFF again since 2026-10-05 (second plan, Phase 1, founder "go"): no
     # screen renders the sentence, the encouragement, Bold voices or the
     # coach readings, so the switch acted with nothing behind it (as N29).
-    # Back on when a screen ships.
+    # Back on when a screen ships. Bold voices no longer rides it: RETIRED
+    # 2026-10-07 (founder, Q-B11 A, N62); its three routes answer 404
+    # whatever this says (routes/v2/after_practice.py).
     PRAISE_AFTER_PRACTICE_ENABLED = False
+
+    # THE MACHINE CHECKS EACH PRACTISE TRY (founder lock 2026-10-06, the
+    # Feedback walk; decisions log N52.3): "don't ask me right away does my
+    # last take sound confident to me, you need to check it yourself". On,
+    # the walk posts each try to /attempts/<id>/check and the machine says
+    # praise or again (services/practice_check.py); the five-answer route
+    # stays for the screens that still use it. Off until the walk's
+    # screens ship: no screen calls the route yet.
+    MACHINE_PRACTICE_CHECK_ENABLED = True
 
     # PHASE 4 of the after-practice paths (founder 2026-10-01, F3, F4): the
     # peer lane. On, a Voice Album moment can be lent to other ears (share
@@ -381,8 +423,15 @@ class Config:
     # or later, so nothing is lent before the speaker has read 4b. Off, the
     # routes answer 404 and nothing is written. OFF again from 2026-10-03
     # (founder, F1 Repair Plan Phase 0, N29): no screen renders the share
-    # switch or Lend your ear, so nothing could be lent. It comes back on
-    # with those screens.
+    # switch or Lend your ear, so nothing could be lent. RETIRED as a
+    # speaker switch 2026-10-07 (founder, Q-B11 A, N62): the Album share
+    # switch, the per-Take set it fed and Bold voices are gone and their
+    # routes answer 404 whatever this says; the walk's other voices are the
+    # communities' queue (COMMUNITIES_ENABLED below), served by the Lend
+    # your ear engine under the per-Take consent only. This now gates only
+    # the coach's licensed-corpus tool (/v2/coach/licensed-clips, whose
+    # clips are the walk's training clips) and the ledger's historical
+    # counts of the retired lane.
     PEER_LANE_ENABLED = False
 
     # PHASE 5 (founder 2026-10-01): the delayed blind human measure
@@ -409,6 +458,43 @@ class Config:
     # _on_notice_version): the balancing test holds only for a speaker who
     # has read the line, never before the publish.
     BLIND_CHECK_POLICY_VERSION: str | None = "phase1-2026-10-02"
+
+    # COMMUNITIES (founder 2026-10-06, decisions log N52.4; migration 0432):
+    # after every finished review the speaker may share that Take with the
+    # general community, a private community joined with a pass code, or one
+    # of their own; "None" stands alone and only the coach judges. A shared
+    # Take is judged by its community; community answers are peer ratings
+    # (L3). Built DARK: off, every /user/communities and take-share route
+    # answers 404 and nothing is read or written (services/communities.py).
+    # Q-B11 A (founder 2026-10-07, N62): this is THE ONE PEER LANE. The
+    # queue serves at most 3 other voices per walk, community clips first,
+    # then training clips, through the Lend your ear engine
+    # (services/lend_your_ear.other_voices); the per-Take share is the one
+    # consent path that admits a speaker's moment to it.
+    COMMUNITIES_ENABLED = False
+    # CM2 B (founder 2026-10-06, N53.2; Q-B6 A, N62): sharing switches on
+    # with the sharing screen, under the founder's own signed words for it
+    # (N54, WQ5 A / WQ6 A), without waiting for counsel; the founder took the
+    # risk stated on the panel ("people's voices reach others under words
+    # counsel has not checked, in the EU"). Sharing names the CURRENT
+    # Privacy/Terms: the Phase-1 policy version below (phase1-2026-10-02,
+    # Privacy 3.3 + Terms 3.3, scripts/phase1_policy_publish_3_3.sql). The
+    # share route refuses (409 TERMS_REACCEPT_REQUIRED) until the speaker's
+    # current authorization is on it or later; "None" still revokes without
+    # any version. Each share row is stamped with it (take_shares.
+    # consent_version) and with the version of the sharing screen's words
+    # the speaker saw (take_shares.share_words_version, 0443), which the
+    # screen sends. Still dark: COMMUNITIES_ENABLED above is the switch.
+    COMMUNITY_SHARE_POLICY_VERSION: str | None = "phase1-2026-10-02"
+    # The versions of the sharing screen's words a share may record (0443):
+    # the server's own list, so a share can only name words that were really
+    # signed and shown. "sharing-screen-2026-10-06" is the founder's signed
+    # sharing words (N54, WQ5 A / WQ6 A; docs/SIGNED-line-bank-2026-10-06.md,
+    # "Sharing"). When counsel or the founder changes those words, the new
+    # version is added here in the same PR as the screen that shows it; an
+    # old version stays listed while a screen that shows it may still be open.
+    # Any other version is refused (400 SHARE_WORDS_VERSION_UNKNOWN).
+    SHARE_WORDS_VERSIONS: tuple[str, ...] = ("sharing-screen-2026-10-06",)
 
     # THE COACH PANEL'S LEARNING ADDITIONS (founder 2026-10-01; migration
     # 0411), each dark behind its own constant, each a reviewed flip after
@@ -760,6 +846,24 @@ class Config:
     # Shared secret for POST /v2/internal/learning/weekly (the weekly learning
     # job's cron, founder 2026-09-30; ML-3). Unset = the route answers 503.
     LEARNING_WEEKLY_SECRET = (os.getenv("LEARNING_WEEKLY_SECRET") or "").strip()
+    # Shared secret for POST /v2/internal/deletion/complete-due (deletions
+    # that complete by themselves after seven days, founder 2026-10-05,
+    # N48.4 Q14 A / Q17 A). Unset = the route answers 503.
+    DELETION_COMPLETION_SECRET = (
+        os.getenv("DELETION_COMPLETION_SECRET") or ""
+    ).strip()
+    # The purge kill switch scripts/run_phase1_data_purge.py also reads.
+    # Only "true" executes; anything else makes the completion run a dry run
+    # that reports what is due and writes nothing.
+    PHASE1_PURGE_EXECUTION_ENABLED = (
+        (os.getenv("PHASE1_PURGE_EXECUTION_ENABLED") or "").strip().lower()
+        == "true"
+    )
+    # Shared secret for POST /v2/internal/retention/clean (the scheduled
+    # clean-up's daily cron, founder 2026-10-05, N48.4 Q16 A). Unset = the
+    # route answers 503. It never decides whether anything is deleted: that is
+    # RETENTION_CLEANER_LIVE in services/retention_cleaner.py.
+    RETENTION_CLEANER_SECRET = (os.getenv("RETENTION_CLEANER_SECRET") or "").strip()
 
     # willab — upfront free credit grant seeded on a user's first ledger touch
     # (founder testing 2026-07-13: bumped 15 → 25 so every user can unlock one
@@ -872,22 +976,14 @@ class Config:
         os.getenv("R2_JOURNAL_PUBLIC_BASE_URL") or ""
     ).strip()
 
-    # Stripe Checkout → credits (POST /v2/internal/stripe/webhook). Webhook signing secret from Stripe Dashboard.
+    # Stripe → one-time token packages (POST /v2/internal/stripe/webhook,
+    # services/token_packages.py). Webhook signing secret from Stripe Dashboard.
+    # The credit-pack map (STRIPE_CHECKOUT_PRICE_CREDITS_JSON) and the
+    # subscription tier map (STRIPE_PRICE_TIER_JSON) are retired with their
+    # paths (founder 2026-10-05, N48.3 Q13 A) and read by nothing.
     STRIPE_WEBHOOK_SECRET = _secret("STRIPE_WEBHOOK_SECRET") or ""
-    # Secret key used to expand/verify Checkout Session line items in the webhook handler.
+    # Secret key: opens package Checkout Sessions and re-reads them in the webhook.
     STRIPE_SECRET_KEY = _secret("STRIPE_SECRET_KEY") or ""
-    # JSON object: Stripe Price id → integer credits to add, e.g. {"price_abc":15,"price_def":40}
-    STRIPE_CHECKOUT_PRICE_CREDITS_JSON = (os.getenv("STRIPE_CHECKOUT_PRICE_CREDITS_JSON") or "").strip()
-
-    # Token pricing Phase 1 (docs/PRICING-TOKENS-PLAN.md). JSON object mapping
-    # Stripe RECURRING Price id → tier name, e.g.
-    #   {"price_starter":"starter","price_pro":"pro","price_max":"max"}
-    # Deliberately separate from STRIPE_CHECKOUT_PRICE_CREDITS_JSON above: that
-    # one maps price → a credit AMOUNT for the legacy one-off packs and still
-    # serves them. Tiers are a different concept (a recurring entitlement, not a
-    # quantity), and conflating them would make a subscription renewal look like
-    # a top-up and stack grants every month.
-    STRIPE_PRICE_TIER_JSON = (os.getenv("STRIPE_PRICE_TIER_JSON") or "").strip()
 
     # Master switch for the whole token-pricing surface. Default OFF — unlike
     # the Phase 0 cost ledger, this one can refuse a user's action, so it ships
@@ -898,16 +994,11 @@ class Config:
     # coach-corrected ideal text). Re-priced 2026-07-06: $25, spent as
     # ARC_UNLOCK_CREDITS from the existing credits balance (NOT a second
     # Stripe SKU — see POST /v2/arc/<arc_id>/unlock). AUDIT_PRICE_AMOUNT_MINOR/
-    # CURRENCY are kept ONLY as the display-price the credits are worth + to
-    # honor legacy $50 Stripe-direct grandfathered arcs (services/arc_checkout.py
-    # — dormant, no longer advertised for new purchases).
+    # CURRENCY are kept ONLY as the display-price the credits are worth. The
+    # Stripe-direct arc checkout (STRIPE_AUDIT_PRICE_ID, AUDIT_CHECKOUT_*_URL)
+    # is removed (founder 2026-10-05, N48.3 Q13 A).
     AUDIT_PRICE_CURRENCY = (os.getenv("AUDIT_PRICE_CURRENCY") or "usd").strip().lower() or "usd"
     AUDIT_PRICE_AMOUNT_MINOR = int(os.getenv("AUDIT_PRICE_AMOUNT_MINOR") or "2500")
-    # Stripe Price id for the LEGACY audit checkout (mode=payment). Dormant.
-    STRIPE_AUDIT_PRICE_ID = (os.getenv("STRIPE_AUDIT_PRICE_ID") or "").strip()
-    # Checkout redirect targets (legacy FE pages). Dormant alongside the above.
-    AUDIT_CHECKOUT_SUCCESS_URL = (os.getenv("AUDIT_CHECKOUT_SUCCESS_URL") or "").strip() or None
-    AUDIT_CHECKOUT_CANCEL_URL = (os.getenv("AUDIT_CHECKOUT_CANCEL_URL") or "").strip() or None
     # THE live price (2026-07-06): credits spent by POST /v2/arc/<arc_id>/unlock.
     # 1 credit = $1 (this model's founding peg — no Stripe pack pricing was
     # configured in env before this, so there is no prior peg to violate).
@@ -915,10 +1006,8 @@ class Config:
     # ⚠️ SUPERSEDED 2026-07-31 — CREDITS ARE BEING DROPPED, tokens only. The
     # instruction that used to sit here ("at least one Stripe credit pack must
     # map a Price id to >=25 credits before this ships live") is now the exact
-    # opposite of the direction: STRIPE_CHECKOUT_PRICE_CREDITS_JSON is expected
-    # to end up UNSET, which services/stripe_checkout_credits.py treats as
-    # "credits retired" and quietly acks. Do not re-add a pack to satisfy a
-    # comment. The legacy `credits` column and this constant stay put (standing
+    # opposite of the direction: the credit-pack path is removed (N48.3 Q13 A).
+    # Do not re-add a pack to satisfy a comment. The legacy `credits` column and this constant stay put (standing
     # constraint: never auto-drop); real users still hold balances, and the
     # conversion rate is unsettled — see PRICING-TOKENS-PLAN.md §16.
     ARC_UNLOCK_CREDITS = int(os.getenv("ARC_UNLOCK_CREDITS") or "25")

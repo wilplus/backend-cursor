@@ -1,0 +1,435 @@
+INDEPENDENT CHECK, backend migration 0444 (Postgres 15 / Supabase). Merging runs it in production. Start fresh: judge only the text below, not any earlier message.
+
+
+CONTEXT. The app is willab (WillpowerLab): a speaker records a Take of a slide
+presentation; the backend transcribes it per slide, keeps one persistent Ideal
+Text document, and a Manager surfaces evidence-backed Feedback; blind coaches
+and peers rate moments of the recording. Fences that every change must keep:
+AC-9 (no number, score, ratio, count or classifier output ever reaches a user
+payload; every read a user sees is qualitative), BLIND COACH (nothing about a
+moment, not the speaker's answer, not the machine's read, reaches a coach
+before that coach's own blind answer on it), LIVE LOOP (record -> process ->
+Ideal Text -> next Take never waits on a coach or on a side write; a failing
+side write never blocks serving), CONSTRUCT (every measured state has one
+written operational definition and asks exactly one thing), and the
+provenance walls L3 (owner, peer, coach, machine and detector answers are
+stored and read apart, never mixed; speaker taps are never blind labels).
+Deployment: Railway with MIGRATE_ON_BOOT=1, so merging a migration to main
+applies it to the production database during the next container start,
+before the app process boots; migrations are append-only, idempotent and
+forward-only (rollback is a new migration). The database is Supabase
+Postgres 15: the browser roles anon and authenticated are granted on the
+public schema by default and PostgREST publishes every function in public at
+/rest/v1/rpc, so each file revokes those defaults itself and grants
+service_role exactly what the Flask app needs; the app reaches the database
+only with the service key (service_role), never as a browser role. The
+rehearsal tier applies every migration twice to a disposable cluster and runs
+a Postgres test against it before a push.
+
+THIS MIGRATION (0444). The founder's QG12a A says that when the speaker's one answer disagrees with the machine's read of a moment, the coach gets that moment back as 'they disagree'; P26b A puts that ask in the coach's usual work list; P26c signs three lines for it that on purpose say neither why nor what the speaker answered, so the coach's second answer stays blind. Today the disagreement is already computed by the follow-up matrix in the app (services/judgement_follow_up.py: the request's kind or answer_kind becomes 'ambiguity'), but a coach who already judged the moment never hears of it. This file adds one table, coach_listen_again_requests (the Take, the moment, the coach, the KEY of one of the three signed lines, when asked, when heard; by its shape no reason, no answer, no read), and two SECURITY DEFINER functions: request_coach_listen_again_v1(take, snippet) writes one open row per coach with a blind judgment of record on the clip (confidence_labels lane 'coach', not a self-report, not an Audio-unclear abstention), none for a coach who has not judged it (it is still in their queue to judge blind), none twice while one is open, with the line key rotating A, B, C per coach, and returns how many rows it wrote (a log count, never a user payload); mark_coach_listen_again_heard_v1(snippet, coach) stamps heard_at on that coach's open row. The app calls the first as a side write wherever the matrix writes the ambiguity (three places; never raises, LIVE LOOP), and the second after a coach's reconsideration is kept (the rating route; contract 34, 0427). While a coach has an open row on a moment, _coach_state_map (the one map every blind door reads: the moment gate behind the moment read, drafts, named errors and practice judgement; the session read's transcript and owner-answer release) masks that coach's earlier answer, so those doors answer 409 again until the new blind answer lands; the queue lists the moment as state 'listen_again' with the line key and nothing else, not even the kind. confidence_labels is read, never altered, no trigger. service_role: SELECT and DELETE on the table (the queue read and the purge), EXECUTE on both functions, no INSERT or UPDATE by hand. Purged with the Take and with the coach.
+
+THE MIGRATION, full text:
+----- BEGIN migrations/a_coach_is_asked_to_listen_again.sql -----
+-- 0444 · a coach is asked to listen again, blind (founder 2026-10-06, QG12a A
+-- and P26b A, decisions log N53.4; the three signed lines P26c, N54.1; Q-B8
+-- A, N62; build plan D-CP-10)
+--
+-- WHY. QG12a A: "If the machine says 'reached' but the speaker says No or
+-- Not sure, the coach gets the moment as 'they disagree'." P26b A: the coach
+-- is asked to listen again "in the coach's usual work list"; P26c: the words
+-- on that moment "don't say why, or what the speaker answered, so the
+-- coach's second answer stays blind." Today the disagreement between the
+-- speaker's one answer and the machine's read is already the follow-up
+-- matrix's ambiguity (services/judgement_follow_up.py: the request's kind
+-- or answer_kind becomes 'ambiguity'), and a coach who has already judged
+-- the moment never hears of it: their queue shows the moment as answered.
+--
+-- WHAT. One table and two writers, nothing else:
+--
+--   coach_listen_again_requests   one row per time a coach is asked to
+--                                 listen to a moment again: the Take, the
+--                                 moment, the coach, WHICH of the three
+--                                 signed lines the list shows (its key), when
+--                                 it was asked and when the coach's new blind
+--                                 answer landed (heard_at). No reason column,
+--                                 no answer column, no read column: the row
+--                                 cannot carry why, by its shape. At most one
+--                                 open row per moment and coach; closed rows
+--                                 stay as history.
+--   request_coach_listen_again_v1 called when the disagreement flag fires:
+--                                 one open row for every coach with a blind
+--                                 judgment of record on the clip (lane
+--                                 'coach', not a self-report, not an
+--                                 Audio-unclear abstention), none for a coach
+--                                 who has not judged it yet (the moment is
+--                                 still in their queue to judge blind), none
+--                                 twice while one is open. The line key
+--                                 rotates per coach (A, B, C, A ...), never
+--                                 the same twice in a row. Returns how many
+--                                 rows it wrote: a routing count for the
+--                                 server's log, never a user payload.
+--   mark_coach_listen_again_heard_v1   stamps heard_at on the coach's open
+--                                 row when their new blind answer is saved
+--                                 (the rating route's reconsideration, 0427).
+--
+-- THE APP'S SIDE. While a coach has an open row on a moment, the server
+-- treats that coach as not having rated it: their own earlier answer is
+-- masked in every read that the blind gate keys on, so the moment read, the
+-- drafts, the named errors and the speaker's answer answer 409 again until
+-- the new blind answer lands (BLIND COACH); the queue lists the moment as
+-- `listen_again` with the line key and nothing else, not even the kind it
+-- rose under. Nothing here reaches a speaker; nothing is a score (AC-9);
+-- the flag is a side write that never blocks the speaker's answer (LIVE
+-- LOOP). The speaker's answer is read by the matrix, never copied here (L3).
+--
+-- WHAT DOES NOT CHANGE. confidence_labels is read, never altered; no
+-- trigger on it (a busy production table takes no lock). exercise_coach_
+-- requests is untouched. The older User Yes / Coach No re-review record
+-- (confidence_rereview_queue, 0278, the Voice Album's leg) keeps its own
+-- life.
+--
+-- Idempotent: IF NOT EXISTS, CREATE OR REPLACE; applied twice it changes
+-- nothing. Writes no row on its own. Locks: only the new table.
+--
+-- Rollback (a new forward migration): DROP FUNCTION
+-- public.request_coach_listen_again_v1(text, text); DROP FUNCTION
+-- public.mark_coach_listen_again_heard_v1(text, text); DROP TABLE
+-- public.coach_listen_again_requests. Nothing else depends on them.
+
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS public.coach_listen_again_requests (
+    id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    take_session_id text        NOT NULL,
+    snippet_id      text        NOT NULL,
+    coach_id        text        NOT NULL,
+    line_key        text        NOT NULL,
+    requested_at    timestamptz NOT NULL DEFAULT now(),
+    heard_at        timestamptz NULL,
+    CONSTRAINT coach_listen_again_line_key_check CHECK (
+        line_key IN ('P26c-A', 'P26c-B', 'P26c-C')),
+    CONSTRAINT coach_listen_again_ids_check CHECK (
+        length(btrim(take_session_id)) > 0 AND length(btrim(snippet_id)) > 0
+        AND length(btrim(coach_id)) > 0),
+    CONSTRAINT coach_listen_again_heard_after_asked CHECK (
+        heard_at IS NULL OR heard_at >= requested_at)
+);
+
+-- One open ask per moment and coach; the coach's open list is the read.
+CREATE UNIQUE INDEX IF NOT EXISTS coach_listen_again_one_open
+    ON public.coach_listen_again_requests (snippet_id, coach_id)
+    WHERE heard_at IS NULL;
+CREATE INDEX IF NOT EXISTS coach_listen_again_open_by_coach
+    ON public.coach_listen_again_requests (coach_id, take_session_id)
+    WHERE heard_at IS NULL;
+CREATE INDEX IF NOT EXISTS coach_listen_again_take_idx
+    ON public.coach_listen_again_requests (take_session_id);
+
+ALTER TABLE public.coach_listen_again_requests ENABLE ROW LEVEL SECURITY;
+
+COMMENT ON TABLE public.coach_listen_again_requests IS
+    'A coach asked to listen to a moment again, blind (0444; QG12a A, P26b A, '
+    'N53.4; P26c, N54.1). One row per ask: the Take, the moment, the coach, '
+    'the key of the signed line the list shows, when asked, when the new '
+    'blind answer landed. By its shape the row carries no reason and no '
+    'answer: the coach never learns why. Written only by '
+    'request_coach_listen_again_v1 and mark_coach_listen_again_heard_v1; '
+    'purged with the Take and with the coach.';
+
+CREATE OR REPLACE FUNCTION public.request_coach_listen_again_v1(
+    p_take_session_id text,
+    p_snippet_id text
+) RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    v_snippet uuid;
+    v_coach   text;
+    v_written integer := 0;
+    v_prior   integer;
+BEGIN
+    IF COALESCE(btrim(p_take_session_id), '') = ''
+       OR COALESCE(btrim(p_snippet_id), '') = '' THEN
+        RAISE EXCEPTION 'COACH_LISTEN_AGAIN_INPUT_INVALID';
+    END IF;
+    BEGIN
+        v_snippet := p_snippet_id::uuid;
+    EXCEPTION WHEN invalid_text_representation THEN
+        RAISE EXCEPTION 'COACH_LISTEN_AGAIN_INPUT_INVALID';
+    END;
+
+    -- Every coach with a blind judgment of record on this clip: the
+    -- ledger's coach lane, no self-report, no abstention (the same rows the
+    -- quorum counts as a coach's vote). A coach who has not judged it yet
+    -- still has it in their queue to judge blind: nothing to add.
+    FOR v_coach IN
+        SELECT DISTINCT label.rater_id::text
+          FROM public.confidence_labels label
+         WHERE label.snippet_id = v_snippet
+           AND COALESCE(label.state_id, 'confidence') = 'confidence'
+           AND label.lane = 'coach'
+           AND COALESCE(label.self_report, false) = false
+           AND COALESCE(label.unrateable, false) = false
+           AND label.value IN ('yes', 'in_between', 'no', 'not_sure')
+           AND label.rater_id IS NOT NULL
+         ORDER BY 1
+    LOOP
+        IF EXISTS (SELECT 1 FROM public.coach_listen_again_requests
+                    WHERE snippet_id = p_snippet_id AND coach_id = v_coach
+                      AND heard_at IS NULL) THEN
+            CONTINUE;
+        END IF;
+        -- The three signed lines rotate per coach: A, B, C, A ... never the
+        -- same twice in a row (N52.6, N54.1).
+        SELECT count(*) INTO v_prior FROM public.coach_listen_again_requests
+         WHERE coach_id = v_coach;
+        INSERT INTO public.coach_listen_again_requests (
+            take_session_id, snippet_id, coach_id, line_key
+        ) VALUES (
+            p_take_session_id, p_snippet_id, v_coach,
+            (ARRAY['P26c-A', 'P26c-B', 'P26c-C'])[(v_prior % 3) + 1]
+        );
+        v_written := v_written + 1;
+    END LOOP;
+    RETURN v_written;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.mark_coach_listen_again_heard_v1(
+    p_snippet_id text,
+    p_coach_id text
+) RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    v_closed integer;
+BEGIN
+    IF COALESCE(btrim(p_snippet_id), '') = '' OR COALESCE(btrim(p_coach_id), '') = '' THEN
+        RAISE EXCEPTION 'COACH_LISTEN_AGAIN_INPUT_INVALID';
+    END IF;
+    UPDATE public.coach_listen_again_requests
+       SET heard_at = now()
+     WHERE snippet_id = p_snippet_id AND coach_id = p_coach_id AND heard_at IS NULL;
+    GET DIAGNOSTICS v_closed = ROW_COUNT;
+    RETURN v_closed;
+END;
+$$;
+
+COMMENT ON FUNCTION public.request_coach_listen_again_v1(text, text) IS
+    'The disagreement flag (QG12a A; 0444): one open blind ask per coach with '
+    'a judgment of record on the clip; the signed line key rotates per coach. '
+    'Returns rows written. service_role only.';
+COMMENT ON FUNCTION public.mark_coach_listen_again_heard_v1(text, text) IS
+    'The coach''s new blind answer landed (0444): closes their open ask on the '
+    'moment. Returns rows closed. service_role only.';
+
+-- ── The door ───────────────────────────────────────────────────────────────
+-- Browser roles and PUBLIC get nothing on the table or the functions,
+-- whatever default privileges the schema carries (Supabase grants
+-- anon/authenticated on public by default; PostgREST publishes every public
+-- function). The app reads the table and calls the two functions with the
+-- service key, and the purge deletes rows with the Take and the coach; the
+-- table is written only through the functions. Roles are guarded: they exist
+-- on Supabase, not on a bare Postgres.
+REVOKE ALL ON TABLE public.coach_listen_again_requests FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.request_coach_listen_again_v1(text, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.mark_coach_listen_again_heard_v1(text, text) FROM PUBLIC;
+DO $$
+DECLARE
+    v_role text;
+BEGIN
+    FOREACH v_role IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_role) THEN
+            EXECUTE format('REVOKE ALL ON TABLE public.coach_listen_again_requests FROM %I', v_role);
+            EXECUTE format('REVOKE ALL ON FUNCTION public.request_coach_listen_again_v1(text, text) FROM %I', v_role);
+            EXECUTE format('REVOKE ALL ON FUNCTION public.mark_coach_listen_again_heard_v1(text, text) FROM %I', v_role);
+        END IF;
+    END LOOP;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+        REVOKE ALL ON TABLE public.coach_listen_again_requests FROM service_role;
+        GRANT SELECT, DELETE ON TABLE public.coach_listen_again_requests TO service_role;
+        GRANT EXECUTE ON FUNCTION public.request_coach_listen_again_v1(text, text) TO service_role;
+        GRANT EXECUTE ON FUNCTION public.mark_coach_listen_again_heard_v1(text, text) TO service_role;
+    END IF;
+END $$;
+
+COMMIT;
+----- END -----
+
+CALLING CODE excerpts (the app's side of the same change):
+----- The service: the flag and the mask (services/coach_listen_again.py, lines 47-72) -----
+def flag_disagreement(database: Any, *, take_session_id: Any,
+                      snippet_id: Any) -> int:
+    """The disagreement flag fired on this moment (QG12a A): ask every coach
+    with a judgment of record to listen again. Returns the number of asks
+    written, for the log; 0 when none was needed or the write failed. Never
+    raises: the speaker's answer is already saved."""
+    if not take_session_id or not snippet_id:
+        return 0
+    writer = getattr(database, "request_coach_listen_again", None)
+    if writer is None:
+        return 0
+    try:
+        written = writer(str(take_session_id), str(snippet_id))
+    except Exception as e:  # noqa: BLE001 -- a side write, named, never raised
+        _log.warning("listen-again ask not written take=%s snip=%s: %s",
+                     take_session_id, snippet_id, e, exc_info=True)
+        return 0
+    try:
+        count = int(written or 0)
+    except (TypeError, ValueError):
+        count = 0
+    if count:
+        _log.info("listen-again asked take=%s snip=%s coaches=%d",
+                  take_session_id, snippet_id, count)
+    return count
+-----  (services/coach_listen_again.py, lines 122-160) -----
+def masked_state(state: Optional[dict], line_key: str) -> dict:
+    """The coach_state of a moment with an open ask: the coach's own earlier
+    answer is masked, so every door keyed on it (the blind gate, the
+    transcript and owner-answer release, the practice door) is shut again
+    until the new blind answer lands. The key rides so the panel can show
+    the signed line."""
+    out = dict(state or {})
+    out["rating_value"] = None
+    out["rating_unrateable"] = False
+    out["listen_again"] = line_key
+    return out
+
+
+def mask_states(states: dict, asks: dict[str, str]) -> dict:
+    """Apply `masked_state` to every snippet in `asks` (snippet -> key),
+    adding a row for a snippet the state map did not carry."""
+    if not asks:
+        return states
+    out = dict(states)
+    for snippet_id, key in asks.items():
+        base = out.get(str(snippet_id)) or {
+            "note": "", "tag": None, "surfaced": False,
+            "transcript_corrected": None,
+            "rating_value": None, "rating_unrateable": False,
+        }
+        out[str(snippet_id)] = masked_state(base, key)
+    return out
+
+
+def queue_row(snippet_id: str, line_key: str) -> dict:
+    """The queue's row for a moment with an open ask: the moment, the state
+    and the line key. No kind, no answer, no reason (BLIND COACH)."""
+    return {"snippet_id": str(snippet_id), "state": STATE, "line_key": line_key}
+----- Where the matrix flags: the judgement path, the after-feedback path, the practice path (services/judgement_follow_up.py, lines 155-168) -----
+    now, kind = decide(answer, clip["read"], bool(clip["observed"]), matched)
+    if kind is None:
+        return now
+    if _request_on_moment(database, take_session_id, snippet_id) is None:
+        raised = _raise_request(
+            database, take_session_id=take_session_id, snippet_id=snippet_id,
+            owner_user_id=owner_user_id, kind=kind, clip=clip, matched=matched)
+        # The sentence is a promise: without the request it would be false.
+        if now == "coach_request" and not raised:
+            return "none"
+    if kind == "ambiguity":
+        _flag_disagreement(database, take_session_id, snippet_id)
+    return now
+-----  (services/judgement_follow_up.py, lines 222-226) -----
+    _set_answer_kind(database, take_session_id, snippet_id, answer_kind)
+    if answer_kind == "ambiguity":
+        _flag_disagreement(database, take_session_id, snippet_id)
+    return now
+-----  (services/judgement_follow_up.py, lines 244-248) -----
+    if practice_disagrees(answer, machine_decision):
+        _flag_disagreement(database, take, snip)
+        return "ambiguity" if _set_answer_kind(
+            database, take, snip, "ambiguity") else None
+    if request.get("answer_kind"):
+----- The coach's state map masks an open ask (routes/v2/coach.py, lines 164-179) -----
+            "rating_value": r.get("value"),
+            "rating_unrateable": bool(r.get("unrateable")),
+        }
+    if rater_id:
+        # LISTEN AGAIN (0444; QG12a A, P26b A). While this coach has an open
+        # ask on a moment, their earlier answer is masked here, the one map
+        # every blind door keys on (the moment gate, the transcript and
+        # owner-answer release, the practice door): the moment is blind
+        # again until the new answer lands. The key of the signed line rides
+        # as `listen_again`; nothing says why (BLIND COACH).
+        from services.coach_listen_again import mask_states, open_asks
+        asks = open_asks(db, coach_id=rater_id, session_ids=[session_id])
+        out = mask_states(out, asks.get(str(session_id), {}))
+    return out
+----- The blind gate reads that map (routes/v2/coach.py, lines 1698-1713) -----
+        return (jsonify({"code": "INVALID_INPUT",
+                         "error": "session_id and snippet_id must be UUIDs"}), 400), None
+    if not db.v2_get_session_by_id(session_id):
+        return (jsonify({"code": "SESSION_NOT_FOUND",
+                         "error": "Session not found"}), 404), None
+    owner_sid = _snippet_owner_map(session_id).get(snippet_id)
+    if not owner_sid:
+        return (jsonify({"code": "SNIPPET_NOT_FOUND",
+                         "error": "Snippet not in this session"}), 404), None
+    state = _coach_state_map(owner_sid, rater_id=getattr(request, "user_id", None))
+    if not _practice_door_open(state.get(str(snippet_id))):
+        return (jsonify({"code": "BLIND_RATING_REQUIRED",
+                         "error": "Rate the original moment first."}), 409), None
+    return None, owner_sid
+----- The reconsideration closes the ask (routes/v2/coach.py, lines 3186-3206) -----
+        kept = db.append_label_reconsideration(
+            snippet_id=snippet_id, row=row, rater_id=str(rater_id),
+            session_id=session_id, lane=lane, intensity=intensity,
+            machine_value=machine_value, self_report=self_report,
+            selection=selection)
+    except Exception as e:  # noqa: BLE001 -- named below
+        logger.warning("coach reconsideration not kept snip=%s: %s",
+                       snippet_id, e, exc_info=True)
+        kept = None
+    if isinstance(kept, dict):
+        # LISTEN AGAIN (0444): a new blind answer closes this coach's open
+        # ask on the moment, if one was there. Best-effort; the revision is
+        # kept either way.
+        from services.coach_listen_again import mark_heard
+        mark_heard(db, snippet_id=snippet_id, coach_id=rater_id)
+        return None
+    # The route's own words for a rating not kept (no new copy).
+    return jsonify({"code": "SERVER_ERROR",
+                    "error": "could not save the rating"}), 500
+----- The queue row (services/coach_moments_queue.py, lines 338-348) -----
+        moments = []
+        listed = _listed(session_id, bookmarked, reached_for(session_id))
+        asks = listen_again_for(session_id) or {}
+        for sid in _routed(session_id, listed, ratings, labels_for, rater_id):
+            if sid in asks:
+                from services.coach_listen_again import queue_row
+                moments.append(queue_row(sid, asks[sid]))
+                continue
+            moments.append({
+                "snippet_id": sid,
+                **moment_state(ratings.get(sid), request_for(session_id, sid)),
+----- The database calls (services/db.py, lines 15064-15072) -----
+    def request_coach_listen_again(self, take_session_id: str, snippet_id: str) -> int:
+        """The disagreement flag (QG12a A; migration 0444): one open blind ask
+        per coach with a judgment of record on the clip. Returns the rows
+        written. Raises on failure: the caller (services.coach_listen_again)
+        logs it and the speaker's answer stands."""
+        result = self.client.rpc("request_coach_listen_again_v1", {
+            "p_take_session_id": str(take_session_id), "p_snippet_id": str(snippet_id),
+        }).execute()
+        data = result.data
+----- The purge entries (services/data_purge_registry.py, lines 432-435) -----
+    PurgeDependency("coach_listen_again_requests", "coach_listen_again_requests",
+                    "take_session_id", "take", "delete", "derived_feedback", 58),
+    PurgeDependency("coach_listen_again_requests_by_coach", "coach_listen_again_requests",
+                    "coach_id", "user", "delete", "derived_feedback", 35),
+----- END OF CALLING CODE -----
+
+QUESTIONS. Answer each in order.
+1. Idempotency: does applying the file twice (and on a database where it already ran) succeed and change nothing? Any statement that fails on the second run, or silently changes rows?
+2. Grants and RLS: after the file runs, can the Supabase browser roles (anon, authenticated) or PUBLIC read or write the new table(s) or execute the new function(s)? Does service_role keep what the app needs? Any SECURITY DEFINER exposure or search_path hijack?
+3. Data exposure: can any person's data (another speaker's rows, transcript text, answers) leak through the new objects or the calling code? Does any user-facing payload gain a number, score, ratio, count or classifier output (AC-9 forbids that)?
+4. Locking: does anything take a lock on an existing, busy production table (ALTER TABLE on a large table, index builds without CONCURRENTLY on existing tables, validation scans)? Could the function itself deadlock or serialize hot paths?
+5. Rollback and destructiveness: does the file drop, truncate, delete or rewrite any existing data? Is the stated forward-only rollback realistic?
+6. Correctness of the rule the SQL implements, against the WHY below. Any edge case where it does the wrong thing?
+7. Anything else that would make you block the merge.
+
+Give a verdict line "PASS" or "FAIL", then numbered findings (severity: blocker / should-fix / nit).
+
+Finish your answer with the line END OF REVIEW.

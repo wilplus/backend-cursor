@@ -125,6 +125,67 @@ class PilesTests(unittest.TestCase):
                                   out["machine_only"]["candidate"]["preferences"]})
 
 
+class CoachPreferredRankerTests(unittest.TestCase):
+    """35g-7 (W6 2026-10-05): exercise-coach-preferred-v1 "may propose a
+    ranking, graded by the same fair test"; it never serves or promotes."""
+
+    def setUp(self):
+        patcher = patch.object(ft, "BOOTSTRAP_ROUNDS", 50)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _prefs(self, kept, swapped, n=40):
+        rows = [{"served_exercise_id": kept, "draw": "top", "action": "kept",
+                 "speaker_user_id": _train(i + 1)} for i in range(n)]
+        rows += [{"served_exercise_id": swapped, "draw": "top", "action": "swapped",
+                  "speaker_user_id": _train(i + 1)} for i in range(n)]
+        return rows
+
+    def test_it_chooses_within_the_unit_s_pool_and_draw_else_today_s_ranking(self):
+        from services.coach_exercise_preference import preferred_choose
+        choose = preferred_choose(self._prefs("slow", "room"))
+        self.assertEqual(choose({"pool": ["room", "slow"], "draw": "top"}), "slow")
+        # Another draw has no trusted rate: today's fixed ranking.
+        self.assertEqual(choose({"pool": ["room", "slow"], "draw": "exploration"}), "room")
+        # A pooled exercise without a trusted rate: no partial order.
+        self.assertEqual(choose({"pool": ["room", "new", "slow"], "draw": "top"}), "room")
+
+    def test_the_jar_evaluation_grades_it_with_the_same_fair_test(self):
+        world = PilesTests._world(PilesTests())
+        out = ev.build_evaluation(_records(world), self._prefs("slow", "room"))
+        graded = out["coach_preferred"]
+        self.assertTrue(graded["enabled"])
+        self.assertEqual(graded["version"], "exercise-coach-preferred-v1")
+        self.assertEqual(graded["fair_test"]["fair_test_version"], ft.FAIR_TEST_VERSION)
+        self.assertTrue(graded["fair_test"]["requires_founder_approval"])
+        self.assertEqual(graded["learned_from"]["actions"], 80)
+
+    def test_not_graded_while_the_preference_lane_is_off(self):
+        out = ev.build_evaluation(_records(PilesTests._world(PilesTests())))
+        self.assertEqual(out["coach_preferred"],
+                         {"version": "exercise-coach-preferred-v1", "enabled": False})
+        with patch("config.Config.COACH_EXERCISE_PREFERENCE_ENABLED", False):
+            self.assertIsNone(ev._preference_rows(_Db()))
+
+    def test_a_failed_read_grades_nothing_and_the_piles_still_grade(self):
+        class _Broken:
+            def list_coach_exercise_preferences(self):
+                raise RuntimeError("down")
+        with patch("config.Config.COACH_EXERCISE_PREFERENCE_ENABLED", True):
+            self.assertIsNone(ev._preference_rows(_Broken()))
+
+    def test_units_carry_their_draw(self):
+        units = ft.units_from(_records(PilesTests._world(PilesTests())))
+        self.assertTrue(all(u["draw"] for u in units))
+
+    def test_nothing_serves_it(self):
+        for path in ("services/confident_voice_practice.py",
+                     "services/exercise_learned_order.py"):
+            source = (ROOT / path).read_text()
+            self.assertNotIn("preferred_choose", source, path)
+            self.assertNotIn("coach_preferred_order", source, path)
+
+
 class SealTests(unittest.TestCase):
     def test_below_the_bar_it_is_sealed_with_the_counter_s_reason(self):
         out = ev.evaluate_jar(_Db())

@@ -123,8 +123,13 @@ def test_confident_moment_relations_are_deletion_registered():
 def test_ambiguous_shared_and_mixed_purpose_paths_fail_closed():
     by_relation = {dependency.relation: dependency for dependency in DEPENDENCIES}
     assert by_relation["charisma_snippets"].disposition == "external_review"
-    assert by_relation["life_notes"].disposition == "external_review"
     assert by_relation["ml_speaker_principals"].disposition == "external_review"
+    # Retention schedule v1.4 decided the Life Panel (a product record,
+    # deleted with the account); it still fails closed until that signed
+    # rule is active, as `before_rule` says.
+    assert by_relation["life_notes"].disposition == "delete"
+    assert by_relation["life_notes"].ruled_by == "product-records-v1"
+    assert by_relation["life_notes"].before_rule == "external_review"
     assert by_relation["token_ledger"].disposition == "retain"
     assert by_relation["token_ledger"].retention_category == "financial_evidence"
 

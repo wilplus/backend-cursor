@@ -7,9 +7,11 @@ creation, training, or promotion.
 ## Runtime boundary
 
 - Current policy ID: `take-feedback-policy-v3-universal-dark-v3`.
-- Frame schema: `take-feedback-policy-v3-frame-v3`.
+- Frame schema: `take-feedback-policy-v3-frame-v5` (since #893; migration
+  0431 re-issued the writer to accept exactly this version, N20).
 - Migration 0309 and `take-feedback-policy-v3-dark-v2` remain immutable
-  historical contracts; migration 0311 adds the universal-v3 write boundary.
+  historical contracts; migration 0311 adds the universal-v3 write boundary
+  and 0431 re-issues it for the frame schema the code builds.
 - Activation requires both `TAKE_FEEDBACK_POLICY_V3_MODE=dark` and an exact
   match with `TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID`.
 - The current v2 Manager remains the only serving path.

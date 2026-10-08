@@ -98,6 +98,51 @@ This fail-closed state is not completed erasure. Production activation remains
 blocked until every target has an approved resolver, retention rule,
 idempotent executor, reconciliation monitor and end-to-end staging proof.
 
+## Deletions that complete by themselves (0422, N48.4 Q14 A, Q17 A)
+
+An account deletion (`POST /v2/processing-authorization/terminate`,
+`account_deletion`) and a project deletion (`POST
+/v2/projects/<id>/deletion-request`) wait seven days. The account is blocked
+at once (the status function counts the pending request); the requester may
+cancel until `completes_after`; nothing is deleted before it. Then the
+completion run starts the purge, runs the orchestrator and marks the request
+done on verified evidence. A purge that meets rows no rule decides stops at
+`review_required`, deletes nothing past the refusal, and waits for a person:
+`GET /v2/admin/deletions` lists it with the targets that stopped it.
+
+Setup (CONFIG-FIRST: the web service first):
+
+1. Web service: `DELETION_COMPLETION_SECRET` (without it the route answers
+   503). Leave `PHASE1_PURGE_EXECUTION_ENABLED` unset at first: every run is
+   then a dry run that reports what is due and writes nothing.
+2. A Railway cron service from this repo: Start Command
+   `sh bin/railway-deletion-completion-cron.sh`, schedule `37 * * * *`,
+   variables `DELETION_COMPLETION_BACKEND_URL` and `DELETION_COMPLETION_SECRET`.
+3. Read a dry run's report (the cron log, or `python
+   scripts/run_due_deletions.py` in a shell). When it lists only what should
+   go, set `PHASE1_PURGE_EXECUTION_ENABLED=true` on the web service.
+
+Known limit, found by the 0422 rehearsal and fixed by 0425 for the account
+purge: the purge deletes `phase1_processing_outbox`,
+`processing_job_carryovers` and `processing_orphan_objects` rows directly as
+service_role (with the account, as the registry has always listed them), and
+0310 left service_role SELECT on them and nothing else. 0425
+(`the_purge_can_delete_job_plumbing.sql`, decided 2026-10-05) grants DELETE
+on exactly those three, so an account purge that reaches them deletes them;
+a project purge reaches its project's outbox rows and carry-overs the same
+way. `phase1_processing_jobs` and `phase1_processing_job_events` get no
+grant: once retention schedule v1.4's rules are active the purge keeps them
+as job evidence (`job-evidence-v1`) and never deletes them. 0425 ships with
+the purge change that acts on those rules (0424) and must never be left out
+of it; `scripts/phase1_retention_rules_v1_4.sql`, which activates the rules,
+runs only after both are deployed. Until the rules are active a person with
+processing jobs still stops earlier, at the jobs' events (external_review,
+N14.3), before anything is deleted.
+One case is left until v1.4 is active: a job with no event yet (an intake
+never processed) and nothing else undecided; the purge would still try to
+delete that job row and fail on it (InsufficientPrivilege), and the request
+waits for a person.
+
 ## Production gates
 
 Required before activation: Product/legal approval of exact artifacts and

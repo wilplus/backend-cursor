@@ -69,17 +69,6 @@ from services.snippet_tables import check_at_boot as snippets_check  # noqa: E40
 
 snippets_check()
 
-# What THIS service read out of STRIPE_PRICE_TIER_JSON (founder 2026-08-15).
-# The CONFIG-FIRST rule says to verify a per-service variable from the boot
-# log rather than the Railway UI — for the tier map there was no such line, so
-# the only proof it had landed was a renewal webhook, i.e. finding out at the
-# moment someone is charged. A missing map is silent by design (the parser
-# degrades to {} so one bad env var cannot lose unrelated Stripe events), so
-# it needs a voice here. Never raises.
-from services.stripe_subscription_tiers import check_at_boot as tiers_check  # noqa: E402
-
-tiers_check()
-
 app = Flask(__name__)
 # Global request cap: must allow both recording uploads and larger admin reference video uploads.
 app.config["MAX_CONTENT_LENGTH"] = max(
@@ -123,6 +112,8 @@ from routes.token_routes import tokens_bp
 from routes.life_routes import life_bp
 from routes.drift_webhook import drift_webhook_bp
 from routes.learning_weekly_webhook import learning_weekly_webhook_bp
+from routes.deletion_completion_webhook import deletion_completion_webhook_bp
+from routes.retention_cleaner_webhook import retention_cleaner_webhook_bp
 from routes.life_reminders_webhook import life_reminders_webhook_bp
 
 app.register_blueprint(auth_bp, url_prefix="/auth")
@@ -156,6 +147,12 @@ app.register_blueprint(life_bp)
 # Opt-in life reminders cron webhook (X-Internal-Secret: LIFE_REMINDER_SECRET).
 app.register_blueprint(drift_webhook_bp)
 app.register_blueprint(learning_weekly_webhook_bp)
+# Deletions that complete by themselves after seven days (0422, N48.4 Q14 A,
+# Q17 A): X-Internal-Secret DELETION_COMPLETION_SECRET; dead without it.
+app.register_blueprint(deletion_completion_webhook_bp)
+# The scheduled clean-up's daily cron (X-Internal-Secret:
+# RETENTION_CLEANER_SECRET). Dry run unless RETENTION_CLEANER_LIVE is set.
+app.register_blueprint(retention_cleaner_webhook_bp)
 app.register_blueprint(life_reminders_webhook_bp)
 # Durable pipeline job polling (async-queue work): GET /v2/jobs/<id>/status
 # + the internal sweep poke. Full paths baked in.

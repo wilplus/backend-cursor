@@ -220,10 +220,12 @@ def _deletion_error(error: ProjectDeletionError):
 @v2_bp.route("/projects/<project_id>/deletion-request", methods=["POST"])
 @require_auth
 def v2_request_project_deletion(project_id: str):
-    """Ask for one owned project to be deleted (P1-A, decisions log N8).
+    """Ask for one owned project to be deleted (P1-A, decisions log N8;
+    N48.4 Q17 A).
 
-    A request, not a delete: an operator confirms it within 7 days and the
-    project is locked until then. Idempotent on `idempotency_key`; asking again
+    A request, not a delete: the project is locked at once, its owner may
+    cancel for seven days (`deletion.completes_after`), and then it is
+    deleted by itself (0422). Idempotent on `idempotency_key`; asking again
     for a project with an open request returns that request.
     201 {deletion} · 400 · 404 not the owner's project · 503 not migrated.
     """
@@ -293,8 +295,9 @@ def v2_restore_project(project_id: str):
 @v2_bp.route("/projects/<project_id>/deletion-request", methods=["DELETE"])
 @require_auth
 def v2_cancel_project_deletion(project_id: str):
-    """Cancel a pending deletion before an operator confirms it.
-    200 {deletion} · 409 nothing pending, or already confirmed."""
+    """Cancel a pending deletion inside its seven days (0422).
+    200 {deletion} · 409 PROJECT_DELETION_NOT_PENDING (nothing pending),
+    PROJECT_DELETION_ALREADY_CONFIRMED, PROJECT_DELETION_WINDOW_CLOSED."""
     principal, failure = _deletion_owner(project_id)
     if failure:
         return failure
@@ -318,9 +321,10 @@ def v2_cancel_project_deletion(project_id: str):
 def v2_admin_confirm_project_deletion(request_id: str):
     """The operator confirms one project deletion (P1-B, N8). Creates the
     one-project purge request; the owner can no longer cancel. Nothing is
-    deleted here: the purge runs only when an operator runs
-    scripts/run_phase1_data_purge.py with PHASE1_PURGE_EXECUTION_ENABLED and
-    the request id repeated. Idempotent. Admin-only surface.
+    deleted here: the purge runs when an operator runs
+    scripts/run_phase1_data_purge.py, or by itself once the request's seven
+    days are over (0422, services/deletion_completion.py), both only with
+    PHASE1_PURGE_EXECUTION_ENABLED. Idempotent. Admin-only surface.
     200 {deletion, purge_request_id} · 400 · 404 · 409 no longer pending."""
     if not _is_valid_uuid(request_id):
         return jsonify({"code": "INVALID_INPUT", "error": "Invalid request id"}), 400
@@ -341,6 +345,26 @@ def v2_admin_confirm_project_deletion(request_id: str):
                 request_id, row.get("purge_request_id"), operator)
     return jsonify({"deletion": public_view(row),
                     "purge_request_id": str(row.get("purge_request_id") or "")}), 200
+
+
+@v2_bp.route("/admin/deletions", methods=["GET"])
+@require_admin
+def v2_admin_deletions():
+    """Deletions that complete by themselves (0422, N48.4 Q14 A, Q17 A):
+    what is due, and what waits for a person because its purge met rows no
+    rule decides (each with the targets that stopped it). Read only; the
+    cron runs the deletions. Admin-only surface (ids and reason codes)."""
+    from services.deletion_completion import review_queue
+    try:
+        queue = review_queue(db)
+    except Exception as error:
+        logger.error("admin deletions read failed: %s", error, exc_info=True)
+        sentry_sdk.capture_exception(error)
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Could not load deletions"}), 500
+    response = jsonify(queue)
+    response.headers["Cache-Control"] = "no-store"
+    return response, 200
 
 
 @v2_bp.route("/admin/project-deletions", methods=["GET"])

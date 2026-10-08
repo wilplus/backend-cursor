@@ -13,12 +13,21 @@ user content is wiped and the bare row is kept, under the same rule. ``external_
 (currently the dark MLC-2 foundation) and fail closed if any matching rows
 exist. ``non_subject`` relations are global configuration or actor/admin data,
 not data belonging to the acquisition principal being purged.
+
+A RULED dependency (``ruled_by`` set) is one retention schedule v1.4 decided
+(legal/phase1-2026.1/20-retention-schedule-v1.4-product-records-and-job-evidence-DRAFT.md;
+founder 2026-10-05, decisions log N48.4 Q15 A): product records are deleted
+with the account or the project, job evidence is kept 12 months. It acts on
+its ``disposition`` only while the signed rule it names is ACTIVE in
+``data_retention_rules``; until the founder runs
+``scripts/phase1_retention_rules_v1_4.sql`` it acts exactly as
+``before_rule`` says, which is what it did before v1.4 (fail closed).
 """
 from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Literal
 
 Disposition = Literal["delete", "retain", "tombstone", "external_review"]
@@ -39,6 +48,64 @@ class PurgeDependency:
     target_kind: str = "database_row"
     delete_order: int = 100
     retention_category: str | None = None
+    #: The rule_code of the signed retention row that decided this
+    #: dependency (retention schedule v1.4). Until a row with this rule_code
+    #: and this `retention_category` is active, the dependency acts exactly
+    #: as `before_rule` says; once it is, `disposition` applies.
+    ruled_by: str | None = None
+    before_rule: Disposition = "external_review"
+    #: A "delete" that removes the person from a row someone else still
+    #: needs: the purge sets `selector_column` to NULL on the subject's rows
+    #: instead of deleting them, and counts what is left exactly as for a
+    #: delete (rows whose selector still names the subject). For an actor
+    #: column on shared content, e.g. who first named a coach-named error.
+    clears_selector: bool = False
+
+
+#: Retention schedule v1.4's two rules (founder 2026-10-05, N48.4 Q15 A),
+#: seeded by scripts/phase1_retention_rules_v1_4.sql once the PDF is signed.
+#: A product record goes with the account or the project; job evidence is
+#: kept 12 months from when it was recorded, then the scheduled clean-up
+#: deletes it.
+PRODUCT_RECORDS = "product_records"
+PRODUCT_RECORDS_RULE = "product-records-v1"
+JOB_EVIDENCE = "job_evidence"
+JOB_EVIDENCE_RULE = "job-evidence-v1"
+RULE_CATEGORY: dict[str, str] = {
+    PRODUCT_RECORDS_RULE: PRODUCT_RECORDS,
+    JOB_EVIDENCE_RULE: JOB_EVIDENCE,
+}
+
+
+def _product_record(code: str, relation: str, selector_column: str,
+                    locator_kind: LocatorKind, target_kind: str,
+                    delete_order: int = 300) -> PurgeDependency:
+    """Deleted with the account or the project, once product-records-v1 is
+    active; until then it stops the erasure for review, as before v1.4."""
+    return PurgeDependency(code, relation, selector_column, locator_kind,
+                           "delete", target_kind, delete_order,
+                           PRODUCT_RECORDS, ruled_by=PRODUCT_RECORDS_RULE)
+
+
+def _job_evidence(code: str, relation: str, selector_column: str,
+                  locator_kind: LocatorKind, target_kind: str,
+                  delete_order: int = 300,
+                  before_rule: Disposition = "external_review",
+                  ) -> PurgeDependency:
+    """Kept through an erasure under job-evidence-v1 (12 months from when it
+    was recorded), once that rule is active; until then as before v1.4."""
+    return PurgeDependency(code, relation, selector_column, locator_kind,
+                           "retain", target_kind, delete_order, JOB_EVIDENCE,
+                           ruled_by=JOB_EVIDENCE_RULE, before_rule=before_rule)
+
+
+def before_its_rule(dependency: PurgeDependency) -> PurgeDependency:
+    """The dependency as it acts while its v1.4 rule is not active: exactly
+    the registry entry it had before v1.4 (same disposition, no category)."""
+    if not dependency.ruled_by:
+        return dependency
+    return replace(dependency, disposition=dependency.before_rule,
+                   retention_category=None, ruled_by=None)
 
 
 DEPENDENCIES: tuple[PurgeDependency, ...] = (
@@ -47,12 +114,16 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("phase1_outbox", "phase1_processing_outbox",
                     "processing_job_id", "job", "delete",
                     "processing_queue", 10),
-    PurgeDependency("phase1_job_events", "phase1_processing_job_events",
-                    "processing_job_id", "job", "external_review",
-                    "processing_queue", 300),
-    PurgeDependency("phase1_jobs", "phase1_processing_jobs",
-                    "acquisition_principal_id", "principal", "delete",
-                    "processing_queue", 20),
+    # Job evidence (retention schedule v1.4): kept 12 months, then the
+    # scheduled clean-up deletes it. Each event points at its job ON DELETE
+    # RESTRICT, so the job row is kept with its events, for the same
+    # period; before v1.4 is active the job row is deleted as it always was
+    # (an event stops the erasure for review first).
+    _job_evidence("phase1_job_events", "phase1_processing_job_events",
+                  "processing_job_id", "job", "processing_queue", 300),
+    _job_evidence("phase1_jobs", "phase1_processing_jobs",
+                  "acquisition_principal_id", "principal", "processing_queue",
+                  20, before_rule="delete"),
     PurgeDependency("policy_carryovers", "processing_job_carryovers",
                     "acquisition_principal_id", "principal", "delete",
                     "processing_queue", 20),
@@ -71,13 +142,24 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("coach_revisions", "coach_review_revisions", "session_id",
                     "take", "delete", "coach_packet", 30),
 
-    # Exact user-facing evidence and derived state.
-    PurgeDependency("feedback_exposure", "take_feedback_exposure",
-                    "take_session_id", "take", "external_review",
-                    "derived_feedback", 300),
-    PurgeDependency("feedback_self_report", "take_feedback_self_report",
-                    "take_session_id", "take", "external_review",
-                    "derived_feedback", 300),
+    # Exact user-facing evidence and derived state. What a Take showed and
+    # the speaker's own answers are product records (retention schedule
+    # v1.4): deleted with the account or the project. Both tables are
+    # append-only; their trigger lets a running purge delete exactly the rows
+    # its frozen inventory names, under the active rule (0424).
+    _product_record("feedback_exposure", "take_feedback_exposure",
+                    "take_session_id", "take", "derived_feedback"),
+    _product_record("feedback_self_report", "take_feedback_self_report",
+                    "take_session_id", "take", "derived_feedback"),
+    # A changed judgement kept beside the first (0440, D-FW-9): deleted with
+    # the Take. Its foreign key also cascades from the first answer's row,
+    # which stays under the v1.4 product-records rule; until that rule is
+    # active the first answer stops the erasure for review, so this never
+    # deletes ahead of it. (Not a ruled entry: the signed schedule does not
+    # name it yet.)
+    PurgeDependency("feedback_self_report_revision",
+                    "take_feedback_self_report_revision", "take_session_id",
+                    "take", "delete", "derived_feedback", 59),
     PurgeDependency("suggestion_feedback", "user_suggestion_feedback",
                     "session_id", "take", "delete", "derived_feedback", 35),
     PurgeDependency("moment_suggestions", "moment_suggestions",
@@ -143,8 +225,10 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("ideal_practice_adoptions",
                     "ideal_text_practice_adoptions",
                     "arc_id", "project", "delete", "derived_feedback", 55),
-    PurgeDependency("ideal_part_revision", "ideal_text_part_revision", "arc_id",
-                    "project", "external_review", "derived_feedback", 300),
+    # Every version of a Paragraph: a product record (v1.4), deleted with
+    # the account or the project, through the same governed trigger (0424).
+    _product_record("ideal_part_revision", "ideal_text_part_revision",
+                    "arc_id", "project", "derived_feedback"),
     # Immutable cold-open read model. Heads go first because their restrictive
     # FK points at snapshots; generations are only durable publication work.
     # None is legal/training evidence, so all three follow product deletion.
@@ -256,6 +340,12 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("practice_exercise_coach_request",
                     "exercise_coach_requests", "take_session_id",
                     "take", "delete", "derived_feedback", 59),
+    # The answers a request had and no longer has (0446, Q-B12 A): the
+    # coach's words about the speaker's Take, so they go with the Take,
+    # before the request (whose cascade would take them too).
+    PurgeDependency("exercise_coach_request_answer_versions",
+                    "exercise_coach_request_answer_versions", "take_session_id",
+                    "take", "delete", "derived_feedback", 58),
     # The speaker's opens and skips of their bookmarks (0408). About one
     # speaker's Take: they go with it.
     PurgeDependency("moment_events", "moment_events", "take_session_id",
@@ -267,9 +357,13 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("bold_voices_plays", "bold_voices_plays",
                     "take_session_id", "take", "delete", "derived_feedback", 59),
     # A coach's own model readings (0409): their voice, under the coach
-    # agreement; they go with the coach.
+    # agreement; they go with the coach. coach_id, and the 0410 listener and
+    # rater ids and the 0411 coach ids below, hold the signed-in user's id
+    # (request.user_id), never an owner principal's: they are addressed by
+    # the `user` locator. Under `principal` they matched nothing and outlived
+    # a deleted account (found 2026-10-06 while building 0432).
     PurgeDependency("coach_readings", "coach_readings", "coach_id",
-                    "principal", "delete", "derived_feedback", 35),
+                    "user", "delete", "derived_feedback", 35),
     # Phase 4 and 5 (0410). The share of a moment and the measure's pair
     # are about the speaker's Take: they go with it. A set is the listener's
     # Take's; the answers and the votes are the rater's own words about
@@ -281,9 +375,51 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("lend_your_ear_sets", "lend_your_ear_sets",
                     "take_session_id", "take", "delete", "derived_feedback", 59),
     PurgeDependency("lend_your_ear_answers", "lend_your_ear_answers",
-                    "listener_user_id", "principal", "delete", "derived_feedback", 35),
+                    "listener_user_id", "user", "delete", "derived_feedback", 35),
+    # The clip's soft-label counts (0442, V4 brief 1.7): a derived row per
+    # clip, rebuilt from confidence_labels, with no words and no user id; it
+    # goes with the clip, before the labels it was built from.
+    PurgeDependency("clip_answer_counts", "clip_answer_counts",
+                    "snippet_id", "snippet", "delete", "derived_feedback", 35),
     PurgeDependency("delayed_measure_votes", "delayed_measure_votes",
-                    "rater_id", "principal", "delete", "derived_feedback", 35),
+                    "rater_id", "user", "delete", "derived_feedback", 35),
+    # Communities (0432, N52.4). A share is the speaker's consent about one
+    # Take: it goes with the Take, and with its owner (a share whose Take is
+    # already gone). An answer is the listener's own words: it goes with the
+    # listener, like the 0410 answers; a community answer is also about the
+    # speaker's Take, so it goes with that Take too, as the label it wrote
+    # goes with the snippet. A membership is the member's. A private
+    # community, its name and its pass-code digest are its creator's: it
+    # goes with them, after their own shares and memberships (order 60);
+    # its cascade then withdraws other speakers' shares to it, the safe
+    # direction (less shared, never more). The user_id columns are user
+    # ids, so they are addressed by the `user` locator.
+    PurgeDependency("take_shares", "take_shares",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("take_shares_by_owner", "take_shares",
+                    "owner_user_id", "user", "delete", "derived_feedback", 59),
+    PurgeDependency("community_answers", "community_answers",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("community_answers_by_listener", "community_answers",
+                    "listener_user_id", "user", "delete", "derived_feedback", 35),
+    PurgeDependency("community_members", "community_members",
+                    "user_id", "user", "delete", "database_row", 35),
+    PurgeDependency("communities_created", "communities",
+                    "created_by", "user", "delete", "database_row", 60),
+    # When the walk last showed a speaker a coach item (0439, D-FW-5): about
+    # one of their Takes; it goes with the Take, and with the speaker.
+    PurgeDependency("coach_feedback_seen", "coach_feedback_seen",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("coach_feedback_seen_by_owner", "coach_feedback_seen",
+                    "owner_user_id", "user", "delete", "derived_feedback", 59),
+    # The signed line last shown per bank (0438, D-FW-3): indexes into the
+    # signed bank, about one speaker; it goes with the account.
+    PurgeDependency("line_bank_memory", "line_bank_memory",
+                    "user_id", "user", "delete", "database_row", 35),
+    # A served Take's coverage and lane outcomes (0437, D-ML-5): counts,
+    # Slide indexes and type names about one Take; it goes with the Take.
+    PurgeDependency("take_feedback_coverage", "take_feedback_coverage",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
     # The coach panel's learning additions (0411). The preference, the
     # audit and the block pick are about one speaker's Take (they go with
     # it) AND are one coach's own words (they go with the coach too). The
@@ -291,17 +427,17 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("coach_exercise_preference", "coach_exercise_preference",
                     "take_session_id", "take", "delete", "derived_feedback", 59),
     PurgeDependency("coach_exercise_preference_by_coach", "coach_exercise_preference",
-                    "coach_id", "principal", "delete", "derived_feedback", 35),
+                    "coach_id", "user", "delete", "derived_feedback", 35),
     PurgeDependency("error_presence_audit", "error_presence_audit",
                     "take_session_id", "take", "delete", "derived_feedback", 59),
     PurgeDependency("error_presence_audit_by_coach", "error_presence_audit",
-                    "coach_id", "principal", "delete", "derived_feedback", 35),
+                    "coach_id", "user", "delete", "derived_feedback", 35),
     PurgeDependency("coach_block_pick", "coach_block_pick",
                     "take_session_id", "take", "delete", "derived_feedback", 59),
     PurgeDependency("coach_block_pick_by_coach", "coach_block_pick",
-                    "coach_id", "principal", "delete", "derived_feedback", 35),
+                    "coach_id", "user", "delete", "derived_feedback", 35),
     PurgeDependency("coach_clip_exposures", "coach_clip_exposures",
-                    "coach_id", "principal", "delete", "derived_feedback", 35),
+                    "coach_id", "user", "delete", "derived_feedback", 35),
     # The (draft, final) pairs a coach's answer about one speaker's moment
     # made (0402). The words are about that passage: they go with the Take.
     # Pairs from the exercise library (no take) are about the library.
@@ -330,6 +466,25 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "derived_feedback", 35),
     PurgeDependency("coach_take_words", "coach_take_words",
                     "take_session_id", "take", "delete", "derived_feedback", 58),
+    # A coach asked to listen to a moment again (0444): about the speaker's
+    # Take, so it goes with the Take; the coach_id is the coach's user id,
+    # so it goes with the coach too.
+    PurgeDependency("coach_listen_again_requests", "coach_listen_again_requests",
+                    "take_session_id", "take", "delete", "derived_feedback", 58),
+    PurgeDependency("coach_listen_again_requests_by_coach", "coach_listen_again_requests",
+                    "coach_id", "user", "delete", "derived_feedback", 35),
+    # A coach's diagnosis of a moment (0445): about the speaker's Take, so it
+    # goes with the Take; the coach_id is the coach's user id, so with the
+    # coach too. The coach-named errors it may point at are library content
+    # that other coaches' diagnoses share, so the row stays; only who named
+    # it first (named_by, the coach's user id) is cleared with the coach.
+    PurgeDependency("coach_moment_diagnoses", "coach_moment_diagnoses",
+                    "take_session_id", "take", "delete", "derived_feedback", 58),
+    PurgeDependency("coach_moment_diagnoses_by_coach", "coach_moment_diagnoses",
+                    "coach_id", "user", "delete", "derived_feedback", 35),
+    PurgeDependency("coach_named_errors_named_by", "coach_named_errors",
+                    "named_by", "user", "delete", "database_row", 36,
+                    clears_selector=True),
     PurgeDependency("feedback_pairs_by_take", "feedback_pairs",
                     "take_session_id", "take", "delete", "derived_feedback", 58),
     # A pattern the coach named on the moment itself rather than on a
@@ -455,47 +610,59 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "target_owner_principal_id", "principal", "retain",
                     "database_row", 200, "deletion_evidence"),
 
-    # These historical/mixed-purpose paths are attributable, but deleting
-    # them automatically would invent retention and dependency conclusions.
-    # A matching row therefore blocks completion for an explicit resolver.
+    # Legacy product tables (retention schedule v1.4). Each is a record of
+    # the speaker's own use of the product: what was shown, their own
+    # answers, a coach's or an operator's work on their sessions, or a
+    # judgement about their own recording. Deleted with the account (or with
+    # the project where a column names it: data_purge_project_scope) once
+    # product-records-v1 is active; until then a matching row stops the
+    # erasure for review, exactly as before.
+    #
+    # Six tables here predate migrations/ (no CREATE in this repository; see
+    # tests/test_purge_registry_selectors_exist.py LEGACY_TABLES). v1.4
+    # decides the five product tables among them too, but the purge deletes
+    # nothing whose production shape this repository cannot show: they stay
+    # external_review until one read-only check and a reviewed change say so.
+    # The sixth, few_shot_retrievals, is job evidence: kept, only counted.
     PurgeDependency("v1_sessions_review", "recording_sessions", "user_id",
                     "user", "external_review", "database_row", 300),
-    PurgeDependency("moment_unlocks_review", "moment_unlocks", "user_id",
-                    "user", "external_review", "database_row", 300),
-    PurgeDependency("student_profile_review", "student_profile", "user_id",
-                    "user", "external_review", "database_row", 300),
-    PurgeDependency("student_overrides_review", "v2_student_overrides",
-                    "user_id", "user", "external_review", "database_row", 300),
-    PurgeDependency("student_memory_review", "v2_student_coaching_memory",
-                    "user_id", "user", "external_review", "database_row", 300),
-    PurgeDependency("student_post_questions_review",
+    _product_record("moment_unlocks_review", "moment_unlocks", "user_id",
+                    "user", "database_row"),
+    _product_record("student_profile_review", "student_profile", "user_id",
+                    "user", "database_row"),
+    _product_record("student_overrides_review", "v2_student_overrides",
+                    "user_id", "user", "database_row"),
+    _product_record("student_memory_review", "v2_student_coaching_memory",
+                    "user_id", "user", "database_row"),
+    _product_record("student_post_questions_review",
                     "v2_student_post_recording_questions", "user_id", "user",
-                    "external_review", "database_row", 300),
-    PurgeDependency("admin_session_override_review", "admin_session_overrides",
-                    "user_id", "user", "external_review", "database_row", 300),
-    PurgeDependency("admin_student_draft_review", "admin_student_send_drafts",
-                    "user_id", "user", "external_review", "coach_packet", 300),
-    PurgeDependency("admin_annotation_review", "admin_annotation_events",
-                    "user_id", "user", "external_review", "coach_packet", 300),
-    PurgeDependency("content_exposure_review", "content_exposures", "user_id",
-                    "user", "external_review", "derived_feedback", 300),
-    PurgeDependency("few_shot_review", "few_shot_retrievals", "user_id",
-                    "user", "external_review", "dataset_lineage", 300),
-    PurgeDependency("dimension_evaluation_review", "dimension_evaluations",
-                    "user_id", "user", "external_review", "dataset_lineage", 300),
-    PurgeDependency("intervention_arm_review", "intervention_arms", "user_id",
-                    "user", "external_review", "dataset_lineage", 300),
-    PurgeDependency("confidence_labels_review", "confidence_labels",
-                    "snippet_id", "snippet", "external_review",
-                    "dataset_lineage", 300),
-    PurgeDependency("confidence_rereview", "confidence_rereview_queue",
-                    "owner_user_id", "user", "external_review",
-                    "coach_packet", 300),
-    PurgeDependency("label_revision_review", "label_revision", "snippet_id",
-                    "snippet", "external_review", "dataset_lineage", 300),
-    PurgeDependency("intervention_decisions_review", "intervention_decisions",
-                    "arc_id", "project", "external_review",
-                    "derived_feedback", 300),
+                    "database_row"),
+    _product_record("admin_session_override_review", "admin_session_overrides",
+                    "user_id", "user", "database_row"),
+    _product_record("admin_student_draft_review", "admin_student_send_drafts",
+                    "user_id", "user", "coach_packet"),
+    _product_record("admin_annotation_review", "admin_annotation_events",
+                    "user_id", "user", "coach_packet"),
+    _product_record("content_exposure_review", "content_exposures", "user_id",
+                    "user", "derived_feedback"),
+    # Which examples served one of the speaker's requests: operational
+    # evidence of how the feedback was made, kept 12 months (v1.4). A kept
+    # row is only counted, never touched, so its pre-migrations shape needs
+    # no check before the rule acts.
+    _job_evidence("few_shot_review", "few_shot_retrievals", "user_id",
+                  "user", "dataset_lineage"),
+    _product_record("dimension_evaluation_review", "dimension_evaluations",
+                    "user_id", "user", "dataset_lineage"),
+    _product_record("intervention_arm_review", "intervention_arms", "user_id",
+                    "user", "dataset_lineage"),
+    _product_record("confidence_labels_review", "confidence_labels",
+                    "snippet_id", "snippet", "dataset_lineage"),
+    _product_record("confidence_rereview", "confidence_rereview_queue",
+                    "owner_user_id", "user", "coach_packet"),
+    _product_record("label_revision_review", "label_revision", "snippet_id",
+                    "snippet", "dataset_lineage"),
+    _product_record("intervention_decisions_review", "intervention_decisions",
+                    "arc_id", "project", "derived_feedback"),
     PurgeDependency("performance_scores_review", "performance_scores",
                     "recording_id", "recording", "external_review",
                     "derived_feedback", 300),
@@ -505,72 +672,82 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("post_answers_review", "post_recording_answers",
                     "session_id", "take", "external_review",
                     "database_row", 300),
-    PurgeDependency("session_commands_review", "session_command_options",
-                    "session_id", "take", "external_review",
-                    "database_row", 300),
-    PurgeDependency("v2_reports_review", "v2_reports", "session_v2_id", "take",
-                    "external_review", "database_row", 300),
-    PurgeDependency("admin_annotation_log_review", "admin_annotations_log",
-                    "user_id", "user", "external_review",
-                    "dataset_lineage", 300),
+    _product_record("session_commands_review", "session_command_options",
+                    "session_id", "take", "database_row"),
+    # After the take session's wipe (200): v2_sessions points at a report ON
+    # DELETE SET NULL, and the wipe has already emptied that pointer.
+    _product_record("v2_reports_review", "v2_reports", "session_v2_id", "take",
+                    "database_row"),
+    _product_record("admin_annotation_log_review", "admin_annotations_log",
+                    "user_id", "user", "dataset_lineage"),
+    # Not decided by v1.4 (proposed to the founder): a reference video made
+    # for this speaker may since have become library content (is_universal),
+    # and its stored file has no storage target in this purge.
     PurgeDependency("admin_uploaded_reference_review",
                     "admin_uploaded_reference_videos", "user_id", "user",
                     "external_review", "dataset_lineage", 300),
-    PurgeDependency("copilot_upload_jobs_review",
-                    "copilot_reference_upload_jobs", "student_user_id", "user",
-                    "external_review", "processing_queue", 300),
-    PurgeDependency("arc_deliveries_review", "arc_batch_deliveries", "user_id",
-                    "user", "external_review", "database_row", 300),
+    _job_evidence("copilot_upload_jobs_review",
+                  "copilot_reference_upload_jobs", "student_user_id", "user",
+                  "processing_queue"),
+    _product_record("arc_deliveries_review", "arc_batch_deliveries", "user_id",
+                    "user", "database_row"),
+    # Not decided by v1.4 (proposed to the founder): a purchase is a
+    # financial record, which v1.3's financial-evidence-v1 keeps five years.
     PurgeDependency("arc_purchases_review", "arc_purchases", "user_id", "user",
                     "external_review", "database_row", 300),
     PurgeDependency("student_tasks_review", "tasks", "user_id", "user",
                     "external_review", "database_row", 300),
-    PurgeDependency("coaching_directives_review", "coaching_directives_queue",
-                    "user_id", "user", "external_review", "database_row", 300),
-    PurgeDependency("coach_ai_review", "coach_ai_conversations", "user_id",
-                    "user", "external_review", "database_row", 300),
-    PurgeDependency("admin_archive_review", "admin_copilot_queue_archives",
-                    "user_id", "user", "external_review", "database_row", 300),
+    _product_record("coaching_directives_review", "coaching_directives_queue",
+                    "user_id", "user", "database_row"),
+    _product_record("coach_ai_review", "coach_ai_conversations", "user_id",
+                    "user", "database_row"),
+    _product_record("admin_archive_review", "admin_copilot_queue_archives",
+                    "user_id", "user", "database_row"),
     PurgeDependency("token_ledger_review", "token_ledger", "user_id", "user",
                     "retain", "database_row", 300, "financial_evidence"),
     PurgeDependency("llm_usage_review", "llm_usage", "user_id", "user",
                     "retain", "database_row", 300, "financial_evidence"),
 
-    # The Life Panel owns a separate reviewed hard-delete workflow. Until it
-    # is transactionally connected to this resolver, matching data blocks the
-    # Phase-1 purge instead of being silently skipped or deleted out of order.
-    PurgeDependency("life_consent_review", "life_consent", "user_id", "user",
-                    "external_review", "database_row", 300),
-    PurgeDependency("life_setup_review", "life_setup", "user_id", "user",
-                    "external_review", "database_row", 300),
-    PurgeDependency("life_notes_review", "life_notes", "user_id", "user",
-                    "external_review", "database_row", 300),
-    PurgeDependency("life_cases_review", "life_cases", "user_id", "user",
-                    "external_review", "database_row", 300),
-    PurgeDependency("life_items_review", "life_items", "user_id", "user",
-                    "external_review", "database_row", 300),
-    PurgeDependency("life_strategy_review", "life_strategy", "user_id", "user",
-                    "external_review", "database_row", 300),
-    PurgeDependency("life_proposals_review", "life_proposals", "user_id", "user",
-                    "external_review", "database_row", 300),
-    PurgeDependency("life_applications_review", "life_applications", "user_id",
-                    "user", "external_review", "database_row", 300),
-    PurgeDependency("life_days_review", "life_days", "user_id", "user",
-                    "external_review", "database_row", 300),
-    PurgeDependency("life_weeks_review", "life_weeks", "user_id", "user",
-                    "external_review", "database_row", 300),
-    PurgeDependency("life_period_reviews_review", "life_period_reviews",
-                    "user_id", "user", "external_review", "database_row", 300),
-    PurgeDependency("life_setup_documents_review", "life_setup_documents",
-                    "user_id", "user", "external_review", "database_row", 300),
-    PurgeDependency("life_push_subscriptions_review", "life_push_subscriptions",
-                    "user_id", "user", "external_review", "database_row", 300),
-    PurgeDependency("life_reminder_settings_review", "life_reminder_settings",
-                    "user_id", "user", "external_review", "database_row", 300),
-    PurgeDependency("life_reminder_log_review", "life_reminder_log", "user_id",
-                    "user", "external_review", "database_row", 300),
-    PurgeDependency("life_user_copy_review", "life_user_copy", "user_id", "user",
-                    "external_review", "database_row", 300),
+    # The Life Panel: the person's own use of it, so product records (v1.4),
+    # deleted with the account once product-records-v1 is active, in the
+    # order its own hard delete uses (services/life_store.py _DELETE_ORDER:
+    # leaves first, consent last, "the record that the rest was ever allowed
+    # to exist"). No foreign key joins these tables; the order is the Life
+    # Panel's, kept so a partial failure never strands a child row. Until the
+    # rule is active, a matching row stops the erasure as before.
+    _product_record("life_consent_review", "life_consent", "user_id", "user",
+                    "database_row", 299),
+    _product_record("life_setup_review", "life_setup", "user_id", "user",
+                    "database_row", 291),
+    _product_record("life_notes_review", "life_notes", "user_id", "user",
+                    "database_row", 289),
+    _product_record("life_cases_review", "life_cases", "user_id", "user",
+                    "database_row", 284),
+    _product_record("life_items_review", "life_items", "user_id", "user",
+                    "database_row", 283),
+    _product_record("life_strategy_review", "life_strategy", "user_id",
+                    "user", "database_row", 288),
+    _product_record("life_proposals_review", "life_proposals", "user_id",
+                    "user", "database_row", 282),
+    _product_record("life_applications_review", "life_applications",
+                    "user_id", "user", "database_row", 281),
+    _product_record("life_days_review", "life_days", "user_id", "user",
+                    "database_row", 285),
+    _product_record("life_weeks_review", "life_weeks", "user_id", "user",
+                    "database_row", 286),
+    _product_record("life_period_reviews_review", "life_period_reviews",
+                    "user_id", "user", "database_row", 287),
+    _product_record("life_setup_documents_review", "life_setup_documents",
+                    "user_id", "user", "database_row", 290),
+    _product_record("life_push_subscriptions_review",
+                    "life_push_subscriptions", "user_id", "user",
+                    "database_row", 292),
+    _product_record("life_reminder_settings_review", "life_reminder_settings",
+                    "user_id", "user", "database_row", 293),
+    _product_record("life_reminder_log_review", "life_reminder_log",
+                    "user_id", "user", "database_row", 294),
+    _product_record("life_user_copy_review", "life_user_copy", "user_id",
+                    "user", "database_row", 295),
 
     # MLC-2 is dark, but any lineage already attached to this principal must
     # enter its separately reviewed exceptional-purge traversal.
@@ -583,6 +760,11 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("v3_shadow", "take_feedback_policy_v3_shadow_frames",
                     "acquisition_principal_id", "principal", "external_review",
                     "dataset_lineage", 300),
+    # V4 B1.2 (0448): a Take's random moments. Derived from the frame, no
+    # words, nothing trained on them: they go with the Take, while the
+    # frame itself waits on its review.
+    PurgeDependency("v4_random_moments", "v4_random_moments",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
     PurgeDependency("v3_detector_reconciliation",
                     "take_feedback_detector_reconciliation",
                     "take_session_id", "take", "external_review",
@@ -844,6 +1026,20 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("feedback_revision_reviewers", "feedback_revisions",
                     "rater_id", "principal", "external_review",
                     "derived_feedback", 300),
+    # rater_id is mixed. A coach row names the coach's owner principal (the
+    # entry above); an owner row names the speaker's USER id
+    # (record_root_phrase_skip_v1: a "no helper words" skip, its
+    # acquisition_principal_id NULL), which neither entry above reaches.
+    # N12 (founder 2026-10-08, Q3/Q4 YES: "empty receipt"): an owner row is
+    # kept as an empty receipt, its payload erased by the lineage wipe as a
+    # child of its evidence span (the guard 0448 gives the table lets that
+    # one UPDATE through). Every row counted here hangs off its speaker's own
+    # Take's span, inside the wipe's scope; one that did not would be
+    # counted by the wipe as not blank (0448) and fail the target, never
+    # pass as retained. Coach rows still stop the inventory (entries above).
+    PurgeDependency("feedback_revision_owner_raters", "feedback_revisions",
+                    "rater_id", "user", "tombstone", "derived_feedback", 200,
+                    "deletion_evidence"),
     PurgeDependency("confident_moment_bundle_projections",
                     "confident_moment_bundle_projections",
                     "acquisition_principal_id", "principal",
@@ -884,26 +1080,25 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "confident_moment_coach_wording_authority_bindings",
                     "reviewer_principal_id", "principal",
                     "external_review", "coach_packet", 300),
-    PurgeDependency("feedback_language_delivery_materialization_jobs",
-                    "feedback_language_delivery_materialization_jobs",
-                    "acquisition_principal_id", "principal",
-                    "external_review", "processing_queue", 300),
-    PurgeDependency("feedback_language_delivery_job_events",
-                    "feedback_language_delivery_materialization_job_events",
-                    "job_id", "delivery_job", "external_review",
-                    "processing_queue", 300),
-    PurgeDependency("feedback_language_delivery_job_claim_attempts",
-                    "feedback_language_delivery_job_claim_attempts",
-                    "job_id", "delivery_job", "external_review",
-                    "processing_queue", 300),
-    PurgeDependency("feedback_language_delivery_job_claim_heads",
-                    "feedback_language_delivery_job_claim_heads",
-                    "job_id", "delivery_job", "external_review",
-                    "processing_queue", 300),
-    PurgeDependency("feedback_language_delivery_job_due_heads",
-                    "feedback_language_delivery_job_due_heads",
-                    "job_id", "delivery_job", "external_review",
-                    "processing_queue", 300),
+    # The delivery jobs, their events and claims are job evidence (v1.4):
+    # kept 12 months, only counted, never touched. The bundle lineage they
+    # deliver stays external_review above.
+    _job_evidence("feedback_language_delivery_materialization_jobs",
+                  "feedback_language_delivery_materialization_jobs",
+                  "acquisition_principal_id", "principal",
+                  "processing_queue"),
+    _job_evidence("feedback_language_delivery_job_events",
+                  "feedback_language_delivery_materialization_job_events",
+                  "job_id", "delivery_job", "processing_queue"),
+    _job_evidence("feedback_language_delivery_job_claim_attempts",
+                  "feedback_language_delivery_job_claim_attempts",
+                  "job_id", "delivery_job", "processing_queue"),
+    _job_evidence("feedback_language_delivery_job_claim_heads",
+                  "feedback_language_delivery_job_claim_heads",
+                  "job_id", "delivery_job", "processing_queue"),
+    _job_evidence("feedback_language_delivery_job_due_heads",
+                  "feedback_language_delivery_job_due_heads",
+                  "job_id", "delivery_job", "processing_queue"),
     PurgeDependency("exercise_service_acquisition_receipts",
                     "exercise_service_acquisition_receipts",
                     "acquisition_principal_id", "principal",
@@ -1162,6 +1357,20 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     # The licensed corpus (0410): clips licensed from elsewhere, not about
     # any speaker; the live view of shares reads tables purged on their own.
     "corpus_clips", "shared_clips_live",
+    # The communities' live view (0432): no row of its own; its rows are
+    # take_shares, communities and snippets, each purged on its own.
+    "community_clips_live",
+    # The corpus's speaker splits (0433, N56.4): a digest of a licensed
+    # corpus speaker's key and its learn/test side. No user id, no name, no
+    # recording; the import sessions it groups are purged on their own.
+    "corpus_speaker_splits",
+    # The founder's corpus processing basis and what was permitted under it
+    # (0435, N58): the basis row, each import's registration by the coach
+    # import route, and the import's provider permits and their events. No
+    # principal, no user id, no content; the import sessions they name are
+    # corpus audio, not an account's, and are purged on their own.
+    "corpus_processing_bases", "corpus_import_registrations",
+    "corpus_provider_permits", "corpus_provider_operations",
     "admin_users", "coach_users", "admin_annotation_export_runs",
     "admin_notifications", "arc_invite_codes", "casual_voice_benchmarks",
     "chat_question_pool", "coach_video_assets",
@@ -1189,6 +1398,9 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     # pair_release_owners, a dependency below, and the refresh voids the
     # release itself when an owner withdraws.
     "pair_releases",
+    # The checks of a release's file and manifest (0430, F-8): hashes, sizes
+    # and verdicts keyed by the release, never a person.
+    "pair_release_verifications",
     # The research role, like admin_users and coach_users (0404).
     "research_users",
     # A surface's sealed golden set: a count and a hash (0404).
@@ -1200,6 +1412,11 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     # The view over fine_tune_runs and its owners that the withdrawal sweep
     # reads (0406): no row of its own.
     "fine_tune_runs_with_withdrawn_owner",
+    # The view of the training yes in force now (0405), which the weekly
+    # refresh, the release-time decision and the promotion's freshness check
+    # read (PLF-P5, DOOR-4-WITHDRAWN): no row of its own; its rows are
+    # ml_consent_events, classified with the account.
+    "training_consent_active_grants",
     "model_training_runs", "post_recording_questions",
     "pre_recording_questions", "professional_notes_specific_questions",
     "reference_distribution", "runtime_config", "slide_ab_verdicts",
@@ -1214,6 +1431,16 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     # data_purge_requests beside it: it names what to delete and is never the
     # content being deleted.
     "project_deletion_requests",
+    # An account deletion REQUEST with its seven-day window (0422), the same
+    # paperwork for a whole account: ids, times, a state and the evidence
+    # hash of the purge that finished it.
+    "account_deletion_requests",
+    # The scheduled clean-up's own paperwork (0423), like the purge's above:
+    # a run's counts and times, and the ids of the objects a live run claimed
+    # with how each ended. No column names a person; what a run deleted is
+    # recorded where every deletion is (processing_audio_object_deletion_
+    # events, data_purge_requests).
+    "retention_cleaner_runs", "retention_cleaner_audio_claims",
     "data_rights_requests", "data_retention_rules",
     "processing_policy_versions", "processing_policy_purposes",
     "processing_purpose_registry", "processing_legal_artifacts",
@@ -1274,6 +1501,15 @@ DYNAMIC_RUNTIME_RELATIONS: frozenset[str] = frozenset({
     "life_weeks", "life_period_reviews", "life_setup_documents",
     "life_push_subscriptions", "life_reminder_settings", "life_reminder_log",
     "life_user_copy", "dev_bugs", "dev_tasks",
+    # The scheduled clean-up (services/retention_cleaner.py) removes rows
+    # from the relations its reviewed lists name: the four logs, the
+    # voice-measurement stores and, once their five years end, the financial
+    # records (token_ledger and llm_usage, above; N50 P7). life_reminder_log
+    # is above too. dev_bugs is the founder's own bug list and is not the
+    # clean-up's (N50 C4 B).
+    "processing_jobs", "admin_annotations_log",
+    "mlc3_service_backpressure_events", "dimension_evaluations",
+    "session_sniper_metrics", "arc_part_acoustics", "user_acoustic_baseline",
 })
 
 
@@ -1302,5 +1538,5 @@ LINEAGE_TOMBSTONES: frozenset[str] = frozenset({
     "processing_transition_events", "transcript_versions", "slides",
     "paragraphs", "evidence_spans", "acoustic_feature_snapshots",
     "candidate_sets", "machine_predictions", "generation_runs",
-    "processing_stage_runs",
+    "processing_stage_runs", "feedback_revisions",
 })

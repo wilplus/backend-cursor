@@ -19,17 +19,12 @@ the save routes, markers survive untouched — the BE never parses any of
 them except MOMENT_RE. The coach's edit REPLACES the whole block, markers
 included — the anchors travel with the text.
 
-L1 (docstring-truth fix 2026-07-18 — the old "never an AI rewrite" wording
-overclaimed): the auto draft is assembled from the takes' COACH-CORRECTED
-verbatim picks via build_best_presentation, whose compose step IS a
-constrained LLM pass — "mostly verbatim, a few words per slide for
-continuity, never new claims" (the founder-sanctioned light polish, i.e.
-seam-smoothing, not a free rewrite). Under POLISH_AS_SUGGESTIONS_ENABLED
-even that polish stops being silent: the VERBATIM words are served and the
-polish is offered as an approvable star. Since 2026-10-05 the compose step
-calls no model at all (N48.3 Q13 A): the picks are served verbatim and no
-polish star is ever offered. The coach's one-block edit then
-owns the canonical. The user's notebook copy is a separate personal row
+L1: the document is the full transcript of the Take it is built from
+(``assemble_transcript_document``), ledger-baked. The best-of assembly
+(``assemble_ideal_text_block`` over ``build_best_presentation``'s picks, with
+its polish-as-suggestions lane) is removed (founder 2026-10-05, N48.3 Q13 A;
+contract 52): it was the flag-off path of LIVING_TRANSCRIPT_ENABLED, which is
+on in production. The coach's one-block edit then owns the canonical. The user's notebook copy is a separate personal row
 (user_arc_ideal_notes) — editing it never touches this canonical. AC-9:
 text only, no scores anywhere.
 """
@@ -197,38 +192,22 @@ def sanitize_markers(text: Any) -> str:
 
 def _living_transcript_enabled() -> bool:
     """THE DOCUMENT MODEL (founder decision 2026-07-20 #1): the ideal text
-    is the speaker's FULL transcript of the take, not a stitched selection
-    of best-ranked moments ("it is very much shorter than what I really
-    said"). DEFAULT OFF — flag ON swaps the document source; every other
-    lane (ledger bake, protected phrases, versions, snapshots, coach
-    verify) is untouched and keeps working on the new base.
-
-    THE DEFAULT STAYS OFF (re-examined 2026-08-07, when the brief was "flip
-    the necessary flags to turn the manager-engine pipeline ON"). It was not
-    the right flag to flip in code, for two reasons:
-
-      * It is NOT only the interventions gate. Turning it on also swaps the
-        document SOURCE — `assemble_transcript_document` instead of
-        `assemble_ideal_text_block` — which is the whole living-transcript
-        model, far more than the tracked-changes block the brief was about.
-        Flipping the code default would ship that to every environment at
-        once, including any that never opted in.
-      * Prod already has it. The cue sheet the founder was looking at is
-        produced INSIDE `_tracked_changes_block`, which returns {} unless
-        this is truthy — so the Railway variable is already 1 and a default
-        change buys nothing while risking everything.
-
-    A Railway variable flip stays the right lever here: reversible in
-    seconds (one restart, no deploy) and scoped to one environment. Read once
-    at boot through Config (audit Q-A5)."""
+    is the speaker's FULL transcript of the take. The flag no longer swaps
+    the document source: the transcript document is the only one since the
+    best-of assembly was removed (2026-10-05, N48.3 Q13 A). It still gates
+    the lanes built on that document (the tracked-changes block, the
+    post-decision reassembly, the canonical provenance read), and it is ON
+    in production; the code default stays 0 until every service's boot line
+    shows it set (audit A2, remediation C5). Read once at boot through
+    Config (audit Q-A5)."""
     return bool(config.LIVING_TRANSCRIPT_ENABLED)
 
 
 def assemble_transcript_document(arc_id: str, *, database=None,
                                  session_id: Optional[str] = None) -> dict:
-    """The full-transcript document, ledger-baked — the flag-ON assembly
-    path. Same return shape as assemble_ideal_text_block so every caller
-    (persist, version bump, snapshot, serve) works unchanged.
+    """The full-transcript document, ledger-baked — the only assembly path
+    since the best-of assembly was removed (N48.3 Q13 A). Every caller
+    (persist, version bump, snapshot, serve) reads this one shape.
 
     key_moments/polish are EMPTY here on purpose: on the transcript
     document, changes are span-anchored tracked changes (BE-C), not
@@ -291,145 +270,6 @@ def assemble_transcript_document(arc_id: str, *, database=None,
     }
 
 
-def assemble_ideal_text_block(arc_id: str, *, database=None,
-                              require_ready: bool = True,
-                              extra_anchor_ids=None) -> dict:
-    """The AUTO draft: build_best_presentation's per-slide/section picks
-    collapsed into one marker-carrying block.
-
-    Per pick: the pick's key_phrases get **bolded** where they occur in its
-    text (first occurrence each). A Manager-approved suggestion may be wrapped
-    in a [[moment:…]] anchor so its feedback control attaches to exact text.
-
-    Returns {"text": str, "key_moments": [{"snippet_id", "take_session_id"}],
-    "ready": bool} — ready=False (empty text) below 3 takes. Pure given db.
-    """
-    if database is None:
-        from services.db import db as database
-    from services.slide_selection import build_best_presentation
-
-    bp = build_best_presentation(arc_id, coach_view=True, database=database) \
-        if _accepts_database(build_best_presentation) \
-        else build_best_presentation(arc_id, coach_view=True)
-
-    # require_ready=False (single deliverable, founder 2026-07-17): the ideal
-    # text assembles from take 1 — bp["ready"] is only the legacy 3-take
-    # progress flag; the compose itself runs on any takes present.
-    if require_ready and not bp.get("ready"):
-        return {"text": "", "key_moments": [], "ready": False}
-
-    # POLISH-AS-SUGGESTIONS (founder 2026-07-18): serve the speaker's VERBATIM
-    # words and offer the light polish as an approvable star, instead of
-    # silently replacing. More L1-faithful — the deliverable is what they
-    # actually said until THEY accept a change. `polish` collects the diffs
-    # for the worker to persist as suggestions.
-    _polish_on = _polish_as_suggestions_enabled()
-
-    # ── DECISION LEDGER (founder 2026-07-20, gradual refinement rule 1):
-    # every change the student APPROVED bakes into this machine copy
-    # wherever its phrase still occurs — plain text, no star, never
-    # reversed. Decided phrases (approved OR dismissed) are also excluded
-    # from re-offering (rule 2/3: each version's stars = its delta).
-    # Best-effort: no ledger (pre-migration) → today's behavior. ──
-    from services.ideal_decision_ledger import (
-        bake_piece, ledger_keys, load_ledger, normalize_phrase,
-    )
-    _ledger_rows = load_ledger(database, arc_id)
-    _approved = [r for r in _ledger_rows
-                 if r.get("decision") == "approved"]
-    _decided = ledger_keys(_ledger_rows)
-
-    paragraphs: list = []
-    key_moments: list = []
-    polish: list = []
-    for s in (bp.get("slides") or []):
-        _edited = (s.get("text") or "").strip()
-        _verbatim = (s.get("verbatim") or "").strip()
-        text = (_verbatim if _polish_on else _edited) or _edited
-        if not text:
-            continue
-        if _approved:
-            text = bake_piece(text, _approved)
-        snip_id = s.get("snippet_id")
-        take_sid = s.get("session_id") or s.get("take_session_id")
-        # A polish diff → an approvable suggestion; anchor the pick so its
-        # star attaches. (When polish is OFF, key_phrases still bold as before.)
-        # A phrase the student already DECIDED on (approved → just baked
-        # above; dismissed → remembered) is never re-offered.
-        _is_polish = bool(_polish_on and s.get("polished")
-                          and snip_id and take_sid and _verbatim != _edited
-                          and ("polish", normalize_phrase(_verbatim))
-                          not in _decided)
-        if not _polish_on:
-            # Bold the key openings — first occurrence of each phrase.
-            for kp in (s.get("key_phrases") or [])[:5]:
-                kp = (kp or "").strip()
-                if kp and kp in text and f"**{kp}**" not in text:
-                    text = text.replace(kp, f"**{kp}**", 1)
-        # Key-moment anchor — a star-suggestion pick (extra_anchor_ids, founder
-        # 2026-07-18 — the grey star needs an in-text anchor to attach to);
-        # so does a polished pick (the polish star folds verbatim→edited).
-        _extra = extra_anchor_ids or set()
-        if (_is_polish
-                or (snip_id and str(snip_id) in _extra)) \
-                and snip_id and take_sid:
-            text = (f"[[moment:{snip_id}|{take_sid}]]{text}[[/moment]]")
-            key_moments.append({
-                "snippet_id": str(snip_id),
-                "take_session_id": str(take_sid),
-            })
-            if _is_polish:
-                polish.append({
-                    "snippet_id": str(snip_id),
-                    "edited": _edited,          # the fold target on Approve
-                    "verbatim": _verbatim,      # recurrence check (rule 4a)
-                })
-        paragraphs.append(text)
-
-    return {
-        "text": "\n\n".join(paragraphs)[:_MAX_BLOCK_CHARS],
-        "key_moments": key_moments,
-        "polish": polish,   # [{snippet_id, edited}] — the worker persists these
-        "ready": True,
-    }
-
-
-def _persist_polish_suggestions(database, arc_id, auto) -> None:
-    """Persist the polish diffs as approvable suggestions (founder
-    2026-07-18) — kind='replace' + trigger='polish', replacement = the
-    light-edited version, so Approve folds verbatim→edited via the existing
-    serve fold. The served text stays verbatim. Never displaces an
-    acoustic/structural star already on that snippet (upsert is
-    snippet-keyed; acoustic stars are stored earlier in the same worker pass,
-    so 'replace'/'structure' win — a polish only lands where the snippet had
-    no other star)."""
-    # Protected phrases (founder 2026-07-20, rule 4a): a polish whose
-    # changed span is wording the speaker uses in >= 2 takes is THEIR
-    # phrasing — the smoothing is never offered.
-    from services.protected_phrases import (
-        collect_take_texts, phrase_recurs,
-    )
-    from services.suggestion_quotes import diff_quote
-    _take_texts = collect_take_texts(database, arc_id)
-    _existing = database.get_moment_suggestions_by_arc(arc_id) or {}
-    for p in (auto.get("polish") or []):
-        _sid = str(p.get("snippet_id"))
-        _prior = _existing.get(_sid)
-        # An acoustic/structural star owns this snippet → leave it.
-        # A prior POLISH row may refresh (a re-record can re-edit).
-        if _prior and _prior.get("trigger") != "polish":
-            continue
-        _edited = (p.get("edited") or "").strip()
-        if not _edited:
-            continue
-        _span = diff_quote(p.get("verbatim"), _edited) \
-            or (p.get("verbatim") or "")
-        if phrase_recurs(_span, _take_texts):
-            continue   # their wording — keep it (rule 4a)
-        database.upsert_moment_suggestion(
-            _sid, str(arc_id), "replace", _edited, None, "polish")
-
-
 def _snapshot_version(database, arc_id, text) -> None:
     """Per-VERSION snapshot (founder 2026-07-20): freeze this version's text
     (with anchors) + its pending reasoning, so the version bubble stays
@@ -455,7 +295,6 @@ def _take_index(value: Any) -> Optional[int]:
 
 def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
                               require_target: bool = True,
-                              include_suggestion_anchors: bool = False,
                               source_session_id: Optional[str] = None,
                               degradation=None) -> bool:
     """EAGER assembly (founder 2026-07-15): called from the analysis pipeline
@@ -530,36 +369,22 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
                 "ideal_text: no spoken take on the project arc=%s sid=%s",
                 arc_id, source_session_id)
             return False
-        _extra = None
-        if include_suggestion_anchors:
-            # Star suggestions (2026-07-18): a suggestion-flagged pick gets
-            # an in-text anchor so its grey star can attach. Best-effort.
-            _extra = log.run(
-                "assembly.suggestion_anchor_ids",
-                lambda: set(
-                    database.get_moment_suggestions_by_arc(arc_id) or {}),
-                None)
         # THE DOCUMENT SOURCE (founder decision 2026-07-20 #1): the full
-        # transcript of the latest spoken take, or — flag OFF — the legacy
-        # best-moments selection. Everything downstream (persist, version
-        # bump, snapshot, verify, ledger) is identical either way. (The
-        # master-document lane that sat between these two is retired;
-        # master_document_enabled() is permanently False — audit C2.)
+        # transcript of a spoken Take, pinned to the accepted recording when
+        # one is named. The legacy best-moments selection that used to run
+        # with LIVING_TRANSCRIPT_ENABLED off is removed (N48.3 Q13 A); the
+        # master-document lane is retired too (audit C2).
         if source_session_id:
-            # Exact provenance beats environment-selected arc-level source on
-            # a retry. build_transcript_document's historical form reads only
+            # Exact provenance beats an arc-level "latest take" lookup on a
+            # retry. build_transcript_document's historical form reads only
             # this session's already-persisted snippets/corrections.
             auto = assemble_transcript_document(
                 arc_id,
                 database=database,
                 session_id=str(source_session_id),
             )
-        elif _living_transcript_enabled():
-            auto = assemble_transcript_document(arc_id, database=database)
         else:
-            auto = assemble_ideal_text_block(
-                arc_id, database=database, require_ready=require_target,
-                extra_anchor_ids=_extra)
+            auto = assemble_transcript_document(arc_id, database=database)
         text = (auto.get("text") or "").strip()
         if not text:
             logger.warning(
@@ -582,14 +407,9 @@ def maybe_assemble_ideal_text(arc_id: Optional[str], *, database=None,
                 "ideal_text: eager draft persisted arc=%s chars=%d v=%d",
                 arc_id, len(text), source_take_count)
         # Best-effort stages after the persist, each named when it falls
-        # back: the polish suggestions, the per-version snapshot (AFTER the
-        # polish persist so the step's suggestions are complete), and the
-        # cold-open publication — a write-boundary responsibility; the
+        # back: the per-version snapshot and the cold-open publication — a write-boundary responsibility; the
         # student GET intentionally cannot assemble or repair a document, it
         # only reads the immutable head published here.
-        if ok and _polish_as_suggestions_enabled():
-            log.run("assembly.polish_persist",
-                    lambda: _persist_polish_suggestions(database, arc_id, auto))
         if ok:
             log.run("assembly.version_snapshot",
                     lambda: _snapshot_version(database, arc_id, text))
@@ -690,11 +510,3 @@ def strip_moment_markers(text: Any) -> str:
     out = MOMENT_SPAN_RE.sub(lambda m: m.group("inner"), text)
     # Any unclosed opening token left behind (legacy blocks) goes too.
     return MOMENT_RE.sub("", out)
-
-
-def _accepts_database(fn) -> bool:
-    try:
-        import inspect
-        return "database" in inspect.signature(fn).parameters
-    except Exception:
-        return False

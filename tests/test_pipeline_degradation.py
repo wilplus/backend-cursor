@@ -228,16 +228,14 @@ class _AssemblerDb:
         self._maybe("upsert_ideal_text_version")
 
 
-def _assemble(db, *, auto=None, degradation=None, polish=False):
+def _assemble(db, *, auto=None, degradation=None):
     import services.ideal_text_block as mod
     auto = auto or {"text": "assembled block", "key_moments": [],
                     "ready": True}
-    with patch.object(mod, "assemble_ideal_text_block", return_value=auto), \
-            patch.object(mod, "_polish_as_suggestions_enabled",
-                         lambda: polish):
+    with patch.object(mod, "assemble_transcript_document",
+                      return_value=auto):
         return mod.maybe_assemble_ideal_text(
-            ARC, database=db, require_target=False,
-            include_suggestion_anchors=True, degradation=degradation)
+            ARC, database=db, require_target=False, degradation=degradation)
 
 
 def test_a_healthy_assembly_records_nothing():
@@ -251,18 +249,12 @@ def test_a_healthy_assembly_records_nothing():
 
 def test_each_post_persist_stage_names_itself_and_the_assembly_still_succeeds():
     log = DegradationLog("ideal_text")
-    db = _AssemblerDb(boom={"upsert_ideal_text_version",
-                            "upsert_moment_suggestion"})
-    auto = {"text": "assembled block", "key_moments": [], "ready": True,
-            "polish": [{"snippet_id": "s1", "verbatim": "we did it",
-                        "edited": "we did it well"}]}
+    db = _AssemblerDb(boom={"upsert_ideal_text_version"})
     with patch("services.ideal_text_core_snapshot.publish_for_arc",
                _raise(KeyError("core"))):
-        assert _assemble(db, auto=auto, degradation=log, polish=True) is True
+        assert _assemble(db, degradation=log) is True
     assert db.persisted == "assembled block"
     assert [d.as_payload() for d in log.items] == [
-        {"stage": "ideal_text.assembly.polish_persist",
-         "kind": "RuntimeError"},
         {"stage": "ideal_text.assembly.version_snapshot",
          "kind": "RuntimeError"},
         {"stage": "ideal_text.assembly.core_snapshot_publish",
@@ -270,15 +262,15 @@ def test_each_post_persist_stage_names_itself_and_the_assembly_still_succeeds():
     ]
 
 
-def test_the_anchor_read_failing_is_named_and_the_text_still_persists():
+def test_the_suggestion_read_failing_is_named_and_the_text_still_persists():
     log = DegradationLog("ideal_text")
     db = _AssemblerDb(boom={"get_moment_suggestions_by_arc"})
     with patch("services.ideal_text_core_snapshot.publish_for_arc"):
         assert _assemble(db, degradation=log) is True
-    stages = [d.stage for d in log.items]
-    assert stages[0] == "ideal_text.assembly.suggestion_anchor_ids"
-    # The version snapshot reads the same table and falls back too.
-    assert "ideal_text.assembly.version_snapshot" in stages
+    assert db.persisted == "assembled block"
+    # The version snapshot reads the suggestions table and falls back.
+    assert [d.stage for d in log.items] == [
+        "ideal_text.assembly.version_snapshot"]
 
 
 def test_the_whole_assembly_failing_is_false_and_named():

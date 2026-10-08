@@ -101,7 +101,7 @@ class EagerAssemblyTests(unittest.TestCase):
                 calls["take_count"] = take_count
                 return True
 
-        with patch.object(mod, "assemble_ideal_text_block",
+        with patch.object(mod, "assemble_transcript_document",
                           return_value=(auto or {
                               "text": "assembled block",
                               "key_moments": [], "ready": True})):

@@ -157,6 +157,14 @@ with this contract, this contract wins.
     substituting it silently. Removing V2 outright is deliberately deferred
     until V3 has run clean; deleting it while V3 still has open defects would
     turn every V3 failure into permanent silence rather than a bad afternoon.
+    **Amended 2026-10-06 (founder, Navigation Panel QG3 A, V22a B, V15a A;
+    ledger CA01, N29; decisions log N51):** V3 is served today. V4, when built,
+    replaces it for every speaker by the founder's switch — no dark run
+    (V22a B: "skip the dark run, a few speakers now, then everyone", the
+    founder's note "Cause there are no users"). A block V4 is
+    very unsure of gets V3's pick for that block, logged as a fallback, never
+    silent (V15a A: falling back on more than one block in five fails V4's
+    exit gate). V2 stays retained history and is never a fallback for either.
 24a. Under Feedback Policy V3, the Manager deterministically partitions each
     contiguous Slide run at persisted snippet/Paragraph boundaries into blocks
     closest to 75 words, normally 60-90 words. It never cuts words, fabricates
@@ -221,7 +229,13 @@ with this contract, this contract wins.
     Confident Voice, Actionable Improvement and Evidence-backed Praise. No
     bookmark is ever empty, because the judgement and the Paragraph's history
     are always there. (Founder 2026-09-25; supersedes the 2026-09-24 "keep the
-    emphasis open for every answer" ruling.)
+    emphasis open for every answer" ruling.) **Amended 2026-10-07 (the
+    Feedback walk; decisions log N52.2, N54.2; build plan D-OP-3):** inside
+    the walk, served once `NEXT_PUBLIC_FEEDBACK_WALK` is on, the helper-words
+    step follows a praise, or a practise whose try the machine reads as
+    praise, instead of a Yes or In-between judgement; the judgements come
+    after all the praise and practising, under "Judgement time!". Until the
+    walk's switch, 24e is served as written above.
 
 24e-1. **Judgement after feedback** (founder 2026-10-01, F1; Phase 2 of the
     after-practice paths, served only once `JUDGEMENT_AFTER_FEEDBACK_ENABLED`
@@ -238,7 +252,13 @@ with this contract, this contract wins.
     a clip the machine could not read, or Audio unclear. A practice may
     start before any judgement (29a); a practice that lands, a practice
     dismissed, or a bookmark skipped settles the item without a Path 1
-    answer. Until the switch, 24e above is served as written.
+    answer. Until the switch, 24e above is served as written. **Amended
+    2026-10-07 (the Feedback walk; N52.2; D-OP-3):** inside the walk the
+    judgement no longer follows each feedback: all the Take's praise comes
+    first (helper words right after each), then the practising, then
+    "Judgement time!" asks the judgement of every moment in turn. The coach
+    request still rises at the open, under the machine's kind, and the
+    judgement still sets its answer kind.
 
 24f. **On top of that, each Take carries anchored notes**, each attached to
     the item it concerns and never floating free of a Slide. **The caps are
@@ -343,6 +363,11 @@ with this contract, this contract wins.
     policy version. On failure the client retries once automatically, then shows
     a short notice with a retry control. **A feedback failure never blocks
     recording, transcription, Ideal Text, or the next Take.**
+    **Amended 2026-10-06 (founder, Navigation Panel QG3 A, V15a A; ledger
+    CA01; decisions log N51):** this clause holds for V4 as it holds for V3. Once V4
+    is served (24), a block V4 is very unsure of gets V3's pick for that
+    block, logged, never silent; falling back on more than one block in five
+    fails V4's exit gate (V15a). Neither policy ever substitutes V2.
 
 24i. **AC-9 applies to everything this section computes.** Coverage
     percentages, delivery bands, PPV estimates, priority values and block counts
@@ -445,7 +470,16 @@ with this contract, this contract wins.
     Paragraph** (B6): the words on the page change only with a Take, or
     with the user's own acceptance of a rewrite (29b). Each
     answer is stored against the practice attempt it judges, never against
-    the Take (clause 31).
+    the Take (clause 31). **Amended 2026-10-07 (the Feedback walk; N52.3,
+    N54.2, N55 CM3b A; D-OP-3):** inside the walk the speaker is not asked to
+    judge a practise: the machine checks each try against the moment. A try
+    it reads as praise ends the loop and opens the helper-words step over
+    that try's own words; otherwise the encouragement line from the signed
+    line bank and another try, **up to three tries** (CM3a A). After the
+    third try that is not praise the app thanks the speaker with a signed
+    CM3b line and moves on to "Judgement time!"; Skip works at any time.
+    This replaces "no attempt cap" (lock D2) for the walk only; until the
+    walk's switch, the loop above is served as written.
 29b. **Accepting a rewrite** (founder 2026-09-30, the rewrite amendment and
     C11). A rewrite card shows the clearer words as text. The one primary
     action is to accept them and practise: the acceptance is the owner's
@@ -470,13 +504,30 @@ with this contract, this contract wins.
     else nothing; a rewrite practice (29b) compares only attempts of the
     same accepted text, never the original. A practice that did not land
     hears an encouragement: a real step between tries, else the effort
-    alone. After the first practice ending the speaker may hear Bold voices
-    once per Take: their own landed attempt, then a coach's published
+    alone. *Bold voices is RETIRED (founder 2026-10-07, Q-B11 A, N62):
+    the walk lock (N52) has no such screen; its routes answer 404 whatever
+    the switch says and nothing is written to its tables, which are not
+    dropped.* It had let the speaker hear, once per Take after the first
+    practice ending, their own landed attempt, then a coach's published
     readings, without names; plays only, nothing judged, a heard receipt
-    kept. Others' shared clips and Lend your ear wait for Phase 4 and
-    counsel (C1 to C3, F3, F4).
-29d. **Lend your ear and the share** (founder 2026-10-01, F3, F4; Phase 4,
-    served once `PEER_LANE_ENABLED` is on — on from 2026-10-02 after the
+    kept. The coach's readings tool stays as it is.
+29d. **Lend your ear and the share** *(amended 2026-10-07, founder Q-B11 A,
+    N62: "At most 3 other voices per walk, community first, then training
+    clips, on the same judgement screen without the slide bar. Lend your
+    ear's engine serves them under the per-Take consent only. The Album
+    share switch and Bold voices are retired." The Voice Album share switch
+    and the per-Take blind set it fed are retired: their routes answer 404
+    whatever `PEER_LANE_ENABLED` says, nothing reads the share view, and
+    their tables are not dropped. The engine (`services/lend_your_ear.py`)
+    now serves the communities' queue (47, N52.4): at most three other
+    voices per walk, the community's clips first, then licensed training
+    clips for the places left, under the per-Take community share as the
+    one consent path; answers are peer ratings, lane `game_peer`, never
+    coach labels, owner routing or training labels (L3). The delayed
+    measure's pair (29e) rode the retired share and has no door into any
+    queue. `PEER_LANE_ENABLED` gates only the coach's licensed-corpus tool.
+    What follows is the retired design as it was.)* (founder 2026-10-01, F3,
+    F4; Phase 4, served once `PEER_LANE_ENABLED` is on — on from 2026-10-02 after the
     founder's own answers to C1, C2 and C3 (N23) and Privacy 3.3 (N24, N25),
     off again from 2026-10-03 until the share switch and Lend your ear have
     a screen (N29);
@@ -529,7 +580,11 @@ with this contract, this contract wins.
     selected practice attempt itself.
 34. The coach must not see the user label, machine prediction, or other ratings
     before submitting an immutable independent judgment. After submission they
-    are revealed for comparison and training analysis. The original coach
+    are revealed for comparison and training analysis. **Amended 2026-10-06
+    (founder, Navigation Panel P28 B; ledger A151a; decisions log N51):** the coach
+    does not see the machine's read after submitting either; nothing is
+    revealed to the coach. The comparison happens off-screen, for analysis
+    only. The original coach
     judgment is never editable; reconsideration is a separately timestamped,
     provenance-bearing revision. User Yes / Coach Yes admits silently. User
     No / Coach Yes may later become
@@ -662,7 +717,12 @@ with this contract, this contract wins.
     **praise** (read confident, on Yes or In-between), **rewrite** (read
     weak, nothing acoustic fired, on In-between or No), or **ambiguity**
     (the speaker and the machine disagree: a Yes read weak, a No read
-    confident, every Not sure, and a clip the machine could not read). The
+    confident, every Not sure, and a clip the machine could not read). **Amended
+    2026-10-06 (founder, Navigation Panel P2 A; ledger A175b; decisions log N51):**
+    no coach request is raised for a clip the machine could not read —
+    nothing goes to the coach for it, and "a clip the machine could not
+    read" leaves the ambiguity list above. This matches 24e-1 ("Nothing
+    rises for ... a clip the machine could not read"). The
     coach records a video for errors by default and may for the rest; a
     shared video rides that same moment. On an error with no library match
     the item reads "Your coach is working on your exercise." (founder-signed
@@ -698,9 +758,35 @@ with this contract, this contract wins.
     instruction and, once it arrives, the video's transcript the same way.
     Three surfaces, never mixed. A pair is provenance for a later,
     separately authorised preference export; it is never a label (L3),
-    never a score (AC-9), and never shown. The coach may also name a
-    pattern on the moment itself from the walk, without a practice row;
-    the shadow-cue validation reads both.
+    never a score (AC-9), and never shown. **As built 2026-10-05 (W6):**
+    the model's draft a pair stands on is the one the server kept on the
+    request, never a text the client calls a draft; the walk's exercise
+    answer is paired when the request resolves to the exercise filed for
+    it, stamped with the request, the moment, the owner and the model
+    version (the transcript pair with the exercise version and the moment);
+    a coach answering a moment of their own Take is the owner and leaves no
+    pair; the Library, which has no moment and starts from past finals,
+    records none. Only pairs the export can release (the speaker's yes, the
+    passage, the model version) fill the bar of 200. Naming a pattern on the
+    moment itself was retired (N45 Q9); the shadow-cue bar reads the blind
+    error audit (35g-3a, N48.5 Q24 A). **Amended 2026-10-07 (the coach
+    panel redesign; N56, N57; Q-B7 A, Q-B12 A, Q-B13 A; build plan D-CP-1):**
+    (1) *Naming on the moment returns, as a signal only.* On an error
+    moment the coach first answers "What kind of error is it?"; an error
+    the coach names in one field ("Something else · Name a new error") is
+    stored as "named by a coach" on that moment until the founder writes
+    its definition and question in admin. The exercise made for it reaches
+    the speaker now and waits in the library under that name; naming is a
+    signal for the founder only, and readiness for a detector still comes
+    from blind "Do you hear it?" answers (35g-3a). (2) *A coach may change
+    an answer.* "Change my answer" re-answers a moment; when the speaker
+    already has the old answer, the new one replaces the card, and every
+    earlier answer stays in history for audit. (3) *Library filing.* A
+    clearer version never goes to the exercise library; its kind only labels
+    the coach's work and its screen offers "Share with {p}" alone. A note
+    goes straight to "Ready for {p}". An error answered without a video goes
+    to the speaker without the library. The draft-and-pair rules above are
+    unchanged.
 35g-3. **Did the practice sound more confident?** (founder 2026-09-28,
     option A; rule `exercise-more-confident-v1`, migration 0388.) For each
     practice session, the attempt the coach judged is recorded as **helped**
@@ -728,10 +814,17 @@ with this contract, this contract wins.
     A clip that cannot be measured honestly gets no verdict, never a false
     "absent". Promotion to detected is a separate, deliberate change, made
     only after the verdicts have been compared with coaches' independent
-    judgments against the founder's bar (D3a): at least 30 moments a coach
-    named the pattern on, and the detector fired on at least 80% of them.
-    Coaches record only what is present, so this bar measures what the
-    detector catches, not how often it fires falsely.
+    judgments against the founder's bar (D3a). **Amended 2026-10-05
+    (founder, decisions log N48.5 Q24 A: "coaches' Yes answers in the blind
+    error audit are what promote a shadow cue"):** at least 30 coaches' Yes
+    answers in the blind error audit (35g-9) for the pattern, on clips
+    sampled under the detector version being judged, and the detector fired
+    on at least 80% of those moments (the audit's catch rate, each answer
+    weighted by its clip's sampling probability). The bar of 30 moments a
+    coach named the pattern on is retired with naming on the moment (N45
+    Q9); named moments are reported as history only. The audit's No
+    answers measure how often it fires falsely. A pattern the audit does
+    not sample has no Yes to count and cannot clear the bar.
 35g-4. **The speaker's own history breaks ties** (founder 2026-09-28). Among
     exercises of equal fit that cover as much of what was spotted, one for a
     problem this speaker showed on at least two earlier Takes comes first,
@@ -856,13 +949,19 @@ with this contract, this contract wins.
 35j. Every surfaced set writes an immutable exposure ledger containing the
     complete candidate set, evidence and internal scores, selected candidate,
     model and prompt version, user action, and later coach-judgment provenance.
+    **Amended 2026-10-06 (founder, Navigation Panel QB16 A; ledger A180b; decisions log N51):**
+    the record is *linked to* the speaker's action and the coach's judgement;
+    linking is enough, the row need not carry them in its own columns.
 35k. Evidence-backed verbal corrections and praise wording/explanations may
     create surface-specific DPO pairs. Praise selection/ranking is not trained
     until the exposure ledger is complete. The three families are never merged
     into one undifferentiated training set.
 36. Every Machine Feedback item retains a review lineage. The coach may confirm
     it, refine its explanation, reject it, or materially correct it. The
-    original machine output remains in history.
+    original machine output remains in history. **Amended 2026-10-06 (founder,
+    Navigation Panel P31 A; ledger A181; decisions log N51):** for rewrite and praise
+    items the coach's answer by kind (35g-2) is the review history; the
+    answer by kind is enough.
 37. Routine agreement is silent. Explanation refinement does not change user
     text. A material correction becomes a new accept/reject proposal if the
     user has seen or acted on the original.
@@ -912,6 +1011,11 @@ with this contract, this contract wins.
     decisions log N48.3 Q12 A):** V3 serves every Take (24b to 24d), so
     "Unshown low-priority queues end after Take 3" is superseded: every Take
     is selected in full and surfaced through the window of three (24b).
+    **Amended 2026-10-06 (founder, Navigation Panel QG3 A; ledger CA01; decisions log N51):**
+    "V3 serves every Take" reads as "the served policy serves every Take":
+    V3 today, and V4 for every speaker once built and switched by the
+    founder (24, V22a B), with V3's pick on any block V4 is very unsure of,
+    logged (V15a).
 
 ## 8. Commercial model
 

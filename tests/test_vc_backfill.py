@@ -219,31 +219,5 @@ class BackfillMatchesTheRecorderTests(unittest.TestCase):
         self.assertNotIn("speaker_sex", script)
 
 
-class CacheSignatureTests(unittest.TestCase):
-
-    def test_a_weighting_change_invalidates_warm_caches(self):
-        """Without this a backfilled arc keeps serving picks made under the
-        retired weighting until something unrelated invalidates it — so the
-        repair would land arc-by-arc at random times."""
-        from services import slide_selection as bp
-        sessions = [{"id": "a", "take_index": 1, "results_published_at": ""}]
-        before = bp._bp_signature(sessions)
-        with unittest.mock.patch(
-                "services.voice_confidence._VERSION", "voice-confidence-v99"):
-            after = bp._bp_signature(sessions)
-        self.assertNotEqual(before, after)
-
-    def test_the_ranking_flag_still_moves_the_signature(self):
-        from services import slide_selection as bp
-        sessions = [{"id": "a", "take_index": 1, "results_published_at": ""}]
-        with unittest.mock.patch.dict(
-                "os.environ", {"VOICE_CONFIDENCE_RANKING_ENABLED": "0"}):
-            off = bp._bp_signature(sessions)
-        with unittest.mock.patch.dict(
-                "os.environ", {"VOICE_CONFIDENCE_RANKING_ENABLED": "1"}):
-            on = bp._bp_signature(sessions)
-        self.assertNotEqual(off, on)
-
-
 if __name__ == "__main__":
     unittest.main()

@@ -647,7 +647,7 @@ class _ChangesRun:
             return None
 
     def _v3_shadow(self) -> None:
-        # TAKE FEEDBACK V3 SHADOW. A real, founder-scoped comparison write
+        # TAKE FEEDBACK V3 SHADOW. A real comparison write (every speaker, S-V1)
         # over the complete current-Take inventory; not the serving path and
         # it cannot create a rendered exposure. Default OFF; ML/data reviews
         # these frames before any user-visible activation. Shadow evaluation
@@ -697,6 +697,12 @@ class _ChangesRun:
                         "take feedback v3 dark frame not stored "
                         "arc=%s take=%s", self.arc_id, _arm_sid,
                     )
+                else:
+                    # V4 B1.2: the Take's seeded random 20% of moments,
+                    # drawn by the database from the stored frame and kept
+                    # apart from the picks. A side write; never raises.
+                    from services.v4_random_moments import draw
+                    draw(db, _arm_sid)
 
     def _immutable_membership(self) -> None:
         # IMMUTABLE TAKE MEMBERSHIP (founder 2026-08-26). The first complete
@@ -1453,13 +1459,15 @@ class _ChangesRun:
         # `review_sid` may name a different Take from the one `self.doc` was
         # built for, and a snippet id from one Take cannot address a piece of
         # another.
+        _parts = self.deps.locked_parts(
+            self.arc_id, str(self.user_id), self.served_text)
         _service_doc = bind_pieces_to_parts(
             _service_doc,
             served_text=self.served_text,
             slide_regions=self.slide_regions,
-            parts=self.deps.locked_parts(
-                self.arc_id, str(self.user_id), self.served_text),
+            parts=_parts,
         )
+        declined, frozen_ids = self._declined_rewrites(_service_session, _parts)
         return prepare_first_client_feedback(
             database=self.deps.first_client_repository,
             session=_service_session,
@@ -1473,7 +1481,33 @@ class _ChangesRun:
             feedback_candidates=self.feedback_exposure,
             owner_user_id=str(self.user_id),
             learning=self.v3_learning,
+            declined_rewrites=declined,
+            frozen_candidate_ids=frozen_ids,
         )
+
+    def _declined_rewrites(self, session: Any, parts: Any
+                           ) -> tuple[frozenset, frozenset]:
+        """The standing "Keep my words" keys for this Take and its frozen
+        selection (N48.2, Q3 A; `services.rewrite_declines`). Read-only;
+        anything unreadable applies no decline, which is the behaviour
+        before Q3 and never invents."""
+        from services.rewrite_declines import standing_declines
+        take = session if isinstance(session, dict) else {}
+        frozen = frozenset(
+            str(key.get("id")) for key in (
+                (self.feedback_set or {}).get("selected_keys") or [])
+            if isinstance(key, dict) and key.get("id"))
+        try:
+            declined = standing_declines(
+                self.db, arc_id=str(self.arc_id),
+                owner_user_id=str(self.user_id),
+                take_session_id=str(take.get("id") or self.arm_sid or ""),
+                take_created_at=take.get("created_at"), parts=parts)
+        except Exception as error:  # noqa: BLE001 -- logged, never fatal
+            logger.warning("rewrite declines failed arc=%s take=%s: %s",
+                           self.arc_id, self.arm_sid, error, exc_info=True)
+            declined = frozenset()
+        return declined, frozen
 
     def _serve_v3(self, _service_rows) -> None:
         # THREE OUTCOMES, NOT TWO (contract 24h, founder 2026-09-18).
@@ -1510,15 +1544,17 @@ class _ChangesRun:
         """One signed sentence per pattern, read before the sheet's constant
         (services/feedback_catalogue). The Manager's selection is untouched:
         this adds `praise_line` / `rewrite_move` to rows already chosen, and
-        an honest empty lane stays empty (24f)."""
-        from services.feedback_catalogue import decorate
+        an honest empty lane stays empty (24f). The proposed lines (N48.6,
+        Q29 A) join as the floor only once signed; until then an empty
+        table changes nothing, as before."""
+        from services.feedback_catalogue import decorate, floor_rows
         try:
             reader = getattr(self.db, "list_feedback_catalogue", None)
             rows = reader() if callable(reader) else []
         except Exception as e:  # noqa: BLE001 -- no table, no signed lines
             logger.info("catalogue unavailable arc=%s: %s", self.arc_id, e)
             rows = []
-        if rows:
+        if rows or floor_rows():
             self.changes = decorate(self.changes, rows)
 
     def _window(self) -> None:

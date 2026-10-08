@@ -49,9 +49,13 @@ class LedgerTests(unittest.TestCase):
              mock.patch("services.exercise_learning_readiness.readiness",
                         return_value={"counted": 12, "bar": 300}), \
              mock.patch("services.verbal_cue_validation.report", return_value={
-                    "hedging": {"coach_named_measured": 31, "caught_rate": 0.85,
+                    # Q24 A (2026-10-05): the coaches' Yes answers in the blind
+                    # audit are the bar; the named moments are history only.
+                    "hedging": {"audit_yes": 31, "caught_rate": 0.85, "audited": True,
+                                "coach_named_measured": 0,
                                 "clips_measured": 200, "false_alarm_rate": None},
-                    "filler_cluster": {"coach_named_measured": 2, "caught_rate": None,
+                    "filler_cluster": {"audit_yes": 2, "caught_rate": None, "audited": True,
+                                       "coach_named_measured": 40,
                                        "clips_measured": 200, "false_alarm_rate": None}}):
             out = ll.ledger(object(), config=_Config())
         self.assertEqual(out["ledger_version"], ll.LEDGER_VERSION)
@@ -59,10 +63,45 @@ class LedgerTests(unittest.TestCase):
         self.assertEqual(out["pairs"]["praise_line"]["run_bar"], ll.PAIRS_PER_RUN)
         self.assertFalse(out["pairs"]["praise_line"]["ready_for_run"])
         self.assertTrue(out["shadow_cues"]["hedging"]["ready"])
+        self.assertEqual(out["shadow_cues"]["hedging"]["audit_yes_bar"], 30)
         self.assertFalse(out["shadow_cues"]["filler_cluster"]["ready"])
+        self.assertIn("Yes answers", out["shadow_cues"]["filler_cluster"]["why_not"])
+        self.assertEqual(out["shadow_cues"]["filler_cluster"]["named"], 40)
         self.assertEqual(set(out["doors"]), {"consent", "dataset_release", "training", "promotion"})
         self.assertFalse(any(d["open"] for d in out["doors"].values()))
         self.assertEqual(out["coach_load"]["moments_opened"], 0)
+
+    def _with_exportable(self, exportable_unexported, *, down=False):
+        exportable = mock.patch(
+            "services.feedback_pairs.exportable",
+            side_effect=RuntimeError("down") if down else None,
+            return_value={"exercise_script": {"exportable": exportable_unexported,
+                                              "exportable_unexported": exportable_unexported}})
+        with mock.patch("services.feedback_pairs.counts", return_value={
+                    "exercise_script": {"total": 400, "unexported": 400, "releasable": 300}}), \
+             exportable, \
+             mock.patch("services.exercise_learning_readiness.readiness", return_value={}), \
+             mock.patch("services.verbal_cue_validation.report", return_value={}):
+            return ll.ledger(object(), config=_Config())
+
+    def test_only_pairs_the_export_can_release_fill_a_run_s_bar(self):
+        """C9 (W6 2026-10-05): a run's bar of 200 counts the pairs the
+        export contract can release, not every pair awaiting export. Both
+        views ride the surface's row: W7's three counts and exposures, and
+        the exportable ones."""
+        entry = self._with_exportable(150)["pairs"]["exercise_script"]
+        self.assertEqual((entry["unexported"], entry["releasable"]), (400, 300))
+        self.assertEqual((entry["exportable"], entry["exportable_unexported"]), (150, 150))
+        self.assertFalse(entry["ready_for_run"])
+        self.assertTrue(self._with_exportable(200)["pairs"]["exercise_script"]["ready_for_run"])
+
+    def test_an_unreadable_exportable_count_is_named_and_never_ready(self):
+        out = self._with_exportable(500, down=True)
+        self.assertIn("exportable_pairs", out["unavailable"])
+        entry = out["pairs"]["exercise_script"]
+        self.assertIsNone(entry["exportable"])
+        self.assertIsNone(entry["exportable_unexported"])
+        self.assertFalse(entry["ready_for_run"])
 
     def test_a_source_that_fails_is_named_not_zeroed(self):
         with mock.patch("services.feedback_pairs.counts", side_effect=RuntimeError("down")), \

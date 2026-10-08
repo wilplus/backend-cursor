@@ -23,6 +23,7 @@ identifies a person is reported as set or unset, never by id.
 """
 from __future__ import annotations
 
+import importlib.util
 import os
 import pathlib
 import unittest
@@ -43,7 +44,17 @@ GATES = (
     "LIVING_TRANSCRIPT_ENABLED",
     "IDEAL_TEXT_FEEDBACK_BAKE_ENABLED",
     "PIPELINE_QUEUE_ENABLED",
+    "MIGRATE_ON_BOOT",
 )
+
+
+def _load_report():
+    path = ROOT / "scripts" / "boot_switch_report.py"
+    spec = importlib.util.spec_from_file_location("boot_switch_report", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 class TheSummaryItselfIsHonest(unittest.TestCase):
@@ -107,6 +118,38 @@ class TheSummaryItselfIsHonest(unittest.TestCase):
         from services.gate_flags import gate_summary
 
         self.assertNotIn("\n", gate_summary())
+
+    def test_every_code_switch_is_on_or_off(self):
+        """A class constant, not a variable: the boot line says which deploy."""
+        from services.gate_flags import CODE_SWITCHES, gate_summary
+
+        line = gate_summary()
+        for name in CODE_SWITCHES:
+            with self.subTest(name=name):
+                self.assertTrue(
+                    f"{name}=on" in line or f"{name}=off" in line, line
+                )
+
+    def test_communities_follows_the_class_constant(self):
+        from config import Config
+        from services.gate_flags import gate_summary
+
+        with patch.object(Config, "COMMUNITIES_ENABLED", True):
+            self.assertIn("COMMUNITIES_ENABLED=on", gate_summary())
+        with patch.object(Config, "COMMUNITIES_ENABLED", False):
+            self.assertIn("COMMUNITIES_ENABLED=off", gate_summary())
+
+    def test_summary_round_trips_through_the_boot_report_parser(self):
+        from services.gate_flags import CODE_SWITCHES, GATE_FLAGS, gate_summary
+
+        report = _load_report()
+        parsed = report.parse_gate_line(
+            "x INFO app [-]: gate flags " + gate_summary()
+        )
+        self.assertIsNotNone(parsed)
+        assert parsed is not None
+        for name in (*GATE_FLAGS, *CODE_SWITCHES):
+            self.assertIn(name, parsed)
 
 
 class EveryServiceReportsItsGates(unittest.TestCase):

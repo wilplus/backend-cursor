@@ -10,10 +10,12 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
+import logging
 import os
 from typing import Any, Mapping
 import uuid
 
+logger = logging.getLogger(__name__)
 
 _ENFORCED_VALUES = {"enforce", "enforced", "active"}
 
@@ -24,11 +26,37 @@ SENSITIVE_INFORMATION = "sensitive_information"
 CONSENT_CHOICES = (PERSONALISED_PRACTICE, SENSITIVE_INFORMATION)
 
 
-@dataclass(frozen=True)
 class ProcessingAuthorizationError(RuntimeError):
-    code: str
-    message: str
-    status: int = 403
+    """A typed refusal: ``code``, ``message`` and ``status``, all read-only.
+
+    Not a frozen dataclass, on purpose. Python writes to an exception after it
+    is raised: ``contextlib`` sets ``__traceback__`` when it re-raises through
+    a ``@contextmanager`` (``protected_provider_scope``,
+    ``ProcessingStageRecorder.stage``), ``ExitStack`` sets ``__context__`` and
+    ``add_note`` sets ``__notes__``. A frozen dataclass refuses each of those
+    writes, so a refusal raised inside the provider scope reached its caller
+    as ``FrozenInstanceError``, without its code, and no handler for this
+    class ever saw it. Read-only properties keep the fields fixed without
+    refusing the interpreter.
+    """
+
+    def __init__(self, code: str, message: str, status: int = 403) -> None:
+        super().__init__(code, message, status)
+        self._code = code
+        self._message = message
+        self._status = status
+
+    @property
+    def code(self) -> str:
+        return self._code
+
+    @property
+    def message(self) -> str:
+        return self._message
+
+    @property
+    def status(self) -> int:
+        return self._status
 
     def __str__(self) -> str:
         return self.message
@@ -107,6 +135,7 @@ def _domain_code(error: Exception, fallback: str) -> str:
         "IDEMPOTENCY_CONFLICT", "PROVIDER_PERMIT_INVALID",
         "PROCESSING_BOUNDARY_INCOMPLETE", "CONSENT_CHOICE_INVALID",
         "PROCESSING_PRINCIPAL_UNRESOLVED",
+        "PROCESSING_SOURCE_IS_CORPUS_IMPORT",
     )
     for code in known:
         if code in text:
@@ -146,15 +175,19 @@ def _optional_purposes(payload: Any) -> list[str]:
     return out
 
 
+def _gate_mode() -> str:
+    """``PLF1_PROCESSING_AUTHORIZATION_MODE``, read on every call."""
+    return os.getenv(
+        "PLF1_PROCESSING_AUTHORIZATION_MODE", "off").strip().lower()
+
+
 class ProcessingAuthorizationService:
     """The only application API for Phase-1 processing authority."""
 
     def __init__(self, database: Any, *, mode: str | None = None) -> None:
         self.database = database
         self.client = database.client
-        self.mode = (mode if mode is not None else os.getenv(
-            "PLF1_PROCESSING_AUTHORIZATION_MODE", "off"
-        )).strip().lower()
+        self.mode = (mode if mode is not None else _gate_mode())
 
     @property
     def enforced(self) -> bool:
@@ -283,6 +316,14 @@ class ProcessingAuthorizationService:
             row = _one(result.data)
             if row:
                 row["gate_mode"] = "enforce" if self.enforced else "off"
+                # N48.4 Q21 A: a re-acceptance shows the country given last
+                # time already chosen. Read only then, so the ordinary path
+                # does no extra work; never raises (see the method).
+                if row.get("reacceptance_required") is True:
+                    country = self.last_country_of_residence(
+                        acquisition_principal_id)
+                    if country:
+                        row["country_of_residence"] = country
                 return row
         except Exception:
             # Before migration/policy activation the gate is explicitly
@@ -295,6 +336,43 @@ class ProcessingAuthorizationService:
             "pooled_learning_eligible": False,
             "gate_mode": "enforce" if self.enforced else "off",
         }
+
+    def last_country_of_residence(
+        self, acquisition_principal_id: str,
+    ) -> str | None:
+        """The country this principal gave at its latest acceptance.
+
+        Founder 2026-10-05 (decisions log N48.4 Q21 A): country of residence
+        is asked once and prefilled on every later re-acceptance. The fact is
+        already stored -- every receipt keeps the country it was accepted
+        under, the evidence of which law applied -- so the newest receipt is
+        the account's answer and nothing new is written. It only prefills:
+        the person still sees it, may change it, and the acceptance RPC still
+        checks it against the policy in force (COUNTRY_NOT_ALLOWED).
+
+        Lowercase, as the policy's ``allowed_countries`` spell it. None when
+        there is no receipt or the read fails; the screen then simply asks,
+        as it does the first time. Never raises: a prefill must not be able
+        to turn a readable status into an unreadable one.
+        """
+        try:
+            result = (
+                self.client.table("processing_authorization_receipts")
+                .select("country_of_residence")
+                .eq("acquisition_principal_id", str(acquisition_principal_id))
+                # The newest, as the status RPC picks the held version.
+                .order("accepted_at", desc=True)
+                .order("id", desc=True)
+                .limit(1)
+                .execute()
+            )
+        except Exception:
+            logger.warning("last country of residence unreadable",
+                           exc_info=True)
+            return None
+        row = _one(result.data) or {}
+        country = str(row.get("country_of_residence") or "").strip().lower()
+        return country or None
 
     def require_current(
         self, acquisition_principal_id: str, *, operation: str
@@ -707,6 +785,121 @@ class ProcessingAuthorizationService:
                 "The data request could not be recorded.", 503,
             ) from error
 
+    # ── Account deletion with its seven-day window (0422, N48.4 Q14 A) ─────
+    # The request blocks at once and deletes nothing for seven days; the
+    # requester may cancel until then. services/account_deletion.py holds
+    # the reads; these are the boundary the routes call.
+
+    def request_account_deletion(
+        self, acquisition_principal_id: str, *, idempotency_key: str,
+        reason_code: Any = None,
+    ) -> dict:
+        from services.account_deletion import (
+            AccountDeletionRefused, AccountDeletionService, deletion_view,
+        )
+
+        try:
+            row = AccountDeletionService(self.database).request(
+                acquisition_principal_id, idempotency_key=idempotency_key,
+                reason=reason_code)
+        except AccountDeletionRefused as refused:
+            if refused.code == "ACCOUNT_DELETION_UNAVAILABLE":
+                # 0422 has not reached this database: record the request the
+                # way it was recorded before (blocked at once, no window), so
+                # "Delete my account" never stops working over a migration.
+                logger.warning("account deletion window unavailable; "
+                               "recorded as an immediate purge request",
+                               exc_info=True)
+                return self.request_purge(
+                    acquisition_principal_id=acquisition_principal_id,
+                    trigger_kind="account_deletion",
+                    idempotency_key=idempotency_key,
+                    reason_code="ACCOUNT_DELETION")
+            raise ProcessingAuthorizationError(
+                refused.code, "The deletion request could not be recorded.",
+                refused.status) from refused
+        except Exception as error:
+            raise ProcessingAuthorizationError(
+                "PURGE_REQUEST_FAILED",
+                "The deletion request could not be recorded.", 503,
+            ) from error
+        return deletion_view(row) or {}
+
+    def cancel_account_deletion(
+        self, acquisition_principal_id: str, request_id: str,
+    ) -> dict:
+        from services.account_deletion import (
+            AccountDeletionRefused, AccountDeletionService, deletion_view,
+        )
+
+        try:
+            row = AccountDeletionService(self.database).cancel(
+                acquisition_principal_id, request_id)
+        except AccountDeletionRefused as refused:
+            raise ProcessingAuthorizationError(
+                refused.code, "The deletion cannot be cancelled.",
+                refused.status) from refused
+        except Exception as error:
+            raise ProcessingAuthorizationError(
+                "DELETION_CANCEL_FAILED",
+                "The deletion could not be cancelled.", 503,
+            ) from error
+        return deletion_view(row) or {}
+
+    def pending_deletion(self, acquisition_principal_id: str) -> dict | None:
+        """The account deletion that governs this person (pending, started
+        or done), for the ended state (Q19 A); None when there is none or it
+        cannot be read. The status code still says blocked either way."""
+        from services.account_deletion import (
+            AccountDeletionService, deletion_view,
+        )
+
+        try:
+            row = AccountDeletionService(self.database).live_for_principal(
+                acquisition_principal_id)
+        except Exception as error:
+            logger.warning(
+                "pending deletion unreadable principal=%s: %s",
+                acquisition_principal_id, error, exc_info=True)
+            return None
+        return deletion_view(row)
+
+    def pending_project_deletions(self, acquisition_principal_id: str) -> list:
+        """This person's open project deletions, newest first; empty when
+        none or unreadable (the project list carries each one as well)."""
+        from services.project_deletion import ProjectDeletionService, public_view
+
+        try:
+            rows = ProjectDeletionService(self.database).open_for_principal(
+                acquisition_principal_id)
+        except Exception as error:
+            logger.warning(
+                "pending project deletions unreadable principal=%s: %s",
+                acquisition_principal_id, error, exc_info=True)
+            return []
+        return [view for view in (public_view(row) for row in rows) if view]
+
+    def deletion_status(
+        self, acquisition_principal_id: str, request_id: str,
+    ) -> dict | None:
+        """One of this person's deletion requests by id: an account request
+        (0422), or a purge request read as before."""
+        from services.account_deletion import (
+            AccountDeletionService, deletion_view,
+        )
+
+        try:
+            row = AccountDeletionService(self.database).find(
+                acquisition_principal_id, request_id)
+        except Exception as error:
+            logger.warning(
+                "deletion request unreadable id=%s: %s", request_id, error,
+                exc_info=True)
+            row = None
+        if row:
+            return deletion_view(row)
+        return self.purge_status(acquisition_principal_id, request_id)
+
     def request_data_right(
         self, *, acquisition_principal_id: str, request_kind: str,
         idempotency_key: str, subject_payload: Mapping[str, Any],
@@ -774,8 +967,205 @@ class ProcessingAuthorizationService:
             "authorization_receipts": receipts,
             "data_requests": purges,
             "data_rights_requests": rights,
+            "account_deletion_requests": self._account_deletions(
+                acquisition_principal_id),
             "pooled_learning_eligible": False,
         }
+
+    def _account_deletions(self, acquisition_principal_id: str) -> list:
+        """The person's account deletion requests (0422) for their export;
+        empty before the table exists."""
+        try:
+            return (
+                self.client.table("account_deletion_requests")
+                .select("id,state,requested_at,completes_after,cancelled_at,"
+                        "completed_at")
+                .eq("acquisition_principal_id", acquisition_principal_id)
+                .execute().data or []
+            )
+        except Exception as error:
+            from services.account_deletion import _is_missing
+
+            if _is_missing(error):
+                return []
+            raise
+
+
+# ── Corpus imports: the founder's corpus basis (N58, 0435) ─────────────────
+# FOUNDER 2026-10-07, panel answer CO2, decisions log N58: "no need for
+# license check pls; we have it legally recorded and we don't need license
+# to prove it! this version is agreed with the counsel and it is my executive
+# decision". A training-corpus import (v2_sessions.source='training_import',
+# created by a coach through POST /v2/coach/training-imports) has no
+# acquiring principal and no acceptance: the voice on it is not a user, and
+# the importing coach's own acceptance covers the coach's recordings, never a
+# third party's audio (B-2, 0355). Its provider calls are permitted instead
+# under ONE founder-recorded corpus basis, by the database
+# (issue_corpus_provider_permit_v1), in a ledger of its own. Nothing here
+# reads or writes a principal, a receipt or a Phase-1 permit; a person's
+# recording can never be permitted this way (0435 says why, in the
+# database, where it is enforced).
+
+CORPUS_IMPORT_SOURCE = "training_import"
+CORPUS_BASIS_DECISION = "N58"
+
+
+def is_corpus_import_session(session: Any) -> bool:
+    """A training import by its session source. Only ROUTES a call to the
+    corpus permit writer; the database decides whether it is one."""
+    return (isinstance(session, Mapping)
+            and session.get("source") == CORPUS_IMPORT_SOURCE)
+
+
+def _import_switch_on() -> bool:
+    from services.training_import import import_enabled
+
+    return import_enabled()
+
+
+class CorpusImportAuthorization(ProcessingAuthorizationService):
+    """The canonical boundary for a corpus import's provider calls.
+
+    A drop-in for :class:`ProcessingAuthorizationService` inside
+    :class:`services.authorized_provider.AuthorizedProviderAdapter`: the
+    adapter asks for permits and records events exactly as for a Take, and
+    this answers from the corpus basis instead of a receipt. It holds no
+    acquisition principal and refuses one if handed one, so the importing
+    coach's identity can never ride on a corpus permit.
+    """
+
+    def require_current(
+        self, acquisition_principal_id: str, *, operation: str
+    ) -> ProcessingAuthority:
+        raise ProcessingAuthorizationError(
+            "CORPUS_IMPORT_HAS_NO_PRINCIPAL",
+            "A corpus import is authorized by the corpus basis, not a person.",
+            403,
+        )
+
+    def issue_provider_permit(
+        self, *, acquisition_principal_id: str, take_id: str | None,
+        recording_id: str | None, provider: str, operation_kind: str,
+        minimum_data_manifest: Mapping[str, Any], idempotency_key: str,
+        _reissued: bool = False,
+    ) -> dict | None:
+        if not self.enforced:
+            return None
+        if acquisition_principal_id:
+            raise ProcessingAuthorizationError(
+                "CORPUS_IMPORT_HAS_NO_PRINCIPAL",
+                "A corpus import is never processed under a person.", 403,
+            )
+        if not _import_switch_on():
+            raise ProcessingAuthorizationError(
+                "CORPUS_IMPORT_DISABLED",
+                "Training imports are switched off.", 403,
+            )
+        if not take_id:
+            raise ProcessingAuthorizationError(
+                "CORPUS_IMPORT_UNREGISTERED",
+                "A corpus permit names the import it is for.", 403,
+            )
+        try:
+            result = self.client.rpc("issue_corpus_provider_permit_v1", {
+                "p_session_id": str(take_id),
+                "p_recording_id": str(recording_id) if recording_id else None,
+                "p_provider": provider,
+                "p_operation_kind": operation_kind,
+                "p_minimum_data_manifest": dict(minimum_data_manifest),
+                "p_idempotency_key": idempotency_key,
+                "p_ttl_seconds": 900,
+            }).execute()
+            row = _one(result.data)
+            if not row:
+                raise RuntimeError("empty corpus permit")
+        except Exception as error:
+            raise ProcessingAuthorizationError(
+                _corpus_code(error, "PROVIDER_PERMIT_DENIED"),
+                "Provider processing of this import is not authorized.", 403,
+            ) from error
+        if row.get("basis_decision_ref") != CORPUS_BASIS_DECISION:
+            # Any other basis needs its own decision before code honours it.
+            raise ProcessingAuthorizationError(
+                "CORPUS_BASIS_ABSENT",
+                "The corpus permit does not name the recorded basis.", 403,
+            )
+        if not _reissued and _permit_expired(row):
+            return self.issue_provider_permit(
+                acquisition_principal_id="", take_id=take_id,
+                recording_id=recording_id, provider=provider,
+                operation_kind=operation_kind,
+                minimum_data_manifest=minimum_data_manifest,
+                idempotency_key=f"{idempotency_key}:reissue:{uuid.uuid4().hex[:12]}",
+                _reissued=True,
+            )
+        return row
+
+    def record_provider_event(
+        self, permit_id: str | None, event_kind: str, *,
+        provider_operation_ref: str | None = None,
+        error_code: str | None = None, metadata: Mapping[str, Any] | None = None,
+    ) -> None:
+        if not self.enforced or not permit_id:
+            return
+        self.client.rpc("record_corpus_provider_operation_v1", {
+            "p_permit_id": permit_id, "p_event_kind": event_kind,
+            "p_provider_operation_ref": provider_operation_ref,
+            "p_error_code": error_code,
+            "p_metadata": dict(metadata or {}),
+        }).execute()
+
+
+_CORPUS_CODES = (
+    "CORPUS_IMPORT_UNREGISTERED", "CORPUS_SOURCE_NOT_IMPORT",
+    "CORPUS_SESSION_HAS_OWNER", "CORPUS_RECORDING_NOT_IMPORT",
+    "CORPUS_RECORDING_ACQUIRED", "CORPUS_BASIS_ABSENT",
+    "CORPUS_OPERATION_NOT_COVERED", "CORPUS_IMPORT_CONFLICT",
+    "IDEMPOTENCY_CONFLICT", "INVALID_PERMIT_TTL",
+    "CORPUS_PROVIDER_REQUIRED", "CORPUS_MANIFEST_REQUIRED",
+)
+
+
+def _corpus_code(error: Exception, fallback: str) -> str:
+    text = str(error or "")
+    return next((code for code in _CORPUS_CODES if code in text), fallback)
+
+
+def register_corpus_import(
+    database: Any, *, session_id: str, recording_id: str | None,
+) -> dict | None:
+    """Record that the coach import route created this import, under the
+    corpus basis (``register_corpus_import_v1``). Called by that route and
+    nothing else; an import without it is never permitted.
+
+    Enforcing, a refusal raises (the import cannot be analysed, so it should
+    not start). Off, it is recorded where it can be and a failure is logged:
+    nothing is permitted while the gate is off, and an import must not stop
+    working for the state it was off for.
+    """
+    enforced = _gate_mode() in _ENFORCED_VALUES
+    try:
+        if not recording_id:
+            raise RuntimeError("CORPUS_IMPORT_UNREGISTERED: no recording")
+        result = database.client.rpc("register_corpus_import_v1", {
+            "p_session_id": str(session_id),
+            "p_recording_id": str(recording_id),
+        }).execute()
+        row = _one(result.data)
+        if not row:
+            raise RuntimeError("empty corpus registration")
+        return row
+    except Exception as error:
+        if not enforced:
+            logger.warning("corpus import registration failed sid=%s: %s",
+                           session_id, error)
+            return None
+        code = _corpus_code(error, "")
+        raise ProcessingAuthorizationError(
+            code or "CORPUS_IMPORT_UNREGISTERED",
+            "The import could not be registered for processing.",
+            403 if code else 503,
+        ) from error
 
 
 def evidence_sha256(value: Mapping[str, Any]) -> str:

@@ -12,9 +12,30 @@ Once a week, poked by a Railway cron through a shared secret:
   3. pairs are exported per surface ONLY where the dataset-release door is
      open AND the founder named the surface (services/pair_release.py);
      before that the consent refresh and the voided-release sweep run
-     (services/pair_consent.py, ML-8). Both doors are code constants,
-     closed today, so the job exports
-     nothing and says so.
+     (services/pair_consent.py, ML-8). Both are code constants: door 2 is
+     open since 2026-10-01 for exercise_script, praise_line and
+     clearer_version (N16, N18); every other surface, and any surface
+     while the bucket or the signing key is missing, exports nothing and
+     its row says why. Each pair is re-decided at release time (PLF-P5);
+  4. the drift run (PM-3, services/drift_job.py: PSI on the inputs, the
+     p-chart on the decisions, the 2x2 per dimension) is stored with the
+     week, so the research screen's drift panel reads a real week (ML-7).
+     Its only write is minting the frozen reference the first time there
+     is enough data, which the table refuses to overwrite; a separate drift
+     cron, if one runs too, mints nothing twice;
+
+  5. every standing door 2 release is read back and checked, and a capped
+     number of the confidence chain's R2 objects are downloaded and
+     checked; each check appends one verification row the database judges
+     (F-8, ``services/object_verification.py``);
+
+  6. the MLC-2 foundation's aggregate health is read and kept beside the
+     doors (F-9, ``get_mlc2_foundation_health_v1``), after the checks so
+     its count of unverified objects is this week's: pending and failed
+     outbox events, principals without a speaker, objects without a
+     verification, open purge requests, and the three hard-off learning
+     capabilities. Nothing calls it otherwise; this weekly row is where the
+     founder reads it.
 
 Nothing here trains, promotes, or flips a door. Counts about the system,
 never about a person (AC-9 for everyone but the founder's own pages).
@@ -86,13 +107,23 @@ def run_weekly(database: Any, *, config: Any = None,
                              week_start_day=week_start(moment), storage=storage)
     # Revocation purges the copies, whatever the door says (ML-8).
     swept = sweep_voided(database, storage)
+    # F-8: every standing release read back and checked, and a capped
+    # number of chain objects downloaded and checked; each check is one
+    # append-only row the database judges.
+    verifications = _verification_pass(database, storage, config, exported)
     # Door 3's weekly pass (ML-11): the withdrawal sweep at the provider,
     # the poll of running jobs (a finished one is evaluated), and a start
     # where the door, the founder's sentence, the sealed golden set and 200
     # trainable pairs all hold. Closed today: every surface says why.
     training = _training_pass(database, config, now=moment, provider=provider)
+    foundation = foundation_health(database)
     snapshot["doors_pass"] = {"consent_refresh": consent, "release_sweep": swept,
                               "training": training}
+    # The week's PSI 2x2 (ML-7: the research screen's drift panel).
+    drift = _drift_pass(database)
+    snapshot["drift"] = drift
+    snapshot["foundation_health"] = foundation
+    snapshot["verifications"] = verifications
     row = {
         "week_start": week_start(moment).isoformat(),
         "ledger_version": str(snapshot.get("ledger_version") or ""),
@@ -113,6 +144,10 @@ def run_weekly(database: Any, *, config: Any = None,
         "consent_refresh": consent,
         "release_sweep": swept,
         "training": training,
+        "drift": {"worst": drift.get("worst"), "minted": drift.get("minted"),
+                  "note": drift.get("note") or drift.get("unavailable")},
+        "foundation_health": foundation,
+        "verifications": verifications,
         "unavailable": list(snapshot.get("unavailable") or []),
         "doors": snapshot.get("doors"),
     }
@@ -143,6 +178,22 @@ def _export_pairs(database: Any, snapshot: dict, config: Any,
     return out
 
 
+def _drift_pass(database: Any) -> dict:
+    """The weekly PSI 2x2 (PM-3), for the week's row. The drift run never
+    raises by design; anything else is named, never a reason the snapshot
+    is not written. PIPELINE_CHANGED and UPSTREAM_CHANGE are logged at
+    WARNING, as the drift webhook logs them."""
+    from services import drift_job
+    try:
+        report = drift_job.run_weekly(weeks=drift_job.REFERENCE_WEEKS, database=database)
+    except Exception as e:  # noqa: BLE001 -- named, never a silent zero
+        _log.warning("drift pass failed: %s", e, exc_info=True)
+        return {"unavailable": str(e)[:200]}
+    if report.get("worst") in ("PIPELINE_CHANGED", "UPSTREAM_CHANGE"):
+        _log.warning("drift: %s (weekly learning job)", report.get("worst"))
+    return report
+
+
 def _training_pass(database: Any, config: Any, *, now: Optional[datetime],
                    provider: Any = None) -> dict:
     """Door 3's step, never a reason the snapshot is not written."""
@@ -152,3 +203,59 @@ def _training_pass(database: Any, config: Any, *, now: Optional[datetime],
     except Exception as e:  # noqa: BLE001 -- named, never a silent zero
         _log.warning("training pass failed: %s", e, exc_info=True)
         return {"unavailable": str(e)[:200]}
+
+
+def _verification_pass(database: Any, storage: Any, config: Any,
+                       exported: Optional[list] = None) -> dict:
+    """F-8's weekly step (services/object_verification.py): the releases
+    this run's export just wrote are read back (each exported row gains
+    ``verified``), then every other standing release and a capped number of
+    chain objects are checked. Never a reason the snapshot is not written."""
+    from services.object_verification import (
+        check_chain_objects, check_pair_releases, read_back_exports,
+    )
+    read_back: set = set()
+    try:
+        read_back = read_back_exports(database, storage, config, exported or [])
+    except Exception as e:  # noqa: BLE001 -- named, never a silent zero
+        _log.warning("release read-back failed: %s", e, exc_info=True)
+    out: dict = {"read_back": len(read_back)}
+    for name, step in (("pair_releases",
+                        lambda: check_pair_releases(database, storage, config,
+                                                    skip=read_back)),
+                       ("chain_objects", lambda: check_chain_objects(database))):
+        try:
+            out[name] = step()
+        except Exception as e:  # noqa: BLE001 -- named, never a silent zero
+            _log.warning("verification pass %s failed: %s", name, e, exc_info=True)
+            out[name] = {"unavailable": str(e)[:200]}
+    return out
+
+
+#: What the weekly row keeps of the foundation's health: aggregate counts and
+#: the three hard-off flags, never an id, a recording or a word (AC-9).
+FOUNDATION_HEALTH_KEYS = (
+    "generated_at", "pending_outbox_count", "failed_outbox_count",
+    "oldest_pending_outbox_at", "unresolved_principal_count",
+    "unverified_object_count", "pending_purge_count",
+    "dataset_creation_enabled", "training_enabled", "promotion_enabled",
+)
+
+
+def foundation_health(database: Any) -> dict:
+    """F-9: ``get_mlc2_foundation_health_v1``, aggregate only. Never a reason
+    the snapshot is not written; a failure is named."""
+    reader = getattr(database, "get_mlc2_foundation_health", None)
+    if reader is None:
+        return {"unavailable": "no foundation health on this database"}
+    try:
+        health = reader() or {}
+    except Exception as e:  # noqa: BLE001 -- named, never a silent zero
+        _log.warning("foundation health read failed: %s", e, exc_info=True)
+        return {"unavailable": str(e)[:200]}
+    out = {key: health.get(key) for key in FOUNDATION_HEALTH_KEYS if key in health}
+    # The capabilities are hard-off in SQL; anything else is a fault to see.
+    out["learning_capabilities_closed"] = all(
+        health.get(key) is False for key in
+        ("dataset_creation_enabled", "training_enabled", "promotion_enabled"))
+    return out

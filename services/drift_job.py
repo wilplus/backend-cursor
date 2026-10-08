@@ -223,16 +223,22 @@ def _dimension_report(dim: str, sessions: dict[str, float], cuts: list,
     }
 
 
-def run_weekly(*, weeks: int = 4, version: str = DEFAULT_VERSION) -> dict:
+def run_weekly(*, weeks: int = 4, version: str = DEFAULT_VERSION,
+               database: Any = None) -> dict:
     """One drift run. Never raises — a monitor that can crash the thing it
-    monitors is worse than no monitor."""
+    monitors is worse than no monitor. ``database`` defaults to the
+    service's own; the weekly learning job passes the one it holds, so the
+    PSI 2x2 is stored with its week (build plan ML-7)."""
     from services import drift_monitor as dm
-    from services.db import db
+    if database is None:
+        from services.db import db
+        database = db
 
     report: dict[str, Any] = {"version": version, "dimensions": {},
                               "minted": 0, "note": None}
     try:
-        rows = db.get_dimension_evaluations_since(weeks=max(weeks, REFERENCE_WEEKS))
+        rows = database.get_dimension_evaluations_since(weeks=max(weeks, REFERENCE_WEEKS))
+        reference = database.get_reference_distribution(version) if rows else []
     except Exception as e:
         logger.warning("drift_job: read failed: %s", e)
         report["note"] = f"read failed: {e}"
@@ -245,9 +251,8 @@ def run_weekly(*, weeks: int = 4, version: str = DEFAULT_VERSION) -> dict:
     session_values = _session_values(rows)
     report["sessions_by_dimension"] = {d: len(v) for d, v in session_values.items()}
 
-    reference = db.get_reference_distribution(version)
     if not reference:
-        _mint_or_explain(report, session_values, version=version, db=db)
+        _mint_or_explain(report, session_values, version=version, db=database)
         return report
 
     cuts, ref_counts = _reference_cuts(reference)

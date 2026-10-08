@@ -98,12 +98,21 @@ class CountTests(unittest.TestCase):
         class _Counts:
             def count_feedback_pairs(self):
                 return {"praise_line": {"total": 3, "unexported": 1, "releasable": 2}}
+
+            def count_exportable_pairs(self):
+                return {"praise_line": {"exportable": 1, "exportable_unexported": 1}}
+        zero = {"total": 0, "unexported": 0, "releasable": 0}
         self.assertEqual(fp.counts(_Counts()), {
             "praise_line": {"total": 3, "unexported": 1, "releasable": 2},
-            "clearer_version": {"total": 0, "unexported": 0, "releasable": 0},
-            "exercise_script": {"total": 0, "unexported": 0, "releasable": 0},
-            "coach_moment_line": {"total": 0, "unexported": 0, "releasable": 0},
-            "coach_take_word": {"total": 0, "unexported": 0, "releasable": 0},
+            "clearer_version": zero, "exercise_script": zero,
+            "coach_moment_line": zero, "coach_take_word": zero,
+        })
+        # C9 (W6): the pairs the export can release, every surface named.
+        none = {"exportable": 0, "exportable_unexported": 0}
+        self.assertEqual(fp.exportable(_Counts()), {
+            "praise_line": {"exportable": 1, "exportable_unexported": 1},
+            "clearer_version": none, "exercise_script": none,
+            "coach_moment_line": none, "coach_take_word": none,
         })
 
     def test_the_surfaces_are_locked_prompts_and_gated_model_slots(self):
@@ -129,3 +138,86 @@ class CountTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class _Recorder:
+    """A PostgREST builder double that records each query's filters."""
+
+    def __init__(self, sink):
+        self.sink, self.filters = sink, []
+
+    def table(self, _name):
+        return _Recorder(self.sink)
+
+    def select(self, *_a, **_k):
+        return self
+
+    def eq(self, column, value):
+        self.filters.append(("eq", column, value))
+        return self
+
+    def is_(self, column, value):
+        self.filters.append(("is", column, value))
+        return self
+
+    @property
+    def not_(self):
+        outer = self
+
+        class _Not:
+            def is_(self, column, value):
+                outer.filters.append(("not_is", column, value))
+                return outer
+        return _Not()
+
+    def order(self, *_a, **_k):
+        return self
+
+    def limit(self, *_a):
+        return self
+
+    def execute(self):
+        self.sink.append(list(self.filters))
+        return type("R", (), {"data": [], "count": 7})()
+
+
+def _service(sink):
+    from services.db import DatabaseService
+    service = DatabaseService.__new__(DatabaseService)
+    service.client = _Recorder(sink)
+    return service
+
+
+class TheExportContractTests(unittest.TestCase):
+    """C9 (W6 2026-10-05): a pair counts toward the bar of 200, and leaves in
+    an export, only when the export contract can release it: the speaker's
+    yes, the passage it was drafted from and the model version."""
+
+    STAMPED = {("not_is", "passage_text", "null"), ("not_is", "draft_model_version", "null")}
+
+    def test_only_stamped_releasable_pairs_leave(self):
+        sink: list = []
+        _service(sink).list_releasable_pairs("exercise_script")
+        filters = set(sink[0])
+        self.assertIn(("eq", "releasable", True), filters)
+        self.assertTrue(self.STAMPED <= filters)
+
+    def test_the_exportable_count_is_releasable_and_stamped(self):
+        sink: list = []
+        out = _service(sink).count_exportable_pairs()
+        self.assertEqual(set(out), set(fp.SURFACES))
+        self.assertEqual(set(out["exercise_script"]),
+                         {"exportable", "exportable_unexported"})
+        # Every query is releasable AND stamped; half of them unexported too.
+        self.assertTrue(all(self.STAMPED <= set(f) and ("eq", "releasable", True) in f
+                            for f in sink))
+        self.assertEqual(len(sink), 2 * len(fp.SURFACES))
+        self.assertEqual(sum(("is", "exported_at", "null") in f for f in sink),
+                         len(fp.SURFACES))
+
+    def test_an_unreadable_exportable_count_raises_never_zero(self):
+        class _Down:
+            def count_exportable_pairs(self):
+                raise RuntimeError("down")
+        with self.assertRaises(RuntimeError):
+            fp.exportable(_Down())

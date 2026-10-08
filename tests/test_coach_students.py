@@ -99,7 +99,12 @@ class SwitchOnTests(unittest.TestCase):
             with patch.object(db, "v2_get_session_by_id", return_value=_session()), \
                  patch.object(db, "get_snippets_by_session", return_value=[{"id": SNIP}]), \
                  patch.object(db, "get_own_state_ratings_for_session", return_value={}), \
+                 patch.object(db, "get_confidence_labels_by_snippet_ids", return_value={}), \
                  patch.object(db, "list_exercise_coach_requests_for_sessions", return_value={}), \
+                 patch.object(db, "list_moment_events_for_sessions",
+                              return_value=[{"take_session_id": SID, "snippet_id": SNIP,
+                                             "event": "opened"}]), \
+                 patch.object(db, "list_confident_voice_answered_moments", return_value=[]), \
                  patch.object(db, "get_user_proficient_languages", return_value=coach_languages), \
                  patch.object(db, "get_student_names", return_value={UID: "Anna"}), \
                  patch.object(db, "get_ideal_text_feedback_set", return_value=feedback_set):
@@ -144,6 +149,30 @@ class SwitchOnTests(unittest.TestCase):
                 resp, status = v2_coach.v2_coach_walk_take.__wrapped__(SID)
             self.assertEqual(status, 404)
             self.assertEqual(v2_coach.v2_coach_walk_take.__wrapped__("nope")[1], 400)
+
+
+class TheStudentsScreensStayOffTests(unittest.TestCase):
+    """Q26 A (founder 2026-10-05, decisions log N48.5): "the Students screens
+    stay off." The switch is a literal False in code, never an environment
+    value, and nothing outside the tests sets it."""
+
+    ROOT = __import__("pathlib").Path(__file__).resolve().parents[1]
+
+    def test_the_switch_is_a_literal_false_in_code(self):
+        source = (self.ROOT / "config.py").read_text()
+        self.assertIn("\n    COACH_STUDENTS_ENABLED = False\n", source)
+
+    def test_nothing_outside_the_tests_turns_it_on(self):
+        import re
+        on = re.compile(r"COACH_STUDENTS_ENABLED\s*(=|,)\s*True|"
+                        r"setattr\([^)]*COACH_STUDENTS_ENABLED")
+        files = [self.ROOT / "app.py", self.ROOT / "worker.py", self.ROOT / "config.py",
+                 *(self.ROOT / "services").rglob("*.py"),
+                 *(self.ROOT / "routes").rglob("*.py"),
+                 *(self.ROOT / "scripts").rglob("*.py")]
+        hits = [str(f.relative_to(self.ROOT)) for f in files
+                if f.exists() and on.search(f.read_text())]
+        self.assertEqual(hits, [])
 
 
 if __name__ == "__main__":

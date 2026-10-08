@@ -143,30 +143,6 @@ class ProfanityTests(unittest.TestCase):
         self.assertFalse(has_profanity(123))
 
 
-class AssemblyAnchorTests(unittest.TestCase):
-    def _assemble(self, extra):
-        import services.ideal_text_block as mod
-        bp = {"ready": True, "slides": [{
-            "text": "a strong line", "snippet_id": SNIP, "session_id": SESS,
-            "key_phrases": [],
-        }]}
-        with patch.object(mod, "assemble_ideal_text_block",
-                          wraps=mod.assemble_ideal_text_block):
-            with patch("services.slide_selection.build_best_presentation",
-                       return_value=bp):
-                return mod.assemble_ideal_text_block(
-                    ARC, database=object(), extra_anchor_ids=extra)
-
-    def test_suggestion_pick_gets_anchor(self):
-        out = self._assemble({SNIP})
-        self.assertIn(f"[[moment:{SNIP}|{SESS}]]", out["text"])
-        self.assertEqual(out["key_moments"][0]["snippet_id"], SNIP)
-
-    def test_no_extra_no_anchor(self):
-        out = self._assemble(None)
-        self.assertNotIn("[[moment:", out["text"])
-
-
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class GenerationTests(unittest.TestCase):
     def _gen(self, kind, parsed):
@@ -885,76 +861,6 @@ class StructuralQuoteVerbatimTests(unittest.TestCase):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class LedgerBakeAssemblyTests(unittest.TestCase):
-    """Gradual refinement rule 1 (founder 2026-07-20): APPROVED decisions
-    bake into every future machine copy at ASSEMBLY time; decided phrases
-    (either direction) are never re-offered as polish stars."""
-
-    class _Db:
-        def __init__(self, rows):
-            self._rows = rows
-
-        def list_ideal_decisions(self, arc_id):
-            return self._rows
-
-    def _assemble(self, rows, *, verbatim="the old words carry it",
-                  edited="the polished words carry it", polished=True):
-        import services.ideal_text_block as mod
-        bp = {"ready": True, "slides": [{
-            "text": edited, "verbatim": verbatim, "polished": polished,
-            "snippet_id": SNIP, "session_id": SESS,
-            "key_phrases": [],
-        }]}
-        with patch("services.slide_selection.build_best_presentation",
-                   return_value=bp), \
-             patch.object(mod, "_polish_as_suggestions_enabled",
-                          return_value=True):
-            return mod.assemble_ideal_text_block(
-                ARC, database=self._Db(rows))
-
-    def test_approved_replace_bakes_into_the_text(self):
-        out = self._assemble([{
-            "kind": "replace", "target_phrase": "the old words",
-            "display_phrase": "the old words",
-            "replacement_text": "the brave words",
-            "decision": "approved"}])
-        self.assertIn("the brave words carry it", out["text"])
-        self.assertNotIn("the old words", out["text"])
-
-    def test_approved_polish_bakes_and_is_not_reoffered(self):
-        out = self._assemble([{
-            "kind": "polish",
-            "target_phrase": "the old words carry it",
-            "display_phrase": "the old words carry it",
-            "replacement_text": "the polished words carry it",
-            "decision": "approved"}])
-        self.assertIn("the polished words carry it", out["text"])
-        self.assertEqual(out["polish"], [])   # decided → no star again
-
-    def test_dismissed_polish_stays_verbatim_and_silent(self):
-        out = self._assemble([{
-            "kind": "polish",
-            "target_phrase": "the old words carry it",
-            "display_phrase": "the old words carry it",
-            "replacement_text": "the polished words carry it",
-            "decision": "dismissed"}])
-        self.assertIn("the old words carry it", out["text"])
-        self.assertEqual(out["polish"], [])   # remembered → never again
-
-    def test_no_ledger_keeps_todays_behavior(self):
-        out = self._assemble([])
-        self.assertIn("the old words carry it", out["text"])  # verbatim
-        self.assertEqual(len(out["polish"]), 1)               # star offered
-
-    def test_approved_emphasize_bakes_orange(self):
-        out = self._assemble([{
-            "kind": "emphasize", "target_phrase": "old words",
-            "display_phrase": "old words", "replacement_text": None,
-            "decision": "approved"}], polished=False)
-        self.assertIn("{{orange:old words}}", out["text"])
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class LedgerGenerationFilterTests(unittest.TestCase):
     """Rules 2/3: a decided phrase never regenerates a star — each
     version's stars are that version's delta only."""
@@ -1366,69 +1272,7 @@ class GenerationRecurrenceProtectionTests(unittest.TestCase):
         self.assertIn(("s1", "replace", "stickiness"), ups)
 
 
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class PolishRecurrenceProtectionTests(unittest.TestCase):
-    """Rule 4a on the polish lane: a smoothing whose changed span is the
-    speaker's recurring wording is never offered."""
-
-    class _Db:
-        def __init__(self, take_texts):
-            self._takes = take_texts
-            self.upserts = []
-
-        def get_arc_sessions(self, arc_id):
-            return [{"id": f"t{i}", "take_index": i + 1,
-                     "recording_kind": "spoken"}
-                    for i in range(len(self._takes))]
-
-        @property
-        def takes(self):
-            # audit Q-A2: production now calls db.takes.<method>();
-            # this fake implements those methods directly on itself.
-            return self
-
-        def get_snippets_by_session(self, sid):
-            i = int(sid[1:])
-            return [{"transcript": self._takes[i]}]
-
-        def list_ideal_decisions(self, arc_id):
-            return []
-
-        def get_moment_suggestions_by_arc(self, arc_id):
-            return {}
-
-        def persist_auto_ideal_text(self, arc_id, text, *, take_count=None,
-                                    document=None):
-            return True
-
-        def upsert_moment_suggestion(self, snip, arc, kind, repl, why, trig, **_kw):
-            self.upserts.append((snip, trig))
-            return True
-
-    def _run(self, take_texts):
-        import services.ideal_text_block as mod
-        bp = {"ready": True, "slides": [{
-            "text": "we are going to win this",
-            "verbatim": "we gonna win this", "polished": True,
-            "snippet_id": SNIP, "session_id": SESS,
-            "key_phrases": [],
-        }]}
-        db = self._Db(take_texts)
-        with patch("services.slide_selection.build_best_presentation",
-                   return_value=bp), \
-             patch.object(mod, "_polish_as_suggestions_enabled",
-                          return_value=True):
-            mod.maybe_assemble_ideal_text(ARC, database=db,
-                                          require_target=False)
-        return db.upserts
-
-    def test_recurring_span_suppresses_the_polish(self):
-        ups = self._run(["i gonna say it plain", "gonna win again here"])
-        self.assertEqual(ups, [])
-
-    def test_non_recurring_span_still_offers_polish(self):
-        ups = self._run(["a clean first take", "a clean second take"])
-        self.assertEqual(ups, [(SNIP, "polish")])
+_DOC = {"text": "a strong line", "key_moments": [], "polish": [], "ready": True}
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
@@ -1485,16 +1329,9 @@ class VersionSnapshotWriteTests(unittest.TestCase):
 
     def test_snapshot_written_with_clean_text_and_sanitized_moments(self):
         import services.ideal_text_block as mod
-        bp = {"ready": True, "slides": [{
-            "text": "a strong line", "verbatim": "a strong line",
-            "polished": False, "snippet_id": SNIP, "session_id": SESS,
-            "key_phrases": [],
-        }]}
         db = self._Db()
-        with patch("services.slide_selection.build_best_presentation",
-                   return_value=bp), \
-             patch.object(mod, "_polish_as_suggestions_enabled",
-                          return_value=True):
+        with patch.object(mod, "assemble_transcript_document",
+                          return_value=_DOC):
             ok = mod.maybe_assemble_ideal_text(ARC, database=db,
                                                require_target=False)
         self.assertTrue(ok)
@@ -1512,15 +1349,8 @@ class VersionSnapshotWriteTests(unittest.TestCase):
         import services.ideal_text_block as mod
         db = self._Db()
         db.upsert_ideal_text_version = None   # not callable → best-effort
-        bp = {"ready": True, "slides": [{
-            "text": "a strong line", "verbatim": "a strong line",
-            "polished": False, "snippet_id": SNIP, "session_id": SESS,
-            "key_phrases": [],
-        }]}
-        with patch("services.slide_selection.build_best_presentation",
-                   return_value=bp), \
-             patch.object(mod, "_polish_as_suggestions_enabled",
-                          return_value=True):
+        with patch.object(mod, "assemble_transcript_document",
+                          return_value=_DOC):
             self.assertTrue(mod.maybe_assemble_ideal_text(
                 ARC, database=db, require_target=False))
 
