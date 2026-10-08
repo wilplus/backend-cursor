@@ -486,4 +486,7 @@
 0448	a_skip_keeps_an_empty_receipt.sql
 0449	the_machine_reads_willfidence.sql
 0450	a_practise_try_is_read_fast.sql
-0451	practice_is_part_of_the_service.sql
+0451	each_pick_learns_if_the_paragraph_rose.sql
+0452	the_v4_picker_runs_dark_beside_v3.sql
+0453	v4_asks_coaches_two_blind_questions.sql
+0454	practice_is_part_of_the_service.sql

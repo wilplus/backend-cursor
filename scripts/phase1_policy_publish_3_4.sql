@@ -8,8 +8,8 @@
 -- ⚠ RUN BY HAND, ONCE, IN THE SUPABASE SQL EDITOR (service role), step by
 -- step. Nothing here runs on merge: this file is deliberately absent from
 -- migrations/manifest.txt, like the four scripts before it. Running it IS
--- the publication. RUN IT ONLY AFTER migration 0451
--- (practice_is_part_of_the_service.sql) is live: without 0451 every practice
+-- the publication. RUN IT ONLY AFTER migration 0454
+-- (practice_is_part_of_the_service.sql) is live: without 0454 every practice
 -- gate would read practice as off for every speaker on 3.4.
 --
 -- ── WHAT CHANGES, AND WHAT DOES NOT ─────────────────────────────────────
@@ -22,7 +22,7 @@
 --     this data?" loses the practice exception;
 --   · Privacy §4 and §6, Terms §11: the coach's blind accuracy check, whose
 --     only off switch was Personalised practice, now ends on a written
---     objection to contact@willpowerlab.com (recorded by 0451's
+--     objection to contact@willpowerlab.com (recorded by 0454's
 --     blind_check_objections);
 --   · Terms §11: "Practice is optional" becomes "Practice is part of the
 --     service".
@@ -942,7 +942,7 @@ SELECT public.register_phase1_policy_v1(
 -- speaker is asked to accept 3.4 ("What's changed since you agreed"). The
 -- acceptance screen reads optional_purposes, now empty: no practice tick,
 -- "Two things to confirm", and Data & consent shows no practice card
--- (frontend #660). Practice reads as on for every 3.4 receipt (0451). The
+-- (frontend #660). Practice reads as on for every 3.4 receipt (0454). The
 -- training switch carries over as for 3.3.
 
 SELECT public.activate_phase1_policy_v1(
@@ -980,7 +980,7 @@ SELECT pp.purpose_id, pp.lawful_basis_code, pp.required_for_core_service
 -- ── STEP 5 · verify practice reads as part of the service ───────────────
 --
 -- Expect ONE row: practice_in_service = true, optional_purposes = [].
--- (0451 must be applied; it is, once its PR is merged and deployed.)
+-- (0454 must be applied; it is, once its PR is merged and deployed.)
 
 SELECT public.get_phase1_consent_choices_v1(
          (SELECT id FROM public.owner_principals

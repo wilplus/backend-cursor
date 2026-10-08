@@ -7,11 +7,24 @@ import hashlib
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-@dataclass(frozen=True)
 class RecordingPersistenceError(Exception):
-    """A stable user-facing failure at a required persistence boundary."""
+    """A stable user-facing failure at a required persistence boundary.
 
-    message: str
+    ``message`` is read-only.
+
+    Not a frozen dataclass, on purpose: Python writes to an exception after
+    raising it (``__traceback__`` through a ``@contextmanager``,
+    ``__context__`` in ``ExitStack``, ``__notes__`` from ``add_note``), and a
+    frozen instance would answer with ``FrozenInstanceError`` in its place.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self._message = message
+
+    @property
+    def message(self) -> str:
+        return self._message
 
 
 @dataclass(frozen=True)

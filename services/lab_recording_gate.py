@@ -1,15 +1,27 @@
 """Minimum-content gate and rejected-take observability for Lab uploads."""
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
 
-@dataclass(frozen=True)
 class RecordingRejected(Exception):
-    """The audio cannot enter analysis because no speech was detected."""
+    """The audio cannot enter analysis because no speech was detected.
 
-    gate: dict[str, Any]
+    ``gate`` is read-only.
+
+    Not a frozen dataclass, on purpose: Python writes to an exception after
+    raising it (``__traceback__`` through a ``@contextmanager``,
+    ``__context__`` in ``ExitStack``, ``__notes__`` from ``add_note``), and a
+    frozen instance would answer with ``FrozenInstanceError`` in its place.
+    """
+
+    def __init__(self, gate: dict[str, Any]) -> None:
+        super().__init__(gate)
+        self._gate = gate
+
+    @property
+    def gate(self) -> dict[str, Any]:
+        return self._gate
 
 
 def require_analyzable_recording(

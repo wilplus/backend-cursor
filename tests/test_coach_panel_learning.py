@@ -385,7 +385,7 @@ class NoticeVersionTests(unittest.TestCase):
 class AuditTests(unittest.TestCase):
     def test_a_speaker_who_objected_is_out_of_the_pool(self):
         # Privacy 3.4 (N66.2): practice no longer switches the check off; a
-        # written objection does (0451), whatever the practice choice says.
+        # written objection does (0454), whatever the practice choice says.
         class _Objected(_Db):
             def list_audit_candidates(self, errors):
                 rows = super().list_audit_candidates(errors)

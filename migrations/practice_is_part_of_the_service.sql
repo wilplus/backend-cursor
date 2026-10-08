@@ -1,4 +1,4 @@
--- 0451 · Practice is part of the service.
+-- 0454 · Practice is part of the service.
 --
 -- FOUNDER 2026-10-06 (N55, WQ3a B) and 2026-10-08 (N66.2): personalised
 -- practice stops being a consent choice and becomes part of what people sign
@@ -155,7 +155,7 @@ BEGIN
       INTO optional_ids
       FROM processing_policy_purposes pp
      WHERE pp.policy_id = policy.id AND NOT pp.required_for_core_service;
-    -- 0451: practice is part of the service when the active policy makes
+    -- 0454: practice is part of the service when the active policy makes
     -- its purpose required (Privacy 3.4, N55, N66.2).
     in_service := EXISTS (
         SELECT 1 FROM processing_policy_purposes pp

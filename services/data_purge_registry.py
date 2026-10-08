@@ -577,7 +577,7 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("consent_choice_events", "processing_consent_choice_events",
                     "acquisition_principal_id", "principal", "retain",
                     "database_row", 200, "authorization_evidence"),
-    # An objection to the coach's blind check (0451, Privacy 3.4): it stops
+    # An objection to the coach's blind check (0454, Privacy 3.4): it stops
     # the sampling of this person's clips, and with the account erased there
     # is nothing left to sample, so it goes with the person.
     PurgeDependency("blind_check_objections", "blind_check_objections",
@@ -781,6 +781,31 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "take_session_id", "take", "delete", "derived_feedback", 59),
     PurgeDependency("v4_willfidence_takes", "v4_willfidence_takes",
                     "take_session_id", "take", "delete", "derived_feedback", 59),
+    # V4 B1.5 (0451): the moment-to-paragraph map and each moment's outcome.
+    # Derived, internal: they go with the Take (an outcome also goes with
+    # the next Take it was measured against).
+    PurgeDependency("v4_moment_paragraphs", "v4_moment_paragraphs",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("v4_pick_outcomes", "v4_pick_outcomes",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("v4_pick_outcomes_next", "v4_pick_outcomes",
+                    "next_take_session_id", "take", "delete", "derived_feedback", 59),
+    # V4 B1.6 (0452): V4's dark picks per block and per Take. Derived,
+    # internal: they go with the Take.
+    PurgeDependency("v4_picks", "v4_picks",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("v4_pick_takes", "v4_pick_takes",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    # V4 B1.8/B1.9 (0453): a blind sheet goes with the Take it asks about
+    # and with the rater who answered it (their own answers).
+    PurgeDependency("v4_moment_pick_sheets", "v4_moment_pick_sheets",
+                    "take_session_id", "take", "delete", "derived_feedback", 58),
+    PurgeDependency("v4_moment_pick_sheets_by_rater", "v4_moment_pick_sheets",
+                    "rater_id", "user", "delete", "derived_feedback", 58),
+    PurgeDependency("v4_surer_sheets", "v4_surer_sheets",
+                    "take_session_id", "take", "delete", "derived_feedback", 58),
+    PurgeDependency("v4_surer_sheets_by_rater", "v4_surer_sheets",
+                    "rater_id", "user", "delete", "derived_feedback", 58),
     PurgeDependency("v3_detector_reconciliation",
                     "take_feedback_detector_reconciliation",
                     "take_session_id", "take", "external_review",

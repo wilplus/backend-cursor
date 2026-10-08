@@ -147,7 +147,7 @@ def _on_notice_version(database: Any, take_session_id: str) -> bool:
 def _objected(database: Any, take_session_id: str) -> bool:
     """Privacy 3.4 (N55, N66.2): practice is part of the service and no
     longer the blind check's off switch; a speaker stops it by objecting in
-    writing, recorded by an operator in ``blind_check_objections`` (0451).
+    writing, recorded by an operator in ``blind_check_objections`` (0454).
     True when this Take's speaker objected, and true when the answer cannot
     be read (the safe side: a clip is never sampled on a guess)."""
     from services.processing_authorization import ProcessingAuthorizationService

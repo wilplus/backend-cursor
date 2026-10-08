@@ -11,7 +11,7 @@
   * it records that counsel's review was not obtained;
   * the effective date is the day the founder named (8 October 2026), and
     STEP 1 still refuses a placeholder;
-  * it is not a migration, and it is meant to run only after 0451.
+  * it is not a migration, and it is meant to run only after 0454.
 """
 from __future__ import annotations
 
@@ -145,11 +145,11 @@ def test_the_date_is_the_day_the_founder_named_and_step_one_refuses_a_placeholde
         assert "[[EFFECTIVE DATE]]" not in _quoted(tag)
 
 
-def test_it_is_not_a_migration_and_follows_0451():
+def test_it_is_not_a_migration_and_follows_0454():
     manifest = (ROOT / "migrations" / "manifest.txt").read_text(encoding="utf-8")
     assert "phase1_policy_publish_3_4.sql" not in manifest
-    assert "0451\tpractice_is_part_of_the_service.sql" in manifest
+    assert "0454\tpractice_is_part_of_the_service.sql" in manifest
     body = _script()
     assert "'version','phase1-2026-10-08'" in body
     assert "activate_phase1_policy_v1(\n  'phase1-2026-10-08'" in body
-    assert "RUN IT ONLY AFTER migration 0451" in body
+    assert "RUN IT ONLY AFTER migration 0454" in body

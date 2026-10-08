@@ -528,6 +528,10 @@ class Config:
     # no other speaker's blocks. It comes back on with a source of every
     # speaker's blocks.
     COACH_BLOCK_PICK_ENABLED = False
+    # V4's two blind coach sheets (B1.8 "Pick the moment for feedback", B1.9
+    # "Which sounds surer"; founder S-B8 A, Q-B8 A). Off until the founder
+    # turns them on; every route answers 404 while off.
+    V4_COACH_SHEETS_ENABLED = False
     # 6d: fitting a learned detector on audit answers. ON from 2026-10-02
     # (founder: "You have my go on each of the flips"; N26): the AI Act
     # determination is document 02 v1.1 (the founder's own, Q7, signed
