@@ -127,6 +127,42 @@ def test_a_first_time_guest_mints_an_identity_the_gate_then_accepts(
         body["owner_principal_id"], "core_service")
 
 
+def test_a_guest_deck_upload_passes_the_gate_only_with_its_owner_token(
+    app_client, monkeypatch, enforced, stubbed_authority,
+):
+    """The deck could not be uploaded (2026-10-08). The core gate covers
+    every /v2/lab/ path, the deck extract included, and the frontend sent
+    the extract no guest owner token: every guest deck met OWNER_REQUIRED
+    and the setup showed "We couldn't read that deck just now". With its
+    token the guest reaches the route (here its own 400 for a missing
+    file); without one it is still refused."""
+    principals: dict = {}
+
+    def create_guest_owner(self, principal_id, secret_hash):
+        principals[str(principal_id)] = {
+            "id": str(principal_id), "user_id": None,
+            "guest_secret_hash": secret_hash}
+        return OwnerPrincipal(str(principal_id), None, True)
+
+    monkeypatch.setattr(ProjectRepository, "create_guest_owner", create_guest_owner)
+    monkeypatch.setattr(
+        ProjectRepository, "get_principal",
+        lambda self, principal_id: principals.get(str(principal_id)))
+
+    refused = app_client.post("/v2/lab/presentation/extract")
+    assert (refused.get_json() or {}).get("error") == OWNER_REQUIRED
+
+    token = (app_client.post("/v2/processing-authorization/principal")
+             .get_json() or {}).get("guest_owner_token")
+    passed = app_client.post(
+        "/v2/lab/presentation/extract",
+        headers={"X-Willab-Guest-Owner": token},
+    )
+    assert passed.status_code == 400
+    assert (passed.get_json() or {}).get("code") == "INVALID_INPUT"
+    assert stubbed_authority.get("authorized", (None, None))[1] == "core_service"
+
+
 def test_gate_treats_a_rejected_token_as_anonymous_like_optional_auth_does(
     app_client, monkeypatch, enforced, stubbed_authority,
 ):
