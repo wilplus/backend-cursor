@@ -15,7 +15,7 @@ bucket with a manifest the job signs:
     standing or voided, is refused before anything is written, and the
     release row is written before its objects, so a second fire in the same
     week never overwrites them; if anything after the row fails, the
-    release is voided ('export_failed', 0455) and the sweep deletes what
+    release is voided ('export_failed', 0456) and the sweep deletes what
     was written;
   * a surface leaves only when the door is open in code AND the founder
     named the surface (Config.PAIR_RELEASE_SURFACES) by a reviewed change
@@ -29,7 +29,10 @@ bucket with a manifest the job signs:
     so a file and its manifest can be checked against each other and
     against the key later;
   * a release whose owner withdraws is voided by the weekly refresh and
-    its object deleted by the sweep here (revocation purges the copies).
+    its object deleted by the sweep here (revocation purges the copies);
+    a release holding a pair of a person or a project being erased is
+    voided at the erasure request itself (0456), and the hourly deletion
+    run sweeps too (services/deletion_completion.py).
 
 Counts about the system; a pair's texts leave only inside the file. AC-9:
 nothing here reaches a speaker or a coach.
@@ -187,7 +190,7 @@ def _week_taken_words(existing: dict) -> str:
 def _void_failed(database: Any, release_id: str, error: Exception, *,
                  surface: str, waiting: int, eligibility: dict) -> dict:
     """The job's row when anything after the release row failed. The release
-    is voided ('export_failed', 0455) so the sweep deletes whatever was put,
+    is voided ('export_failed', 0456) so the sweep deletes whatever was put,
     and its pairs wait for a later week. A void that fails too is named: the
     release then stands, and the row's ``failed_release_id`` is the one to
     void by hand. The row never says ``release_id``: nothing here is read
@@ -308,9 +311,10 @@ def export_surface(database: Any, storage: Any, *, surface: str,
 
 
 def sweep_voided(database: Any, storage: Any) -> dict:
-    """Delete the objects of voided releases (an owner withdrew) and mark
-    them purged. Runs every week whatever the door says: revocation is
-    honoured even where nothing new leaves."""
+    """Delete the objects of voided releases (an owner withdrew, or an
+    erasure was asked for) and mark them purged. Runs every week whatever
+    the door says, and at the end of every executing deletion run:
+    revocation is honoured even where nothing new leaves."""
     lister = getattr(database, "list_voided_unpurged_pair_releases", None)
     if lister is None:
         return {"purged": 0, "unavailable": "no release ledger on this database"}

@@ -619,9 +619,11 @@ def test_a_termination_stops_learning_at_once_and_at_every_refresh(db):
                      "public.feedback_pairs WHERE id = %s", (pair,))
     # The ledger is read as it is (L3): the yes stands, the pair goes nowhere.
     assert state == {"consent_state": "yes", "releasable": False, "release_id": None}
+    # 0456: voided at the request itself, before this refresh (which, until
+    # 0456, voided it as 'owner_service_ended').
     assert _row(db, "SELECT voided_reason, purged_at FROM public.pair_releases "
                     "WHERE id = %s", (release,)) == {
-        "voided_reason": "owner_service_ended", "purged_at": None}
+        "voided_reason": "owner_erasure_requested", "purged_at": None}
     with pytest.raises(psycopg2.Error, match="TRAINING_CORPUS_SERVICE_ENDING"):
         _copy(db, principal, grant)
 
