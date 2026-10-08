@@ -46,7 +46,7 @@ def _source():
             # 2026-09-19: V3 filled `span` (an Ideal Text offset, drawn on by
             # the client) from the transcript, and with one document that is
             # invisible. Fine for what these tests are about -- the 75-word
-            # budget, the service identity, the enrollment fallbacks -- but
+            # budget, the membership freeze, the enrollment fallbacks -- but
             # the two-document shape lives in
             # `test_v3_end_to_end_production_shape.py` and belongs there.
             "served_start": 0,
@@ -113,8 +113,12 @@ class _Database:
         self.bundle = None
         self.membership_payload = None
         self.client = self
+        self.calls: list[str] = []
+        self.enrollment_payloads: list[dict] = []
+        self.context_calls: list[dict] = []
 
     def rpc(self, name, payload):
+        self.calls.append(name)
         assert name == "read_feedback_v3_candidate_source_snapshot_v1"
         assert payload == {
             "p_acquisition_principal_id": OWNER,
@@ -138,7 +142,9 @@ class _Database:
             data = self._rpc_data
         return Result()
 
-    def ensure_service_enrollment(self, **_payload):
+    def ensure_service_enrollment(self, **payload):
+        self.calls.append("ensure_service_enrollment")
+        self.enrollment_payloads.append(payload)
         return {
             "id": "c0000000-0000-4000-8000-000000000001",
             "rollout_revision_id": "d0000000-0000-4000-8000-000000000001",
@@ -146,6 +152,7 @@ class _Database:
         }
 
     def record_feedback_v3_service_candidate_set(self, bundle):
+        self.calls.append("record_feedback_v3_service_candidate_set")
         self.bundle = bundle
         return {"candidate_set_id": bundle["candidate_set_id"]}
 
@@ -153,13 +160,18 @@ class _Database:
         return {"id": SNAPSHOT, "source_take_session_id": TAKE}
 
     def freeze_feedback_v3_service_membership(self, payload):
+        self.calls.append("freeze_feedback_v3_service_membership")
         self.membership_payload = payload
         return {
             "id": MEMBERSHIP,
             "content_identity_sha256": "c" * 64,
         }
 
-    def prepare_feedback_v3_service_context(self, _payload):
+    def prepare_feedback_v3_service_context(self, payload):
+        # Retired from serving (L8, contract 66). Still answered here, the
+        # way it would answer if an N1 snapshot existed, so a reintroduced
+        # call is counted AND would put the block back on the row.
+        self.context_calls.append(payload)
         return {
             "n1_candidate_set_id": N1_SET,
             "authorization_check_id": AUTH,
@@ -167,31 +179,57 @@ class _Database:
         }
 
 
-def test_first_client_rows_receive_exact_service_identity(monkeypatch):
+def _serve(database):
+    session, document, snippets = _source()
+    return prepare_first_client_feedback(
+        database=database, session=session, take_document=document,
+        served_text=document["text"], snippets=snippets, suggestions={},
+        feedback_candidates=[], owner_user_id=USER,
+    )
+
+
+def test_a_served_row_carries_no_mlc3_service_and_asks_for_no_context(
+    monkeypatch,
+):
+    """The MLC-3 exercise context left serving (2026-10-06; L8, contract 66).
+    The row keeps everything else it had: candidate, exposure, membership."""
     from config import Config
 
     monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", True)
-    session, document, snippets = _source()
     database = _Database()
-    rows = prepare_first_client_feedback(
-        database=database,
-        session=session,
-        take_document=document,
-        served_text=document["text"],
-        snippets=snippets,
-        suggestions={},
-        feedback_candidates=[],
-        owner_user_id=USER,
-    )
+    rows = _serve(database)
     assert rows is not None and len(rows) == 1
-    identity = rows[0]["mlc3_service"]
-    assert identity["membership_id"] == MEMBERSHIP
-    assert identity["n1_candidate_set_id"] == N1_SET
-    assert identity["authorization_check_id"] == AUTH
-    assert identity["source_acquisition_receipt_id"] == RECEIPT
+    assert "mlc3_service" not in rows[0]
+    assert database.context_calls == []
+    assert rows[0]["feedback_membership_id"] == MEMBERSHIP
     assert database.membership_payload["p_items"][0]["candidate_id"] == (
         rows[0]["candidate_id"]
     )
+
+
+def test_serving_still_refreshes_the_enrollment_before_the_lineage_writes(
+    monkeypatch,
+):
+    """Not enrichment: the candidate-set write and the membership freeze run
+    `require_mlc3_service_access_v2` (D4; 0348 says so), which refuses a
+    speaker without a current enrollment. Same key and same place as before
+    the exercise context went, so the lineage cannot quietly go with it."""
+    from config import Config
+
+    monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", True)
+    database = _Database()
+    _serve(database)
+    assert database.enrollment_payloads == [{
+        "acquisition_principal_id": OWNER,
+        "owner_user_id": USER,
+        "idempotency_key": f"feedback-entry:{TAKE}",
+    }]
+    assert database.calls == [
+        "ensure_service_enrollment",
+        "read_feedback_v3_candidate_source_snapshot_v1",
+        "record_feedback_v3_service_candidate_set",
+        "freeze_feedback_v3_service_membership",
+    ]
 
 
 def test_closed_backend_gate_returns_legacy_fallback(monkeypatch):
@@ -223,16 +261,10 @@ class _NoEnrollmentDatabase(_Database):
     under test is the stand-down, never the reason for it.
     """
 
-    def __init__(self):
-        super().__init__()
-        self.context_calls = 0
-
-    def ensure_service_enrollment(self, **_payload):
+    def ensure_service_enrollment(self, **payload):
+        self.calls.append("ensure_service_enrollment")
+        self.enrollment_payloads.append(payload)
         return None
-
-    def prepare_feedback_v3_service_context(self, payload):
-        self.context_calls += 1
-        return super().prepare_feedback_v3_service_context(payload)
 
 
 def test_feedback_survives_an_unavailable_exercise_enrollment(monkeypatch):
@@ -241,7 +273,8 @@ def test_feedback_survives_an_unavailable_exercise_enrollment(monkeypatch):
     This gate used to return None, putting the whole of V3 — Manager
     arbitration, the block partition, every Confident Voice item — behind an
     authorization that, at the time, no user could obtain. Feedback now
-    surfaces; only the exercise context stands down.
+    surfaces; a missing enrollment costs the lineage at most, which
+    PostgreSQL refuses without one (`_refresh_service_enrollment`).
 
     The ruling outlives the deadlock that provoked it. Enrollment is
     satisfiable today, and it must STILL not be able to empty the Feedback
@@ -263,8 +296,8 @@ def test_feedback_survives_an_unavailable_exercise_enrollment(monkeypatch):
 
 
 def test_the_phase2_exercise_path_is_not_called_without_enrollment(monkeypatch):
-    """The boundary still holds in the other direction: standing down from
-    Phase-2 exercise data is the POINT, not a side effect to be re-added."""
+    """Nor with one (above): serving never reaches the Phase-2 exercise path.
+    Standing down from it is the POINT, not a side effect to be re-added."""
     from config import Config
 
     monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", True)
@@ -275,14 +308,19 @@ def test_the_phase2_exercise_path_is_not_called_without_enrollment(monkeypatch):
         served_text=document["text"], snippets=snippets, suggestions={},
         feedback_candidates=[], owner_user_id=USER,
     )
-    assert database.context_calls == 0
+    assert database.context_calls == []
     assert "mlc3_service" not in (rows or [{}])[0]
 
 
 def test_the_membership_freeze_still_happens_without_enrollment(monkeypatch):
-    """The freeze is what makes a served candidate provable (L2). It is
-    authorized in PostgreSQL by contract + allowlist, NOT by enrollment, so
-    dropping the enrollment gate must not have dropped the freeze with it."""
+    """The freeze is what makes a served candidate provable (L2), so Python
+    asks for it whether or not the enrollment came back. PostgreSQL decides:
+    the freeze runs `require_mlc3_service_access_v2`, which refuses a speaker
+    with no current enrollment, and `_service_lineage` then serves without
+    lineage. (This said the freeze was authorized "by contract + allowlist,
+    NOT by enrollment"; D4 made that untrue, see
+    `_refresh_service_enrollment`.) What must never happen is Python skipping
+    the freeze on its own."""
     from config import Config
 
     monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", True)

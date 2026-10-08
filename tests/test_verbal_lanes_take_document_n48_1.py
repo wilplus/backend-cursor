@@ -537,11 +537,12 @@ def test_location_evidence_still_reaches_the_client():
 
 #: The top-level keys the frontend reads from one served `changes` /
 #: `style_changes` row: every `record.<key>` in `mapDocumentSuggestion`
-#: (frontend src/services/api/idealText.ts, origin/main df875245, FE #602),
+#: (frontend src/services/api/idealText.ts, origin/main 41f80568, FE #615),
 #: plus `start` / `end`, which `readSuggestionSpan` accepts at top level when
 #: `span` is absent. That function is the frontend's only reader of these
 #: rows; its helpers read only inside the value they are handed. When the
 #: frontend starts reading a new key, add it here AND to the allowlist.
+#: `mlc3_service` left with FE #615 (ML-15), which removed its only reader.
 FRONTEND_READS_FROM_A_CHANGE_ROW = {
     "id", "candidate_id", "feedback_membership_id", "feedback_exposure_id",
     "span", "start", "end", "quote", "kind", "proposed_text", "device",
@@ -551,7 +552,7 @@ FRONTEND_READS_FROM_A_CHANGE_ROW = {
     "coach_note", "status", "evidence", "take_index", "visual",
     "pending_better_version", "pending_copy", "cue_keys", "praise_line",
     "rewrite_move", "snippet_audio_ref", "start_offset_ms", "duration_ms",
-    "practice_exercise", "mlc3_service", "learning_exposures",
+    "practice_exercise", "learning_exposures",
 }
 
 
@@ -564,6 +565,16 @@ def test_the_allowlist_is_exactly_what_the_frontend_reads_plus_reserved():
     # answer in words on the speaker's item.
     assert UNRENDERED_ROW_FIELDS == {"coach_answer"}
     assert CLIENT_ROW_FIELDS == CLIENT_READ_ROW_FIELDS | UNRENDERED_ROW_FIELDS
+
+
+def test_a_stray_mlc3_service_block_never_reaches_the_client():
+    """The retired MLC-3 exercise context (L8, contract 66). The server no
+    longer builds it; if a stored row still held one, the boundary drops it."""
+    stray = {"membership_id": "m-1", "n1_candidate_set_id": "n-1",
+             "authorization_check_id": "a-1"}
+    [row] = strip_internal_evidence([{**_praise(), "mlc3_service": stray}])
+    assert "mlc3_service" not in row
+    assert row["quote"]
 
 
 def test_the_coach_answer_rides_the_speakers_item():

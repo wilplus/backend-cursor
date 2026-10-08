@@ -165,6 +165,7 @@ class _Database:
         self.client = self
         self.bundle = None
         self.membership_payload = None
+        self.context_calls: list[dict] = []
         self._rpc_data: dict = {}
 
     def rpc(self, _name, _payload):
@@ -242,7 +243,11 @@ class _Database:
         self.membership_payload = payload
         return {"id": MEMBERSHIP, "content_identity_sha256": "c" * 64}
 
-    def prepare_feedback_v3_service_context(self, _payload):
+    def prepare_feedback_v3_service_context(self, payload):
+        # Retired from serving (L8, contract 66). Answered the way it would
+        # be if an N1 snapshot existed, so a reintroduced call is counted AND
+        # would put `mlc3_service` back on the row.
+        self.context_calls.append(payload)
         return {
             "n1_candidate_set_id": "66666666-7777-4888-8999-aaaaaaaaaaaa",
             "authorization_check_id": "77777777-8888-4999-8aaa-bbbbbbbbbbbb",
@@ -337,6 +342,34 @@ class TheChainProducesFeedback(unittest.TestCase):
                    if r.get("feedback_family") == "confident_voice")
         span = row.get("span") or {}
         self.assertLessEqual(span.get("end", 10 ** 9), len(IDEAL))
+
+
+class TheExerciseContextLeftServing(unittest.TestCase):
+    """2026-10-06 (L8, contract 66; frontend #615 removed the last reader).
+
+    `prepare_feedback_v3_service_context_v1` needed an N1 snapshot of the
+    exact clip, which nothing creates, so in production it failed on every
+    Confident Voice row and `mlc3_service` never reached one. Serving no
+    longer asks, and a healthy, fully-lineaged row carries no such key.
+    """
+
+    def setUp(self) -> None:
+        from config import Config
+        patcher = patch.object(Config, "MLC3_SERVICE_ENABLED", True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_a_served_row_carries_no_mlc3_service_and_no_context_is_asked(self):
+        database = _Database()
+        rows = run_chain(database)
+        assert rows is not None and not isinstance(rows, tuple)
+        self.assertGreaterEqual(len(rows), 1)
+        self.assertTrue(any(r.get("feedback_family") == "confident_voice"
+                            for r in rows))
+        for row in rows:
+            self.assertNotIn("mlc3_service", row)
+            self.assertEqual(row.get("feedback_membership_id"), MEMBERSHIP)
+        self.assertEqual(database.context_calls, [])
 
 
 class _ReturnsNothingUsable(_Database):
