@@ -18,9 +18,15 @@ Pins:
   * the same call again changes nothing and answers replayed; any other
     call once v2 exists, or naming a predecessor that is not in force, or a
     switch instant in the past, is refused;
-  * while a training copy made under a v1 yes is still active, the call is
-    refused and nothing changes;
-  * browser roles, PUBLIC and service_role cannot execute it;
+  * while a training copy made under a v1 yes is not yet purged (active or
+    purge_pending), the call is refused and nothing changes; a purged one
+    does not stop it;
+  * the call holds training_corpus_items in SHARE ROW EXCLUSIVE mode until
+    its transaction ends: another session's corpus write waits, its reads
+    do not;
+  * browser roles, PUBLIC and service_role cannot execute it, nor the guard;
+  * a runtime role that can UPDATE the table and sets the door itself is
+    still refused: the door opens only for the supersede function's owner;
   * the trigger keeps its name and still refuses every other UPDATE and
     every DELETE, the door's setting included; the door is closed again when
     the call returns.
@@ -48,6 +54,7 @@ SUPERSEDE = ("public.supersede_mlc2_training_consent_policy_v1(text, text, text,
              "text, text, text, text, text, timestamptz, text[], text, text, "
              "text, timestamptz)")
 DOOR = "willab.training_policy_supersede"
+GUARD = "public.guard_ml_consent_policy_mutation_v1()"
 
 V1_COPY = "Supersede test: the old training switch sentence."
 V1_SHA = hashlib.sha256(V1_COPY.encode()).hexdigest()
@@ -338,6 +345,40 @@ def test_an_active_copy_under_a_v1_yes_stops_the_call(cur, lane):
     _raises(cur, "TRAINING_POLICY_PREDECESSOR_HAS_ACTIVE_COPIES", sql, args)
     rows = _policies(cur, lane)
     assert rows[lane["v1"]]["in_force"] is True and lane["v2"] not in rows
+    # Due for erasure is not gone: its object may still be in storage.
+    cur.execute("UPDATE public.training_corpus_items SET state = 'purge_pending', "
+                "state_changed_at = now() WHERE training_grant_event_id = %s",
+                (lane["v1_grant"],))
+    _raises(cur, "TRAINING_POLICY_PREDECESSOR_HAS_ACTIVE_COPIES", sql, args)
+    rows = _policies(cur, lane)
+    assert rows[lane["v1"]]["in_force"] is True and lane["v2"] not in rows
+    # Purged (the object verified gone) no longer stops the call.
+    cur.execute("UPDATE public.training_corpus_items SET state = 'purged', "
+                "state_changed_at = now() WHERE training_grant_event_id = %s",
+                (lane["v1_grant"],))
+    assert _supersede(cur, lane)["replayed"] is False
+
+
+def test_the_call_holds_the_corpus_still_until_it_ends(cur, lane):
+    _supersede(cur, lane)
+    assert _one(cur, """
+        SELECT count(*) FROM pg_locks
+         WHERE pid = pg_backend_pid() AND granted
+           AND relation = 'public.training_corpus_items'::regclass
+           AND mode = 'ShareRowExclusiveLock'""") == 1
+    other = psycopg2.connect(DSN)
+    other.autocommit = True
+    try:
+        with other.cursor() as cursor:
+            cursor.execute("SET lock_timeout = '300ms'")
+            # Reads go on.
+            cursor.execute("SELECT count(*) FROM public.training_corpus_items")
+            # A write (an insert, or a state moving) waits for the call's end.
+            with pytest.raises(psycopg2.errors.LockNotAvailable):
+                cursor.execute("UPDATE public.training_corpus_items "
+                               "SET state = state WHERE false")
+    finally:
+        other.close()
 
 
 # ── Who may call it ───────────────────────────────────────────────────────
@@ -357,6 +398,8 @@ def test_no_browser_or_runtime_role_may_execute_it(cur):
             continue
         assert _one(cur, "SELECT has_function_privilege(%s, %s, 'EXECUTE')",
                     (role, SUPERSEDE)) is False, role
+        assert _one(cur, "SELECT has_function_privilege(%s, %s, 'EXECUTE')",
+                    (role, GUARD)) is False, (role, GUARD)
         for privilege in ("UPDATE", "DELETE"):
             assert _one(cur, "SELECT has_table_privilege(%s, "
                              "'public.ml_consent_policies', %s)",
@@ -415,6 +458,32 @@ def test_the_trigger_still_refuses_every_other_change(cur, lane):
                           "WHERE version = %s", (v1,))
     _raises(cur, refused, "UPDATE public.ml_consent_policies SET retired_at = NULL "
                           "WHERE version = %s", (v1,))
+
+
+def test_a_runtime_role_that_sets_the_door_itself_is_refused(cur, lane):
+    """The door's setting is transaction-local and any role may set it. Give
+    service_role, inside this rolled-back transaction, everything it would
+    need to reach the row (UPDATE, and a row-security policy), set the door
+    to v1 as service_role, and retire v1 directly: the guard refuses,
+    because the statement does not run as the supersede function's owner."""
+    if not _role_exists(cur, "service_role"):
+        pytest.skip("no service_role on this lane")
+    v1 = lane["v1"]
+    cur.execute("GRANT SELECT, UPDATE ON public.ml_consent_policies TO service_role")
+    cur.execute("CREATE POLICY supersede_rehearsal_reach ON public.ml_consent_policies "
+                "FOR ALL TO service_role USING (true) WITH CHECK (true)")
+    cur.execute("SET LOCAL ROLE service_role")
+    cur.execute("SELECT set_config(%s, %s, true)", (DOOR, v1))
+    # Any instant, no copy check: exactly what the door must not let through.
+    _raises(cur, "append-only", "UPDATE public.ml_consent_policies "
+                                "SET retired_at = now() - interval '1 day' "
+                                "WHERE version = %s", (v1,))
+    _raises(cur, "append-only", "UPDATE public.ml_consent_policies "
+                                "SET retired_at = now() + interval '1 day' "
+                                "WHERE version = %s", (v1,))
+    cur.execute("RESET ROLE")
+    assert _policies(cur, lane)[v1]["retired_at"] is None
+    assert _status(cur, lane["speaker"])["active"] is True
 
 
 def test_applied_again_the_file_changes_nothing(cur, lane):

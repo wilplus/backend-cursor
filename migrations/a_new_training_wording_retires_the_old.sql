@@ -26,11 +26,17 @@
 --                     `training_only` row that has none, every other column
 --                     unchanged, while the transaction-local setting
 --                     `willab.training_policy_supersede` names that row's
---                     version. Only the function below sets it (the pattern
---                     of 0446's `willab.coach_answer_change`), and clears it
---                     again before it registers the successor. DELETE is
---                     always refused; a bundled_v1 row never changes; a
---                     retired row is never re-dated.
+--                     version, AND the statement runs as the owner of the
+--                     function below (current_user inside a SECURITY
+--                     DEFINER function is its owner). Only that function
+--                     sets the setting (the pattern of 0446's
+--                     `willab.coach_answer_change`), and clears it again
+--                     before it registers the successor. The owner check
+--                     fences the door: the setting is transaction-local
+--                     and any role may set it, so a runtime role that can
+--                     UPDATE the table (service_role) and sets it itself is
+--                     still refused. DELETE is always refused; a bundled_v1
+--                     row never changes; a retired row is never re-dated.
 --   supersede_mlc2_training_consent_policy_v1(p_predecessor_version, then
 --                     configure_…'s thirteen arguments, unchanged and in
 --                     their order). In one transaction: checks the
@@ -41,11 +47,13 @@
 --                     already recorded under the predecessor would be
 --                     retired after the fact) or at/before the
 --                     predecessor's start; refuses while any training copy
---                     made under a predecessor yes is still active (3.5 §4a
---                     promises a v1 yes is treated as switched off, which
---                     deletes its copies; the corpus copy is off, so there
---                     should be none, and if there are, a person decides,
---                     not this function); retires the predecessor at
+--                     made under a predecessor yes may still exist, that is
+--                     in any state but `purged` (3.5 §4a promises a v1 yes
+--                     is treated as switched off, which deletes its copies;
+--                     the corpus copy is off, so there should be none, and
+--                     if there are, a person decides, not this function),
+--                     holding training_corpus_items still while it checks
+--                     and until it commits; retires the predecessor at
 --                     p_active_from; registers the successor through
 --                     configure_mlc2_training_consent_policy_v1 itself, so
 --                     every check 0373 makes (the copy hash, the evidence
@@ -78,7 +86,10 @@
 -- Idempotent: CREATE OR REPLACE, DROP TRIGGER IF EXISTS then CREATE TRIGGER;
 -- applied twice it changes nothing. Writes no row. Locks: the trigger swap
 -- on ml_consent_policies (a handful of rows; a brief exclusive lock for the
--- catalog change, no rewrite, no scan). Reads no environment variable.
+-- catalog change, no rewrite, no scan). Reads no environment variable. (The
+-- supersede function, when run by hand, holds training_corpus_items in SHARE
+-- ROW EXCLUSIVE mode until its transaction ends: reads go on, corpus writes
+-- wait those few moments.)
 --
 -- Rollback (a new forward migration): recreate the trigger on
 -- reject_mlc2_immutable_mutation(); DROP FUNCTION
@@ -91,7 +102,8 @@ BEGIN;
 
 -- ── The guard, with one door ──────────────────────────────────────────────
 -- (Its body names no table: it only decides whether the row change it is
--- shown may stand.)
+-- shown may stand. It names one function, whose owner alone may walk
+-- through the door.)
 CREATE OR REPLACE FUNCTION public.guard_ml_consent_policy_mutation_v1()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -109,7 +121,13 @@ BEGIN
        AND OLD.grant_scope = 'training_only'
        AND OLD.retired_at IS NULL
        AND NEW.retired_at IS NOT NULL
-       AND (to_jsonb(NEW) - 'retired_at') = (to_jsonb(OLD) - 'retired_at') THEN
+       AND (to_jsonb(NEW) - 'retired_at') = (to_jsonb(OLD) - 'retired_at')
+       AND current_user = (
+           SELECT pg_get_userbyid(fn.proowner) FROM pg_catalog.pg_proc fn
+            WHERE fn.oid = to_regprocedure(
+                'public.supersede_mlc2_training_consent_policy_v1(text, text, '
+                || 'text, text, text, text, text, text, timestamptz, text[], '
+                || 'text, text, text, timestamptz)')) THEN
         RETURN NEW;
     END IF;
     -- Everything else, as 0302: append-only.
@@ -118,7 +136,7 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.guard_ml_consent_policy_mutation_v1()
-    FROM PUBLIC, anon, authenticated;
+    FROM PUBLIC, anon, authenticated, service_role;
 
 DROP TRIGGER IF EXISTS ml_consent_policies_append_only
     ON public.ml_consent_policies;
@@ -219,16 +237,27 @@ BEGIN
 
     -- A predecessor yes is treated as switched off (Privacy 3.5 §4a), and
     -- switching off deletes the training copies. This function deletes
-    -- nothing: while any copy made under a predecessor yes is still active
-    -- it refuses, and a person decides.
+    -- nothing: while any copy made under a predecessor yes may still exist
+    -- it refuses, and a person decides. "May still exist" is every state
+    -- but `purged` (0375): `active` is a live copy; `purge_pending` is due
+    -- for erasure but its object may still be in storage until the purge
+    -- deletes it and verifies it gone; only then is a row `purged`. Any
+    -- state added later blocks too. (Copies at a model provider are not
+    -- rows here: 0406's door-3 sweep lists them from the active grants.)
+    -- The table is held in SHARE ROW EXCLUSIVE mode first, until this
+    -- transaction ends, so no copy is added or moves state between the
+    -- check and the retirement; reads are not blocked.
+    -- Once committed, a predecessor yes stays in force until p_active_from;
+    -- run with p_active_from = now() (as PUBLISH-3.5 does) to leave no gap.
     IF to_regclass('public.training_corpus_items') IS NOT NULL THEN
+        LOCK TABLE public.training_corpus_items IN SHARE ROW EXCLUSIVE MODE;
         IF EXISTS (
             SELECT 1
               FROM public.training_corpus_items item
               JOIN public.ml_consent_events grant_event
                 ON grant_event.id = item.training_grant_event_id
              WHERE grant_event.consent_policy_version = predecessor.version
-               AND item.state = 'active'
+               AND item.state <> 'purged'
         ) THEN
             RAISE EXCEPTION 'TRAINING_POLICY_PREDECESSOR_HAS_ACTIVE_COPIES';
         END IF;

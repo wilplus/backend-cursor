@@ -8,10 +8,11 @@ this pins what a reader of the file relies on:
     lane, and its suite is in the tier;
   * it is one transaction with no destructive statement and no environment
     read; it grants nothing to anyone, and revokes both functions from
-    PUBLIC and the browser roles (the supersede function from service_role
-    too);
+    PUBLIC, the browser roles and service_role;
   * the trigger keeps 0302's name and message, and its one door is the
-    supersede function's transaction-local setting, which the function sets
+    supersede function's transaction-local setting, walked through only as
+    that function's owner; the function locks the corpus before it counts
+    every copy not yet purged; it sets the setting
     only around its one UPDATE, before it registers the successor through
     0373's configure function;
   * every reader of the training yes still ties a grant to a policy in force
@@ -99,7 +100,7 @@ class MigrationTests(unittest.TestCase):
                          ["guard_ml_consent_policy_mutation_v1",
                           "supersede_mlc2_training_consent_policy_v1"])
         self.assertIn("REVOKE ALL ON FUNCTION public.guard_ml_consent_policy_mutation_v1() "
-                      "FROM PUBLIC, anon, authenticated;", body)
+                      "FROM PUBLIC, anon, authenticated, service_role;", body)
         self.assertIn("TEXT, TEXT, TIMESTAMPTZ) FROM PUBLIC, anon, authenticated, "
                       "service_role;", body)
 
@@ -115,7 +116,9 @@ class MigrationTests(unittest.TestCase):
         for condition in ("TG_OP = 'UPDATE'", "door = OLD.version",
                           "OLD.grant_scope = 'training_only'",
                           "OLD.retired_at IS NULL", "NEW.retired_at IS NOT NULL",
-                          "(to_jsonb(NEW) - 'retired_at') = (to_jsonb(OLD) - 'retired_at')"):
+                          "(to_jsonb(NEW) - 'retired_at') = (to_jsonb(OLD) - 'retired_at')",
+                          "current_user = ( SELECT pg_get_userbyid(fn.proowner)",
+                          "'public.supersede_mlc2_training_consent_policy_v1(text, text, '"):
             self.assertIn(condition, guard)
         # The door is named by this file's function alone.
         door = "willab.training_policy_supersede"
@@ -135,6 +138,17 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(fn.count("UPDATE public."), 1)
         self.assertLess(fn.index("TRAINING_POLICY_PREDECESSOR_HAS_ACTIVE_COPIES"), open_at)
         self.assertLess(fn.index("TRAINING_POLICY_SWITCH_IN_THE_PAST"), open_at)
+        # The corpus is held still before it is checked, and every copy not
+        # yet purged (active, purge_pending, or any later state) blocks.
+        lock_at = fn.index("LOCK TABLE public.training_corpus_items IN SHARE ROW "
+                           "EXCLUSIVE MODE;")
+        self.assertLess(lock_at, fn.index("FROM public.training_corpus_items item"))
+        self.assertIn("AND item.state <> 'purged'", fn)
+        self.assertNotIn("item.state = 'active'", fn)
+        publish = _squash((ROOT / "legal/phase1-2026.1/PUBLISH-3.5-2026-10-08.sql")
+                          .read_text())
+        self.assertIn("AND item.state <> 'purged') AS active_training_copies_under_v1",
+                      publish)
 
     def test_every_reader_ties_a_yes_to_a_policy_in_force_now(self):
         status = _squash(_latest("get_mlc2_training_consent_status_v2"))

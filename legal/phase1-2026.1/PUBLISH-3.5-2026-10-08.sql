@@ -49,7 +49,8 @@
 -- select just this SELECT (down to its semicolon) and press Run on its own.
 -- Expect: processing_policy_in_force = phase1-2026-10-08 (3.4),
 -- training_policies_in_force = {training-only-v1}, the_0458_function_exists
--- = true, active_training_copies_under_v1 = 0. The two "yes" counts tell
+-- = true, active_training_copies_under_v1 = 0 (it counts every copy under a
+-- v1 yes not yet purged, as 0458 does). The two "yes" counts tell
 -- you how many people will be asked to say yes again.
 
 SELECT
@@ -67,7 +68,7 @@ SELECT
   (SELECT count(*) FROM public.training_corpus_items item
      JOIN public.ml_consent_events e ON e.id = item.training_grant_event_id
     WHERE e.consent_policy_version = 'training-only-v1'
-      AND item.state = 'active') AS active_training_copies_under_v1;
+      AND item.state <> 'purged') AS active_training_copies_under_v1;
 
 -- ════════════════════════════════════════════════════════════════════════
 -- From here on: the publication. Run the whole file (or everything from
