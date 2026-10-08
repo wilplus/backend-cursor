@@ -2402,3 +2402,15 @@ founder signs in its place and the record says so on every file.
   words of all eight; the layout change to the locked prototype (four lines
   shown) is confirmed by the founder under the consent-screen lock before
   the frontend PR merges.
+
+**N69 · Counsel answers the 3.5 pack's four open questions (founder, chat,
+8 October 2026).** Relayed by the founder: (1) the training data is not
+special-category data, so no Art 9 basis is needed and the database's
+`article_9_treatment = 'not_applicable'` stands (Privacy 3.5's Art 9(2)(a)
+mention is surplus, tidied at the next version); (2) a model fine-tuned on
+speakers' text is anonymous, so it stays after a withdrawal; (3) the
+regurgitation test checking only withdrawn speakers' text is enough, and the
+memorisation rate does not gate door 4; (4) D4 confirmed: the corpus import
+rests on Art 6(1)(f). No code changes. Questions 7 (the six-year record) and
+1 (document 02's condition) were not part of this answer and stay open.
+Recorded in `legal/phase1-2026.1/22-…-SIGNED-2026-10-08.md` §5.
