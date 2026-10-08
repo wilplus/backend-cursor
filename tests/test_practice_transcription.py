@@ -202,8 +202,9 @@ class NoDirectProviderClientRemainsTests(unittest.TestCase):
         marker = 'operational_purpose_disabled("personalized_exercise_recommendation")'
         self.assertEqual(
             open("routes/v2/user_sessions.py", encoding="utf-8").read()
-            .count(marker), 8)  # + judge-attempt, helper-words (2026-09-25),
+            .count(marker), 9)  # + judge-attempt, helper-words (2026-09-25),
         # + exercise-rendered (2026-09-28), + the machine's check (2026-10-06)
+        # + the phone's timing of a try (2026-10-08, V4 B1.4)
         self.assertEqual(
             open("routes/v2/coach.py", encoding="utf-8").read()
             .count(marker), 4)  # + the practice judgement (2026-10-05, N45),

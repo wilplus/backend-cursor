@@ -485,3 +485,4 @@
 0447	a_take_draws_its_random_moments.sql
 0448	a_skip_keeps_an_empty_receipt.sql
 0449	the_machine_reads_willfidence.sql
+0450	a_practise_try_is_read_fast.sql

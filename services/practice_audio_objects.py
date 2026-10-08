@@ -198,6 +198,10 @@ def _record(
         _undo(database, attempt_id)
         return None
     _shadow_verdicts(database, inserted, practice)
+    # V4 B1.4: the try's fast read, timed from the request's arrival. Dark:
+    # it changes nothing the speaker gets, and a failure only logs (O5).
+    from services.v4_practice_read import record_for_attempt
+    record_for_attempt(database, inserted)
     return inserted
 
 
