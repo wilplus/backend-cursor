@@ -131,6 +131,9 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     # Take under their own codes.
     "coach_exercise_preference_by_coach", "error_presence_audit_by_coach",
     "coach_block_pick_by_coach", "coach_clip_exposures",
+    # A rater's V4 blind sheets (0453): the rater's own answers belong to the
+    # rater's account; the Take-keyed rows go with the Take.
+    "v4_moment_pick_sheets_by_rater", "v4_surer_sheets_by_rater",
     # A coach asked to listen again (0444): the coach's own ask belongs to
     # the coach's account; the Take-keyed twin goes with the Take.
     "coach_listen_again_requests_by_coach",
