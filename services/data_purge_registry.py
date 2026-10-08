@@ -1021,6 +1021,18 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("feedback_revision_reviewers", "feedback_revisions",
                     "rater_id", "principal", "external_review",
                     "derived_feedback", 300),
+    # rater_id is mixed. A coach row names the coach's owner principal (the
+    # entry above); an owner row names the speaker's USER id
+    # (record_root_phrase_skip_v1: a "no helper words" skip, its
+    # acquisition_principal_id NULL), which neither entry above reaches.
+    # The lineage wipe cannot erase it either: since 0327 the table's guard
+    # refuses every UPDATE, so it raised and the erasure stalled after
+    # deleting the rest. Founder 2026-10-08: such a row stops an account or
+    # a project deletion for review before anything is erased (left
+    # unplaced in data_purge_project_scope, like its siblings).
+    PurgeDependency("feedback_revision_owner_raters", "feedback_revisions",
+                    "rater_id", "user", "external_review",
+                    "derived_feedback", 300),
     PurgeDependency("confident_moment_bundle_projections",
                     "confident_moment_bundle_projections",
                     "acquisition_principal_id", "principal",
