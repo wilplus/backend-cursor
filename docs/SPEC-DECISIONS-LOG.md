@@ -2302,7 +2302,39 @@ confirmed again the five N63 answers (Q-B3, Q-B5, Q-B9, Q-B10, Q-B14 A).
   `TAKE_FEEDBACK_POLICY_V3_MODE=dark` on every service that runs the Take
   pipeline (V4 row B1.1b).
 
-**N66 · Sharing goes live in the Feedback walk (founder, 8 October 2026;
+**N66 · The founder signs three held items (founder, chat, 8 October
+2026: "I sign off on it all!").**
+1. **The training corpus admin page's words are signed.** Every word on the
+   frontend's `/admin/corpus` page ("Hide", "Restore", "Nothing imported
+   yet." and the rest) is signed copy. Nothing may keep that page hidden
+   for want of signed words; it stays behind the coach panel switch
+   (`NEXT_PUBLIC_COACH_PANEL_V2`), which is on in production.
+2. **Practise becomes part of the service: the founder signs the Privacy
+   and Terms change in place of counsel (N55, WQ3a B).** Counsel's review
+   of the wording was not obtained; the founder's signature stands in for
+   it, and the record says so. No draft existed when this was signed, so
+   Claude writes it, shows the founder the final text in chat, and it is
+   published as the next policy version through the existing hand-run
+   publish path only after he has read it. Activating that version is
+   what asks every speaker to accept it again; until then nothing changes
+   in the app. **Text signed** (chat, 8 October 2026): Privacy 3.4 and
+   Terms 3.4 as shown, drafted from 3.3 with only the practice passages
+   changed. Practice moves to Art 6(1)(b) and is no longer a separate
+   choice; skipping any exercise stays free. The coach's blind accuracy
+   check, whose only off switch was Personalised practice, now ends on a
+   written objection to contact@willpowerlab.com. Terms 3.4 does not carry
+   the unsigned packages rewrite of §2 (N44.4). Before publishing, the
+   acceptance tick and the Settings card for practice must go (a changed
+   consent prototype for the founder to sign), because the database
+   refuses a tick for a purpose the policy makes required.
+3. **The retention cleaner's first real deletion run (W3-B2).** First the
+   dry run's counts, per table, are shown to the founder in chat; only
+   after his second word ("go") does `RETENTION_CLEANER_LIVE` become True,
+   in its own reviewed change, and the first live run's results are
+   confirmed back to him. Deletion cannot be undone, so nothing is deleted
+   before that second word.
+
+**N67 · Sharing goes live in the Feedback walk (founder, 8 October 2026;
 build plan D-FW-20).** The founder, in the build chat: "I want the sharing
 built and switched on"; "you have my OK". CM2 had held the sharing screen's
 consent words for counsel; CM2 B (N53.2) let sharing switch on with the

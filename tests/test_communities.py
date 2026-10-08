@@ -202,7 +202,7 @@ def _share(db, take, owner="owner-1", **body):
 # ── the switches ──────────────────────────────────────────────────────────
 
 def test_the_switch_is_on_and_sharing_names_the_current_privacy_terms():
-    """COMMUNITIES_ENABLED is on from 2026-10-08 (founder, D-FW-20, N66;
+    """COMMUNITIES_ENABLED is on from 2026-10-08 (founder, D-FW-20, N67;
     counsel's review not obtained). CM2 B / Q-B6 A: the share policy version
     names the current Privacy/Terms, the same version the peer share and the
     blind check are on; a share records the signed words' version."""
