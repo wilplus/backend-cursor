@@ -2317,7 +2317,16 @@ confirmed again the five N63 answers (Q-B3, Q-B5, Q-B9, Q-B10, Q-B14 A).
    published as the next policy version through the existing hand-run
    publish path only after he has read it. Activating that version is
    what asks every speaker to accept it again; until then nothing changes
-   in the app.
+   in the app. **Text signed** (chat, 8 October 2026): Privacy 3.4 and
+   Terms 3.4 as shown, drafted from 3.3 with only the practice passages
+   changed. Practice moves to Art 6(1)(b) and is no longer a separate
+   choice; skipping any exercise stays free. The coach's blind accuracy
+   check, whose only off switch was Personalised practice, now ends on a
+   written objection to contact@willpowerlab.com. Terms 3.4 does not carry
+   the unsigned packages rewrite of §2 (N44.4). Before publishing, the
+   acceptance tick and the Settings card for practice must go (a changed
+   consent prototype for the founder to sign), because the database
+   refuses a tick for a purpose the policy makes required.
 3. **The retention cleaner's first real deletion run (W3-B2).** First the
    dry run's counts, per table, are shown to the founder in chat; only
    after his second word ("go") does `RETENTION_CLEANER_LIVE` become True,
