@@ -38,12 +38,13 @@
 --
 -- ── THE EFFECTIVE DATE ──────────────────────────────────────────────────
 --
--- Both texts say "Effective [[EFFECTIVE DATE]]" until the founder names the
--- day he runs this. STEP 1 registers NOTHING while a placeholder is in either
--- text (its WHERE clause). activate_phase1_policy_v1 stamps activated_at
--- with the moment it runs, so the date must be that day: set it in this
--- file AND in the two copy files, to the same bytes, in a reviewed change.
--- The version id stays phase1-2026-10-08 whatever day it runs.
+-- Both texts say "Effective 8 October 2026": the founder named that day on
+-- 2026-10-08 ("I will run it today"). activate_phase1_policy_v1 stamps
+-- activated_at with the moment it runs, so the date must be that day. If it
+-- runs on another day, change the date in this file AND in the two copy
+-- files first, to the same bytes. STEP 1 still registers nothing if a
+-- [[EFFECTIVE DATE]] placeholder is ever in either text (its WHERE clause).
+-- The version id is phase1-2026-10-08 whatever day it runs.
 --
 -- ── STEP 0 · COUNT THE PURPOSES BEFORE PUBLISHING ANYTHING ──────────────
 --
@@ -63,7 +64,7 @@ SELECT count(*) AS purposes_resolving,
 
 WITH c AS (SELECT
 $terms$WillpowerLab — Terms of Service
-Version 3.4. Effective [[EFFECTIVE DATE]].
+Version 3.4. Effective 8 October 2026.
 
 These terms are an agreement between you and Artur Willoński, operating under
 the name "WillpowerLab" from Poland ("WillpowerLab", "we", "us"). They govern
@@ -358,7 +359,7 @@ Contact: contact@willpowerlab.com (a postal address is provided on request to
 data subjects and to the supervisory authority)$terms$ AS terms,
 
 $privacy$WillpowerLab — Privacy Policy
-Version 3.4. Effective [[EFFECTIVE DATE]].
+Version 3.4. Effective 8 October 2026.
 
 This policy explains what WillpowerLab does with your personal data, who else
 receives it, how long we keep it, and how you get it deleted.

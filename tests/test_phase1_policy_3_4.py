@@ -9,8 +9,8 @@
   * the copy is 3.3 with only the practice passages changed, every signed
     3.4 passage present and 3.3's training and lending sections intact;
   * it records that counsel's review was not obtained;
-  * the effective date is a placeholder until the founder names the day,
-    and STEP 1 registers nothing while it is;
+  * the effective date is the day the founder named (8 October 2026), and
+    STEP 1 still refuses a placeholder;
   * it is not a migration, and it is meant to run only after 0451.
 """
 from __future__ import annotations
@@ -136,15 +136,13 @@ def test_counsel_review_is_recorded_as_not_obtained():
     assert "COUNSEL'S REVIEW WAS NOT OBTAINED" in body
 
 
-def test_the_date_waits_for_the_founder_and_step_one_refuses_it():
+def test_the_date_is_the_day_the_founder_named_and_step_one_refuses_a_placeholder():
     body = _script()
     assert "WHERE position('[[EFFECTIVE DATE]]' in c.terms) = 0" in body
     assert "AND position('[[EFFECTIVE DATE]]' in c.privacy) = 0" in body
     for tag in ("privacy", "terms"):
-        text = _quoted(tag)
-        assert text.startswith(
-            "WillpowerLab — " + ("Privacy Policy" if tag == "privacy"
-                                 else "Terms of Service") + "\nVersion 3.4. Effective ")
+        assert "Version 3.4. Effective 8 October 2026." in _quoted(tag)
+        assert "[[EFFECTIVE DATE]]" not in _quoted(tag)
 
 
 def test_it_is_not_a_migration_and_follows_0451():
