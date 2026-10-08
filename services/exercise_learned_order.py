@@ -13,6 +13,14 @@ distance) is editorial today. When all three hold —
 
 — ties are ordered by the learned helped rate on study-group speakers
 (``exercise_evaluation.train_rates``), trusted only at the per-exercise bar.
+
+ONLY SPEAKERS WITH THE TRAINING YES (3.5 pack, file 22 item E5; Privacy 3.5
+§4a, signed 2026-10-08). The order is learned from some speakers and serves
+every speaker, so the rates it learns, and the fair test that must pass
+first, count only the tries of speakers who hold the training yes when the
+jar is read (``pair_consent.user_holds_training_yes``, the pairs' own
+consent read). Anyone else is left out; a speaker who withdraws drops out at
+the next read (at most CACHE_SECONDS).
 Anything else keeps today's order exactly. The safety gate is untouched:
 this reorders an already-eligible pool and never adds to it.
 
@@ -43,7 +51,16 @@ def learned_rates(database: Any) -> tuple[Optional[dict[str, float]], str]:
     """({exercise_id: helped_rate} for trusted exercises, why) once the jar
     is unsealed and the fair test meets its bar; else (None, why)."""
     from services.exercise_evaluation import MIN_PER_EXERCISE, evaluate_jar
-    evaluation = evaluate_jar(database)
+    from services.pair_consent import user_holds_training_yes
+    memo: dict[str, bool] = {}
+
+    def keep(owner_user_id: str) -> bool:
+        if owner_user_id not in memo:
+            memo[owner_user_id] = bool(owner_user_id) and \
+                user_holds_training_yes(database, owner_user_id)
+        return memo[owner_user_id]
+
+    evaluation = evaluate_jar(database, keep_owner=keep)
     if evaluation.get("sealed"):
         return None, f"jar sealed: {evaluation.get('why_not')}"
     pile = evaluation.get("machine_only") or {}

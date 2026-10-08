@@ -37,7 +37,7 @@ speaker or a coach, and a rate here is about an exercise, never a person.
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from services.exercise_adequacy_labels import SCOREKEEPER_VERSION, label
 from services.exercise_fair_test import (
@@ -194,10 +194,23 @@ def _preference_rows(database: Any) -> Optional[list[dict]]:
         return None
 
 
-def evaluate_jar(database: Any, gate: Optional[dict] = None) -> dict:
+def record_owner(record: dict) -> str:
+    """The speaker a counter record is about (its exposure's owner)."""
+    exposure = record.get("exposure") if isinstance(record, dict) else None
+    return str((exposure or {}).get("owner_user_id") or "") \
+        if isinstance(exposure, dict) else ""
+
+
+def evaluate_jar(database: Any, gate: Optional[dict] = None, *,
+                 keep_owner: Optional[Callable[[str], bool]] = None) -> dict:
     """The evaluation once the bar is met; until then sealed, and why.
 
     ``gate`` is the counter's report when the caller already has it.
+    ``keep_owner``, when given, keeps only the records of speakers it
+    answers True for, before anything is learned or graded: the learned
+    order passes the training yes (3.5 E5). The bar itself is the
+    counter's, unfiltered; a filtered pile too thin for the fair test's own
+    bar simply does not meet it.
     """
     from services.confident_voice_practice import SIGNAL_RULES_VERSION
     head = {
@@ -218,6 +231,8 @@ def evaluate_jar(database: Any, gate: Optional[dict] = None) -> dict:
         return {**head, "sealed": True,
                 "why_not": "unreadable: " + ", ".join(unavailable)}
     records = cohort_records(signal_rules_version=SIGNAL_RULES_VERSION, **rows)
+    if keep_owner is not None:
+        records = [r for r in records if keep_owner(record_owner(r))]
     return {**head, "sealed": False, "why_not": None,
             "signal_rules_version": SIGNAL_RULES_VERSION,
             **build_evaluation(records, _preference_rows(database))}
