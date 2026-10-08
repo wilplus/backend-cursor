@@ -817,6 +817,7 @@ fi
 if [ "$LANE" = "released" ]; then
   hard migrations/a_failed_export_voids_its_release.sql
   hard migrations/a_failed_export_voids_its_release.sql
+fi
 
 # 0456 voids a release at the erasure request: one new void, one for the
 # releases holding a project's pairs, and one statement each in
