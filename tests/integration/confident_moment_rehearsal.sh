@@ -758,6 +758,13 @@ psql -q -d "$DB" -c "ALTER TABLE public.confidence_labels
 hard migrations/answer_counts_per_clip_are_soft_label_data.sql
 hard migrations/answer_counts_per_clip_are_soft_label_data.sql
 
+# 0443 (CM2 B, N53.2; Q-B6 A, N62; D-FW-6): a share records the words the
+# speaker saw. One nullable column on 0432's take_shares, which both lanes
+# carry. Both lanes, after 0442, as in the manifest. Twice: apply/reapply
+# idempotency. Its suite: tests/test_a_share_records_the_words_the_speaker_saw_postgres.py.
+hard migrations/a_share_records_the_words_the_speaker_saw.sql
+hard migrations/a_share_records_the_words_the_speaker_saw.sql
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

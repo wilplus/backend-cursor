@@ -478,3 +478,4 @@
 0440	a_speaker_may_change_a_judgement.sql
 0441	the_shadow_writer_keeps_the_pick_log.sql
 0442	answer_counts_per_clip_are_soft_label_data.sql
+0443	a_share_records_the_words_the_speaker_saw.sql

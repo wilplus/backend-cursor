@@ -472,12 +472,29 @@ class Config:
     # (services/lend_your_ear.other_voices); the per-Take share is the one
     # consent path that admits a speaker's moment to it.
     COMMUNITIES_ENABLED = False
-    # CM2 (N52.4): sharing asks for consent, so its words go to counsel
-    # first. This names the Phase-1 policy version that carries them; None
-    # until counsel approves and the version is published, and while None
-    # every share answers 409 TERMS_REACCEPT_REQUIRED ("None" still revokes).
-    # Each share row is stamped with it (take_shares.consent_version).
-    COMMUNITY_SHARE_POLICY_VERSION: str | None = None
+    # CM2 B (founder 2026-10-06, N53.2; Q-B6 A, N62): sharing switches on
+    # with the sharing screen, under the founder's own signed words for it
+    # (N54, WQ5 A / WQ6 A), without waiting for counsel; the founder took the
+    # risk stated on the panel ("people's voices reach others under words
+    # counsel has not checked, in the EU"). Sharing names the CURRENT
+    # Privacy/Terms: the Phase-1 policy version below (phase1-2026-10-02,
+    # Privacy 3.3 + Terms 3.3, scripts/phase1_policy_publish_3_3.sql). The
+    # share route refuses (409 TERMS_REACCEPT_REQUIRED) until the speaker's
+    # current authorization is on it or later; "None" still revokes without
+    # any version. Each share row is stamped with it (take_shares.
+    # consent_version) and with the version of the sharing screen's words
+    # the speaker saw (take_shares.share_words_version, 0443), which the
+    # screen sends. Still dark: COMMUNITIES_ENABLED above is the switch.
+    COMMUNITY_SHARE_POLICY_VERSION: str | None = "phase1-2026-10-02"
+    # The versions of the sharing screen's words a share may record (0443):
+    # the server's own list, so a share can only name words that were really
+    # signed and shown. "sharing-screen-2026-10-06" is the founder's signed
+    # sharing words (N54, WQ5 A / WQ6 A; docs/SIGNED-line-bank-2026-10-06.md,
+    # "Sharing"). When counsel or the founder changes those words, the new
+    # version is added here in the same PR as the screen that shows it; an
+    # old version stays listed while a screen that shows it may still be open.
+    # Any other version is refused (400 SHARE_WORDS_VERSION_UNKNOWN).
+    SHARE_WORDS_VERSIONS: tuple[str, ...] = ("sharing-screen-2026-10-06",)
 
     # THE COACH PANEL'S LEARNING ADDITIONS (founder 2026-10-01; migration
     # 0411), each dark behind its own constant, each a reviewed flip after

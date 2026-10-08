@@ -82,10 +82,15 @@ def v2_communities_list():
 @v2_bp.route("/user/takes/<take_id>/share", methods=["PUT"])
 @require_auth
 def v2_take_share(take_id):
-    """Body {general, community_ids, none}: share this Take with the
-    communities chosen and withdraw it from the rest; "none" stands alone
-    and withdraws it from every community. 409 TERMS_REACCEPT_REQUIRED
-    until the sharing policy version exists and the speaker is on it."""
+    """Body {general, community_ids, none, share_words_version}: share this
+    Take with the communities chosen and withdraw it from the rest; "none"
+    stands alone and withdraws it from every community. A share records
+    the version of the sharing screen's words the speaker saw
+    (share_words_version, 0443; 400 SHARE_WORDS_VERSION_REQUIRED without
+    it, 400 SHARE_WORDS_VERSION_UNKNOWN for a version not in
+    Config.SHARE_WORDS_VERSIONS) and answers 409 TERMS_REACCEPT_REQUIRED until the speaker's current
+    authorization is on the named Privacy/Terms (Q-B6 A). "none" needs
+    neither."""
     off = _off()
     if off:
         return off

@@ -1,8 +1,11 @@
 """Communities: a Take shared with the people who judge it (founder
 2026-10-06, decisions log N52.4; docs/FOUNDER-LOCK-feedback-walk-2026-10-06.md;
 migration 0432), dark behind ``Config.COMMUNITIES_ENABLED``; sharing also
-waits for ``Config.COMMUNITY_SHARE_POLICY_VERSION`` (None until counsel
-approves the sharing words, panel CM2).
+requires ``Config.COMMUNITY_SHARE_POLICY_VERSION``, the CURRENT Privacy/Terms
+(CM2 B, N53.2; Q-B6 A, N62: sharing goes live with the sharing screen under
+the founder's own signed words, without waiting for counsel), and each share
+records the version of the sharing screen's words the speaker saw
+(``take_shares.share_words_version``, migration 0443), sent by the screen.
 
 THE LOCK (N52.4): "After every finished review the speaker is asked whether
 to share that Take; several choices may be ticked: the general community,
@@ -21,11 +24,15 @@ secret already in config; with no secret set, creating and joining refuse
 (503) rather than keep a code in the clear. Joining is by pass code alone.
 
 THE SHARE is per Take, one row per community, stamped with the policy
-version the speaker accepted; "None" cannot be combined with any other
-choice and revokes every live row of the Take. A community the speaker does
-not belong to cannot be chosen; the general community is open to everyone.
-Withdrawal (fewer communities, or "None") never waits for the policy
-version: taking consent back is always possible.
+version the speaker accepted (Privacy/Terms) and with the version of the
+sharing screen's words they saw (``share_words_version``, which the screen
+sends and the route requires on every share, and which must be one of the
+server's own versions, ``Config.SHARE_WORDS_VERSIONS``); "None" cannot be combined
+with any other choice and revokes every live row of the Take. A community
+the speaker does not belong to cannot be chosen; the general community is
+open to everyone. Withdrawal (fewer communities, or "None") never waits for
+the policy version and carries no words version: taking consent back is
+always possible.
 
 THE QUEUE is the walk's other voices, served by the Lend your ear engine
 (``lend_your_ear.other_voices``; founder 2026-10-07, Q-B11 A, N62): at most
@@ -57,6 +64,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+import re
 import unicodedata
 import uuid
 from typing import Any, Optional
@@ -70,6 +78,9 @@ PASS_CODE_MAX = 128
 NAME_MAX = 80
 #: Domain separation for the pass-code key derived from the server secret.
 _KEY_LABEL = b"willab/community-pass-code/v1"
+#: The shape of a sharing-screen words version the screen may send (0443):
+#: a short id, nothing a person wrote.
+_WORDS_VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
 
@@ -238,10 +249,44 @@ def _share_choice(body: Any) -> tuple[Optional[dict], Optional[tuple[int, dict]]
             "community_ids": list(dict.fromkeys(str(i).lower() for i in ids))}, None
 
 
+def share_words_versions() -> tuple[str, ...]:
+    """The words versions a share may record (``Config.SHARE_WORDS_VERSIONS``)."""
+    from config import Config
+    versions = getattr(Config, "SHARE_WORDS_VERSIONS", ()) or ()
+    return tuple(str(v) for v in versions)
+
+
+def share_words_version_from(body: Any) -> Optional[str]:
+    """The version of the sharing screen's words the speaker saw, as the
+    screen sends it (``share_words_version``); None when missing, not a
+    short id, or not one of the server's own versions
+    (``Config.SHARE_WORDS_VERSIONS``): a share can only record words that
+    were signed and shown."""
+    fields: dict = body if isinstance(body, dict) else {}
+    value = fields.get("share_words_version")
+    if not isinstance(value, str) or not _WORDS_VERSION_RE.match(value):
+        return None
+    if value not in share_words_versions():
+        return None
+    return value
+
+
+def _words_version_refusal(body: Any) -> tuple[int, dict]:
+    """Why ``share_words_version_from`` gave None: nothing usable sent
+    (REQUIRED) or a well-formed id the server does not list (UNKNOWN)."""
+    fields: dict = body if isinstance(body, dict) else {}
+    value = fields.get("share_words_version")
+    if isinstance(value, str) and _WORDS_VERSION_RE.match(value):
+        return 400, {"code": "SHARE_WORDS_VERSION_UNKNOWN"}
+    return 400, {"code": "SHARE_WORDS_VERSION_REQUIRED"}
+
+
 def share_take(database: Any, *, owner_user_id: str, take_session_id: str,
                body: Any) -> tuple[int, dict]:
     """Share one Take with the communities chosen and withdraw it from the
-    rest; "None" withdraws it from every community."""
+    rest; "None" withdraws it from every community. A share names the
+    current Privacy/Terms (Q-B6 A) and records the words the speaker saw
+    (CM2 B, 0443); "None" needs neither."""
     if not communities_enabled():
         return _not_found()
     session = database.v2_get_session_by_id(str(take_session_id))
@@ -254,6 +299,9 @@ def share_take(database: Any, *, owner_user_id: str, take_session_id: str,
     if choice["none"]:
         database.revoke_take_shares(take, keep_community_ids=[])
         return 200, {"take_session_id": take, "community_ids": [], "none": True}
+    words_version = share_words_version_from(body)
+    if words_version is None:
+        return _words_version_refusal(body)
     version = share_policy_version()
     from services.lend_your_ear import accepted_policy_at_least
     if not version or not accepted_policy_at_least(database, owner_user_id, version):
@@ -271,9 +319,11 @@ def share_take(database: Any, *, owner_user_id: str, take_session_id: str,
     chosen = ([general_id] if want_general else []) + wanted_private
     for community_id in chosen:
         database.upsert_take_share(take_session_id=take, owner_user_id=str(owner_user_id),
-                                   community_id=community_id, consent_version=version)
+                                   community_id=community_id, consent_version=version,
+                                   share_words_version=words_version)
     database.revoke_take_shares(take, keep_community_ids=chosen)
-    return 200, {"take_session_id": take, "community_ids": chosen, "none": False}
+    return 200, {"take_session_id": take, "community_ids": chosen, "none": False,
+                 "share_words_version": words_version}
 
 
 # ── the queue ─────────────────────────────────────────────────────────────
