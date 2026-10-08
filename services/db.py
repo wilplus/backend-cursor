@@ -15142,6 +15142,39 @@ class DatabaseService:
                .eq("id", str(request_id)).execute())
         return (res.data or [None])[0]
 
+    def request_coach_listen_again(self, take_session_id: str, snippet_id: str) -> int:
+        """The disagreement flag (QG12a A; migration 0444): one open blind ask
+        per coach with a judgment of record on the clip. Returns the rows
+        written. Raises on failure: the caller (services.coach_listen_again)
+        logs it and the speaker's answer stands."""
+        result = self.client.rpc("request_coach_listen_again_v1", {
+            "p_take_session_id": str(take_session_id), "p_snippet_id": str(snippet_id),
+        }).execute()
+        data = result.data
+        return int(data if isinstance(data, (int, float)) else 0)
+
+    def mark_coach_listen_again_heard(self, snippet_id: str, coach_id: str) -> int:
+        """The coach's new blind answer landed (0444): close their open ask on
+        the moment. Returns the rows closed. Raises on failure."""
+        result = self.client.rpc("mark_coach_listen_again_heard_v1", {
+            "p_snippet_id": str(snippet_id), "p_coach_id": str(coach_id),
+        }).execute()
+        data = result.data
+        return int(data if isinstance(data, (int, float)) else 0)
+
+    def list_open_coach_listen_again(self, coach_id: str, session_ids: list[str]) -> list[dict]:
+        """This coach's open asks on these Takes (0444): the Take, the moment
+        and the signed line's key; nothing else is on the row. Raises on
+        failure."""
+        ids = [str(s) for s in session_ids or [] if s]
+        if not ids:
+            return []
+        res = (self.client.table("coach_listen_again_requests")
+               .select("take_session_id, snippet_id, line_key")
+               .eq("coach_id", str(coach_id)).is_("heard_at", "null")
+               .in_("take_session_id", ids).execute())
+        return list(res.data or [])
+
     def list_exercise_coach_requests_for_sessions(
         self, session_ids: list[str],
     ) -> dict[tuple[str, str], dict]:

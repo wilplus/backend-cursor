@@ -162,6 +162,8 @@ def follow_up_for_judgement(
         # The sentence is a promise: without the request it would be false.
         if now == "coach_request" and not raised:
             return "none"
+    if kind == "ambiguity":
+        _flag_disagreement(database, take_session_id, snippet_id)
     return now
 
 
@@ -249,6 +251,8 @@ def _answer_after_feedback(
                 clip=clip, matched=matched, raised_on="open"):
             return "none" if now == "coach_request" else now
     _set_answer_kind(database, take_session_id, snippet_id, answer_kind)
+    if answer_kind == "ambiguity":
+        _flag_disagreement(database, take_session_id, snippet_id)
     return now
 
 
@@ -269,6 +273,7 @@ def practice_judgement(database: Any, practice: Any, answer: Any,
     if request is None:
         return None
     if practice_disagrees(answer, machine_decision):
+        _flag_disagreement(database, take, snip)
         return "ambiguity" if _set_answer_kind(
             database, take, snip, "ambiguity") else None
     if request.get("answer_kind"):
@@ -276,6 +281,17 @@ def practice_judgement(database: Any, practice: Any, answer: Any,
     kind = str(request.get("kind") or "error")
     return kind if _set_answer_kind(
         database, take, snip, kind, only_if_unset=True) else None
+
+
+def _flag_disagreement(database: Any, take_session_id: str,
+                       snippet_id: str) -> None:
+    """QG12a A (0444): the speaker's answer disagrees with the machine's
+    read, so every coach who already judged the moment is asked to listen
+    again, blind (services.coach_listen_again). A side write: never raises,
+    never in the answer's way."""
+    from services.coach_listen_again import flag_disagreement
+    flag_disagreement(database, take_session_id=take_session_id,
+                      snippet_id=snippet_id)
 
 
 def _set_answer_kind(database: Any, take_session_id: str, snippet_id: str,

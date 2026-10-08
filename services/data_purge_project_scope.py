@@ -131,6 +131,9 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     # Take under their own codes.
     "coach_exercise_preference_by_coach", "error_presence_audit_by_coach",
     "coach_block_pick_by_coach", "coach_clip_exposures",
+    # A coach asked to listen again (0444): the coach's own ask belongs to
+    # the coach's account; the Take-keyed twin goes with the Take.
+    "coach_listen_again_requests_by_coach",
     # Retention schedule v1.4: product records and job evidence that name
     # only the person, never a project. Deleted with the account (or kept
     # 12 months as job evidence); a project purge leaves them. Placed only
