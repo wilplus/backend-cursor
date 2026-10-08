@@ -24,7 +24,7 @@ nothing left.
   a yes given later makes older pairs releasable; a withdrawal makes them
   not, and **voids any release that carried them**; the job's sweep then
   deletes the object. Revocation purges the copies, whatever door 2 says.
-- An erasure does not wait for that refresh (0455): an account deletion or
+- An erasure does not wait for that refresh (0456): an account deletion or
   project deletion **request** voids every release holding one of its pairs
   at once (`owner_erasure_requested`, `project_erasure_requested`), so the
   void no longer needs the rows the purge deletes. The project's void runs
@@ -178,6 +178,17 @@ without the withdrawn pairs.
   database judges against the release row (the file's sha256; the
   manifest's sha256 and its signature). A check that cannot run is named in
   the job's row and never holds a release back.
+- **One file per surface per week, and a failed export leaves no copy
+  (0455).** The export reads the week's row first and writes nothing when
+  there is one, standing or voided: the cron may fire twice in a week, and
+  the second fire used to put the week's key again over the standing
+  release's objects. It then writes the release row and its owners before
+  any object, so a racing fire is refused at its own row. If anything after
+  the row fails (a put, a write, or the mark refusing a pair that stopped
+  being releasable after it was read), `void_failed_pair_release_v1` voids
+  the release (`export_failed`) and sends any marked pair back to waiting;
+  the sweep deletes what was put. Before this, a refused mark left a live
+  release whose file no refresh and no project erasure could find.
 - Variables on the **web** service (the weekly cron calls the web app):
 
 ```

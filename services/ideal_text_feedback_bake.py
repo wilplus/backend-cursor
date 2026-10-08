@@ -345,6 +345,86 @@ def enqueue_bake(arc_id: Any, actor_id: Any, recording_kind: Any) -> bool:
         return False
 
 
+#: How long answers to one document are gathered before one rebake runs.
+#: A walk answers bookmark after bookmark; each answer retires the stored
+#: block, so baking after every one would run the Manager eight times for a
+#: walk of eight and keep only the last.
+REBAKE_DEBOUNCE_SECONDS = 30
+
+
+def document_actor_of(session: Any) -> str:
+    """Whose document a Take belongs to: the account, else (a guest Take) its
+    owner principal — the same rule the end-of-run bake uses
+    (`analysis_worker._document_actor`). Empty when neither is known."""
+    if not isinstance(session, Mapping):
+        return ""
+    return str(session.get("user_id") or session.get("owner_principal_id")
+               or "")
+
+
+def request_rebake_after_answer(arc_id: Any, actor_id: Any) -> bool:
+    """Ask for one rebake after a speaker's answer. Never raises, never waits.
+
+    FOUNDER 2026-10-08 (wait-time fix F3). Every answer writes to the mutable
+    feedback surface, and any write there retires the stored block
+    (`ideal_text_feedback_surface_touched_at_v1`), so the first open of the
+    Ideal Text after a walk ran the whole Manager live. Until now only the
+    end of an analysis run baked again.
+
+    DEBOUNCED PER DOCUMENT, trailing. The first answer in a window takes a
+    short-lived Redis key and schedules ONE bake for the end of the window;
+    every later answer in that window finds the key and adds nothing. The
+    bake runs after the window closes, so it sees every answer given inside
+    it. An answer after that opens the next window. The bake stamps its own
+    start (0351), so an answer that lands while it computes still retires it
+    and the reader computes live — correctness never rests on this timing.
+
+    A false return is not a failure: no broker, no flag, or a window already
+    open. A failed enqueue releases the key so the next answer can try again.
+    """
+    arc = str(arc_id or "")
+    actor = str(actor_id or "")
+    if not arc or not actor:
+        return False
+    try:
+        if not _bake_enabled():
+            return False
+        from services import job_queue
+        if not job_queue.queue_configured():
+            return False
+        conn = job_queue.get_redis()
+        if conn is None:
+            return False
+        key = f"ideal-text-rebake-window:{arc}:{actor}"
+        if not conn.set(key, "1", nx=True, ex=REBAKE_DEBOUNCE_SECONDS):
+            return False
+        queued = job_queue.enqueue(
+            BAKE_TASK_PATH, arc, actor,
+            delay_seconds=REBAKE_DEBOUNCE_SECONDS,
+            queue=job_queue.bake_queue_name(),
+            # Its own id, not the end-of-run bake's: rescheduling a job that
+            # already sits in the queue would leave it in two places.
+            rq_job_id=f"ideal-text-rebake:{arc}:{actor}",
+        )
+        if not queued:
+            conn.delete(key)
+        return bool(queued)
+    except Exception as error:
+        # The window key, if taken, expires on its own.
+        logger.warning("ideal-text feedback rebake not requested arc=%s: %s",
+                       arc_id, error, exc_info=True)
+        return False
+
+
+def request_rebake_for_take(session: Any, *, written: bool = True) -> bool:
+    """`request_rebake_after_answer` for the document a Take belongs to, once
+    the answer's write succeeded. One unbranched line for the route."""
+    if not written or not isinstance(session, Mapping):
+        return False
+    return request_rebake_after_answer(session.get("arc_id"),
+                                       document_actor_of(session))
+
+
 def run_pending_bake(arc_id: str, actor_id: str) -> None:
     """RQ entry point. Bakes the head as it stands when the job runs.
 

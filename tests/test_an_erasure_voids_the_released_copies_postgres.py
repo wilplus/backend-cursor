@@ -1,4 +1,4 @@
-"""An erasure voids the released copies, executed (0455; door 2, the erasure
+"""An erasure voids the released copies, executed (0456; door 2, the erasure
 promise of N48.4 Q14 A and Q17 A; PLF-T2, PLF-T3, L3).
 
 Run on the released rehearsal lane through the thin SQL client of
@@ -24,7 +24,7 @@ services/pair_consent.stamp does, and object storage faked. Pins:
     made, by the system's start and by the operator's confirm;
   * the completion run voids before its purge deletes the pairs, and its
     sweep deletes the objects: nothing waits for the weekly job;
-  * requests made before 0455 get what their request would have done.
+  * requests made before 0456 get what their request would have done.
 """
 from __future__ import annotations
 
@@ -337,7 +337,7 @@ def test_the_completion_run_voids_before_its_purge_and_sweeps_the_copies(db, fak
     release = _release(db, [pair], [principal])
     key = _one(db, "SELECT storage_key FROM public.pair_releases WHERE id = %s",
                (release,))
-    # Asked for before 0455 and long due: no void ran, and the run takes it
+    # Asked for before 0456 and long due: no void ran, and the run takes it
     # before anything another module left due.
     request = str(_one(db, """
         INSERT INTO public.project_deletion_requests (
@@ -378,10 +378,10 @@ def test_a_dry_run_sweeps_nothing(db):
         "voided_reason": "owner_erasure_requested", "voided": True, "purged": False}
 
 
-# ── Before 0455, and the doors ────────────────────────────────────────────
+# ── Before 0456, and the doors ────────────────────────────────────────────
 
 
-def test_requests_made_before_0455_get_what_their_request_would_have_done(db):
+def test_requests_made_before_0456_get_what_their_request_would_have_done(db):
     _grants(db)
     owner, _ = window._yes(db)
     person, _ = window._yes(db)

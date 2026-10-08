@@ -4,7 +4,7 @@ decisions log N48.4: Q14 A, Q19 A; migration 0422).
 A request is recorded at once and blocks processing at once: the status
 function counts it as a block, and the request cancels in-flight jobs,
 permits and carryovers, takes the person's pairs out of the releasable
-pool (PLF-T2, PLF-T3) and voids every pair release that holds one (0455).
+pool (PLF-T2, PLF-T3) and voids every pair release that holds one (0456).
 Nothing of the person's is deleted for seven days, and until then the
 requester may cancel, which lifts the block. When the window has passed the
 completion run (services/deletion_completion.py) starts the purge.

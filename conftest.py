@@ -178,6 +178,17 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
         )
 
 
+@pytest.fixture(autouse=True)
+def _fresh_processing_gate_memory():
+    """Each test starts with the core gate remembering nothing (S1): a YES
+    one test earned must never let another test's caller through."""
+    from services.processing_authorization import clear_gate_cache
+
+    clear_gate_cache()
+    yield
+    clear_gate_cache()
+
+
 @pytest.fixture(scope="session")
 def repo_scan():
     """The one-walk-per-session repo scanner (tests/repo_scan.py) for

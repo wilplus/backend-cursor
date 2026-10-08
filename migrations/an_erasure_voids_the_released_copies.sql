@@ -1,4 +1,4 @@
--- 0455 · An erasure voids the released copies (door 2, ML-8/ML-9; the
+-- 0456 · An erasure voids the released copies (door 2, ML-8/ML-9; the
 --        erasure promise of N48.4 Q14 A and Q17 A; PLF-T2, PLF-T3, L3).
 --
 -- THE GAP. Door 2 exports (draft, final) pairs once a week to the private
@@ -143,7 +143,7 @@ BEGIN
      WHERE pair.owner_principal_id = p_acquisition_principal_id
        AND pair.releasable;
     GET DIAGNOSTICS v_count = ROW_COUNT;
-    -- 0455: the copies already released go now, not at the weekly refresh,
+    -- 0456: the copies already released go now, not at the weekly refresh,
     -- which no longer finds a pair once the purge has deleted it.
     PERFORM public.void_pair_releases_v1(ARRAY(
         SELECT listed.release_id FROM public.pair_release_owners listed
@@ -238,7 +238,7 @@ BEGIN
         now() + interval '7 days', p_idempotency_key
     )
     RETURNING * INTO request;
-    -- 0455: the project's released copies are voided now, seven days
+    -- 0456: the project's released copies are voided now, seven days
     -- before any purge.
     PERFORM public.void_project_pair_releases_v1(p_project_id);
     RETURN request;
@@ -292,7 +292,7 @@ BEGIN
     SELECT id INTO purge_id FROM public.data_purge_requests
      WHERE acquisition_principal_id = request.acquisition_principal_id
        AND idempotency_key = 'project-deletion:' || request.id::text;
-    -- 0455: at the latest before the purge deletes the pairs.
+    -- 0456: at the latest before the purge deletes the pairs.
     PERFORM public.void_project_pair_releases_v1(request.project_id);
 
     UPDATE public.project_deletion_requests
@@ -342,7 +342,7 @@ BEGIN
     SELECT id INTO purge_id FROM public.data_purge_requests
      WHERE acquisition_principal_id = request.acquisition_principal_id
        AND idempotency_key = 'project-deletion:' || request.id::text;
-    -- 0455: at the latest before the purge deletes the pairs.
+    -- 0456: at the latest before the purge deletes the pairs.
     PERFORM public.void_project_pair_releases_v1(request.project_id);
 
     UPDATE public.project_deletion_requests

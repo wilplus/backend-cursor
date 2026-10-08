@@ -338,6 +338,24 @@ class IdealTextCoreReadError(RuntimeError):
     "Could not read it" and "there is none" must never share an answer.
     """
 
+_UUID_TEXT = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{12}")
+
+
+def _group_rows(rows: Any, key: str, wanted: list) -> dict:
+    """``{value: rows}`` for every wanted value (empty when none), each list
+    in the read's order and without the grouping column, so it is exactly
+    what the per-value read would have returned."""
+    grouped: dict = {value: [] for value in wanted}
+    for row in rows or []:
+        if not isinstance(row, dict) or row.get(key) not in grouped:
+            continue
+        grouped[row[key]].append(
+            {name: value for name, value in row.items() if name != key})
+    return grouped
+
+
 class DatabaseService:
     def __init__(self):
         self.client: Client = self._build_supabase_client()
@@ -8661,6 +8679,30 @@ class DatabaseService:
                            arc_id, e)
             return []
 
+    def list_slide_helper_words_log_for_slides(
+        self, arc_id: str, user_id: str, slide_indexes: list,
+    ) -> Optional[dict]:
+        """`list_slide_helper_words_log` for several Slides in ONE read
+        (batched Paragraph histories, F5): ``{slide_index: rows}``, each list
+        exactly what the per-Slide read returns, in the same order. None on
+        any failure, so the caller falls back to the per-Slide read."""
+        slides = sorted({s for s in slide_indexes if isinstance(s, int)})
+        if not arc_id or not user_id or not slides:
+            return None
+        try:
+            rows = (self.client.table("ideal_text_slide_helper_words_log")
+                    .select("phrases,created_at,slide_index")
+                    .eq("arc_id", str(arc_id))
+                    .eq("user_id", str(user_id))
+                    .in_("slide_index", slides)
+                    .order("id")
+                    .execute().data) or []
+        except Exception as e:
+            logger.warning("list slide helper words logs failed arc=%s: %s",
+                           arc_id, e, exc_info=True)
+            return None
+        return _group_rows(rows, "slide_index", slides)
+
     def replace_slide_helper_words(self, arc_id: str, user_id: str,
                                    slide_index: int, rows: list) -> bool:
         """Replace ONE Slide's rows wholesale (delete, then insert).
@@ -8763,6 +8805,35 @@ class DatabaseService:
             logger.warning("list_accepted_rewrite_revisions failed arc=%s "
                            "part=%s: %s", arc_id, part_id, e, exc_info=True)
             return []
+
+    def list_accepted_rewrite_revisions_for_parts(
+        self, arc_id: str, user_id: str, part_ids: list,
+    ) -> Optional[dict]:
+        """`list_accepted_rewrite_revisions` for several Paragraphs in ONE
+        read (F5): ``{part_id (lowercase): rows}``, each list exactly what the
+        per-Paragraph read returns, in the same order. Only canonical UUIDs
+        are asked for; None on any failure, so the caller falls back."""
+        wanted = sorted({str(p).lower() for p in part_ids
+                         if _UUID_TEXT.fullmatch(str(p))})
+        if not arc_id or not user_id or not wanted:
+            return None
+        try:
+            rows = (self.client.table("ideal_text_part_revision")
+                    .select("text,created_at,part_id")
+                    .eq("arc_id", str(arc_id))
+                    .eq("user_id", str(user_id))
+                    .in_("part_id", wanted)
+                    .eq("provenance", "accepted_rewrite")
+                    .order("id")
+                    .execute().data) or []
+        except Exception as e:
+            logger.warning("list_accepted_rewrite_revisions_for_parts failed "
+                           "arc=%s: %s", arc_id, e, exc_info=True)
+            return None
+        for row in rows:
+            if isinstance(row, dict) and row.get("part_id") is not None:
+                row["part_id"] = str(row["part_id"]).lower()
+        return _group_rows(rows, "part_id", wanted)
 
     def replace_ideal_text_parts(
         self, arc_id: str, user_id: str, parts: list,
@@ -11777,7 +11848,7 @@ class DatabaseService:
 
     def draw_v4_random_moments(self, take_session_id: str) -> Optional[dict]:
         """Draw one Take's seeded random 20% of moments from its stored dark
-        frame (migration 0447, V4 B1.2). The database reads the frame and
+        frame (migration 0455, V4 B1.2). The database reads the frame and
         the seed itself; a second call returns the stored draw. Raises on
         failure: the caller (services.v4_random_moments.draw) logs it and
         the Take stands."""
@@ -16115,6 +16186,34 @@ class DatabaseService:
         }).execute()
         return int(res.data or 0)
 
+    def get_pair_release_for_week(self, surface: str, week_start: str) -> Optional[dict]:
+        """The week's one release of a surface, standing or voided (UNIQUE
+        (surface, week_start), 0405), or None: the export reads it before
+        writing anything. Raises."""
+        res = (self.client.table("pair_releases")
+               .select("id,voided_at,voided_reason,purged_at")
+               .eq("surface", str(surface)).eq("week_start", str(week_start))
+               .limit(1).execute())
+        return (res.data or [None])[0]
+
+    def void_failed_pair_release(self, release_id: str) -> bool:
+        """``void_failed_pair_release_v1`` (0455): the one release a failed
+        export wrote is voided ('export_failed') and its pairs go back to
+        waiting; the weekly sweep deletes its objects. True when this call
+        voided it, False when another path had. Raises on failure or on an
+        answer that is not a boolean."""
+        res = self.client.rpc("void_failed_pair_release_v1", {
+            "p_release_id": str(release_id),
+        }).execute()
+        data: Any = res.data
+        if isinstance(data, list):
+            data = data[0] if data else None
+        if isinstance(data, dict):
+            data = data.get("void_failed_pair_release_v1")
+        if not isinstance(data, bool):
+            raise RuntimeError("void_failed_pair_release_v1 gave no answer")
+        return data
+
     def list_pair_releases(self, limit: int = 20) -> list[dict]:
         """The newest releases first, with their manifests (the research
         screen sums the speaker-disjoint split counts from them, ML-7)."""
@@ -16919,6 +17018,29 @@ class DatabaseService:
             logger.warning("list_practice_adoptions failed arc=%s: %s",
                            arc_id, e)
             return []
+
+    def list_practice_adoptions_for_slides(
+        self, arc_id: str, user_id: str, slide_indexes: list,
+    ) -> Optional[dict]:
+        """`list_practice_adoptions` for several Slides in ONE read (F5):
+        ``{slide_index: rows}``, each list exactly what the per-Slide read
+        returns, in the same order. None on any failure (caller falls back)."""
+        slides = sorted({s for s in slide_indexes if isinstance(s, int)})
+        if not arc_id or not user_id or not slides:
+            return None
+        try:
+            rows = (self.client.table("ideal_text_practice_adoptions")
+                    .select("before_text,after_text,created_at,slide_index")
+                    .eq("arc_id", str(arc_id))
+                    .eq("user_id", str(user_id))
+                    .in_("slide_index", slides)
+                    .order("id")
+                    .execute().data) or []
+        except Exception as e:
+            logger.warning("list_practice_adoptions_for_slides failed "
+                           "arc=%s: %s", arc_id, e, exc_info=True)
+            return None
+        return _group_rows(rows, "slide_index", slides)
 
     def set_confident_voice_practice_attempt_coach_decision(
         self, practice_id: str, attempt_id: str, decision: str,

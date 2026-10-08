@@ -63,6 +63,13 @@ def record_moment_event(database: Any, *, user_id: str, snippet_id: str,
         owner_user_id=str(user_id), take_session_id=take_id,
         snippet_id=str(snippet_id), event=str(event),
         co_exposed=co_exposed_from(fields))
+    if recorded and session.get("arc_id"):
+        # An open or a skip retires the stored bookmarks too (0429); one
+        # debounced rebake per document puts them back (F3). Never raises.
+        from services.ideal_text_feedback_bake import (
+            request_rebake_after_answer,
+        )
+        request_rebake_after_answer(session.get("arc_id"), str(user_id))
     follow_up = "none"
     if event == "opened" and judgement_after_feedback_enabled():
         follow_up = follow_up_for_open(

@@ -19,7 +19,9 @@ files and fail on:
   · a quarantine list that no longer matches — an --ignore the script lacks
     turns green into red for environmental reasons, and one the script has
     but CI doesn't means the local run skips a module CI would have caught;
-  · a CI gate with no counterpart step in the script.
+  · a CI gate with no counterpart step in the script;
+  · a fetch of origin/main that changes how deep the clone is — the one
+    line that must NOT copy the workflow (CloneDepthTests).
 
 Run: python3 -m unittest tests.test_local_ci_mirror
 """
@@ -27,6 +29,9 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
+import subprocess
+import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -221,6 +226,120 @@ class UsabilityTests(unittest.TestCase):
 
     def test_the_venv_is_not_committed(self):
         self.assertIn(".venv-ci/", read(".gitignore"))
+
+
+class CloneDepthTests(unittest.TestCase):
+    """The fetch of origin/main is the one line that must NOT copy the workflow.
+
+    CI's checkout is shallow already, so `git fetch --depth=1` costs it
+    nothing. On a full clone the same command writes `shallow` into the git
+    dir that the main checkout and every worktree share, and all of them lose
+    their history behind origin/main's tip. That is what the ledger step did
+    from the day it landed (#911, 2026-10-06): `git rev-list --count
+    origin/main` went to 1, merge-bases with older branches stopped
+    resolving, and test_legal_citations went red in every worktree. So both
+    fetches keep the clone's depth.
+
+    Demonstrated, not grepped: each test clones a real upstream, full or
+    shallow, adds a worktree as on the founder's Mac, moves the upstream on,
+    and runs the script's own code from the worktree."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        # A sandboxed git: none of the developer's config (signing, hooks),
+        # and no GIT_DIR inherited from a calling hook, which would point
+        # these commands at the real repository.
+        self.env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        self.env.update(
+            HOME=self.tmp, XDG_CONFIG_HOME=self.tmp, GIT_CONFIG_NOSYSTEM="1",
+            GIT_AUTHOR_NAME="gate", GIT_AUTHOR_EMAIL="gate@example.invalid",
+            GIT_COMMITTER_NAME="gate", GIT_COMMITTER_EMAIL="gate@example.invalid",
+        )
+        self.upstream = os.path.join(self.tmp, "upstream")
+        self.git(self.tmp, "init", "-q", "-b", "main", self.upstream)
+        for n in range(3):
+            self.git(self.upstream, "commit", "-q", "--allow-empty", "-m", f"c{n}")
+
+    def git(self, cwd: str, *args: str) -> str:
+        return subprocess.run(
+            ["git", *args], cwd=cwd, env=self.env, check=True,
+            capture_output=True, text=True,
+        ).stdout.strip()
+
+    def clone(self, *, shallow: bool) -> tuple[str, str]:
+        clone = os.path.join(self.tmp, "clone")
+        worktree = os.path.join(self.tmp, "worktree")
+        # file:// so --depth is honoured; a plain path is a local clone, which
+        # ignores it.
+        depth = ["--depth=1"] if shallow else []
+        self.git(self.tmp, "clone", "-q", *depth, "file://" + self.upstream, clone)
+        self.git(clone, "worktree", "add", "-q", "--detach", worktree)
+        self.git(self.upstream, "commit", "-q", "--allow-empty", "-m", "c3")
+        return clone, worktree
+
+    def assert_depth_kept(self, clone: str, *, shallow: bool) -> None:
+        self.assertEqual(self.git(clone, "rev-parse", "origin/main"),
+                         self.git(self.upstream, "rev-parse", "main"),
+                         "origin/main was not brought up to date")
+        self.assertEqual(self.git(clone, "rev-parse", "--is-shallow-repository"),
+                         "true" if shallow else "false",
+                         "the fetch changed whether the clone is shallow")
+        # Full: all four commits. Shallow: still one, as CI fetches it; a
+        # plain fetch would pull in history the job does not need.
+        self.assertEqual(self.git(clone, "rev-list", "--count", "origin/main"),
+                         "1" if shallow else "4")
+
+    def run_ledger_check(self, worktree: str) -> None:
+        """local_ci.sh's own ledger_check(), lifted out of the script and run
+        with a stand-in interpreter: the fetch is real, the checker is not."""
+        fn = re.search(r"^ledger_check\(\) \{\n.*?^\}$", SCRIPT, re.S | re.M)
+        if fn is None:
+            self.fail("ledger_check() not found in scripts/local_ci.sh")
+        os.makedirs(os.path.join(worktree, "docs", "audit"))
+        open(os.path.join(worktree, "docs", "audit", "LEDGER.md"), "w").close()
+        subprocess.run(["bash", "-c", fn.group(0) + "\nledger_check"], cwd=worktree,
+                       env=dict(self.env, PY="true"), check=True, capture_output=True)
+
+    def run_trigger(self, worktree: str) -> None:
+        """The real scripts/rehearsal_trigger.sh, copied into the worktree it
+        judges (it finds its repository from its own path). 0 and 1 are both
+        verdicts; anything else means it never got as far as judging."""
+        os.makedirs(os.path.join(worktree, "scripts"))
+        script = shutil.copy(os.path.join(ROOT, "scripts", "rehearsal_trigger.sh"),
+                             os.path.join(worktree, "scripts"))
+        done = subprocess.run(["bash", script, "--quiet"], cwd=worktree, env=self.env,
+                              capture_output=True, text=True)
+        self.assertIn(done.returncode, (0, 1), done.stderr)
+
+    def test_the_ledger_fetch_leaves_a_full_clone_full(self):
+        clone, worktree = self.clone(shallow=False)
+        self.run_ledger_check(worktree)
+        self.assert_depth_kept(clone, shallow=False)
+
+    def test_the_ledger_fetch_stays_one_commit_deep_in_a_shallow_clone(self):
+        clone, worktree = self.clone(shallow=True)
+        self.run_ledger_check(worktree)
+        self.assert_depth_kept(clone, shallow=True)
+
+    def test_the_rehearsal_trigger_leaves_a_full_clone_full(self):
+        clone, worktree = self.clone(shallow=False)
+        # The trigger fetches only when origin/main is missing.
+        self.git(clone, "update-ref", "-d", "refs/remotes/origin/main")
+        self.run_trigger(worktree)
+        self.assert_depth_kept(clone, shallow=False)
+
+    def test_the_rehearsal_trigger_stays_one_commit_deep_in_a_shallow_clone(self):
+        clone, worktree = self.clone(shallow=True)
+        self.git(clone, "update-ref", "-d", "refs/remotes/origin/main")
+        self.run_trigger(worktree)
+        self.assert_depth_kept(clone, shallow=True)
+
+    def test_the_rehearsal_trigger_does_not_fetch_when_origin_main_is_there(self):
+        clone, worktree = self.clone(shallow=False)
+        before = self.git(clone, "rev-parse", "origin/main")
+        self.run_trigger(worktree)
+        self.assertEqual(self.git(clone, "rev-parse", "origin/main"), before)
 
 
 if __name__ == "__main__":

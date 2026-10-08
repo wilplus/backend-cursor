@@ -809,12 +809,21 @@ if [ "$LANE" = "released" ]; then
   hard migrations/practice_is_part_of_the_service.sql
 fi
 
-# 0455 voids a release at the erasure request: one new void, one for the
+# 0455 (door 2, ML-9): a failed export voids its release. One new function
+# over 0405's pair_releases and feedback_pairs, applied above; nothing is
+# re-issued. Released lane only, where its suite runs; after 0454, as in the
+# manifest. Twice: apply/reapply idempotency. Its suite:
+# tests/test_a_failed_export_voids_its_release_postgres.py.
+if [ "$LANE" = "released" ]; then
+  hard migrations/a_failed_export_voids_its_release.sql
+  hard migrations/a_failed_export_voids_its_release.sql
+
+# 0456 voids a release at the erasure request: one new void, one for the
 # releases holding a project's pairs, and one statement each in
 # stop_phase1_learning_v1 (0422), request_project_deletion_v1 (0364),
 # start_due_project_deletion_v1 (0422) and confirm_project_deletion_v1
 # (0380), all applied above. Released lane only, where its suite runs; after
-# 0454, as in the manifest. Twice: apply/reapply idempotency.
+# 0455, as in the manifest. Twice: apply/reapply idempotency.
 if [ "$LANE" = "released" ]; then
   hard migrations/an_erasure_voids_the_released_copies.sql
   hard migrations/an_erasure_voids_the_released_copies.sql

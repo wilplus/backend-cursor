@@ -31,6 +31,7 @@ from routes.v2.arcs import (
 )
 from routes.v2.blueprint import v2_bp
 from routes.v2.common import _is_valid_uuid, _resolve_snippet_audio_url
+from services.ideal_text_feedback_bake import request_rebake_for_take
 from services.db import db
 from services.create_take import session_owned_by_principal
 from services.project_ownership import GUEST_OWNER_HEADER
@@ -860,10 +861,8 @@ def v2_user_suggestion_feedback(snippet_id):
 
         snip = db.get_snippet_by_id(snippet_id)
         if not snip or str(snip.get("session_id")) != session_id:
-            return jsonify({
-                "code": "SNIPPET_NOT_FOUND",
-                "error": "That moment is not part of this session",
-            }), 404
+            return jsonify({"code": "SNIPPET_NOT_FOUND",
+                            "error": "That moment is not part of this session"}), 404
 
         ok = db.insert_user_suggestion_feedback(
             snippet_id=snippet_id,
@@ -877,6 +876,7 @@ def v2_user_suggestion_feedback(snippet_id):
                 if body.get("suggestion_version") is not None else None
             ),
         )
+        request_rebake_for_take(session, written=bool(ok))  # F3
         # ── DECISION LEDGER (founder 2026-07-20, gradual refinement):
         # a star tap is also a durable per-PHRASE decision — applied bakes
         # into every future version, dismissed is never re-offered,
@@ -1414,10 +1414,7 @@ def v2_post_take_feedback_response(take_session_id):
             **row,
         )
         if result is None:
-            return jsonify({
-                "code": "V2_ERROR",
-                "error": "Could not save this response.",
-            }), 500
+            return jsonify({"code": "V2_ERROR", "error": "Could not save this response."}), 500
         outcome = str(result.get("outcome") or "")
         if outcome == "not_member":
             return jsonify({
@@ -1443,6 +1440,7 @@ def v2_post_take_feedback_response(take_session_id):
                 "code": "V2_ERROR",
                 "error": "Could not save this response.",
             }), 500
+        request_rebake_for_take(session)  # F3: the answer retired the bake
         # Downstream product and canonical writes use the database-derived
         # snippet provenance, never the request echo.
         row = {

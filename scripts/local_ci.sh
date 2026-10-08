@@ -171,9 +171,18 @@ step "Complexity ratchet" "$PY" scripts/complexity_ratchet.py
 step "Silent-except ratchet" "$PY" scripts/except_ratchet.py
 
 # Audit ledger (row X1). Same condition and same base as the workflow step.
+# The fetch is the one line that does NOT copy it. CI's checkout is already
+# shallow, so --depth=1 costs it nothing; on a full clone it writes `shallow`
+# into the git dir the main checkout and every worktree share, and all of
+# them lose their history behind origin/main's tip (#911, 2026-10-06). So the
+# fetch keeps the clone's depth (test_local_ci_mirror.CloneDepthTests).
 ledger_check() {
   [ -f docs/audit/LEDGER.md ] || { echo "no docs/audit/LEDGER.md — skipped"; return 0; }
-  git fetch -q --depth=1 origin main 2>/dev/null || true
+  if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+    git fetch -q --depth=1 origin main 2>/dev/null || true
+  else
+    git fetch -q origin main 2>/dev/null || true
+  fi
   "$PY" scripts/ledger_check.py --base origin/main
 }
 step "Audit ledger check" ledger_check

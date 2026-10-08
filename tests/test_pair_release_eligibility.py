@@ -93,6 +93,10 @@ class _Db:
         # speaker's assignment, read after this decision; not under test here.
         return {o: "train" for o in owners}
 
+    def get_pair_release_for_week(self, surface, week_start):
+        return next((r for r in self.releases
+                     if (r["surface"], r["week_start"]) == (surface, week_start)), None)
+
     def insert_pair_release(self, **fields):
         row = {"id": f"rel-{len(self.releases) + 1}", **fields}
         self.releases.append(row)
