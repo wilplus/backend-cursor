@@ -705,7 +705,16 @@ class _ChangesRun:
                     _v4_draw = draw(db, _arm_sid)
                     # V4 B1.3: once the moments are first drawn, the
                     # machine's willfidence read is queued, off this path.
+                    # V4 B1.5: the paragraph each moment belongs to, bound
+                    # once, before the read is queued (it reads the map).
                     if (_v4_draw or {}).get("outcome") == "drawn":
+                        from services.v4_pick_outcomes import map_paragraphs
+                        map_paragraphs(db, _arm_sid, _v3_frame, _v3_doc,
+                                       served_text=self.served_text,
+                                       slide_regions=self.slide_regions,
+                                       parts=lambda: self.deps.locked_parts(
+                                           self.arc_id, str(self.user_id),
+                                           self.served_text))
                         from services.willfidence import enqueue_read
                         enqueue_read(_arm_sid)
 
