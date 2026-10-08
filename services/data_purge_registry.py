@@ -775,6 +775,15 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "take_session_id", "take", "delete", "derived_feedback", 59),
     PurgeDependency("v4_willfidence_takes", "v4_willfidence_takes",
                     "take_session_id", "take", "delete", "derived_feedback", 59),
+    # V4 B1.5 (0451): the moment-to-paragraph map and each moment's outcome.
+    # Derived, internal: they go with the Take (an outcome also goes with
+    # the next Take it was measured against).
+    PurgeDependency("v4_moment_paragraphs", "v4_moment_paragraphs",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("v4_pick_outcomes", "v4_pick_outcomes",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("v4_pick_outcomes_next", "v4_pick_outcomes",
+                    "next_take_session_id", "take", "delete", "derived_feedback", 59),
     PurgeDependency("v3_detector_reconciliation",
                     "take_feedback_detector_reconciliation",
                     "take_session_id", "take", "external_review",

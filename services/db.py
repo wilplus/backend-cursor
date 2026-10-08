@@ -11856,6 +11856,23 @@ class DatabaseService:
         }).execute()
         return self._rpc_row(result.data)
 
+    def record_v4_moment_paragraphs(self, take_session_id: str,
+                                    paragraph_map: list) -> Optional[dict]:
+        """A Take's moment-to-Paragraph map, once (migration 0451, V4 B1.5).
+        Raises on failure: the caller logs it and the Take stands."""
+        result = self.client.rpc("record_v4_moment_paragraphs_v1", {
+            "p_take_session_id": str(take_session_id), "p_map": paragraph_map,
+        }).execute()
+        return self._rpc_row(result.data)
+
+    def compute_v4_pick_outcomes(self, next_take_session_id: str) -> Optional[dict]:
+        """The previous Take's outcomes, once both Takes are read (migration
+        0451, V4 B1.5). Raises on failure: the caller logs it."""
+        result = self.client.rpc("compute_v4_pick_outcomes_v1", {
+            "p_next_take_session_id": str(next_take_session_id),
+        }).execute()
+        return self._rpc_row(result.data)
+
     def get_confidence_labels_by_snippet_ids(self, snippet_ids: list, *,
                                              strict: bool = False) -> dict:
         """{snippet_id: [label rows]} for the given snippets. {} on anything
