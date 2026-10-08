@@ -137,15 +137,16 @@ BEGIN
     IF NULLIF(changing, '') IS NOT NULL AND changing = OLD.id::text THEN
         RETURN NEW;
     END IF;
-    -- The video is part of the answer (0446): once resolved, it changes
-    -- only through the resolver, so the history row and the request row
-    -- always agree on which video went with which answer.
+    -- The words and the video are part of the answer (0446): once
+    -- resolved, they change only through the resolver, so the history row
+    -- and the request row always agree on which answer was given.
     IF OLD.resolution IS NOT NULL AND (
         NEW.resolution IS DISTINCT FROM OLD.resolution
         OR NEW.resolved_exercise_id IS DISTINCT FROM OLD.resolved_exercise_id
         OR NEW.resolved_exercise_version IS DISTINCT FROM OLD.resolved_exercise_version
         OR NEW.resolved_by IS DISTINCT FROM OLD.resolved_by
         OR NEW.resolved_at IS DISTINCT FROM OLD.resolved_at
+        OR NEW.answer_text IS DISTINCT FROM OLD.answer_text
         OR NEW.answer_video_ref IS DISTINCT FROM OLD.answer_video_ref)
     THEN
         RAISE EXCEPTION 'EXERCISE_COACH_REQUEST_ALREADY_RESOLVED';

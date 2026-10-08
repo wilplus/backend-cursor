@@ -288,6 +288,11 @@ def test_changing_the_video_keeps_the_old_one_in_history_and_the_new_on_the_row(
         with pytest.raises(psycopg2.Error, match="ALREADY_RESOLVED"):
             cur.execute("UPDATE public.exercise_coach_requests SET answer_video_ref = 'v/x.mp4' "
                         "WHERE id = %s", (request["id"],))
+    # Nor do its words (Grok re-check, 0446): only the resolver, with history.
+    with db.cursor() as cur:
+        with pytest.raises(psycopg2.Error, match="ALREADY_RESOLVED"):
+            cur.execute("UPDATE public.exercise_coach_requests SET answer_text = 'by hand' "
+                        "WHERE id = %s", (request["id"],))
     # A new video (the app's upload on a given answer): an answer change.
     second = _resolve(db, request["id"], "coach-1", "exercise_chosen",
                       exercise_id="ex-1", version=1, share=False, video="v/new.mp4")
