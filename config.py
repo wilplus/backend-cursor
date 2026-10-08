@@ -409,7 +409,7 @@ class Config:
     # praise or again (services/practice_check.py); the five-answer route
     # stays for the screens that still use it. Off until the walk's
     # screens ship: no screen calls the route yet.
-    MACHINE_PRACTICE_CHECK_ENABLED = False
+    MACHINE_PRACTICE_CHECK_ENABLED = True
 
     # PHASE 4 of the after-practice paths (founder 2026-10-01, F3, F4): the
     # peer lane. On, a Voice Album moment can be lent to other ears (share
