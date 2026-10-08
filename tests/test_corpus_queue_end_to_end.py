@@ -269,6 +269,14 @@ def on():
 
 
 @pytest.fixture
+def off():
+    # The import switch ships ON since 2026-10-08 (founder: "turn it all ON");
+    # the closed behaviour is pinned by closing it here explicitly.
+    with patch("config.Config.TRAINING_IMPORT_ENABLED", False):
+        yield
+
+
+@pytest.fixture
 def fake():
     store = FakeDB()
     with patch.object(v2_coach, "db", store), patch("services.db.db", store):
@@ -457,7 +465,7 @@ def test_playback_refuses_a_speaker_and_an_anonymous_caller(on, fake):
     assert status == 401
 
 
-def test_playback_is_closed_with_the_switch(fake):
+def test_playback_is_closed_with_the_switch(off, fake):
     resp, status = _play(str(uuid.UUID(int=1)))
     assert status == 410 and resp.get_json()["code"] == "PHASE2_DISABLED"
 
@@ -506,7 +514,8 @@ def test_unsignable_audio_is_503_never_a_raw_reference(on, fake):
 def test_with_the_switch_off_an_import_queue_answers_as_before(fake):
     with patch("config.Config.TRAINING_IMPORT_ENABLED", True):
         sid = _import(fake)
-    body, status = _queue(sid)
+    with patch("config.Config.TRAINING_IMPORT_ENABLED", False):
+        body, status = _queue(sid)
     assert status == 200
     assert body["queue"] == [] and body["count"] == 0
 

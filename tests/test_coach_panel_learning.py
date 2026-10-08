@@ -189,7 +189,7 @@ class OffTests(unittest.TestCase):
     the coach-panel switches on from 2026-10-02 ("go with all of them in that
     order"), then 6a (N25) and 6d (N26) on the same day after the 3.3
     wording and document 02 v1.1; 6d and 8 went off again on 2026-10-03
-    (N29)."""
+    (N29); 8 came back on 2026-10-08 (founder: "turn it all ON")."""
     SWITCHES = ("COACH_EXERCISE_PREFERENCE_ENABLED", "ERROR_PRESENCE_AUDIT_ENABLED",
                 "COACH_BLOCK_PICK_ENABLED", "COACH_WORD_PAIRS_ENABLED",
                 "DETECTOR_TRAINING_AUTHORISED")
@@ -202,7 +202,7 @@ class OffTests(unittest.TestCase):
             self._patches.append(p)
             self.addCleanup(p.stop)
 
-    def test_the_legally_gated_switches_stay_off(self):
+    def test_the_legally_gated_switches_ship_as_the_founder_set_them(self):
         # Read the live default with the patches lifted, never by reloading
         # config (a reload would hand every other test a second Config class).
         for p in self._patches:
@@ -215,7 +215,8 @@ class OffTests(unittest.TestCase):
             # Off again from 2026-10-03 (F1 Repair Plan Phase 0, N29): the
             # fit does not exist and document 02 v1.1 §9 keeps it off.
             self.assertFalse(_live.DETECTOR_TRAINING_AUTHORISED)
-            self.assertFalse(_live.COACH_BLOCK_PICK_ENABLED)
+            # ON again from 2026-10-08 (founder: "turn it all ON").
+            self.assertTrue(_live.COACH_BLOCK_PICK_ENABLED)
         finally:
             for p in self._patches:
                 p.start()

@@ -258,8 +258,10 @@ class DoorTests(unittest.TestCase):
         """Door 1 opened 2026-10-01 ("open door 1"); door 2 opened the same
         day for exercise_script ("open door 2 for surface exercise_script",
         N16) and then for praise_line and clearer_version by their own
-        sentences (C4, N18). The retired DPO dataset lane stays dark; the
-        Phase 7 coach-word surfaces have no sentence yet."""
+        sentences (C4, N18). Doors 3 and 4 opened 2026-10-08 for the same
+        three surfaces (founder: "turn it all ON"). The retired DPO dataset
+        lane stays dark; the Phase 7 coach-word surfaces have no sentence
+        yet."""
         from config import Config
         self.assertTrue(Config.MLC2_TRAINING_SWITCH_ENABLED)
         self.assertTrue(Config.MLC2_PAIR_RELEASES_ENABLED)
@@ -275,8 +277,10 @@ class DoorTests(unittest.TestCase):
                             or "no signing key" in reason, (surface, reason))
         for held in ("coach_moment_line", "coach_take_word"):
             self.assertIn("no founder sentence", pr.why_not(Config, held) or "")
-        self.assertFalse(Config.MLC2_TRAINING_ENABLED)
-        self.assertFalse(Config.MLC2_PROMOTION_ENABLED)
+        self.assertTrue(Config.MLC2_TRAINING_ENABLED)
+        self.assertTrue(Config.MLC2_PROMOTION_ENABLED)
+        self.assertEqual(Config.TRAINING_SURFACES, three)
+        self.assertEqual(Config.PROMOTION_SURFACES, three)
 
 
 class ExportTests(unittest.TestCase):

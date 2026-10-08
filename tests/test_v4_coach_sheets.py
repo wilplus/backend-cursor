@@ -23,14 +23,17 @@ def on(monkeypatch):
     monkeypatch.setattr(cs, "rater_role", lambda uid: "founder" if uid == "founder" else "coach")
 
 
-def test_the_switch_is_off_by_default_and_every_door_404s(monkeypatch):
+def test_the_switch_is_on_by_default_and_every_door_404s_when_off(monkeypatch):
     from config import Config
+    # ON since 2026-10-08 (founder: "turn it all ON"); still a code constant.
+    src = (ROOT / "config.py").read_text()
+    assert "    V4_COACH_SHEETS_ENABLED = True\n" in src
+    assert 'getenv("V4_COACH_SHEETS_ENABLED")' not in src
+    assert Config.V4_COACH_SHEETS_ENABLED is True
     monkeypatch.setattr(Config, "V4_COACH_SHEETS_ENABLED", False)
     assert cs.pick_queue(None, rater_id="c")[0] == 404
     assert cs.surer_answer(None, rater_id="c", sheet_id="s", body={})[0] == 404
     assert cs.fill_pick_sheets(None, rater_id="c", week="w") == []
-    src = (ROOT / "config.py").read_text()
-    assert "V4_COACH_SHEETS_ENABLED = False" in src
 
 
 def test_the_sheet_holds_v4s_and_v3s_moments_among_three():
