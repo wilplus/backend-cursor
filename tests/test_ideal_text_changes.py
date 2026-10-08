@@ -462,29 +462,15 @@ def test_a_v2_take_is_still_filtered_to_its_frozen_set():
 # ---------------------------------------------------------------------------
 
 S2 = "22222222-2222-4222-8222-222222222222"
-S3 = "33333333-3333-4333-8333-333333333333"
 
 
-def _service_row(snippet_id, membership_id, candidate_id):
+def _lineaged_row(snippet_id, membership_id, candidate_id):
+    """A V3 row whose membership froze: the shape the service serves."""
     return {
         **_v3_row(snippet_id),
-        "mlc3_service": {
-            "membership_id": membership_id, "candidate_id": candidate_id,
-        },
+        "candidate_id": candidate_id,
+        "feedback_membership_id": membership_id,
     }
-
-
-class _AnsweredDB(FakeDB):
-    def __init__(self, owner_keys=None, fail=False):
-        self.owner_keys = owner_keys or []
-        self.fail = fail
-        self.asked = []
-
-    def list_feedback_v3_owner_response_keys(self, membership_ids):
-        self.asked.append(list(membership_ids))
-        if self.fail:
-            raise RuntimeError("owner responses unreachable")
-        return self.owner_keys
 
 
 def _statuses(run):
@@ -492,22 +478,19 @@ def _statuses(run):
 
 
 def test_a_yes_on_the_legacy_route_marks_the_row_approved_and_keeps_it():
-    db = _AnsweredDB()
-    run = _run_for_playback(_deps(db))
+    # The bare FakeDB raises on any read it does not model, so the marker
+    # passing here also proves it asked the database nothing.
+    run = _run_for_playback(_deps(FakeDB()))
     run.changes = [_v3_row(S1), _v3_row(S2)]
     run.v3_replaced_changes = True
     run.responded_ids = {f"cand:{S1}"}
     run.responses_by_id = {f"cand:{S1}": "yes"}
     run._mark_answered_service_items()
     assert _statuses(run) == [(f"cand:{S1}", "approved"), (f"cand:{S2}", None)]
-    # No served row carried service fields, so nothing was asked of the
-    # service tables.
-    assert db.asked == []
 
 
 def test_any_other_answer_marks_the_row_dismissed_and_keeps_it():
-    db = _AnsweredDB()
-    run = _run_for_playback(_deps(db))
+    run = _run_for_playback(_deps(FakeDB()))
     run.changes = [_v3_row(S1)]
     run.v3_replaced_changes = True
     run.responded_ids = {f"cand:{S1}"}
@@ -516,45 +499,36 @@ def test_any_other_answer_marks_the_row_dismissed_and_keeps_it():
     assert _statuses(run) == [(f"cand:{S1}", "dismissed")]
 
 
-def test_an_answer_on_the_service_route_marks_by_membership_and_candidate():
-    db = _AnsweredDB(owner_keys=[
-        {"membership_id": "m-1", "candidate_id": "c-1",
-         "response": "confident_yes"},
-    ])
-    run = _run_for_playback(_deps(db))
+def test_only_the_legacy_route_decides_a_served_row():
+    """2026-10-06: the join to the MLC-3 service route's table went with
+    `mlc3_service`, which no production row ever carried. A lineaged row, or
+    one holding a stray block, is decided by the legacy answer alone, and the
+    marker reads nothing from the database (the bare FakeDB would raise)."""
+    answered = "55555555-5555-4555-8555-555555555555"
+    run = _run_for_playback(_deps(FakeDB()))
     run.changes = [
-        _service_row(S1, "m-1", "c-1"),
-        _service_row(S2, "m-1", "c-2"),
-        _v3_row(S3),
+        _lineaged_row(S1, "m-1", "c-1"),
+        {**_lineaged_row(S2, "m-1", "c-2"),
+         "mlc3_service": {"membership_id": "m-1", "candidate_id": "c-2"}},
+        _v3_row(answered),
     ]
     run.v3_replaced_changes = True
+    run.responded_ids = {f"cand:{answered}"}
+    run.responses_by_id = {f"cand:{answered}": "confident_yes"}
     run._mark_answered_service_items()
     assert _statuses(run) == [
-        (f"cand:{S1}", "approved"), (f"cand:{S2}", None), (f"cand:{S3}", None),
+        (f"cand:{S1}", None), (f"cand:{S2}", None),
+        (f"cand:{answered}", "approved"),
     ]
-    assert db.asked == [["m-1"]]
 
 
 def test_an_unanswered_take_serves_every_v3_row_untouched():
-    db = _AnsweredDB()
-    run = _run_for_playback(_deps(db))
-    rows = [_service_row(S1, "m-1", "c-1"), _v3_row(S2)]
+    run = _run_for_playback(_deps(FakeDB()))
+    rows = [_lineaged_row(S1, "m-1", "c-1"), _v3_row(S2)]
     run.changes = [dict(row) for row in rows]
     run.v3_replaced_changes = True
     run._mark_answered_service_items()
     assert run.changes == rows
-
-
-def test_a_failed_service_read_degrades_to_not_answered_not_to_blank():
-    db = _AnsweredDB(fail=True)
-    run = _run_for_playback(_deps(db))
-    run.changes = [_service_row(S1, "m-1", "c-1")]
-    run.v3_replaced_changes = True
-    run.log.run("changes.answered_service_items",
-                run._mark_answered_service_items)
-    assert _statuses(run) == [(f"cand:{S1}", None)]
-    assert any("answered_service_items" in str(entry)
-               for entry in run.log.payload().get("degraded", []))
 
 
 def test_the_lock_gate_and_the_page_share_one_undecided_rule():

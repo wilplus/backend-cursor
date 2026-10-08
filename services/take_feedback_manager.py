@@ -362,18 +362,24 @@ def _machine_readings(raw: dict) -> dict:
 #: `rank_key` (negated rank numbers), versions and machine readings to the
 #: browser.
 #:
-#: WHERE THE LIST COMES FROM (checked against frontend origin/main df875245,
-#: 2026-10-05). The frontend has exactly one reader of served `changes` /
+#: WHERE THE LIST COMES FROM (checked against frontend origin/main 41f80568,
+#: 2026-10-06). The frontend has exactly one reader of served `changes` /
 #: `style_changes` rows: `mapDocumentSuggestion` in
 #: src/services/api/idealText.ts (called only by `mapDocumentSuggestions`,
 #: on `body.changes`, `body.style_changes`, `layers.changes`,
 #: `layers.style_changes`). `CLIENT_READ_ROW_FIELDS` is every top-level key it
 #: reads, including `readSuggestionSpan`'s legacy top-level `start` / `end`.
 #: Its helpers (`mapCoachRequest`, `mapSuggestionEvidence`,
-#: `mapPracticeExercise`, `mapFirstClientService`, `mapLearningExposures`,
-#: `mapCueKeys`) read only inside the value they are handed. Every component
-#: downstream consumes the mapped object, never the raw row.
+#: `mapPracticeExercise`, `mapLearningExposures`, `mapCueKeys`) read only
+#: inside the value they are handed. Every component downstream consumes the
+#: mapped object, never the raw row.
 #: `tests/test_verbal_lanes_take_document_n48_1.py` pins this list.
+#:
+#: `mlc3_service` LEFT THE LIST (2026-10-06). Frontend #615 (ML-15,
+#: 2026-10-05) removed its only reader, `mapFirstClientService`, with the
+#: MLC-3 service lane, and the server stopped building it on 2026-10-06; no
+#: production row had ever carried it (`_refresh_service_enrollment` in
+#: services/mlc3_first_client_feedback.py has the account).
 #:
 #: `UNRENDERED_ROW_FIELDS` ride the speaker's item without being read yet, by
 #: decision: data may reach the design-locked screens unrendered for the
@@ -388,7 +394,7 @@ CLIENT_READ_ROW_FIELDS = frozenset({
     "snippet_id", "take_session_id", "evidence", "take_index", "block_key",
     "visual", "pending_better_version", "pending_copy", "cue_keys",
     "praise_line", "rewrite_move", "snippet_audio_ref", "start_offset_ms",
-    "duration_ms", "practice_exercise", "mlc3_service", "learning_exposures",
+    "duration_ms", "practice_exercise", "learning_exposures",
 })
 #: The coach's shared answer in words, `{kind, text, video_url?}`
 #: (`confident_voice_practice.coach_shared_answer`). No number, no draft.

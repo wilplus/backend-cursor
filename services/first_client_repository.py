@@ -286,21 +286,6 @@ class FirstClientRepository:
             logger.warning("Feedback V3 service freeze failed: %s", error)
             return None
 
-    def prepare_feedback_v3_service_context(
-        self, payload: dict,
-    ) -> Optional[dict]:
-        try:
-            result = self.client.rpc(
-                "prepare_feedback_v3_service_context_v1", payload,
-            ).execute()
-            data = result.data
-            if isinstance(data, list):
-                return data[0] if data and isinstance(data[0], dict) else None
-            return data if isinstance(data, dict) else None
-        except Exception as error:
-            logger.warning("Feedback V3 service context failed: %s", error)
-            return None
-
     def record_take_feedback_coverage(self, row: dict) -> Optional[bool]:
         """One row per served Take (0437, D-ML-5; contract 24c/24d/25).
 
@@ -329,6 +314,17 @@ class FirstClientRepository:
             logger.warning("take coverage write failed take=%s: %s",
                            take_id, _error_head(error))
             return None
+
+    def list_take_feedback_coverage(self, limit: int = 50000) -> list[dict]:
+        """Every served Take's floor, for the founder's V4 exit gate (BEXIT)
+        only; never a route's read (AC-9). [] on failure."""
+        try:
+            return list(self.client.table("take_feedback_coverage")
+                        .select("take_session_id,floor_met").limit(limit)
+                        .execute().data or [])
+        except Exception as error:  # noqa: BLE001 -- a report, logged
+            logger.warning("take coverage read failed: %s", _error_head(error))
+            return []
 
     def ack_feedback_v3_service_render(self, payload: dict) -> Optional[dict]:
         try:

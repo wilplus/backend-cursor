@@ -340,11 +340,62 @@ class NoticeVersionTests(unittest.TestCase):
         with patch("services.processing_authorization.ProcessingAuthorizationService", _Broken):
             self.assertFalse(epa._on_notice_version(None, "take-2"))
 
+    def test_an_objection_that_cannot_be_read_counts_as_one(self):
+        class _Broken:
+            def __init__(self, db):
+                raise RuntimeError("down")
+        with patch("services.processing_authorization.ProcessingAuthorizationService", _Broken):
+            self.assertTrue(epa._objected(None, "take-2"))
+
+    def test_an_objection_is_read_for_the_takes_speaker(self):
+        calls = []
+
+        class _Rpc:
+            def __init__(self, value):
+                self.data = value
+
+            def execute(self):
+                return self
+
+        class _Client:
+            def __init__(self, value):
+                self.value = value
+
+            def rpc(self, name, params):
+                calls.append((name, params))
+                return _Rpc(self.value)
+
+        for value, objected in ((True, True), (False, False), (None, True)):
+            class _Service:
+                def __init__(self, db, value=value):
+                    self.client = _Client(value)
+
+                def take_acquisition_principal(self, take):
+                    return "principal-1"
+            with patch("services.processing_authorization.ProcessingAuthorizationService", _Service):
+                self.assertIs(epa._objected(None, "take-2"), objected)
+        self.assertEqual(calls[0], ("has_blind_check_objection_v1",
+                                    {"p_acquisition_principal_id": "principal-1"}))
+
 
 @AUDIT_ON
 @patch("services.verbal_cues._practice_permitted", lambda db, take: not str(take).startswith("off-"))
 @patch("services.error_presence_audit._on_notice_version", lambda db, take: not str(take).startswith("old-"))
+@patch("services.error_presence_audit._objected", lambda db, take: str(take).startswith("obj-"))
 class AuditTests(unittest.TestCase):
+    def test_a_speaker_who_objected_is_out_of_the_pool(self):
+        # Privacy 3.4 (N66.2): practice no longer switches the check off; a
+        # written objection does (0454), whatever the practice choice says.
+        class _Objected(_Db):
+            def list_audit_candidates(self, errors):
+                rows = super().list_audit_candidates(errors)
+                for r in rows[:6]:
+                    r["take_session_id"] = "obj-" + r["take_session_id"]
+                return rows
+        written = epa.sample_for_coach(_Objected(), coach_id="c", rng=random.Random(3))
+        self.assertTrue(written)
+        self.assertFalse(any(str(w.get("take_session_id", "")).startswith("obj-") for w in written))
+
     def test_a_speaker_not_yet_on_the_three_three_notice_is_out_of_the_pool(self):
         # 15 §2: the balancing test holds only for a speaker who has read
         # the line; until the re-acceptance nobody is sampled.

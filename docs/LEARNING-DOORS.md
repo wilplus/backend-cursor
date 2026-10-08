@@ -171,7 +171,7 @@ without the withdrawn pairs.
   manifest's sha256 and its signature). A check that cannot run is named in
   the job's row and never holds a release back.
 - **One file per surface per week, and a failed export leaves no copy
-  (0454).** The export reads the week's row first and writes nothing when
+  (0455).** The export reads the week's row first and writes nothing when
   there is one, standing or voided: the cron may fire twice in a week, and
   the second fire used to put the week's key again over the standing
   release's objects. It then writes the release row and its owners before

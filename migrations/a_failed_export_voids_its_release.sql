@@ -1,4 +1,4 @@
--- 0454 · A failed export voids its release (door 2, ML-9; the revocation
+-- 0455 · A failed export voids its release (door 2, ML-9; the revocation
 --        promise of ML-8: every copy that left can be voided and swept).
 --
 -- THE GAP. services/pair_release.py::export_surface wrote the week's
@@ -78,7 +78,7 @@ GRANT EXECUTE ON FUNCTION public.void_failed_pair_release_v1(UUID)
     TO service_role;
 
 COMMENT ON FUNCTION public.void_failed_pair_release_v1(UUID) IS
-    '0454: voids the one release a failed door 2 export wrote '
+    '0455: voids the one release a failed door 2 export wrote '
     '(voided_reason export_failed) and sends its pairs back to waiting; '
     'the weekly sweep deletes its objects. A release already voided keeps '
     'its reason. True when this call voided it.';

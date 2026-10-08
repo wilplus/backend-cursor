@@ -799,11 +799,22 @@ hard migrations/a_coach_may_change_their_answer.sql
 hard migrations/a_skip_keeps_an_empty_receipt.sql
 hard migrations/a_skip_keeps_an_empty_receipt.sql
 
-# 0454 (door 2, ML-9): a failed export voids its release. One new function
+# 0454 (N55, N66.2): practice is part of the service where the active policy
+# requires it, and the blind check's written objection. Its functions read
+# 0361's consent choices and 0363's purge graph, which only the released lane
+# carries. Released lane only, after 0453 (0449 to 0453 are applied by their
+# own suites), as in the manifest. Twice: apply/reapply idempotency. Its
+# suite: tests/test_practice_is_part_of_the_service_postgres.py.
+if [ "$LANE" = "released" ]; then
+  hard migrations/practice_is_part_of_the_service.sql
+  hard migrations/practice_is_part_of_the_service.sql
+fi
+
+# 0455 (door 2, ML-9): a failed export voids its release. One new function
 # over 0405's pair_releases and feedback_pairs, applied above; nothing is
-# re-issued. Released lane only, where its suite runs; after 0448 (0449-0453
-# are not applied by this recipe), as in the manifest. Twice: apply/reapply
-# idempotency. Its suite: tests/test_a_failed_export_voids_its_release_postgres.py.
+# re-issued. Released lane only, where its suite runs; after 0454, as in the
+# manifest. Twice: apply/reapply idempotency. Its suite:
+# tests/test_a_failed_export_voids_its_release_postgres.py.
 if [ "$LANE" = "released" ]; then
   hard migrations/a_failed_export_voids_its_release.sql
   hard migrations/a_failed_export_voids_its_release.sql

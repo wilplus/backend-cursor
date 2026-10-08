@@ -7963,27 +7963,6 @@ class DatabaseService:
                 logger.warning("take feedback self-report read failed: %s", e)
             return []
 
-    def list_feedback_v3_owner_response_keys(
-        self, membership_ids: list,
-    ) -> list:
-        """(membership_id, candidate_id, response) rows the owner answered
-        via the MLC-3 service route. Read-only; an empty list on any failure
-        so the caller degrades to "not answered"."""
-        ids = [str(value) for value in (membership_ids or []) if value]
-        if not ids:
-            return []
-        try:
-            result = (self.client.table("feedback_v3_owner_responses")
-                      .select("membership_id,candidate_id,response")
-                      .in_("membership_id", ids)
-                      .execute())
-        except Exception as error:
-            logger.warning("feedback v3 owner responses read failed: %s",
-                           error)
-            return []
-        rows = result.data if isinstance(result.data, list) else []
-        return [row for row in rows if isinstance(row, dict)]
-
     def list_take_feedback_self_reports_by_snippet(
         self, snippet_id: str,
     ) -> list:
@@ -11798,7 +11777,7 @@ class DatabaseService:
 
     def draw_v4_random_moments(self, take_session_id: str) -> Optional[dict]:
         """Draw one Take's seeded random 20% of moments from its stored dark
-        frame (migration 0454, V4 B1.2). The database reads the frame and
+        frame (migration 0455, V4 B1.2). The database reads the frame and
         the seed itself; a second call returns the stored draw. Raises on
         failure: the caller (services.v4_random_moments.draw) logs it and
         the Take stands."""
@@ -16147,7 +16126,7 @@ class DatabaseService:
         return (res.data or [None])[0]
 
     def void_failed_pair_release(self, release_id: str) -> bool:
-        """``void_failed_pair_release_v1`` (0454): the one release a failed
+        """``void_failed_pair_release_v1`` (0455): the one release a failed
         export wrote is voided ('export_failed') and its pairs go back to
         waiting; the weekly sweep deletes its objects. True when this call
         voided it, False when another path had. Raises on failure or on an
