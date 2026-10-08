@@ -42,8 +42,12 @@ pytestmark = pytest.mark.skipif(
 )
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-MIGRATION = (ROOT / "migrations"
-             / "the_shadow_writer_accepts_the_frame_the_code_builds.sql")
+# The writer as the code needs it today: 0431, then 0441 (V4 B1.1, the pick
+# log), applied in manifest order.
+MIGRATIONS = (
+    ROOT / "migrations" / "the_shadow_writer_accepts_the_frame_the_code_builds.sql",
+    ROOT / "migrations" / "the_shadow_writer_keeps_the_pick_log.sql",
+)
 WRITER = ("public.record_take_feedback_policy_v3_shadow_v3"
           "(text,uuid,uuid,uuid,uuid,integer,text,jsonb,text)")
 CALL = ("SELECT public.record_take_feedback_policy_v3_shadow_v3("
@@ -66,9 +70,10 @@ def cur():
 
 
 def _migration_body() -> str:
-    """0431 without its own BEGIN/COMMIT, to run inside a test's transaction."""
+    """0431 then 0441 without their own BEGIN/COMMIT, to run inside a
+    test's transaction."""
     return "\n".join(
-        line for line in MIGRATION.read_text().splitlines()
+        line for path in MIGRATIONS for line in path.read_text().splitlines()
         if line.strip() not in ("BEGIN;", "COMMIT;"))
 
 
