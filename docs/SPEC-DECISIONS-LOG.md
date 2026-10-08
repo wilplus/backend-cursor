@@ -2402,3 +2402,20 @@ founder signs in its place and the record says so on every file.
   words of all eight; the layout change to the locked prototype (four lines
   shown) is confirmed by the founder under the consent-screen lock before
   the frontend PR merges.
+
+**N69 · Counsel answers the 3.5 pack's four open questions (founder, chat,
+8 October 2026).** Relayed by the founder: (1) the training data is not
+special-category data, so no Art 9 basis is needed and the database's
+`article_9_treatment = 'not_applicable'` stands (Privacy 3.5's Art 9(2)(a)
+mention is surplus, tidied at the next version); (2) a model fine-tuned on
+speakers' text is anonymous, so it stays after a withdrawal; (3) the
+regurgitation test checking only withdrawn speakers' text is enough, and the
+memorisation rate does not gate door 4; (4) D4 confirmed: the corpus import
+rests on Art 6(1)(f). No code changes. Counsel also confirmed question 7 (the
+consent record kept six years after withdrawal or erasure) and question 1
+(document 02's condition, including the learned detector, v1.2). Nothing
+from the 3.5 pack's open list remains.
+Recorded in `legal/phase1-2026.1/22-…-SIGNED-2026-10-08.md` §5. The
+founder also gave the OpenAI data processing agreement's date: signed 18
+September 2026 (recorded on `SIGN-3.5-2026-10-08.md`; a filed copy is still
+to be recorded).

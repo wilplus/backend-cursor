@@ -160,6 +160,19 @@ done.
 
 ## 5. Open with counsel, not settled by this signature
 
+**Counsel answered on 8 October 2026** (relayed by the founder in chat; decisions log N69):
+
+1. **Question 9 (Art 9):** the training data is not special-category data, so no Art 9 basis is needed. The database's `article_9_treatment = 'not_applicable'` is right; the Art 9(2)(a) mention in Privacy 3.5 is surplus and is tidied at the next version.
+2. **A fine-tuned model is anonymous.** It stays after a withdrawal, as 3.5 says.
+3. **The regurgitation test is enough as it is:** it checks only the text of people who withdrew. The memorisation rate does not gate door 4.
+4. **D4 confirmed:** the corpus import rests on Art 6(1)(f) for the people speaking on imported audio.
+
+5. **Question 7 confirmed:** the consent record is kept six years after withdrawal or erasure, as drafted.
+6. **Question 1 confirmed:** document 02's condition holds, including for the learned detector (v1.2).
+
+Nothing from this list is open any more. The original list, as signed:
+
+
 - Question 9 of `21-counsel-questions-2026-10.md`: Privacy says Art 9(2)(a)
   for the training yes; the registration function records
   `article_9_treatment = 'not_applicable'`
