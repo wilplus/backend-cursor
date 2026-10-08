@@ -118,6 +118,9 @@ BEGIN
     -- recount after the other has committed, so a slower recount can never
     -- overwrite a newer one with an older snapshot. Held to the end of the
     -- caller's transaction; other clips are not touched.
+    -- This holds under READ COMMITTED, the isolation every caller uses (the
+    -- app reaches this function only through a PostgREST rpc, one statement
+    -- per transaction): the recount's snapshot is taken after the wait.
     PERFORM pg_advisory_xact_lock(hashtext(p_snippet_id::text));
 
     -- Exactly the rows the quorum would count as a human vote (Q3;
