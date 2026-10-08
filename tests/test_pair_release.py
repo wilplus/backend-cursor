@@ -12,6 +12,12 @@ Pins:
     release, with a manifest whose sha256 is signed and verifiable, split
     speaker-disjoint, carrying no user id, coach id or take;
   * a voided release's object is deleted by the sweep and the row marked;
+  * one file per surface per week: a week that has a release, standing or
+    voided, is refused before anything is written; the row and its owners
+    are written before any object, so a fire racing another is refused at
+    its own row and puts nothing (0455);
+  * anything after the row that fails voids the release ('export_failed')
+    and the sweep deletes what was put; a void that fails too is named;
   * the weekly job refreshes first, exports, sweeps, and reports each.
 """
 from __future__ import annotations
@@ -44,10 +50,18 @@ def _open(*surfaces):
 
 
 class _Storage:
-    def __init__(self):
+    def __init__(self, fail_on=None, log=None):
         self.objects: dict[tuple[str, str], bytes] = {}
+        self.puts: list[str] = []
+        self.fail_on = fail_on      # the object name whose put fails
+        self.log = log              # the order the export writes in, with the database's
 
     def put(self, bucket, key, body, content_type):
+        self.puts.append(key)
+        if self.log is not None:
+            self.log.append(f"put {key.rsplit('/', 1)[-1]}")
+        if self.fail_on and key.endswith(self.fail_on):
+            raise RuntimeError("bucket away")
         self.objects[(bucket, key)] = body
 
     def delete(self, bucket, key):
@@ -67,7 +81,7 @@ class _Db:
     SPEAKER_SPLITS = {"p-1": "train", "p-2": "test", "p-9": "validation"}
 
     def __init__(self, pairs=None, voided=None, grants=None, stopped=(), takes=None,
-                 speaker_splits=None):
+                 speaker_splits=None, fail=()):
         self.pairs = pairs or []
         self.speaker_splits = dict(self.SPEAKER_SPLITS if speaker_splits is None
                                    else speaker_splits)
@@ -82,6 +96,10 @@ class _Db:
         self.grants = {"p-1": "training-v1", "p-2": "training-v1"} if grants is None else grants
         self.stopped = set(stopped)
         self.takes = takes or {}
+        # The writes, in order ("row", "owners", "mark", "void"), and the
+        # ones a test makes fail.
+        self.calls: list[str] = []
+        self.fail = set(fail)
 
     def list_releasable_pairs(self, surface, limit=5000):
         return [p for p in self.pairs if p["surface"] == surface]
@@ -100,24 +118,57 @@ class _Db:
         assert policy == "speaker-sha256-80-10-10-v1"
         return {o: self.speaker_splits[o] for o in owners if o in self.speaker_splits}
 
+    def get_pair_release_for_week(self, surface, week_start):
+        return next((r for r in self.releases
+                     if (r["surface"], r["week_start"]) == (surface, week_start)), None)
+
     def insert_pair_release(self, **fields):
-        row = {"id": f"rel-{len(self.releases) + 1}", **fields}
+        # pair_releases_one_per_week: the database refuses a second row,
+        # whatever the export read before.
+        if any((r["surface"], r["week_start"]) == (fields["surface"], fields["week_start"])
+               for r in self.releases):
+            raise RuntimeError('duplicate key value violates unique constraint '
+                               '"pair_releases_one_per_week"')
+        self.calls.append("row")
+        row = {"id": f"rel-{len(self.releases) + 1}", "voided_at": None,
+               "voided_reason": None, "purged_at": None, **fields}
         self.releases.append(row)
         return row
 
     def insert_pair_release_owners(self, release_id, owners):
+        self.calls.append("owners")
+        if "owners" in self.fail:
+            raise RuntimeError("owner rows refused")
         self.owners.append((release_id, sorted(set(owners))))
         return len(set(owners))
 
     def mark_feedback_pairs_released(self, release_id, pair_ids):
+        self.calls.append("mark")
+        if "mark" in self.fail:
+            # 0405: one pair stopped being releasable since it was read.
+            raise RuntimeError("PAIR_RELEASE_PAIRS_NOT_RELEASABLE")
         self.marked.append((release_id, list(pair_ids)))
         return len(pair_ids)
 
+    def void_failed_pair_release(self, release_id):
+        self.calls.append("void")
+        if "void" in self.fail:
+            raise RuntimeError("rpc down")
+        release = next(r for r in self.releases if r["id"] == release_id)
+        if release["voided_at"]:
+            return False
+        release.update(voided_at="2026-09-30T06:00:00Z", voided_reason="export_failed")
+        return True
+
     def list_voided_unpurged_pair_releases(self):
-        return self.voided
+        return self.voided + [r for r in self.releases
+                              if r.get("voided_at") and not r.get("purged_at")]
 
     def mark_pair_release_purged(self, release_id):
         self.purged.append(release_id)
+        for release in self.releases:
+            if release["id"] == release_id:
+                release["purged_at"] = "2026-09-30T06:00:01Z"
 
     def refresh_feedback_pair_consent(self, required):
         self.refreshed_with = required
@@ -360,6 +411,162 @@ class SweepTests(unittest.TestCase):
         out = pr.sweep_voided(db, _Broken())
         self.assertEqual((out["purged"], out["failed"]), (0, ["rel-8"]))
         self.assertEqual(db.purged, [])
+
+
+WEEK = date(2026, 9, 28)
+FILE = ("willab-pair-releases", "pair-releases/praise_line/2026-09-28/pairs.jsonl")
+MANIFEST = ("willab-pair-releases", "pair-releases/praise_line/2026-09-28/manifest.json")
+LEDGER = {"ledger_version": "learning-ledger-v1",
+          "pairs": {"praise_line": {"total": 1, "unexported": 1}},
+          "exercise_jar": {}, "shadow_cues": {}, "doors": {}, "unavailable": []}
+
+
+def _export(db, storage):
+    return pr.export_surface(db, storage, surface="praise_line", week_start=WEEK,
+                             config=_open("praise_line"))
+
+
+class OneFilePerWeekTests(unittest.TestCase):
+    """The cron may fire twice in one ISO week (services/learning_weekly.py).
+    A second fire never puts the week's key again over the standing
+    release's objects: it is refused before it writes anything."""
+
+    def test_a_second_fire_in_the_same_week_writes_nothing_and_says_why(self):
+        db = _Db(pairs=[_pair(1)])
+        storage = _Storage()
+        self.assertEqual(_export(db, storage)["exported"], 1)
+        standing = dict(storage.objects)
+        db.pairs = [_pair(2)]     # a pair became releasable between the fires
+        out = _export(db, storage)
+        self.assertEqual((out["exported"], out["waiting"]), (0, 1))
+        self.assertEqual(out["why"], "this week's release already stands: one file per "
+                                     "surface per week, so nothing was written and the "
+                                     "pairs wait for next week")
+        # Never read back as a release this run wrote.
+        self.assertNotIn("release_id", out)
+        self.assertEqual(storage.objects, standing)
+        self.assertEqual(storage.puts, [FILE[1], MANIFEST[1]])
+        self.assertEqual(len(db.releases), 1)
+        self.assertEqual(db.marked, [("rel-1", ["pair-1"])])
+        self.assertEqual(db.calls, ["row", "owners", "mark"])
+
+    def test_a_voided_week_is_refused_too_and_names_its_reason(self):
+        db = _Db(pairs=[_pair(1)])
+        db.releases.append({"id": "rel-0", "surface": "praise_line", "week_start": "2026-09-28",
+                            "voided_at": "2026-09-29T06:00:00Z",
+                            "voided_reason": "consent_withdrawn", "purged_at": None})
+        storage = _Storage()
+        out = _export(db, storage)
+        self.assertEqual(out["exported"], 0)
+        self.assertIn("this week's release was voided (consent_withdrawn)", out["why"])
+        self.assertEqual((storage.puts, db.calls, db.marked), ([], [], []))
+
+    def test_the_week_is_read_before_any_source_is(self):
+        db = _Db(pairs=[_pair(1)])
+        db.releases.append({"id": "rel-0", "surface": "praise_line", "week_start": "2026-09-28",
+                            "voided_at": None, "voided_reason": None, "purged_at": None})
+        db.list_active_training_grants = mock.Mock(side_effect=AssertionError("decided"))
+        self.assertIn("already stands", _export(db, _Storage())["why"])
+
+    def test_a_fire_racing_another_is_refused_at_its_own_row_and_puts_nothing(self):
+        # Both fires read the week as free; the row is written before any
+        # object, so pair_releases_one_per_week refuses the later fire first.
+        db = _Db(pairs=[_pair(1)])
+        storage = _Storage()
+        _export(db, storage)
+        standing = dict(storage.objects)
+        db.pairs = [_pair(2)]
+        db.get_pair_release_for_week = lambda surface, week_start: None
+        rows = lw._export_pairs(db, LEDGER, _open("praise_line"), week_start_day=WEEK,
+                                storage=storage)
+        self.assertEqual(rows[0]["exported"], 0)
+        self.assertIn("export failed", rows[0]["why"])
+        self.assertIn("pair_releases_one_per_week", rows[0]["why"])
+        self.assertEqual(storage.objects, standing)
+        self.assertEqual(storage.puts, [FILE[1], MANIFEST[1]])
+        self.assertEqual(db.marked, [("rel-1", ["pair-1"])])
+        # The standing release is not this fire's to void.
+        self.assertNotIn("void", db.calls)
+        self.assertIsNone(db.releases[0]["voided_at"])
+
+
+class FailedExportTests(unittest.TestCase):
+    """Anything after the release row fails: the release is voided
+    ('export_failed', 0455), so the sweep deletes whatever was put and no
+    file is left that no void can reach."""
+
+    def test_the_row_and_its_owners_come_before_any_object_and_the_pairs_last(self):
+        db = _Db(pairs=[_pair(1)])
+        _export(db, _Storage(log=db.calls))
+        self.assertEqual(db.calls, ["row", "owners", "put pairs.jsonl", "put manifest.json",
+                                    "mark"])
+
+    def test_a_mark_that_refuses_voids_the_release_and_the_sweep_deletes_its_objects(self):
+        # A pair stopped being releasable between the read and the mark (a
+        # withdrawal, a deletion request), and 0405's mark refuses the set:
+        # no pair points at the release, so only this void reaches it.
+        db = _Db(pairs=[_pair(1), _pair(2, owner="p-2")], fail={"mark"})
+        storage = _Storage()
+        out = _export(db, storage)
+        self.assertEqual((out["exported"], out["waiting"]), (0, 2))
+        self.assertEqual((out["failed_release_id"], out["voided"]), ("rel-1", True))
+        self.assertEqual(out["why"], "export failed: PAIR_RELEASE_PAIRS_NOT_RELEASABLE; its "
+                                     "release is voided and the sweep deletes what was written")
+        self.assertNotIn("release_id", out)
+        self.assertEqual(db.releases[0]["voided_reason"], "export_failed")
+        self.assertEqual(db.calls[-1], "void")
+        self.assertEqual(set(storage.objects), {FILE, MANIFEST})
+        self.assertEqual(pr.sweep_voided(db, storage), {"purged": 1, "failed": []})
+        self.assertEqual(storage.objects, {})
+        self.assertEqual(db.purged, ["rel-1"])
+
+    def test_a_failed_put_voids_the_release_and_the_file_put_before_it_goes_too(self):
+        db = _Db(pairs=[_pair(1)])
+        storage = _Storage(fail_on="manifest.json")
+        out = _export(db, storage)
+        self.assertTrue(out["voided"])
+        self.assertIn("bucket away", out["why"])
+        self.assertEqual(set(storage.objects), {FILE})
+        self.assertEqual(db.marked, [])
+        pr.sweep_voided(db, storage)
+        self.assertEqual(storage.objects, {})
+
+    def test_a_refused_owner_list_voids_the_release_before_anything_is_put(self):
+        db = _Db(pairs=[_pair(1)], fail={"owners"})
+        storage = _Storage()
+        out = _export(db, storage)
+        self.assertTrue(out["voided"])
+        self.assertEqual((storage.puts, db.marked), ([], []))
+        self.assertEqual(db.releases[0]["voided_reason"], "export_failed")
+
+    def test_a_void_that_fails_too_is_named_and_says_which_release_stands(self):
+        db = _Db(pairs=[_pair(1)], fail={"mark", "void"})
+        out = _export(db, _Storage())
+        self.assertEqual((out["failed_release_id"], out["voided"]), ("rel-1", False))
+        self.assertIn("could not be voided (rpc down) and still stands", out["why"])
+        self.assertIn("void_failed_pair_release_v1", out["why"])
+        self.assertIsNone(db.releases[0]["voided_at"])
+
+    def test_a_row_that_comes_back_without_an_id_puts_nothing(self):
+        db = _Db(pairs=[_pair(1)])
+        db.insert_pair_release = lambda **fields: None
+        storage = _Storage()
+        with self.assertRaises(RuntimeError):
+            _export(db, storage)
+        self.assertEqual((storage.puts, db.marked), ([], []))
+
+    def test_the_weekly_job_voids_the_failed_release_and_sweeps_it_in_the_same_run(self):
+        db = _Db(pairs=[_pair(1)], fail={"mark"})
+        storage = _Storage()
+        with mock.patch("services.learning_ledger.ledger", return_value=LEDGER), \
+             mock.patch.object(pr, "R2ReleaseStorage", return_value=storage):
+            report = lw.run_weekly(db, config=_open("praise_line"),
+                                   now=datetime(2026, 9, 30, tzinfo=timezone.utc))
+        self.assertTrue(report["exported"][0]["voided"])
+        self.assertEqual(report["release_sweep"], {"purged": 1, "failed": []})
+        self.assertEqual(storage.objects, {})
+        # The voided release is never read back as one this run wrote.
+        self.assertEqual(report["verifications"]["read_back"], 0)
 
 
 class WeeklyTests(unittest.TestCase):

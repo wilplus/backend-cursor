@@ -11848,7 +11848,7 @@ class DatabaseService:
 
     def draw_v4_random_moments(self, take_session_id: str) -> Optional[dict]:
         """Draw one Take's seeded random 20% of moments from its stored dark
-        frame (migration 0447, V4 B1.2). The database reads the frame and
+        frame (migration 0455, V4 B1.2). The database reads the frame and
         the seed itself; a second call returns the stored draw. Raises on
         failure: the caller (services.v4_random_moments.draw) logs it and
         the Take stands."""
@@ -16185,6 +16185,34 @@ class DatabaseService:
             "p_release_id": str(release_id), "p_pair_ids": [str(p) for p in pair_ids],
         }).execute()
         return int(res.data or 0)
+
+    def get_pair_release_for_week(self, surface: str, week_start: str) -> Optional[dict]:
+        """The week's one release of a surface, standing or voided (UNIQUE
+        (surface, week_start), 0405), or None: the export reads it before
+        writing anything. Raises."""
+        res = (self.client.table("pair_releases")
+               .select("id,voided_at,voided_reason,purged_at")
+               .eq("surface", str(surface)).eq("week_start", str(week_start))
+               .limit(1).execute())
+        return (res.data or [None])[0]
+
+    def void_failed_pair_release(self, release_id: str) -> bool:
+        """``void_failed_pair_release_v1`` (0455): the one release a failed
+        export wrote is voided ('export_failed') and its pairs go back to
+        waiting; the weekly sweep deletes its objects. True when this call
+        voided it, False when another path had. Raises on failure or on an
+        answer that is not a boolean."""
+        res = self.client.rpc("void_failed_pair_release_v1", {
+            "p_release_id": str(release_id),
+        }).execute()
+        data: Any = res.data
+        if isinstance(data, list):
+            data = data[0] if data else None
+        if isinstance(data, dict):
+            data = data.get("void_failed_pair_release_v1")
+        if not isinstance(data, bool):
+            raise RuntimeError("void_failed_pair_release_v1 gave no answer")
+        return data
 
     def list_pair_releases(self, limit: int = 20) -> list[dict]:
         """The newest releases first, with their manifests (the research

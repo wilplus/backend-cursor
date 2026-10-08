@@ -207,6 +207,10 @@ class _ReleaseDb:
     def list_take_projects(self, takes):
         return {}
 
+    def get_pair_release_for_week(self, surface, week_start):
+        return next((r for r in self.releases
+                     if (r["surface"], r["week_start"]) == (surface, week_start)), None)
+
     def insert_pair_release(self, **fields):
         row = {"id": f"rel-{len(self.releases) + 1}", **fields}
         self.releases.append(row)

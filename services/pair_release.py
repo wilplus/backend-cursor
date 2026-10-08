@@ -11,6 +11,12 @@ bucket with a manifest the job signs:
     fingerprinted; the decision's counts are signed inside the manifest;
   * a pair leaves once, marked under its release atomically
     (mark_feedback_pairs_released_v1);
+  * one file per surface per week: a week that already has a release,
+    standing or voided, is refused before anything is written, and the
+    release row is written before its objects, so a second fire in the same
+    week never overwrites them; if anything after the row fails, the
+    release is voided ('export_failed', 0455) and the sweep deletes what
+    was written;
   * a surface leaves only when the door is open in code AND the founder
     named the surface (Config.PAIR_RELEASE_SURFACES) by a reviewed change
     carrying his sentence; every other surface reports why it stayed;
@@ -168,11 +174,51 @@ def storage_key_for(surface: str, week_start: date) -> str:
     return f"{KEY_PREFIX}{surface}/{week_start.isoformat()}/pairs.jsonl"
 
 
+def _week_taken_words(existing: dict) -> str:
+    """Why a surface did not leave when its week already has a release."""
+    if existing.get("voided_at"):
+        state = f"was voided ({existing.get('voided_reason') or 'no reason recorded'})"
+    else:
+        state = "already stands"
+    return (f"this week's release {state}: one file per surface per week, "
+            "so nothing was written and the pairs wait for next week")
+
+
+def _void_failed(database: Any, release_id: str, error: Exception, *,
+                 surface: str, waiting: int, eligibility: dict) -> dict:
+    """The job's row when anything after the release row failed. The release
+    is voided ('export_failed', 0455) so the sweep deletes whatever was put,
+    and its pairs wait for a later week. A void that fails too is named: the
+    release then stands, and the row's ``failed_release_id`` is the one to
+    void by hand. The row never says ``release_id``: nothing here is read
+    back as written."""
+    _log.warning("pair release %s failed after its row was written: %s",
+                 release_id, error, exc_info=True)
+    out = {"surface": surface, "exported": 0, "waiting": waiting,
+           "failed_release_id": release_id, "eligibility": eligibility}
+    try:
+        database.void_failed_pair_release(release_id)
+    except Exception as void_error:  # noqa: BLE001 -- named, never a silent zero
+        _log.warning("failed pair release %s not voided: %s", release_id, void_error,
+                     exc_info=True)
+        out["voided"] = False
+        out["why"] = (f"export failed: {str(error)[:120]}; its release could not be "
+                      f"voided ({str(void_error)[:80]}) and still stands: void it with "
+                      "void_failed_pair_release_v1")
+        return out
+    out["voided"] = True
+    out["why"] = (f"export failed: {str(error)[:120]}; its release is voided and "
+                  "the sweep deletes what was written")
+    return out
+
+
 def export_surface(database: Any, storage: Any, *, surface: str,
                    week_start: date, config: Any,
                    now: Optional[datetime] = None) -> dict:
     """Export one surface for one week. Returns the job's row for it:
-    {surface, exported, waiting, why|release_id, manifest_sha256}."""
+    {surface, exported, waiting, why|release_id, manifest_sha256}; when
+    anything after the release row failed, {why, failed_release_id, voided}
+    instead of a release_id."""
     now = now or datetime.now(timezone.utc)
     reason = why_not(config, surface)
     pairs = database.list_releasable_pairs(surface)
@@ -181,6 +227,14 @@ def export_surface(database: Any, storage: Any, *, surface: str,
         return {"surface": surface, "exported": 0, "waiting": waiting, "why": reason}
     if not pairs:
         return {"surface": surface, "exported": 0, "waiting": 0, "why": "nothing releasable waiting"}
+    # One file per surface per week (pair_releases_one_per_week). The cron
+    # may fire twice in one ISO week; a second fire must not put this week's
+    # key again over the standing release's objects, so the week's row is
+    # read first and nothing is written when there is one, standing or voided.
+    existing = database.get_pair_release_for_week(surface, week_start.isoformat())
+    if existing:
+        return {"surface": surface, "exported": 0, "waiting": waiting,
+                "why": _week_taken_words(existing)}
     # The weekly flag only nominates a pair; the release decides it afresh
     # (PLF-P5): the yes in force now, the service not ending, the project
     # not leaving, the texts fingerprinted. A source that cannot be read
@@ -219,12 +273,14 @@ def export_surface(database: Any, storage: Any, *, surface: str,
     key_id = str(getattr(config, "PAIR_RELEASE_SIGNING_KEY_ID", "pair-release-key-1"))
     manifest_body = _json({**manifest, "manifest_sha256": manifest_sha,
                            "signature": signature, "signing_key_id": key_id})
-    # The file first, then its manifest beside it, then the ledger: a crash
-    # between leaves an object with no row, which the next week overwrites
-    # (same key), never a row with no object.
-    storage.put(bucket, key, body.encode("utf-8"), "application/x-ndjson")
-    storage.put(bucket, key.replace("pairs.jsonl", "manifest.json"),
-                manifest_body.encode("utf-8"), "application/json")
+    # The ledger first, then the file and its manifest, then the pairs. The
+    # row takes the week's one slot (UNIQUE (surface, week_start)) before
+    # anything is put, so a fire racing this one is refused at its own row
+    # and writes nothing; the owners are listed before the file exists, so
+    # an account erasure finds every object there is. If anything after the
+    # row fails (a write, a put, or the mark refusing a pair that stopped
+    # being releasable after it was read), the release is voided and the
+    # sweep deletes what was put: no file is left that no void can reach.
     release = database.insert_pair_release(
         release_version=RELEASE_VERSION, surface=surface,
         week_start=week_start.isoformat(), item_count=len(records),
@@ -232,8 +288,17 @@ def export_surface(database: Any, storage: Any, *, surface: str,
         manifest_sha256=manifest_sha, file_sha256=file_sha,
         signature=signature, signing_key_id=key_id)
     release_id = str((release or {}).get("id") or "")
-    database.insert_pair_release_owners(release_id, owners)
-    marked = database.mark_feedback_pairs_released(release_id, [str(p["id"]) for p in pairs])
+    if not release_id:
+        raise RuntimeError("the release row came back without an id; nothing was put")
+    try:
+        database.insert_pair_release_owners(release_id, owners)
+        storage.put(bucket, key, body.encode("utf-8"), "application/x-ndjson")
+        storage.put(bucket, key.replace("pairs.jsonl", "manifest.json"),
+                    manifest_body.encode("utf-8"), "application/json")
+        marked = database.mark_feedback_pairs_released(release_id, [str(p["id"]) for p in pairs])
+    except Exception as error:  # noqa: BLE001 -- voided and named, never a silent zero
+        return _void_failed(database, release_id, error, surface=surface,
+                            waiting=waiting, eligibility=eligibility)
     out = {"surface": surface, "exported": int(marked), "waiting": waiting - int(marked),
            "release_id": release_id, "manifest_sha256": manifest_sha,
            "eligibility": eligibility}
