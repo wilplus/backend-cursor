@@ -172,3 +172,79 @@ def test_the_v5_frame_is_refused_now(cur):
     with pytest.raises(psycopg2.errors.RaiseException,
                        match="invalid universal-v3 dark frame"):
         _write(cur, seed, frame)
+
+
+def _first_verbal_lane(frame):
+    for lane in ("rewrite_clarity", "great_formulation"):
+        if frame["verbal_lanes"][lane]["candidates"]:
+            return lane
+    raise AssertionError("fixture has no verbal candidate")
+
+
+def _drop_confidence_id(frame):
+    frame["blocks"][0]["confidence_candidates"][0].pop("candidate_id")
+
+
+def _drop_verbal_id(frame):
+    lane = _first_verbal_lane(frame)
+    frame["verbal_lanes"][lane]["candidates"][0]["candidate_id"] = None
+
+
+@pytest.mark.parametrize("mutate", [
+    # GPT-0441 review 2: each of these raised "cannot extract elements"
+    # (or let `?` read an object's keys) instead of being refused.
+    lambda f: f.update(blocks={}),
+    lambda f: f.update(blocks=None),
+    lambda f: f.update(blocks="blocks"),
+    lambda f: f["blocks"].append("not a block"),
+    lambda f: f["blocks"][0].update(confidence_candidates="candidates"),
+    lambda f: f["blocks"][0].update(confidence_candidates={}),
+    lambda f: f["verbal_lanes"]["rewrite_clarity"].update(candidates={}),
+    lambda f: f["verbal_lanes"]["great_formulation"].update(candidates=7),
+    lambda f: f["verbal_lanes"]["rewrite_clarity"].update(
+        selected_candidate_ids={}),
+    lambda f: f["verbal_lanes"]["great_formulation"].update(
+        selected_candidate_ids="best-praise"),
+    lambda f: f["blocks"][0]["confidence_candidates"].append("not a row"),
+    # An inventory candidate without its id is refused, not left out.
+    _drop_confidence_id,
+    _drop_verbal_id,
+], ids=[
+    "blocks-object", "blocks-json-null", "blocks-string", "block-scalar",
+    "confidence-candidates-string", "confidence-candidates-object",
+    "verbal-candidates-object", "verbal-candidates-number",
+    "selected-ids-object", "selected-ids-string", "confidence-row-scalar",
+    "confidence-candidate-no-id", "verbal-candidate-no-id",
+])
+def test_a_malformed_inventory_is_refused_cleanly(cur, mutate):
+    seed = _fresh(cur)
+    frame = copy.deepcopy(seed["frame"])
+    mutate(frame)
+    with pytest.raises(psycopg2.errors.RaiseException,
+                       match="invalid universal-v3 pick log"):
+        _write(cur, seed, frame)
+
+
+def test_an_absent_inventory_key_reads_as_empty_as_0431_reads_it(cur):
+    """Absent `selected_candidate_ids` is an empty list, not a malformed
+    shape; the log then disagrees with the inventory and says so."""
+    seed = _fresh(cur)
+    frame = copy.deepcopy(seed["frame"])
+    picked = [lane for lane in ("rewrite_clarity", "great_formulation")
+              if frame["verbal_lanes"][lane]["selected_candidate_ids"]]
+    if not picked:
+        pytest.skip("fixture selects no verbal candidate")
+    frame["verbal_lanes"][picked[0]].pop("selected_candidate_ids")
+    with pytest.raises(psycopg2.errors.RaiseException,
+                       match="universal-v3 pick log does not match the inventory"):
+        _write(cur, seed, frame)
+
+
+def test_a_chance_is_compared_as_a_number(cur):
+    """GPT-0441 review 2: 1 and 1.0 (and 0 and 0.0) are the same chance."""
+    seed = _fresh(cur)
+    frame = copy.deepcopy(seed["frame"])
+    for entry in frame["pick_log"]["candidates"]:
+        if entry["pick_probability"] is not None:
+            entry["pick_probability"] = int(entry["pick_probability"])
+    assert _write(cur, seed, frame)["outcome"] == "stored"

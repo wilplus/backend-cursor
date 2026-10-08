@@ -87,11 +87,20 @@ def pick_seed(take_id: Any) -> str:
     return str(int(digest[:13], 16))
 
 
-def _pick_entry(lane: str, block_id: Any, item: dict,
-                chosen: Any) -> Optional[dict]:
+def _identified(inventory: list[dict]) -> list[dict]:
+    """The inventory rows the frame lists: each with its candidate id.
+
+    A verbal row with no id is excluded by `verbal_exclusion`
+    (``missing_candidate_identity``), can never be anchored, and stays in
+    ``excluded_candidates`` with that reason. It is not listed under its
+    lane, so the lane's candidates and the pick log hold the same rows and
+    the writer (0441) can refuse any listed candidate without an id.
+    """
+    return [item for item in inventory if str(item.get("candidate_id") or "")]
+
+
+def _pick_entry(lane: str, block_id: Any, item: dict, chosen: Any) -> dict:
     candidate_id = str(item.get("candidate_id") or "")
-    if not candidate_id:
-        return None
     eligible = item.get("eligibility") == "eligible"
     return {
         "lane": lane,
@@ -109,7 +118,9 @@ def _pick_log(take_id: str, blocks: list[dict],
 
     The writer (0441) refuses a log that is not the inventory exactly: every
     confidence candidate under its block, every verbal candidate under its
-    lane, each once.
+    lane, each once. Every listed candidate has an id (a confidence id is
+    built from its clip; a verbal lane lists only `_identified` rows), and
+    the writer refuses one without.
 
     V3 picks deterministically, so the chance is 1.0 for the candidate it
     selected and 0.0 for every other eligible one; an excluded candidate has
@@ -120,16 +131,12 @@ def _pick_log(take_id: str, blocks: list[dict],
     for block in blocks:
         chosen = {str(block.get("selected_candidate_id") or "")}
         for item in block.get("confidence_candidates") or []:
-            entry = _pick_entry(
-                "confident_voice", block.get("block_id"), item, chosen)
-            if entry is not None:
-                entries.append(entry)
+            entries.append(_pick_entry(
+                "confident_voice", block.get("block_id"), item, chosen))
     for lane, inventory, selected_ids in lanes:
         chosen = set(selected_ids)
         for item in inventory:
-            entry = _pick_entry(lane, None, item, chosen)
-            if entry is not None:
-                entries.append(entry)
+            entries.append(_pick_entry(lane, None, item, chosen))
     return {
         "version": PICK_LOG_VERSION,
         "policy_version": POLICY_VERSION,
@@ -1338,6 +1345,10 @@ def build_shadow_frame(
     _log_verbal_lanes(take_id, rewrite_ranked, rewrite_selected_ids,
                       praise_ranked, praise_selected_ids,
                       weak_blocks=len(weak_blocks))
+    # The lanes list only rows with an id (V4 B1.1, 0441): an id-less row
+    # is already excluded and kept in `exclusions` with its reason.
+    rewrite_candidates = _identified(rewrite_inventory)
+    praise_candidates = _identified(praise_inventory)
 
     generator_versions = sorted({
         version
@@ -1399,7 +1410,7 @@ def build_shadow_frame(
                 "selection_scope": "anchored_to_blocks_read_weak",
                 "budget": "one_per_block",
                 "anchors": rewrite_anchors,
-                "candidates": rewrite_inventory,
+                "candidates": rewrite_candidates,
                 "selected_candidate_ids": rewrite_selected_ids,
                 **_lane_outcome(
                     rewrite_anchors, _blocks_read(blocks, confident=False)),
@@ -1408,7 +1419,7 @@ def build_shadow_frame(
                 "selection_scope": "anchored_to_blocks_read_confident",
                 "budget": "one_per_block",
                 "anchors": praise_anchors,
-                "candidates": praise_inventory,
+                "candidates": praise_candidates,
                 "selected_candidate_ids": praise_selected_ids,
                 **_lane_outcome(
                     praise_anchors, _blocks_read(blocks, confident=True)),
@@ -1416,8 +1427,8 @@ def build_shadow_frame(
         },
         "excluded_candidates": exclusions,
         "pick_log": _pick_log(take_id, blocks, (
-            ("rewrite_clarity", rewrite_inventory, rewrite_selected_ids),
-            ("great_formulation", praise_inventory, praise_selected_ids),
+            ("rewrite_clarity", rewrite_candidates, rewrite_selected_ids),
+            ("great_formulation", praise_candidates, praise_selected_ids),
         )),
         "exposure_semantics": {
             "shadow_computation_is_exposure": False,

@@ -66,15 +66,36 @@ def test_verbal_lanes_log_their_selection():
         logged = {e["candidate_id"]: e for e in frame["pick_log"]["candidates"]
                   if e["lane"] == lane}
         for candidate in frame["verbal_lanes"][lane]["candidates"]:
-            cid = candidate.get("candidate_id")
-            if not cid:
-                continue
+            cid = candidate["candidate_id"]
+            assert cid, "a lane lists only candidates with an id"
             entry = logged[cid]
             if candidate["eligibility"] == "eligible":
                 assert entry["pick_probability"] == (
                     1.0 if cid in selected else 0.0)
             else:
                 assert entry["pick_probability"] is None
+
+
+def test_a_verbal_row_without_an_id_is_excluded_not_listed():
+    """GPT-0441 review 2: the writer refuses a listed candidate with no id,
+    so the code never lists one. The row keeps its exclusion reason."""
+    from services.take_feedback_policy_v3 import build_shadow_frame
+    kwargs = _frame_kwargs()
+    rows = [dict(row) for row in kwargs["feedback_candidates"]]
+    family = rows[0]["feedback_family"]
+    rows.append({**rows[0], "id": None})
+    kwargs["feedback_candidates"] = rows
+    frame = build_shadow_frame(**kwargs)
+    assert frame is not None
+    for lane in ("rewrite_clarity", "great_formulation"):
+        assert all(row["candidate_id"]
+                   for row in frame["verbal_lanes"][lane]["candidates"])
+    assert all(entry["candidate_id"]
+               for entry in frame["pick_log"]["candidates"])
+    assert any(row["candidate_id"] is None
+               and row["feedback_family"] == family
+               and row["reason"] == "missing_candidate_identity"
+               for row in frame["excluded_candidates"])
 
 
 def test_the_seed_is_deterministic_per_take_and_json_safe():

@@ -10,21 +10,34 @@
 -- every new frame would be refused.
 --
 -- WHAT CHANGES. public.record_take_feedback_policy_v3_shadow_v3 is
--- re-issued exactly as 0431 wrote it, with three changes:
+-- re-issued exactly as 0431 wrote it, with these changes, all before the
+-- Take is read:
 --   1. the frame schema literal becomes 'take-feedback-policy-v3-frame-v6';
 --   2. the frame must carry `pick_log` (version 'v4-pick-log-v1', seed
 --      version 'v4-pick-seed-v1', the frame's own policy version, a decimal
 --      seed of at most 16 digits, and a candidates array);
---   3. every pick-log entry names a known lane and a candidate (and, for
---      confidence, its block); an eligible entry's chance is exactly 1 or 0
---      (V3 picks deterministically), an excluded one has none;
---   4. the seed is the Take's own (sha256 of 'v4-pick-seed-v1:' and the
+--   3. the inventory has the shape it is read in, checked before anything
+--      is expanded, so a malformed frame is refused with a clean exception
+--      instead of raising "cannot extract elements" (GPT-0441 review 2):
+--      `blocks` is an array or absent, every block an object whose
+--      `confidence_candidates` is an array or absent, each verbal lane's
+--      `candidates` and `selected_candidate_ids` arrays or absent, and
+--      every confidence and verbal inventory candidate an object with a
+--      non-empty candidate_id (the code lists only such rows);
+--   4. every pick-log entry names a known lane and a candidate (and, for
+--      confidence, its block); an eligible entry's chance is a JSON number
+--      equal to 1 or 0 as a number (V3 picks deterministically), an
+--      excluded one has none;
+--   5. the seed is the Take's own (sha256 of 'v4-pick-seed-v1:' and the
 --      Take id, its first 13 hex digits as a number);
---   5. the log is the candidate inventory exactly: every confidence and
+--   6. the log is the candidate inventory exactly: every confidence and
 --      verbal candidate once, under its lane and block, a selected one at
---      chance 1 and every other eligible one at 0 (GPT-0441 blocker).
+--      chance 1 and every other eligible one at 0. One pass: both sides'
+--      rows are grouped by (lane, block, candidate, eligible, chance) and
+--      any group whose two counts differ refuses the frame.
 -- A -v5 frame, or a -v6 frame without a complete, valid pick log, is
--- refused.
+-- refused. The later 0431 checks expand the same arrays; by then their
+-- shape is proven, so none of them can raise on a malformed frame.
 --
 -- WHAT DOES NOT CHANGE. Who gets a frame is the code's gate
 -- (`take_feedback_policy_v3.dark_enabled`): still the founder's Takes only.
@@ -96,11 +109,71 @@ BEGIN
         RAISE EXCEPTION 'invalid universal-v3 dark frame';
     END IF;
 
+    -- The inventory's shape, before anything is expanded (GPT-0441 review
+    -- 2). jsonb_array_elements raises on an object or a scalar and `?`
+    -- reads an object's keys, so each array is proven an array first. An
+    -- absent key (SQL NULL) is an empty list, as 0431 reads it; a JSON null
+    -- is refused (0431's COALESCE would not catch it). These run as
+    -- separate statements, in order: PL/pgSQL does, SQL does not promise
+    -- an order inside one condition.
+    IF COALESCE(jsonb_typeof(p_frame -> 'blocks'), 'array') <> 'array'
+       OR EXISTS (
+           SELECT 1
+             FROM (VALUES ('rewrite_clarity'), ('great_formulation'))
+                  AS verbal(lane)
+            WHERE COALESCE(jsonb_typeof(p_frame #> ARRAY['verbal_lanes',
+                      verbal.lane, 'candidates']), 'array') <> 'array'
+               OR COALESCE(jsonb_typeof(p_frame #> ARRAY['verbal_lanes',
+                      verbal.lane, 'selected_candidate_ids']), 'array')
+                  <> 'array'
+       ) THEN
+        RAISE EXCEPTION 'invalid universal-v3 pick log';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+          FROM jsonb_array_elements(COALESCE(
+                   p_frame -> 'blocks', '[]'::jsonb)) block
+         WHERE jsonb_typeof(block) IS DISTINCT FROM 'object'
+            OR COALESCE(jsonb_typeof(block -> 'confidence_candidates'),
+                        'array') <> 'array'
+    ) THEN
+        RAISE EXCEPTION 'invalid universal-v3 pick log';
+    END IF;
+
+    -- Every inventory candidate is an object with its id: one without
+    -- could never be logged, so it is refused, not left out.
+    IF EXISTS (
+        SELECT 1
+          FROM (
+              SELECT candidate
+                FROM jsonb_array_elements(COALESCE(
+                         p_frame -> 'blocks', '[]'::jsonb)) block
+               CROSS JOIN jsonb_array_elements(COALESCE(
+                         block -> 'confidence_candidates', '[]'::jsonb))
+                         candidate
+              UNION ALL
+              SELECT candidate
+                FROM (VALUES ('rewrite_clarity'), ('great_formulation'))
+                     AS verbal(lane)
+               CROSS JOIN jsonb_array_elements(COALESCE(
+                         p_frame #> ARRAY['verbal_lanes', verbal.lane,
+                                          'candidates'],
+                         '[]'::jsonb)) candidate
+          ) inventory
+         WHERE jsonb_typeof(candidate) IS DISTINCT FROM 'object'
+            OR length(COALESCE(candidate ->> 'candidate_id', '')) = 0
+    ) THEN
+        RAISE EXCEPTION 'invalid universal-v3 pick log';
+    END IF;
+
     -- Every pick-log entry is a known lane with a named candidate. V3
-    -- picks deterministically: an eligible candidate's chance is exactly 1
-    -- or 0, an excluded one has none (null). A confidence entry names its
-    -- block; a verbal entry names none. Nothing is cast before its type is
-    -- known (GPT-0441 should-fix), so a malformed entry is refused here.
+    -- picks deterministically: an eligible candidate's chance is a JSON
+    -- number equal to 1 or 0 (1, 1.0 and 1e0 alike: compared as numbers,
+    -- not as text), an excluded one has none (null). A confidence entry
+    -- names its block; a verbal entry names none. Nothing is cast before
+    -- its type is known: the CASE makes the type test run first, which a
+    -- plain AND does not promise.
     IF EXISTS (
         SELECT 1
           FROM jsonb_array_elements(p_frame #> '{pick_log,candidates}') entry
@@ -114,10 +187,12 @@ BEGIN
             OR (entry ->> 'lane' <> 'confident_voice'
                 AND jsonb_typeof(entry -> 'block_id') IS DISTINCT FROM 'null')
             OR (entry ->> 'eligible' = 'true'
-                AND (jsonb_typeof(entry -> 'pick_probability')
-                         IS DISTINCT FROM 'number'
-                     OR COALESCE(entry ->> 'pick_probability', '')
-                        !~ '^[01](\.0+)?$'))
+                AND CASE
+                        WHEN jsonb_typeof(entry -> 'pick_probability') = 'number'
+                        THEN (entry ->> 'pick_probability')::numeric
+                             NOT IN (0, 1)
+                        ELSE true
+                    END)
             OR (entry ->> 'eligible' = 'false'
                 AND jsonb_typeof(entry -> 'pick_probability')
                     IS DISTINCT FROM 'null')
@@ -127,7 +202,11 @@ BEGIN
 
     -- The seed is the Take's own: sha256('v4-pick-seed-v1:' || take id),
     -- its first 13 hex digits read as a number (pick_seed in
-    -- services/take_feedback_policy_v3.py).
+    -- services/take_feedback_policy_v3.py). Leading zeroes vanish in that
+    -- numeric conversion, on both sides: bigint::text here and str(int(...))
+    -- in the code each give the canonical decimal string, and those two
+    -- strings are compared, so a seed written with a leading zero is
+    -- refused.
     IF p_frame #>> '{pick_log,seed}' IS DISTINCT FROM (
            ('x' || lpad(substr(encode(extensions.digest(
                'v4-pick-seed-v1:' || p_take_session_id::text, 'sha256'),
@@ -137,90 +216,68 @@ BEGIN
     END IF;
 
     -- The log is the inventory, exactly: every confidence candidate of every
-    -- block and every verbal candidate with an id appears once, under its
-    -- lane and (for confidence) its block, with its eligibility; a selected
-    -- candidate has chance 1 (bound to its block or verbal lane), every
-    -- other eligible one 0. Nothing more is logged and nothing is left out.
+    -- block and every verbal candidate appears once, under its lane and (for
+    -- confidence) its block, with its eligibility; a selected candidate has
+    -- chance 1 (bound to its block or verbal lane), every other eligible one
+    -- 0. Nothing more is logged and nothing is left out. One pass: the
+    -- inventory and the log are each expanded once, tagged by side, and
+    -- grouped by (lane, block_id, candidate_id, eligible, chance); a group
+    -- whose inventory count differs from its log count refuses the frame.
+    -- GROUP BY treats NULLs as one value (a verbal block_id, an excluded
+    -- chance), which a join on equality would not, and compares chance as
+    -- a number. The casts on the log side are safe: the entry check above
+    -- already proved each entry's types.
     IF EXISTS (
-        (SELECT * FROM (
-             SELECT 'confident_voice'::text AS lane,
-                    block ->> 'block_id' AS block_id,
-                    candidate ->> 'candidate_id' AS candidate_id,
-                    candidate ->> 'eligibility' = 'eligible' AS eligible,
-                    CASE WHEN candidate ->> 'eligibility' = 'eligible' THEN
-                        CASE WHEN candidate ->> 'candidate_id'
-                                  = block ->> 'selected_candidate_id'
-                             THEN 1 ELSE 0 END
-                    END::numeric AS chance
-               FROM jsonb_array_elements(COALESCE(
-                        p_frame -> 'blocks', '[]'::jsonb)) block
-               CROSS JOIN jsonb_array_elements(COALESCE(
-                        block -> 'confidence_candidates', '[]'::jsonb)) candidate
-              WHERE length(COALESCE(candidate ->> 'candidate_id', '')) > 0
-             UNION ALL
-             SELECT verbal.lane, NULL::text,
-                    candidate ->> 'candidate_id',
-                    candidate ->> 'eligibility' = 'eligible',
-                    CASE WHEN candidate ->> 'eligibility' = 'eligible' THEN
-                        CASE WHEN COALESCE(p_frame #> ARRAY['verbal_lanes',
-                                      verbal.lane, 'selected_candidate_ids'],
-                                      '[]'::jsonb)
-                                  ? (candidate ->> 'candidate_id')
-                             THEN 1 ELSE 0 END
-                    END::numeric
-               FROM (VALUES ('rewrite_clarity'), ('great_formulation'))
-                    AS verbal(lane)
-               CROSS JOIN jsonb_array_elements(COALESCE(
-                        p_frame #> ARRAY['verbal_lanes', verbal.lane,
-                                         'candidates'],
-                        '[]'::jsonb)) candidate
-              WHERE length(COALESCE(candidate ->> 'candidate_id', '')) > 0
-         ) inventory
-         EXCEPT ALL
-         SELECT entry ->> 'lane', entry ->> 'block_id',
-                entry ->> 'candidate_id', (entry ->> 'eligible')::boolean,
-                (entry ->> 'pick_probability')::numeric
-           FROM jsonb_array_elements(p_frame #> '{pick_log,candidates}') entry)
-        UNION ALL
-        (SELECT entry ->> 'lane', entry ->> 'block_id',
-                entry ->> 'candidate_id', (entry ->> 'eligible')::boolean,
-                (entry ->> 'pick_probability')::numeric
-           FROM jsonb_array_elements(p_frame #> '{pick_log,candidates}') entry
-         EXCEPT ALL
-         SELECT * FROM (
-             SELECT 'confident_voice'::text,
-                    block ->> 'block_id',
-                    candidate ->> 'candidate_id',
-                    candidate ->> 'eligibility' = 'eligible',
-                    CASE WHEN candidate ->> 'eligibility' = 'eligible' THEN
-                        CASE WHEN candidate ->> 'candidate_id'
-                                  = block ->> 'selected_candidate_id'
-                             THEN 1 ELSE 0 END
-                    END::numeric
-               FROM jsonb_array_elements(COALESCE(
-                        p_frame -> 'blocks', '[]'::jsonb)) block
-               CROSS JOIN jsonb_array_elements(COALESCE(
-                        block -> 'confidence_candidates', '[]'::jsonb)) candidate
-              WHERE length(COALESCE(candidate ->> 'candidate_id', '')) > 0
-             UNION ALL
-             SELECT verbal.lane, NULL::text,
-                    candidate ->> 'candidate_id',
-                    candidate ->> 'eligibility' = 'eligible',
-                    CASE WHEN candidate ->> 'eligibility' = 'eligible' THEN
-                        CASE WHEN COALESCE(p_frame #> ARRAY['verbal_lanes',
-                                      verbal.lane, 'selected_candidate_ids'],
-                                      '[]'::jsonb)
-                                  ? (candidate ->> 'candidate_id')
-                             THEN 1 ELSE 0 END
-                    END::numeric
-               FROM (VALUES ('rewrite_clarity'), ('great_formulation'))
-                    AS verbal(lane)
-               CROSS JOIN jsonb_array_elements(COALESCE(
-                        p_frame #> ARRAY['verbal_lanes', verbal.lane,
-                                         'candidates'],
-                        '[]'::jsonb)) candidate
-              WHERE length(COALESCE(candidate ->> 'candidate_id', '')) > 0
-         ) inventory_again)
+        WITH inventory AS (
+            SELECT 'confident_voice'::text AS lane,
+                   block ->> 'block_id' AS block_id,
+                   candidate ->> 'candidate_id' AS candidate_id,
+                   candidate ->> 'eligibility' = 'eligible' AS eligible,
+                   CASE WHEN candidate ->> 'eligibility' = 'eligible' THEN
+                       CASE WHEN candidate ->> 'candidate_id'
+                                 = block ->> 'selected_candidate_id'
+                            THEN 1 ELSE 0 END
+                   END::numeric AS chance
+              FROM jsonb_array_elements(COALESCE(
+                       p_frame -> 'blocks', '[]'::jsonb)) block
+              CROSS JOIN jsonb_array_elements(COALESCE(
+                       block -> 'confidence_candidates', '[]'::jsonb)) candidate
+            UNION ALL
+            SELECT verbal.lane, NULL::text,
+                   candidate ->> 'candidate_id',
+                   candidate ->> 'eligibility' = 'eligible',
+                   CASE WHEN candidate ->> 'eligibility' = 'eligible' THEN
+                       CASE WHEN COALESCE(p_frame #> ARRAY['verbal_lanes',
+                                     verbal.lane, 'selected_candidate_ids'],
+                                     '[]'::jsonb)
+                                 ? (candidate ->> 'candidate_id')
+                            THEN 1 ELSE 0 END
+                   END::numeric
+              FROM (VALUES ('rewrite_clarity'), ('great_formulation'))
+                   AS verbal(lane)
+              CROSS JOIN jsonb_array_elements(COALESCE(
+                       p_frame #> ARRAY['verbal_lanes', verbal.lane,
+                                        'candidates'],
+                       '[]'::jsonb)) candidate
+        ), logged AS (
+            SELECT entry ->> 'lane' AS lane,
+                   entry ->> 'block_id' AS block_id,
+                   entry ->> 'candidate_id' AS candidate_id,
+                   (entry ->> 'eligible')::boolean AS eligible,
+                   (entry ->> 'pick_probability')::numeric AS chance
+              FROM jsonb_array_elements(p_frame #> '{pick_log,candidates}') entry
+        ), sides AS (
+            SELECT lane, block_id, candidate_id, eligible, chance,
+                   1 AS in_inventory, 0 AS in_log
+              FROM inventory
+            UNION ALL
+            SELECT lane, block_id, candidate_id, eligible, chance, 0, 1
+              FROM logged
+        )
+        SELECT 1
+          FROM sides
+         GROUP BY lane, block_id, candidate_id, eligible, chance
+        HAVING sum(in_inventory) <> sum(in_log)
     ) THEN
         RAISE EXCEPTION 'universal-v3 pick log does not match the inventory';
     END IF;
