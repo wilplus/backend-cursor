@@ -106,8 +106,10 @@ def draft_moment_line(database: Any, *, request_row: Any, coach_id: str,
         return 404, {"code": "NOT_FOUND", "error": "not found"}
     if not isinstance(request_row, dict) or not request_row.get("id"):
         return 404, {"code": "NOT_FOUND", "error": "No request for this moment."}
-    if request_row.get("resolution"):
-        return 409, {"code": "ALREADY_RESOLVED", "error": "This moment already has your answer."}
+    from services.coach_request_drafts import changed_by_another_coach
+    if changed_by_another_coach(request_row, coach_id):
+        return 409, {"code": "ALREADY_RESOLVED",
+                     "error": "This moment already has another coach's answer."}
     fields: dict = body if isinstance(body, dict) else {}
     snippet = database.get_snippet_by_id(str(request_row.get("snippet_id") or "")) or {}
     draft = compose(surface="coach_moment_line", transcript=str(snippet.get("transcript") or ""),

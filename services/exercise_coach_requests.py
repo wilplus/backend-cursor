@@ -40,8 +40,10 @@ _PAIR_SURFACE = {"line_written": "praise_line",
                  "exercise_authored": "exercise_script"}
 
 _REFUSALS = {
+    # 0446: a coach may change their own answer (Q-B12 A); another coach's
+    # answer is not theirs to change.
     "EXERCISE_COACH_REQUEST_ALREADY_RESOLVED": (
-        409, "This moment already has your answer; it cannot be changed."),
+        409, "This moment already has another coach's answer; it cannot be changed."),
     "EXERCISE_COACH_REQUEST_NOT_FOUND": (404, "request not found"),
     "EXERCISE_COACH_REQUEST_INPUT_INVALID": (400, "That answer is not valid."),
 }
@@ -205,6 +207,15 @@ def _exercise_for(database: Any, request: dict, body: dict, resolution: str,
     return exercise, None
 
 
+def refusal_for(error: Exception) -> Optional[tuple[int, dict]]:
+    """The resolver's refusal, named (status, payload); None for anything
+    else, which the caller raises or reports."""
+    for code, (status, message) in _REFUSALS.items():
+        if code in str(error):
+            return _error(status, code, message)
+    return None
+
+
 def resolve_request(database: Any, request: dict, body: Any,
                     coach_id: str) -> tuple[int, dict]:
     """The coach's one answer to a request, and optionally the share."""
@@ -239,13 +250,14 @@ def resolve_request(database: Any, request: dict, body: Any,
                               if exercise else None),
             share=share, **kwargs)
     except Exception as e:  # the database's refusal, named
-        for code, (status, message) in _REFUSALS.items():
-            if code in str(e):
-                return _error(status, code, message)
+        refused = refusal_for(e)
+        if refused is not None:
+            return refused
         raise
     if not isinstance(resolved, dict):
         return _error(500, "V2_ERROR", "Could not save your answer.")
-    _file_answer(database, request, resolved, fields, exercise, coach_id)
+    _file_answer(database, request, resolved, fields, exercise, coach_id,
+                 previous=request)
     return 200, {"request": coach_request_payload(resolved, database)}
 
 
@@ -328,18 +340,45 @@ def _record_pairs(database: Any, request: dict, resolved: dict, fields: dict,
             record_pair(database, final=transcript, final_kind="transcript", **common)
 
 
+def answer_unchanged(previous: Any, resolved: Any) -> bool:
+    """A changed answer (0446, Q-B12 A) that says the same words, with the
+    same exercise at the same version, as the one it replaces leaves no
+    second trace: the praise line is already in the catalogue and the pair
+    already recorded. A new exercise version is a new answer. Pure."""
+    if not isinstance(previous, dict) or not isinstance(resolved, dict):
+        return False
+    if not previous.get("resolution"):
+        return False
+    return (str(previous.get("resolution") or "") == str(resolved.get("resolution") or "")
+            and " ".join(str(previous.get("answer_text") or "").split())
+            == " ".join(str(resolved.get("answer_text") or "").split())
+            and str(previous.get("resolved_exercise_id") or "")
+            == str(resolved.get("resolved_exercise_id") or "")
+            and str(previous.get("resolved_exercise_version") or "")
+            == str(resolved.get("resolved_exercise_version") or ""))
+
+
 def _file_answer(database: Any, request: dict, resolved: dict, fields: dict,
-                 exercise: Optional[dict], coach_id: str) -> None:
+                 exercise: Optional[dict], coach_id: str,
+                 previous: Any = None) -> None:
     """What an answer leaves behind besides the resolution, all best-effort
     and never in the answer's way:
 
     * the (draft, final) pair, when a draft was shown and the final differs
-      (``_record_pairs``; services.feedback_pairs; founder C5);
+      (``_record_pairs``; services.feedback_pairs; founder C5); one pair per
+      request and surface is the table's own key, so a changed answer never
+      records a second one;
     * a praise line lands in the catalogue of signed lines as the newest
       version for the moment's pattern (35f; P2-3) unless the coach says
       ``file_in_catalogue: false``. A clearer version never does: it is one
-      speaker's passage, not a move for every rewrite.
+      speaker's passage, not a move for every rewrite (Q-B13 A).
+
+    ``previous`` is the request row as it was before this answer (0446): an
+    answer that repeats it files nothing again (no duplicate praise), a
+    changed praise line files its new words as the next version.
     """
+    if answer_unchanged(previous, resolved):
+        return
     resolution = str(resolved.get("resolution") or "")
     if resolution == "note_written":
         # 7 (C5-a, 0411): the personal line is a pair surface of its own.

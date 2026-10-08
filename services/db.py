@@ -15107,26 +15107,36 @@ class DatabaseService:
         self, *, request_id: str, coach_id: str, resolution: str,
         exercise_id: Optional[str], exercise_version: Optional[int],
         share: bool, answer_text: Optional[str] = None,
+        video_ref: Optional[str] = None,
     ) -> Optional[dict]:
-        """Resolve once, share once (migration 0385; in words 0402). Raises the
-        database's refusal (e.g. EXERCISE_COACH_REQUEST_ALREADY_RESOLVED) to
-        the caller."""
-        params = {
+        """The coach's answer (migration 0385; in words 0402; changeable
+        0446): the first answer is written; the same again is a no-op that
+        may add the share; a different answer by the SAME coach (words,
+        exercise or video) replaces it and keeps the old one, video
+        included, in exercise_coach_request_answer_versions (Q-B12 A);
+        another coach's call on a resolved request is refused. `video_ref`:
+        None keeps the row's video, "" clears it, a ref replaces it. Raises
+        the database's refusal (e.g. EXERCISE_COACH_REQUEST_ALREADY_RESOLVED)
+        to the caller."""
+        result = self.client.rpc("resolve_exercise_coach_request_v3", {
             "p_request_id": str(request_id),
             "p_coach_id": str(coach_id),
             "p_resolution": str(resolution),
             "p_exercise_id": exercise_id,
             "p_exercise_version": exercise_version,
             "p_share": bool(share),
-        }
-        if answer_text is None:
-            result = self.client.rpc(
-                "resolve_exercise_coach_request_v1", params).execute()
-        else:
-            # An answer in words (0402): a praise line or a clearer version.
-            result = self.client.rpc("resolve_exercise_coach_request_v2", {
-                **params, "p_answer_text": str(answer_text)}).execute()
+            "p_answer_text": None if answer_text is None else str(answer_text),
+            "p_video_ref": None if video_ref is None else str(video_ref),
+        }).execute()
         return self._rpc_row(result.data)
+
+    def list_exercise_coach_request_answer_versions(self, request_id: str) -> list[dict]:
+        """The answers a request had and no longer has (0446), oldest
+        first: the coach's own history for the Summary screen, never the
+        speaker's. Raises on failure."""
+        res = (self.client.table("exercise_coach_request_answer_versions").select("*")
+               .eq("request_id", str(request_id)).order("version").execute())
+        return list(res.data or [])
 
     def set_exercise_coach_request_draft(
         self, *, request_id: str, surface: str, text: str,
@@ -15227,8 +15237,11 @@ class DatabaseService:
     def set_exercise_coach_request_video(
         self, *, request_id: str, video_ref: str,
     ) -> Optional[dict]:
-        """The video a coach added to a written answer (0403). Raises on
-        failure; the route names it."""
+        """The video a coach added to a written answer BEFORE it is
+        resolved (0403). Once resolved, the video changes only through
+        resolve_exercise_coach_request (0446: the guard refuses a direct
+        write), so the history keeps the old one. Raises on failure; the
+        route names it."""
         res = (self.client.table("exercise_coach_requests")
                .update({"answer_video_ref": str(video_ref)})
                .eq("id", str(request_id)).execute())

@@ -1785,7 +1785,8 @@ def v2_coach_exercise_request_video(session_id, snippet_id):
     status, payload = store_answer_video(
         db, request_row=db.get_exercise_coach_request(owner_sid, snippet_id),
         video_file=request.files.get("video_file"),
-        max_mb=int(getattr(Config, "COACH_FEEDBACK_VIDEO_MAX_MB", 100) or 100))
+        max_mb=int(getattr(Config, "COACH_FEEDBACK_VIDEO_MAX_MB", 100) or 100),
+        coach_id=str(getattr(request, "user_id", "")))
     return jsonify(payload), status
 
 
