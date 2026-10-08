@@ -14,11 +14,11 @@ module is the machinery, and it works whether the switch is open or not:
     or a termination) has no releasable pair whatever the ledger says
     (0422, PLF-T3): at the request, at the stamp and at every refresh.
 
-WHICH SURFACES NEED THE YES: every pair surface. The three answer
-surfaces, counsel 2026-10-01 (a coach's note about a speaker's passage is
-the speaker's personal data even without the passage attached; basis Art
-6(1)(a) with Art 9(2)(a), never legitimate interest); and the coach's own
-two (coach_moment_line, coach_take_word), Privacy/Terms 3.5 signed by the
+WHICH SURFACES NEED THE YES: all of them, counsel 2026-10-01 (a coach's note
+about a speaker's passage is the speaker's personal data even without the
+passage attached; basis Art 6(1)(a) with Art 9(2)(a), never legitimate
+interest). That covers the coach's own
+two (coach_moment_line, coach_take_word) too, Privacy/Terms 3.5 signed by the
 founder 2026-10-08 (decisions log N68; 22-…SIGNED, E2): the coach's words
 are training data under the SPEAKER's training yes, so the speaker's yes
 governs them exactly as it governs the rest (the coach agreement covers
