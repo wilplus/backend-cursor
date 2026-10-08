@@ -2077,6 +2077,8 @@ def v2_add_confident_voice_practice_attempt(practice_id):
         if len(audio_bytes) < 1000:
             return jsonify({"code": "AUDIO_TOO_SHORT",
                             "error": "That recording was too short. Try again."}), 422
+        from services.webm_remux import remux_webm_for_seeking
+        audio_bytes = remux_webm_for_seeking(audio_bytes, label="practice")
         mime = (upload.mimetype or "audio/webm").split(";", 1)[0]
         ext = ".webm" if "webm" in mime else ".m4a" if "mp4" in mime else ".wav"
         from services.practice_transcription import transcribe_practice_attempt

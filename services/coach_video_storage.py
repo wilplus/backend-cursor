@@ -100,6 +100,26 @@ def r2_bucket_name() -> str:
     return ((getattr(c, "R2_BUCKET_NAME", None) or "").strip() or c.COACH_FEEDBACK_VIDEO_BUCKET).strip()
 
 
+def default_media_bucket() -> str:
+    """The bucket a coach-media / pre-split lab write lands in RIGHT NOW.
+
+    Since #484 the caller's bucket string is authoritative on the R2 branch
+    of ``put_coach_object_bytes``, so a writer that passes the literal
+    ``COACH_FEEDBACK_VIDEO_BUCKET`` targets a bucket that may not exist
+    wherever ``R2_BUCKET_NAME`` names another one (see
+    ``routes/v2/lab_recording._store_presentation_pdf``). Writers pass this,
+    and the readers of a BARE key (no ``s3://bucket/`` in the ref) default to
+    it, so a key is read from the bucket it was written to:
+    ``r2_bucket_name()`` under R2, ``COACH_FEEDBACK_VIDEO_BUCKET`` on the
+    Supabase fallback (unchanged there). ``s3://bucket/key`` refs on existing
+    rows stay authoritative and never consult this.
+    """
+    if coach_videos_use_r2():
+        return r2_bucket_name()
+    return (getattr(_config(), "COACH_FEEDBACK_VIDEO_BUCKET", None)
+            or "coach_feedback_videos").strip()
+
+
 def coach_media_public_url(storage_key: str) -> Optional[str]:
     """Always ``None``: nothing in these buckets gets a public URL any more.
 

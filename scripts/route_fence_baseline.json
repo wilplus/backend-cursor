@@ -51,10 +51,6 @@
     "lines": 91,
     "db_calls": 0
   },
-  "routes/recordings.py:get_recording_playback_url": {
-    "lines": 21,
-    "db_calls": 2
-  },
   "routes/user.py:update_metric_questions": {
     "lines": 14,
     "db_calls": 2

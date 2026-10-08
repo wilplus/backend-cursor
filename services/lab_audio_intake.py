@@ -115,6 +115,13 @@ def read_recording_upload(
             415,
         )
 
+    # Cues + Duration so a clip can seek inside its parent Take on Safari,
+    # BEFORE the gate, storage (and its sha256 read-after-write check) and
+    # analysis, so all of them see the same bytes. Lossless and fail-safe:
+    # the original bytes on any doubt (services/webm_remux.py).
+    from services.webm_remux import remux_webm_for_seeking
+    audio_bytes = remux_webm_for_seeking(audio_bytes, label="take")
+
     context_document = (
         _parse_context_document(context_upload, max_context_bytes)
         if context_upload is not None

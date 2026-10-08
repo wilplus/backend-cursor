@@ -56,13 +56,14 @@ class ResolveAudioRefs(unittest.TestCase):
         self.assertEqual(out, "https://cdn.example/clip.webm")
         self.assertEqual(calls, [])
 
-    def test_a_failed_signing_leaves_the_ref_visible(self):
+    def test_a_failed_signing_omits_the_player(self):
         rows = [{"audio_ref": "s3://recordings/k.webm"}]
         with patch("services.coach_video_storage.presigned_get_coach_object",
                    side_effect=RuntimeError("boom")):
             coach_mod._resolve_audio_refs(rows)
-        # Left as-is, never nulled: the failure stays debuggable.
-        self.assertEqual(rows[0]["audio_ref"], "s3://recordings/k.webm")
+        # Founder 2026-10-08: a raw s3:// ref is a dead <audio src>; None
+        # lets the panel omit the player (the resolver logs the failure).
+        self.assertIsNone(rows[0]["audio_ref"])
 
 
 if __name__ == "__main__":

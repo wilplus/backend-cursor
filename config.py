@@ -1072,6 +1072,14 @@ class Config:
     # for video/common containers (and large inputs), to stay under OpenAI ~25MB request limit.
     FFMPEG_PATH = (os.getenv("FFMPEG_PATH") or "ffmpeg").strip() or "ffmpeg"
     REFERENCE_VIDEO_FFMPEG_EXTRACT = (os.getenv("REFERENCE_VIDEO_FFMPEG_EXTRACT", "true").strip().lower() == "true")
+    # MediaRecorder WebM carries no Cues and no Duration, so Safari cannot
+    # seek a clip inside its parent Take. On upload, BEFORE storage and
+    # analysis, a lossless remux (`-c copy -copyts`) adds both and keeps every
+    # packet timestamp; any failure, timeout or timestamp difference keeps the
+    # original bytes (services/webm_remux.py). A code constant, not an env var:
+    # set False here to turn it off.
+    WEBM_REMUX_ON_UPLOAD = True
+    WEBM_REMUX_TIMEOUT_SEC = 8
     # Cap extracted audio length for Whisper (API max ~25MB); first N seconds only if longer.
     REFERENCE_VIDEO_WHISPER_MAX_AUDIO_SECONDS = int(os.getenv("REFERENCE_VIDEO_WHISPER_MAX_AUDIO_SECONDS", "3600"))
 

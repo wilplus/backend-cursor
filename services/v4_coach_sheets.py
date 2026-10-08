@@ -369,7 +369,7 @@ def _ms(value: Any) -> Optional[int]:
 
 def pick_queue(database: Any, *, rater_id: str) -> tuple[int, dict]:
     """Pending blocks: words, audio, letters. Nothing the machine chose."""
-    from services.audio_ref_resolver import resolve_playable_ref
+    from services.snippet_audio_url import snippet_clip_playback
     if not sheets_enabled():
         return _OFF
     rows = [r for r in database.list_v4_pick_sheets(rater_id) or []
@@ -381,7 +381,7 @@ def pick_queue(database: Any, *, rater_id: str) -> tuple[int, dict]:
             snippet = database.get_snippet_by_id(str(clip_id)) or {}
             moments.append({"clip_id": str(clip_id), "letter": "ABC"[i],
                             "words": str(snippet.get("transcript") or ""),
-                            "audio_ref": resolve_playable_ref(snippet.get("audio_segment_path")),
+                            "audio_ref": snippet_clip_playback(snippet, database)["audio_ref"],
                             "start_offset_ms": _ms(snippet.get("start_offset_ms")),
                             "duration_ms": _ms(snippet.get("duration_ms"))})
         items.append({"sheet_id": str(row.get("id")), "moments": moments, "n": n, "of": len(rows)})

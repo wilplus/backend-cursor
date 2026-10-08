@@ -6,6 +6,7 @@ from config import Config
 import logging
 from utils.errors import safe_error
 from utils.ids import is_uuid as _is_valid_uuid
+from services.snippet_audio_url import recording_playback_url
 
 logger = logging.getLogger(__name__)
 recordings_v2_bp = Blueprint("recordings_v2", __name__)
@@ -67,18 +68,15 @@ def get_recording_playback_url(recording_id):
     try:
         if not _is_valid_uuid(recording_id):
             return jsonify({"code": "INVALID_INPUT", "error": "Invalid recording ID"}), 400
-        user_id = request.user_id
-        recording = db.get_recording(recording_id, user_id)
+        recording = db.get_recording(recording_id, request.user_id)
         if not recording:
             return jsonify({"code": "RECORDING_NOT_FOUND", "error": "Recording not found"}), 404
-        storage_path = (recording.get("storage_path") or "").strip()
-        if not storage_path:
+        if not (recording.get("storage_path") or "").strip():
             return jsonify({"code": "NO_STORAGE_PATH", "error": "Recording has no storage path"}), 404
-        audio_url = db.create_signed_url(
-            config.AUDIO_BUCKET_NAME,
-            storage_path,
-            config.SIGNED_URL_EXPIRY_SECONDS,
-        )
+        # A Lab Take signs against its own R2 bucket (services/snippet_audio_url).
+        audio_url = recording_playback_url(recording, db, config)
+        if not audio_url:
+            return jsonify({"code": "AUDIO_UNAVAILABLE", "error": "Recording audio is unavailable"}), 404
         return jsonify({"audio_url": audio_url}), 200
     except Exception as e:
         logger.exception("Playback URL for %s: %s", recording_id, e)
