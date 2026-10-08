@@ -836,6 +836,16 @@ fi
 # so it is applied the same way, by its own suite, after them:
 # tests/test_the_v4_dark_writes_keep_their_word_postgres.py.
 
+# 0458 (N68, D3): a new training wording retires the old one, in one call.
+# The guard on ml_consent_policies (0302, 0373) gets its one door and the
+# supersede function calls 0373's configure, which both need. Released lane
+# only, where the training suites run; after 0457, as in the manifest.
+# Twice: apply/reapply idempotency. Its suite:
+# tests/test_a_new_training_wording_retires_the_old_postgres.py.
+if [ "$LANE" = "released" ]; then
+  hard migrations/a_new_training_wording_retires_the_old.sql
+  hard migrations/a_new_training_wording_retires_the_old.sql
+fi
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing
