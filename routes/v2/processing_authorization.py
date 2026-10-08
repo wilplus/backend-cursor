@@ -13,6 +13,10 @@ from services.rate_limits import guest_identity_limit
 from services.processing_authorization import (
     ProcessingAuthorizationError,
     ProcessingAuthorizationService,
+    gate_cache_generation,
+    gate_cache_key,
+    gate_recently_passed,
+    remember_gate_passed,
 )
 from services.project_ownership import GUEST_OWNER_HEADER
 from services.project_ownership import (
@@ -212,6 +216,10 @@ def enforce_phase1_processing_gate():
     service = ProcessingAuthorizationService(db)
     if not service.enforced:
         return None
+    cache_key = _gate_cache_key(service, path)
+    if gate_recently_passed(cache_key):
+        return None
+    generation = gate_cache_generation()
     try:
         principal_id = _principal_id()
         service.require_current(principal_id, operation="core_service")
@@ -219,7 +227,24 @@ def enforce_phase1_processing_gate():
         return _principal_error(error)
     except ProcessingAuthorizationError as error:
         return jsonify({"code": error.code, "error": error.message}), error.status
+    remember_gate_passed(cache_key, generation)
     return None
+
+
+#: The reads whose gate YES may be remembered for a few seconds (S1). Only
+#: GET and HEAD, so a write always asks the database.
+_CACHED_GATE_PREFIXES = ("/v2/explore/", "/v2/user/sessions/",
+                         "/v2/user/snippets/")
+
+
+def _gate_cache_key(service, path: str):
+    """The key a read-only core request's YES is remembered under, or None
+    when this request must always ask (any write, any other path)."""
+    if request.method not in ("GET", "HEAD") or not path.startswith(
+            _CACHED_GATE_PREFIXES):
+        return None
+    return gate_cache_key(service.mode, _request_user_id(),
+                          request.headers.get(GUEST_OWNER_HEADER))
 
 
 @v2_bp.route("/processing-authorization/principal", methods=["POST"])

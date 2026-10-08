@@ -12,7 +12,9 @@ import hashlib
 import json
 import logging
 import os
-from typing import Any, Mapping
+import threading
+import time
+from typing import Any, Callable, Mapping, TypeVar
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -179,6 +181,100 @@ def _gate_mode() -> str:
     """``PLF1_PROCESSING_AUTHORIZATION_MODE``, read on every call."""
     return os.getenv(
         "PLF1_PROCESSING_AUTHORIZATION_MODE", "off").strip().lower()
+
+
+# ── A brief memory of the core-service gate's YES (S1, 2026-10-08) ─────────
+#
+# The core-service gate (`routes.v2.processing_authorization.
+# enforce_phase1_processing_gate`) resolves the caller's principal and asks
+# the database for current authority on every core request: about three
+# queries, before every Ideal Text read. This remembers, in this process and
+# for at most `GATE_CACHE_SECONDS`, that a caller just passed it.
+#
+# WHAT IT NEVER DOES. It never remembers a refusal, so a caller refused once
+# is asked again next time; it never decides anything (the database still
+# decided the YES it remembers); and every write in this process that can
+# change authority or consent (the methods marked `_clears_gate_cache`, and
+# the identity claim) forgets everything. A YES computed while such a write
+# ran is not kept (the generation check). The route uses it for read-only
+# requests only. Another process learns of a change by the expiry alone, so
+# that is the whole window: a few seconds of reads, never a write.
+
+GATE_CACHE_SECONDS = 5.0
+_GATE_CACHE_MAX = 4096
+_gate_cache: dict[tuple, float] = {}
+_gate_cache_lock = threading.Lock()
+_gate_generation = 0
+
+_Method = TypeVar("_Method", bound=Callable[..., Any])
+
+
+def gate_cache_key(mode: str, user_id: Any, guest_token: Any) -> tuple | None:
+    """The caller, as the gate identified them: the verified account and a
+    digest of the guest token. None when there is no identity to key on."""
+    user = str(user_id or "")
+    token = str(guest_token or "")
+    if not user and not token:
+        return None
+    digest = hashlib.sha256(token.encode("utf-8")).hexdigest() if token else ""
+    return (str(mode), user, digest)
+
+
+def gate_cache_generation() -> int:
+    """Read BEFORE asking the database, handed back to `remember_gate_passed`."""
+    with _gate_cache_lock:
+        return _gate_generation
+
+
+def gate_recently_passed(key: tuple | None) -> bool:
+    if key is None:
+        return False
+    now = time.monotonic()
+    with _gate_cache_lock:
+        expires = _gate_cache.get(key)
+        if expires is None:
+            return False
+        if expires <= now:
+            _gate_cache.pop(key, None)
+            return False
+        return True
+
+
+def remember_gate_passed(key: tuple | None, generation: int) -> None:
+    """Remember a YES, unless an authority write ran since it was asked."""
+    if key is None:
+        return
+    with _gate_cache_lock:
+        if generation != _gate_generation:
+            return
+        if len(_gate_cache) >= _GATE_CACHE_MAX:
+            _gate_cache.clear()
+        _gate_cache[key] = time.monotonic() + GATE_CACHE_SECONDS
+
+
+def clear_gate_cache() -> None:
+    """Forget every remembered YES (an authority or consent write)."""
+    global _gate_generation
+    with _gate_cache_lock:
+        _gate_generation += 1
+        _gate_cache.clear()
+
+
+def _clears_gate_cache(method: _Method) -> _Method:
+    """Forget the gate's remembered YESes before and after this write, so no
+    YES from before it (or computed while it ran) outlives it in this
+    process — whether the write succeeds or raises."""
+    from functools import wraps
+
+    @wraps(method)
+    def wrapped(*args: Any, **kwargs: Any) -> Any:
+        clear_gate_cache()
+        try:
+            return method(*args, **kwargs)
+        finally:
+            clear_gate_cache()
+
+    return wrapped  # type: ignore[return-value]
 
 
 class ProcessingAuthorizationService:
@@ -446,6 +542,7 @@ class ProcessingAuthorizationService:
             return not self.enforced
         return choices.get(choice) is True
 
+    @_clears_gate_cache
     def set_consent_choice(
         self, acquisition_principal_id: str, *, choice: str, enabled: bool,
         idempotency_key: str, client_version: str | None,
@@ -524,6 +621,7 @@ class ProcessingAuthorizationService:
             recording_id=str(session.get("recording_id") or "") or None,
         )
 
+    @_clears_gate_cache
     def accept(self, acquisition_principal_id: str, payload: Mapping[str, Any]) -> dict:
         if payload.get("explicit_action") != "agree_and_continue":
             raise ProcessingAuthorizationError(
@@ -764,6 +862,7 @@ class ProcessingAuthorizationService:
         }).execute()
         return _one(result.data) or {}
 
+    @_clears_gate_cache
     def request_purge(
         self, *, acquisition_principal_id: str, trigger_kind: str,
         idempotency_key: str, reason_code: str,
@@ -790,6 +889,7 @@ class ProcessingAuthorizationService:
     # requester may cancel until then. services/account_deletion.py holds
     # the reads; these are the boundary the routes call.
 
+    @_clears_gate_cache
     def request_account_deletion(
         self, acquisition_principal_id: str, *, idempotency_key: str,
         reason_code: Any = None,
@@ -825,6 +925,7 @@ class ProcessingAuthorizationService:
             ) from error
         return deletion_view(row) or {}
 
+    @_clears_gate_cache
     def cancel_account_deletion(
         self, acquisition_principal_id: str, request_id: str,
     ) -> dict:
@@ -900,6 +1001,7 @@ class ProcessingAuthorizationService:
             return deletion_view(row)
         return self.purge_status(acquisition_principal_id, request_id)
 
+    @_clears_gate_cache
     def request_data_right(
         self, *, acquisition_principal_id: str, request_kind: str,
         idempotency_key: str, subject_payload: Mapping[str, Any],
