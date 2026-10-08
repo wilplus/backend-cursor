@@ -232,6 +232,11 @@ def purge_due_copies(acquisition_principal_id: str, *,
     """
     if database is None:
         from services.db import db as database
+    # 3.5 E4: the withdrawal's sheet erasure, again here so a fault on the
+    # turn-off is retried by the job (a no-op once the rows are gone).
+    from services.pair_consent import erase_withdrawn_sheets
+
+    erase_withdrawn_sheets(database, str(acquisition_principal_id))
     due = database.list_due_training_corpus_items(str(acquisition_principal_id))
     erased = failed = 0
     for item in due or []:
