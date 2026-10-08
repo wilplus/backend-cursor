@@ -10,6 +10,10 @@ Pins:
     versions and clears revoked_at; a revocation stamps revoked_at and keeps
     both versions (history); a share again under newer words re-stamps the
     live row; one row per Take and community;
+  * the server's own list of words versions (Config.SHARE_WORDS_VERSIONS)
+    guards the write: share_take, driven against this database, refuses a
+    version the server does not list and writes no row, and records a
+    listed one;
   * the queue (community_clips_live) drops a revoked Take at once and takes
     it back when it is shared again.
 """
@@ -226,3 +230,67 @@ def test_the_queue_drops_a_revoked_take_and_takes_it_back_when_shared_again(db):
         if made:
             cur.execute("DELETE FROM public.snippets WHERE id = %s", (snip,))
             cur.execute("DELETE FROM public.v2_sessions WHERE id = %s", (take,))
+
+
+class _PgShares:
+    """The few reads and writes share_take makes, on this database, with
+    the app's own SQL for the share and the revocation."""
+
+    def __init__(self, conn, take, owner):
+        self.conn, self.take, self.owner = conn, take, owner
+
+    def v2_get_session_by_id(self, take_id):
+        return {"id": take_id, "user_id": self.owner} if take_id == self.take else None
+
+    def get_general_community(self):
+        with self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT id::text AS id, kind FROM public.communities "
+                        "WHERE kind = 'general'")
+            return dict(cur.fetchone())
+
+    def list_community_memberships(self, _user_id):
+        return []
+
+    def get_communities_by_ids(self, _ids):
+        return []
+
+    def upsert_take_share(self, *, take_session_id, owner_user_id, community_id,
+                          consent_version, share_words_version):
+        with self.conn.cursor() as cur:
+            _share(cur, take_session_id, community_id, owner=owner_user_id,
+                   words=share_words_version, policy=consent_version)
+
+    def revoke_take_shares(self, take, keep_community_ids):
+        with self.conn.cursor() as cur:
+            return _revoke(cur, take, keep_community_ids)
+
+
+def test_an_unknown_words_version_writes_no_row_and_a_listed_one_is_recorded(db):
+    from unittest.mock import patch
+
+    from config import Config
+    from services import communities as cm
+
+    take, owner = str(uuid.uuid4()), str(uuid.uuid4())
+    adapter = _PgShares(db, take, owner)
+    with patch.object(Config, "COMMUNITIES_ENABLED", True), \
+            patch.object(Config, "COMMUNITY_SHARE_POLICY_VERSION", POLICY), \
+            patch("services.lend_your_ear.accepted_policy_at_least", return_value=True):
+        status, payload = cm.share_take(
+            adapter, owner_user_id=owner, take_session_id=take,
+            body={"general": True, "share_words_version": "sharing-screen-v9"})
+        assert (status, payload) == (400, {"code": "SHARE_WORDS_VERSION_UNKNOWN"})
+        with db.cursor() as cur:
+            cur.execute("SELECT count(*) FROM public.take_shares WHERE take_session_id = %s",
+                        (take,))
+            assert cur.fetchone()[0] == 0
+        assert WORDS in Config.SHARE_WORDS_VERSIONS
+        status, payload = cm.share_take(
+            adapter, owner_user_id=owner, take_session_id=take,
+            body={"general": True, "share_words_version": WORDS})
+        assert status == 200 and payload["share_words_version"] == WORDS
+    with db.cursor() as cur:
+        cur.execute("SELECT share_words_version, consent_version, revoked_at "
+                    "FROM public.take_shares WHERE take_session_id = %s", (take,))
+        assert cur.fetchall() == [(WORDS, POLICY, None)]
+        cur.execute("DELETE FROM public.take_shares WHERE take_session_id = %s", (take,))

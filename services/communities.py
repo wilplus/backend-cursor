@@ -26,7 +26,8 @@ secret already in config; with no secret set, creating and joining refuse
 THE SHARE is per Take, one row per community, stamped with the policy
 version the speaker accepted (Privacy/Terms) and with the version of the
 sharing screen's words they saw (``share_words_version``, which the screen
-sends and the route requires on every share); "None" cannot be combined
+sends and the route requires on every share, and which must be one of the
+server's own versions, ``Config.SHARE_WORDS_VERSIONS``); "None" cannot be combined
 with any other choice and revokes every live row of the Take. A community
 the speaker does not belong to cannot be chosen; the general community is
 open to everyone. Withdrawal (fewer communities, or "None") never waits for
@@ -248,15 +249,36 @@ def _share_choice(body: Any) -> tuple[Optional[dict], Optional[tuple[int, dict]]
             "community_ids": list(dict.fromkeys(str(i).lower() for i in ids))}, None
 
 
+def share_words_versions() -> tuple[str, ...]:
+    """The words versions a share may record (``Config.SHARE_WORDS_VERSIONS``)."""
+    from config import Config
+    versions = getattr(Config, "SHARE_WORDS_VERSIONS", ()) or ()
+    return tuple(str(v) for v in versions)
+
+
 def share_words_version_from(body: Any) -> Optional[str]:
     """The version of the sharing screen's words the speaker saw, as the
-    screen sends it (``share_words_version``); None when missing or not a
-    short id. Pure."""
+    screen sends it (``share_words_version``); None when missing, not a
+    short id, or not one of the server's own versions
+    (``Config.SHARE_WORDS_VERSIONS``): a share can only record words that
+    were signed and shown."""
     fields: dict = body if isinstance(body, dict) else {}
     value = fields.get("share_words_version")
     if not isinstance(value, str) or not _WORDS_VERSION_RE.match(value):
         return None
+    if value not in share_words_versions():
+        return None
     return value
+
+
+def _words_version_refusal(body: Any) -> tuple[int, dict]:
+    """Why ``share_words_version_from`` gave None: nothing usable sent
+    (REQUIRED) or a well-formed id the server does not list (UNKNOWN)."""
+    fields: dict = body if isinstance(body, dict) else {}
+    value = fields.get("share_words_version")
+    if isinstance(value, str) and _WORDS_VERSION_RE.match(value):
+        return 400, {"code": "SHARE_WORDS_VERSION_UNKNOWN"}
+    return 400, {"code": "SHARE_WORDS_VERSION_REQUIRED"}
 
 
 def share_take(database: Any, *, owner_user_id: str, take_session_id: str,
@@ -279,7 +301,7 @@ def share_take(database: Any, *, owner_user_id: str, take_session_id: str,
         return 200, {"take_session_id": take, "community_ids": [], "none": True}
     words_version = share_words_version_from(body)
     if words_version is None:
-        return 400, {"code": "SHARE_WORDS_VERSION_REQUIRED"}
+        return _words_version_refusal(body)
     version = share_policy_version()
     from services.lend_your_ear import accepted_policy_at_least
     if not version or not accepted_policy_at_least(database, owner_user_id, version):

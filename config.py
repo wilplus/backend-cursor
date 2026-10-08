@@ -486,6 +486,15 @@ class Config:
     # the speaker saw (take_shares.share_words_version, 0443), which the
     # screen sends. Still dark: COMMUNITIES_ENABLED above is the switch.
     COMMUNITY_SHARE_POLICY_VERSION: str | None = "phase1-2026-10-02"
+    # The versions of the sharing screen's words a share may record (0443):
+    # the server's own list, so a share can only name words that were really
+    # signed and shown. "sharing-screen-2026-10-06" is the founder's signed
+    # sharing words (N54, WQ5 A / WQ6 A; docs/SIGNED-line-bank-2026-10-06.md,
+    # "Sharing"). When counsel or the founder changes those words, the new
+    # version is added here in the same PR as the screen that shows it; an
+    # old version stays listed while a screen that shows it may still be open.
+    # Any other version is refused (400 SHARE_WORDS_VERSION_UNKNOWN).
+    SHARE_WORDS_VERSIONS: tuple[str, ...] = ("sharing-screen-2026-10-06",)
 
     # THE COACH PANEL'S LEARNING ADDITIONS (founder 2026-10-01; migration
     # 0411), each dark behind its own constant, each a reviewed flip after

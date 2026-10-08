@@ -633,8 +633,11 @@ def test_a_share_records_the_words_the_speaker_saw_and_none_needs_none():
                              share_words_version="sharing-screen-2026-10-06")
     assert status == 200 and payload["share_words_version"] == "sharing-screen-2026-10-06"
     assert db.shares[0]["share_words_version"] == "sharing-screen-2026-10-06"
-    # A later share under newer words re-stamps the live row.
-    _share(db, _uuid(901), general=True, share_words_version="sharing-screen-v2")
+    # A later share under newer words (once the server lists them)
+    # re-stamps the live row.
+    with patch.object(Config, "SHARE_WORDS_VERSIONS",
+                      ("sharing-screen-2026-10-06", "sharing-screen-v2")):
+        _share(db, _uuid(901), general=True, share_words_version="sharing-screen-v2")
     assert db.shares[0]["share_words_version"] == "sharing-screen-v2"
     # "None" revokes with no version, and reads none.
     status, payload = cm.share_take(db, owner_user_id="owner-1", take_session_id=_uuid(901),
@@ -648,8 +651,34 @@ def test_a_share_records_the_words_the_speaker_saw_and_none_needs_none():
 def test_the_words_version_is_a_short_id():
     assert cm.share_words_version_from({"share_words_version": "sharing-screen-2026-10-06"}) \
         == "sharing-screen-2026-10-06"
-    assert cm.share_words_version_from({"share_words_version": "v1.2_a-b"}) == "v1.2_a-b"
+    with patch.object(Config, "SHARE_WORDS_VERSIONS", ("v1.2_a-b",)):
+        assert cm.share_words_version_from({"share_words_version": "v1.2_a-b"}) == "v1.2_a-b"
     for bad in (None, "", " ", "-x", "a b", "x" * 65, 1, ["v1"], {"v": 1}):
         assert cm.share_words_version_from({"share_words_version": bad}) is None
     assert cm.share_words_version_from(None) is None
     assert cm.share_words_version_from({}) is None
+
+
+def test_a_words_version_the_server_does_not_list_is_refused_before_any_write():
+    """The words version is checked against the server's own list
+    (Config.SHARE_WORDS_VERSIONS): a well-formed id the screen never showed
+    is refused cleanly, with its own code, and nothing is written."""
+    assert Config.SHARE_WORDS_VERSIONS == ("sharing-screen-2026-10-06",)
+    assert WORDS in Config.SHARE_WORDS_VERSIONS
+    db = _Db()
+    with POLICY, ACCEPTED:
+        for unknown in ("sharing-screen-v2", "sharing-screen-2099-01-01", "anything"):
+            assert cm.share_take(db, owner_user_id="owner-1", take_session_id=_uuid(901),
+                                 body={"general": True, "share_words_version": unknown}
+                                 ) == (400, {"code": "SHARE_WORDS_VERSION_UNKNOWN"})
+    assert db.shares == []
+    assert cm.share_words_version_from({"share_words_version": "anything"}) is None
+    assert cm.share_words_version_from({"share_words_version": WORDS}) == WORDS
+    # An empty list refuses every share; "None" still revokes.
+    with patch.object(Config, "SHARE_WORDS_VERSIONS", ()), POLICY, ACCEPTED:
+        assert cm.share_take(db, owner_user_id="owner-1", take_session_id=_uuid(901),
+                             body={"general": True, "share_words_version": WORDS}
+                             ) == (400, {"code": "SHARE_WORDS_VERSION_UNKNOWN"})
+        status, _ = cm.share_take(db, owner_user_id="owner-1", take_session_id=_uuid(901),
+                                  body={"none": True})
+        assert status == 200
