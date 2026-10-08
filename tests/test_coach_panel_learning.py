@@ -457,7 +457,14 @@ class AuditTests(unittest.TestCase):
         self.assertEqual((thin["enough"], thin["note"]), (False, "not enough answers yet"))
 
 
+# 3.5 E4: every speaker here holds the training yes; the gate itself is
+# pinned in tests/test_learning_lanes_honour_3_5.py.
+ADMIT_ALL = patch("services.pair_consent.take_may_reach_a_coach_sheet",
+                  lambda db, take: True)
+
+
 @PICK_ON
+@ADMIT_ALL
 class BlockPickTests(unittest.TestCase):
     def test_askable_blocks_need_two_eligible_candidates_and_a_pick(self):
         frames = _Db().list_recent_v3_frames(10)

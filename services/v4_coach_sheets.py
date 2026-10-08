@@ -29,6 +29,16 @@ asked are stored and never sent. Every clip shown is recorded as an
 exposure, so the same coach is never asked to judge it blind afterwards.
 The words on the screens are the signed prototype's (S-B8 A), held by the
 frontend's coach panel copy; ``WORDING`` repeats them for the record.
+
+ONLY SPEAKERS WITH THE TRAINING YES (3.5 pack, file 22 item E4; Privacy 3.5
+§4a, signed 2026-10-08: "A coach may hear a moment of yours, without your
+name, to answer a question that teaches our software"). A Take reaches a
+sheet only while its speaker holds the training yes and has not objected to
+the blind check (``pair_consent.take_may_reach_a_coach_sheet``: the pairs'
+own consent read and 0454's objection read, nothing route-local). It is read
+when a sheet is written, again when the queue is served and again when it is
+answered, so a speaker who withdraws drops out of every pending sheet at
+once. Anyone else is skipped, never waited on.
 """
 from __future__ import annotations
 
@@ -39,7 +49,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Optional
 
-from services import verbal_markers
+from services import pair_consent, verbal_markers
 from services import willfidence as wf
 
 _log = logging.getLogger(__name__)
@@ -155,11 +165,28 @@ def _week_room(rows: list[dict], week: str) -> int:
     return WEEKLY_CAP - sum(1 for r in rows if r.get("week") == week)
 
 
+def _admitted(database: Any, take_session_id: Any, memo: Optional[dict] = None) -> bool:
+    """3.5 E4: this Take's speaker holds the training yes and has not
+    objected to the blind check. Memoised per call when given a dict."""
+    take = str(take_session_id or "")
+    if not take:
+        return False
+    if memo is not None and take in memo:
+        return memo[take]
+    ok = pair_consent.take_may_reach_a_coach_sheet(database, take)
+    if memo is not None:
+        memo[take] = ok
+    return ok
+
+
 def _open_frames(database: Any, rater_id: str) -> list[dict]:
-    """Recent V3 frames, none from a Take this rater is walking."""
+    """Recent V3 frames, none from a Take this rater is walking, and only
+    from speakers who hold the training yes (3.5 E4)."""
     walking = {str(t) for t in database.list_takes_coach_is_walking(rater_id) or []}
+    memo: dict = {}
     return [r for r in database.list_recent_v3_frames(limit=200) or []
-            if isinstance(r, dict) and str(r.get("take_session_id")) not in walking]
+            if isinstance(r, dict) and str(r.get("take_session_id")) not in walking
+            and _admitted(database, r.get("take_session_id"), memo)]
 
 
 def _write_pick(database: Any, *, rater_id: str, role: str, week: str, candidate: dict,
@@ -219,6 +246,8 @@ def fill_pick_sheets(database: Any, *, rater_id: str, week: str, rng: Any = None
     common = {"rater_id": rater_id, "role": role, "week": week}
     written: list[dict] = []
     due = _due_repick(mine, now) if role == "coach" else None
+    if due is not None and not _admitted(database, due.get("take_session_id")):
+        due = None
     if due is not None and rng.random() < REPICK_SHARE * WEEKLY_CAP / room:
         row = _write_pick(database, **common, candidate=_repick_candidate(due), slice_="repick",
                           chosen=list(due.get("clip_ids") or []), repick_of=str(due["id"]))
@@ -372,8 +401,10 @@ def pick_queue(database: Any, *, rater_id: str) -> tuple[int, dict]:
     from services.snippet_audio_url import snippet_clip_playback
     if not sheets_enabled():
         return _OFF
+    memo: dict = {}
     rows = [r for r in database.list_v4_pick_sheets(rater_id) or []
-            if isinstance(r, dict) and not r.get("answered_at")]
+            if isinstance(r, dict) and not r.get("answered_at")
+            and _admitted(database, r.get("take_session_id"), memo)]
     items = []
     for n, row in enumerate(rows, start=1):
         moments = []
@@ -398,7 +429,7 @@ def pick_answer(database: Any, *, rater_id: str, sheet_id: str, body: Any) -> tu
     if none == bool(clip):
         return 400, {"code": "INVALID_INPUT", "error": "pick one moment, or say none needs it"}
     row = database.get_v4_pick_sheet(str(sheet_id), rater_id)
-    if not isinstance(row, dict):
+    if not isinstance(row, dict) or not _admitted(database, row.get("take_session_id")):
         return 404, {"code": "NOT_FOUND", "error": "sheet not found"}
     if row.get("answered_at"):
         return 409, {"code": "ALREADY_ANSWERED", "error": "That block is already answered."}
@@ -415,8 +446,10 @@ def surer_queue(database: Any, *, rater_id: str) -> tuple[int, dict]:
     """Pending pairs: the two texts, in a fixed order. No slice, no level."""
     if not sheets_enabled():
         return _OFF
+    memo: dict = {}
     rows = [r for r in database.list_v4_surer_sheets(rater_id) or []
-            if isinstance(r, dict) and not r.get("answered_at")]
+            if isinstance(r, dict) and not r.get("answered_at")
+            and _admitted(database, r.get("take_session_id"), memo)]
     items = [{"sheet_id": str(r.get("id")), "said": str(r.get("said_text") or ""),
               "new": str(r.get("new_text") or ""), "n": n, "of": len(rows)}
              for n, r in enumerate(rows, start=1)]
@@ -431,7 +464,7 @@ def surer_answer(database: Any, *, rater_id: str, sheet_id: str, body: Any) -> t
     if answer not in ("yes", "no", "cant_tell"):
         return 400, {"code": "INVALID_INPUT", "error": "answer must be yes, no or cant_tell"}
     row = database.get_v4_surer_sheet(str(sheet_id), rater_id)
-    if not isinstance(row, dict):
+    if not isinstance(row, dict) or not _admitted(database, row.get("take_session_id")):
         return 404, {"code": "NOT_FOUND", "error": "sheet not found"}
     if row.get("answered_at"):
         return 409, {"code": "ALREADY_ANSWERED", "error": "That pair is already answered."}

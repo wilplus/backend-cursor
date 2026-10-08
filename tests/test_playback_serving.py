@@ -167,7 +167,7 @@ class _AuditDb:
                        {"id": "aud-2", "coach_id": "c", "clip_id": "p1",
                         "clip_kind": "practice_attempt", "error_id": "rushing",
                         "answer": None}]
-        self.picks = [{"id": "pick-1", "coach_id": "c", "answered_at": None,
+        self.picks = [{"id": "pick-1", "coach_id": "c", "answered_at": None, "take_session_id": "t",
                        "candidate_snippet_ids": ["s1", "s2"]}]
 
     def list_speaking_errors(self):
@@ -218,6 +218,8 @@ class TheBlindSheetsPlayTheClip(unittest.TestCase):
     def test_the_block_pick_serves_the_parent_and_its_window(self):
         from services import coach_block_pick as bp
         with patch("config.Config.COACH_BLOCK_PICK_ENABLED", True, create=True), \
+                patch("services.pair_consent.take_may_reach_a_coach_sheet",
+                      lambda db, take: True), \
                 patch.object(cvs, "presigned_get_coach_object", _fake_sign):
             status, payload = bp.queue(_AuditDb(), coach_id="c")
         self.assertEqual(status, 200)
