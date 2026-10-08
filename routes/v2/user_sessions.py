@@ -2194,6 +2194,29 @@ def v2_add_confident_voice_practice_attempt(practice_id):
                         "error": "Could not compare that attempt."}), 500
 
 
+@v2_bp.route(
+    "/user/confidence-practice/<practice_id>/attempts/<attempt_id>/timing",
+    methods=["POST"])
+@require_auth
+@operational_purpose_disabled("personalized_exercise_recommendation")
+@consent_choice_required("personalised_practice")
+def v2_confident_voice_practice_attempt_timing(practice_id, attempt_id):
+    """The phone's Stop and "answer shown" times for one try (V4 B1.4, O5,
+    V7 A). Measurement only: the answer is always 204 with no body, so the
+    phone learns nothing about the read (AC-9), and a refused write changes
+    nothing the speaker sees."""
+    if not _is_valid_uuid(practice_id) or not _is_valid_uuid(attempt_id):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "practice_id and attempt_id must be valid UUIDs"}), 400
+    practice = db.get_confident_voice_practice(practice_id, str(request.user_id))
+    if not practice:
+        return jsonify({"code": "NOT_FOUND", "error": "practice not found"}), 404
+    from services.v4_practice_read import record_timing
+    record_timing(db, attempt_id, str(request.user_id),
+                  request.get_json(silent=True))
+    return "", 204
+
+
 @v2_bp.route("/user/confidence-practice/<practice_id>/complete",
              methods=["PUT"])
 @require_auth

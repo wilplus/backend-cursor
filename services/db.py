@@ -11829,6 +11829,33 @@ class DatabaseService:
         }).execute()
         return self._rpc_row(result.data)
 
+    def record_v4_practice_read(self, attempt_id: str, *, outcome: str,
+                                received_at: Any, read_at: Any,
+                                s: Optional[float], filler: Optional[float],
+                                hedging: Optional[float]) -> Optional[dict]:
+        """Store one practise try's fast read with the server's times
+        (migration 0450, V4 B1.4). Raises on failure: the caller
+        (services.v4_practice_read.record) logs it and the try stands."""
+        result = self.client.rpc("record_v4_practice_read_v1", {
+            "p_attempt_id": str(attempt_id), "p_outcome": str(outcome),
+            "p_s": s, "p_filler": filler, "p_hedging": hedging,
+            "p_server_received_at": received_at.isoformat(),
+            "p_server_read_at": read_at.isoformat(),
+        }).execute()
+        return self._rpc_row(result.data)
+
+    def record_v4_practice_timing(self, attempt_id: str, owner_user_id: str,
+                                  stopped_ms: int, shown_ms: int) -> Optional[dict]:
+        """The phone's Stop and "answer shown" times for one try, once, for
+        its own owner only (migration 0450). Raises on failure."""
+        result = self.client.rpc("record_v4_practice_timing_v1", {
+            "p_attempt_id": str(attempt_id),
+            "p_owner_user_id": str(owner_user_id),
+            "p_phone_stopped_ms": int(stopped_ms),
+            "p_phone_shown_ms": int(shown_ms),
+        }).execute()
+        return self._rpc_row(result.data)
+
     def get_confidence_labels_by_snippet_ids(self, snippet_ids: list, *,
                                              strict: bool = False) -> dict:
         """{snippet_id: [label rows]} for the given snippets. {} on anything

@@ -14,6 +14,8 @@ never meet a record without it.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import contextvars
 import logging
 import re
@@ -85,6 +87,9 @@ def install_request_id(app: Any) -> None:
     @app.before_request
     def _bind_request_id() -> None:
         g.request_id = bind_request_id(request.headers.get(HEADER))
+        # When the request arrived, for timings measured from arrival (V4
+        # B1.4: the practise read's server-side wait).
+        g.received_at = datetime.now(timezone.utc)
 
     @app.after_request
     def _echo_request_id(response: Any) -> Any:

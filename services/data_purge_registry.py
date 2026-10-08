@@ -499,6 +499,10 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "take", "delete", "derived_feedback", 60),
     PurgeDependency("practice", "confident_voice_practice", "id", "practice",
                     "delete", "derived_feedback", 60),
+    # V4 B1.4 (0450): a practise try's fast read and its times. It goes with
+    # the try (and its FK cascades with it as the backstop).
+    PurgeDependency("v4_practice_reads", "v4_practice_reads", "attempt_id",
+                    "practice_attempt", "delete", "derived_feedback", 59),
     PurgeDependency("practice_attempt", "confident_voice_practice_attempt",
                     "id", "practice_attempt", "delete", "derived_feedback", 60),
     # Where a practice recording lives in the bucket. `delete`, not `retain`
