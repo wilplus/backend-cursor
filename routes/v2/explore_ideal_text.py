@@ -58,6 +58,7 @@ from services.recording_roots import (
     RecordingRootsStale,
     project_recording_roots,
 )
+from services.ideal_text_feedback_bake import request_rebake_after_answer
 from services.paragraph_history import history_for_part
 from services.slide_helper_words import (
     merge_recording_roots,
@@ -1452,6 +1453,7 @@ def v2_explore_decide_prior_take(arc_id):
                   why_key=(str(body.get("why_key"))
                            if isinstance(body.get("why_key"), str)
                            and body.get("why_key").strip() else None))
+            request_rebake_after_answer(arc_id, str(request.user_id))  # F3
         if ok and action == "accept":
             _reassemble_after_decision(arc_id)
         return jsonify({"saved": bool(ok)}), 200
