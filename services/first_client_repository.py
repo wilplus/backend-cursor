@@ -330,6 +330,17 @@ class FirstClientRepository:
                            take_id, _error_head(error))
             return None
 
+    def list_take_feedback_coverage(self, limit: int = 50000) -> list[dict]:
+        """Every served Take's floor, for the founder's V4 exit gate (BEXIT)
+        only; never a route's read (AC-9). [] on failure."""
+        try:
+            return list(self.client.table("take_feedback_coverage")
+                        .select("take_session_id,floor_met").limit(limit)
+                        .execute().data or [])
+        except Exception as error:  # noqa: BLE001 -- a report, logged
+            logger.warning("take coverage read failed: %s", _error_head(error))
+            return []
+
     def ack_feedback_v3_service_render(self, payload: dict) -> Optional[dict]:
         try:
             result = self.client.rpc(
