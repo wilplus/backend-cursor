@@ -10,12 +10,14 @@ from flask import Flask, request
 from config import Config
 
 
-def test_config_gates_default_false():
+def test_config_gates_ship_as_the_founder_set_them():
     assert Config.CONFIDENT_MOMENT_BUNDLE_V1_ENABLED is False
     assert Config.ROOTING_COVERAGE_V1_ENABLED is False
+    # The retired DPO lane stays closed.
     assert Config.MLC2_DATASET_RELEASES_ENABLED is False
-    assert Config.MLC2_TRAINING_ENABLED is False
-    assert Config.MLC2_PROMOTION_ENABLED is False
+    # Doors 3 and 4 opened 2026-10-08 by the founder ("turn it all ON").
+    assert Config.MLC2_TRAINING_ENABLED is True
+    assert Config.MLC2_PROMOTION_ENABLED is True
 
 
 def test_runtime_helper_matches_config():

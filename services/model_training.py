@@ -1,5 +1,7 @@
 """Door 3: a fine-tune at 200 (founder 2026-09-30, L7; counsel 2026-10-01;
-build plan ML-11). Built with the door closed.
+build plan ML-11). Built with the door closed; door 3 OPEN since 2026-10-08
+for exercise_script, praise_line and clearer_version (founder: "turn it all
+ON"), held behind Privacy and Terms 3.5 publication.
 
 Once a week, after the export and the sweep (services.learning_weekly):
 

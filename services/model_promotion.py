@@ -1,5 +1,7 @@
 """Door 4: promote by the founder's word (founder 2026-09-30, L8, L9;
-build plan ML-12). Built with the door closed.
+build plan ML-12). Built with the door closed; door 4 OPEN since 2026-10-08
+for exercise_script, praise_line and clearer_version (founder: "turn it all
+ON"), held behind Privacy and Terms 3.5 publication.
 
 A promotion writes one runtime_config key for one surface, through the
 only writer there is (``promote_runtime_surface_model_v1``, 0352, widened

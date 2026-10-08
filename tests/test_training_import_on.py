@@ -14,7 +14,12 @@ Pins the whole path with fakes:
     the label response or the import's status;
   * the split: deterministic, about 20% test, grouped by speaker, a
     nameless import a speaker of its own, the stored assignment winning;
-  * nothing trains: the release, training and promotion doors stay closed.
+  * nothing trains by the import alone: the retired DPO release lane stays
+    closed; training and promotion follow their own doors, which the founder
+    opened 2026-10-08 ("turn it all ON") for the three coach-answer surfaces.
+
+The import switch itself ships ON since 2026-10-08 (founder: "turn it all
+ON"; he holds the rights to the audio); the off tests close it explicitly.
 """
 from __future__ import annotations
 
@@ -182,23 +187,36 @@ def on():
         yield
 
 
+@pytest.fixture
+def off():
+    # The switch ships ON since 2026-10-08; the closed behaviour is pinned
+    # by closing it here, by name, like ``on``.
+    with patch("config.Config.TRAINING_IMPORT_ENABLED", False):
+        yield
+
+
 # ── the switch ─────────────────────────────────────────────────────────────
 
-def test_the_switch_is_a_closed_code_constant():
+def test_the_switch_is_a_code_constant_the_founder_turned_on():
+    # ON 2026-10-08 (founder: "turn it all ON"). Still a code constant.
     source = (ROOT / "config.py").read_text()
-    assert "    TRAINING_IMPORT_ENABLED = False\n" in source
+    assert "    TRAINING_IMPORT_ENABLED = True\n" in source
     assert 'getenv("TRAINING_IMPORT_ENABLED")' not in source
-    assert Config.TRAINING_IMPORT_ENABLED is False
+    assert Config.TRAINING_IMPORT_ENABLED is True
 
 
-def test_nothing_trains_the_doors_stay_closed():
-    """N56.4: "nothing trains on the labels until the founder says so"."""
+def test_what_trains_is_what_the_founder_said():
+    """N56.4: "nothing trains on the labels until the founder says so".
+    He said so on 2026-10-08 ("turn it all ON"): doors 3 and 4 and the
+    corpus copy open, for the three coach-answer surfaces only; the
+    retired DPO release lane stays closed."""
+    three = frozenset({"exercise_script", "praise_line", "clearer_version"})
     assert Config.MLC2_DATASET_RELEASES_ENABLED is False
-    assert Config.MLC2_TRAINING_ENABLED is False
-    assert Config.MLC2_PROMOTION_ENABLED is False
-    assert Config.MLC2_TRAINING_CORPUS_COPY_ENABLED is False
-    assert Config.TRAINING_SURFACES == frozenset()
-    assert Config.PROMOTION_SURFACES == frozenset()
+    assert Config.MLC2_TRAINING_ENABLED is True
+    assert Config.MLC2_PROMOTION_ENABLED is True
+    assert Config.MLC2_TRAINING_CORPUS_COPY_ENABLED is True
+    assert Config.TRAINING_SURFACES == three
+    assert Config.PROMOTION_SURFACES == three
 
 
 def _post(form, *, admin=False, coach=True, token=True):
@@ -225,7 +243,7 @@ def _form(**over):
     return {k: v for k, v in form.items() if v is not None}
 
 
-def test_off_the_route_answers_410_before_anything():
+def test_off_the_route_answers_410_before_anything(off):
     with patch.object(training_import, "prepare_training_import") as prepare:
         body, status = _post(_form(), token=False)
     assert status == 410
@@ -233,7 +251,7 @@ def test_off_the_route_answers_410_before_anything():
     prepare.assert_not_called()
 
 
-def test_off_prepare_is_the_tombstone_and_writes_nothing():
+def test_off_prepare_is_the_tombstone_and_writes_nothing(off):
     fake = FakeDB()
     out = training_import.prepare_training_import(
         audio_bytes=b"x", filename="t.wav", user_id=COACH, topic="t",

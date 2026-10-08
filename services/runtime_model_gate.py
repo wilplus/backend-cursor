@@ -17,20 +17,25 @@ Two properties, and the module exists to make both testable in one place:
 
   CLOSED   a key that is not in ``MODEL_CONFIG_KEYS`` is never resolved into
            a model id. Adding a key is a code change, reviewable as one.
-  GATED    reading one of them requires ``Config.MLC2_PROMOTION_ENABLED``.
-           Shut — which is how it ships — the caller's own default is used
-           and one ``promotion_disabled`` line is logged.
+  GATED    reading one of them requires ``Config.MLC2_PROMOTION_ENABLED``
+           AND the key belonging to a surface the founder named in
+           ``Config.PROMOTION_SURFACES`` ("open door 4 for surface S").
+           Otherwise the caller's own default is used and one
+           ``promotion_disabled`` line is logged. Door 4 opened 2026-10-08
+           (founder: "turn it all ON") for the three coach-answer surfaces
+           only; every other key here (the Ideal Text, Say It Stronger, the
+           coach's draft and own words, chat, copilot) stays at its default.
 
 This is the Python half. The database half is
 ``migrations/guard_runtime_config_model_keys.sql``, because a Python gate
 cannot bind a psql session holding the service-role key.
 
-NOTHING HERE OPENS ANYTHING. Every default is the shipped one.
+NOTHING HERE OPENS ANYTHING beyond the surfaces the founder named.
 """
 from __future__ import annotations
 
 import logging
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +81,20 @@ def promotion_is_enabled() -> bool:
     return bool(getattr(Config, "MLC2_PROMOTION_ENABLED", False))
 
 
+def promoted_keys() -> frozenset:
+    """The keys of the surfaces the founder named for door 4.
+
+    The global constant alone is not the decision: on 2026-10-08 the founder
+    opened door 4 for ``PROMOTION_SURFACES`` (three coach-answer surfaces),
+    not for every key above. Without this a row for the Ideal Text or a chat
+    model would be served the moment ``MLC2_PROMOTION_ENABLED`` turned True.
+    """
+    from config import Config
+
+    named: Any = getattr(Config, "PROMOTION_SURFACES", frozenset()) or frozenset()
+    return frozenset(f"openai_surface_model_{s}" for s in named)
+
+
 def resolve_gated_model(
     key: str,
     *,
@@ -95,7 +114,7 @@ def resolve_gated_model(
             "services.runtime_model_gate.MODEL_CONFIG_KEYS and guard it in "
             "migrations/guard_runtime_config_model_keys.sql first"
         )
-    if not promotion_is_enabled():
+    if not promotion_is_enabled() or name not in promoted_keys():
         # Not a warning: this is the shipped posture, and a warning per call
         # would train the operator to ignore the log. It is logged at all
         # because "the row is there and is not being served" is otherwise

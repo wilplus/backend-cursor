@@ -1,7 +1,8 @@
 """The doors' comments say what the constants say (build plan ML-1b; audit
 2026-10-05).
 
-Doors 1 and 2 opened on 2026-10-01 by the founder's sentences, and four
+Doors 1 and 2 opened on 2026-10-01 by the founder's sentences (doors 3 and
+4 on 2026-10-08, "turn it all ON"), and four
 files went on calling them dark or closed. A comment that contradicts the
 constant it describes is how a reader trusts a door that is open, or
 "opens" one twice. So each file's module docstring is tied to its
@@ -30,6 +31,11 @@ _CLAIMS = (
      ("closed in code until",), "open since 2026-10-01"),
     ("services/learning_weekly.py", "MLC2_PAIR_RELEASES_ENABLED",
      ("closed today, so the job exports",), "door 2 is\n     open since 2026-10-01"),
+    # Doors 3 and 4 opened 2026-10-08 (founder: "turn it all ON").
+    ("services/model_training.py", "MLC2_TRAINING_ENABLED",
+     ("Built with the door closed.",), "door 3 OPEN since 2026-10-08"),
+    ("services/model_promotion.py", "MLC2_PROMOTION_ENABLED",
+     ("Built with the door closed.",), "door 4 OPEN since 2026-10-08"),
 )
 
 
@@ -56,14 +62,21 @@ class DoorCommentTests(unittest.TestCase):
                         open_words, text,
                         f"{constant} was closed again: {relative} must say so")
 
-    def test_the_two_open_doors_are_the_ones_the_comments_describe(self):
-        # The premise of the claims above: doors 1 and 2 open, 3 and 4 shut
-        # (docs/LEARNING-DOORS.md). A change to any of the four constants
-        # revisits this file in the same review.
+    def test_the_open_doors_are_the_ones_the_comments_describe(self):
+        # The premise of the claims above: doors 1 and 2 open since
+        # 2026-10-01, doors 3 and 4 since 2026-10-08 (founder: "turn it all
+        # ON"), for the three existing surfaces (docs/LEARNING-DOORS.md). A
+        # change to any of the four constants revisits this file in the
+        # same review. The retired DPO lane stays shut.
         self.assertTrue(Config.MLC2_TRAINING_SWITCH_ENABLED)
         self.assertTrue(Config.MLC2_PAIR_RELEASES_ENABLED)
-        self.assertFalse(Config.MLC2_TRAINING_ENABLED)
-        self.assertFalse(Config.MLC2_PROMOTION_ENABLED)
+        self.assertTrue(Config.MLC2_TRAINING_ENABLED)
+        self.assertTrue(Config.MLC2_PROMOTION_ENABLED)
+        self.assertFalse(Config.MLC2_DATASET_RELEASES_ENABLED)
+        docs = (ROOT / "docs" / "LEARNING-DOORS.md").read_text(encoding="utf-8")
+        for door in ("| 3 · training |", "| 4 · promotion |"):
+            row = next(line for line in docs.splitlines() if line.startswith(door))
+            self.assertIn("OPEN for all three existing surfaces since 2026-10-08", row)
 
 
 if __name__ == "__main__":

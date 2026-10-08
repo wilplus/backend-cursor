@@ -121,9 +121,25 @@ class SurfaceContractTests(unittest.TestCase):
             )
         self.assertEqual(calls, [])
 
-        # With the gate open, the promoted model is served as before.
+        # Door 4 open but the surface not named (as shipped 2026-10-08: the
+        # founder named the three coach-answer surfaces, not the Ideal
+        # Text): the row is still inert and not read.
         clear_runtime_model_cache()
-        with patch.object(Config, "MLC2_PROMOTION_ENABLED", True):
+        with patch.object(Config, "MLC2_PROMOTION_ENABLED", True), \
+                patch.object(Config, "PROMOTION_SURFACES", frozenset()):
+            self.assertEqual(
+                resolve_surface_model(
+                    "best_presentation", "base", config_getter=get,
+                ),
+                "base",
+            )
+        self.assertEqual(calls, [])
+
+        # With the gate open for this surface, the promoted model is served
+        # as before.
+        clear_runtime_model_cache()
+        with patch.object(Config, "MLC2_PROMOTION_ENABLED", True), \
+                patch.object(Config, "PROMOTION_SURFACES", frozenset({"ideal_text"})):
             self.assertEqual(
                 resolve_surface_model(
                     "best_presentation", "base", config_getter=get,

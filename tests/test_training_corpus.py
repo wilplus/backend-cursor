@@ -18,8 +18,14 @@ from services import training_corpus as tc
 
 
 class DarkTests(unittest.TestCase):
-    def test_the_switch_is_a_code_constant_and_it_is_off(self):
-        self.assertIs(Config.MLC2_TRAINING_CORPUS_COPY_ENABLED, False)
+    """The copy switch ships ON since 2026-10-08 (founder: "turn it all ON");
+    the off behaviour is pinned by closing the switch explicitly."""
+
+    def setUp(self):
+        self._off = mock.patch("config.Config.MLC2_TRAINING_CORPUS_COPY_ENABLED", False)
+
+    def test_the_switch_is_a_code_constant_and_it_is_on(self):
+        self.assertIs(Config.MLC2_TRAINING_CORPUS_COPY_ENABLED, True)
         import config
         source = inspect.getsource(config)
         line = next(line for line in source.splitlines()
@@ -27,14 +33,15 @@ class DarkTests(unittest.TestCase):
         self.assertNotIn("getenv", line)
 
     def test_off_means_nothing_is_enqueued(self):
-        with mock.patch("services.job_queue.enqueue") as enqueue:
+        with self._off, mock.patch("services.job_queue.enqueue") as enqueue:
             self.assertFalse(tc.enqueue_corpus_copy("take", "arc", "user"))
         enqueue.assert_not_called()
 
     def test_off_means_the_job_does_nothing(self):
         db = mock.Mock()
-        self.assertEqual(tc.run_corpus_copy("take", "arc", database=db),
-                         {"status": "disabled"})
+        with self._off:
+            self.assertEqual(tc.run_corpus_copy("take", "arc", database=db),
+                             {"status": "disabled"})
         db.assert_not_called()
         self.assertEqual(db.method_calls, [])
 
