@@ -697,6 +697,12 @@ class _ChangesRun:
                         "take feedback v3 dark frame not stored "
                         "arc=%s take=%s", self.arc_id, _arm_sid,
                     )
+                else:
+                    # V4 B1.2: the Take's seeded random 20% of moments,
+                    # drawn by the database from the stored frame and kept
+                    # apart from the picks. A side write; never raises.
+                    from services.v4_random_moments import draw
+                    draw(db, _arm_sid)
 
     def _immutable_membership(self) -> None:
         # IMMUTABLE TAKE MEMBERSHIP (founder 2026-08-26). The first complete
