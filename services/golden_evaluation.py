@@ -107,6 +107,16 @@ def _coach_word_compose(*, surface: str, passage: str, spotted: list, kind: str,
     return compose_words(surface=surface, transcript=passage, coach_text=coach_text)
 
 
+def _serving_adapter(surface: str) -> Callable:
+    """The adapter that serves the coach on this surface: the coach's own
+    words' drafter, or the answer drafts' ``compose_draft``."""
+    from services.feedback_pairs import COACH_WORD_SURFACES
+    if surface in COACH_WORD_SURFACES:
+        return _coach_word_compose
+    from services.coach_request_drafts import compose_draft
+    return compose_draft
+
+
 def _answer(surface: str, moment: dict, *, model: Optional[str], compose: Callable) -> str:
     from services.feedback_pairs import COACH_WORD_SURFACES
     from services.ml_surface_contracts import evaluation_model_override
@@ -167,12 +177,7 @@ def evaluate(database: Any, *, surface: str, candidate_model: str,
             f"only {len(refs)} confirmed references in the sealed set; {MIN_REFERENCES} needed",
             "TOO_FEW_REFERENCES")
     if compose is None:
-        from services.feedback_pairs import COACH_WORD_SURFACES
-        if surface in COACH_WORD_SURFACES:
-            compose = _coach_word_compose
-        else:
-            from services.coach_request_drafts import compose_draft
-            compose = compose_draft
+        compose = _serving_adapter(surface)
     withdrawn = set()
     for text in withdrawn_texts or []:
         withdrawn |= windows(text)
