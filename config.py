@@ -562,7 +562,10 @@ class Config:
     # does not exist yet (NotImplementedError, no caller), and document 02
     # v1.1 §9 keeps this gate off until counsel confirms. It comes back on
     # with counsel's confirmation and a fit that exists.
-    DETECTOR_TRAINING_AUTHORISED = False
+    # ON again from 2026-10-08 (founder: "turn it all ON"): the fit exists
+    # (#973, shadow only, consenting speakers' blind answers) and document 02
+    # v1.2 is signed (N68, counsel not yet consulted, as the founder signed).
+    DETECTOR_TRAINING_AUTHORISED = True
     # 0c (A2): a student's new Take appears as a bubble in the coach's
     # Lounge chat, opening the walk.
     COACH_TAKE_BUBBLES_ENABLED = True
