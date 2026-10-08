@@ -789,11 +789,21 @@ hard migrations/the_coach_s_diagnosis_comes_first.sql
 hard migrations/a_coach_may_change_their_answer.sql
 hard migrations/a_coach_may_change_their_answer.sql
 
-# 0447 (door 2, ML-9): a failed export voids its release. One new function
+# 0448 (N12; founder decision tree 2026-10-08, Q3/Q4 YES): a speaker's skip
+# keeps an empty receipt. feedback_revisions gets its own guard (0327's
+# refusal plus 0379's governed purge wipe, owner rows only), and 0379's wipe
+# counts an owner row it could not reach. Both lanes carry 0327 and 0379, so
+# both, after 0446 (0447 is not applied by this recipe), as in the manifest.
+# Twice: apply/reapply idempotency.
+# Its suite: tests/test_a_skip_keeps_an_empty_receipt_postgres.py.
+hard migrations/a_skip_keeps_an_empty_receipt.sql
+hard migrations/a_skip_keeps_an_empty_receipt.sql
+
+# 0454 (door 2, ML-9): a failed export voids its release. One new function
 # over 0405's pair_releases and feedback_pairs, applied above; nothing is
-# re-issued. Released lane only, where its suite runs; after 0446, as in the
-# manifest. Twice: apply/reapply idempotency. Its suite:
-# tests/test_a_failed_export_voids_its_release_postgres.py.
+# re-issued. Released lane only, where its suite runs; after 0448 (0449-0453
+# are not applied by this recipe), as in the manifest. Twice: apply/reapply
+# idempotency. Its suite: tests/test_a_failed_export_voids_its_release_postgres.py.
 if [ "$LANE" = "released" ]; then
   hard migrations/a_failed_export_voids_its_release.sql
   hard migrations/a_failed_export_voids_its_release.sql

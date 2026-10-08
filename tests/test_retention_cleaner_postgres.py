@@ -812,7 +812,9 @@ class TestOneDefinitionOfWhatIsDue:
 
 class TestTheTwoKeys:
 
-    def test_a_live_request_is_refused_while_the_key_is_off(self, db, storage):
+    def test_a_live_request_is_refused_while_the_key_is_off(self, db, storage,
+                                                            monkeypatch):
+        monkeypatch.setattr(rc, "RETENTION_CLEANER_LIVE", False)
         w = _world(db)
         summary = rc.run(_Database(db), mode="live", as_of=AS_OF)
         assert (summary["requested_mode"], summary["mode"], summary["state"],

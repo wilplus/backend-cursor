@@ -11796,6 +11796,158 @@ class DatabaseService:
                                  {"p_snippet_id": str(snippet_id)}).execute()
         return self._rpc_row(result.data)
 
+    def draw_v4_random_moments(self, take_session_id: str) -> Optional[dict]:
+        """Draw one Take's seeded random 20% of moments from its stored dark
+        frame (migration 0454, V4 B1.2). The database reads the frame and
+        the seed itself; a second call returns the stored draw. Raises on
+        failure: the caller (services.v4_random_moments.draw) logs it and
+        the Take stands."""
+        result = self.client.rpc("draw_v4_random_moments_v1",
+                                 {"p_take_session_id": str(take_session_id)}
+                                 ).execute()
+        return self._rpc_row(result.data)
+
+    def get_v4_dark_frame(self, take_session_id: str) -> Optional[dict]:
+        """The Take's stored universal-v3 dark frame (V4 reads it), or None."""
+        from services.take_feedback_policy_v3 import POLICY_VERSION
+        res = (self.client.table("take_feedback_policy_v3_shadow_frames")
+               .select("frame").eq("take_session_id", str(take_session_id))
+               .eq("policy_version", POLICY_VERSION).limit(1).execute())
+        rows = res.data or []
+        frame = rows[0].get("frame") if rows and isinstance(rows[0], dict) else None
+        return frame if isinstance(frame, dict) else None
+
+    def record_v4_willfidence_reads(self, take_session_id: str,
+                                    reads: list) -> Optional[dict]:
+        """Store one Take's willfidence-v1-machine read (migration 0449, V4
+        B1.3). The database computes S, W, the boxes and the Take's line
+        from the frame, the clips and these word signals. Raises on
+        failure: the caller (services.willfidence.run_read) logs it."""
+        result = self.client.rpc("record_v4_willfidence_reads_v1", {
+            "p_take_session_id": str(take_session_id),
+            "p_reads": reads,
+        }).execute()
+        return self._rpc_row(result.data)
+
+    def record_v4_practice_read(self, attempt_id: str, *, outcome: str,
+                                received_at: Any, read_at: Any,
+                                s: Optional[float], filler: Optional[float],
+                                hedging: Optional[float]) -> Optional[dict]:
+        """Store one practise try's fast read with the server's times
+        (migration 0450, V4 B1.4). Raises on failure: the caller
+        (services.v4_practice_read.record) logs it and the try stands."""
+        result = self.client.rpc("record_v4_practice_read_v1", {
+            "p_attempt_id": str(attempt_id), "p_outcome": str(outcome),
+            "p_s": s, "p_filler": filler, "p_hedging": hedging,
+            "p_server_received_at": received_at.isoformat(),
+            "p_server_read_at": read_at.isoformat(),
+        }).execute()
+        return self._rpc_row(result.data)
+
+    def record_v4_practice_timing(self, attempt_id: str, owner_user_id: str,
+                                  stopped_ms: int, shown_ms: int) -> Optional[dict]:
+        """The phone's Stop and "answer shown" times for one try, once, for
+        its own owner only (migration 0450). Raises on failure."""
+        result = self.client.rpc("record_v4_practice_timing_v1", {
+            "p_attempt_id": str(attempt_id),
+            "p_owner_user_id": str(owner_user_id),
+            "p_phone_stopped_ms": int(stopped_ms),
+            "p_phone_shown_ms": int(shown_ms),
+        }).execute()
+        return self._rpc_row(result.data)
+
+    def record_v4_moment_paragraphs(self, take_session_id: str,
+                                    paragraph_map: list) -> Optional[dict]:
+        """A Take's moment-to-Paragraph map, once (migration 0451, V4 B1.5).
+        Raises on failure: the caller logs it and the Take stands."""
+        result = self.client.rpc("record_v4_moment_paragraphs_v1", {
+            "p_take_session_id": str(take_session_id), "p_map": paragraph_map,
+        }).execute()
+        return self._rpc_row(result.data)
+
+    def compute_v4_pick_outcomes(self, next_take_session_id: str) -> Optional[dict]:
+        """The previous Take's outcomes, once both Takes are read (migration
+        0451, V4 B1.5). Raises on failure: the caller logs it."""
+        result = self.client.rpc("compute_v4_pick_outcomes_v1", {
+            "p_next_take_session_id": str(next_take_session_id),
+        }).execute()
+        return self._rpc_row(result.data)
+
+    def list_v4_willfidence_reads(self, take_session_id: str) -> list[dict]:
+        """One Take's willfidence-v1-machine reads (0449), for the V4 picker."""
+        res = (self.client.table("v4_willfidence_reads")
+               .select("block_id,s,w,willfident,role,sound_clips")
+               .eq("take_session_id", str(take_session_id))
+               .eq("read_version", "willfidence-v1-machine").execute())
+        return list(res.data or [])
+
+    def record_v4_picks(self, take_session_id: str, rows: list) -> Optional[dict]:
+        """V4's dark picks for one Take (migration 0452, V4 B1.6). Raises on
+        failure: the caller (services.v4_picker.run) logs it."""
+        result = self.client.rpc("record_v4_picks_v1", {
+            "p_take_session_id": str(take_session_id), "p_rows": rows,
+        }).execute()
+        return self._rpc_row(result.data)
+
+    # ── V4's blind coach sheets (migration 0453, B1.8, B1.9) ──────────────
+    def list_v4_picks(self, take_session_id: str) -> list[dict]:
+        res = (self.client.table("v4_picks")
+               .select("block_id,sureness,v4_snippet_id,v3_snippet_id,fallback")
+               .eq("take_session_id", str(take_session_id)).execute())
+        return list(res.data or [])
+
+    def list_v4_pick_sheets(self, rater_id: str) -> list[dict]:
+        res = (self.client.table("v4_moment_pick_sheets").select("*")
+               .eq("rater_id", str(rater_id)).order("created_at").execute())
+        return list(res.data or [])
+
+    def insert_v4_pick_sheet(self, row: dict) -> Optional[dict]:
+        res = self.client.table("v4_moment_pick_sheets").insert(row).execute()
+        return (res.data or [None])[0]
+
+    def get_v4_pick_sheet(self, sheet_id: str, rater_id: str) -> Optional[dict]:
+        res = (self.client.table("v4_moment_pick_sheets").select("*")
+               .eq("id", str(sheet_id)).eq("rater_id", str(rater_id)).limit(1).execute())
+        return (res.data or [None])[0]
+
+    def answer_v4_pick_sheet(self, sheet_id: str, rater_id: str,
+                             clip_id: Optional[str], none_needs_it: bool) -> Optional[dict]:
+        res = (self.client.table("v4_moment_pick_sheets")
+               .update({"answer_snippet_id": clip_id,
+                        "none_needs_it": True if none_needs_it else None,
+                        "answered_at": datetime.now(timezone.utc).isoformat()})
+               .eq("id", str(sheet_id)).eq("rater_id", str(rater_id))
+               .is_("answered_at", "null").execute())
+        return (res.data or [None])[0]
+
+    def list_v4_surer_sheets(self, rater_id: str) -> list[dict]:
+        res = (self.client.table("v4_surer_sheets").select("*")
+               .eq("rater_id", str(rater_id)).order("created_at").execute())
+        return list(res.data or [])
+
+    def list_v4_surer_answers(self, limit: int = 20000) -> list[dict]:
+        res = (self.client.table("v4_surer_sheets").select("varied_quality")
+               .not_.is_("answered_at", "null").limit(int(limit)).execute())
+        return list(res.data or [])
+
+    def insert_v4_surer_sheet(self, row: dict) -> Optional[dict]:
+        res = self.client.table("v4_surer_sheets").insert(row).execute()
+        return (res.data or [None])[0]
+
+    def get_v4_surer_sheet(self, sheet_id: str, rater_id: str) -> Optional[dict]:
+        res = (self.client.table("v4_surer_sheets").select("*")
+               .eq("id", str(sheet_id)).eq("rater_id", str(rater_id)).limit(1).execute())
+        return (res.data or [None])[0]
+
+    def answer_v4_surer_sheet(self, sheet_id: str, rater_id: str, answer: str,
+                              chosen: Optional[str], rejected: Optional[str]) -> Optional[dict]:
+        res = (self.client.table("v4_surer_sheets")
+               .update({"answer": answer, "chosen_text": chosen, "rejected_text": rejected,
+                        "answered_at": datetime.now(timezone.utc).isoformat()})
+               .eq("id", str(sheet_id)).eq("rater_id", str(rater_id))
+               .is_("answered_at", "null").execute())
+        return (res.data or [None])[0]
+
     def get_confidence_labels_by_snippet_ids(self, snippet_ids: list, *,
                                              strict: bool = False) -> dict:
         """{snippet_id: [label rows]} for the given snippets. {} on anything
@@ -15702,6 +15854,15 @@ class DatabaseService:
             raise ValueError("pick_line_bank_line_v1 returned no index")
         return data
 
+    def read_line_bank_memory(self, *, user_id: str) -> list[dict]:
+        """This speaker's rows of line_bank_memory (0438): bank,
+        last_index, last_plain_index. Indexes only. Raises on failure."""
+        res = (self.client.table("line_bank_memory")
+               .select("bank,last_index,last_plain_index")
+               .eq("user_id", str(user_id))
+               .execute())
+        return [row for row in (res.data or []) if isinstance(row, dict)]
+
     def new_coach_feedback_by_project(self, user_id: str) -> dict[str, bool]:
         """{project id: True while a published coach word or answer for
         one of its Takes is newer than the walk's last show of it} for every
@@ -15986,7 +16147,7 @@ class DatabaseService:
         return (res.data or [None])[0]
 
     def void_failed_pair_release(self, release_id: str) -> bool:
-        """``void_failed_pair_release_v1`` (0447): the one release a failed
+        """``void_failed_pair_release_v1`` (0454): the one release a failed
         export wrote is voided ('export_failed') and its pairs go back to
         waiting; the weekly sweep deletes its objects. True when this call
         voided it, False when another path had. Raises on failure or on an

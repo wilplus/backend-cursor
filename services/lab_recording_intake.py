@@ -14,13 +14,34 @@ class RecordingLane:
     paired_session_id: str | None
 
 
-@dataclass(frozen=True)
 class RecordingIntakeError(Exception):
-    """A stable API error produced before storage or processing begins."""
+    """A stable API error produced before storage or processing begins.
 
-    code: str
-    message: str
-    status: int
+    ``code``, ``message`` and ``status`` are read-only.
+
+    Not a frozen dataclass, on purpose: Python writes to an exception after
+    raising it (``__traceback__`` through a ``@contextmanager``,
+    ``__context__`` in ``ExitStack``, ``__notes__`` from ``add_note``), and a
+    frozen instance would answer with ``FrozenInstanceError`` in its place.
+    """
+
+    def __init__(self, code: str, message: str, status: int) -> None:
+        super().__init__(code, message, status)
+        self._code = code
+        self._message = message
+        self._status = status
+
+    @property
+    def code(self) -> str:
+        return self._code
+
+    @property
+    def message(self) -> str:
+        return self._message
+
+    @property
+    def status(self) -> int:
+        return self._status
 
 
 def parse_recording_lane(

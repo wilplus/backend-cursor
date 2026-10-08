@@ -15,7 +15,7 @@ Pins:
   * one file per surface per week: a week that has a release, standing or
     voided, is refused before anything is written; the row and its owners
     are written before any object, so a fire racing another is refused at
-    its own row and puts nothing (0447);
+    its own row and puts nothing (0454);
   * anything after the row that fails voids the release ('export_failed')
     and the sweep deletes what was put; a void that fails too is named;
   * the weekly job refreshes first, exports, sweeps, and reports each.
@@ -492,7 +492,7 @@ class OneFilePerWeekTests(unittest.TestCase):
 
 class FailedExportTests(unittest.TestCase):
     """Anything after the release row fails: the release is voided
-    ('export_failed', 0447), so the sweep deletes whatever was put and no
+    ('export_failed', 0454), so the sweep deletes whatever was put and no
     file is left that no void can reach."""
 
     def test_the_row_and_its_owners_come_before_any_object_and_the_pairs_last(self):

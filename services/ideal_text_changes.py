@@ -697,6 +697,26 @@ class _ChangesRun:
                         "take feedback v3 dark frame not stored "
                         "arc=%s take=%s", self.arc_id, _arm_sid,
                     )
+                else:
+                    # V4 B1.2: the Take's seeded random 20% of moments,
+                    # drawn by the database from the stored frame and kept
+                    # apart from the picks. A side write; never raises.
+                    from services.v4_random_moments import draw
+                    _v4_draw = draw(db, _arm_sid)
+                    # V4 B1.3: once the moments are first drawn, the
+                    # machine's willfidence read is queued, off this path.
+                    # V4 B1.5: the paragraph each moment belongs to, bound
+                    # once, before the read is queued (it reads the map).
+                    if (_v4_draw or {}).get("outcome") == "drawn":
+                        from services.v4_pick_outcomes import map_paragraphs
+                        map_paragraphs(db, _arm_sid, _v3_frame, _v3_doc,
+                                       served_text=self.served_text,
+                                       slide_regions=self.slide_regions,
+                                       parts=lambda: self.deps.locked_parts(
+                                           self.arc_id, str(self.user_id),
+                                           self.served_text))
+                        from services.willfidence import enqueue_read
+                        enqueue_read(_arm_sid)
 
     def _immutable_membership(self) -> None:
         # IMMUTABLE TAKE MEMBERSHIP (founder 2026-08-26). The first complete

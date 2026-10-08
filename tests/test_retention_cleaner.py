@@ -248,10 +248,10 @@ def live(monkeypatch):
 
 # ── The two keys ────────────────────────────────────────────────────────────
 
-def test_the_founders_key_is_off():
-    """N45: the first real run waits for the founder's word. Flipping this is
-    that word, in a reviewed change, after reading a dry run."""
-    assert rc.RETENTION_CLEANER_LIVE is False
+def test_the_founders_key_is_on():
+    """N45: the first real run waited for the founder's word. He read the dry
+    run's counts and said "go" on 8 October 2026 (N66.3)."""
+    assert rc.RETENTION_CLEANER_LIVE is True
 
 
 def test_a_run_is_a_dry_run_unless_live_is_asked_for_in_so_many_words():
@@ -275,7 +275,8 @@ def test_a_dry_run_counts_records_and_deletes_nothing(storage):
     assert summary["run_id"] == "run-1" and summary["due"]
 
 
-def test_a_live_request_is_refused_while_the_key_is_off(storage, erasure):
+def test_a_live_request_is_refused_while_the_key_is_off(storage, erasure, monkeypatch):
+    monkeypatch.setattr(rc, "RETENTION_CLEANER_LIVE", False)
     db = _Db({"record_retention_dry_run_v1": _record(
         requested_mode="live", state="refused", refusal=rc.REFUSAL_LIVE_OFF)})
     storage["db"] = db
@@ -546,7 +547,7 @@ def test_every_relation_the_cleaner_writes_is_classified_and_none_is_retained():
 def test_the_cleaner_never_reads_an_environment_variable_or_a_service_flag():
     source = (ROOT / "services" / "retention_cleaner.py").read_text()
     assert "os.environ" not in source and "getenv" not in source
-    assert re.search(r"^RETENTION_CLEANER_LIVE = False$", source, re.M)
+    assert re.search(r"^RETENTION_CLEANER_LIVE = True$", source, re.M)
 
 
 # ── The migration ───────────────────────────────────────────────────────────

@@ -482,4 +482,11 @@
 0444	a_coach_is_asked_to_listen_again.sql
 0445	the_coach_s_diagnosis_comes_first.sql
 0446	a_coach_may_change_their_answer.sql
-0447	a_failed_export_voids_its_release.sql
+0447	a_take_draws_its_random_moments.sql
+0448	a_skip_keeps_an_empty_receipt.sql
+0449	the_machine_reads_willfidence.sql
+0450	a_practise_try_is_read_fast.sql
+0451	each_pick_learns_if_the_paragraph_rose.sql
+0452	the_v4_picker_runs_dark_beside_v3.sql
+0453	v4_asks_coaches_two_blind_questions.sql
+0454	a_failed_export_voids_its_release.sql

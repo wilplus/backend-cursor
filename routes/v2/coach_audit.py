@@ -78,3 +78,55 @@ def v2_coach_block_pick_answer(pick_id):
     return _run("block pick answer", lambda: answer(
         db, coach_id=_coach_id(), pick_id=str(pick_id),
         body=request.get_json(silent=True)))
+
+
+# ── V4's two blind sheets (B1.8, B1.9; S-B8 A; migration 0453) ────────────
+
+@v2_bp.route("/coach/v4-moment-picks", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_v4_moment_picks_queue():
+    """"Pick the moment for feedback": this rater's pending blocks, filled
+    up to the week's cap. Words, audio, letters; nothing the machine chose."""
+    from services.error_presence_audit import week_key
+    from services.v4_coach_sheets import fill_pick_sheets, pick_queue, sheets_enabled
+
+    def call():
+        if sheets_enabled():
+            fill_pick_sheets(db, rater_id=_coach_id(), week=week_key())
+        return pick_queue(db, rater_id=_coach_id())
+    return _run("v4 moment pick queue", call)
+
+
+@v2_bp.route("/coach/v4-moment-picks/<sheet_id>/answer", methods=["POST"])
+@require_admin_or_coach
+def v2_coach_v4_moment_pick_answer(sheet_id):
+    """Body {clip_id} or {none_needs_it: true}: one answer, once."""
+    from services.v4_coach_sheets import pick_answer
+    return _run("v4 moment pick answer", lambda: pick_answer(
+        db, rater_id=_coach_id(), sheet_id=str(sheet_id),
+        body=request.get_json(silent=True)))
+
+
+@v2_bp.route("/coach/v4-surer-pairs", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_v4_surer_pairs_queue():
+    """"Which sounds surer": this rater's pending pairs, filled up to the
+    week's cap. Two texts only; never the slice or the level."""
+    from services.error_presence_audit import week_key
+    from services.v4_coach_sheets import fill_surer_sheets, sheets_enabled, surer_queue
+
+    def call():
+        if sheets_enabled():
+            fill_surer_sheets(db, rater_id=_coach_id(), week=week_key())
+        return surer_queue(db, rater_id=_coach_id())
+    return _run("v4 surer queue", call)
+
+
+@v2_bp.route("/coach/v4-surer-pairs/<sheet_id>/answer", methods=["POST"])
+@require_admin_or_coach
+def v2_coach_v4_surer_pair_answer(sheet_id):
+    """Body {answer: yes | no | cant_tell}: one answer, once."""
+    from services.v4_coach_sheets import surer_answer
+    return _run("v4 surer answer", lambda: surer_answer(
+        db, rater_id=_coach_id(), sheet_id=str(sheet_id),
+        body=request.get_json(silent=True)))

@@ -499,6 +499,10 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "take", "delete", "derived_feedback", 60),
     PurgeDependency("practice", "confident_voice_practice", "id", "practice",
                     "delete", "derived_feedback", 60),
+    # V4 B1.4 (0450): a practise try's fast read and its times. It goes with
+    # the try (and its FK cascades with it as the backstop).
+    PurgeDependency("v4_practice_reads", "v4_practice_reads", "attempt_id",
+                    "practice_attempt", "delete", "derived_feedback", 59),
     PurgeDependency("practice_attempt", "confident_voice_practice_attempt",
                     "id", "practice_attempt", "delete", "derived_feedback", 60),
     # Where a practice recording lives in the bucket. `delete`, not `retain`
@@ -760,6 +764,42 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("v3_shadow", "take_feedback_policy_v3_shadow_frames",
                     "acquisition_principal_id", "principal", "external_review",
                     "dataset_lineage", 300),
+    # V4 B1.2 (0448): a Take's random moments. Derived from the frame, no
+    # words, nothing trained on them: they go with the Take, while the
+    # frame itself waits on its review.
+    PurgeDependency("v4_random_moments", "v4_random_moments",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    # V4 B1.3 (0449): the machine's willfidence reads, per moment and per
+    # Take. Derived, internal, nothing trained on them: they go with the Take.
+    PurgeDependency("v4_willfidence_reads", "v4_willfidence_reads",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("v4_willfidence_takes", "v4_willfidence_takes",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    # V4 B1.5 (0451): the moment-to-paragraph map and each moment's outcome.
+    # Derived, internal: they go with the Take (an outcome also goes with
+    # the next Take it was measured against).
+    PurgeDependency("v4_moment_paragraphs", "v4_moment_paragraphs",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("v4_pick_outcomes", "v4_pick_outcomes",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("v4_pick_outcomes_next", "v4_pick_outcomes",
+                    "next_take_session_id", "take", "delete", "derived_feedback", 59),
+    # V4 B1.6 (0452): V4's dark picks per block and per Take. Derived,
+    # internal: they go with the Take.
+    PurgeDependency("v4_picks", "v4_picks",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("v4_pick_takes", "v4_pick_takes",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    # V4 B1.8/B1.9 (0453): a blind sheet goes with the Take it asks about
+    # and with the rater who answered it (their own answers).
+    PurgeDependency("v4_moment_pick_sheets", "v4_moment_pick_sheets",
+                    "take_session_id", "take", "delete", "derived_feedback", 58),
+    PurgeDependency("v4_moment_pick_sheets_by_rater", "v4_moment_pick_sheets",
+                    "rater_id", "user", "delete", "derived_feedback", 58),
+    PurgeDependency("v4_surer_sheets", "v4_surer_sheets",
+                    "take_session_id", "take", "delete", "derived_feedback", 58),
+    PurgeDependency("v4_surer_sheets_by_rater", "v4_surer_sheets",
+                    "rater_id", "user", "delete", "derived_feedback", 58),
     PurgeDependency("v3_detector_reconciliation",
                     "take_feedback_detector_reconciliation",
                     "take_session_id", "take", "external_review",
@@ -1021,6 +1061,20 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("feedback_revision_reviewers", "feedback_revisions",
                     "rater_id", "principal", "external_review",
                     "derived_feedback", 300),
+    # rater_id is mixed. A coach row names the coach's owner principal (the
+    # entry above); an owner row names the speaker's USER id
+    # (record_root_phrase_skip_v1: a "no helper words" skip, its
+    # acquisition_principal_id NULL), which neither entry above reaches.
+    # N12 (founder 2026-10-08, Q3/Q4 YES: "empty receipt"): an owner row is
+    # kept as an empty receipt, its payload erased by the lineage wipe as a
+    # child of its evidence span (the guard 0448 gives the table lets that
+    # one UPDATE through). Every row counted here hangs off its speaker's own
+    # Take's span, inside the wipe's scope; one that did not would be
+    # counted by the wipe as not blank (0448) and fail the target, never
+    # pass as retained. Coach rows still stop the inventory (entries above).
+    PurgeDependency("feedback_revision_owner_raters", "feedback_revisions",
+                    "rater_id", "user", "tombstone", "derived_feedback", 200,
+                    "deletion_evidence"),
     PurgeDependency("confident_moment_bundle_projections",
                     "confident_moment_bundle_projections",
                     "acquisition_principal_id", "principal",
@@ -1519,5 +1573,5 @@ LINEAGE_TOMBSTONES: frozenset[str] = frozenset({
     "processing_transition_events", "transcript_versions", "slides",
     "paragraphs", "evidence_spans", "acoustic_feature_snapshots",
     "candidate_sets", "machine_predictions", "generation_runs",
-    "processing_stage_runs",
+    "processing_stage_runs", "feedback_revisions",
 })

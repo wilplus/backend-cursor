@@ -112,3 +112,52 @@ def say(choice: Any) -> Optional[str]:
     if index is None or not 0 <= index < len(BANKS[bank]):
         return None
     return line(bank, index)
+
+
+# --- The walk's screens (D-FW-3 wired, 2026-10-08) -------------------------
+#
+# The Feedback walk draws its bank lines on the speaker's screen, where a
+# screen must not wait on a call (walk lock: nothing blinks). So the walk
+# reads, once as it opens, the index each bank would say next (``upcoming``:
+# exactly what ``pick`` would answer with no later line, without recording
+# it), shows that line, and records it as shown when its screen comes on
+# (``shown``, through ``pick``, under the row's lock). The two agree unless
+# another device said a line of the same bank in between, and then the next
+# read follows the memory again. The walk never claims a later line: it has
+# no reads to prove one true, so ``shown`` passes none.
+
+
+def upcoming(database: Any, *, user_id: str) -> dict[str, int]:
+    """{bank: index of the ordinary line it says next} for every signed
+    bank, for this speaker; {} when the memory cannot be read (the walk then
+    keeps its own turn). Indexes only (AC-9). Records nothing."""
+    if not str(user_id or ""):
+        return {}
+    try:
+        rows = database.read_line_bank_memory(user_id=str(user_id))
+    except Exception as error:  # noqa: BLE001 -- logged; the walk keeps its own turn
+        _log.warning("line bank memory read failed: %s", type(error).__name__)
+        return {}
+    last: dict[str, Optional[int]] = {}
+    for row in rows or []:
+        if isinstance(row, dict) and row.get("bank") in BANKS:
+            last[str(row["bank"])] = _take(row.get("last_plain_index"))
+    out: dict[str, int] = {}
+    for bank, lines in BANKS.items():
+        plain = last.get(bank)
+        out[bank] = 0 if plain is None or not 0 <= plain < len(lines) else (plain + 1) % len(lines)
+    return out
+
+
+def shown(database: Any, *, user_id: str, body: Any) -> tuple[int, dict]:
+    """The walk showed a line of ``body["bank"]``: record it as the line
+    said (``pick`` with no later line). Returns (status, body):
+    200 {"bank", "index"} with the index recorded; 400 INVALID_INPUT for an
+    unknown bank; 503 when the memory cannot record it."""
+    bank = body.get("bank") if isinstance(body, dict) else None
+    if not isinstance(bank, str) or bank not in BANKS:
+        return 400, {"code": "INVALID_INPUT", "error": "bank must be a signed bank"}
+    choice = pick(database, user_id=user_id, bank=bank)
+    if choice is None or "index" not in choice:
+        return 503, {"code": "V2_ERROR", "error": "Could not save."}
+    return 200, {"bank": bank, "index": choice["index"]}

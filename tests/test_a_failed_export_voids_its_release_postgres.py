@@ -1,5 +1,5 @@
 """A failed export voids its release, executed on a disposable database
-(0447; door 2, ML-9). Pins:
+(0454; door 2, ML-9). Pins:
   * the gap: when the mark refuses (a pair stopped being releasable after
     the export read it), the release row stands live with no pair pointing
     at it, and the weekly refresh cannot reach it;

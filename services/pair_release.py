@@ -15,7 +15,7 @@ bucket with a manifest the job signs:
     standing or voided, is refused before anything is written, and the
     release row is written before its objects, so a second fire in the same
     week never overwrites them; if anything after the row fails, the
-    release is voided ('export_failed', 0447) and the sweep deletes what
+    release is voided ('export_failed', 0454) and the sweep deletes what
     was written;
   * a surface leaves only when the door is open in code AND the founder
     named the surface (Config.PAIR_RELEASE_SURFACES) by a reviewed change
@@ -187,7 +187,7 @@ def _week_taken_words(existing: dict) -> str:
 def _void_failed(database: Any, release_id: str, error: Exception, *,
                  surface: str, waiting: int, eligibility: dict) -> dict:
     """The job's row when anything after the release row failed. The release
-    is voided ('export_failed', 0447) so the sweep deletes whatever was put,
+    is voided ('export_failed', 0454) so the sweep deletes whatever was put,
     and its pairs wait for a later week. A void that fails too is named: the
     release then stands, and the row's ``failed_release_id`` is the one to
     void by hand. The row never says ``release_id``: nothing here is read

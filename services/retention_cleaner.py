@@ -72,10 +72,12 @@ from services.lab_audio_storage import (
 
 logger = logging.getLogger(__name__)
 
-#: THE FOUNDER'S KEY. False until the founder has read a dry run and sets it
-#: in a reviewed change (decisions log N45, N48.4 Q16 A). While it is False a
-#: live request is refused and recorded as refused, and nothing is deleted.
-RETENTION_CLEANER_LIVE = False
+#: THE FOUNDER'S KEY. Turned on 8 October 2026, after the founder read the
+#: dry run's counts (every rule 0) and said "go" (decisions log N45, N48.4
+#: Q16 A, N66.3). While it was False a live request was refused and recorded
+#: as refused, and nothing was deleted. A live run still needs the cron
+#: service to ask for one (RETENTION_CLEANER_MODE=live).
+RETENTION_CLEANER_LIVE = True
 
 CLEANER_VERSION = "retention-cleaner-v1"
 DRY_RUN = "dry_run"

@@ -131,6 +131,9 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     # Take under their own codes.
     "coach_exercise_preference_by_coach", "error_presence_audit_by_coach",
     "coach_block_pick_by_coach", "coach_clip_exposures",
+    # A rater's V4 blind sheets (0453): the rater's own answers belong to the
+    # rater's account; the Take-keyed rows go with the Take.
+    "v4_moment_pick_sheets_by_rater", "v4_surer_sheets_by_rater",
     # A coach asked to listen again (0444): the coach's own ask belongs to
     # the coach's account; the Take-keyed twin goes with the Take.
     "coach_listen_again_requests_by_coach",
@@ -169,6 +172,9 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
 #: counts in its `not_blank` check: code -> the parent's code.
 WIPED_WITH_PARENT: Mapping[str, str] = {
     "canonical_acoustics": "evidence_spans",
+    # A speaker's skips (N12, 0448): the owner rows of feedback_revisions
+    # hang off the project's own evidence spans.
+    "feedback_revision_owner_raters": "evidence_spans",
 }
 
 #: Held by a project but outliving it under a rule that does not exist yet:

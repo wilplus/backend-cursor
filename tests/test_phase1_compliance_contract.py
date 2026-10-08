@@ -85,7 +85,8 @@ def test_exercise_surface_is_registry_only_and_fail_closed():
     # helper-words routes (contract 29a) carry the same gate.
     # Seven since 2026-09-28: the exercise-rendered confirmation (0387).
     # Eight since 2026-10-06: the machine's check of a practise try (N52.3).
-    assert user_routes.count(marker) == 8
+    # Nine since 2026-10-08: the phone's timing of a practise try (V4 B1.4).
+    assert user_routes.count(marker) == 9
     # Two since 2026-09-28: the coach's exercise request carries it too.
     # + the coach's answer draft behind the same gate (2026-09-30)
     # + the coach's practice judgement (2026-10-05, Q6; N45)
