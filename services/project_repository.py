@@ -120,8 +120,16 @@ class ProjectRepository:
         return row
 
     def claim_guest(self, principal_id: str, secret_hash: str, user_id: str) -> dict:
-        row = self.database.claim_guest_owner_principal(
-            str(principal_id), str(secret_hash), str(user_id))
+        # A claim moves whose processing authority a guest token carries, so
+        # the core gate forgets what it remembered, before and after (S1).
+        from services.processing_authorization import clear_gate_cache
+
+        clear_gate_cache()
+        try:
+            row = self.database.claim_guest_owner_principal(
+                str(principal_id), str(secret_hash), str(user_id))
+        finally:
+            clear_gate_cache()
         if not row:
             raise ProjectOwnershipError("guest owner claim rejected")
         return row

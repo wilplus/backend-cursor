@@ -347,16 +347,19 @@ def main() -> int:
 
 
 def _run_side_lane(conn) -> int:
-    """Serve a non-pipeline queue in one slot, with no scheduler.
+    """Serve a non-pipeline queue in one slot, with its own scheduler.
 
     One slot because a bake is the only thing queued here and a second
-    concurrent Manager run on one container buys nothing. No scheduler
-    because `enqueue_in` is the pipeline's (delayed retries, the sweep
-    chain) and rq only needs one scheduler per queue.
+    concurrent Manager run on one container buys nothing. A SCHEDULER since
+    the rebake after answers (F3, 2026-10-08): it is a delayed job
+    (`enqueue_in`, the debounce window), and rq's scheduler only moves due
+    jobs for the queues its own worker serves — the pipeline worker's never
+    looks at this one, so without it a delayed bake here would never run.
+    rq guards the scheduler with a per-queue lock, so this is one per queue.
     """
     logger.info("worker starting on queue '%s' (side lane, 1 slot, job "
                 "timeout %ss)", served_queue(), _job_timeout())
-    _run_worker_loop(conn, with_scheduler=False)
+    _run_worker_loop(conn, with_scheduler=True)
     return 0
 
 
