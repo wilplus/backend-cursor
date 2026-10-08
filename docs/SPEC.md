@@ -891,7 +891,7 @@ V22 is the obvious sixth Feedback finding. It is not in v1.0 scope and is noted 
 
 **Status:** specced by founder mini-brief 2026-08-14; **build waits for the founder's production reality test** of the shipped pipeline.
 
-### `willfidence-v1` — willfidence (internal measure; founder-signed 2026-10-06, Navigation Panel QG1 A; ledger N25, BG04; decisions log N51 — DEFINED, NOT BUILT)
+### `willfidence-v1` — willfidence (internal measure; founder-signed 2026-10-06, Navigation Panel QG1 A; ledger N25, BG04; decisions log N51 — DEFINED; MACHINE-ONLY READ BUILT DARK, B1.3)
 
 | | |
 |---|---|
@@ -905,9 +905,23 @@ V22 is the obvious sixth Feedback finding. It is not in v1.0 scope and is noted 
 
 - **Not the sound confidence read.** `conf-q-v1` and `acoustic-confidence-v1` stand as written; D8, D19 and §7.2 still govern them. Willfidence's S term averages their votes for this measure alone.
 - **Not a label.** Every input is stored separately (L3): the coach's, the peer's and the machine's answers keep their own provenance, and the machine's vote exists only inside this measure (J1 still holds for the ledger).
-- **Not complete.** The five WORDS qualities (H hedging, A slide alignment, T cohesion, F filler rate, N naturalness) have no individual written definitions yet — **OPEN under the V4 page's O3**. Under the CONSTRUCT fence nothing that measures them ships before each has its own written operational definition (ledger N25).
+- **Not complete.** Four of the five WORDS qualities (hedging, slide alignment, cohesion as "holding together", filler rate) have the founder's signed one-line definitions (S-B1 A, 2026-10-07; below); naturalness stays **OPEN under the V4 page's O3**. Under the CONSTRUCT fence nothing that measures a quality ships before it has its own written operational definition (ledger N25).
 
-**Status:** definition signed by the founder on 2026-10-06 and frozen as `willfidence-v1`; not built. A change to the definition is a new version, never an edit in place.
+**The machine-only read `willfidence-v1-machine` (V4 Phase 1 B1.3; founder S-B1 A, S-B1b A, Q-B1 A, QG8 A, V4 A, V5 B, V6 A, H3; decisions log N51, N65; migration 0449; `services/willfidence.py`).** Phase 1 has only the machine's votes, so this read stores S and a partial W. Each value is 0 to 1, read on one moment (one block of the Take's dark frame, about 75 words), and never reaches a screen (AC-9). The four word signals are the founder's signed definitions (S-B1 A), verbatim in the decisions log N65:
+
+| Signal | One-line operational definition |
+|---|---|
+| **S** (sound, machine only) | The mean of the moment's clips' universal-v3 sound reads (−1 to +1), stretched evenly: −1 → 0, 0 → 0.5, +1 → 1 (V4 A). Empty when no clip carries one. |
+| **Filler** | How free the moment is of filler words: the share of its words that are unambiguous fillers (the lexicon's unambiguous TIC entries: um, uh, erm, uhm, er, ah, hmm, mmm, basically, literally), on the stricter scale (V5 B): none → 1, 10 or more per 100 words → 0, a straight line between. "So", "like" and "right" never count. |
+| **Hedging** | How directly the speaker commits to what they say: the share of its words that are unambiguous hedges that lower certainty (the lexicon's unambiguous HEDGE entries, e.g. sort of, I think, maybe, probably, perhaps), on the same scale. Modal words like "might" or "could" never count. |
+| **Slide fit** | Whether the moment says what its slide is about: 1 if it fully makes at least one of the slide's points, 0.5 if it partly does, 0 if it makes none, by the point-by-point check the app already runs (the moment's best clip). |
+| **Holding together** | Whether the moment's sentences follow on from each other as one line of thought: 1 yes, 0.5 partly, 0 no, read by one fixed, versioned instruction (`v4-holding-together-v1`) in the single call per Take that tags the moment's role (S-B1b A, `v4-moment-roles-v1`). |
+
+Partial **W** is the mean of the word signals present (H3); naturalness and the full WORDS stay open (O3). The four boxes are computed from S and partial W; the spread stays empty (V6 A: one judge). A moment with no S or no W is unrateable and left out of every average (W2). The Take's willfidence is the mean of S·W over its rated random moments (W1; the seeded random 20%, 0447), and so is the speaker's over all their Takes (QG8 A); more than 30% of random moments unrateable reads "audio problem", fewer than 10 rated reads "not enough data" (W2).
+
+*Amended 2026-10-07 (founder, Q-B1 A; decisions log N62): "Never a ranking term" above is settled for one internal use. V4's picker may rank which moment gets feedback by this private read, inside the machine only (P2: rank = importance × (1 − S·W) × sureness); no value ever reaches a screen (AC-9), and it is still never a vote in the label ledger and never an input to the §7.2 blend.*
+
+**Status:** definition signed by the founder on 2026-10-06 and frozen as `willfidence-v1`; the machine-only read `willfidence-v1-machine` is built dark (V4 Phase 1, B1.3). A change to the definition is a new version, never an edit in place.
 
 ### Adding an entry
 

@@ -702,7 +702,12 @@ class _ChangesRun:
                     # drawn by the database from the stored frame and kept
                     # apart from the picks. A side write; never raises.
                     from services.v4_random_moments import draw
-                    draw(db, _arm_sid)
+                    _v4_draw = draw(db, _arm_sid)
+                    # V4 B1.3: once the moments are first drawn, the
+                    # machine's willfidence read is queued, off this path.
+                    if (_v4_draw or {}).get("outcome") == "drawn":
+                        from services.willfidence import enqueue_read
+                        enqueue_read(_arm_sid)
 
     def _immutable_membership(self) -> None:
         # IMMUTABLE TAKE MEMBERSHIP (founder 2026-08-26). The first complete

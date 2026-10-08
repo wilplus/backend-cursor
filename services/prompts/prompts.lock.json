@@ -421,6 +421,11 @@
       "module": "swap_continuity",
       "sha256": "66724ce7050e82476950b4c81760caf3a8eaa092563e97bcfc4e83b17daed12e"
     },
+    "v4_take_tags.system": {
+      "kind": "static",
+      "module": "v4_take_tags",
+      "sha256": "9c0af770323b80675ced05d2e69d46e2e05a7cd330a3d23dfb4e31710c9f2df6"
+    },
     "whisper_snippet.priming": {
       "kind": "source_ref",
       "module": "pending",
