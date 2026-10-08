@@ -11,7 +11,8 @@ Paragraph ids survive rewording (D-ML-2), so the same id in the next Take is
 the same paragraph.
 
 THE OUTCOME. The database computes it (``compute_v4_pick_outcomes_v1``) once
-both Takes have their willfidence reads (B1.3): per moment of Take N, the
+both Takes have their willfidence reads (B1.3) and their maps (0457: a Take
+with no map is never measured by its slides instead): per moment of Take N, the
 mean S*W of all its paragraph's rated moments (V12 A) in Take N and Take
 N+1, else of its slide's, and "rose" only when the rise is clearer than
 ``MARGIN`` (V11 B; a placeholder set later from dark-run data). ``outcome``
