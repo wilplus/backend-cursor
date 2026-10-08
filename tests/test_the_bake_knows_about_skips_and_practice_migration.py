@@ -329,7 +329,10 @@ class WhatTheBranchesAssume(unittest.TestCase):
                          {"skipped"})
         db = (ROOT / "services/db.py").read_text()
         reader = db[db.index("def list_confident_voice_practice_for_take"):]
-        self.assertIn('.select("id,snippet_id,status,final_user_answer")',
+        # + after_practice (founder lock 2026-10-06, N52.3): a practice the
+        # machine closed on a praised try settles its moment too. Its close
+        # stamps closed_at like every other close, so the bake still sees it.
+        self.assertIn('.select("id,snippet_id,status,final_user_answer,after_practice")',
                       reader[:reader.index("def ", 10)])
 
 

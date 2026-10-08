@@ -324,7 +324,7 @@ server-side (a client-supplied proposal would mean the rater's screen carried it
 
 *Why storage and not just exclusion:* "which prediction did this human disagree with" is
 unanswerable after the fact without it, and that disagreement is the whole of J3's active
-learning. Excluding the machine from the vote and keeping its proposal are the same decision.
+learning. Excluding the machine from the vote and keeping its proposal are the same decision. *Amended 2026-10-06 (founder, Navigation Panel QG1 A; ledger CA02; decisions log N51): J1 still holds for the label ledger and for the sound confidence read — the machine stays a router, quorum stays two humans, and `label_quorum.resolve` keeps `machine_votes: 0` (rule 1 of `services/label_quorum.py`). Willfidence (SPEC §17, `willfidence-v1`) is a separate, internal measure; its S term averages the coach, peer and machine votes for that measure alone — a carve-out for the measure, not a vote in the ledger.*
 
 **J2 · The owner is not a peer.** Rating your own clip is a **self-report**: flagged
 (`self_report`), excluded from the 2-peer quorum ground truth, kept for **rater calibration
@@ -341,7 +341,7 @@ A coach rating a session they own writes `lane='coach'` and is still a self-repo
 evaluation — it is calibration signal. **Active-learning priority:** when the lone rating
 *disagrees with the machine's proposal*, that clip is the most informative unrated thing in the
 corpus (either a model miss or a rater miss, and one more peer says which) — it routes
-**immediately** for a 2nd peer.
+**immediately** for a 2nd peer. *Amended 2026-10-06 (founder, Navigation Panel QG1 A; ledger CA06; decisions log N51): J3 still holds for the label ledger and for the sound confidence read — a singleton is never gold and never evaluation, and only a settled clip is gold or evaluation data (rule 3 of `services/label_quorum.py`). Willfidence (SPEC §17, `willfidence-v1`) is a separate, internal measure computed from stored answers; it is not a label, not gold and not an evaluation set. This note changes nothing about training labels.*
 
 **J4 · IDK is a RESPONSE, not a null.** Counted like any other answer:
 - **1 definite + 1 IDK** = not a quorum → **route to a 3rd rater**.
@@ -875,7 +875,7 @@ practices are excluded from every outcome measure. Opens and skips are
 recorded under either flow, so the coach-load report (requests per opened
 moment, by kind, before and after the switch) has its "before". The flip of
 each switch is a reviewed change after the founder's yes; the speaker's
-screens follow the designer session's build of the flow.
+screens follow the designer session's build of the flow. **Amended 2026-10-06 (founder, Navigation Panel QA15 B; ledger A042a; decisions log N51):** the before/after comparison is dropped. The coach-load report shows "after" only — requests per opened moment, by kind. No open or skip was recorded while the switch was off, so there is no "before" to compare.
 
 **N20 · The coach panel's learning additions built dark (founder
 2026-10-01, F8, C5-a, F6, C5-b, task 4; "go until you finish the whole
@@ -1688,3 +1688,669 @@ P4 A / P5 A / P6 A / P7 A / C1 A / C2 A / C3 A / C4 B").**
 7. **The founder's check** (Supabase, read-only, the same evening):
    migrations 0422 and 0423 are in production; no account deletion has been
    asked for.
+
+**N51 · The founder's answers of 6 October 2026 (Navigation Panel; two
+exports, 07:59 and 13:10 UTC).** The answers are verbatim, with the
+founder's notes, in `docs/audit/PANEL-ANSWERS-2026-10-06.md` and
+`docs/audit/PANEL-ANSWERS-2026-10-06-b.md`, and the rows they decide are in
+`docs/audit/LEDGER.md`, all three on branch `claude/audit-ledger`. Each answer
+is listed here by its panel ID with the ledger rows it decides (in brackets;
+"—" where the answer sets process or a build-plan item and no ledger row
+carries it).
+1. **The morning five (first export).** R1 A undo it, revert #907 [N01].
+   R2 A merge #908 and #616 first [N04a, N05, B1.1]. R3 A fix the
+   shadow-frame writer now [N20, B1.1]. R4 A delete
+   mlc2-confidence-readiness after a check [N17], superseded by R4a A keep
+   the alarm and find the cause [N17]. R5 A land the B6 patch [A002, A006].
+2. **How the work runs (W, M, H).** W1 A the ledger is the list, W2 A most
+   serious problem first, W3 A a fresh session per row (note on outside
+   agents and model choice, verbatim in the export), W4 A questions only
+   come to the panel, W5 A a Done screen in the panel with the app's real
+   screens [X7]. M1 and M2 not answered; M2a B keep copy-paste for a while.
+   M3 A a different model writes the test, M3a A one model writes tests and
+   the other checks, M3b A the fixer flags and never edits the test, M4 A
+   task files copied by hand (note verbatim in the export), M5 A other
+   models write fixes for small rows, M6 A one fresh outside read now
+   [N22]. H1–H7 A build X1, X2, X3, X4 a/b/c, X5 [X1–X5, B2.2]; H8 A
+   screens, database changes and every tenth other PR [X6]; H9–H12 A build
+   X7, X8, X9, X10 [X7–X10].
+3. **The V4 page (V).** V1 A every speaker [B1.1]. V2 A from all moments
+   [B1.2]. V3 A round up [B1.2]. V4 A stretch evenly [B1.3, B1.6, BEXIT,
+   BG01]. V5 B stricter filler scale [B1.3]. V6 A spread stays empty [B1.3].
+   V7 A phone clock [B1.4]. V8 A any single blind coach answer [B1.4b]. V9 A
+   In-between counts half [B1.4b]. V10 B a paragraph ID that survives
+   rewording [B1.5] (note: a slide has more than one paragraph; follow-up
+   V10a open). V11 B only a clear rise [B1.5]. V12 A all the paragraph's
+   moments [B1.5]. V13 A Claude drafts the importance list, the founder
+   approves [B1.6, BO1]. V14 A cut-off from dark-run data [B1.6, BO2]. V15 A
+   fallback per block [B1.6, B2.1]; V15a A falling back too often fails the
+   exit gate (4 of 5 blocks) [B1.6, BEXIT]. V16 explain it more simply;
+   V16a A V4 picks moment and kind, the exercise picker picks the video
+   [B1.6]. V17 A In-between counts half [B1.7]. V18 A "None needs it" by
+   both is agreement [CA07]. V19 A "Is the new version surer? Yes / No /
+   Can't tell" [B1.9]. V20 A speaker's words vs a machine version [B1.9].
+   V21 A simple rule with a minimum [BEXIT]. V22 B show V4 to a few speakers
+   [BEXIT]; V22a B skip the dark run, a few speakers now, then everyone,
+   note "Cause there are no users" [BEXIT]; V22b not answered. V23 A leave
+   Keep/Swap on [N23]. V24 A weekly, as lock C6 says [N24]. L1 A still at
+   most 3 orange bars [B2.2]. L2 A the practice attempt that reached the
+   bar [B2.2].
+4. **The gap and clash questions (QG).** QG1 A one paperwork PR now [BG04,
+   CA02, CA03, CA06, N25]. QG2 explain more simply [CA04] (follow-up QG2a
+   open). QG3 A rewrite "V3 is the served policy" as decided [CA01, N29].
+   QG4 B the golden set is the founder's picks alone, lock L6 [CA07, B1.8].
+   QG5 A Claude drafts, founder signs [BG05, CA10]. QG6 A add a small dark
+   check [BG10]. QG7 A no past-data estimate [BG01, BEXIT]. QG8 A add Take
+   and speaker willfidence to 1.3 [BG03]. QG9 A coach re-picks 1 in 10 in
+   1.8 [BG02, B1.8]. QG10 A D3 covers the sound question only [CA05].
+   QG11 A write Phase 2 changes when each step starts [CA08, CA11]. QG12
+   explain more simply [BG09] (follow-up QG12a open). QG13 A Album machine
+   Yes stays today's sound read [BG06]. QG14 A both doors [CA12].
+5. **The audit rows (QA, QB).** QA1 A answers can change [A018a]. QA2 not
+   answered [A055b]. QA3 A praise gets its own switch [A045, A053b]. QA4 A
+   follow lock B3 [A004a, A004b]. QA5 A keep Next only [A055a, A056c]. QA6
+   A light the coach dot from today's answers, with the founder's design
+   note [A014a]. QA7 B no dot on answered paragraphs [A014b]. QA8 B show old
+   long phrases whole [A005]. QA9 A Practise again after Takes 1 and 2
+   [A019a]. QA10 A show "done before" [A057]. QA11 and QA12 not answered
+   [A050a, A060]. QA13 B wait for the designer session [A063b]. QA14 A
+   reword the two audit questions [A072b, A092]. QA15 B drop the comparison
+   [A042a]. QA16 B keep pre-6 Oct pairs out [A098b]. QA17 A accept
+   #606/#607/#613/#615 [A021]. QA18 A stand-ins are fine [A003b]. QA19
+   explain more simply [A003c]. QA20 A show coach-work numbers on the pace
+   panel [A042b]. QA21 B leave old practice rows out of History [A058].
+   QA22 A accept [A074a]. QA23 A accept [A018b]. QA24 A mark DONE-1
+   replaced [A052a]. QB1 B others keep recording, with the founder's note on
+   settling the architecture first [A192]. QB2 explain more simply [A163].
+   QB3 A switch the training_corpus rule off until training starts [A126a].
+   QB4 A remove the copy job [A123b, A124, N09]. QB5 A marking is enough
+   [A217b]. QB6 A sound reads only [B1.6]. QB7 A any feedback, praise too,
+   with the founder's note [B1.8]. QB8 A the reached bar splits above/below
+   [B1.9]. QB12 A six years like consent proof [A214a]. QB13 A keep the
+   walk as is [A230]. QB14 A fold gate 5 into the outside read [A118].
+   QB15 A Claude drafts the DPIA, counsel reviews [A139]. QB16 A linking is
+   enough [A180b]. QB17 explain more simply, with the founder's note that it
+   is now willfidence, not confidence [A114]. QB18 A same project as today,
+   with the founder's note [A151c]. QB19 B add the disagreement exercise to
+   the designer's list [A151b, A169c]. QB20 A remove the two old routes
+   [A187a, A187b]. QB21 A reword Privacy 4b [A225b]. QB22 B every Take
+   [B2.3].
+6. **The product rows (P).** P1 not answered [A025, A050a]. P2 A nothing
+   goes to the coach [A175b]. P5 A remove the Replace PDF offer [A157].
+   P9–P20 B none of the twelve praise and rewrite lines signed as written
+   [A053a, A068a]. P21 A it is the signed after-practice list. P23 A accept
+   [A185a]. P24 A keep the standard sentence. P25 B hide the two wrong
+   lines. P26 explain more simply [A169a]. P28 B keep the machine read
+   hidden from the coach [A151a]. P31 A answer by kind is enough [A181].
+   P33 B wait for the re-landed v1.5 PDF [N21]. P34 A calendar year,
+   Warsaw. P35 B exempt, remember "already paid" [N21]. P36 A the answer
+   goes with the item [N21]. P37 A the job goes with the bundle [N21]. P38 A
+   add paid project records now [N21]. P39 A remove the bundle's exercise
+   panel [A093a]. P43 A confirm. P44 not answered. P46 A sign the jar
+   fallback reason line. P50 A keep one name. P51 B and P52 B the founder
+   writes the words [A077a, A077b]. P53 A a pair trains once [A107]. P54 not
+   answered. P55 A counts are enough [A238b]. P57 A leave it [N04b].
+7. **Paperwork landed with this entry (QG1 A, "one paperwork PR now").**
+   SPEC D8, §7.2, D19, §9.1 and the lexical-dilution rule carry dated notes
+   that the old rule still holds for the sound confidence read and that
+   willfidence is a separate, internal measure; SPEC §17 gains the
+   founder-signed written definition `willfidence-v1`, the WORDS qualities
+   open under O3 (QG1 A; BG04, CA02, CA03, CA06, N25). J1 and J3 above carry
+   the same note (CA02, CA06). SPEC D3 says it governs the sound confidence
+   question only (QG10 A; CA05). "V3 is the served policy" is rewritten in
+   the backend CLAUDE.md, `docs/willab_decision_filter.md`, contract 24, 24h
+   and the clause 47 note: V3 is served today; V4, when built, replaces it
+   for every speaker by the founder's switch (V22a B); a block V4 is very
+   unsure of gets V3's pick, logged, never silent (V15a); the filter copy's
+   stale V2 "exactly three items" text is brought up to date (QG3 A; CA01,
+   N29). Coach-panel lock L6 notes that the golden set stays the founder's
+   picks alone and coach picks are compared with them, which narrows the V4
+   page's M9 and V18 (QG4 B; CA07). Contract 35g-2: no coach request for a
+   clip the machine could not read (P2 A; A175b). Contract 34: the coach
+   does not see the machine's read after submitting; the comparison happens
+   off-screen, for analysis only (P28 B; A151a). Contract 36: the coach's
+   answer by kind is the review history for rewrite and praise items (P31 A;
+   A181). Contract 35j: the record is linked to the speaker's action and the
+   coach's judgement (QB16 A; A180b). N19 above: the before/after comparison
+   is dropped (QA15 B; A042a). Helper-words lock B3: phrases saved before
+   the four-word limit show whole in Recording Mode (QA8 B; A005), and B3's
+   tap-by-tap model stands with the 26 September two-tap rule retired
+   (QA4 A; A004a, A004b). The frontend CLAUDE.md's filter copy is brought to
+   the same text in its own PR.
+8. **Not in this entry.** QG2 and SPEC D7 (still being decided, QG2a);
+   DONE-1 and DONE-5 (the build plan is not in this repository); Privacy 4b
+   and the DPIA (legal drafts, QB21 A and QB15 A); the retention schedule
+   (re-lands with v1.5, P33 B); the Phase 2 texts (QG11 A: written when
+   each step starts).
+9. **The third export, 13:38 UTC** (verbatim in
+   `docs/audit/PANEL-ANSWERS-2026-10-06-b.md`, "Third export"). V10b A a
+   paragraph is placed by its place on the slide, the slide as backup.
+   V22c B V4 alone: no V3 running silently beside it for comparison; the
+   founder accepted that V4 cannot then be compared with V3 on the same
+   Takes. This does not touch V15a above: a block V4 is very unsure of still
+   gets V3's pick, logged. QG2a A yes, with a fair comparison (its SPEC D7
+   text follows in its own change). QB2a B the speaker's own words to say
+   again. QB7a B the mix follows what was heard. P9a A Claude redrafts the
+   twelve praise and rewrite lines, short and in simple words with no slang;
+   they wait on the founder's signature, one panel screen each (S1 to S12).
+   QG12a A the one answer can flag a disagreement. P26a and QB17a: P26 was
+   explained more simply (P26b, open); QB17a A leave it. P51a: the note
+   arrived empty, so the line is asked again (P51b, open). P52a B keep the
+   old label. P44a A keep clip picking as built. QN1 B rename confidence to
+   willfidence (sound) everywhere, code too, with the founder's note
+   "willfidence is words and sound; the sound is the sound of the
+   willfidence"; how far into the database the rename goes is asked on
+   QN1a (open). QA19a A a server test is enough. QB18a A the welcome shows
+   as soon as the first moment enters. P54 A keep it by hand. These answers
+   change no clause in this entry's paperwork; the work they call for is in
+   the ledger.
+
+**N52 · The Feedback walk is locked, communities will work, and the words
+the founder wrote in the prototype are signed (founder, 6 October 2026, in
+chat over prototype rounds 1 to 4).** The prototype is
+<https://claude.ai/artifact/C2CTBmU1bfSSDQgJUHTKkE> (version 10); its
+written record is `docs/FOUNDER-LOCK-feedback-walk-2026-10-06.md`, which
+wins over older design locks where they disagree.
+1. **The walk, its look and its motion are locked** ("the design we have
+   now is good! it should be unified everywhere across the app"; "please
+   lock in also the small interactions, the smoothing, how the screens
+   change"). The panel closes R2b A (the speaker's words hidden beside
+   the player, shown only on the clearer version), PR3 A (all praise
+   first), R4d A (round 4 accepted) and R4e (the app's messages carry a
+   grey profile picture like the coach's: "make it grey as it was").
+2. **The order of the walk.** The coach's note for the Take, then all the
+   praise (helper words right after each), then the practising (clearer
+   version, exercise), then "Judgement time!", the judgements and
+   sharing. Helper words before judging ("it makes no sense that helper
+   words are after the judge them"). This amends helper-words lock B2
+   and the judgement-first order of 24e-1; contract 24e and 29a are
+   amended when the walk is built.
+3. **The practise loop.** No self-judgement after a practise ("don't ask
+   me right away does my last take sound confident to me, you need to
+   check it yourself"): the machine compares each try with the moment.
+   Praise ends the loop; otherwise the encouragement line and another
+   try, until praise or Skip. Never a number on screen (AC-9). Whether
+   the loop has a limit is CM3 (open).
+4. **Communities will work** (founder, 6 October: "the community will be
+   working"; first locked in round 4: "please lock it, it is very
+   important feature!!!"). After every finished review the speaker is
+   asked whether to share that Take; several choices may be ticked:
+   the general community, only my community (with a pass code), or a
+   community of their own (a name and a pass code); "None" stands alone.
+   A shared Take is judged by the community chosen; with "None" only the
+   coach judges it. When judging, the speaker hears their community's
+   Takes first, then their own mixed with training clips. Consent is per
+   Take, and taking it back removes the Take from every community queue.
+   Community answers are peer ratings, a provenance of their own (L3),
+   never coach labels, owner routing or training labels by themselves.
+   Still open: CM1 (whose training clips may be played to others) and
+   CM2 (now asked as: when the sharing goes live, given that the sharing
+   screen's words need counsel's approval first).
+5. **Words signed by the founder in this round** (written by the founder
+   in chat; verbatim, punctuation as shown in the prototype):
+   - "It was better, and I have yet another practice for you to try!"
+     (the encouragement after a try that is not yet better; "keep this
+     one", it never rotates).
+   - "Judgement time!" · "If you are honest when judging others, it will
+     help you find your confident voice and calm the inner critic 😌" ·
+     "More about self-modeling theory" (grey link to a Journal post, not
+     to the PDF: "don't use the PDF anywhere") · "I am going to judge them
+     honestly" · "Skip".
+   - "Here is a slightly more polished option:" · "Do you accept and want
+     to practise it?" (the clearer version, with the changed words crossed
+     out and the new words in orange).
+   - "Practise" on the exercise video's button.
+   - "After all, it's about speaking publicly!" · "Do you agree to share
+     this take with others?"
+   Every other word on the walk's screens is already in the signed copy
+   (`CHUNK_SHEET_COPY`, N48.3 Q8 and Q9).
+6. **Not yet signed.** The line bank B01 to B14 (praise and rewrite
+   messages, three phrasings each, rotated, never the same twice in a
+   row; one panel screen each); the community options' words (the
+   founder's own, held for counsel because they ask for consent, and so
+   never rotated); the Journal post on self-modeling (Dowrick, WIREs
+   Cognitive Science, 2012), to be written and signed.
+
+**N53 · The founder's answers of 6 October 2026, fourth export (19:28
+UTC; Navigation Panel).** Verbatim, with the notes, in
+`docs/audit/PANEL-ANSWERS-2026-10-06-c.md`; the ledger rows carry DECIDED
+notes (A053a, A068a, A060, A077a, A169a).
+1. **The line bank.** B11, B13 and B14 are signed as drafted. For B01,
+   B05 to B10 and B12 the founder wrote a line of their own; in chat:
+   "The examples I gave for a sign-off are just single examples. If you
+   could create three more similar ones, similar vibe, I could sign off
+   them too." Each goes back to the panel as the founder's line (speech-to-
+   text tidied only, the change named on the screen) plus three more
+   (B01b to B12b). B06's "all the delivery" is shown as "this part",
+   because the line is about one moment, and B09's strong line is flagged
+   against the rule that weak evidence uses gentle words; the founder
+   decides both on the screen. B02 to B04 are not answered. Nothing from
+   the bank ships until it is signed (N52.6).
+2. **Communities.** CM1 A: only the voices of people who agreed to share
+   reach others; the training clips mixed into judging are the licensed
+   corpus (0410, F4), never a speaker's training-corpus clip. CM2 B: build
+   now and switch on at once, against Claude's pick, with the risk stated
+   on the screen ("people's voices reach others under words counsel has
+   not checked, in the EU"); sharing switches on with the sharing screen,
+   under the founder's own words for it, without waiting for counsel. The
+   consent stays per Take and revocable, and is stamped with the version
+   of the words the speaker saw. CM3 A with the note "Up to 3": asked again
+   (CM3a).
+3. **The walk's screens.** NX1 A: this session builds the walk's screens
+   and their motion from the locked prototype, nothing added, each screen
+   shown in the panel's Done list with pictures before it goes live. This
+   amends the frontend design lock's "a designer's session builds these
+   screens" for the walk. NX2 B: one grey picture for the coach and the app;
+   no photos. NX3 A: "It was better, and I have yet another practice for you
+   to try!" only when something moved between tries; the line for a try
+   where nothing moved goes to signature (NX3a).
+4. **Everything else.** D4: skipped for now; it waits for a live prototype
+   of the coach panel (A060 parked). JP1 A: the Journal post on
+   self-modeling is signed as drafted. P51b A: the errors page reads
+   "Coaches heard it on {n} of {bar} checked moments." (A077a). P26b A:
+   the coach is asked to listen again in their usual work list; the words
+   say neither why nor what the speaker answered, so the coach stays blind
+   (P26c, to sign) (A169a). QN1a A: docs and code are renamed to
+   willfidence (sound); database names stay.
+
+**N54 · The line bank is signed, and the walk's open questions (founder,
+6 October 2026, fifth export, 20:03 UTC).** Verbatim in
+`docs/audit/PANEL-ANSWERS-2026-10-06-d.md`; every signed line is in
+`docs/SIGNED-line-bank-2026-10-06.md`, which is the only source the code
+may read them from.
+1. **The line bank.** On the founder's request ("for each you should
+   create 4"), four new lines per screen went to the panel beside the
+   founder's own. All fourteen screens are now signed: B01b with the
+   founder's later line ("This sounded more confident than on Take {n}"),
+   B05b with the founder's wording for two of its lines, the rest as
+   drafted; B11, B13 and B14 gain four lines each. B10's last line and
+   B14's fifth are noted as the founder's favourites. The line after a try
+   where nothing moved is signed (NX3a, four lines); the founder's
+   "It was better, …" shows only when something moved (NX3 A). The coach's
+   listen-again words are signed (P26c, three lines, blind by wording).
+2. **The practise loop has a limit: up to three tries** (CM3a A). After the
+   third try that is not praise the app thanks the speaker and moves on to
+   "Judgement time!"; Skip still works at any time. Its lines are on the
+   panel to sign (CM3b). This amends lock D2 (no attempt cap) for the walk.
+3. **The walk's open questions.** WQ1 A: Skip on "Judgement time!" finishes
+   the walk; the moments' bars clear and nothing asks again (a paragraph
+   can still be opened and judged later). WQ2 B: "Your coach is working on
+   your exercise." is not shown in the walk; the moment waits silently
+   (amends N48.3 Q10 for the walk). WQ3 A: with personalised practice off,
+   a clearer version offers one word to accept it (to sign, WQ3b) and
+   "Keep my words", no practise. The founder's note "But it should not be
+   turned off ever" is asked back (WQ3a): the switch is a consent choice
+   that the law requires to stay withdrawable, so removing it means making
+   practise part of the service, a Privacy and Terms change. WQ4 A: the
+   answer toast is the answer with a tick. WQ5 A and WQ6 A: the sharing
+   screen's choices and its four messages are signed (CM2 B: they go live
+   with the screen).
+
+**N55 · Practise becomes part of the service (founder, 6 October 2026,
+sixth export, 20:11 UTC).** WQ3a B, against Claude's pick: personalised
+practice stops being a consent choice the speaker can switch off and
+becomes part of what people sign up for. Today it is the consent choice
+`personalised_practice`, withdrawable at any time; a consent cannot be
+made permanent, so the change is a change of legal basis: Claude drafts
+the Privacy Policy and Terms change, counsel reviews it, and only then
+does the switch leave Settings and the code stop asking
+(`consent_choice_required("personalised_practice")`). Until then nothing
+changes in the app. CM3b A: the four lines after the third try that is
+not praise are signed (`docs/SIGNED-line-bank-2026-10-06.md`). WQ3b A
+arrived without a letter; asked again: WQ3c A, the button says "Accept"
+(seventh export, 20:14 UTC).
+
+**N56 · The coach panel redrawn; the training corpus switched on
+(founder, 6 October 2026, chat 20:37 to 21:44 UTC and the panel export of
+21:46 UTC).** The founder corrected the coach panel screen by screen on a
+clickable prototype of today's panel and then on its redesign; the layout
+is agreed ("rest looks ok") and locked in
+`docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`.
+
+1. **One action per screen; diagnosis before cure** (chat). An error
+   moment asks "What kind of error is it?" (what the machine heard marked;
+   "Something else" names a new error; "I don't hear an error" makes a
+   note) before "Choose exercise", which offers only exercises for that
+   error. The coach's words are shown where the speaker will see them,
+   editable with a pencil. The queue lists speakers; the Lounge pins
+   Speakers and Training corpus. Choice cards shade by position.
+2. **CP2 A: the new words are signed** as listed in the lock.
+3. **CP3 A: the exercise library and the speaking errors page move to the
+   founder's admin area**, next to the pace panel; they leave the coach's
+   app.
+4. **CO1 A: the training corpus is switched on and built properly.** This
+   is the separate authorization CLAUDE.md requires for the Phase-2
+   corpus path, scoped to: the coach-only import of audio the founder has
+   the rights to; the same confident-moment spotting a Take gets (V3
+   blocks of about 75 words, the machine's pick per block, stored and
+   never shown so coaches judge blind); a split of the corpus labels by
+   speaker ("Whose voice this is"; an import without a speaker name is a
+   speaker of its own), 80% to learn from and 20% held out for testing,
+   decided by a fixed hash and never re-shuffled; tests over the whole
+   path. **Nothing trains on the labels** until the founder says so: the
+   dataset, training, evaluation and promotion paths stay off.
+5. **The speaker side: a paragraph without a bookmark does not open on
+   tap** (chat, 20:37 UTC), amending B7.
+6. **JP2 A: the Journal post was never saved** in the editor; Claude checks
+   the editor's save and sends shorter steps.
+
+
+**N57 · The coach panel's design is locked (founder, chat, 7 October
+2026).** "Generally you can lock the design of the coach panel, it's
+done; lock it just like you locked the ideal text design." The coach panel
+prototype (<https://claude.ai/artifact/TEBvGMehRF6wXCvJTEYTUA>, copy in
+`docs/design/coach-panel-redesign-2026-10-06.html`) is now the design every
+coach screen is built to, exactly as the Ideal Text Final Screens are for
+the speaker's: no layout, flow or wording change and no added element
+without the founder. The frontend's CLAUDE.md carries the rule
+("Design lock — the coach panel"); `docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`
+stays the written record. The panel's training-corpus questions CO2 and
+CO3 are open and do not change the screens.
+
+**N58 · Corpus imports are processed under one founder basis, and an
+importer's judgement counts (founder, Navigation Panel export, 7 October
+2026, 08:14 UTC).**
+1. **CO2: no per-import licence record; one corpus processing basis.** The
+   founder's note is the answer, verbatim: "no need for license check pls;
+   we have it legally recorded and we don't need license to prove it! this
+   version is agreed with the counsel and it is my executive decision". An
+   executive decision, agreed with counsel. A training-corpus import
+   (`source='training_import'`, created by a coach through
+   `POST /v2/coach/training-imports` while `Config.TRAINING_IMPORT_ENABLED`)
+   may be analysed (Whisper and the rest) under
+   `PLF1_PROCESSING_AUTHORIZATION_MODE=enforce` on the strength of ONE
+   durable basis the founder recorded (`corpus_processing_bases`, decision
+   N58, 2026-10-07, "legal basis recorded by the founder, agreed with
+   counsel"; migration 0435), never a user's consent and never the
+   importing coach's own acceptance. It sits inside the canonical
+   authorization path: the same provider adapter and permit scope, with
+   its own database permit writer (`issue_corpus_provider_permit_v1`) and
+   ledger beside the Phase-1 one; every permit names the basis (id and
+   N58) and the session. A permit is refused when the switch is off, the
+   session is not a training import, the import route did not register it,
+   the session has an owner or a project, its recording was acquired
+   through the Phase-1 intake, or no basis is in force. No ordinary Take,
+   guest Take or user recording can ever be authorized by the corpus basis
+   (the B-2 hole closed by 0355 stays closed), and the other way round the
+   Phase-1 permit writer now refuses a corpus import under any principal,
+   the importing coach's included (its one added check; the rest of 0355
+   is unchanged, as is the resolver). Phase 2 stays closed: dataset release,
+   training, evaluation and promotion are untouched; nothing trains.
+2. **CO3 A: a coach's blind judgement on a clip they imported counts like
+   any other coach's.** An import's `user_id` is the corpus row's owner,
+   the importing coach by default, never the voice on the clip, so their
+   label is not a self-report and counts toward quorum
+   (`label_quorum.rating_is_self_report`). "A coach still can't judge their
+   own voice anywhere": a coach or user rating their own Take is still a
+   self-report, unchanged.
+
+**N59 · The recording screens' design is locked (founder, chat, 7 October
+2026).** "Lock the recording screens." The recording screen prototype
+(<https://claude.ai/artifact/9CFAAP2Ue7pvRdLvdesn9h>, version 6, copy in
+`docs/design/recording-screens-2026-10-07.html`) is now the design the
+speaker's recording screens are built to, exactly as the Ideal Text Final
+Screens and the coach panel are for theirs: the first recording's learning
+screen ("Scroll down to start"; on a desktop "Click down to start"), "Take
+N · Slide n of m" in the top bar, only the slide and its helper words
+moving under a still frame, calmer gestures that land softly, the keyboard
+without a click, and never a reload from a scroll to the top. The words new
+with it are locked with the screens. The frontend's CLAUDE.md carries the
+rule ("Design lock — the recording screens");
+`docs/FOUNDER-LOCK-recording-screens-2026-10-07.md` is the written record.
+It wins over the Ideal Text lock's line on Recording Mode for these screens.
+
+**N60 · The consent screens' design is locked (founder, chat, 7 October
+2026).** "The consent screens are great; but right now they are not
+scrollable like that in the real app; so lock it like that." The consent
+screens prototype (<https://claude.ai/artifact/TuMKSE2BH364ZQ1Eq4UMdd>,
+version 2, copy in `docs/design/consent-screens-2026-10-07.html`) is now the
+design the first-time agreement, the Data & consent page and the "Turn on
+the learning?" question are built to. Every step scrolls from its true top;
+a document's title and buttons stay still while its text scrolls. One word
+change, signed in the same message: "Two things to confirm" becomes "Three
+things to confirm". The frontend's CLAUDE.md carries the rule ("Design lock
+— the consent screens"); `docs/FOUNDER-LOCK-consent-screens-2026-10-07.md`
+is the written record.
+Amended the same day (ST1 A): the Data & consent page follows the settings
+page prototype (<https://claude.ai/artifact/4jDJsvBAquMUgaGkJgHR76>, copy in
+`docs/design/settings-page-2026-10-07.html`): a Support card with
+contact@willpowerlab.com, Back from Privacy and Terms returns to it, the menu
+loses Support and Community and marks the current page. "Support" and "Back"
+are signed.
+
+**N61 · A training yes counts the acceptance the account is processed under
+(founder's bug report, chat, 7 October 2026).** "Couldn't save that. Try
+again." on Help improve WillpowerLab, every time. The yes is recorded under
+the account, but its receipt check (0373 C1, 0412) read the account only,
+while the account's processing is authorised by the principal
+resolve_phase1_acquisition_principal_v1 returns: a guest claimed into the
+account at sign-in, after the current Terms were accepted as a first-time
+visitor. Migration 0436 lets C1 accept a receipt held by the account or by
+that resolved principal; nothing else changes, and no one else's acceptance
+can count. Ships after a GPT check (HO-14).
+
+**N62 · The build plan's questions are answered, and Wave 1 starts
+(founder, Navigation Panel, 7 October 2026, 16:36 UTC).** The audit of
+every agreed design against `main` (`docs/audit/build/BUILD-PLAN-2026-10-07.md`)
+asked 15 questions; the founder answered 11, all with Claude's pick, and
+gave Wave 1 its green light (GO-W1 A: "I start now, merge each PR when it's
+green, and post every finished piece in Done").
+
+- **Q-B1 A.** The machine may use its private willfidence read (sound times
+  words) to rank which moment gets feedback, inside the machine only; no
+  number ever reaches a screen (AC-9). Before V4 ranks with it, Claude writes
+  a one-line operational definition of each of the four word signals and the
+  list of moment roles for the founder's signature (CONSTRUCT). This settles
+  the clash with SPEC §17's "never a ranking term" for this internal use.
+- **Q-B2 A.** With several slides the Feedback walk spans the whole Take: all
+  praise from every slide, then all the practising, then one "Judgement
+  time!" for every moment. The top bar names each moment's slide.
+- **Q-B4 A.** Every word a locked prototype shows is signed with its design.
+  Where a signed list differs, the list wins ("Choose a file"); signed words
+  with no place are not used. "Journal" shows above the post in the walk, and
+  "Getting your mic ready" becomes visible text.
+- **Q-B6 A.** Skip on "Judgement time!" clears the bars and still asks to
+  share, then the end card (amends WQ1 A). Sharing names the current
+  Privacy/Terms, and each share records the words the speaker saw. A
+  "Sharing" row in the ⋯ menu reopens the same screen; "None" takes the
+  share back. "None" needs the founder's signature before it ships.
+- **Q-B7 A.** An error a coach names in one field is stored as "named by a
+  coach" until the founder writes its definition and question in admin. The
+  exercise reaches the speaker now and waits in the library. The coach's
+  list shows every active error plus coach-named ones. Naming is a signal for
+  the founder only; readiness for a detector still comes from blind "Do you
+  hear it?" answers.
+- **Q-B8 A.** V4's two blind coach questions ("Pick the moment for feedback",
+  "Which sounds surer") go under "Also waiting · blind" on the coach panel,
+  in its look; "listen again" arrives as a normal moment in that speaker's
+  queue with its signed line. A clickable prototype goes to the founder to
+  sign first (amends the coach panel lock once signed).
+- **Q-B11 A.** At most 3 other voices per walk, community first, then
+  training clips, on the same judgement screen without the slide bar. Lend
+  your ear's engine serves them under the per-Take consent only. The Album
+  share switch and Bold voices are retired.
+- **Q-B12 A.** When a coach changes an answer the speaker already has, the
+  new answer replaces the card; the old one stays in history for audit.
+- **Q-B13 A.** A clearer version never goes to the exercise library; its kind
+  only labels the coach's work, and the screen shows "Share with {p}" alone.
+  A note goes straight to "Ready for {p}" (closes D4).
+- **Q-B15 A.** The twelve smaller choices apply as listed in the plan: the
+  picker notes ("These words show while you record your next take"; "These
+  replace your Take N words. Those stay in Earlier Takes." with the real
+  Take number), the library video when a coach has none, B10–B12 not shown
+  for now, the "done before" mark dropped (amends QA10 A), the Lounge's Take
+  3 message loses its last sentence, corpus hide/delete/restore move to
+  admin, "Do you hear it?" stays on, single-project delete stays off,
+  "What's changed since you agreed" stays as signed, "No projects yet." for
+  an empty list, a refused "Turn on" keeps today's words with the reason
+  logged, and the Personalised practice tick goes only after counsel clears
+  N55 and the founder signs the changed prototype. "No projects yet." and
+  the Take N note are signed by this answer.
+
+Still open: Q-B3, Q-B5, Q-B9, Q-B10 and Q-B14, which go to the founder with
+a clickable side-by-side prototype.
+
+**N63 · The last five build-plan questions are answered, and Wave 3 is
+unblocked (founder, Navigation Panel, 7 October 2026, 20:09 UTC).** The
+founder answered the five questions N62 left open, each with Claude's pick,
+after the side-by-side prototype
+(<https://claude.ai/artifact/PnCmGJaKDper6SgTiw3rpY>). All 15 of the build
+plan's questions are now answered.
+
+- **Q-B3 A.** When the walk goes live, tapping a paragraph with an open
+  moment opens the walk at that moment. An answered or saved paragraph opens
+  "This paragraph" or "Helper words saved", redrawn in the walk's look and
+  keeping History and Edit. Neither screen is retired (unblocks D-FW-14,
+  D-IT-6).
+- **Q-B5 A.** Tap-by-tap picking keeps one connected phrase: each tap adds a
+  word next to the others, up to four (B3), saved and shown in italics
+  exactly as today. Both pickers follow this one rule; the server's single
+  phrase and the single italic run stay as they are (unblocks D-IT-5,
+  D-IT-11, D-FW-14).
+- **Q-B9 A.** The walk's orange rule (orange marks only new words and the
+  Lounge's "new" tag) applies inside the walk only. Outside it the bars, the
+  helper-word headlines (page, Presentation Mode, export, Recording Mode) and
+  the coach panel's "Something else" stay orange (unblocks D-IT-10, D-OP-3).
+- **Q-B10 A.** After the walk the text page keeps the 30 Sep bars: only open
+  moments, green or orange by the machine's read (B7). The bottom is
+  "● Record Take N" with a "Review feedback" link under it, as the walk
+  prototype draws; "See next steps" is removed (unblocks D-IT-8).
+- **Q-B14 A.** The five small look choices apply as listed: (1) the app's one
+  small grey close X everywhere; (2) Presentation Mode dark, as in its
+  frame, with no slide dots; (3) a soft 0.4-second fade into and out of the
+  white Recording Mode screens; (4) the coach panel on a computer uses the
+  same phone-width screens, centred; (5) the Support card shows
+  contact@willpowerlab.com as plain text with a copy button and no mail
+  link. Each screen is shown to the founder in the panel's Done list before
+  it goes live (unblocks D-RC-6, D-RC-7, D-IT-9, D-FW-21, D-CP-23, D-CS-7,
+  D-OP-3).
+
+Nothing is left open. Wave 3 (the Feedback walk behind its switch) can start
+once Wave 1 closes; Wave 2 still owes the founder three signatures first
+(the four word-signal definitions and moment roles, Q-B1; the V4 coach-sheets
+prototype, Q-B8; the "None" word, Q-B6).
+
+**N64 · The contract and the locks catch up with the walk, the coach
+panel and N63 (build plan D-OP-3, D-CP-1, D-RC-6; 7 October 2026).** No
+new decision: the answers already given are written where the code reads
+its rules from.
+- Contract 24e, 24e-1 and 29a carry dated amendments for the Feedback
+  walk (N52.2, N54.2, N55 CM3b A): inside the walk helper words follow a
+  praise or a practise the machine reads as praise, the judgements come
+  under "Judgement time!", and the machine checks each try, up to three.
+  Outside the walk and until its switch they are served as written.
+- Helper-words lock B2 and D2 carry the same dated notes.
+- Contract 35g-2a carries the coach panel's amendments (N56, N57; Q-B7 A,
+  Q-B12 A, Q-B13 A): naming on the moment returns as a signal only, a coach
+  may change an answer with every earlier answer kept, and a clearer
+  version never goes to the library.
+- The walk lock's "orange only" line applies inside the walk (Q-B9 A); its
+  Recording Mode fade is a soft 0.4 s fade into the white screens
+  (Q-B14 A); its "Still open" list now names what was settled and leaves
+  only "None" (S-B6).
+- The recording lock records the one close button and the fade (Q-B14 A).
+  N59 named the prototype's version 6; the lock is version 7, as the
+  frontend's CLAUDE.md and the lock file already say.
+- `docs/COACH-PANEL-BUILD-PLAN-P2-P7.md` maps the coach panel rebuild to
+  steps, screens and endpoints.
+
+**N65 · Wave 2's signatures are given, and V4 may measure every
+speaker (founder, Navigation Panel, 7 October 2026, 21:04 UTC).** The
+founder signed the five Wave 2 items, each with Claude's pick, and
+confirmed again the five N63 answers (Q-B3, Q-B5, Q-B9, Q-B10, Q-B14 A).
+- **S-B1 A.** The four word signals inside V4's private read
+  (willfidence-v1) are signed as written. Each runs on one moment of about
+  75 words, gives a value from 0 to 1 and never reaches a screen (AC-9):
+  - *Filler*: how free the moment is of filler words. The share of its
+    words that are unambiguous fillers (um, uh, erm, basically, literally),
+    turned into 0 to 1 on the stricter scale (V5 B), so a few fillers
+    already lower it. "So", "like" and "right" never count.
+  - *Hedging*: how directly the speaker commits to what they say. The
+    share of its words that are unambiguous hedges that lower certainty
+    (sort of, I think, maybe, probably, perhaps), turned into 0 to 1 the
+    same way. Modal words like "might" or "could" never count.
+  - *Slide fit*: whether the moment says what its slide is about. 1 if it
+    fully makes at least one of the slide's points, 0.5 if it partly does,
+    0 if it makes none, by the point-by-point check the app already runs.
+  - *Holding together*: whether the moment's sentences follow on from each
+    other as one line of thought. 1 yes, 0.5 partly, 0 no, read by one
+    fixed, versioned instruction in the same single call per Take that
+    tags the moment's role. New: nothing measures it today.
+  The fifth, naturalness, comes to the founder separately.
+- **S-B1b A.** The moment roles and their weights are stored as version 1:
+  Opening 1.0 (the first moment, where the speaker wins attention); Main
+  point 1.0 (states what the slide is there to say); Close 1.0 (the last
+  moment, or the one that asks the audience to act); Evidence 0.7 (a
+  number, story or example that backs a point); Transition 0.4 (moves from
+  one point or slide to the next); Aside 0.2 (a side remark, housekeeping
+  or a repeat). One call per Take tags each moment with exactly one role.
+  A later change is version 2; older picks keep the version they used. The
+  weights stay inside the machine.
+- **S-B6 A.** "None" is signed for the sharing screen and the ⋯ menu's
+  Sharing screen.
+- **S-B8 A.** V4's two blind coach sheets are signed as the prototype
+  shows them (<https://claude.ai/artifact/4keT4hRL73HGNeNVGH2VEt>), built
+  behind the coach panel switch (D-ML-13, D-ML-14) and off until V4 is
+  measuring.
+- **S-V1 A.** V4's pick log is recorded for every speaker's Takes, not only
+  the founder's: once GPT-0441 passes and 0441 merges, the dark-frame gate
+  (`take_feedback_policy_v3.dark_enabled`) widens to every speaker in its
+  own change with its own test, and V4 starts measuring. The frame stays
+  internal (serves_user_feedback false, dataset_eligible false), is purged
+  with the Take (`take_feedback_policy_v3_shadow_frames` in the purge
+  registry) and never reaches a payload (AC-9). Config first:
+  `TAKE_FEEDBACK_POLICY_V3_MODE=dark` on every service that runs the Take
+  pipeline (V4 row B1.1b).
+
+**N66 · The founder signs three held items (founder, chat, 8 October
+2026: "I sign off on it all!").**
+1. **The training corpus admin page's words are signed.** Every word on the
+   frontend's `/admin/corpus` page ("Hide", "Restore", "Nothing imported
+   yet." and the rest) is signed copy. Nothing may keep that page hidden
+   for want of signed words; it stays behind the coach panel switch
+   (`NEXT_PUBLIC_COACH_PANEL_V2`), which is on in production.
+2. **Practise becomes part of the service: the founder signs the Privacy
+   and Terms change in place of counsel (N55, WQ3a B).** Counsel's review
+   of the wording was not obtained; the founder's signature stands in for
+   it, and the record says so. No draft existed when this was signed, so
+   Claude writes it, shows the founder the final text in chat, and it is
+   published as the next policy version through the existing hand-run
+   publish path only after he has read it. Activating that version is
+   what asks every speaker to accept it again; until then nothing changes
+   in the app. **Text signed** (chat, 8 October 2026): Privacy 3.4 and
+   Terms 3.4 as shown, drafted from 3.3 with only the practice passages
+   changed. Practice moves to Art 6(1)(b) and is no longer a separate
+   choice; skipping any exercise stays free. The coach's blind accuracy
+   check, whose only off switch was Personalised practice, now ends on a
+   written objection to contact@willpowerlab.com. Terms 3.4 does not carry
+   the unsigned packages rewrite of §2 (N44.4). Before publishing, the
+   acceptance tick and the Settings card for practice must go (a changed
+   consent prototype for the founder to sign), because the database
+   refuses a tick for a purpose the policy makes required.
+3. **The retention cleaner's first real deletion run (W3-B2).** First the
+   dry run's counts, per table, are shown to the founder in chat; only
+   after his second word ("go") does `RETENTION_CLEANER_LIVE` become True,
+   in its own reviewed change, and the first live run's results are
+   confirmed back to him. Deletion cannot be undone, so nothing is deleted
+   before that second word.
+
+**N67 · Sharing goes live in the Feedback walk (founder, 8 October 2026;
+build plan D-FW-20).** The founder, in the build chat: "I want the sharing
+built and switched on"; "you have my OK". CM2 had held the sharing screen's
+consent words for counsel; CM2 B (N53.2) let sharing switch on with the
+screen under the founder's own signed words (N54, WQ5 A, WQ6 A; "None"
+S-B6 A, N65). This is the founder's decision: **counsel's review of the
+sharing words was not obtained**, and the founder takes the risk stated on
+the panel (people's voices reach others under words counsel has not
+checked, in the EU).
+- The walk asks to share after the judgements, and after Skip on
+  "Judgement time!" (Q-B6 A), then shows the end card. The screen is the
+  locked prototype's step 11 with the signed words of version
+  `sharing-screen-2026-10-06`, which every share records
+  (`take_shares.share_words_version`, 0443). "None" takes the share back.
+  A share names the current Privacy/Terms (`COMMUNITY_SHARE_POLICY_VERSION`,
+  phase1-2026-10-02; 409 TERMS_REACCEPT_REQUIRED before it).
+- `COMMUNITIES_ENABLED` turns on. Community answers stay peer ratings, kept
+  apart from the coach's, the speaker's own and the machine's (L3); nothing
+  about anyone's voice reaches a screen as a number (AC-9).
+- Not in this step: the "Sharing" row in the ⋯ menu (Q-B6 A), its own task.

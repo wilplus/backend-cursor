@@ -1,4 +1,18 @@
-"""Durable three-take journey messages and their idempotency keys."""
+"""Durable three-take journey messages and their idempotency keys.
+
+The Lounge's bubble after each of the first three Takes. Its actions are
+the doors the bubble offers (the frontend labels them from the signed copy):
+
+- ``prepare_take_2`` / ``prepare_take_3``: the next Take (J4).
+- ``export``: export the notes (Take 3).
+- ``keep_practising`` ("Practise again", N48.3 Q8 A): after Takes 1, 2
+  and 3 (founder 2026-10-06, QA9 A, N51.5; ledger A019a), not Take 3 alone.
+
+``presentation_mode`` is no longer emitted (J5, N37.4): the ⋯ menu is
+Presentation Mode's only door. The Take 3 copy lost its last sentence
+("You can present, export your notes, or keep practising.") per Q-B15 A
+(N62); every other word is as signed.
+"""
 from __future__ import annotations
 
 import uuid
@@ -27,15 +41,14 @@ _COPY = {
         "We’ve seen your message become much more clear and your delivery grow "
         "more natural across three takes.\n\n"
         "Use the orange-marked text as your anchors - not a script - and try "
-        "to speak as to a friend.\n\n"
-        "You can present, export your notes, or keep practising."
+        "to speak as to a friend."
     ),
 }
 
 _ACTIONS = {
-    1: ["prepare_take_2"],
-    2: ["prepare_take_3"],
-    3: ["presentation_mode", "export", "keep_practising"],
+    1: ["prepare_take_2", "keep_practising"],
+    2: ["prepare_take_3", "keep_practising"],
+    3: ["export", "keep_practising"],
 }
 
 

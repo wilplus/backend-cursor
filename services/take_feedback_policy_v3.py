@@ -7,7 +7,6 @@ policy examines is retained as eligible or excluded with a typed reason.
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
 import logging
 import re
@@ -38,7 +37,12 @@ logger = logging.getLogger(__name__)
 
 POLICY_VERSION = "take-feedback-policy-v3-universal-dark-v3"
 SERVICE_POLICY_VERSION = "take-feedback-policy-v3-serving-v1"
-FRAME_SCHEMA_VERSION = "take-feedback-policy-v3-frame-v5"
+FRAME_SCHEMA_VERSION = "take-feedback-policy-v3-frame-v6"
+#: V4 Phase 1, B1.1 (pick logging). The frame carries every candidate with its
+#: chance of being picked, the Take's seed and the policy version, so V4 can be
+#: evaluated against what V3 would have done. Internal only (AC-9).
+PICK_LOG_VERSION = "v4-pick-log-v1"
+PICK_SEED_VERSION = "v4-pick-seed-v1"
 SUGGESTION_GENERATOR_CONTRACT_VERSION = "feedback-candidate-generator-v1"
 TARGET_WORDS = 75
 MIN_WORDS = 60
@@ -53,16 +57,90 @@ _VERBAL_FAMILIES = set(VERBAL_FAMILIES)
 
 
 def dark_enabled(acquisition_principal_id: Any) -> bool:
-    """True only for the exact configured founder in explicit dark mode."""
+    """True for every speaker's Take in explicit dark mode.
+
+    This gate decides whose Takes get a dark frame (with its pick log).
+    Founder S-V1 A (2026-10-07, "Yes, every speaker's Takes"), widened
+    2026-10-08 once TAKE_FEEDBACK_POLICY_V3_MODE=dark was set on every
+    service. Still fail-closed: off unless the mode is exactly "dark", and
+    never for a Take with no owner. The frame stays backend-only (AC-9).
+    """
     mode = (config.TAKE_FEEDBACK_POLICY_V3_SHADOW_WRITE_MODE or "off").strip()
-    founder = (config.TAKE_FEEDBACK_POLICY_V3_FOUNDER_PRINCIPAL_ID or "").strip()
     owner = str(acquisition_principal_id or "").strip()
-    return bool(
-        mode == "dark"
-        and founder
-        and owner
-        and hmac.compare_digest(founder, owner)
-    )
+    return bool(mode == "dark" and owner)
+
+
+def pick_seed(take_id: Any) -> str:
+    """The Take's random seed for V4 Phase 1 (B1.1, B1.2).
+
+    Deterministic from the Take id, so the seeded random 20% (B1.2) and any
+    replay draw the same numbers. A decimal string of at most 16 digits
+    (52 bits): exact in JSON and in JavaScript.
+    """
+    take = str(take_id or "").strip().lower()
+    digest = hashlib.sha256(
+        f"{PICK_SEED_VERSION}:{take}".encode("utf-8")).hexdigest()
+    return str(int(digest[:13], 16))
+
+
+def _identified(inventory: list[dict]) -> list[dict]:
+    """The inventory rows the frame lists: each with its candidate id.
+
+    A verbal row with no id is excluded by `verbal_exclusion`
+    (``missing_candidate_identity``), can never be anchored, and stays in
+    ``excluded_candidates`` with that reason. It is not listed under its
+    lane, so the lane's candidates and the pick log hold the same rows and
+    the writer (0441) can refuse any listed candidate without an id.
+    """
+    return [item for item in inventory if str(item.get("candidate_id") or "")]
+
+
+def _pick_entry(lane: str, block_id: Any, item: dict, chosen: Any) -> dict:
+    candidate_id = str(item.get("candidate_id") or "")
+    eligible = item.get("eligibility") == "eligible"
+    return {
+        "lane": lane,
+        "block_id": block_id,
+        "candidate_id": candidate_id,
+        "eligible": eligible,
+        "pick_probability": (
+            (1.0 if candidate_id in chosen else 0.0) if eligible else None),
+    }
+
+
+def _pick_log(take_id: str, blocks: list[dict],
+              lanes: Iterable[tuple[str, list[dict], list[str]]]) -> dict:
+    """Every candidate with its chance of being picked (V4 B1.1).
+
+    The writer (0441) refuses a log that is not the inventory exactly: every
+    confidence candidate under its block, every verbal candidate under its
+    lane, each once. Every listed candidate has an id (a confidence id is
+    built from its clip; a verbal lane lists only `_identified` rows), and
+    the writer refuses one without.
+
+    V3 picks deterministically, so the chance is 1.0 for the candidate it
+    selected and 0.0 for every other eligible one; an excluded candidate has
+    no chance (None) and keeps its reason in the inventory. Internal only
+    (AC-9): the service frame drops this section, and no route reads it.
+    """
+    entries: list[dict] = []
+    for block in blocks:
+        chosen = {str(block.get("selected_candidate_id") or "")}
+        for item in block.get("confidence_candidates") or []:
+            entries.append(_pick_entry(
+                "confident_voice", block.get("block_id"), item, chosen))
+    for lane, inventory, selected_ids in lanes:
+        chosen = set(selected_ids)
+        for item in inventory:
+            entries.append(_pick_entry(lane, None, item, chosen))
+    return {
+        "version": PICK_LOG_VERSION,
+        "policy_version": POLICY_VERSION,
+        "seed": pick_seed(take_id),
+        "seed_version": PICK_SEED_VERSION,
+        "selection": "deterministic_relative_best",
+        "candidates": entries,
+    }
 
 
 def _words(value: Any) -> int:
@@ -541,16 +619,18 @@ def _lane_outcome(anchors: list[dict], read_blocks: list[dict]) -> dict:
 
 def _log_verbal_lanes(take_id: Any, rewrite_ranked: list,
                       rewrite_selected: list, praise_ranked: list,
-                      praise_selected: list) -> None:
+                      praise_selected: list, *, weak_blocks: int = 0) -> None:
     """Why a lane came out empty, in counts only (founder 2026-09-28: "no
     praise and no corrections"). No detector finding (candidates=0) and a
     finding outside every block its read would anchor it to (candidates>0,
-    anchored=0) are different causes."""
+    anchored=0) are different causes. `weak_blocks` is how many blocks were
+    read weak, so `selected` over it is the share of weak blocks carrying a
+    clearer version (D-ML-3). Internal log only, never a payload (AC-9)."""
     logger.info(
-        "v3 lanes take=%s rewrite candidates=%d selected=%d "
+        "v3 lanes take=%s rewrite candidates=%d selected=%d weak_blocks=%d "
         "praise candidates=%d anchored=%d",
         take_id or "?", len(rewrite_ranked), len(rewrite_selected),
-        len(praise_ranked), len(praise_selected),
+        weak_blocks, len(praise_ranked), len(praise_selected),
     )
 
 
@@ -1252,14 +1332,19 @@ def build_shadow_frame(
     # candidate sits inside the block. The green mark stays on the top two
     # (24g); it no longer decides where praise goes.
     _mark_top_confidence(blocks, MOST_CONFIDENT_LIMIT)
-    rewrite_anchors = _anchored_notes(
-        rewrite_ranked, _blocks_read(blocks, confident=False))
+    weak_blocks = _blocks_read(blocks, confident=False)
+    rewrite_anchors = _anchored_notes(rewrite_ranked, weak_blocks)
     praise_anchors = _anchored_notes(
         praise_ranked, _blocks_read(blocks, confident=True))
     rewrite_selected_ids = [row["candidate_id"] for row in rewrite_anchors]
     praise_selected_ids = [row["candidate_id"] for row in praise_anchors]
     _log_verbal_lanes(take_id, rewrite_ranked, rewrite_selected_ids,
-                      praise_ranked, praise_selected_ids)
+                      praise_ranked, praise_selected_ids,
+                      weak_blocks=len(weak_blocks))
+    # The lanes list only rows with an id (V4 B1.1, 0441): an id-less row
+    # is already excluded and kept in `exclusions` with its reason.
+    rewrite_candidates = _identified(rewrite_inventory)
+    praise_candidates = _identified(praise_inventory)
 
     generator_versions = sorted({
         version
@@ -1321,7 +1406,7 @@ def build_shadow_frame(
                 "selection_scope": "anchored_to_blocks_read_weak",
                 "budget": "one_per_block",
                 "anchors": rewrite_anchors,
-                "candidates": rewrite_inventory,
+                "candidates": rewrite_candidates,
                 "selected_candidate_ids": rewrite_selected_ids,
                 **_lane_outcome(
                     rewrite_anchors, _blocks_read(blocks, confident=False)),
@@ -1330,13 +1415,17 @@ def build_shadow_frame(
                 "selection_scope": "anchored_to_blocks_read_confident",
                 "budget": "one_per_block",
                 "anchors": praise_anchors,
-                "candidates": praise_inventory,
+                "candidates": praise_candidates,
                 "selected_candidate_ids": praise_selected_ids,
                 **_lane_outcome(
                     praise_anchors, _blocks_read(blocks, confident=True)),
             },
         },
         "excluded_candidates": exclusions,
+        "pick_log": _pick_log(take_id, blocks, (
+            ("rewrite_clarity", rewrite_candidates, rewrite_selected_ids),
+            ("great_formulation", praise_candidates, praise_selected_ids),
+        )),
         "exposure_semantics": {
             "shadow_computation_is_exposure": False,
             "delivery_is_exposure": False,
@@ -1382,6 +1471,9 @@ def build_service_candidate_frame(**kwargs: Any) -> Optional[dict]:
         "operation_mode": "allowlisted_service_preparation",
     }
     frame.pop("frame_hash", None)
+    # The pick log is the dark frame's alone (V4 B1.1): the service frame
+    # chooses what is served and must not carry a pick chance (AC-9).
+    frame.pop("pick_log", None)
     encoded = json.dumps(
         frame, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")

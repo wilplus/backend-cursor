@@ -31,12 +31,12 @@
 |---|---|---|
 | D1 | **North star changed.** F2's construct moves from challenge/threat to **confidence**. Founder re-locked L2 explicitly, in the same breath, which `NORTH-STAR LOCK` permits. | The filter's north-star gate is satisfied. Do not re-apply it to this change. |
 | D2 | **Re-point the existing pipes. No hard deletions.** | Challenge/threat plumbing is reused, not removed. Existing `training_labels` rows are archived under their original construct, never dropped. |
-| D3 | **Ternary (yes / no / neutral) is the v1.0 instrument.** | 2AFC paired comparison is a v2 backlog item. Do not build pair selection, pair-shaped responses, or a pair table. |
+| D3 | **Ternary (yes / no / neutral) is the v1.0 instrument.** | 2AFC paired comparison is a v2 backlog item. Do not build pair selection, pair-shaped responses, or a pair table. *Amended 2026-10-06 (founder, Navigation Panel QG10 A; ledger CA05; decisions log N51): D3 governs the sound confidence question only (`conf-q-v1`, "Does the speaker sound confident here?"). The words sheet on the V4 page ("Which sounds surer", one Yes/No per pair) is its own question, outside D3's scope; like every question it needs its own §17 entry before it ships.* |
 | D4 | **Comment reveal is sequential, gated on a committed blind rating.** | §3.3. "Alongside" was wrong and is removed. |
 | D5 | **Coach budget: one sourcing pass, two labels.** | Not a budget split. §1.1. |
 | D6 | **Triage `readiness` is a bounded decay factor, never a zeroing multiplicand.** | §8.2. |
 | D7 | **Triage effectiveness anchors on deterministic change detection or ΔSE.** Machine score at N+1 is **banned** as a target. | §12.2. |
-| D8 | **Human and machine confidence carry separate weights, selected between, never summed.** | §7.2. |
+| D8 | **Human and machine confidence carry separate weights, selected between, never summed.** | §7.2. *Amended 2026-10-06 (founder, Navigation Panel QG1 A; ledger CA02, N25; decisions log N51): D8 still holds for the sound confidence read — the §7.2 blend selects between the panel's label and the machine's estimate and never sums them. Willfidence (§17, `willfidence-v1`) is a separate, internal measure whose S term averages the coach, peer and machine votes; it is never an input to §7.2, never a vote in the label ledger (decisions log J1), and never shown to a speaker (AC-9).* |
 | D9 | **Severity is dropped from the presentation signature.** Presentation = `f(intervention_type, state)`. | One note per session means no ordering exists for severity to encode. Amends Appendix C.1, C.4, C.7. |
 | D10 | **Lexical overlap / verbatim slide text routes to `CUT`,** not `REWRITE`. | The remedy is stop saying the slide's words. Amends Appendix C.2. |
 | D11 | **Four template bands, not three — 32 templates.** `FRAGILE` gets its own. | Appendix B.1 already defines four states; B.2's parameter table is missing the FRAGILE column. Amends both. |
@@ -52,7 +52,7 @@
 
 | # | Decision | Consequence |
 |---|---|---|
-| D19 | **The ternary instrument is CONF-only. There is no lexical yes/no indicator.** `sum_of_decisions` (Quatieri, AUC 0.61 → 0.83) is a variance-reduction trick for a **noisy classifier**; a lexicon regex has no measurement error, so there is nothing to average away. | Do not build a per-piece "contains a hedge?" flag. `conf-q-v1`'s own construct already fences this: *"a property of the voice, not of the content."* |
+| D19 | **The ternary instrument is CONF-only. There is no lexical yes/no indicator.** *Amended 2026-10-06 (founder, Navigation Panel QG1 A; ledger CA03; decisions log N51): D19 still holds for the sound confidence read — `conf-q-v1` stays CONF-only and carries no lexical indicator. Willfidence (§17, `willfidence-v1`) is a separate, internal measure whose W term reads the words (hedging, slide alignment, cohesion, filler rate, naturalness) beside an S term that reads the sound; the two terms are stored separately and W is never folded into the confidence instrument.* `sum_of_decisions` (Quatieri, AUC 0.61 → 0.83) is a variance-reduction trick for a **noisy classifier**; a lexicon regex has no measurement error, so there is nothing to average away. | Do not build a per-piece "contains a hedge?" flag. `conf-q-v1`'s own construct already fences this: *"a property of the voice, not of the content."* |
 | D20 | **Lexical rates are estimated by a Beta-Binomial posterior with a corpus prior, evaluated as a within-speaker contrast** — not by a fixed-window ratio behind an `N_min` gate. `φ̂` (overdispersion; markers are bursty) becomes the prior strength. Fire when `P(r_passage > r_baseline) > τ`. | Kills the `INSUFFICIENT_DATA` cliff — a short window yields a wide posterior that simply never crosses τ. Same shrinkage family as `quality()`'s `n/(n+2)`. Bias is toward the corpus mean, i.e. **under-firing**, which is the correct error direction when the span *is* the intervention. |
 | D21 | **Three lexicons split by EPISTEMIC DIRECTION:** `HEDGE` (lowers certainty) · `BOOSTER` (raises it) · `TIC` (bleached — `basically`, `literally`, `actually`). | `utils/filler_words.py` currently mixes all three, so hedges and boosters cancel. **`basically`/`literally`/`actually` are TIC, not BOOSTER** — counting a nervous speaker's tics as raised certainty is backwards. Mapping: **3 measures → 2 interventions → 1 mechanism.** BOOSTER is measured and never triggers a mutation. |
 | D22 | **The cut is approved** — retire the legacy binary instrument. Overrides the earlier DEFER on founder decision. | Ship as **four additive commits**, never one pass: add alongside → update test doubles → swap readers → rewrite behaviour tests. The one-pass attempt took the suite from 5 failures/20 errors to 17/67. |
@@ -443,6 +443,8 @@ _W_CONF_MACHINE = 1.0   # swing 2.0 — unchanged from _W_V
 
 **The panel term scales with label quality.** A two-rater split decision must not move ranking as much as a five-rater unanimous one. `quality` is a function of `n_raters` and `agreement` — both already stored (I10). This also means the peer lane strengthens the term automatically as it grows, with no weight change.
 
+*Amended 2026-10-06 (founder, Navigation Panel QG1 A; ledger CA02; decisions log N51): this rule is unchanged for the sound confidence read — confidence still enters the blend exactly once, panel-sourced or machine-sourced, never summed. Willfidence (§17, `willfidence-v1`), whose S term is the average of the coach, peer and machine votes on a moment, is a separate, internal measure and is not this blend: the blend never reads it, and it is never a ranking term.*
+
 ```python
 _QUALITY_SHRINKAGE = 2.0   # k
 
@@ -563,7 +565,7 @@ Templates are keyed on `intervention_type × state band` (Appendix C.6), **never
 
 ### 9.1 · Quorum and the override path
 
-> **SUPERSEDED 2026-08-11 — see [decisions log §J](SPEC-DECISIONS-LOG.md#j--the-label-ledger--quorum-self-report-and-routing-founder-2026-08-11).** The three-way quorum below is no longer the rule. **The machine is a ROUTER, not a rater:** it selects which clip gets rated, its proposal is stored beside the human answer (`confidence_labels.machine_value`), and it holds **no vote at all** — not even an asymmetric one. **Quorum is strictly two humans.** The override path below stops being an exception and becomes the general rule. The paragraphs are kept because the blind-spot corpus argument survives intact. Implemented in `services/label_quorum.py` and the `snippet_label_quorum` view.
+> **SUPERSEDED 2026-08-11 — see [decisions log §J](SPEC-DECISIONS-LOG.md#j--the-label-ledger--quorum-self-report-and-routing-founder-2026-08-11).** The three-way quorum below is no longer the rule. **The machine is a ROUTER, not a rater:** it selects which clip gets rated, its proposal is stored beside the human answer (`confidence_labels.machine_value`), and it holds **no vote at all** — not even an asymmetric one. **Quorum is strictly two humans.** The override path below stops being an exception and becomes the general rule. The paragraphs are kept because the blind-spot corpus argument survives intact. Implemented in `services/label_quorum.py` and the `snippet_label_quorum` view. *Amended 2026-10-06 (founder, Navigation Panel QG1 A; ledger CA02, CA06; decisions log N51): unchanged for the ledger and for the sound confidence read. The machine's vote exists only inside willfidence (§17, `willfidence-v1`), a separate internal measure; see decisions log J1 and J3.*
 
 A moment enters the album at **three-way agreement** — model, coach, peer. The model's vote is **asymmetric by design**: it can help a moment in, never keep one out.
 
@@ -883,11 +885,43 @@ V22 is the obvious sixth Feedback finding. It is not in v1.0 scope and is noted 
 
 **What it is not.** Three fences, said out loud:
 
-- **Not `confidence`, and never an input to it (D19).** D19 bans a per-piece "contains a hedge?" flag as a variance-reduction trick inside the CONF instrument. This state is the OPPOSITE construction: a content-lane state of its own, blind to the voice, never blended into, summed with, or gating the confidence read. The two measure disjoint halves — dilution reads the words, confidence reads the voice.
+- **Not `confidence`, and never an input to it (D19).** D19 bans a per-piece "contains a hedge?" flag as a variance-reduction trick inside the CONF instrument. This state is the OPPOSITE construction: a content-lane state of its own, blind to the voice, never blended into, summed with, or gating the confidence read. The two measure disjoint halves — dilution reads the words, confidence reads the voice. *Amended 2026-10-06 (founder, Navigation Panel QG1 A; ledger CA03; decisions log N51): this still holds for the sound confidence read. Willfidence (`willfidence-v1` below) is a separate, internal measure that multiplies a sound term S by a words term W; its W is not this detector, and this detector is still never blended into `confidence`.*
 - **Not the filler-rate detectors' data.** The weak-n-gram lexicon is **versioned and immutable** once shipped (the standing filler-data constraint: filler detections feed cross-database comparisons, so lexicons and thresholds are never silently overwritten — a change is a NEW version, and backfills validate on a copy first).
 - **Not a surfaced ratio (AC-9).** The word-to-information ratio and any n-gram counts are internal trigger mechanics only; the student sees the qualitative card and the offered words, never a number.
 
 **Status:** specced by founder mini-brief 2026-08-14; **build waits for the founder's production reality test** of the shipped pipeline.
+
+### `willfidence-v1` — willfidence (internal measure; founder-signed 2026-10-06, Navigation Panel QG1 A; ledger N25, BG04; decisions log N51 — DEFINED; MACHINE-ONLY READ BUILT DARK, B1.3)
+
+| | |
+|---|---|
+| **`measure_id`** | `willfidence` — frozen as `willfidence-v1` |
+| **Definition (founder-signed, verbatim)** | "Willfidence — S = (coach + peer + machine) ÷ 3; W = (H + A + T + F + N) ÷ 5 (hedging · slide alignment · cohesion · 1 − filler rate · naturalness); Willfident = S·W, Hollow = S(1 − W), Hidden = (1 − S)W, Lost = (1 − S)(1 − W); willfidence (Take or person) = average of S·W over the random moments; spread Δ = max(c,p,m) − min(c,p,m). Internal only (AC-9), every input stored separately (L3), frozen as willfidence-v1." |
+| **Engine** | COMPOSITE — no rater and no question of its own. S reads the three existing sound votes on a moment (coach, peer, machine); W reads five word qualities of the same moment. |
+| **Surfaces as** | Nothing. Internal only (AC-9): no value, box name, spread or rise is ever shown to a speaker. |
+| **Feeds** | Internal measurement only. Never a ranking term, never a vote in the label ledger (decisions log J1), never an input to the §7.2 blend (D8). |
+
+**What it is not.**
+
+- **Not the sound confidence read.** `conf-q-v1` and `acoustic-confidence-v1` stand as written; D8, D19 and §7.2 still govern them. Willfidence's S term averages their votes for this measure alone.
+- **Not a label.** Every input is stored separately (L3): the coach's, the peer's and the machine's answers keep their own provenance, and the machine's vote exists only inside this measure (J1 still holds for the ledger).
+- **Not complete.** Four of the five WORDS qualities (hedging, slide alignment, cohesion as "holding together", filler rate) have the founder's signed one-line definitions (S-B1 A, 2026-10-07; below); naturalness stays **OPEN under the V4 page's O3**. Under the CONSTRUCT fence nothing that measures a quality ships before it has its own written operational definition (ledger N25).
+
+**The machine-only read `willfidence-v1-machine` (V4 Phase 1 B1.3; founder S-B1 A, S-B1b A, Q-B1 A, QG8 A, V4 A, V5 B, V6 A, H3; decisions log N51, N65; migration 0449; `services/willfidence.py`).** Phase 1 has only the machine's votes, so this read stores S and a partial W. Each value is 0 to 1, read on one moment (one block of the Take's dark frame, about 75 words), and never reaches a screen (AC-9). The four word signals are the founder's signed definitions (S-B1 A), verbatim in the decisions log N65:
+
+| Signal | One-line operational definition |
+|---|---|
+| **S** (sound, machine only) | The mean of the moment's clips' universal-v3 sound reads (−1 to +1), stretched evenly: −1 → 0, 0 → 0.5, +1 → 1 (V4 A). Empty when no clip carries one. |
+| **Filler** | How free the moment is of filler words: the share of its words that are unambiguous fillers (the lexicon's unambiguous TIC entries: um, uh, erm, uhm, er, ah, hmm, mmm, basically, literally), on the stricter scale (V5 B): none → 1, 10 or more per 100 words → 0, a straight line between. "So", "like" and "right" never count. |
+| **Hedging** | How directly the speaker commits to what they say: the share of its words that are unambiguous hedges that lower certainty (the lexicon's unambiguous HEDGE entries, e.g. sort of, I think, maybe, probably, perhaps), on the same scale. Modal words like "might" or "could" never count. |
+| **Slide fit** | Whether the moment says what its slide is about: 1 if it fully makes at least one of the slide's points, 0.5 if it partly does, 0 if it makes none, by the point-by-point check the app already runs (the moment's best clip). |
+| **Holding together** | Whether the moment's sentences follow on from each other as one line of thought: 1 yes, 0.5 partly, 0 no, read by one fixed, versioned instruction (`v4-holding-together-v1`) in the single call per Take that tags the moment's role (S-B1b A, `v4-moment-roles-v1`). |
+
+Partial **W** is the mean of the word signals present (H3); naturalness and the full WORDS stay open (O3). The four boxes are computed from S and partial W; the spread stays empty (V6 A: one judge). A moment with no S or no W is unrateable and left out of every average (W2). The Take's willfidence is the mean of S·W over its rated random moments (W1; the seeded random 20%, 0447), and so is the speaker's over all their Takes (QG8 A); more than 30% of random moments unrateable reads "audio problem", fewer than 10 rated reads "not enough data" (W2).
+
+*Amended 2026-10-07 (founder, Q-B1 A; decisions log N62): "Never a ranking term" above is settled for one internal use. V4's picker may rank which moment gets feedback by this private read, inside the machine only (P2: rank = importance × (1 − S·W) × sureness); no value ever reaches a screen (AC-9), and it is still never a vote in the label ledger and never an input to the §7.2 blend.*
+
+**Status:** definition signed by the founder on 2026-10-06 and frozen as `willfidence-v1`; the machine-only read `willfidence-v1-machine` is built dark (V4 Phase 1, B1.3). A change to the definition is a new version, never an edit in place.
 
 ### Adding an entry
 

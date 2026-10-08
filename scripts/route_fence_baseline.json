@@ -96,7 +96,7 @@
     "db_calls": 2
   },
   "routes/v2/coach.py:v2_coach_confidence_queue": {
-    "lines": 92,
+    "lines": 75,
     "db_calls": 3
   },
   "routes/v2/coach.py:v2_coach_confident_voice_practice": {
@@ -212,8 +212,8 @@
     "db_calls": 5
   },
   "routes/v2/user_sessions.py:v2_post_take_feedback_response": {
-    "lines": 182,
-    "db_calls": 4
+    "lines": 128,
+    "db_calls": 2
   },
   "routes/v2/user_sessions.py:v2_put_confidence_agree": {
     "lines": 67,
@@ -226,10 +226,6 @@
   "routes/v2/user_sessions.py:v2_user_get_session_readout": {
     "lines": 104,
     "db_calls": 1
-  },
-  "routes/v2/user_sessions.py:v2_user_list_trainings": {
-    "lines": 96,
-    "db_calls": 2
   },
   "routes/v2/user_sessions.py:v2_user_put_session_intake_context": {
     "lines": 81,

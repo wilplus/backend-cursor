@@ -44,6 +44,25 @@ def _moment_suggestions_enabled() -> bool:
     return bool(config.MOMENT_SUGGESTIONS_ENABLED)
 
 
+def _praise_detectors_enabled() -> bool:
+    """The praise detectors' own switch (QA3 A), default on; independent of
+    the star lane above."""
+    return bool(getattr(config, "PRAISE_DETECTORS_ENABLED", True))
+
+
+def _praise_detectors_alone(session_id: str, arc_id: Any, deg: Any) -> None:
+    """The praise detectors on their own switch (QA3 A), only while the star
+    lane is off: with it on, `generate_for_session` already runs both praise
+    detectors. Best-effort through ``deg`` (LIVE LOOP)."""
+    if _moment_suggestions_enabled() or not _praise_detectors_enabled():
+        return
+
+    def _praise_detectors() -> None:
+        from services.moment_suggestions import generate_praise_for_session
+        generate_praise_for_session(session_id, arc_id)
+    deg.run("praise_detectors", _praise_detectors)
+
+
 class _Timeline:
     """PHASE TIMINGS for one run (founder 2026-08-11: "put tracking timers on
     the AI pipeline to see exactly which step takes the longest, rather than
@@ -357,6 +376,7 @@ def _run_full_analysis_impl(
                         generate_for_session(
                             session_id, arc_id)
                     _deg.run("moment_suggestions", _moment_suggestions)
+                _praise_detectors_alone(session_id, arc_id, _deg)
                 _emit(progress, "speaking_anchors", 90,
                       "Preparing your speaking anchors…")
                 tl.mark("speaking_anchors")

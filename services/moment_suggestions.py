@@ -474,7 +474,8 @@ def _delivery_stars_enabled() -> bool:
 
 def _generate_delivery(database, arc_id, candidates, baseline, *,
                        cue_baseline=None,
-                       metrics_by_id=None) -> list:
+                       metrics_by_id=None,
+                       praise_only: bool = False) -> list:
     """Measured delivery stars (founder 2026-07-18): deterministic, no LLM.
     ``candidates`` = [(snip_id, features_dict), ...] for the snippets with
     NO acoustic star. Persists up to DELIVERY_STARS_MAX_PER_TAKE rows
@@ -495,7 +496,11 @@ def _generate_delivery(database, arc_id, candidates, baseline, *,
     reads the FULL seven-cue set against the speaker's own confidence
     baseline rather than this module's four one-sided z-tests, and the cues
     that earned it are stored with the row so the line can cite its
-    evidence instead of asserting it."""
+    evidence instead of asserting it.
+
+    ``praise_only`` (QA3 A, the praise detectors' own switch): only the
+    impeccable read is stored; the issue detector never runs, so a moment
+    that is not impeccable gets nothing rather than a complaint."""
     if not _delivery_stars_enabled() or not arc_id \
             or not candidates or not baseline:
         return []
@@ -529,6 +534,8 @@ def _generate_delivery(database, arc_id, candidates, baseline, *,
             if is_impeccable(_pm, cue_baseline, confidence_score=_score):
                 device = "impeccable"
                 _cues = cue_keys_for_piece(_pm, cue_baseline)
+            elif praise_only:
+                continue
             else:
                 device = detect_delivery_issue(feats, baseline,
                                                z_threshold=_z)
@@ -997,4 +1004,76 @@ def generate_for_session(session_id: str, arc_id: Optional[str], *,
     except Exception as e:
         logger.warning("moment_suggestion: session pass failed sid=%s: %s",
                        session_id, e)
+        return 0
+
+
+def generate_praise_for_session(session_id: str, arc_id: Optional[str], *,
+                                database=None) -> int:
+    """Only the praise detectors, for one Take (founder 2026-10-06, QA3 A:
+    "praise detectors get their own switch, turned on in a reviewed
+    change"; ledger A045, A053b).
+
+    The analysis worker runs this when PRAISE_DETECTORS_ENABLED is on and
+    MOMENT_SUGGESTIONS_ENABLED is off; with the star lane on,
+    `generate_for_session` already runs both detectors. Until this existed
+    detector praise was written only by the star lane, so with it off no
+    Take carried a praise naming its cue or device and most Yes answers
+    showed no card.
+
+    Exactly the two praise halves of the star lane, and nothing else: no
+    acoustic star (no emphasize, no clearer version), no delivery issue, no
+    congruence star, no arousal capture. The impeccable read first, then
+    the structural device on the snippets it did not star (one star per
+    snippet), each under its own switch and cap, as in
+    `generate_for_session`. Every row it writes is only a candidate: the
+    Manager decides whether it is served (L2). Best-effort; returns the
+    number stored, never raises (LIVE LOOP)."""
+    if not session_id or not arc_id:
+        return 0
+    try:
+        if database is None:
+            from services.db import db as database
+        context = _load_generation_context(session_id, str(arc_id), database)
+        snippets = [
+            (str(snip.get("id")), (snip.get("transcript") or "").strip(),
+             snip.get("features") or {})
+            for snip in (context.readout.get("snippets") or [])
+            if snip.get("id") and (snip.get("transcript") or "").strip()
+        ]
+        if not snippets:
+            return 0
+        from services.delivery_stars import (
+            emphasis_z,
+            resolve_delivery_baseline,
+        )
+        baseline = resolve_delivery_baseline(
+            context.session.get("user_id"),
+            [feats for (_sid, _t, feats) in snippets],
+            database=database,
+        )
+        praised = set(_generate_delivery(
+            database, arc_id, [(sid, feats) for (sid, _t, feats) in snippets],
+            baseline, cue_baseline=context.confidence_baseline,
+            metrics_by_id=context.metrics_by_id, praise_only=True))
+        # Flattest first, as in `generate_for_session`: a device already
+        # delivered with lift needs the praise least.
+        structural = [
+            (sid, transcript, emphasis_z(feats, baseline) if baseline
+             else None)
+            for (sid, transcript, feats) in snippets if sid not in praised
+        ]
+        structural.sort(
+            key=lambda t: t[2] if t[2] is not None else float("inf"))
+        stored = len(praised) + _generate_structural(
+            database, arc_id,
+            [(sid, transcript) for (sid, transcript, _z) in structural],
+            user_id=context.session.get("user_id"))
+        logger.info(
+            "praise_detectors: sid=%s arc=%s seen=%d stored=%d "
+            "(delivery=%d)", session_id, arc_id, len(snippets), stored,
+            len(praised))
+        return stored
+    except Exception as e:
+        logger.warning("praise_detectors: session pass failed sid=%s: %s",
+                       session_id, e, exc_info=True)
         return 0

@@ -626,6 +626,179 @@ if [ "$LANE" = "released" ]; then
   hard migrations/the_chain_hears_the_training_yes.sql
 fi
 
+# 0431 (N20, 2026-10-06): the shadow writer accepts the frame the code builds.
+# Re-issues record_take_feedback_policy_v3_shadow_v3 from 0311 with the frame
+# schema check on 'take-feedback-policy-v3-frame-v5', the version
+# services/take_feedback_policy_v3.py has built since #893; -v3 and -v4 stay
+# refused. Released lane only: 0311, which it replaces, is applied there and
+# the function's tables live there. After 0430, as in the manifest. Twice:
+# apply/reapply idempotency. Its suite,
+# tests/test_the_shadow_writer_accepts_the_frame_the_code_builds_postgres.py,
+# feeds the function a frame build_shadow_frame really made.
+if [ "$LANE" = "released" ]; then
+  hard migrations/the_shadow_writer_accepts_the_frame_the_code_builds.sql
+  hard migrations/the_shadow_writer_accepts_the_frame_the_code_builds.sql
+fi
+
+# 0432 (N52.4, 2026-10-06): a Take may be shared with a community. Four
+# tables (the general community seeded once) and the live view over
+# snippets, which both lanes carry; a lane without snippets gets the tables
+# and a notice. After 0431, as in the manifest. Twice: apply/reapply
+# idempotency. Its suite: tests/test_a_take_may_be_shared_with_a_community_postgres.py.
+hard migrations/a_take_may_be_shared_with_a_community.sql
+hard migrations/a_take_may_be_shared_with_a_community.sql
+
+# 0433 (N56.4, 2026-10-06): a corpus speaker keeps its split. One table
+# (a digest of the speaker key and its learn/test side, insert-once) and the
+# trigger that refuses UPDATE and DELETE; no dependency, so both lanes. After
+# 0432, as in the manifest. Twice: apply/reapply idempotency. Its suite:
+# tests/test_a_corpus_speaker_keeps_its_split_postgres.py.
+hard migrations/a_corpus_speaker_keeps_its_split.sql
+hard migrations/a_corpus_speaker_keeps_its_split.sql
+
+# 0434 (N56.4, 2026-10-06): a corpus split survives a TRUNCATE too. A
+# statement-level BEFORE TRUNCATE trigger on 0433's table, calling 0433's
+# refusing function (row-level triggers do not fire on TRUNCATE); both lanes,
+# after 0433, as in the manifest. Twice: apply/reapply idempotency. Its suite:
+# tests/test_a_corpus_split_survives_a_truncate_postgres.py.
+hard migrations/a_corpus_split_survives_a_truncate.sql
+hard migrations/a_corpus_split_survives_a_truncate.sql
+
+# 0435 (N58, 2026-10-07): a corpus import is processed under the founder's
+# corpus basis. Its eligibility rule reads v2_sessions.source and the
+# import's recordings.session_v2_id / recording_origin, columns production
+# has (add_foundation_discriminators.sql, add_admin_import_fields_to_
+# recordings.sql) and the narrow copies here omit: added as NULLABLE trailing
+# columns, disposable-only. Both lanes, after 0434, as in the manifest.
+# Twice: apply/reapply idempotency. Its suite:
+# tests/test_a_corpus_import_is_processed_under_the_founders_basis_postgres.py.
+psql -q -d "$DB" -c "ALTER TABLE public.v2_sessions
+    ADD COLUMN IF NOT EXISTS source text DEFAULT 'interview'" >>"$log" 2>&1
+psql -q -d "$DB" -c "ALTER TABLE public.recordings
+    ADD COLUMN IF NOT EXISTS session_v2_id uuid,
+    ADD COLUMN IF NOT EXISTS recording_origin text" >>"$log" 2>&1
+hard migrations/a_corpus_import_is_processed_under_the_founders_basis.sql
+hard migrations/a_corpus_import_is_processed_under_the_founders_basis.sql
+
+# 0436 (2026-10-07): a training yes counts the acceptance the account is
+# processed under (0412's C1 also reads the principal 0414's resolver returns:
+# a guest claimed into the account). Both lanes, after 0435, as in the
+# manifest. Twice: apply/reapply idempotency. Its cases are in
+# tests/test_training_consent_postgres.py.
+hard migrations/a_training_yes_counts_the_acceptance_the_account_is_processed_under.sql
+hard migrations/a_training_yes_counts_the_acceptance_the_account_is_processed_under.sql
+
+# 0437 (D-ML-5, 2026-10-07): each served Take keeps its coverage and its
+# lane outcomes. One table, no dependency, so both lanes. After 0436, as in
+# the manifest. Twice: apply/reapply idempotency. Its suite:
+# tests/test_each_served_take_keeps_its_coverage_postgres.py.
+hard migrations/each_served_take_keeps_its_coverage.sql
+hard migrations/each_served_take_keeps_its_coverage.sql
+
+# 0438 (D-FW-3, 2026-10-07): a signed line is never said twice in a row.
+# One table and its picking function, no dependency, so both lanes. After
+# 0437, as in the manifest. Twice: apply/reapply idempotency. Its suite:
+# tests/test_a_line_is_never_said_twice_in_a_row_postgres.py.
+hard migrations/a_line_is_never_said_twice_in_a_row.sql
+hard migrations/a_line_is_never_said_twice_in_a_row.sql
+
+# 0439 (D-FW-5, 2026-10-07): new coach feedback waits on the Lounge bubble
+# until the walk shows it. One table and two functions; the functions read
+# v2_sessions, coach_take_words and exercise_coach_requests at call time,
+# which both lanes carry. After 0438, as in the manifest. Twice:
+# apply/reapply idempotency. Its suite:
+# tests/test_new_coach_feedback_waits_on_the_lounge_bubble_postgres.py.
+hard migrations/new_coach_feedback_waits_on_the_lounge_bubble.sql
+hard migrations/new_coach_feedback_waits_on_the_lounge_bubble.sql
+
+# 0440 (D-FW-9, 2026-10-07): a speaker may change a judgement; the first
+# answer stays. A revision table, its no-edit trigger and the revising
+# function. Its foreign key to take_feedback_self_report is added where
+# that table is present (released); the narrow lane gets the table and a
+# notice. After 0439, as in the manifest. Twice: apply/reapply idempotency.
+# Its suite: tests/test_a_speaker_may_change_a_judgement_postgres.py.
+hard migrations/a_speaker_may_change_a_judgement.sql
+hard migrations/a_speaker_may_change_a_judgement.sql
+
+# 0441 (D-ML-6, V4 B1.1, 2026-10-07): the shadow writer keeps the pick log.
+# Re-issues 0431's record_take_feedback_policy_v3_shadow_v3 with the frame
+# schema check on 'take-feedback-policy-v3-frame-v6' and the pick_log shape
+# checks. Released lane only, like 0431 (its tables live there). After 0440,
+# as in the manifest. Twice: apply/reapply idempotency. Its suites:
+# tests/test_the_shadow_writer_keeps_the_pick_log_postgres.py and
+# tests/test_the_shadow_writer_accepts_the_frame_the_code_builds_postgres.py.
+if [ "$LANE" = "released" ]; then
+  hard migrations/the_shadow_writer_keeps_the_pick_log.sql
+  hard migrations/the_shadow_writer_keeps_the_pick_log.sql
+fi
+
+# 0442 (V4 brief 1.7, D-ML-11): answer counts per clip as soft-label data.
+# One derived table and the function that rebuilds a clip's row from
+# confidence_labels, which both lanes carry; the quorum is untouched. Both
+# lanes, after 0441, as in the manifest. Twice: apply/reapply idempotency.
+# Its suite: tests/test_answer_counts_per_clip_are_soft_label_data_postgres.py.
+# The narrow confidence_labels copy (tests/integration/mlc3_exercise_
+# foundation_prerequisites.sql) omits the released columns the function
+# below reads (lane, self_report, machine_value, source, confident) and
+# keeps the three-value check that version_confidence_rating_instrument_v2
+# replaced in production. Added back as NULLABLE trailing columns and the
+# released five-value check, as the widen steps above do. Disposable-only.
+psql -q -d "$DB" -c "ALTER TABLE public.confidence_labels
+    ADD COLUMN IF NOT EXISTS lane text,
+    ADD COLUMN IF NOT EXISTS source text,
+    ADD COLUMN IF NOT EXISTS self_report boolean NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS machine_value text,
+    ADD COLUMN IF NOT EXISTS confident boolean,
+    ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now()" >>"$log" 2>&1
+psql -q -d "$DB" -c "ALTER TABLE public.confidence_labels
+    DROP CONSTRAINT IF EXISTS confidence_labels_value_check,
+    DROP CONSTRAINT IF EXISTS ck_confidence_labels_value,
+    ADD CONSTRAINT ck_confidence_labels_value CHECK (value IS NULL OR value IN
+        ('yes', 'in_between', 'no', 'not_sure', 'audio_unclear', 'neutral'))" >>"$log" 2>&1
+hard migrations/answer_counts_per_clip_are_soft_label_data.sql
+hard migrations/answer_counts_per_clip_are_soft_label_data.sql
+
+# 0443 (CM2 B, N53.2; Q-B6 A, N62; D-FW-6): a share records the words the
+# speaker saw. One nullable column on 0432's take_shares, which both lanes
+# carry. Both lanes, after 0442, as in the manifest. Twice: apply/reapply
+# idempotency. Its suite: tests/test_a_share_records_the_words_the_speaker_saw_postgres.py.
+hard migrations/a_share_records_the_words_the_speaker_saw.sql
+hard migrations/a_share_records_the_words_the_speaker_saw.sql
+
+# 0444 (QG12a A, P26b A, N53.4; P26c, N54.1; D-CP-10): a coach is asked to
+# listen again, blind. One table and two functions over confidence_labels,
+# which both lanes carry. Both lanes, after 0443, as in the manifest. Twice:
+# apply/reapply idempotency. Its suite:
+# tests/test_a_coach_is_asked_to_listen_again_postgres.py.
+hard migrations/a_coach_is_asked_to_listen_again.sql
+hard migrations/a_coach_is_asked_to_listen_again.sql
+
+# 0445 (coach panel lock flow 6; Q-B7 A, Q-B12 A; D-CP-4): the coach's
+# diagnosis comes first. Two tables (the coach-named errors, the versioned
+# diagnoses) and one writer over speaking_error (0332), which both lanes
+# carry. Both lanes, after 0444, as in the manifest. Twice: apply/reapply
+# idempotency. Its suite: tests/test_the_coach_s_diagnosis_comes_first_postgres.py.
+hard migrations/the_coach_s_diagnosis_comes_first.sql
+hard migrations/the_coach_s_diagnosis_comes_first.sql
+
+# 0446 (coach panel lock flows 7 and 12; Q-B12 A; D-CP-7): a coach may change
+# their answer. The history table, the guard with its one door and the v3
+# resolver over exercise_coach_requests (0385, 0402, 0403), which both lanes
+# carry. Both lanes, after 0445, as in the manifest. Twice: apply/reapply
+# idempotency. Its suite: tests/test_a_coach_may_change_their_answer_postgres.py.
+hard migrations/a_coach_may_change_their_answer.sql
+hard migrations/a_coach_may_change_their_answer.sql
+
+# 0448 (N12; founder decision tree 2026-10-08, Q3/Q4 YES): a speaker's skip
+# keeps an empty receipt. feedback_revisions gets its own guard (0327's
+# refusal plus 0379's governed purge wipe, owner rows only), and 0379's wipe
+# counts an owner row it could not reach. Both lanes carry 0327 and 0379, so
+# both, after 0446 (0447 is not applied by this recipe), as in the manifest.
+# Twice: apply/reapply idempotency.
+# Its suite: tests/test_a_skip_keeps_an_empty_receipt_postgres.py.
+hard migrations/a_skip_keeps_an_empty_receipt.sql
+hard migrations/a_skip_keeps_an_empty_receipt.sql
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

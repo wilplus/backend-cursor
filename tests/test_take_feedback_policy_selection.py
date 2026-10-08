@@ -3,7 +3,7 @@
 J1-3 (minor), audit 2026-09-22. ``TAKE_FEEDBACK_POLICY_V3_MODE`` is commented
 "Take Feedback V3 dark mode" and reads like the switch between V2 and V3. It
 is not. Its only reader is ``take_feedback_policy_v3.dark_enabled``, which
-gates one founder-scoped *shadow frame write* and cannot change a single row
+gates one *shadow frame write* (every speaker since S-V1, 2026-10-08) and cannot change a single row
 a speaker sees. The switch that decides whether V3 serves is
 ``MLC3_SERVICE_ENABLED``, through ``coach_guidance_delivery.runtime_is_enabled``.
 

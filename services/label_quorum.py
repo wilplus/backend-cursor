@@ -175,6 +175,28 @@ def is_self_report(row: Any) -> bool:
     return (row.get("lane") or "") == "game_owner"
 
 
+def rating_is_self_report(session: Any, rater_id: Any) -> bool:
+    """Rule 2 at write time: True when the rater owns the clip's Take.
+
+    Ownership is the Take's ``user_id``, compared explicitly because the lane
+    cannot say it (a coach judging their own Take writes ``lane='coach'``
+    and is still a self-report, everywhere).
+
+    A TRAINING-CORPUS IMPORT IS NOT THE IMPORTER'S VOICE (founder
+    2026-10-07, panel answer CO3 A, decisions log N58: "A coach's blind
+    judgement on a clip they imported counts like any other coach's. A coach
+    still can't judge their own voice anywhere."). An import's ``user_id`` is
+    the corpus row's owner, the importing coach by default, never the speaker
+    on the clip, so it is no self-report: the importer's blind label counts
+    toward quorum like any coach's.
+    """
+    if not rater_id or not isinstance(session, dict):
+        return False
+    if session.get("source") == "training_import":
+        return False
+    return str(session.get("user_id")) == str(rater_id)
+
+
 def response_of(row: Any) -> Optional[str]:
     """The countable response on one row — a DEFINITE ternary value, ``IDK``,
     or None when the row carries no answer at all.

@@ -86,7 +86,7 @@ Contract: 24f, 35a–35c, 35f, 35g-2, 35g-3a (shadow), 35k.
 | L3 | The failing daily annotation cron is replaced by the weekly export job; its Dockerfile is removed. |
 | L4 | The weekly readiness job and the founder's pace panel exist before any door opens. |
 | L5 | Doors 2, 3 and 4 open one surface at a time, exercise script first, each by a reviewed change the founder authorises, never a toggle. |
-| L6 | The golden evaluation set is the founder's: fifty moments judged per surface, sealed, before door 3 opens. |
+| L6 | The golden evaluation set is the founder's: fifty moments judged per surface, sealed, before door 3 opens. *Amended 2026-10-06 (founder, Navigation Panel QG4 B; ledger CA07; decisions log N51): unchanged — the golden set is the founder's picks alone. Coach picks are compared with the founder's, never added to the set; the V4 page's M9 ("golden = coach and founder agree") and V18 ("'None needs it' by both is agreement") are narrowed to that comparison.* |
 | L7 | The four small things fixed (the unexpected-receipt rule, the stale dark comments, the label map, the dead cron). |
 | L8 | The MLC-3 exercise service loop is retired in favour of the unified walk: routes 410, tables stay, monitors off. |
 | L9 | The confidence read stays rules until the SPEC's evaluation (two blind humans per clip, the kill rule at 100 labels) passes. |

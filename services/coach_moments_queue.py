@@ -69,7 +69,8 @@ from typing import Any, Callable, Iterable, Optional
 
 _log = logging.getLogger(__name__)
 
-STATES = ("judge_it", "answer_it", "answered", "nothing_to_add", "judged")
+STATES = ("judge_it", "answer_it", "answered", "nothing_to_add", "judged",
+          "listen_again")
 _RATED = ("yes", "in_between", "no", "not_sure")
 
 #: Why a moment is not listed for THIS coach. Logged by name, never served.
@@ -272,6 +273,28 @@ def _routed(session_id: str, listed: list[str], ratings: dict,
     return kept
 
 
+def _no_goal(_user_id: Any) -> Optional[str]:
+    return None
+
+
+def speaker_goal(database: Any, owner_user_id: Any) -> Optional[str]:
+    """The speaker's goal, a courtesy on the queue. Never a name."""
+    if not owner_user_id or not hasattr(database, "get_user_profile"):
+        return None
+    try:
+        profile = database.get_user_profile(owner_user_id)
+    except Exception as e:  # noqa: BLE001 -- the goal is a courtesy
+        _log.info("speaker goal unavailable: %s", e)
+        return None
+    if not isinstance(profile, dict):
+        return None
+    goal = profile.get("goal")
+    if not isinstance(goal, str):
+        return None
+    stripped = goal.strip()
+    return stripped or None
+
+
 def moments_queue(
     rows: Iterable[Any], *,
     moments_for: Callable[[dict], Optional[list[str]]],
@@ -281,6 +304,8 @@ def moments_queue(
     pseudonym_for: Callable[[Any], str],
     labels_for: Optional[Callable[[str], Optional[list]]] = None,
     rater_id: Any = None,
+    goal_for: Callable[[Any], Optional[str]] = _no_goal,
+    listen_again_for: Callable[[str], dict[str, str]] = lambda _sid: {},
 ) -> list[dict]:
     """Speakers oldest first (by the earliest take waiting), takes oldest
     first under each, moments in the order the take lists them.
@@ -294,7 +319,12 @@ def moments_queue(
     coach's own ratings by snippet; `request_for(session_id, snippet_id)`
     the moment's request row or None; `labels_for(snippet_id)` every
     rater's rows on the clip, for routing only (``routing``; K4, K5), and
-    `rater_id` this coach."""
+    `rater_id` this coach. The speaker's goal is read once per speaker
+    via `goal_for`; never a name. `listen_again_for(session_id)` is
+    {snippet_id: line_key} for THIS coach's open asks to listen again
+    (0444, QG12a A, P26b A): such a moment rides as `listen_again` with the
+    signed line's key and nothing else, not even the kind, and counts as
+    waiting (BLIND COACH)."""
     speakers: dict[str, dict] = {}
     order: list[str] = []
     for row in rows or []:
@@ -307,7 +337,12 @@ def moments_queue(
         bookmarked = moments_for(row)
         moments = []
         listed = _listed(session_id, bookmarked, reached_for(session_id))
+        asks = listen_again_for(session_id) or {}
         for sid in _routed(session_id, listed, ratings, labels_for, rater_id):
+            if sid in asks:
+                from services.coach_listen_again import queue_row
+                moments.append(queue_row(sid, asks[sid]))
+                continue
             moments.append({
                 "snippet_id": sid,
                 **moment_state(ratings.get(sid), request_for(session_id, sid)),
@@ -317,12 +352,14 @@ def moments_queue(
             "take_index": row.get("take_index"),
             "sent_at": sent_at,
             "moments": moments,
-            "waiting": sum(1 for m in moments if m["state"] in ("judge_it", "answer_it")),
+            "waiting": sum(1 for m in moments
+                           if m["state"] in ("judge_it", "answer_it", "listen_again")),
             "waiting_for_text": bookmarked is None,
         }
         speaker = speakers.get(key)
         if speaker is None:
             speaker = {"pseudonym": pseudonym_for(row.get("user_id")),
+                       "goal": goal_for(row.get("user_id")),
                        "first_sent_at": sent_at, "takes": []}
             speakers[key] = speaker
             order.append(key)
@@ -335,6 +372,7 @@ def moments_queue(
         speaker["takes"].sort(key=lambda t: t["sent_at"])
         out.append({
             "pseudonym": speaker["pseudonym"],
+            "goal": speaker["goal"],
             "takes": speaker["takes"],
             "waiting": sum(t["waiting"] for t in speaker["takes"]),
             "waiting_for_text": sum(1 for t in speaker["takes"] if t["waiting_for_text"]),
@@ -351,9 +389,11 @@ def queue_for_coach(
     requests, the reach (N48.2 Q1 A), this coach's own ratings and the
     panel's rows on the listed clips (routing only, K4, K5). ``rows`` are
     the review queue's rows this coach may see (the language gate)."""
+    from services.coach_listen_again import open_asks
     ids = [str(r.get("id")) for r in rows if isinstance(r, dict)]
     requests = database.list_exercise_coach_requests_for_sessions(ids)
     once = remembered(moments_for)
+    asks = open_asks(database, coach_id=rater_id, session_ids=ids)
     return moments_queue(
         rows, moments_for=once,
         reached_for=reached_for_sessions(database, ids, requests),
@@ -362,4 +402,6 @@ def queue_for_coach(
         pseudonym_for=pseudonym_for,
         labels_for=labels_for_snippets(
             database, [s for r in rows if isinstance(r, dict) for s in (once(r) or [])]),
-        rater_id=rater_id)
+        rater_id=rater_id,
+        goal_for=lambda uid: speaker_goal(database, uid),
+        listen_again_for=lambda sid: asks.get(str(sid), {}))

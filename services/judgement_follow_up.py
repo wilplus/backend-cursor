@@ -162,6 +162,39 @@ def follow_up_for_judgement(
         # The sentence is a promise: without the request it would be false.
         if now == "coach_request" and not raised:
             return "none"
+    if kind == "ambiguity":
+        _flag_disagreement(database, take_session_id, snippet_id)
+    return now
+
+
+def follow_up_for_revision(
+    database: Any, *, take_session_id: str, snippet_id: str,
+    owner_user_id: str, answer: Any,
+) -> str:
+    """The matrix for a CHANGED judgement (D-FW-9; QA1 A): coach routing
+    follows the latest answer. Where no request rose yet (the first answer
+    was Audio unclear, say), this is the ordinary judgement path. Where one
+    waits unanswered, its `answer_kind` becomes the latest answer's kind;
+    a request the coach already answered keeps what the coach answered,
+    and Audio unclear changes nothing. Never raises."""
+    if not take_session_id or not snippet_id:
+        return "none"
+    if answer not in ANSWERS:
+        return "none"
+    request = _request_on_moment(database, take_session_id, snippet_id)
+    if request is None or judgement_after_feedback_enabled():
+        return follow_up_for_judgement(
+            database, take_session_id=take_session_id, snippet_id=snippet_id,
+            owner_user_id=owner_user_id, answer=answer)
+    if answer == "audio_unclear":
+        return "none"
+    clip = _clip_read(database, take_session_id, snippet_id)
+    if clip is None:
+        return "none"
+    matched = _exercise_on_moment(database, take_session_id, snippet_id)
+    now, kind = decide(answer, clip["read"], bool(clip["observed"]), matched)
+    if kind is not None and request.get("resolution") is None:
+        _set_answer_kind(database, take_session_id, snippet_id, kind)
     return now
 
 
@@ -218,6 +251,8 @@ def _answer_after_feedback(
                 clip=clip, matched=matched, raised_on="open"):
             return "none" if now == "coach_request" else now
     _set_answer_kind(database, take_session_id, snippet_id, answer_kind)
+    if answer_kind == "ambiguity":
+        _flag_disagreement(database, take_session_id, snippet_id)
     return now
 
 
@@ -238,6 +273,7 @@ def practice_judgement(database: Any, practice: Any, answer: Any,
     if request is None:
         return None
     if practice_disagrees(answer, machine_decision):
+        _flag_disagreement(database, take, snip)
         return "ambiguity" if _set_answer_kind(
             database, take, snip, "ambiguity") else None
     if request.get("answer_kind"):
@@ -245,6 +281,17 @@ def practice_judgement(database: Any, practice: Any, answer: Any,
     kind = str(request.get("kind") or "error")
     return kind if _set_answer_kind(
         database, take, snip, kind, only_if_unset=True) else None
+
+
+def _flag_disagreement(database: Any, take_session_id: str,
+                       snippet_id: str) -> None:
+    """QG12a A (0444): the speaker's answer disagrees with the machine's
+    read, so every coach who already judged the moment is asked to listen
+    again, blind (services.coach_listen_again). A side write: never raises,
+    never in the answer's way."""
+    from services.coach_listen_again import flag_disagreement
+    flag_disagreement(database, take_session_id=take_session_id,
+                      snippet_id=snippet_id)
 
 
 def _set_answer_kind(database: Any, take_session_id: str, snippet_id: str,

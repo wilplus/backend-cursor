@@ -113,8 +113,9 @@ def served_view(database: Any, *, take_session_id: str, snippet_id: str,
     trace = trace_row.get("trace") if isinstance(trace_row, dict) else None
     trace = trace if isinstance(trace, dict) else {}
     served_id = str(assignment.get("selected_exercise_id") or "")
-    served = _exercise(database, served_id)
     pool_ids = _pool_ids(trace, served_id, rng)
+    rows = {eid: _exercise(database, eid) for eid in pool_ids}
+    served = rows.get(served_id) or {}
     return {
         "served": {
             "exercise_id": served_id,
@@ -128,8 +129,8 @@ def served_view(database: Any, *, take_session_id: str, snippet_id: str,
         "fired": sorted(str(t) for t in (trace.get("observed_tags") or [])),
         "signal_rules_version": trace.get("signal_rules_version"),
         "pool": [{"exercise_id": eid, "served": eid == served_id,
-                  **{k: _exercise(database, eid).get(k) for k in ("title", "instruction")}}
-                 for eid in pool_ids],
+                  **{k: rows[eid].get(k) for k in ("title", "instruction")}}
+                 for eid in pool_ids if rows[eid] or eid == served_id],
     }
 
 

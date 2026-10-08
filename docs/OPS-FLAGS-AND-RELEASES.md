@@ -250,6 +250,7 @@ side yet" is not the same as "we turned this off because it was wrong".
 | `POLISH_AS_SUGGESTIONS_ENABLED` | serve verbatim text + offer the polish as approvable stars | on top of `MOMENT_SUGGESTIONS_ENABLED` |
 | `DELIVERY_STARS_ENABLED` | delivery praise (the impeccable read and its cues) | **on by default** since 2026-09-30 (founder E1); set `0` to switch off |
 | `STRUCTURAL_STARS_ENABLED` | structural praise (an exact-quote device) | **on by default** since 2026-09-30 (founder E1); set `0` to switch off |
+| `PRAISE_DETECTORS_ENABLED` | detector praise (the two rows above) on its own switch, independent of `MOMENT_SUGGESTIONS_ENABLED`: the worker runs only the praise detectors when the star lane is off, and the read path stamps their evidence so the Manager may serve them | **on by default in code** since 2026-10-07 (founder QA3 A); read by web (read path) and worker (generation); printed on each service's boot gate line; set `0` to switch off |
 | `BLOCK_VARIANTS_ENABLED` | the per-block variants picker | |
 | `INSTANT_IDEAL_TEXT_ENABLED` | machine draft served free at take 3 | needs FE variant handling (deploy order: BE → FE → flip) |
 | `ASYNC_ANALYSIS_ENABLED` | the async analysis queue | see `OPS-PIPELINE-QUEUE-RUNBOOK.md` |

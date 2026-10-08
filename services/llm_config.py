@@ -291,6 +291,19 @@ SPEC_SLIDE_ENTAILMENT = LLMSpec(
 partial | not) — the claim-ledger verdicts behind Stickiness #2."""
 
 
+SPEC_V4_TAKE_TAGS = LLMSpec(
+    model=CHEAP_MODEL,
+    # Constrained labels (six roles, three holding-together answers): low
+    # temperature for stability across replays.
+    temperature=0.0,
+    # One batched call per Take (founder H6): a role and an answer per moment.
+    max_tokens=2000,
+    response_format=None,  # schema via response_format_override
+)
+"""V4 B1.3/B1.6: one call per Take tags each moment's role (S-B1b A) and
+reads whether its sentences hold together (S-B1 A). Internal only (AC-9)."""
+
+
 SPEC_SAY_IT_STRONGER = LLMSpec(
     model=CHEAP_MODEL,
     # Founder spec 2026-07-07: deterministic enough to be consistent,

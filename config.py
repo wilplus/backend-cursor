@@ -139,6 +139,18 @@ class Config:
     # exactly (_env_flag: on = "1"/"true"/"yes"; _env_not_off: default-on).
     INSTANT_IDEAL_TEXT_ENABLED = _env_flag("INSTANT_IDEAL_TEXT_ENABLED", "0")
     MOMENT_SUGGESTIONS_ENABLED = _env_flag("MOMENT_SUGGESTIONS_ENABLED", "0")
+    # THE PRAISE DETECTORS' OWN SWITCH (founder 2026-10-06, Navigation Panel
+    # QA3 A: "praise detectors get their own switch, turned on in a reviewed
+    # change"; ledger A045, A053b). It gates ONLY detector praise -- the
+    # structural device and the impeccable delivery read: whether the worker
+    # runs them (`moment_suggestions.generate_praise_for_session`, when
+    # MOMENT_SUGGESTIONS_ENABLED is off) and whether the read path stamps
+    # their evidence so the Manager may serve them
+    # (`tracked_changes._detector_praise_evidence`). Independent of
+    # MOMENT_SUGGESTIONS_ENABLED, which keeps the rest of the star lane.
+    # DEFAULT ON IN CODE, so a service that never got the variable (web,
+    # worker or cron) still reads it on (CONFIG-FIRST); "0" switches it off.
+    PRAISE_DETECTORS_ENABLED = _env_flag("PRAISE_DETECTORS_ENABLED", "1")
     POLISH_AS_SUGGESTIONS_ENABLED = _env_flag("POLISH_AS_SUGGESTIONS_ENABLED", "0")
     LIVING_TRANSCRIPT_ENABLED = _env_flag("LIVING_TRANSCRIPT_ENABLED", "0")
     # ON since #595, on evidence rather than on hope this time.
@@ -274,6 +286,18 @@ class Config:
     # code constant, flipped only by a reviewed change at P5 (counsel +
     # founder), never by a dashboard.
     MLC2_TRAINING_CORPUS_COPY_ENABLED = False
+    # THE CORPUS IMPORT (founder 2026-10-06, panel answer CO1 A, decisions log
+    # N56.4: "switch the training corpus on and build it properly"). On, the
+    # coach-only POST /v2/coach/training-imports (and the CLI behind
+    # services/training_import.py) imports audio the founder holds the rights
+    # to: each import runs the Take's V3 spotting (75-word blocks, the
+    # machine's pick per block, stored and never shown) and its speaker gets
+    # one fixed 80/20 learn/test assignment (services/corpus_split.py,
+    # migration 0433). Off, the route answers 410 PHASE2_DISABLED exactly as
+    # before. A code constant the founder flips by a reviewed change, never an
+    # env variable. It opens the import only: dataset releases, training,
+    # evaluation and promotion keep their own constants above, all closed.
+    TRAINING_IMPORT_ENABLED = False
     # The training switch route (P5 packet §4 item 6). A code constant,
     # flipped only by a reviewed change; never an env variable.
     # DOOR 1 OPENED 2026-10-01 by the founder's sentence "open door 1"
@@ -373,8 +397,19 @@ class Config:
     # OFF again since 2026-10-05 (second plan, Phase 1, founder "go"): no
     # screen renders the sentence, the encouragement, Bold voices or the
     # coach readings, so the switch acted with nothing behind it (as N29).
-    # Back on when a screen ships.
+    # Back on when a screen ships. Bold voices no longer rides it: RETIRED
+    # 2026-10-07 (founder, Q-B11 A, N62); its three routes answer 404
+    # whatever this says (routes/v2/after_practice.py).
     PRAISE_AFTER_PRACTICE_ENABLED = False
+
+    # THE MACHINE CHECKS EACH PRACTISE TRY (founder lock 2026-10-06, the
+    # Feedback walk; decisions log N52.3): "don't ask me right away does my
+    # last take sound confident to me, you need to check it yourself". On,
+    # the walk posts each try to /attempts/<id>/check and the machine says
+    # praise or again (services/practice_check.py); the five-answer route
+    # stays for the screens that still use it. Off until the walk's
+    # screens ship: no screen calls the route yet.
+    MACHINE_PRACTICE_CHECK_ENABLED = True
 
     # PHASE 4 of the after-practice paths (founder 2026-10-01, F3, F4): the
     # peer lane. On, a Voice Album moment can be lent to other ears (share
@@ -388,8 +423,15 @@ class Config:
     # or later, so nothing is lent before the speaker has read 4b. Off, the
     # routes answer 404 and nothing is written. OFF again from 2026-10-03
     # (founder, F1 Repair Plan Phase 0, N29): no screen renders the share
-    # switch or Lend your ear, so nothing could be lent. It comes back on
-    # with those screens.
+    # switch or Lend your ear, so nothing could be lent. RETIRED as a
+    # speaker switch 2026-10-07 (founder, Q-B11 A, N62): the Album share
+    # switch, the per-Take set it fed and Bold voices are gone and their
+    # routes answer 404 whatever this says; the walk's other voices are the
+    # communities' queue (COMMUNITIES_ENABLED below), served by the Lend
+    # your ear engine under the per-Take consent only. This now gates only
+    # the coach's licensed-corpus tool (/v2/coach/licensed-clips, whose
+    # clips are the walk's training clips) and the ledger's historical
+    # counts of the retired lane.
     PEER_LANE_ENABLED = False
 
     # PHASE 5 (founder 2026-10-01): the delayed blind human measure
@@ -416,6 +458,45 @@ class Config:
     # _on_notice_version): the balancing test holds only for a speaker who
     # has read the line, never before the publish.
     BLIND_CHECK_POLICY_VERSION: str | None = "phase1-2026-10-02"
+
+    # COMMUNITIES (founder 2026-10-06, decisions log N52.4; migration 0432):
+    # after every finished review the speaker may share that Take with the
+    # general community, a private community joined with a pass code, or one
+    # of their own; "None" stands alone and only the coach judges. A shared
+    # Take is judged by its community; community answers are peer ratings
+    # (L3). Built DARK: off, every /user/communities and take-share route
+    # answers 404 and nothing is read or written (services/communities.py).
+    # Q-B11 A (founder 2026-10-07, N62): this is THE ONE PEER LANE. The
+    # queue serves at most 3 other voices per walk, community clips first,
+    # then training clips, through the Lend your ear engine
+    # (services/lend_your_ear.other_voices); the per-Take share is the one
+    # consent path that admits a speaker's moment to it.
+    # ON from 2026-10-08 (founder, D-FW-20, N67): the sharing screen ships
+    # in the Feedback walk; counsel's review of its words was not obtained.
+    COMMUNITIES_ENABLED = True
+    # CM2 B (founder 2026-10-06, N53.2; Q-B6 A, N62): sharing switches on
+    # with the sharing screen, under the founder's own signed words for it
+    # (N54, WQ5 A / WQ6 A), without waiting for counsel; the founder took the
+    # risk stated on the panel ("people's voices reach others under words
+    # counsel has not checked, in the EU"). Sharing names the CURRENT
+    # Privacy/Terms: the Phase-1 policy version below (phase1-2026-10-02,
+    # Privacy 3.3 + Terms 3.3, scripts/phase1_policy_publish_3_3.sql). The
+    # share route refuses (409 TERMS_REACCEPT_REQUIRED) until the speaker's
+    # current authorization is on it or later; "None" still revokes without
+    # any version. Each share row is stamped with it (take_shares.
+    # consent_version) and with the version of the sharing screen's words
+    # the speaker saw (take_shares.share_words_version, 0443), which the
+    # screen sends. COMMUNITIES_ENABLED above is the switch (on, N67).
+    COMMUNITY_SHARE_POLICY_VERSION: str | None = "phase1-2026-10-02"
+    # The versions of the sharing screen's words a share may record (0443):
+    # the server's own list, so a share can only name words that were really
+    # signed and shown. "sharing-screen-2026-10-06" is the founder's signed
+    # sharing words (N54, WQ5 A / WQ6 A; docs/SIGNED-line-bank-2026-10-06.md,
+    # "Sharing"). When counsel or the founder changes those words, the new
+    # version is added here in the same PR as the screen that shows it; an
+    # old version stays listed while a screen that shows it may still be open.
+    # Any other version is refused (400 SHARE_WORDS_VERSION_UNKNOWN).
+    SHARE_WORDS_VERSIONS: tuple[str, ...] = ("sharing-screen-2026-10-06",)
 
     # THE COACH PANEL'S LEARNING ADDITIONS (founder 2026-10-01; migration
     # 0411), each dark behind its own constant, each a reviewed flip after

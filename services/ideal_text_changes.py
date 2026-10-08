@@ -647,7 +647,7 @@ class _ChangesRun:
             return None
 
     def _v3_shadow(self) -> None:
-        # TAKE FEEDBACK V3 SHADOW. A real, founder-scoped comparison write
+        # TAKE FEEDBACK V3 SHADOW. A real comparison write (every speaker, S-V1)
         # over the complete current-Take inventory; not the serving path and
         # it cannot create a rendered exposure. Default OFF; ML/data reviews
         # these frames before any user-visible activation. Shadow evaluation
@@ -697,6 +697,17 @@ class _ChangesRun:
                         "take feedback v3 dark frame not stored "
                         "arc=%s take=%s", self.arc_id, _arm_sid,
                     )
+                else:
+                    # V4 B1.2: the Take's seeded random 20% of moments,
+                    # drawn by the database from the stored frame and kept
+                    # apart from the picks. A side write; never raises.
+                    from services.v4_random_moments import draw
+                    _v4_draw = draw(db, _arm_sid)
+                    # V4 B1.3: once the moments are first drawn, the
+                    # machine's willfidence read is queued, off this path.
+                    if (_v4_draw or {}).get("outcome") == "drawn":
+                        from services.willfidence import enqueue_read
+                        enqueue_read(_arm_sid)
 
     def _immutable_membership(self) -> None:
         # IMMUTABLE TAKE MEMBERSHIP (founder 2026-08-26). The first complete

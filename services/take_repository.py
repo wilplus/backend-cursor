@@ -1549,11 +1549,16 @@ class TakeRepository(TableRepository):
                 raise
             return []
 
-    def list_user_arc_sessions(self, user_id: Optional[str]) -> list[dict]:
+    def list_user_arc_sessions(self, user_id: Optional[str], *,
+                               strict: bool = False) -> list[dict]:
         """Every arc-linked session the user owns — the /user/trainings source
         (the route groups per arc). Arc-keyed on purpose, so DECKLESS trainings
         appear too (the deck-hash grouping in /user/strengths drops them into
-        the flat general bucket). Best-effort: [] on missing column / hiccup."""
+        the flat general bucket). Best-effort: [] on missing column / hiccup.
+
+        ``strict=True`` (Data & consent's every-project read, D-CS-4)
+        re-raises a failed read instead: an empty list there reads as "you
+        have no projects", which is false."""
         if not user_id:
             return []
         _legacy_cols = ("id, arc_id, take_index, status, created_at, "
@@ -1591,9 +1596,13 @@ class TakeRepository(TableRepository):
                     "list_user_arc_sessions: column missing (run "
                     "migrations/add_explore_arc.sql) user=%s", user_id,
                 )
+                if strict:
+                    raise
                 return []
             logger.warning("list_user_arc_sessions failed user=%s: %s",
                            user_id, e)
+            if strict:
+                raise
             return []
 
     def set_session_presentation_duration(

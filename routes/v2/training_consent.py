@@ -7,7 +7,8 @@ founder's sentence "open door 1"; docs/LEARNING-DOORS.md):
 answers 410 only if a reviewed change sets the constant back to False.
 While no training policy row is active it answers ``available: false`` and
 the Settings card hides itself. Responses carry codes only; the words are
-the frontend's, signed by the founder (N10).
+the frontend's, signed by the founder (N10). Refusals are reported to
+Sentry by code, never with a person's id.
 
 The speaker identity is computed here, from the verified token, and handed
 to the switch: the training yes binds the speaker it admits into the
@@ -55,6 +56,9 @@ def v2_user_training_consent():
                        identity=identity)
         return jsonify(state), 200
     except TrainingSwitchError as error:
+        logger.warning("training switch refused: %s", error.code)
+        sentry_sdk.capture_message(
+            f"training switch refused: {error.code}", level="warning")
         return jsonify({"code": error.code}), error.status
     except ProjectOwnershipError as error:
         logger.error("training switch owner resolution failed: %s", error)

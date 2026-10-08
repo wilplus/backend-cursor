@@ -7877,6 +7877,74 @@ class DatabaseService:
             logger.warning("atomic take feedback self-report failed: %s", e)
             return None
 
+    def revise_take_feedback_self_report(
+        self, *, take_session_id: str, owner_user_id: str, feedback_id: str,
+        response: str,
+    ) -> Optional[dict]:
+        """A later answer to a Confident Voice judgement, kept beside the
+        first (0440, D-FW-9; QA1 A). ``{outcome, row}``: 'revised',
+        'replayed', 'not_answered' or 'not_revisable'; None on failure."""
+        if not all((take_session_id, owner_user_id, feedback_id, response)):
+            return None
+        try:
+            data = self.client.rpc("revise_take_feedback_response_v1", {
+                "p_take_session_id": str(take_session_id),
+                "p_owner_user_id": str(owner_user_id),
+                "p_feedback_id": str(feedback_id),
+                "p_response": str(response),
+            }).execute().data
+            if isinstance(data, list):
+                data = data[0] if data else None
+            return data if isinstance(data, dict) else None
+        except Exception as e:
+            logger.warning("take feedback revision failed: %s", e, exc_info=True)
+            return None
+
+    def _latest_self_reports(self, rows: Any) -> list:
+        """The speaker's answers with each changed judgement at its latest
+        (0440, D-FW-9). The first answer's row stays the row; `response`
+        becomes the newest revision's and `first_response` keeps the first.
+        Unreadable revisions leave the first answers, logged: the readers
+        then see what they saw before 0440, never nothing."""
+        rows = [row for row in (rows or []) if isinstance(row, dict)]
+        ids = sorted({row["id"] for row in rows if row.get("id") is not None
+                      and row.get("feedback_family") == "confident_voice"},
+                     key=str)
+        if not ids:
+            return rows
+        try:
+            revisions = (self.client.table("take_feedback_self_report_revision")
+                         .select("report_id,response,revision,created_at")
+                         .in_("report_id", ids).execute().data) or []
+        except Exception as e:
+            logger.warning("judgement revisions unreadable: %s", e, exc_info=True)
+            return rows
+        def number(rev: dict) -> int:
+            # A malformed revision counts as none, so it never raises into
+            # the reader (GPT-0440 nit): the first answer stands instead.
+            try:
+                return int(rev.get("revision") or 0)
+            except (TypeError, ValueError):
+                return -1
+
+        latest: dict[str, dict] = {}
+        for rev in revisions:
+            if not isinstance(rev, dict) or number(rev) < 1:
+                continue
+            key = str(rev.get("report_id"))
+            if key not in latest or number(rev) > number(latest[key]):
+                latest[key] = rev
+        out = []
+        for row in rows:
+            rev = latest.get(str(row.get("id")))
+            if rev is None:
+                out.append(row)
+                continue
+            out.append({**row, "response": rev.get("response"),
+                        "first_response": row.get("response"),
+                        "revised_at": rev.get("created_at")})
+        return out
+
     def list_take_feedback_self_reports(
         self, take_session_id: str, owner_user_id: Optional[str] = None,
     ) -> list:
@@ -7888,7 +7956,8 @@ class DatabaseService:
                      .eq("take_session_id", str(take_session_id)))
             if owner_user_id:
                 query = query.eq("owner_user_id", str(owner_user_id))
-            return query.order("created_at").execute().data or []
+            return self._latest_self_reports(
+                query.order("created_at").execute().data or [])
         except Exception as e:
             if "take_feedback_self_report" not in str(e).lower():
                 logger.warning("take feedback self-report read failed: %s", e)
@@ -7922,11 +7991,12 @@ class DatabaseService:
         if not snippet_id:
             return []
         try:
-            return (self.client.table("take_feedback_self_report")
-                    .select("*")
-                    .eq("snippet_id", str(snippet_id))
-                    .order("created_at")
-                    .execute().data) or []
+            return self._latest_self_reports(
+                (self.client.table("take_feedback_self_report")
+                 .select("*")
+                 .eq("snippet_id", str(snippet_id))
+                 .order("created_at")
+                 .execute().data) or [])
         except Exception as e:
             if "take_feedback_self_report" not in str(e).lower():
                 logger.warning("clip self-report read failed: %s", e)
@@ -7939,12 +8009,13 @@ class DatabaseService:
         if not arc_id:
             return []
         try:
-            return (self.client.table("take_feedback_self_report")
-                    .select("*")
-                    .eq("arc_id", str(arc_id))
-                    .eq("feedback_family", "confident_voice")
-                    .order("created_at")
-                    .execute().data) or []
+            return self._latest_self_reports(
+                (self.client.table("take_feedback_self_report")
+                 .select("*")
+                 .eq("arc_id", str(arc_id))
+                 .eq("feedback_family", "confident_voice")
+                 .order("created_at")
+                 .execute().data) or [])
         except Exception as e:
             if "take_feedback_self_report" not in str(e).lower():
                 logger.warning("confident self-report read failed: %s", e)
@@ -9508,6 +9579,16 @@ class DatabaseService:
                            arc_id, e)
             return None
 
+    def get_moment_suggestion(self, snippet_id: Optional[str]) -> Optional[dict]:
+        """The one suggestion row of a moment (moment_suggestions is keyed
+        by snippet), or None. Raises on a real read failure."""
+        if not snippet_id:
+            return None
+        res = (self.client.table("moment_suggestions")
+               .select("snippet_id,kind,trigger,cue_keys")
+               .eq("snippet_id", str(snippet_id)).limit(1).execute())
+        return (res.data or [None])[0]
+
     def delete_moment_suggestion(self, snippet_id: Optional[str]) -> bool:
         """Drop one star row — a DISMISSED star must not survive to the
         next serve/anchor pass (founder 2026-07-20 rule 2; the ledger
@@ -10317,6 +10398,31 @@ class DatabaseService:
             logger.warning("get_coach_best_presentation_edits failed arc=%s: %s",
                            arc_id, e)
             return {}
+
+    def get_coach_best_presentation_edits_for_arcs(
+        self, arc_ids: list[str],
+    ) -> dict[str, dict]:
+        """{arc_id: {slide_index: text}} for many arcs in ONE read (D-CS-4):
+        the every-project read asks once instead of once per project. A
+        missing table is {}; any other failure raises."""
+        ids = sorted({str(a) for a in arc_ids or [] if a})
+        if not ids:
+            return {}
+        try:
+            res = (self.client.table("coach_best_presentation_edits")
+                   .select("arc_id, slide_index, text")
+                   .in_("arc_id", ids).execute())
+        except Exception as e:
+            err_low = str(e).lower()
+            if "coach_best_presentation_edits" in err_low and (
+                    "does not exist" in err_low or "pgrst205" in err_low):
+                return {}
+            raise
+        out: dict[str, dict] = {}
+        for r in res.data or []:
+            if isinstance(r, dict) and isinstance(r.get("slide_index"), int):
+                out.setdefault(str(r.get("arc_id")), {})[r["slide_index"]] = r.get("text")
+        return out
 
     def get_coach_best_presentation_key_phrases(self, arc_id) -> dict:
         """{slide_index: [phrases]} — the coach-corrected key phrases (Engine
@@ -11679,6 +11785,49 @@ class DatabaseService:
                 return 0
             logger.warning("insert_reference_distribution failed: %s", e)
             return 0
+
+    def refresh_clip_answer_counts(self, snippet_id: str) -> Optional[dict]:
+        """Rebuild one clip's soft-label counts from the ledger (migration
+        0442, V4 brief 1.7): the database function counts only the quorum's
+        human lanes, never a self-report, never the machine. Returns the row.
+        Raises on failure: the caller (services.clip_answer_counts.refresh)
+        logs it and the rating stands."""
+        result = self.client.rpc("refresh_clip_answer_counts_v1",
+                                 {"p_snippet_id": str(snippet_id)}).execute()
+        return self._rpc_row(result.data)
+
+    def draw_v4_random_moments(self, take_session_id: str) -> Optional[dict]:
+        """Draw one Take's seeded random 20% of moments from its stored dark
+        frame (migration 0447, V4 B1.2). The database reads the frame and
+        the seed itself; a second call returns the stored draw. Raises on
+        failure: the caller (services.v4_random_moments.draw) logs it and
+        the Take stands."""
+        result = self.client.rpc("draw_v4_random_moments_v1",
+                                 {"p_take_session_id": str(take_session_id)}
+                                 ).execute()
+        return self._rpc_row(result.data)
+
+    def get_v4_dark_frame(self, take_session_id: str) -> Optional[dict]:
+        """The Take's stored universal-v3 dark frame (V4 reads it), or None."""
+        from services.take_feedback_policy_v3 import POLICY_VERSION
+        res = (self.client.table("take_feedback_policy_v3_shadow_frames")
+               .select("frame").eq("take_session_id", str(take_session_id))
+               .eq("policy_version", POLICY_VERSION).limit(1).execute())
+        rows = res.data or []
+        frame = rows[0].get("frame") if rows and isinstance(rows[0], dict) else None
+        return frame if isinstance(frame, dict) else None
+
+    def record_v4_willfidence_reads(self, take_session_id: str,
+                                    reads: list) -> Optional[dict]:
+        """Store one Take's willfidence-v1-machine read (migration 0449, V4
+        B1.3). The database computes S, W, the boxes and the Take's line
+        from the frame, the clips and these word signals. Raises on
+        failure: the caller (services.willfidence.run_read) logs it."""
+        result = self.client.rpc("record_v4_willfidence_reads_v1", {
+            "p_take_session_id": str(take_session_id),
+            "p_reads": reads,
+        }).execute()
+        return self._rpc_row(result.data)
 
     def get_confidence_labels_by_snippet_ids(self, snippet_ids: list, *,
                                              strict: bool = False) -> dict:
@@ -14186,6 +14335,20 @@ class DatabaseService:
                            row.get("exercise_id"), e)
             return None
 
+    def set_diagnostic_exercise_active(self, exercise_id: str, active: bool) -> Optional[dict]:
+        """Retire (False) or bring back (True) one exercise: the flag only,
+        nothing else on the row changes (D-CP-9). None on failure."""
+        try:
+            res = (self.client.table("diagnostic_exercise")
+                   .update({"active": bool(active),
+                            "updated_at": datetime.now(timezone.utc).isoformat()})
+                   .eq("exercise_id", str(exercise_id)).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("set_diagnostic_exercise_active failed id=%s: %s",
+                           exercise_id, e, exc_info=True)
+            return None
+
     # ── A coach names the error on one moment, and teaches the library ────
     # migrations/a_coach_names_the_error_and_teaches_the_library.sql. Every
     # method here degrades to "nothing" on failure — a pending migration, or a
@@ -14977,26 +15140,36 @@ class DatabaseService:
         self, *, request_id: str, coach_id: str, resolution: str,
         exercise_id: Optional[str], exercise_version: Optional[int],
         share: bool, answer_text: Optional[str] = None,
+        video_ref: Optional[str] = None,
     ) -> Optional[dict]:
-        """Resolve once, share once (migration 0385; in words 0402). Raises the
-        database's refusal (e.g. EXERCISE_COACH_REQUEST_ALREADY_RESOLVED) to
-        the caller."""
-        params = {
+        """The coach's answer (migration 0385; in words 0402; changeable
+        0446): the first answer is written; the same again is a no-op that
+        may add the share; a different answer by the SAME coach (words,
+        exercise or video) replaces it and keeps the old one, video
+        included, in exercise_coach_request_answer_versions (Q-B12 A);
+        another coach's call on a resolved request is refused. `video_ref`:
+        None keeps the row's video, "" clears it, a ref replaces it. Raises
+        the database's refusal (e.g. EXERCISE_COACH_REQUEST_ALREADY_RESOLVED)
+        to the caller."""
+        result = self.client.rpc("resolve_exercise_coach_request_v3", {
             "p_request_id": str(request_id),
             "p_coach_id": str(coach_id),
             "p_resolution": str(resolution),
             "p_exercise_id": exercise_id,
             "p_exercise_version": exercise_version,
             "p_share": bool(share),
-        }
-        if answer_text is None:
-            result = self.client.rpc(
-                "resolve_exercise_coach_request_v1", params).execute()
-        else:
-            # An answer in words (0402): a praise line or a clearer version.
-            result = self.client.rpc("resolve_exercise_coach_request_v2", {
-                **params, "p_answer_text": str(answer_text)}).execute()
+            "p_answer_text": None if answer_text is None else str(answer_text),
+            "p_video_ref": None if video_ref is None else str(video_ref),
+        }).execute()
         return self._rpc_row(result.data)
+
+    def list_exercise_coach_request_answer_versions(self, request_id: str) -> list[dict]:
+        """The answers a request had and no longer has (0446), oldest
+        first: the coach's own history for the Summary screen, never the
+        speaker's. Raises on failure."""
+        res = (self.client.table("exercise_coach_request_answer_versions").select("*")
+               .eq("request_id", str(request_id)).order("version").execute())
+        return list(res.data or [])
 
     def set_exercise_coach_request_draft(
         self, *, request_id: str, surface: str, text: str,
@@ -15011,6 +15184,68 @@ class DatabaseService:
                         "drafted_at": datetime.now(timezone.utc).isoformat()})
                .eq("id", str(request_id)).execute())
         return (res.data or [None])[0]
+
+    def request_coach_listen_again(self, take_session_id: str, snippet_id: str) -> int:
+        """The disagreement flag (QG12a A; migration 0444): one open blind ask
+        per coach with a judgment of record on the clip. Returns the rows
+        written. Raises on failure: the caller (services.coach_listen_again)
+        logs it and the speaker's answer stands."""
+        result = self.client.rpc("request_coach_listen_again_v1", {
+            "p_take_session_id": str(take_session_id), "p_snippet_id": str(snippet_id),
+        }).execute()
+        data = result.data
+        return int(data if isinstance(data, (int, float)) else 0)
+
+    def mark_coach_listen_again_heard(self, snippet_id: str, coach_id: str) -> int:
+        """The coach's new blind answer landed (0444): close their open ask on
+        the moment. Returns the rows closed. Raises on failure."""
+        result = self.client.rpc("mark_coach_listen_again_heard_v1", {
+            "p_snippet_id": str(snippet_id), "p_coach_id": str(coach_id),
+        }).execute()
+        data = result.data
+        return int(data if isinstance(data, (int, float)) else 0)
+
+    def list_open_coach_listen_again(self, coach_id: str, session_ids: list[str]) -> list[dict]:
+        """This coach's open asks on these Takes (0444): the Take, the moment
+        and the signed line's key; nothing else is on the row. Raises on
+        failure."""
+        ids = [str(s) for s in session_ids or [] if s]
+        if not ids:
+            return []
+        res = (self.client.table("coach_listen_again_requests")
+               .select("take_session_id, snippet_id, line_key")
+               .eq("coach_id", str(coach_id)).is_("heard_at", "null")
+               .in_("take_session_id", ids).execute())
+        return list(res.data or [])
+
+    def set_coach_moment_diagnosis(self, *, take_session_id: str, snippet_id: str,
+                                   coach_id: str, kind: str, error_id: Optional[str],
+                                   new_name: Optional[str]) -> Optional[dict]:
+        """The coach's diagnosis of a moment (migration 0445): a library
+        error, a coach-named error or no error; the same again is a no-op, a
+        change supersedes and versions (Q-B12 A). Raises the database's
+        refusal to the caller (services.coach_diagnosis names it)."""
+        result = self.client.rpc("set_coach_moment_diagnosis_v1", {
+            "p_take_session_id": str(take_session_id), "p_snippet_id": str(snippet_id),
+            "p_coach_id": str(coach_id), "p_kind": str(kind),
+            "p_error_id": error_id, "p_new_name": new_name,
+        }).execute()
+        return self._rpc_row(result.data)
+
+    def get_coach_moment_diagnosis(self, *, snippet_id: str, coach_id: str) -> Optional[dict]:
+        """This coach's current diagnosis of the moment (0445), or None."""
+        res = (self.client.table("coach_moment_diagnoses").select("*")
+               .eq("snippet_id", str(snippet_id)).eq("coach_id", str(coach_id))
+               .is_("superseded_at", "null").limit(1).execute())
+        return (res.data or [None])[0]
+
+    def list_coach_named_errors(self, *, unlinked_only: bool = True) -> list[dict]:
+        """The errors coaches named in one field (0445, Q-B7 A); by default
+        only those the founder has not yet linked to a library entry."""
+        query = self.client.table("coach_named_errors").select("*").order("first_named_at")
+        if unlinked_only:
+            query = query.is_("speaking_error_id", "null")
+        return list(query.execute().data or [])
 
     def list_exercise_coach_requests_for_sessions(
         self, session_ids: list[str],
@@ -15035,8 +15270,11 @@ class DatabaseService:
     def set_exercise_coach_request_video(
         self, *, request_id: str, video_ref: str,
     ) -> Optional[dict]:
-        """The video a coach added to a written answer (0403). Raises on
-        failure; the route names it."""
+        """The video a coach added to a written answer BEFORE it is
+        resolved (0403). Once resolved, the video changes only through
+        resolve_exercise_coach_request (0446: the guard refuses a direct
+        write), so the history keeps the old one. Raises on failure; the
+        route names it."""
         res = (self.client.table("exercise_coach_requests")
                .update({"answer_video_ref": str(video_ref)})
                .eq("id", str(request_id)).execute())
@@ -15131,7 +15369,7 @@ class DatabaseService:
         """Every practice on this Take (one per moment since 0400), with the
         fields that say whether it settled its moment. Raises on failure."""
         query = (self.client.table("confident_voice_practice")
-                 .select("id,snippet_id,status,final_user_answer")
+                 .select("id,snippet_id,status,final_user_answer,after_practice")
                  .eq("take_session_id", str(take_session_id)))
         if owner_user_id:
             query = query.eq("owner_user_id", str(owner_user_id))
@@ -15397,6 +15635,182 @@ class DatabaseService:
             return True
         labels = (self.get_confidence_labels_by_snippet_ids([str(snippet_id)]) or {}).get(str(snippet_id), [])
         return any(isinstance(r, dict) and str(r.get("rater_id") or "") == str(coach_id) for r in labels)
+
+    # ── Communities (0432, N52.4) ─────────────────────────────────────────
+
+    def get_general_community(self) -> Optional[dict]:
+        """The one open community (seeded by 0432)."""
+        res = (self.client.table("communities").select("*")
+               .eq("kind", "general").limit(1).execute())
+        return (res.data or [None])[0]
+
+    def insert_community(self, row: dict) -> Optional[dict]:
+        """A private community; a pass code already in use answers None (the
+        unique digest is the rule). Raises on any other failure."""
+        try:
+            res = self.client.table("communities").insert(dict(row)).execute()
+        except Exception as e:  # noqa: BLE001 — the unique key is the rule
+            if "23505" in str(e) or "duplicate" in str(e).lower():
+                return None
+            raise
+        return (res.data or [None])[0]
+
+    def get_community_by_pass_code_digest(self, digest: str) -> Optional[dict]:
+        res = (self.client.table("communities").select("*")
+               .eq("pass_code_digest", str(digest)).is_("closed_at", "null")
+               .limit(1).execute())
+        return (res.data or [None])[0]
+
+    def get_communities_by_ids(self, community_ids: list[str]) -> list[dict]:
+        ids = [str(c) for c in community_ids or [] if c]
+        if not ids:
+            return []
+        res = self.client.table("communities").select("*").in_("id", ids).execute()
+        return list(res.data or [])
+
+    def add_community_member(self, *, community_id: str, user_id: str,
+                             role: str) -> bool:
+        """One row per person per community; joining again keeps the row
+        (and an owner stays owner). Raises on failure."""
+        (self.client.table("community_members").upsert({
+            "community_id": str(community_id), "user_id": str(user_id), "role": str(role),
+        }, on_conflict="community_id,user_id", ignore_duplicates=True).execute())
+        return True
+
+    def list_community_memberships(self, user_id: str) -> list[dict]:
+        """[{community_id, role, joined_at}] for one person."""
+        res = (self.client.table("community_members")
+               .select("community_id,role,joined_at")
+               .eq("user_id", str(user_id)).limit(500).execute())
+        return list(res.data or [])
+
+    def list_take_shares(self, take_session_id: str) -> list[dict]:
+        res = (self.client.table("take_shares").select("*")
+               .eq("take_session_id", str(take_session_id)).execute())
+        return list(res.data or [])
+
+    def upsert_take_share(self, *, take_session_id: str, owner_user_id: str,
+                          community_id: str, consent_version: str,
+                          share_words_version: str) -> Optional[dict]:
+        """Share one Take with one community: one row per pair; a share
+        clears revoked_at and stamps the consent version (Privacy/Terms) and
+        the version of the sharing screen's words the speaker saw (0443,
+        CM2 B). Raises on failure."""
+        res = (self.client.table("take_shares").upsert({
+            "take_session_id": str(take_session_id), "owner_user_id": str(owner_user_id),
+            "community_id": str(community_id), "consent_version": str(consent_version),
+            "share_words_version": str(share_words_version),
+            "shared_at": datetime.now(timezone.utc).isoformat(), "revoked_at": None,
+        }, on_conflict="take_session_id,community_id").execute())
+        return (res.data or [None])[0]
+
+    def revoke_take_shares(self, take_session_id: str, *,
+                           keep_community_ids: list[str]) -> int:
+        """Withdraw the Take from every community not kept; the rows stay
+        with revoked_at stamped. Raises on failure."""
+        query = (self.client.table("take_shares")
+                 .update({"revoked_at": datetime.now(timezone.utc).isoformat()})
+                 .eq("take_session_id", str(take_session_id))
+                 .is_("revoked_at", "null"))
+        keep = [str(c) for c in keep_community_ids or [] if c]
+        if keep:
+            query = query.not_.in_("community_id", keep)
+        return len(query.execute().data or [])
+
+    def pick_line_bank_line(self, *, user_id: str, bank: str, size: int,
+                            later_true: bool) -> int:
+        """The index of the signed line to show next in one bank for one
+        speaker, recorded in the same call (0438): -1 is the bank's later
+        line. Raises on failure."""
+        res = self.client.rpc("pick_line_bank_line_v1", {
+            "p_user_id": str(user_id), "p_bank": str(bank),
+            "p_size": int(size), "p_later_true": bool(later_true),
+        }).execute()
+        data = res.data
+        if isinstance(data, list):
+            data = data[0] if data else None
+        if isinstance(data, dict):
+            data = next(iter(data.values()), None)
+        if isinstance(data, bool) or not isinstance(data, int):
+            raise ValueError("pick_line_bank_line_v1 returned no index")
+        return data
+
+    def read_line_bank_memory(self, *, user_id: str) -> list[dict]:
+        """This speaker's rows of line_bank_memory (0438): bank,
+        last_index, last_plain_index. Indexes only. Raises on failure."""
+        res = (self.client.table("line_bank_memory")
+               .select("bank,last_index,last_plain_index")
+               .eq("user_id", str(user_id))
+               .execute())
+        return [row for row in (res.data or []) if isinstance(row, dict)]
+
+    def new_coach_feedback_by_project(self, user_id: str) -> dict[str, bool]:
+        """{project id: True while a published coach word or answer for
+        one of its Takes is newer than the walk's last show of it} for every
+        project of this speaker (0439). A yes/no, never a count. Raises on
+        failure."""
+        res = self.client.rpc("new_coach_feedback_by_project_v1",
+                              {"p_owner": str(user_id)}).execute()
+        out: dict[str, bool] = {}
+        for row in res.data or []:
+            if isinstance(row, dict) and row.get("arc_id"):
+                out[str(row["arc_id"])] = row.get("has_new") is True
+        return out
+
+    def mark_coach_feedback_seen(self, *, user_id: str, take_session_id: str,
+                                 item: str) -> Any:
+        """Record that the walk showed this speaker the Take's coach note
+        (item 'take_word') or one moment (item = its snippet id) (0439).
+        Raises on failure, including COACH_FEEDBACK_TAKE_NOT_OWNED."""
+        res = self.client.rpc("mark_coach_feedback_seen_v1", {
+            "p_owner": str(user_id), "p_take": str(take_session_id),
+            "p_item": str(item),
+        }).execute()
+        return res.data
+
+    def list_community_clips_live(self, community_ids: list[str]) -> list[dict]:
+        """The live moments shared with these communities (the view, 0432),
+        newest share first."""
+        ids = [str(c) for c in community_ids or [] if c]
+        if not ids:
+            return []
+        res = (self.client.table("community_clips_live").select("*")
+               .in_("community_id", ids).order("shared_at", desc=True)
+               .limit(500).execute())
+        return list(res.data or [])
+
+    def list_community_clips_for_snippet(self, snippet_id: str) -> list[dict]:
+        res = (self.client.table("community_clips_live").select("*")
+               .eq("snippet_id", str(snippet_id)).execute())
+        return list(res.data or [])
+
+    def list_community_answered_clip_ids(self, listener_id: str) -> list[str]:
+        """Every clip this listener answered in a community queue: the
+        snippet of a community clip, the corpus id of a training clip."""
+        res = (self.client.table("community_answers")
+               .select("snippet_id,corpus_clip_id")
+               .eq("listener_user_id", str(listener_id)).limit(5000).execute())
+        out: list[str] = []
+        for row in res.data or []:
+            for key in ("snippet_id", "corpus_clip_id"):
+                if row.get(key):
+                    out.append(str(row[key]))
+        return out
+
+    def insert_community_answer(self, row: dict) -> Optional[dict]:
+        """One per person per clip: a duplicate answers None."""
+        try:
+            res = self.client.table("community_answers").insert(dict(row)).execute()
+        except Exception as e:  # noqa: BLE001 — the unique key is the rule
+            if "23505" in str(e) or "duplicate" in str(e).lower():
+                return None
+            raise
+        return (res.data or [None])[0]
+
+    def get_corpus_clip(self, clip_id: str) -> Optional[dict]:
+        res = (self.client.table("corpus_clips").select("*")
+               .eq("id", str(clip_id)).limit(1).execute())
+        return (res.data or [None])[0]
 
     def upsert_coach_take_word(
         self, *, take_session_id: str, coach_id: str, text: Optional[str],
