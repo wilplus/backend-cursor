@@ -102,9 +102,6 @@ class _Db:
         self.audits.append({"id": f"aud-{len(self.audits) + 1}", "answer": None, **row})
         return self.audits[-1]
 
-    def audit_clip_audio(self, clip_id, kind):
-        return f"https://a/{clip_id}.webm"
-
     def answer_error_presence_audit(self, *, audit_id, coach_id, answer):
         row = next((a for a in self.audits if a["id"] == audit_id and a["coach_id"] == coach_id), None)
         if not row or row.get("answer"):
@@ -426,7 +423,8 @@ class AuditTests(unittest.TestCase):
         status, payload = epa.queue(db, coach_id="c")
         self.assertEqual(status, 200)
         for item in payload["items"]:
-            self.assertEqual(set(item), {"audit_id", "clip_id", "audio_ref", "error_id", "label", "asks"})
+            self.assertEqual(set(item), {"audit_id", "clip_id", "audio_ref", "start_offset_ms",
+                                         "duration_ms", "error_id", "label", "asks"})
             self.assertEqual(item["asks"], "Do you hear rushing here?")
         self.assertEqual(epa.sample_for_coach(db, coach_id="c", rng=random.Random(5)), [])
 
@@ -481,7 +479,7 @@ class BlockPickTests(unittest.TestCase):
         self.assertEqual(set(item), {"pick_id", "clips", "n", "of"})
         self.assertNotIn("manager", str(item))
         for clip in item["clips"]:
-            self.assertEqual(set(clip), {"clip_id", "letter", "audio_ref"})
+            self.assertEqual(set(clip), {"clip_id", "letter", "audio_ref", "start_offset_ms", "duration_ms"})
         self.assertEqual(payload["wording"]["question"], "Which of these sounds most confident?")
 
     def test_one_pick_once_and_the_match_rate(self):

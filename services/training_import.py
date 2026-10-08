@@ -364,9 +364,10 @@ def prepare_training_import(
     ext = os.path.splitext(filename or "")[1].lower() or ".webm"
     parent_key = f"willab_lab/{session_id}/import_{uuid.uuid4().hex}{ext}"
     try:
-        from config import Config
-        bucket = getattr(Config, "COACH_FEEDBACK_VIDEO_BUCKET",
-                         "coach_feedback_videos")
+        # The resolved bucket, not the literal (#484: the caller's bucket
+        # is authoritative, so the literal could name a missing bucket).
+        from services.coach_video_storage import default_media_bucket
+        bucket = default_media_bucket()
         put_coach_object_bytes(
             bucket, parent_key, audio_bytes,
             content_type or content_type_for(filename),

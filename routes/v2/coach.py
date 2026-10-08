@@ -848,8 +848,17 @@ def _shape_coach_review_snippet(snip, cstate_map, owning_sid,
 def _claim_coach_review(session_id, session):
     """Claim the review, then re-read the session under the claim.
 
-    Returns ``(session, None)``, or ``(None, error_response)`` when either
-    step fails: a failed re-read is the same 503 as a failed claim.
+    Returns ``(session, None, read_only)``, or ``(None, error_response,
+    False)`` when either step fails: a failed re-read is the same 503 as a
+    failed claim.
+
+    A review another coach already owns opens READ-ONLY (founder
+    2026-10-08, "make sure the playbacks work all across the app"): K4
+    routes an Audio-unclear moment to a second coach, and the moments queue
+    does not filter by claimer, so that coach must still be able to hear the
+    clip. Nothing is claimed for them, the payload goes through the same
+    per-coach blind gate as the owner's (BLIND COACH), and the publish RPC
+    still refuses a non-owner (``publish_coach_review_revision_v1``).
     """
     try:
         return claim_review_and_reread(
@@ -858,19 +867,19 @@ def _claim_coach_review(session_id, session):
             str(request.user_id),
             actor_is_admin=is_admin(str(request.user_id)),
             before_claim=session,
-        ), None
+        ), None, False
     except Exception as assignment_error:
         low = str(assignment_error).lower()
         if "unclaimed guest" in low:
             return None, (jsonify({
                 "code": "UNCLAIMED_GUEST",
                 "error": "This take must be claimed before coach review.",
-            }), 409)
+            }), 409), False
         if "another coach" in low:
-            return None, (jsonify({
-                "code": "REVIEW_ASSIGNED_TO_ANOTHER_COACH",
-                "error": "This review is assigned to another coach.",
-            }), 409)
+            logger.info(
+                "coach/get-session: read-only open sid=%s (assigned to another coach)",
+                session_id)
+            return session, None, True
         logger.error(
             "coach/get-session: review assignment failed sid=%s: %s",
             session_id,
@@ -879,7 +888,7 @@ def _claim_coach_review(session_id, session):
         return None, (jsonify({
             "code": "REVIEW_ASSIGNMENT_FAILED",
             "error": "Could not open this review safely.",
-        }), 503)
+        }), 503), False
 
 
 def _coach_session_readout(session_id, snippet_rows, session_row):
@@ -1064,9 +1073,16 @@ def _coach_get_session_media_fields(
 
 def _coach_get_session_response(
     *, session_id, session, cstate, readout, ctx, _context_unlocked,
-    _blind_progress, _served_snippets, read_sessions,
+    _blind_progress, _served_snippets, read_sessions, read_only=False,
 ):
+    """``read_only`` is True when another coach owns this review (founder
+    2026-10-08): the clip plays and this coach's own judgements save, but
+    review-level publishing is not theirs (the publish RPC refuses a
+    non-owner), and the payload stays on the blind allowlist even after all
+    of their own answers: their answers reveal their own rows' words only,
+    never the owner's contextual editor."""
     return {
+        "read_only": bool(read_only),
         **_coach_get_session_identity_fields(
             session_id=session_id, session=session, cstate=cstate, ctx=ctx,
             _context_unlocked=_context_unlocked, _blind_progress=_blind_progress,
@@ -1105,9 +1121,9 @@ def v2_coach_get_session(session_id):
         if language_error is not None:
             return language_error
 
-        # First open atomically owns the review.  Admins may inspect another
-        # coach's assignment, but publishing then requires an audited override.
-        session, claim_error = _claim_coach_review(session_id, session)
+        # First open atomically owns the review; another coach's review opens
+        # read-only and blind (_claim_coach_review). Publishing stays the owner's.
+        session, claim_error, read_only = _claim_coach_review(session_id, session)
         if claim_error is not None:
             return claim_error
 
@@ -1140,7 +1156,7 @@ def v2_coach_get_session(session_id):
             blind_label_progress, redact_contextual_snippets,
         )
         _blind_progress = blind_label_progress(snippets)
-        _context_unlocked = bool(_blind_progress["complete"])
+        _context_unlocked = bool(_blind_progress["complete"]) and not read_only
         _served_snippets = (
             snippets if _context_unlocked
             else redact_contextual_snippets(snippets)
@@ -1151,7 +1167,7 @@ def v2_coach_get_session(session_id):
             session_id=session_id, session=session, cstate=cstate,
             readout=readout, ctx=ctx, _context_unlocked=_context_unlocked,
             _blind_progress=_blind_progress, _served_snippets=_served_snippets,
-            read_sessions=read_sessions,
+            read_sessions=read_sessions, read_only=read_only,
         )), 200
     except Exception as e:
         logger.error("coach/get-session failed sid=%s err=%s", session_id, e, exc_info=True)
@@ -1993,7 +2009,7 @@ def v2_coach_session_video(session_id):
     """
     # Local import on purpose: binds at CALL time, so tests that monkeypatch
     # services.coach_video_storage attributes take effect.
-    from services.coach_video_storage import put_coach_object_bytes
+    from services.coach_video_storage import default_media_bucket, put_coach_object_bytes
 
     if not _is_valid_uuid(session_id):
         return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a UUID"}), 400
@@ -2045,7 +2061,7 @@ def v2_coach_session_video(session_id):
                     "video_ref": refreshed_media_url(_existing["video_ref"]), "deduped": True,
                 }), 200
 
-        bucket = getattr(config, "COACH_FEEDBACK_VIDEO_BUCKET", "coach_feedback_videos")
+        bucket = default_media_bucket()  # never the literal: #484, _store_presentation_pdf
         # Subsystem V — NON-deterministic key so a re-record does NOT overwrite
         # the prior take (which is training/preference data). The user-facing ref
         # is repointed to the newest take below.
@@ -2135,9 +2151,9 @@ def _resolve_audio_refs(rows: list, *, expires_in: int = 6 * 3600) -> None:
     Already-absolute http(s) URLs pass through untouched (imports store a
     public URL). A bare storage key is signed for the session's length —
     long enough that a coach can work through a queue without links dying
-    mid-batch. Best-effort per row: a key that cannot be signed is left as
-    it is rather than nulled, so the failure is visible and debuggable
-    instead of a silently missing player."""
+    mid-batch. Best-effort per row: a key that cannot be signed becomes
+    None (logged by the resolver), so the row shows no player instead of a
+    raw ref no browser can load (founder 2026-10-08)."""
     # The bucket-authoritative branch is HOISTED (founder 2026-08-10):
     # this fix lived only here while every user surface handed the raw
     # column through — services/audio_ref_resolver.py is the one copy now.
@@ -2145,7 +2161,9 @@ def _resolve_audio_refs(rows: list, *, expires_in: int = 6 * 3600) -> None:
     for r in rows or []:
         ref = r.get("audio_ref")
         resolved = resolve_playable_ref(ref, expires_in=expires_in)
-        if resolved and resolved != ref:
+        if resolved != ref:
+            # None when it could not be signed: the row shows no player
+            # rather than a raw ref no browser can load.
             r["audio_ref"] = resolved
 
 

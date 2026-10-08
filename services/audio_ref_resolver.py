@@ -71,9 +71,19 @@ def resolve_playable_ref(ref: Any, *, expires_in: int = _DEFAULT_EXPIRES,
     """Resolve one ref. http(s) passes through untouched; ``s3://bucket/
     key`` is signed against ITS OWN bucket (the ref is authoritative —
     assuming a bucket is how #378's bug happened); a bare key signs
-    against ``default_bucket`` (the coach video bucket when unset). On
-    any signing failure the INPUT comes back unchanged — a visible dead
-    ref is debuggable, a silently nulled one is not. None/'' → None."""
+    against ``default_bucket``, else the bucket the writers resolve
+    (``default_media_bucket()``: ``R2_BUCKET_NAME`` under R2, the legacy
+    ``COACH_FEEDBACK_VIDEO_BUCKET`` on the Supabase fallback) — the same
+    bucket a write lands in, so a bare key reads where it was written.
+
+    On a signing failure (founder 2026-10-08, "make sure the playbacks work
+    all across the app"): an ``s3://`` marker or a bare key comes back
+    ``None`` — no browser can load either, so handing one to an
+    ``<audio src>`` is a dead player, and ``None`` lets the caller omit the
+    player instead. A URL on one of our public bases comes back ``None`` too
+    when its key is user content (the bucket is private, so the unsigned
+    URL cannot play) and unchanged otherwise. The failure is logged.
+    None/'' → None."""
     if not isinstance(ref, str) or not ref:
         return None
     if ref.startswith("http://") or ref.startswith("https://"):
@@ -93,17 +103,20 @@ def resolve_playable_ref(ref: Any, *, expires_in: int = _DEFAULT_EXPIRES,
             if ref.startswith(base + "/"):
                 key = ref[len(base) + 1:].split("?", 1)[0]
                 signed = _sign(base_bucket, key, expires_in)
-                return signed or ref
+                if signed:
+                    return signed
+                return None if _is_user_content(key) else ref
         return ref
     try:
-        from config import Config
-        from services.coach_video_storage import presigned_get_coach_object
-        bucket = str(
-            default_bucket
-            or getattr(Config, "COACH_FEEDBACK_VIDEO_BUCKET", "")
-            or "coach_feedback_videos")
-    except Exception:
-        return ref
+        from services.coach_video_storage import (
+            default_media_bucket, presigned_get_coach_object,
+        )
+        bucket = str(default_bucket or default_media_bucket()
+                     or "coach_feedback_videos")
+    except Exception as e:
+        logger.warning("resolve_playable_ref: no bucket for %s: %s", ref, e,
+                       exc_info=True)
+        return None
     if "://" in ref:
         rest = ref.split("://", 1)[-1]
         ref_bucket, _, ref_key = rest.partition("/")
@@ -116,8 +129,16 @@ def resolve_playable_ref(ref: Any, *, expires_in: int = _DEFAULT_EXPIRES,
     try:
         signed = presigned_get_coach_object(use_bucket, key,
                                             expires_in=expires_in)
-        return signed or ref
     except Exception as e:
         logger.warning("resolve_playable_ref: could not sign %s: %s",
-                       ref, e)
-        return ref
+                       ref, e, exc_info=True)
+        return None
+    if not signed:
+        logger.warning("resolve_playable_ref: no signature for %s", ref)
+        return None
+    return signed
+
+
+def _is_user_content(key: str) -> bool:
+    from services.user_content_keys import is_user_content_key
+    return is_user_content_key(key)

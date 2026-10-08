@@ -187,6 +187,12 @@ def _client_rows_only(block: dict) -> dict:
 _PERISHABLE = ("snippet_audio_ref", "start_offset_ms", "duration_ms")
 
 
+def _unplayable(ref: Any) -> bool:
+    """A non-empty ref no <audio src> can load (not an http(s) URL)."""
+    return (isinstance(ref, str) and bool(ref)
+            and not ref.startswith(("http://", "https://")))
+
+
 def _with_fresh_playback(block: dict) -> dict:
     """Re-sign the clip URLs in a stored block. Never serve a stored one.
 
@@ -240,6 +246,10 @@ def _with_fresh_playback(block: dict) -> dict:
         fresh = playback.get(str(row.get("snippet_id") or ""))
         if isinstance(fresh, dict) and fresh.get("snippet_audio_ref"):
             out.append({**row, **fresh})
+        elif _unplayable(row.get("snippet_audio_ref")):
+            # A stored s3:// marker or bare key can never load in a browser:
+            # omit the player, keep the card.
+            out.append({**row, "snippet_audio_ref": None})
         else:
             out.append(row)
     refreshed = dict(block)

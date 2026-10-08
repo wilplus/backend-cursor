@@ -29,7 +29,7 @@
   "services/annotation_export.py": 1,
   "services/arc_notifications.py": 10,
   "services/audio_metrics.py": 5,
-  "services/audio_ref_resolver.py": 4,
+  "services/audio_ref_resolver.py": 2,
   "services/audit_intent.py": 4,
   "services/casual_voice_analytics.py": 2,
   "services/ceo_intelligence.py": 1,

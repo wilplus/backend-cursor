@@ -85,13 +85,48 @@ class ResolverPublicBaseTests(unittest.TestCase):
         self.assertEqual(out, "https://cdn.example.com/talk.mp3")
         self.assertEqual(signs, [])
 
-    def test_signing_failure_returns_the_input_unchanged(self):
-        # Visible and debuggable beats silently missing — same rule as the
-        # s3:// branch.
+    def test_signing_failure_on_user_content_returns_none(self):
+        # Founder 2026-10-08: the bucket is private, so the unsigned public
+        # URL of a recording cannot play; None lets the caller omit the player.
         out, _ = self._resolve(
             "https://pub-coach.r2.dev/willab_lab/s1/take.webm", sign=None)
-        self.assertEqual(out,
-                         "https://pub-coach.r2.dev/willab_lab/s1/take.webm")
+        self.assertIsNone(out)
+
+    def test_signing_failure_on_coach_media_returns_the_input(self):
+        out, _ = self._resolve(
+            "https://pub-coach.r2.dev/coach-feedback/s1/v.mp4", sign=None)
+        self.assertEqual(out, "https://pub-coach.r2.dev/coach-feedback/s1/v.mp4")
+
+    def test_an_s3_ref_that_cannot_be_signed_returns_none(self):
+        out, _ = self._resolve("s3://some-bucket/willab_lab/s/t.webm", sign=None)
+        self.assertIsNone(out)
+
+    def test_a_bare_key_that_cannot_be_signed_returns_none(self):
+        patches = _cfg()
+        patches.append(patch(
+            "services.coach_video_storage.presigned_get_coach_object",
+            side_effect=RuntimeError("boom")))
+        for p in patches:
+            p.start()
+        try:
+            self.assertIsNone(arr.resolve_playable_ref("willab_lab/s/t.webm"))
+        finally:
+            for p in patches:
+                p.stop()
+
+    def test_a_bare_key_signs_against_the_bucket_writes_land_in(self):
+        """R2_BUCKET_NAME != COACH_FEEDBACK_VIDEO_BUCKET: a bare key is read
+        from the bucket the writer resolved, never the literal."""
+        from services import coach_video_storage as cvs
+        signs = []
+        with patch.object(cvs, "coach_videos_use_r2", lambda: True), \
+                patch.object(cvs, "r2_bucket_name", lambda: "coach-media-r2"), \
+                patch.object(cvs, "presigned_get_coach_object",
+                             lambda b, k, expires_in=0: (signs.append((b, k)),
+                                                         "https://signed/b")[1]):
+            out = arr.resolve_playable_ref("coach-feedback/s/v.mp4")
+        self.assertEqual(out, "https://signed/b")
+        self.assertEqual(signs, [("coach-media-r2", "coach-feedback/s/v.mp4")])
 
     def test_s3_refs_still_sign_against_their_own_bucket(self):
         out, signs = self._resolve("s3://some-bucket/a/b.webm",

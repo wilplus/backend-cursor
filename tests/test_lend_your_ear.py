@@ -339,6 +339,14 @@ class _Community(_Db):
 class OneConsentPathTests(unittest.TestCase):
     """Only the per-Take community share admits a speaker's moment to the
     walk's queue; the Album share and the measure's pair never do."""
+    def setUp(self):
+        # A clip whose audio cannot be signed reaches no player (founder
+        # 2026-10-08), so these community clips need a signer to play.
+        signer = patch("services.coach_video_storage.presigned_get_coach_object",
+                       lambda b, k, expires_in=0, **_k: f"https://signed/{b}/{k}")
+        signer.start()
+        self.addCleanup(signer.stop)
+
     def _world(self):
         db = _Community()
         # The trap: lent through the retired switch, and a ripe pair.

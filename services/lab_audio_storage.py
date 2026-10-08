@@ -79,7 +79,22 @@ def lab_audio_bucket() -> str:
 
 
 def coach_bucket() -> str:
-    """The legacy destination — where lab audio lived before the split."""
+    """The legacy destination — where lab audio lived before the split.
+
+    The bucket a pre-split write actually lands in (``target_bucket``'s
+    non-segregated branch): ``r2_bucket_name()`` under R2, else
+    ``COACH_FEEDBACK_VIDEO_BUCKET``. Reading the literal here while writes
+    went to ``r2_bucket_name()`` sent the read fallback to a bucket the
+    bytes were never in wherever ``R2_BUCKET_NAME`` names another one.
+    """
+    from services.coach_video_storage import default_media_bucket
+
+    return default_media_bucket()
+
+
+def legacy_coach_bucket() -> str:
+    """The configured ``COACH_FEEDBACK_VIDEO_BUCKET`` itself — tried last on
+    reads, for any object a literal-bucket writer left there."""
     c = _config()
     return (getattr(c, "COACH_FEEDBACK_VIDEO_BUCKET", None)
             or "coach_feedback_videos").strip()
@@ -212,6 +227,7 @@ def _candidate_buckets(bucket_hint: Optional[str]) -> list:
         lab_audio_bucket(),
         coach_bucket(),
         (audio_bucket_name() or "").strip(),
+        legacy_coach_bucket(),
     ]
     seen: set = set()
     out = []

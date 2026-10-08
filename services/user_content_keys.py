@@ -102,6 +102,11 @@ USER_CONTENT_PREFIXES: tuple[str, ...] = (
     "willab_presentations/",
     "casual_voice/",
     "mlc3-practice/",
+    # A speaker's practise tries (routes/v2/user_sessions.py, written through
+    # put_lab_audio_bytes). Missed because the writer is a route, which the
+    # prefix scanner did not read; every reader re-signs the stored ref
+    # (founder 2026-10-08, "make sure the playbacks work all across the app").
+    "confidence-practice/",
     # Per-person audit PDFs (migrations/add_user_audits.sql). Missed when this
     # list was written; found in the 2026-09-25 private-bucket audit.
     "willab_audits/",

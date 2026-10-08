@@ -114,6 +114,63 @@ class TestNoPrefixShipsUnclassified:
             )
 
 
+def _strip_comments_and_docstrings(source: str) -> str:
+    code = re.sub(r"#[^\n]*", "", source)
+    code = re.sub(r'"""[\s\S]*?"""', "", code)
+    return re.sub(r"'''[\s\S]*?'''", "", code)
+
+
+def _put_lab_audio_writer_prefixes() -> dict[str, list[str]]:
+    """prefix -> files, for every module (services/ AND routes/) that writes
+    through ``put_lab_audio_bytes``. The scanner above reads services/ only,
+    and ``confidence-practice/`` (a speaker's practise tries, written from a
+    route) slipped past it and minted permanent public URLs."""
+    found: dict[str, list[str]] = {}
+    for folder in (ROOT / "services", ROOT / "routes"):
+        for path in sorted(folder.rglob("*.py")):
+            if path.name == "lab_audio_storage.py":
+                continue
+            code = _strip_comments_and_docstrings(
+                path.read_text(encoding="utf-8", errors="replace"))
+            if "put_lab_audio_bytes(" not in code:
+                continue
+            for match in _KEY_LITERAL.finditer(code):
+                prefix = match.group(1)
+                if prefix in _NOT_OBJECT_KEYS:
+                    continue
+                found.setdefault(prefix + "/", []).append(path.name)
+    return found
+
+
+class TestEveryLabAudioWriterIsClassified:
+
+    def test_every_put_lab_audio_bytes_write_prefix_is_classified(self):
+        found = _put_lab_audio_writer_prefixes()
+        unclassified = {p: sorted(set(f)) for p, f in found.items()
+                        if p not in CLASSIFIED_PREFIXES}
+        assert unclassified == {}, (
+            "a put_lab_audio_bytes writer uses an unclassified prefix: "
+            f"{unclassified}")
+
+    def test_the_scanner_sees_the_route_writer(self):
+        found = _put_lab_audio_writer_prefixes()
+        assert "confidence-practice/" in found
+        assert "willab_lab/" in found
+
+    def test_practise_tries_get_no_public_url(self, monkeypatch):
+        from services import lab_audio_storage
+
+        class _Cfg:
+            R2_PUBLIC_BASE_URL = "https://public.example"
+            R2_LAB_AUDIO_BUCKET = ""
+            R2_LAB_AUDIO_PUBLIC_BASE_URL = ""
+
+        monkeypatch.setattr(lab_audio_storage, "_config", lambda: _Cfg())
+        assert is_user_content_key("confidence-practice/u/p/1-abc.webm")
+        assert lab_audio_storage.lab_audio_public_url(
+            "confidence-practice/u/p/1-abc.webm") is None
+
+
 class TestRetainedUserVoiceSigns:
 
     def test_casual_voice_is_user_content(self):

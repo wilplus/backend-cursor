@@ -17210,14 +17210,6 @@ class DatabaseService:
         res = self.client.table("error_presence_audit").insert(row).execute()
         return (res.data or [None])[0]
 
-    def audit_clip_audio(self, clip_id: str, clip_kind: str) -> Optional[str]:
-        """The clip's audio ref, by kind; None when unreadable."""
-        if clip_kind == "practice_attempt":
-            attempt = self.get_confident_voice_practice_attempt(str(clip_id)) or {}
-            return attempt.get("audio_ref") or None
-        snippet = self.get_snippet_by_id(str(clip_id)) or {}
-        return snippet.get("audio_segment_path") or None
-
     def answer_error_presence_audit(
         self, *, audit_id: str, coach_id: str, answer: str,
     ) -> Optional[dict]:

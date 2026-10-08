@@ -1330,7 +1330,8 @@ def _moment_playback_map(session_ids) -> dict:
                 try:
                     _url = _resolve_snippet_audio_url(s)
                 except Exception:
-                    _url = s.get("audio_segment_path")
+                    # Never the raw column: an unsigned ref is a dead player.
+                    _url = None
                 if not _url:
                     continue
                 out[str(_snip)] = {

@@ -127,7 +127,9 @@ def resolve_snippet_audio_url(snippet: Any, database: Any = None,
         # breaks it.
         from services.audio_ref_resolver import resolve_playable_ref
 
-        return resolve_playable_ref(seg) or seg
+        # No raw fallback: an unsigned s3:// marker or bare key is a
+        # dead <audio src>; None lets the caller omit the player.
+        return resolve_playable_ref(seg)
     return None
 
 
@@ -146,7 +148,9 @@ def resolve_turn_audio_url(snippet: Any) -> Optional[str]:
     if seg:
         from services.audio_ref_resolver import resolve_playable_ref
 
-        return resolve_playable_ref(seg) or seg
+        # No raw fallback: an unsigned s3:// marker or bare key is a
+        # dead <audio src>; None lets the caller omit the player.
+        return resolve_playable_ref(seg)
 
     storage = (snippet.get("storage_path") or "").strip()
     if storage and not storage.startswith(_SUPABASE_ONLY_PREFIX):
@@ -165,3 +169,60 @@ def resolve_turn_audio_url(snippet: Any) -> Optional[str]:
         except Exception:
             return None
     return None
+
+
+def _offset_ms(value: Any) -> Optional[int]:
+    """A clip's position in its recording: a non-negative int, else None."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return int(value) if value >= 0 else None
+
+
+def snippet_clip_playback(snippet: Any, database: Any = None) -> dict:
+    """``{audio_ref, start_offset_ms, duration_ms}`` for one snippet clip.
+
+    The path ``_moment_playback_map`` uses (routes/v2/arcs.py): the ref is
+    resolved through ``resolve_snippet_audio_url``, which prefers the
+    finalized parent (``storage_path``) — ``audio_segment_path`` is NULL on
+    finalized rows, so reading it alone rendered no player — and the window
+    rides along, because a parent ref without its offsets plays the whole
+    Take. Audio and offsets only: safe for the blind coach sheets (BLIND
+    COACH). ``audio_ref`` is None when nothing could be signed.
+    """
+    row = snippet if isinstance(snippet, dict) else {}
+    try:
+        url = resolve_snippet_audio_url(row, database) if row else None
+    except Exception as exc:
+        logger.warning("snippet clip playback: %s: %s", row.get("id"), exc,
+                       exc_info=True)
+        url = None
+    return {
+        "audio_ref": url or None,
+        "start_offset_ms": _offset_ms(row.get("start_offset_ms")),
+        "duration_ms": _offset_ms(row.get("duration_ms")),
+    }
+
+
+def recording_playback_url(recording: Any, database: Any,
+                           app_config: Any) -> Optional[str]:
+    """A fresh playable URL for one ``recordings`` row, or None.
+
+    A Lab Take lives in R2 under the bucket its own ref names
+    (``s3://bucket/key``), not in the Supabase audio bucket, so it is signed
+    the one bucket-authoritative way every other player is. A legacy
+    homework recording keeps its Supabase signed URL.
+    """
+    row = recording if isinstance(recording, dict) else {}
+    storage_path = str(row.get("storage_path") or "").strip()
+    ref = str(row.get("audio_url") or "").strip()
+    if (row.get("recording_origin") == "willab_lab" or ref.startswith("s3://")
+            or storage_path.startswith("willab_lab/")):
+        from services.audio_ref_resolver import resolve_playable_ref
+
+        return resolve_playable_ref(ref or storage_path)
+    if not storage_path:
+        return None
+    return database.create_signed_url(
+        app_config.AUDIO_BUCKET_NAME, storage_path,
+        app_config.SIGNED_URL_EXPIRY_SECONDS,
+    )

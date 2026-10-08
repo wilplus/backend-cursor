@@ -255,10 +255,34 @@ def sample_for_coach(database: Any, *, coach_id: str, now: Optional[datetime] = 
 
 # ── the queue and the answer ──────────────────────────────────────────────
 
+def _clip_playback(database: Any, clip_id: str, clip_kind: str) -> dict:
+    """``{audio_ref, start_offset_ms, duration_ms}`` for one audit clip —
+    audio and its window only (BLIND COACH). A snippet resolves the way
+    ``_moment_playback_map`` does (the finalized parent plus its offsets;
+    ``audio_segment_path`` is NULL after finalize). A practise try is its
+    own file, so it starts at 0. Best-effort: no player on any failure."""
+    from services.snippet_audio_url import snippet_clip_playback
+    try:
+        if clip_kind == "practice_attempt":
+            from services.audio_ref_resolver import resolve_playable_ref
+            attempt = database.get_confident_voice_practice_attempt(clip_id) or {}
+            duration = attempt.get("duration_ms")
+            return {
+                "audio_ref": resolve_playable_ref(attempt.get("audio_ref")),
+                "start_offset_ms": 0,
+                "duration_ms": (int(duration) if isinstance(duration, (int, float))
+                                and not isinstance(duration, bool) and duration >= 0
+                                else None),
+            }
+        return snippet_clip_playback(database.get_snippet_by_id(clip_id) or {}, database)
+    except Exception as e:
+        _log.warning("audit clip playback failed clip=%s: %s", clip_id, e, exc_info=True)
+        return {"audio_ref": None, "start_offset_ms": None, "duration_ms": None}
+
+
 def queue(database: Any, *, coach_id: str) -> tuple[int, dict]:
     """The coach's pending items, blind: the clip, the error's own question,
     nothing else. 404 off."""
-    from services.audio_ref_resolver import resolve_playable_ref
     if not audit_enabled():
         return 404, {"code": "NOT_FOUND", "error": "not found"}
     asks = {str(r.get("error_id")): r for r in (database.list_speaking_errors() or [])
@@ -268,11 +292,12 @@ def queue(database: Any, *, coach_id: str) -> tuple[int, dict]:
         if not isinstance(row, dict):
             continue
         library = asks.get(str(row.get("error_id")), {})
-        audio = database.audit_clip_audio(str(row.get("clip_id")), str(row.get("clip_kind") or "snippet"))
+        playback = _clip_playback(
+            database, str(row.get("clip_id")), str(row.get("clip_kind") or "snippet"))
         items.append({
             "audit_id": str(row.get("id")),
             "clip_id": str(row.get("clip_id")),
-            "audio_ref": resolve_playable_ref(audio) if audio else None,
+            **playback,
             "error_id": str(row.get("error_id")),
             "label": library.get("label") or str(row.get("error_id")),
             "asks": library.get("asks") or "",

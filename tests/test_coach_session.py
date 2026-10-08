@@ -222,6 +222,100 @@ class CoachSessionReadTests(unittest.TestCase):
         self.assertEqual([s["id"] for s in data["snippets"]], ["flat", "key"])
         self.assertEqual([s["index"] for s in data["snippets"]], [0, 1])
 
+    def _as_second_coach(self, own_ratings=None):
+        """A review another coach already claimed (K4 routes an Audio-unclear
+        moment to a second coach; founder 2026-10-08, playback everywhere)."""
+        calls = []
+
+        def claimed_by_other(session_id, actor_user_id, **kwargs):
+            calls.append(actor_user_id)
+            raise RuntimeError("review assigned to another coach")
+
+        self._patch_db("claim_coach_review", claimed_by_other)
+        self._patch_db("get_own_state_ratings_for_session",
+                       lambda sid, rater_id: dict(own_ratings or {}))
+        lab.build_readout_from_session = lambda sid, **kw: {"snippets": [
+            {"id": "a", "index": 1, "transcript": "hi",
+             "audio_ref": "https://signed.example/take.webm?sig=1",
+             "start_offset_ms": 0, "duration_ms": 8000,
+             "stickiness": {"composite": 0.5, "comment": "c"}},
+            {"id": "b", "index": 2, "transcript": "yo",
+             "audio_ref": "https://signed.example/take.webm?sig=1",
+             "start_offset_ms": 9000, "duration_ms": 5000},
+        ]}
+        return calls
+
+    def test_a_second_coach_reads_the_blind_packet_with_playable_clips(self):
+        calls = self._as_second_coach()
+        status, data = self._get()
+        self.assertEqual(status, 200)
+        self.assertEqual(calls, ["coach-1"])
+        self.assertTrue(data["read_only"])
+        # BLIND COACH, exactly as for the owner: nothing beyond the allowlist
+        # before this coach's own answers.
+        self.assertFalse(data["context_unlocked"])
+        self.assertEqual(data["domain"], "")
+        self.assertEqual(data["topic"], "")
+        self.assertIsNone(data["presentation_ref"])
+        for row in data["snippets"]:
+            self.assertEqual(row["transcript"], "")
+            self.assertNotIn("stickiness", row)
+            self.assertNotIn("features", row)
+            self.assertTrue(row["audio_ref"].startswith("https://"))
+            self.assertIsInstance(row["start_offset_ms"], int)
+            self.assertIsInstance(row["duration_ms"], int)
+        self.assertNotIn("user-xyz-secret", json.dumps(data))
+
+    def test_a_second_coach_s_own_answer_reveals_only_that_row(self):
+        self._as_second_coach({"a": {"value": "yes", "unrateable": False}})
+        status, data = self._get()
+        self.assertEqual(status, 200)
+        by_id = {row["id"]: row for row in data["snippets"]}
+        self.assertEqual(by_id["a"]["transcript"], "hi")
+        self.assertEqual(by_id["b"]["transcript"], "")
+        self.assertFalse(data["context_unlocked"])
+
+    def test_a_second_coach_never_gets_the_owner_s_contextual_editor(self):
+        self._as_second_coach({"a": {"value": "yes", "unrateable": False},
+                               "b": {"value": "no", "unrateable": False}})
+        status, data = self._get()
+        self.assertEqual(status, 200)
+        self.assertFalse(data["context_unlocked"])
+        self.assertEqual(data["domain"], "")
+        for row in data["snippets"]:
+            self.assertEqual(row["coach_state"]["note"], "")
+            self.assertNotIn("stickiness", row)
+
+    def test_the_claiming_coach_is_not_read_only(self):
+        status, data = self._get()
+        self.assertEqual(status, 200)
+        self.assertFalse(data["read_only"])
+
+    def test_a_second_coach_cannot_publish(self):
+        """Publishing stays the claimer's: the arc-level publish door answers
+        410 for everyone, and the publish RPC itself refuses a non-admin
+        coach on a review assigned to another coach."""
+        import pathlib
+        self._as_second_coach()
+        with self.app.test_request_context(method="POST"):
+            request.user_id = "coach-1"
+            resp, status = v2_coach.v2_coach_publish_analysis_gone.__wrapped__("arc-1")
+        self.assertEqual(status, 410)
+        sql = (pathlib.Path(__file__).resolve().parents[1] / "migrations"
+               / "add_atomic_coach_review_publishing.sql").read_text()
+        publish = sql[sql.index("FUNCTION public.publish_coach_review_revision_v1"):]
+        self.assertIn("IF override_used AND NOT p_actor_is_admin THEN\n"
+                      "        RAISE EXCEPTION 'review assigned to another coach';",
+                      publish)
+
+    def test_an_unclaimed_guest_is_still_refused(self):
+        def guest(*_a, **_k):
+            raise RuntimeError("unclaimed guest cannot enter coach review")
+        self._patch_db("claim_coach_review", guest)
+        status, data = self._get()
+        self.assertEqual(status, 409)
+        self.assertEqual(data["code"], "UNCLAIMED_GUEST")
+
     def test_context_is_redacted_until_every_blind_label_is_committed(self):
         setattr(
             db,
