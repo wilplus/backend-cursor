@@ -784,6 +784,12 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "take_session_id", "take", "delete", "derived_feedback", 59),
     PurgeDependency("v4_pick_outcomes_next", "v4_pick_outcomes",
                     "next_take_session_id", "take", "delete", "derived_feedback", 59),
+    # V4 B1.6 (0452): V4's dark picks per block and per Take. Derived,
+    # internal: they go with the Take.
+    PurgeDependency("v4_picks", "v4_picks",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("v4_pick_takes", "v4_pick_takes",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
     PurgeDependency("v3_detector_reconciliation",
                     "take_feedback_detector_reconciliation",
                     "take_session_id", "take", "external_review",

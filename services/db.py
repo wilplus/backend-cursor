@@ -11873,6 +11873,22 @@ class DatabaseService:
         }).execute()
         return self._rpc_row(result.data)
 
+    def list_v4_willfidence_reads(self, take_session_id: str) -> list[dict]:
+        """One Take's willfidence-v1-machine reads (0449), for the V4 picker."""
+        res = (self.client.table("v4_willfidence_reads")
+               .select("block_id,s,w,willfident,role,sound_clips")
+               .eq("take_session_id", str(take_session_id))
+               .eq("read_version", "willfidence-v1-machine").execute())
+        return list(res.data or [])
+
+    def record_v4_picks(self, take_session_id: str, rows: list) -> Optional[dict]:
+        """V4's dark picks for one Take (migration 0452, V4 B1.6). Raises on
+        failure: the caller (services.v4_picker.run) logs it."""
+        result = self.client.rpc("record_v4_picks_v1", {
+            "p_take_session_id": str(take_session_id), "p_rows": rows,
+        }).execute()
+        return self._rpc_row(result.data)
+
     def get_confidence_labels_by_snippet_ids(self, snippet_ids: list, *,
                                              strict: bool = False) -> dict:
         """{snippet_id: [label rows]} for the given snippets. {} on anything
