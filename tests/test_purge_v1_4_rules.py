@@ -55,6 +55,13 @@ SCHEDULE = (ROOT / "legal" / "phase1-2026.1" /
             "20-retention-schedule-v1.4-product-records-and-job-evidence-DRAFT.md")
 
 RULED = [dependency for dependency in DEPENDENCIES if dependency.ruled_by]
+#: external_review entries added AFTER v1.4 was signed (2026-10-05). The
+#: signed document is never edited in place (04 §5), so it cannot name them;
+#: each stays fail-closed until the next schedule version names it.
+ADDED_AFTER_V1_4 = frozenset({
+    # A speaker's skip rows (record_root_phrase_skip_v1), founder 2026-10-08.
+    "feedback_revision_owner_raters",
+})
 RELATIONS = frozenset(d.relation for d in DEPENDENCIES) | {"data_retention_rules"}
 ACTIVE = (
     {"id": "rule-p", "rule_code": PRODUCT_RECORDS_RULE,
@@ -396,6 +403,15 @@ def test_the_schedule_names_every_dependency_it_decides_or_leaves_open():
     missing = sorted(
         d.code for d in DEPENDENCIES
         if (d.ruled_by or d.disposition == "external_review")
+        and d.code not in ADDED_AFTER_V1_4
         and f"`{d.code}`" not in text
     )
     assert missing == []
+    # An entry listed as newer must really be absent from v1.4, and must
+    # still fail closed: never a way to skip a code the schedule decides.
+    for code in ADDED_AFTER_V1_4:
+        dependency = dependency_by_code(code)
+        assert dependency is not None, code
+        assert f"`{code}`" not in text, code
+        assert (dependency.disposition, dependency.ruled_by) == (
+            "external_review", None), code
