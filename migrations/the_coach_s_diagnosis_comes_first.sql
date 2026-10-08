@@ -24,8 +24,9 @@
 --
 --   coach_named_errors        an error a coach named in one field: the
 --                             words as the coach said them, a key for the
---                             same words said twice, who named it first and
---                             when. "Named by a coach" until the founder
+--                             same words said twice, who named it first
+--                             (cleared when that coach's account is purged)
+--                             and when. "Named by a coach" until the founder
 --                             links it to a library entry they wrote
 --                             (speaking_error_id, set in admin, outside this
 --                             file). Library content, not a person's record.
@@ -37,7 +38,10 @@
 --                             and writes the next version (Q-B12 A), so the
 --                             history stays. Never read by the speaker.
 --   set_coach_moment_diagnosis_v1   the one writer: validates the shape,
---                             finds or files the coach-named error, leaves a
+--                             finds or files the coach-named error (a linked
+--                             name becomes its library entry only while that
+--                             entry is active), takes a per-moment-and-coach
+--                             advisory lock, leaves a
 --                             diagnosis that says the same thing as before
 --                             untouched, otherwise supersedes and versions.
 --                             Returns the current row.
@@ -65,7 +69,7 @@ CREATE TABLE IF NOT EXISTS public.coach_named_errors (
     id                uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
     name              text        NOT NULL,
     name_key          text        NOT NULL,
-    named_by          text        NOT NULL,
+    named_by          text        NULL,
     first_named_at    timestamptz NOT NULL DEFAULT now(),
     speaking_error_id text        NULL REFERENCES public.speaking_error (error_id),
     linked_at         timestamptz NULL,
@@ -77,13 +81,19 @@ CREATE TABLE IF NOT EXISTS public.coach_named_errors (
     CONSTRAINT coach_named_errors_link_shape CHECK (
         (speaking_error_id IS NULL) = (linked_at IS NULL))
 );
+-- named_by is the coach's user id: personal data on library content. The
+-- account purge clears it (data_purge_registry coach_named_errors_named_by)
+-- and keeps the name, which other coaches' diagnoses may point at. Nullable
+-- for that; restated for a database that took an earlier draft of this file.
+ALTER TABLE public.coach_named_errors ALTER COLUMN named_by DROP NOT NULL;
 ALTER TABLE public.coach_named_errors ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.coach_named_errors IS
     'An error a coach named in one field (0445; Q-B7 A): the words as said, '
     'one row per distinct wording, who named it first. "Named by a coach" '
     'until the founder writes its definition and question in admin and links '
     'it (speaking_error_id). Library content; a signal for the founder only, '
-    'never a detector''s readiness.';
+    'never a detector''s readiness. named_by is cleared when that coach''s '
+    'account is purged; the name stays.';
 
 CREATE TABLE IF NOT EXISTS public.coach_moment_diagnoses (
     id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -169,13 +179,23 @@ BEGIN
         ON CONFLICT (name_key) DO NOTHING;
         SELECT id, speaking_error_id INTO v_named_id, v_error_id
           FROM public.coach_named_errors WHERE name_key = lower(v_name);
-        IF v_error_id IS NOT NULL THEN
+        -- Only an ACTIVE library entry, as for a library error chosen
+        -- directly: a name linked to an entry the founder has since retired
+        -- stays the coach-named error it was.
+        IF v_error_id IS NOT NULL
+           AND EXISTS (SELECT 1 FROM public.speaking_error
+                        WHERE error_id = v_error_id AND active) THEN
             p_kind := 'error';
             v_named_id := NULL;
         ELSE
             v_error_id := NULL;
         END IF;
     END IF;
+
+    -- One writer per moment and coach at a time: a double tap waits for the
+    -- first save and then finds it (the same diagnosis again is a no-op)
+    -- instead of both writing version 1 and one failing on the key.
+    PERFORM pg_advisory_xact_lock(hashtext(p_snippet_id || ':' || p_coach_id));
 
     SELECT * INTO v_current FROM public.coach_moment_diagnoses
      WHERE snippet_id = p_snippet_id AND coach_id = p_coach_id
@@ -224,7 +244,7 @@ COMMENT ON FUNCTION public.set_coach_moment_diagnosis_v1(text, text, text, text,
 -- the diagnoses are written only through the function. The coach-named
 -- errors are library content: the founder's admin links them (UPDATE of
 -- speaking_error_id and linked_at, in a later file) and nothing deletes them
--- here. Roles are guarded: they exist on Supabase, not on a bare Postgres.
+-- here; the account purge may only clear named_by (a column UPDATE grant). Roles are guarded: they exist on Supabase, not on a bare Postgres.
 REVOKE ALL ON TABLE public.coach_named_errors FROM PUBLIC;
 REVOKE ALL ON TABLE public.coach_moment_diagnoses FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.set_coach_moment_diagnosis_v1(text, text, text, text, text, text) FROM PUBLIC;
@@ -242,6 +262,8 @@ BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
         REVOKE ALL ON TABLE public.coach_named_errors FROM service_role;
         GRANT SELECT ON TABLE public.coach_named_errors TO service_role;
+        -- The account purge clears the namer (named_by) and nothing else.
+        GRANT UPDATE (named_by) ON TABLE public.coach_named_errors TO service_role;
         REVOKE ALL ON TABLE public.coach_moment_diagnoses FROM service_role;
         GRANT SELECT, DELETE ON TABLE public.coach_moment_diagnoses TO service_role;
         GRANT EXECUTE ON FUNCTION public.set_coach_moment_diagnosis_v1(text, text, text, text, text, text) TO service_role;

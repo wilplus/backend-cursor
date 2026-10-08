@@ -137,6 +137,10 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     # A coach's diagnosis of a moment (0445): the coach's own judgement
     # belongs to the coach's account; the Take-keyed twin goes with the Take.
     "coach_moment_diagnoses_by_coach",
+    # Who first named a coach-named error (0445): the coach's user id on
+    # shared library content; cleared with the coach's account, never with
+    # a project.
+    "coach_named_errors_named_by",
     # Retention schedule v1.4: product records and job evidence that name
     # only the person, never a project. Deleted with the account (or kept
     # 12 months as job evidence); a project purge leaves them. Placed only

@@ -876,7 +876,11 @@ class DataPurgeOrchestrator:
                           error_code="RETENTION_RULE_INACTIVE")
             return
         try:
-            query = self.client.table(dependency.relation).delete()
+            table = self.client.table(dependency.relation)
+            query = (
+                table.update({dependency.selector_column: None})
+                if dependency.clears_selector else table.delete()
+            )
             query = (
                 query.eq(dependency.selector_column, values[0])
                 if len(values) == 1 else

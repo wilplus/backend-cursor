@@ -170,7 +170,85 @@ class WallsTests(unittest.TestCase):
                  for d in DEPENDENCIES if d.relation == "coach_moment_diagnoses"}
         self.assertEqual(keyed, {("take_session_id", "take", "delete"),
                                  ("coach_id", "user", "delete")})
-        self.assertIn("coach_named_errors", NON_SUBJECT_RELATIONS)
+        # The coach-named error stays (other diagnoses may point at it); who
+        # named it first is the coach's user id and is cleared with them.
+        self.assertNotIn("coach_named_errors", NON_SUBJECT_RELATIONS)
+        named = [d for d in DEPENDENCIES if d.relation == "coach_named_errors"]
+        self.assertEqual([(d.code, d.selector_column, d.locator_kind, d.disposition,
+                           d.clears_selector) for d in named],
+                         [("coach_named_errors_named_by", "named_by", "user",
+                           "delete", True)])
+        # Every other dependency still deletes its rows.
+        self.assertEqual({d.code for d in DEPENDENCIES if d.clears_selector},
+                         {"coach_named_errors_named_by"})
+        from services.data_purge_project_scope import ACCOUNT_LEVEL, PROJECT_SELECTORS
+        self.assertIn("coach_named_errors_named_by", ACCOUNT_LEVEL)
+        self.assertNotIn("coach_named_errors_named_by", PROJECT_SELECTORS)
+
+    def test_the_purge_clears_named_by_and_keeps_the_named_error(self):
+        """A clears_selector dependency is resolved by an UPDATE that sets the
+        selector to NULL, never a DELETE, and is counted like a delete."""
+        from services.data_purge import DataPurgeOrchestrator, SubjectGraph
+
+        calls: list = []
+
+        class _Query:
+            def __init__(self, table):
+                self.table = table
+
+            def update(self, values):
+                calls.append(("update", self.table, dict(values)))
+                return self
+
+            def delete(self):
+                calls.append(("delete", self.table))
+                return self
+
+            def eq(self, column, value):
+                calls.append(("eq", column, value))
+                return self
+
+            def in_(self, column, values):
+                calls.append(("in", column, list(values)))
+                return self
+
+            def execute(self):
+                return type("R", (), {"data": []})()
+
+        class _Client:
+            def table(self, name):
+                return _Query(name)
+
+        database = type("Database", (), {"client": _Client()})()
+        orchestrator = DataPurgeOrchestrator(database)
+        resolved: list = []
+        orchestrator._resolve = lambda target, **kw: resolved.append(kw)  # type: ignore[method-assign]
+        orchestrator._count = lambda dependency, values, *a: 0  # type: ignore[method-assign]
+        target = {"id": "t1", "initial_match_count": 2,
+                  "metadata": {"dependency_code": "coach_named_errors_named_by"}}
+        orchestrator._resolve_dependency(
+            target, SubjectGraph(principal_ids=("p1",), user_ids=("coach-1",)))
+        self.assertEqual(calls, [("update", "coach_named_errors", {"named_by": None}),
+                                 ("eq", "named_by", "coach-1")])
+        self.assertEqual(resolved[0]["state"], "deleted")
+        self.assertEqual(resolved[0]["remaining"], 0)
+
+    def test_the_migration_lets_the_purge_clear_named_by_only(self):
+        sql = (ROOT / "migrations" / "the_coach_s_diagnosis_comes_first.sql").read_text()
+        self.assertIn("    named_by          text        NULL,", sql)
+        self.assertIn("ALTER TABLE public.coach_named_errors ALTER COLUMN named_by "
+                      "DROP NOT NULL;", sql)
+        self.assertIn("GRANT UPDATE (named_by) ON TABLE public.coach_named_errors "
+                      "TO service_role;", sql)
+
+    def test_a_double_tap_is_serialized_and_a_retired_link_is_not_followed(self):
+        sql = (ROOT / "migrations" / "the_coach_s_diagnosis_comes_first.sql").read_text()
+        fn = sql[sql.index("CREATE OR REPLACE FUNCTION public.set_coach_moment_diagnosis_v1"):]
+        lock = "PERFORM pg_advisory_xact_lock(hashtext(p_snippet_id || ':' || p_coach_id));"
+        self.assertIn(lock, fn)
+        self.assertLess(fn.index(lock), fn.index("SELECT * INTO v_current"))
+        linked = fn[fn.index("ELSIF p_kind = 'named_error'"):fn.index(lock)]
+        self.assertIn("WHERE error_id = v_error_id AND active", linked)
 
     def test_the_migration_holds_the_standing_rules(self):
         sql = (ROOT / "migrations" / "the_coach_s_diagnosis_comes_first.sql").read_text()

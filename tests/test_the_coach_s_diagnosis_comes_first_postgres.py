@@ -14,6 +14,12 @@ Pins:
     error, "named by a coach" until the founder links it; once linked, the
     diagnosis is the library error;
   * a retired or unknown library error is refused by name; bad input too;
+  * a double tap (two saves of one diagnosis at once) waits on the
+    moment-and-coach lock and returns the same row, never a key error;
+  * a name linked to a library entry the founder has since retired stays
+    the coach-named error;
+  * the account purge clears named_by (service_role holds UPDATE on that
+    column only) and keeps the coach-named error and the diagnoses on it;
   * nothing joins the new tables to the label ledger or the blind "Do you
     hear it?" answers (the shape has no such column).
 """
@@ -21,6 +27,8 @@ from __future__ import annotations
 
 import os
 import pathlib
+import threading
+import time
 import uuid
 
 import psycopg2
@@ -260,3 +268,108 @@ def test_service_role_calls_the_function_and_cannot_write_by_hand(db):
             assert cur.fetchone()["n"] == 0
     finally:
         conn.close()
+
+
+def test_a_double_tap_returns_the_same_row(db):
+    take, snippet, coach = (str(uuid.uuid4()) for _ in range(3))
+    first = psycopg2.connect(DSN)
+    second = psycopg2.connect(DSN)
+    second.autocommit = True
+    result: dict = {}
+    try:
+        with first.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            row = _set(cur, take, snippet, coach, "no_error")
+
+        def tap():
+            try:
+                with second.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as c2:
+                    result["row"] = _set(c2, take, snippet, coach, "no_error")
+            except Exception as e:  # noqa: BLE001 -- reported below
+                result["error"] = e
+
+        t = threading.Thread(target=tap)
+        t.start()
+        deadline, waiting = time.time() + 10, False
+        with db.cursor() as probe:
+            while time.time() < deadline and not waiting:
+                probe.execute("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' "
+                              "AND NOT granted")
+                waiting = probe.fetchone()[0] > 0
+                if not waiting:
+                    time.sleep(0.05)
+        assert waiting, "the second save did not wait for the first"
+        first.commit()
+        t.join(10)
+        assert not t.is_alive()
+        assert "error" not in result, result.get("error")
+        assert result["row"]["id"] == row["id"]
+        with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            assert [h["version"] for h in _history(cur, snippet, coach)] == [1]
+    finally:
+        first.close()
+        second.close()
+
+
+def test_a_name_linked_to_a_retired_entry_stays_the_coach_named_error(db):
+    take, coach = str(uuid.uuid4()), str(uuid.uuid4())
+    name = f"rushed close {uuid.uuid4().hex[:6]}"
+    with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        a = _set(cur, take, str(uuid.uuid4()), coach, "named_error", new_name=name)
+        retired = _library_error(cur, active=False)
+        cur.execute("UPDATE public.coach_named_errors SET speaking_error_id = %s, "
+                    "linked_at = now() WHERE id = %s", (retired, a["named_error_id"]))
+        b = _set(cur, take, str(uuid.uuid4()), coach, "named_error", new_name=name)
+        assert (b["kind"], b["error_id"], b["named_error_id"]) == (
+            "named_error", None, a["named_error_id"])
+
+
+def test_the_purge_clears_named_by_and_keeps_the_named_error(db):
+    take, coach, other = (str(uuid.uuid4()) for _ in range(3))
+    name = f"dropped tail {uuid.uuid4().hex[:6]}"
+    with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        a = _set(cur, take, str(uuid.uuid4()), coach, "named_error", new_name=name)
+        b = _set(cur, take, str(uuid.uuid4()), other, "named_error", new_name=name)
+        cur.execute("SELECT is_nullable FROM information_schema.columns WHERE "
+                    "table_schema = 'public' AND table_name = 'coach_named_errors' "
+                    "AND column_name = 'named_by'")
+        assert cur.fetchone()["is_nullable"] == "YES"
+    has_service = False
+    with db.cursor() as cur:
+        has_service = _role_exists(cur, "service_role")
+    conn = psycopg2.connect(DSN)
+    conn.autocommit = True
+    try:
+        with conn.cursor() as cur:
+            if has_service:
+                cur.execute("SET ROLE service_role")
+                cur.execute("SELECT has_column_privilege('service_role', "
+                            "'public.coach_named_errors', 'named_by', 'UPDATE'), "
+                            "has_column_privilege('service_role', "
+                            "'public.coach_named_errors', 'name', 'UPDATE'), "
+                            "has_column_privilege('service_role', "
+                            "'public.coach_named_errors', 'speaking_error_id', 'UPDATE')")
+                assert cur.fetchone() == (True, False, False)
+                with pytest.raises(psycopg2.errors.InsufficientPrivilege):
+                    cur.execute("UPDATE public.coach_named_errors SET name = 'x' "
+                                "WHERE named_by = %s", (coach,))
+            # The purge's step (data_purge_registry coach_named_errors_named_by,
+            # clears_selector): the selector set to NULL for the deleted coach.
+            cur.execute("UPDATE public.coach_named_errors SET named_by = NULL "
+                        "WHERE named_by = %s", (coach,))
+            assert cur.rowcount == 1
+            cur.execute("SELECT count(*) FROM public.coach_named_errors WHERE named_by = %s",
+                        (coach,))
+            assert cur.fetchone() == (0,)
+    finally:
+        conn.close()
+    with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute("SELECT name, named_by FROM public.coach_named_errors WHERE id = %s",
+                    (a["named_error_id"],))
+        assert dict(cur.fetchone()) == {"name": name, "named_by": None}
+        # The other coach's diagnosis still points at it, and the same words
+        # said again still find it.
+        cur.execute("SELECT named_error_id FROM public.coach_moment_diagnoses WHERE id = %s",
+                    (b["id"],))
+        assert cur.fetchone()["named_error_id"] == a["named_error_id"]
+        c = _set(cur, take, str(uuid.uuid4()), other, "named_error", new_name=name)
+        assert c["named_error_id"] == a["named_error_id"]

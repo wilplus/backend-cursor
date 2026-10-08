@@ -54,6 +54,12 @@ class PurgeDependency:
     #: as `before_rule` says; once it is, `disposition` applies.
     ruled_by: str | None = None
     before_rule: Disposition = "external_review"
+    #: A "delete" that removes the person from a row someone else still
+    #: needs: the purge sets `selector_column` to NULL on the subject's rows
+    #: instead of deleting them, and counts what is left exactly as for a
+    #: delete (rows whose selector still names the subject). For an actor
+    #: column on shared content, e.g. who first named a coach-named error.
+    clears_selector: bool = False
 
 
 #: Retention schedule v1.4's two rules (founder 2026-10-05, N48.4 Q15 A),
@@ -464,11 +470,15 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     # A coach's diagnosis of a moment (0445): about the speaker's Take, so it
     # goes with the Take; the coach_id is the coach's user id, so with the
     # coach too. The coach-named errors it may point at are library content
-    # (NON_SUBJECT_RELATIONS, like speaking_error).
+    # that other coaches' diagnoses share, so the row stays; only who named
+    # it first (named_by, the coach's user id) is cleared with the coach.
     PurgeDependency("coach_moment_diagnoses", "coach_moment_diagnoses",
                     "take_session_id", "take", "delete", "derived_feedback", 58),
     PurgeDependency("coach_moment_diagnoses_by_coach", "coach_moment_diagnoses",
                     "coach_id", "user", "delete", "derived_feedback", 35),
+    PurgeDependency("coach_named_errors_named_by", "coach_named_errors",
+                    "named_by", "user", "delete", "database_row", 36,
+                    clears_selector=True),
     PurgeDependency("feedback_pairs_by_take", "feedback_pairs",
                     "take_session_id", "take", "delete", "derived_feedback", 58),
     # A pattern the coach named on the moment itself rather than on a
@@ -1350,10 +1360,6 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     # occurred in a particular take, so there is nothing here to purge when a
     # person asks to be deleted.
     "speaking_error",
-    # An error a coach named in one field (0445, Q-B7 A): library content
-    # waiting for the founder's definition, like speaking_error; no recording,
-    # no speaker.
-    "coach_named_errors",
     # The catalogue of signed lines (0401): one sentence per pattern, written
     # by the founder or a coach. Copy, never a speaker's words or recording;
     # nothing here names a person.
