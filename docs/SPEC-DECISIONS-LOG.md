@@ -2364,3 +2364,41 @@ checked, in the EU).
   apart from the coach's, the speaker's own and the machine's (L3); nothing
   about anyone's voice reaches a screen as a number (AC-9).
 - Not in this step: the "Sharing" row in the ⋯ menu (Q-B6 A), its own task.
+
+**N68 · The 3.5 pack is signed: every learning pipe under the training yes
+(founder, chat, 8 October 2026).** The founder, word for word: "I sign the
+3.5 pack of 8 October 2026 as drafted: Privacy 3.5, Terms 3.5, the training
+switch wording v2 with its eight lines, the retention rows, document 02
+v1.2, and the DPIA and ROPA addenda, with D1 to D4 as drafted, knowing
+counsel has not seen them." **Counsel's review was not obtained**; the
+founder signs in its place and the record says so on every file.
+- **Signed, as drafted** (`legal/phase1-2026.1/SIGN-3.5-2026-10-08.md`):
+  `copy/privacy-3.5.txt` and `copy/terms-3.5.txt` (exact bytes; effective
+  date line "8 October 2026"), `22-…-SIGNED-2026-10-08.md` with D1 (the
+  corpus copy copies no audio; the code's audio branch goes first), D2
+  (passages from before the yes may be used), D3 (a training-only-v1 yes
+  counts as off until given again) and D4 (the corpus import rests on Art
+  6(1)(f)), `23-…-v2-SIGNED-2026-10-08.md` (the switch sentence, sha256
+  `69d3e702…521083c`, and its eight lines), `24-…-SIGNED-2026-10-08.md`,
+  document 02 v1.2 (the note, and its full text
+  `02-power-score-classification-v1.2-SIGNED-2026-10-08.md`), and the DPIA
+  and ROPA addenda (`docs/legal/*-ADDENDUM-2026-10-08-all-learning-SIGNED.md`).
+- **Rendered for the PAdES signature** by `scripts/render_doc_pdf.py`: 23
+  and 02 v1.2; their unsigned hashes are in `SIGNED-ARTIFACTS.md`. The
+  retention version that carries 24's rows is not yet assembled: v1.5 is
+  reserved for N50 P1–P7 (reverted by #909, to re-land).
+- **Signing published nothing and opened nothing.** Every lane still waits
+  for its own switch PR after its E-item holds (22, §4).
+- **Publication is blocked on one missing function.** v1 must be retired at
+  the instant v2 starts (D3; `configure_mlc2_training_consent_policy_v1`
+  refuses v2 while v1 is open, `ANOTHER_TRAINING_POLICY_IS_ACTIVE`), but
+  `ml_consent_policies` is append-only (`reject_mlc2_immutable_mutation`,
+  `migrations/add_mlc2_foundation.sql`) and no reviewed function retires a
+  training policy, so 23's `UPDATE … SET retired_at` is refused in the SQL
+  editor. A migration adding that function, reviewed, comes before the 3.5
+  publish; Privacy 3.5 is not published before it, since its §4a "a yes
+  given before 3.5 counts as off" is true only once v1 is retired.
+- **The eight lines on the locked consent screen.** The sentence signs the
+  words of all eight; the layout change to the locked prototype (four lines
+  shown) is confirmed by the founder under the consent-screen lock before
+  the frontend PR merges.

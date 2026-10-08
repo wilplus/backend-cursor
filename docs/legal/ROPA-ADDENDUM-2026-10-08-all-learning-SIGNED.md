@@ -1,16 +1,16 @@
-# Record of Processing Activities — addendum: the learning lanes (Privacy 3.5)
+# Record of Processing Activities — addendum: the learning lanes (Privacy 3.5) — SIGNED by the founder 2026-10-08
 
-**DRAFT — for the founder's signature; counsel not yet consulted on these changes.**
+**SIGNED by the founder, 8 October 2026** (in chat: "I sign the 3.5 pack of 8 October 2026 as drafted"; decisions log N68). **Counsel has not seen these changes**; the founder signed knowing that.
 
 **Addendum to:** `docs/legal/ROPA-ART30.md` (v0.1 DRAFT). **Date:** 2026-10-08.
 **Replaces:** activity A9 "Model improvement and training", whose retention line reads "n/a — this activity does not run". From the publication of Privacy 3.5 and each lane's switch PR, it runs, for speakers who say yes. A9 is split into A9a to A9g below; A14 is new. Every other activity stands.
-**Reads with:** `docs/legal/DPIA-ADDENDUM-2026-10-08-all-learning-DRAFT.md` (P1–P7) and `legal/phase1-2026.1/24-retention-rows-learning-lanes-DRAFT.md`.
+**Reads with:** `docs/legal/DPIA-ADDENDUM-2026-10-08-all-learning-SIGNED.md` (P1–P7) and `legal/phase1-2026.1/24-retention-rows-learning-lanes-SIGNED-2026-10-08.md`.
 
 Common to A9a–A9g unless a row says otherwise:
 
 - **Controller:** Artur Willoński, operating as "WillpowerLab".
 - **Art 6 basis:** 6(1)(a) consent, the training yes under training-only-v2
-  (`legal/phase1-2026.1/23-training-consent-wording-v2-DRAFT.md`); Art 9(2)(a)
+  (`legal/phase1-2026.1/23-training-consent-wording-v2-SIGNED-2026-10-08.md`); Art 9(2)(a)
   explicit consent where a speaker's words are used (counsel question 9 open
   on how the yes is recorded).
 - **Consent evidence:** `ml_consent_events`, `ml_consent_snapshots`; kept six
@@ -47,7 +47,7 @@ Common to A9a–A9g unless a row says otherwise:
 - **Categories of subject:** speakers who said yes; coaches (their blind answers)
 - **Categories of data:** gate-6a blind answers; eight timing features per clip
 - **Recipients:** none outside WillpowerLab
-- **AI Act:** `legal/phase1-2026.1/02-power-score-classification-v1.2-NOTE-DRAFT.md`
+- **AI Act:** `legal/phase1-2026.1/02-power-score-classification-v1.2-NOTE-SIGNED-2026-10-08.md`
 - **Retention:** answers die with the recording (v1.2 row `coach-audit-answers-v1`); fitted weights until replaced
 - **Systems:** `error_presence_audit`; `services/detector_candidates.py`
 

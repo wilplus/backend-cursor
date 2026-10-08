@@ -1,13 +1,13 @@
-# Retention rows for the learning lanes (Privacy 3.5)
+# Retention rows for the learning lanes (Privacy 3.5) — SIGNED by the founder 2026-10-08
 
-**DRAFT — for the founder's signature; counsel not yet consulted on these changes.**
+**SIGNED by the founder, 8 October 2026** (in chat: "I sign the 3.5 pack of 8 October 2026 as drafted"; decisions log N68). **Counsel has not seen these changes**; the founder signed knowing that.
 
     artifact_kind:       retention_schedule (rows to be carried by the next signed schedule version)
     version:             the next version after v1.4; v1.5 is already reserved for N50 P1–P7 (reverted by #909 and to re-land), so these rows ride whichever version is signed next
     approving_authority: Artur Willoński (founder and controller)
-    approved_at:         [[at signature]]
+    approved_at:         2026-10-08 (in chat: "I sign the 3.5 pack of 8 October 2026 as drafted"; decisions log N68; counsel has not seen it)
     author:              engineering, from Privacy 3.5 §4a, §4c and §7; not a lawyer
-    rests on:            22-privacy-terms-3.5-all-learning-DRAFT.md, 23-training-consent-wording-v2-DRAFT.md
+    rests on:            22-privacy-terms-3.5-all-learning-SIGNED-2026-10-08.md, 23-training-consent-wording-v2-SIGNED-2026-10-08.md
 
 **What this is.** The periods Privacy 3.5 publishes for the new data, set
 out as schedule rows and as rules to seed, so that no new category exists

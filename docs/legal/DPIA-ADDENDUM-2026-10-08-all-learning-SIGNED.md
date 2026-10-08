@@ -1,12 +1,12 @@
-# DPIA addendum — every learning lane under the training yes (Privacy 3.5)
+# DPIA addendum — every learning lane under the training yes (Privacy 3.5) — SIGNED by the founder 2026-10-08
 
-**DRAFT — for the founder's signature; counsel not yet consulted on these changes.**
+**SIGNED by the founder, 8 October 2026** (in chat: "I sign the 3.5 pack of 8 October 2026 as drafted"; decisions log N68). **Counsel has not seen these changes**; the founder signed knowing that.
 
 **Controller:** Artur Willoński, operating as "WillpowerLab" — Poland (EU)
 **Addendum to:** `docs/legal/DPIA-2026-09-17.md` (v0.1 DRAFT, not yet adopted)
 **Date:** 2026-10-08 · **Prepared by:** engineering, as counsel-support; not legal advice
 **Trigger:** DPIA §7 names "any change to the sub-processor list" and new processing as review events; the founder's decision of 2026-10-08 to open every learning lane is both (a new use by OpenAI, fine-tuning, and seven new processing operations).
-**Reads with:** `legal/phase1-2026.1/22-privacy-terms-3.5-all-learning-DRAFT.md` (the lanes, decisions D1–D4, prerequisites E1–E8), `legal/phase1-2026.1/23-training-consent-wording-v2-DRAFT.md`, `legal/phase1-2026.1/24-retention-rows-learning-lanes-DRAFT.md`, `legal/phase1-2026.1/02-power-score-classification-v1.2-NOTE-DRAFT.md`.
+**Reads with:** `legal/phase1-2026.1/22-privacy-terms-3.5-all-learning-SIGNED-2026-10-08.md` (the lanes, decisions D1–D4, prerequisites E1–E8), `legal/phase1-2026.1/23-training-consent-wording-v2-SIGNED-2026-10-08.md`, `legal/phase1-2026.1/24-retention-rows-learning-lanes-SIGNED-2026-10-08.md`, `legal/phase1-2026.1/02-power-score-classification-v1.2-NOTE-SIGNED-2026-10-08.md`.
 
 The main DPIA's §2.4 status note says training is not processed. From the
 publication of Privacy 3.5 and the first switch PR, that stops being true for
@@ -39,7 +39,7 @@ not rescore the main DPIA's risks.
 - **Minimisation.** Text and numbers only (no audio to training, D1); no
   user id, coach id or Take in a release file (door 2); the eight-word test
   before deployment; fitted artefacts hold weights, not data.
-- **Storage limitation.** Rows in `legal/phase1-2026.1/24-retention-rows-learning-lanes-DRAFT.md`.
+- **Storage limitation.** Rows in `legal/phase1-2026.1/24-retention-rows-learning-lanes-SIGNED-2026-10-08.md`.
 
 ## 3. Risks and measures (Art 35(7)(c)+(d))
 
@@ -52,11 +52,11 @@ Scored as the main DPIA scores, on the stated user base; rescore at launch.
 | R-L3 | **A v1 yes read as covering the coach-word surfaces** | high × medium if not handled | D3: v1 retired at the instant v2 starts; every v1 yes counts as off; the speaker is asked again | low |
 | R-L4 | **Transfer to the US for fine-tuning** (P1) | medium × medium | OpenAI DPA with SCCs and deletion on instruction (founder confirmed signed, 2026-10-08); files deleted at the end of each run and on withdrawal (`services/model_training.py`); text only | low; transfer impact assessment to be filed with the DPA |
 | R-L5 | **Third-party voices imported without their knowledge** (P4): no Art 13 moment, Art 14 by publication only; incidental Art 9 content with no Art 9(2) condition named | medium × medium | founder holds the rights (confirmed 2026-10-08); no name attached; never shown to users; Privacy §4c; objection by email; deletion when the right ends. **Open:** the Art 9 condition for incidental sensitive content (counsel); E7, a person can be deleted on request | medium |
-| R-L6 | **Promises ahead of code** (main DPIA RISK-2 pattern): 3.5 promises no audio copy, consent-filtered sheets, detector fit and exercise rates | high × high if a switch flips first | E1–E8 in `legal/phase1-2026.1/22-privacy-terms-3.5-all-learning-DRAFT.md`, each a precondition of its switch PR, which names the 3.5 line it relies on | low if E1–E8 hold |
+| R-L6 | **Promises ahead of code** (main DPIA RISK-2 pattern): 3.5 promises no audio copy, consent-filtered sheets, detector fit and exercise rates | high × high if a switch flips first | E1–E8 in `legal/phase1-2026.1/22-privacy-terms-3.5-all-learning-SIGNED-2026-10-08.md`, each a precondition of its switch PR, which names the 3.5 line it relies on | low if E1–E8 hold |
 | R-L7 | **Consent-only pools bias the learned detector and exercise order** | medium × low | shadow first; the fair test and the jar's bars; live only by a reviewed change | low |
 | R-L8 | **Coach hears words in V4 sheets** (P6), which the gate-6a balancing test excluded ("no words") | medium × low | consent of the speaker (not legitimate interest); no name; blind exposure record; weekly caps (`services/v4_coach_sheets.py`) | low |
 | R-L9 | **Article 9 record disagreement** (counsel question 9): Privacy says 9(2)(a), the yes record says not applicable | n/a — accuracy of records | open with counsel; v2 registration does not change it | open |
-| R-L10 | **AI Act**: the learned detector and document 02's engaged condition | — | `legal/phase1-2026.1/02-power-score-classification-v1.2-NOTE-DRAFT.md`; shadow first; counsel question 1 | as main DPIA RISK-3 |
+| R-L10 | **AI Act**: the learned detector and document 02's engaged condition | — | `legal/phase1-2026.1/02-power-score-classification-v1.2-NOTE-SIGNED-2026-10-08.md`; shadow first; counsel question 1 | as main DPIA RISK-3 |
 
 ## 4. Art 36 prior consultation
 

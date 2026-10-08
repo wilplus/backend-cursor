@@ -1,16 +1,16 @@
-# The training switch wording, version 2
+# The training switch wording, version 2 — SIGNED by the founder 2026-10-08
 
-**DRAFT — for the founder's signature; counsel not yet consulted on these changes.**
+**SIGNED by the founder, 8 October 2026** (in chat: "I sign the 3.5 pack of 8 October 2026 as drafted"; decisions log N68). **Counsel has not seen these changes**; the founder signed knowing that.
 
     artifact_kind:       training_consent_wording
     version:             training-only-v2 (the consent_policy_version it registers)
     succeeds:            13-training-consent-wording-SIGNED-2026-10-01.md (training-only-v1), which stays signed for v1
     approving_authority: Artur Willoński (founder and controller)
-    approved_at:         [[at signature]]
+    approved_at:         2026-10-08 (in chat: "I sign the 3.5 pack of 8 October 2026 as drafted"; decisions log N68; counsel has not seen it)
     wording by:          engineering, in the style of counsel's v1 wording of 2026-10-01; counsel has not seen v2
     object_key:          phase1-2026.1/legal/training-consent-wording-v2.pdf
     sha256:              [[computed from the signed PDF at registration time]]
-    requires:            Privacy 3.5 and Terms 3.5 published (22-privacy-terms-3.5-all-learning-DRAFT.md)
+    requires:            Privacy 3.5 and Terms 3.5 published (22-privacy-terms-3.5-all-learning-SIGNED-2026-10-08.md)
 
 **What changes from v1, and why.** v1 named "my practice text and my coach's
 notes on it" and "the models that write WillpowerLab's feedback". Three

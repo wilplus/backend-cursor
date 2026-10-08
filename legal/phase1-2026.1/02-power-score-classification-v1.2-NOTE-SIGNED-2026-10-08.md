@@ -1,13 +1,13 @@
-# Document 02, version 1.2 — note for the learned detector (detector training)
+# Document 02, version 1.2 — note for the learned detector (detector training) — SIGNED by the founder 2026-10-08
 
-**DRAFT — for the founder's signature; counsel not yet consulted on these changes.**
+**SIGNED by the founder, 8 October 2026** (in chat: "I sign the 3.5 pack of 8 October 2026 as drafted"; decisions log N68). **Counsel has not seen these changes**; the founder signed knowing that.
 
     artifact_kind:       power_score_classification
     version:             1.2 — supersedes 1.1 (signed 2026-10-02) by version bump, never in place (04 §5)
     form:                this note lists the changes; on signature v1.2 is rendered as v1.1's full text with
                          these changes applied (a new §3c, a §9 addition, the metadata), then signed and hashed
     approving_authority: Artur Willoński (founder and controller) — controller's own determination, NOT counsel-reviewed
-    approved_at:         [[at signature]]
+    approved_at:         2026-10-08 (in chat: "I sign the 3.5 pack of 8 October 2026 as drafted"; decisions log N68; counsel has not seen it)
     object_key:          phase1-2026.1/legal/power-score-classification-v1.2.pdf
     sha256:              [[computed from the signed PDF at registration time]]
     metadata: {

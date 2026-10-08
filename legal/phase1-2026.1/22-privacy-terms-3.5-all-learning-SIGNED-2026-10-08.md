@@ -1,18 +1,18 @@
-# Privacy Policy 3.5 and Terms of Service 3.5: every learning pipe, under the training yes
+# Privacy Policy 3.5 and Terms of Service 3.5: every learning pipe, under the training yes — SIGNED by the founder 2026-10-08
 
-**DRAFT — for the founder's signature; counsel not yet consulted on these changes.**
+**SIGNED by the founder, 8 October 2026** (in chat: "I sign the 3.5 pack of 8 October 2026 as drafted"; decisions log N68). **Counsel has not seen these changes**; the founder signed knowing that.
 
     documents:           copy/privacy-3.5.txt, copy/terms-3.5.txt (the exact bytes to publish)
     replaces:            copy/privacy-3.4.txt, copy/terms-3.4.txt (published 2026-10-08, phase1-2026-10-08)
     asked by:            Artur Willoński, founder and controller, 2026-10-08 ("open every learning pipe")
     drafted by:          engineering, from the code and the signed records named below; not a lawyer
     basis kept:          consent, Art 6(1)(a) with Art 9(2)(a), opt-in, withdrawable (counsel, 2026-10-01, docs/LEARNING-DOORS.md)
-    the switch wording:  23-training-consent-wording-v2-DRAFT.md (a new consent policy version, training-only-v2)
+    the switch wording:  23-training-consent-wording-v2-SIGNED-2026-10-08.md (a new consent policy version, training-only-v2)
     signing sheet:       SIGN-3.5-2026-10-08.md
 
 The two `copy/*.txt` files carry no draft mark on purpose: their exact bytes
 are what is hashed and what a user later proves they agreed to (README,
-"Hashes"). This file is the draft mark, the changelog and the notes.
+"Hashes"). This file is the signature mark, the changelog and the notes.
 
 ## 1. What 3.5 is for
 
@@ -167,7 +167,7 @@ done.
   3.5 keeps the published Art 9(2)(a) and the disagreement stays open.
 - Question 7: the six-year record.
 - Question 1: document 02's condition, now also covering the learned detector
-  (`02-power-score-classification-v1.2-NOTE-DRAFT.md`).
+  (`02-power-score-classification-v1.2-NOTE-SIGNED-2026-10-08.md`).
 - New: whether a model fine-tuned on speakers' text and served to every
   speaker is anonymous (EDPB Opinion 28/2024 on AI models); whether the
   8-word regurgitation test, which today fails a model only on withdrawn

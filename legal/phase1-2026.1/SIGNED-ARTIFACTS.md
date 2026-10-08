@@ -161,6 +161,41 @@ signed for their versions (04 §5). Neither signature makes either document
 counsel-reviewed; both say so on their first page, and both are put to
 counsel (`21-counsel-questions-2026-10.md`, questions 2 and 3).
 
+## Signed 2026-10-08 in chat; rendered for the PAdES signature (open)
+
+Two renders made on 2026-10-08 by `scripts/render_doc_pdf.py` (reportlab
+5.0.1, DejaVu) from the markdown in the same commit as this table. The
+founder signed the content in chat the same day: "I sign the 3.5 pack of 8
+October 2026 as drafted: Privacy 3.5, Terms 3.5, the training switch wording
+v2 with its eight lines, the retention rows, document 02 v1.2, and the DPIA
+and ROPA addenda, with D1 to D4 as drafted, knowing counsel has not seen
+them." (decisions log N68). The hash of the **unsigned** render is recorded
+so that the signed file can be checked to be that render plus a signature
+and nothing else; it is never the value to register.
+
+| # | `object_key` | source | bytes | `sha256` of the UNSIGNED render |
+|---|---|---|---|---|
+| 23 | `phase1-2026.1/legal/training-consent-wording-v2.pdf` | `23-training-consent-wording-v2-SIGNED-2026-10-08.md` | 71,550 | `8472440c56bbe0a38236d3f14c298ad6a95f4b31d688b8f9c5ee1f4b625b45c0` |
+| 02 v1.2 | `phase1-2026.1/legal/power-score-classification-v1.2.pdf` | `02-power-score-classification-v1.2-SIGNED-2026-10-08.md` (v1.1's full text with the signed note's three changes applied) | 100,288 | `e95e12bfda1249d34e4fa2308f145d911458aaabb5c2ea41d2f56f116b04e162` |
+
+**Not yet signed as PDFs, not uploaded, not registered.** The founder signs
+each render (PAdES) and uploads it to its `object_key` in the R2 bucket
+`coach-feedback-videos` (as 13 was); the session then checks the
+byte-identical prefix and moves the signed hash into **Current**. Only the
+signed hash of 23 may be `p_evidence_sha256` of the training-only-v2
+registration. A render is not byte-reproducible (reportlab writes a creation
+time and a document id), so the file to sign is the one these hashes name,
+not a fresh render.
+
+**The retention rows (24) are not rendered.** They ride the next signed
+retention schedule version, and v1.5 is reserved for N50 P1–P7 (reverted by
+#909, still to re-land); a schedule version carrying 24's rows needs that
+numbering settled first. Until a schedule version carrying them is signed
+and registered, none of 24's `data_retention_rules` rows can be seeded.
+Privacy 3.5, Terms 3.5, 22, 24 and the DPIA and ROPA addenda are records,
+not registered artifacts: the two copies are registered by their bytes in
+the 3.5 publish, the rest have no `object_key`.
+
 ## Why 02 and 03 were re-signed (closed 2026-09-22)
 
 Neither is a change of substance to what the founder decided. Both are
