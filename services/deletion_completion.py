@@ -30,7 +30,7 @@ request resumes, a finished purge is never run again (its finalize would
 write a second 'completed' event), and a request left for a person is not
 retried.
 
-THE RELEASED COPIES (0454). An erasure request voids every pair release
+THE RELEASED COPIES (0455). An erasure request voids every pair release
 holding one of its pairs at once. A run that executes ends by sweeping the
 voided releases (services/pair_release.py), so their objects go within the
 hour rather than only at the weekly learning job; a sweep that cannot run

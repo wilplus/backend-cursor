@@ -25,7 +25,7 @@ bucket with a manifest the job signs:
   * a release whose owner withdraws is voided by the weekly refresh and
     its object deleted by the sweep here (revocation purges the copies);
     a release holding a pair of a person or a project being erased is
-    voided at the erasure request itself (0454), and the hourly deletion
+    voided at the erasure request itself (0455), and the hourly deletion
     run sweeps too (services/deletion_completion.py).
 
 Counts about the system; a pair's texts leave only inside the file. AC-9:

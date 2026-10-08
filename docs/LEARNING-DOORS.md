@@ -24,7 +24,7 @@ nothing left.
   a yes given later makes older pairs releasable; a withdrawal makes them
   not, and **voids any release that carried them**; the job's sweep then
   deletes the object. Revocation purges the copies, whatever door 2 says.
-- An erasure does not wait for that refresh (0454): an account deletion or
+- An erasure does not wait for that refresh (0455): an account deletion or
   project deletion **request** voids every release holding one of its pairs
   at once (`owner_erasure_requested`, `project_erasure_requested`), so the
   void no longer needs the rows the purge deletes. The project's void runs

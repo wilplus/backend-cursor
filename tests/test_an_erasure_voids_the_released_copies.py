@@ -1,11 +1,11 @@
-"""0454 (an_erasure_voids_the_released_copies.sql), read as text.
+"""0455 (an_erasure_voids_the_released_copies.sql), read as text.
 
 The released-lane rehearsal
 (tests/test_an_erasure_voids_the_released_copies_postgres.py) executes it;
 this pins what a reader of the file relies on:
 
-  * it is 0454 in the manifest, applied twice by the released lane after
-    0453, and its suite is in the tier;
+  * it is 0455 in the manifest, applied twice by the released lane after
+    0454, and its suite is in the tier;
   * it is additive: one transaction, no destructive statement, every
     function closed to browser roles and open to service_role, no
     environment variable read;
@@ -26,7 +26,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = ROOT / "migrations"
 NAME = "an_erasure_voids_the_released_copies.sql"
-VERSION = "0454"
+VERSION = "0455"
 SQL = (MIGRATIONS / NAME).read_text()
 
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -54,7 +54,7 @@ def _manifest() -> list[tuple[str, str]]:
 
 
 def _latest_before(name: str) -> tuple[str, str]:
-    """The last file before 0454, in manifest order, defining `name`."""
+    """The last file before 0455, in manifest order, defining `name`."""
     found = None
     for version, filename in _manifest():
         if version == VERSION:
@@ -98,15 +98,15 @@ NEW = {"void_pair_releases_v1", "void_project_pair_releases_v1"}
 
 class MigrationTests(unittest.TestCase):
 
-    def test_it_is_0454_applied_twice_after_0453_and_its_suite_runs(self):
+    def test_it_is_0455_applied_twice_after_0454_and_its_suite_runs(self):
         manifest = _manifest()
         self.assertIn((VERSION, NAME), manifest)
         self.assertEqual(manifest[manifest.index((VERSION, NAME)) - 1],
-                         ("0453", "v4_asks_coaches_two_blind_questions.sql"))
+                         ("0454", "practice_is_part_of_the_service.sql"))
         recipe = (ROOT / "tests/integration/confident_moment_rehearsal.sh").read_text()
         self.assertEqual(recipe.count(f"hard migrations/{NAME}"), 2)
         first = recipe.index(f"hard migrations/{NAME}")
-        self.assertLess(recipe.rindex("hard migrations/a_skip_keeps_an_empty_receipt.sql"),
+        self.assertLess(recipe.rindex("hard migrations/practice_is_part_of_the_service.sql"),
                         first)
         # Released lane only: inside the nearest `if [ "$LANE" = "released" ]`.
         opened = recipe.rindex('if [ "$LANE" = "released" ]; then\n', 0, first)

@@ -798,12 +798,23 @@ hard migrations/a_coach_may_change_their_answer.sql
 # Its suite: tests/test_a_skip_keeps_an_empty_receipt_postgres.py.
 hard migrations/a_skip_keeps_an_empty_receipt.sql
 hard migrations/a_skip_keeps_an_empty_receipt.sql
-# 0454 voids a release at the erasure request: one new void, one for the
+# 0454 (N55, N66.2): practice is part of the service where the active policy
+# requires it, and the blind check's written objection. Its functions read
+# 0361's consent choices and 0363's purge graph, which only the released lane
+# carries. Released lane only, after 0453 (0449 to 0453 are applied by their
+# own suites), as in the manifest. Twice: apply/reapply idempotency. Its
+# suite: tests/test_practice_is_part_of_the_service_postgres.py.
+if [ "$LANE" = "released" ]; then
+  hard migrations/practice_is_part_of_the_service.sql
+  hard migrations/practice_is_part_of_the_service.sql
+fi
+
+# 0455 voids a release at the erasure request: one new void, one for the
 # releases holding a project's pairs, and one statement each in
 # stop_phase1_learning_v1 (0422), request_project_deletion_v1 (0364),
 # start_due_project_deletion_v1 (0422) and confirm_project_deletion_v1
 # (0380), all applied above. Released lane only, where its suite runs; after
-# 0448 (0449-0453 are not applied by this recipe), as in the manifest. Twice: apply/reapply idempotency.
+# 0454, as in the manifest. Twice: apply/reapply idempotency.
 if [ "$LANE" = "released" ]; then
   hard migrations/an_erasure_voids_the_released_copies.sql
   hard migrations/an_erasure_voids_the_released_copies.sql

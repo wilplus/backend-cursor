@@ -144,6 +144,31 @@ def _on_notice_version(database: Any, take_session_id: str) -> bool:
     return bool(status.get("authorized")) and accepted >= str(version)
 
 
+def _objected(database: Any, take_session_id: str) -> bool:
+    """Privacy 3.4 (N55, N66.2): practice is part of the service and no
+    longer the blind check's off switch; a speaker stops it by objecting in
+    writing, recorded by an operator in ``blind_check_objections`` (0454).
+    True when this Take's speaker objected, and true when the answer cannot
+    be read (the safe side: a clip is never sampled on a guess)."""
+    from services.processing_authorization import ProcessingAuthorizationService
+    try:
+        service = ProcessingAuthorizationService(database)
+        principal = service.take_acquisition_principal(str(take_session_id))
+        result = service.client.rpc("has_blind_check_objection_v1", {
+            "p_acquisition_principal_id": str(principal),
+        }).execute()
+    except Exception as e:  # noqa: BLE001 — unknown reads as objected
+        _log.warning("blind-check objection read failed take=%s: %s",
+                     take_session_id, e, exc_info=True)
+        return True
+    data = result.data
+    if isinstance(data, list):
+        data = data[0] if data else None
+    if isinstance(data, dict):
+        data = next(iter(data.values()), None)
+    return data is not False
+
+
 def _still_permitted(database: Any, candidates: list[dict]) -> list[dict]:
     """Q1-C (founder 2026-10-02): the easy off switch is the speaker's
     "Personalised practice" choice, read NOW, not at recording time. A
@@ -159,7 +184,8 @@ def _still_permitted(database: Any, candidates: list[dict]) -> list[dict]:
             continue
         if take not in permitted:
             permitted[take] = bool(_practice_permitted(database, take)) and \
-                _on_notice_version(database, take)
+                _on_notice_version(database, take) and \
+                not _objected(database, take)
         if permitted[take]:
             out.append(c)
     return out

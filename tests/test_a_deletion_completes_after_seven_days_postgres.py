@@ -619,8 +619,8 @@ def test_a_termination_stops_learning_at_once_and_at_every_refresh(db):
                      "public.feedback_pairs WHERE id = %s", (pair,))
     # The ledger is read as it is (L3): the yes stands, the pair goes nowhere.
     assert state == {"consent_state": "yes", "releasable": False, "release_id": None}
-    # 0454: voided at the request itself, before this refresh (which, until
-    # 0454, voided it as 'owner_service_ended').
+    # 0455: voided at the request itself, before this refresh (which, until
+    # 0455, voided it as 'owner_service_ended').
     assert _row(db, "SELECT voided_reason, purged_at FROM public.pair_releases "
                     "WHERE id = %s", (release,)) == {
         "voided_reason": "owner_erasure_requested", "purged_at": None}

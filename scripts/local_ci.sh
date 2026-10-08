@@ -92,6 +92,16 @@ done
 
 cd "$REPO" || exit 1
 
+# No .env, because the job has none. python-dotenv's find_dotenv() walks up
+# from the CALLING FILE, so a worktree under .claude/worktrees/<name>/ picked
+# up the main checkout's .env — real R2 credentials — and failed three
+# LabAudioStorageTests that pass in CI (2026-10-05). The root conftest.py
+# honours this for the pinned python-dotenv 1.0.0, so it covers every pytest
+# step (unit tier, rehearsal tier). The --with-evals scripts are not pytest:
+# they still read a .env until python-dotenv is >= 1.2.0, which honours it
+# natively.
+export PYTHON_DOTENV_DISABLED=1
+
 bold() { printf '\033[1m%s\033[0m\n' "$*"; }
 dim()  { printf '\033[2m%s\033[0m\n' "$*"; }
 
