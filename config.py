@@ -333,12 +333,14 @@ class Config:
     # gates the retired DPO export lane
     # (scripts/export_openai_preference_jsonl.py) and stays False; a pair
     # release and a DPO dataset release are different lanes. The coach-word
-    # surfaces of Phase 7 (coach_moment_line, coach_take_word) are NOT here:
-    # their door waits for a qualified lawyer's answer and the founder's
-    # sentence after it.
+    # surfaces of Phase 7 (coach_moment_line, coach_take_word) are named here
+    # and in doors 3 and 4 from 2026-10-08 (founder: "turn it all ON"), under
+    # Privacy/Terms 3.5 signed 2026-10-08 (N68) and published that evening;
+    # the speaker's training yes governs them like the answer surfaces (#972).
     MLC2_PAIR_RELEASES_ENABLED = True
     PAIR_RELEASE_SURFACES: frozenset = frozenset({
         "exercise_script", "praise_line", "clearer_version",
+        "coach_moment_line", "coach_take_word",
     })
     # Where a release goes and what signs its manifest (ML-9). Unset, the
     # exporter refuses and says why; nothing leaves.
@@ -355,9 +357,11 @@ class Config:
     # Named 2026-10-08 (founder: "turn it all ON"): the three answer surfaces.
     TRAINING_SURFACES: frozenset = frozenset({
         "exercise_script", "praise_line", "clearer_version",
+        "coach_moment_line", "coach_take_word",
     })
     PROMOTION_SURFACES: frozenset = frozenset({
         "exercise_script", "praise_line", "clearer_version",
+        "coach_moment_line", "coach_take_word",
     })
     # The base model a run fine-tunes (ML-11). An environment choice, not a
     # door: changing it opens nothing.

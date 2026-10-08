@@ -609,9 +609,10 @@ class WordPairTests(unittest.TestCase):
                                               {"surface": "praise_line", "unchanged": True}]),
                          {"coach_take_word": {"shown": 2, "unchanged": 1, "share_unchanged": 0.5}})
 
-    def test_door_two_stays_shut_for_the_coach_s_words(self):
+    def test_door_two_names_the_coach_s_words(self):
+        # Named 2026-10-08 (founder: "turn it all ON"; 3.5 signed, N68).
         from config import Config
-        self.assertFalse({"coach_moment_line", "coach_take_word"} & set(Config.PAIR_RELEASE_SURFACES))
+        self.assertLessEqual({"coach_moment_line", "coach_take_word"}, set(Config.PAIR_RELEASE_SURFACES))
 
 
 if __name__ == "__main__":  # pragma: no cover

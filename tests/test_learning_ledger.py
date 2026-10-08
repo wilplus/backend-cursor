@@ -121,7 +121,8 @@ class LedgerTests(unittest.TestCase):
         self.assertTrue(doors["dataset_release"]["open"])
         # Door 2 for all three existing surfaces (N16, then C4 / N18).
         self.assertEqual(doors["dataset_release"]["surfaces"],
-                         ["clearer_version", "exercise_script", "praise_line"])
+                         ["clearer_version", "coach_moment_line", "coach_take_word",
+                          "exercise_script", "praise_line"])
         self.assertTrue(doors["training"]["open"])
         self.assertTrue(doors["promotion"]["open"])
 

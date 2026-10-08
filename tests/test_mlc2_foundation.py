@@ -170,7 +170,7 @@ def test_config_keeps_the_dpo_release_lane_hard_disabled_and_doors_3_and_4_as_sa
     assert Config.MLC2_DATASET_RELEASES_ENABLED is False
     # Doors 3 and 4 opened 2026-10-08 by the founder ("turn it all ON"),
     # for the three coach-answer surfaces only.
-    three = frozenset({"exercise_script", "praise_line", "clearer_version"})
+    three = frozenset({"exercise_script", "praise_line", "clearer_version", "coach_moment_line", "coach_take_word"})  # five since 2026-10-08 (coach words, N68)
     assert Config.MLC2_TRAINING_ENABLED is True
     assert Config.MLC2_PROMOTION_ENABLED is True
     assert Config.TRAINING_SURFACES == three

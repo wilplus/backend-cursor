@@ -71,10 +71,11 @@ class TheDoorsKnowBothSurfaces(unittest.TestCase):
         self.assertLessEqual(set(fp.DOOR_SURFACES), set(pc.CONSENT_REQUIRED_SURFACES))
         self.assertLessEqual(set(fp.DOOR_SURFACES), set(gs.PAIR_SURFACES))
 
-    def test_the_config_sets_name_neither_surface_today(self):
+    def test_the_config_sets_name_both_surfaces(self):
+        # Named 2026-10-08 (founder: "turn it all ON"; 3.5 signed, N68).
         from config import Config
         for name in ("PAIR_RELEASE_SURFACES", "TRAINING_SURFACES", "PROMOTION_SURFACES"):
-            self.assertFalse(set(COACH_WORDS) & set(getattr(Config, name)), name)
+            self.assertLessEqual(set(COACH_WORDS), set(getattr(Config, name)), name)
 
     def test_the_comments_cite_the_signature_not_a_lawyer(self):
         for path in ("services/feedback_pairs.py", "services/coach_word_pairs.py",

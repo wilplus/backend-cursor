@@ -265,7 +265,7 @@ class DoorTests(unittest.TestCase):
         from config import Config
         self.assertTrue(Config.MLC2_TRAINING_SWITCH_ENABLED)
         self.assertTrue(Config.MLC2_PAIR_RELEASES_ENABLED)
-        three = frozenset({"exercise_script", "praise_line", "clearer_version"})
+        three = frozenset({"exercise_script", "praise_line", "clearer_version", "coach_moment_line", "coach_take_word"})  # five since 2026-10-08 (coach words, N68)
         self.assertEqual(Config.PAIR_RELEASE_SURFACES, three)
         self.assertFalse(Config.MLC2_DATASET_RELEASES_ENABLED)
         self.assertEqual(pr.authorised_surfaces(Config), three)
@@ -275,8 +275,6 @@ class DoorTests(unittest.TestCase):
             # CI they are unset, so the only reason left is one of those two.
             self.assertTrue(reason is None or "no release bucket" in reason
                             or "no signing key" in reason, (surface, reason))
-        for held in ("coach_moment_line", "coach_take_word"):
-            self.assertIn("no founder sentence", pr.why_not(Config, held) or "")
         self.assertTrue(Config.MLC2_TRAINING_ENABLED)
         self.assertTrue(Config.MLC2_PROMOTION_ENABLED)
         self.assertEqual(Config.TRAINING_SURFACES, three)

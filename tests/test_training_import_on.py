@@ -210,7 +210,7 @@ def test_what_trains_is_what_the_founder_said():
     He said so on 2026-10-08 ("turn it all ON"): doors 3 and 4 and the
     corpus copy open, for the three coach-answer surfaces only; the
     retired DPO release lane stays closed."""
-    three = frozenset({"exercise_script", "praise_line", "clearer_version"})
+    three = frozenset({"exercise_script", "praise_line", "clearer_version", "coach_moment_line", "coach_take_word"})  # five since 2026-10-08 (coach words, N68)
     assert Config.MLC2_DATASET_RELEASES_ENABLED is False
     assert Config.MLC2_TRAINING_ENABLED is True
     assert Config.MLC2_PROMOTION_ENABLED is True
