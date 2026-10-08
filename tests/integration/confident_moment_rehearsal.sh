@@ -789,6 +789,16 @@ hard migrations/the_coach_s_diagnosis_comes_first.sql
 hard migrations/a_coach_may_change_their_answer.sql
 hard migrations/a_coach_may_change_their_answer.sql
 
+# 0447 (door 2, ML-9): a failed export voids its release. One new function
+# over 0405's pair_releases and feedback_pairs, applied above; nothing is
+# re-issued. Released lane only, where its suite runs; after 0446, as in the
+# manifest. Twice: apply/reapply idempotency. Its suite:
+# tests/test_a_failed_export_voids_its_release_postgres.py.
+if [ "$LANE" = "released" ]; then
+  hard migrations/a_failed_export_voids_its_release.sql
+  hard migrations/a_failed_export_voids_its_release.sql
+fi
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

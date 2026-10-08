@@ -482,3 +482,4 @@
 0444	a_coach_is_asked_to_listen_again.sql
 0445	the_coach_s_diagnosis_comes_first.sql
 0446	a_coach_may_change_their_answer.sql
+0447	a_failed_export_voids_its_release.sql
