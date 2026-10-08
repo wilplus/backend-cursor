@@ -2413,4 +2413,7 @@ regurgitation test checking only withdrawn speakers' text is enough, and the
 memorisation rate does not gate door 4; (4) D4 confirmed: the corpus import
 rests on Art 6(1)(f). No code changes. Questions 7 (the six-year record) and
 1 (document 02's condition) were not part of this answer and stay open.
-Recorded in `legal/phase1-2026.1/22-…-SIGNED-2026-10-08.md` §5.
+Recorded in `legal/phase1-2026.1/22-…-SIGNED-2026-10-08.md` §5. The
+founder also gave the OpenAI data processing agreement's date: signed 18
+September 2026 (recorded on `SIGN-3.5-2026-10-08.md`; a filed copy is still
+to be recorded).

@@ -48,7 +48,7 @@ Each file was renamed from `-DRAFT` and its draft line replaced by the signature
 
 ## Confirmed by the founder, 2026-10-08 (in chat, as relayed to this session)
 
-1. **OpenAI DPA:** he has signed OpenAI's data processing agreement (it carries the EU SCCs and deletion on instruction, which covers fine-tuning files: `docs/LEARNING-DOORS.md`, "The OpenAI side"). Its date and a filed copy are to be recorded.
+1. **OpenAI DPA:** he has signed OpenAI's data processing agreement (it carries the EU SCCs and deletion on instruction, which covers fine-tuning files: `docs/LEARNING-DOORS.md`, "The OpenAI side"). Signed on **18 September 2026** (the founder, in chat, 8 October 2026); a filed copy is still to be recorded.
 2. **Coach agreement:** it lets coaches' words be used for training.
 3. **Imported audio:** he holds the rights to any audio he imports into the training corpus.
 
