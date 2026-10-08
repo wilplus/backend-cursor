@@ -116,6 +116,51 @@ def test_an_objection_is_recorded_once_and_read_for_the_person(
                 (other,)) is False
 
 
+def _guest_claimed_by(db, account):
+    guest = _one(db, """
+        INSERT INTO public.owner_principals (id, guest_secret_hash)
+        VALUES (gen_random_uuid(), %s) RETURNING id""", (uuid.uuid4().hex,))
+    _one(db, """
+        INSERT INTO public.owner_claim_events (
+            source_owner_principal_id, target_owner_principal_id,
+            claimed_user_id, claim_proof_hash, idempotency_key,
+            source_created_at)
+        SELECT %s, %s, user_id, %s, %s, now()
+          FROM public.owner_principals WHERE id = %s RETURNING id""",
+        (guest, account, "a" * 64, f"claim-{uuid.uuid4()}", account))
+    return guest
+
+
+@pytest.mark.parametrize("objects_as", ["account", "guest"])
+def test_an_objection_under_one_principal_counts_for_the_whole_person(
+        db, principal, objects_as):
+    """A Take recorded as a guest who later signed up is the same person:
+    the purge graph walks claim links both ways, so an objection given under
+    either principal is found from the other."""
+    guest = _guest_claimed_by(db, principal)
+    objector, sampled = ((principal, guest) if objects_as == "account"
+                         else (guest, principal))
+    _one(db, "SELECT public.record_blind_check_objection_v1(%s, 'test')",
+         (objector,))
+    assert _one(db, "SELECT public.has_blind_check_objection_v1(%s)",
+                (sampled,)) is True
+
+
+def test_the_purge_can_delete_an_objection_while_the_principal_stays(
+        db, principal):
+    """The account purge deletes the objection and keeps owner_principals as
+    deletion evidence; ON DELETE RESTRICT guards only the principal."""
+    _one(db, "SELECT public.record_blind_check_objection_v1(%s, 'test')",
+         (principal,))
+    _one(db, """
+        DELETE FROM public.blind_check_objections
+         WHERE acquisition_principal_id = %s RETURNING 1""", (principal,))
+    assert _one(db, "SELECT count(*) FROM public.owner_principals "
+                    "WHERE id = %s", (principal,)) == 1
+    assert _one(db, "SELECT public.has_blind_check_objection_v1(%s)",
+                (principal,)) is False
+
+
 def test_an_objection_needs_a_person_and_a_recorder(db, principal):
     for args, code in (((str(uuid.uuid4()), "test operator"),
                         "PROCESSING_PRINCIPAL_UNRESOLVED"),

@@ -75,7 +75,7 @@ CREATE OR REPLACE FUNCTION public.record_blind_check_objection_v1(
     p_acquisition_principal_id UUID,
     p_recorded_by TEXT
 ) RETURNS JSONB
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
 AS $$
 DECLARE
     existing blind_check_objections;
@@ -104,7 +104,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.has_blind_check_objection_v1(
     p_acquisition_principal_id UUID
 ) RETURNS BOOLEAN
-LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public
+LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public, pg_temp
 AS $$
 DECLARE
     person UUID[];
