@@ -275,7 +275,8 @@ def test_a_dry_run_counts_records_and_deletes_nothing(storage):
     assert summary["run_id"] == "run-1" and summary["due"]
 
 
-def test_a_live_request_is_refused_while_the_key_is_off(storage, erasure):
+def test_a_live_request_is_refused_while_the_key_is_off(storage, erasure, monkeypatch):
+    monkeypatch.setattr(rc, "RETENTION_CLEANER_LIVE", False)
     db = _Db({"record_retention_dry_run_v1": _record(
         requested_mode="live", state="refused", refusal=rc.REFUSAL_LIVE_OFF)})
     storage["db"] = db
