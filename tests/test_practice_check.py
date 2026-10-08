@@ -172,10 +172,10 @@ def test_its_helper_words_can_be_tapped_from_the_praised_try():
 
 # ── the switch and the route ──────────────────────────────────────────────
 
-def test_the_switch_is_off_until_the_walk_screens_ship():
+def test_the_switch_is_on_now_the_walk_is_live():
     from config import Config
-    assert Config.MACHINE_PRACTICE_CHECK_ENABLED is False
-    assert pc.machine_practice_check_enabled() is False
+    assert Config.MACHINE_PRACTICE_CHECK_ENABLED is True
+    assert pc.machine_practice_check_enabled() is True
 
 
 def test_the_route_is_fenced_and_hides_the_measure():
