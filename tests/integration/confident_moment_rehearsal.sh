@@ -799,6 +799,17 @@ hard migrations/a_coach_may_change_their_answer.sql
 hard migrations/a_skip_keeps_an_empty_receipt.sql
 hard migrations/a_skip_keeps_an_empty_receipt.sql
 
+# 0454 (N55, N66.2): practice is part of the service where the active policy
+# requires it, and the blind check's written objection. Its functions read
+# 0361's consent choices and 0363's purge graph, which only the released lane
+# carries. Released lane only, after 0453 (0449 to 0453 are applied by their
+# own suites), as in the manifest. Twice: apply/reapply idempotency. Its
+# suite: tests/test_practice_is_part_of_the_service_postgres.py.
+if [ "$LANE" = "released" ]; then
+  hard migrations/practice_is_part_of_the_service.sql
+  hard migrations/practice_is_part_of_the_service.sql
+fi
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

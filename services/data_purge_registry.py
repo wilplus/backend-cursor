@@ -577,6 +577,12 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("consent_choice_events", "processing_consent_choice_events",
                     "acquisition_principal_id", "principal", "retain",
                     "database_row", 200, "authorization_evidence"),
+    # An objection to the coach's blind check (0454, Privacy 3.4): it stops
+    # the sampling of this person's clips, and with the account erased there
+    # is nothing left to sample, so it goes with the person.
+    PurgeDependency("blind_check_objections", "blind_check_objections",
+                    "acquisition_principal_id", "principal", "delete",
+                    "database_row", 100),
     PurgeDependency("authorization_snapshots", "processing_authorization_snapshots",
                     "acquisition_principal_id", "principal", "retain",
                     "database_row", 200, "authorization_evidence"),
