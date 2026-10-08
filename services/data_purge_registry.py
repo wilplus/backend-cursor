@@ -765,6 +765,12 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     # frame itself waits on its review.
     PurgeDependency("v4_random_moments", "v4_random_moments",
                     "take_session_id", "take", "delete", "derived_feedback", 59),
+    # V4 B1.3 (0449): the machine's willfidence reads, per moment and per
+    # Take. Derived, internal, nothing trained on them: they go with the Take.
+    PurgeDependency("v4_willfidence_reads", "v4_willfidence_reads",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
+    PurgeDependency("v4_willfidence_takes", "v4_willfidence_takes",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
     PurgeDependency("v3_detector_reconciliation",
                     "take_feedback_detector_reconciliation",
                     "take_session_id", "take", "external_review",

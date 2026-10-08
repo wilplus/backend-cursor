@@ -11807,6 +11807,28 @@ class DatabaseService:
                                  ).execute()
         return self._rpc_row(result.data)
 
+    def get_v4_dark_frame(self, take_session_id: str) -> Optional[dict]:
+        """The Take's stored universal-v3 dark frame (V4 reads it), or None."""
+        from services.take_feedback_policy_v3 import POLICY_VERSION
+        res = (self.client.table("take_feedback_policy_v3_shadow_frames")
+               .select("frame").eq("take_session_id", str(take_session_id))
+               .eq("policy_version", POLICY_VERSION).limit(1).execute())
+        rows = res.data or []
+        frame = rows[0].get("frame") if rows and isinstance(rows[0], dict) else None
+        return frame if isinstance(frame, dict) else None
+
+    def record_v4_willfidence_reads(self, take_session_id: str,
+                                    reads: list) -> Optional[dict]:
+        """Store one Take's willfidence-v1-machine read (migration 0449, V4
+        B1.3). The database computes S, W, the boxes and the Take's line
+        from the frame, the clips and these word signals. Raises on
+        failure: the caller (services.willfidence.run_read) logs it."""
+        result = self.client.rpc("record_v4_willfidence_reads_v1", {
+            "p_take_session_id": str(take_session_id),
+            "p_reads": reads,
+        }).execute()
+        return self._rpc_row(result.data)
+
     def get_confidence_labels_by_snippet_ids(self, snippet_ids: list, *,
                                              strict: bool = False) -> dict:
         """{snippet_id: [label rows]} for the given snippets. {} on anything
