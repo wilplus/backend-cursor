@@ -58,10 +58,9 @@ RULED = [dependency for dependency in DEPENDENCIES if dependency.ruled_by]
 #: external_review entries added AFTER v1.4 was signed (2026-10-05). The
 #: signed document is never edited in place (04 §5), so it cannot name them;
 #: each stays fail-closed until the next schedule version names it.
-ADDED_AFTER_V1_4 = frozenset({
-    # A speaker's skip rows (record_root_phrase_skip_v1), founder 2026-10-08.
-    "feedback_revision_owner_raters",
-})
+#: (feedback_revision_owner_raters was here until 0448 made it a tombstone
+#: under the deletion-evidence rule, which the schedule already decides.)
+ADDED_AFTER_V1_4: frozenset[str] = frozenset()
 RELATIONS = frozenset(d.relation for d in DEPENDENCIES) | {"data_retention_rules"}
 ACTIVE = (
     {"id": "rule-p", "rule_code": PRODUCT_RECORDS_RULE,
