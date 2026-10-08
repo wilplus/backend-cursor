@@ -5,13 +5,36 @@ Two jobs:
 1. ENV PARITY. The same placeholder env CI exports (tests.yml) is defaulted
    here, so a bare local `pytest` behaves exactly like CI instead of
    mass-skipping every module whose import guard trips on missing config.
-   setdefault only — a real local .env/exported value always wins.
+   setdefault only — a real local .env/exported value always wins in a bare
+   `pytest`. Under scripts/local_ci.sh no .env is read at all (below).
 
 2. FIXTURES. The pytest-style face of tests/fakes.py, for new (and migrated)
    tests. unittest-style tests can't take fixtures — they import
    tests.fakes directly instead.
 """
 import os
+
+# ── No .env under the gate (2026-10-05) ──────────────────────────────────────
+#
+# The `checks` job has no .env, so scripts/local_ci.sh exports
+# PYTHON_DOTENV_DISABLED=1 to run without one too. python-dotenv honours that
+# switch from 1.2.0; requirements.txt pins 1.0.0, which ignores it, so it is
+# backported here for the test process — upstream's exact test, upstream's
+# return value. It has to sit above every import: config.py, worker.py and
+# the root test_jwks.py all call load_dotenv() at import time.
+#
+# Why a .env is not harmless: find_dotenv() walks up from the CALLING FILE,
+# not the cwd, so a worktree under .claude/worktrees/<name>/ finds the main
+# checkout's .env three levels up. That put real R2 credentials into the gate
+# and failed three LabAudioStorageTests that pass in CI.
+if os.environ.get("PYTHON_DOTENV_DISABLED", "").casefold() in {"1", "true", "t", "yes", "y"}:
+    import dotenv
+    import dotenv.main
+
+    def _load_dotenv_disabled(*_args: object, **_kwargs: object) -> bool:
+        return False
+
+    dotenv.load_dotenv = dotenv.main.load_dotenv = _load_dotenv_disabled
 
 # Must run before any test module imports app/config/services.db.
 os.environ.setdefault("JWT_SECRET", "ci-placeholder-secret")

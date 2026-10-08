@@ -128,6 +128,45 @@ class CoverageTests(unittest.TestCase):
         self.assertRegex(step.group(1), r"(?m)^\s*CI=1 \\$",
                          "the unit-tier step does not export CI=1")
 
+    def test_the_gate_reads_no_dotenv_like_actions_does(self):
+        """The job's checkout has no .env. A local one is found by walking up
+        from the calling file, so a worktree under .claude/worktrees/ read the
+        main checkout's .env — real R2 credentials — and failed three tests
+        CI passes (2026-10-05). The switch must be exported before the first
+        step so every step inherits it."""
+        export = SCRIPT.find("\nexport PYTHON_DOTENV_DISABLED=1\n")
+        self.assertNotEqual(export, -1, "the script does not export PYTHON_DOTENV_DISABLED=1")
+        self.assertLess(export, SCRIPT.find('\nstep "'),
+                        "PYTHON_DOTENV_DISABLED is exported after a step has run")
+
+    def test_the_pinned_dotenv_honours_the_switch(self):
+        """python-dotenv honours PYTHON_DOTENV_DISABLED natively from 1.2.0.
+        Below that, the export is a no-op unless the root conftest.py
+        backports it — so the backport may only go when the pin moves."""
+        pin = re.search(r"^python-dotenv==([\d.]+)$", read("requirements.txt"), re.M)
+        self.assertIsNotNone(pin, "python-dotenv pin vanished from requirements.txt")
+        if tuple(int(p) for p in pin.group(1).split(".")) >= (1, 2, 0):
+            return
+        conftest = read("conftest.py")
+        self.assertIn('os.environ.get("PYTHON_DOTENV_DISABLED"', conftest)
+        self.assertIn("dotenv.load_dotenv = dotenv.main.load_dotenv =", conftest)
+
+    @unittest.skipUnless(
+        os.environ.get("PYTHON_DOTENV_DISABLED") == "1",
+        "only under scripts/local_ci.sh, which exports PYTHON_DOTENV_DISABLED=1",
+    )
+    def test_under_the_gate_config_loads_no_dotenv(self):
+        import io
+
+        import config
+
+        try:
+            loaded = config.load_dotenv(stream=io.StringIO("WILLAB_DOTENV_PROBE=leaked\n"))
+            self.assertFalse(loaded, "config.load_dotenv still reads .env under the gate")
+            self.assertNotIn("WILLAB_DOTENV_PROBE", os.environ)
+        finally:
+            os.environ.pop("WILLAB_DOTENV_PROBE", None)
+
     def test_every_gate_in_checks_has_a_step_in_the_script(self):
         for name in step_names(CHECKS):
             if name in SETUP_STEPS:
