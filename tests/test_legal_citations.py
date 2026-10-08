@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -176,6 +177,51 @@ _NOT_A_COMMIT = {"604800"}
 _HASH = re.compile(r"`([0-9a-f]{7,40})`")
 
 
+def _is_shallow(repo: str) -> bool:
+    """Ask git, not the filesystem.
+
+    This guard used to test for `<repo>/.git/shallow`. In a worktree `.git` is
+    a file pointing into the git dir the worktrees share, so that path never
+    exists there, shallow or not. After the gate's own fetch made the shared
+    clone shallow (#911, 2026-10-06), every worktree run failed
+    test_every_cited_commit_is_reachable_from_this_branch on commits that were
+    all present, while the main checkout skipped it.
+    """
+    out = subprocess.run(["git", "rev-parse", "--is-shallow-repository"],
+                         cwd=repo, capture_output=True, text=True)
+    return out.stdout.strip() == "true"
+
+
+def test_the_shallow_guard_sees_a_shallow_clone_from_its_worktree(tmp_path, monkeypatch):
+    """A worktree's `.git` is a file, so a `.git/shallow` path is never there."""
+    # A sandboxed git: no developer config, and no GIT_DIR from a calling hook,
+    # which would aim these commands at this repository.
+    for key in [k for k in os.environ if k.startswith("GIT_")]:
+        monkeypatch.delenv(key)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    for role in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{role}_NAME", "t")
+        monkeypatch.setenv(f"GIT_{role}_EMAIL", "t@example.invalid")
+
+    def git(cwd, *args):
+        subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+
+    upstream = tmp_path / "upstream"
+    git(tmp_path, "init", "-q", "-b", "main", str(upstream))
+    for n in range(2):  # one commit would be the whole history: nothing to cut
+        git(upstream, "commit", "-q", "--allow-empty", "-m", f"c{n}")
+    for shallow in (True, False):
+        clone, worktree = tmp_path / f"clone-{shallow}", tmp_path / f"worktree-{shallow}"
+        depth = ["--depth=1"] if shallow else []
+        git(tmp_path, "clone", "-q", *depth, f"file://{upstream}", str(clone))
+        git(clone, "worktree", "add", "-q", "--detach", str(worktree))
+        assert (worktree / ".git").is_file()
+        assert _is_shallow(str(clone)) is shallow
+        assert _is_shallow(str(worktree)) is shallow, worktree
+
+
 def test_every_cited_commit_is_reachable_from_this_branch():
     """A squash-merge destroys the working-branch hash the pack was drafted from.
 
@@ -190,11 +236,10 @@ def test_every_cited_commit_is_reachable_from_this_branch():
     from a branch stops existing the moment the PR lands. A lawyer given the pack
     cannot resolve one, and nothing in the document says it should not be there.
     """
-    if os.path.exists(os.path.join(REPO, ".git", "shallow")):
+    if _is_shallow(REPO):
         import pytest
         pytest.skip("shallow clone: absent objects would be a false positive")
 
-    import subprocess
     dead = []
     for doc, doc_line, sha in {
         (doc, doc_line, m.group(1))

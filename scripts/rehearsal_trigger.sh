@@ -12,9 +12,11 @@
 #   scripts/rehearsal_trigger.sh --quiet  exit code only
 #   scripts/rehearsal_trigger.sh --why    one line naming what triggered it
 #
-# Base: origin/main (fetched shallowly if absent, as in a CI checkout). A diff
-# that cannot be computed at all is treated as TRIGGERED: when in doubt, run
-# the tier rather than silently skip it.
+# Base: origin/main, fetched only if absent: one commit deep in a shallow clone
+# (a CI checkout), in full in a full one, where --depth=1 would make the clone
+# and every worktree sharing it shallow. A diff that cannot be computed at all
+# is treated as TRIGGERED: when in doubt, run the tier rather than silently
+# skip it.
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 2
 
@@ -53,7 +55,11 @@ TRIGGER_PATHS=(
 )
 
 if ! git rev-parse --verify -q origin/main >/dev/null; then
-  git fetch -q --depth=1 origin main >/dev/null 2>&1 || true
+  if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+    git fetch -q --depth=1 origin main >/dev/null 2>&1 || true
+  else
+    git fetch -q origin main >/dev/null 2>&1 || true
+  fi
 fi
 if ! git rev-parse --verify -q origin/main >/dev/null; then
   [ "$MODE" = "--why" ] && echo "base branch unavailable; rehearsing to be safe"
