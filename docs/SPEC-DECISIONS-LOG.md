@@ -2327,6 +2327,16 @@ confirmed again the five N63 answers (Q-B3, Q-B5, Q-B9, Q-B10, Q-B14 A).
    acceptance tick and the Settings card for practice must go (a changed
    consent prototype for the founder to sign), because the database
    refuses a tick for a purpose the policy makes required.
+   **Published** (founder, Supabase SQL editor, 8 October 2026, 14:22
+   UTC): `phase1-2026-10-08` (Privacy 3.4, Terms 3.4, effective 8 October
+   2026) registered and activated by `scripts/phase1_policy_publish_3_4.sql`
+   after migration 0454 (`practice_is_part_of_the_service.sql`, #956) was
+   live. The verify step read all four signed passages and no placeholder.
+   Every speaker is asked to accept 3.4; the acceptance screen and Data &
+   consent follow the policy (frontend #660). A written objection to the
+   blind check is recorded with `scripts/record_blind_check_objection.sql`.
+   0454 had an independent review (GPT and Grok first pass; Grok re-check:
+   no real blocker).
 3. **The retention cleaner's first real deletion run (W3-B2).** First the
    dry run's counts, per table, are shown to the founder in chat; only
    after his second word ("go") does `RETENTION_CLEANER_LIVE` become True,
