@@ -234,3 +234,22 @@ class DoorsTests(unittest.TestCase):
         for word in ("reason", "answer_value", "machine_read", "speaker_answer"):
             self.assertNotRegex(sql, rf"^\s+{word}\s+\w+", word)
         self.assertIn("Rollback (a new forward migration)", sql)
+
+    def test_the_rotation_reads_the_latest_line_under_a_coach_lock(self):
+        """Review fixes: the line after the coach's latest (a purge cannot
+        make a line repeat), one rotation per coach at a time, the one-open
+        index decides duplicates (no check-then-insert race), the moment in
+        canonical uuid text, and only blind judgments of record."""
+        sql = (ROOT / "migrations" / "a_coach_is_asked_to_listen_again.sql").read_text()
+        body = sql[sql.index("FUNCTION public.request_coach_listen_again_v1("):
+                   sql.index("FUNCTION public.mark_coach_listen_again_heard_v1(")]
+        self.assertIn("pg_advisory_xact_lock(hashtext('coach_listen_again:' || v_coach))", body)
+        self.assertIn("ORDER BY requested_at DESC, id DESC", body)
+        self.assertNotIn("count(*)", body)
+        self.assertNotIn("IF EXISTS", body)
+        self.assertIn("ON CONFLICT (snippet_id, coach_id) WHERE heard_at IS NULL DO NOTHING", body)
+        self.assertIn("v_key := v_snippet::text;", body)
+        self.assertIn("AND label.blind IS NOT FALSE", body)
+        self.assertLess(body.index("pg_advisory_xact_lock"), body.index("SELECT line_key"))
+        mark = sql[sql.index("FUNCTION public.mark_coach_listen_again_heard_v1("):]
+        self.assertIn("v_key := p_snippet_id::uuid::text;", mark)
