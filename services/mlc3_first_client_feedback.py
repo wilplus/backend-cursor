@@ -1,9 +1,10 @@
 """Fail-closed preparation of allowlisted Feedback V3 product rows.
 
 This module is a product integration seam, not a learning producer.  It
-creates a fresh service candidate inventory, freezes it against the current
-Ideal Text snapshot, and adds exercise context only where an independently
-frozen N1 inventory already exists for the exact clip.
+creates a fresh service candidate inventory and freezes it against the
+current Ideal Text snapshot.  It attaches no exercise context: that lane
+went with the MLC-3 service loop (L8, contract 66; see
+`_refresh_service_enrollment`).
 """
 from __future__ import annotations
 
@@ -79,7 +80,7 @@ def _decline(take_id: Any, reason: str, detail: str = "") -> V3Unavailable:
     registered `phase2`, and the acceptance function refuses those. It is
     gone as a gate (see `prepare_first_client_feedback`) and the deadlock
     behind it was dissolved on 2026-09-16 and 09-20 — the full account is in
-    `_exercise_context_available`. The remaining eleven are real.
+    `_refresh_service_enrollment`. The remaining eleven are real.
 
     Fail-closed is right and stays. Fail-SILENT is not the same thing and
     was never intended: refusing to serve a candidate you cannot prove is a
@@ -247,10 +248,10 @@ def _service_lineage(
     return membership
 
 
-def _exercise_context_available(
+def _refresh_service_enrollment(
     database: Any, *, principal_id: str, owner_user_id: str, take_id: str,
-) -> bool:
-    """May this take's Confident Voice rows carry exercise context?
+) -> None:
+    """Bring the speaker's MLC-3 enrollment current before the lineage writes.
 
     THIS IS NOT A GATE ON FEEDBACK (founder 2026-09-17, "I want the V3 in all
     its wholeness", then option A: V3 must not need the exercise purpose).
@@ -281,24 +282,38 @@ def _exercise_context_available(
     So enrollment is satisfiable now: it needs the speaker to hold an accepted
     receipt for the active policy. It can still FAIL — no receipt yet, a
     service block, a pending purge, an inactive rollout or contract, an
-    ambiguous principal, cohort membership — which is why the stand-down below
-    stays exactly as it is. It is no longer unsatisfiable by construction, and
-    a comment claiming otherwise sends the next reader looking for a lock that
+    ambiguous principal, cohort membership — which is why a failure is logged
+    and serving goes on. It is no longer unsatisfiable by construction, and a
+    comment claiming otherwise sends the next reader looking for a lock that
     is already open.
 
-    Nothing between the caller's entry and its membership freeze needs it. The
-    SQL says so: `record_feedback_v3_service_candidate_set_v1` has no MLC-3
-    check at all, and `freeze_feedback_v3_service_membership_v1` calls
-    `require_mlc3_service_principal_v1` — active service contract plus
-    allowlist, no rollout, no enrollment, no dual-purpose receipt. Only
-    `prepare_feedback_v3_service_context_v1` reaches Phase-2 exercise data, and
-    that one is authorized separately in PostgreSQL anyway.
+    WHAT IT IS FOR (corrected 2026-10-06). This docstring said enrollment
+    decided one thing, whether a Confident Voice row carried exercise context,
+    and that nothing before the membership freeze needed it, because "the
+    candidate-set write has no MLC-3 check at all, and the freeze calls
+    `require_mlc3_service_principal_v1`". Both halves were wrong. D4 (0326)
+    rewrote `record_feedback_v3_service_candidate_set_v1` and
+    `freeze_feedback_v3_service_membership_v1` to call
+    `require_mlc3_service_access_v2`, and nothing since has undone it (0348
+    says so in its header). That check refuses unless the speaker's latest
+    enrollment row is active, on the current rollout revision, and bound to
+    their current consent receipt, and `ensure_mlc3_service_enrollment_v2` is
+    what creates or refreshes that row. Drop this call and a speaker with no
+    enrollment yet, or one who has just accepted a new policy, is served with
+    no `feedback_membership_id`: no canonical decision, no coach review, no
+    Album claim (L3). The answer still saves as a self-report, so F1 holds,
+    but the lineage is lost. The claim nearly got this call deleted.
 
-    So enrollment decides ONE thing: whether a row carries its exercise
-    context. Without it the row still surfaces and the reader falls back to the
-    Confident Voice question, which is the state the frontend already renders
-    (`mapFirstClientService` → null). Standing down from the Phase-2 path when
-    it is unauthorized is the boundary working, not a degradation.
+    THE EXERCISE CONTEXT IS GONE (2026-10-06). Each Confident Voice row used to
+    ask `prepare_feedback_v3_service_context_v1` for an `mlc3_service` block.
+    That RPC needs an N1 pattern snapshot of the exact clip, only
+    `freeze_exercise_n1_pattern_snapshot_v1` writes one, and no application
+    code has ever called it — so the RPC raised
+    FEEDBACK_V3_SERVICE_N1_CONTEXT_NOT_READY on every row (docs/BACKLOG.md,
+    2026-09-21: four times per open) and no production row ever carried the
+    block. Its readers were the MLC-3 service loop, retired 2026-09-30 (L8,
+    contract 66). The call is gone, and with it the Phase-2 exercise authority
+    and acquisition receipt it would have written from the F1 serving path.
     """
     enrollment = database.ensure_service_enrollment(
         acquisition_principal_id=principal_id,
@@ -306,12 +321,14 @@ def _exercise_context_available(
         idempotency_key=f"feedback-entry:{take_id}",
     )
     if isinstance(enrollment, dict) and enrollment.get("id"):
-        return True
+        return
+    # Reason before take, for the reason `_decline` gives: a phone log list
+    # clips at about sixty characters. `_service_lineage` logs the refusal
+    # this usually leads to, naming the step.
     logger.info(
-        "first_client: v3 serving take=%s WITHOUT exercise context "
-        "(reason=service_enrollment_unavailable)", take_id or "?",
+        "first_client: v3 serving without a current enrollment "
+        "reason=service_enrollment_unavailable take=%s", take_id or "?",
     )
-    return False
 
 
 def _canonical_index(bundle: dict) -> dict[tuple[str, str], dict]:
@@ -377,47 +394,8 @@ def _verified_source_snapshot(
     return source_snapshot
 
 
-def _service_context(
-    database: Any, *, membership: dict, exact: dict, principal_id: str,
-    project_id: str, take_id: str,
-) -> dict | None:
-    """The exercise context of one Confident Voice row, or None."""
-    context = database.prepare_feedback_v3_service_context({
-        "p_membership_id": str(membership["id"]),
-        "p_candidate_id": str(exact["id"]),
-        "p_acquisition_principal_id": principal_id,
-        "p_idempotency_key": (
-            f"feedback-v3-service-context:{membership['id']}:"
-            f"{exact['id']}"
-        ),
-    })
-    if not isinstance(context, dict):
-        return None
-    return {
-        "project_id": project_id,
-        "take_id": take_id,
-        "membership_id": str(membership["id"]),
-        "candidate_id": str(exact["id"]),
-        "feedback_exposure_id": str(exact["exposure_id"]),
-        "content_identity_sha256": str(
-            membership["content_identity_sha256"]
-        ),
-        "n1_candidate_set_id": str(
-            context["n1_candidate_set_id"]
-        ),
-        "authorization_check_id": str(
-            context["authorization_check_id"]
-        ),
-        "source_acquisition_receipt_id": str(
-            context["source_acquisition_receipt_id"]
-        ),
-    }
-
-
 def _visible_rows(
-    database: Any, *, inventory: dict, canonical: dict,
-    lineage: Optional[dict], exercise_context: bool, principal_id: str,
-    project_id: str, take_id: str,
+    *, inventory: dict, canonical: dict, lineage: Optional[dict], take_id: str,
 ) -> list[dict] | V3Unavailable:
     """The inventory's visible rows, each bound to its bundle candidate.
 
@@ -438,21 +416,10 @@ def _visible_rows(
             "candidate_id": str(exact["id"]),
             "feedback_exposure_id": str(exact["exposure_id"]),
         })
-        if lineage is None:
-            # No frozen membership: the bookmark serves, the answer path
-            # refuses, and nothing claims a lineage it does not have.
-            visible.append(row)
-            continue
-        membership = lineage
-        row["feedback_membership_id"] = str(membership["id"])
-        if family == "confident_voice" and exercise_context:
-            service = _service_context(
-                database, membership=membership, exact=exact,
-                principal_id=principal_id, project_id=project_id,
-                take_id=take_id,
-            )
-            if service is not None:
-                row["mlc3_service"] = service
+        if lineage is not None:
+            row["feedback_membership_id"] = str(lineage["id"])
+        # Without a frozen membership the bookmark serves, the answer path
+        # refuses, and nothing claims a lineage it does not have.
         visible.append(row)
     return visible
 
@@ -470,7 +437,7 @@ def _log_served(
     # weaker evidence than a presence, and indistinguishable from a log
     # list scrolled to the wrong place or a search string that did not
     # match. The one positive line this module had
-    # (`v3 serving ... WITHOUT exercise context`) fires only in the
+    # (`v3 serving without a current enrollment`) fires only in the
     # degraded case, so the better the system got the quieter it became.
     #
     # Counts and lineage state only: no candidate text, no score, nothing
@@ -707,8 +674,9 @@ def prepare_first_client_feedback(
     ):
         _not_applicable(take_id, "not_allowlisted_or_identity_incomplete")
         return None
-    # Enrichment, NOT a gate — see `_exercise_context_available`.
-    exercise_context = _exercise_context_available(
+    # Not a gate, but load-bearing: the lineage writes below refuse a speaker
+    # without a current enrollment — see `_refresh_service_enrollment`.
+    _refresh_service_enrollment(
         database, principal_id=principal_id,
         owner_user_id=str(owner_user_id), take_id=take_id,
     )
@@ -796,9 +764,8 @@ def prepare_first_client_feedback(
     )
 
     visible = _visible_rows(
-        database, inventory=inventory, canonical=canonical, lineage=lineage,
-        exercise_context=exercise_context, principal_id=principal_id,
-        project_id=project_id, take_id=take_id,
+        inventory=inventory, canonical=canonical, lineage=lineage,
+        take_id=take_id,
     )
     if isinstance(visible, V3Unavailable):
         return visible

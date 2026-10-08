@@ -777,51 +777,30 @@ class _ChangesRun:
         and "dismissed" for every other, the two states the page already
         models and the lock gate now reads. One row, one truth, both readers.
 
-        Two places an answer can live, both honoured:
-        · the legacy route (`record_take_feedback_response_v1`, 0346) writes
-          `take_feedback_self_report`, keyed by the item id;
-        · the service route (`record_feedback_v3_service_response_v1`) writes
-          `feedback_v3_owner_responses`, keyed by membership and candidate,
-          which the served row carries under `mlc3_service`.
+        The answer is read from the legacy route
+        (`record_take_feedback_response_v1`, 0346), which writes
+        `take_feedback_self_report` keyed by the item id.
 
-        Marks only; never invents, drops or reorders (L2). A failed read of
-        the service responses degrades to "not answered", which is the state
-        the gate was already in.
+        ONE PLACE, NOT TWO (2026-10-06). This also joined
+        `feedback_v3_owner_responses`, the MLC-3 service route's table, on the
+        membership and candidate the row carried under `mlc3_service`. No
+        production row ever carried that block: it needed an N1 pattern
+        snapshot of the exact clip, which nothing creates, so the join never
+        matched and its read never ran. The block is gone and the join with
+        it (`_refresh_service_enrollment` in
+        services/mlc3_first_client_feedback.py has the account).
+
+        Marks only; never invents, drops or reorders (L2).
         """
         if not self.changes:
             return
-        answered_keys: dict[tuple[str, str], str] = {}
-        membership_ids = sorted({
-            str(row["mlc3_service"]["membership_id"])
-            for row in self.changes
-            if isinstance(row.get("mlc3_service"), dict)
-            and row["mlc3_service"].get("membership_id")
-        })
-        if membership_ids:
-            answered_keys = {
-                (str(key.get("membership_id")), str(key.get("candidate_id"))):
-                    str(key.get("response") or "")
-                for key in (self.db.list_feedback_v3_owner_response_keys(
-                    membership_ids) or [])
-                if isinstance(key, dict)
-            }
-
-        def _answer(row: dict) -> Optional[str]:
-            item_id = str(row.get("id") or "")
-            if item_id in self.responded_ids:
-                return self.responses_by_id.get(item_id, "")
-            service = row.get("mlc3_service")
-            if isinstance(service, dict):
-                return answered_keys.get((str(service.get("membership_id")),
-                                          str(service.get("candidate_id"))))
-            return None
-
         marked = 0
         for row in self.changes:
-            answer = _answer(row)
-            if answer is None:
+            item_id = str(row.get("id") or "")
+            if item_id not in self.responded_ids:
                 continue
-            row["status"] = decided_status(answer)
+            row["status"] = decided_status(
+                self.responses_by_id.get(item_id, ""))
             marked += 1
         if marked:
             logger.info(

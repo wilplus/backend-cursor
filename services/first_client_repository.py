@@ -286,21 +286,6 @@ class FirstClientRepository:
             logger.warning("Feedback V3 service freeze failed: %s", error)
             return None
 
-    def prepare_feedback_v3_service_context(
-        self, payload: dict,
-    ) -> Optional[dict]:
-        try:
-            result = self.client.rpc(
-                "prepare_feedback_v3_service_context_v1", payload,
-            ).execute()
-            data = result.data
-            if isinstance(data, list):
-                return data[0] if data and isinstance(data[0], dict) else None
-            return data if isinstance(data, dict) else None
-        except Exception as error:
-            logger.warning("Feedback V3 service context failed: %s", error)
-            return None
-
     def record_take_feedback_coverage(self, row: dict) -> Optional[bool]:
         """One row per served Take (0437, D-ML-5; contract 24c/24d/25).
 

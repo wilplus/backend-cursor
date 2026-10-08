@@ -23,7 +23,7 @@ What it unblocks:
 | | |
 |---|---|
 | Confident Voice **lineage** | an owner answer becomes a canonical MLC-3 judgment instead of only a self-report |
-| **Exercise** context | `prepare_feedback_v3_service_context` stops returning nothing |
+| **Exercise** context | ~~`prepare_feedback_v3_service_context` stops returning nothing~~ Retired 2026-10-06: serving no longer asks for it. It also needed an N1 snapshot that nothing creates (L8, contract 66). |
 | Coach review + Album | the paths that need a frozen membership |
 
 ## What it opens
