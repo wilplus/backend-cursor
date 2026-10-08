@@ -73,14 +73,15 @@ CREATE TABLE IF NOT EXISTS public.v4_random_moments (
     frame_hash               text        NOT NULL,
     acquisition_principal_id uuid        NOT NULL,
     created_at               timestamptz NOT NULL DEFAULT now(),
-    PRIMARY KEY (take_session_id, draw_version, block_id),
+    PRIMARY KEY (take_session_id, policy_version, draw_version, block_id),
     CONSTRAINT v4_random_moments_frame_fk
         FOREIGN KEY (take_session_id, policy_version)
         REFERENCES public.take_feedback_policy_v3_shadow_frames
             (take_session_id, policy_version)
         ON DELETE CASCADE,
     CONSTRAINT v4_random_moments_draw_version CHECK (
-        draw_version = 'v4-random-draw-v1'),
+        draw_version = 'v4-random-draw-v1'
+        AND policy_version = 'take-feedback-policy-v3-universal-dark-v3'),
     CONSTRAINT v4_random_moments_block_id CHECK (length(block_id) > 0),
     CONSTRAINT v4_random_moments_counts CHECK (
         moments_in_take >= 1
@@ -90,7 +91,7 @@ CREATE TABLE IF NOT EXISTS public.v4_random_moments (
     CONSTRAINT v4_random_moments_frame_hash CHECK (
         frame_hash ~ '^[0-9a-f]{64}$'),
     CONSTRAINT v4_random_moments_rank_once UNIQUE (
-        take_session_id, draw_version, draw_rank)
+        take_session_id, policy_version, draw_version, draw_rank)
 );
 
 ALTER TABLE public.v4_random_moments ENABLE ROW LEVEL SECURITY;
