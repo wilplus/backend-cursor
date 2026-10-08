@@ -280,12 +280,17 @@ class Config:
     # toggles: ED-2.4 requires new reviewed implementation and authorization
     # before any of these capabilities exists.
     MLC2_DATASET_RELEASES_ENABLED = False
-    MLC2_TRAINING_ENABLED = False
-    MLC2_PROMOTION_ENABLED = False
+    # DOORS 3 AND 4 OPENED 2026-10-08 by the founder ("turn it all ON"; Privacy
+    # and Terms 3.5 signed and published first; OpenAI DPA, coach agreement and
+    # corpus rights confirmed in chat). The per-surface sets below name the
+    # surfaces; each run still needs 200 trainable pairs and a sealed golden set.
+    MLC2_TRAINING_ENABLED = True
+    MLC2_PROMOTION_ENABLED = True
     # The training-corpus copy job (SPEC-training-corpus P3). Same rule: a
     # code constant, flipped only by a reviewed change at P5 (counsel +
     # founder), never by a dashboard.
-    MLC2_TRAINING_CORPUS_COPY_ENABLED = False
+    # OPENED 2026-10-08 by the founder ("turn it all ON", P5 with 3.5 signed).
+    MLC2_TRAINING_CORPUS_COPY_ENABLED = True
     # THE CORPUS IMPORT (founder 2026-10-06, panel answer CO1 A, decisions log
     # N56.4: "switch the training corpus on and build it properly"). On, the
     # coach-only POST /v2/coach/training-imports (and the CLI behind
@@ -297,7 +302,8 @@ class Config:
     # before. A code constant the founder flips by a reviewed change, never an
     # env variable. It opens the import only: dataset releases, training,
     # evaluation and promotion keep their own constants above, all closed.
-    TRAINING_IMPORT_ENABLED = False
+    # ON 2026-10-08 (founder: "turn it all ON"; he holds the rights to the audio).
+    TRAINING_IMPORT_ENABLED = True
     # The training switch route (P5 packet §4 item 6). A code constant,
     # flipped only by a reviewed change; never an env variable.
     # DOOR 1 OPENED 2026-10-01 by the founder's sentence "open door 1"
@@ -339,8 +345,13 @@ class Config:
     # 3 for surface S"); a promotion writes runtime_config only when
     # MLC2_PROMOTION_ENABLED is True AND the surface is named here ("open
     # door 4 for surface S"). Both empty today; both reviewed changes.
-    TRAINING_SURFACES: frozenset = frozenset()
-    PROMOTION_SURFACES: frozenset = frozenset()
+    # Named 2026-10-08 (founder: "turn it all ON"): the three answer surfaces.
+    TRAINING_SURFACES: frozenset = frozenset({
+        "exercise_script", "praise_line", "clearer_version",
+    })
+    PROMOTION_SURFACES: frozenset = frozenset({
+        "exercise_script", "praise_line", "clearer_version",
+    })
     # The base model a run fine-tunes (ML-11). An environment choice, not a
     # door: changing it opens nothing.
     OPENAI_FINE_TUNE_BASE_MODEL = (os.getenv("OPENAI_FINE_TUNE_BASE_MODEL")
@@ -348,7 +359,8 @@ class Config:
     # ML-13 (founder E8): the matcher orders equal-fit exercises by the
     # learned helped rate only when this is True AND the jar's fair test
     # meets its bar AND the founder said yes. Closed in code; never an env.
-    EXERCISE_LEARNED_ORDER_ENABLED = False
+    # ON 2026-10-08 (founder: "turn it all ON"); the jar's fair test still gates it.
+    EXERCISE_LEARNED_ORDER_ENABLED = True
 
     # PHASE 0b (founder 2026-10-01): the coach's Students screens. On, the
     # roster and a student's profile carry the student's real name (coaches
@@ -527,11 +539,11 @@ class Config:
     # founder's own Takes (take_feedback_policy_v3.dark_enabled), so it had
     # no other speaker's blocks. It comes back on with a source of every
     # speaker's blocks.
-    COACH_BLOCK_PICK_ENABLED = False
+    COACH_BLOCK_PICK_ENABLED = True
     # V4's two blind coach sheets (B1.8 "Pick the moment for feedback", B1.9
     # "Which sounds surer"; founder S-B8 A, Q-B8 A). Off until the founder
     # turns them on; every route answers 404 while off.
-    V4_COACH_SHEETS_ENABLED = False
+    V4_COACH_SHEETS_ENABLED = True
     # 6d: fitting a learned detector on audit answers. ON from 2026-10-02
     # (founder: "You have my go on each of the flips"; N26): the AI Act
     # determination is document 02 v1.1 (the founder's own, Q7, signed
