@@ -480,3 +480,4 @@
 0442	answer_counts_per_clip_are_soft_label_data.sql
 0443	a_share_records_the_words_the_speaker_saw.sql
 0444	a_coach_is_asked_to_listen_again.sql
+0445	the_coach_s_diagnosis_comes_first.sql
