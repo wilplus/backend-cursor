@@ -11796,6 +11796,17 @@ class DatabaseService:
                                  {"p_snippet_id": str(snippet_id)}).execute()
         return self._rpc_row(result.data)
 
+    def draw_v4_random_moments(self, take_session_id: str) -> Optional[dict]:
+        """Draw one Take's seeded random 20% of moments from its stored dark
+        frame (migration 0447, V4 B1.2). The database reads the frame and
+        the seed itself; a second call returns the stored draw. Raises on
+        failure: the caller (services.v4_random_moments.draw) logs it and
+        the Take stands."""
+        result = self.client.rpc("draw_v4_random_moments_v1",
+                                 {"p_take_session_id": str(take_session_id)}
+                                 ).execute()
+        return self._rpc_row(result.data)
+
     def get_confidence_labels_by_snippet_ids(self, snippet_ids: list, *,
                                              strict: bool = False) -> dict:
         """{snippet_id: [label rows]} for the given snippets. {} on anything

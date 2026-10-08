@@ -760,6 +760,11 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("v3_shadow", "take_feedback_policy_v3_shadow_frames",
                     "acquisition_principal_id", "principal", "external_review",
                     "dataset_lineage", 300),
+    # V4 B1.2 (0447): a Take's random moments. Derived from the frame, no
+    # words, nothing trained on them: they go with the Take, while the
+    # frame itself waits on its review.
+    PurgeDependency("v4_random_moments", "v4_random_moments",
+                    "take_session_id", "take", "delete", "derived_feedback", 59),
     PurgeDependency("v3_detector_reconciliation",
                     "take_feedback_detector_reconciliation",
                     "take_session_id", "take", "external_review",
