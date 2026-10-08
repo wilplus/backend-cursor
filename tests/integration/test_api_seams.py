@@ -191,11 +191,12 @@ def test_preflight_allows_every_header_the_fe_sends(app_client):
             "Access-Control-Request-Method": "POST",
             "Access-Control-Request-Headers":
                 "authorization, content-type, x-internal-secret, "
-                "accept, x-requested-with, x-dev-key",
+                "accept, x-requested-with, x-dev-key, x-willab-guest-owner",
         },
     )
     assert resp.status_code in (200, 204)
     allowed = (resp.headers.get("Access-Control-Allow-Headers") or "").lower()
     for header in ("authorization", "content-type", "x-internal-secret",
-                   "accept", "x-requested-with", "x-dev-key"):
+                   "accept", "x-requested-with", "x-dev-key",
+                   "x-willab-guest-owner"):
         assert header in allowed, f"preflight would reject '{header}'"

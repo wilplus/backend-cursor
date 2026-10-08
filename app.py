@@ -80,13 +80,16 @@ app.config["MAX_CONTENT_LENGTH"] = max(
 # (>~4.5MB) bypass the Vercel BFF body cap and hit
 # POST /v2/lab/presentation/extract DIRECTLY from the browser — the fetch
 # sends those two headers, and a preflight fails on ANY unlisted header even
-# when the origin matches.
+# when the origin matches. X-Willab-Guest-Owner added 2026-10-08: with
+# PLF1_PROCESSING_AUTHORIZATION_MODE=enforce the core gate covers /v2/lab/,
+# so a guest's direct deck upload must carry its owner token or it is refused.
 CORS(
     app,
     origins=config.CORS_ORIGINS,
     supports_credentials=True,
     allow_headers=["Authorization", "Content-Type", "X-Internal-Secret",
-                   "Accept", "X-Requested-With", "X-Dev-Key"],
+                   "Accept", "X-Requested-With", "X-Dev-Key",
+                   "X-Willab-Guest-Owner"],
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 )
 
