@@ -789,6 +789,16 @@ hard migrations/the_coach_s_diagnosis_comes_first.sql
 hard migrations/a_coach_may_change_their_answer.sql
 hard migrations/a_coach_may_change_their_answer.sql
 
+# 0448 (N12; founder decision tree 2026-10-08, Q3/Q4 YES): a speaker's skip
+# keeps an empty receipt. feedback_revisions gets its own guard (0327's
+# refusal plus 0379's governed purge wipe, owner rows only), and 0379's wipe
+# counts an owner row it could not reach. Both lanes carry 0327 and 0379, so
+# both, after 0446 (0447 is not applied by this recipe), as in the manifest.
+# Twice: apply/reapply idempotency.
+# Its suite: tests/test_a_skip_keeps_an_empty_receipt_postgres.py.
+hard migrations/a_skip_keeps_an_empty_receipt.sql
+hard migrations/a_skip_keeps_an_empty_receipt.sql
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing
