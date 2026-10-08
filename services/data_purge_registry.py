@@ -760,7 +760,7 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("v3_shadow", "take_feedback_policy_v3_shadow_frames",
                     "acquisition_principal_id", "principal", "external_review",
                     "dataset_lineage", 300),
-    # V4 B1.2 (0447): a Take's random moments. Derived from the frame, no
+    # V4 B1.2 (0448): a Take's random moments. Derived from the frame, no
     # words, nothing trained on them: they go with the Take, while the
     # frame itself waits on its review.
     PurgeDependency("v4_random_moments", "v4_random_moments",
@@ -1026,6 +1026,20 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("feedback_revision_reviewers", "feedback_revisions",
                     "rater_id", "principal", "external_review",
                     "derived_feedback", 300),
+    # rater_id is mixed. A coach row names the coach's owner principal (the
+    # entry above); an owner row names the speaker's USER id
+    # (record_root_phrase_skip_v1: a "no helper words" skip, its
+    # acquisition_principal_id NULL), which neither entry above reaches.
+    # N12 (founder 2026-10-08, Q3/Q4 YES: "empty receipt"): an owner row is
+    # kept as an empty receipt, its payload erased by the lineage wipe as a
+    # child of its evidence span (the guard 0448 gives the table lets that
+    # one UPDATE through). Every row counted here hangs off its speaker's own
+    # Take's span, inside the wipe's scope; one that did not would be
+    # counted by the wipe as not blank (0448) and fail the target, never
+    # pass as retained. Coach rows still stop the inventory (entries above).
+    PurgeDependency("feedback_revision_owner_raters", "feedback_revisions",
+                    "rater_id", "user", "tombstone", "derived_feedback", 200,
+                    "deletion_evidence"),
     PurgeDependency("confident_moment_bundle_projections",
                     "confident_moment_bundle_projections",
                     "acquisition_principal_id", "principal",
@@ -1524,5 +1538,5 @@ LINEAGE_TOMBSTONES: frozenset[str] = frozenset({
     "processing_transition_events", "transcript_versions", "slides",
     "paragraphs", "evidence_spans", "acoustic_feature_snapshots",
     "candidate_sets", "machine_predictions", "generation_runs",
-    "processing_stage_runs",
+    "processing_stage_runs", "feedback_revisions",
 })

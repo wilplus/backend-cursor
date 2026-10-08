@@ -169,6 +169,9 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
 #: counts in its `not_blank` check: code -> the parent's code.
 WIPED_WITH_PARENT: Mapping[str, str] = {
     "canonical_acoustics": "evidence_spans",
+    # A speaker's skips (N12, 0448): the owner rows of feedback_revisions
+    # hang off the project's own evidence spans.
+    "feedback_revision_owner_raters": "evidence_spans",
 }
 
 #: Held by a project but outliving it under a rule that does not exist yet:

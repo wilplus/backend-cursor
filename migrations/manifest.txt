@@ -483,3 +483,4 @@
 0445	the_coach_s_diagnosis_comes_first.sql
 0446	a_coach_may_change_their_answer.sql
 0447	a_take_draws_its_random_moments.sql
+0448	a_skip_keeps_an_empty_receipt.sql
