@@ -37,7 +37,14 @@ Once a week, poked by a Railway cron through a shared secret:
      capabilities. Nothing calls it otherwise; this weekly row is where the
      founder reads it.
 
-Nothing here trains, promotes, or flips a door. Counts about the system,
+  7. while ``DETECTOR_TRAINING_AUTHORISED`` is on (3.5 pack, file 22 E3),
+     the learned detectors are fitted on our own systems from the blind-check
+     answers of speakers who hold the training yes and have not objected,
+     and their verdicts go to the shadow log only
+     (``services/detector_candidates.fit_all``). Off, the step reads nothing.
+
+Nothing here promotes or flips a door, and nothing trains but step 7's
+shadow-only detector fit. Counts about the system,
 never about a person (AC-9 for everyone but the founder's own pages).
 """
 from __future__ import annotations
@@ -116,9 +123,13 @@ def run_weekly(database: Any, *, config: Any = None,
     # where the door, the founder's sentence, the sealed golden set and 200
     # trainable pairs all hold. Closed today: every surface says why.
     training = _training_pass(database, config, now=moment, provider=provider)
+    # 3.5 E3: the learned detectors, fitted only while
+    # DETECTOR_TRAINING_AUTHORISED is on, on consented answers, into the
+    # shadow log only. Off, it reads nothing.
+    detector_fit = _detector_fit_pass(database, config, now=moment)
     foundation = foundation_health(database)
     snapshot["doors_pass"] = {"consent_refresh": consent, "release_sweep": swept,
-                              "training": training}
+                              "training": training, "detector_fit": detector_fit}
     # The week's PSI 2x2 (ML-7: the research screen's drift panel).
     drift = _drift_pass(database)
     snapshot["drift"] = drift
@@ -144,6 +155,7 @@ def run_weekly(database: Any, *, config: Any = None,
         "consent_refresh": consent,
         "release_sweep": swept,
         "training": training,
+        "detector_fit": detector_fit,
         "drift": {"worst": drift.get("worst"), "minted": drift.get("minted"),
                   "note": drift.get("note") or drift.get("unavailable")},
         "foundation_health": foundation,
@@ -202,6 +214,17 @@ def _training_pass(database: Any, config: Any, *, now: Optional[datetime],
         return run_training_pass(database, config=config, provider=provider, now=now)
     except Exception as e:  # noqa: BLE001 -- named, never a silent zero
         _log.warning("training pass failed: %s", e, exc_info=True)
+        return {"unavailable": str(e)[:200]}
+
+
+def _detector_fit_pass(database: Any, config: Any, *, now: Optional[datetime]) -> dict:
+    """The learned detectors' weekly fit (``detector_candidates.fit_all``),
+    never a reason the snapshot is not written."""
+    from services.detector_candidates import fit_all
+    try:
+        return fit_all(database, config=config, now=now)
+    except Exception as e:  # noqa: BLE001 -- named, never a silent zero
+        _log.warning("detector fit pass failed: %s", e, exc_info=True)
         return {"unavailable": str(e)[:200]}
 
 

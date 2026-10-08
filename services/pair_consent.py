@@ -172,6 +172,32 @@ def take_holds_training_yes(database: Any, take_session_id: Any) -> bool:
     return holds_training_yes(database, take_principal(database, take_session_id))
 
 
+def erase_withdrawn_sheets(database: Any, principal_id: Any) -> dict:
+    """3.5 E4, on a training withdrawal: DELETE (not hide) every V4 coach
+    sheet (``v4_moment_pick_sheets``, ``v4_surer_sheets``) and blind block
+    pick (``coach_block_pick``) about this person's Takes. Other speakers'
+    rows are never touched: the Takes are this person's own, as the
+    governed purge resolves them. Skipped while the person holds the yes
+    (they turned it back on before this ran); a failed consent read counts
+    as no yes, so a doubt erases. Never raises: the turn-off calls it and the
+    queued erasure job runs it again."""
+    if not principal_id:
+        return {"skipped": "no principal"}
+    if holds_training_yes(database, str(principal_id)):
+        return {"skipped": "holds the training yes"}
+    reader = getattr(database, "take_ids_for_principal", None)
+    eraser = getattr(database, "delete_learning_sheets_for_takes", None)
+    if reader is None or eraser is None:
+        return {"unavailable": "no sheet erasure on this database"}
+    try:
+        takes = reader(str(principal_id))
+        deleted = eraser(takes) if takes else {}
+    except Exception as e:  # noqa: BLE001 -- named; the queued job retries
+        _log.warning("withdrawn sheet erasure failed: %s", e, exc_info=True)
+        return {"unavailable": str(e)[:200]}
+    return {"takes": len(takes), "deleted": dict(deleted or {})}
+
+
 def take_may_reach_a_coach_sheet(database: Any, take_session_id: Any) -> bool:
     """3.5 E4 (``V4_COACH_SHEETS_ENABLED``, ``COACH_BLOCK_PICK_ENABLED``):
     a coach hears a speaker's moment to answer a question that teaches the

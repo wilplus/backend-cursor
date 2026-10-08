@@ -14,7 +14,7 @@ no hint); never a block of a Take the coach is walking, never a clip the
 coach was exposed to; the weekly cap (20 per coach) is shared with the
 error audit (Phase 6a).
 
-THE RECORD (migration 0411, ``coach_block_pick``, append-only, provenance
+THE RECORD (migration 0411, ``coach_block_pick``, answered once, provenance
 ``coach_block_pick``): the block, the Take, the candidate clips in the order
 shown, the pick or Can't tell, the Manager's pick (stored, never sent to a
 client), the versions. Never mixed with confidence labels, owner answers or
@@ -27,7 +27,9 @@ ONLY SPEAKERS WITH THE TRAINING YES (3.5 pack, file 22 item E4; Privacy 3.5
 the training yes and has not objected to the blind check
 (``pair_consent.take_may_reach_a_coach_sheet``), read when the sheet is
 written, when the queue is served and when it is answered. Anyone else is
-skipped.
+skipped. A row is never edited after its answer, but a training withdrawal
+DELETES every row about the speaker's Takes
+(``pair_consent.erase_withdrawn_sheets``), as the purge does.
 """
 from __future__ import annotations
 

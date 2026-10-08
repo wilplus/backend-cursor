@@ -546,12 +546,12 @@ class DetectorTests(unittest.TestCase):
         with patch("config.Config.DETECTOR_TRAINING_AUTHORISED", False, create=True):
             with self.assertRaises(dc.NotAuthorised):
                 dc.LearnedDetector("rushing").fit([])
-        # Off by default again (N29); authorised, it is still built, not trained.
+        # Off by default (N29); authorised, an empty pool fits nothing
+        # (tests/test_detector_fit.py pins the fit itself).
         with self.assertRaises(dc.NotAuthorised):
             dc.LearnedDetector("rushing").fit([])
         with patch("config.Config.DETECTOR_TRAINING_AUTHORISED", True, create=True):
-            with self.assertRaises(NotImplementedError):
-                dc.LearnedDetector("rushing").fit([])
+            self.assertFalse(dc.LearnedDetector("rushing").fit([])["fitted"])
         self.assertIsNone(dc.learned("rushing", {"pause_ratio": 0.02}))
 
         class _Clips(_Db):
