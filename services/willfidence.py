@@ -265,6 +265,9 @@ def run_read(take_session_id: str) -> Optional[dict]:
             logger.warning("v4 willfidence tags refused take=%s: %s", take, error)
             tags = None
         stored = db.record_v4_willfidence_reads(take, take_reads(frame, snippets, tags))
+        # V4 B1.6: the V4 picker, dark beside V3, on this Take's read.
+        from services.v4_picker import run as pick
+        pick(db, take, frame, snippets)
         # V4 B1.5: with this Take read, the previous Take's picks can learn
         # whether their paragraphs rose.
         from services.v4_pick_outcomes import compute
