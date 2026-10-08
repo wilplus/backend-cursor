@@ -29,7 +29,10 @@
 --                                 the quorum would count as a human vote:
 --                                 state 'confidence', lane 'coach' or
 --                                 'game_peer', not a self-report, not an
---                                 Audio-unclear abstention, with a rater.
+--                                 Audio-unclear abstention, blind (0411),
+--                                 with a rater. Historical 'neutral' counts
+--                                 as Not sure. One refresh per clip at a
+--                                 time (a transaction advisory lock).
 --                                 Returns the row.
 --
 -- WHAT IS NEVER COUNTED (L3; V4 brief M8 "Speaker taps are never labels").
@@ -50,7 +53,8 @@
 -- that never blocks the rating it follows (LIVE LOOP).
 --
 -- Idempotent: IF NOT EXISTS, CREATE OR REPLACE; applied twice it changes
--- nothing. Writes no row on its own. Locks: only the new table.
+-- nothing. Writes no row on its own. Locks: only the new table (and, at run
+-- time, a per-clip transaction advisory lock inside the function).
 --
 -- Rollback (a new forward migration): DROP FUNCTION
 -- public.refresh_clip_answer_counts_v1(uuid); DROP TABLE
@@ -110,13 +114,22 @@ BEGIN
         RAISE EXCEPTION 'CLIP_ANSWER_COUNTS_INPUT_INVALID';
     END IF;
 
+    -- One refresh per clip at a time: two ratings landing together each
+    -- recount after the other has committed, so a slower recount can never
+    -- overwrite a newer one with an older snapshot. Held to the end of the
+    -- caller's transaction; other clips are not touched.
+    PERFORM pg_advisory_xact_lock(hashtext(p_snippet_id::text));
+
     -- Exactly the rows the quorum would count as a human vote (Q3;
     -- services/label_quorum.py QUORUM_LANES, is_self_report,
-    -- is_audio_unclear). One row per rater is the ledger's own key.
+    -- is_audio_unclear, and the blind rule of 0411: a rating made after the
+    -- rater saw the clip's non-blind side is not a label). One row per
+    -- rater is the ledger's own key. Historical v1 'neutral' is the old
+    -- spelling of Not sure (label_quorum IDK_VALUES) and is counted with it.
     SELECT count(*) FILTER (WHERE value = 'yes'),
            count(*) FILTER (WHERE value = 'in_between'),
            count(*) FILTER (WHERE value = 'no'),
-           count(*) FILTER (WHERE value = 'not_sure')
+           count(*) FILTER (WHERE value IN ('not_sure', 'neutral'))
       INTO v_yes, v_in_between, v_no, v_not_sure
       FROM public.confidence_labels label
      WHERE label.snippet_id = p_snippet_id
@@ -124,6 +137,7 @@ BEGIN
        AND label.lane IN ('coach', 'game_peer')
        AND COALESCE(label.self_report, false) = false
        AND COALESCE(label.unrateable, false) = false
+       AND label.blind IS NOT FALSE
        AND label.rater_id IS NOT NULL;
 
     v_perceptual := v_yes + v_in_between + v_no;
@@ -157,8 +171,9 @@ $$;
 
 COMMENT ON FUNCTION public.refresh_clip_answer_counts_v1(uuid) IS
     'Rebuild one clip''s soft-label counts from confidence_labels (0442, V4 '
-    'brief 1.7): coach and game_peer lanes, no self-report, no abstention, '
-    'no machine. Returns the row. service_role only.';
+    'brief 1.7): coach and game_peer lanes, blind rows only, no self-report, '
+    'no abstention, no machine; historical neutral counts as Not sure. One '
+    'refresh per clip at a time. Returns the row. service_role only.';
 
 -- ── The door ───────────────────────────────────────────────────────────────
 -- Browser roles get nothing on the table or the function, whatever default

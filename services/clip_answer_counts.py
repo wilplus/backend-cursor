@@ -13,7 +13,11 @@ trains on the counts until the founder opens the training door (M10, P-b).
 
 WHO IS COUNTED. Exactly the rows the quorum would count as a human vote:
 state 'confidence', lane 'coach' or 'game_peer', not a self-report, not an
-Audio-unclear abstention, with a rater. Speaker taps are never labels (L3;
+Audio-unclear abstention, blind (0411: a rating made after the rater saw the
+clip's non-blind side is not a label), with a rater. Historical v1
+``neutral`` is the old spelling of Not sure and is counted with it
+(``label_quorum.IDK_VALUES``). ``counted_answer`` is the same rule on one
+ledger row, so a reader of either can check the other. Speaker taps are never labels (L3;
 M8): the speaker's answers never enter the ledger as a vote, and a rating
 the speaker gives on their own clip is excluded as a self-report. The
 machine has no lane and no count.
@@ -37,6 +41,30 @@ RULE_VERSION = "soft-label-v1"
 LANES_COUNTED = ("coach", "game_peer")
 #: Q1 / V17 A: the weight of each perceptual answer in the soft label.
 VOTE_WEIGHTS = {"yes": Fraction(1), "in_between": Fraction(1, 2), "no": Fraction(0)}
+#: Rater uncertainty, kept as its own count; ``neutral`` is the v1 spelling.
+NOT_SURE_VALUES = ("not_sure", "neutral")
+
+
+def counted_answer(row: dict) -> Optional[str]:
+    """Which count one ledger row adds to: 'yes', 'in_between', 'no',
+    'not_sure', or None when the row is not a blind human vote. Pure; the
+    same filter as refresh_clip_answer_counts_v1."""
+    if (row.get("state_id") or "confidence") != "confidence":
+        return None
+    if row.get("lane") not in LANES_COUNTED:
+        return None
+    if row.get("self_report") or row.get("unrateable"):
+        return None
+    if row.get("blind") is False:
+        return None
+    if not row.get("rater_id"):
+        return None
+    value = row.get("value")
+    if value in VOTE_WEIGHTS:
+        return str(value)
+    if value in NOT_SURE_VALUES:
+        return "not_sure"
+    return None
 
 
 def soft_label(yes: int, in_between: int, no: int) -> Optional[Fraction]:

@@ -13,6 +13,10 @@ Pins:
     proposal beside an answer is never read;
   * a clip nobody answered gets zeros and no soft label; the table's own
     checks refuse a row whose sum or soft label is wrong;
+  * a non-blind row (0411) is not counted, as the quorum does not count it;
+    historical 'neutral' counts as Not sure;
+  * two refreshes of one clip are serialized: a refresh that started before
+    a newer rating committed cannot overwrite the newer count;
   * the quorum (services.label_quorum) is untouched: MACHINE_VOTES stays 0
     and its lanes stay coach and game_peer, whatever the counts say.
 """
@@ -20,6 +24,8 @@ from __future__ import annotations
 
 import os
 import pathlib
+import threading
+import time
 import uuid
 from decimal import Decimal
 
@@ -56,15 +62,16 @@ def _role_exists(cur, role: str) -> bool:
 
 def _label(cur, snippet_id, *, value, lane="coach", rater=None,
            self_report=False, unrateable=False, machine_value=None,
-           state_id="confidence"):
+           state_id="confidence", blind=True):
     cur.execute(
         "INSERT INTO public.confidence_labels (snippet_id, rater_id, source, "
-        "confident, state_id, value, lane, self_report, unrateable, machine_value) "
-        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+        "confident, state_id, value, lane, self_report, unrateable, machine_value, "
+        "blind) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
         (snippet_id, rater or str(uuid.uuid4()),
          "coach" if lane in ("coach", "bootstrap") else "game",
          True if value == "yes" else False if value == "no" else None,
-         state_id, value, lane, self_report, unrateable, machine_value))
+         state_id, value, lane, self_report, unrateable, machine_value, blind))
 
 
 def _counts(cur, snippet_id) -> dict:
@@ -225,3 +232,69 @@ def test_service_role_calls_the_function_and_cannot_write_the_table_by_hand(db):
             assert cur.fetchone() == (0,)
     finally:
         conn.close()
+
+
+def test_a_non_blind_row_is_not_counted_and_neutral_is_not_sure(db):
+    snippet = str(uuid.uuid4())
+    with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        _label(cur, snippet, value="yes", lane="coach")
+        # The rater had seen the clip's non-blind side: the quorum ignores
+        # it (label_quorum, 0411), so the counts ignore it too.
+        _label(cur, snippet, value="no", lane="coach", blind=False)
+        _label(cur, snippet, value="no", lane="game_peer", blind=False)
+        # Historical v1 spelling of Not sure.
+        _label(cur, snippet, value="neutral", lane="game_peer")
+        row = _counts(cur, snippet)
+    assert (row["yes_count"], row["no_count"], row["not_sure_count"],
+            row["perceptual_count"]) == (1, 0, 1, 1)
+    assert row["soft_label"] == Decimal("1.00000")
+
+
+def test_a_slow_refresh_cannot_overwrite_a_newer_count(db):
+    """Two refreshes of one clip: the first holds the clip's lock until its
+    transaction commits, the second waits and recounts after it, so the
+    stored row is the newer count, never the older snapshot."""
+    snippet = str(uuid.uuid4())
+    writer = psycopg2.connect(DSN)
+    other = psycopg2.connect(DSN)
+    other.autocommit = True
+    result: dict = {}
+    try:
+        with writer.cursor() as cur:
+            _label(cur, snippet, value="yes", lane="coach")
+            cur.execute("SELECT perceptual_count FROM "
+                        "public.refresh_clip_answer_counts_v1(%s)", (snippet,))
+            assert cur.fetchone() == (1,)
+
+        def second():
+            with other.cursor() as c2:
+                c2.execute("SELECT perceptual_count FROM "
+                           "public.refresh_clip_answer_counts_v1(%s)", (snippet,))
+                result["count"] = c2.fetchone()[0]
+
+        t = threading.Thread(target=second)
+        t.start()
+        # The second refresh waits on the clip's advisory lock.
+        deadline = time.time() + 10
+        waiting = False
+        with db.cursor() as probe:
+            while time.time() < deadline and not waiting:
+                probe.execute("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' "
+                              "AND NOT granted")
+                waiting = probe.fetchone()[0] > 0
+                if not waiting:
+                    time.sleep(0.05)
+        assert waiting, "the second refresh did not wait for the first"
+        assert "count" not in result
+        writer.commit()
+        t.join(10)
+        assert not t.is_alive()
+        # It recounted after the first committed and saw the new label.
+        assert result["count"] == 1
+        with db.cursor() as cur:
+            cur.execute("SELECT perceptual_count FROM public.clip_answer_counts "
+                        "WHERE snippet_id = %s", (snippet,))
+            assert cur.fetchone() == (1,)
+    finally:
+        writer.close()
+        other.close()
