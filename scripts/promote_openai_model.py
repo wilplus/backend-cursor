@@ -75,6 +75,13 @@ def main() -> None:
             "the activation runbook with the readiness evaluators green, not "
             "a flag flipped at promotion time."
         )
+    # Door 4 is open per surface (founder 2026-10-08: the three surfaces in
+    # PROMOTION_SURFACES); a surface the founder did not name stays shut.
+    if contract.id not in (Config.PROMOTION_SURFACES or frozenset()):
+        raise SystemExit(
+            f"Promotion is not open for {contract.id}: the founder named only "
+            f"{sorted(Config.PROMOTION_SURFACES)} (PROMOTION_SURFACES)."
+        )
 
     model_id = (args.model_id or "").strip()
     if not model_id:

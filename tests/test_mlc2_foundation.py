@@ -163,9 +163,15 @@ def test_store_claim_and_failure_keep_retry_contract_explicit():
     assert client.calls[-1][1]["p_retry_after_seconds"] == 45
 
 
-def test_config_keeps_release_training_and_promotion_hard_disabled():
+def test_config_keeps_the_dpo_release_lane_hard_disabled_and_doors_3_and_4_as_said():
     from config import Config
 
+    # The retired DPO dataset-release lane stays hard-disabled.
     assert Config.MLC2_DATASET_RELEASES_ENABLED is False
-    assert Config.MLC2_TRAINING_ENABLED is False
-    assert Config.MLC2_PROMOTION_ENABLED is False
+    # Doors 3 and 4 opened 2026-10-08 by the founder ("turn it all ON"),
+    # for the three coach-answer surfaces only.
+    three = frozenset({"exercise_script", "praise_line", "clearer_version"})
+    assert Config.MLC2_TRAINING_ENABLED is True
+    assert Config.MLC2_PROMOTION_ENABLED is True
+    assert Config.TRAINING_SURFACES == three
+    assert Config.PROMOTION_SURFACES == three

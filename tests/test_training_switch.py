@@ -193,10 +193,13 @@ def test_the_due_copy_sweep_erases_for_every_person_with_due_copies():
     database.list_principals_with_due_training_copies.assert_called_once_with(5)
 
 
-def test_the_late_label_sweep_is_dark():
+def test_the_late_label_sweep_is_dark_with_the_copy_switch_off():
+    # The copy switch ships ON since 2026-10-08 (founder: "turn it all ON");
+    # the OFF behaviour is pinned by closing the switch here explicitly.
     database = mock.Mock()
-    assert corpus.sweep_late_coach_labels(database=database) == {
-        "status": "disabled"}
+    with mock.patch("config.Config.MLC2_TRAINING_CORPUS_COPY_ENABLED", False):
+        assert corpus.sweep_late_coach_labels(database=database) == {
+            "status": "disabled"}
     database.list_training_moments.assert_not_called()
 
 

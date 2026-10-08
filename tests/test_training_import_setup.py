@@ -227,8 +227,10 @@ def test_put_setup_route_saves_and_rejects_a_bad_uuid():
     assert response.get_json()["code"] == "INVALID_INPUT"
 
 
-def test_post_import_stays_disabled_and_the_default_is_off():
-    assert Config.TRAINING_IMPORT_ENABLED is False
+def test_post_import_is_410_with_the_switch_off_and_the_default_is_on():
+    # ON since 2026-10-08 (founder: "turn it all ON"); the closed answer is
+    # pinned with the switch closed explicitly below.
+    assert Config.TRAINING_IMPORT_ENABLED is True
     app = Flask(__name__)
     with patch("config.Config.TRAINING_IMPORT_ENABLED", False):
         with app.test_request_context(

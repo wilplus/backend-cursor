@@ -10,9 +10,11 @@ as switched off were read by nothing on the path: an operator with the
 service-role key could change the words in a speaker's document, with the
 HTTP surface still answering "promotion is not active".
 
-These tests are the gate. They assert refusal, never activation: every one
-of them runs with the constants at their shipped ``False`` and expects the
-lane to stand down.
+These tests are the gate. They assert refusal, never activation: every
+refusal test closes its constant explicitly and expects the lane to stand
+down. Since 2026-10-08 (founder: "turn it all ON") training and promotion
+ship open for the three coach-answer surfaces only; the Ideal Text and Say
+It Stronger stay on their stock model.
 """
 from __future__ import annotations
 
@@ -142,13 +144,57 @@ class TrainingAndExportRefuseWhileTheirGatesAreShut(unittest.TestCase):
         self.assertIn("MLC2_DATASET_RELEASES_ENABLED", str(caught.exception))
 
 
-class TheGateIsShutAsShipped(unittest.TestCase):
-    """Nothing here authorizes anything; this records that."""
+class TheGateAsShipped(unittest.TestCase):
+    """Nothing here authorizes anything; this records what the founder did.
 
-    def test_every_lane2_constant_ships_false(self):
+    Doors 3 and 4 opened 2026-10-08 (founder: "turn it all ON") for the
+    three coach-answer surfaces only. The retired DPO lane stays shut.
+    """
+
+    def test_the_lane2_constants_ship_as_the_founder_set_them(self):
         self.assertIs(Config.MLC2_DATASET_RELEASES_ENABLED, False)
-        self.assertIs(Config.MLC2_TRAINING_ENABLED, False)
-        self.assertIs(Config.MLC2_PROMOTION_ENABLED, False)
+        self.assertIs(Config.MLC2_TRAINING_ENABLED, True)
+        self.assertIs(Config.MLC2_PROMOTION_ENABLED, True)
+        self.assertEqual(Config.PROMOTION_SURFACES, frozenset(
+            {"exercise_script", "praise_line", "clearer_version"}))
+
+    def test_an_open_door_4_serves_only_the_named_surfaces(self):
+        """The global constant is not the decision; the named surfaces are.
+
+        With door 4 open a stored row for the Ideal Text, Say It Stronger
+        or the chat models is still withheld: the founder named three
+        coach-answer surfaces, nothing else.
+        """
+        from services.runtime_model_gate import resolve_gated_model
+
+        with mock.patch.object(Config, "MLC2_PROMOTION_ENABLED", True):
+            for key in ("openai_surface_model_ideal_text",
+                        "openai_surface_model_say_it_stronger",
+                        "openai_surface_model_coach_comment_draft",
+                        "openai_chat_model", "openai_copilot_model"):
+                self.assertEqual(resolve_gated_model(
+                    key, read=lambda k: "ft:unnamed", default="stock"), "stock", key)
+            self.assertEqual(resolve_gated_model(
+                "openai_surface_model_praise_line",
+                read=lambda k: "ft:named", default="stock"), "ft:named")
+
+    def test_the_promote_script_refuses_an_unnamed_surface(self):
+        import scripts.promote_openai_model as promote
+
+        with tempfile.TemporaryDirectory() as tmp:
+            report = _passing_report(Path(tmp))
+            argv = ["promote_openai_model.py", "--surface", "ideal_text",
+                    "--model-id", "ft:gpt-4.1-mini:org:proj:abc123",
+                    "--evaluation-report", str(report)]
+            with mock.patch.object(promote.Config, "MLC2_PROMOTION_ENABLED", True), \
+                 mock.patch("services.db.db.promote_runtime_surface_model") as spy, \
+                 mock.patch("services.db.db.upsert_runtime_config") as legacy, \
+                 mock.patch("sys.argv", argv):
+                with self.assertRaises(SystemExit) as caught:
+                    promote.main()
+        self.assertIn("PROMOTION_SURFACES", str(caught.exception))
+        spy.assert_not_called()
+        legacy.assert_not_called()
 
 
 if __name__ == "__main__":  # pragma: no cover
