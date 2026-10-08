@@ -68,6 +68,39 @@ def _exec(db, sql, args=()):
         cur.execute(sql, args)
 
 
+def _processing_version(db):
+    """The lane's processing policy version, or one of our own when this
+    suite runs alone: configure_mlc2_training_consent_policy_v1 refuses a
+    version processing_policy_versions does not hold, and the receipts
+    below name it. An active policy needs its three legal artifacts
+    (processing_policy_approved_check)."""
+    found = _one(db, "SELECT version FROM public.processing_policy_versions ORDER BY created_at LIMIT 1")
+    if found:
+        return found
+    artifacts = [_one(db, """
+        INSERT INTO public.processing_legal_artifacts (
+            artifact_kind, version, approving_authority, approved_at, object_key, sha256, metadata)
+        VALUES (%s, %s, 'test', now(), 'k', encode(extensions.digest(%s, 'sha256'), 'hex'), '{}'::jsonb)
+        RETURNING id""", (kind, f"failed-export-{uuid.uuid4()}", str(uuid.uuid4())))
+        for kind in ("product_legal_approval", "power_score_classification", "article_50_assessment")]
+    return _one(db, """
+        INSERT INTO public.processing_policy_versions (
+            version, status, product_legal_artifact_id,
+            power_score_classification_artifact_id, article50_artifact_id,
+            terms_version, terms_copy, terms_copy_sha256,
+            privacy_version, privacy_copy, privacy_copy_sha256,
+            ai_notice_version, ai_notice_copy, ai_notice_copy_sha256,
+            agreement_copy, agreement_copy_sha256,
+            allowed_countries, activated_at, created_by)
+        VALUES ('processing-failed-export-v1', 'active', %s, %s, %s,
+            't1', 'terms', encode(extensions.digest('terms','sha256'),'hex'),
+            'p1', 'privacy', encode(extensions.digest('privacy','sha256'),'hex'),
+            'a1', 'notice', encode(extensions.digest('notice','sha256'),'hex'),
+            'agree', encode(extensions.digest('agree','sha256'),'hex'),
+            ARRAY['pl'], now() - interval '1 minute', 'failed-export-test')
+        RETURNING version""", tuple(artifacts))
+
+
 @pytest.fixture(scope="module")
 def policy(db):
     """The active training-only policy: another suite's when it ran first,
@@ -83,7 +116,7 @@ def policy(db):
          ORDER BY policy.active_from DESC LIMIT 1""")
     if live:
         return live
-    processing = _one(db, "SELECT version FROM public.processing_policy_versions ORDER BY created_at LIMIT 1")
+    processing = _processing_version(db)
     copy = "Use my recordings to help improve WillpowerLab for everyone."
     sha = hashlib.sha256(copy.encode()).hexdigest()
     _one(db, """
@@ -96,7 +129,7 @@ def policy(db):
 
 
 def _principal(db):
-    processing = _one(db, "SELECT version FROM public.processing_policy_versions ORDER BY created_at LIMIT 1")
+    processing = _processing_version(db)
     principal = _one(db, "INSERT INTO public.owner_principals (id, user_id) VALUES (gen_random_uuid(), gen_random_uuid()) RETURNING id")
     _one(db, """
         INSERT INTO public.processing_authorization_receipts (
