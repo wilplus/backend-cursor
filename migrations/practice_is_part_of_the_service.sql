@@ -32,7 +32,8 @@
 --      check". blind_check_objections records that objection, once per person,
 --      by an operator (scripts/record_blind_check_objection.sql);
 --      has_blind_check_objection_v1 answers for the whole person (every
---      principal the purge graph joins: a guest who signed up is one person).
+--      principal a claim joins, both ways: a guest who signed up is one
+--      person).
 --      The application refuses to sample a clip of anyone who objected
 --      (services/error_presence_audit.py), and fails closed when the answer
 --      cannot be read. An objection is not a consent: it never expires with a
@@ -99,27 +100,32 @@ BEGIN
 END;
 $$;
 
--- The whole person: an objection given under any principal the purge graph
--- joins to this one counts for all of them.
+-- The whole person: every principal joined to this one by a claim (a guest
+-- who signed up), followed both ways to the end, as the purge graph's own
+-- claim walk does (0312). Walked here rather than read from the purge graph,
+-- so the answer depends on nothing but the claim record; an objection given
+-- under any of those principals counts for all of them.
 CREATE OR REPLACE FUNCTION public.has_blind_check_objection_v1(
     p_acquisition_principal_id UUID
 ) RETURNS BOOLEAN
-LANGUAGE plpgsql SECURITY DEFINER STABLE SET search_path = public, pg_temp
+LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public, pg_temp
 AS $$
-DECLARE
-    person UUID[];
-BEGIN
-    SELECT COALESCE(ARRAY(
-               SELECT jsonb_array_elements_text(graph->'principal_ids')::UUID),
-               '{}'::UUID[])
-      INTO person
-      FROM (SELECT public.resolve_phase1_purge_subject_graph_v2(
-                       p_acquisition_principal_id) AS graph) resolved;
-    RETURN EXISTS (
+    WITH RECURSIVE claim_edges(source_id, target_id) AS (
+        SELECT source_owner_principal_id, target_owner_principal_id
+          FROM owner_claim_events
+        UNION ALL
+        SELECT target_owner_principal_id, source_owner_principal_id
+          FROM owner_claim_events
+    ), person(id) AS (
+        SELECT p_acquisition_principal_id
+        UNION
+        SELECT edge.target_id
+          FROM claim_edges edge
+          JOIN person ON person.id = edge.source_id
+    )
+    SELECT EXISTS (
         SELECT 1 FROM blind_check_objections o
-         WHERE o.acquisition_principal_id = p_acquisition_principal_id
-            OR o.acquisition_principal_id = ANY (person));
-END;
+          JOIN person ON person.id = o.acquisition_principal_id);
 $$;
 
 CREATE OR REPLACE FUNCTION public.get_phase1_consent_choices_v1(

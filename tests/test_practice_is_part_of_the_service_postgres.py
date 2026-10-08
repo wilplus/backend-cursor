@@ -135,8 +135,8 @@ def _guest_claimed_by(db, account):
 def test_an_objection_under_one_principal_counts_for_the_whole_person(
         db, principal, objects_as):
     """A Take recorded as a guest who later signed up is the same person:
-    the purge graph walks claim links both ways, so an objection given under
-    either principal is found from the other."""
+    the objection read walks claim links both ways, so an objection given
+    under either principal is found from the other."""
     guest = _guest_claimed_by(db, principal)
     objector, sampled = ((principal, guest) if objects_as == "account"
                          else (guest, principal))
