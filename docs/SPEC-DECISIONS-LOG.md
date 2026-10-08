@@ -2301,3 +2301,26 @@ confirmed again the five N63 answers (Q-B3, Q-B5, Q-B9, Q-B10, Q-B14 A).
   registry) and never reaches a payload (AC-9). Config first:
   `TAKE_FEEDBACK_POLICY_V3_MODE=dark` on every service that runs the Take
   pipeline (V4 row B1.1b).
+
+**N66 · The founder signs three held items (founder, chat, 8 October
+2026: "I sign off on it all!").**
+1. **The training corpus admin page's words are signed.** Every word on the
+   frontend's `/admin/corpus` page ("Hide", "Restore", "Nothing imported
+   yet." and the rest) is signed copy. Nothing may keep that page hidden
+   for want of signed words; it stays behind the coach panel switch
+   (`NEXT_PUBLIC_COACH_PANEL_V2`), which is on in production.
+2. **Practise becomes part of the service: the founder signs the Privacy
+   and Terms change in place of counsel (N55, WQ3a B).** Counsel's review
+   of the wording was not obtained; the founder's signature stands in for
+   it, and the record says so. No draft existed when this was signed, so
+   Claude writes it, shows the founder the final text in chat, and it is
+   published as the next policy version through the existing hand-run
+   publish path only after he has read it. Activating that version is
+   what asks every speaker to accept it again; until then nothing changes
+   in the app.
+3. **The retention cleaner's first real deletion run (W3-B2).** First the
+   dry run's counts, per table, are shown to the founder in chat; only
+   after his second word ("go") does `RETENTION_CLEANER_LIVE` become True,
+   in its own reviewed change, and the first live run's results are
+   confirmed back to him. Deletion cannot be undone, so nothing is deleted
+   before that second word.
