@@ -201,3 +201,24 @@ def test_the_signed_words():
     assert cs.WORDING["surer"]["question"] == "Is the new version surer?"
     assert {k: cs.WORDING["surer"][k] for k in ("yes", "no", "cant_tell")} == {"yes": "Yes", "no": "No", "cant_tell": "Can't tell"}
     assert cs.WORDING["pick"]["queue_line"] == cs.WORDING["surer"]["queue_line"] == "Also waiting · blind"
+
+
+def test_the_pair_payload_is_blind():
+    """Post-merge review of 0453: the rows are read whole (select *), and the
+    payload is built field by field, so a pair's slice, level, bar and the
+    quality it varies never reach the coach (BLIND COACH, AC-9)."""
+    class Db:
+        def list_v4_surer_sheets(self, rater):
+            return [{"id": "s1", "rater_id": rater, "rater_role": "coach",
+                     "take_session_id": "t", "block_id": "b",
+                     "said_text": "I think we grew.", "new_text": "We grew.",
+                     "varied_quality": "hedging", "version_rule": "surer-pair-v1-lexical",
+                     "slice": "above", "level": 0.71, "bar": 0.6,
+                     "bar_version": "reached-bar-v0-placeholder", "week": "w",
+                     "answer": None, "answered_at": None}]
+    status, body = cs.surer_queue(Db(), rater_id="c1")
+    assert status == 200
+    assert [set(item) for item in body["items"]] == [{"sheet_id", "said", "new", "n", "of"}]
+    text = json.dumps(body["items"])
+    for leak in ("above", "0.71", "0.6", "hedging", "slice", "level", "bar", "reached-bar"):
+        assert leak not in text, leak

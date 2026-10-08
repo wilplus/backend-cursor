@@ -830,6 +830,12 @@ if [ "$LANE" = "released" ]; then
   hard migrations/an_erasure_voids_the_released_copies.sql
 fi
 
+# 0457 (post-merge review of 0451, 0452, 0453): the V4 dark writes keep their
+# word. It replaces two functions of 0451 and 0452 and adds triggers on
+# 0453's tables, which this recipe does not apply (their suites apply them),
+# so it is applied the same way, by its own suite, after them:
+# tests/test_the_v4_dark_writes_keep_their_word_postgres.py.
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing
