@@ -190,6 +190,12 @@ def _turn_off(database: Any, owner_id: str, key: str, now: str,
             raise _refused(error) from error
         if not recorded:
             raise TrainingSwitchError("TRAINING_SWITCH_FAILED", 500)
+    # 3.5 E4: the coach sheets and blind block picks about this person's
+    # Takes are deleted now (best effort, never raises); the queued erasure
+    # below runs it again, so a fault here is retried.
+    from services.pair_consent import erase_withdrawn_sheets
+
+    erase_withdrawn_sheets(database, owner_id)
     # Always, even when already off: a retry must still reach any copy a
     # lost message left due. The worker's sweep is the backstop.
     from services.training_corpus import enqueue_corpus_purge
