@@ -20,6 +20,7 @@ Revisions written before 0421 carry no name and are not guessed.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -234,3 +235,146 @@ def with_earlier_take_details(database: Any, arc_id: str, user_id: str,
         except Exception:
             version["answer"] = None
     return history
+
+
+# ── Several Paragraphs at once (F5, founder 2026-10-08) ───────────────────
+
+#: The reads a Paragraph's history makes that other Paragraphs of the same
+#: document share. Each is made once per batch; everything else passes
+#: through untouched.
+_SHARED_READS = frozenset({
+    "get_ideal_text_document_core", "list_ideal_text_versions",
+    "list_slide_helper_words_log", "list_practice_adoptions",
+    "list_accepted_rewrite_revisions", "get_snippet_slide_corrections",
+    "get_snippets_by_session", "list_take_feedback_self_reports",
+})
+
+#: The most Paragraphs one request may name.
+MAX_BATCH_PARTS = 200
+
+
+def _key(name: str, args: tuple, kwargs: Mapping) -> tuple:
+    return (name, args, tuple(sorted(kwargs.items())))
+
+
+class _OnceTakes:
+    """``database.takes`` with ``get_arc_sessions`` read once."""
+
+    def __init__(self, takes: Any, memo: dict):
+        self._takes = takes
+        self._memo = memo
+
+    def get_arc_sessions(self, *args: Any, **kwargs: Any) -> Any:
+        key = _key("takes.get_arc_sessions", args, kwargs)
+        if key not in self._memo:
+            self._memo[key] = self._takes.get_arc_sessions(*args, **kwargs)
+        return deepcopy(self._memo[key])
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._takes, name)
+
+
+class BatchedHistoryReads:
+    """The database as one document's Paragraph histories read it, with every
+    shared read made once for the whole batch.
+
+    NOT A SECOND IMPLEMENTATION. Each Paragraph is still assembled by
+    `history_for_part` and `with_earlier_take_details`, exactly as the single
+    endpoint assembles it; only the reads underneath are shared. Every value
+    handed out is a copy, so one Paragraph's assembly can never change what
+    the next one reads, and each body is the single endpoint's body.
+    """
+
+    def __init__(self, database: Any, arc_id: str, user_id: str,
+                 arc_sessions: Any = None):
+        self._database = database
+        self._arc_id = arc_id
+        self._user_id = user_id
+        self._memo: dict = {}
+        self.takes = _OnceTakes(database.takes, self._memo)
+        if arc_sessions is not None:
+            self._memo[_key("takes.get_arc_sessions", (arc_id,), {})] = \
+                arc_sessions
+
+    def __getattr__(self, name: str) -> Any:
+        attr = getattr(self._database, name)
+        if name not in _SHARED_READS:
+            return attr
+
+        def once(*args: Any, **kwargs: Any) -> Any:
+            key = _key(name, args, kwargs)
+            if key not in self._memo:
+                self._memo[key] = attr(*args, **kwargs)
+            return deepcopy(self._memo[key])
+
+        return once
+
+    def core(self) -> Any:
+        """The published document core, as `history_for_part` reads it."""
+        return self.get_ideal_text_document_core(self._arc_id, self._user_id)
+
+    def _seed(self, name: str, args: tuple, value: Any) -> None:
+        self._memo[_key(name, args, {})] = value
+
+    def prefetch(self, part_ids: list) -> None:
+        """Read the per-Slide and per-Paragraph rows for every named
+        Paragraph in one read each. A batched read that fails seeds nothing,
+        and the per-Slide or per-Paragraph read then runs as it always has."""
+        from services.slide_helper_words import slide_of_part
+
+        core = self.core()
+        slide_by_part = {part_id: slide_of_part(core, part_id)
+                         for part_id in part_ids}
+        slides = sorted({s for s in slide_by_part.values() if s is not None})
+        arc, user = self._arc_id, self._user_id
+        if slides:
+            for name, batched in (
+                    ("list_slide_helper_words_log",
+                     "list_slide_helper_words_log_for_slides"),
+                    ("list_practice_adoptions",
+                     "list_practice_adoptions_for_slides")):
+                rows = getattr(self._database, batched)(arc, user, slides)
+                if isinstance(rows, Mapping):
+                    for slide in slides:
+                        if slide in rows:
+                            self._seed(name, (arc, user, slide), rows[slide])
+        resolved = [p for p, s in slide_by_part.items() if s is not None]
+        revisions = (self._database.list_accepted_rewrite_revisions_for_parts(
+            arc, user, resolved) if resolved else None)
+        if isinstance(revisions, Mapping):
+            for part_id in resolved:
+                rows = revisions.get(str(part_id).lower())
+                if rows is not None:
+                    self._seed("list_accepted_rewrite_revisions",
+                               (arc, user, part_id), rows)
+
+
+def requested_part_ids(raw: Any, core: Any) -> list:
+    """The Paragraphs a batch asks for: ``?part_ids=a,b,c`` in the order
+    given without repeats, else every Paragraph of the published core."""
+    if isinstance(raw, str) and raw.strip():
+        seen: list = []
+        for part_id in (p.strip() for p in raw.split(",")):
+            if part_id and part_id not in seen:
+                seen.append(part_id)
+        return seen[:MAX_BATCH_PARTS]
+    payload = core.get("payload") if isinstance(core, Mapping) else None
+    parts = payload.get("parts") if isinstance(payload, Mapping) else None
+    return [str(p["id"]) for p in parts or []
+            if isinstance(p, Mapping) and p.get("id")][:MAX_BATCH_PARTS]
+
+
+def once_per_snippet(resolve_url: Any) -> Any:
+    """``resolve_url`` asked once per snippet for the whole batch."""
+    resolved: dict = {}
+
+    def resolve(snippet: Any) -> Any:
+        key = str(snippet.get("id")) if isinstance(snippet, Mapping) \
+            and snippet.get("id") else None
+        if key is None:
+            return resolve_url(snippet)
+        if key not in resolved:
+            resolved[key] = resolve_url(snippet)
+        return resolved[key]
+
+    return resolve

@@ -2017,18 +2017,63 @@ def v2_explore_get_part_history(arc_id, part_id):
     owned, _sessions = _arc_owned_by_caller(arc_id)
     if not owned:
         return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-    history = history_for_part(db, arc_id, str(request.user_id),
-                               str(part_id))
+    from services.snippet_audio_url import resolve_snippet_audio_url
+    history = _part_history(
+        db, arc_id, str(request.user_id), str(part_id),
+        lambda snippet: resolve_snippet_audio_url(snippet, db))
     if history is None:
         return jsonify({"code": "NOT_FOUND", "error": "part not found"}), 404
+    response = jsonify(history)
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
+def _part_history(database, arc_id, user_id, part_id, resolve_url):
+    """One Paragraph's history body, or None when it has none. The ONE
+    assembly both the single endpoint and the batch use, so a batched body
+    is the single endpoint's body (F5)."""
+    history = history_for_part(database, arc_id, user_id, part_id)
+    if history is None:
+        return None
     from services.paragraph_history import with_earlier_take_details
-    from services.snippet_audio_url import resolve_snippet_audio_url
-    history = _ideal_optional_read(
+    return _ideal_optional_read(
         "earlier_take_details", history,
         lambda: with_earlier_take_details(
-            db, arc_id, str(request.user_id), history,
-            lambda snippet: resolve_snippet_audio_url(snippet, db)))
-    response = jsonify(history)
+            database, arc_id, user_id, history, resolve_url))
+
+
+@v2_bp.route("/explore/arc/<arc_id>/part-histories", methods=["GET"])
+@require_owner_or_guest
+def v2_explore_get_part_histories(arc_id):
+    """Several Paragraphs' histories in one request (F5, founder
+    2026-10-08). ``?part_ids=a,b,c`` names them; without it, every Paragraph
+    of the published document. 200 ``{"histories": {part_id: <the single
+    history endpoint's body>}}``; a Paragraph the single endpoint would
+    refuse or fail on is left out. Owner only, as the single endpoint."""
+    owned, sessions = _arc_owned_by_caller(arc_id)
+    if not owned:
+        return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+    from services.paragraph_history import (
+        BatchedHistoryReads, once_per_snippet, requested_part_ids,
+    )
+    from services.snippet_audio_url import resolve_snippet_audio_url
+    user_id = str(request.user_id)
+    reads = BatchedHistoryReads(db, arc_id, user_id, sessions)
+    part_ids = requested_part_ids(request.args.get("part_ids"), reads.core())
+    reads.prefetch(part_ids)
+    resolve = once_per_snippet(
+        lambda snippet: resolve_snippet_audio_url(snippet, db))
+    histories = {}
+    for part_id in part_ids:
+        try:
+            history = _part_history(reads, arc_id, user_id, part_id, resolve)
+        except Exception as e:
+            logger.warning("part history failed arc=%s part=%s: %s",
+                           arc_id, part_id, e, exc_info=True)
+            continue
+        if history is not None:
+            histories[part_id] = history
+    response = jsonify({"histories": histories})
     response.headers["Cache-Control"] = "private, no-store"
     return response
 
