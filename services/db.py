@@ -11889,6 +11889,65 @@ class DatabaseService:
         }).execute()
         return self._rpc_row(result.data)
 
+    # ── V4's blind coach sheets (migration 0453, B1.8, B1.9) ──────────────
+    def list_v4_picks(self, take_session_id: str) -> list[dict]:
+        res = (self.client.table("v4_picks")
+               .select("block_id,sureness,v4_snippet_id,v3_snippet_id,fallback")
+               .eq("take_session_id", str(take_session_id)).execute())
+        return list(res.data or [])
+
+    def list_v4_pick_sheets(self, rater_id: str) -> list[dict]:
+        res = (self.client.table("v4_moment_pick_sheets").select("*")
+               .eq("rater_id", str(rater_id)).order("created_at").execute())
+        return list(res.data or [])
+
+    def insert_v4_pick_sheet(self, row: dict) -> Optional[dict]:
+        res = self.client.table("v4_moment_pick_sheets").insert(row).execute()
+        return (res.data or [None])[0]
+
+    def get_v4_pick_sheet(self, sheet_id: str, rater_id: str) -> Optional[dict]:
+        res = (self.client.table("v4_moment_pick_sheets").select("*")
+               .eq("id", str(sheet_id)).eq("rater_id", str(rater_id)).limit(1).execute())
+        return (res.data or [None])[0]
+
+    def answer_v4_pick_sheet(self, sheet_id: str, rater_id: str,
+                             clip_id: Optional[str], none_needs_it: bool) -> Optional[dict]:
+        res = (self.client.table("v4_moment_pick_sheets")
+               .update({"answer_snippet_id": clip_id,
+                        "none_needs_it": True if none_needs_it else None,
+                        "answered_at": datetime.now(timezone.utc).isoformat()})
+               .eq("id", str(sheet_id)).eq("rater_id", str(rater_id))
+               .is_("answered_at", "null").execute())
+        return (res.data or [None])[0]
+
+    def list_v4_surer_sheets(self, rater_id: str) -> list[dict]:
+        res = (self.client.table("v4_surer_sheets").select("*")
+               .eq("rater_id", str(rater_id)).order("created_at").execute())
+        return list(res.data or [])
+
+    def list_v4_surer_answers(self, limit: int = 20000) -> list[dict]:
+        res = (self.client.table("v4_surer_sheets").select("varied_quality")
+               .not_.is_("answered_at", "null").limit(int(limit)).execute())
+        return list(res.data or [])
+
+    def insert_v4_surer_sheet(self, row: dict) -> Optional[dict]:
+        res = self.client.table("v4_surer_sheets").insert(row).execute()
+        return (res.data or [None])[0]
+
+    def get_v4_surer_sheet(self, sheet_id: str, rater_id: str) -> Optional[dict]:
+        res = (self.client.table("v4_surer_sheets").select("*")
+               .eq("id", str(sheet_id)).eq("rater_id", str(rater_id)).limit(1).execute())
+        return (res.data or [None])[0]
+
+    def answer_v4_surer_sheet(self, sheet_id: str, rater_id: str, answer: str,
+                              chosen: Optional[str], rejected: Optional[str]) -> Optional[dict]:
+        res = (self.client.table("v4_surer_sheets")
+               .update({"answer": answer, "chosen_text": chosen, "rejected_text": rejected,
+                        "answered_at": datetime.now(timezone.utc).isoformat()})
+               .eq("id", str(sheet_id)).eq("rater_id", str(rater_id))
+               .is_("answered_at", "null").execute())
+        return (res.data or [None])[0]
+
     def get_confidence_labels_by_snippet_ids(self, snippet_ids: list, *,
                                              strict: bool = False) -> dict:
         """{snippet_id: [label rows]} for the given snippets. {} on anything

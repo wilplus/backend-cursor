@@ -790,6 +790,16 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "take_session_id", "take", "delete", "derived_feedback", 59),
     PurgeDependency("v4_pick_takes", "v4_pick_takes",
                     "take_session_id", "take", "delete", "derived_feedback", 59),
+    # V4 B1.8/B1.9 (0453): a blind sheet goes with the Take it asks about
+    # and with the rater who answered it (their own answers).
+    PurgeDependency("v4_moment_pick_sheets", "v4_moment_pick_sheets",
+                    "take_session_id", "take", "delete", "derived_feedback", 58),
+    PurgeDependency("v4_moment_pick_sheets_by_rater", "v4_moment_pick_sheets",
+                    "rater_id", "user", "delete", "derived_feedback", 58),
+    PurgeDependency("v4_surer_sheets", "v4_surer_sheets",
+                    "take_session_id", "take", "delete", "derived_feedback", 58),
+    PurgeDependency("v4_surer_sheets_by_rater", "v4_surer_sheets",
+                    "rater_id", "user", "delete", "derived_feedback", 58),
     PurgeDependency("v3_detector_reconciliation",
                     "take_feedback_detector_reconciliation",
                     "take_session_id", "take", "external_review",
