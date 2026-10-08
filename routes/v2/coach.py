@@ -1877,19 +1877,47 @@ def v2_coach_moment_read(session_id, snippet_id):
     error, owner_sid = _moment_gate(session_id, snippet_id)
     if error:
         return error
-    from services.coach_moment_read import moment_read
-    session = db.v2_get_session_by_id(owner_sid) or {}
     try:
-        payload = moment_read(
-            db, take_session_id=owner_sid, snippet_id=snippet_id,
-            rater_id=str(getattr(request, "user_id", "")),
-            owner_user_id=session.get("user_id"))
+        payload = _moment_read_payload(owner_sid, snippet_id)
     except Exception as e:
         logger.error("coach moment read failed sid=%s snip=%s: %s",
                      session_id, snippet_id, e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to read the moment"}), 500
     return jsonify(payload), 200
+
+
+def _moment_read_payload(owner_sid, snippet_id):
+    """The Read screen's body for one moment, for THIS coach. Only ever
+    called behind `_moment_gate`, which is the blind gate."""
+    from services.coach_moment_read import moment_read
+    session = db.v2_get_session_by_id(owner_sid) or {}
+    return moment_read(
+        db, take_session_id=owner_sid, snippet_id=snippet_id,
+        rater_id=str(getattr(request, "user_id", "")),
+        owner_user_id=session.get("user_id"))
+
+
+def _moment_read_after_rating(session_id, snippet_id) -> dict:
+    """``{"moment_read": <the moment GET's body>}`` once the rating is saved,
+    else ``{}`` (C2, founder 2026-10-08: "What happened" arrives with the
+    saved answer instead of after a second round trip).
+
+    THE SAME GATE AND THE SAME READ as `v2_coach_moment_read`, called after
+    the confidence-label PUT has durably written this coach's rating, inside
+    that request — so nothing about the moment reaches the coach before
+    their answer (BLIND COACH), and an answer the gate keeps shut (Audio
+    unclear) gets no read, exactly as the GET would refuse it. Any failure
+    omits the key; the rating is saved either way."""
+    try:
+        error, owner_sid = _moment_gate(str(session_id), str(snippet_id))
+        if error:
+            return {}
+        return {"moment_read": _moment_read_payload(owner_sid, str(snippet_id))}
+    except Exception as e:
+        logger.warning("moment read after rating failed sid=%s snip=%s: %s",
+                       session_id, snippet_id, e, exc_info=True)
+        return {}
 
 
 @v2_bp.route(
@@ -3356,8 +3384,7 @@ def v2_coach_put_confidence_label(snippet_id):
     try:
         snip = db.get_snippet_by_id(snippet_id)
         if not snip:
-            return jsonify({"code": "NOT_FOUND",
-                            "error": "snippet not found"}), 404
+            return jsonify({"code": "NOT_FOUND", "error": "snippet not found"}), 404
         session_id = snip.get("session_id")
         sess = db.v2_get_session_by_id(str(session_id)) if session_id else None
         if not sess:
@@ -3470,6 +3497,7 @@ def v2_coach_put_confidence_label(snippet_id):
             ),
             "machine_value": machine_proposal(snip),
             "mlc2": canonical_judgment,
+            **_moment_read_after_rating(session_id, snippet_id),  # C2, after the write
         }), 200
     except Exception as e:
         logger.warning("confidence rating failed snip=%s: %s", snippet_id, e)

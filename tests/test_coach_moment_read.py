@@ -79,7 +79,12 @@ class ReadTests(unittest.TestCase):
         start = source.index("def v2_coach_moment_read")
         body = source[start:source.index("@v2_bp.route", start)]
         self.assertLess(body.index("_moment_gate(session_id, snippet_id)"),
-                        body.index("payload = moment_read("))
+                        body.index("payload = _moment_read_payload("))
+        # The read the label PUT returns passes the same gate first (C2).
+        start = source.index("def _moment_read_after_rating")
+        helper = source[start:source.index("\n\n\n", start)]
+        self.assertLess(helper.index("_moment_gate("),
+                        helper.index("_moment_read_payload("))
 
 
 if __name__ == "__main__":
