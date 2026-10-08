@@ -167,7 +167,10 @@ done.
 3. **The regurgitation test is enough as it is:** it checks only the text of people who withdrew. The memorisation rate does not gate door 4.
 4. **D4 confirmed:** the corpus import rests on Art 6(1)(f) for the people speaking on imported audio.
 
-Questions 7 (the six-year record) and 1 (document 02's condition) were not part of this answer and stay open. The original list, as signed:
+5. **Question 7 confirmed:** the consent record is kept six years after withdrawal or erasure, as drafted.
+6. **Question 1 confirmed:** document 02's condition holds, including for the learned detector (v1.2).
+
+Nothing from this list is open any more. The original list, as signed:
 
 
 - Question 9 of `21-counsel-questions-2026-10.md`: Privacy says Art 9(2)(a)
