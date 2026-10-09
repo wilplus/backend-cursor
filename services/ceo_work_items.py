@@ -456,10 +456,32 @@ def list_tasks(project_key: Any, view: Any = "active", feature_id: Any = None) -
         "done_at" if status == "done" else "archived_at" if status == "archived" else "order_key",
         desc=status != "active",
     ).execute()
+    rows = _rows(result.data)
+    sources = _source_bug_texts(project, [row.get("bug_id") for row in rows])
     return [
-        {**row, "attachments": normalize_attachments(row.get("attachments"))}
-        for row in _rows(result.data)
+        {
+            **row,
+            "attachments": normalize_attachments(row.get("attachments")),
+            "source_text": sources.get(row.get("bug_id")),
+        }
+        for row in rows
     ]
+
+
+def _source_bug_texts(project: str, bug_ids: list[Any]) -> dict[Any, str]:
+    """The words of the bug each task was drafted from, as it was typed."""
+    ids = sorted({bug_id for bug_id in bug_ids if bug_id})
+    if not ids:
+        return {}
+    bugs = _rows(
+        db.client.table("ceo_bugs")
+        .select("id,text")
+        .eq("project_key", project)
+        .in_("id", ids)
+        .execute()
+        .data
+    )
+    return {bug["id"]: str(bug.get("text") or "") for bug in bugs if bug.get("id")}
 
 
 def _next_order_key(project: str) -> float:
