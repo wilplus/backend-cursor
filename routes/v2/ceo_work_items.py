@@ -181,6 +181,16 @@ def ceo_task_archive(task_id: str):
         return _failure(exc, "task archive")
 
 
+@ceo_work_items_bp.route("/v2/admin/ceo/tasks/<task_id>/start", methods=["POST"])
+@require_admin
+def ceo_task_start(task_id: str):
+    try:
+        work.set_task_status(request.args.get("project"), task_id, "in_progress")
+        return _no_store({"ok": True})
+    except Exception as exc:
+        return _failure(exc, "task start")
+
+
 @ceo_work_items_bp.route("/v2/admin/ceo/tasks/<task_id>/restore", methods=["POST"])
 @require_admin
 def ceo_task_restore(task_id: str):

@@ -28,6 +28,10 @@ TASK_COLS = (
     "priority,order_key,status,generation_status,manually_edited,created_at,"
     "updated_at,done_at,archived_at"
 )
+# The lanes of the CEO Tasks screen. Active and In progress keep the order
+# the founder drags (order_key); Done and Archive list newest first.
+TASK_LANES = ("active", "in_progress", "done", "archived")
+ORDERED_LANES = ("active", "in_progress")
 MAX_TEXT_CHARS = 12_000
 MAX_TASK_CHARS = 20_000
 MAX_ATTACHMENTS = 4
@@ -442,7 +446,7 @@ def delete_bug(project_key: Any, bug_id: str) -> bool:
 def list_tasks(project_key: Any, view: Any = "active", feature_id: Any = None) -> list[dict]:
     project = validate_project(project_key)
     requested = str(view or "active").strip().lower()
-    status = requested if requested in ("active", "done", "archived") else "active"
+    status = requested if requested in TASK_LANES else "active"
     query = (
         db.client.table("ceo_tasks")
         .select(TASK_COLS)
@@ -454,7 +458,7 @@ def list_tasks(project_key: Any, view: Any = "active", feature_id: Any = None) -
         query = query.eq("feature_id", match["id"] if match else "")
     result = query.order(
         "done_at" if status == "done" else "archived_at" if status == "archived" else "order_key",
-        desc=status != "active",
+        desc=status not in ORDERED_LANES,
     ).execute()
     rows = _rows(result.data)
     sources = _source_bug_texts(project, [row.get("bug_id") for row in rows])
@@ -627,13 +631,16 @@ def plan_reorder(tasks: list[dict], task_id: str, after_id: str | None) -> float
 def reorder_task(project_key: Any, task_id: str, after_id: Any) -> None:
     project = validate_project(project_key)
     clean_after = str(after_id or "").strip() or None
-    tasks = list_tasks(project, "active")
-    if not any(str(row.get("id")) == task_id for row in tasks):
+    for lane in ORDERED_LANES:
+        tasks = list_tasks(project, lane)
+        if any(str(row.get("id")) == task_id for row in tasks):
+            break
+    else:
         raise CeoWorkItemNotFound("task was not found")
     new_key = plan_reorder(tasks, task_id, clean_after)
     db.client.table("ceo_tasks").update({
         "order_key": new_key, "updated_at": _now(),
-    }).eq("id", task_id).eq("project_key", project).eq("status", "active").execute()
+    }).eq("id", task_id).eq("project_key", project).eq("status", lane).execute()
 
 
 def complete_task(admin_user_id: str, project_key: Any, task_id: str) -> bool:
@@ -679,14 +686,14 @@ def complete_task(admin_user_id: str, project_key: Any, task_id: str) -> bool:
 
 def set_task_status(project_key: Any, task_id: str, status: str) -> None:
     project = validate_project(project_key)
-    if status not in ("active", "archived"):
+    if status not in ("active", "in_progress", "archived"):
         raise CeoWorkItemError("unsupported task status")
     payload: dict[str, Any] = {
         "status": status,
         "updated_at": _now(),
         "archived_at": _now() if status == "archived" else None,
     }
-    if status == "active":
+    if status in ORDERED_LANES:
         payload.update({
             "done_at": None,
             "order_key": _next_order_key(project),
