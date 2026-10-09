@@ -156,7 +156,8 @@ class TheGateAsShipped(unittest.TestCase):
         self.assertIs(Config.MLC2_TRAINING_ENABLED, True)
         self.assertIs(Config.MLC2_PROMOTION_ENABLED, True)
         self.assertEqual(Config.PROMOTION_SURFACES, frozenset(
-            {"exercise_script", "praise_line", "clearer_version"}))
+            {"exercise_script", "praise_line", "clearer_version",
+             "coach_moment_line", "coach_take_word"}))
 
     def test_an_open_door_4_serves_only_the_named_surfaces(self):
         """The global constant is not the decision; the named surfaces are.
