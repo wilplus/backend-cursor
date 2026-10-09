@@ -187,7 +187,7 @@ def ceo_task_start(task_id: str):
     try:
         work.set_task_status(request.args.get("project"), task_id, "in_progress")
         return _no_store({"ok": True})
-    except Exception as exc:
+    except (work.CeoWorkItemError, work.CeoWorkItemNotFound) as exc:
         return _failure(exc, "task start")
 
 
