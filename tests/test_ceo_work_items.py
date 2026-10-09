@@ -217,3 +217,22 @@ def test_phase_two_migration_is_admin_service_role_only_and_migrates_legacy():
     assert "ON DELETE CASCADE" in sql
     assert "FROM public.dev_bugs" in sql
     assert "FROM public.dev_tasks" in sql
+
+
+def test_task_list_carries_the_original_bug_text():
+    client = FakeSupabaseClient({
+        "ceo_tasks": [
+            {"id": "task-1", "project_key": "product", "bug_id": "bug-1",
+             "attachments": []},
+            {"id": "task-2", "project_key": "product", "bug_id": None,
+             "attachments": []},
+        ],
+        "ceo_bugs": [{"id": "bug-1", "text": "the rings should be updated"}],
+    })
+    with swap_attr(work.db, "client", client):
+        tasks = work.list_tasks("product")
+
+    assert [task["source_text"] for task in tasks] == [
+        "the rings should be updated",
+        None,
+    ]
