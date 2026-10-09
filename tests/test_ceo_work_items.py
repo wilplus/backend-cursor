@@ -236,3 +236,47 @@ def test_task_list_carries_the_original_bug_text():
         "the rings should be updated",
         None,
     ]
+
+
+def test_a_task_may_be_started_and_lives_in_its_own_lane():
+    client = FakeSupabaseClient({"ceo_tasks": [{"id": "task-1"}]})
+    with swap_attr(work.db, "client", client):
+        work.set_task_status("product", "task-1", "in_progress")
+    payload = client.tables["ceo_tasks"].payload
+    assert payload["status"] == "in_progress"
+    assert payload["done_at"] is None
+    assert payload["archived_at"] is None
+    assert "order_key" in payload
+    assert work.TASK_LANES == ("active", "in_progress", "done", "archived")
+    with pytest.raises(work.CeoWorkItemError, match="unsupported"):
+        work.set_task_status("product", "task-1", "done")
+
+
+def test_reorder_stays_inside_the_in_progress_lane(monkeypatch):
+    lanes = {
+        "active": [{"id": "a", "order_key": 1}],
+        "in_progress": [
+            {"id": "p", "order_key": 10},
+            {"id": "q", "order_key": 20},
+        ],
+    }
+    monkeypatch.setattr(work, "list_tasks", lambda project, lane: lanes[lane])
+    client = FakeSupabaseClient({"ceo_tasks": []})
+    with swap_attr(work.db, "client", client):
+        work.reorder_task("product", "p", "q")
+    assert client.tables["ceo_tasks"].payload["order_key"] == 21
+    with pytest.raises(work.CeoWorkItemNotFound):
+        work.reorder_task("product", "missing", None)
+
+
+def test_the_in_progress_migration_is_idempotent_and_completes_both_lanes():
+    root = Path(__file__).resolve().parents[1]
+    sql = (root / "migrations" / "a_task_may_be_in_progress.sql").read_text()
+    manifest = (root / "migrations" / "manifest.txt").read_text()
+    assert "0460\ta_task_may_be_in_progress.sql" in manifest
+    assert "DROP CONSTRAINT IF EXISTS ceo_tasks_status_check" in sql
+    assert "('active', 'in_progress', 'done', 'archived')" in sql
+    assert "AND status IN ('active', 'in_progress')" in sql
+    assert "CREATE OR REPLACE FUNCTION public.ceo_complete_task(" in sql
+    assert "TO service_role;" in sql
+    assert "DROP TABLE" not in sql and "DELETE FROM" not in sql
