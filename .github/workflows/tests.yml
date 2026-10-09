@@ -221,21 +221,53 @@ jobs:
             echo "present=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Set up Python 3.12
+      # THE SECOND GATE (founder 2026-10-09, after the OpenAI balance ran
+      # out): the three probes call OpenAI, so they run only when a change
+      # can move what the AI says. Every push and PR used to pay for them;
+      # about thirty merges in one day emptied the account. A PR runs them
+      # when its diff touches a path below; a push to main never does (its
+      # PR already ran them); the manual trigger always does. Anything
+      # this step cannot read (a failed fetch) counts as touched.
+      - name: Did this change touch the AI?
+        id: ai
         if: steps.key.outputs.present == 'true'
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          AI_PATHS='^(services/prompts/|services/master_doc_rag\.py$|services/will_voice\.py$|services/llm\.py$|services/llm_config\.py$|services/openai_service\.py$|services/utils\.py$|tests/evals/|requirements\.txt$|\.github/workflows/tests\.yml$)'
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "Manual run: every probe runs."
+            echo "touched=true" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT" != "pull_request" ]; then
+            echo "Push to main: its PR already ran the probes."
+            echo "touched=false" >> "$GITHUB_OUTPUT"
+          elif ! git fetch --depth=1 origin "$BASE_SHA" 2>/dev/null; then
+            echo "Could not fetch the base: the probes run."
+            echo "touched=true" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only "$BASE_SHA" HEAD | grep -E "$AI_PATHS"; then
+            echo "The files above can change what the AI says: the probes run."
+            echo "touched=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No AI file changed: the probes are skipped."
+            echo "touched=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Python 3.12
+        if: steps.ai.outputs.touched == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12.1"
           cache: pip
 
       - name: Install dependencies
-        if: steps.key.outputs.present == 'true'
+        if: steps.ai.outputs.touched == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: Master-doc probe
-        if: steps.key.outputs.present == 'true'
+        if: steps.ai.outputs.touched == 'true'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           # Placeholders so import-time config guards don't crash; the
@@ -257,7 +289,7 @@ jobs:
         run: python tests/evals/master_doc_probe.py
 
       - name: Golden evals for changed prompts
-        if: steps.key.outputs.present == 'true'
+        if: steps.ai.outputs.touched == 'true'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           # Same placeholder env as the probe above (see there for why
@@ -292,7 +324,7 @@ jobs:
       # separate job had, and running it last means its failure can never
       # shadow a gate that does block.
       - name: Router parity probe (non-blocking)
-        if: steps.key.outputs.present == 'true'
+        if: steps.ai.outputs.touched == 'true'
         continue-on-error: true
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
