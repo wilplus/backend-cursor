@@ -128,6 +128,17 @@ def presentation_deck_fingerprint(context: Any) -> tuple:
         return (None, ())
     ref = context.get("presentation_ref")
     ref = ref.strip() if isinstance(ref, str) and ref.strip() else None
+    # THE PDF, NOT ITS ADDRESS (founder 2026-10-10: Take 2 refused on the
+    # same slides). The setup read hands the app a freshly signed URL for
+    # the deck on every read (refreshed_media_url), and the app records the
+    # next Take with it, so the raw string never equals what Take 1 stored.
+    # Our refs compare by their object key: the same PDF in any of its four
+    # written shapes is the same deck, a different PDF is still refused. A
+    # foreign URL has no key and compares as written.
+    if ref is not None:
+        from services.coach_video_storage import media_key_from_ref
+
+        ref = media_key_from_ref(ref) or ref
     slides = context.get("slides")
     rows = []
     if isinstance(slides, list):
