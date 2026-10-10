@@ -203,13 +203,26 @@ def put_lab_audio_bytes(key: str, body: bytes, content_type: str) -> str:
         bucket = lab_audio_bucket()
         _client().put_object(Bucket=bucket, Key=key, Body=body,
                              ContentType=content_type)
+        _schedule_playback_copy(bucket, key, body)
         return bucket
     # Pre-cutover (or no R2): unchanged behaviour, unchanged destination.
     from services.coach_video_storage import put_coach_object_bytes
 
     bucket = target_bucket()
     put_coach_object_bytes(bucket, key, body, content_type)
+    _schedule_playback_copy(bucket, key, body)
     return bucket
+
+
+def _schedule_playback_copy(bucket: str, key: str, body: bytes) -> None:
+    """The recording's Safari-safe playback copy (services/playback_copy): a
+    short practise clip now, a Take in the background. Never fails the
+    upload."""
+    try:
+        from services.playback_copy import copy_on_upload
+        copy_on_upload(bucket, key, body)
+    except Exception:
+        pass
 
 
 def _candidate_buckets(bucket_hint: Optional[str]) -> list:
@@ -353,6 +366,10 @@ def delete_verified_lab_audio_object(
         )
         if hashlib.sha256(before).hexdigest() != expected_sha256:
             raise ValueError("object checksum does not match purge inventory")
+        # The playback copy is the same voice: it goes first, and a failure
+        # here stops the purge before the original is touched.
+        from services.playback_copy import delete_playback_copy
+        delete_playback_copy(client, bucket, key)
         client.delete_object(Bucket=bucket, Key=key)
         return verify_lab_audio_object_absent(
             key, bucket=bucket, storage_provider=provider,
