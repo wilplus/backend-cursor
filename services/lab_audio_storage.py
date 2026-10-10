@@ -218,11 +218,9 @@ def _schedule_playback_copy(bucket: str, key: str, body: bytes) -> None:
     """The recording's Safari-safe playback copy (services/playback_copy): a
     short practise clip now, a Take in the background. Never fails the
     upload."""
-    try:
-        from services.playback_copy import copy_on_upload
-        copy_on_upload(bucket, key, body)
-    except Exception:
-        pass
+    from services.playback_copy import copy_on_upload
+
+    copy_on_upload(bucket, key, body)
 
 
 def _candidate_buckets(bucket_hint: Optional[str]) -> list:

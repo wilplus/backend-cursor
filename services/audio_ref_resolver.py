@@ -58,11 +58,9 @@ def _playable_key(bucket: str, key: str) -> str:
     """The recording's Safari-safe playback copy once it exists, else the
     key itself (services/playback_copy). Players only: this module hands out
     URLs for <audio src>; processing reads the stored original elsewhere."""
-    try:
-        from services.playback_copy import playable_key
-        return playable_key(bucket, key)
-    except Exception:
-        return key
+    from services.playback_copy import playable_key
+
+    return playable_key(bucket, key)
 
 
 def _sign(bucket: str, key: str, expires_in: int):

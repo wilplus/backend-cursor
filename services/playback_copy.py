@@ -73,7 +73,7 @@ def _enabled() -> bool:
         from config import Config
 
         return bool(getattr(Config, "PLAYBACK_COPY_ENABLED", False))
-    except Exception:
+    except ImportError:
         return False
 
 
@@ -103,8 +103,11 @@ def _exists(client: Any, bucket: str, key: str) -> bool:
         return True
     except Exception as e:
         code = str(getattr(e, "response", {}).get("Error", {}).get("Code", ""))
-        if code not in ("404", "NoSuchKey", "NotFound"):
-            logger.warning("playback copy: head failed %s/%s: %s", bucket, key, e)
+        if code in ("404", "NoSuchKey", "NotFound"):
+            logger.debug("playback copy: no %s/%s yet", bucket, key, exc_info=True)
+        else:
+            logger.warning("playback copy: head failed %s/%s: %s", bucket, key,
+                           e, exc_info=True)
         return False
 
 
@@ -136,7 +139,8 @@ def playable_key(bucket: str, key: str) -> str:
         schedule_playback_copy(bucket, key)
         return key
     except Exception as e:
-        logger.warning("playback copy: lookup failed %s/%s: %s", bucket, key, e)
+        logger.warning("playback copy: lookup failed %s/%s: %s", bucket, key, e,
+                       exc_info=True)
         return key
 
 
@@ -158,7 +162,7 @@ def schedule_playback_copy(bucket: str, key: str) -> None:
         pool.submit(_make_guarded, bucket, key)
     except Exception as e:
         logger.warning("playback copy: could not schedule %s/%s: %s",
-                       bucket, key, e)
+                       bucket, key, e, exc_info=True)
 
 
 def _make_guarded(bucket: str, key: str) -> None:
