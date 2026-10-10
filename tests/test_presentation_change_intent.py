@@ -1,4 +1,5 @@
 import unittest
+from unittest import mock
 
 from services.presentation_change_intent import (
     deck_matches_recorded_project,
@@ -72,6 +73,46 @@ class PresentationChangeIntentTests(unittest.TestCase):
         self.assertTrue(deck_matches_recorded_project(
             [{"take_index": 1, "intake_context": context}], dict(context)
         ))
+
+    @mock.patch("services.coach_video_storage.r2_bucket_name", return_value="willab-media")
+    def test_a_freshly_signed_url_of_the_same_pdf_is_the_same_deck(self, _bucket):
+        # Founder 2026-10-10: Take 2 refused on unchanged slides. The setup
+        # read hands the app a newly signed URL every time; the deck is the
+        # object behind it, not the address.
+        slides = [{"title": "One", "body": "Body"}]
+        prior = [{"take_index": 1, "intake_context": {
+            "presentation_ref": "s3://willab-media/user-content/u1/deck.pdf",
+            "slides": slides,
+        }}]
+        incoming = {
+            "presentation_ref": (
+                "https://acct.r2.cloudflarestorage.com/willab-media/"
+                "user-content/u1/deck.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256"
+                "&X-Amz-Signature=abc123"
+            ),
+            "slides": slides,
+        }
+        self.assertTrue(deck_matches_recorded_project(prior, incoming))
+        resigned = dict(incoming, presentation_ref=incoming[
+            "presentation_ref"].replace("abc123", "def456"))
+        self.assertTrue(deck_matches_recorded_project(
+            [{"take_index": 1, "intake_context": incoming}], resigned))
+
+    @mock.patch("services.coach_video_storage.r2_bucket_name", return_value="willab-media")
+    def test_a_signed_url_of_a_different_pdf_is_still_refused(self, _bucket):
+        slides = [{"title": "One", "body": "Body"}]
+        prior = [{"take_index": 1, "intake_context": {
+            "presentation_ref": "s3://willab-media/user-content/u1/deck.pdf",
+            "slides": slides,
+        }}]
+        incoming = {
+            "presentation_ref": (
+                "https://acct.r2.cloudflarestorage.com/willab-media/"
+                "user-content/u1/other.pdf?X-Amz-Signature=abc123"
+            ),
+            "slides": slides,
+        }
+        self.assertFalse(deck_matches_recorded_project(prior, incoming))
 
 
 if __name__ == "__main__":
