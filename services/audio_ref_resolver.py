@@ -54,6 +54,15 @@ def _public_base_buckets() -> list:
         return []
 
 
+def _playable_key(bucket: str, key: str) -> str:
+    """The recording's Safari-safe playback copy once it exists, else the
+    key itself (services/playback_copy). Players only: this module hands out
+    URLs for <audio src>; processing reads the stored original elsewhere."""
+    from services.playback_copy import playable_key
+
+    return playable_key(bucket, key)
+
+
 def _sign(bucket: str, key: str, expires_in: int):
     try:
         from services.coach_video_storage import presigned_get_coach_object
@@ -102,7 +111,8 @@ def resolve_playable_ref(ref: Any, *, expires_in: int = _DEFAULT_EXPIRES,
         for base, base_bucket in _public_base_buckets():
             if ref.startswith(base + "/"):
                 key = ref[len(base) + 1:].split("?", 1)[0]
-                signed = _sign(base_bucket, key, expires_in)
+                signed = _sign(base_bucket, _playable_key(base_bucket, key),
+                               expires_in)
                 if signed:
                     return signed
                 return None if _is_user_content(key) else ref
@@ -127,8 +137,8 @@ def resolve_playable_ref(ref: Any, *, expires_in: int = _DEFAULT_EXPIRES,
         if key.startswith(f"{bucket}/"):
             key = key[len(bucket) + 1:]
     try:
-        signed = presigned_get_coach_object(use_bucket, key,
-                                            expires_in=expires_in)
+        signed = presigned_get_coach_object(
+            use_bucket, _playable_key(use_bucket, key), expires_in=expires_in)
     except Exception as e:
         logger.warning("resolve_playable_ref: could not sign %s: %s",
                        ref, e, exc_info=True)

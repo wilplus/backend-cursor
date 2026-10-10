@@ -100,8 +100,12 @@ def _default_absent(place: Place) -> bool:
 def _default_delete(place: Place) -> None:
     if place.provider == "r2":
         from services.lab_audio_storage import _client
+        from services.playback_copy import delete_playback_copy
 
-        _client().delete_object(Bucket=place.bucket, Key=place.key)
+        client = _client()
+        # The recording's playback copy first; a failure stops the deletion.
+        delete_playback_copy(client, place.bucket, place.key)
+        client.delete_object(Bucket=place.bucket, Key=place.key)
         return
     from services.db import db
 

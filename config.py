@@ -1106,6 +1106,12 @@ class Config:
     # set False here to turn it off.
     WEBM_REMUX_ON_UPLOAD = True
     WEBM_REMUX_TIMEOUT_SEC = 8
+    # Safari (iPhone and Mac) does not play the WebM/Opus recordings reliably
+    # (founder 2026-10-10: Pause shown, nothing heard). Beside each spoken
+    # recording an AAC/MP4 playback copy is kept, made in the background
+    # after upload or on the first play, and players are handed it once it
+    # exists; the original stays the record (services/playback_copy.py).
+    PLAYBACK_COPY_ENABLED = True
     # Cap extracted audio length for Whisper (API max ~25MB); first N seconds only if longer.
     REFERENCE_VIDEO_WHISPER_MAX_AUDIO_SECONDS = int(os.getenv("REFERENCE_VIDEO_WHISPER_MAX_AUDIO_SECONDS", "3600"))
 
