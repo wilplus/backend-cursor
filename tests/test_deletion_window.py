@@ -540,7 +540,9 @@ class SpeakerRouteTests(unittest.TestCase):
     def test_an_account_deletion_takes_the_window_and_a_termination_does_not(self):
         S = pa.ProcessingAuthorizationService
         with mock.patch.object(S, "request_account_deletion",
-                               return_value=ad.deletion_view(_account_row())) as window, \
+                               # The route reads the real clock: a window still open now.
+                               return_value=ad.deletion_view(_account_row(
+                                   completes_after=_iso(datetime.now(timezone.utc) + timedelta(days=6))))) as window, \
                 mock.patch.object(S, "request_purge",
                                   return_value={"purge_request_id": PURGE}) as purge:
             body, status = self._call(pa_routes.v2_processing_terminate, "POST", {

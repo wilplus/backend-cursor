@@ -336,7 +336,8 @@ class ContractTests(unittest.TestCase):
         self.assertIn("follow-up matrix", contract)
         for kind in ("error", "praise", "rewrite", "ambiguity"):
             self.assertIn(kind, contract)
-        rules = (ROOT / "CLAUDE.md").read_text()
+        # The full repo rules moved to docs/history on 2026-10-11 (CLAUDE.md is one page).
+        rules = (ROOT / "docs/history/CLAUDE-2026-10-11.md").read_text()
         self.assertNotIn("one exercise (on the weakest item", rules)
         self.assertIn("an exercise on any bookmark", rules)
 
