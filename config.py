@@ -405,17 +405,18 @@ class Config:
     # against a copy of the user table. Unset = today's behaviour.
     EMAIL_REDIRECT_TO = (os.getenv("EMAIL_REDIRECT_TO") or "").strip()
 
-    # WhatsApp "the feedback from your coach is in" (Twilio). Off unless
-    # WHATSAPP_NOTIFICATIONS=true; numbers are still saved while it is off.
-    # Business-initiated WhatsApp messages need a Meta-approved template:
-    # TWILIO_WHATSAPP_CONTENT_SID names it (without it the plain body is
-    # sent, which only the Twilio sandbox delivers). WHATSAPP_REDIRECT_TO is
-    # EMAIL_REDIRECT_TO's twin for non-production.
+    # WhatsApp "the feedback from your coach is in", through Meta's WhatsApp
+    # Cloud API. Off unless WHATSAPP_NOTIFICATIONS=true; numbers are still
+    # saved while it is off. A message the business starts needs a template
+    # Meta approved: WHATSAPP_TEMPLATE_NAME names it (without it the plain
+    # text is sent, which WhatsApp only delivers within 24 hours of the
+    # person's last message). WHATSAPP_REDIRECT_TO is EMAIL_REDIRECT_TO's
+    # twin for non-production.
     WHATSAPP_NOTIFICATIONS = os.getenv("WHATSAPP_NOTIFICATIONS", "false").lower() == "true"
-    TWILIO_ACCOUNT_SID = (os.getenv("TWILIO_ACCOUNT_SID") or "").strip()
-    TWILIO_AUTH_TOKEN = _secret("TWILIO_AUTH_TOKEN") or ""
-    TWILIO_WHATSAPP_FROM = (os.getenv("TWILIO_WHATSAPP_FROM") or "").strip()
-    TWILIO_WHATSAPP_CONTENT_SID = (os.getenv("TWILIO_WHATSAPP_CONTENT_SID") or "").strip()
+    WHATSAPP_ACCESS_TOKEN = _secret("WHATSAPP_ACCESS_TOKEN") or ""
+    WHATSAPP_PHONE_NUMBER_ID = (os.getenv("WHATSAPP_PHONE_NUMBER_ID") or "").strip()
+    WHATSAPP_TEMPLATE_NAME = (os.getenv("WHATSAPP_TEMPLATE_NAME") or "").strip()
+    WHATSAPP_TEMPLATE_LANGUAGE = (os.getenv("WHATSAPP_TEMPLATE_LANGUAGE") or "en").strip()
     WHATSAPP_REDIRECT_TO = (os.getenv("WHATSAPP_REDIRECT_TO") or "").strip()
 
     # Current published Terms / Privacy Policy version. Must match the

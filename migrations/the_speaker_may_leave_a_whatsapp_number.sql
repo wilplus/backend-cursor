@@ -16,8 +16,8 @@
 --   already deletes (services/data_purge_registry.py), so a deleted
 --   account takes its number with it. No new table, no grant change.
 --
--- DEPLOY. Nothing sends until WHATSAPP_NOTIFICATIONS=true and the Twilio
--- variables are set on the Railway services (see services/whatsapp_notify.py).
+-- DEPLOY. Nothing sends until WHATSAPP_NOTIFICATIONS=true and the Meta
+-- WhatsApp variables are set on the Railway services (see services/whatsapp_notify.py).
 --
 -- SAFE TWICE. ADD COLUMN IF NOT EXISTS; nothing is dropped or rewritten.
 

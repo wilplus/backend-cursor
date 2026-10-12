@@ -111,15 +111,15 @@ class CoachFeedbackMessageTest(unittest.TestCase):
             def raise_for_status(self):
                 return None
 
-        def _post(url, data, **_kw):
-            self.posts.append((url, data))
+        def _post(url, json, headers, **_kw):
+            self.posts.append((url, json, headers))
             return _Res()
 
         for p in (patch.object(Config, "WHATSAPP_NOTIFICATIONS", True),
-                  patch.object(Config, "TWILIO_ACCOUNT_SID", "AC1"),
-                  patch.object(Config, "TWILIO_AUTH_TOKEN", "tok"),
-                  patch.object(Config, "TWILIO_WHATSAPP_FROM", "+14155238886"),
-                  patch.object(Config, "TWILIO_WHATSAPP_CONTENT_SID", ""),
+                  patch.object(Config, "WHATSAPP_ACCESS_TOKEN", "tok"),
+                  patch.object(Config, "WHATSAPP_PHONE_NUMBER_ID", "1055"),
+                  patch.object(Config, "WHATSAPP_TEMPLATE_NAME", "coach_feedback_in"),
+                  patch.object(Config, "WHATSAPP_TEMPLATE_LANGUAGE", "en"),
                   patch.object(Config, "WHATSAPP_REDIRECT_TO", ""),
                   patch.object(wn.httpx, "post", _post),
                   patch.object(wn.threading, "Thread", _SyncThread),
@@ -134,11 +134,12 @@ class CoachFeedbackMessageTest(unittest.TestCase):
     def test_the_first_share_sends_one_whatsapp_message(self):
         self._share(_Db())
         self.assertEqual(len(self.posts), 1)
-        url, form = self.posts[0]
-        self.assertIn("/Accounts/AC1/Messages.json", url)
-        self.assertEqual(form["To"], "whatsapp:+447700900123")
-        self.assertEqual(form["From"], "whatsapp:+14155238886")
-        self.assertTrue(form["Body"].startswith("The feedback from your coach is in!"))
+        url, body, headers = self.posts[0]
+        self.assertIn("/1055/messages", url)
+        self.assertEqual(headers["Authorization"], "Bearer tok")
+        self.assertEqual(body["to"], "447700900123")
+        self.assertEqual(body["template"], {"name": "coach_feedback_in",
+                                            "language": {"code": "en"}})
 
     def test_editing_a_shared_word_sends_nothing_more(self):
         self._share(_Db(existing_shared_at="2026-10-11T09:00:00+00:00"))

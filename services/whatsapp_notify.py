@@ -6,11 +6,12 @@ speaker gets one WhatsApp message beside the Lounge bubble bump. It carries
 no speaker content and no score (AC-9): only that feedback is in, and the
 link to the app.
 
-Storage is two columns on ``user_settings`` (0461), so the account-deletion
+Storage is two columns on ``user_settings`` (0462), so the account-deletion
 purge already takes the number with it.
 
-Sending is off unless ``WHATSAPP_NOTIFICATIONS=true`` and the Twilio
-variables are set (config.py). It is always best-effort: a failed or skipped
+Sent through Meta's WhatsApp Cloud API directly (no reseller). Sending is
+off unless ``WHATSAPP_NOTIFICATIONS=true`` and the Meta variables are set
+(config.py). It is always best-effort: a failed or skipped
 message never fails the coach's save (LIVE LOOP).
 """
 from __future__ import annotations
@@ -33,7 +34,7 @@ COACH_FEEDBACK_IN = "The feedback from your coach is in!"
 # E.164: a plus, a country code that does not start with 0, 8 to 15 digits.
 _E164 = re.compile(r"^\+[1-9]\d{7,14}$")
 _SEPARATORS = re.compile(r"[\s\-().]")
-_TWILIO_URL = "https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json"
+_GRAPH_URL = "https://graph.facebook.com/v21.0/{phone_number_id}/messages"
 _TIMEOUT_SEC = 8.0
 
 
@@ -103,30 +104,35 @@ def _message_body() -> str:
     return f"{COACH_FEEDBACK_IN}\n{link}/chat" if link else COACH_FEEDBACK_IN
 
 
+def _payload(to: str, cfg: Any) -> dict:
+    """The approved template when one is named (what WhatsApp requires for a
+    message the business starts); else the plain text, which WhatsApp only
+    delivers within 24 hours of the person's last message to the number."""
+    base = {"messaging_product": "whatsapp", "to": to.lstrip("+")}
+    if cfg.WHATSAPP_TEMPLATE_NAME:
+        return {**base, "type": "template", "template": {
+            "name": cfg.WHATSAPP_TEMPLATE_NAME,
+            "language": {"code": cfg.WHATSAPP_TEMPLATE_LANGUAGE or "en"}}}
+    return {**base, "type": "text", "text": {"body": _message_body()}}
+
+
 def send_whatsapp(to: str, *, config: Any = None) -> bool:
-    """One message through Twilio. True when Twilio accepted it; False when
-    sending is off or not configured. Raises on a provider error."""
+    """One message through Meta's WhatsApp Cloud API. True when Meta accepted
+    it; False when sending is off or not configured. Raises on a provider
+    error."""
     cfg = config or Config()
     if not cfg.WHATSAPP_NOTIFICATIONS:
         return False
-    if not (cfg.TWILIO_ACCOUNT_SID and cfg.TWILIO_AUTH_TOKEN and cfg.TWILIO_WHATSAPP_FROM):
-        _log.warning("whatsapp: WHATSAPP_NOTIFICATIONS is on but Twilio is not configured")
+    if not (cfg.WHATSAPP_ACCESS_TOKEN and cfg.WHATSAPP_PHONE_NUMBER_ID):
+        _log.warning("whatsapp: WHATSAPP_NOTIFICATIONS is on but Meta is not configured")
         return False
     redirect = (cfg.WHATSAPP_REDIRECT_TO or "").strip()
     if redirect and not cfg.is_production:
         _log.info("whatsapp: redirecting a message to WHATSAPP_REDIRECT_TO (env=%s)", cfg.ENV)
         to = redirect
-    sender = cfg.TWILIO_WHATSAPP_FROM
-    form = {
-        "From": sender if sender.startswith("whatsapp:") else f"whatsapp:{sender}",
-        "To": f"whatsapp:{to}",
-    }
-    if cfg.TWILIO_WHATSAPP_CONTENT_SID:
-        form["ContentSid"] = cfg.TWILIO_WHATSAPP_CONTENT_SID
-    else:
-        form["Body"] = _message_body()
-    res = httpx.post(_TWILIO_URL.format(sid=cfg.TWILIO_ACCOUNT_SID), data=form,
-                     auth=(cfg.TWILIO_ACCOUNT_SID, cfg.TWILIO_AUTH_TOKEN),
+    res = httpx.post(_GRAPH_URL.format(phone_number_id=cfg.WHATSAPP_PHONE_NUMBER_ID),
+                     json=_payload(to, cfg),
+                     headers={"Authorization": f"Bearer {cfg.WHATSAPP_ACCESS_TOKEN}"},
                      timeout=_TIMEOUT_SEC)
     res.raise_for_status()
     return True
@@ -147,7 +153,7 @@ def notify_coach_feedback_in(database: Any, user_id: Optional[str]) -> bool:
 
 
 def notify_coach_feedback_in_background(database: Any, user_id: Optional[str]) -> None:
-    """The same, off the coach's request so Twilio never slows the save."""
+    """The same, off the coach's request so Meta never slows the save."""
     if not user_id or not Config.WHATSAPP_NOTIFICATIONS:
         return
     threading.Thread(target=notify_coach_feedback_in, args=(database, str(user_id)),
