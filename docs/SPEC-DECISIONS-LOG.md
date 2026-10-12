@@ -2419,3 +2419,29 @@ Recorded in `legal/phase1-2026.1/22-…-SIGNED-2026-10-08.md` §5. The
 founder also gave the OpenAI data processing agreement's date: signed 18
 September 2026 (recorded on `SIGN-3.5-2026-10-08.md`; a filed copy is still
 to be recorded).
+
+**N70 · The recording screens move by buttons, not scrolling (founder,
+chat, 12 October 2026).** "We are resigning from the scrolling — it was not
+practical." The founder approved, through three rounds of the clickable
+prototype (<https://claude.ai/artifact/4zD6Tjw4MWjooqWq6z4FAL>, version 4,
+copy in `docs/design/recording-screens-2026-10-12.html`), and said "that's
+what i want; please lock it". It amends N59: two buttons under the strip,
+**Back** and **Next slide**, in the coach panel's pair style; on the last
+slide **Next slide** becomes a red **Finish take**, and the strip loses its
+own Finish take, so a Take finishes only from the last slide (confirmed);
+no slide dots; the slides move sideways (Next: in from the right; Back: in
+from the left); a swipe or scroll never changes the slide; the Take 1
+learning screen (**Scroll down to start**, **Click down to start**) is
+deleted, so every Take opens on **Getting your mic ready**. "Back" and
+"Next slide" are signed. `docs/FOUNDER-LOCK-recording-screens-2026-10-07.md`
+carries the amended lock; the frontend's `docs/LOCKS.md` points to the new
+prototype.
+
+**N70.1 · The arrow keys on the recording screen (founder, chat, 12 October
+2026).** "Let the left and right arrow keys move between slides on the
+recording screen, without the keys stealing presses from buttons." ← and →
+change the slide like Back and Next slide; a focused button keeps its own
+Space and Enter. Asked what → and Space do on the last slide, the founder
+chose "Nothing, small bounce": keys never end a Take, only the red Finish
+take does. Prototype <https://claude.ai/artifact/LU1XgQyqY2nPSvDAmsRJFo>
+(version 2), copy in `docs/design/recording-screens-2026-10-12-keys.html`.
