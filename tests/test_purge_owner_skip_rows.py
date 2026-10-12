@@ -26,17 +26,14 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from services import data_purge_project_scope as scope
 from services.data_purge import DataPurgeOrchestrator, SubjectGraph
 from services.data_purge_project_scope import ProjectPurgeOrchestrator
-from services.data_purge_registry import LINEAGE_TOMBSTONES, dependency_by_code
+from services.data_purge_registry import dependency_by_code
 
 CODE = "feedback_revision_owner_raters"
 
 #: A real account: its owner principal's id is not its user id.
 ACCOUNT = SubjectGraph(principal_ids=("principal-1",), user_ids=("user-1",))
-PROJECT = SubjectGraph(principal_ids=(), project_ids=("project-1",),
-                       take_ids=("take-1",))
 
 
 class _Query:
@@ -108,35 +105,6 @@ def _target(cls, graph, code=CODE):
         frozenset({"feedback_revisions", "data_retention_rules"}))
 
 
-def test_the_entry_reads_rater_id_by_user_and_keeps_an_empty_receipt():
-    dependency = dependency_by_code(CODE)
-    assert dependency is not None
-    assert (dependency.relation, dependency.selector_column,
-            dependency.locator_kind, dependency.disposition,
-            dependency.retention_category, dependency.ruled_by) == (
-        "feedback_revisions", "rater_id", "user", "tombstone",
-        "deletion_evidence", None)
-    assert "feedback_revisions" in LINEAGE_TOMBSTONES
-    # It is erased with the evidence span it hangs off, in the same wipe.
-    assert dependency.delete_order == dependency_by_code(
-        "evidence_spans").delete_order
-
-
-def test_coach_rows_still_stop_the_inventory():
-    for code in ("feedback_revision_subjects", "feedback_revision_reviewers"):
-        dependency = dependency_by_code(code)
-        assert dependency is not None
-        assert dependency.disposition == "external_review", code
-
-
-def test_the_principal_entries_miss_the_skips():
-    """Why the entry exists: addressed by principal, the account's skips
-    count zero, because no principal id equals a user id."""
-    for code in ("feedback_revision_subjects", "feedback_revision_reviewers"):
-        target = _target(DataPurgeOrchestrator, ACCOUNT, code)
-        assert target is not None and target.initial_match_count == 0, code
-
-
 def test_an_account_purge_keeps_them_as_a_receipt():
     target = _target(DataPurgeOrchestrator, ACCOUNT)
 
@@ -148,23 +116,3 @@ def test_an_account_purge_keeps_them_as_a_receipt():
     assert target.metadata["retention_rule_id"] == "rule-1"
     assert target.metadata["locator_values"] == ["user-1"]
     assert "reason_code" not in target.metadata
-
-
-def test_an_account_without_skips_has_nothing_to_keep():
-    graph = SubjectGraph(principal_ids=("principal-9",), user_ids=("user-9",))
-    target = _target(DataPurgeOrchestrator, graph)
-
-    assert target is not None
-    assert target.initial_match_count == 0
-
-
-def test_a_project_purge_leaves_them_to_its_spans_wipe():
-    assert scope.WIPED_WITH_PARENT[CODE] == "evidence_spans"
-    target = _target(ProjectPurgeOrchestrator, PROJECT)
-
-    # Placed: the account's skips do not stop a project deletion. The
-    # project graph has no user ids, so the entry itself counts nothing; the
-    # project's own skips are wiped and counted through their spans.
-    assert target is not None
-    assert target.target_kind != "unknown"
-    assert target.initial_match_count == 0

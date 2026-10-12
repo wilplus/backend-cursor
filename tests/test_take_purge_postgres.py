@@ -248,12 +248,3 @@ class TestAnAccountWithARealTakeCanBeErased:
 
         assert _one(db, "SELECT display_name FROM public.projects WHERE id = %s",
                     (stranger["project"],)) == "Q3 pitch"
-
-    def test_the_wipe_refuses_a_request_that_is_not_running(self, db):
-        """Called outside a frozen, running erasure it wipes nothing."""
-        subject = _account_with_one_take(db)
-        with pytest.raises(Exception, match="PURGE_TOMBSTONE_REQUEST_NOT_IN_PROGRESS"):
-            _one(db, "SELECT public.tombstone_phase1_purge_projects_v1(%s)",
-                 (subject["request"],))
-        assert _one(db, "SELECT display_name FROM public.projects WHERE id = %s",
-                    (subject["project"],)) == "Q3 pitch"

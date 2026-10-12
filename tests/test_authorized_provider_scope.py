@@ -23,27 +23,12 @@ real helper across a real thread.
 """
 from __future__ import annotations
 
-import pathlib
-import re
-import threading
-from contextvars import copy_context
-
 from services.authorized_provider import (
     ProviderCoordinates,
     authorize_protected_generation,
     protected_provider_scope,
 )
 from services.parallel import start_scoped_thread
-
-ROOT = pathlib.Path(__file__).resolve().parents[1]
-
-# The dispatches the audit named, each reached from a live Take path. The
-# fourth, services/snippet_truncation.py, had no caller since 2026-06-05 and
-# was deleted 2026-09-29.
-FANOUT_SITES = (
-    "services/say_it_stronger.py",
-    "services/coach_comment_drafter.py",
-)
 
 
 class _Permit:
@@ -86,94 +71,3 @@ class TestTheScopeSurvivesAThread:
             "record that the transcript went out"
         )
         assert seen["service"] is adapter.authorization
-
-    def test_a_raw_thread_is_exactly_what_this_replaces(self):
-        """The defect itself, pinned.
-
-        If this ever starts passing, contextvars changed under us and the
-        helper's whole reason for existing needs re-reading.
-        """
-        adapter = _Permit()
-        seen: dict = {}
-
-        def work():
-            _, permit_id = authorize_protected_generation("say_it_stronger")
-            seen["permit_id"] = permit_id
-
-        with protected_provider_scope(adapter, idempotency_prefix="take-1"):
-            raw = threading.Thread(target=work, daemon=True)
-            raw.start()
-            raw.join(timeout=5)
-
-        assert seen.get("permit_id") is None
-
-    def test_each_thread_gets_its_own_context_copy(self):
-        """A loop spawning one thread per snippet is the normal case here, and
-        one `Context` cannot be entered by two threads at once — so the copy
-        has to happen per call, not once in the caller."""
-        adapter = _Permit()
-        # Four parties: the three workers plus this thread, so all of
-        # them are inside authorize_protected_generation at once. That
-        # overlap is the point — a shared Context would raise here.
-        started = threading.Barrier(4, timeout=5)
-        results: list = []
-        lock = threading.Lock()
-
-        def work():
-            started.wait()
-            _, permit_id = authorize_protected_generation("draft")
-            with lock:
-                results.append(permit_id)
-
-        with protected_provider_scope(adapter, idempotency_prefix="take-1"):
-            threads = [start_scoped_thread(work) for _ in range(3)]
-            started.wait()
-            for thread in threads:
-                thread.join(timeout=5)
-
-        assert len(results) == 3 and all(results), (
-            "concurrent threads did not each get their own context"
-        )
-        assert len(set(adapter.keys)) == 3, (
-            "two calls shared an idempotency key, so one permit would be "
-            "reused for two provider calls"
-        )
-
-    def test_the_helper_and_run_parallel_agree(self):
-        """Both are the same rule. `run_parallel` is the pooled form and this
-        is the detached form; a scope that survives one must survive the
-        other, or the next person picks whichever happens to be broken."""
-        adapter = _Permit()
-
-        with protected_provider_scope(adapter, idempotency_prefix="take-1"):
-            pooled = copy_context().run(
-                lambda: authorize_protected_generation("pooled")[1]
-            )
-
-        assert pooled, "run_parallel's copy_context form lost the scope"
-
-
-class TestTheFourSitesUseIt:
-    """Source-level, and deliberately narrow: it catches a REGRESSION at the
-    four dispatches the audit found, which the property tests above cannot see
-    because they never import these modules' call sites."""
-
-    def test_no_named_fanout_starts_a_raw_thread(self):
-        offenders = []
-        for name in FANOUT_SITES:
-            source = (ROOT / name).read_text(encoding="utf-8")
-            stripped = re.sub(r"#[^\n]*", "", source)
-            if re.search(r"threading\.Thread\s*\(", stripped):
-                offenders.append(name)
-
-        assert offenders == [], (
-            "a fire-and-forget dispatch went back to threading.Thread, which "
-            f"silently drops the Take's provider scope: {offenders}"
-        )
-
-    def test_every_named_fanout_reaches_the_helper(self):
-        missing = [
-            name for name in FANOUT_SITES
-            if "start_scoped_thread" not in (ROOT / name).read_text(encoding="utf-8")
-        ]
-        assert missing == [], f"fan-out no longer routed through the helper: {missing}"

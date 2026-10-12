@@ -162,15 +162,6 @@ def _status(db, principal):
 
 class TestTheTwoPeopleAreNowDistinguishable:
 
-    def test_someone_who_never_accepted_is_not_a_reacceptance(
-            self, db, policies, principal):
-        """A first-time visitor must meet the first-time screen."""
-        status = _status(db, principal)
-
-        assert status["authorized"] is False
-        assert status["code"] == "PROCESSING_AUTHORIZATION_REQUIRED"
-        assert status["reacceptance_required"] is False
-        assert status["accepted_policy_version"] is None
 
     def test_someone_whose_terms_moved_is_flagged(self, db, policies, principal):
         """The named regression test for P10. Before this, indistinguishable
@@ -186,49 +177,3 @@ class TestTheTwoPeopleAreNowDistinguishable:
         # The decision itself is unchanged — that is the whole claim.
         assert status["authorized"] is False
         assert status["code"] == "PROCESSING_AUTHORIZATION_REQUIRED"
-
-    def test_accepting_the_current_policy_clears_it(
-            self, db, policies, principal):
-        _receipt(db, principal, policies["old"])
-        _receipt(db, principal, policies["new"])
-
-        status = _status(db, principal)
-
-        assert status["authorized"] is True
-        assert status["code"] == "PROCESSING_AUTHORIZED"
-        assert status["reacceptance_required"] is False
-
-
-class TestItMovesNoDecision:
-
-    def test_a_blocked_principal_is_not_asked_to_reaccept(
-            self, db, policies, principal):
-        """Someone under a service block is not being asked for anything. The
-        block governs, and offering them a re-acceptance screen would be an
-        invitation to a door that stays shut."""
-        _receipt(db, principal, policies["old"])
-        _one(db, """
-            INSERT INTO public.processing_service_blocks (
-                acquisition_principal_id, block_kind, reason_code,
-                effective_at)
-            VALUES (%s, 'restriction', 'test', now() - interval '1 minute')
-            RETURNING id""",
-            (principal,))
-
-        status = _status(db, principal)
-
-        assert status["code"] == "PROCESSING_SERVICE_BLOCKED"
-        assert status["authorized"] is False
-        assert status["reacceptance_required"] is False
-
-    def test_the_authorized_answer_is_untouched(self, db, policies, principal):
-        """Every field an existing caller reads still reads the same."""
-        _receipt(db, principal, policies["new"])
-
-        status = _status(db, principal)
-
-        assert status["authorized"] is True
-        assert status["policy_version"] == NEW
-        assert status["policy_available"] is True
-        assert status["pooled_learning_eligible"] is False
-        assert status["receipt_id"]

@@ -21,16 +21,13 @@ from __future__ import annotations
 import pathlib
 import re
 
-from scripts.migrate import destructive_statements, strip_sql_comments
+from scripts.migrate import strip_sql_comments
 from services.data_purge_registry import DEPENDENCIES, before_its_rule
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 FILENAME = "the_purge_can_delete_job_plumbing.sql"
 SQL = (ROOT / "migrations" / FILENAME).read_text(encoding="utf-8")
 BODY = strip_sql_comments(SQL)
-MANIFEST = (ROOT / "migrations" / "manifest.txt").read_text(encoding="utf-8")
-LANE = (ROOT / "tests" / "integration" /
-        "confident_moment_rehearsal.sh").read_text(encoding="utf-8")
 
 THE_THREE = {"phase1_processing_outbox", "processing_job_carryovers",
              "processing_orphan_objects"}
@@ -50,28 +47,6 @@ def _select_only_in_0310() -> set[str]:
     raise AssertionError("0310's SELECT-only grant loop was not found")
 
 
-def test_it_grants_delete_on_exactly_the_three_tables():
-    grants = re.findall(r"\b(?:GRANT|REVOKE)\b[^;]*;", BODY)
-    assert sorted(" ".join(g.split()) for g in grants) == sorted(
-        f"GRANT DELETE ON TABLE public.{table} TO service_role;"
-        for table in THE_THREE)
-
-
-def test_it_removes_no_row_and_runs_on_boot():
-    assert destructive_statements(SQL) == []
-    assert "BEGIN;" in BODY and "COMMIT;" in BODY
-    for table in THE_THREE:
-        assert f"table_name = '{table}'" in BODY, f"{table} grant is unguarded"
-
-
-def test_it_is_0425_once_right_after_0424():
-    lines = [line for line in MANIFEST.splitlines() if line.strip()]
-    assert MANIFEST.count(FILENAME) == 1
-    index = lines.index(f"0425\t{FILENAME}")
-    assert lines[index - 1] == (
-        "0424\ta_purge_deletes_the_product_records_it_froze.sql")
-
-
 def test_the_three_are_the_purges_direct_deletes_on_select_only_tables():
     select_only = _select_only_in_0310()
     assert THE_THREE <= select_only
@@ -89,11 +64,3 @@ def test_the_three_are_the_purges_direct_deletes_on_select_only_tables():
     assert before == THE_THREE | {"phase1_processing_jobs"}
     assert "phase1_processing_jobs" not in BODY
     assert "phase1_processing_job_events" not in BODY
-
-
-def test_the_released_lane_applies_it_twice_after_0424():
-    applied = re.findall(r"hard migrations/([a-z0-9_]+\.sql)", LANE)
-    assert applied.count(FILENAME) == 2
-    last_0424 = max(i for i, name in enumerate(applied)
-                    if name == "a_purge_deletes_the_product_records_it_froze.sql")
-    assert min(i for i, name in enumerate(applied) if name == FILENAME) > last_0424

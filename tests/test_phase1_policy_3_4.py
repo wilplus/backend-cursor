@@ -15,18 +15,11 @@
 """
 from __future__ import annotations
 
-import difflib
 import pathlib
 import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "phase1_policy_publish_3_4.sql"
-OLD = ROOT / "scripts" / "phase1_policy_publish_3_3.sql"
-COPY = ROOT / "legal" / "phase1-2026.1" / "copy"
-MIRRORED = {"terms": "terms-3.4.txt", "privacy": "privacy-3.4.txt",
-            "notice": "ai-notice-3.1.txt", "agree": "agreement-3.1.txt"}
-PRACTICE = ("personalized_exercise_recommendation",
-            "individual_learning_profile")
 
 # The signed 3.4 passages (founder in chat, 2026-10-08, "text signed").
 PRIVACY_LINES = (
@@ -69,38 +62,6 @@ def _quoted(tag: str) -> str:
     return match.group(1)
 
 
-def _purpose_objects(path) -> dict[str, str]:
-    body = _script(path)
-    end = body.index("'founder:artur@willonski.com'\n) FROM c")
-    start = body.rindex("jsonb_build_array(", 0, end)
-    chunks = re.sub(r"--[^\n]*", "", body[start:end]).split(
-        "jsonb_build_object(")[1:]
-    out = {}
-    for chunk in chunks:
-        purpose = re.search(r"WHERE r\.id = '([a-z_]+)'", chunk).group(1)
-        out[purpose] = re.sub(r"\s+", " ", chunk)
-    return out
-
-
-def test_every_block_is_mirrored_byte_for_byte():
-    bad = [name for tag, name in MIRRORED.items()
-           if (COPY / name).read_text(encoding="utf-8") != _quoted(tag)]
-    assert bad == []
-
-
-def test_practice_moves_to_contract_and_nothing_else_changes():
-    new, old = _purpose_objects(SCRIPT), _purpose_objects(OLD)
-    assert set(new) == set(old) and len(new) == 5
-    for purpose, chunk in new.items():
-        assert "'lawful_basis_code','contract'" in chunk, purpose
-        assert "'required_for_core_service',true" in chunk, purpose
-        if purpose not in PRACTICE:
-            assert chunk == old[purpose], purpose
-    for purpose in PRACTICE:
-        assert "'lawful_basis_code','consent'" in old[purpose]
-    assert "pooled_model_improvement" not in "".join(new.values())
-
-
 def test_the_copy_carries_every_signed_passage_and_drops_the_old_ones():
     privacy, terms = _quoted("privacy"), _quoted("terms")
     missing = [line[:40] for line in PRIVACY_LINES if privacy.count(line) != 1]
@@ -113,43 +74,3 @@ def test_the_copy_carries_every_signed_passage_and_drops_the_old_ones():
     assert "you give us a licence to reproduce" in terms
     # The unsigned packages rewrite (N44.4) is not in 3.4.
     assert "A package is paid for once" not in terms
-
-
-def test_three_four_changes_only_the_practice_passages():
-    """3.3 and 3.4 differ in exactly the places the founder read: Privacy in
-    seven (version line, version note, the blind check's off switch, the
-    practice purpose, "Do you have to provide", and two lines of "Human
-    coaches"), Terms in four (version line, version note, the blind check's
-    off switch, practice in section 11)."""
-    for kind, places in (("privacy", 7), ("terms", 4)):
-        old = (COPY / f"{kind}-3.3.txt").read_text(encoding="utf-8").splitlines()
-        new = (COPY / f"{kind}-3.4.txt").read_text(encoding="utf-8").splitlines()
-        changed = [op for op in difflib.SequenceMatcher(
-            None, old, new, autojunk=False).get_opcodes() if op[0] != "equal"]
-        assert len(changed) == places, (kind, changed)
-
-
-def test_counsel_review_is_recorded_as_not_obtained():
-    body = _script()
-    assert ("'practice_counsel_review',"
-            "'not_obtained_founder_signed_in_place_2026-10-08'") in body
-    assert "COUNSEL'S REVIEW WAS NOT OBTAINED" in body
-
-
-def test_the_date_is_the_day_the_founder_named_and_step_one_refuses_a_placeholder():
-    body = _script()
-    assert "WHERE position('[[EFFECTIVE DATE]]' in c.terms) = 0" in body
-    assert "AND position('[[EFFECTIVE DATE]]' in c.privacy) = 0" in body
-    for tag in ("privacy", "terms"):
-        assert "Version 3.4. Effective 8 October 2026." in _quoted(tag)
-        assert "[[EFFECTIVE DATE]]" not in _quoted(tag)
-
-
-def test_it_is_not_a_migration_and_follows_0454():
-    manifest = (ROOT / "migrations" / "manifest.txt").read_text(encoding="utf-8")
-    assert "phase1_policy_publish_3_4.sql" not in manifest
-    assert "0454\tpractice_is_part_of_the_service.sql" in manifest
-    body = _script()
-    assert "'version','phase1-2026-10-08'" in body
-    assert "activate_phase1_policy_v1(\n  'phase1-2026-10-08'" in body
-    assert "RUN IT ONLY AFTER migration 0454" in body

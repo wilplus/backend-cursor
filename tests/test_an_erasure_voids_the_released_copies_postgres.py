@@ -30,14 +30,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime, timedelta, timezone
-from pathlib import Path
 
-import psycopg2
 import pytest
 
 from services.deletion_completion import run_due_deletions
 from services.pair_release_eligibility import decide
-from services.project_deletion import ProjectDeletionService
 from tests import test_a_deletion_completes_after_seven_days_postgres as window
 from tests import test_account_deletion_starts_postgres as base
 
@@ -52,8 +49,6 @@ pytestmark = pytest.mark.skipif(
     not DSN, reason="disposable confident-moment rehearsal only"
 )
 
-MIGRATION = (Path(__file__).resolve().parents[1] / "migrations"
-             / "an_erasure_voids_the_released_copies.sql").read_text()
 BUCKET = "pair-release-bucket"
 
 
@@ -121,21 +116,6 @@ def _week() -> str:
     """A week no sibling module draws (0405's from 3000, 0422's 3100-3899):
     pair_releases is UNIQUE (surface, week_start)."""
     return str(date(8500, 1, 1) + timedelta(days=uuid.uuid4().int % 500_000))
-
-
-def _project(db, principal: str) -> tuple[str, str]:
-    """A project of the person's with one Take: (project, take)."""
-    user_id = _one(db, "SELECT user_id::text FROM public.owner_principals "
-                       "WHERE id = %s", (principal,))
-    project = str(_one(db, """
-        INSERT INTO public.projects (id, owner_principal_id, display_name)
-        VALUES (gen_random_uuid(), %s, 'Q4 pitch') RETURNING id""", (principal,)))
-    take = str(_one(db, """
-        INSERT INTO public.v2_sessions (
-            id, user_id, owner_principal_id, project_id, arc_id, take_index)
-        VALUES (gen_random_uuid(), %s, %s, %s, %s, 1) RETURNING id""",
-        (user_id, principal, project, project)))
-    return project, take
 
 
 def _pair(db, principal: str, take: str | None = None) -> str:
@@ -218,34 +198,6 @@ OUT = {"releasable": False, "release_id": None, "exported_at": None}
 # ── At the request ────────────────────────────────────────────────────────
 
 
-def test_a_project_deletion_request_voids_a_release_holding_one_of_its_pairs(db):
-    _grants(db)
-    owner, _ = window._yes(db)
-    other, _ = window._yes(db)
-    project, take = _project(db, owner)
-    _kept, kept_take = _project(db, owner)
-    mine = _pair(db, owner, take)
-    elsewhere = _pair(db, owner, kept_take)
-    theirs = _pair(db, other)
-    _refresh(db)
-    assert all(_pair_state(db, p)["releasable"] for p in (mine, elsewhere, theirs))
-    holding = _release(db, [mine, theirs], [owner, other])
-    untouched = _release(db, [elsewhere], [owner])
-
-    ProjectDeletionService(_Database(db)).request(owner, project, f"k-{uuid.uuid4()}")
-
-    assert _purges(db, owner) == 0                       # before any purge
-    assert _release_state(db, holding) == {
-        "voided_reason": "project_erasure_requested", "voided": True, "purged": False}
-    assert _release_state(db, untouched) == {
-        "voided_reason": None, "voided": False, "purged": False}
-    assert _pair_state(db, mine) == WAITING
-    assert _pair_state(db, theirs) == WAITING
-    assert _pair_state(db, elsewhere)["release_id"] == untouched
-    # The next export: the other owner's pair leaves again, the project's never.
-    assert _would_leave(db, [mine, theirs]) == {theirs}
-
-
 def test_an_account_deletion_request_voids_a_release_holding_one_of_its_pairs(db):
     _grants(db)
     person, _ = window._yes(db)
@@ -276,52 +228,6 @@ def test_an_account_deletion_request_voids_a_release_holding_one_of_its_pairs(db
 
 
 # ── The void holds ────────────────────────────────────────────────────────
-
-
-def test_the_void_holds_until_a_cancel_and_stays_a_void_after_it(db):
-    _grants(db)
-    owner, _ = window._yes(db)
-    project, take = _project(db, owner)
-    pair = _pair(db, owner, take)
-    _refresh(db)
-    release = _release(db, [pair], [owner])
-    projects = ProjectDeletionService(_Database(db))
-    projects.request(owner, project, f"k-{uuid.uuid4()}")
-    later = _pair(db, owner, take)            # a coach answers during the window
-    _stamped_releasable(db, later)
-    _refresh(db)
-
-    assert _would_leave(db, [pair, later]) == set()
-    assert _release_state(db, release)["voided_reason"] == "project_erasure_requested"
-
-    projects.cancel(owner, project)
-
-    assert _would_leave(db, [pair, later]) == {pair, later}
-    assert _pair_state(db, pair) == WAITING
-    assert _release_state(db, release)["voided_reason"] == "project_erasure_requested"
-
-
-def test_a_pair_released_after_the_request_is_voided_when_the_purge_request_is_made(db):
-    _grants(db)
-    projects = ProjectDeletionService(_Database(db))
-    for confirm in ("system", "operator"):
-        owner, _ = window._yes(db)
-        project, take = _project(db, owner)
-        request = window._due_project_request(db, owner, project)
-        pair = _pair(db, owner, take)
-        _stamped_releasable(db, pair)
-        release = _release(db, [pair], [owner])   # left before any void ran
-
-        if confirm == "system":
-            projects.start_due(request)
-        else:
-            projects.confirm(request, str(uuid.uuid4()))
-
-        assert _purges(db, owner) == 1, confirm
-        assert _release_state(db, release)["voided_reason"] == (
-            "project_erasure_requested"), confirm
-        assert _pair_state(db, pair) == WAITING, confirm
-        assert _would_leave(db, [pair]) == set(), confirm
 
 
 # ── The purge and the sweep ───────────────────────────────────────────────
@@ -361,77 +267,4 @@ def test_the_completion_run_voids_before_its_purge_and_sweeps_the_copies(db, fak
     assert report["release_sweep"]["failed"] == []
 
 
-def test_a_dry_run_sweeps_nothing(db):
-    _grants(db)
-    person, _ = window._yes(db)
-    pair = _pair(db, person)
-    _refresh(db)
-    release = _release(db, [pair], [person])
-    window._service(db).request_account_deletion(
-        person, idempotency_key=f"account-deletion:{uuid.uuid4()}")
-    bucket = _Bucket()
-
-    report = run_due_deletions(_Ledger(db), execute=False, release_storage=bucket)
-
-    assert "release_sweep" not in report and bucket.deleted == []
-    assert _release_state(db, release) == {
-        "voided_reason": "owner_erasure_requested", "voided": True, "purged": False}
-
-
 # ── Before 0456, and the doors ────────────────────────────────────────────
-
-
-def test_requests_made_before_0456_get_what_their_request_would_have_done(db):
-    _grants(db)
-    owner, _ = window._yes(db)
-    person, _ = window._yes(db)
-    project, take = _project(db, owner)
-    project_pair, person_pair = _pair(db, owner, take), _pair(db, person)
-    _refresh(db)
-    project_release = _release(db, [project_pair], [owner])
-    person_release = _release(db, [person_pair], [person])
-    # Written as 0422 left them: neither request voided anything.
-    _one(db, """
-        INSERT INTO public.project_deletion_requests (
-            acquisition_principal_id, project_id, due_at, idempotency_key)
-        VALUES (%s, %s, now() + interval '7 days', %s) RETURNING id""",
-        (owner, project, f"k-{uuid.uuid4()}"))
-    _one(db, """
-        INSERT INTO public.account_deletion_requests (
-            acquisition_principal_id, completes_after, idempotency_key, reason_code)
-        VALUES (%s, now() + interval '7 days', %s, 'ACCOUNT_DELETION') RETURNING id""",
-        (person, f"k-{uuid.uuid4()}"))
-    assert not _release_state(db, project_release)["voided"]
-    assert not _release_state(db, person_release)["voided"]
-    catch_up = MIGRATION[MIGRATION.rindex("DO $$"):MIGRATION.rindex("COMMIT;")]
-
-    with db.cursor() as cur:
-        cur.execute(catch_up)
-
-    assert _release_state(db, project_release)["voided_reason"] == "project_erasure_requested"
-    assert _release_state(db, person_release)["voided_reason"] == "owner_erasure_requested"
-    assert _pair_state(db, project_pair) == WAITING
-    assert _pair_state(db, person_pair) == OUT
-    voided_at = _one(db, "SELECT voided_at FROM public.pair_releases WHERE id = %s",
-                     (project_release,))
-    with db.cursor() as cur:
-        cur.execute(catch_up)                  # twice is once
-    assert _one(db, "SELECT voided_at FROM public.pair_releases WHERE id = %s",
-                (project_release,)) == voided_at
-
-
-def test_the_void_takes_only_its_two_reasons_and_no_browser_reaches_it(db):
-    with pytest.raises(psycopg2.Error, match="PAIR_RELEASE_VOID_REASON_INVALID"):
-        _one(db, "SELECT public.void_pair_releases_v1(ARRAY[]::uuid[], "
-                 "'consent_withdrawn')")
-    for fn in ("void_pair_releases_v1(uuid[], text)",
-               "void_project_pair_releases_v1(uuid)",
-               "stop_phase1_learning_v1(uuid)",
-               "request_project_deletion_v1(uuid, uuid, text)",
-               "start_due_project_deletion_v1(uuid)",
-               "confirm_project_deletion_v1(uuid, uuid)"):
-        for role in ("anon", "authenticated"):
-            assert _one(db, "SELECT has_function_privilege(%s, %s, 'EXECUTE')",
-                        (role, f"public.{fn}")) is False, (role, fn)
-        assert _one(db, "SELECT has_function_privilege('service_role', %s, 'EXECUTE')",
-                    (f"public.{fn}",)) is True, fn

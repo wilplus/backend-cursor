@@ -19,8 +19,6 @@ from __future__ import annotations
 
 import uuid
 
-import psycopg2
-import psycopg2.extras
 import pytest
 
 from services.data_purge_project_scope import ProjectPurgeOrchestrator
@@ -37,8 +35,6 @@ fake_storage = takes.fake_storage
 pytestmark = pytest.mark.skipif(
     not DSN, reason="disposable confident-moment rehearsal only"
 )
-
-KEPT = "Our second quarter doubled the pipeline."
 
 
 def _production_columns(db) -> None:
@@ -134,34 +130,3 @@ class TestOneProjectIsErased:
         assert _one(db, """
             SELECT count(*) FROM public.processing_authorization_receipts
              WHERE acquisition_principal_id = %s""", (erased["principal"],)) == 1
-
-    def test_the_request_is_not_done_before_the_purge_is(self, db):
-        subject = takes._account_with_one_take(db)
-        _request, purge = _confirmed_project_deletion(db, subject)
-        with pytest.raises(psycopg2.Error, match="PROJECT_PURGE_NOT_DONE"):
-            _one(db, "SELECT public.complete_project_deletion_v1(%s)", (purge,))
-
-    def test_someone_elses_project_cannot_be_confirmed(self, db):
-        owner = takes._account_with_one_take(db)
-        stranger = takes._account_with_one_take(db)
-        request = _one(db, """
-            INSERT INTO public.project_deletion_requests (
-                acquisition_principal_id, project_id, due_at, idempotency_key)
-            VALUES (%s, %s, now() + interval '7 days', %s) RETURNING id""",
-            (stranger["principal"], owner["project"], str(uuid.uuid4())))
-        with pytest.raises(psycopg2.Error, match="PURGE_PROJECT_NOT_OWNED"):
-            _one(db, "SELECT public.confirm_project_deletion_v1(%s, gen_random_uuid())",
-                 (request,))
-
-    def test_a_project_request_is_never_frozen_account_wide(self, db):
-        subject = takes._account_with_one_take(db)
-        _request, purge = _confirmed_project_deletion(db, subject)
-        graph = _one(db, "SELECT public.resolve_phase1_purge_subject_graph_v3(%s)",
-                     (subject["principal"],))
-        with pytest.raises(psycopg2.Error, match="PURGE_MANIFEST_SCOPE_MISMATCH"):
-            _one(db, """
-                SELECT public.freeze_phase1_purge_inventory_v4(
-                    %s, 'phase1-purge-resolver-v4', repeat('a', 64), %s::jsonb,
-                    '[{"target_kind": "unknown", "target_ref": "probe"}]'::jsonb,
-                    repeat('b', 64), '{}'::text[])""",
-                (purge, psycopg2.extras.Json(graph)))

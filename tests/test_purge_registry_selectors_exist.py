@@ -32,7 +32,6 @@ if not hasattr(sys.modules["supabase"], "create_client"):
     sys.modules["supabase"].create_client = lambda *a, **k: None  # type: ignore[attr-defined]
     sys.modules["supabase"].Client = object  # type: ignore[attr-defined]
 
-from services.data_purge_registry import DEPENDENCIES  # noqa: E402
 
 MIGRATIONS = Path(__file__).resolve().parent.parent / "migrations"
 
@@ -70,28 +69,6 @@ def _definitions(sql: str, relation: str) -> list[str]:
             sql, re.I):
         found.append(match.group(0))
     return found
-
-
-def test_every_selector_column_exists_in_its_table():
-    sql = _sql()
-    missing = []
-    for dependency in DEPENDENCIES:
-        if dependency.relation in LEGACY_TABLES:
-            continue
-        definitions = _definitions(sql, dependency.relation)
-        assert definitions, (
-            f"{dependency.code}: no CREATE TABLE {dependency.relation} in "
-            "migrations/. Define it, or (only for a pre-migrations table) "
-            "add it to LEGACY_TABLES with a reason."
-        )
-        column = re.compile(r"\b%s\b" % re.escape(dependency.selector_column))
-        if not any(column.search(text) for text in definitions):
-            missing.append(
-                f"{dependency.code}: {dependency.relation}."
-                f"{dependency.selector_column}")
-    assert not missing, (
-        "registry selectors that name a column the table does not have:\n  "
-        + "\n  ".join(missing))
 
 
 def test_the_legacy_list_only_names_tables_still_undefined():

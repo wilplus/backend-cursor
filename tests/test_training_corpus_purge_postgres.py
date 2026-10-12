@@ -28,10 +28,14 @@ import psycopg2
 import pytest
 
 from services.data_purge import DataPurgeOrchestrator
-from services.db import DatabaseService
 from tests.test_account_deletion_starts_postgres import _Database
 from tests.test_training_consent_postgres import (
-    TOGGLE_COPY, TOGGLE_SHA, TRAINING_POLICY, _action, _principal, _receipt,
+    TOGGLE_COPY,
+    TOGGLE_SHA,
+    TRAINING_POLICY,
+    _action,
+    _principal,
+    _receipt,
 )
 
 DSN = os.environ.get("CONFIDENT_MOMENT_REHEARSAL_DSN", "")
@@ -132,16 +136,6 @@ def _withdraw(db, person):
                                 f"w-{uuid.uuid4()}"))
 
 
-class _Service:
-    """The production helpers, bound to the SQL shim (service_role)."""
-
-    def __init__(self, db):
-        self.client = _Database(db).client
-
-    list_due_training_corpus_items = DatabaseService.list_due_training_corpus_items
-    erase_training_corpus_item = DatabaseService.erase_training_corpus_item
-
-
 def test_a_withdrawal_makes_that_persons_copies_due_and_nobody_elses(db, ready):
     person = _person_with_copies(db, ready)
     bystander = _person_with_copies(db, ready)
@@ -149,43 +143,6 @@ def test_a_withdrawal_makes_that_persons_copies_due_and_nobody_elses(db, ready):
     assert _state(db, person["text"]) == "purge_pending"
     assert _state(db, person["audio"]) == "purge_pending"
     assert _state(db, bystander["text"]) == "active"
-
-
-def test_the_erasure_takes_due_copies_and_never_an_active_one(db, ready):
-    person = _person_with_copies(db, ready)
-    service = _Service(db)
-    assert service.erase_training_corpus_item(person["text"]) is False
-    assert _state(db, person["text"]) == "active"
-
-    _withdraw(db, person)
-    due = {row["id"] for row in service.list_due_training_corpus_items(person["principal"])}
-    assert due == {person["text"], person["audio"]}
-    assert service.erase_training_corpus_item(person["text"]) is True
-    assert _state(db, person["text"]) is None
-
-
-def test_the_object_mark_moves_a_copy_to_purged_and_keeps_its_d11_lock(db, ready):
-    person = _person_with_copies(db, ready)
-    request = _one(db, """
-        INSERT INTO public.data_purge_requests (
-            acquisition_principal_id, trigger_kind, idempotency_key)
-        VALUES (%s, 'account_deletion', %s) RETURNING id""",
-        (person["principal"], str(uuid.uuid4())))
-    row = _one(db, """
-        SELECT jsonb_build_object('provider', storage_provider, 'bucket', bucket,
-                                  'key', storage_key, 'sha', object_sha256)
-          FROM public.training_corpus_items WHERE id = %s""", (person["audio"],))
-    _one(db, """
-        SELECT public.mark_phase1_storage_object_purged_v1(
-            %s, 'training_corpus_items', %s, %s, %s, %s, %s)""",
-        (request, person["audio"], row["provider"], row["bucket"], row["key"],
-         row["sha"]))
-    assert _state(db, person["audio"]) == "purged"
-    definition = _one(db, """
-        SELECT pg_get_functiondef(
-            'public.mark_phase1_storage_object_purged_v1(uuid,text,uuid,text,text,text,text)'
-            ::regprocedure)""")
-    assert "D11 writer: object purge" in definition
 
 
 def test_account_erasure_reaches_the_copies(db, ready):

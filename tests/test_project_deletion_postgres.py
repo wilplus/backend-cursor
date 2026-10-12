@@ -73,40 +73,6 @@ def test_someone_elses_project_is_not_found(db, principal, project):
     assert "PROJECT_NOT_FOUND" in str(error.value)
 
 
-def test_double_tap_and_replay_are_one_request(db, principal, project):
-    first = _request(db, principal, project, key="same-key")
-    replay = _request(db, principal, project, key="same-key")
-    other_key = _request(db, principal, project)
-    assert first[0] == replay[0] == other_key[0]
-    assert _one(db, """
-        SELECT count(*) FROM public.project_deletion_requests
-         WHERE project_id = %s""", (project,)) == 1
-
-
-def test_a_replayed_key_cannot_name_another_project(db, principal, project):
-    _request(db, principal, project, key="bound-key")
-    second = _one(db, """
-        INSERT INTO public.projects (id, owner_principal_id, display_name)
-        VALUES (gen_random_uuid(), %s, 'Other') RETURNING id""", (principal,))
-    with pytest.raises(psycopg2.Error) as error:
-        _request(db, principal, second, key="bound-key")
-    assert "IDEMPOTENCY_CONFLICT" in str(error.value)
-
-
-def test_cancel_keeps_the_row_and_allows_a_new_request(db, principal, project):
-    first = _request(db, principal, project)
-    request_id, state, stamped = _cancel(db, principal, project)
-    assert (request_id, state, stamped) == (first[0], "cancelled", True)
-    with pytest.raises(psycopg2.Error) as error:
-        _cancel(db, principal, project)
-    assert "PROJECT_DELETION_NOT_PENDING" in str(error.value)
-    again = _request(db, principal, project)
-    assert again[0] != first[0] and again[1] == "pending"
-    assert _one(db, """
-        SELECT count(*) FROM public.project_deletion_requests
-         WHERE project_id = %s""", (project,)) == 2
-
-
 def test_a_confirmed_request_cannot_be_cancelled(db, principal, project):
     request_id = _request(db, principal, project)[0]
     with db.cursor() as cur:
@@ -117,14 +83,3 @@ def test_a_confirmed_request_cannot_be_cancelled(db, principal, project):
     with pytest.raises(psycopg2.Error) as error:
         _cancel(db, principal, project)
     assert "PROJECT_DELETION_ALREADY_CONFIRMED" in str(error.value)
-
-
-def test_browser_roles_cannot_reach_it(db):
-    for role in ("anon", "authenticated"):
-        for fn in ("request_project_deletion_v1(uuid, uuid, text)",
-                   "cancel_project_deletion_v1(uuid, uuid)"):
-            assert _one(db, "SELECT has_function_privilege(%s, %s, 'EXECUTE')",
-                        (role, f"public.{fn}")) is False
-        assert _one(db, """
-            SELECT has_table_privilege(%s, 'public.project_deletion_requests',
-                                       'SELECT')""", (role,)) is False

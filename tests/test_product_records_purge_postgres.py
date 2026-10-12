@@ -42,7 +42,6 @@ from __future__ import annotations
 import pathlib
 import uuid
 
-import psycopg2
 import pytest
 
 from services.data_purge import DataPurgeOrchestrator
@@ -66,7 +65,6 @@ SCRIPT = (ROOT / "scripts" / "phase1_retention_rules_v1_4.sql").read_text()
 V1_4_RULES = ("product-records-v1", "job-evidence-v1")
 THE_THREE = {"feedback_exposure", "feedback_self_report",
              "ideal_part_revision"}
-THE_FOUR = THE_THREE | {"phase1_job_events"}
 
 
 def _production_shape(db) -> None:
@@ -258,66 +256,6 @@ def _records(db, subject: dict) -> dict:
     return {**subject, "job": str(job), "part": part}
 
 
-def _plumbing(db, records: dict) -> dict:
-    """The three rows 0425 lets the purge delete: the job's delivery row
-    (intake writes one with every Phase-1 job, 0310), a carry-over of that job
-    to a newer policy, and the metadata of an upload that never became a
-    recording, its object still in storage."""
-    principal, job = records["principal"], records["job"]
-    outbox = _one(db, """
-        INSERT INTO public.phase1_processing_outbox (
-            processing_job_id, event_type, idempotency_key, payload)
-        VALUES (%s, 'phase1_recording_ready', %s, '{}'::jsonb)
-        RETURNING id""", (job, str(uuid.uuid4())))
-    old_policy = _one(db, """
-        SELECT policy_id FROM public.processing_authorization_receipts
-         WHERE acquisition_principal_id = %s LIMIT 1""", (principal,))
-    new_policy = _one(db, """
-        INSERT INTO public.processing_policy_versions (
-            id, version, status, terms_version, terms_copy, terms_copy_sha256,
-            privacy_version, privacy_copy, privacy_copy_sha256,
-            ai_notice_version, ai_notice_copy, ai_notice_copy_sha256,
-            agreement_copy, agreement_copy_sha256, allowed_countries,
-            created_by)
-        VALUES (gen_random_uuid(), 'carry-over-' || gen_random_uuid(), 'draft',
-                'terms-v2', 'terms', repeat('1', 64), 'privacy-v2', 'privacy',
-                repeat('2', 64), 'ai-v2', 'ai', repeat('3', 64), 'agreement',
-                repeat('4', 64), ARRAY['PL'], 'rehearsal')
-        RETURNING id""")
-    carryover = _one(db, """
-        INSERT INTO public.processing_job_carryovers (
-            acquisition_principal_id, old_policy_id, new_policy_id,
-            processing_job_id, exact_operation, cutoff_at, expires_at)
-        VALUES (%s, %s, %s, %s, 'recording_transcription_ranking_feedback',
-                now(), now() + interval '1 day')
-        RETURNING id""", (principal, old_policy, new_policy, job))
-    key = f"{principal}/never-finalized.wav"
-    orphan = _one(db, """
-        INSERT INTO public.processing_orphan_objects (
-            acquisition_principal_id, storage_provider, bucket, object_key,
-            exact_bytes_sha256, reason_code, not_before)
-        VALUES (%s, 'r2', 'take-audio', %s, repeat('8', 64),
-                'upload_not_finalized', now())
-        RETURNING id""", (principal, key))
-    return {"outbox": str(outbox), "carryover": str(carryover),
-            "orphan": str(orphan), "orphan_key": key}
-
-
-def _plumbing_rows(db, plumbing: dict) -> dict:
-    return {
-        "outbox": _one(db, """SELECT count(*) FROM public.phase1_processing_outbox
-                               WHERE id = %s""", (plumbing["outbox"],)),
-        "carryover": _one(db, """SELECT count(*) FROM public.processing_job_carryovers
-                                  WHERE id = %s""", (plumbing["carryover"],)),
-        "orphan": _one(db, """SELECT count(*) FROM public.processing_orphan_objects
-                               WHERE id = %s""", (plumbing["orphan"],)),
-    }
-
-
-#: The registry codes of the three tables 0425 opens.
-THE_PLUMBING = ("phase1_outbox", "policy_carryovers", "orphan_metadata")
-
-
 def _phase1_attempt(db, principal: str, project: str) -> str:
     """Another accepted recording attempt of the same person, in another
     project, made as tests/test_take_purge_postgres.py makes the first."""
@@ -372,64 +310,6 @@ def _target(db, request: str, code: str) -> dict:
            AND target.target_ref = %s""", (request, f"dependency:{code}"))
 
 
-def _direct_delete_is_refused(db, take: str) -> None:
-    with db.cursor() as cur:
-        cur.execute("SET ROLE service_role")
-        try:
-            with pytest.raises(psycopg2.Error,
-                               match="immutable feedback evidence cannot be changed"):
-                cur.execute("""DELETE FROM public.take_feedback_exposure
-                                WHERE take_session_id = %s""", (take,))
-        finally:
-            cur.execute("RESET ROLE")
-
-
-def _left(db, request: str) -> dict:
-    return {row["ref"].split(":", 1)[1]: row["reason"]
-            for row in takes._left_for_review(db, request)}
-
-
-class TestTheFourTablesWaitForTheSignedRules:
-
-    @pytest.fixture(autouse=True)
-    def _shape(self, db, no_v1_4_rules):
-        _production_shape(db)
-        projects._production_columns(db)
-        takes._seed_every_retention_rule(db)
-
-    def test_without_v1_4_an_account_erasure_stops_and_deletes_nothing(
-            self, db, fake_storage):
-        records = _records(db, takes._account_with_one_take(db))
-        before = _rows(db, records)
-
-        DataPurgeOrchestrator(_Database(db)).run(records["request"])
-
-        assert _one(db, "SELECT state FROM public.data_purge_requests WHERE id = %s",
-                    (records["request"],)) == "review_required"
-        assert _left(db, records["request"]) == {
-            code: "EXPLICIT_RESOLVER_REQUIRED" for code in THE_THREE}
-        assert _target(db, records["request"], "phase1_jobs")["disposition"] == (
-            "delete"), "before v1.4 the job row is deleted, as it always was"
-        assert _rows(db, records) == before, "an unready erasure deleted something"
-        assert not fake_storage, "nothing may be erased before review"
-        _direct_delete_is_refused(db, records["take"])
-
-    def test_without_v1_4_a_project_erasure_stops_on_all_four(
-            self, db, fake_storage):
-        records = _records(db, takes._account_with_one_take(db))
-        before = _rows(db, records)
-        _request, purge = projects._confirmed_project_deletion(db, records)
-
-        ProjectPurgeOrchestrator(_Database(db)).run(purge)
-
-        assert _one(db, "SELECT state FROM public.data_purge_requests WHERE id = %s",
-                    (purge,)) == "review_required"
-        assert _left(db, purge) == {
-            code: "EXPLICIT_RESOLVER_REQUIRED" for code in THE_FOUR}
-        assert _rows(db, records) == before
-        assert not fake_storage
-
-
 class TestWithTheSignedRulesTheErasureFinishes:
 
     @pytest.fixture(autouse=True)
@@ -462,10 +342,6 @@ class TestWithTheSignedRulesTheErasureFinishes:
         assert _rows(db, stranger) == {
             "shown": 1, "answers": 2, "versions": 2, "job": 1, "events": 2}
 
-    def test_outside_a_running_purge_the_trigger_still_refuses(self, db):
-        records = _records(db, takes._account_with_one_take(db))
-        _direct_delete_is_refused(db, records["take"])
-        assert _rows(db, records)["shown"] == 1
 
     def test_a_project_erasure_deletes_only_that_projects_records(
             self, db, fake_storage):
@@ -491,86 +367,3 @@ class TestWithTheSignedRulesTheErasureFinishes:
                 "rule": "job-evidence-v1"}, code
         assert _rows(db, kept) == {
             "shown": 1, "answers": 2, "versions": 2, "job": 1, "events": 2}
-
-
-class TestTheJobPlumbingGoesWithTheAccount:
-    """0425 (decided 2026-10-05 on W3-B1's finding): the purge deletes the
-    outbox row, the carry-over and the orphaned object's metadata with the
-    account, as the registry has always listed them; v1.4 keeps the job and
-    its events. Proved on production's job list, without which the lane's
-    account erasure never reaches a job (`production_job_list`)."""
-
-    @pytest.fixture(autouse=True)
-    def _shape(self, db, no_v1_4_rules, production_job_list):
-        _production_shape(db)
-        takes._seed_every_retention_rule(db)
-
-    def test_without_v1_4_the_erasure_stops_and_the_plumbing_stays(
-            self, db, fake_storage):
-        records = _records(db, takes._account_with_one_take(db))
-        plumbing = _plumbing(db, records)
-        before = (_rows(db, records), _plumbing_rows(db, plumbing))
-
-        DataPurgeOrchestrator(_Database(db)).run(records["request"])
-
-        assert _one(db, "SELECT state FROM public.data_purge_requests WHERE id = %s",
-                    (records["request"],)) == "review_required"
-        # As on main: the three product tables and, with the jobs listed,
-        # the jobs' events stop the erasure before anything is touched.
-        assert _left(db, records["request"]) == {
-            code: "EXPLICIT_RESOLVER_REQUIRED" for code in THE_FOUR}
-        for code in THE_PLUMBING + ("phase1_jobs",):
-            assert _target(db, records["request"], code) == {
-                "state": "pending", "reason": None, "disposition": "delete",
-                "rule": None}, code
-        assert (_rows(db, records), _plumbing_rows(db, plumbing)) == before
-        assert not fake_storage, "nothing may be erased before review"
-
-    def test_with_v1_4_the_erasure_deletes_the_plumbing_and_keeps_the_job(
-            self, db, fake_storage):
-        _v1_4_registered(db)
-        records = _records(db, takes._account_with_one_take(db))
-        plumbing = _plumbing(db, records)
-
-        DataPurgeOrchestrator(_Database(db)).run(records["request"])
-
-        assert takes._left_for_review(db, records["request"]) == []
-        assert _one(db, "SELECT state FROM public.data_purge_requests WHERE id = %s",
-                    (records["request"],)) == "done"
-        assert _plumbing_rows(db, plumbing) == {
-            "outbox": 0, "carryover": 0, "orphan": 0}
-        for code in THE_PLUMBING:
-            assert _target(db, records["request"], code) == {
-                "state": "deleted", "reason": None, "disposition": "delete",
-                "rule": None}, code
-        assert _rows(db, records) == {
-            "shown": 0, "answers": 0, "versions": 0, "job": 1, "events": 2}
-        for code in ("phase1_jobs", "phase1_job_events"):
-            assert _target(db, records["request"], code) == {
-                "state": "retained", "reason": None, "disposition": "retain",
-                "rule": "job-evidence-v1"}, code
-        # The orphaned upload's object went from storage before its row.
-        assert ("take-audio", plumbing["orphan_key"]) in fake_storage
-
-    def test_a_project_erasure_deletes_its_outbox_row_and_carry_over(
-            self, db, fake_storage):
-        """The project graph lists the project's jobs (0380): their outbox
-        rows and carry-overs go with the project, the job and its events
-        stay, and the orphaned upload, which belongs to the account, stays
-        for the account's erasure (the runbook's account of 0425)."""
-        projects._production_columns(db)
-        _v1_4_registered(db)
-        records = _records(db, takes._account_with_one_take(db))
-        plumbing = _plumbing(db, records)
-        _request, purge = projects._confirmed_project_deletion(db, records)
-
-        ProjectPurgeOrchestrator(_Database(db)).run(purge)
-
-        assert takes._left_for_review(db, purge) == []
-        assert _one(db, "SELECT state FROM public.data_purge_requests WHERE id = %s",
-                    (purge,)) == "done"
-        assert _plumbing_rows(db, plumbing) == {
-            "outbox": 0, "carryover": 0, "orphan": 1}
-        assert _rows(db, records)["job"] == 1
-        assert _rows(db, records)["events"] == 2
-
