@@ -82,21 +82,13 @@ class PinTests(unittest.TestCase):
 
 
 class QuarantineTests(unittest.TestCase):
-    def test_every_quarantined_file_exists(self):
-        """A phantom entry is a list that has rotted (audit Q-T3, 2026-09-14).
-
-        Four of the six entries named files deleted months earlier; the list
-        looked maintained and covered nothing. An --ignore for a file that
-        is not there is silently accepted by pytest, so only this test can
-        notice. Removing a module means removing its entry in the same PR.
-        """
-        ci = re.findall(r"--ignore=(\S+\.py)", CHECKS)
-        missing = [m for m in ci if not os.path.exists(os.path.join(ROOT, m))]
-        self.assertEqual(
-            missing, [],
-            f"quarantined files that do not exist: {missing} — delete the "
-            f"entry from BOTH tests.yml and scripts/local_ci.sh",
-        )
+    def test_nothing_is_quarantined(self):
+        """The last quarantined module (test_auth_request.py) was deleted on
+        2026-10-12 with its --ignore in tests.yml. Neither the workflow nor
+        the script skips a test file now; a new skip would be a test that
+        never runs, so it is refused here rather than mirrored."""
+        self.assertEqual(re.findall(r"--ignore=(\S+\.py)", CHECKS), [])
+        self.assertNotIn("--ignore=", SCRIPT)
 
     def test_no_test_modules_hide_in_scripts(self):
         """scripts/ is hand-run tooling, not a test tree. pytest collects
@@ -109,17 +101,6 @@ class QuarantineTests(unittest.TestCase):
             if n.startswith("test_") and n.endswith(".py")
         )
         self.assertEqual(stray, [], f"test modules under scripts/: {stray}")
-
-    def test_the_ignore_list_matches_exactly(self):
-        ci = set(re.findall(r"--ignore=(\S+\.py)", CHECKS))
-        block = re.search(r"QUARANTINE=\(\n(.*?)\n\)", SCRIPT, re.S)
-        self.assertIsNotNone(block)
-        mine = set(block.group(1).split())
-        self.assertTrue(ci, "the workflow's quarantine list disappeared")
-        # Reported as a symmetric difference on purpose: BOTH directions are
-        # defects, and they are different defects (see the module docstring).
-        self.assertEqual(ci, mine, f"quarantine drift: {ci ^ mine}")
-
 
 class CoverageTests(unittest.TestCase):
     def test_the_gate_exports_CI_like_actions_does(self):
