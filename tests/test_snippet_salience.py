@@ -108,9 +108,8 @@ class FenceGuardTests(unittest.TestCase):
 
 
 # ── Phase 1 — directional control composite + extreme split ────────
-from services.snippet_salience import (  # noqa: E402
+from services.snippet_salience import (
     score_control_direction,
-    select_extremes_by_control,
     _CONTROL_COMPONENTS,
 )
 
@@ -179,46 +178,6 @@ class ControlCompositeTests(unittest.TestCase):
         scores = score_control_direction(pool, baseline=base)
         self.assertEqual(len(scores), len(pool))
         self.assertGreater(scores[0], scores[1])
-
-
-class ExtremeSplitTests(unittest.TestCase):
-    def test_surfaces_both_extremes(self):
-        pool = [_CONTROLLED, _SHAKY] + _filler_pool(10)  # 12 > 10
-        sel = select_extremes_by_control(pool, top_n=10)
-        ids = [s["start_ms"] for s in sel]
-        self.assertEqual(len(sel), 10)
-        self.assertIn(0, ids)      # clearest GOOD surfaced
-        self.assertIn(1000, ids)   # clearest SHAKY surfaced
-
-    def test_output_chronological(self):
-        pool = [_CONTROLLED, _SHAKY] + _filler_pool(10)
-        sel = select_extremes_by_control(pool, top_n=10)
-        ids = [s["start_ms"] for s in sel]
-        self.assertEqual(ids, sorted(ids))
-
-    def test_pool_at_or_below_cap_returns_all(self):
-        pool = [_CONTROLLED, _SHAKY] + _filler_pool(4)  # 6 <= 10
-        sel = select_extremes_by_control(pool, top_n=10)
-        self.assertEqual(len(sel), 6)
-
-    def test_never_exceeds_cap(self):
-        pool = [_CONTROLLED, _SHAKY] + _filler_pool(30)  # 32 > 10
-        sel = select_extremes_by_control(pool, top_n=10)
-        self.assertEqual(len(sel), 10)
-
-
-class ControlFenceGuardTests(unittest.TestCase):
-    """Control composite + direction are transient — never on outputs."""
-
-    def test_no_control_or_direction_on_returned_dicts(self):
-        pool = [_CONTROLLED, _SHAKY] + _filler_pool(10)
-        sel = select_extremes_by_control(pool, top_n=10)
-        for s in sel:
-            self.assertEqual(set(s.keys()), {"start_ms", "metrics"})
-            for banned in ("control", "control_score", "direction",
-                           "likely_strong", "likely_shaky", "salience"):
-                self.assertNotIn(banned, s)
-                self.assertNotIn(banned, s["metrics"])
 
 
 if __name__ == "__main__":

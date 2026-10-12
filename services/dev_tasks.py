@@ -595,7 +595,3 @@ def restore_task(task_id: int) -> None:
         "order_key": plan["order_key"],
     }).eq("id", task_id).execute()
 
-
-def export_markdown() -> str:
-    """Plain-markdown export (no image files). Kept for callers that want text."""
-    return to_markdown(_active_rows())

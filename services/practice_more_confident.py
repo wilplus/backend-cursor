@@ -39,16 +39,6 @@ def machine_leg(original: Optional[float], attempt: Optional[float]) -> str:
     return "higher" if float(attempt) > float(original) else "not_higher"  # type: ignore[arg-type]
 
 
-def coach_leg(before: Optional[str], after: Optional[str]) -> Optional[str]:
-    """'yes' when the coach's after answer is higher on the ladder than their
-    before answer, 'no' when it is the same or lower, None when either is
-    missing or off the ladder, or both are Yes (already confident)."""
-    b, a = _LADDER.get(before or ""), _LADDER.get(after or "")
-    if b is None or a is None or (b == 2 and a == 2):
-        return None
-    return "yes" if a > b else "no"
-
-
 def outcome(machine: str, coach: Optional[str]) -> str:
     """'helped' only when both legs say yes; 'pending' while either is missing."""
     if machine == "unmeasurable" or coach not in ("yes", "no"):

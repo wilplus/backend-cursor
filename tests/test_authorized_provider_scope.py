@@ -43,7 +43,6 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 FANOUT_SITES = (
     "services/say_it_stronger.py",
     "services/coach_comment_drafter.py",
-    "services/conversation_summary.py",
 )
 
 

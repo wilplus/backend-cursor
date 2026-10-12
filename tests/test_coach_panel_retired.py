@@ -149,11 +149,6 @@ class RetiredCodeTests(unittest.TestCase):
         self.assertIn("reconcile_voice_album_clip",
                       inspect.getsource(coach._reconcile_album_after_judgement))
 
-    def test_the_annotation_emitter_is_gone_and_its_diff_helpers_stay(self):
-        from services import ideal_text_annotations
-        self.assertFalse(hasattr(ideal_text_annotations, "emit_ideal_text_annotations"))
-        self.assertTrue(hasattr(ideal_text_annotations, "strip_for_diff"))
-
 
 if __name__ == "__main__":
     unittest.main()

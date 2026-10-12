@@ -263,20 +263,3 @@ class IdealTextRepository(TableRepository):
             logger.warning("insert_ideal_text_save failed arc=%s: %s",
                            arc_id, e)
             return False
-
-    def get_latest_ideal_text_save(self,
-                                   arc_id: Optional[str]) -> Optional[dict]:
-        if not arc_id:
-            return None
-        try:
-            res = (
-                self.client.table("ideal_text_saves")
-                .select("*")
-                .eq("arc_id", str(arc_id))
-                .order("version", desc=True)
-                .limit(1)
-                .execute()
-            )
-            return (res.data or [None])[0]
-        except Exception:
-            return None

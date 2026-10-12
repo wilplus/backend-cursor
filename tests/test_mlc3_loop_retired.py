@@ -144,14 +144,11 @@ class Mlc3LoopRetiredTests(unittest.TestCase):
         self.assertFalse(hasattr(coach, "_coach_inline_canonical_queue_rows"))
 
     def test_the_serving_gates_are_untouched(self):
-        # runtime_is_enabled / inline_authoring_is_enabled still gate V3
+        # runtime_is_enabled still gates V3
         # serving (config.py); the loop's retirement changed no flag.
         from services import coach_guidance_delivery
 
         self.assertTrue(callable(coach_guidance_delivery.runtime_is_enabled))
-        self.assertTrue(
-            callable(coach_guidance_delivery.inline_authoring_is_enabled)
-        )
 
 
 if __name__ == "__main__":

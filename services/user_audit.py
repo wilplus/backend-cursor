@@ -93,33 +93,6 @@ def audit_email_subject() -> str:
     return "Your WillpowerLab coaching audit"
 
 
-def send_user_audit_email(user_id: str, *, to_email: str, audit: dict | None = None) -> dict:
-    """Render and send the assembled take-feedback audit to the student, with
-    the per-user threading headers (fix-pack BE-3c) so repeat audits stack
-    into the SAME mail-client conversation as the other coach→user mails.
-
-    Raises on send failure (same contract as ``send_email_resend``) — the
-    coach route catches and maps to a 500.
-
-    NOTE: the coach trigger route (``/v2/coach/students/<id>/audit/send``
-    in routes/v2_routes.py) still inlines subject+html+send WITHOUT the
-    threading headers; v2_routes.py is frozen during the BE-3a PR, so
-    switching that call site to this helper is a one-line follow-up once
-    that PR lands.
-    """
-    from services.email_service import send_email_resend
-    from services.email_threading import user_thread_headers
-
-    if audit is None:
-        audit = assemble_user_audit(user_id)
-    return send_email_resend(
-        to=to_email,
-        subject=audit_email_subject(),
-        html=render_user_audit_html(audit),
-        headers=user_thread_headers(user_id) or None,
-    )
-
-
 def render_user_audit_html(audit: dict) -> str:
     """Minimal branded HTML for the manual coach send. Functional, not the
     F-2 main-page redesign (that's FE-owned per Flag 2); safe to restyle

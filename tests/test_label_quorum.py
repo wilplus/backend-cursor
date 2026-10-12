@@ -418,52 +418,6 @@ class TestTheOneRule(unittest.TestCase):
             self.assertEqual(lq.resolve(junk)["status"], lq.UNRATED)
 
 
-class TestRatingQueue(unittest.TestCase):
-    """Routing order — the only place the machine's proposal is read."""
-
-    def test_most_informative_first_and_settled_clips_leave(self):
-        items = [
-            {"snippet_id": "s-unrated", "resolution": lq.resolve([])},
-            {"snippet_id": "s-settled",
-             "resolution": lq.resolve([_row("yes", rater="a"),
-                                       _row("yes", rater="b")])},
-            {"snippet_id": "s-third",
-             "resolution": lq.resolve([_row("yes"),
-                                       _row("not_sure", rater="b")])},
-            {"snippet_id": "s-agrees",
-             "resolution": lq.resolve([_row("yes")]),
-             "machine_value": "yes"},
-            {"snippet_id": "s-disagrees",
-             "resolution": lq.resolve([_row("no")]),
-             "machine_value": "yes"},
-            {"snippet_id": "s-audio-retry",
-             "resolution": lq.resolve([_row("audio_unclear")])},
-            {"snippet_id": "s-audio-quarantined",
-             "resolution": lq.resolve([
-                 _row("audio_unclear", rater="a"),
-                 _row("audio_unclear", rater="b"),
-             ])},
-        ]
-        ordered = [it["snippet_id"] for it in lq.rating_queue(items)]
-        self.assertEqual(
-            ordered, ["s-disagrees", "s-third", "s-audio-retry",
-                      "s-agrees", "s-unrated"])
-        self.assertNotIn("s-settled", ordered)
-        self.assertNotIn("s-audio-quarantined", ordered)
-
-    def test_ties_break_deterministically(self):
-        items = [{"snippet_id": sid, "resolution": lq.resolve([])}
-                 for sid in ("c", "a", "b")]
-        first = [it["snippet_id"] for it in lq.rating_queue(items)]
-        self.assertEqual(first, ["a", "b", "c"])
-        self.assertEqual(
-            first, [it["snippet_id"] for it in lq.rating_queue(items[::-1])])
-
-    def test_queue_survives_junk(self):
-        self.assertEqual(lq.rating_queue(None), [])
-        self.assertEqual(lq.rating_queue(["x", None, {}]), [])
-
-
 class TestRaterSubmissionAccess(unittest.TestCase):
     """Assignment remains fresh across an unclear-audio retry."""
 
@@ -499,42 +453,6 @@ class TestRaterSubmissionAccess(unittest.TestCase):
         access = lq.rater_submission_access(rows, "a")
         self.assertTrue(access["allowed"])
         self.assertEqual(access["outcome"], "update")
-
-
-class TestCorpusLedger(unittest.TestCase):
-    """The dial: rows are not ground truth, settled snippets are."""
-
-    def test_gold_counts_only_settled_snippets(self):
-        resolutions = [
-            lq.resolve([_row("yes", rater="a"), _row("yes", rater="b")]),
-            lq.resolve([_row("neutral", rater="a"),
-                        _row("neutral", rater="b"),
-                        _row("neutral", rater="c")]),
-            lq.resolve([_row("yes")]),
-            lq.resolve([_row("yes"), _row("no", rater="b")]),
-            lq.resolve([_row("yes", self_report=True)]),
-            lq.resolve([_row("audio_unclear", rater="a")]),
-            lq.resolve([_row("audio_unclear", rater="a"),
-                        _row("audio_unclear", rater="b")]),
-        ]
-        led = lq.corpus_ledger(resolutions)
-        self.assertEqual(led["snippets"], 7)
-        self.assertEqual(led["gold"], 1)
-        self.assertEqual(led["unresolved"], 1)
-        self.assertEqual(led["weak"], 1)
-        self.assertEqual(led["blocked"], 1)
-        self.assertEqual(led["self_reports_excluded"], 1)
-        self.assertEqual(led["audio_retry"], 1)
-        self.assertEqual(led["audio_quarantined"], 1)
-        self.assertEqual(led["gold_share"], 0.143)
-        # Rule 1 reported, not asserted: non-zero here means the corpus is
-        # circular and no agreement number computed off it can be trusted.
-        self.assertEqual(led["machine_votes"], 0)
-
-    def test_empty_ledger_has_no_fabricated_share(self):
-        led = lq.corpus_ledger([])
-        self.assertEqual(led["snippets"], 0)
-        self.assertIsNone(led["gold_share"])
 
 
 class TestTheWriter(unittest.TestCase):

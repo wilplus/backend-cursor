@@ -172,8 +172,6 @@ class IntegrationSmokeTest(unittest.TestCase):
         # session_predictions, charisma_profile + session_kpi_narrative
         # were removed in the old-subsystem excision.)
         callers = [
-            "services.baseline_summary",
-            "services.snippet_drafts",
             "services.next_session_icebreaker",
             "services.directive_suggestions",
             "services.master_doc_rag",

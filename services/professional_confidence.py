@@ -68,11 +68,3 @@ def professional_verdicts(database, snippet_ids: Iterable[Any]) -> dict:
             out[snippet_id] = value
     return out
 
-
-def professional_yes_ids(database, snippet_ids: Iterable[Any]) -> set:
-    """Subset carrying a latest explicit professional Yes."""
-    return {
-        snippet_id for snippet_id, value
-        in professional_verdicts(database, snippet_ids).items()
-        if value == "yes"
-    }

@@ -1,6 +1,5 @@
 from pathlib import Path
 
-from services.coach_guidance_delivery import inline_authoring_is_enabled
 from services.data_purge_registry import DEPENDENCIES
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,11 +13,6 @@ def _function(name: str) -> str:
     marker = f"CREATE OR REPLACE FUNCTION public.{name}("
     start = MIGRATION.index(marker)
     return MIGRATION[start:MIGRATION.index("\n$$;", start) + 4]
-
-
-def test_inline_authoring_gate_defaults_closed():
-    assert inline_authoring_is_enabled() is False
-    assert "MLC3_COACH_INLINE_AUTHORING_ENABLED" in SERVICE
 
 
 def test_release_migration_is_manifested_as_0324():

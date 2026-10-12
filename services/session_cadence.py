@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -131,28 +130,6 @@ BEATS: dict[int, dict[str, Any]] = {
         ),
     },
 }
-
-
-def select_post_take_beat(
-    take_index: Any, *, spark_enabled: bool = False,
-) -> Optional[dict]:
-    """The beat that fires AFTER a just-completed ``take_index`` to INVITE the
-    next take. Returns ``None`` (no nag) once the planned arc is done:
-
-      take 1 done → BEAT 1 (chill)   take 2 done → BEAT 2 (data)
-      take 3 done → BEAT 3 (spark) ONLY if spark_enabled, else None
-      take ≥ last planned → None
-    """
-    try:
-        ti = int(take_index)
-    except (TypeError, ValueError):
-        return None
-    beat = BEATS.get(ti)  # beat_no n is invited by completing take n
-    if not beat:
-        return None
-    if beat.get("spark_only") and not spark_enabled:
-        return None
-    return beat
 
 
 # ── Rendering: constrained in-language generation (§2). ─────────────────
@@ -330,43 +307,6 @@ def _render_beat(
     return body or None
 
 
-# ── Persistence: idempotent Lounge bubble. ──────────────────────────────
-def _client_id(arc_id: str, beat_no: int) -> str:
-    """Stable per (arc, beat) so re-firing a beat is a no-op upsert (§6 C1)."""
-    return str(uuid.uuid5(_CLIENT_ID_NS, f"willab-cadence:{arc_id}:beat{beat_no}"))
-
-
-def _insert_bubble(
-    database,
-    user_id: str,
-    arc_id: str,
-    beat_no: int,
-    body: str,
-    *,
-    take_index: Optional[int],
-    take_count: Optional[int],
-) -> bool:
-    try:
-        rows = database.insert_lounge_messages(str(user_id), [{
-            "client_id": _client_id(arc_id, beat_no),
-            "role": "bot",
-            "kind": "cadence",
-            "body": body,
-            "metadata": {
-                "arc_id": arc_id,
-                "beat": beat_no,
-                "take_index": take_index,
-                "take_count": take_count,
-            },
-            "client_created_at": datetime.now(timezone.utc).isoformat(),
-        }])
-        return bool(rows)
-    except Exception as e:
-        logger.warning("cadence: insert failed arc=%s beat=%s: %s",
-                       arc_id, beat_no, e)
-        return False
-
-
 def _get_db(database):
     if database is not None:
         return database
@@ -391,33 +331,3 @@ def fire_arc_start(
     """
     return False
 
-
-def fire_post_take(
-    user_id: Optional[str],
-    arc_id: Optional[str],
-    take_index: Any,
-    *,
-    take_count: Optional[int] = None,
-    spark_enabled: bool = False,
-    goal: Optional[str] = None,
-    language: Optional[str] = None,
-    database=None,
-) -> bool:
-    """Fire the beat that INVITES the next take, after ``take_index`` just
-    completed. No-op (no nag) once the planned arc is done. Idempotent.
-    Returns True iff a bubble was rendered + inserted."""
-    if not user_id or not arc_id:
-        return False
-    beat = select_post_take_beat(take_index, spark_enabled=spark_enabled)
-    if not beat:
-        return False
-    body = _render_beat(
-        beat, take_index=take_index, take_count=take_count or TARGET_TAKES,
-        language=language, goal=goal,
-    )
-    if not body:
-        return False
-    return _insert_bubble(
-        _get_db(database), user_id, arc_id, beat["beat_no"], body,
-        take_index=take_index, take_count=take_count,
-    )

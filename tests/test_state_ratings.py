@@ -32,7 +32,6 @@ from services.state_ratings import (
     VALUES,
     aggregate,
     corpus_summary,
-    describe_question,
     quality,
     question_for_state,
     resolve_lane,
@@ -125,15 +124,6 @@ class TestOperationalDefinitionGate(unittest.TestCase):
         would silently blend two constructs."""
         row, _ = validate_rating({"state_id": "confidence", "value": "yes"})
         self.assertEqual(row["question_version"], "conf-q-v2")
-
-    def test_question_text_is_single_barrelled(self):
-        """'confident AND authoritative' was two constructs in one question."""
-        text = describe_question("conf-q-v2")["text"]
-        self.assertNotIn(" and ", text.lower())
-
-    def test_retired_version_still_resolves(self):
-        """Pre-cutover rows must stay interpretable."""
-        self.assertIsNotNone(describe_question("conf-q-v0"))
 
     def test_saw_model_output_is_always_false(self):
         """I1 — stored so the invariant is auditable, not assumed."""

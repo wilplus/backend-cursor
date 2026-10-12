@@ -105,7 +105,7 @@ class TestNoPrefixShipsUnclassified:
         """A scanner that found nothing would pass the case above forever."""
         found = _discovered_prefixes()
 
-        for expected in ("willab_lab/", "charisma_snippets/", "casual_voice/",
+        for expected in ("willab_lab/", "charisma_snippets/",
                          "journal/"):
             assert expected in found, (
                 f"the scanner no longer sees {expected} being written — the "

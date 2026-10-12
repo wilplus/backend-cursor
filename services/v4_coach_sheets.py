@@ -486,17 +486,3 @@ def golden_agreement(rows: Iterable[dict]) -> dict:
             "coach_agreement": (sum(1 for k, a in shared if founder[k] == a) / len(shared)
                                 if shared else None)}
 
-
-def repick_consistency(rows: Iterable[dict]) -> dict:
-    """QG9 A, founder-only: how often a coach picked the same again. Pure."""
-    by_id = {str(r.get("id")): r for r in rows if isinstance(r, dict)}
-    pairs: list[tuple[dict, dict]] = []
-    for r in by_id.values():
-        first = by_id.get(str(r.get("repick_of")))
-        if r.get("slice") == "repick" and r.get("answered_at") and first and first.get("answered_at"):
-            pairs.append((first, r))
-    same = sum(1 for a, b in pairs
-               if (a.get("none_needs_it"), a.get("answer_snippet_id"))
-               == (b.get("none_needs_it"), b.get("answer_snippet_id")))
-    return {"repicks": len(pairs), "same": same,
-            "share": same / len(pairs) if pairs else None}

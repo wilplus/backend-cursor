@@ -28,15 +28,12 @@ import logging
 import json
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
 from typing import Any, Protocol
-import uuid
 
 from config import Config
 from services.confident_moment_bundle import (
     runtime_is_enabled,
     validate_bundle_item_render_receipt,
-    validate_coach_authoring_context,
     validate_coach_update_render_receipt,
 )
 from services.confident_moment_user_media import (
@@ -129,12 +126,6 @@ class ServiceRoleReadRpcTransport:
         if type(value) is not dict:
             raise RuntimeError("CONFIDENT_MOMENT_READ_RPC_RESPONSE_INVALID")
         return value
-
-
-@dataclass(frozen=True)
-class PublishCoachFeedbackLanguageResult:
-    public_payload: dict[str, Any]
-    materialization_job_id: str | None
 
 
 class ConfidentMomentBundleRepository:
@@ -245,33 +236,6 @@ class ConfidentMomentBundleRepository:
             attachment_id=bundle_attachment_id,
         )
 
-    def prepare_bundle(
-        self,
-        *,
-        acquisition_principal_id: str,
-        project_id: str,
-        take_id: str,
-        feedback_membership_id: str,
-        bundle_subject_candidate_id: str,
-        idempotency_key: str,
-    ) -> dict[str, Any]:
-        self._require_bundle_gate()
-        result = self.client.rpc(
-            "prepare_confident_moment_bundle_v1",
-            {
-                "p_acquisition_principal_id": acquisition_principal_id,
-                "p_project_id": project_id,
-                "p_take_id": take_id,
-                "p_feedback_membership_id": feedback_membership_id,
-                "p_bundle_subject_candidate_id": bundle_subject_candidate_id,
-                "p_idempotency_key": idempotency_key,
-            },
-        ).execute()
-        data = self._rpc_payload(getattr(result, "data", result))
-        if not isinstance(data, dict):
-            raise TypeError("prepare_confident_moment_bundle_v1 returned non-object")
-        return data
-
     def ack_item_render(
         self,
         *,
@@ -339,37 +303,6 @@ class ConfidentMomentBundleRepository:
             presentation_id=presentation_id,
             render_instance_id=render_instance_id,
         )
-
-    def freeze_coverage_frame(
-        self,
-        *,
-        acquisition_principal_id: str,
-        project_id: str,
-        take_id: str,
-        feedback_membership_id: str,
-        document_snapshot_id: str,
-        policy_version: str,
-        idempotency_key: str,
-    ) -> dict[str, Any]:
-        self._require_coverage_gate()
-        result = self.client.rpc(
-            "freeze_root_phrase_coverage_frame_v1",
-            {
-                "p_acquisition_principal_id": acquisition_principal_id,
-                "p_project_id": project_id,
-                "p_take_id": take_id,
-                "p_feedback_membership_id": feedback_membership_id,
-                "p_document_snapshot_id": document_snapshot_id,
-                "p_policy_version": policy_version,
-                "p_idempotency_key": idempotency_key,
-            },
-        ).execute()
-        data = self._rpc_payload(getattr(result, "data", result))
-        if not isinstance(data, dict):
-            raise TypeError(
-                "freeze_root_phrase_coverage_frame_v1 returned non-object"
-            )
-        return data
 
     def record_family_response(
         self,
@@ -477,76 +410,3 @@ class ConfidentMomentBundleRepository:
             },
         ).execute()
         return self._rpc_payload(getattr(result, "data", result))
-
-    def project_coach_authoring_context(
-        self, *, project_id: str, reviewer_principal_id: str,
-        idempotency_key: str,
-    ) -> dict[str, Any]:
-        self._require_bundle_gate()
-        result = self.client.rpc(
-            "project_confident_moment_coach_authoring_context_v2",
-            {
-                "p_project_id": project_id,
-                "p_reviewer_principal_id": reviewer_principal_id,
-                "p_idempotency_key": idempotency_key,
-            },
-        ).execute()
-        return validate_coach_authoring_context(
-            self._rpc_payload(getattr(result, "data", result))
-        )
-
-    def publish_coach_feedback_language(
-        self, *, reviewer_principal_id: str, bundle_id: str,
-        bundle_attachment_id: str, review_batch_id: str,
-        reveal_grant_id: str, reveal_access_id: str,
-        review_assignment_id: str, output_kind: str,
-        comment_purpose: str | None, revision_text: str,
-        expected_current_revision_id: str | None,
-        expected_current_delivery_id: str | None, idempotency_key: str,
-    ) -> PublishCoachFeedbackLanguageResult:
-        self._require_bundle_gate()
-        result = self.client.rpc(
-            "publish_confident_moment_coach_feedback_language_v1",
-            {
-                "p_reviewer_principal_id": reviewer_principal_id,
-                "p_bundle_id": bundle_id,
-                "p_bundle_attachment_id": bundle_attachment_id,
-                "p_review_batch_id": review_batch_id,
-                "p_reveal_grant_id": reveal_grant_id,
-                "p_reveal_access_id": reveal_access_id,
-                "p_review_assignment_id": review_assignment_id,
-                "p_output_kind": output_kind,
-                "p_comment_purpose": comment_purpose,
-                "p_revision_text": revision_text,
-                "p_expected_current_revision_id": expected_current_revision_id,
-                "p_expected_current_delivery_id": expected_current_delivery_id,
-                "p_idempotency_key": idempotency_key,
-            },
-        ).execute()
-        raw = self._rpc_payload(getattr(result, "data", result))
-        if "_materialization_job_id" not in raw:
-            raise TypeError("publish result missing internal job identity")
-        job_id = raw.get("_materialization_job_id")
-        if job_id is not None:
-            try:
-                canonical = str(uuid.UUID(job_id))
-            except (TypeError, ValueError) as error:
-                raise TypeError("publish internal job identity invalid") from error
-            if canonical != job_id:
-                raise TypeError("publish internal job identity invalid")
-        public_payload = {
-            key: value for key, value in raw.items()
-            if key != "_materialization_job_id"
-        }
-        from services.confident_moment_bundle import (
-            validate_coach_feedback_language,
-        )
-        validate_coach_feedback_language(
-            public_payload,
-            bundle_id=bundle_id,
-            attachment_id=bundle_attachment_id,
-        )
-        return PublishCoachFeedbackLanguageResult(
-            public_payload=public_payload,
-            materialization_job_id=job_id,
-        )

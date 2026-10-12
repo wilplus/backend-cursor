@@ -65,7 +65,6 @@ def test_protected_user_data_modules_do_not_import_provider_client():
         "services/coach_comment_drafter.py",
         "services/master_doc_rag.py",
         "services/moment_suggestions.py",
-        "services/stickiness.py",
         "routes/v2/lab_recording.py",
         "routes/v2/projects.py",
         "routes/v2/coach.py",

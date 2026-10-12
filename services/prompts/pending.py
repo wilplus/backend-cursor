@@ -80,21 +80,12 @@ REGISTER = {
     # ── single-surface services still inline ──
     "session_cadence.render_beat": SourceRef("services/session_cadence.py", "_render_beat"),
     "session_cadence.beats": SourceRef("services/session_cadence.py", "BEATS"),
-    "stickiness_topics.builder": SourceRef("services/stickiness.py", "_extract_topics_via_llm"),
-    "stickiness_topics.user": SourceRef("services/stickiness.py", "_build_user_prompt"),
-    "conversation_summary.builder": SourceRef("services/conversation_summary.py", "_llm_fold"),
-    "conversation_summary.context_block": SourceRef(
-        "services/conversation_summary.py", "format_summary_for_prompt"),
     "goal_update.builder": SourceRef("services/goal_update.py", "_classify_goal_update"),
     "audit_pointer.builder": SourceRef("services/audit_intent.py", "_render_pointer"),
     "next_session_icebreaker.builder": SourceRef(
         "services/next_session_icebreaker.py", "_llm_generate_question"),
     "next_session_icebreaker.user": SourceRef(
         "services/next_session_icebreaker.py", "_build_user_prompt"),
-    "baseline_summary.system": SourceRef("services/baseline_summary.py", "_build_system_prompt"),
-    "baseline_summary.user": SourceRef("services/baseline_summary.py", "_build_user_prompt"),
-    "baseline_summary.context_block": SourceRef(
-        "services/baseline_summary.py", "format_baseline_for_prompt"),
     "directive_suggestions.builder": SourceRef(
         "services/directive_suggestions.py", "suggest_directive_arc"),
     "directive_suggestions.recent_snippets": SourceRef(
@@ -112,10 +103,6 @@ REGISTER = {
     "journal_image_brief.style": SourceRef("services/journal_image.py", "_DEFAULT_STYLE"),
     "journal_image_brief.user": SourceRef("services/journal_image.py", "build_brief_user"),
     "journal_image_brief.fallback": SourceRef("services/journal_image.py", "fallback_brief"),
-    "snippet_drafts.charisma_system": SourceRef(
-        "services/snippet_drafts.py", "_charisma_system_prompt"),
-    "snippet_drafts.charisma_user": SourceRef(
-        "services/snippet_drafts.py", "_charisma_user_prompt"),
     "dev_tasks.reference": SourceRef("services/dev_tasks.py", "_REFERENCE"),
     "dev_tasks.system": SourceRef("services/dev_tasks.py", "_SYSTEM"),
     "dev_tasks.reeval": SourceRef("services/dev_tasks.py", "_REEVAL_SYSTEM"),

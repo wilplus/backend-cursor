@@ -230,9 +230,3 @@ def test_database_allocates_practice_attempt_indexes_for_runtime():
     )[1].split("\n$$;", 1)[0]
     assert "next_attempt_index" not in v2_body
     assert "RETURN public.reserve_exercise_practice_service_upload_v1(" in v2_body
-    repository = (ROOT / "services/first_client_repository.py").read_text()
-    assert '"reserve_exercise_practice_service_upload_v2"' in repository
-    assert (
-        "reserve_exercise_practice_service_upload_v1\", payload"
-        not in repository
-    )

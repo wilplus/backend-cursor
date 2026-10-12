@@ -226,14 +226,6 @@ class NoDirectProviderClientRemainsTests(unittest.TestCase):
             "snippet_transcription.py",
             # The permitted wrapper this change added.
             "authorized_provider.py",
-            # MLC-3 first-client practice. A SEPARATE authorization design:
-            # the run must already be `authorized` in the database, dispatch
-            # and reconciliation are recorded there, and the route sits behind
-            # `mlc3_service_required` (404 unless enrolled). Not the Phase-1
-            # permit path, and deliberately out of scope here — but it is a
-            # second place user audio reaches a provider, and it should be
-            # reviewed on its own terms rather than forgotten.
-            "practice_attempt_orchestrator.py",
         }
         call = re.compile(r"transcribe_snippet_bytes\s*\(")
         offenders = sorted(

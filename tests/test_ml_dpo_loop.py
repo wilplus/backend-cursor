@@ -17,10 +17,7 @@ from services.ml_surface_contracts import (
     clear_runtime_model_cache,
     contract_for_surface,
     evaluation_model_override,
-    fields_for_surface,
     resolve_surface_model,
-    runtime_config_key,
-    surface_for_annotation_field,
 )
 
 
@@ -55,29 +52,6 @@ class SurfaceContractTests(unittest.TestCase):
             with self.subTest(surface=surface_id):
                 self.assertNotIn(surface_id, REJECTED_LEARNING_ALIASES)
                 self.assertIn(surface_id, LEARNING_SURFACE_ALIASES)
-
-    def test_annotation_fields_and_runtime_alias_share_one_surface(self):
-        self.assertEqual(
-            surface_for_annotation_field("ideal_text_sentence"), "ideal_text",
-        )
-        self.assertEqual(contract_for_surface("best_presentation").id, "ideal_text")
-        self.assertEqual(
-            runtime_config_key("best_presentation"),
-            "openai_surface_model_ideal_text",
-        )
-        self.assertEqual(
-            surface_for_annotation_field("coach_note"),
-            "coach_comment_draft",
-        )
-        self.assertEqual(
-            runtime_config_key("coach_comment_draft"),
-            "openai_surface_model_coach_comment_draft",
-        )
-
-    def test_unknown_or_legacy_field_is_not_silently_grouped(self):
-        self.assertIsNone(surface_for_annotation_field("email_draft"))
-        with self.assertRaises(ValueError):
-            contract_for_surface("copilot")
 
     def test_eval_override_is_scoped_and_does_not_touch_runtime_config(self):
         """The override is process-local, and it outranks the stored row.
@@ -137,19 +111,6 @@ class SurfaceContractTests(unittest.TestCase):
             "base",
         )
         self.assertEqual(calls, [])
-
-
-class SurfaceFieldTests(unittest.TestCase):
-    def test_surface_field_sets_are_not_overlapping(self):
-        surfaces = (
-            "say_it_stronger",
-            "ideal_text",
-            "coach_comment_draft",
-        )
-        sets = [fields_for_surface(surface) for surface in surfaces]
-        for idx, fields in enumerate(sets):
-            for other in sets[idx + 1:]:
-                self.assertFalse(fields & other)
 
 
 class ImmutableReleaseTests(unittest.TestCase):

@@ -413,7 +413,6 @@ def test_d11_runtime_rpc_caller_registry_is_exact():
     expected = {
         ("services/first_client_repository.py", "ensure_service_enrollment", "ensure_mlc3_service_enrollment_v2"),
         ("services/first_client_repository.py", "freeze_feedback_v3_service_membership", "freeze_feedback_v3_service_membership_v1"),
-        ("services/first_client_repository.py", "ack_feedback_v3_service_render", "ack_feedback_v3_service_render_v1"),
         ("services/confident_moment_bundle_repository.py", "record_family_response", "record_confident_moment_bundle_family_response_v1"),
         ("services/db.py", "publish_ideal_text_document_snapshot", "publish_ideal_text_document_snapshot_v1"),
         ("services/processing_authorization.py", "accept", "accept_phase1_processing_authorization_v2"),

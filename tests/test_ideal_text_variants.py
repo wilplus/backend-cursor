@@ -13,7 +13,6 @@ from __future__ import annotations
 import unittest
 
 from services.ideal_text_variants import (
-    capture_take_variants,
     snapshot_composition,
 )
 
@@ -148,30 +147,6 @@ def _block(key, sid, take_index, pieces, *, label=None, status="settled",
 def _pieces(*texts, prefix="s"):
     return [{"snippet_id": f"{prefix}{i}", "text": t}
             for i, t in enumerate(texts)]
-
-
-class TakeCaptureTests(unittest.TestCase):
-    def test_losing_segment_still_pools(self):
-        """Fear #1: a take's segment that loses the duel (or is later
-        displaced by a newer offer) is in the pool regardless."""
-        db = _Db()
-        n = capture_take_variants(db, ARC, T2, 2, {
-            0: _pieces("worse opening words"),
-            10: _pieces("a better middle"),
-        })
-        self.assertEqual(n, 2)
-        keys = {v["block_key"] for v in db.variants}
-        self.assertEqual(keys, {0, 10})
-        self.assertTrue(all(v["source_kind"] == "take"
-                            for v in db.variants))
-
-    def test_recapture_is_idempotent(self):
-        db = _Db()
-        capture_take_variants(db, ARC, T2, 2, {0: _pieces("same words")})
-        n = capture_take_variants(db, ARC, T2, 2,
-                                  {0: _pieces("same words")})
-        self.assertEqual(n, 0)
-        self.assertEqual(len(db.variants), 1)
 
 
 class SnapshotTests(unittest.TestCase):

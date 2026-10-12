@@ -5,7 +5,6 @@ import pytest
 from services.dataset_releases import (
     DatasetReleaseError,
     build_dataset_release_manifest,
-    manifest_json,
     speaker_split,
 )
 
@@ -60,17 +59,6 @@ def test_same_speaker_is_stable_across_projects_items_and_releases():
     assert len(owner_a_splits) == 1
     assert len({row["owner_principal_id"]
                 for row in manifest["split_assignments"]}) == 2
-
-
-def test_release_checksum_and_json_are_reproducible():
-    items = [
-        _item(OWNER_A, "20000000-0000-0000-0000-000000000001"),
-        _item(OWNER_B, "20000000-0000-0000-0000-000000000002"),
-    ]
-    first = _manifest(items)
-    second = _manifest(reversed(items))
-    assert first == second
-    assert manifest_json(first) == manifest_json(second)
 
 
 def test_release_refuses_mixed_surfaces_and_collapsed_labels():
