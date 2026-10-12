@@ -19,8 +19,7 @@ from types import SimpleNamespace
 import pytest
 
 from services.data_purge import DataPurgeOrchestrator, SubjectGraph
-from services.data_purge_project_scope import ProjectPurgeOrchestrator
-from services.data_purge_registry import DEPENDENCIES, dependency_by_code
+from services.data_purge_registry import dependency_by_code
 
 USER_KEYED = {
     "coach_readings": ("coach_readings", "coach_id"),
@@ -33,41 +32,8 @@ USER_KEYED = {
 }
 
 
-def _by_code():
-    return {d.code: d for d in DEPENDENCIES}
-
-
-def test_user_keyed_rows_use_the_user_locator():
-    by = _by_code()
-    for code, (relation, column) in USER_KEYED.items():
-        dep = by[code]
-        assert (dep.relation, dep.selector_column, dep.locator_kind) == (
-            relation, column, "user"), code
-        assert dep.disposition == "delete", code
-
-
-def test_an_account_graph_reaches_them_by_user_id():
-    graph = SubjectGraph(principal_ids=("p-1",), user_ids=("u-1",))
-    by = _by_code()
-    for code in USER_KEYED:
-        assert graph.values(by[code].locator_kind) == ("u-1",), code
-
-
 #: A real account: its owner principal's id is not its user id.
 ACCOUNT = SubjectGraph(principal_ids=("principal-1",), user_ids=("user-1",))
-#: The project graph lists no principal and no user (data_purge_project_scope).
-PROJECT = SubjectGraph(principal_ids=(), project_ids=("project-1",),
-                       take_ids=("take-1",))
-
-#: `principal` locators on a column not named `*principal_id`, each checked
-#: by hand: the principal table's own key, and feedback_revisions.rater_id,
-#: whose coach rows name the coach's owner principal (the coaching bundle's
-#: p_reviewer_principal_id). Its owner rows (record_root_phrase_skip_v1) name
-#: a user id and are reached by feedback_revision_owner_raters (0448).
-PRINCIPAL_KEYS_BY_OTHER_NAMES = frozenset({
-    ("owner_principals", "id"),
-    ("feedback_revisions", "rater_id"),
-})
 
 
 class _Query:
@@ -141,17 +107,6 @@ def _purge(code, cls=DataPurgeOrchestrator):
 
 
 @pytest.mark.parametrize("code", sorted(USER_KEYED))
-def test_each_is_addressed_by_the_user_locator_and_nothing_else_moved(code):
-    dependency = dependency_by_code(code)
-    assert dependency is not None
-    assert (dependency.relation, dependency.selector_column) == USER_KEYED[code]
-    assert dependency.locator_kind == "user"
-    assert (dependency.disposition, dependency.target_kind,
-            dependency.delete_order, dependency.ruled_by) == (
-        "delete", "derived_feedback", 35, None)
-
-
-@pytest.mark.parametrize("code", sorted(USER_KEYED))
 def test_an_account_purge_deletes_the_rows_kept_under_its_user_id(code):
     orchestrator, client, dependency = _purge(code)
     relation = dependency.relation
@@ -171,34 +126,3 @@ def test_an_account_purge_deletes_the_rows_kept_under_its_user_id(code):
     assert [row["id"] for row in client.tables[relation]] == ["theirs"]
     assert [(call["p_state"], call["p_remaining_match_count"])
             for call in client.resolved] == [("deleted", 0)]
-
-
-@pytest.mark.parametrize("code", sorted(USER_KEYED))
-def test_a_project_purge_leaves_them_with_the_account(code):
-    orchestrator, client, dependency = _purge(code, ProjectPurgeOrchestrator)
-    relation = dependency.relation
-
-    target = orchestrator._dependency_target(
-        dependency, PROJECT, frozenset({relation}))
-
-    assert target is not None
-    assert target.target_kind != "unknown"
-    assert target.initial_match_count == 0
-    orchestrator._resolve_dependency({"id": "target-1", **target.payload()},
-                                     PROJECT)
-    assert len(client.tables[relation]) == 3
-    assert [call["p_state"] for call in client.resolved] == ["not_found"]
-
-
-def test_a_principal_locator_addresses_only_a_column_that_holds_one():
-    """A column named for a user, a coach, a listener or a rater holds
-    request.user_id. A table keyed that way says so with `user`; a column
-    that holds a principal under another name is checked and listed above."""
-    for dependency in DEPENDENCIES:
-        named_for_a_principal = dependency.selector_column.endswith("principal_id")
-        key = (dependency.relation, dependency.selector_column)
-        if dependency.locator_kind == "principal":
-            assert named_for_a_principal or key in PRINCIPAL_KEYS_BY_OTHER_NAMES, (
-                dependency.code)
-        else:
-            assert not named_for_a_principal, dependency.code

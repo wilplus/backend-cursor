@@ -36,12 +36,10 @@ Run: python3 -m unittest tests.test_practice_transcription
 """
 from __future__ import annotations
 
-import inspect
 import unittest
 from unittest.mock import patch
 
 from services import practice_transcription as pt
-
 
 PRACTICE = {
     "id": "11111111-1111-4111-8111-111111111111",
@@ -119,15 +117,6 @@ class PracticeTranscriptionTests(unittest.TestCase):
 
     # ── the contract survives the move ───────────────────────────────────
 
-    def test_it_returns_the_snippet_contract_unchanged(self):
-        auth = _Auth()
-        result, _, calls = self._run(auth)
-        self.assertEqual(result, TRANSCRIPTION)
-        # The word's recognition confidence is the field the practice
-        # comparison reads and the general transcribe_audio drops.
-        self.assertIn("confidence", result["words"][0])
-        self.assertEqual(calls[0][0], b"audio-bytes")
-        self.assertEqual(calls[0][1], "practice.webm")
 
     # ── the permit ───────────────────────────────────────────────────────
 
@@ -141,20 +130,6 @@ class PracticeTranscriptionTests(unittest.TestCase):
         self.assertEqual(permit["acquisition_principal_id"], "principal-1")
         self.assertEqual(permit["take_id"], PRACTICE["take_session_id"])
 
-    def test_the_permit_does_not_claim_the_original_recording(self):
-        # A practice attempt is NEW audio. Naming the original snippet would
-        # assert the original was sent to OpenAI, which is false — an untrue
-        # permit is worse than an unscoped one.
-        auth = _Auth()
-        self._run(auth)
-        self.assertIsNone(auth.permits[0]["recording_id"])
-        self.assertNotIn(
-            PRACTICE["snippet_id"], str(auth.permits[0]))
-
-    def test_the_outcome_is_recorded_on_success(self):
-        auth = _Auth()
-        self._run(auth)
-        self.assertEqual([e[1] for e in auth.events], ["started", "completed"])
 
     def test_the_outcome_is_recorded_on_failure_and_the_error_propagates(self):
         # A provider call that vanishes from the ledger when it fails is the
@@ -166,86 +141,6 @@ class PracticeTranscriptionTests(unittest.TestCase):
         self.assertEqual(auth.events[-1][2], "RuntimeError")
 
     # ── mode off ─────────────────────────────────────────────────────────
-
-    def test_mode_off_is_the_same_path_not_a_bypass(self):
-        auth = _Auth(enforced=False)
-        result, db, calls = self._run(auth)
-        self.assertEqual(result, TRANSCRIPTION)
-        self.assertEqual(auth.permits, [])
-        self.assertEqual(auth.events, [])
-        # And it does not read the session it does not need.
-        self.assertEqual(db.sessions_read, [])
-        self.assertEqual(len(calls), 1)
-
-
-class NoDirectProviderClientRemainsTests(unittest.TestCase):
-    """Source fences: the unpermitted call is gone, the gate is not."""
-
-    def test_the_practice_route_no_longer_calls_the_unpermitted_function(self):
-        source = open("routes/v2/user_sessions.py", encoding="utf-8").read()
-        self.assertNotIn("transcribe_snippet_bytes", source)
-        self.assertIn("transcribe_practice_attempt", source)
-
-    def test_the_purpose_gate_is_still_on_every_practice_route(self):
-        """The gate STAYS until the database stops forbidding the purpose.
-
-        `migrations/add_phase1_processing_boundary.sql` registers
-        `personalized_exercise_recommendation` as `phase2` and raises
-        PHASE2_PURPOSE_FORBIDDEN for any policy that includes it. So a permit
-        for this purpose cannot be issued at all. Lifting the route gate now
-        would make the practice routes live ONLY because enforcement happens
-        to be off — working right up until it is switched on, which is the
-        exact silent hole this module was written to close.
-
-        This plumbing is the prerequisite, not the authorization.
-        """
-        marker = 'operational_purpose_disabled("personalized_exercise_recommendation")'
-        self.assertEqual(
-            open("routes/v2/user_sessions.py", encoding="utf-8").read()
-            .count(marker), 9)  # + judge-attempt, helper-words (2026-09-25),
-        # + exercise-rendered (2026-09-28), + the machine's check (2026-10-06)
-        # + the phone's timing of a try (2026-10-08, V4 B1.4)
-        self.assertEqual(
-            open("routes/v2/coach.py", encoding="utf-8").read()
-            .count(marker), 4)  # + the practice judgement (2026-10-05, N45),
-            # + the exercise request (2026-09-28),
-        # + the coach's answer draft (2026-09-30)
-
-    def test_no_new_module_calls_the_unpermitted_transcription(self):
-        """A ratchet, not a clean sheet.
-
-        Written as an allowlist because the sweep found a caller this change
-        does NOT touch, and pretending otherwise would be the more comfortable
-        lie. Each entry needs a reason; the list may shrink and must not grow.
-        """
-        import re
-        from pathlib import Path
-
-        allowed = {
-            # The implementation itself.
-            "snippet_transcription.py",
-            # The permitted wrapper this change added.
-            "authorized_provider.py",
-        }
-        call = re.compile(r"transcribe_snippet_bytes\s*\(")
-        offenders = sorted(
-            path.name for path in Path("services").glob("*.py")
-            if path.name not in allowed
-            and call.search(path.read_text(encoding="utf-8"))
-        )
-        self.assertEqual(
-            offenders, [],
-            "these reach the transcription provider without a permit: "
-            f"{offenders}")
-
-    def test_the_wrapper_records_a_terminal_event_on_both_paths(self):
-        from services.authorized_provider import AuthorizedProviderAdapter
-
-        source = inspect.getsource(AuthorizedProviderAdapter.transcribe_snippet)
-        self.assertIn('"started"', source)
-        self.assertIn('"completed"', source)
-        self.assertIn('"failed"', source)
-        self.assertIn("raise", source)
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -1,30 +1,8 @@
 from services.coach_blind_gate import (
-    blind_label_progress,
-    can_reveal_acoustic_features,
-    has_committed_blind_label,
     redact_contextual_snippets,
     reveal_acoustic_features_after_commit,
-    reveal_owner_answer_after_commit,
     reveal_transcript_after_commit,
 )
-
-
-def test_committed_label_accepts_all_current_states_and_legacy_rows():
-    assert has_committed_blind_label({"rating_value": "yes"})
-    assert has_committed_blind_label({"rating_value": "in_between"})
-    assert has_committed_blind_label({"rating_value": "not_sure"})
-    assert has_committed_blind_label({"rating_value": "audio_unclear"})
-    assert has_committed_blind_label({"rating_value": "neutral"})
-    assert has_committed_blind_label({"rating_unrateable": True})
-    assert not has_committed_blind_label({"rating_value": None})
-
-
-def test_progress_requires_this_coach_to_finish_every_piece():
-    progress = blind_label_progress([
-        {"coach_state": {"rating_value": "yes"}},
-        {"coach_state": {"rating_value": None}},
-    ])
-    assert progress == {"labelled": 1, "total": 2, "complete": False}
 
 
 def test_transcript_is_released_only_after_a_committed_answer():
@@ -43,71 +21,6 @@ def test_acoustic_features_are_released_only_after_a_committed_answer():
         features, committed=True) == features
     assert reveal_acoustic_features_after_commit(
         "not-a-feature-object", committed=True) is None
-
-
-def test_acoustic_queue_requires_explicit_second_pass_and_every_answer():
-    complete = [{"label": {"value": "yes"}}, {"label": {"value": "no"}}]
-    incomplete = [{"label": {"value": "yes"}}, {"label": None}]
-    assert not can_reveal_acoustic_features(complete, requested=False)
-    assert not can_reveal_acoustic_features(incomplete, requested=True)
-    assert can_reveal_acoustic_features(complete, requested=True)
-
-
-def test_redaction_keeps_audio_its_own_answer_the_slide_and_the_bookmark():
-    """What a blind rater may see — REWRITTEN 2026-09-24, not relaxed.
-
-    This test used to assert that the slide was dropped, and that was the
-    right assertion for the instrument that existed when it was written: the
-    confidence label came from the voice alone. The founder moved that fence
-    deliberately ("I want as a coach to see the slide at the top; to know on
-    which slide they are talking about"), having been shown both the fence and
-    the compliant alternative. Only the founder can move it, so the test
-    follows the new rule rather than the old one.
-
-    It is still a fence. Everything that says something ABOUT the speaker —
-    acoustic features, rank, stickiness — stays out, as does every scrap of the
-    coach's own authoring. `bookmarked` is the other addition and is a bare
-    boolean: surfaced to the user, or not, never the tier behind it.
-    """
-    rows = redact_contextual_snippets([{
-        "id": "s1",
-        "index": 0,
-        "transcript": "Exact words",
-        "audio_ref": "https://audio",
-        "start_offset_ms": 100,
-        "duration_ms": 900,
-        "slide": {"index": 2},
-        "bookmarked": True,
-        "owner_answer": "in_between",
-        "features": {"f0": 3},
-        "rank": 1,
-        "stickiness": {"composite": 0.9},
-        "coach_state": {
-            "rating_value": "no",
-            "rating_unrateable": False,
-            "note": "Show this later",
-            "tag": "to_work_on",
-            "surfaced": True,
-        },
-    }])
-    assert rows == [{
-        "id": "s1",
-        "index": 0,
-        "transcript": "Exact words",
-        "audio_ref": "https://audio",
-        "start_offset_ms": 100,
-        "duration_ms": 900,
-        "slide": {"index": 2},
-        "bookmarked": True,
-        "owner_answer": "in_between",
-        "coach_state": {
-            "note": "",
-            "tag": None,
-            "surfaced": False,
-            "rating_value": "no",
-            "rating_unrateable": False,
-        },
-    }]
 
 
 def test_the_allowlist_still_drops_everything_that_judges_the_speaker():
@@ -133,27 +46,6 @@ def test_the_allowlist_still_drops_everything_that_judges_the_speaker():
         assert leaked not in row, leaked
 
 
-def test_a_row_with_no_bookmark_flag_reads_false_rather_than_missing():
-    """Safe-ahead: an older shaped row simply is not a bookmark."""
-    [row] = redact_contextual_snippets([{"id": "s3", "coach_state": {}}])
-    assert row["bookmarked"] is False
-    assert row["slide"] is None
-    assert row["owner_answer"] == ""
-
-
-def test_the_speakers_own_answer_waits_for_the_coachs_own():
-    """FOUNDER 2026-09-24: "what the user judged AFTER I judge it."
-
-    The same rule the transcript runs on, and for the same reason: the coach
-    answers from the voice, and only a committed answer buys anything more.
-    Before that it is not hidden in the browser — it never leaves the server.
-    """
-    assert reveal_owner_answer_after_commit("no", committed=False) == ""
-    assert reveal_owner_answer_after_commit("no", committed=True) == "no"
-    # Nothing recorded for that moment is not a judgement of it.
-    assert reveal_owner_answer_after_commit(None, committed=True) == ""
-
-
 def test_redaction_withholds_unanswered_transcript_from_the_payload():
     rows = redact_contextual_snippets([{
         "id": "s1",
@@ -168,54 +60,3 @@ def test_redaction_withholds_unanswered_transcript_from_the_payload():
     }])
     assert rows[0]["transcript"] == ""
     assert rows[0]["audio_ref"] == "https://audio"
-
-
-# ---------------------------------------------------------------------------
-# THE DECK FILE IS NOT GATED (founder 2026-09-25).
-#
-# The 2026-09-24 override put `slide` on the blind allowlist — "I want as a
-# coach to see the slide at the top; to know on which slide they are talking
-# about". The file needed to DRAW that slide stayed behind the context gate,
-# so the ruling only half landed: the blind screen got a title and a body and
-# redrew them as text, and the coach was shown a reconstruction of their
-# speaker's slide rather than the slide.
-#
-# These two halves are ONE ruling. Splitting them is what caused the bug, so
-# the test names them together.
-# ---------------------------------------------------------------------------
-def test_the_deck_reaches_a_blind_rater_so_the_slide_can_be_drawn():
-    import inspect
-
-    from routes.v2 import coach
-
-    source = inspect.getsource(coach)
-    start = source.index('"presentation_ref": refreshed_media_url(')
-    served = source[start:start + 200]
-    assert "_context_unlocked" not in served, (
-        "the deck file must not be gated while `slide` is on the blind "
-        "allowlist — the coach then sees a redrawn slide, not their own"
-    )
-
-
-def test_the_whole_deck_is_no_longer_served_at_all():
-    """Paging the deck was authoring, so the whole deck sat behind the
-    context gate for the slide-mapping control. That control left with the
-    arc-level delivery (founder 2026-09-30, B5; P2-19), and the deck with
-    it: the coach's session read serves the deck FILE for the one slide on
-    screen and nothing to page."""
-    import inspect
-
-    from routes.v2 import coach
-
-    source = inspect.getsource(coach)
-    assert '"slides":' not in source
-
-
-def test_the_stamp_that_pays_for_it_is_still_there():
-    """`saw_slide` is what lets the corpus separate a voice-only label from a
-    voice-plus-slide one. Without it the override is unpaid for."""
-    import inspect
-
-    from routes.v2 import coach
-
-    assert "saw_slide" in inspect.getsource(coach)

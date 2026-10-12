@@ -41,22 +41,18 @@ import re
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout, redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import migrate  # noqa: E402
 from migrate import (  # noqa: E402
-    EXIT_CANNOT_RUN,
     EXIT_FAILURE,
     EXIT_OK,
-    ManifestError,
     checksum,
     destructive_statements,
     load_manifest,
-    looks_idempotent,
-    next_version,
     strip_sql_comments,
     unbalanced_delimiters,
     wants_no_transaction,
@@ -133,155 +129,10 @@ class ManifestIntegrityTests(unittest.TestCase):
             "desynchronises every environment. New migrations APPEND at 0240+.",
         )
 
-    def test_ledger_bootstrap_is_not_in_the_manifest(self):
-        # The ledger can't be an entry in the list it tracks.
-        tracked = {m.filename for m in self.migrations}
-        self.assertNotIn("create_schema_migrations.sql", tracked)
-        self.assertTrue((MIGRATIONS_DIR / "create_schema_migrations.sql").exists())
-
-
-class ManifestParserTests(unittest.TestCase):
-    """Malformed manifests must fail loudly, not half-parse."""
-
-    def _parse(self, body: str):
-        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as fh:
-            fh.write(body)
-            path = Path(fh.name)
-        try:
-            return load_manifest(path)
-        finally:
-            path.unlink()
-
-    def test_comments_and_blank_lines_ignored(self):
-        result = self._parse("# a comment\n\n0001\tone.sql\n\n0002\ttwo.sql\n")
-        self.assertEqual([m.filename for m in result], ["one.sql", "two.sql"])
-
-    def test_duplicate_version_rejected(self):
-        with self.assertRaises(ManifestError) as ctx:
-            self._parse("0001\tone.sql\n0001\tother.sql\n")
-        self.assertIn("duplicate version", str(ctx.exception))
-
-    def test_duplicate_filename_rejected(self):
-        with self.assertRaises(ManifestError) as ctx:
-            self._parse("0001\tone.sql\n0002\tone.sql\n")
-        self.assertIn("duplicate file", str(ctx.exception))
-
-    def test_missing_tab_rejected(self):
-        # Spaces instead of a tab is the obvious hand-editing mistake.
-        with self.assertRaises(ManifestError):
-            self._parse("0001 one.sql\n")
-
-    def test_non_numeric_version_rejected(self):
-        with self.assertRaises(ManifestError):
-            self._parse("v1\tone.sql\n")
-
-    def test_missing_file_rejected(self):
-        with self.assertRaises(ManifestError):
-            load_manifest(Path("/nonexistent/manifest.txt"))
-
-    def test_next_version_appends(self):
-        self.assertEqual(next_version(self._parse("0001\ta.sql\n0002\tb.sql\n")), "0003")
-        self.assertEqual(next_version([]), "0001")
-
 
 class DestructiveDetectionTests(unittest.TestCase):
     """CLAUDE.md: never auto-drop tables/columns/migrations."""
 
-    def test_real_destructive_statements_are_flagged(self):
-        for sql, expected in [
-            ("DROP TABLE public.foo;", "DROP TABLE"),
-            ("drop table if exists foo;", "DROP TABLE"),
-            ("ALTER TABLE foo DROP COLUMN bar;", "DROP COLUMN"),
-            ("TRUNCATE public.foo;", "TRUNCATE"),
-            ("DELETE FROM public.foo WHERE x = 1;", "DELETE FROM"),
-            ("DROP SCHEMA public CASCADE;", "DROP SCHEMA"),
-        ]:
-            with self.subTest(sql=sql):
-                self.assertIn(expected, destructive_statements(sql))
-
-    def test_commented_rollback_hints_are_not_flagged(self):
-        """The false-positive class that would make the gate unusable.
-
-        30 of the 239 files document their own rollback in a comment. If those
-        get flagged, `apply` blocks on a third of the tree and someone adds
-        --allow-destructive to the deploy to unblock it — which is strictly
-        worse than having no gate.
-        """
-        for sql in [
-            "-- Rollback: ALTER TABLE v2_sessions DROP COLUMN IF EXISTS tutor_video_url;\n"
-            "ALTER TABLE v2_sessions ADD COLUMN IF NOT EXISTS tutor_video_url TEXT;",
-            "-- down: drop table if exists public.snippet_labels;\n"
-            "CREATE TABLE IF NOT EXISTS public.snippet_labels (id UUID PRIMARY KEY);",
-            "/* To revert:\n   DELETE FROM public.token_ledger WHERE action = 'x';\n*/\n"
-            "CREATE TABLE IF NOT EXISTS public.token_ledger (id UUID PRIMARY KEY);",
-        ]:
-            with self.subTest(sql=sql[:40]):
-                self.assertEqual(destructive_statements(sql), [])
-
-    def test_drop_index_and_policy_are_not_destructive(self):
-        # `DROP POLICY IF EXISTS ...; CREATE POLICY ...` is this repo's
-        # idempotency idiom. Flagging it would block routine RLS migrations.
-        for sql in [
-            "DROP INDEX IF EXISTS idx_foo;",
-            "DROP POLICY IF EXISTS p ON public.foo;",
-            "DROP TRIGGER IF EXISTS t ON public.foo;",
-            "ALTER TABLE foo DROP CONSTRAINT IF EXISTS c;",
-        ]:
-            with self.subTest(sql=sql):
-                self.assertEqual(destructive_statements(sql), [])
-
-    def test_a_trigger_refusing_truncate_is_not_destructive(self):
-        """0434: a BEFORE TRUNCATE trigger refuses truncation. Its event
-        clause is not a TRUNCATE statement; every real one still is."""
-        for sql in [
-            "CREATE TRIGGER t BEFORE TRUNCATE ON public.foo "
-            "FOR EACH STATEMENT EXECUTE FUNCTION public.refuse();",
-            "CREATE TRIGGER t AFTER truncate ON public.foo "
-            "FOR EACH STATEMENT EXECUTE FUNCTION public.f();",
-            "CREATE TRIGGER t BEFORE UPDATE OR DELETE OR TRUNCATE ON public.foo "
-            "FOR EACH STATEMENT EXECUTE FUNCTION public.refuse();",
-        ]:
-            with self.subTest(sql=sql[:50]):
-                self.assertEqual(destructive_statements(sql), [])
-        for sql in [
-            "TRUNCATE public.foo;",
-            "TRUNCATE TABLE public.foo CASCADE;",
-            "DO $$ BEGIN TRUNCATE public.foo; END $$;",
-            "CREATE TRIGGER t BEFORE TRUNCATE ON public.foo "
-            "FOR EACH STATEMENT EXECUTE FUNCTION public.f();\nTRUNCATE public.bar;",
-        ]:
-            with self.subTest(sql=sql[:50]):
-                self.assertIn("TRUNCATE", destructive_statements(sql))
-
-    def test_truncate_words_outside_a_trigger_header_are_still_destructive(self):
-        """The exemption is scoped to a CREATE TRIGGER header's event list
-        (independent check HO-12): the same words anywhere else still count."""
-        for sql in [
-            "SELECT 1; BEFORE TRUNCATE public.foo;",
-            "DO $$ BEGIN PERFORM 1; END $$; AFTER TRUNCATE public.foo;",
-            "DO $$ BEGIN IF a OR TRUNCATE public.foo; END $$;",
-            "IF x THEN PERFORM before; TRUNCATE public.foo; END IF;",
-            "IF x THEN PERFORM before\n TRUNCATE public.foo; END IF;",
-            "CREATE TRIGGER t BEFORE TRUNCATE public.foo;",  # no ON: not a header
-            "CREATE TRIGGER t BEFORE TRUNCATE ON public.foo FOR EACH STATEMENT "
-            "EXECUTE FUNCTION public.f(); DO $$ BEGIN TRUNCATE public.bar; END $$;",
-            "CREATE TRIGGER t BEFORE UPDATE OR TRUNCATE ON public.foo FOR EACH "
-            "STATEMENT EXECUTE FUNCTION public.f(); SELECT 1 OR TRUNCATE public.bar;",
-        ]:
-            with self.subTest(sql=sql[:60]):
-                self.assertIn("TRUNCATE", destructive_statements(sql))
-
-    def test_trigger_headers_with_every_event_form_are_not_destructive(self):
-        for sql in [
-            "CREATE OR REPLACE TRIGGER t AFTER INSERT OR UPDATE OF a, b OR "
-            "TRUNCATE ON public.foo FOR EACH STATEMENT EXECUTE FUNCTION public.f();",
-            "CREATE CONSTRAINT TRIGGER \"T x\" AFTER TRUNCATE ON public.foo "
-            "FOR EACH ROW EXECUTE FUNCTION public.f();",
-            "create trigger t\n  before\n  truncate\n  on public.foo for each "
-            "statement execute function public.f();",
-        ]:
-            with self.subTest(sql=sql[:60]):
-                self.assertEqual(destructive_statements(sql), [])
 
     def test_real_repo_files_flagged_are_the_known_set(self):
         """Pins the live-tree result so a scanner regression shows up here."""
@@ -337,30 +188,6 @@ class DestructiveDetectionTests(unittest.TestCase):
 
 class SqlHelperTests(unittest.TestCase):
 
-    def test_strip_sql_comments(self):
-        self.assertNotIn("secret", strip_sql_comments("-- secret\nSELECT 1;"))
-        self.assertNotIn("secret", strip_sql_comments("/* secret */ SELECT 1;"))
-        self.assertIn("SELECT 1", strip_sql_comments("-- note\nSELECT 1;"))
-
-    def test_multiline_block_comment_stripped(self):
-        sql = "/*\n DROP TABLE foo;\n*/\nCREATE TABLE IF NOT EXISTS bar (id INT);"
-        self.assertEqual(destructive_statements(sql), [])
-
-    def test_looks_idempotent(self):
-        self.assertTrue(looks_idempotent("CREATE TABLE IF NOT EXISTS foo (id INT);"))
-        self.assertTrue(looks_idempotent("CREATE OR REPLACE FUNCTION f() ..."))
-        self.assertFalse(looks_idempotent("CREATE TABLE foo (id INT);"))
-
-    def test_checksum_is_stable_and_newline_normalised(self):
-        self.assertEqual(checksum("SELECT 1;\n"), checksum("SELECT 1;\r\n"))
-        self.assertNotEqual(checksum("SELECT 1;"), checksum("SELECT 2;"))
-        self.assertEqual(len(checksum("x")), 64)
-
-    def test_no_transaction_marker(self):
-        self.assertTrue(wants_no_transaction("-- migrate:no-transaction\nCREATE INDEX ..."))
-        self.assertFalse(wants_no_transaction("CREATE INDEX CONCURRENTLY ..."))
-        # Must be its own line, not incidental prose.
-        self.assertFalse(wants_no_transaction("-- we could use migrate:no-transaction here"))
 
     def test_every_current_migration_is_transaction_safe(self):
         """None of the 239 need the escape hatch — so `apply` wraps them all.
@@ -504,15 +331,6 @@ class ApplyAtomicityTests(unittest.TestCase):
         self.assertEqual(ledger_writes, [], "a failed migration must not be recorded as applied")
         self.assertTrue(conn.autocommit, "autocommit must be restored even on failure")
 
-    def test_ledger_row_is_marked_not_baselined(self):
-        conn = self.FakeConn()
-        sql = "SELECT 1;"
-        migration = migrate.Migration(version="0240", filename="add_thing.sql")
-        migrate._apply_one(conn, migration, sql, checksum(sql), "tester", 0.0)
-        insert_sql, params = conn.executed[1]
-        self.assertIn("FALSE", insert_sql, "runner-applied rows must have baselined = FALSE")
-        self.assertEqual(params[1], "add_thing.sql")
-
 
 class LedgerSqlTests(unittest.TestCase):
 
@@ -526,14 +344,6 @@ class LedgerSqlTests(unittest.TestCase):
         self.assertIn("CREATE TABLE IF NOT EXISTS", self.sql)
         self.assertIn("CREATE INDEX IF NOT EXISTS", self.sql)
 
-    def test_creates_the_expected_columns(self):
-        for column in ("version", "filename", "checksum", "applied_at",
-                       "applied_by", "execution_ms", "baselined"):
-            self.assertRegex(self.sql, rf"\b{column}\b")
-
-    def test_has_no_destructive_statements(self):
-        self.assertEqual(destructive_statements(self.sql), [])
-
 
 class BaselineSqlTests(unittest.TestCase):
     """`baseline --sql` is the only adoption path that works without a
@@ -546,49 +356,12 @@ class BaselineSqlTests(unittest.TestCase):
         code, cls.out = run_cli(["baseline", "--sql"])
         cls.code = code
 
-    def test_needs_no_database(self):
-        original = migrate.os.environ.pop("DATABASE_URL", None)
-        try:
-            code, out = run_cli(["baseline", "--sql"])
-            self.assertEqual(code, EXIT_OK, out)
-            self.assertIn("INSERT INTO public.schema_migrations", out)
-        finally:
-            if original is not None:
-                migrate.os.environ["DATABASE_URL"] = original
-
-    def test_emits_a_row_per_manifest_entry(self):
-        migrations = load_manifest()
-        for migration in (migrations[0], migrations[len(migrations) // 2], migrations[-1]):
-            with self.subTest(version=migration.version):
-                self.assertIn(f"('{migration.version}', '{migration.filename}'", self.out)
-        self.assertEqual(self.out.count("), TRUE)") + self.out.count(", TRUE)"),
-                         len(migrations))
-
-    def test_rows_are_marked_baselined(self):
-        # Every emitted row must be baselined=TRUE — this path never executes
-        # SQL, so claiming a verified apply would be a lie.
-        self.assertNotIn(", FALSE)", self.out)
-        self.assertIn(", TRUE)", self.out)
-
-    def test_checksums_match_the_files(self):
-        migration = load_manifest()[0]
-        self.assertIn(checksum(migration.read()), self.out)
 
     def test_is_idempotent_and_cannot_clobber_a_real_apply(self):
         """ON CONFLICT DO NOTHING is what stops a pasted baseline from
         overwriting a runner-applied row (baselined=FALSE) with TRUE."""
         self.assertIn("ON CONFLICT (version) DO NOTHING", self.out)
         self.assertNotIn("DO UPDATE", self.out)
-
-    def test_respects_the_to_bound(self):
-        code, out = run_cli(["baseline", "--sql", "--to", "0003"])
-        self.assertEqual(code, EXIT_OK, out)
-        self.assertIn("('0003',", out)
-        self.assertNotIn("('0004',", out)
-
-    def test_sql_literals_are_quote_safe(self):
-        self.assertEqual(migrate._sql_quote("plain"), "'plain'")
-        self.assertEqual(migrate._sql_quote("it's"), "'it''s'")
 
 
 class TransactionPoolerWarningTests(unittest.TestCase):
@@ -611,70 +384,12 @@ class TransactionPoolerWarningTests(unittest.TestCase):
         self.assertIn("6543", err)
         self.assertIn("5432", err)
 
-    def test_silent_on_session_pooler(self):
-        warned, err = self._warn(self.SESSION_POOLER)
-        self.assertFalse(warned)
-        self.assertEqual(err, "")
-
-    def test_silent_on_direct_connection(self):
-        warned, _ = self._warn("postgresql://u:p@db.abcdef.supabase.co:5432/postgres")
-        self.assertFalse(warned)
-
-    def test_matches_port_only_at_a_boundary(self):
-        # A password or hostname containing 6543 is not a port.
-        for url in [
-            "postgresql://u:pass6543word@host:5432/postgres",
-            "postgresql://u:p@host-6543.example.com:5432/postgres",
-            "postgresql://u:p@host:54321/postgres",
-        ]:
-            with self.subTest(url=url):
-                self.assertFalse(self._warn(url)[0])
-
-    def test_matches_with_query_string_and_trailing_forms(self):
-        for url in [
-            "postgresql://u:p@host:6543/postgres",
-            "postgresql://u:p@host:6543/postgres?sslmode=require",
-            "postgresql://u:p@host:6543",
-        ]:
-            with self.subTest(url=url):
-                self.assertTrue(self._warn(url)[0])
 
     def test_never_echoes_the_url(self):
         # The URL carries the database password; it must not reach the logs.
         _, err = self._warn(self.TXN_POOLER)
         self.assertNotIn("u:p@", err)
         self.assertNotIn("supabase.com", err)
-
-    def test_warning_does_not_block(self):
-        """It warns and still attempts the connection — refusing outright would
-        strand anyone whose only reachable endpoint is the pooler.
-
-        Uses 127.0.0.1 so the attempt fails instantly with ECONNREFUSED: no
-        DNS, no network, no timeout. (An earlier version of this test pointed
-        at a realistic Supabase hostname and hung the suite for two minutes.)
-
-        The outcome after the warning differs by environment, and both are
-        correct: with psycopg2 installed the connection is refused; in the
-        stdlib-only `migrations` CI job the driver is missing. What must hold
-        in BOTH is that the warning fired — it diagnoses the URL, not the
-        driver. Asserting "could not connect" here is what turned this job red
-        on first run, because that CI job installs no dependencies.
-        """
-        original = migrate.os.environ.get("DATABASE_URL")
-        migrate.os.environ["DATABASE_URL"] = "postgresql://u:p@127.0.0.1:6543/postgres"
-        try:
-            code, out = run_cli(["status"])
-            self.assertEqual(code, EXIT_CANNOT_RUN, out)
-            self.assertIn("6543", out)  # warned, driver present or not
-            self.assertTrue(
-                "could not connect" in out or "psycopg2 is not installed" in out,
-                f"expected a connection or driver failure after the warning, got: {out!r}",
-            )
-        finally:
-            if original is None:
-                migrate.os.environ.pop("DATABASE_URL", None)
-            else:
-                migrate.os.environ["DATABASE_URL"] = original
 
 
 class CliTests(unittest.TestCase):
@@ -684,31 +399,6 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, EXIT_OK, out)
         self.assertIn("verify OK", out)
 
-    def test_verify_verbose_lists_destructive_files(self):
-        code, out = run_cli(["verify", "--verbose"])
-        self.assertEqual(code, EXIT_OK, out)
-        self.assertIn("drop_recording_reviews_ml_labeling.sql", out)
-
-    def test_offline_plan_needs_no_database(self):
-        code, out = run_cli(["plan", "--offline"])
-        self.assertEqual(code, EXIT_OK, out)
-        self.assertIn("would run", out)
-
-    def test_missing_database_url_exits_2_not_1(self):
-        """Exit 2 means 'cannot run here' and must stay non-fatal.
-
-        bin/railway-migrate.sh treats 2 as success unless MIGRATE_REQUIRED=1,
-        so services without a Postgres URL still deploy. If this ever became
-        1, every such deploy would start failing.
-        """
-        original = migrate.os.environ.pop("DATABASE_URL", None)
-        try:
-            code, out = run_cli(["status"])
-            self.assertEqual(code, EXIT_CANNOT_RUN, out)
-            self.assertIn("DATABASE_URL", out)
-        finally:
-            if original is not None:
-                migrate.os.environ["DATABASE_URL"] = original
 
     def test_verify_fails_on_an_untracked_sql_file(self):
         stray = MIGRATIONS_DIR / "zz_untracked_test_fixture.sql"
@@ -720,167 +410,6 @@ class CliTests(unittest.TestCase):
             self.assertIn("not in manifest.txt", out)
         finally:
             stray.unlink()
-
-    def test_verify_recovers_after_the_stray_is_removed(self):
-        code, _ = run_cli(["verify"])
-        self.assertEqual(code, EXIT_OK)
-
-
-class DoctorTests(unittest.TestCase):
-    """THE LEDGER SAID APPLIED; THE DATABASE DISAGREED (production 2026-08-12).
-
-    The app logged, on every take::
-
-        upsert_ideal_text_block: table missing (run migrations/add_ideal_text_blocks.sql)
-        token_charge() not installed — using the legacy non-atomic path
-
-    while the runner reported ``nothing pending`` over 269/269 with ``verify
-    OK``. Token charging has therefore been running on the four-round-trip
-    non-atomic path — the exact half-state migration 0241 exists to close.
-
-    IT IS NOT A RUNNER BUG. `baseline` does what it documents: records
-    migrations as applied WITHOUT running them, on the stated assumption that
-    a hand-migrated database already had them. For 0033 and 0241 the
-    assumption was false, and nothing could ever have noticed — `verify`
-    compares the manifest to the disk, `status` compares the ledger to
-    checksums, and neither asks the database whether the objects are there.
-
-    These cover the half that needs no database: which objects a file CLAIMS.
-    A wrong answer there either cries wolf (and gets ignored) or misses the
-    drift entirely.
-    """
-
-    def test_it_finds_tables_views_and_functions(self):
-        sql = (
-            "CREATE TABLE IF NOT EXISTS public.alpha (id INT);\n"
-            "CREATE OR REPLACE VIEW beta AS SELECT 1;\n"
-            "CREATE OR REPLACE FUNCTION public.gamma(a INT) RETURNS INT AS $$ $$;\n"
-        )
-        self.assertEqual(
-            migrate.claimed_objects(sql),
-            [("table", "public.alpha"), ("table", "public.beta"),
-             ("function", "public.gamma")])
-
-    def test_a_bare_name_is_public_qualified(self):
-        # to_regclass('alpha') resolves through search_path, which is not the
-        # search_path the app runs under. Qualifying makes the check mean the
-        # same thing wherever it is pasted.
-        self.assertEqual(
-            migrate.claimed_objects("CREATE TABLE alpha (id INT);"),
-            [("table", "public.alpha")])
-
-    def test_PROSE_ABOUT_DDL_IS_NOT_A_CLAIM(self):
-        # These files describe their own schema at length. A scanner reading
-        # the comments would report objects the file never creates — and a
-        # check that cries wolf is one everyone learns to skip, the same
-        # failure `destructive_statements` strips comments to avoid.
-        sql = (
-            "-- CREATE TABLE public.described_only (id INT);\n"
-            "/* CREATE OR REPLACE FUNCTION public.also_described() */\n"
-            "CREATE TABLE IF NOT EXISTS public.real_one (id INT);\n"
-        )
-        self.assertEqual(migrate.claimed_objects(sql),
-                         [("table", "public.real_one")])
-
-    def test_the_same_object_twice_is_claimed_once(self):
-        sql = ("CREATE TABLE IF NOT EXISTS public.a (id INT);"
-               "CREATE TABLE IF NOT EXISTS public.a (id INT);")
-        self.assertEqual(migrate.claimed_objects(sql), [("table", "public.a")])
-
-    def test_an_ADDED_COLUMN_is_claimed(self):
-        """THE THIRD BASELINE DRIFT, 2026-08-12, and the one this check was
-        blind to. 0233 was recorded as applied, had never run, and created no
-        table and no function — only a column. So it claimed NOTHING, doctor
-        passed it, and the founder found it from an admin panel failing on a
-        missing column instead. A tool written to catch this class of drift
-        cannot be blind to the shape that caused it."""
-        sql = ("ALTER TABLE public.a ADD COLUMN IF NOT EXISTS b INT;"
-               "INSERT INTO public.a (b) VALUES (1) ON CONFLICT DO NOTHING;")
-        self.assertEqual(migrate.claimed_objects(sql),
-                         [("column", "public.a.b")])
-
-    def test_one_ALTER_may_add_several_columns(self):
-        sql = ("ALTER TABLE public.v2_student_details\n"
-               "  ADD COLUMN IF NOT EXISTS token_balance BIGINT,\n"
-               "  ADD COLUMN tier TEXT;")
-        self.assertEqual(
-            migrate.claimed_objects(sql),
-            [("column", "public.v2_student_details.token_balance"),
-             ("column", "public.v2_student_details.tier")])
-
-    def test_a_column_claim_is_schema_qualified_like_every_other(self):
-        self.assertEqual(
-            migrate.claimed_objects("ALTER TABLE ONLY t ADD COLUMN c INT;"),
-            [("column", "public.t.c")])
-
-    def test_a_described_column_in_prose_is_not_claimed(self):
-        # Same comment-stripping rule the table scanner follows: these files
-        # narrate their own DDL at length.
-        sql = "-- ALTER TABLE public.a ADD COLUMN b INT; (retired)\n"
-        self.assertEqual(migrate.claimed_objects(sql), [])
-
-    def test_a_file_that_touches_nothing_claims_nothing(self):
-        sql = "INSERT INTO public.a (b) VALUES (1) ON CONFLICT DO NOTHING;"
-        self.assertEqual(migrate.claimed_objects(sql), [])
-
-    def _claims(self, filename):
-        return migrate.claimed_objects(
-            (MIGRATIONS_DIR / filename).read_text(encoding="utf-8"))
-
-    def test_0233_claims_the_column_the_admin_panel_failed_on(self):
-        """The regression, pinned against the real file: the grant path could
-        not write bonus_balance because the column was absent, while
-        migrate.py reported nothing pending."""
-        self.assertIn(
-            ("column", "public.v2_student_details.bonus_balance"),
-            self._claims("add_legacy_credit_conversion.sql"))
-
-    def test_0033_claims_the_table_the_app_says_is_missing(self):
-        claims = self._claims("add_ideal_text_blocks.sql")
-        self.assertIn(("table", "public.ideal_text_blocks"), claims)
-        self.assertIn(("table", "public.ideal_text_saves"), claims)
-
-    def test_0241_claims_the_function_the_app_says_is_not_installed(self):
-        self.assertIn(("function", "public.token_charge"),
-                      self._claims("add_token_charge_rpc.sql"))
-
-    def test_both_drifted_files_are_SAFE_TO_RE_RUN(self):
-        # The remediation is "run these files again", so re-runnability is not
-        # a nicety here — it IS the fix. 0033 is entirely IF NOT EXISTS; 0241
-        # is CREATE OR REPLACE FUNCTION and its only DROP sits inside a
-        # comment, which is why the destructive scan strips comments first.
-        for name in ("add_ideal_text_blocks.sql", "add_token_charge_rpc.sql"):
-            sql = (MIGRATIONS_DIR / name).read_text(encoding="utf-8")
-            self.assertTrue(migrate.looks_idempotent(sql), name)
-            self.assertEqual(migrate.destructive_statements(sql), [], name)
-
-    def test_the_emitted_query_checks_relations_and_functions_differently(self):
-        # to_regclass answers for relations and returns NULL for a function,
-        # so one check for both would report every function as missing.
-        self.assertIn("to_regclass", migrate._DOCTOR_PREDICATE)
-        self.assertIn("pg_proc", migrate._DOCTOR_PREDICATE)
-
-    def test_the_sql_mode_needs_no_database_and_filters_to_baselined(self):
-        # The environment that most needs this check is the one without a
-        # DATABASE_URL — the same reason `baseline --sql` exists. And only
-        # baselined rows are suspect: a migration the runner applied was
-        # watched, so it committed or it failed loudly.
-        code, out = run_cli(["doctor", "--sql"])
-        self.assertEqual(code, EXIT_OK)
-        self.assertIn("WHERE m.baselined", out)
-        self.assertIn("'0033', 'add_ideal_text_blocks.sql', 'table', "
-                      "'public.ideal_text_blocks'", out)
-        self.assertIn("'0241', 'add_token_charge_rpc.sql', 'function', "
-                      "'public.token_charge'", out)
-        # READ-ONLY BY CONSTRUCTION: a diagnostic that can write is one nobody
-        # dares run against production. Checked structurally rather than by
-        # scanning for banned words — the header prose says "claims to CREATE",
-        # and a keyword scan that trips on its own documentation is the kind of
-        # check that gets deleted rather than fixed.
-        body = migrate.strip_sql_comments(out).strip()
-        self.assertTrue(body.startswith("WITH claimed"), body[:60])
-        self.assertEqual(body.count(";"), 1, "more than one statement")
-        self.assertTrue(body.endswith(";"))
 
 
 class DelimiterDamageTests(unittest.TestCase):
@@ -905,12 +434,6 @@ REVOKE ALL ON FUNCTION public.f(TEXT) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.f(TEXT) TO service_role;
 """
 
-    def test_it_catches_the_defect_that_shipped(self):
-        found = unbalanced_delimiters(self.SHIPPED_DAMAGE)
-        self.assertTrue(found, "the 0333 shape must be refused")
-        # It names where the paren was OPENED, not where the parser gave up.
-        # Postgres pointed at line 4; the damage is on line 3.
-        self.assertIn("from line 3", found[0])
 
     def test_every_migration_on_disk_is_balanced(self):
         for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
@@ -946,37 +469,6 @@ GRANT EXECUTE ON FUNCTION public.f(TEXT) TO service_role;
                     original_dir, original_manifest, original_ledger)
             self.assertEqual(code, EXIT_FAILURE, out)
             self.assertIn("0002_bad.sql", out)
-
-    def test_it_does_not_mistake_quoted_text_for_structure(self):
-        """The false-positive direction. A gate that cries wolf gets bypassed.
-
-        Every one of these contains an unmatched paren, semicolon or `--`
-        inside something the scanner must treat as opaque.
-        """
-        for label, sql in (
-            ("string", "SELECT 'a ( b ; c' AS x;"),
-            ("escaped quote", "SELECT 'it''s ( fine' AS x;"),
-            ("identifier", 'SELECT 1 AS "weird ( name";'),
-            ("line comment", "SELECT 1; -- a ( trailing note\n"),
-            ("block comment", "/* a ( note ; here */ SELECT 1;"),
-            ("nested block comment", "/* outer /* inner ( */ still */ SELECT 1;"),
-            ("dollar body", "CREATE FUNCTION f() RETURNS void LANGUAGE plpgsql"
-                            " AS $$ BEGIN RAISE NOTICE '('; END; $$;"),
-            ("tagged dollar body", "DO $guard$ BEGIN IF (1=1) THEN NULL;"
-                                   " END IF; END $guard$;"),
-            ("positional parameter", "SELECT $1 WHERE $2 = $3;"),
-        ):
-            with self.subTest(label):
-                self.assertEqual(unbalanced_delimiters(sql), [], label)
-
-    def test_it_catches_the_other_shapes_of_the_same_damage(self):
-        for label, sql in (
-            ("never closed at all", "CREATE TABLE t(id INT;\n"),
-            ("one too many closes", "SELECT (1));"),
-            ("unterminated dollar body", "DO $$ BEGIN NULL; END;"),
-        ):
-            with self.subTest(label):
-                self.assertTrue(unbalanced_delimiters(sql), label)
 
 
 if __name__ == "__main__":

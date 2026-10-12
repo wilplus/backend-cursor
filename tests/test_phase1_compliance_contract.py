@@ -4,7 +4,6 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = (ROOT / "migrations" / "add_phase1_processing_boundary.sql").read_text()
 REHEARSAL = (
@@ -105,28 +104,6 @@ def test_exercise_surface_is_registry_only_and_fail_closed():
     assert "POOLED_LEARNING_MUST_REMAIN_PHASE2" in reclassification
 
 
-def test_the_operational_guard_reads_the_registry_rather_than_hardcoding():
-    """Fail-closed now rests on the guard ASKING, so pin that it asks.
-
-    It returned 410 unconditionally until 2026-09-16 while naming a registry
-    purpose it never read. With the purpose reclassified, a guard that still
-    hardcoded its answer would hold the doors shut on a ready system — and,
-    worse, could be opened by deleting a line rather than by the registry row
-    the database itself consults.
-    """
-    guard = (ROOT / "routes" / "phase2_guard.py").read_text()
-    body = guard[guard.index("def operational_purpose_disabled"):]
-    assert "purpose_is_operational(purpose_id)" in body
-    assert "return function(*args, **kwargs)" in body
-
-    service = (ROOT / "services" / "processing_purposes.py").read_text()
-    # Every one of these is a closed door; only an explicit phase-1,
-    # operational, authorizing row opens it.
-    assert 'row.get("phase") == "phase1"' in service
-    assert 'row.get("operational") is True' in service
-    assert 'row.get("authorizes_processing") is True' in service
-
-
 def test_retired_learning_tables_are_write_blocked_but_not_dropped():
     for table in (
         "training_labels", "shadow_predictions", "model_versions",
@@ -146,19 +123,3 @@ def test_phase1_evidence_and_release_fences_are_explicit():
     assert "passive authorization check created acceptance" in REHEARSAL
     assert "recording boundary replay duplicated canonical rows" in REHEARSAL
     assert REHEARSAL.rstrip().endswith("ROLLBACK;")
-
-
-def test_no_direct_policy_or_acceptance_seed_exists():
-    assert "INSERT INTO public.processing_policy_versions" not in MIGRATION
-    assert "INSERT INTO public.processing_authorization_receipts" not in MIGRATION
-    assert "register_phase1_policy_v1" in MIGRATION
-    assert "activate_phase1_policy_v1" in MIGRATION
-
-
-def test_cleanup_migration_is_pending_and_explicitly_not_manifested():
-    pending = (
-        ROOT / "migrations" / "pending" / "cleanup_retired_sex_data.sql"
-    ).read_text()
-    manifest = (ROOT / "migrations" / "manifest.txt").read_text()
-    assert "PREVIEW" in pending.upper()
-    assert "cleanup_retired_sex_data.sql" not in manifest

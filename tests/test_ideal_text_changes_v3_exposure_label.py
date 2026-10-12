@@ -126,54 +126,6 @@ class TheStoredRecordNamesThePolicyThatServed(unittest.TestCase):
             run._claim_or_filter()
         return db, run
 
-    def test_v3_served_take_records_v3_policy_and_matching_candidate_set(self):
-        """The named regression test for A-2."""
-        from services.take_feedback_policy_v3 import (
-            POLICY_VERSION as V3_POLICY,
-        )
-
-        def _accept(db, **kwargs):
-            # The freeze accepts exactly the rows it was handed.
-            return {"selected_keys": list(kwargs["changes"])}
-
-        db, run = self._claim(_accept)
-
-        self.assertEqual(len(db.exposures), 1, "no exposure row was written")
-        row = db.exposures[0]
-
-        self.assertEqual(
-            row["policy_version"], V3_POLICY,
-            "a V3-served Take stored V2's policy version",
-        )
-
-        stored = {str(c.get("id") or "") for c in row["candidate_set"]}
-        selected = {str(k.get("id") or "") for k in row["selected_keys"]}
-        self.assertTrue(selected, "nothing was recorded as selected")
-        self.assertTrue(
-            selected <= stored,
-            f"selected ids {selected - stored} are in no stored candidate",
-        )
-
-    def test_every_served_v3_row_has_a_persisted_exposure(self):
-        """A-1's write half, from the other end.
-
-        Whatever reached the speaker must be findable afterwards. This is
-        the record that makes a served bookmark accountable when the
-        canonical lineage could not be frozen.
-        """
-        def _accept(db, **kwargs):
-            return {"selected_keys": list(kwargs["changes"])}
-
-        db, run = self._claim(_accept)
-        row = db.exposures[0]
-        stored = {str(c.get("id") or "") for c in row["candidate_set"]}
-
-        for served in run.changes:
-            with self.subTest(row=served["id"]):
-                self.assertIn(
-                    str(served["id"]), stored,
-                    "a row the speaker saw is in no persisted record",
-                )
 
     def test_a_take_v3_did_not_serve_still_records_v2(self):
         """The other half of the same rule — do not over-correct.

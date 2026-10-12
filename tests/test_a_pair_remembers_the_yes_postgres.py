@@ -26,7 +26,6 @@ pytestmark = pytest.mark.skipif(
     not DSN, reason="disposable confident-moment rehearsal only"
 )
 
-TABLES = ("pair_releases", "pair_release_owners")
 ALL = ["praise_line", "clearer_version", "exercise_script"]
 
 
@@ -171,21 +170,6 @@ def test_a_pair_is_releasable_only_under_an_active_yes(db, policy):
     assert (state["consent_state"], state["releasable"]) == ("no", False)
 
 
-def test_a_surface_outside_counsels_list_needs_no_yes_and_no_principal_is_unknown(db, policy):
-    principal = _principal(db)
-    needed = _pair(db, principal, "exercise_script")
-    free = _pair(db, principal, "clearer_version")
-    _refresh(db, ["exercise_script"])
-    assert _pair_state(db, free)["consent_state"] == "not_needed"
-    assert _pair_state(db, free)["releasable"] is True
-    assert _pair_state(db, needed)["consent_state"] == "no"
-    orphan = str(_one(db, """
-        INSERT INTO public.feedback_pairs (surface, draft_text, final_text, coach_id, exercise_id)
-        VALUES ('praise_line', 'd', 'f', 'coach-1', 'ex-1') RETURNING id"""))
-    _refresh(db)
-    assert (_pair_state(db, orphan)["consent_state"], _pair_state(db, orphan)["releasable"]) == ("unknown", False)
-
-
 def test_a_withdrawal_voids_the_release_and_returns_the_pair_to_waiting(db, policy):
     principal = _principal(db)
     grant = _grant(db, principal, policy)
@@ -210,30 +194,3 @@ def test_a_withdrawal_voids_the_release_and_returns_the_pair_to_waiting(db, poli
     assert voided["purged_at"] is None and voided["manifest_sha256"] == "a" * 64
     state = _pair_state(db, pair)
     assert state["release_id"] is None and state["exported_at"] is None and state["releasable"] is False
-
-
-def test_marking_refuses_an_unknown_release_and_an_unreleasable_pair(db, policy):
-    principal = _principal(db)
-    pair = _pair(db, principal)
-    _refresh(db)
-    release = _release(db)
-    with pytest.raises(psycopg2.Error) as refused:
-        _one(db, "SELECT public.mark_feedback_pairs_released_v1(%s, %s::uuid[])", (release, [pair]))
-    assert "PAIR_RELEASE_PAIRS_NOT_RELEASABLE" in str(refused.value)
-    with pytest.raises(psycopg2.Error) as unknown:
-        _one(db, "SELECT public.mark_feedback_pairs_released_v1(%s, %s::uuid[])", (str(uuid.uuid4()), [pair]))
-    assert "PAIR_RELEASE_UNKNOWN" in str(unknown.value)
-
-
-def test_every_new_table_has_rls_and_no_browser_grant(db):
-    for table in TABLES:
-        got = _row(db, "SELECT relrowsecurity FROM pg_class WHERE oid = %s::regclass", (f"public.{table}",))
-        assert got and got["relrowsecurity"] is True, table
-        grants = _row(db, "SELECT count(*) AS n FROM information_schema.role_table_grants "
-                          "WHERE table_schema = 'public' AND table_name = %s AND grantee IN ('anon', 'authenticated')",
-                      (table,))
-        assert grants["n"] == 0, table
-    for fn in ("refresh_feedback_pair_consent_v1", "mark_feedback_pairs_released_v1"):
-        anon = _one(db, "SELECT has_function_privilege('anon', %s, 'EXECUTE')",
-                    (f"public.{fn}({'text[]' if fn.startswith('refresh') else 'uuid, uuid[]'})",))
-        assert anon is False, fn

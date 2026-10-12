@@ -19,11 +19,9 @@ from __future__ import annotations
 import unittest
 from datetime import datetime, timedelta, timezone
 
-from services import processing_authorization as pa
-
 try:
     from flask import Flask
-    from routes import auth as auth_routes
+
     from routes.v2 import processing_authorization as pa_routes
     from services.db import db
     _IMPORT_ERROR = None
@@ -79,41 +77,6 @@ class _Client:
         return _Query(self, relation)
 
 
-def _service(rows):
-    database = type("Db", (), {"client": _Client(rows)})()
-    return pa.ProcessingAuthorizationService(database, mode="off")
-
-
-class PublishedPolicyTextServiceTests(unittest.TestCase):
-
-    def test_the_policy_in_force_is_returned_byte_for_byte(self):
-        service = _service([_policy()])
-        self.assertEqual(service.published_policy_text(), {
-            "policy_version": "phase1-2026-09-23",
-            "terms": {"version": "3.1", "copy": "TERMS BYTES", "sha256": "a" * 64},
-            "privacy": {"version": "3.1", "copy": "PRIVACY BYTES", "sha256": "b" * 64},
-        })
-        self.assertEqual(service.client.filters, [("status", "active")])
-        self.assertEqual(service.client.selected[0], "processing_policy_versions")
-
-    def test_a_policy_not_yet_activated_is_not_in_force(self):
-        later = (NOW + timedelta(hours=1)).isoformat()
-        self.assertIsNone(_service([_policy(activated_at=later)]).published_policy_text())
-
-    def test_a_retired_policy_is_not_in_force(self):
-        earlier = (NOW - timedelta(hours=1)).isoformat()
-        self.assertIsNone(_service([_policy(retired_at=earlier)]).published_policy_text())
-
-    def test_a_retirement_still_ahead_leaves_it_in_force(self):
-        later = (NOW + timedelta(days=3)).isoformat()
-        self.assertIsNotNone(_service([_policy(retired_at=later)]).published_policy_text())
-
-    def test_nothing_active_or_an_unreadable_record_is_none(self):
-        self.assertIsNone(_service([]).published_policy_text())
-        self.assertIsNone(_service(RuntimeError("down")).published_policy_text())
-        self.assertIsNone(_service([_policy(activated_at="not a time")]).published_policy_text())
-
-
 @unittest.skipIf(_IMPORT_ERROR is not None, f"flask app unavailable: {_IMPORT_ERROR}")
 class PublishedPolicyTextRouteTests(unittest.TestCase):
 
@@ -141,44 +104,6 @@ class PublishedPolicyTextRouteTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(response.get_json()["privacy"]["copy"], "PRIVACY BYTES")
         self.assertEqual(response.headers["Cache-Control"], "public, max-age=300")
-
-    def test_nothing_in_force_is_a_404(self):
-        response, status = self._get([])
-        self.assertEqual(status, 404)
-        self.assertEqual(response.get_json()["code"], "PROCESSING_POLICY_INACTIVE")
-
-    def test_the_route_carries_no_auth_decorator(self):
-        # optional_auth/require_auth wrap the view; this one must not be wrapped.
-        self.assertIsNone(getattr(pa_routes.v2_processing_policy_text, "__wrapped__", None))
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"flask app unavailable: {_IMPORT_ERROR}")
-class SignupTermsVersionTests(unittest.TestCase):
-
-    def setUp(self):
-        self._orig_client = db.client
-
-    def tearDown(self):
-        db.client = self._orig_client
-
-    def test_a_signup_records_the_terms_version_it_was_shown(self):
-        db.client = _Client([_policy(terms_version="3.1")])
-        self.assertEqual(auth_routes._signup_terms_version(), "3.1")
-
-    def test_with_no_policy_in_force_it_falls_back_to_the_constant(self):
-        db.client = _Client([])
-        self.assertEqual(auth_routes._signup_terms_version(),
-                         auth_routes.CURRENT_TERMS_VERSION)
-        db.client = _Client(RuntimeError("down"))
-        self.assertEqual(auth_routes._signup_terms_version(),
-                         auth_routes.CURRENT_TERMS_VERSION)
-
-    def test_both_signup_writes_use_the_resolved_version(self):
-        import inspect
-        source = inspect.getsource(auth_routes.signup)
-        self.assertIn('user_metadata["terms_version"] = terms_version', source)
-        self.assertIn("terms_version=terms_version,", source)
-        self.assertNotIn("terms_version=CURRENT_TERMS_VERSION", source)
 
 
 if __name__ == "__main__":

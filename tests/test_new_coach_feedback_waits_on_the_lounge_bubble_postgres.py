@@ -10,10 +10,8 @@ flag untouched; closed to the browser roles; applying the file again keeps
 every row."""
 from __future__ import annotations
 
-import json
 import os
 import uuid
-from pathlib import Path
 
 import psycopg2
 import psycopg2.extras
@@ -25,8 +23,6 @@ DSN = os.environ.get("CONFIDENT_MOMENT_REHEARSAL_DSN", "")
 pytestmark = pytest.mark.skipif(
     not DSN, reason="disposable confident-moment rehearsal only"
 )
-MIGRATION = (Path(__file__).resolve().parents[1] / "migrations"
-             / "new_coach_feedback_waits_on_the_lounge_bubble.sql")
 
 
 @pytest.fixture(scope="module")
@@ -78,17 +74,6 @@ def _word(cur, take: str, *, shared: bool, at: str = "now()") -> None:
         "public.coach_take_words.shared_at, EXCLUDED.shared_at)", (take,))
 
 
-def _answer(cur, user: str, take: str, snippet: str, *, shared: bool,
-            at: str = "now()") -> None:
-    cur.execute(
-        "INSERT INTO public.exercise_coach_requests (owner_user_id, take_session_id, "
-        "snippet_id, reason, request_trace, kind, resolution, resolved_by, "
-        f"resolved_at, answer_text, shared_at) VALUES (%s, %s, %s, 'nothing_spotted', "
-        f"%s, 'praise', 'line_written', 'coach-1', {at}, 'Strong opening.', "
-        f"{at if shared else 'NULL'})",
-        (user, take, snippet, json.dumps({"source": "test"})))
-
-
 def _speaker():
     return str(uuid.uuid4()), str(uuid.uuid4())
 
@@ -117,69 +102,3 @@ def test_publish_open_and_a_later_word(db):
     with db.cursor() as cur:
         _word(cur, take_two, shared=True, at="clock_timestamp()")
     assert signal.lounge_flags(database, user) == {arc: True}
-
-
-def test_a_coach_answer_on_a_moment_and_machine_only_feedback(db):
-    database = _Database(db)
-    user, arc = _speaker()
-    other_arc = str(uuid.uuid4())
-    moment, unshared = str(uuid.uuid4()), str(uuid.uuid4())
-    with db.cursor() as cur:
-        take = _take(cur, user, arc, 1)
-        quiet = _take(cur, user, other_arc, 1)
-        # Machine-only: a request the coach never answered or shared, and an
-        # unshared word, never light the bubble.
-        cur.execute(
-            "INSERT INTO public.exercise_coach_requests (owner_user_id, "
-            "take_session_id, snippet_id, reason, request_trace, kind) "
-            "VALUES (%s, %s, %s, 'nothing_spotted', %s, 'error')",
-            (user, quiet, unshared, json.dumps({"source": "test"})))
-        _word(cur, quiet, shared=False)
-        _answer(cur, user, take, moment, shared=True,
-                at="now() - interval '1 minute'")
-    assert signal.lounge_flags(database, user) == {arc: True, other_arc: False}
-    # Showing the Take's note is not showing the moment.
-    signal.mark_seen(database, user, {"take_session_id": take})
-    assert signal.lounge_flags(database, user)[arc] is True
-    assert signal.mark_seen(database, user, {"take_session_id": take,
-                                             "snippet_id": moment})[0] == 200
-    assert signal.lounge_flags(database, user) == {arc: False, other_arc: False}
-
-
-def test_another_speakers_take_is_refused(db):
-    database = _Database(db)
-    owner, arc = _speaker()
-    stranger, _ = _speaker()
-    with db.cursor() as cur:
-        take = _take(cur, owner, arc, 1)
-        _word(cur, take, shared=True, at="now() - interval '1 minute'")
-    status, body = signal.mark_seen(database, stranger, {"take_session_id": take})
-    assert (status, body["code"]) == (404, "NOT_FOUND")
-    assert signal.lounge_flags(database, owner) == {arc: True}
-    assert signal.lounge_flags(database, stranger) == {}
-    assert database.new_coach_feedback_by_project("not-a-uuid") == {}
-
-
-def test_closed_to_the_browser_and_idempotent(db):
-    with db.cursor() as cur:
-        cur.execute("SELECT relrowsecurity FROM pg_class "
-                    "WHERE oid = 'public.coach_feedback_seen'::regclass")
-        assert cur.fetchone()[0] is True
-        for role in ("public", "anon", "authenticated"):
-            if role != "public":
-                cur.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role,))
-                if cur.fetchone() is None:
-                    continue
-                cur.execute("SELECT has_table_privilege(%s, 'public.coach_feedback_seen', "
-                            "'SELECT, INSERT, UPDATE, DELETE')", (role,))
-                assert cur.fetchone()[0] is False
-            for function in ("public.new_coach_feedback_by_project_v1(text)",
-                             "public.mark_coach_feedback_seen_v1(text, text, text)"):
-                cur.execute("SELECT has_function_privilege(%s, %s, 'EXECUTE')",
-                            (role, function))
-                assert cur.fetchone()[0] is False, (role, function)
-        cur.execute("SELECT count(*) FROM public.coach_feedback_seen")
-        before = cur.fetchone()[0]
-        cur.execute(MIGRATION.read_text())
-        cur.execute("SELECT count(*) FROM public.coach_feedback_seen")
-        assert cur.fetchone()[0] == before

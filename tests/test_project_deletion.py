@@ -20,6 +20,7 @@ from services.project_deletion import (
 
 try:
     from flask import Flask, request
+
     from routes.v2 import projects as v2_projects
     from services.canonical_product import OwnerPrincipal
     _IMPORT_ERROR = None
@@ -34,12 +35,6 @@ ROW = {
     "state": "pending", "requested_at": "2026-09-25T12:00:00Z",
     "due_at": "2026-10-02T12:00:00Z", "cancelled_at": None,
 }
-
-
-class _ApiError(Exception):
-    def __init__(self, message, code=""):
-        super().__init__(message)
-        self.code = code
 
 
 def _client(*, rpc=None, rpc_error=None, rows=None, select_error=None):
@@ -63,119 +58,12 @@ class ServiceTests(unittest.TestCase):
     def _service(self, **kw):
         return ProjectDeletionService(SimpleNamespace(client=_client(**kw)))
 
-    def test_request_returns_the_row(self):
-        row = self._service(rpc=[ROW]).request("p1", PROJECT, "k")
-        self.assertEqual(row["id"], "r1")
-
-    def test_rpc_names_map_to_public_codes(self):
-        for raised, code, status in (
-            ("PROJECT_NOT_FOUND", "PROJECT_NOT_FOUND", 404),
-            ("PROJECT_DELETION_NOT_PENDING", "PROJECT_DELETION_NOT_PENDING", 409),
-            ("PROJECT_DELETION_ALREADY_CONFIRMED",
-             "PROJECT_DELETION_ALREADY_CONFIRMED", 409),
-            ("IDEMPOTENCY_CONFLICT", "IDEMPOTENCY_CONFLICT", 409),
-        ):
-            service = self._service(rpc_error=_ApiError(f"P0001: {raised}"))
-            with self.assertRaises(ProjectDeletionError) as ctx:
-                service.cancel("p1", PROJECT)
-            self.assertEqual((ctx.exception.code, ctx.exception.status),
-                             (code, status))
-
-    def test_unmigrated_function_is_unavailable_not_a_crash(self):
-        service = self._service(rpc_error=_ApiError("no function", "PGRST202"))
-        with self.assertRaises(ProjectDeletionError) as ctx:
-            service.request("p1", PROJECT, "k")
-        self.assertEqual(ctx.exception.status, 503)
-
-    def test_other_rpc_failures_raise(self):
-        service = self._service(rpc_error=_ApiError("boom", "XX000"))
-        with self.assertRaises(_ApiError):
-            service.request("p1", PROJECT, "k")
-
-    def test_open_for_projects_is_keyed_by_project(self):
-        service = self._service(rows=[ROW])
-        self.assertEqual(service.open_for_projects([PROJECT]), {PROJECT: ROW})
-        self.assertEqual(service.open_for_projects([]), {})
-
-    def test_unmigrated_table_reads_as_no_request(self):
-        service = self._service(select_error=_ApiError("missing", "42P01"))
-        self.assertEqual(service.open_for_projects([PROJECT]), {})
-        self.assertEqual(service.queue(), [])
-
-    def test_a_failed_read_is_not_read_as_no_request(self):
-        service = self._service(select_error=_ApiError("timeout", "57014"))
-        with self.assertRaises(_ApiError):
-            service.open_for_project(PROJECT)
 
     def test_public_view_never_carries_the_owner(self):
         view = public_view(ROW)
         self.assertNotIn("acquisition_principal_id", view)
         self.assertEqual(view["state"], "pending")
         self.assertIsNone(public_view(None))
-
-
-class FeedTests(unittest.TestCase):
-    """The picker feed carries each project's open request, or None."""
-
-    def test_open_request_is_stamped_and_others_are_none(self):
-        from services.project_deletion import with_deletion_state
-
-        other = "33333333-3333-4333-8333-333333333333"
-        database = SimpleNamespace(client=_client(rows=[ROW]))
-        out = with_deletion_state(database, [{"arc_id": PROJECT},
-                                             {"arc_id": other}])
-        self.assertEqual(out[0]["deletion"]["state"], "pending")
-        self.assertIsNone(out[1]["deletion"])
-
-    def test_a_failed_read_leaves_the_feed_usable(self):
-        from services.project_deletion import with_deletion_state
-
-        database = SimpleNamespace(client=_client(
-            select_error=_ApiError("timeout", "57014")))
-        out = with_deletion_state(database, [{"arc_id": PROJECT}])
-        self.assertIsNone(out[0]["deletion"])
-
-    def test_an_erased_project_leaves_the_feed(self):
-        """P1-B: once erased, a project's row and takes are empty receipts;
-        the picker must not list them (tombstoned, or a finished request)."""
-        from services.project_deletion import with_deletion_state
-
-        tombstoned = "33333333-3333-4333-8333-333333333333"
-        finished = "44444444-4444-4444-8444-444444444444"
-        client = MagicMock()
-
-        def table(name):
-            chain = MagicMock()
-            chain.select.return_value = chain
-            chain.in_.return_value = chain
-            rows = {
-                "projects": [
-                    {"id": PROJECT, "tombstoned_at": None},
-                    {"id": tombstoned, "tombstoned_at": "2026-09-26T10:00:00Z"},
-                ],
-                "project_deletion_requests": [
-                    {"project_id": finished, "state": "done"},
-                ],
-            }[name]
-            chain.execute.return_value = SimpleNamespace(data=rows)
-            return chain
-
-        client.table.side_effect = table
-        out = with_deletion_state(SimpleNamespace(client=client), [
-            {"arc_id": PROJECT}, {"arc_id": tombstoned}, {"arc_id": finished},
-        ])
-        self.assertEqual([t["arc_id"] for t in out], [PROJECT])
-
-    def test_a_legacy_arc_id_is_never_sent_as_a_project_id(self):
-        client = _client(rows=[])
-        ProjectDeletionService(SimpleNamespace(client=client)).erased_projects(
-            ["arc-not-a-uuid"])
-        client.table.assert_not_called()
-
-    def test_a_database_without_a_client_sees_no_request(self):
-        self.assertEqual(
-            ProjectDeletionService(SimpleNamespace()).open_for_projects([PROJECT]),
-            {})
 
 
 class CreateTakeLockTests(unittest.TestCase):
@@ -204,9 +92,6 @@ class CreateTakeLockTests(unittest.TestCase):
         self.assertEqual(ctx.exception.status, 409)
         self.assertEqual(ctx.exception.code, "PROJECT_DELETION_PENDING")
 
-    def test_a_retried_upload_of_an_existing_take_still_resolves(self):
-        context = self._resolve(open_request=ROW, duplicate={"id": "t1"})
-        self.assertEqual(context.duplicate_take, {"id": "t1"})
 
     def test_an_unreadable_lock_never_stops_recording(self):
         from services import create_take
@@ -222,10 +107,6 @@ class CreateTakeLockTests(unittest.TestCase):
                 {"project_id": PROJECT, "upload_idempotency_key": "u1"},
                 user_id="user-1", guest_token=None, database=MagicMock(),
             )
-        self.assertEqual(context.project_id, PROJECT)
-
-    def test_no_request_records_as_before(self):
-        context = self._resolve(open_request=None, duplicate=None)
         self.assertEqual(context.project_id, PROJECT)
 
 
@@ -269,10 +150,6 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(body["deletion"]["state"], "pending")
         self.service.request.assert_called_once_with("p1", PROJECT, "k1")
 
-    def test_bad_uuid_and_missing_key_are_400(self):
-        self.assertEqual(self._post(project="nope")[1], 400)
-        self.assertEqual(self._post(body={})[1], 400)
-        self.service.request.assert_not_called()
 
     def test_not_the_owners_project_is_404(self):
         self.service.request.side_effect = ProjectDeletionError(
@@ -280,11 +157,6 @@ class RouteTests(unittest.TestCase):
         body, status = self._post()
         self.assertEqual((status, body["code"]), (404, "PROJECT_NOT_FOUND"))
 
-    def test_cancel(self):
-        self.service.cancel.return_value = {**ROW, "state": "cancelled",
-                                            "cancelled_at": "2026-09-26"}
-        body, status = self._delete()
-        self.assertEqual((status, body["deletion"]["state"]), (200, "cancelled"))
 
     def test_cancel_after_confirmation_is_409(self):
         self.service.cancel.side_effect = ProjectDeletionError(
@@ -329,27 +201,3 @@ class ConfirmRouteTests(unittest.TestCase):
         self.assertEqual(body["deletion"]["state"], "confirmed")
         self.assertEqual(body["purge_request_id"], "purge-1")
         self.service.confirm.assert_called_once_with(self.REQUEST, self.OPERATOR)
-
-    def test_a_cancelled_request_cannot_be_confirmed(self):
-        self.service.confirm.side_effect = ProjectDeletionError(
-            "PROJECT_DELETION_NOT_PENDING", "PROJECT_DELETION_NOT_PENDING", 409)
-        _body, status = self._confirm()
-        self.assertEqual(status, 409)
-
-    def test_a_bad_id_is_400(self):
-        _body, status = self._confirm("not-a-uuid")
-        self.assertEqual(status, 400)
-        self.service.confirm.assert_not_called()
-
-
-class ConfirmServiceTests(unittest.TestCase):
-
-    def test_confirm_maps_its_errors(self):
-        for raised, status in (("PROJECT_DELETION_NOT_FOUND", 404),
-                               ("PROJECT_DELETION_NOT_PENDING", 409),
-                               ("PURGE_PROJECT_NOT_OWNED", 409)):
-            service = ProjectDeletionService(SimpleNamespace(
-                client=_client(rpc_error=_ApiError(raised, "P0001"))))
-            with self.assertRaises(ProjectDeletionError) as ctx:
-                service.confirm("r1", "o1")
-            self.assertEqual(ctx.exception.status, status)

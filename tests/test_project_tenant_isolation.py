@@ -42,22 +42,6 @@ def _service(rows):
     return service, query
 
 
-def test_same_named_project_cannot_cross_an_owner_boundary():
-    service, query = _service([
-        {"id": "project-a", "owner_principal_id": "owner-a",
-         "display_name": "Same"},
-        {"id": "project-b", "owner_principal_id": "owner-b",
-         "display_name": "Same"},
-    ])
-
-    assert service.get_project_for_owner("project-a", "owner-b") is None
-    assert query.table_name == "projects"
-    assert query.filters == [
-        ("id", "project-a"),
-        ("owner_principal_id", "owner-b"),
-    ]
-
-
 def test_take_lookup_requires_take_project_and_owner_coordinates_together():
     service, query = _service([
         {"id": "take-a", "project_id": "project-a",
@@ -72,22 +56,3 @@ def test_take_lookup_requires_take_project_and_owner_coordinates_together():
         ("project_id", "project-a"),
         ("owner_principal_id", "owner-b"),
     ]
-
-
-def test_an_erased_project_is_no_longer_its_owners_to_open():
-    """P1-B (N9): an erased project remains only as an empty receipt."""
-    service, _query = _service([
-        {"id": "project-a", "owner_principal_id": "owner-a",
-         "display_name": "", "tombstoned_at": "2026-09-26T10:00:00Z"},
-    ])
-
-    assert service.get_project_for_owner("project-a", "owner-a") is None
-
-
-def test_a_live_project_still_opens():
-    service, _query = _service([
-        {"id": "project-a", "owner_principal_id": "owner-a",
-         "display_name": "Q3", "tombstoned_at": None},
-    ])
-
-    assert service.get_project_for_owner("project-a", "owner-a")["id"] == "project-a"

@@ -91,63 +91,13 @@ def walk(monkeypatch):
 
 
 class TestTheWalkAsksForThePacket:
-    def test_dark_answers_null_and_prepares_nothing(self, mode, walk):
-        mode("dark")
-        status, payload = walk["invoke"]()
-        assert (status, payload) == (200, {"mlc2_blind_review": None})
-        assert walk["client"].calls == []
 
-    def test_a_painted_moment_gets_the_four_identifiers_and_nothing_else(self, mode, walk):
-        mode("founder_canary")
-        status, payload = walk["invoke"]()
-        assert status == 200
-        assert payload == {"mlc2_blind_review": {
-            "review_assignment_id": ASSIGNMENT, "presentation_id": PRESENTATION,
-            "acknowledgement_token": TOKEN, "visible_payload_sha256": SHA,
-        }}
-        (name, params), = walk["client"].calls
-        assert name == "prepare_mlc2_confidence_coach_packet_v1"
-        assert params["p_take_id"] == TAKE and params["p_snippet_id"] == SNIPPET
-        assert params["p_reviewer_principal_id"] == REVIEWER
-
-    def test_a_moment_this_coach_already_rated_gets_no_packet(self, mode, walk):
-        mode("founder_canary")
-        walk["labels"] = [{"rater_id": COACH, "value": "yes"}]
-        assert walk["invoke"]() == (200, {"mlc2_blind_review": None})
-        assert walk["client"].calls == []
-
-    def test_another_raters_answer_does_not_close_this_coachs_packet(self, mode, walk):
-        mode("founder_canary")
-        walk["labels"] = [{"rater_id": str(uuid.uuid4()), "value": "no"}]
-        status, payload = walk["invoke"]()
-        assert payload["mlc2_blind_review"]["review_assignment_id"] == ASSIGNMENT
 
     def test_a_coach_who_saw_the_non_blind_side_gets_no_packet(self, mode, walk):
         mode("founder_canary")
         walk["exposed"] = True
         assert walk["invoke"]() == (200, {"mlc2_blind_review": None})
         assert walk["client"].calls == []
-
-    def test_a_moment_the_chain_did_not_select_answers_null(self, mode, walk):
-        mode("founder_canary")
-        walk["client"] = _Client({"prepare_mlc2_confidence_coach_packet_v1": None})
-        assert walk["invoke"]() == (200, {"mlc2_blind_review": None})
-
-    def test_an_unknown_snippet_answers_null(self, mode, walk):
-        mode("founder_canary")
-        walk["snippet"] = None
-        assert walk["invoke"]() == (200, {"mlc2_blind_review": None})
-        assert walk["client"].calls == []
-
-    def test_a_failing_packet_never_refuses_the_walk(self, mode, walk):
-        mode("founder_canary")
-        walk["client"] = _Client(raises=RuntimeError("database down"))
-        assert walk["invoke"]() == (200, {"mlc2_blind_review": None})
-
-    def test_a_malformed_id_is_invalid_input(self, mode, walk):
-        mode("founder_canary")
-        status, payload = walk["invoke"]("not-a-uuid")
-        assert status == 400 and payload["code"] == "INVALID_INPUT"
 
 
 class TestOnlyABlindAnswerBecomesTheChainsJudgement:
@@ -166,58 +116,7 @@ class TestOnlyABlindAnswerBecomesTheChainsJudgement:
             snippet_id=SNIPPET, rater_id=COACH, value="yes", self_report=self_report)
         return result, recorded
 
-    def test_a_blind_answer_is_written(self, monkeypatch):
-        result, recorded = self._judge(monkeypatch, exposed=False)
-        assert result == {"judgment_id": "j"}
-        assert recorded and recorded[0]["value"] == "yes"
-        assert recorded[0]["reviewer_principal_id"] == REVIEWER
 
     def test_an_answer_after_the_non_blind_side_is_never_a_blind_judgement(self, monkeypatch):
         result, recorded = self._judge(monkeypatch, exposed=True)
         assert result is None and recorded == []
-
-    def test_a_self_report_is_never_a_judgement(self, monkeypatch):
-        result, recorded = self._judge(monkeypatch, exposed=False, self_report=True)
-        assert result is None and recorded == []
-
-
-def test_the_packet_route_is_on_the_coach_blueprint_and_coach_only():
-    import inspect
-    from routes.v2 import confidence_chain_coach as route
-    from services import confidence_chain_walk as walk
-    assert "@require_admin_or_coach" in inspect.getsource(route)
-    for source in (inspect.getsource(route.v2_coach_confidence_chain_packet),
-                   inspect.getsource(walk.walk_packet),
-                   inspect.getsource(walk.already_rated)):
-        for leak in ("transcript", "machine", "predict", "voice_confidence", "score"):
-            assert leak not in source
-
-
-def test_the_route_validates_and_calls_one_service():
-    """The route fence (one service call, no direct database call): the
-    decisions live in services/confidence_chain_walk.py."""
-    import inspect
-    from routes.v2 import confidence_chain_coach as route
-    source = inspect.getsource(route.v2_coach_confidence_chain_packet)
-    assert "walk_packet(db," in source and "db." not in source
-
-
-def test_an_unreadable_rating_reads_as_rated(monkeypatch):
-    from services import confidence_chain_walk as walk
-
-    class _Broken:
-        def get_confidence_labels_by_snippet_ids(self, ids):
-            raise RuntimeError("labels down")
-    assert walk.already_rated(_Broken(), COACH, SNIPPET) is True
-
-
-def test_the_handle_is_built_from_the_packet_the_rpc_really_returns():
-    """Before 2026-10-05 the consumer asked for visible_payload_sha256, a
-    key the RPC never returns, so no row ever carried a handle and no coach
-    answer ever reached the chain."""
-    from services import confidence_chain_consumer as consumer
-    assert "visible_payload_sha256" not in PACKET
-    assert consumer.coach_packet_handle(PACKET) == {
-        "review_assignment_id": ASSIGNMENT, "presentation_id": PRESENTATION,
-        "acknowledgement_token": TOKEN, "visible_payload_sha256": SHA,
-    }

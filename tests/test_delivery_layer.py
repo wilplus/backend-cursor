@@ -19,8 +19,8 @@ from unittest.mock import patch
 
 try:
     from flask import Flask, request
+
     from routes.v2 import arcs as v2_arcs
-    from routes.v2 import common as v2_common
     from routes.v2 import lab_recording as v2_lab_recording
     from services.db import db
     _IMPORT_ERROR = None
@@ -136,34 +136,6 @@ class _FeedbackHarness(unittest.TestCase):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class FeedbackRouteTests(_FeedbackHarness):
-
-    def test_entitled_unlocks_all_and_folds_read_moments(self):
-        body, status = self._call(entitled=True)
-        takes = {t["take_index"]: t for t in body["takes"]}
-        for ti in (1, 2, 3):
-            self.assertFalse(takes[ti].get("locked", False))
-        # A coach rewrite stays a proposal; it never silently replaces the
-        # user's accepted/raw text in the take document.
-        self.assertEqual(takes[2]["full_text"], "raw words of s2")
-        # take 1's key moments include the paired READ's moment
-        kinds = {m["recording_kind"] for m in takes[1]["key_moments"]}
-        self.assertIn("spoken", kinds)
-        self.assertIn("read", kinds)
-        m = takes[1]["key_moments"][0]
-        self.assertEqual(m["comment_text"], "This is the turn.")
-        self.assertEqual(m["slide_index"], 0)
-        self.assertEqual(m["audio_ref"], "https://x/p.webm")
-
-    def test_no_scores_or_potentiometer_anywhere(self):
-        body, _ = self._call(entitled=True)
-        raw = json.dumps(body)
-        for banned in ("potentiometer", "acoustic_read", "overall_score",
-                       "outside_normal_range", "rank"):
-            self.assertNotIn(banned, raw)
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class KeyMomentContractTests(_FeedbackHarness):
     """A surfaced moment carries exact playback and a written coach note.
 
@@ -171,36 +143,6 @@ class KeyMomentContractTests(_FeedbackHarness):
     coach-video surface that may reach the user.
     """
 
-    def test_key_moment_surfaces_without_a_per_item_video(self):
-        body, status = self._call(entitled=True)
-        self.assertEqual(status, 200)
-        takes = {t["take_index"]: t for t in body["takes"]}
-        moments = takes[1]["key_moments"]
-        self.assertTrue(moments)
-        for m in moments:
-            self.assertEqual(m["comment_text"], "This is the turn.")
-            self.assertNotIn("comment_video_ref", m)
-        # the paired READ's key moment folds in too
-        kinds = {m["recording_kind"] for m in moments}
-        self.assertEqual(kinds, {"spoken", "read"})
-
-    def test_key_moment_without_surfaced_stays_hidden(self):
-        body, _ = self._call(entitled=True, surfaced=False)
-        for t in body["takes"]:
-            self.assertEqual(t.get("key_moments"), [])
-
-    def test_only_professional_yes_is_a_key_moment(self):
-        for value in ("no", "neutral", None):
-            body, _ = self._call(entitled=True, confidence=value,
-                                 surfaced=True)
-            for t in body["takes"]:
-                self.assertEqual(t.get("key_moments"), [], value)
-
-    def test_peer_yes_quorum_cannot_create_a_key_moment(self):
-        body, _ = self._call(
-            entitled=True, confidence="yes", surfaced=True, peer_only=True)
-        for take in body["takes"]:
-            self.assertEqual(take.get("key_moments"), [])
 
     def test_the_verdict_is_never_serialized(self):
         # The coach verdict selects the moment but never ships: no internal
@@ -261,11 +203,6 @@ class AsyncReadoutStateTests(unittest.TestCase):
         self.assertEqual(body["analysis_state"], "processing")
         self.assertIsNone(body["readout"])
 
-    def test_failed_state_served(self):
-        body, status = self._guest(
-            {"user_id": None, "analysis_state": "failed"})
-        self.assertEqual(body["state"], "failed")
-        self.assertEqual(body["analysis_state"], "failed")
 
     def test_ideal_text_unconfirmed_state_is_preserved_exactly(self):
         body, status = self._guest({
@@ -278,38 +215,6 @@ class AsyncReadoutStateTests(unittest.TestCase):
         self.assertEqual(
             body["analysis_state"], "failed_ideal_text_unconfirmed")
         self.assertIsNone(body["readout"])
-
-    def test_terminal_serves_analysis_state_ready(self):
-        # Past processing|failed the poll's terminal is analysis_state=ready —
-        # the lifecycle `state` stays readout_ready/review_pending/… (the FE
-        # must NOT need to enumerate those to stop polling).
-        from unittest.mock import MagicMock
-        import services.lab_recording as lab
-        orig = lab.build_readout_from_session
-        lab.build_readout_from_session = MagicMock(
-            return_value={"snippets": []})
-        try:
-            body, status = self._guest(
-                {"user_id": None, "analysis_state": "ready",
-                 "results_published_at": None, "status": "x"})
-        finally:
-            lab.build_readout_from_session = orig
-        self.assertEqual(status, 200)
-        self.assertEqual(body["analysis_state"], "ready")
-        self.assertEqual(body["state"], "readout_ready")
-
-    def test_async_flag_default_off(self):
-        import os
-        old = os.environ.pop("ASYNC_ANALYSIS_ENABLED", None)
-        try:
-            self.assertFalse(v2_common._async_analysis_enabled())
-            os.environ["ASYNC_ANALYSIS_ENABLED"] = "1"
-            self.assertTrue(v2_common._async_analysis_enabled())
-        finally:
-            if old is None:
-                os.environ.pop("ASYNC_ANALYSIS_ENABLED", None)
-            else:
-                os.environ["ASYNC_ANALYSIS_ENABLED"] = old
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")

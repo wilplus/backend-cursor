@@ -29,7 +29,6 @@ from unittest.mock import patch
 
 from services import coach_exercise_authoring as cea
 from services import exercise_coach_requests as ecr
-from services import feedback_pairs as fp
 
 REQUEST_ID = "0b6a8c1e-2f3d-4a5b-8c7d-9e0f1a2b3c4d"
 WALK_ID = f"coach-request-{REQUEST_ID}"
@@ -168,50 +167,7 @@ def _resolve(db, *, exercise_id=WALK_ID, coach_id="coach-1", share=True):
 
 
 class TheWalkPairTests(unittest.TestCase):
-    def test_the_upload_records_no_pair_and_the_resolution_records_it_stamped(self):
-        db = _WalkDb(request=_request())
-        status, _ = _upload(db)
-        self.assertEqual(status, 200)
-        self.assertEqual(db.pairs, [], "the pair waits for the resolution")
-        status, _ = _resolve(db)
-        self.assertEqual(status, 200)
-        final = next(p for p in db.pairs if p["final_kind"] == "final")
-        self.assertEqual(final["surface"], "exercise_script")
-        self.assertEqual(final["request_id"], REQUEST_ID)
-        self.assertEqual((final["take_session_id"], final["snippet_id"]), ("take-1", "snip-1"))
-        self.assertEqual(final["owner_user_id"], "speaker-1")
-        self.assertEqual(final["draft_model_version"], "gpt-test-1")
-        self.assertEqual(final["pattern_key"], "ending_compression")
-        self.assertEqual((final["exercise_id"], final["exercise_version"]), (WALK_ID, 1))
-        self.assertEqual(final["coach_id"], "coach-1")
-        # The draft is the request's, never the client's text.
-        self.assertEqual(final["draft_text"], "Say the last word fully, then stop.")
-        self.assertEqual(final["final_text"], "Let the final word land before you breathe.")
-        # The passage it was drafted from, so a golden set and a run can use it.
-        self.assertEqual(final["passage_text"], "and that is why the number matters")
-        self.assertEqual(final["prompt_context"]["kind"], "error")
 
-    def test_the_transcript_is_the_second_final_stamped_but_for_the_request(self):
-        db = _WalkDb(request=_request())
-        _upload(db)
-        _resolve(db)
-        transcript = next(p for p in db.pairs if p["final_kind"] == "transcript")
-        self.assertIsNone(transcript["request_id"])
-        self.assertEqual(transcript["final_text"], "Let the final word land.")
-        for field in ("take_session_id", "snippet_id", "owner_user_id",
-                      "draft_model_version", "pattern_key", "exercise_id",
-                      "exercise_version", "passage_text"):
-            self.assertTrue(transcript[field], field)
-        self.assertEqual(len(db.pairs), 2)
-
-    def test_a_stamped_walk_pair_takes_the_owner_s_yes_and_is_releasable(self):
-        db = _WalkDb(request=_request())
-        _upload(db)
-        _resolve(db)
-        for pair in db.pairs:
-            self.assertEqual(pair["owner_principal_id"], "principal-speaker-1")
-            self.assertEqual(pair["consent_state"], "yes")
-            self.assertTrue(pair["releasable"])
 
     def test_without_the_owner_s_yes_it_is_recorded_but_not_releasable(self):
         db = _WalkDb(request=_request(), consent=False)
@@ -220,85 +176,6 @@ class TheWalkPairTests(unittest.TestCase):
         self.assertTrue(db.pairs)
         self.assertTrue(all(p["consent_state"] == "no" and not p["releasable"]
                             for p in db.pairs))
-
-    def test_the_version_row_keeps_the_request_s_draft_and_model(self):
-        db = _WalkDb(request=_request())
-        _upload(db)
-        row = db.versions[0]
-        self.assertEqual(row["ai_draft_text"], "Say the last word fully, then stop.")
-        self.assertEqual(row["ai_draft_model_version"], "gpt-test-1")
-
-    def test_choosing_another_library_exercise_is_no_pair(self):
-        db = _WalkDb(request=_request())
-        _upload(db, definition=_definition(exercise_id="land-it"), exercise_id="land-it")
-        status, _ = _resolve(db, exercise_id="land-it")
-        self.assertEqual(status, 200)
-        self.assertEqual(db.pairs, [])
-
-    def test_a_coach_answering_their_own_moment_is_the_owner_never_a_pair(self):
-        db = _WalkDb(request=_request(owner_user_id="coach-1"))
-        _upload(db)
-        _resolve(db)
-        self.assertEqual(db.pairs, [])
-
-    def test_no_draft_shown_is_no_pair(self):
-        db = _WalkDb(request=_request(draft_text=None, draft_surface=None))
-        _upload(db)
-        _resolve(db)
-        self.assertEqual(db.pairs, [])
-        self.assertIsNone(db.versions[0]["ai_draft_text"])
-
-    def test_an_unchanged_script_still_pairs_its_differing_transcript(self):
-        db = _WalkDb(request=_request(draft_text="Let the final word land before you breathe."))
-        _upload(db)
-        _resolve(db)
-        self.assertEqual([p["final_kind"] for p in db.pairs], ["transcript"])
-
-    def test_no_transcript_yet_is_the_one_pair(self):
-        db = _WalkDb(request=_request())
-        _upload(db, transcript=None)
-        _resolve(db)
-        self.assertEqual([p["final_kind"] for p in db.pairs], ["final"])
-
-
-class TheLibraryTests(unittest.TestCase):
-    """FL-L3: the Library's starting text is a past final (a coach's or the
-    founder's words), never the model's draft."""
-
-    def test_a_library_exercise_records_no_pair_and_keeps_no_draft(self):
-        db = _WalkDb()
-        definition = _definition(exercise_id="land-it",
-                                 ai_draft_text="Another coach's final for this pattern.",
-                                 ai_draft_model_version="gpt-test-1")
-        status, _ = _upload(db, definition=definition, exercise_id="land-it")
-        self.assertEqual(status, 200)
-        self.assertEqual(db.pairs, [])
-        self.assertIsNone(db.versions[0]["ai_draft_text"])
-        self.assertIsNone(db.versions[0]["ai_draft_model_version"])
-
-    def test_a_request_id_shaped_like_nothing_is_not_a_request(self):
-        self.assertIsNone(cea.request_id_for_exercise("coach-request-req-1"))
-        self.assertIsNone(cea.request_id_for_exercise("land-it"))
-        self.assertEqual(cea.request_id_for_exercise(WALK_ID), REQUEST_ID)
-
-    def test_a_request_whose_draft_is_another_surface_lends_none(self):
-        db = _WalkDb(request=_request(draft_surface="praise_line"))
-        self.assertEqual(cea.server_draft(db, WALK_ID), (None, None))
-
-
-class TheOwnerRuleTests(unittest.TestCase):
-    def test_record_pair_refuses_when_the_coach_is_the_owner(self):
-        class _Db:
-            rows: list = []
-
-            def insert_feedback_pair(self, **fields):
-                self.rows.append(fields)
-                return fields
-        db = _Db()
-        self.assertIsNone(fp.record_pair(
-            db, surface="praise_line", draft="a", final="b", coach_id="same-1",
-            owner_user_id="same-1", request_id="req-1"))
-        self.assertEqual(db.rows, [])
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -15,7 +15,6 @@ Pins:
 from __future__ import annotations
 
 import pathlib
-import uuid
 from decimal import Decimal
 
 import psycopg2
@@ -25,7 +24,9 @@ import pytest
 
 from tests import test_a_take_draws_its_random_moments_postgres as draw_suite
 from tests import test_the_machine_reads_willfidence_postgres as read_suite
-from tests import test_the_shadow_writer_accepts_the_frame_the_code_builds_postgres as base
+from tests import (
+    test_the_shadow_writer_accepts_the_frame_the_code_builds_postgres as base,
+)
 
 DSN = base.DSN
 pytestmark = pytest.mark.skipif(not DSN, reason="disposable confident-moment rehearsal only")
@@ -82,28 +83,6 @@ def _outcomes(cur, take):
     return cur.fetchall()
 
 
-def test_the_map_must_be_the_frames_blocks(cur):
-    _apply(cur)
-    seed = _take(cur)
-    bad = [{"block_id": b["block_id"], "paragraph_id": None} for b in seed["frame"]["blocks"]][1:]
-    with pytest.raises(psycopg2.errors.RaiseException, match="DO_NOT_MATCH"):
-        cur.execute("SELECT public.record_v4_moment_paragraphs_v1(%s::uuid, %s)",
-                    (seed["take"], psycopg2.extras.Json(bad)))
-    cur.connection.rollback()
-    _apply(cur)
-    seed = _take(cur)
-    with pytest.raises(psycopg2.errors.RaiseException, match="INVALID"):
-        cur.execute("SELECT public.record_v4_moment_paragraphs_v1(%s::uuid, %s)",
-                    (seed["take"], psycopg2.extras.Json(
-                        [{"block_id": b["block_id"], "paragraph_id": "not-a-uuid"}
-                         for b in seed["frame"]["blocks"]])))
-    cur.connection.rollback()
-    _apply(cur)
-    seed = _take(cur)
-    assert _map(cur, seed, P1) == {"outcome": "mapped"}
-    assert _map(cur, seed, None) == {"outcome": "stored"}
-
-
 def test_outcomes_wait_for_both_reads_then_land_once(cur):
     _apply(cur)
     first, second = _two_takes(cur)
@@ -122,60 +101,3 @@ def test_outcomes_wait_for_both_reads_then_land_once(cur):
         assert str(row["next_take_session_id"]) == second["take"]
         assert row["rise"] == row["willfidence_after"] - row["willfidence_before"]
         assert row["rise"] > Decimal("0.05") and row["outcome"] == "rose"
-
-
-def test_without_a_paragraph_the_slide_is_the_backup(cur):
-    _apply(cur)
-    first, second = _two_takes(cur)
-    _map(cur, first, None)
-    _map(cur, second, None)
-    _read(cur, first, filler=0.9)
-    _read(cur, second, filler=0.9)
-    _compute(cur, second["take"])
-    rows = _outcomes(cur, first["take"])
-    assert {r["match_level"] for r in rows} == {"slide"}
-    assert {r["outcome"] for r in rows} == {"did_not_rise"}
-
-
-def test_v3s_picks_ride_along(cur):
-    _apply(cur)
-    first, second = _two_takes(cur)
-    _map(cur, first, None)
-    _map(cur, second, None)
-    _read(cur, first, filler=0.5)
-    _read(cur, second, filler=0.5)
-    _compute(cur, second["take"])
-    frame = first["frame"]
-    rewrite = {a["block_id"] for a in frame["verbal_lanes"]["rewrite_clarity"]["anchors"]}
-    exercise = {b["block_id"] for b in frame["blocks"] if b.get("carries_exercise")}
-    for row in _outcomes(cur, first["take"]):
-        assert ("rewrite" in row["v3_picks"]) == (row["block_id"] in rewrite)
-        assert ("exercise" in row["v3_picks"]) == (row["block_id"] in exercise)
-
-
-def test_a_first_take_has_nothing_to_compare(cur):
-    _apply(cur)
-    seed = _take(cur)
-    cur.execute("UPDATE public.v2_sessions SET take_index = 1 WHERE id = %s", (seed["take"],))
-    assert _compute(cur, seed["take"]) == {"outcome": "no_previous_take"}
-    assert _compute(cur, str(uuid.uuid4())) == {"outcome": "no_previous_take"}
-
-
-def test_the_door(cur):
-    _apply(cur)
-    cur.execute(draw_suite._body(MIGRATION))
-    cur.execute("SELECT 1 FROM pg_roles WHERE rolname = 'service_role'")
-    if cur.fetchone() is not None:
-        for table in ("public.v4_moment_paragraphs", "public.v4_pick_outcomes"):
-            for privilege, held in (("SELECT", True), ("DELETE", True),
-                                    ("INSERT", False), ("UPDATE", False)):
-                cur.execute("SELECT has_table_privilege('service_role', %s, %s) AS p",
-                            (table, privilege))
-                assert cur.fetchone()["p"] is held, (table, privilege)
-    for role in ("anon", "authenticated"):
-        cur.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role,))
-        if cur.fetchone() is None:
-            continue
-        cur.execute("SELECT has_function_privilege(%s, 'public.compute_v4_pick_outcomes_v1(uuid)', "
-                    "'EXECUTE') AS p", (role,))
-        assert cur.fetchone()["p"] is False

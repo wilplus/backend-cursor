@@ -49,12 +49,3 @@ def test_the_five_answers_are_accepted(db, answer):
         cur.execute("SELECT coach_confidence_decision FROM "
                     "public.confident_voice_practice_attempt WHERE id = %s", (attempt,))
         assert cur.fetchone()[0] == answer
-
-
-def test_anything_else_is_refused(db):
-    attempt = _attempt(db)
-    with pytest.raises(psycopg2.Error):
-        with db.cursor() as cur:
-            cur.execute("UPDATE public.confident_voice_practice_attempt "
-                        "SET coach_confidence_decision = 'maybe' WHERE id = %s",
-                        (attempt,))

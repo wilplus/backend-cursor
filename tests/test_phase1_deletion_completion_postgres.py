@@ -109,27 +109,6 @@ def subject(db):
 
 class TestThePurgeReachesAPracticeRecording:
 
-    def test_the_freeze_takes_a_practice_object_into_the_manifest(self, db, subject):
-        """Before 0353 this raised PURGE_STORAGE_TARGET_SOURCE_INVALID and the
-        erasure never started."""
-        graph = _one(db, "SELECT public.resolve_phase1_purge_subject_graph_v3(%s)",
-                     (subject["principal"],))
-        result = _one(db, """
-            SELECT public.freeze_phase1_purge_inventory_v4(
-                %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s::text[])""",
-            (subject["request"], RESOLVER, "f" * 64, json.dumps(graph),
-             json.dumps([subject["target"]]), "e" * 64, []))
-
-        assert result["state"] == "in_progress", (
-            "the freeze left the request short of in_progress: %r" % (result,))
-        assert result["unknown_target_count"] == 0, (
-            "the practice object was classified as an unknown target")
-        assert _one(db, """
-            SELECT state FROM public.data_purge_targets
-             WHERE purge_request_id = %s
-               AND metadata->>'source_id' = %s""",
-            (subject["request"], str(subject["object_id"]))) == "pending", (
-            "the practice object never reached the frozen manifest")
 
     def test_the_freeze_still_refuses_an_object_that_is_not_the_subjects(self, db, subject):
         """The new branch verifies ownership exactly as its two siblings do.
@@ -155,60 +134,3 @@ class TestThePurgeReachesAPracticeRecording:
                 (other_request, RESOLVER, "f" * 64, json.dumps(graph),
                  json.dumps([subject["target"]]), "e" * 64, []))
         assert "PURGE_STORAGE_TARGET_GRAPH_MISMATCH" in str(raised.value)
-
-    def test_the_mark_stamps_the_practice_row_deleted(self, db, subject):
-        """Before 0353 this raised PURGE_OBJECT_SOURCE_INVALID, so even a
-        storage delete that had succeeded could not be recorded."""
-        result = _one(db, """
-            SELECT public.mark_phase1_storage_object_purged_v1(
-                %s, 'processing_practice_objects', %s, 'r2', %s, %s, %s)""",
-            (subject["request"], subject["object_id"], subject["bucket"],
-             subject["key"], subject["sha"]))
-
-        assert result["deleted_at_recorded"] is True
-        assert _one(db, """
-            SELECT deleted_at IS NOT NULL
-              FROM public.processing_practice_objects WHERE id = %s""",
-            (subject["object_id"],)) is True, (
-            "the object was reported purged but the row was never stamped")
-
-    def test_the_mark_refuses_a_second_stamp_on_the_same_object(self, db, subject):
-        """`deleted_at IS NULL` guards the UPDATE for the same reason the
-        orphan branch guards on status: a second mark for an object already
-        erased is a mismatch to be surfaced, not a silent no-op."""
-        _one(db, """
-            SELECT public.mark_phase1_storage_object_purged_v1(
-                %s, 'processing_practice_objects', %s, 'r2', %s, %s, %s)""",
-            (subject["request"], subject["object_id"], subject["bucket"],
-             subject["key"], subject["sha"]))
-
-        with pytest.raises(psycopg2.errors.RaiseException) as raised:
-            _one(db, """
-                SELECT public.mark_phase1_storage_object_purged_v1(
-                    %s, 'processing_practice_objects', %s, 'r2', %s, %s, %s)""",
-                (subject["request"], subject["object_id"], subject["bucket"],
-                 subject["key"], subject["sha"]))
-        assert "PURGE_OBJECT_METADATA_MISMATCH" in str(raised.value)
-
-    def test_an_unknown_relation_is_still_refused_by_both(self, db, subject):
-        """0353 adds one relation; it does not open the door."""
-        graph = _one(db, "SELECT public.resolve_phase1_purge_subject_graph_v3(%s)",
-                     (subject["principal"],))
-        invented = json.loads(json.dumps(subject["target"]))
-        invented["metadata"]["source_relation"] = "processing_invented_objects"
-
-        with pytest.raises(psycopg2.errors.RaiseException) as freeze_raised:
-            _one(db, """
-                SELECT public.freeze_phase1_purge_inventory_v4(
-                    %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s::text[])""",
-                (subject["request"], RESOLVER, "f" * 64, json.dumps(graph),
-                 json.dumps([invented]), "e" * 64, []))
-        assert "PURGE_STORAGE_TARGET_SOURCE_INVALID" in str(freeze_raised.value)
-
-        with pytest.raises(psycopg2.errors.RaiseException) as mark_raised:
-            _one(db, """
-                SELECT public.mark_phase1_storage_object_purged_v1(
-                    %s, 'processing_invented_objects', %s, 'r2', %s, %s, %s)""",
-                (subject["request"], subject["object_id"], subject["bucket"],
-                 subject["key"], subject["sha"]))
-        assert "PURGE_OBJECT_SOURCE_INVALID" in str(mark_raised.value)

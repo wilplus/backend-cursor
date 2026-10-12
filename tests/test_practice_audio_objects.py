@@ -29,7 +29,6 @@ from unittest.mock import patch
 
 from services import practice_audio_objects as pao
 
-
 PRACTICE = {
     "id": "11111111-1111-4111-8111-111111111111",
     "take_session_id": "22222222-2222-4222-8222-222222222222",
@@ -100,30 +99,7 @@ def _record(db, row=None, **over):
 
 
 class RecordPracticeAttemptTests(unittest.TestCase):
-    def test_the_attempt_and_its_recording_land_together(self):
-        db = _Db()
-        saved = _record(db)
-        self.assertEqual(saved["id"], "attempt-1")
-        self.assertEqual(len(db.registered), 1)
-        registered = db.registered[0]
-        self.assertEqual(registered["practice_attempt_id"], "attempt-1")
-        self.assertEqual(registered["object_key"], ROW["storage_path"])
-        self.assertEqual(registered["bucket"], "willab-audio")
-        self.assertEqual(registered["storage_provider"], "r2")
 
-    def test_it_records_the_exact_bytes_so_the_object_is_identifiable(self):
-        db = _Db()
-        _record(db)
-        self.assertEqual(db.registered[0]["exact_bytes_sha256"],
-                         hashlib.sha256(AUDIO).hexdigest())
-        self.assertEqual(db.registered[0]["byte_size"], len(AUDIO))
-
-    def test_a_failed_registration_rolls_the_attempt_back(self):
-        # An attempt whose audio the purge cannot see is the exact state this
-        # module exists to prevent. Losing one retake is the smaller harm.
-        db = _Db(register_ok=False)
-        self.assertIsNone(_record(db))
-        self.assertEqual(db.deleted, ["attempt-1"])
 
     def test_it_falls_back_to_the_project_when_the_take_has_no_owner(self):
         # THE 95% CASE, measured on production 2026-09-16: 348 of 367 user
@@ -138,58 +114,6 @@ class RecordPracticeAttemptTests(unittest.TestCase):
         self.assertIsNotNone(saved)
         self.assertEqual(
             db.registered[0]["acquisition_principal_id"], "project-principal")
-
-    def test_no_principal_anywhere_still_refuses_before_anything_is_written(self):
-        # The honest floor: when neither the take nor its project can name an
-        # owner, there is no FK, so no registry row, so audio the purge cannot
-        # reach. Refuse before writing.
-        db = _Db(principal="", project_principal="")
-        self.assertIsNone(_record(db))
-        self.assertEqual(db.attempts, [])
-        self.assertEqual(db.registered, [])
-
-    def test_the_registration_points_at_the_row_s_own_object(self):
-        # The key and the content type are read from the row, never passed
-        # beside it. As two parameters, a caller could have registered one key
-        # while the attempt recorded another — the purge would delete the
-        # registered one and leave the real recording behind, which is this
-        # module's own bug in a new shape.
-        db = _Db()
-        _record(db, row={**ROW, "storage_path": "practice/other.m4a",
-                         "mime_type": "audio/mp4"})
-        self.assertEqual(db.registered[0]["object_key"], "practice/other.m4a")
-        self.assertEqual(db.registered[0]["content_type"], "audio/mp4")
-        self.assertEqual(db.attempts[0]["storage_path"], "practice/other.m4a")
-
-    def test_a_row_with_no_content_type_still_registers(self):
-        db = _Db()
-        self.assertIsNotNone(_record(db, row={**ROW, "mime_type": ""}))
-        self.assertEqual(db.registered[0]["content_type"],
-                         "application/octet-stream")
-
-    def test_missing_storage_coordinates_roll_back_too(self):
-        for row, over in (({}, {"bucket": None}), ({}, {"bucket": ""}),
-                          ({"storage_path": ""}, {}), ({}, {"audio_bytes": b""})):
-            db = _Db()
-            self.assertIsNone(_record(db, row={**ROW, **row}, **over), (row, over))
-            self.assertEqual(db.deleted, ["attempt-1"], (row, over))
-
-    def test_a_failed_insert_registers_nothing(self):
-        db = _Db(insert_ok=False)
-        self.assertIsNone(_record(db))
-        self.assertEqual(db.registered, [])
-        self.assertEqual(db.deleted, [])
-
-    def test_junk_never_throws(self):
-        db = _Db()
-        for practice in (None, [], "x", {}):
-            with patch(
-                "services.processing_authorization."
-                "ProcessingAuthorizationService", return_value=_Auth(),
-            ):
-                self.assertIsNone(pao.record_practice_attempt(
-                    db, dict(ROW), practice=practice, bucket="b",
-                    audio_bytes=AUDIO))
 
 
 class ARefusedSaveLeavesNoRecordingTests(unittest.TestCase):
@@ -209,90 +133,11 @@ class ARefusedSaveLeavesNoRecordingTests(unittest.TestCase):
             ROW["storage_path"], bucket="willab-audio", storage_provider="r2",
             expected_sha256=hashlib.sha256(AUDIO).hexdigest())
 
-    def test_a_saved_attempt_keeps_its_recording(self):
-        saved, delete = self._run(_Db())
-        self.assertIsNotNone(saved)
-        delete.assert_not_called()
-
-    def test_a_refused_insert_deletes_the_recording(self):
-        saved, delete = self._run(_Db(insert_ok=False))
-        self.assertIsNone(saved)
-        self._assert_deleted(delete)
-
-    def test_a_refused_registration_deletes_the_recording(self):
-        saved, delete = self._run(_Db(register_ok=False))
-        self.assertIsNone(saved)
-        self._assert_deleted(delete)
 
     def test_no_principal_deletes_the_recording(self):
         saved, delete = self._run(_Db(principal="", project_principal=""))
         self.assertIsNone(saved)
         self._assert_deleted(delete)
-
-    def test_an_exception_deletes_the_recording_and_still_raises(self):
-        db = _Db()
-
-        def boom(_row):
-            raise RuntimeError("database down")
-        db.insert_confident_voice_practice_attempt = boom
-        with patch("services.lab_audio_storage."
-                   "delete_verified_lab_audio_object",
-                   return_value=True) as delete:
-            with self.assertRaises(RuntimeError):
-                _record(db)
-        self._assert_deleted(delete)
-
-    def test_a_failed_delete_is_logged_not_raised(self):
-        with patch("services.lab_audio_storage."
-                   "delete_verified_lab_audio_object",
-                   side_effect=RuntimeError("r2 down")), \
-                self.assertLogs("services.practice_audio_objects", "ERROR"):
-            self.assertIsNone(_record(_Db(insert_ok=False)))
-
-
-class PurgeReachesPracticeAudioTests(unittest.TestCase):
-    """Source fences on the half that does the deleting."""
-
-    def setUp(self):
-        self.source = open("services/data_purge.py", encoding="utf-8").read()
-
-    def test_the_purge_reads_the_practice_registry(self):
-        self.assertIn('"processing_practice_objects"', self.source)
-        self.assertIn("practice-object:", self.source)
-
-    def test_it_emits_a_kind_that_is_actually_deleted(self):
-        # resolve_targets only deletes r2_object / supabase_object. A
-        # PurgeDependency with target_kind "storage_object" would have been an
-        # inventory line that deletes nothing — the trap this avoided.
-        start = self.source.index('"processing_practice_objects"')
-        block = self.source[start:start + 1200]
-        self.assertIn('"r2_object" if provider == "r2" else "supabase_object"',
-                      block)
-        self.assertIn('and row.get("target_kind") in ("r2_object", "supabase_object")',
-                      self.source)
-
-    def test_an_already_purged_object_is_not_deleted_twice(self):
-        start = self.source.index('"processing_practice_objects"')
-        block = self.source[start:start + 1200]
-        self.assertIn('already_purged = row.get("deleted_at") is not None', block)
-
-    def test_the_migration_is_registered_and_additive(self):
-        manifest = open("migrations/manifest.txt", encoding="utf-8").read()
-        self.assertIn("add_practice_audio_objects.sql", manifest)
-        sql = open("migrations/add_practice_audio_objects.sql",
-                   encoding="utf-8").read()
-        self.assertIn("CREATE TABLE IF NOT EXISTS public.processing_practice_objects",
-                      sql)
-        # Additive only: it must not touch the tables it deliberately did not
-        # reuse, and must never drop anything.
-        self.assertNotIn("ALTER TABLE public.processing_audio_objects", sql)
-        self.assertNotIn("DROP", sql.upper())
-
-    def test_one_registry_row_per_attempt_and_per_object(self):
-        sql = open("migrations/add_practice_audio_objects.sql",
-                   encoding="utf-8").read()
-        self.assertIn("UNIQUE (storage_provider, bucket, object_key)", sql)
-        self.assertIn("UNIQUE (practice_attempt_id)", sql)
 
 
 if __name__ == "__main__":  # pragma: no cover

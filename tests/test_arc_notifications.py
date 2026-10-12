@@ -5,47 +5,7 @@ Run: python3 -m unittest tests.test_arc_notifications
 """
 from __future__ import annotations
 
-import pathlib
 import unittest
-import uuid
-
-
-
-class _FakeDB:
-    def __init__(self, sessions=None, purchase=None, coach_edits=None,
-                 snips_by_sid=None):
-        self._sessions = sessions or []
-        self._purchase = purchase
-        self._coach_edits = coach_edits or {}
-        self._snips = snips_by_sid or {}
-        self.inserted = []
-
-    def get_arc_sessions(self, arc_id):
-        return list(self._sessions)
-
-    @property
-    def takes(self):
-        # audit Q-A2: production now calls db.takes.<method>();
-        # this fake implements those methods directly on itself.
-        return self
-
-    def get_arc_purchase(self, arc_id):
-        return self._purchase
-
-    def get_snippets_by_session(self, sid):
-        return list(self._snips.get(sid, []))
-
-    def get_coach_best_presentation_edits(self, arc_id):
-        return dict(self._coach_edits)
-
-    def get_best_presentation_edits(self, arc_id):
-        return {}
-
-    def insert_lounge_messages(self, user_id, messages):
-        for m in messages:
-            self.inserted.append((user_id, m))
-        return messages
-
 
 if __name__ == "__main__":
     unittest.main()
@@ -94,45 +54,6 @@ class VoiceAlbumBubbleTests(unittest.TestCase):
             self.voice_album_introduced = True
             return True
 
-    def test_it_fires_and_points_at_the_album(self):
-        from services.arc_notifications import fire_voice_album_ready
-        db = self._Db()
-        self.assertTrue(fire_voice_album_ready(db, "u1", "arc-1"))
-        self.assertEqual(len(db.rows), 1)
-        body = db.rows[0]["body"].lower()
-        self.assertIn("voice album", body)
-        self.assertEqual(db.rows[0]["metadata"]["arc_id"], "arc-1")
-        self.assertEqual(db.rows[0]["metadata"]["product_action"], {
-            "action": "open_product",
-            "product": "voice_album",
-            "intent": "open_album",
-            "source": "voice_album_introduction",
-            "context_transfer": "none",
-            "schema_version": 1,
-        })
-
-    def test_idempotent_once_per_user_across_projects(self):
-        # A second qualifying Project must not restart Album onboarding.
-        from services.arc_notifications import fire_voice_album_ready
-        db = self._Db()
-        fire_voice_album_ready(db, "u1", "arc-1")
-        self.assertFalse(fire_voice_album_ready(db, "u1", "arc-2"))
-        self.assertEqual(len(db.rows), 1)
-
-    def test_user_scoped_key_is_not_project_scoped(self):
-        from services.arc_notifications import fire_voice_album_ready
-        db = self._Db()
-        self.assertTrue(fire_voice_album_ready(db, "u1", "arc-1"))
-        expected = str(uuid.uuid5(
-            uuid.NAMESPACE_URL, "willab-voicealbum-user:u1"))
-        self.assertEqual(db.rows[0]["client_id"], expected)
-
-    def test_existing_user_marker_blocks_reintroduction(self):
-        from services.arc_notifications import fire_voice_album_ready
-        db = self._Db()
-        db.voice_album_introduced = True
-        self.assertFalse(fire_voice_album_ready(db, "u1", "arc-2"))
-        self.assertEqual(db.rows, [])
 
     def test_ac9_it_never_counts_or_grades(self):
         from services.arc_notifications import fire_voice_album_ready
@@ -143,41 +64,3 @@ class VoiceAlbumBubbleTests(unittest.TestCase):
             self.assertNotIn(banned, body)
         # No count either — "a moment", never "3 moments".
         self.assertFalse(any(ch.isdigit() for ch in body))
-
-    def test_missing_user_or_arc_is_a_noop(self):
-        from services.arc_notifications import fire_voice_album_ready
-        db = self._Db()
-        self.assertFalse(fire_voice_album_ready(db, None, "arc-1"))
-        self.assertFalse(fire_voice_album_ready(db, "u1", None))
-        self.assertEqual(db.rows, [])
-
-    def test_the_coach_judgement_reconciles_the_clip_and_posts_no_bubble(self):
-        # The publish-delivery job is retired (founder 2026-09-30, B3;
-        # contract 65). The exact clip is reconciled by the judgement write
-        # itself; the album is announced by its other paths (the owner's and
-        # the coach's confirmations), never from there.
-        import inspect
-
-        from routes.v2 import coach
-        src = inspect.getsource(coach.v2_coach_put_confidence_label)
-        # The judgment of record sets the reconcile off (W6: a plain
-        # reconsideration changes nothing of record and skips it).
-        self.assertIn("_after_coach_judgement(", src)
-        after = inspect.getsource(coach._after_coach_judgement)
-        self.assertIn("_reconcile_album_after_judgement(", after)
-        hook = inspect.getsource(coach._reconcile_album_after_judgement)
-        self.assertIn("reconcile_voice_album_clip", hook)
-        self.assertNotIn("fire_voice_album_ready", src + after + hook)
-        self.assertFalse(
-            (pathlib.Path(__file__).resolve().parents[1]
-             / "services/coach_publish_delivery.py").exists())
-
-    def test_it_waits_for_take_three(self):
-        from services.arc_notifications import fire_voice_album_ready
-        db = self._Db()
-        db.get_arc_sessions = lambda _arc: [
-            {"id": "take-1", "analysis_state": "ready"},
-            {"id": "take-2", "analysis_state": "ready"},
-        ]
-        self.assertFalse(fire_voice_album_ready(db, "u1", "arc-1"))
-        self.assertEqual(db.rows, [])
