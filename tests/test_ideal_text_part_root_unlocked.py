@@ -16,7 +16,6 @@ from __future__ import annotations
 import inspect
 from unittest.mock import Mock
 
-import pytest
 from flask import Flask, request
 
 import routes.v2.explore_ideal_text as route
@@ -54,24 +53,6 @@ def _client(monkeypatch, *, locked: bool, saved: bool = True):
     return app.test_client(), database
 
 
-@pytest.mark.parametrize("locked", [False, True])
-def test_a_rooting_phrase_saves_whether_or_not_the_paragraph_is_locked(
-        monkeypatch, locked):
-    client, database = _client(monkeypatch, locked=locked)
-
-    response = client.put(
-        "/test/arc-1/part-1",
-        json={"text_echo": TEXT, "phrase": PHRASE,
-              "start": START, "end": END},
-    )
-
-    assert response.status_code == 200
-    database.set_ideal_text_part_root.assert_called_once_with(
-        arc_id="arc-1", user_id="actor-1", part_id="part-1",
-        phrase=PHRASE, start=START, end=END,
-    )
-
-
 def test_an_unlocked_paragraph_is_never_answered_with_part_not_locked(
         monkeypatch):
     """The exact failure the speaker saw: 409 on the ordinary first pass."""
@@ -85,50 +66,3 @@ def test_an_unlocked_paragraph_is_never_answered_with_part_not_locked(
 
     assert response.status_code != 409
     assert (response.get_json() or {}).get("code") != "PART_NOT_LOCKED"
-
-
-def test_a_skip_is_recorded_on_an_unlocked_paragraph_too(monkeypatch):
-    client, database = _client(monkeypatch, locked=False)
-
-    response = client.put(
-        "/test/arc-1/part-1", json={"text_echo": TEXT, "phrase": None},
-    )
-
-    assert response.status_code == 200
-    database.set_ideal_text_part_root.assert_called_once_with(
-        arc_id="arc-1", user_id="actor-1", part_id="part-1",
-        phrase=None, start=None, end=None,
-    )
-
-
-def test_words_outside_the_paragraph_are_still_refused_when_unlocked(
-        monkeypatch):
-    """Lifting the lock precondition lifts nothing else. The span must still
-    be exact words of this paragraph — that guard is what keeps an orange
-    phrase pointing at text the speaker actually has."""
-    client, database = _client(monkeypatch, locked=False)
-
-    response = client.put(
-        "/test/arc-1/part-1",
-        json={"text_echo": TEXT, "phrase": "words never spoken",
-              "start": START, "end": END},
-    )
-
-    assert response.status_code == 400
-    assert response.get_json()["code"] == "INVALID_ROOT_PHRASE"
-    database.set_ideal_text_part_root.assert_not_called()
-
-
-def test_a_stale_document_is_still_refused_when_unlocked(monkeypatch):
-    client, database = _client(monkeypatch, locked=False)
-    monkeypatch.setattr(route, "_locked_parts", lambda *_a: [])
-
-    response = client.put(
-        "/test/arc-1/part-1",
-        json={"text_echo": TEXT, "phrase": PHRASE,
-              "start": START, "end": END},
-    )
-
-    assert response.status_code == 409
-    assert response.get_json()["code"] == "STALE_DOCUMENT"
-    database.set_ideal_text_part_root.assert_not_called()

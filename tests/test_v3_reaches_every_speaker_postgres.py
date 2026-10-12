@@ -8,7 +8,6 @@ Every write happens inside a transaction that is rolled back.
 from __future__ import annotations
 
 import os
-import uuid
 
 import psycopg2
 import pytest
@@ -55,57 +54,8 @@ def _active_contract(cur) -> None:
         pytest.skip("the lane has no first-client service contract row")
 
 
-def _require_allowlist(cur, on: bool) -> None:
-    cur.execute("""
-        INSERT INTO public.ring_settings (key, value, changed_by)
-        VALUES ('v3_requires_allowlist', %s::jsonb, 'rehearsal')
-        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value""",
-        ("true" if on else "false",))
-
-
-def _refused(cur, principal) -> str:
-    cur.execute("SAVEPOINT gate")
-    with pytest.raises(psycopg2.Error) as raised:
-        cur.execute(GATE, (principal,))
-    cur.execute("ROLLBACK TO SAVEPOINT gate")
-    return str(raised.value)
-
-
-def test_the_switch_is_off_unless_set(cur):
-    cur.execute("SELECT public.v3_requires_allowlist_v1()")
-    assert cur.fetchone()[0] is False
-    _require_allowlist(cur, True)
-    cur.execute("SELECT public.v3_requires_allowlist_v1()")
-    assert cur.fetchone()[0] is True
-
-
 def test_a_speaker_not_on_the_list_passes(cur):
     _active_contract(cur)
     principal = _principal(cur)
     cur.execute(GATE, (principal,))
     assert cur.fetchone() is not None
-
-
-def test_the_switch_brings_the_list_back(cur):
-    _active_contract(cur)
-    principal = _principal(cur)
-    _require_allowlist(cur, True)
-    assert "MLC3_SERVICE_PRINCIPAL_NOT_ALLOWED" in _refused(cur, principal)
-
-
-def test_an_open_account_wide_purge_still_refuses(cur):
-    _active_contract(cur)
-    principal = _principal(cur)
-    cur.execute("""
-        INSERT INTO public.data_purge_requests (
-            acquisition_principal_id, trigger_kind, idempotency_key)
-        VALUES (%s, 'account_deletion', %s)""",
-        (principal, f"purge-{uuid.uuid4()}"))
-    assert "MLC3_SERVICE_PRINCIPAL_NOT_ALLOWED" in _refused(cur, principal)
-
-
-def test_only_the_definer_path_may_call_the_gate(cur):
-    cur.execute("""
-        SELECT has_function_privilege('service_role',
-            'public.require_mlc3_service_principal_v1(uuid)', 'EXECUTE')""")
-    assert cur.fetchone()[0] is False

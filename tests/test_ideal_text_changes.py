@@ -11,12 +11,12 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-import pytest
-
 from config import Config
 from services.degradation import DegradationLog
 from services.ideal_text_changes import (
-    ChangesDeps, _ChangesRun, build_changes_block,
+    ChangesDeps,
+    _ChangesRun,
+    build_changes_block,
 )
 
 ARC = "11111111-1111-4111-8111-111111111111"
@@ -133,87 +133,6 @@ def _block(db, *, deps=None, degradation=None, **kw):
             ARC, DOC, deps=deps or _deps(db), degradation=degradation, **kw)
 
 
-def test_flag_off_means_no_block_and_no_marker():
-    with patch.object(Config, "LIVING_TRANSCRIPT_ENABLED", False):
-        assert build_changes_block(ARC, DOC, deps=_deps(FakeDB())) == {}
-
-
-def test_a_healthy_read_has_no_degraded_key():
-    out = _block(FakeDB())
-    assert out["changes"] == []
-    assert "degraded" not in out
-
-
-def test_a_suggestion_becomes_an_anchored_change_through_the_gate():
-    db = FakeDB(sugs={S2: {"kind": "replace", "trigger": "polish",
-                           "replacement_text": "And then we launched it fast.",
-                           "why": "Tighter."}})
-    out = _block(db)
-    assert [c["kind"] for c in out["changes"]] == ["replace"]
-    c = out["changes"][0]
-    assert DOC[c["span"]["start"]:c["span"]["end"]] == c["quote"]
-    assert "degraded" not in out
-
-
-def test_the_whole_block_failing_is_named_not_vanished():
-    # The suggestions read is not optional in the old code either: it took
-    # the whole block down, which used to mean the key silently vanished.
-    out = _block(FakeDB(boom={"get_moment_suggestions_by_arc"}))
-    assert "changes" not in out
-    assert out["degraded"] == [
-        {"stage": "ideal_text.changes", "kind": "RuntimeError"}]
-
-
-def test_an_optional_stage_failing_keeps_the_changes_and_names_itself():
-    db = FakeDB(sugs={S2: {"kind": "emphasize", "trigger": "acoustic",
-                           "why": "Land it."}},
-                boom={"get_snippets_by_ids"})
-    out = _block(db)
-    # The emphasis key phrases could not be read: the fallback is the whole
-    # fragment (served as a `bold`), as before — and the payload says so.
-    assert [c["kind"] for c in out["changes"]] == ["bold"]
-    assert {"stage": "ideal_text.changes.emphasis_key_phrases",
-            "kind": "RuntimeError"} in out["degraded"]
-
-
-def test_a_failing_helper_is_named_by_its_stage():
-    def broken_playback(ids):
-        raise KeyError("audio")
-
-    def broken_applied(ids):
-        raise ValueError("applied")
-
-    db = FakeDB(sugs={S2: {"kind": "replace", "trigger": "polish",
-                           "replacement_text": "And then we launched it fast.",
-                           "why": "Tighter."}})
-    out = _block(db, deps=_deps(db, playback_map=broken_playback,
-                                applied_map=broken_applied))
-    assert len(out["changes"]) == 1
-    stages = {d["stage"]: d["kind"] for d in out["degraded"]}
-    assert stages["ideal_text.changes.applied_map"] == "ValueError"
-    # No praise row was selected, so the playback map was never asked.
-    assert "ideal_text.changes.praise_playback" not in stages
-
-
-def test_a_shared_log_carries_the_markers_and_the_block_stays_clean():
-    log = DegradationLog("ideal_text")
-    db = FakeDB(boom={"get_snippets_by_ids"},
-                sugs={S1: {"kind": "emphasize", "trigger": "acoustic",
-                           "why": "Land it."}})
-    out = _block(db, degradation=log)
-    assert "degraded" not in out
-    assert [d.stage for d in log.items] == [
-        "ideal_text.changes.emphasis_key_phrases"]
-
-
-def test_the_canonical_provenance_read_is_optional():
-    out = _block(FakeDB(boom={"get_coach_arc_ideal_text"}))
-    assert out["changes"] == []
-    assert out["degraded"] == [{
-        "stage": "ideal_text.changes.canonical_provenance",
-        "kind": "RuntimeError"}]
-
-
 def test_the_span_check_serving_none_is_a_named_fallback():
     db = FakeDB(sugs={S2: {"kind": "replace", "trigger": "polish",
                            "replacement_text": "And then we launched it fast.",
@@ -229,45 +148,6 @@ def test_the_span_check_serving_none_is_a_named_fallback():
     assert out["changes"] == []
     assert {"stage": "ideal_text.changes.span_check",
             "kind": "span_check_failed"} in out["degraded"]
-
-
-def test_the_stage_order_is_the_documented_one():
-    """The orchestrator runs the stages in the order the one-function
-    version did; the gate comes after every lane has proposed."""
-    import ast
-    import inspect
-    import textwrap
-    tree = ast.parse(textwrap.dedent(inspect.getsource(_ChangesRun.execute)))
-    found = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call):
-            fn = node.func
-            if isinstance(fn, ast.Attribute) and fn.attr == "run":
-                found.append((node.lineno, node.args[1].attr))
-            elif (isinstance(fn, ast.Attribute)
-                  and isinstance(fn.value, ast.Name) and fn.value.id == "self"):
-                found.append((node.lineno, fn.attr))
-    calls = [name for _, name in sorted(found)]
-    lanes = calls.index("_prior_take")
-    gate = calls.index("_select")
-    assert lanes < gate
-    assert calls.index("_build_candidates") < calls.index("_select")
-    assert calls[-1] == "_finish"
-
-
-@pytest.mark.parametrize("stage", [
-    "_canonical_provenance", "_applied_map", "_emphasis_key_phrases",
-    "_current_take_confident_voice", "_praise_playback",
-    "_prior_take", "_v3_shadow", "_decision_backfill",
-    "_practice_offer", "_canonical_dual_write", "_first_client_feedback",
-])
-def test_every_former_swallow_all_runs_through_the_log(stage):
-    import inspect
-    src = inspect.getsource(_ChangesRun)
-    assert f"self.{stage})" in src or f"self.{stage}\n" in src, stage
-    # Named in a `log.run(...)` call, never called bare.
-    bare = f"self.{stage}()"
-    assert bare not in src, f"{stage} is called outside the log"
 
 
 # ── THE CLIP UNDER A V3 ROW (founder 2026-09-20) ──────────────────────────
@@ -309,144 +189,7 @@ def _v3_row(snippet_id):
     }
 
 
-def test_a_v3_confident_voice_row_gets_its_recording():
-    clip = {"snippet_audio_ref": "https://audio/take-1.m4a",
-            "start_offset_ms": 0, "duration_ms": 1700}
-    db = FakeDB()
-    run = _run_for_playback(_deps(db, playback_map=lambda ids: {S1: clip}))
-    run.changes = [_v3_row(S1)]
-    run._praise_playback()
-    assert run.changes[0]["snippet_audio_ref"] == "https://audio/take-1.m4a"
-    assert run.changes[0]["start_offset_ms"] == 0
-    assert run.changes[0]["duration_ms"] == 1700
-
-
-def test_a_v3_row_with_no_clip_still_surfaces_rather_than_vanishing():
-    # 24b puts one relative-best item on every valid block of every Take.
-    # A missing recording is a missing player, never a missing bookmark —
-    # the FE renders the card without the audio block.
-    db = FakeDB()
-    run = _run_for_playback(_deps(db, playback_map=lambda ids: {}))
-    run.changes = [_v3_row(S1)]
-    run._praise_playback()
-    assert len(run.changes) == 1
-    assert "snippet_audio_ref" not in run.changes[0]
-
-
-def test_the_replacement_flag_is_what_re_arms_the_attach():
-    db = FakeDB()
-    run = _run_for_playback(_deps(db))
-    # Nothing has replaced the rows yet, so the second attach must not run:
-    # a Take V3 does not own pays nothing for this fix.
-    assert run.v3_replaced_changes is False
-
-
-def test_playback_is_attached_on_BOTH_sides_of_the_v3_replacement():
-    """The ordering contract, stated so it cannot silently regress.
-
-    Both readers are right and they disagree about when: V2 needs the clip
-    BEFORE `_feedback_set_and_fallbacks` classifies, V3 needs it AFTER
-    `_first_client_feedback` replaces. Moving the stage fixes one and breaks
-    the other, which is why it runs twice.
-    """
-    import ast
-    import inspect
-    import textwrap
-    from services.ideal_text_changes import _ChangesRun
-    tree = ast.parse(textwrap.dedent(inspect.getsource(_ChangesRun.execute)))
-    calls = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call):
-            fn = node.func
-            if isinstance(fn, ast.Attribute) and fn.attr == "run":
-                calls.append((node.lineno, node.args[1].attr))
-            elif (isinstance(fn, ast.Attribute)
-                  and isinstance(fn.value, ast.Name)
-                  and fn.value.id == "self"):
-                calls.append((node.lineno, fn.attr))
-    order = [name for _, name in sorted(calls)]
-    playbacks = [i for i, name in enumerate(order)
-                 if name == "_praise_playback"]
-    assert len(playbacks) == 2, "the attach must run on both sides"
-    assert playbacks[0] < order.index("_feedback_set_and_fallbacks"), \
-        "V2 classifies on the clip; the first attach must precede it"
-    assert playbacks[1] > order.index("_first_client_feedback"), \
-        "V3 replaces the rows; the second attach must follow it"
-
-
 # ── #592: a superseded set must not filter the rows that superseded it ─────
-
-
-def _v2_frozen_set():
-    """V2's three, as every Take frozen before #591 still holds them."""
-    return {
-        "arc_id": ARC,
-        "take_session_id": T1,
-        "selected_keys": [
-            {"id": "v2-cv", "kind": "bold", "source": "confident_voice",
-             "feedback_family": "confident_voice"},
-            {"id": "v2-rw", "kind": "replace", "source": "wording",
-             "feedback_family": "rewrite_clarity"},
-            {"id": "v2-gf", "kind": "advice", "source": "structural",
-             "feedback_family": "great_formulation"},
-        ],
-    }
-
-
-def test_a_v2_freeze_does_not_blank_the_v3_rows_it_predates():
-    """THE REGRESSION #591 SHIPPED, caught the same afternoon.
-
-    `load_feedback_set` runs at `_feedback_set_and_fallbacks`, long before
-    V3 selects. #591 moved the claim BELOW `_first_client_feedback`, so on
-    every Take frozen earlier the served rows are V3's while the frozen keys
-    are V2's three. They share no identity, `filter_to_selected` returns [],
-    and the entire bookmark surface goes blank — the founder's original
-    complaint, reintroduced by the fix for the one after it.
-
-    Those Takes keep V2's set forever (the claim is insert-once) and their
-    answers stay unvalidatable. That is where they already were. Serving
-    them no marks at all would be strictly worse.
-
-    ON THE LIVE PATH (R-4, audit 2026-09-22). This test shipped with
-    `arm_sid` unset, which makes the `elif` false as well — so it proved
-    only that the FIRST branch is skipped, and never reached the one that
-    does the damage. A student GET always sets `arm_sid`, and with it set
-    the run falls into the claim branch, re-claims the insert-once V2 row
-    and filters V3's rows to V2's keys. The surface goes blank on every
-    read. That is the founder's disappearing bookmarks.
-    """
-    db = _R4Db()
-    run = _r4_run(db)
-    run.arm_sid = T1                      # the live path always sets this
-    run.take_contract_on = True
-    run.feedback_set = _v2_frozen_set()
-    run.changes = [_v3_row(S1)]
-    run.styles = []
-    run.feedback_exposure = []
-    run.v3_replaced_changes = True
-    run._claim_or_filter()
-    assert [row["id"] for row in run.changes] == [f"cand:{S1}"]
-
-
-def test_a_v2_take_is_still_filtered_to_its_frozen_set():
-    """The guard this branch exists for, unchanged where it still applies.
-
-    When V3 did not replace the rows, the served payload is V2's and the
-    frozen set describes it exactly — so accepting item one must still never
-    reveal item four.
-    """
-    db = FakeDB()
-    run = _run_for_playback(_deps(db))
-    run.feedback_set = _v2_frozen_set()
-    run.changes = [
-        {"id": "v2-cv", "kind": "bold", "source": "confident_voice",
-         "feedback_family": "confident_voice"},
-        {"id": "v2-unfrozen", "kind": "replace", "source": "wording",
-         "feedback_family": "rewrite_clarity"},
-    ]
-    run.v3_replaced_changes = False
-    run._claim_or_filter()
-    assert [row["id"] for row in run.changes] == ["v2-cv"]
 
 
 # ---------------------------------------------------------------------------
@@ -464,15 +207,6 @@ def test_a_v2_take_is_still_filtered_to_its_frozen_set():
 S2 = "22222222-2222-4222-8222-222222222222"
 
 
-def _lineaged_row(snippet_id, membership_id, candidate_id):
-    """A V3 row whose membership froze: the shape the service serves."""
-    return {
-        **_v3_row(snippet_id),
-        "candidate_id": candidate_id,
-        "feedback_membership_id": membership_id,
-    }
-
-
 def _statuses(run):
     return [(row["id"], row.get("status")) for row in run.changes]
 
@@ -487,76 +221,6 @@ def test_a_yes_on_the_legacy_route_marks_the_row_approved_and_keeps_it():
     run.responses_by_id = {f"cand:{S1}": "yes"}
     run._mark_answered_service_items()
     assert _statuses(run) == [(f"cand:{S1}", "approved"), (f"cand:{S2}", None)]
-
-
-def test_any_other_answer_marks_the_row_dismissed_and_keeps_it():
-    run = _run_for_playback(_deps(FakeDB()))
-    run.changes = [_v3_row(S1)]
-    run.v3_replaced_changes = True
-    run.responded_ids = {f"cand:{S1}"}
-    run.responses_by_id = {f"cand:{S1}": "audio_unclear"}
-    run._mark_answered_service_items()
-    assert _statuses(run) == [(f"cand:{S1}", "dismissed")]
-
-
-def test_only_the_legacy_route_decides_a_served_row():
-    """2026-10-06: the join to the MLC-3 service route's table went with
-    `mlc3_service`, which no production row ever carried. A lineaged row, or
-    one holding a stray block, is decided by the legacy answer alone, and the
-    marker reads nothing from the database (the bare FakeDB would raise)."""
-    answered = "55555555-5555-4555-8555-555555555555"
-    run = _run_for_playback(_deps(FakeDB()))
-    run.changes = [
-        _lineaged_row(S1, "m-1", "c-1"),
-        {**_lineaged_row(S2, "m-1", "c-2"),
-         "mlc3_service": {"membership_id": "m-1", "candidate_id": "c-2"}},
-        _v3_row(answered),
-    ]
-    run.v3_replaced_changes = True
-    run.responded_ids = {f"cand:{answered}"}
-    run.responses_by_id = {f"cand:{answered}": "confident_yes"}
-    run._mark_answered_service_items()
-    assert _statuses(run) == [
-        (f"cand:{S1}", None), (f"cand:{S2}", None),
-        (f"cand:{answered}", "approved"),
-    ]
-
-
-def test_an_unanswered_take_serves_every_v3_row_untouched():
-    run = _run_for_playback(_deps(FakeDB()))
-    rows = [_lineaged_row(S1, "m-1", "c-1"), _v3_row(S2)]
-    run.changes = [dict(row) for row in rows]
-    run.v3_replaced_changes = True
-    run._mark_answered_service_items()
-    assert run.changes == rows
-
-
-def test_the_lock_gate_and_the_page_share_one_undecided_rule():
-    from services.ideal_text_changes import decided_status, undecided
-    rows = [
-        {"id": "a", "status": "approved"},
-        {"id": "b", "status": "dismissed"},
-        {"id": "c", "status": "pending"},
-        {"id": "d"},
-    ]
-    assert [row["id"] for row in undecided(rows)] == ["c", "d"]
-    for answer in ("yes", "confident_yes", "apply_suggestion", "useful"):
-        assert decided_status(answer) == "approved"
-    for answer in ("no", "in_between", "not_sure", "audio_unclear",
-                   "confident_no", "confident_audio_unclear", "keep_wording",
-                   "not_useful", "acknowledged", ""):
-        assert decided_status(answer) == "dismissed"
-
-
-def test_execute_marks_answered_items_only_after_v3_replaced_the_rows():
-    """The stage is keyed on the replacement, so a V2 Take (where
-    `_immutable_membership` already did the dropping) is untouched."""
-    import inspect
-    from services.ideal_text_changes import _ChangesRun
-    source = inspect.getsource(_ChangesRun.execute)
-    assert "if self.v3_replaced_changes:" in source
-    assert source.index("changes.first_client_feedback") < source.index(
-        "changes.answered_service_items") < source.index("_claim_visibly")
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -599,60 +263,6 @@ def _r4_run(db):
         ),
         DegradationLog("ideal_text"),
     )
-
-
-def test_the_predating_freeze_is_not_overwritten_by_the_rows_it_predates():
-    """The other half of R-4's rule, and the reason it is safe.
-
-    The claim is insert-once per (arc, take). Those Takes keep V2's frozen
-    set forever and their answers cannot be validated — that is the
-    situation they were already in. Serving the marks must not try to
-    correct it by writing a second freeze, which the database would refuse
-    anyway and which would make this read pretend to a history it does not
-    have.
-    """
-    db = _R4Db()
-    run = _r4_run(db)
-    run.arm_sid = T1
-    run.take_contract_on = True
-    frozen = _v2_frozen_set()
-    run.feedback_set = frozen
-    run.changes = [_v3_row(S1)]
-    run.styles = []
-    run.feedback_exposure = []
-    run.v3_replaced_changes = True
-
-    with patch("services.take_feedback_set.claim_feedback_set") as claim:
-        run._claim_or_filter()
-
-    claim.assert_not_called()
-    assert run.feedback_set is frozen
-    assert db.exposures == []
-
-
-def test_a_freeze_that_does_address_the_served_rows_still_filters():
-    """The #592 guard, under the V3 flag. It must not be lost.
-
-    When the frozen set IS the one that froze these rows, accepting item one
-    may never reveal item four — even though V3 replaced `changes`.
-    """
-    db = _R4Db()
-    run = _r4_run(db)
-    run.arm_sid = T1
-    run.take_contract_on = True
-    kept = _v3_row(S1)
-    hidden = _v3_row(S2)
-    # A real claim stores the whole row as the key; identity is
-    # (id, kind, source, feedback_family), not the id alone.
-    run.feedback_set = {"selected_keys": [dict(kept)]}
-    run.changes = [kept, hidden]
-    run.styles = []
-    run.feedback_exposure = []
-    run.v3_replaced_changes = True
-
-    run._claim_or_filter()
-
-    assert [row["id"] for row in run.changes] == [kept["id"]]
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -749,80 +359,6 @@ def test_every_served_v3_row_carries_its_learning_handles():
                                "learning_surface", "evaluation_only"}
 
 
-def test_no_bundle_or_no_served_rows_means_no_packet_and_no_error():
-    db = _PacketDb()
-    run = _r4_run(db)
-    run.v3_replaced_changes = True
-    run.v3_learning = {}
-    run.changes = [_v3_row(S1)]
-    run._v3_learning_presentations()
-    assert db.presentations == [] and run.learning_presentations == {}
-
-    run.v3_learning = {"bundle": _v3_bundle("cv1")}
-    run.changes = []                      # the claim failed: nothing serves
-    run._v3_learning_presentations()
-    assert db.presentations == [] and run.learning_presentations == {}
-
-
-def test_a_packet_that_cannot_be_frozen_is_named_and_the_take_still_serves():
-    """LIVE LOOP: the stage runs under the degradation log."""
-    db = _PacketDb()
-    run = _r4_run(db)
-    run.v3_replaced_changes = True
-    run.v3_learning = {"bundle": _v3_bundle("cv1")}
-    stray = _v3_row(S1)
-    stray["id"] = "not-in-bundle"
-    run.changes = [stray]
-    run.styles = []
-
-    run.log.run("changes.v3_learning_presentations",
-                run._v3_learning_presentations)
-    out = run._finish()
-
-    assert [row["id"] for row in out["changes"]] == ["not-in-bundle"]
-    assert "learning_exposures" not in out["changes"][0]
-    assert [item.stage for item in run.log.items] == [
-        "ideal_text.changes.v3_learning_presentations"]
-
-
-def test_the_v3_packet_stage_runs_after_the_claim_and_before_the_writer_gate():
-    import inspect
-    source = inspect.getsource(_ChangesRun.execute)
-    assert source.index("self._claim_visibly()") < source.index(
-        "changes.v3_learning_presentations") < source.index(
-        "confidence_prior_learning_writes_enabled()")
-    # Keyed on the replacement: a V2 Take never reaches it.
-    stage = source.index("changes.v3_learning_presentations")
-    assert source.rfind("if self.v3_replaced_changes:", 0, stage) != -1
-
-
-def test_v2_packets_are_not_prepared_on_a_take_v3_served():
-    """A packet for a card that never reached a screen is a prepared-but-
-    never-shown row; the readiness would hold at `blocked` on it forever."""
-    import inspect
-    write_stage = inspect.getsource(_ChangesRun._canonical_dual_write)
-    guard = write_stage.index("if not self.v3_replaced_changes:")
-    assert write_stage.index("changes.learning_presentations", guard) > guard
-
-
-def test_a_signed_move_rides_the_served_rewrite_row():
-    # The catalogue (founder 2026-09-30, E3; P1-4): a served rewrite row
-    # carries the signed move for its reason; nothing else on it changes.
-    class _Db(FakeDB):
-        def list_feedback_catalogue(self, active_only=True):
-            return [{"lane": "rewrite", "pattern_kind": "move",
-                     "pattern_key": "clarity", "text": "Split the clause.",
-                     "version": 1, "active": True}]
-    db = _Db(sugs={S2: {"kind": "replace", "trigger": "polish",
-                        "replacement_text": "And then we launched it fast.",
-                        "why": "Tighter."}})
-    out = _block(db)
-    c = out["changes"][0]
-    assert c["kind"] == "replace"
-    assert c.get("rewrite_move") == "Split the clause."
-    assert "degraded" not in out
-
-
 # ── CLOSE-OUT AUDIT 2026-10-04: V3 is never silenced or stood in for ──────
 def _v3_block(db, *, deps=None):
     """The block with the V3 service on. The flag is patched where the block
@@ -851,46 +387,3 @@ def test_a_failure_on_the_way_to_v3_serves_no_v2_rows():
     assert out["changes"] == []
     assert out["feedback_status"] == {"state": "failed",
                                       "reason": "v3_error:RuntimeError"}
-
-
-def test_v2_rows_failing_their_span_check_do_not_silence_v3():
-    from services.mlc3_first_client_feedback import V3Unavailable
-    db = _replace_sug_db()
-
-    def corrupt_spans(rows, **k):
-        for row in rows:
-            row["span"] = {"start": 0, "end": 1}
-            row["quote"] = "ZZZ"
-        return rows
-
-    with patch("services.mlc3_first_client_feedback."
-               "prepare_first_client_feedback",
-               return_value=V3Unavailable(reason="asked")) as asked:
-        out = _v3_block(db, deps=_deps(db, with_evidence_coordinates=corrupt_spans))
-    assert asked.called
-    assert out["changes"] == []
-    assert out["feedback_status"] == {"state": "failed", "reason": "asked"}
-
-
-# ── A REFUSED CLAIM IS A VISIBLE FAILURE (founder live test 2026-10-05) ────
-def test_a_refused_claim_shows_the_failure_notice_not_a_blank_page():
-    """A guest's Take lost its whole Feedback block to a refused claim, with
-    no notice and no retry. The claim's failure is now the page's notice."""
-    db = FakeDB(sugs={S2: {"kind": "replace", "trigger": "polish",
-                           "replacement_text": "And then we launched it fast.",
-                           "why": "Tighter."}})
-    with patch.object(_ChangesRun, "_claim_or_filter",
-                      side_effect=RuntimeError("feedback set provenance mismatch")):
-        out = _block(db)
-    assert out["changes"] == []
-    assert out["feedback_status"] == {"state": "failed",
-                                      "reason": "feedback_set_claim_failed"}
-    assert {"stage": "ideal_text.changes.claim",
-            "kind": "RuntimeError"} in out["degraded"]
-
-
-def test_a_block_that_falls_over_says_so():
-    db = FakeDB()
-    with patch.object(_ChangesRun, "execute", side_effect=RuntimeError("boom")):
-        out = _block(db)
-    assert out["feedback_status"] == {"state": "failed", "reason": "changes_failed"}

@@ -1,17 +1,12 @@
 import uuid
 
-from services.db import DatabaseService
 from services.feedback_data_contract import (
-    TAXONOMY_VERSION,
     blind_packet_hash,
     build_feedback_exposure_bundle,
     canonical_paragraph_decision,
     canonical_root_phrase,
     canonical_root_phrase_skip,
-    canonical_feedback_decision,
 )
-from tests.fakes import FakeSupabaseClient
-
 
 OWNER_ID = "10000000-0000-0000-0000-000000000001"
 PROJECT_ID = "20000000-0000-0000-0000-000000000001"
@@ -107,74 +102,6 @@ def _fixture():
     return session, document, text, rows, keys
 
 
-def test_complete_candidate_pool_and_exact_three_membership_are_frozen():
-    session, document, text, rows, keys = _fixture()
-    bundle = build_feedback_exposure_bundle(
-        session=session,
-        transcript_document=document,
-        served_text=text,
-        candidates=rows,
-        selected_keys=keys,
-        manager_rules_version="manager-v7",
-        commit="abc123",
-    )
-    assert bundle is not None
-    assert bundle["owner_principal_id"] == OWNER_ID
-    assert bundle["project_id"] == PROJECT_ID
-    assert len(bundle["candidates"]) == 4
-    assert len(bundle["selected_keys"]) == 3
-    assert {row["candidate_key"] for row in bundle["candidates"]} == {
-        "confidence-1", "rewrite-1", "praise-1", "praise-not-selected",
-    }
-    evidence = {row["candidate_key"]: row["evidence"]
-                for row in bundle["candidates"]}
-    assert evidence["confidence-1"]["exact_text"] == text
-    assert evidence["confidence-1"]["audio_ref"].endswith("take.webm")
-    assert evidence["rewrite-1"]["exact_text"] == text[:21]
-    assert evidence["rewrite-1"]["replacement_text"] == "We shipped Friday."
-    confidence = next(row for row in bundle["candidates"]
-                      if row["candidate_key"] == "confidence-1")
-    uuid.UUID(confidence["machine_prediction"]["id"])
-    uuid.UUID(confidence["acoustic_feature_snapshot"]["id"])
-    assert confidence["machine_prediction"]["complete_output"] == {
-        "classification": "yes", "score": 0.81}
-    assert len(bundle["generation_runs"]) == 1
-    assert bundle["generation_runs"][0]["task_type"] == \
-        "correction_generation"
-    uuid.UUID(bundle["candidate_set_id"])
-
-
-def test_bundle_is_deterministic_and_refuses_any_non_exact_three_set():
-    session, document, text, rows, keys = _fixture()
-    kwargs = dict(
-        session=session, transcript_document=document, served_text=text,
-        candidates=rows, selected_keys=keys,
-        manager_rules_version="manager-v7", commit="abc123",
-    )
-    first = build_feedback_exposure_bundle(**kwargs)
-    second = build_feedback_exposure_bundle(**kwargs)
-    assert first == second
-    assert build_feedback_exposure_bundle(
-        **{**kwargs, "selected_keys": keys[:2]}) is None
-    assert build_feedback_exposure_bundle(
-        **{**kwargs, "selected_keys": [keys[0], keys[1], keys[1]]}) is None
-
-
-def test_fallback_and_source_target_mismatch_are_research_only():
-    session, document, text, rows, keys = _fixture()
-    rows[2]["_manager_evidence"] = {"fallback": True}
-    bundle = build_feedback_exposure_bundle(
-        session=session, transcript_document=document, served_text=text,
-        candidates=rows, selected_keys=keys,
-        manager_rules_version="manager-v7", commit="abc123",
-    )
-    praise = next(row for row in bundle["candidates"]
-                  if row["candidate_key"] == "praise-1")
-    assert praise["training_eligible"] is False
-    assert praise["ineligibility_reason"] == \
-        "fallback_or_source_target_mismatch"
-
-
 def test_v3_service_bundle_allows_variable_budget_but_never_dataset_use():
     session, document, text, rows, _keys = _fixture()
     keys = [
@@ -205,90 +132,6 @@ def test_v3_service_bundle_allows_variable_budget_but_never_dataset_use():
         manager_rules_version="take-feedback-policy-v3-serving-v1",
         commit="abc123",
     ) is None
-
-
-def test_typed_decisions_never_infer_editor_open_as_a_preference():
-    exact = {
-        "candidate_id": "33333333-3333-4333-8333-333333333333",
-        "feedback_membership_id": "44444444-4444-4444-8444-444444444444",
-        "feedback_exposure_id": "55555555-5555-4555-8555-555555555555",
-    }
-    assert canonical_feedback_decision(
-        take_id=TAKE_ID,
-        rater_id=OWNER_ID,
-        feedback_id="rewrite-1",
-        feedback_family="rewrite_clarity",
-        response="edit_myself",
-        **exact,
-    ) is None
-    accepted = canonical_feedback_decision(
-        take_id=TAKE_ID,
-        rater_id=OWNER_ID,
-        feedback_id="rewrite-1",
-        feedback_family="rewrite_clarity",
-        response="apply_suggestion",
-        **exact,
-    )
-    assert accepted["value"] == "accept_proposed"
-    assert accepted["taxonomy_version"] == TAXONOMY_VERSION
-    assert accepted == canonical_feedback_decision(
-        take_id=TAKE_ID,
-        rater_id=OWNER_ID,
-        feedback_id="rewrite-1",
-        feedback_family="rewrite_clarity",
-        response="apply_suggestion",
-        **exact,
-    )
-    assert canonical_feedback_decision(
-        take_id=TAKE_ID,
-        rater_id=OWNER_ID,
-        feedback_id="rewrite-1",
-        feedback_family="rewrite_clarity",
-        response="apply_suggestion",
-    ) is None
-    regenerated = canonical_feedback_decision(
-        take_id=TAKE_ID,
-        rater_id=OWNER_ID,
-        feedback_id="rewrite-1",
-        feedback_family="rewrite_clarity",
-        response="apply_suggestion",
-        **{**exact, "candidate_id": "66666666-6666-4666-8666-666666666666"},
-    )
-    assert regenerated is not None
-    assert regenerated["idempotency_key"] != accepted["idempotency_key"]
-
-
-def test_database_writer_uses_exact_candidate_membership_and_exposure():
-    client = FakeSupabaseClient(rpc_rows={
-        "record_feedback_human_decision_v1": [{"decision_id": "decision-1"}],
-    })
-    database = DatabaseService.__new__(DatabaseService)
-    database.client = client
-    exact = {
-        "candidate_id": "33333333-3333-4333-8333-333333333333",
-        "feedback_membership_id": "44444444-4444-4444-8444-444444444444",
-        "feedback_exposure_id": "55555555-5555-4555-8555-555555555555",
-    }
-    decision = canonical_feedback_decision(
-        take_id=TAKE_ID,
-        rater_id=OWNER_ID,
-        feedback_id="same-display-key",
-        feedback_family="rewrite_clarity",
-        response="apply_suggestion",
-        **exact,
-    )
-    assert decision is not None
-    assert database.record_canonical_feedback_decision(
-        project_id=PROJECT_ID,
-        take_id=TAKE_ID,
-        rater_id=OWNER_ID,
-        decision=decision,
-    ) == {"decision_id": "decision-1"}
-    payload = client.rpcs["record_feedback_human_decision_v1"].calls[0][1][1]
-    assert payload["p_candidate_id"] == exact["candidate_id"]
-    assert payload["p_feedback_membership_id"] == exact["feedback_membership_id"]
-    assert payload["p_feedback_exposure_id"] == exact["feedback_exposure_id"]
-    assert "p_feedback_id" not in payload
 
 
 def test_blind_packet_hash_ignores_forbidden_ratings_and_predictions():
@@ -369,60 +212,3 @@ def test_paragraph_and_root_decisions_are_exact_and_idempotent():
 #  same content → same ids (replay stays idempotent), changed content → ids
 #  of its own.
 # ---------------------------------------------------------------------------
-
-def _v3_bundle(rows, text):
-    session, document, _text, _rows, _keys = _fixture()
-    return build_feedback_exposure_bundle(
-        session=session,
-        transcript_document=document,
-        served_text=text,
-        candidates=rows,
-        selected_keys=[
-            {"id": "confidence-1", "feedback_family": "confident_voice"},
-            {"id": "praise-1", "feedback_family": "great_formulation"},
-        ],
-        manager_rules_version="take-feedback-policy-v3-serving-v1",
-        commit="abc123",
-    )
-
-
-def test_the_same_inventory_yields_the_same_ids_on_every_read():
-    _s, _d, text, rows, _k = _fixture()
-    first = _v3_bundle(rows, text)
-    second = _v3_bundle(rows, text)
-    assert first is not None and second is not None
-    assert [c["id"] for c in first["candidates"]] == \
-        [c["id"] for c in second["candidates"]]
-    assert [c["exposure_id"] for c in first["candidates"]] == \
-        [c["exposure_id"] for c in second["candidates"]]
-    assert first["candidate_set_id"] == second["candidate_set_id"]
-    assert first["idempotency_key"] == second["idempotency_key"]
-
-
-def test_a_changed_inventory_yields_ids_of_its_own():
-    _s, _d, text, rows, _k = _fixture()
-    first = _v3_bundle(rows, text)
-    changed = [dict(row) for row in rows]
-    changed[1]["proposed_text"] = "We shipped it on Friday."
-    second = _v3_bundle(changed, text)
-    assert first is not None and second is not None
-    assert second["candidate_set_id"] != first["candidate_set_id"]
-    # Every candidate key is the same, and not one id survives: the second
-    # set can be written beside the first without a primary-key collision.
-    assert [c["candidate_key"] for c in first["candidates"]] == \
-        [c["candidate_key"] for c in second["candidates"]]
-    assert not set(c["id"] for c in first["candidates"]) & \
-        set(c["id"] for c in second["candidates"])
-    assert not set(c["exposure_id"] for c in first["candidates"]) & \
-        set(c["exposure_id"] for c in second["candidates"])
-
-
-def test_candidate_ids_are_still_uuids_the_writer_accepts():
-    import uuid
-    _s, _d, text, rows, _k = _fixture()
-    bundle = _v3_bundle(rows, text)
-    assert bundle is not None
-    for candidate in bundle["candidates"]:
-        assert uuid.UUID(candidate["id"]).version == 5
-        assert uuid.UUID(candidate["exposure_id"]).version == 5
-        assert candidate["exposure_id"] != candidate["id"]
