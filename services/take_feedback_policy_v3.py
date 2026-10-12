@@ -390,11 +390,6 @@ def _clip_lineage(
     }, None
 
 
-#: The Take's most and second-most Confident Voice items render green
-#: (contract 24g). The number is the bookmark colour's, no longer praise's:
-#: until 2026-09-29 praise anchored to these two blocks only.
-MOST_CONFIDENT_LIMIT = 2
-
 #: THE MANAGER'S READ OF A BLOCK (contract 24f, founder 2026-09-29: "praise on
 #: any moment both sides call confident, a rewrite on any weak-words
 #: moment"). Above neutral is read confident; neutral and below is read weak.
@@ -473,79 +468,57 @@ def _practice_routing(blocks: list[dict]) -> dict:
     return routing
 
 
-def _top_confidence_blocks(blocks: list[dict], limit: int) -> list[dict]:
-    """The blocks whose selected item ranked highest, best first.
+def _selected_candidate(block: dict) -> Optional[dict]:
+    selected_id = block.get("selected_candidate_id")
+    if not selected_id:
+        return None
+    return next((row for row in block.get("confidence_candidates") or []
+                 if row.get("candidate_id") == selected_id), None)
 
-    Reuses `_confidence_rank`, so "most confident" here means exactly what it
-    means inside a block: measured beats unmeasured, higher score wins, and
-    ordinal then candidate id break ties. One ranking, used at two scales —
-    if these diverged, the item called strongest inside its block could lose
-    the Take-level comparison to one the same rule ranked below it.
+
+def _mark_moments(blocks: list[dict],
+                  snippet_map: dict) -> tuple[list[dict], list[dict]]:
+    """Green moments and the one exercise, by willfidence (founder lock
+    2026-10-12, section 6; `services.moment_pick`).
+
+    Every block is written, so a re-run cannot leave a stale mark:
+    `most_confident` (green), `green_soft` (no block reached the floor, so
+    the single best shows with the softer line), and `practice_prompt` /
+    `carries_exercise` / `exercise_kind` on the exercise block alone.
+
+    Returns the green blocks (praise anchors there) and the blocks a
+    rewrite may anchor to (the exercise block, when its words are the lower
+    half), both in document order.
     """
-    ranked: list[tuple[tuple, dict]] = []
+    from services import moment_pick
+
+    reads = []
     for block in blocks:
-        selected_id = block.get("selected_candidate_id")
-        if not selected_id:
-            continue
-        chosen = next(
-            (
-                row for row in block.get("confidence_candidates") or []
-                if row.get("candidate_id") == selected_id
-            ),
-            None,
-        )
-        if chosen is not None:
-            ranked.append((_confidence_rank(chosen), block))
-    ranked.sort(key=lambda pair: pair[0])
-    return [block for _, block in ranked[:limit]]
-
-
-def _mark_top_confidence(blocks: list[dict], limit: int) -> list[dict]:
-    """`_top_confidence_blocks`, and it writes the answer onto the blocks.
-
-    THE GREEN BOOKMARK (contract 24g). The Take's two most Confident Voice
-    items render green, identically — first and second are never distinguished,
-    because a visible ordering is a surfaced ranking. Which two they are was
-    once computed for praise anchoring and then thrown away, so the client
-    had no way to draw them and every bookmark came out the same colour.
-    Praise no longer anchors here (24f, founder 2026-09-29: every block read
-    confident); the mark is the colour alone.
-
-    A FLAG, NOT THE RANK. What lands on the block is a boolean: this item is
-    one of the two, with no position and no score. `_top_confidence_blocks`
-    returns them best-first; nothing downstream of here may see the order
-    (24i).
-
-    Written here rather than in the caller for the reason `_practice_routing`
-    gives: `build_shadow_frame` is grandfathered at CC 37 and the ratchet only
-    lets it come down, so a loop up there costs a point it cannot spend — and
-    the mark belongs beside the rule that decided it.
-
-    Every block is written, not only the winners, so a re-run cannot leave a
-    stale green on a block that has since been beaten.
-    """
-    top = _top_confidence_blocks(blocks, limit)
-    top_ids = {str(block.get("block_id")) for block in top}
+        chosen = _selected_candidate(block)
+        snippet = snippet_map.get(str(chosen["snippet_id"]), {}) if chosen else {}
+        reads.append({
+            "block_id": block["block_id"],
+            "slide_index": block.get("slide_index"),
+            "word_count": chosen.get("word_count") if chosen else 0,
+            "read": moment_pick.read(
+                chosen.get("machine_score"), snippet.get("transcript"),
+                snippet.get("metrics")) if chosen else None,
+        })
+    picked = moment_pick.pick(reads)
+    green = set(picked["green"])
     for block in blocks:
-        block["most_confident"] = str(block.get("block_id")) in top_ids
-    return top
-
-
-def _blocks_read(blocks: list[dict], *, confident: bool) -> list[dict]:
-    """The selected blocks the machine reads confident (above neutral) or
-    weak (neutral and below), in document order.
-
-    A block with no delivery band — no selected item, or a clip the detector
-    could not measure — is neither. The machine could not read it, so neither
-    note anchors there: the judgement still reaches the coach as an ambiguity
-    (35g-2), and a human ear settles it.
-    """
-    return [
+        is_exercise = block["block_id"] == picked["exercise"]
+        block["most_confident"] = block["block_id"] in green
+        block["green_soft"] = picked["soft"] and block["most_confident"]
+        block["practice_prompt"] = is_exercise
+        block["carries_exercise"] = is_exercise
+        block["exercise_kind"] = picked["exercise_kind"] if is_exercise else None
+    rewrite_blocks = [
         block for block in blocks
-        if block.get("selected_candidate_id")
-        and block.get("delivery_band") is not None
-        and (block["delivery_band"] in CONFIDENT_BANDS) == confident
+        if block["carries_exercise"]
+        and block["exercise_kind"] == moment_pick.EXERCISE_CLEARER
     ]
+    return [b for b in blocks if b["most_confident"]], rewrite_blocks
 
 
 def _anchored_notes(ranked: list[dict], blocks: list[dict]) -> list[dict]:
@@ -1331,11 +1304,9 @@ def build_shadow_frame(
     # and the rewrite to every block read weak, each only where a defensible
     # candidate sits inside the block. The green mark stays on the top two
     # (24g); it no longer decides where praise goes.
-    _mark_top_confidence(blocks, MOST_CONFIDENT_LIMIT)
-    weak_blocks = _blocks_read(blocks, confident=False)
+    green_blocks, weak_blocks = _mark_moments(blocks, snippet_map)
     rewrite_anchors = _anchored_notes(rewrite_ranked, weak_blocks)
-    praise_anchors = _anchored_notes(
-        praise_ranked, _blocks_read(blocks, confident=True))
+    praise_anchors = _anchored_notes(praise_ranked, green_blocks)
     rewrite_selected_ids = [row["candidate_id"] for row in rewrite_anchors]
     praise_selected_ids = [row["candidate_id"] for row in praise_anchors]
     _log_verbal_lanes(take_id, rewrite_ranked, rewrite_selected_ids,
@@ -1386,10 +1357,10 @@ def build_shadow_frame(
         "practice_policy": {
             "threshold": "below_neutral_delivery_band",
             "prompt_bands": list(PRACTICE_BANDS),
-            # 24f (founder 2026-09-29): an exercise on any bookmark the
-            # machine reads weak, each matched to its own clip (35g-1).
-            "exercise_budget": "one_per_block_read_weak",
-            "exercise_target": "each_block_read_weak_own_clip",
+            # Founder lock 2026-10-12, section 6: one exercise per Take, on
+            # the lowest moment by willfidence (services.moment_pick).
+            "exercise_budget": "one_per_take",
+            "exercise_target": "lowest_willfidence_moment",
         },
         "confidence_definition": {
             "scope": "relative_within_block",
@@ -1403,22 +1374,20 @@ def build_shadow_frame(
         "verbal_lanes": {
             "enabled": True,
             "rewrite_clarity": {
-                "selection_scope": "anchored_to_blocks_read_weak",
-                "budget": "one_per_block",
+                "selection_scope": "anchored_to_the_exercise_moment",
+                "budget": "one_per_take",
                 "anchors": rewrite_anchors,
                 "candidates": rewrite_candidates,
                 "selected_candidate_ids": rewrite_selected_ids,
-                **_lane_outcome(
-                    rewrite_anchors, _blocks_read(blocks, confident=False)),
+                **_lane_outcome(rewrite_anchors, weak_blocks),
             },
             "great_formulation": {
-                "selection_scope": "anchored_to_blocks_read_confident",
+                "selection_scope": "anchored_to_green_moments",
                 "budget": "one_per_block",
                 "anchors": praise_anchors,
                 "candidates": praise_candidates,
                 "selected_candidate_ids": praise_selected_ids,
-                **_lane_outcome(
-                    praise_anchors, _blocks_read(blocks, confident=True)),
+                **_lane_outcome(praise_anchors, green_blocks),
             },
         },
         "excluded_candidates": exclusions,

@@ -98,34 +98,6 @@ def saved_paragraphs(parts: list, slide_saved_ids: set[str]) -> set[int]:
     return saved
 
 
-def window_scores(bundle: Any) -> dict:
-    """The machine's read per served row, for the window only (AC-9: never
-    served). Keyed by (family, candidate key) -- the served row's `id` -- and
-    by the bundle candidate's uuid, the row's `candidate_id`. Until F1 Repair
-    Plan Phase 1 it was keyed by the uuid and looked up by the row's `id`,
-    so every lookup missed and the window fell back to text order. Pure."""
-    scores: dict = {}
-    for c in ((bundle or {}).get("candidates") or []):
-        if not isinstance(c, dict):
-            continue
-        value = c.get("candidate_score")
-        if c.get("candidate_key"):
-            scores[(str(c.get("feedback_family") or ""),
-                    str(c.get("candidate_key")))] = value
-        if c.get("id"):
-            scores[str(c.get("id"))] = value
-    return scores
-
-
-def window_score(scores: dict, row: dict) -> Optional[float]:
-    """The read for one served row, or None. Pure."""
-    value = scores.get((str(row.get("feedback_family") or ""),
-                        str(row.get("id") or "")))
-    if value is None:
-        value = scores.get(str(row.get("candidate_id") or ""))
-    return float(value) if isinstance(value, (int, float)) \
-        and not isinstance(value, bool) else None
-
 class _ChangesRun:
     """One read's state, stage by stage. Attributes are the former locals of
     the one-function version, under the same names without the underscore."""
@@ -1558,9 +1530,6 @@ class _ChangesRun:
         parts = self.deps.locked_parts(
             self.arc_id, str(self.user_id), self.served_text) or []
         saved = saved_paragraphs(parts, self._slide_saved_part_ids())
-        bundle = self.v3_learning.get("bundle") if isinstance(
-            self.v3_learning, dict) else None
-        scores = window_scores(bundle)
 
         def paragraph(row: dict) -> Optional[int]:
             span = row.get("span")
@@ -1568,12 +1537,8 @@ class _ChangesRun:
             return (paragraph_index_at(self.served_text, start)
                     if isinstance(start, int) else None)
 
-        def score(row: dict) -> Optional[float]:
-            return window_score(scores, row)
-
         self.changes = window_rows(
-            self.changes, paragraph_of=paragraph, saved_paragraphs=saved,
-            score_of=score)
+            self.changes, paragraph_of=paragraph, saved_paragraphs=saved)
 
     def _open_cards(self) -> None:
         """Each served Confident Voice moment carries `open_card`, the cell
