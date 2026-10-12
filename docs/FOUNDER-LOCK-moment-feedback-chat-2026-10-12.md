@@ -201,5 +201,9 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
 
 ## Still open
 
-- **Self-judgement of your own practice try.** It's off until the founder
-  has run the query pack.
+- **Self-judgement of your own practice try is off for launch** (founder,
+  2026-10-12). The query pack showed 4 speaker answers in total, 21 clips
+  with coach answers, and only 1 clip with both: too few to judge. Re-run
+  `1-enough-data.sql` once coaches have judged more moments. When
+  `clips_with_both` reaches about 50, run the agreement and gap queries and
+  decide.
