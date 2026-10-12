@@ -1,11 +1,16 @@
 # Founder lock · the recording screens (7 October 2026)
 
 `LOCKED 2026-10-07 · founder in chat: "Lock the recording screens" · decisions log N59`
+`RE-LOCKED 2026-10-12 · founder in chat: "that's what i want; please lock it" · decisions log N70`
 
-Clickable prototype (the reference for every screen, phone and desktop):
-<https://claude.ai/artifact/9CFAAP2Ue7pvRdLvdesn9h>, version 7 (version 6
-as locked, amended the same day, below). A copy of the
-page as locked is kept in `docs/design/recording-screens-2026-10-07.html`.
+Clickable prototype (the reference for every screen, phone and desktop),
+since 2026-10-12: <https://claude.ai/artifact/4zD6Tjw4MWjooqWq6z4FAL>,
+version 4 (its v10 design), copy in
+`docs/design/recording-screens-2026-10-12.html`. It replaces the scrolling
+navigation of the 2026-10-07 prototype
+(<https://claude.ai/artifact/9CFAAP2Ue7pvRdLvdesn9h>, version 7, copy in
+`docs/design/recording-screens-2026-10-07.html`), which stays as history.
+The flow and motion below are the 2026-10-12 design.
 The frontend's CLAUDE.md carries the rule ("Design lock — the recording
 screens"). This lock wins over the Ideal Text lock's line on Recording Mode
 for the screens below.
@@ -40,12 +45,10 @@ for the screens below.
 
 ## The flow
 
-1. **First recording (Take 1): the learning screen.** No slide, no clock,
-   no Finish take. Phone: **Scroll down to start**, with a bouncing
-   chevron. Desktop: the four arrow keys, the down key lit, and **Click
-   down to start**. A swipe, a scroll, ↓, Page Down, Space or Enter starts
-   the recording; the slide then glides in.
-2. **A later Take:** **Getting your mic ready**, then the recording screen
+1. **First recording (Take 1):** as every Take (amended 2026-10-12, N70:
+   the learning screen, **Scroll down to start** / **Click down to start**,
+   is deleted).
+2. **Every Take:** **Getting your mic ready**, then the recording screen
    glides in. No learning screen, and nothing to approve: "Record Take N"
    goes straight here and the Take starts by itself. (Amended the same
    day, founder: the old "Your slides and speaking anchors are ready." /
@@ -55,10 +58,17 @@ for the screens below.
    - Top bar: **Take N · Slide n of m** on the left (no "Recording"
      label), the close button on the right.
    - The slide, sitting close under the top bar, then the speaker's helper
-     words below it, every one of them orange (none on Take 1), the slide
-     dots on the right.
-   - The strip at the bottom: the recording dot, the clock, the bar,
-     **Finish take**. No line above the strip.
+     words below it, every one of them orange (none on Take 1), using the
+     full width. No slide dots (removed 2026-10-12, N70).
+   - The strip at the bottom: the recording dot, the clock, the bar. No
+     line above the strip, and no Finish take in it (2026-10-12, N70).
+   - Under the strip, two buttons side by side, equal width, in the coach
+     panel's pair style (48px tall, 16px corners, 15px semibold): **Back**
+     (white, thin border; greyed on the first slide) and **Next slide**
+     (black). On the last slide **Next slide** becomes **Finish take**,
+     red, with the stop square. Finish take is reached only from the last
+     slide; closing asks **Discard this take?** (founder, 2026-10-12: "that's
+     what i want").
 4. **Close:** **Discard this take?** / "This recording has not been saved."
    / **Keep recording** / **Discard take**, as today.
 5. **Finish take:** the processing wait as today (voice mark, stage label,
@@ -66,31 +76,31 @@ for the screens below.
 
 ## How it moves
 
+Since 2026-10-12 (N70; founder: "we are resigning from the scrolling — it
+was not practical").
+
+- **Only the buttons change the slide.** A swipe, a scroll, a wheel or a
+  trackpad never moves a slide. The helper words still scroll inside their
+  own space when they are longer than it.
+- **Sideways, like a deck.** **Next slide**: the slide and its helper words
+  leave to the left and the next ones come in from the right. **Back**: the
+  reverse. Out in 200ms, in from the other side in 420ms on
+  `cubic-bezier(.16,1,.3,1)`. Instant with reduce motion.
 - **Only the slide and its helper words move.** The top bar, the "Take ·
-  Slide" line, the slide dots and the strip stay exactly where they are and
-  are never rebuilt during a move; the content slides under that still
-  frame. The dots change which one is current.
-- **Touch:** the content follows the finger (a rubber band); a slide moves
-  after 90px of travel, a shorter swipe springs back.
-- **Wheel and trackpad:** a slide moves after 140 of accumulated scroll, or
-  90 if the wheel then rests 220ms; after a move the momentum tail is
-  ignored for 450ms, so one flick is one slide.
-- **The landing:** out in the direction of travel in 200ms, in from the
-  other side in 420ms on `cubic-bezier(.16,1,.3,1)`. Instant with reduce
-  motion.
-- **Helper words scroll first:** when a slide's helper words are longer
-  than the space, the gesture scrolls them; at their edge it moves the
-  slide.
+  Slide" line, the strip and the two buttons stay exactly where they are
+  and are never rebuilt during a move.
 - **Keyboard, no click first:** ↓, Page Down, Space forward; ↑, Page Up
-  back; Enter starts.
+  back (as the prototype keeps them).
 - **Never a reload:** pulling or scrolling at the top never reloads or
   refreshes the page, on a phone or on the web.
 
 ## The words
 
-New with this lock (locked with the screens): **Scroll down to start** (the
-founder's words), **Click down to start**, **Take N · Slide n of m** in the
-top bar. Every other word on these screens is today's, unchanged.
+New with this lock (locked with the screens): **Take N · Slide n of m** in
+the top bar. Signed 2026-10-12 (N70): **Back** and **Next slide**; **Finish
+take** keeps its word. **Scroll down to start** and **Click down to start**
+are retired with the learning screen. Every other word on these screens is
+today's, unchanged.
 
 The prototype's three slides are its own stand-in deck ("Introduce your
 subject", "Make your main points", "Sum it up", navy, orange and dark
@@ -115,3 +125,8 @@ green); the app shows the speaker's own slides, unchanged.
   Mode is entered and left with a soft 0.4 s fade into and out of these
   white screens; instant with reduce motion. The fade never delays the
   recording.
+- **2026-10-12 · buttons replace the scrolling (N70).** Back and Next slide
+  under the strip; Next slide becomes a red Finish take on the last slide;
+  no slide dots; slides move sideways; the learning screen is deleted.
+  Prototype <https://claude.ai/artifact/4zD6Tjw4MWjooqWq6z4FAL> (version 4),
+  copy in `docs/design/recording-screens-2026-10-12.html`.
