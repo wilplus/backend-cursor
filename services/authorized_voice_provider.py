@@ -10,8 +10,8 @@ migration of the whole permit function. Until counsel's review sets a
 dedicated purpose for the AI voice (docs/FOUNDER-LOCK-ai-voice-practice-
 2026-10-12.md section 7), both calls run as ``feedback_generation``, the kind
 that already covers producing feedback from the speaker's recording, with a
-manifest that names exactly what is sent. The feature is on for the
-founder's account only until then.
+manifest that names exactly what is sent. A dedicated kind comes with
+counsel's review, before launch.
 """
 from __future__ import annotations
 

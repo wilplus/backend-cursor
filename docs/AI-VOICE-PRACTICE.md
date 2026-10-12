@@ -54,8 +54,9 @@ Stress is the least reliable of the three; measure it in the smoke test.
 ## Environment
 
 Put these in `.env` locally and on **every** Railway service (web, worker,
-cron) before merging (CONFIG-FIRST): `AI_VOICE_ENABLED`, `AI_VOICE_ALLOWLIST`
-(user ids, comma-separated), `ELEVENLABS_API_KEY`. The rest have defaults; see
+cron) before merging (CONFIG-FIRST): `ELEVENLABS_API_KEY` and
+`AI_VOICE_ENABLED` (`1` turns it on for every speaker). `AI_VOICE_ALLOWLIST`
+(user ids, comma-separated) is optional and narrows it; empty means everyone. The rest have defaults; see
 `.env.example`. The key is never logged and never sent to the frontend.
 
 ## Local testing
@@ -71,7 +72,7 @@ cron) before merging (CONFIG-FIRST): `AI_VOICE_ENABLED`, `AI_VOICE_ALLOWLIST`
 
 - **Permits.** ElevenLabs calls run as `feedback_generation` with provider
   `elevenlabs` until counsel sets a dedicated purpose (then one migration of
-  the permit function). Until then it is on for the founder's account only.
+  the permit function), before launch.
 - **Practice tries over 45 s** are not rejected by the existing attempt route;
   the AI voice simply doesn't measure them (`inconclusive`).
 - **Credits** are estimated per character until the smoke test reads the

@@ -71,8 +71,9 @@ speaker's own voice, said a little better**, then the speaker tries again.
   Take tries again.
 - **Agreed by using the app.** It is part of the Terms (L12) and the
   Privacy Policy (L13), on from the start. The founder chose this over a
-  separate tick (D3a, D3b). Counsel reviews it last; until counsel signs,
-  the feature is on for the founder's account only (an allowlist).
+  separate tick (D3a, D3b). Counsel reviews it before launch. It is built
+  for every speaker, behind one switch (`AI_VOICE_ENABLED`); an optional
+  allowlist can narrow it (founder 2026-10-12: "build it as for everyone").
 - **Data & consent card** (on for everyone): L6, L7, Delete (L8, confirm
   L9). Delete removes the voice at ElevenLabs and here, with every clip made
   from it, and stops new clips. Off: L10 and Turn on (L11), which makes it
@@ -126,4 +127,4 @@ CLAUDE.md requires. Deleting the account also deletes the AI voice.
 
 Build end to end, test with the founder's own voice, then counsel (L12,
 L13, the data processing agreement with ElevenLabs, the AI Act Article 50
-assessment), then the allowlist opens to the first users.
+assessment), then launch.

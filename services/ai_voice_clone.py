@@ -36,8 +36,12 @@ SAMPLE_MIN_RANGE_DB = 15.0
 
 
 def available_to(user_id: Any) -> bool:
-    """On only when switched on AND for an allowlisted account (until counsel)."""
-    return bool(Config.AI_VOICE_ENABLED and str(user_id or "") in Config.AI_VOICE_ALLOWLIST)
+    """On for every speaker when switched on (founder 2026-10-12: "build it
+    for everyone"). A non-empty AI_VOICE_ALLOWLIST narrows it to those ids."""
+    if not Config.AI_VOICE_ENABLED or not user_id:
+        return False
+    allow = Config.AI_VOICE_ALLOWLIST
+    return not allow or str(user_id) in allow
 
 
 def voice_for(database: Any, owner_user_id: str) -> Optional[str]:

@@ -845,8 +845,9 @@ class Config:
 
     # ── The AI version of your voice (founder lock 2026-10-12, N71) ──────
     # docs/FOUNDER-LOCK-ai-voice-practice-2026-10-12.md; docs/AI-VOICE-PRACTICE.md.
-    # OFF unless AI_VOICE_ENABLED=1, and then only for the accounts in
-    # AI_VOICE_ALLOWLIST (comma-separated user ids) until counsel signs.
+    # OFF unless AI_VOICE_ENABLED=1; then on for every speaker (founder
+    # 2026-10-12). AI_VOICE_ALLOWLIST (comma-separated user ids), when set,
+    # narrows it to those accounts; empty means everyone.
     ELEVENLABS_API_KEY = _secret("ELEVENLABS_API_KEY") or ""
     ELEVENLABS_MODEL_ID = (os.getenv("ELEVENLABS_MODEL_ID") or "eleven_v4").strip()
     ELEVENLABS_API_BASE = (os.getenv("ELEVENLABS_API_BASE")
