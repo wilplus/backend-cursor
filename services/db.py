@@ -10717,6 +10717,27 @@ class DatabaseService:
             logger.warning("get_lounge_message_by_client_id failed: %s", e)
             return None
 
+    def rewrite_lounge_message(
+        self, user_id: str, client_id: str, body: str, metadata: dict,
+    ) -> Optional[Dict[str, Any]]:
+        """Rewrite one owner-scoped Lounge message in place (the closing
+        summary after a coach update, lock 2026-10-12 section 3). Its place
+        in the thread stays. None on any failure."""
+        if not user_id or not client_id:
+            return None
+        try:
+            res = (
+                self.client.table("lounge_messages")
+                .update({"body": body, "metadata": metadata})
+                .eq("user_id", user_id)
+                .eq("client_id", client_id)
+                .execute()
+            )
+            return res.data[0] if res.data else None
+        except Exception as e:
+            logger.warning("rewrite_lounge_message failed: %s", e, exc_info=True)
+            return None
+
     def delete_lounge_message_by_client_id(
         self, user_id: str, client_id: str,
     ) -> bool:

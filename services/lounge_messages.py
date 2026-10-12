@@ -34,7 +34,7 @@ VALID_ROLES = ("user", "bot", "system")
 # "cadence" = Explore-Session multi-take guidance bubbles (Prompt A §4),
 # bot-only + server-inserted; the FE never sends it. The AUTHORITATIVE DB
 # CHECK mirror is the LATEST kind migration:
-# migrations/add_feedback_ideal_lounge_kinds.sql (pinned by
+# migrations/the_lounge_holds_the_walk_steps.sql (pinned by
 # test_lounge_kind_migration.py — adding a kind here without a new
 # migration fails CI).
 # "best_presentation_ready" = the durable "your best presentation is ready"
@@ -45,10 +45,14 @@ VALID_ROLES = ("user", "bot", "system")
 # bubbles (founder 2026-07-15), inserted server-side by the coach's
 # "Save and Publish full analysis"; the FE opens the feedback page /
 # ideal-text notebook from their metadata.
+# "walk_step" = one step of a Take's review, posted by the app (founder
+# lock 2026-10-12, moment and feedback chat, section 1): the walk is a lens
+# over these messages. Metadata: take, step, author, answer; never a score.
 VALID_KINDS = (
     "text", "joke", "status", "recording_summary", "insight", "cadence",
     "best_presentation_ready", "transcript_ready",
     "feedback", "ideal_text",
+    "walk_step",
 )
 
 # §7.9 — bound the merge batch. A long unsigned session can produce a
