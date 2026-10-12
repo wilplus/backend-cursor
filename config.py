@@ -804,11 +804,9 @@ class Config:
     DEV_TASKS_REEVAL_ENABLED = (os.getenv("DEV_TASKS_REEVAL_ENABLED") or "false").strip().lower() in ("1", "true", "yes", "on")
     DEV_TASKS_REEVAL_MAX_CHANGES = _env_int("DEV_TASKS_REEVAL_MAX_CHANGES", 3)
 
-    # Optional: annotation event export (cron / internal). See POST /v2/internal/annotation-export
-    ANNOTATION_EXPORT_CRON_SECRET = (os.getenv("ANNOTATION_EXPORT_CRON_SECRET") or "").strip()
+    # Where the annotation export writes; the bundled-era erasure reads it.
     ANNOTATION_EXPORT_BUCKET = (os.getenv("ANNOTATION_EXPORT_BUCKET") or "").strip() or None
     ANNOTATION_EXPORT_PREFIX = (os.getenv("ANNOTATION_EXPORT_PREFIX") or "annotation-events").strip() or "annotation-events"
-    ANNOTATION_EXPORT_OUTPUT_DIR = (os.getenv("ANNOTATION_EXPORT_OUTPUT_DIR") or "").strip() or None
     # STRESS_BASELINE_MODEL_PATH / STRESS_MODEL_TRAIN_SECRET / STRESS_MODEL_BUCKET
     # are GONE (founder 2026-08-03, stress-lane deletion). The first was a
     # local-file-path model ref — on Railway that path is dyno-ephemeral and
@@ -816,9 +814,6 @@ class Config:
     # and its artifact bucket. Nothing loads a stress model any more: clip
     # selection runs on heuristic suspicion scoring, permanently.
 
-
-    COPILOT_VIDEO_RETRAIN_SECRET = (os.getenv("COPILOT_VIDEO_RETRAIN_SECRET") or "").strip()
-    COPILOT_VIDEO_RETRAIN_WEBHOOK_URL = (os.getenv("COPILOT_VIDEO_RETRAIN_WEBHOOK_URL") or "").strip() or None
 
     # Reference video → Whisper: extract compact mono MP3 via ffmpeg before transcription
     # for video/common containers (and large inputs), to stay under OpenAI ~25MB request limit.

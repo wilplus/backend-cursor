@@ -4,7 +4,6 @@
   "routes/admin.py": 3,
   "routes/auth.py": 2,
   "routes/dev_tasks.py": 7,
-  "routes/internal_webhooks.py": 3,
   "routes/journal.py": 1,
   "routes/phase2_guard.py": 1,
   "routes/recordings.py": 1,

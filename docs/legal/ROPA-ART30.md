@@ -173,7 +173,7 @@ A privacy policy does not discharge Art 30. This document does.
 >
 > **The key being present is the material fact.** Every payment surface gates
 > on it (`stripe_checkout_credits.py:74`, `tier_checkout.py:94` and `:206`,
-> `arc_checkout.py:53` and `:117`, `internal_webhooks.py:105`), each returning
+> `arc_checkout.py:53` and `:117`, `internal_webhooks.py:95`), each returning
 > `503 DISABLED` without it. Its presence means a user *could* have been
 > charged, even though none was. That is what makes "does not run" the wrong
 > description and "no charges have been taken" the right one.

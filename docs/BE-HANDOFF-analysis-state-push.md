@@ -60,7 +60,7 @@ FE upgrades itself with zero FE changes.
 ## Recommended: Supabase Realtime **broadcast** at the state flip
 
 The moment of the flip is already a single choke point:
-`db.set_session_analysis_state` ([services/db.py:10525](../services/db.py)).
+`db.set_session_analysis_state` ([services/db.py:10442](../services/db.py)).
 Every execution mode funnels through it — the daemon path
 (routes/v2/lab_recording.py:824/858/863/870), the RQ worker + recovery sweeps
 (services/pipeline_jobs.py:197/327/338), and training imports
@@ -137,7 +137,7 @@ Mirror the house style (see `test_db_session_status.py`,
    contract payload; topic embeds the session id.
 2. Broadcast raising/timeout → `set_session_analysis_state` still returns
    True and the update persists (never raises, never blocks the pipeline).
-3. Failed `.update()` (missing column path, services/db.py:10541) → NO
+3. Failed `.update()` (missing column path, services/db.py:10458) → NO
    broadcast (push must not announce a write that didn't land).
 
 ---

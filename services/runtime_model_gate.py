@@ -49,7 +49,8 @@ logger = logging.getLogger(__name__)
 # canonical registry rejects that alias (E-6), so the surface no longer exists
 # to be promoted. The SQL trigger still covers the key by prefix.
 MODEL_CONFIG_KEYS = frozenset({
-    # Learned surfaces, promoted by scripts/promote_openai_model.py.
+    # The retired DPO lane's surfaces (its promote script was deleted
+    # 2026-10-12); still read, so still listed. None is a named surface.
     "openai_surface_model_say_it_stronger",
     "openai_surface_model_coach_comment_draft",
     "openai_surface_model_ideal_text",

@@ -3,8 +3,10 @@ Server-to-server hooks (no student JWT).
 
 - POST /v2/internal/student-credits/increment — X-Internal-Secret: INTERNAL_CREDITS_WEBHOOK_SECRET
 - POST /v2/internal/stripe/webhook — Stripe-Signature (STRIPE_WEBHOOK_SECRET); one-time token packages only
-- POST /v2/internal/annotation-export — X-Internal-Secret: ANNOTATION_EXPORT_CRON_SECRET
-- POST /v2/internal/copilot-video/retrain — X-Internal-Secret: COPILOT_VIDEO_RETRAIN_SECRET
+
+REMOVED (founder 2026-10-12): POST /v2/internal/annotation-export and POST
+/v2/internal/copilot-video/retrain. Both answered 410 (Phase 2 disabled) on
+every request; they are now absent, so the paths answer 404.
 
 RETIRED (founder 2026-08-03, stress-lane deletion): POST /v2/internal/stress-
 model/train. It ran a `subprocess.run` train pipeline INSIDE the request
@@ -17,28 +19,16 @@ reintroduce a trainer in a request handler; nothing may promote a model
 artifact without a quality gate AND a human decision.
 """
 import logging
-from datetime import datetime, timezone
 
-import httpx
 from flask import Blueprint, jsonify, request
 
 from config import Config
-from routes.phase2_guard import phase2_learning_disabled
 from services.db import db
-from utils.errors import safe_error, scrub
 
 logger = logging.getLogger(__name__)
 config = Config()
 
 internal_webhooks_bp = Blueprint("internal_webhooks", __name__)
-
-
-def _parse_bool(value, default=False) -> bool:
-    if value is None:
-        return bool(default)
-    if isinstance(value, bool):
-        return value
-    return str(value).strip().lower() in ("1", "true", "yes", "on")
 
 
 @internal_webhooks_bp.route("/v2/internal/student-credits/increment", methods=["POST"])
@@ -150,218 +140,3 @@ def stripe_checkout_webhook():
         "nothing applied", session_id, retired)
     return jsonify({"received": True, "granted": False,
                     "reason": "not_a_package"}), 200
-
-
-@internal_webhooks_bp.route("/v2/internal/annotation-export", methods=["POST"])
-@phase2_learning_disabled
-def internal_annotation_export():
-    """Cron-friendly export of admin_annotation_events → JSONL (+ optional Supabase Storage).
-
-    Header: X-Internal-Secret: <ANNOTATION_EXPORT_CRON_SECRET>
-    Body JSON (optional): { "limit": 5000, "dry_run": false }
-
-    Configure ANNOTATION_EXPORT_BUCKET (recommended on Railway) and/or ANNOTATION_EXPORT_OUTPUT_DIR.
-    """
-    secret = (getattr(config, "ANNOTATION_EXPORT_CRON_SECRET", None) or "").strip()
-    if not secret:
-        return jsonify({"code": "DISABLED", "error": "ANNOTATION_EXPORT_CRON_SECRET not configured"}), 503
-    if (request.headers.get("X-Internal-Secret") or "").strip() != secret:
-        return jsonify({"code": "UNAUTHORIZED", "error": "Invalid or missing X-Internal-Secret"}), 401
-
-    data = request.get_json(silent=True) or {}
-    try:
-        limit = int(data.get("limit", 5000))
-    except (TypeError, ValueError):
-        return jsonify({"code": "INVALID_INPUT", "error": "limit must be an integer"}), 400
-    dry_raw = data.get("dry_run", False)
-    dry_run = str(dry_raw).lower() in ("1", "true", "yes")
-
-    bucket = (data.get("upload_bucket") or getattr(config, "ANNOTATION_EXPORT_BUCKET", None) or "").strip() or None
-    output_dir = (data.get("output_dir") or getattr(config, "ANNOTATION_EXPORT_OUTPUT_DIR", None) or "").strip() or None
-    prefix = (data.get("upload_prefix") or getattr(config, "ANNOTATION_EXPORT_PREFIX", None) or "annotation-events").strip()
-
-    if not dry_run and not bucket and not output_dir:
-        return jsonify(
-            {
-                "code": "EXPORT_SINK_MISSING",
-                "error": "Set ANNOTATION_EXPORT_BUCKET and/or ANNOTATION_EXPORT_OUTPUT_DIR, or pass them in the body.",
-            }
-        ), 400
-
-    try:
-        from services.annotation_export import result_to_dict, run_annotation_export
-
-        result = run_annotation_export(
-            limit=limit,
-            output_dir=None if dry_run else output_dir,
-            dry_run=dry_run,
-            created_by="cron:internal_annotation_export",
-            upload_bucket=bucket,
-            upload_prefix=prefix,
-        )
-        logger.info(
-            "internal_annotation_export run_id=%s exported=%s checkpoint=%s",
-            result.run_id,
-            result.exported_count,
-            result.checkpoint_created_at,
-        )
-        return jsonify({"status": "ok", **result_to_dict(result)}), 200
-    except Exception as exc:
-        return safe_error("EXPORT_FAILED", 500, exc=exc,
-                          log="internal_annotation_export failed")
-
-
-@internal_webhooks_bp.route("/v2/internal/copilot-video/retrain", methods=["POST"])
-@phase2_learning_disabled
-def internal_copilot_video_retrain():
-    """
-    Trigger scheduled speech/video retraining from uploaded override videos.
-
-    Header:
-      X-Internal-Secret: COPILOT_VIDEO_RETRAIN_SECRET
-
-    Optional JSON body:
-      {
-        "limit": 500,
-        "dry_run": false,
-        "run_interval_days": 14
-      }
-    """
-    secret = (getattr(config, "COPILOT_VIDEO_RETRAIN_SECRET", None) or "").strip()
-    if not secret:
-        return jsonify({"code": "DISABLED", "error": "COPILOT_VIDEO_RETRAIN_SECRET not configured"}), 503
-    if (request.headers.get("X-Internal-Secret") or "").strip() != secret:
-        return jsonify({"code": "UNAUTHORIZED", "error": "Invalid or missing X-Internal-Secret"}), 401
-
-    data = request.get_json(silent=True) or {}
-    try:
-        limit = int(data.get("limit", 500))
-        run_interval_days = int(data.get("run_interval_days", 14))
-    except (TypeError, ValueError):
-        return jsonify({"code": "INVALID_INPUT", "error": "limit and run_interval_days must be integers"}), 400
-    dry_run = _parse_bool(data.get("dry_run"), False)
-    limit = max(1, min(5000, limit))
-    run_interval_days = max(1, min(60, run_interval_days))
-
-    run_type = "speech_video_retrain"
-    latest_run = db.get_latest_model_training_run(run_type)
-    since_iso = None
-    if latest_run and latest_run.get("finished_at"):
-        since_iso = latest_run.get("finished_at")
-
-    refs = db.list_admin_uploaded_reference_videos_for_training(since_iso=since_iso, limit=limit)
-    now = datetime.now(timezone.utc)
-    if latest_run and latest_run.get("finished_at"):
-        try:
-            finished_at = datetime.fromisoformat(str(latest_run.get("finished_at")).replace("Z", "+00:00"))
-            if (now - finished_at).days < run_interval_days and not dry_run:
-                skipped = db.create_model_training_run(
-                    run_type=run_type,
-                    status="skipped",
-                    input_count=0,
-                    metadata={
-                        "reason": "interval_not_reached",
-                        "last_finished_at": latest_run.get("finished_at"),
-                        "run_interval_days": run_interval_days,
-                    },
-                    created_by="internal:copilot-video-retrain",
-                )
-                return jsonify(
-                    {
-                        "status": "ok",
-                        "skipped": True,
-                        "reason": "interval_not_reached",
-                        "run": skipped,
-                    }
-                ), 200
-        except Exception:
-            pass
-
-    if not refs:
-        skipped = db.create_model_training_run(
-            run_type=run_type,
-            status="skipped",
-            input_count=0,
-            metadata={"reason": "no_new_reference_videos", "since": since_iso},
-            created_by="internal:copilot-video-retrain",
-        )
-        return jsonify({"status": "ok", "skipped": True, "reason": "no_new_reference_videos", "run": skipped}), 200
-
-    run = db.create_model_training_run(
-        run_type=run_type,
-        status="running",
-        input_count=len(refs),
-        metadata={
-            "since": since_iso,
-            "dry_run": dry_run,
-            "reference_video_ids": [r.get("id") for r in refs],
-            "reference_count": len(refs),
-        },
-        created_by="internal:copilot-video-retrain",
-    )
-    if not run:
-        return jsonify({"code": "RUN_CREATE_FAILED", "error": "Could not create training run"}), 500
-
-    try:
-        retrain_url = (getattr(config, "COPILOT_VIDEO_RETRAIN_WEBHOOK_URL", None) or "").strip()
-        output_ref = None
-        provider_response = None
-        if not dry_run and retrain_url:
-            payload = {
-                "run_id": run.get("id"),
-                "run_type": run_type,
-                "reference_videos": [
-                    {
-                        "id": r.get("id"),
-                        "user_id": r.get("user_id"),
-                        "session_id": r.get("session_id"),
-                        "storage_path": r.get("storage_path"),
-                        "tags": r.get("tags") or [],
-                        "feature_metadata": r.get("feature_metadata") or {},
-                        "created_at": r.get("created_at"),
-                    }
-                    for r in refs
-                ],
-            }
-            webhook_resp = httpx.post(retrain_url, json=payload, timeout=180)
-            webhook_resp.raise_for_status()
-            provider_response = webhook_resp.json() if "application/json" in (webhook_resp.headers.get("content-type") or "").lower() else {"status_code": webhook_resp.status_code}
-            output_ref = (
-                str(provider_response.get("model_version") or "").strip()
-                or str(provider_response.get("job_id") or "").strip()
-                or str(provider_response.get("artifact_ref") or "").strip()
-                or None
-            )
-
-        completed = db.update_model_training_run(
-            run_id=str(run.get("id")),
-            status="completed",
-            input_count=len(refs),
-            output_artifact_ref=output_ref,
-            metadata={
-                "since": since_iso,
-                "dry_run": dry_run,
-                "reference_count": len(refs),
-                "provider_response": provider_response,
-            },
-            error=None,
-        )
-        return jsonify(
-            {
-                "status": "ok",
-                "run": completed,
-                "reference_count": len(refs),
-                "dry_run": dry_run,
-            }
-        ), 200
-    except Exception as exc:
-        db.update_model_training_run(
-            run_id=str(run.get("id")),
-            status="failed",
-            input_count=len(refs),
-            metadata={"since": since_iso, "dry_run": dry_run, "reference_count": len(refs)},
-            error=scrub(exc, limit=1000),
-        )
-        return safe_error("TRAIN_FAILED", 500, exc=exc,
-                          log="internal_copilot_video_retrain failed",
-                          extra={"run_id": run.get("id")})

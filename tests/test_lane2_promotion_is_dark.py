@@ -2,8 +2,9 @@
 
 LEGACY-1 (blocker) and J1-2 (major), audit 2026-09-22.
 
-``scripts/promote_openai_model.py`` writes ``runtime_config`` and
-``services/llm.py`` serves that model on the very next request — including
+``scripts/promote_openai_model.py`` (deleted 2026-10-12 with the DPO
+fine-tune script) wrote ``runtime_config`` and ``services/llm.py`` serves a
+stored model on the very next request — including
 the Take-1 Ideal Text composition (surface ``best_presentation``) and every
 Say It Stronger card. Before the audit nothing on the path was read: an
 operator with the service-role key could change the words in a speaker's
@@ -18,40 +19,14 @@ stock model.
 """
 from __future__ import annotations
 
-import tempfile
 import unittest
-from pathlib import Path
 from unittest import mock
 
 from config import Config
-from services.ml_dpo_release import write_evaluation_report
 from services.ml_surface_contracts import (
     clear_runtime_model_cache,
     resolve_surface_model,
 )
-
-
-def _passing_report(directory: Path, *, surface: str = "ideal_text") -> Path:
-    """An evaluation report that clears every check the promote script makes.
-
-    The point of the fixture is that the *input* gate is satisfied, so a
-    refusal can only come from the promotion flag itself.
-    """
-    from datetime import datetime, timezone
-
-    from services.ml_surface_contracts import contract_for_surface
-
-    contract = contract_for_surface(surface)
-    path = directory / "eval.json"
-    write_evaluation_report(path, {
-        "surface": contract.id,
-        "golden_eval_surface": contract.golden_eval_surface,
-        "candidate_model_id": "ft:gpt-4.1-mini:org:proj:abc123",
-        "evaluated_at": datetime.now(timezone.utc).isoformat(),
-        "passed": True,
-        "dataset_release_id": "rel-1",
-    })
-    return path
 
 
 class PromotionRefusesWhileTheGateIsShut(unittest.TestCase):
@@ -60,28 +35,6 @@ class PromotionRefusesWhileTheGateIsShut(unittest.TestCase):
     def setUp(self) -> None:
         clear_runtime_model_cache()
         self.addCleanup(clear_runtime_model_cache)
-
-    def test_promote_openai_model_refuses_when_no_surface_is_named(self):
-        import scripts.promote_openai_model as promote
-
-        with tempfile.TemporaryDirectory() as tmp:
-            report = _passing_report(Path(tmp))
-            argv = [
-                "promote_openai_model.py",
-                "--surface", "ideal_text",
-                "--model-id", "ft:gpt-4.1-mini:org:proj:abc123",
-                "--evaluation-report", str(report),
-            ]
-            with mock.patch.object(promote.Config, "PROMOTION_SURFACES", frozenset()), \
-                 mock.patch("services.db.db.promote_runtime_surface_model") as spy, \
-                 mock.patch("services.db.db.upsert_runtime_config") as legacy, \
-                 mock.patch("sys.argv", argv):
-                with self.assertRaises(SystemExit) as caught:
-                    promote.main()
-
-        self.assertIn("PROMOTION_SURFACES", str(caught.exception))
-        spy.assert_not_called()
-        legacy.assert_not_called()
 
     def test_resolve_surface_model_ignores_runtime_config_when_promotion_disabled(self):
         """The serving half. A row already in the table is not served."""
@@ -138,23 +91,6 @@ class TheGateAsShipped(unittest.TestCase):
         self.assertEqual(resolve_gated_model(
             "openai_surface_model_praise_line",
             read=lambda k: "ft:named", default="stock"), "ft:named")
-
-    def test_the_promote_script_refuses_an_unnamed_surface(self):
-        import scripts.promote_openai_model as promote
-
-        with tempfile.TemporaryDirectory() as tmp:
-            report = _passing_report(Path(tmp))
-            argv = ["promote_openai_model.py", "--surface", "ideal_text",
-                    "--model-id", "ft:gpt-4.1-mini:org:proj:abc123",
-                    "--evaluation-report", str(report)]
-            with mock.patch("services.db.db.promote_runtime_surface_model") as spy, \
-                 mock.patch("services.db.db.upsert_runtime_config") as legacy, \
-                 mock.patch("sys.argv", argv):
-                with self.assertRaises(SystemExit) as caught:
-                    promote.main()
-        self.assertIn("PROMOTION_SURFACES", str(caught.exception))
-        spy.assert_not_called()
-        legacy.assert_not_called()
 
 
 if __name__ == "__main__":  # pragma: no cover

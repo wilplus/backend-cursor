@@ -48,13 +48,13 @@ the page still renders.
 - Train: `services/learning_train.py:32` (`train_direction_classifier`,
   sklearn logistic regression; frozen holdout excluded via
   `services/holdout.py`). Registry: `model_versions`
-  (`services/db.py:12808`).
+  (`services/db.py:12725`).
 - **Decision point (auto-retrain):** `services/learning_serve.py:134`
   (`maybe_auto_retrain`) — ≥50 total labels AND ≥25 new since the last model.
   The result stays `status=shadow`; **it is never promoted** and never
   pre-fills anything.
 - Agreement: `shadow_predictions` predicted-vs-coach
-  (`services/db.py:12921`, `get_shadow_agreement`) — in-distribution,
+  (`services/db.py:12838`, `get_shadow_agreement`) — in-distribution,
   labelled as such on the page. The weekly sparkline groups the same rows by
   ISO week.
 - The **coefficients table** (from the latest joblib artifact, weights on
@@ -118,25 +118,23 @@ Migration to run: `migrations/add_snippet_confidence_reviews.sql`.
   Approve-vs-override on the page is derived from the value hashes
   (equal ⇒ approved verbatim); rows without hashes are "undetermined".
 - Export ledger: `admin_annotation_export_runs`
-  (`services/annotation_export.py`), fed by cron/webhook
-  `routes/internal_webhooks.py` `/v2/internal/annotation-export`.
+  (`services/annotation_export.py`). Its webhook,
+  `/v2/internal/annotation-export`, always answered 410 and was removed
+  2026-10-12 by founder decision; the path is now absent (404).
 - Canonical trainable surfaces and their annotation fields live in
   `services/ml_surface_contracts.py`. Mixed-task exports are rejected.
   Contextual `coach_note` corrections belong to `coach_comment_draft`;
   the older one-sentence `admin_comment`/`snippet_drafts` task is a distinct
   prompt and is intentionally excluded until it has its own golden adapter.
-- `scripts/export_openai_preference_jsonl.py` requires `--surface` and emits
-  write-once train/validation JSONL plus a hash-bound release manifest. The
-  split groups by owner, so a user and every project they own stay wholly in
-  one partition; owner ids never enter the OpenAI files.
-- `scripts/run_openai_preference_finetune.py` accepts only files matching that
-  manifest. A successful job is a **candidate**, never a deployment.
-- `scripts/evaluate_dpo_candidate.py` injects the candidate in-process and
-  runs the real production adapter against that surface's golden dataset. It
-  writes a hash-bound pass/fail report and never touches runtime config.
-- **Decision point (human promote):** `scripts/promote_openai_model.py`
-  requires a fresh, passing report for the same model, release and surface.
-  It writes only `runtime_config.openai_surface_model_<surface>`.
+- **Removed 2026-10-12 by founder decision.** The command-line chain that
+  ran this lane — `scripts/export_openai_preference_jsonl.py` (the export),
+  `scripts/run_openai_preference_finetune.py` (the fine-tune),
+  `scripts/evaluate_dpo_candidate.py` (the evaluation),
+  `scripts/promote_openai_model.py` (the promotion) and
+  `services/ml_dpo_release.py` (their release and report files) — is
+  deleted. A fine-tune, its evaluation, promotion and kill now run only
+  through doors 3 and 4 (`services/model_training.py`,
+  `services/golden_evaluation.py`, `services/model_promotion.py`).
 - `services/llm.py` resolves those slots only for the registered surface and
   falls back to the pinned base spec otherwise. A Say It Stronger model can
   therefore never become the Moment Suggestion or Ideal Text model.

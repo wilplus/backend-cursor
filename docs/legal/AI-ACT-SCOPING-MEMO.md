@@ -84,7 +84,7 @@ stops resolving.
 | Statement in §2 | Where it is |
 |---|---|
 | The seven features, their directions and their weights | `services/voice_confidence.py:209` — the `_CUES` table. Per-cue direction and the Jiang & Pell reference are in the module docstring, `:38-45`. |
-| The weights are fixed literals, not learned | Same table — the weights are source constants. There is no training path to reach them: every Phase-2 learning route is fail-closed at `routes/phase2_guard.py:15` (`phase2_learning_disabled`, HTTP 410). |
+| The weights are fixed literals, not learned | Same table — the weights are source constants. There is no training path to reach them: every Phase-2 learning route is fail-closed; the last routes behind `phase2_learning_disabled` (HTTP 410) were removed 2026-10-12 by founder decision and now answer HTTP 404 (`tests/test_annotation_export_retired.py`). |
 | Each feature is z-scored against that speaker's own historical baseline | The per-speaker reference is built in `services/acoustic_baseline.py` (`BASELINE_VERSION`, `:47`); the composite consumes it at `services/voice_confidence.py:356`. **This is the fact Q1 and Q4(a) turn on.** |
 | Signed, weighted, summed, squashed through `tanh` with a neutral dead zone; output in [-1.0, +1.0] | `services/voice_confidence.py:230` (`_DEAD_ZONE = 0.25`) and `:385-388` — the dead zone is subtracted from the magnitude before `math.tanh`, so a middling clip returns exactly `0.0`. |
 | Computed and persisted for every take, on by default | `services/voice_confidence.py:252`, `enabled()`. `VOICE_CONFIDENCE_ENABLED` defaults to `"1"` at `:256`. It is an environment kill-switch, **not** a per-user consent flag, and no per-user flag exists. |

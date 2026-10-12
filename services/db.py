@@ -1863,24 +1863,6 @@ class DatabaseService:
             logger.warning("try_claim_admin_send_draft_delivery_in_progress: %s", e)
             return None
 
-    def list_admin_uploaded_reference_videos_for_training(
-        self,
-        *,
-        since_iso: Optional[str] = None,
-        limit: int = 500,
-    ) -> List[Dict[str, Any]]:
-        q = (
-            self.client.table("admin_uploaded_reference_videos")
-            .select("*")
-            .eq("is_active", True)
-            .order("created_at", desc=False)
-            .limit(max(1, min(5000, int(limit))))
-        )
-        if since_iso:
-            q = q.gt("created_at", since_iso)
-        res = q.execute()
-        return res.data or []
-
     def get_latest_universal_welcome_video(self) -> Optional[Dict[str, Any]]:
         """Return the most recent reference video flagged is_universal=true.
 
@@ -2418,71 +2400,6 @@ class DatabaseService:
         except Exception as e:
             logger.warning("list_recent_finished_processing_jobs: %s", e)
             return []
-
-    def create_model_training_run(
-        self,
-        *,
-        run_type: str,
-        status: str,
-        input_count: int = 0,
-        metadata: Optional[Dict[str, Any]] = None,
-        created_by: Optional[str] = None,
-    ) -> Optional[Dict[str, Any]]:
-        now = datetime.now(timezone.utc).isoformat()
-        payload = {
-            "run_type": run_type,
-            "status": status,
-            "input_count": max(0, int(input_count)),
-            "metadata": metadata or {},
-            "created_by": created_by,
-            "created_at": now,
-            "updated_at": now,
-        }
-        if status == "running":
-            payload["started_at"] = now
-        if status in ("completed", "failed", "skipped"):
-            payload["finished_at"] = now
-        res = self.client.table("model_training_runs").insert(payload).execute()
-        return res.data[0] if res.data else None
-
-    def update_model_training_run(
-        self,
-        run_id: str,
-        *,
-        status: str,
-        input_count: Optional[int] = None,
-        output_artifact_ref: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        error: Optional[str] = None,
-    ) -> Optional[Dict[str, Any]]:
-        now = datetime.now(timezone.utc).isoformat()
-        payload: Dict[str, Any] = {"status": status, "updated_at": now}
-        if status == "running":
-            payload["started_at"] = now
-            payload["finished_at"] = None
-        if status in ("completed", "failed", "skipped"):
-            payload["finished_at"] = now
-        if input_count is not None:
-            payload["input_count"] = max(0, int(input_count))
-        if output_artifact_ref is not None:
-            payload["output_artifact_ref"] = output_artifact_ref
-        if metadata is not None:
-            payload["metadata"] = metadata
-        if error is not None:
-            payload["error"] = error
-        res = self.client.table("model_training_runs").update(payload).eq("id", run_id).execute()
-        return res.data[0] if res.data else None
-
-    def get_latest_model_training_run(self, run_type: str) -> Optional[Dict[str, Any]]:
-        res = (
-            self.client.table("model_training_runs")
-            .select("*")
-            .eq("run_type", run_type)
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-        return res.data[0] if res.data else None
 
     # ---------- Runtime config ----------
 

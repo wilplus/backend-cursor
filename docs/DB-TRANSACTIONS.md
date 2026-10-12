@@ -88,13 +88,13 @@ map, not a plan.
    is the one a user would actually complain about.
 
 3. **`v2_increment_student_credits` / `v2_deduct_session_credits`** —
-   `services/db.py:3121,3138`. Read-modify-write over two HTTP calls with **no**
+   `services/db.py:3038,3055`. Read-modify-write over two HTTP calls with **no**
    CAS: two concurrent charges both read `10`, both write `5`, and five credits
    vanish. `deduct_credits_strict` (line 11705) already does this correctly with
    a compare-and-swap and is the model — but the soft variants are what the
    `v2_charge_*_credits_once` helpers call.
 
-4. **`v2_charge_*_credits_once`** — `services/db.py:3235,3271,3330`. Set the
+4. **`v2_charge_*_credits_once`** — `services/db.py:3152,3188,3247`. Set the
    charged-at flag, then deduct, then clear the flag if the deduct failed. Three
    calls, and the compensating write can itself fail. Mitigated by flooring at 0
    and by being genuinely soft.
@@ -105,7 +105,7 @@ map, not a plan.
    refund. The token-pricing branch above it already routes through
    `token_charge`; this is the legacy credits branch behind the flag.
 
-6. **`replace_*` "atomic-ish" pairs** — `services/db.py:6626,6738`. DELETE then
+6. **`replace_*` "atomic-ish" pairs** — `services/db.py:6543,6655`. DELETE then
    POST, with the half-state logged and a documented "the next GET re-POSTs"
    recovery. Not money; user content.
 

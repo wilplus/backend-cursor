@@ -269,8 +269,8 @@ def resolve_surface_model(
 # and nothing can notice.
 #
 # `locked_prompt_hash` is that missing binding — one digest over every
-# `prompts.lock.json` entry belonging to the surface. `promote_openai_model`
-# requires it on the command line and stores it beside the model id, so a
+# `prompts.lock.json` entry belonging to the surface. `services.model_promotion`
+# requires it to match the evaluation and stores it beside the model id, so a
 # prompt edit is visible as a mismatch rather than as silence.
 #
 # It is a record, not a re-evaluation. The export/serve prompt DIVERGENCE
