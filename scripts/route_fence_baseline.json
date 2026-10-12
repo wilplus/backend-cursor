@@ -92,8 +92,8 @@
     "db_calls": 3
   },
   "routes/v2/coach.py:v2_coach_confident_voice_practice": {
-    "lines": 142,
-    "db_calls": 6
+    "lines": 43,
+    "db_calls": 2
   },
   "routes/v2/coach.py:v2_coach_confirm_session_language": {
     "lines": 82,
@@ -108,8 +108,8 @@
     "db_calls": 3
   },
   "routes/v2/coach.py:v2_coach_put_confidence_label": {
-    "lines": 193,
-    "db_calls": 4
+    "lines": 119,
+    "db_calls": 2
   },
   "routes/v2/coach.py:v2_coach_put_moment_reference": {
     "lines": 65,
@@ -118,18 +118,6 @@
   "routes/v2/coach.py:v2_coach_put_say_it_stronger": {
     "lines": 50,
     "db_calls": 2
-  },
-  "routes/v2/coach.py:v2_coach_session_video": {
-    "lines": 97,
-    "db_calls": 2
-  },
-  "routes/v2/coach.py:v2_coach_student_detail": {
-    "lines": 94,
-    "db_calls": 2
-  },
-  "routes/v2/coach.py:v2_coach_training_import": {
-    "lines": 142,
-    "db_calls": 0
   },
   "routes/v2/coach.py:v2_coach_training_import_status": {
     "lines": 58,
