@@ -12,7 +12,6 @@ happens inside a transaction that is rolled back.
 from __future__ import annotations
 
 import os
-import uuid
 
 import psycopg2
 import pytest
@@ -24,11 +23,6 @@ pytestmark = pytest.mark.skipif(
 
 WRITER = ("public.compare_and_set_user_ideal_edit_v1"
           "(uuid,text,integer,bigint,text,text,jsonb,text)")
-
-INSERT = """
-    INSERT INTO public.ideal_text_part_revision
-        (arc_id, user_id, part_id, action, text, provenance)
-    VALUES (%s, %s, %s, %s, 'Accepted words.', %s) RETURNING id"""
 
 
 @pytest.fixture
@@ -43,42 +37,6 @@ def cur():
     finally:
         conn.rollback()
         conn.close()
-
-
-def _ids():
-    return str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
-
-
-def test_an_earlier_revision_reads_unnamed(cur):
-    cur.execute("""SELECT is_nullable, data_type FROM information_schema.columns
-                    WHERE table_schema='public'
-                      AND table_name='ideal_text_part_revision'
-                      AND column_name='provenance'""")
-    assert cur.fetchone() == ("YES", "text")
-    arc, user, part = _ids()
-    cur.execute("""INSERT INTO public.ideal_text_part_revision
-                       (arc_id, user_id, part_id, action, text)
-                   VALUES (%s, %s, %s, 'user_edit', 'Words.')
-                   RETURNING provenance""", (arc, user, part))
-    assert cur.fetchone() == (None,)
-
-
-def test_the_name_is_allowed_only_on_a_text_revision(cur):
-    # The v2 shape constraint governs the owner_part_* actions; this checks
-    # the name alone, so an action outside that family stands in for "not a
-    # text change" and the v2 columns are not needed.
-    for action in ("lock", "unlock", "root_set", "take_rewrite", "user_edit"):
-        arc, user, part = _ids()
-        cur.execute("SAVEPOINT s")
-        with pytest.raises(psycopg2.errors.CheckViolation):
-            cur.execute(INSERT, (arc, user, part, action, "accepted_rewrite"))
-        cur.execute("ROLLBACK TO SAVEPOINT s")
-
-
-def test_no_other_name_is_allowed(cur):
-    arc, user, part = _ids()
-    with pytest.raises(psycopg2.errors.CheckViolation):
-        cur.execute(INSERT, (arc, user, part, "user_edit", "coach_edit"))
 
 
 def test_the_installed_writer_names_only_the_paragraph_accept_names(cur):

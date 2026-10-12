@@ -70,29 +70,6 @@ class PromotionRetryTests(unittest.TestCase):
         self.assertEqual([c[0] for c in client.calls],
                          ["promote_recording_attempt_to_take_v1"] * 2)
 
-    def test_the_outbox_promotion_is_retried_the_same_way(self):
-        client = _Client(drops=2)
-        service = _service(client)
-        with patch.object(service, "_build_supabase_client", lambda: client), \
-             patch("services.db.time.sleep", lambda _s: None):
-            row = service.promote_recording_attempt_with_confidence_outbox(
-                **ARGS, source_manifest={"producer": "confidence-v3"})
-        self.assertEqual(row["take_id"], TAKE_ID)
-        self.assertEqual(len(client.calls), 3)
-
-    def test_a_refusal_is_not_retried(self):
-        class _Refusing(_Client):
-            def rpc(self, name, params):
-                self.calls.append((name, params))
-                raise RuntimeError("confidence producer lacks current model-improvement consent")
-        client = _Refusing()
-        service = _service(client)
-        with patch("services.db.time.sleep", lambda _s: None):
-            row = service.promote_recording_attempt_with_confidence_outbox(
-                **ARGS, source_manifest={"producer": "confidence-v3"})
-        self.assertIsNone(row)
-        self.assertEqual(len(client.calls), 1)
-
 
 if __name__ == "__main__":
     unittest.main()

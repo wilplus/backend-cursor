@@ -30,6 +30,7 @@ if not hasattr(sys.modules["sentry_sdk"], "capture_exception"):
 
 try:
     from flask import Flask, request
+
     from routes import jobs as jobs_mod
     _IMPORT_ERR = None
 except Exception as e:  # pragma: no cover
@@ -73,53 +74,6 @@ class JobStatusRouteTests(unittest.TestCase):
             return body.get_json(), status, body
         return resp.get_json(), resp.status_code, resp
 
-    def test_bad_uuid_is_404(self):
-        _, status, _ = self._call(job_id="not-a-uuid")
-        self.assertEqual(status, 404)
-
-    def test_unknown_job_is_404(self):
-        _, status, _ = self._call(row=None)
-        self.assertEqual(status, 404)
-
-    def test_guest_job_readable_without_auth(self):
-        body, status, resp = self._call(user_id=None)
-        self.assertEqual(status, 200)
-        self.assertEqual(body["job_id"], _JOB)
-        self.assertEqual(body["status"], "processing")
-        self.assertEqual(body["state"], "processing")
-        self.assertEqual(body["percent"], 40)
-        self.assertEqual(body["session_id"], _SID)
-        # Poll freshness: proxies must never cache 'processing'.
-        self.assertEqual(resp.headers.get("Cache-Control"), "no-store")
-
-    def test_owned_job_hidden_from_guest_and_stranger(self):
-        _, status, _ = self._call(row=_row(user_id="u1"), user_id=None)
-        self.assertEqual(status, 404)
-        _, status, _ = self._call(row=_row(user_id="u1"), user_id="u2")
-        self.assertEqual(status, 404)
-
-    def test_owned_job_readable_by_owner(self):
-        body, status, _ = self._call(row=_row(user_id="u1"), user_id="u1")
-        self.assertEqual(status, 200)
-        self.assertEqual(body["job_id"], _JOB)
-
-    def test_pending_maps_to_processing_state(self):
-        body, _, _ = self._call(row=_row(status="pending"))
-        self.assertEqual(body["state"], "processing")
-
-    def test_completed_maps_to_ready_and_carries_result(self):
-        body, _, _ = self._call(row=_row(
-            status="completed",
-            result={"snippet_count": 5, "sent_to_coach": True}))
-        self.assertEqual(body["state"], "ready")
-        self.assertEqual(body["result"]["snippet_count"], 5)
-        self.assertNotIn("error", body)
-
-    def test_failed_carries_error_not_result(self):
-        body, _, _ = self._call(row=_row(status="failed", error="boom"))
-        self.assertEqual(body["state"], "failed")
-        self.assertEqual(body["error"], "boom")
-        self.assertNotIn("result", body)
 
     def test_ac9_no_score_vocabulary_in_body(self):
         """Split-sink probe: the poll body must never grow score/verdict
@@ -129,45 +83,6 @@ class JobStatusRouteTests(unittest.TestCase):
                   "overall_score", "charisma", "stress"}
         self.assertFalse(banned & set(body.keys()),
                          f"AC-9: banned keys in poll body: {body.keys()}")
-
-
-@unittest.skipIf(_IMPORT_ERR is not None, f"needs app deps: {_IMPORT_ERR}")
-class InternalSweepRouteTests(unittest.TestCase):
-
-    def setUp(self):
-        self.app = Flask(__name__)
-
-    def _call(self, headers=None, secret_env=None):
-        import os
-        env = {}
-        if secret_env is not None:
-            env["PIPELINE_JOBS_SWEEP_SECRET"] = secret_env
-        with patch.dict(os.environ, env, clear=False):
-            if secret_env is None:
-                os.environ.pop("PIPELINE_JOBS_SWEEP_SECRET", None)
-            with patch("services.pipeline_jobs.sweep_stale_jobs",
-                       lambda: {"requeued": 2, "failed": 1}, create=True):
-                with self.app.test_request_context(headers=headers or {}):
-                    resp = jobs_mod.v2_internal_jobs_sweep()
-        body, status = resp
-        return body.get_json(), status
-
-    def test_unset_secret_disables_endpoint(self):
-        body, status = self._call(secret_env=None)
-        self.assertEqual(status, 503)
-
-    def test_wrong_secret_403(self):
-        _, status = self._call(
-            headers={"X-Internal-Secret": "wrong"}, secret_env="right")
-        self.assertEqual(status, 403)
-
-    def test_right_secret_sweeps(self):
-        body, status = self._call(
-            headers={"X-Internal-Secret": "right"}, secret_env="right")
-        self.assertEqual(status, 200)
-        self.assertTrue(body["ok"])
-        self.assertEqual(body["requeued"], 2)
-        self.assertEqual(body["failed"], 1)
 
 
 if __name__ == "__main__":

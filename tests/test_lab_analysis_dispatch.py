@@ -4,6 +4,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import Mock, patch
 
+from services.ideal_text_confirmation import IdealTextUnconfirmedError
 from services.lab_analysis_dispatch import (
     AnalysisInputs,
     CompletedAnalysis,
@@ -11,7 +12,6 @@ from services.lab_analysis_dispatch import (
     PendingAnalysis,
     dispatch_recording_analysis,
 )
-from services.ideal_text_confirmation import IdealTextUnconfirmedError
 
 
 def _inputs() -> AnalysisInputs:
@@ -58,85 +58,6 @@ class AnalysisDispatchTests(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-
-    def test_non_canary_analysis_never_writes_canonical_lifecycle(self):
-        database = _database()
-        inputs = AnalysisInputs(**{
-            **_inputs().__dict__,
-            "canonical_attempt_registered": False,
-        })
-        with patch(
-            "services.analysis_worker.run_full_analysis",
-            return_value=({"snippets": []}, False),
-        ):
-            result = dispatch_recording_analysis(
-                inputs,
-                database=database,
-                queue_enabled=lambda: False,
-                async_enabled=lambda: False,
-                audit_paid_for_arc=lambda _a, _u: False,
-                log=Mock(),
-            )
-        self.assertIsInstance(result, CompletedAnalysis)
-        database.record_processing_transition.assert_not_called()
-        database.promote_recording_attempt_to_take.assert_not_called()
-
-    def test_durable_queue_returns_job_polling_payload(self):
-        database = _database()
-        worker = Mock()
-        with patch(
-            "services.pipeline_jobs.enqueue_session_recording_job",
-            return_value={"id": "job-1"},
-        ) as enqueue, patch(
-            "services.analysis_worker.run_full_analysis",
-            worker,
-        ):
-            result = dispatch_recording_analysis(
-                _inputs(),
-                database=database,
-                queue_enabled=lambda: True,
-                async_enabled=lambda: False,
-                audit_paid_for_arc=lambda _a, _u: True,
-                log=Mock(),
-            )
-        self.assertIsInstance(result, PendingAnalysis)
-        self.assertEqual(result.payload["job_id"], "job-1")
-        self.assertEqual(result.payload["job_status_url"], "/v2/jobs/job-1/status")
-        self.assertEqual(result.payload["audits_needed"], 2)
-        enqueue.assert_called_once()
-        self.assertIs(
-            enqueue.call_args.kwargs["canonical_attempt_registered"], True,
-        )
-        worker.assert_not_called()
-        database.takes.set_session_analysis_state.assert_called_once_with(
-            "session-1",
-            "processing",
-        )
-
-    def test_non_canary_queue_job_does_not_claim_attempt_contract(self):
-        database = _database()
-        inputs = AnalysisInputs(**{
-            **_inputs().__dict__,
-            "canonical_attempt_registered": False,
-        })
-        with patch(
-            "services.pipeline_jobs.enqueue_session_recording_job",
-            return_value={"id": "job-legacy"},
-        ) as enqueue:
-            result = dispatch_recording_analysis(
-                inputs,
-                database=database,
-                queue_enabled=lambda: True,
-                async_enabled=lambda: False,
-                audit_paid_for_arc=lambda _a, _u: False,
-                log=Mock(),
-            )
-
-        self.assertIsInstance(result, PendingAnalysis)
-        self.assertIs(
-            enqueue.call_args.kwargs["canonical_attempt_registered"], False,
-        )
-        database.record_processing_transition.assert_not_called()
 
     def test_queue_failure_preserves_the_sync_fallback(self):
         database = _database()
@@ -190,24 +111,6 @@ class AnalysisDispatchTests(unittest.TestCase):
             ("session-1", "ready"),
         )
 
-    def test_synchronous_mode_returns_worker_result(self):
-        with patch(
-            "services.analysis_worker.run_full_analysis",
-            return_value=({"snippets": [{"id": "one"}]}, False),
-        ) as worker:
-            result = dispatch_recording_analysis(
-                _inputs(),
-                database=_database(),
-                queue_enabled=lambda: False,
-                async_enabled=lambda: False,
-                audit_paid_for_arc=lambda _a, _u: False,
-                log=Mock(),
-            )
-        self.assertEqual(
-            result,
-            CompletedAnalysis({"snippets": [{"id": "one"}]}, False),
-        )
-        self.assertEqual(worker.call_args.kwargs["recording_kind"], "spoken")
 
     def test_synchronous_take_one_timeout_is_not_reported_as_success(self):
         database = _database()

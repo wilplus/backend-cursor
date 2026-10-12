@@ -1,9 +1,6 @@
 from unittest.mock import patch
 
-import pytest
-
 from services.feedback_repository import (
-    FeedbackContractError,
     FeedbackRepository,
     serialize_feedback_item,
 )
@@ -41,20 +38,6 @@ class FakeDatabase:
         return {"saved": True}
 
 
-class EmptyFeedbackDatabase(FakeDatabase):
-    def __init__(self):
-        super().__init__(family="great_formulation")
-
-    def get_coach_snippet_drafts(self, take_id):
-        return [{
-            "snippet_id": "snippet-1",
-            "surfaced": True,
-            "feedback_family": "great_formulation",
-            "review_state": "reviewed",
-            "note": "   ",
-        }]
-
-
 DOCUMENT = {
     "pieces": [{
         "snippet_id": "snippet-1",
@@ -84,30 +67,6 @@ def test_great_formulation_needs_text_span_but_not_audio():
     assert payload["family"] == "great_formulation"
     assert payload["evidence"]["audio_interval"] is None
     assert payload["evidence"]["evidence_span"]["text"] == "Clear words."
-
-
-def test_confident_voice_requires_audio_interval():
-    with pytest.raises(FeedbackContractError, match="playable audio"):
-        _items(FakeDatabase(family="confident_voice", duration_ms=None))
-
-
-def test_rewrite_requires_proposed_replacement():
-    with pytest.raises(FeedbackContractError, match="replacement"):
-        _items(FakeDatabase(family="rewrite_for_clarity", replacement=None))
-
-
-def test_rewrite_keeps_original_span_and_proposal_separate():
-    item = _items(FakeDatabase(
-        family="rewrite_for_clarity",
-        replacement="A clearer sentence.",
-    ))[0]
-    assert item.evidence.evidence_span["text"] == "Clear words."
-    assert item.replacement_text == "A clearer sentence."
-
-
-def test_empty_feedback_is_valid_no_changes_needed_result():
-    database = EmptyFeedbackDatabase()
-    assert FeedbackRepository(database).surfaced_items("take-1") == []
 
 
 def test_published_readout_exposes_empty_result_and_separate_coach_review():

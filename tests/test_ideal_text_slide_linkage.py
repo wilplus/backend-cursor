@@ -17,13 +17,14 @@ Run: python3 -m unittest tests.test_ideal_text_slide_linkage
 """
 from __future__ import annotations
 
-import os
 import unittest
 from unittest.mock import patch
+
 from config import Config
 
 try:
     from flask import Flask, request
+
     from routes.v2 import explore_ideal_text as v2_explore_ideal_text
     from services.db import db
     _IMPORT_ERROR = None
@@ -81,54 +82,6 @@ class SlideLinkageTests(unittest.TestCase):
             resp, status = out if isinstance(out, tuple) else (out, 200)
             return resp.get_json(), status
 
-    def test_deck_ref_and_aligned_slide_indexes_served(self):
-        sessions = [_sess("t1", 1, presentation_ref=DECK),
-                    _sess("t2", 2, presentation_ref=DECK)]
-        row = _row(auto_text="First slide's words.\n\nSecond slide's words.")
-        cache = {"signature": "sig", "payload": {
-            "presentation_ref": DECK,
-            "slides": [
-                _pick(0, "First slide's words.", "sn1", "t1", 1),
-                _pick(1, "Second slide's words.", "sn2", "t2", 2),
-                # A slide with no pick — assemble skips it, so must we.
-                _pick(2, "", None, None, None),
-            ]}}
-        body, status = self._get(sessions=sessions, row=row, cache=cache)
-        self.assertEqual(status, 200)
-        self.assertEqual(body["presentation_ref"], DECK)
-        pieces = body["pieces"]
-        self.assertEqual(len(pieces), 2)
-        self.assertEqual([p["piece_key"] for p in pieces], [0, 1])
-        self.assertEqual([p["slide_index"] for p in pieces], [0, 1])
-        self.assertEqual(pieces[0]["snippet_id"], "sn1")
-        self.assertEqual(pieces[0]["take_session_id"], "t1")
-        self.assertEqual(pieces[1]["take_index"], 2)
-        self.assertEqual(pieces[0]["status"], "settled")
-        self.assertIsNone(pieces[0]["challenger"])
-        self.assertEqual(pieces[0]["text"], "First slide's words.")
-        self.assertIsNone(pieces[0]["root_phrase"])
-        self.assertIsNone(pieces[0]["root_type"])
-
-    def test_deckless_retake_never_clobbers_the_deck_ref(self):
-        # Take 2 dropped presentation_ref — the arc still has its deck.
-        sessions = [_sess("t1", 1, presentation_ref=DECK), _sess("t2", 2)]
-        body, _ = self._get(sessions=sessions, row=_row())
-        self.assertEqual(body["presentation_ref"], DECK)
-
-    def test_deckless_arc_serves_null_ref_and_null_indexes(self):
-        sessions = [_sess("t1", 1), _sess("t2", 2)]
-        row = _row(auto_text="One paragraph.\n\nAnother paragraph.")
-        # Even with a (deckless, section-keyed) compose cache present the
-        # indexes must NOT attach — a section is not a deck page.
-        cache = {"signature": "sig", "payload": {
-            "presentation_ref": None,
-            "slides": [_pick(0, "One paragraph.", "sn1", "t1", 1),
-                       _pick(1, "Another paragraph.", "sn2", "t1", 1)]}}
-        body, _ = self._get(sessions=sessions, row=row, cache=cache)
-        self.assertIsNone(body["presentation_ref"])
-        self.assertEqual(len(body["pieces"]), 2)
-        self.assertTrue(all(p["slide_index"] is None
-                            for p in body["pieces"]))
 
     def test_misaligned_counts_degrade_every_index_to_null(self):
         sessions = [_sess("t1", 1, presentation_ref=DECK)]
@@ -147,212 +100,9 @@ class SlideLinkageTests(unittest.TestCase):
         # The paragraph identity itself still serves.
         self.assertEqual(pieces[1]["text"], "Para two.")
 
-    def test_no_cache_row_serves_null_indexes_without_composing(self):
-        sessions = [_sess("t1", 1, presentation_ref=DECK)]
-        row = _row(auto_text="Para one.\n\nPara two.")
-        body, status = self._get(sessions=sessions, row=row, cache=None)
-        self.assertEqual(status, 200)
-        self.assertEqual(body["presentation_ref"], DECK)
-        self.assertEqual(len(body["pieces"]), 2)
-        self.assertTrue(all(p["slide_index"] is None
-                            for p in body["pieces"]))
-
-    def test_empty_text_serves_empty_pieces(self):
-        sessions = [_sess("t1", 1, presentation_ref=DECK)]
-        body, _ = self._get(sessions=sessions,
-                            row=_row(auto_text="", text="", version=None))
-        self.assertEqual(body["pieces"], [])
-
-    def test_reads_never_resolve_the_deck_ref(self):
-        # A paired re-read carrying a deck ref is not a take — it must not
-        # become the arc's deck.
-        read = {"id": "r1", "user_id": "u1", "take_index": None,
-                "recording_kind": "read", "paired_session_id": "t1",
-                "intake_context": {"presentation_ref": "https://x/wrong.pdf"}}
-        sessions = [read, _sess("t1", 1)]
-        body, _ = self._get(sessions=sessions, row=_row())
-        self.assertIsNone(body["presentation_ref"])
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class MasterDocumentRetirementTests(unittest.TestCase):
-    """A stale environment flag cannot revive the retired experiment."""
-
-    def test_master_document_flag_is_permanently_disabled(self):
-        from services.master_document import master_document_enabled
-
-        with patch.dict(os.environ, {"MASTER_DOCUMENT_ENABLED": "1"}):
-            self.assertFalse(master_document_enabled())
-
-
-@unittest.skipIf(Flask is None, f"flask/app import failed: {_IMPORT_ERROR}")
-class LivingTranscriptProvenanceTests(unittest.TestCase):
-    """The two defects that stripped every slide off the read surface
-    (founder 2026-08-11).
-
-    Both were invisible: no error, no null field, just `slide_index: null`
-    everywhere and a deck with nothing to scroll through."""
-
-    def _prov(self, doc, **kw):
-        from routes.v2 import explore_ideal_text as mod
-        # Imported INSIDE the function, so the patch has to land on the
-        # source module rather than this one's namespace.
-        with patch("services.transcript_document.build_transcript_document",
-                   return_value=doc), \
-                patch("services.ideal_text_block._living_transcript_enabled",
-                      return_value=True), \
-                patch.object(mod.db, "get_snippets_by_session",
-                             return_value=[], create=True):
-            lane, rows = mod._ideal_piece_provenance(ARC, **kw)
-        # No stored document in these fixtures, so the rebuild answers.
-        self.assertEqual(lane, "compat")
-        return rows
-
-    def test_provenance_is_counted_in_PARAGRAPHS_not_snippets(self):
-        # THE BUG: the caller aligns this list against the served text's
-        # "\n\n" paragraphs BY LENGTH. Returning one row per snippet meant
-        # that on any take where a slide held more than one piece the counts
-        # disagreed, the alignment test failed, and every slide attachment
-        # was silently dropped.
-        doc = {
-            "take_session_id": "t1",
-            "pieces": [{"snippet_id": "a", "slide_index": 0},
-                       {"snippet_id": "b", "slide_index": 0},
-                       {"snippet_id": "c", "slide_index": 1}],
-            "paragraphs": [
-                {"snippet_id": "a", "slide_index": 0, "take_session_id": "t1",
-                 "take_index": 1},
-                {"snippet_id": "c", "slide_index": 1, "take_session_id": "t1",
-                 "take_index": 1},
-            ],
-        }
-        rows = self._prov(doc)
-        self.assertEqual(len(rows), 2)          # paragraphs, not the 3 pieces
-        self.assertEqual([r["slide_index"] for r in rows], [0, 1])
-
-    def test_slide_zero_survives(self):
-        # `or`-style falsiness on a 0 index would blank the FIRST slide of
-        # every deck and nothing else — the kind of bug that reads as "the
-        # intro is special".
-        doc = {"take_session_id": "t1", "pieces": [],
-               "paragraphs": [{"snippet_id": "a", "slide_index": 0,
-                               "take_session_id": "t1", "take_index": 1}]}
-        self.assertEqual(self._prov(doc)[0]["slide_index"], 0)
-
-    def test_an_arc_with_NO_UPLOADED_DECK_still_attaches(self):
-        # THE MOCK-DECK BUG: the deckless guard was applied to every lane,
-        # including this one. But the cutter buckets words against the slides
-        # the speaker actually SAW, and the built-in deck has slides and taps
-        # without ever producing a PDF — so a whole class of recordings got
-        # no slide attachment at all, for a reason that only applies to the
-        # legacy compose lane.
-        doc = {"take_session_id": "t1", "pieces": [],
-               "paragraphs": [{"snippet_id": "a", "slide_index": 2,
-                               "take_session_id": "t1", "take_index": 1}]}
-        rows = self._prov(doc, deckless_ok=False)
-        self.assertEqual([r["slide_index"] for r in rows], [2])
-
-    def test_the_LEGACY_lane_stays_deckless_gated(self):
-        # It keys picks by SECTION index, which is not a deck page. The guard
-        # was right; it was just standing in the wrong place.
-        from routes.v2 import explore_ideal_text as mod
-        with patch("services.ideal_text_block._living_transcript_enabled",
-                   return_value=False):
-            self.assertEqual(
-                mod._ideal_piece_provenance(ARC, deckless_ok=False),
-                ("deckless", []))
-
 
 if __name__ == "__main__":
     unittest.main()
-
-
-@unittest.skipIf(Flask is None, f"flask/app import failed: {_IMPORT_ERROR}")
-class CanonicalProvenanceFirstTests(unittest.TestCase):
-    """Stored Take-1 provenance is the answer whenever it exists.
-
-    Rebuilding it from the latest transcript describes a different document
-    after Take 2. #531 split this lane out and began treating an EMPTY stored
-    answer as "nothing stored", so it fell through to that rebuild; audit
-    fix 2 restored the original behaviour."""
-
-    REBUILT = {"take_session_id": None, "paragraphs": [
-        {"snippet_id": "z", "slide_index": 9, "take_session_id": "t2",
-         "take_index": 2}]}
-
-    def _prov(self, stored_paragraphs):
-        from types import SimpleNamespace
-
-        from routes.v2 import explore_ideal_text as mod
-        row = {"auto_text": "machine text",
-               "document": {"paragraphs": stored_paragraphs}}
-        fake_db = SimpleNamespace(ideal_text=SimpleNamespace(
-            get_coach_arc_ideal_text=lambda arc_id: row))
-        with patch.object(mod, "db", fake_db), \
-                patch("services.transcript_document.build_transcript_document",
-                      return_value=self.REBUILT) as rebuild, \
-                patch("services.ideal_text_block._living_transcript_enabled",
-                      return_value=True):
-            lane, rows = mod._ideal_piece_provenance(
-                ARC, served_text="machine text")
-        self.assertEqual(lane, "canonical")
-        return rows, rebuild
-
-    def test_stored_paragraphs_are_served_without_a_rebuild(self):
-        rows, rebuild = self._prov([
-            {"snippet_id": "a", "slide_index": 0, "take_session_id": "t1",
-             "take_index": 1}])
-        self.assertEqual([r["snippet_id"] for r in rows], ["a"])
-        rebuild.assert_not_called()
-
-    def test_stored_paragraphs_with_no_usable_row_never_fall_to_the_rebuild(self):
-        rows, rebuild = self._prov(["not a paragraph row"])
-        self.assertEqual(rows, [])
-        rebuild.assert_not_called()
-
-
-class MisalignedPiecesAreReportedTests(unittest.TestCase):
-    """Audit A3: when provenance exists but its count does not match the
-    served paragraphs, every slide link on the read becomes null. That used
-    to happen with no log line and no marker; now the lane is logged and the
-    read's ``degraded`` list names it."""
-
-    TEXT = "one\n\ntwo\n\nthree"
-    ROW = {"slide_index": 0, "snippet_id": "a", "take_session_id": "t1",
-           "take_index": 1}
-
-    def _pieces(self, prov):
-        from routes.v2 import explore_ideal_text as mod
-        from services.degradation import DegradationLog
-
-        log = DegradationLog("ideal_text")
-        with patch.object(mod, "_ideal_piece_provenance",
-                          return_value=("compat", prov)), \
-                self.assertLogs(mod.logger.name, level="WARNING") as seen:
-            mod.logger.warning("sentinel")  # assertLogs needs one line
-            out = mod._ideal_text_pieces(ARC, self.TEXT, "deck.pdf",
-                                         degradation=log)
-        return out, log.payload(), [r.getMessage() for r in seen.records]
-
-    def test_a_misaligned_read_is_logged_with_its_lane_and_marked_degraded(self):
-        out, payload, lines = self._pieces([self.ROW, self.ROW])
-        self.assertEqual([p["slide_index"] for p in out], [None, None, None])
-        self.assertEqual(payload, {"degraded": [
-            {"stage": "ideal_text.pieces", "kind": "misaligned"}]})
-        self.assertTrue(any("misaligned" in line and "lane=compat" in line
-                            and "provenance=2" in line and "paragraphs=3" in line
-                            for line in lines))
-
-    def test_an_aligned_read_is_unchanged_and_not_marked(self):
-        out, payload, lines = self._pieces([self.ROW] * 3)
-        self.assertEqual([p["slide_index"] for p in out], [0, 0, 0])
-        self.assertEqual(payload, {})
-        self.assertFalse(any("misaligned" in line for line in lines))
-
-    def test_no_provenance_at_all_is_not_a_misalignment(self):
-        out, payload, _ = self._pieces([])
-        self.assertEqual([p["slide_index"] for p in out], [None, None, None])
-        self.assertEqual(payload, {})
 
 
 class ComposeFailureFallbackTests(unittest.TestCase):

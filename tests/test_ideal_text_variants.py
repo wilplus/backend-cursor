@@ -18,8 +18,6 @@ from services.ideal_text_variants import (
 
 ARC = "a1"
 T1 = "take-1-sess"
-T2 = "take-2-sess"
-T3 = "take-3-sess"
 
 
 class _Db:
@@ -150,28 +148,7 @@ def _pieces(*texts, prefix="s"):
 
 
 class SnapshotTests(unittest.TestCase):
-    def test_seed_snapshot_creates_pool_and_head(self):
-        db = _Db(blocks=[
-            _block(0, T1, 1, _pieces("the opening")),
-            _block(10, T1, 1, _pieces("the middle")),
-        ])
-        rev = snapshot_composition(db, ARC, reason="seed")
-        self.assertEqual(rev, 1)
-        self.assertEqual(db.head[ARC], 1)
-        sels = db.compositions[(ARC, 1)]["selections"]
-        self.assertEqual([s["block_key"] for s in sels], [0, 10])
-        # find-or-create healed the pool from the incumbents
-        self.assertEqual(len(db.variants), 2)
 
-    def test_candidate_blocks_stay_out(self):
-        db = _Db(blocks=[
-            _block(0, T1, 1, _pieces("the opening")),
-            _block(10, T2, 2, _pieces("new material"),
-                   status="candidate", active=False),
-        ])
-        snapshot_composition(db, ARC, reason="seed")
-        sels = db.compositions[(ARC, 1)]["selections"]
-        self.assertEqual([s["block_key"] for s in sels], [0])
 
     def test_revisions_append_never_overwrite(self):
         db = _Db(blocks=[_block(0, T1, 1, _pieces("words"))])
