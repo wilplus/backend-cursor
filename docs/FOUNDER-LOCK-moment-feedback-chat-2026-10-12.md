@@ -4,7 +4,7 @@
 
 Locked by the founder on 2026-10-12 ("approved, lock it and write the lock
 file"), from the clickable prototype
-<https://claude.ai/artifact/TXbwmupWJio6N1gHqdEa7p> (version 27; version 28 aligns the practice recorder with the 2026-10-12 recording lock). The
+<https://claude.ai/artifact/TXbwmupWJio6N1gHqdEa7p> (version 27; version 30 is final: version 28 aligns the practice recorder with the 2026-10-12 recording lock, and versions 29–30 apply the last answers in section 9). The
 prototype is the design; this file is its written record and the acceptance
 check when it is built. Nothing here is built yet.
 
@@ -198,6 +198,17 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
 - **Sharing:** "Only my community", "Only me", "+ Add a community with a
   passcode".
 - **The summary:** GPT-4o's text under the rules in section 3.
+
+## 9. Last answers (2026-10-12)
+
+- **Sharing.** The question now reads "Do you agree to share your next take
+  with others?" (it changes signed words). "After all, it's about speaking
+  publicly!" is regular weight, not bold. The option subtitles stay.
+- **The Ideal Text page** has one way out, the grey "Close"; there's no ✕
+  at the top. A sentence that opens a step shows a light grey highlight
+  while it's pressed.
+- **The helper-word picker** uses big plain words with no borders. The
+  chosen words turn orange.
 
 ## Still open
 
