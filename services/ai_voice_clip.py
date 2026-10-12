@@ -239,25 +239,28 @@ def _make(job: _Job, selection: dict, context: dict) -> str:
 
 def _speak_until_checked(job: _Job, voice_id: str, request: dict, selection: dict,
                          context: dict) -> tuple[bytes, Optional[dict], Optional[str]]:
-    """(audio, last check, provider failure). One bounded retry, only for a
-    transient provider error or a failed check (with a new seed)."""
+    """(audio, last check, provider failure). At most 1 + RETRIES clips are
+    made (founder 2026-10-12: one, so RETRIES is 0). A provider refusal that
+    made nothing (429, 5xx) is asked once more and costs no generation."""
     from services.ai_voice_limits import estimated_credits
     from services.ai_voice_validator import validate
     voices = job.tools["provider"] or _voices(job.db, job.principal_id, job.practice)
     budget = 1 + max(0, int(Config.AI_VOICE_GENERATION_RETRIES))
     attempts, characters, audio, result, failure = 0, 0, b"", None, None
+    asked_again = False
     snippet = context["snippet"]
     while attempts < budget and failure is None:
-        attempts += 1
         try:
             speech = voices.speak(owner_key=job.owner, voice_id=voice_id, body=request["body"])
-        except Exception as error:  # noqa: BLE001 — named, and retried only if transient
+        except Exception as error:  # noqa: BLE001 — named; asked once more only if transient
             _log.warning("ai voice: provider refused cycle=%s", job.cycle_id, exc_info=True)
-            if getattr(error, "transient", False) and attempts < budget:
-                time.sleep(1.5 * attempts)
+            if getattr(error, "transient", False) and not asked_again:
+                asked_again = True
+                time.sleep(1.5)
                 continue
             failure = str(getattr(error, "kind", "") or type(error).__name__)
             break
+        attempts += 1
         characters += int(speech.character_cost or request["metadata"]["characters"])
         audio = speech.audio
         job.lap("generation")

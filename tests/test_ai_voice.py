@@ -409,3 +409,4 @@ def test_a_missing_key_never_calls_out():
     with pytest.raises(VoiceProviderError) as caught:
         ElevenLabsClient(api_key="").speak(voice_id="v", body={})
     assert caught.value.kind == "missing_key"
+

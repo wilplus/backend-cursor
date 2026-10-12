@@ -874,7 +874,10 @@ class Config:
     # The share of picks that take the runner-up problem, so the stored
     # cycles can later tell which exercise helps (never a trained model now).
     AI_VOICE_EXPLORE_SHARE = _env_float("AI_VOICE_EXPLORE_SHARE", 0.15)
-    AI_VOICE_GENERATION_RETRIES = _env_int("AI_VOICE_GENERATION_RETRIES", 1)
+    # Founder 2026-10-12: one generation per exercise; a clip that fails its
+    # check is not remade. (A provider refusal that made nothing, a 429 or a
+    # 5xx, is asked once more: it uses no credits.)
+    AI_VOICE_GENERATION_RETRIES = _env_int("AI_VOICE_GENERATION_RETRIES", 0)
 
     @property
     def is_production(self):

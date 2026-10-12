@@ -13,7 +13,8 @@ The lock (flow, words, rules) is
    weaker half). Praise and the Clearer version never call ElevenLabs.
 3. The walk asks for the clip (`POST …/confidence-practice/<id>/ai-voice`):
    when the Exercise screen opens if no video fits, or when Practise is
-   tapped if one does. One clip per practice, reused for every appearance.
+   tapped if one does. One clip per practice, made once (never remade when it
+   fails its check), reused for every appearance.
 4. The clip is shown in the video's place (no exact-fit video for the same
    problem), and after a try that isn't better yet, at most 3 times. It never
    plays by itself.
