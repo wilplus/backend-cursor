@@ -141,7 +141,6 @@ jobs:
           # named files deleted months earlier, and the two print scripts
           # that were listed as tests now live under scripts/).
           pytest \
-            --ignore=test_auth_request.py \
             --cov=services --cov=routes --cov-report=json:coverage.json \
             -p no:cacheprovider \
             -q
