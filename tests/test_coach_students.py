@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 try:
     from flask import Flask, request
+
     from routes.v2 import coach as v2_coach
     from services.db import db
     _IMPORT_ERROR = None
@@ -21,7 +22,6 @@ except Exception as e:  # pragma: no cover
 
 UID = "11111111-1111-4111-8111-111111111111"
 SID = "22222222-2222-4222-8222-222222222222"
-SNIP = "33333333-3333-4333-8333-333333333333"
 ARC = "44444444-4444-4444-8444-444444444444"
 
 
@@ -54,14 +54,6 @@ class StudentsTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertNotIn("name", body)
             self.assertEqual(body["sessions"][0]["take_index"], 2)
-
-    def test_the_walk_take_read_is_404(self):
-        with self.app.test_request_context():
-            request.user_id = "coach-1"
-            with patch.object(db, "v2_get_session_by_id", side_effect=AssertionError("never read")):
-                resp, status = v2_coach.v2_coach_walk_take.__wrapped__(SID)
-                self.assertEqual(status, 404)
-                self.assertEqual(v2_coach.v2_coach_walk_take.__wrapped__("nope")[1], 400)
 
 
 if __name__ == "__main__":

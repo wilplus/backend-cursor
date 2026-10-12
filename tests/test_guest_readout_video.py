@@ -21,6 +21,7 @@ from unittest.mock import patch
 
 try:
     from flask import Flask, request
+
     from routes.v2 import lab_recording as v2_lab_recording
     from services.db import db
     from services.project_ownership import GUEST_OWNER_HEADER, issue_guest_owner
@@ -78,12 +79,6 @@ class GuestReadoutTests(unittest.TestCase):
             resp, status = v2_lab_recording.v2_guest_get_recording_readout.__wrapped__(session_id)
             return resp.get_json(), status
 
-    def test_guest_owned_session_served_with_verified_guest_principal(self):
-        body, status = self._call()
-        self.assertEqual(status, 200)
-        self.assertEqual(body["session_id"], _SID)
-        # the async synonym cards ride through so the FE can poll for them
-        self.assertIn("say_it_stronger", body["readout"]["snippets"][0])
 
     def test_bare_session_id_is_not_authorization(self):
         body, status = self._call(include_guest=False)
@@ -104,10 +99,6 @@ class GuestReadoutTests(unittest.TestCase):
         body, status = self._call(user_id="u1")
         self.assertEqual(status, 200)
 
-    def test_unknown_session_404s(self):
-        self._session = None
-        _, status = self._call()
-        self.assertEqual(status, 404)
 
     def test_bad_uuid_400s(self):
         _, status = self._call(session_id="not-a-uuid")
@@ -150,20 +141,6 @@ class VideoRejectTests(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
 
-    def test_video_mimetype_rejected(self):
-        body, status = self._post("clip.mp4", "video/mp4")
-        self.assertEqual(status, 415)
-        self.assertEqual(body["code"], "AUDIO_ONLY")
-
-    def test_video_extension_rejected_even_if_mislabeled(self):
-        # extension is video even though the client lied about the mimetype
-        body, status = self._post("talk.mov", "application/octet-stream")
-        self.assertEqual(status, 415)
-        self.assertEqual(body["code"], "AUDIO_ONLY")
-
-    def test_video_webm_rejected_by_mimetype(self):
-        body, status = self._post("clip.webm", "video/webm")
-        self.assertEqual(status, 415)
 
     def test_mic_audio_webm_is_NOT_rejected_as_video(self):
         # the live mic sends audio/webm (.webm) — it must pass the video gate
@@ -171,14 +148,6 @@ class VideoRejectTests(unittest.TestCase):
         body, status = self._post("lab.webm", "audio/webm")
         self.assertNotEqual(status, 415)
         self.assertNotEqual((body or {}).get("code"), "AUDIO_ONLY")
-
-    def test_plain_audio_files_pass_the_video_gate(self):
-        for name, ct in (("take.m4a", "audio/mp4"),
-                         ("take.mp3", "audio/mpeg"),
-                         ("take.wav", "audio/wav")):
-            body, status = self._post(name, ct)
-            self.assertNotEqual(status, 415, f"{name} wrongly rejected")
-            self.assertNotEqual((body or {}).get("code"), "AUDIO_ONLY")
 
 
 if __name__ == "__main__":

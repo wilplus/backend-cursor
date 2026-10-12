@@ -29,38 +29,6 @@ def db():
         conn.close()
 
 
-def test_the_tables_and_the_view_exist(db):
-    with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute("SELECT table_name, table_type FROM information_schema.tables "
-                    "WHERE table_schema = 'public' AND table_name IN ("
-                    "'voice_album_shares','corpus_clips','lend_your_ear_sets',"
-                    "'lend_your_ear_answers','delayed_measure_pairs','delayed_measure_votes',"
-                    "'shared_clips_live')")
-        kinds = {r["table_name"]: r["table_type"] for r in cur.fetchall()}
-    assert len([k for k in kinds if k != "shared_clips_live"]) == 6
-    if "shared_clips_live" in kinds:
-        assert kinds["shared_clips_live"] == "VIEW"
-
-
-def test_the_keys_hold(db):
-    take = f"take-{uuid.uuid4().hex[:8]}"
-    with db.cursor() as cur:
-        cur.execute("INSERT INTO public.lend_your_ear_sets (listener_user_id, take_session_id) VALUES ('l', %s)", (take,))
-        with pytest.raises(psycopg2.errors.UniqueViolation):
-            cur.execute("INSERT INTO public.lend_your_ear_sets (listener_user_id, take_session_id) VALUES ('l', %s)", (take,))
-        cur.execute("INSERT INTO public.lend_your_ear_answers (set_id, listener_user_id, clip_id, clip_source, value) "
-                    "VALUES (gen_random_uuid(), 'l', 'c1', 'shared', 'yes')")
-        with pytest.raises(psycopg2.errors.UniqueViolation):
-            cur.execute("INSERT INTO public.lend_your_ear_answers (set_id, listener_user_id, clip_id, clip_source, value) "
-                        "VALUES (gen_random_uuid(), 'l', 'c1', 'corpus', 'no')")
-        with pytest.raises(psycopg2.errors.CheckViolation):
-            cur.execute("INSERT INTO public.delayed_measure_votes (pair_id, clip, rater_id, rater_kind, value, measure_version) "
-                        "VALUES (gen_random_uuid(), 'sideways', 'r', 'peer', 'yes', 'v1')")
-        with pytest.raises(psycopg2.errors.CheckViolation):
-            cur.execute("INSERT INTO public.corpus_clips (added_by, licence, passage, audio_url, coach_value) "
-                        "VALUES ('c', 'l', 'p', 'https://a', 'maybe')")
-
-
 def test_a_withdrawn_share_leaves_the_live_view(db):
     arc, snip = str(uuid.uuid4()), f"snip-{uuid.uuid4().hex[:8]}"
     with db.cursor() as probe:

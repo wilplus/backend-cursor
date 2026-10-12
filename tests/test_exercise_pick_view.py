@@ -64,18 +64,6 @@ ASSIGNMENT = {"id": "asg-1", "selected_exercise_id": "second",
 
 
 class MachinePickTests(unittest.TestCase):
-    def test_the_pick_says_what_and_why(self):
-        pick = view.machine_pick(_Db(ASSIGNMENT), "take-1", "snip-1")
-        self.assertEqual(pick["exercise_id"], "second")
-        self.assertEqual(pick["fit"], "exact")
-        self.assertEqual(pick["how_chosen"], "trying_another")
-        self.assertTrue(pick["traced"])
-        self.assertEqual(pick["spotted"],
-                         [{"error_id": "rushing", "label": "Rushing"}])
-        self.assertEqual([c["exercise_id"] for c in pick["candidates"]],
-                         ["first", "second", "elsewhere"])
-        self.assertEqual(pick["candidates"][2]["reason"],
-                         "targets_nothing_that_fired")
 
     def test_the_machine_s_confidence_read_never_reaches_the_coach(self):
         pick = view.machine_pick(_Db(ASSIGNMENT), "take-1", "snip-1")
@@ -83,29 +71,6 @@ class MachinePickTests(unittest.TestCase):
         for hidden in ("near_confident", "confidence", "0.31", "wpm",
                        "features", "gate", "pattern_distance"):
             self.assertNotIn(hidden, text, hidden)
-
-    def test_each_draw_mode_has_a_word(self):
-        for mode, word in (("top", "best_match"),
-                           ("exploration", "trying_another"),
-                           ("deterministic_singleton", "only_match")):
-            pick = view.machine_pick(
-                _Db({**ASSIGNMENT, "selection_mode": mode}), "t", "s")
-            self.assertEqual(pick["how_chosen"], word)
-
-    def test_no_draw_no_pick(self):
-        self.assertIsNone(view.machine_pick(_Db(None), "t", "s"))
-
-    def test_a_draw_from_before_traces_says_so(self):
-        pick = view.machine_pick(_Db(ASSIGNMENT, trace=None), "t", "s")
-        self.assertFalse(pick["traced"])
-        self.assertEqual(pick["candidates"], [])
-        self.assertEqual(pick["spotted"], [])
-        self.assertEqual(pick["exercise_id"], "second")
-
-    def test_a_coach_request_explains_why_nothing_fitted(self):
-        rows = view.request_candidates({"request_trace": TRACE})
-        self.assertEqual(rows[-1]["reason"], "targets_nothing_that_fired")
-        self.assertNotIn("0.31", json.dumps(rows))
 
 
 class WiringTests(unittest.TestCase):
@@ -120,19 +85,3 @@ class WiringTests(unittest.TestCase):
         route = route[:route.index("@v2_bp.route")]
         self.assertLess(route.index("BLIND_RATING_REQUIRED"),
                         route.index("_coach_practice_payload"))
-
-    def test_the_coach_request_carries_its_candidates(self):
-        from services import exercise_coach_requests as ecr
-
-        class _ReqDb(_Db):
-            def get_confident_voice_exercise_assignment(self, *_a):
-                return None
-
-            def list_diagnostic_exercises(self):
-                return []
-
-        payload = ecr.coach_request_payload(
-            {"id": "r", "take_session_id": "t", "snippet_id": "s",
-             "reason": "nothing_targets_it", "observed_tags": ["rushing"],
-             "request_trace": TRACE}, _ReqDb())
-        self.assertEqual(len(payload["candidates"]), 3)

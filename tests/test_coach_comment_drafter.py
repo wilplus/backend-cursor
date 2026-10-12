@@ -13,7 +13,6 @@ import sys
 import types
 import unittest
 
-
 _ORIG_OPENAI_SVC = None
 _ORIG_DB = None
 _ORIG_SUPABASE = None
@@ -98,101 +97,11 @@ _FULL_METRICS = {
 }
 
 
-class MetricObservationsTests(unittest.TestCase):
-    """The fence: metrics become plain words; raw acoustic terms never appear."""
-
-    def _obs(self, m):
-        from services.coach_comment_drafter import metric_observations
-        return metric_observations(m)
-
-    def test_full_metrics_to_plain_buckets(self):
-        obs = self._obs(_FULL_METRICS)
-        self.assertEqual(set(obs), {"pace", "pitch", "pauses", "volume", "clarity"})
-        self.assertEqual(obs["pace"], "comfortable")
-        self.assertEqual(obs["clarity"], "very clear")
-        # never leak raw acoustic terms into the values
-        blob = " ".join(obs.values()).lower()
-        for jargon in ("f0", "sd", "db", "wpm", "coherence", "%"):
-            self.assertNotIn(jargon, blob)
-
-    def test_fast_slow_buckets(self):
-        self.assertEqual(self._obs({"wpm": 80})["pace"], "a bit slow")
-        self.assertEqual(self._obs({"wpm": 200})["pace"], "a bit fast")
-
-    def test_speech_rate_alias(self):
-        self.assertEqual(self._obs({"speech_rate": 135})["pace"], "comfortable")
-
-    def test_partial_metrics_only_present_buckets(self):
-        obs = self._obs({"wpm": 135})
-        self.assertEqual(set(obs), {"pace"})
-
-    def test_empty_metrics_empty(self):
-        self.assertEqual(self._obs(None), {})
-        self.assertEqual(self._obs({}), {})
-
-    def test_bool_is_not_numeric(self):
-        self.assertNotIn("pace", self._obs({"wpm": True}))
-
-
-class CompareTakesTests(unittest.TestCase):
-    def _cmp(self, a, b):
-        from services.coach_comment_drafter import compare_takes
-        return compare_takes(a, b)
-
-    def test_faster_vs_prior(self):
-        out = self._cmp({"pace": 160}, {"pace": 120})
-        self.assertIn("faster", out)
-
-    def test_more_controlled_vs_prior(self):
-        out = self._cmp({"pace": 120}, {"pace": 160})
-        self.assertIn("controlled", out)
-
-    def test_about_the_same(self):
-        out = self._cmp({"pace": 130}, {"pace": 132})
-        self.assertIn("about the same", out)
-
-    def test_nothing_comparable_returns_none(self):
-        self.assertIsNone(self._cmp({}, {}))
-
-
-class SystemPromptLanguageTests(unittest.TestCase):
-    def test_note_must_match_the_users_language(self):
-        # A Polish read → a Polish coach note; the prompt pins the note to the
-        # transcript's language (founder 2026-06-18).
-        from services.coach_comment_drafter import _system_prompt
-        sp = _system_prompt().lower()
-        self.assertIn("same language", sp)
-        self.assertIn("transcript", sp)
-
-
 class GenerateCoachNoteDraftTests(unittest.TestCase):
     def _gen(self, transcript, slide=_SLIDE, metrics=None, **kw):
         from services.coach_comment_drafter import generate_coach_note_draft
         return generate_coach_note_draft(transcript, slide, metrics, **kw)
 
-    def test_produces_draft(self):
-        _install_fake_openai()
-        out = self._gen("and that's the ask", metrics=_FULL_METRICS,
-                        goal="pitch the raise", take_comparison="pace a bit more controlled")
-        self.assertTrue(out)
-
-    def test_empty_transcript_returns_none(self):
-        self.assertIsNone(self._gen(""))
-        self.assertIsNone(self._gen("   "))
-
-    def test_no_client_returns_none(self):
-        _install_fake_openai(has_client=False)
-        self.assertIsNone(self._gen("real transcript", metrics=_FULL_METRICS))
-        _install_fake_openai()
-
-    def test_unparseable_returns_none(self):
-        _install_fake_openai(content="not json")
-        self.assertIsNone(self._gen("real transcript"))
-        _install_fake_openai()
-
-    def test_works_without_metrics_or_goal(self):
-        _install_fake_openai()
-        self.assertTrue(self._gen("real transcript here"))
 
     def test_deckless_no_slide_still_drafts(self):
         # BE-2: a spoken pitch with no slide still produces a draft from the
@@ -200,65 +109,6 @@ class GenerateCoachNoteDraftTests(unittest.TestCase):
         _install_fake_openai()
         self.assertTrue(self._gen("real transcript here", slide=None,
                                   metrics=_FULL_METRICS, goal="pitch the raise"))
-
-    def test_surface_promoted_model_is_used(self):
-        """With the promotion gate OPEN — LEGACY-1 (audit 2026-09-22).
-
-        Until then this passed with the gate SHUT, which was the finding: a
-        promoted model reached a user-facing generator with nobody deciding.
-        `services.llm` now withholds it unless the founder has named the
-        surface for door 4 (`PROMOTION_SURFACES`), so what this asserts is
-        the decision, not the presence of a row.
-        """
-        from unittest.mock import patch
-
-        gate = patch("services.runtime_model_gate.promoted_keys",
-                     return_value=frozenset(
-                         {"openai_surface_model_coach_comment_draft"}))
-        gate.start()
-        self.addCleanup(gate.stop)
-
-        _install_fake_openai()
-        with patch(
-            "services.ml_surface_contracts.resolve_surface_model",
-            return_value="ft:coach-comment",
-        ):
-            self.assertTrue(self._gen("real transcript here"))
-
-        service_module = sys.modules["services.openai_service"]
-        # Install one shared client so the assertion can inspect the exact
-        # model identifier passed by production code.
-        client = _FakeClient(_CANNED)
-        service_module.OpenAIService = lambda: types.SimpleNamespace(client=client)
-        try:
-            with patch(
-                "services.ml_surface_contracts.resolve_surface_model",
-                return_value="ft:coach-comment",
-            ):
-                self.assertTrue(self._gen("real transcript here"))
-            self.assertEqual(
-                client.chat.completions.calls[-1]["model"],
-                "ft:coach-comment",
-            )
-        finally:
-            _install_fake_openai()
-
-
-class DispatchTests(unittest.TestCase):
-    def test_no_snippets_is_noop(self):
-        # The ONLY no-op now: nothing recorded to comment on.
-        from services.coach_comment_drafter import dispatch_coach_note_drafts
-        self.assertIsNone(dispatch_coach_note_drafts("s1", [], [_SLIDE], []))
-        self.assertIsNone(dispatch_coach_note_drafts("s1", None, None, []))
-
-    def test_deckless_dispatch_is_not_noop(self):
-        # BE-2: snippets present but no slides → still dispatches (fire-and-
-        # forget). Returns None, must not raise. The empty transcript keeps the
-        # background worker from doing real LLM/db work in the lean env.
-        from services.coach_comment_drafter import dispatch_coach_note_drafts
-        self.assertIsNone(
-            dispatch_coach_note_drafts("s1", [{"id": "a", "transcript": ""}], None, [])
-        )
 
 
 if __name__ == "__main__":

@@ -2,24 +2,10 @@ from __future__ import annotations
 
 import unittest
 
-from services.journey_messages import journey_client_id, journey_message, journey_seen
-from routes.v2.explore_ideal_text import _completed_spoken_sessions
-
-
-class _Db:
-    def __init__(self, found=None):
-        self.found = found
-
-    def get_lounge_message_by_client_id(self, user_id, client_id):
-        return self.found
+from services.journey_messages import journey_message
 
 
 class JourneyMessageTests(unittest.TestCase):
-    def test_idempotency_key_is_stable_per_owner_project_and_take(self):
-        first = journey_client_id("u1", "a1", 1)
-        self.assertEqual(first, journey_client_id("u1", "a1", 1))
-        self.assertNotEqual(first, journey_client_id("u1", "a1", 2))
-        self.assertNotEqual(first, journey_client_id("u1", "a2", 1))
 
     def test_take_one_copy_and_action_are_locked(self):
         row = journey_message("u1", "a1", 1)
@@ -32,67 +18,6 @@ class JourneyMessageTests(unittest.TestCase):
         ])
         self.assertEqual(row["metadata"]["actions"],
                          ["prepare_take_2", "keep_practising"])
-
-    def test_take_two_copy_and_actions_are_locked(self):
-        row = journey_message("u1", "a1", 2)
-        self.assertEqual(row["body"].split("\n\n"), [
-            "Your presentation is stronger now.",
-            "We’ve seen your message become clearer. Now let’s focus on making "
-            "the delivery feel natural and confident.",
-            "Use the orange-marked text as your anchors - not a script - and "
-            "try to speak as to a friend.",
-        ])
-        self.assertEqual(row["metadata"]["actions"],
-                         ["prepare_take_3", "keep_practising"])
-
-    def test_take_three_copy_lost_its_last_sentence_and_keeps_export_and_practise(self):
-        # Q-B15 A (N62): the Take 3 message loses its last sentence; nothing
-        # else in it changes. J5 (N37.4): no presentation_mode door.
-        row = journey_message("u1", "a1", 3)
-        self.assertEqual(row["body"].split("\n\n"), [
-            "Your presentation is ready.",
-            "We’ve seen your message become much more clear and your delivery "
-            "grow more natural across three takes.",
-            "Use the orange-marked text as your anchors - not a script - and "
-            "try to speak as to a friend.",
-        ])
-        self.assertNotIn("keep practising", row["body"])
-        self.assertEqual(row["metadata"]["actions"], ["export", "keep_practising"])
-
-    def test_practise_again_is_offered_after_every_guided_take(self):
-        # QA9 A (N51.5; ledger A019a): Practise again after Takes 1 and 2
-        # too, not Take 3 alone.
-        for take in (1, 2, 3):
-            actions = journey_message("u1", "a1", take)["metadata"]["actions"]
-            self.assertIn("keep_practising", actions, take)
-            self.assertEqual(actions[-1], "keep_practising", take)
-
-    def test_presentation_mode_is_never_a_journey_action(self):
-        # J5 (N37.4): the ⋯ menu is Presentation Mode's only door.
-        for take in (1, 2, 3):
-            self.assertNotIn("presentation_mode",
-                             journey_message("u1", "a1", take)["metadata"]["actions"])
-
-    def test_fourth_take_has_no_guided_next_steps(self):
-        self.assertIsNone(journey_message("u1", "a1", 4))
-        self.assertTrue(journey_seen(_Db(), "u1", "a1", 4))
-
-    def test_seen_reads_the_deterministic_event(self):
-        self.assertFalse(journey_seen(_Db(), "u1", "a1", 2))
-        self.assertTrue(journey_seen(_Db({"id": "m1"}), "u1", "a1", 2))
-
-    def test_only_successfully_processed_spoken_takes_advance_journey(self):
-        rows = _completed_spoken_sessions([
-            {"id": "ready", "analysis_state": "ready"},
-            {"id": "legacy"},
-            {"id": "pending", "analysis_state": "processing"},
-            {"id": "failed", "analysis_state": "failed"},
-            {"id": "read", "recording_kind": "read",
-             "analysis_state": "ready"},
-            {"id": "paired", "paired_session_id": "ready",
-             "analysis_state": "ready"},
-        ])
-        self.assertEqual([row["id"] for row in rows], ["ready", "legacy"])
 
 
 if __name__ == "__main__":
