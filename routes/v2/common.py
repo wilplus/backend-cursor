@@ -42,9 +42,8 @@ def _resolve_snippet_audio_url(snippet: dict) -> str | None:
     return resolve_snippet_audio_url(snippet, database=db, app_config=config)
 
 
-# Shared by _coach_pseudonym (routes/v2/coach.py) and
-# _pseudonymous_user_id (routes/v2_routes.py) -- both hash against it,
-# so it must stay one value in one place.
+# The pseudonym salt for routes/v2/admin.py; the coach's pseudonym is
+# services/coach_pseudonym.py, which holds the same value.
 _COACH_PSEUDONYM_SALT = "willab-coach-pseudonym-v1"
 
 

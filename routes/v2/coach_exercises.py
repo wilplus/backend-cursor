@@ -18,21 +18,18 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 
 from flask import jsonify, request
-from werkzeug.utils import secure_filename
 
 from config import Config
 from routes.admin import require_admin_or_coach, require_founder
 from routes.v2.blueprint import v2_bp
+from services.coach_video_upload import VideoRefusal, read_video_upload, video_max_mb
 from services.db import db
 from services.rate_limits import heavy_limit, llm_limit
 
 logger = logging.getLogger(__name__)
 config = Config()
-
-_VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".m4v"}
 
 
 @v2_bp.route("/coach/exercises", methods=["GET"])
@@ -84,27 +81,15 @@ def v2_coach_exercise_video(exercise_id):
         except ValueError:
             return jsonify({"code": "INVALID_INPUT",
                             "error": "exercise must be JSON"}), 400
-    max_mb = max(1, int(getattr(config, "COACH_FEEDBACK_VIDEO_MAX_MB", 100)))
-    if (request.content_length or 0) > max_mb * 1024 * 1024:
-        return jsonify({"code": "PAYLOAD_TOO_LARGE",
-                        "error": f"Video is too large. Max allowed is {max_mb}MB."}), 413
-    video_file = request.files.get("video_file")
-    if video_file is None or not (video_file.filename or "").strip():
-        return jsonify({"code": "INVALID_INPUT", "error": "video_file is required"}), 400
-    safe_name = secure_filename(video_file.filename or "")
-    if os.path.splitext(safe_name)[1].lower() not in _VIDEO_EXTENSIONS:
-        return jsonify({"code": "INVALID_VIDEO_FORMAT",
-                        "error": "Supported formats: .mp4, .mov, .webm, .m4v"}), 415
-    video_bytes = video_file.read() or b""
-    if not video_bytes:
-        return jsonify({"code": "INVALID_INPUT", "error": "video_file is empty"}), 400
-    if len(video_bytes) > max_mb * 1024 * 1024:
-        return jsonify({"code": "PAYLOAD_TOO_LARGE",
-                        "error": f"Video is too large. Max allowed is {max_mb}MB."}), 413
+    try:
+        upload = read_video_upload(
+            request.files, request.content_length, video_max_mb(config))
+    except VideoRefusal as refusal:
+        return jsonify(refusal.body), refusal.status
     status, payload = attach_video(
         db, exercise_id=str(exercise_id), coach_id=str(request.user_id),
-        video_bytes=video_bytes, filename=safe_name,
-        content_type=video_file.content_type or "video/mp4",
+        video_bytes=upload.data, filename=upload.safe_name,
+        content_type=upload.content_type,
         definition=definition)
     return jsonify(payload), status
 

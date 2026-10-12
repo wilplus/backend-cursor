@@ -11,17 +11,12 @@ Routes register on the SAME ``v2_bp`` object, so endpoint names
 Formerly re-exported from the ``routes.v2_routes`` façade (removed 2026-09-14,
 audit Q-A3); import from this module.
 """
-import hashlib
 import logging
-import os
-import re
-import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 import sentry_sdk
 from flask import jsonify, request
-from werkzeug.utils import secure_filename
 
 from config import Config
 from routes.admin import is_admin, require_admin_or_coach
@@ -32,25 +27,28 @@ from services.rate_limits import heavy_limit, llm_limit, whisper_limit
 # Module scope on purpose: `except DeadlineExceeded` in the upload routes
 # must resolve even when the failure happens BEFORE the try body reaches
 # its own imports — otherwise the handler NameErrors while handling.
-from routes.v2.common import (
-    _COACH_PSEUDONYM_SALT,
-    _is_valid_uuid,
-)
+from routes.v2.common import _is_valid_uuid
 from services.db import db
+from services.coach_pseudonym import coach_pseudonym as _coach_pseudonym
 from services.coach_queue import load_review_queue
+from services.coach_confidence_rating import (
+    RatingRefusal, admit_rater, rating_body, rating_response, record_rating,
+)
+from services.coach_students import student_detail
+from services.coach_video_upload import (
+    VideoRefusal, read_video_upload, store_session_video, video_max_mb,
+)
+from services.training_import_request import start_training_import
 from services.training_import_setup import setup_complete
 from services.coach_review_claim import claim_review_and_reread
 from services.coach_video_storage import refreshed_media_url
 from services.coach_moment_errors import (
     apply_moment_edit,
     coach_moment_fields,
-    teach_on_attach,
-    with_moment_errors,
 )
+from services.coach_practice_review import PracticeRefusal, save_coach_decision
 # Module level, because the packet SHAPER uses them and it is module level too
 # — the blind rules belong beside the row they gate, not inside one route.
-from services.practice_more_confident import record_after_coach_decision
-from services.practice_adoption import ANSWERS as _FIVE_ANSWERS
 from services.coach_blind_gate import (
     has_committed_blind_label,
     reveal_owner_answer_after_commit,
@@ -74,35 +72,8 @@ config = Config()
 # `pseudonym` + `domain` only, NEVER user_id / real name / email.
 # ══════════════════════════════════════════════════════════════════
 
-# Friendly, stable, non-reversible pseudonym (§B.4): adjective + animal from a
-# salted hash of user_id. Same user → same handle across queue + overlay (a
-# coach recognises a returning user without knowing who they are). No stored
-# map. Wordlists sized for beta; expand per §B.4 (≈10× user count) at scale.
-_COACH_PSEUDONYM_ADJ = (
-    "Playful", "Quiet", "Bright", "Curious", "Bold", "Gentle", "Swift",
-    "Calm", "Clever", "Brave", "Sunny", "Steady", "Witty", "Warm", "Keen",
-    "Nimble", "Mellow", "Lively", "Patient", "Earnest", "Cheery", "Frank",
-    "Spry", "Wry",
-)
-_COACH_PSEUDONYM_ANIMAL = (
-    "Octopus", "Otter", "Falcon", "Badger", "Heron", "Lynx", "Marten",
-    "Sparrow", "Dolphin", "Ibex", "Magpie", "Beaver", "Finch", "Hare",
-    "Stork", "Vole", "Wren", "Crane", "Mole", "Newt", "Quail", "Robin",
-    "Seal", "Tern",
-)
-
-
-def _coach_pseudonym(user_id):
-    """Stable friendly handle for a user_id (e.g. "Playful Octopus"). Never
-    reversible to identity; no stored map. Empty user_id → 'Anonymous'."""
-    if not user_id:
-        return "Anonymous"
-    h = int(hashlib.sha256(
-        (_COACH_PSEUDONYM_SALT + str(user_id)).encode("utf-8")
-    ).hexdigest(), 16)
-    adj = _COACH_PSEUDONYM_ADJ[(h // len(_COACH_PSEUDONYM_ANIMAL)) % len(_COACH_PSEUDONYM_ADJ)]
-    animal = _COACH_PSEUDONYM_ANIMAL[h % len(_COACH_PSEUDONYM_ANIMAL)]
-    return f"{adj} {animal}"
+# Friendly, stable, non-reversible pseudonym (§B.4): one copy, in
+# services.coach_pseudonym, shared with the coach's email threads.
 
 
 def _drafts_by_snippet(session_id, draft_rows=None):
@@ -370,83 +341,13 @@ def v2_coach_student_detail(user_id):
     if not _is_valid_uuid(user_id):
         return jsonify({"code": "INVALID_INPUT", "error": "user_id must be a UUID"}), 400
     try:
-        prof = db.get_user_profile(user_id) or {}
-        rows = db.takes.v2_list_user_lab_sessions(user_id) or []
-        # Unknown id → 404. A real roster student always has >=1 Lab session;
-        # 404 only when there's no footprint at all (no sessions AND no profile)
-        # so a transient sessions-read hiccup can't false-404 a known student.
-        if not rows and not (prof.get("domain") or prof.get("goal")):
+        detail = student_detail(db, user_id)
+        if detail is None:
             return jsonify({
                 "code": "STUDENT_NOT_FOUND",
                 "error": "No willab student for that id.",
             }), 404
-        # U10 rollup — the feeling the student named per session, mapped by
-        # session_id (one batch read) so the coach sees the felt-state spread
-        # across the student's takes in one place. Coach-only (split-sink).
-        _feel_by_session = {}
-        for _fr in db.get_feelings_by_sessions([s.get("id") for s in rows]):
-            _feel_by_session.setdefault(_fr.get("session_id"), _fr.get("feeling"))
-        # Founder 2026-07-16: a mid-take RE-READ is part of its parent take —
-        # never an extra row on the drill-down. Hide read rows; mark parents.
-        _reread_parents = {
-            str(s.get("paired_session_id")) for s in rows
-            if s.get("paired_session_id")
-        }
-        rows = [s for s in rows
-                if not (s.get("recording_kind") == "read"
-                        or s.get("paired_session_id"))]
-        sessions = []
-        for s in rows:
-            ctx = s.get("intake_context") if isinstance(s.get("intake_context"), dict) else {}
-            if s.get("results_published_at"):
-                state = "insights_ready"
-            elif s.get("status") == "pending_admin_review":
-                state = "review_pending"
-            else:
-                state = "readout_ready"
-            # Founder 2026-07-15: "saved feedback means REVIEWED." Three
-            # explicit states beside the legacy `state` (additive — the FE
-            # maps review_state safe-ahead): delivered (published) →
-            # reviewed (coach saved the take's feedback) → to_review.
-            if s.get("results_published_at"):
-                review_state = "delivered"
-            elif s.get("coach_feedback_saved_at"):
-                review_state = "reviewed"
-            else:
-                review_state = "to_review"
-            sessions.append({
-                "session_id": s.get("id"),
-                "take_index": s.get("take_index"),
-                "topic": (ctx or {}).get("topic") or "",
-                "created_at": s.get("created_at"),
-                "state": state,
-                "review_state": review_state,
-                "arc_id": s.get("arc_id"),
-                "feeling": _feel_by_session.get(s.get("id")),
-                "has_reread": str(s.get("id")) in _reread_parents,
-            })
-        # "Ideal text ready to review" badges (founder 2026-07-15) — the arcs
-        # with a persisted MACHINE draft awaiting the coach (unapproved).
-        # ONE READ FOR EVERY PROJECT, not one each. A student with a dozen
-        # projects paid a dozen round trips to decide which badges to draw.
-        _ideal_ready_arcs = []
-        _ideal_rows = db.ideal_text.get_coach_arc_ideal_texts(
-            [s.get("arc_id") for s in sessions if s.get("arc_id")]) or {}
-        for _aid, _row in _ideal_rows.items():
-            if _row and (_row.get("text") or "").strip() \
-                    and not _row.get("approved_at"):
-                _ideal_ready_arcs.append(str(_aid))
-        return jsonify({
-            "pseudonym": _coach_pseudonym(user_id),
-            "domain": (prof or {}).get("domain") or "",
-            "goal": (prof or {}).get("goal") or "",
-            "ideal_ready_arc_ids": _ideal_ready_arcs,
-            # Goal-change context: what the goal WAS before the last change
-            # and when. Empty when the goal has never been changed.
-            "previous_goal": (prof or {}).get("previous_goal") or "",
-            "goal_changed_at": (prof or {}).get("goal_changed_at") or "",
-            "sessions": sessions,
-        }), 200
+        return jsonify({"pseudonym": _coach_pseudonym(user_id), **detail}), 200
     except Exception as e:
         logger.error("coach/student-detail GET failed user=%s err=%s", user_id, e, exc_info=True)
         sentry_sdk.capture_exception(e)
@@ -1340,24 +1241,6 @@ def _speaker_practice_permitted(take_session_id: str) -> bool:
     return service.choice_permitted(principal, PERSONALISED_PRACTICE)
 
 
-def _requested_video_url(body: dict) -> tuple[Any, Any]:
-    """The coach's explanation video address, or the reason it is refused.
-
-    Returns ``(url_or_None, None)`` or ``(None, message)``. Moved out of the
-    practice route unchanged, so the route stays inside its frozen size.
-    """
-    requested = body.get("explanation_video_url")
-    if requested is None:
-        return None, None
-    if not isinstance(requested, str):
-        return None, "explanation_video_url must be a URL."
-    requested = requested.strip()
-    if requested and not re.match(r"^https?://[^\s]+$", requested,
-                                  re.IGNORECASE):
-        return None, "explanation_video_url must use http or https."
-    return requested, None
-
-
 def _coach_moment_edit(practice: dict):
     """PATCH on the practice review: name an error, or undo a teaching.
 
@@ -1474,35 +1357,6 @@ def _coach_practice_payload(practice: dict) -> dict:
 
 
 
-def _shared_exercise_snapshot(exercise, final_video_url, body,
-                              practice=None) -> dict:
-    """What the speaker is shown. `own_wording` when the coach asks for
-    different words than the ones said (founder 2026-09-28, 14B): the
-    speaker's practice is then not held to the exact passage. Recorded on the
-    shared exercise itself, so the rule travels with what they were asked.
-
-    With `practice` (the share path), the coach's pick counts (0398): it is
-    frozen as a coach assignment so the practice joins the jar, and the
-    snapshot carries the id the readiness count joins on. Best effort, after
-    nothing and in the way of nothing."""
-    snapshot = {
-        "exercise_id": exercise.get("exercise_id"),
-        "version": int(exercise.get("version") or 1),
-        "title": exercise.get("title"),
-        "instruction": exercise.get("instruction"),
-        "explanation_video_url": final_video_url,
-        "source": exercise.get("source") or "diagnostic_library",
-    }
-    if body.get("own_wording") is True:
-        snapshot["own_wording"] = True
-    if practice is not None:
-        from services.confident_voice_practice import record_coach_review_share
-        coach_assignment = record_coach_review_share(db, practice, exercise)
-        if coach_assignment:
-            snapshot["exercise_assignment_id"] = str(
-                coach_assignment.get("id") or "")
-    return snapshot
-
 @v2_bp.route(
     "/coach/sessions/<session_id>/snippets/<snippet_id>/confidence-practice",
     methods=["GET", "PUT", "PATCH"],
@@ -1545,111 +1399,12 @@ def v2_coach_confident_voice_practice(session_id, snippet_id):
     if request.method == "PATCH":
         return _coach_moment_edit(practice)
 
-    body = request.get_json(silent=True) or {}
-    decision = body.get("professional_coach_decision")
-    if decision not in ("yes", "no", "refine"):
-        return jsonify({"code": "INVALID_INPUT",
-                        "error": "professional_coach_decision is required"}), 400
-    selected_attempt_id = str(practice.get("selected_attempt_id") or "")
-    selected_attempt_decision = body.get("selected_attempt_coach_decision")
-    if selected_attempt_id and selected_attempt_decision not in _FIVE_ANSWERS:
-        return jsonify({
-            "code": "INVALID_INPUT",
-            "error": "Judge the selected practice recording itself.",
-        }), 400
-    custom_body = body.get("custom_exercise")
-    custom_exercise = None
-    exercise_id = None
-    if custom_body is not None:
-        # FILED INTO THE LIBRARY, not minted here (founder 2026-09-25). It has
-        # to name the error it treats, or it can never reach anyone: routing
-        # matches an exercise's errors against the errors a detector actually
-        # found on a clip. Filing it also keeps a coach's judgement about one
-        # recording from riding along onto that speaker's later practice (L3).
-        from services.diagnostic_exercise_catalogue import (
-            CatalogueRefusal,
-            file_coach_exercise,
-        )
-        custom_body = with_moment_errors(custom_body, practice, db)
-        try:
-            exercise = file_coach_exercise(
-                db, practice_id=practice.get("id"), fields=custom_body)
-        except CatalogueRefusal as refusal:
-            return jsonify({"code": refusal.code,
-                            "error": refusal.message}), refusal.status
-        if not exercise:
-            return jsonify({"code": "EXERCISE_UNAVAILABLE",
-                            "error": "The exercise could not be saved."}), 503
-        custom_exercise = exercise
-        exercise_id = str(exercise.get("exercise_id") or "")
-    else:
-        exercise_id = str(body.get("exercise_id") or practice.get("exercise_id"))
-        exercise = db.get_active_diagnostic_exercise(exercise_id)
-        if not exercise:
-            return jsonify({"code": "EXERCISE_UNAVAILABLE",
-                            "error": "Select an active reviewed exercise."}), 409
-    requested_video_url, invalid_video = _requested_video_url(body)
-    if invalid_video:
-        return jsonify({"code": "INVALID_INPUT", "error": invalid_video}), 400
-    final_video_url = (
-        requested_video_url
-        or exercise.get("explanation_video_url")
-        or exercise.get("explanation_video_ref")
-    )
-    share = body.get("share_with_user") is True
-    if share and not final_video_url:
-        return jsonify({"code": "INVALID_INPUT",
-                        "error": "Add an explanation video before sharing."}), 400
-    exercise_snapshot = _shared_exercise_snapshot(
-        exercise, final_video_url, body, practice if share else None)
-    patch = {
-        "professional_coach_decision": decision,
-        "coach_selected_exercise_id": exercise_id,
-        "coach_custom_exercise": custom_exercise,
-        "coach_explanation_video_url": final_video_url,
-    }
-    if share:
-        patch.update({
-            "coach_shared_exercise": exercise_snapshot,
-            "coach_shared_by": str(request.user_id),
-            "coach_shared_at": datetime.now(timezone.utc).isoformat(),
-        })
-    if selected_attempt_id:
-        selected_attempt = db.set_confident_voice_practice_attempt_coach_decision(
-            str(practice.get("id")), selected_attempt_id,
-            str(selected_attempt_decision), str(request.user_id))
-        if not selected_attempt:
-            return jsonify({
-                "code": "V2_ERROR",
-                "error": "Could not save the selected recording judgment.",
-            }), 500
-        record_after_coach_decision(
-            db, str(practice.get("id")), selected_attempt_id)
-    updated = db.update_confident_voice_practice(
-        str(practice.get("id")), None, patch)
-    if not updated:
-        return jsonify({"code": "V2_ERROR",
-                        "error": "Could not save the coach decision."}), 500
-    if selected_attempt_id:
-        from services.confident_voice_practice import (
-            reconcile_practice_voice_album,
-        )
-        admitted = reconcile_practice_voice_album(updated, database=db)
-        if admitted:
-            from services.arc_notifications import fire_voice_album_ready
-            fire_voice_album_ready(
-                db, practice.get("owner_user_id"), practice.get("project_id"))
-    if share and custom_exercise is None:  # "Attach = both" (founder 09-25)
-        teach_on_attach(db, practice, exercise_id, str(request.user_id))
-    if share:
-        from services.arc_notifications import fire_confidence_practice_shared
-        emitted = fire_confidence_practice_shared(
-            db, practice.get("owner_user_id"), practice.get("project_id"),
-            practice.get("id"))
-        if emitted:
-            db.update_confident_voice_practice(
-                str(practice.get("id")), None,
-                {"chat_emitted_at": datetime.now(timezone.utc).isoformat()})
+    try:
+        updated = save_coach_decision(
+            db, practice, request.get_json(silent=True) or {},
+            str(request.user_id))
+    except PracticeRefusal as refusal:
+        return jsonify(refusal.body), refusal.status
     return jsonify({"practice": _coach_practice_payload(updated)}), 200
 
 
@@ -1939,86 +1694,19 @@ def v2_coach_session_video(session_id):
     multipart/form-data: video_file (.mp4/.mov/.webm/.m4v).
     200 { status, session_id, video_ref } · 400/404/413/415/502
     """
-    # Local import on purpose: binds at CALL time, so tests that monkeypatch
-    # services.coach_video_storage attributes take effect.
-    from services.coach_video_storage import default_media_bucket, put_coach_object_bytes
-
     if not _is_valid_uuid(session_id):
         return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a UUID"}), 400
     try:
         session = db.v2_get_session_by_id(session_id)
         if not session:
             return jsonify({"code": "SESSION_NOT_FOUND", "error": "Session not found"}), 404
-
-        max_video_mb = max(1, int(getattr(config, "COACH_FEEDBACK_VIDEO_MAX_MB", 100)))
-        max_video_bytes = max_video_mb * 1024 * 1024
-        content_length = request.content_length or 0
-        if content_length and content_length > max_video_bytes:
-            return jsonify({
-                "code": "PAYLOAD_TOO_LARGE",
-                "error": f"Video is too large. Max allowed is {max_video_mb}MB.",
-            }), 413
-
-        video_file = request.files.get("video_file")
-        if video_file is None or not (video_file.filename or "").strip():
-            return jsonify({"code": "INVALID_INPUT", "error": "video_file is required"}), 400
-
-        safe_name = secure_filename(video_file.filename or "")
-        ext = os.path.splitext(safe_name)[1].lower()
-        if ext not in {".mp4", ".mov", ".webm", ".m4v"}:
-            return jsonify({
-                "code": "INVALID_VIDEO_FORMAT",
-                "error": "Supported formats: .mp4, .mov, .webm, .m4v",
-            }), 415
-
-        video_bytes = video_file.read() or b""
-        if not video_bytes:
-            return jsonify({"code": "INVALID_INPUT", "error": "video_file is empty"}), 400
-        if len(video_bytes) > max_video_bytes:
-            return jsonify({
-                "code": "PAYLOAD_TOO_LARGE",
-                "error": f"Video is too large. Max allowed is {max_video_mb}MB.",
-            }), 413
-
-        # Subsystem V — idempotency (retry dedupe). A re-upload of the SAME
-        # record action (same key) reuses the stored take instead of creating a
-        # phantom one. Best-effort: a missing table just falls through.
-        _idem = (request.form.get("upload_idempotency_key") or "").strip() or None
-        if _idem:
-            _existing = db.get_coach_video_asset_by_idempotency_key(_idem)
-            if _existing and _existing.get("video_ref"):
-                db.takes.set_session_coach_video_ref(session_id, _existing["video_ref"])
-                return jsonify({
-                    "status": "ok", "session_id": session_id,
-                    "video_ref": refreshed_media_url(_existing["video_ref"]), "deduped": True,
-                }), 200
-
-        bucket = default_media_bucket()  # never the literal: #484, _store_presentation_pdf
-        # Subsystem V — NON-deterministic key so a re-record does NOT overwrite
-        # the prior take (which is training/preference data). The user-facing ref
-        # is repointed to the newest take below.
-        storage_key = f"coach-feedback/{session_id}/{uuid.uuid4().hex}{ext}"
-        try:
-            put_coach_object_bytes(
-                bucket, storage_key, video_bytes,
-                video_file.content_type or "video/mp4",
-            )
-        except Exception as upload_err:
-            logger.error("coach video upload failed sid=%s err=%s", session_id, upload_err)
-            return jsonify({"code": "UPLOAD_FAILED", "error": "Failed to upload video to storage."}), 502
-
-        video_ref = f"s3://{bucket}/{storage_key}"  # private bucket: signed on read
-        db.takes.set_session_coach_video_ref(session_id, video_ref)
-        logger.info("coach video stored sid=%s key=%s", session_id, storage_key)
-
-        # Phase 1 stores the coach's product video only.  The former
-        # best-effort corpus capture was a hidden pooled-learning write and is
-        # deliberately absent until a separately approved Phase-2 cutover.
-
-        return jsonify({
-            "status": "ok", "session_id": session_id,
-            "video_ref": refreshed_media_url(video_ref),
-        }), 200
+        upload = read_video_upload(
+            request.files, request.content_length, video_max_mb(config))
+        return jsonify(store_session_video(
+            db, session_id, upload,
+            (request.form.get("upload_idempotency_key") or "").strip() or None)), 200
+    except VideoRefusal as refusal:
+        return jsonify(refusal.body), refusal.status
     except Exception as e:
         logger.error("coach/session-video failed sid=%s err=%s", session_id, e, exc_info=True)
         sentry_sdk.capture_exception(e)
@@ -2051,42 +1739,6 @@ def _resolve_audio_refs(rows: list, *, expires_in: int = 6 * 3600) -> None:
             # None when it could not be signed: the row shows no player
             # rather than a raw ref no browser can load.
             r["audio_ref"] = resolved
-
-
-def _int_or(raw, default: int) -> int:
-    """Form int with a fallback — a typo in an optional knob must not 400 an
-    upload that already cost the coach a file read."""
-    try:
-        return int(str(raw).strip())
-    except (TypeError, ValueError):
-        return default
-
-
-def _register_corpus_import(prepared: dict):
-    """Record that THIS route created the import, under the founder's corpus
-    basis (N58, 0435): an import's provider calls are permitted only for a
-    session registered here. None when recorded (or the gate is off, where
-    nothing is permitted anyway); else the refusal, with the import marked
-    failed, because under enforce nothing could analyse it."""
-    from services.processing_authorization import (
-        ProcessingAuthorizationError, register_corpus_import,
-    )
-    try:
-        register_corpus_import(db, session_id=prepared["session_id"],
-                               recording_id=prepared.get("recording_id"))
-        return None
-    except ProcessingAuthorizationError as refusal:
-        logger.warning("training import not registered sid=%s code=%s",
-                       prepared.get("session_id"), refusal.code)
-        try:
-            db.takes.set_session_analysis_state(
-                prepared["session_id"], "failed", error=refusal.code)
-        except Exception:
-            logger.warning("could not mark the unregistered import failed",
-                           exc_info=True)
-        return jsonify({"code": refusal.code,
-                        "error": "the import could not be registered"}), \
-            refusal.status
 
 
 @v2_bp.route("/coach/training-imports", methods=["POST"])
@@ -2150,86 +1802,11 @@ def v2_coach_training_import():
         return jsonify({"code": "INVALID_INPUT",
                         "error": "language is required"}), 400
     try:
-        audio_bytes = audio_file.read()
-        from services.training_import import (
-            prepare_training_import, run_training_import_analysis,
-        )
-        _filename = audio_file.filename or "import.webm"
-        _queue_per_band = _int_or(request.form.get("queue_per_band"), 5)
-        prepared = prepare_training_import(
-            audio_bytes=audio_bytes,
-            filename=_filename,
-            content_type=audio_file.mimetype,
-            user_id=(request.form.get("user_id")
-                     or getattr(request, "user_id", None)),
-            topic=topic,
-            speaker_label=(request.form.get("speaker_label") or "").strip()
-                          or None,
-            source_note=(request.form.get("note") or "").strip() or None,
-            stages=(request.form.get("stages") or None),
-            # BOTH spellings (fix 2026-07-29): the FE ships `idempotency_key`,
-            # the coach-video lane's name is `upload_idempotency_key`.
-            idempotency_key=((request.form.get("idempotency_key")
-                              or request.form.get("upload_idempotency_key")
-                              or "").strip() or None),
-            language=language,
-        )
-        if not prepared.get("ok"):
-            _reason = prepared.get("reason") or "failed"
-            if _reason in ("no_audio", "too_short", "silence", "gate",
-                           "gate_error", "no_topic"):
-                return jsonify({
-                    "code": "AUDIO_REJECTED", "reason": _reason,
-                    "error": prepared.get("detail")
-                             or "the audio did not pass the content gate",
-                }), 422
-            return jsonify({"code": "SERVER_ERROR", "reason": _reason,
-                            "error": prepared.get("detail")
-                                     or "import failed"}), 500
-
-        # The idempotency key already produced this import — return the
-        # original rather than minting a second (a talk imported twice is
-        # labelled twice and trains twice, invisibly).
-        if prepared.get("duplicate"):
-            return jsonify({**prepared, "status": "duplicate"}), 200
-        if (unregistered := _register_corpus_import(prepared)) is not None:
-            return unregistered
-
-        # ── 202, then analyse in the background ───────────────────────────
-        # Whisper + the cutting pass is MINUTES on a long talk, and the FE's
-        # proxy caps far below that. Returning the request before the work
-        # removes the dangerous shape entirely: a gateway timeout on a
-        # request whose BE work then succeeded, which the coach reads as
-        # "failed" and retries into a duplicate. The FE polls
-        # GET /v2/coach/training-imports/<session_id> for the outcome; the
-        # session's analysis_state carries it (the same processing → ready |
-        # failed lane the live async path already uses).
-        import threading
-        _t = threading.Thread(
-            target=run_training_import_analysis,
-            kwargs={"prepared": prepared, "audio_bytes": audio_bytes,
-                    "filename": _filename,
-                    "queue_per_band": _queue_per_band},
-            daemon=True,
-        )
-        _t.start()
-        # THE 202 IS A RECEIPT, NOT A RESULT — and it must be impossible to
-        # read as one (FE §6.4). It carries NO count field: a consumer whose
-        # rule is "ok:true with a count present = finished" would otherwise
-        # see a bare ok:true, default the missing counts to 0, and announce a
-        # zero-piece failure that never happened. `status: "processing"` says
-        # the same thing positively. Both properties are pinned by test —
-        # adding snippet_count/queue_count here would break a real consumer.
-        return jsonify({
-            "ok": True, "status": "processing",
-            "session_id": prepared["session_id"],
-            "arc_id": prepared["arc_id"],
-            "stages": prepared["stages"],
-            "duration_sec": prepared.get("duration_sec"),
-            "speaker_label": prepared.get("speaker_label"),
-            "language": prepared.get("language"),
-            "filename": _filename,
-        }), 202
+        payload, status = start_training_import(
+            db, audio_file, request.form,
+            uploader_id=getattr(request, "user_id", None),
+            topic=topic, language=language)
+        return jsonify(payload), status
     except Exception as e:
         logger.error("training import failed: %s", e, exc_info=True)
         return jsonify({"code": "SERVER_ERROR",
@@ -3104,59 +2681,6 @@ def _reconcile_album_after_judgement(sess, snippet_id, session_id):
         take_session_id=session_id, database=db)
 
 
-def _first_coach_rating(*, snippet_id, row, rater_id, session_id, lane,
-                        intensity, self_report, machine_value, selection):
-    """The coach's original judgment on a clip: confidence_labels (and its
-    label_revision shadow). None when written, else the error response."""
-    saved = db.upsert_state_rating(
-        snippet_id=snippet_id, row=row, rater_id=rater_id,
-        session_id=session_id, lane=lane, intensity=intensity,
-        self_report=self_report, machine_value=machine_value,
-        selection=selection)
-    if saved:
-        # V4 brief 1.7 (0442): the clip's soft-label counts follow the
-        # judgment of record. A side write, never in the rating's way; the
-        # function counts only the quorum's human lanes (Q3).
-        from services.clip_answer_counts import refresh
-        refresh(db, snippet_id)
-        return None
-    return jsonify({
-        "code": "SERVER_ERROR",
-        "error": "could not save the rating (run "
-                 "migrations/add_state_generic_ratings.sql)",
-    }), 500
-
-
-def _reconsider_coach_rating(*, snippet_id, row, rater_id, session_id, lane,
-                             intensity, self_report, machine_value, selection):
-    """LOCKIN §5c, contract 34 (W6 2026-10-05): "The original coach judgment
-    is never editable; reconsideration is a separately timestamped,
-    provenance-bearing revision." A later answer by the same coach is
-    appended to label_revision as a reconsideration and the original row
-    stays as it was. None when kept, else the error response: a revision
-    that was not kept is never reported as saved."""
-    try:
-        kept = db.append_label_reconsideration(
-            snippet_id=snippet_id, row=row, rater_id=str(rater_id),
-            session_id=session_id, lane=lane, intensity=intensity,
-            machine_value=machine_value, self_report=self_report,
-            selection=selection)
-    except Exception as e:  # noqa: BLE001 -- named below
-        logger.warning("coach reconsideration not kept snip=%s: %s",
-                       snippet_id, e, exc_info=True)
-        kept = None
-    if isinstance(kept, dict):
-        # LISTEN AGAIN (0444): a new blind answer closes this coach's open
-        # ask on the moment, if one was there. Best-effort; the revision is
-        # kept either way.
-        from services.coach_listen_again import mark_heard
-        mark_heard(db, snippet_id=snippet_id, coach_id=rater_id)
-        return None
-    # The route's own words for a rating not kept (no new copy).
-    return jsonify({"code": "SERVER_ERROR",
-                    "error": "could not save the rating"}), 500
-
-
 def _rating_selection(sess, session_id, snippet_id):
     """K9 (decisions log K9; W6 2026-10-05): what put this clip in front of
     the coach, stamped on the rating server-side and never shown before it
@@ -3259,22 +2783,10 @@ def v2_coach_put_confidence_label(snippet_id):
 
     from services.state_ratings import resolve_lane, validate_rating
 
-    legacy_intensity = None
-    if "confident" in body:
-        # Legacy shape. Validate it on the OLD validator so its strictness is
-        # unchanged, then translate — the translation stays visible here in
-        # one place rather than buried in a validator that would then appear
-        # to accept two instruments.
-        from services.confidence_labels import validate_confidence_label
-        legacy, err = validate_confidence_label(body)
-        if err:
-            return jsonify({"code": "INVALID_INPUT", "error": err}), 400
-        legacy_intensity = legacy.get("intensity")
-        body = {
-            "state_id": "confidence",
-            "value": "yes" if legacy["confident"] else "no",
-            "note": legacy.get("note"),
-        }
+    try:
+        body, legacy_intensity = rating_body(body)
+    except RatingRefusal as refusal:
+        return jsonify(refusal.body), refusal.status
 
     try:
         snip = db.get_snippet_by_id(snippet_id)
@@ -3295,45 +2807,12 @@ def v2_coach_put_confidence_label(snippet_id):
         # Provenance, not clip source, defines the lane. Authentication,
         # blindness, and language matching have all been enforced above.
         lane = resolve_lane(is_coach=True, panel_grade=True)
-
-        # RULE 2 (founder 2026-08-11) — the owner is not a peer, and that is
-        # about WHOSE CLIP it is, not which surface rated it. A coach rating a
-        # session they own writes lane='coach' and is still a self-report, so
-        # ownership is compared explicitly rather than read off the lane; a
-        # corpus import is not its importer's voice (CO3 A, N58).
         rater_id = getattr(request, "user_id", None)
-        from services.label_quorum import (
-            machine_proposal, rater_submission_access, rating_is_self_report,
-        )
-        self_report = rating_is_self_report(sess, rater_id)
-        existing_by_snippet = db.get_confidence_labels_by_snippet_ids(
-            [snippet_id]) or {}
-        existing_labels = existing_by_snippet.get(str(snippet_id), [])
-        access = rater_submission_access(existing_labels, rater_id)
-        if not access["allowed"]:
-            if access["outcome"] == "fresh_rater_required":
-                return jsonify({
-                    "code": "FRESH_RATER_REQUIRED",
-                    "error": "This clip is waiting for another eligible rater.",
-                }), 409
-            if access["outcome"] == "audio_quarantined":
-                return jsonify({
-                    "code": "AUDIO_QUARANTINED",
-                    "error": "Independent raters reported that this audio cannot be judged.",
-                }), 409
-            if not is_rereview:
-                return jsonify({
-                    "code": "RATING_CLOSED",
-                    "error": "This clip no longer needs another blind rating.",
-                }), 409
-        # THE ORIGINAL JUDGMENT STANDS (LOCKIN §5c; contract 34; W6
-        # 2026-10-05). A coach who already judged this clip reconsiders: the
-        # answer is appended as a revision and never written over the
-        # original in confidence_labels, which every quorum, Album leg and
-        # measure keeps reading.
-        reconsidering = access["outcome"] == "update"
-        write = _reconsider_coach_rating if reconsidering else _first_coach_rating
-        refused = write(
+        self_report, reconsidering = admit_rater(
+            db, sess, snippet_id, rater_id, is_rereview)
+        from services.label_quorum import machine_proposal
+        record_rating(
+            db, reconsidering,
             snippet_id=snippet_id, row=row, rater_id=rater_id,
             session_id=session_id, lane=lane, intensity=legacy_intensity,
             self_report=self_report,
@@ -3343,8 +2822,6 @@ def v2_coach_put_confidence_label(snippet_id):
             # disagree with" stays answerable, and it is never a vote.
             machine_value=machine_proposal(snip),
             selection=_rating_selection(sess, session_id, snippet_id))
-        if refused is not None:
-            return refused
         value = row["value"]
         from services.coach_judgement_record import canonical_dual_write
         canonical_dual_write(
@@ -3359,41 +2836,14 @@ def v2_coach_put_confidence_label(snippet_id):
                 sess, snippet_id=snippet_id, session_id=session_id, lane=lane,
                 self_report=self_report, value=value, note=row.get("note"),
                 is_rereview=is_rereview)
-        # BLINDNESS RELEASE. This read occurs only after the independent
-        # judgment above was durably written. Queue/read payloads never call
-        # it, so the coach cannot see the owner label or machine proposal
-        # before committing. The original judgment remains in label_revision;
-        # a later reconsideration is another revision, never a replacement.
-        _owner_reports = db.list_take_feedback_self_reports_by_snippet(
-            str(snippet_id))
-        _owner_report = next((
-            report for report in reversed(_owner_reports)
-            if isinstance(report, dict)
-            and report.get("feedback_family") == "confident_voice"
-        ), None)
+        # BLINDNESS RELEASE: only after the judgment above was written.
         return jsonify({
-            "saved": True, "snippet_id": snippet_id,
-            "state_id": row["state_id"], "value": value,
-            "unrateable": row["unrateable"], "lane": lane,
-            # Legacy fields, derived — the current FE reads these.
-            "confident": (True if value == "yes"
-                          else False if value == "no" else None),
-            "intensity": legacy_intensity,
-            # Exact words are released only by this successful write. Blind
-            # queue reads redact them until the same rater has a saved row.
-            "transcript": (snip.get("transcript")
-                           or snip.get("transcript_excerpt") or ""),
-            "owner_self_report": (
-                {
-                    "value": _owner_report.get("response"),
-                    "created_at": _owner_report.get("created_at"),
-                    "provenance": "user_self_report",
-                } if _owner_report else None
-            ),
-            "machine_value": machine_proposal(snip),
-            "mlc2": canonical_judgment,
+            **rating_response(db, snip, snippet_id, row, lane,
+                              legacy_intensity, canonical_judgment),
             **_moment_read_after_rating(session_id, snippet_id),  # C2, after the write
         }), 200
+    except RatingRefusal as refusal:
+        return jsonify(refusal.body), refusal.status
     except Exception as e:
         logger.warning("confidence rating failed snip=%s: %s", snippet_id, e)
         return jsonify({"code": "SERVER_ERROR",
