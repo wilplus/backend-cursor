@@ -58,7 +58,7 @@ Where this lock disagrees with an older one, this lock wins. It amends:
    Each shows the speaker's clip as an orange bubble, then "Good job" and one
    signed line from B01–B09, then "Next".
 3. **Choose your helper words**, after each green moment. The picker fills
-   the screen with large word buttons, "N of 4 words", "Use these helper
+   the screen with large word buttons, "N of 6 words", "Use these helper
    words" and "Skip". Helper words stay editable from the chat. Once a newer
    Take exists, the older Take's words are locked ("🔒 Take N").
 4. **One exercise**, on the Take's lowest sentence. It's never called weak.
