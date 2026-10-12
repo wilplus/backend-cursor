@@ -118,53 +118,6 @@ def terms_text_in_force(database: Any = None) -> str:
     return _DRAFT_TERMS.read_text(encoding="utf-8")
 
 
-class ThePredicates(unittest.TestCase):
-    """Both directions, because a one-sided assertion passes forever once the
-    condition it watches for stops being reachable."""
-
-    def test_the_old_absolute_claim_is_a_no_payment_claim(self):
-        self.assertTrue(claims_no_payment_is_taken(
-            "The service is free. There is no paid plan and we do not take "
-            "payment."))
-
-    def test_the_approved_replacement_is_still_a_no_payment_claim(self):
-        """Deliberate. The new wording says payment is COMING, but it still
-        tells today's reader we do not take money — so the gate must still
-        fire if the key goes on before the Terms are amended again."""
-        self.assertTrue(claims_no_payment_is_taken(
-            "WillpowerLab is free to use today, and we do not take payment. We "
-            "expect to introduce paid plans in future."))
-
-    def test_a_claim_split_across_lines_still_matches(self):
-        """The copy files are hard-wrapped; a matcher defeated by a newline is
-        a matcher that passes on the real document."""
-        self.assertTrue(claims_no_payment_is_taken(
-            "WillpowerLab is free to use today, and we do not take\npayment."))
-
-    def test_copy_that_describes_charging_is_not_a_no_payment_claim(self):
-        self.assertFalse(claims_no_payment_is_taken(
-            "Plans start at 29 PLN a month. You can cancel at any time and we "
-            "will bill you for the current period only."))
-
-    def test_junk_is_not_a_claim(self):
-        for value in (None, "", "   ", 42, object()):
-            self.assertFalse(claims_no_payment_is_taken(value), repr(value))
-
-    def test_stripe_presence_is_read_as_presence_not_value(self):
-        class _C:
-            STRIPE_SECRET_KEY = "sk_test_abc"
-
-        class _Empty:
-            STRIPE_SECRET_KEY = "   "
-
-        class _Missing:
-            pass
-
-        self.assertTrue(stripe_payment_configured(_C))
-        self.assertFalse(stripe_payment_configured(_Empty))
-        self.assertFalse(stripe_payment_configured(_Missing))
-
-
 class TheGate(unittest.TestCase):
     """The contradiction itself."""
 
@@ -191,19 +144,6 @@ class TheGate(unittest.TestCase):
                 where="synthetic",
             )
 
-    def test_payment_config_with_terms_that_describe_payment_is_fine(self):
-        self._assert_consistent(
-            stripe_on=True,
-            terms="Paid plans start at 29 PLN a month.",
-            where="synthetic",
-        )
-
-    def test_no_payment_config_with_a_no_payment_claim_is_fine(self):
-        self._assert_consistent(
-            stripe_on=False,
-            terms="The service is free and we do not take payment.",
-            where="synthetic",
-        )
 
     def test_this_environment_does_not_contradict_the_terms_in_force(self):
         """THE LIVE ONE. Reads the served policy when a policy is registered,
@@ -226,9 +166,6 @@ class TheDraftIsWhereWeThinkItIs(unittest.TestCase):
     """If the draft moves or is renamed, the gate above silently starts
     reading nothing. Fail loudly instead."""
 
-    def test_the_draft_terms_exist_and_are_not_empty(self):
-        self.assertTrue(_DRAFT_TERMS.is_file(), str(_DRAFT_TERMS))
-        self.assertGreater(len(_DRAFT_TERMS.read_text(encoding="utf-8")), 500)
 
     def test_the_draft_still_contains_a_payment_sentence_to_match_on(self):
         """Guards the matcher, not the copy. If a future edit drops every

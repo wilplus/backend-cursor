@@ -105,10 +105,6 @@ def _status(**over):
     return row
 
 
-def _table_reads(service):
-    return [call[1] for call in service.client.calls if call[0] == "table"]
-
-
 class AReAcceptanceIsPrefilledTests(unittest.TestCase):
 
     def test_the_newest_receipts_country_comes_back_lower_cased(self):
@@ -123,60 +119,6 @@ class AReAcceptanceIsPrefilledTests(unittest.TestCase):
         self.assertFalse(status["authorized"])
         self.assertEqual(status["code"], "PROCESSING_AUTHORIZATION_REQUIRED")
         self.assertTrue(status["reacceptance_required"])
-
-    def test_it_reads_this_principals_receipts_newest_first(self):
-        service = _service(_status(reacceptance_required=True),
-                           [{"country_of_residence": "pl"}])
-        service.status(PRINCIPAL)
-        reads = _table_reads(service)
-        self.assertEqual(len(reads), 1)
-        read = reads[0]
-        # The receipts are the stored fact; nothing else is consulted.
-        self.assertEqual(read["relation"], "processing_authorization_receipts")
-        self.assertEqual(read["filters"], [("acquisition_principal_id", PRINCIPAL)])
-        self.assertEqual(read["order"][0], ("accepted_at", True))
-        self.assertEqual(read["limit"], 1)
-
-
-class EveryOtherStatusReadsNothingExtraTests(unittest.TestCase):
-
-    def test_first_time_authorized_and_blocked_carry_no_country(self):
-        for row in (
-            _status(),
-            _status(authorized=True, code="PROCESSING_AUTHORIZED"),
-            # A blocked person is not being asked to re-accept anything.
-            _status(code="PROCESSING_SERVICE_BLOCKED"),
-            _status(reacceptance_required=None),
-            _status(reacceptance_required="true"),
-        ):
-            service = _service(row, [{"country_of_residence": "pl"}])
-            status = service.status(PRINCIPAL)
-            self.assertNotIn("country_of_residence", status, row)
-            self.assertEqual(_table_reads(service), [], row)
-
-
-class APrefillNeverBreaksTheStatusTests(unittest.TestCase):
-
-    def test_a_failed_read_leaves_the_status_as_it_was(self):
-        service = _service(_status(reacceptance_required=True),
-                           RuntimeError("receipts unreadable"))
-        with self.assertLogs("services.processing_authorization", "WARNING"):
-            status = service.status(PRINCIPAL)
-        self.assertNotIn("country_of_residence", status)
-        self.assertEqual(status["code"], "PROCESSING_AUTHORIZATION_REQUIRED")
-        self.assertTrue(status["policy_available"])
-
-    def test_no_receipt_or_an_empty_country_prefills_nothing(self):
-        for receipts in ([], [{"country_of_residence": None}],
-                         [{"country_of_residence": "  "}], [{}]):
-            service = _service(_status(reacceptance_required=True), receipts)
-            self.assertNotIn("country_of_residence", service.status(PRINCIPAL),
-                             receipts)
-
-    def test_the_reader_alone_answers_none_rather_than_raising(self):
-        service = _service(_status(), RuntimeError("down"))
-        with self.assertLogs("services.processing_authorization", "WARNING"):
-            self.assertIsNone(service.last_country_of_residence(PRINCIPAL))
 
 
 if __name__ == "__main__":

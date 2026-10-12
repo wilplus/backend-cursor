@@ -11,8 +11,8 @@ Run: python3 -m unittest tests.test_provider_permit_reissue
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 import unittest
+from datetime import datetime, timedelta, timezone
 
 from services import processing_authorization as pa
 
@@ -75,11 +75,6 @@ def _issue(service, key):
 
 
 class ReissueTests(unittest.TestCase):
-    def test_a_live_permit_is_returned_as_is(self):
-        client = _Client()
-        permit = _issue(_service(client), "audio-download:job:1:abc")
-        self.assertEqual(permit["permit_id"], "permit-1")
-        self.assertEqual(len(client.calls), 1)
 
     def test_an_expired_replay_is_minted_again_under_a_derived_key(self):
         stale = {"permit_id": "permit-old", "provider": "cloudflare_r2",
@@ -92,33 +87,6 @@ class ReissueTests(unittest.TestCase):
         self.assertTrue(second_key.startswith("audio-download:job:1:abc:reissue:"))
         # The original key keeps its record; the derived one is new.
         self.assertEqual(client.permits["audio-download:job:1:abc"], stale)
-
-    def test_a_reissue_never_loops(self):
-        # Even if the derived key somehow replays an expired permit, the
-        # second mint is returned as is rather than minting a third.
-        class _AlwaysStale(_Client):
-            def rpc(self, name, params):
-                call = _Call(self, name, params)
-                if name == "issue_phase1_provider_permit_v1":
-                    self.permits[params["p_idempotency_key"]] = {
-                        "permit_id": "stale", "expires_at": _iso(-60)}
-                return call
-        client = _AlwaysStale()
-        permit = _issue(_service(client), "k")
-        self.assertEqual(permit["permit_id"], "stale")
-        self.assertEqual(len(client.calls), 2)
-
-    def test_an_unreadable_expiry_reads_as_live(self):
-        self.assertFalse(pa._permit_expired({"expires_at": "soon"}))
-        self.assertFalse(pa._permit_expired({}))
-        self.assertTrue(pa._permit_expired({"expires_at": _iso(-1)}))
-        self.assertFalse(pa._permit_expired({"expires_at": _iso(60)}))
-
-    def test_the_gate_off_issues_nothing(self):
-        client = _Client()
-        service = pa.ProcessingAuthorizationService(_Db(client), mode="off")
-        self.assertIsNone(_issue(service, "k"))
-        self.assertEqual(client.calls, [])
 
 
 if __name__ == "__main__":

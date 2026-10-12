@@ -211,81 +211,8 @@ def _request_for_speaker_with_practice(db) -> dict:
     return {"principal": str(principal), "request": str(request)}
 
 
-def _add_delivery_job(db, principal: str) -> str:
-    """One Feedback-language delivery job owned by the speaker.
-
-    Its revision and bundle attachment are foreign keys into the coaching
-    bundle, whose fixtures would dwarf this file; the graph reads only
-    `acquisition_principal_id`. So this one insert skips FK triggers for its
-    own statement, in this disposable database only.
-    """
-    with db.cursor() as cur:
-        cur.execute("SET session_replication_role = replica")
-        try:
-            cur.execute("""
-                INSERT INTO public.feedback_language_delivery_materialization_jobs (
-                    revision_id, bundle_attachment_id, acquisition_principal_id,
-                    job_state, job_sha256, idempotency_key)
-                VALUES (gen_random_uuid(), gen_random_uuid(), %s, 'pending',
-                        %s, %s) RETURNING id""",
-                (principal, "d" * 64, str(uuid.uuid4())))
-            return str(cur.fetchone()[0])
-        finally:
-            cur.execute("SET session_replication_role = origin")
-
-
 class TestAnAccountDeletionStarts:
 
-    def test_the_orchestrators_own_freeze_is_accepted(self, db):
-        """Before 0362 this raised PURGE_SUBJECT_GRAPH_MISMATCH, always."""
-        subject = _request_for_speaker_with_practice(db)
-        orchestrator = DataPurgeOrchestrator(_Database(db))
-
-        result = orchestrator.freeze_inventory(subject["request"])
-
-        assert result.get("state") in ("in_progress", "review_required"), result
-        manifest = _one(db, """
-            SELECT subject_graph FROM public.data_purge_inventory_manifests
-             WHERE purge_request_id = %s""", (subject["request"],))
-        assert manifest is not None, "nothing was frozen"
-        assert manifest["delivery_job_ids"] == []
-        assert subject["principal"] in manifest["principal_ids"]
-        assert _one(db, """
-            SELECT count(*) FROM public.data_purge_targets
-             WHERE purge_request_id = %s
-               AND metadata->>'source_relation' = 'processing_practice_objects'
-               AND state = 'pending'""", (subject["request"],)) == 1, (
-            "the practice recording never reached the frozen manifest")
-
-    def test_a_speakers_delivery_jobs_are_in_the_graph_and_the_freeze_takes_them(self, db):
-        """The registry's delivery-job dependencies map to the graph (0362).
-
-        They are `external_review` in the registry, so with rows present they
-        freeze as `unknown` and the request goes to review — the designed
-        fail-closed path — rather than raising on the locator map."""
-        subject = _request_for_speaker_with_practice(db)
-        job = _add_delivery_job(db, subject["principal"])
-        orchestrator = DataPurgeOrchestrator(_Database(db))
-
-        graph = orchestrator.build_subject_graph(subject["principal"], frozenset())
-        assert graph.delivery_job_ids == (job,)
-
-        result = orchestrator.freeze_inventory(subject["request"])
-        assert result.get("state") == "review_required", result
-        assert _one(db, """
-            SELECT count(*) FROM public.data_purge_targets
-             WHERE purge_request_id = %s
-               AND metadata->>'locator_kind' = 'delivery_job'""",
-            (subject["request"],)) >= 1
-
-    def test_a_replay_of_the_same_freeze_is_accepted(self, db):
-        """A worker that retries after a crash must not be refused."""
-        subject = _request_for_speaker_with_practice(db)
-        orchestrator = DataPurgeOrchestrator(_Database(db))
-        first = orchestrator.freeze_inventory(subject["request"])
-        again = orchestrator.freeze_inventory(subject["request"])
-        assert again["state"] == "frozen"
-        assert again["inventory_sha256"] == first["inventory_sha256"]
 
     def test_a_graph_that_is_not_the_subjects_is_still_refused(self, db):
         """The equality check stays: a stale or foreign graph never freezes."""

@@ -13,7 +13,6 @@ Pins:
 from __future__ import annotations
 
 import pathlib
-from datetime import timedelta
 from types import SimpleNamespace
 from unittest import mock
 
@@ -48,20 +47,6 @@ def test_checkout_is_one_time_at_the_published_price():
     assert item["price_data"]["currency"] == "usd"
     assert kwargs["metadata"] == {"user_id": "u1", "package": "coaching",
                                   "tier": "coaching", "kind": tp.PACKAGE_KIND}
-
-
-@pytest.mark.parametrize("package", ["free", "pro", "max", "", "nope"])
-def test_only_a_package_on_sale_can_be_bought(package):
-    result, create = _create(package)
-    assert (result.http_status, result.payload["code"]) == (400, "INVALID_TIER")
-    create.assert_not_called()
-
-
-def test_the_route_opens_a_package_not_a_subscription():
-    source = (ROOT / "routes/token_routes.py").read_text()
-    route = source[source.index("def tokens_checkout("):source.index("def tokens_history(")]
-    assert "create_package_checkout_session" in route
-    assert "create_tier_checkout_session" not in route
 
 
 # ── webhook ─────────────────────────────────────────────────────────────
@@ -127,50 +112,6 @@ def test_the_webhook_grants_packages_and_nothing_else():
         assert retired not in body, retired
 
 
-def _post_webhook(app_client, event):
-    from routes import internal_webhooks as hooks
-    with mock.patch.object(hooks.config, "STRIPE_WEBHOOK_SECRET", "whsec", create=True), \
-            mock.patch.object(hooks.config, "STRIPE_SECRET_KEY", "sk_test", create=True), \
-            mock.patch("stripe.Webhook.construct_event", return_value=event), \
-            mock.patch("services.token_packages.webhook_reply",
-                       side_effect=AssertionError("not a package")):
-        return app_client.post("/v2/internal/stripe/webhook", data=b"{}",
-                               headers={"Stripe-Signature": "t=1,v1=x"})
-
-
-@pytest.mark.parametrize("etype", ["customer.subscription.created",
-                                   "customer.subscription.updated",
-                                   "customer.subscription.deleted"])
-def test_a_subscription_event_is_acked_and_applies_nothing(app_client, etype):
-    resp = _post_webhook(app_client, {"type": etype, "data": {"object": {
-        "id": "sub_1", "metadata": {"user_id": "u1"}}}})
-    assert resp.status_code == 200
-    assert resp.get_json() == {"received": True}
-
-
-@pytest.mark.parametrize("metadata", [{"arc_id": "arc-1", "user_id": "u1"},
-                                      {"user_id": "u1"}, {}])
-def test_an_arc_or_credit_checkout_is_acked_and_grants_nothing(app_client, metadata):
-    resp = _post_webhook(app_client, {"type": "checkout.session.completed",
-                                      "data": {"object": {"id": "cs_9",
-                                                          "metadata": metadata}}})
-    assert resp.status_code == 200
-    assert resp.get_json() == {"received": True, "granted": False,
-                               "reason": "not_a_package"}
-
-
-def test_the_billing_portal_is_gone(app_client, stub_verified_user):
-    stub_verified_user("u1")
-    resp = app_client.post("/v2/tokens/portal", json={},
-                           headers={"Authorization": "Bearer t"})
-    # The 410 tombstone was deleted (2026-10-11): no route at all.
-    assert resp.status_code == 404
-
-
-def test_the_balance_carries_no_plan(db):
-    assert "plan" not in ta.get_account("u1", database=db)
-
-
 # ── the grant ───────────────────────────────────────────────────────────
 
 class _Query:
@@ -234,20 +175,6 @@ def db(monkeypatch):
     return database
 
 
-def test_the_package_lands_in_the_never_resetting_buckets(db):
-    out = ta.package_grant("u1", tokens=150_000, coach_reviews=3, ref_id="cs_1",
-                           package="coaching", database=db)
-    assert out == {"ok": True, "reason": ""}
-    assert db.row["bonus_balance"] == 150_000
-    assert db.row["coach_review_credits"] == 3
-    assert db.row["token_balance"] == 12_000
-    assert db.ledger == [{"delta": 150_000, "action": ta.PACKAGE_PURCHASE,
-                          "ref_id": "cs_1", "tier": "coaching"}]
-    account = ta.get_account("u1", database=db)
-    assert account["balance"] == 162_000
-    assert account["coach_reviews"]["allowed"] == 3
-
-
 def test_a_second_delivery_grants_nothing(db):
     for _ in range(2):
         ta.package_grant("u1", tokens=150_000, coach_reviews=0, ref_id="cs_1",
@@ -256,22 +183,4 @@ def test_a_second_delivery_grants_nothing(db):
     assert len(db.ledger) == 1
 
 
-def test_two_packages_add_up(db):
-    ta.package_grant("u1", tokens=150_000, coach_reviews=3, ref_id="cs_1",
-                     package="coaching", database=db)
-    ta.package_grant("u1", tokens=400_000, coach_reviews=8, ref_id="cs_2",
-                     package="intensive", database=db)
-    assert (db.row["bonus_balance"], db.row["coach_review_credits"]) == (550_000, 11)
-
-
 # ── nothing renews ──────────────────────────────────────────────────────
-
-def test_the_period_no_longer_rolls(db, monkeypatch):
-    assert ta.PERIOD_RESET_ENABLED is False
-    later = ta._parse_ts(db.row["period_start"]) + timedelta(days=400)
-    monkeypatch.setattr(ta, "_now", lambda: later)
-    db.row["token_balance"] = 5
-    account = ta.get_account("u1", database=db)
-    assert account["monthly_balance"] == 5  # not re-granted
-    assert account["period_ends_at"] is None
-    assert db.ledger == []

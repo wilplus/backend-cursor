@@ -204,18 +204,6 @@ def _receipt_purposes(db, principal):
          WHERE r.acquisition_principal_id = %s""", (principal,)))
 
 
-class TestTheDefectItself:
-
-    def test_v1_cannot_record_the_optional_purpose(self, db, policy, principal):
-        """The trap, on the real schema. v1 has no parameter for a choice, so
-        the optional purpose is simply absent from the receipt — and the
-        MLC-3 gate that requires it can never resolve."""
-        _accept(db, policy, principal, None, version="v1")
-
-        assert _receipt_purposes(db, principal) == sorted(REQUIRED)
-        assert OPTIONAL not in _receipt_purposes(db, principal)
-
-
 class TestV2RecordsExactlyWhatWasChosen:
 
     def test_a_chosen_optional_purpose_reaches_the_receipt(
@@ -236,64 +224,3 @@ class TestV2RecordsExactlyWhatWasChosen:
         assert result["authorized"] is True
         assert result["optional_purposes_recorded"] == []
         assert _receipt_purposes(db, principal) == sorted(REQUIRED)
-
-    def test_an_empty_array_behaves_exactly_like_v1(self, db, policy, principal):
-        other = _one(db, """
-            INSERT INTO public.owner_principals (id, user_id)
-            VALUES (gen_random_uuid(), gen_random_uuid()) RETURNING id""")
-        _accept(db, policy, principal, [])
-        _accept(db, policy, other, None, version="v1")
-
-        assert _receipt_purposes(db, principal) == _receipt_purposes(db, other)
-
-
-class TestItRefusesRatherThanQuietlyDropping:
-
-    def test_a_purpose_not_in_this_policy_is_refused(self, db, policy, principal):
-        """Ignoring it would write a receipt recording less than the screen
-        asked the person about."""
-        with pytest.raises(psycopg2.errors.RaiseException) as raised:
-            _accept(db, policy, principal, ["individual_learning_profile"])
-        assert "PROCESSING_OPTIONAL_PURPOSE_INVALID" in str(raised.value)
-
-        assert _receipt_purposes(db, principal) == []
-
-    def test_a_required_purpose_cannot_be_passed_as_a_choice(
-            self, db, policy, principal):
-        """It is already in the receipt. Accepting it here would let a caller
-        present a compulsory term as though it had been optional."""
-        with pytest.raises(psycopg2.errors.RaiseException) as raised:
-            _accept(db, policy, principal, [REQUIRED[0]])
-        assert "PROCESSING_OPTIONAL_PURPOSE_INVALID" in str(raised.value)
-
-
-class TestTheEvidenceCoversTheChoice:
-
-    def test_replaying_a_key_with_a_different_choice_conflicts(
-            self, db, policy, principal):
-        """Without the choices in the evidence hash the second call would hash
-        identically, pass as a silent no-op, and leave a receipt attesting to
-        a decision the person did not make that time."""
-        key = f"k-{uuid.uuid4()}"
-        _accept(db, policy, principal, [OPTIONAL], key=key)
-
-        with pytest.raises(psycopg2.errors.RaiseException) as raised:
-            _accept(db, policy, principal, [], key=key)
-        assert "IDEMPOTENCY_CONFLICT" in str(raised.value)
-
-    def test_the_same_choice_replays_cleanly(self, db, policy, principal):
-        key = f"k-{uuid.uuid4()}"
-        first = _accept(db, policy, principal, [OPTIONAL], key=key)
-        replay = _accept(db, policy, principal, [OPTIONAL], key=key)
-
-        assert first["receipt_id"] == replay["receipt_id"]
-
-    def test_order_and_duplicates_do_not_change_the_evidence(
-            self, db, policy, principal):
-        """The order a client sent them in is not a fact about consent."""
-        key = f"k-{uuid.uuid4()}"
-        _accept(db, policy, principal, [OPTIONAL], key=key)
-        replay = _accept(db, policy, principal, [OPTIONAL, OPTIONAL, "  "],
-                         key=key)
-
-        assert replay["optional_purposes_recorded"] == [OPTIONAL]

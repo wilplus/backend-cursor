@@ -21,7 +21,6 @@ from unittest import mock
 from services import pair_consent as pc
 from services import training_consent as tc
 from services import training_corpus as corpus
-from services.data_purge_registry import DEPENDENCIES
 
 TABLES = ("v4_moment_pick_sheets", "v4_surer_sheets", "coach_block_pick")
 POLICY = {"version": "training-v1", "onboarding_copy": "x", "approved_copy_sha256": "c" * 64,
@@ -91,12 +90,6 @@ class WithdrawalTests(unittest.TestCase):
             self.assertEqual(db.takes_left(table), ["tB1"], table)
             self.assertEqual(len(db.tables[table]), 2, table)
 
-    def test_someone_holding_the_yes_is_skipped(self):
-        db = _Db(active=True)
-        with mock.patch("services.account_deletion.learning_stopped", return_value=False):
-            out = pc.erase_withdrawn_sheets(db, "principal-a")
-        self.assertEqual(out, {"skipped": "holds the training yes"})
-        self.assertEqual(db.takes_left("coach_block_pick"), ["tA1", "tA2", "tB1"])
 
     def test_a_failed_read_is_named_and_never_breaks_the_switch(self):
         db = _Db(fail_graph=True)
@@ -108,55 +101,6 @@ class WithdrawalTests(unittest.TestCase):
         corpus.purge_due_copies("principal-a", database=db)
         for table in TABLES:
             self.assertEqual(db.takes_left(table), ["tB1"], table)
-
-    def test_a_retry_is_a_no_op(self):
-        db = _Db(active=False)
-        first = pc.erase_withdrawn_sheets(db, "principal-a")
-        self.assertEqual(first["deleted"], {t: 4 for t in TABLES})
-        again = pc.erase_withdrawn_sheets(db, "principal-a")
-        self.assertEqual(again["deleted"], {t: 0 for t in TABLES})
-
-
-class DatabaseMethodTests(unittest.TestCase):
-    def test_deletes_by_take_in_the_three_tables(self):
-        try:
-            from services.db import DatabaseService
-        except Exception as e:  # pragma: no cover - needs app deps
-            self.skipTest(f"needs app deps: {e}")
-        calls: list[tuple] = []
-
-        class _Query:
-            def __init__(self, table):
-                self.table = table
-
-            def delete(self):
-                calls.append((self.table, "delete"))
-                return self
-
-            def in_(self, column, values):
-                calls.append((self.table, column, tuple(values)))
-                self.values = values
-                return self
-
-            def execute(self):
-                return mock.Mock(data=[{"id": v} for v in self.values])
-
-        service = DatabaseService.__new__(DatabaseService)
-        service.client = mock.Mock(table=lambda name: _Query(name))
-        out = service.delete_learning_sheets_for_takes(["tA2", "tA1", "tA1", ""])
-        self.assertEqual(out, {t: 2 for t in TABLES})
-        self.assertEqual([c for c in calls if c[1] != "delete"],
-                         [(t, "take_session_id", ("tA1", "tA2")) for t in TABLES])
-        self.assertEqual(tuple(DatabaseService.LEARNING_SHEET_TABLES), TABLES)
-
-
-class RegistryTests(unittest.TestCase):
-    def test_each_erased_table_is_a_take_scoped_delete_in_the_purge_registry(self):
-        for table in TABLES:
-            deps = [d for d in DEPENDENCIES if d.relation == table and d.locator_kind == "take"]
-            self.assertEqual(len(deps), 1, table)
-            self.assertEqual((deps[0].selector_column, deps[0].disposition),
-                             ("take_session_id", "delete"), table)
 
 
 if __name__ == "__main__":

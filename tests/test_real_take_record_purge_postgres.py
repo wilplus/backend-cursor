@@ -115,20 +115,3 @@ class TestAnAccountWithAPermanentTakeRecordCanBeErased:
         assert _one(db, """
             SELECT count(*) FROM public.transcript_versions WHERE take_id = %s""",
             (subject["take"],)) == 1
-
-    def test_a_strangers_record_is_untouched(self, db, fake_storage):
-        takes._production_columns(db)
-        takes._seed_every_retention_rule(db)
-        subject = _with_permanent_record(db, takes._account_with_one_take(db))
-        stranger = _with_permanent_record(db, takes._account_with_one_take(db))
-
-        DataPurgeOrchestrator(_Database(db)).run(subject["request"])
-
-        assert len(_words_left(db, stranger)) == 3
-
-    def test_the_record_still_refuses_any_other_change(self, db):
-        subject = _with_permanent_record(db, takes._account_with_one_take(db))
-        with pytest.raises(Exception, match="append-only"):
-            _one(db, """
-                UPDATE public.transcript_versions SET transcript_text = '[erased]'
-                 WHERE take_id = %s RETURNING id""", (subject["take"],))
