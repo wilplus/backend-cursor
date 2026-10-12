@@ -380,6 +380,10 @@ def community_clips(database: Any, *, listener_id: str, answered: set[str],
     rows = [r for r in database.list_community_clips_live(hearable) or [] if isinstance(r, dict)]
     ids = list(dict.fromkeys(str(r["snippet_id"]) for r in rows if r.get("snippet_id")))
     labels = (database.get_confidence_labels_by_snippet_ids(ids) or {}) if ids else {}
+    # A clip from one of the listener's own communities carries its name, so
+    # the walk says "Now N moments from Invita." (lock 2026-10-12, section 9).
+    names = {str(r.get("id")): r.get("name") for r in _open_private(database, me)[0]
+             if isinstance(r.get("name"), str) and r.get("name")}
     clips: list[dict] = []
     for row in order_community_clips(rows, listener_id=me, answered=answered,
                                      labels=labels, private_ids=private_ids):
@@ -396,7 +400,8 @@ def community_clips(database: Any, *, listener_id: str, answered: set[str],
         clips.append({"clip_id": str(row["snippet_id"]), "source": "community",
                       "audio_ref": audio,
                       "start_offset_ms": snippet.get("start_offset_ms"),
-                      "duration_ms": snippet.get("duration_ms")})
+                      "duration_ms": snippet.get("duration_ms"),
+                      "community": names.get(str(row.get("community_id")))})
     return clips
 
 

@@ -17,6 +17,11 @@ protected provider scope for the Take, as ``services.willfidence`` does).
 Anything that fails (no permit, no provider, a reply that breaks the
 rules) falls back to the signed journey copy, so the speaker always gets
 the bubble. Stored once per Take (a fixed client id).
+
+A coach update: when the Take's review ends with a coach note and the
+stored summary was written without one, the summary is written again with
+it and rewrites the bubble in place; the earlier words stay in its
+metadata (``earlier``), one tap away in the Lounge.
 """
 from __future__ import annotations
 
@@ -132,46 +137,73 @@ def _under_authority(database: Any, take: str, write) -> Optional[str]:
         return write()
 
 
-def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dict],
-                    take_session_id: str, body: dict) -> Optional[dict]:
-    """The summary bubble for one Take of the arc (``takes``: its spoken
-    Takes in order), stored once. None when the Take is not the arc's."""
-    from services.journey_messages import _COPY
-    ids = [str(t.get("id")) for t in takes]
-    if str(take_session_id) not in ids:
-        return None
-    take_index = ids.index(str(take_session_id)) + 1
-    client_id = summary_client_id(user_id, arc_id, take_index)
-    held = database.get_lounge_message_by_client_id(str(user_id), client_id)
-    if held:
-        return held
-    anchor = _COPY.get(take_index) or _COPY[3]
+def _reads(database: Any, ids: list[str], take_index: int) -> tuple[list[dict], Optional[list[dict]]]:
+    """This Take's willfidence reads and the last Take's (None for Take 1)."""
     try:
-        now = database.list_v4_willfidence_reads(take_session_id) or []
+        now = database.list_v4_willfidence_reads(ids[take_index - 1]) or []
         before = (database.list_v4_willfidence_reads(ids[take_index - 2]) or []
                   if take_index > 1 else None)
+        return now, before
     except Exception as error:  # noqa: BLE001 -- no reads: nothing to compare
-        logger.warning("take summary reads failed take=%s: %s", take_session_id, error)
-        now, before = [], ([] if take_index > 1 else None)
+        logger.warning("take summary reads failed take=%s: %s", ids[take_index - 1], error,
+                       exc_info=True)
+        return [], ([] if take_index > 1 else None)
+
+
+def _ask(body: dict) -> tuple[Optional[str], list[str], Optional[str]]:
+    """The practice result, at most two helper words and the coach's note,
+    as the walk sent them; anything else is dropped. Pure."""
     practice = body.get("practice") if body.get("practice") in ("better", "not_yet") else None
     words = [w for w in (body.get("helper_words") or []) if isinstance(w, str) and w.strip()][:2]
     note = body.get("coach_note") if isinstance(body.get("coach_note"), str) else None
-    text = None
+    return practice, words, (note.strip() if note and note.strip() else None)
+
+
+def _written(database: Any, take: str, anchor: str, facts: list[str], practice: Optional[str],
+             words: list[str], note: Optional[str], arc_id: str, user_id: str) -> Optional[str]:
+    """GPT-4o's summary under the Take's authority; None when refused or failed."""
     try:
-        text = _under_authority(database, str(take_session_id), lambda: write_summary(
-            anchor, progress_facts(now, before), practice=practice, helper_words=words,
-            coach_note=note, session_id=str(take_session_id), arc_id=str(arc_id),
-            user_id=str(user_id)))
+        return _under_authority(database, take, lambda: write_summary(
+            anchor, facts, practice=practice, helper_words=words, coach_note=note,
+            session_id=take, arc_id=arc_id, user_id=user_id))
     except Exception as error:  # noqa: BLE001 -- refused or failed: the signed copy
-        logger.warning("take summary refused take=%s: %s", take_session_id, error)
-    message = {
+        logger.warning("take summary refused take=%s: %s", take, error, exc_info=True)
+        return None
+
+
+def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dict],
+                    take_session_id: str, body: dict) -> Optional[dict]:
+    """The summary bubble for one Take of the arc (``takes``: its spoken
+    Takes in order), stored once; rewritten once by a coach update. None
+    when the Take is not the arc's."""
+    from services.journey_messages import _COPY
+    ids = [str(t.get("id")) for t in takes]
+    take = str(take_session_id)
+    if take not in ids:
+        return None
+    take_index = ids.index(take) + 1
+    client_id = summary_client_id(user_id, arc_id, take_index)
+    practice, words, note = _ask(body)
+    held = database.get_lounge_message_by_client_id(str(user_id), client_id)
+    if held and (note is None or ((held.get("metadata") or {}).get("coach_noted"))):
+        return held
+    anchor = _COPY.get(take_index) or _COPY[3]
+    now, before = _reads(database, ids, take_index)
+    text = _written(database, take, anchor, progress_facts(now, before), practice, words,
+                    note, str(arc_id), str(user_id))
+    meta = {"summary": True, "arc_id": str(arc_id), "take_index": take_index,
+            "take_session_id": take, "written": bool(text), "coach_noted": note is not None}
+    if held:
+        if not text:
+            return held  # the coach's update could not be written: keep it
+        meta.update({"coach_update": True, "earlier": held.get("body")})
+        return database.rewrite_lounge_message(str(user_id), client_id, text, meta) or held
+    persisted = database.insert_lounge_messages(str(user_id), [{
         "client_id": client_id,
         "role": "bot",
         "kind": "cadence",
         "body": text or anchor,
-        "metadata": {"summary": True, "arc_id": str(arc_id), "take_index": take_index,
-                     "take_session_id": str(take_session_id), "written": bool(text)},
+        "metadata": meta,
         "client_created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    persisted = database.insert_lounge_messages(str(user_id), [message])
+    }])
     return persisted[0] if persisted else None
