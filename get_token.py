@@ -46,8 +46,6 @@ def get_token_from_supabase():
             print("-" * 60)
             print("\nYou can now use this token to test your Flask backend:")
             print(f'curl -H "Authorization: Bearer {token}" http://localhost:5000/user/profile')
-            print("\nOr use the test script:")
-            print(f'python3 test_auth_request.py "{token}"')
             return token
         else:
             print("❌ Failed to get session")
