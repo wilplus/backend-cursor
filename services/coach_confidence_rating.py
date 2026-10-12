@@ -14,16 +14,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
+from services.refusal import Refusal
+
 logger = logging.getLogger(__name__)
-
-
-class RatingRefusal(Exception):
-    """A refused rating: the route answers ``body`` with ``status``."""
-
-    def __init__(self, code: str, error: str, status: int) -> None:
-        super().__init__(code)
-        self.status = status
-        self.body = {"code": code, "error": error}
 
 
 def rating_body(body: dict) -> tuple[dict, Any]:
@@ -40,7 +33,7 @@ def rating_body(body: dict) -> tuple[dict, Any]:
     legacy: Any
     legacy, err = validate_confidence_label(body)
     if err:
-        raise RatingRefusal("INVALID_INPUT", err, 400)
+        raise Refusal("INVALID_INPUT", err, 400)
     return {
         "state_id": "confidence",
         "value": "yes" if legacy["confident"] else "no",
@@ -72,9 +65,9 @@ def admit_rater(database, sess: dict, snippet_id: str, rater_id: Any,
     if not access["allowed"]:
         outcome = access["outcome"]
         if outcome in _CLOSED:
-            raise RatingRefusal(outcome.upper(), _CLOSED[outcome], 409)
+            raise Refusal(outcome.upper(), _CLOSED[outcome], 409)
         if not is_rereview:
-            raise RatingRefusal(
+            raise Refusal(
                 "RATING_CLOSED",
                 "This clip no longer needs another blind rating.", 409)
     return self_report, access["outcome"] == "update"
@@ -90,7 +83,7 @@ def _first_coach_rating(database, **rating: Any) -> None:
         from services.clip_answer_counts import refresh
         refresh(database, rating["snippet_id"])
         return
-    raise RatingRefusal(
+    raise Refusal(
         "SERVER_ERROR",
         "could not save the rating (run migrations/add_state_generic_ratings.sql)",
         500)
@@ -117,14 +110,14 @@ def _reconsider_coach_rating(database, **rating: Any) -> None:
         from services.coach_listen_again import mark_heard
         mark_heard(database, snippet_id=snippet_id, coach_id=rater_id)
         return
-    raise RatingRefusal("SERVER_ERROR", "could not save the rating", 500)
+    raise Refusal("SERVER_ERROR", "could not save the rating", 500)
 
 
 def record_rating(database, reconsidering: bool, *, snippet_id, row, rater_id,
                   session_id, lane, intensity, self_report, machine_value,
                   selection) -> None:
     """Write the judgment of record, or append the reconsideration.
-    Raises ``RatingRefusal`` when it was not kept."""
+    Raises ``Refusal`` when it was not kept."""
     write = _reconsider_coach_rating if reconsidering else _first_coach_rating
     write(database, snippet_id=snippet_id, row=row, rater_id=rater_id,
           session_id=session_id, lane=lane, intensity=intensity,
