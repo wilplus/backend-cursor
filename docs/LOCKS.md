@@ -9,11 +9,12 @@ sections is in `docs/history/CLAUDE-2026-10-11.md`.
 
 | Screens | Prototype | Lock file (backend `docs/`) |
 |---|---|---|
-| Ideal Text page, Feedback sheet, paragraph sheet, helper words, Presentation Mode, export | <https://claude.ai/artifact/AeRVS91VUAiJLCePB82s3d> | `FOUNDER-LOCK-helper-words-2026-09-30.md` |
-| The Feedback walk (praise, helper words, practise, judgements, sharing; overlay look and motion) | <https://claude.ai/artifact/C2CTBmU1bfSSDQgJUHTKkE> | `FOUNDER-LOCK-feedback-walk-2026-10-06.md` |
+| Ideal Text page, Feedback sheet, paragraph sheet, helper words, Presentation Mode, export (Ideal Text page and helper-word look amended 2026-10-12) | <https://claude.ai/artifact/AeRVS91VUAiJLCePB82s3d> | `FOUNDER-LOCK-helper-words-2026-09-30.md` |
+| The Feedback walk (praise, helper words, practise, judgements, sharing; overlay look and motion; order, frame, judging and sharing amended 2026-10-12) | <https://claude.ai/artifact/C2CTBmU1bfSSDQgJUHTKkE> | `FOUNDER-LOCK-feedback-walk-2026-10-06.md` |
 | The coach panel (Lounge door, queue, blind Judge, diagnosis, cure, Summary, training corpus, admin Library and Errors) | <https://claude.ai/artifact/TEBvGMehRF6wXCvJTEYTUA> | `FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md` |
 | The recording screens (learning screen, mic ready, recording screen, keys, motion) | <https://claude.ai/artifact/9CFAAP2Ue7pvRdLvdesn9h> (v7) | `FOUNDER-LOCK-recording-screens-2026-10-07.md` |
 | The consent screens and Data & consent page | <https://claude.ai/artifact/TuMKSE2BH364ZQ1Eq4UMdd> (v2); settings <https://claude.ai/artifact/4jDJsvBAquMUgaGkJgHR76> | `FOUNDER-LOCK-consent-screens-2026-10-07.md` |
+| Moment and feedback as one chat with a lens: the walk (lens on) and the Lounge (lens off), green moments, one exercise, practice, judging others, the closing summary, the Ideal Text page without bookmarks, sharing before the next recording (amends the walk, Ideal Text and coach-answer locks) | <https://claude.ai/artifact/TXbwmupWJio6N1gHqdEa7p> (version 27) | `FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md` |
 
 Three rules that always hold on these screens: the coach's Judge screen stays
 blind (nothing about the moment is fetched until the coach answers); the
