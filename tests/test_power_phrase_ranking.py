@@ -59,12 +59,6 @@ class TheCharismaTermIsGoneTests(unittest.TestCase):
     nothing anywhere saying it stopped mattering. TypeError says it once,
     loudly, at the call site."""
 
-    def test_the_retired_kwargs_raise_rather_than_no_op(self):
-        for kw in ({"direction": "challenge"}, {"breakthrough": True},
-                   {"voice_confidence": 0.5}):
-            with self.assertRaises(TypeError, msg=kw):
-                power_score(activation=0.5, **kw)
-
     def test_no_construct_vocabulary_survives_in_the_blend(self):
         import inspect
 

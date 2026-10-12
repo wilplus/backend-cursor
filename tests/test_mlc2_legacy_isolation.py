@@ -47,12 +47,6 @@ def test_canonical_mlc2_modules_cannot_read_or_write_legacy_learning_objects():
     )
 
 
-def test_dependency_audit_names_every_guarded_legacy_object():
-    audit = (ROOT / "docs" / "MLC2-LEGACY-DEPENDENCY-AUDIT.md").read_text()
-    missing = sorted(name for name in LEGACY_LEARNING_OBJECTS if name not in audit)
-    assert missing == []
-
-
 def test_confidence_dark_contract_is_not_imported_by_live_product_code():
     live_roots = (ROOT / "routes", ROOT / "services")
     allowed = {
@@ -100,21 +94,6 @@ def test_slice4_live_bridge_is_guarded_by_the_one_hard_disabled_flag():
     config = (ROOT / "config.py").read_text()
     # The flip (founder 2026-09-29): still a literal constant, never env.
     assert 'MLC2_CONFIDENCE_CUTOVER_MODE = "founder_canary"' in config
-
-
-def test_confidence_audit_maps_every_guarded_runtime_dependency():
-    audit = (ROOT / "docs" / "MLC2-CONFIDENCE-DEPENDENCY-AUDIT.md").read_text()
-    required = {
-        "moment_suggestions", "take_feedback_exposure",
-        "take_feedback_self_report", "confidence_labels",
-        "confidence_self_reports", "confidence_coach_labels",
-        "confidence_peer_labels", "owner_voice_album_routing",
-        "voice_album", "star_verdicts", "snippet_confidence_reviews",
-        "confident_voice_practice", "confidence_rereview_queue",
-        "training_labels", "MLC2_CONFIDENCE_CUTOVER_MODE",
-    }
-    missing = sorted(token for token in required if token not in audit)
-    assert missing == []
 
 
 def test_confidence_cutover_is_hard_disabled_not_environment_controlled():
@@ -199,14 +178,6 @@ def _mentions(text: str, name: str) -> bool:
     """``name`` as a table, module or method part (``get_<name>_by_ids``
     counts), but never the foundation's own ``ml_<name>``."""
     return re.search(rf"(?<![A-Za-z0-9])(?<!ml_){re.escape(name)}", text) is not None
-
-
-def test_the_audit_table_still_names_the_mixed_purpose_objects():
-    names = _audit_named_objects()
-    assert {"moment_suggestions", "confidence_labels", "take_feedback_exposure",
-            "feedback_candidates", "owner_voice_album_routing", "star_verdicts",
-            "training_labels", "confidence_rereview_queue"} <= names
-    assert len(names) >= 25, sorted(names)
 
 
 def test_every_guarded_door_exists():

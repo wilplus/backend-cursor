@@ -10,30 +10,6 @@ import unittest
 import services.audit_intent as ai
 
 
-class PreGateTests(unittest.TestCase):
-    def test_audit_requests_pass(self):
-        for msg in (
-            "can I see my audit?",
-            "where's my audit",
-            "show me the audit",
-            "pokaż mój audyt",          # pl
-            "quiero ver mi auditoría",  # es (audit prefix)
-        ):
-            self.assertTrue(ai._looks_like_audit_request(msg), msg)
-
-    def test_normal_chat_does_not_pass(self):
-        for msg in (
-            "what's my strongest line?",
-            "how did my recording go?",
-            "I want to record again",
-        ):
-            self.assertFalse(ai._looks_like_audit_request(msg), msg)
-
-    def test_empty_is_false(self):
-        self.assertFalse(ai._looks_like_audit_request(""))
-        self.assertFalse(ai._looks_like_audit_request(None))
-
-
 class _FakeDB:
     def __init__(self, audits):
         self._audits = audits

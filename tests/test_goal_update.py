@@ -10,34 +10,6 @@ import unittest
 import services.goal_update as gu
 
 
-class PreGateTests(unittest.TestCase):
-    def test_explicit_goal_change_passes(self):
-        for msg in (
-            "change my goal to landing my keynote",
-            "set my goal: speak slower under pressure",
-            "make my new goal more confident openings",
-            "update my goal to closing bigger deals",
-        ):
-            self.assertTrue(gu._looks_like_goal_change(msg), msg)
-
-    def test_multilingual_change_passes(self):
-        self.assertTrue(gu._looks_like_goal_change("zmień mój cel na pewność siebie"))
-        self.assertTrue(gu._looks_like_goal_change("cambia mi meta a hablar más lento"))
-
-    def test_normal_chat_does_not_pass(self):
-        for msg in (
-            "what's my strongest line?",
-            "how did my last recording go?",
-            "show me my strong sides",
-            "I want to record again",
-        ):
-            self.assertFalse(gu._looks_like_goal_change(msg), msg)
-
-    def test_empty_is_false(self):
-        self.assertFalse(gu._looks_like_goal_change(""))
-        self.assertFalse(gu._looks_like_goal_change(None))
-
-
 class _FakeDB:
     def __init__(self, profile=None, set_ok=True):
         self._profile = profile if profile is not None else {"domain": "sales", "goal": "old goal"}

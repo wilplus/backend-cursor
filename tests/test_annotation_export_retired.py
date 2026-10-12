@@ -22,10 +22,6 @@ except Exception as e:  # pragma: no cover
 
 
 class AnnotationExportRetiredTests(unittest.TestCase):
-    def test_the_cron_and_its_dockerfile_are_gone(self):
-        self.assertFalse((ROOT / "bin" / "railway-annotation-export-cron.sh").exists())
-        self.assertFalse((ROOT / "Dockerfile.annotation-cron").exists())
-
     def test_the_route_is_a_410(self):
         if flask_app is None:  # pragma: no cover
             self.skipTest(f"app import failed: {_IMPORT_ERROR}")

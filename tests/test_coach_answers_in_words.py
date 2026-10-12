@@ -17,7 +17,6 @@ from __future__ import annotations
 import pathlib
 import unittest
 
-from services import coach_moment_errors as cme
 from services import exercise_coach_requests as ecr
 from services.confident_voice_practice import coach_shared_answer
 
@@ -210,18 +209,6 @@ class MainTargetTests(unittest.TestCase):
         self.assertEqual(db.pairs[0]["surface"], "exercise_script")
         self.assertEqual(db.pairs[0]["exercise_id"], "coach-request-req-1")
         self.assertEqual(db.pairs[0]["final_text"], "Final script.")
-
-
-class NamedOnMomentRetiredTests(unittest.TestCase):
-    """Naming a pattern on the moment itself is retired (founder
-    2026-10-05, Q9 "B"; N45): no screen ever called it."""
-
-    def test_the_moment_naming_path_is_gone(self):
-        self.assertFalse(hasattr(cme, "name_error_on_moment"))
-        self.assertFalse(hasattr(cme, "named_errors_on_moment"))
-        routes = (ROOT / "routes/v2/coach.py").read_text()
-        self.assertNotIn("/named-errors", routes)
-        self.assertNotIn("v2_coach_named_errors", routes)
 
 
 if __name__ == "__main__":

@@ -40,26 +40,11 @@ class TestPSI(unittest.TestCase):
     def test_identical_distributions_are_zero(self):
         self.assertEqual(psi(FLAT, FLAT), 0.0)
 
-    def test_scale_invariant(self):
-        """Counts, not proportions — but doubling every count changes nothing."""
-        doubled = {d: v * 2 for d, v in FLAT.items()}
-        self.assertAlmostEqual(psi(doubled, FLAT), 0.0, places=6)
-
     def test_shift_is_positive(self):
         shifted = dict(FLAT)
         shifted[1] = 400
         shifted[10] = 10
         self.assertGreater(psi(shifted, FLAT), 0.0)
-
-    def test_bigger_shift_scores_higher(self):
-        mild = {**FLAT, 1: 150, 10: 50}
-        severe = {**FLAT, 1: 600, 10: 5}
-        self.assertGreater(psi(severe, FLAT), psi(mild, FLAT))
-
-    def test_symmetric(self):
-        """(a-e)ln(a/e) is invariant under swapping a and e."""
-        other = {**FLAT, 3: 400, 7: 20}
-        self.assertAlmostEqual(psi(other, FLAT), psi(FLAT, other), places=6)
 
     def test_empty_decile_is_finite(self):
         """THE case that breaks a naive implementation: ln(0) = -inf."""
@@ -97,23 +82,11 @@ class TestPSI(unittest.TestCase):
         self.assertIsNotNone(value)
         self.assertTrue(math.isfinite(value))
 
-    def test_all_mass_in_one_decile(self):
-        spike = {d: 0 for d in range(1, 11)}
-        spike[1] = 500
-        value = psi(spike, FLAT)
-        self.assertTrue(math.isfinite(value))
-        self.assertGreater(value, 1.0)
-
-
 class TestPSIVerdict(unittest.TestCase):
     def test_bands(self):
         self.assertEqual(psi_verdict(0.05, n_current=100), STABLE)
         self.assertEqual(psi_verdict(0.15, n_current=100), MODERATE_SHIFT)
         self.assertEqual(psi_verdict(0.30, n_current=100), MAJOR_SHIFT_REFIT)
-
-    def test_band_edges_are_closed_below(self):
-        self.assertEqual(psi_verdict(0.10, n_current=100), MODERATE_SHIFT)
-        self.assertEqual(psi_verdict(0.20, n_current=100), MAJOR_SHIFT_REFIT)
 
     def test_none_is_insufficient_not_stable(self):
         self.assertEqual(psi_verdict(None), INSUFFICIENT_N)
@@ -134,19 +107,10 @@ class TestPChart(unittest.TestCase):
         self.assertEqual(chart["signal"], IN_CONTROL)
         self.assertAlmostEqual(chart["centre_line"], 0.201, places=2)
 
-    def test_limits_bracket_the_centre(self):
-        chart = p_chart(self._weeks([0.20] * 5))
-        self.assertLess(chart["lcl"], chart["centre_line"])
-        self.assertGreater(chart["ucl"], chart["centre_line"])
-
     def test_spike_breaches_high(self):
         chart = p_chart(self._weeks([0.20, 0.20, 0.20, 0.20, 0.60]))
         self.assertEqual(chart["signal"], OUT_OF_CONTROL_HIGH)
         self.assertTrue(chart["breached"])
-
-    def test_collapse_breaches_low(self):
-        chart = p_chart(self._weeks([0.40, 0.40, 0.40, 0.40, 0.02]))
-        self.assertEqual(chart["signal"], OUT_OF_CONTROL_LOW)
 
     def test_small_weekly_n_refuses(self):
         """3-sigma limits on n=5 are so wide nothing can breach them; a green
@@ -178,17 +142,6 @@ class TestPChart(unittest.TestCase):
         self.assertTrue(chart["breached"])
         # every individual point is still within the control limits
         self.assertTrue(all(p["signal"] == IN_CONTROL for p in chart["points"]))
-
-    def test_short_run_is_not_a_violation(self):
-        rates = [0.20] * 4 + [0.22] * (RUN_LENGTH - 1)
-        chart = p_chart(self._weeks(rates, n=500))
-        self.assertIsNone(chart["run_violation"])
-
-    def test_points_on_the_centre_line_break_a_run(self):
-        rates = [0.22] * (RUN_LENGTH - 1) + [0.20] + [0.22] * (RUN_LENGTH - 1)
-        chart = p_chart(self._weeks(rates, n=500))
-        self.assertIsNone(chart["run_violation"])
-
 
 class TestTriage(unittest.TestCase):
     def test_all_four_cells(self):

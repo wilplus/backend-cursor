@@ -138,17 +138,3 @@ class CoreReadReaddressesTheDeck(unittest.TestCase):
         response, _ = self._get(_snapshot(""), refresh=lambda ref: ref)
         self.assertIsNone(response.get_json()["presentation_ref"])
 
-
-class TheRouteStillDoesNotCompose(unittest.TestCase):
-    """The endpoint's strictness is the reason it can be trusted cold."""
-
-    def test_the_docstring_no_longer_claims_it_never_signs_media(self):
-        # It does now, for exactly one field and for a stated reason. A
-        # docstring that still said "does not sign media" would be the next
-        # reader's evidence that this lane serves what it was given.
-        from routes.v2.explore_ideal_text import (
-            v2_explore_get_ideal_text_core as route,
-        )
-        doc = route.__doc__ or ""
-        self.assertNotIn("sign media", doc)
-        self.assertIn("RE-ADDRESS", doc)

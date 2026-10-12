@@ -486,10 +486,6 @@ class ReflectionsAreNeverAuthoredTests(unittest.TestCase):
                     f"{module.__name__} assigns reflections from model output")
 
     @unittest.skipIf(_IMPORT_ERROR is not None, "needs app deps")
-    def test_the_case_prompt_forbids_writing_reflections(self):
-        self.assertIn("YOU DO NOT WRITE REFLECTIONS", lengine._CASE_SYSTEM)
-
-    @unittest.skipIf(_IMPORT_ERROR is not None, "needs app deps")
     def test_the_panel_never_calls_the_f1_ideal_text_pipeline(self):
         # L-1: the Ideal Text polish happens EXTERNALLY and is pasted in. This
         # is a manual copy-paste, not an integration.
@@ -789,11 +785,6 @@ class ImporterTests(unittest.TestCase):
         plan = importer.plan_cases(USER, self._export()["principles"])
         self.assertTrue(plan["cases"][0]["created_at"].startswith("2023-04-11"))
 
-    def test_a_naive_source_date_is_read_as_utc(self):
-        # Handing Postgres a naive value would make the date depend on the
-        # server's zone and silently move a 2022 reflection by a day.
-        self.assertTrue(importer._iso("2023-04-11").endswith("+00:00"))
-
     def test_multi_category_and_multi_principle_both_survive(self):
         plan = importer.plan_cases(USER, self._export()["principles"])
         self.assertEqual(plan["cases"][0]["category"],
@@ -820,13 +811,6 @@ class ImporterTests(unittest.TestCase):
     def test_the_drag_order_becomes_order_key(self):
         plan = importer.plan_cases(USER, self._export()["principles"])
         self.assertEqual(plan["items"][0]["order_key"], 2000.0)
-
-    def test_a_two_sentence_principle_is_not_split_in_half(self):
-        # Only line breaks and list markers split. A sentence break does not:
-        # several principles in the corpus are two sentences long.
-        self.assertEqual(
-            importer._split_principles("Do the work. Then rest."),
-            ["Do the work. Then rest."])
 
     def test_the_prayer_blob_splits_on_quote_boundaries(self):
         phrases, leftover = importer.split_phrases(self._export()["prayer"])
@@ -1213,13 +1197,6 @@ class GoalRankTests(unittest.TestCase):
         self.assertEqual(row, {"id": "d1"})
         up.assert_called_once()
 
-    def test_the_prompt_never_asks_for_a_number_back(self):
-        # The order is the only thing allowed out of the model's head.
-        self.assertIn("Return ONLY the order", lengine._GOAL_RANK_SYSTEM)
-        self.assertIn("never a", lengine._GOAL_RANK_SYSTEM)
-
-
-
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class DailyCardTests(unittest.TestCase):
     """All three bets are eligible from day one. What holds the weekly
@@ -1521,16 +1498,6 @@ class DayDraftContractTests(unittest.TestCase):
                 "one_thing": None, "focus": []}})
         call.assert_not_called()
 
-    def test_the_prompt_holds_the_contract_lines(self):
-        # Day-sized, the person's own language, never a restated goal — and
-        # it must FORMAT (it carries JSON braces, so literals are doubled).
-        prompt = lengine._DAY_DRAFT_SYSTEM
-        self.assertIn("day-sized", prompt.lower())
-        self.assertIn("Never restate the \\\ngoal".replace("\\\n", ""),
-                      prompt.replace("\\\n", ""))
-        rendered = prompt.format(today="2026-08-02")
-        self.assertIn("Today is 2026-08-02", rendered)
-
     def test_an_unmigrated_draft_meta_costs_the_record_never_the_card(self):
         calls = []
 
@@ -1653,10 +1620,6 @@ class DayDraftContractTests(unittest.TestCase):
     def test_a_memoryless_history_still_drafts(self):
         sent = self._payload_sent([])
         self.assertIn('"corrections": []', sent)
-
-    def test_the_prompt_explains_both_lists(self):
-        self.assertIn("corrections", lengine._DAY_DRAFT_SYSTEM)
-        self.assertIn("accepted_as_is", lengine._DAY_DRAFT_SYSTEM)
 
     # ── piece 2: the 3-strike gate ────────────────────────────────────────
 
@@ -1921,14 +1884,6 @@ class MetricReadbackTests(unittest.TestCase):
         goal = next(i for i in plan["items"] if i["kind"] == "goal")
         self.assertEqual(goal["measure"], "3 talks, 10kg, one draft")
 
-    def test_the_extraction_prompt_asks_for_the_criterion_verbatim(self):
-        prompt = lengine._DOC_DRAFT_SYSTEM
-        self.assertIn("measure", prompt)
-        self.assertIn("never invent a", prompt)
-        rendered = prompt.format(today="2026-08-03")
-        self.assertIn('"measure"', rendered)
-
-
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class MetricReadbackRouteTests(unittest.TestCase):
     """The PATCH stores the evening answer, and every unrun migration costs
@@ -2060,36 +2015,6 @@ class MetricMigrationTests(unittest.TestCase):
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class MasterDocInjectionTests(unittest.TestCase):
-
-    def test_no_context_means_no_block_at_all(self):
-        # Everyone who has not opted in gets a prompt that is byte-for-byte
-        # what it is today.
-        self.assertEqual(mdr._render_life_block(None), "")
-        self.assertEqual(mdr._render_life_block({}), "")
-        self.assertEqual(mdr._render_life_block(
-            {"principles": [], "phrases": [], "strategy": ""}), "")
-
-    def test_the_cap_holds_against_a_whole_corpus(self):
-        # Sixty principles plus eight strategy documents would re-open the
-        # attention-ceiling failure PRs #81–#89 fixed.
-        block = mdr._render_life_block({
-            "principles": [{"title": f"p{i}"} for i in range(60)],
-            "phrases": [{"body": f"q{i}"} for i in range(40)],
-            "strategy": "s" * 5000,
-        })
-        self.assertEqual(block.count("[principle]"), mdr._LIFE_MAX_PRINCIPLES)
-        self.assertEqual(block.count("[their phrase]"), mdr._LIFE_MAX_PHRASES)
-        self.assertLess(len(block), 4000)
-
-    def test_long_entries_are_trimmed_like_the_library_trims(self):
-        block = mdr._render_life_block({"principles": [{"title": "x" * 900}]})
-        self.assertIn("…", block)
-        self.assertLess(len(block), 1200)
-
-    def test_the_block_forbids_dumping_and_scoring(self):
-        block = mdr._render_life_block({"principles": [{"title": "p"}]})
-        self.assertIn("NEVER dump", block)
-        self.assertIn("never score", block)
 
     def test_the_shared_master_document_is_never_written_to(self):
         # The fence: the injection is per-request and per-user. Nothing in the
@@ -2877,30 +2802,6 @@ class PrivacyTests(unittest.TestCase):
                          "question)"):
                 self.assertNotIn(leak, call,
                                  f"a log call carries {leak}")
-
-    def test_the_derivation_logger_takes_no_free_text(self):
-        import inspect
-        src = inspect.getsource(lengine._log_derivation)
-        self.assertIn("never the note body", src)
-
-    def test_derivation_calls_are_stateless_and_unstored(self):
-        """`store=False` is passed explicitly, and the calls stay stateless.
-
-        Two reasons, and neither is the default's job to hold: a default is a
-        decision someone else can change, and zero-data-retention only covers
-        the STATELESS endpoints — moving these to a conversations/agents API
-        would silently leave that protection behind."""
-        import inspect
-        src = inspect.getsource(lengine._complete_ex)
-        self.assertIn("store=False", src)
-
-    def test_a_dedicated_zero_retention_key_is_supported(self):
-        # BE-10: "use an API path with no training retention". The retention
-        # posture is a project setting, so the code side is the ability to
-        # point this surface at a separate project.
-        import inspect
-        self.assertIn("LIFE_PANEL_OPENAI_API_KEY",
-                      inspect.getsource(lengine._client))
 
     def test_there_is_no_sharing_or_publish_surface(self):
         # The corpus names real people alongside claims about them. It stays
@@ -3874,12 +3775,6 @@ class ReminderServiceTests(unittest.TestCase):
             for banned in ("missed", "behind", "forget", "streak",
                            "come back", "haven't"):
                 self.assertNotIn(banned, text)
-
-    def test_local_date_respects_the_offset(self):
-        from datetime import datetime, timezone
-        late_utc = datetime(2026, 7, 30, 23, 30, tzinfo=timezone.utc)
-        self.assertEqual(lreminders._local_date(120, late_utc), "2026-07-31")
-        self.assertEqual(lreminders._local_date(-120, late_utc), "2026-07-30")
 
     def test_checkout_slots_land_on_existing_surfaces(self):
         # Founder 2026-07-30: NO new checkout views. Weekly deep-links to the

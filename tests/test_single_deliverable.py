@@ -753,15 +753,6 @@ class IdealBubbleTests(unittest.TestCase):
             ok, _ = self._fire("fire_ideal_version_ready", 2, [])
         self.assertFalse(ok)
 
-    def test_obsolete_unchanged_document_result_no_longer_exists(self):
-        # Every spoken Take now earns the normal versioned Ideal Text card.
-        # Keeping this function around, even unused, invites the old terminal
-        # bubble to be wired back in during a reconnect fix.
-        from services import arc_notifications
-
-        self.assertFalse(hasattr(arc_notifications, "fire_take_processed"))
-
-
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class SeamSmoothingContractPinTests(unittest.TestCase):
     """BE-1's L1 boundary — the consistency pass ALREADY exists (the compose

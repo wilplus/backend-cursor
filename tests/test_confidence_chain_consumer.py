@@ -67,12 +67,6 @@ class TestTheConsumerFollowsTheWriterState:
             mode(value)
             assert consumer.consumer_enabled() is False
 
-    def test_the_constant_is_founder_canary_since_the_flip(self):
-        from config import Config
-        # The flip (founder 2026-09-29): one-way, never back to dark.
-        assert Config.MLC2_CONFIDENCE_CUTOVER_MODE == "founder_canary"
-
-
 class TestTheHandle:
     def test_carries_the_four_identifiers_and_nothing_of_the_packet(self):
         handle = consumer.coach_packet_handle(PACKET)

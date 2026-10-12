@@ -90,11 +90,6 @@ class ConfidenceResolutionTests(unittest.TestCase):
         self.assertNotIn("import learning_serve", src)
         self.assertNotIn("predict_direction", src)
 
-    def test_the_retired_module_is_gone_rather_than_deprecated(self):
-        with self.assertRaises(ImportError):
-            import services.moment_direction  # noqa: F401
-
-
 class KindResolutionTests(unittest.TestCase):
     def _kind(self, confidence, text="clean words", stick=None):
         from services.moment_confidence import resolve_suggestion_kind

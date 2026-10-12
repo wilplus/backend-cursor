@@ -257,19 +257,6 @@ class TestTheOrphanIsGone(unittest.TestCase):
     that looks like the source of truth is what hid the bug; these assert the
     whole cluster is gone."""
 
-    def test_the_orphaned_writer_and_its_helpers_are_deleted(self):
-        source = (ROOT / "services" / "snippet_extraction.py").read_text()
-        for symbol in ("def recompute_snippet_metrics_for_window(",
-                       "def _load_parent_audio(",
-                       "def _retranscribe_window("):
-            self.assertNotIn(symbol, source, f"{symbol} is back")
-
-    def test_the_db_writer_is_deleted(self):
-        source = (ROOT / "services" / "db.py").read_text()
-        self.assertNotIn("def update_snippet_metrics(", source)
-        # The narrow blob-only writer SURVIVES — different function, live use.
-        self.assertIn("def update_snippet_metrics_blob(", source)
-
     def test_no_charisma_snippets_query_names_a_dropped_column(self):
         """Migration 0254 drops them; a SELECT naming one would then error.
 

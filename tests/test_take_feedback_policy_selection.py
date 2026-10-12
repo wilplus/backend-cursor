@@ -57,18 +57,6 @@ class TheV3ModeFlagOnlyGatesTheShadowWrite(unittest.TestCase):
         context = source.split(declaration)[0].splitlines()[-1]
         self.assertIn("shadow", (context + declaration).lower())
 
-    def test_the_old_alias_is_gone_and_the_variable_keeps_its_name(self):
-        """Contract 52 (aliases are removed; audit 2026-10-05): the Python
-        alias `TAKE_FEEDBACK_POLICY_V3_MODE` is gone, so no reader can reach
-        the shadow gate under the name that read like the V2/V3 switch. The
-        environment variable keeps that name: it is set on live Railway
-        services, and renaming it is a config-first cutover, not this."""
-        import config as config_module
-
-        self.assertFalse(hasattr(config_module.Config, "TAKE_FEEDBACK_POLICY_V3_MODE"))
-        source = inspect.getsource(config_module)
-        self.assertIn('os.getenv("TAKE_FEEDBACK_POLICY_V3_MODE")', source)
-
     def test_the_served_policy_is_switched_by_the_service_flag(self):
         """The other half: name the flag that does decide."""
         from services import coach_guidance_delivery

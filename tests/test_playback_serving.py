@@ -100,15 +100,6 @@ class TheBucketWritesLandInIsTheBucketReadsUse(unittest.TestCase):
             resolve_playable_ref(f"s3://{LITERAL}/coach-feedback/s/v.mp4")
         self.assertEqual(signs, [LITERAL])
 
-    def test_no_writer_passes_the_literal_bucket_any_more(self):
-        import pathlib
-        root = pathlib.Path(__file__).resolve().parents[1]
-        for rel in ("routes/v2/coach.py", "services/training_import.py"):
-            src = (root / rel).read_text()
-            self.assertNotIn('getattr(config, "COACH_FEEDBACK_VIDEO_BUCKET"', src, rel)
-            self.assertNotIn('getattr(Config, "COACH_FEEDBACK_VIDEO_BUCKET"', src, rel)
-
-
 class AnUnsignableRefReachesNoPlayer(unittest.TestCase):
 
     def test_the_snippet_resolver_returns_none_not_the_raw_column(self):

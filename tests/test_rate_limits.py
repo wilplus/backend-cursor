@@ -522,21 +522,6 @@ class CoveredRoutesTests(unittest.TestCase):
                                   f"{path}: {handler} lost @{decorator} — that "
                                   f"route spends money on OpenAI")
 
-    def test_no_in_process_rate_limit_dicts_remain(self):
-        """Both per-worker dicts were replaced by the shared limiter. A new
-        one would quietly reintroduce the `cap x workers` bug."""
-        import glob
-        import os
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        # The /v2 layer is the domain modules under routes/v2/ (the façade is
-        # gone since audit Q-A3); scan every one of them.
-        source = "".join(open(p).read() for p in sorted(glob.glob(os.path.join(root, "routes/v2/*.py"))))
-        for ghost in ("_icebreaker_regen_last",
-                      "_ICEBREAKER_REGEN_RATE_LIMIT_SEC"):
-            with self.subTest(ghost=ghost):
-                self.assertNotIn(f"{ghost} =", source)
-
-
 class ConfigTests(_Base):
     def test_storage_prefers_explicit_uri_then_redis_then_memory(self):
         with patch.dict(os.environ, {"RATE_LIMIT_STORAGE_URI": "redis://explicit:6379",

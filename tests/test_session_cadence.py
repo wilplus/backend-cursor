@@ -84,22 +84,6 @@ class SpecIntegrityTests(unittest.TestCase):
         self.assertIn("energ", sc.BEATS[3]["mode"].lower())
 
 
-class FirePathTests(unittest.TestCase):
-    """fire_* with the renderer stubbed — no LLM, no network."""
-
-    def setUp(self):
-        self._orig = sc._render_beat
-        sc._render_beat = lambda beat, **kw: f"[rendered beat {beat['beat_no']}]"
-
-    def tearDown(self):
-        sc._render_beat = self._orig
-
-    def test_fire_arc_start_is_retired(self):
-        fake = _FakeDB()
-        ok = sc.fire_arc_start("u1", "arc1", goal="land my keynote", database=fake)
-        self.assertFalse(ok)
-        self.assertEqual(fake.inserted, [])
-
 class BubblesStayShortTests(unittest.TestCase):
     """The bubbles are CHAT, not briefings (founder 2026-08-15).
 

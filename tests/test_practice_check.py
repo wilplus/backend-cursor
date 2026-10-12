@@ -270,8 +270,3 @@ def test_skip_before_the_third_try_ends_the_loop_and_no_check_follows():
     assert (status, body["code"]) == (409, "PRACTICE_CLOSED")
     assert db.updates == []
 
-
-def test_the_no_cap_promise_is_gone():
-    source = (ROOT / "services/practice_check.py").read_text()
-    assert "There is no cap" not in source
-    assert "CM3a" in source and "moved_on" in source

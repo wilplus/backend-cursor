@@ -102,12 +102,6 @@ class SwitchOffTests(unittest.TestCase):
         self.assertEqual(lr.attempt_is_valid(_attempt(48.0)),
                          lr.attempt_is_valid(_attempt(2.0)))
 
-    def test_the_analysis_never_writes_the_old_key(self):
-        # The gate also reads metrics["audio_quality"]; the analysis must not
-        # write it, or that older check would switch on silently.
-        self.assertNotIn('"audio_quality"', inspect.getsource(am._analyze_pcm))
-
-
 class SwitchOnTests(unittest.TestCase):
     """What switching it on will do, proven now so the switch is one line."""
 

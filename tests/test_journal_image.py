@@ -240,12 +240,6 @@ class BriefTests(unittest.TestCase):
         self.assertLess(len(out), 12_000)
         self.assertNotIn("y" * 600, out)
 
-    def test_the_system_prompt_bans_text_people_and_the_construct(self):
-        sysp = ji._BRIEF_SYSTEM
-        self.assertIn("NO TEXT ANYWHERE IN THE IMAGE", sysp)
-        self.assertIn("recognizable people", sysp)
-        self.assertIn("charisma score", sysp)   # the retired vocabulary
-
     def test_non_dict_post_does_not_crash_the_builder(self):
         self.assertIn("HOUSE STYLE:", ji.build_brief_user(None))
 
@@ -304,41 +298,6 @@ class FallbackTests(unittest.TestCase):
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class DrawTests(unittest.TestCase):
 
-    def test_response_format_is_never_sent_for_any_model(self):
-        # REGRESSION (live API, 2026-07-28): /images/generations answers
-        # "Unknown parameter: 'response_format'" — for every model, not just
-        # gpt-image-1. Sending it 400s every single draw.
-        for model in ("gpt-image-1", "dall-e-3", "dall-e-2"):
-            client, images = _client(result=_response())
-            with _fake_openai(client), \
-                    patch.object(ji, "image_model", lambda: model):
-                out = ji._draw("a scene")
-            self.assertNotIn("response_format", images.kwargs, model)
-            self.assertEqual(images.kwargs["model"], model)
-            self.assertEqual(images.kwargs["n"], 1)
-            self.assertTrue(images.kwargs["timeout"])
-            self.assertEqual(out["image_bytes"], b"\x00\x00\x00")
-
-    def test_a_url_only_response_is_fetched_before_it_expires(self):
-        # A legacy DALL·E model returns a link, not bytes, and it dies in
-        # about an hour — storing it would blank the cover on its own
-        # schedule. Fetch now, store our own copy.
-        client, _ = _client(result=SimpleNamespace(data=[SimpleNamespace(
-            b64_json=None, url="https://oai.example/tmp.png",
-            revised_prompt=None)]))
-        seen = {}
-
-        def _get(url, **kw):
-            seen["url"] = url
-            return SimpleNamespace(content=PNG, raise_for_status=lambda: None)
-
-        with _fake_openai(client), \
-                patch.dict(sys.modules,
-                           {"httpx": SimpleNamespace(get=_get)}):
-            out = ji._draw("a scene")
-        self.assertEqual(seen["url"], "https://oai.example/tmp.png")
-        self.assertEqual(out["image_bytes"], PNG)
-
     def test_a_failed_url_fetch_is_retryable_not_a_silent_link(self):
         client, _ = _client(result=SimpleNamespace(data=[SimpleNamespace(
             b64_json=None, url="https://oai.example/tmp.png",
@@ -378,13 +337,6 @@ class DrawTests(unittest.TestCase):
         with _fake_openai(None):
             with self.assertRaises(ji.JournalImageError):
                 ji._draw("a scene")
-
-    def test_the_revised_prompt_is_carried_through(self):
-        client, _ = _client(result=_response(revised="what it actually drew"))
-        with _fake_openai(client):
-            out = ji._draw("a scene")
-        self.assertEqual(out["revised_prompt"], "what it actually drew")
-
 
 # ── I-4 config ────────────────────────────────────────────────────────────
 

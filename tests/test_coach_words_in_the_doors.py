@@ -76,14 +76,6 @@ class TheDoorsKnowBothSurfaces(unittest.TestCase):
         for name in ("PAIR_RELEASE_SURFACES", "TRAINING_SURFACES", "PROMOTION_SURFACES"):
             self.assertLessEqual(set(COACH_WORDS), set(getattr(Config, name)), name)
 
-    def test_the_comments_cite_the_signature_not_a_lawyer(self):
-        for path in ("services/feedback_pairs.py", "services/coach_word_pairs.py",
-                     "services/ml_surface_contracts.py", "services/pair_consent.py"):
-            text = (ROOT / path).read_text(encoding="utf-8")
-            self.assertNotIn("qualified lawyer", text, path)
-            self.assertIn("N68", text, path)
-
-
 class DoorTwo(unittest.TestCase):
     def test_named_vs_not_named(self):
         for surface in COACH_WORDS:

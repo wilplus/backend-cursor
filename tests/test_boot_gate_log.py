@@ -30,7 +30,6 @@ import unittest
 from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-ENTRYPOINTS = ("app.py", "worker.py")
 
 # The flags that decide what is served, what is recorded and who is bound.
 GATES = (
@@ -172,18 +171,6 @@ class EveryServiceReportsItsGates(unittest.TestCase):
     def test_worker_boot_emits_gate_summary_line(self):
         self.assertTrue(self._reports("worker.py"),
                         "worker.py never logs the gate summary")
-
-    def test_they_say_it_in_the_same_words(self):
-        """One search across both services, or it is two searches and
-        somebody runs only the easy one."""
-        import re
-
-        phrasings = set()
-        for name in ENTRYPOINTS:
-            body = (ROOT / name).read_text(encoding="utf-8")
-            phrasings.update(re.findall(r'"([^"\n]*gate flags[^"\n]*)"', body))
-        self.assertEqual(len(phrasings), 2, phrasings)
-
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

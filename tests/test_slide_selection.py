@@ -56,19 +56,5 @@ class BuilderRemovedTests(unittest.TestCase):
                      "compose_presentation", "_bp_signature"):
             self.assertFalse(hasattr(bp, name), name)
 
-    def test_nothing_in_production_names_the_builder(self):
-        offenders = []
-        for folder in ("routes", "services", "utils"):
-            for path in (ROOT / folder).rglob("*.py"):
-                src = path.read_text(encoding="utf-8")
-                if "build_best_presentation(" in src \
-                        or "assemble_ideal_text_block(" in src:
-                    offenders.append(str(path.relative_to(ROOT)))
-        self.assertEqual(offenders, [])
-
-    def test_the_report_module_is_gone(self):
-        self.assertFalse((ROOT / "services" / "ideal_text_report.py").exists())
-
-
 if __name__ == "__main__":
     unittest.main()

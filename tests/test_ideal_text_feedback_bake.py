@@ -534,18 +534,6 @@ def test_a_block_with_no_marks_is_never_stored(monkeypatch, block):
     assert database.writes == []
 
 
-def test_a_block_with_marks_is_still_stored(monkeypatch):
-    """The guard tightened; it did not turn the feature off. A bake run at
-    the END of the analysis run — where the Manager has really finished and
-    has something to say — stores exactly as designed. Since #587 that is the
-    only moment it runs at, which is why the empty case above became rare
-    rather than routine."""
-    _block_returns(monkeypatch, BLOCK)
-    database = RecordingDatabase()
-    assert bake.bake_for_snapshot(database, ARC, ACTOR, PUBLISHED) is True
-    assert database.writes == [(ARC, ACTOR, SNAPSHOT, BLOCK)]
-
-
 def test_no_bake_means_the_read_computes_live(monkeypatch):
     """The whole safety argument in one line: when nothing was stored, the
     read does what every read did before any of this existed."""

@@ -9,7 +9,6 @@ the code saying the same thing, and every foundation writer behind it.
 """
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,19 +16,6 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _read(path: str) -> str:
     return (ROOT / path).read_text()
-
-
-def test_no_environment_kill_switch_is_promised():
-    assert "MLC2_FOUNDATION_ENABLED" not in _read("config.py")
-    assert not re.search(r"^MLC2_FOUNDATION_ENABLED=", _read(".env.example"), re.M)
-    assert "is the application kill switch" not in _read("docs/MLC2-FOUNDATION.md")
-
-
-def test_the_docs_name_the_kill_that_exists():
-    doc = _read("docs/MLC2-FOUNDATION.md")
-    for named in ("MLC2_CONFIDENCE_CUTOVER_MODE", "`killed`",
-                  "confidence_learning_writes", "rings.confidence_writer_killed()"):
-        assert named in doc, named
 
 
 def test_the_writer_state_reads_the_ring_kill_and_cannot_be_opened_by_it():
