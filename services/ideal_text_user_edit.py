@@ -45,7 +45,7 @@ def _invalid(error: str) -> Refusal:
 def _error_code(error) -> str:
     """The database's typed code inside an error, or the generic one."""
     match = re.search(
-        r"\b(CONFIDENT_MOMENT_[A-Z0-9_]+|FEEDBACK_LANGUAGE_[A-Z0-9_]+|MLC3_[A-Z0-9_]+)\b",
+        r"\b(CONFIDENT_MOMENT_[A-Z0-9_]+|FEEDBACK_LANGUAGE_[A-Z0-9_]+|MLC3_[A-Z0-9_]+|IDEAL_TEXT_[A-Z0-9_]+)\b",
         str(error),
     )
     return match.group(1) if match else "CONFIDENT_MOMENT_DATABASE_FAILURE"
