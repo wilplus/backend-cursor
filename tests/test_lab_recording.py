@@ -184,19 +184,6 @@ class CanonicalPieceContractTests(unittest.TestCase):
                 None,
             )
 
-    def test_legacy_creation_switch_and_branch_are_absent(self):
-        import inspect
-        from services import lab_recording as lr
-
-        module_source = inspect.getsource(lr)
-        process_source = inspect.getsource(lr.process_lab_recording)
-        self.assertNotIn("PIECES_CANONICAL_ENABLED", module_source)
-        self.assertNotIn("_pieces_canonical_enabled", module_source)
-        self.assertNotIn("segment_into_snippets", process_source)
-        self.assertNotIn("select_extremes_by_control", process_source)
-        self.assertNotIn("dedupe_window_transcripts", module_source)
-
-
 class VoiceMetricsDiagnosticTests(unittest.TestCase):
     def _diagnose(self, snippets, segments):
         from services.lab_recording import _voice_metrics_diagnostic

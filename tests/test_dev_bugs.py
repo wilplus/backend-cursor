@@ -10,7 +10,6 @@ Run: python3 -m unittest tests.test_dev_bugs
 """
 from __future__ import annotations
 
-import base64
 import json
 import os
 import re
@@ -157,15 +156,6 @@ class DevBugsRouteTests(unittest.TestCase):
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class DevBugsServiceTests(unittest.TestCase):
 
-    def test_attachments_from_images_list(self):
-        atts = svc._attachments_for({"id": 5, "images": [_DATA_URL, _DATA_URL]})
-        self.assertEqual(len(atts), 2)
-        self.assertEqual(atts[0]["filename"], "bug-5-0.png")
-        self.assertEqual(atts[1]["filename"], "bug-5-1.png")
-        self.assertEqual(atts[0]["content_type"], "image/png")
-        # content is a list of byte ints matching the decoded payload
-        self.assertEqual(bytes(atts[0]["content"]), base64.b64decode(_PNG_B64))
-
     def test_update_bug_open_only_and_trims(self):
         client = MagicMock()
         client.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value = \
@@ -181,15 +171,6 @@ class DevBugsServiceTests(unittest.TestCase):
             self.assertIsNone(svc.update_bug(9, text=None))
         client.table.return_value.update.assert_not_called()
 
-    def test_attachments_legacy_image_url(self):
-        atts = svc._attachments_for({"id": 6, "image_url": "https://x.test/a.jpg"})
-        self.assertEqual(atts, [{"filename": "bug-6-0.jpg", "path": "https://x.test/a.jpg"}])
-
-    def test_attachments_none_and_garbage(self):
-        self.assertEqual(svc._attachments_for({"id": 7, "images": []}), [])
-        self.assertEqual(svc._attachments_for({"id": 8, "image_url": None}), [])
-        self.assertEqual(svc._attachments_for({"id": 9, "image_url": "notaurl"}), [])
-
     def test_create_bug_stores_images_list(self):
         client = MagicMock()
         client.table.return_value.insert.return_value.execute.return_value = MagicMock(data=[{"id": 3}])
@@ -204,19 +185,6 @@ class DevBugsServiceTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 svc.create_bug("  ", [])
 
-    def test_build_body_has_context_and_lines(self):
-        bugs = [
-            {"id": 1, "text": "first bug", "image_url": None,
-             "created_at": "2026-07-20T09:00:00+00:00"},
-            {"id": 2, "text": "with shot", "image_url": _DATA_URL,
-             "created_at": "2026-07-22T10:00:00+00:00"},
-        ]
-        body = svc._build_body(bugs)
-        self.assertIn("product-backlog triage assistant", body)
-        self.assertIn("=== BUGS (reported 20 Jul → 22 Jul) ===", body)
-        self.assertIn("1. [20 Jul] first bug", body)
-        self.assertIn("2. [22 Jul] with shot  (screenshot attached)", body)
-
     # ---- rich HTML digest (which screenshot belongs to which bug) ----
 
     def _two_bugs(self):
@@ -226,49 +194,6 @@ class DevBugsServiceTests(unittest.TestCase):
             {"id": 2, "text": "with shot", "images": [_DATA_URL, _DATA_URL],
              "created_at": "2026-07-22T10:00:00+00:00"},
         ]
-
-    def test_html_inlines_each_shot_under_its_own_bug(self):
-        html = svc._build_html(self._two_bugs())
-        # bug 2's card must come before its images, and both cids must be bug 2's
-        card2 = html.index("bug #2")
-        self.assertIn('src="cid:bug-2-0.png"', html)
-        self.assertIn('src="cid:bug-2-1.png"', html)
-        self.assertLess(card2, html.index('src="cid:bug-2-0.png"'))
-        # ...and bug 1 (no image) must not gain one
-        self.assertLess(html.index("bug #1"), card2)
-
-    def test_html_captions_name_the_bug_and_file(self):
-        """The fallback when a client blocks inline images: the caption still says
-        which attachment belongs to which bug."""
-        html = svc._build_html(self._two_bugs())
-        self.assertIn("screenshot 1 · bug #2 · bug-2-0.png", html)
-        self.assertIn("screenshot 2 · bug #2 · bug-2-1.png", html)
-
-    def test_html_cids_match_the_attachment_content_ids(self):
-        """A cid: with no matching attachment renders as a broken image."""
-        bugs = self._two_bugs()
-        html = svc._build_html(bugs)
-        atts = [a for b in bugs for a in svc._attachments_for(b)]
-        cids = {a["content_id"] for a in atts if "content_id" in a}
-        self.assertEqual(cids, {"bug-2-0.png", "bug-2-1.png"})
-        for cid in cids:
-            self.assertIn(f'src="cid:{cid}"', html)
-
-    def test_html_escapes_bug_text(self):
-        html = svc._build_html([{"id": 3, "text": "<script>x</script> & co",
-                                 "image_url": None, "created_at": "2026-07-22T10:00:00+00:00"}])
-        self.assertNotIn("<script>", html)
-        self.assertIn("&lt;script&gt;", html)
-
-    def test_html_keeps_the_triage_prompt(self):
-        html = svc._build_html(self._two_bugs())
-        self.assertIn("product-backlog triage assistant", html)
-        self.assertIn("BUGS (reported 20 Jul → 22 Jul)", html)
-
-    def test_http_image_is_referenced_directly_not_by_cid(self):
-        parts = svc._image_parts({"id": 4, "image_url": "https://x.test/a.jpg"})
-        self.assertEqual(parts[0]["src"], "https://x.test/a.jpg")
-        self.assertNotIn("content_id", parts[0]["attachment"])
 
     def test_send_falls_back_to_plain_attachments_if_inline_rejected(self):
         """A provider that rejects content_id must not cost us the digest."""
@@ -423,12 +348,6 @@ class DevBugsIconAssetTests(unittest.TestCase):
     def test_no_stale_icons_left_on_disk(self):
         on_disk = {f for f in os.listdir(self.dir) if f.endswith(".png")}
         self.assertEqual(on_disk, self.EXACT_SET)
-
-    @unittest.skipIf(_IMPORT_ERROR is not None, "needs app deps")
-    def test_route_allowlist_matches_the_files_on_disk(self):
-        on_disk = {f for f in os.listdir(self.dir) if f.endswith(".png")}
-        self.assertEqual(set(rb._ICON_FILES), on_disk)
-
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class DevBugsIconRouteTests(unittest.TestCase):

@@ -763,21 +763,6 @@ class TestNothingBypassesTheGate(unittest.TestCase):
                     self.fail(f"{method.name} line {node.lineno} adds to "
                               f"`changes` after the gate")
 
-    def test_the_old_unbudgeted_sweep_is_gone(self):
-        """`drop_overlaps` resolved collisions BEFORE any budget existed.
-        Leaving it in front of the gate would hide candidates from the engine;
-        leaving it after would be a second, disagreeing owner of the same
-        rule. The function still EXISTS (other callers, its own tests) — it
-        just may not run on the serve path."""
-        cls = self._run_class()
-        names = {n.id for n in ast.walk(cls) if isinstance(n, ast.Name)}
-        attrs = {n.attr for n in ast.walk(cls) if isinstance(n, ast.Attribute)}
-        imported = {a.name for n in ast.walk(cls)
-                    if isinstance(n, ast.ImportFrom) for a in n.names}
-        self.assertNotIn("drop_overlaps", names | attrs | imported)
-
-
-
 class TestTheWindowGate(unittest.TestCase):
     """SPEC-APPENDIX-F §F.4 (founder 2026-08-10): accents are UNIT-window
     interventions. An accent-class offer whose quote runs past the ceiling

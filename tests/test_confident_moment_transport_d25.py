@@ -47,11 +47,6 @@ def _rpc_client(response: dict):
     return client
 
 
-def test_all_bundle_rooting_and_pam_gates_default_disabled():
-    assert Config.CONFIDENT_MOMENT_BUNDLE_V1_ENABLED is False
-    assert Config.ROOTING_COVERAGE_V1_ENABLED is False
-
-
 def test_update_text_repository_uses_d23_database_derived_shape(monkeypatch):
     monkeypatch.setattr(Config, "CONFIDENT_MOMENT_BUNDLE_V1_ENABLED", True)
     client = _rpc_client({"result": "opaque"})

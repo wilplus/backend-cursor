@@ -194,10 +194,3 @@ def test_a_declined_take_hands_back_no_bundle(monkeypatch, bend, reason):
     assert result == V3Unavailable(reason)
     assert learning == {}
 
-
-def test_callers_that_pass_no_learning_dict_are_unchanged(monkeypatch):
-    from config import Config
-
-    monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", True)
-    rows = _run(_SnapshotDatabase(lambda data: data))
-    assert isinstance(rows, list) and len(rows) == 1

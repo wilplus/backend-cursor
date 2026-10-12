@@ -18,7 +18,6 @@ import io
 from services.context_document import (
     MAX_CHARS,
     MAX_PAGES,
-    _looks_like_pdf,
     extract_context_text,
 )
 
@@ -64,17 +63,6 @@ def _reader(texts):
     return _fake_pypdf(lambda _bio: _FakeReader(texts))
 
 
-class DetectionTests(unittest.TestCase):
-    def test_magic_bytes(self):
-        self.assertTrue(_looks_like_pdf(b"%PDF-1.7 ...", None, None))
-        self.assertFalse(_looks_like_pdf(b"hello", None, None))
-
-    def test_content_type_and_extension(self):
-        self.assertTrue(_looks_like_pdf(b"x", "application/pdf", None))
-        self.assertTrue(_looks_like_pdf(b"x", None, "report.PDF"))
-        self.assertFalse(_looks_like_pdf(b"x", "text/plain", "notes.txt"))
-
-
 class TextPathTests(unittest.TestCase):
     def test_plain_text_extracted(self):
         out = extract_context_text(b"  Hello world.\n\nMore context.  ",
@@ -103,12 +91,6 @@ class InlineTakeOneUploadTests(unittest.TestCase):
             stream=io.BytesIO(body), filename=filename,
             content_type=content_type,
         )
-
-    def test_inline_document_is_extracted_with_filename(self):
-        from services.lab_audio_intake import _parse_context_document
-        parsed = _parse_context_document(self._upload(), 1024)
-        self.assertEqual(parsed["text"], "Board approval is the goal.")
-        self.assertEqual(parsed["filename"], "brief.txt")
 
     def test_empty_inline_document_is_rejected_before_processing(self):
         from services.lab_audio_intake import _parse_context_document

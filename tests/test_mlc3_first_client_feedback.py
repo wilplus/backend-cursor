@@ -343,18 +343,6 @@ def test_the_membership_freeze_still_happens_without_enrollment(monkeypatch):
     assert (rows or [{}])[0]["feedback_membership_id"] == MEMBERSHIP
 
 
-def test_the_unreachable_gate_does_not_come_back():
-    """A grep, deliberately. The gate read as an ordinary fail-closed check
-    and would be re-added by anyone tidying the twelve exits back to a
-    matching set — its absence is the fix, so the absence is the test."""
-    from pathlib import Path
-
-    source = Path("services/mlc3_first_client_feedback.py").read_text()
-    # The CALL, not the word — the docstring names the retired reason on
-    # purpose, so that the next reader knows why the set is eleven.
-    assert '_decline(take_id, "service_enrollment_missing")' not in source
-
-
 def test_an_empty_inventory_declines_instead_of_serving_zero_rows(monkeypatch):
     """FOUNDER 2026-09-18: "it was loading long and then showed no bookmarks on
     the text ZERO".

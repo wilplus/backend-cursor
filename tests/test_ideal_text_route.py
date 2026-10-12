@@ -22,40 +22,6 @@ except Exception as e:  # pragma: no cover
     _IMPORT_ERROR = e
 
 
-def _sess(sid="s1"):
-    return {
-        "id": sid, "user_id": "u1", "take_index": 1,
-        "intake_context": {
-            "topic": "My talk",
-            "slides": [{"title": "Slide 1", "body": "p"}],
-            "slide_advances": [{"index": 0, "t_ms": 0}],
-        },
-    }
-
-
-def _snip(sid):
-    return {"id": sid, "start_offset_ms": 0, "duration_ms": 1000,
-            "transcript": "a line", "storage_path": f"s3://{sid}",
-            "metrics": {"overall_score": 0.5}}
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class TalksRouteIsDeletedTests(unittest.TestCase):
-    """/talks/<talk_id>/ideal-text is GONE (founder 2026-08-10: "older
-    feedback system should be ripped off") — it had no FE caller and the
-    audits product it served is retired. Its builder and the Best
-    Presentation builder behind it are removed (N48.3 Q13 A)."""
-
-    def test_the_route_function_is_gone_from_the_aggregator(self):
-        # The aggregator itself is gone (audit Q-A3); nothing can re-export it.
-        import importlib.util
-        self.assertIsNone(importlib.util.find_spec("routes.v2_routes"))
-
-    def test_the_route_function_is_gone_from_its_module(self):
-        from routes.v2 import explore_ideal_text
-        self.assertFalse(hasattr(explore_ideal_text, "v2_talk_ideal_text"))
-
-
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class ArcProgressCoachFinalizedTests(unittest.TestCase):
     """Backlog 4.2 (B8): the cheap progress poll carries coach_finalized so

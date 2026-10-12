@@ -246,18 +246,6 @@ class EveryBookmarkTests(unittest.TestCase):
 
 
 class ContractTests(unittest.TestCase):
-    def test_the_contract_and_the_repo_rules_record_the_decision(self):
-        contract = (ROOT / "docs/CANONICAL_PRODUCT_CONTRACT.md").read_text()
-        self.assertIn("as many exercises as bookmark indicates", contract)
-        self.assertIn("Your coach is working on your exercise.", contract)
-        self.assertIn("follow-up matrix", contract)
-        for kind in ("error", "praise", "rewrite", "ambiguity"):
-            self.assertIn(kind, contract)
-        # The full repo rules moved to docs/history on 2026-10-11 (CLAUDE.md is one page).
-        rules = (ROOT / "docs/history/CLAUDE-2026-10-11.md").read_text()
-        self.assertNotIn("one exercise (on the weakest item", rules)
-        self.assertIn("an exercise on any bookmark", rules)
-
     def test_the_migration_keys_practice_per_moment(self):
         manifest = (ROOT / "migrations/manifest.txt").read_text()
         self.assertIn("0396\tone_practice_per_moment.sql", manifest)

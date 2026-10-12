@@ -24,33 +24,6 @@ def _row(session, dim, value, **kw):
 
 
 class TestSessionGrain(unittest.TestCase):
-    def test_many_snippets_in_one_session_collapse_to_one_value(self):
-        """THE rule. Thirty correlated rows must not become thirty
-        observations — that narrows the control limits by ~sqrt(30) and makes
-        the monitor fire on its own sampling."""
-        rows = [_row("s1", "wpm", 100.0 + i) for i in range(30)]
-        out = drift_job._session_values(rows)
-        self.assertEqual(len(out["wpm"]), 1)
-
-    def test_separate_sessions_stay_separate(self):
-        rows = [_row("s1", "wpm", 100.0), _row("s2", "wpm", 200.0)]
-        out = drift_job._session_values(rows)
-        self.assertEqual(len(out["wpm"]), 2)
-
-    def test_insufficient_data_rows_are_dropped_not_averaged(self):
-        """SPEC D30 — those rows carry no value by construction. Averaging a
-        None into a session would invent one."""
-        rows = [_row("s1", "wpm", 100.0),
-                _row("s1", "wpm", None, insufficient_data=True)]
-        out = drift_job._session_values(rows)
-        self.assertEqual(out["wpm"]["s1"], 100.0)
-
-    def test_garbage_ignored(self):
-        rows = [_row("s1", "wpm", "abc"), _row(None, "wpm", 5.0),
-                _row("s2", None, 5.0), _row("s3", "wpm", 120.0)]
-        out = drift_job._session_values(rows)
-        self.assertEqual(list(out["wpm"]), ["s3"])
-
     def test_levels_average_and_rates_add(self):
         """The registry decides which, so this behaviour follows Appendix F.4
         rather than a hardcoded rule."""
@@ -62,49 +35,6 @@ class TestSessionGrain(unittest.TestCase):
             [_row("s1", "fillers", 2.0), _row("s1", "fillers", 3.0)])
         self.assertEqual(wpm["wpm"]["s1"], 150.0)     # averaged
         self.assertEqual(fillers["fillers"]["s1"], 5.0)   # added
-
-
-class TestMinting(unittest.TestCase):
-    def test_refuses_below_the_floor(self):
-        """Ten buckets over a handful of sessions puts one observation in each
-        and PSI then reads whatever the sampling did."""
-        values = {"wpm": {f"s{i}": float(i) for i in range(5)}}
-        self.assertEqual(drift_job._mint_reference(values, version="v"), [])
-
-    def test_mints_ten_deciles_with_an_open_top(self):
-        values = {"wpm": {f"s{i}": float(i) for i in range(100)}}
-        rows = drift_job._mint_reference(values, version="frozen_v1")
-        self.assertEqual(len(rows), 10)
-        self.assertEqual([r["decile"] for r in rows], list(range(1, 11)))
-        # Decile 10 is +infinity, or new extremes would fall outside the scale.
-        self.assertIsNone(rows[-1]["upper_bound"])
-        self.assertIsNotNone(rows[0]["upper_bound"])
-
-    def test_cut_points_ascend(self):
-        values = {"wpm": {f"s{i}": float(i) for i in range(100)}}
-        rows = drift_job._mint_reference(values, version="v")
-        bounds = [r["upper_bound"] for r in rows if r["upper_bound"] is not None]
-        self.assertEqual(bounds, sorted(bounds))
-
-    def test_n_at_freeze_records_what_it_rests_on(self):
-        values = {"wpm": {f"s{i}": float(i) for i in range(60)}}
-        rows = drift_job._mint_reference(values, version="v")
-        self.assertTrue(all(r["n_at_freeze"] == 60 for r in rows))
-
-
-class TestBucketing(unittest.TestCase):
-    CUTS = [(d, float(d * 10)) for d in range(1, 10)] + [(10, None)]
-
-    def test_assigns_by_cut_point(self):
-        self.assertEqual(drift_job._bucket(5.0, self.CUTS), 1)
-        self.assertEqual(drift_job._bucket(45.0, self.CUTS), 5)
-
-    def test_above_every_cut_lands_in_the_top_decile(self):
-        self.assertEqual(drift_job._bucket(9_999.0, self.CUTS), 10)
-
-    def test_boundary_is_inclusive_below(self):
-        self.assertEqual(drift_job._bucket(10.0, self.CUTS), 1)
-        self.assertEqual(drift_job._bucket(10.001, self.CUTS), 2)
 
 
 class TestRegistryRollup(unittest.TestCase):

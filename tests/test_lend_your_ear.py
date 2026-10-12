@@ -194,37 +194,6 @@ class _Db:
         return {"fallback": None}
 
 
-class RetiredTests(unittest.TestCase):
-    """Q-B11 A (N62): the Album share switch, the per-Take set it fed and
-    Bold voices are retired. No service door, and no route."""
-    def test_the_service_doors_are_gone(self):
-        for door in ("set_share", "open_set", "answer", "others_for_bold_voices",
-                     "_candidates", "_shared_candidates", "_set_payload"):
-            self.assertFalse(hasattr(lye, door), door)
-        self.assertEqual(lye.SOURCES, ("community", "training"))
-        self.assertEqual(lye.OTHER_VOICES_MAX, 3)
-
-    def test_nothing_reads_the_retired_share(self):
-        # Nothing in the engine or the communities reads the retired share.
-        for name in ("services/lend_your_ear.py", "services/communities.py"):
-            text = (ROOT / name).read_text()
-            for retired in ("list_shared_clips_live", "voice_album_shares", "shared_clips_live",
-                            "set_voice_album_share", "insert_lend_your_ear_set",
-                            "insert_lend_your_ear_answer", "clips_for_listener",
-                            "mark_after_practice_step"):
-                self.assertNotIn(f"database.{retired}(", text, (name, retired))
-                self.assertNotIn(f"{retired}(database", text, (name, retired))
-
-    def test_the_measure_the_corpus_tool_and_their_routes_are_gone(self):
-        # Deleted 2026-10-11 with PEER_LANE_ENABLED and DELAYED_MEASURE_ENABLED.
-        for gone in ("services/corpus_clips.py", "routes/v2/lend_your_ear.py"):
-            self.assertFalse((ROOT / gone).exists(), gone)
-        source = (ROOT / "services").glob("*.py")
-        callers = [f.name for f in source
-                   if "clips_for_listener(" in f.read_text() and f.name != "delayed_measure.py"]
-        self.assertEqual(callers, [])
-
-
 class SetTests(unittest.TestCase):
     def test_the_set_is_stratified_random_and_at_most_three(self):
         cands = [{"clip_id": f"c{i}", "stratum": s, "pair_id": None}

@@ -14,14 +14,8 @@ import pathlib
 from unittest import mock
 
 
-from routes.v2 import arcs as arc_routes
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-
-
-def test_the_routes_no_longer_import_the_builder():
-    for path in ("routes/v2/arcs.py", "routes/v2/coach.py"):
-        assert "build_best_presentation" not in (ROOT / path).read_text(), path
 
 
 def test_the_training_import_pins_its_own_recording():
@@ -61,15 +55,3 @@ def test_a_pinned_assembly_takes_the_transcript_document(monkeypatch):
                                   source_session_id="s1")
     assert seen == [{"database": mock.ANY, "session_id": "s1"}]
 
-
-def test_the_pencil_edit_route_and_its_writers_are_gone():
-    """N48.3 Q13 A: the slide pencil-edit PUT fed only the removed builder.
-    No frontend calls it, so it is removed outright, with the writers and
-    readers nothing else used. The tables stay (never auto-drop)."""
-    from services.db import DatabaseService
-
-    assert not hasattr(arc_routes, "v2_explore_arc_edit_slide")
-    for name in ("get_best_presentation_edits", "upsert_best_presentation_edit",
-                 "upsert_best_presentation_cache", "stripe_checkout_grant_claim",
-                 "stripe_checkout_grant_release"):
-        assert not hasattr(DatabaseService, name), name

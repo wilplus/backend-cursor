@@ -135,17 +135,6 @@ class _Db:
 
 
 class RetiredTests(unittest.TestCase):
-    def test_bold_voices_are_retired_whatever_the_switch_says(self):
-        # Q-B11 A (founder 2026-10-07, N62): "The Album share switch and
-        # Bold voices are retired." No service door, and the three routes
-        # (404 tombstones until 2026-10-11) are gone with their module.
-        for door in ("bold_voices_for_take", "mark_step", "record_heard", "STEPS", "CLIP_KINDS"):
-            self.assertFalse(hasattr(bv, door), door)
-        self.assertFalse((ROOT / "routes/v2/after_practice.py").exists())
-        # The ledger's count stays (never a speaker-facing number).
-        db = _Db()
-        self.assertEqual(bv.after_practice_counts(db, since="t0")["since"], "t0")
-
     def test_the_ledger_counts_ride_the_window(self):
         self.assertEqual(bv.after_practice_counts(_Db(), since="s")["practices_landed"], 2)
 

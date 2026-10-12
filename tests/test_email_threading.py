@@ -237,18 +237,6 @@ class SendEmailResendHeaderPassthroughTests(unittest.TestCase):
         )
 
 
-class DeadMethodsGoneTests(unittest.TestCase):
-    """Cleanup: the three caller-free EmailService methods are deleted."""
-
-    def test_dead_methods_removed(self):
-        from services.email_service import EmailService
-        self.assertFalse(hasattr(EmailService, "send_admin_notification"))
-        self.assertFalse(hasattr(EmailService, "send_assignment_to_student"))
-        self.assertFalse(hasattr(EmailService, "send_lesson_complete_to_student"))
-        # The live one stays.
-        self.assertTrue(hasattr(EmailService, "send_lesson_complete_to_admin"))
-
-
 # ── pseudonym parity with the routes copy (skip locally without flask; run
 # in CI). The services copy MUST stay byte-identical in behaviour to
 # routes/v2_routes.py::_coach_pseudonym — the coach recognises a student by

@@ -125,15 +125,5 @@ class NoRetiredConstructSurvivesTests(unittest.TestCase):
         for dead in ("training_labels", "challenge", "threat", "strong"):
             self.assertNotIn(dead, body, f"{dead} is back in key_moments")
 
-    def test_the_strong_tag_is_gone_from_the_album_and_the_blend(self):
-        import inspect
-
-        from services import voice_album
-        from services.power_phrase_ranking import _COACH_TERM
-        self.assertNotIn("_STRONG_TAG", inspect.getsource(voice_album))
-        self.assertNotIn("strong", _COACH_TERM)
-        self.assertIn("to_work_on", _COACH_TERM)   # the real pick survives
-
-
 if __name__ == "__main__":
     unittest.main()

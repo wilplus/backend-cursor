@@ -123,12 +123,6 @@ def test_a_yes_or_in_between_is_done_and_never_rewrites_the_paragraph():
         assert db.practice["landed_attempt_index"] == 1
 
 
-def test_the_adoption_is_retired_with_its_code():
-    import services.practice_adoption as module
-    for gone in ("adopt", "splice", "passage_span", "MAX_ATTEMPTS", "ADOPTING"):
-        assert not hasattr(module, gone), gone
-
-
 def test_only_the_latest_attempt_and_the_five_answers_are_accepted():
     db = _Db([{"id": "a1", "attempt_index": 1, "user_answer": None}])
     assert judge_attempt(db, db.practice, "a1", "maybe", "u")[0] == 400

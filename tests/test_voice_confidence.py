@@ -468,13 +468,6 @@ class TestPowerScoreBlend(unittest.TestCase):
             untouched = power_score(machine_confidence=delivery)
             self.assertLess(vetoed, untouched)
 
-    def test_the_album_quorum_bonus_is_deleted(self):
-        """Founder verdict 2026-08-13 evening: `_W_B` is gone entirely. The
-        retired kwarg raises like the other retired kwargs do."""
-        from services.power_phrase_ranking import power_score
-        with self.assertRaises(TypeError):
-            power_score(album_quorum=True)
-
     def test_junk_value_is_neutral(self):
         from services.power_phrase_ranking import power_score
         base = power_score(activation=0.5)

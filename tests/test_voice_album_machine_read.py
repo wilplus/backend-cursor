@@ -45,9 +45,3 @@ def test_clip_machine_read_is_the_follow_up_read():
     with mock.patch.object(jfu, "_clip_read", return_value=None):
         assert jfu.clip_machine_read(object(), "t", "s") is None
 
-
-def test_the_star_lane_is_no_longer_read():
-    source = va.__file__
-    with open(source) as handle:
-        text = handle.read()
-    assert "get_moment_suggestions_by_arc" not in text

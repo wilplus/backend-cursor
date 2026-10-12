@@ -9,9 +9,6 @@ import pathlib
 import unittest
 import uuid
 
-from services.arc_notifications import (
-    fire_human_check_note,
-)
 
 
 class _FakeDB:
@@ -48,34 +45,6 @@ class _FakeDB:
         for m in messages:
             self.inserted.append((user_id, m))
         return messages
-
-
-def _sess(sid="s1", uid="u1", published=False, topic="My talk"):
-    # ONE slide, ONE snippet — build_best_presentation composes exactly one
-    # slide so coach_finalized only needs {0: <text>} to control it.
-    return {
-        "id": sid,
-        "user_id": uid,
-        "results_published_at": "2026-07-06T00:00:00Z" if published else None,
-        "intake_context": {
-            "topic": topic,
-            "slides": [{"title": "Slide 1", "body": "p"}],
-            "slide_advances": [{"index": 0, "t_ms": 0}],
-        },
-    }
-
-
-def _snip(sid):
-    return {"id": sid, "start_offset_ms": 0, "duration_ms": 1000,
-            "transcript": "a line", "storage_path": f"s3://{sid}",
-            "metrics": {"overall_score": 0.5}}
-
-
-class NotesTests(unittest.TestCase):
-    def test_human_check_note_is_retired(self):
-        db = _FakeDB()
-        self.assertFalse(fire_human_check_note(db, "u1", "a1"))
-        self.assertEqual(db.inserted, [])
 
 
 if __name__ == "__main__":

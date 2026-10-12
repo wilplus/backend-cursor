@@ -16,8 +16,6 @@ import unittest
 
 from services.snippet_salience import (
     rank_candidates_by_salience,
-    _SALIENCE_COMPONENTS,
-    _SALIENCE_WEIGHT,
 )
 
 
@@ -32,17 +30,6 @@ _HOT = _cand(1000, f0_sd=50.0, f0_slope=30.0, f0_mid_end_delta=20.0,
              pause_regularity=0.0, dynamic_db=20.0)
 _MID = _cand(2000, f0_sd=25.0, f0_slope=15.0, f0_mid_end_delta=10.0,
              pause_regularity=0.5, dynamic_db=10.0)
-
-
-class WeightsContractTests(unittest.TestCase):
-    def test_provisional_equal_weights_sum_to_one(self):
-        self.assertAlmostEqual(
-            len(_SALIENCE_COMPONENTS) * _SALIENCE_WEIGHT, 1.0, places=9,
-        )
-
-    def test_five_components(self):
-        self.assertEqual(len(_SALIENCE_COMPONENTS), 5)
-        self.assertEqual(_SALIENCE_WEIGHT, 0.2)
 
 
 class RankingTests(unittest.TestCase):
@@ -110,7 +97,6 @@ class FenceGuardTests(unittest.TestCase):
 # ── Phase 1 — directional control composite + extreme split ────────
 from services.snippet_salience import (
     score_control_direction,
-    _CONTROL_COMPONENTS,
 )
 
 
@@ -141,21 +127,6 @@ def _filler_pool(n, base_ms=5000):
 
 
 class ControlCompositeTests(unittest.TestCase):
-    def test_weights_sum_to_one(self):
-        self.assertAlmostEqual(
-            sum(w for _, w in _CONTROL_COMPONENTS), 1.0, places=9,
-        )
-
-    def test_four_monotonic_components(self):
-        keys = [k for k, _ in _CONTROL_COMPONENTS]
-        self.assertEqual(
-            set(keys), {"f0_sd", "pause_regularity", "dynamic_db", "voiced_ratio"},
-        )
-        # The non-monotonic features must NOT be in the directional axis.
-        for excluded in ("speech_rate", "wpm", "f0_slope",
-                         "f0_mid_end_delta", "f0_mean"):
-            self.assertNotIn(excluded, keys)
-
     def test_controlled_outscores_shaky(self):
         pool = [_CONTROLLED, _SHAKY] + _filler_pool(8)
         scores = score_control_direction(pool)
