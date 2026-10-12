@@ -229,6 +229,34 @@ class SessionVideoContract(unittest.TestCase):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class ExerciseVideoContract(unittest.TestCase):
+    """POST /v2/coach/exercises/<id>/video (the same upload checks)."""
+
+    def _post(self, filename="clip.mov", form=None):
+        from routes.v2 import coach_exercises
+        data = {"video_file": (io.BytesIO(b"vid"), filename), **(form or {})}
+        return _call(coach_exercises.v2_coach_exercise_video, "ex-1",
+                     method="POST", data=data, content_type="multipart/form-data")
+
+    def test_the_upload_reaches_the_library(self):
+        with patch("services.coach_exercise_authoring.attach_video",
+                   return_value=(200, {"exercise": "ex-1"})) as attach:
+            status, body = self._post(form={"exercise": '{"title": "T"}'})
+        self.assertEqual((status, body), (200, {"exercise": "ex-1"}))
+        attach.assert_called_once_with(
+            db, exercise_id="ex-1", coach_id=COACH, video_bytes=b"vid",
+            filename="clip.mov", content_type=ANY, definition={"title": "T"})
+
+    def test_refusals(self):
+        with patch("services.coach_exercise_authoring.attach_video") as attach:
+            status, body = self._post(form={"exercise": "{"})
+            self.assertEqual((status, body["code"]), (400, "INVALID_INPUT"))
+            status, body = self._post(filename="clip.gif")
+            self.assertEqual((status, body["code"]), (415, "INVALID_VIDEO_FORMAT"))
+        attach.assert_not_called()
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class TrainingImportContract(unittest.TestCase):
     """POST /v2/coach/training-imports."""
 
