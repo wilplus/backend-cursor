@@ -1702,3 +1702,68 @@ def build_changes_block(arc_id, served_text, user_id="", take_session_id="",
     if own_log:
         result = {**result, **log.payload()}
     return result
+
+
+# ── Evidence coordinates (moved from routes.v2.explore_ideal_text, founder
+# 2026-10-12) ────────────────────────────────────────────────────────────────
+
+def _is_span(start: Any, end: Any) -> bool:
+    return isinstance(start, int) and isinstance(end, int) and end > start
+
+
+def _containing_piece(pieces: Any, start: int, end: int,
+                      take_id: Any) -> Optional[Mapping]:
+    """The evidence piece that contains the span. A later-Take acoustic item
+    can route through a canonical text span: prefer the piece carrying that
+    exact Take id; falling back to the first containing canonical piece would
+    stamp the right audio with the wrong slide whenever the spans overlap."""
+    matches = [p for p in pieces
+               if isinstance(p, dict)
+               and isinstance(p.get("start"), int)
+               and isinstance(p.get("end"), int)
+               and p["start"] <= start and end <= p["end"]]
+    piece = next((p for p in matches
+                  if take_id
+                  and str(p.get("take_session_id") or "") == str(take_id)), None)
+    if piece is None:
+        piece = matches[0] if matches else None
+    return piece
+
+
+def _bad_slide(slide_index: Any) -> bool:
+    return slide_index is not None and (
+        isinstance(slide_index, bool) or not isinstance(slide_index, int)
+        or slide_index < 0)
+
+
+def with_evidence_coordinates(rows, *, arc_id, served_text, pieces):
+    """Ground feedback rows in the exact Project/Take/slide/paragraph span.
+
+    Rows without provable coordinates are withheld. This is a pure boundary:
+    it does not query storage or decide which feedback deserves to surface.
+    """
+    from services.intervention_spend import paragraph_index_at
+
+    grounded = []
+    for row in rows or []:
+        span = row.get("span") if isinstance(row, dict) else None
+        if not isinstance(span, dict):
+            continue
+        start, end = span.get("start"), span.get("end")
+        if not _is_span(start, end):
+            continue
+        row_take_id = row.get("take_session_id")
+        piece = _containing_piece(pieces, start, end, row_take_id) or {}
+        take_id = row_take_id or piece.get("take_session_id")
+        slide_index = piece.get("slide_index")
+        if not take_id or _bad_slide(slide_index):
+            continue
+        row["evidence"] = {
+            "project_id": str(arc_id),
+            "take_session_id": str(take_id),
+            "slide_index": slide_index,
+            "paragraph_index": paragraph_index_at(served_text, start),
+            "span": {"start": start, "end": end},
+        }
+        grounded.append(row)
+    return grounded

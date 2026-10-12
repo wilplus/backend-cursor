@@ -14,7 +14,7 @@ from __future__ import annotations
 import inspect
 import itertools
 import uuid
-from unittest.mock import ANY, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 

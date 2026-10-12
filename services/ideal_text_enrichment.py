@@ -117,3 +117,142 @@ def run_sections(
         pool.shutdown(wait=False, cancel_futures=True)
     return sections, timings
 
+
+
+# ── The enrichment request (GET /explore/arc/<arc_id>/ideal-text/enrichment)
+#
+# Moved out of ``routes.v2.explore_ideal_text`` unchanged (founder
+# 2026-10-12). The route keeps the ownership gate, the timing headers and the
+# two generation-fenced snapshot checks; this builds what sits between them.
+
+ALLOWED_SECTIONS = frozenset({
+    "feedback", "document_layers", "notes", "history", "journey",
+    "entitlement", "learning",
+})
+
+
+def requested_sections(raw: str) -> tuple[set, list]:
+    """(the sections asked for, the unknown ones sorted). An empty ask is
+    every section."""
+    requested = (
+        {value.strip() for value in raw.split(",") if value.strip()}
+        if raw else set(ALLOWED_SECTIONS)
+    )
+    return requested, sorted(requested - ALLOWED_SECTIONS)
+
+
+def stale_snapshot(current: Any, selected: Mapping[str, Any]) -> Any:
+    """The 409 body when ``selected`` is no longer the current head, else
+    None. The generation-fenced core read treats a head invalidated by a
+    source mutation as stale immediately."""
+    if current and str(current.get("id")) == str(selected.get("id")):
+        return None
+    return {
+        "code": "SNAPSHOT_STALE",
+        "current_document_snapshot_id": (
+            str(current.get("id")) if current else None),
+    }
+
+
+@dataclass(frozen=True)
+class EnrichmentDeps:
+    """The route's helpers the sections bind to (looked up per request)."""
+
+    optional_read: Callable
+    explanations_map: Callable
+    playback_map: Callable
+    reference_map: Callable
+    moments_entitled: Callable
+    price_of: Callable
+
+
+def _feedback_section(database, arc_id, seed, moments, take_ids, deps):
+    from services.ideal_text_notebook import confidence_review_status_map
+    from services.ideal_text_read import decorate_key_moments
+    explanations = deps.optional_read(
+        "moment_explanations", {}, lambda: deps.explanations_map(take_ids))
+    playback = deps.optional_read(
+        "moment_playback", {}, lambda: deps.playback_map(take_ids))
+    review = deps.optional_read(
+        "confidence_review_status", {},
+        lambda: confidence_review_status_map(database, arc_id, moments))
+    references = deps.optional_read(
+        "moment_references", {},
+        lambda: deps.reference_map([
+            value.get("reference_post_slug")
+            if isinstance(value, dict) else None
+            for value in explanations.values()
+        ]))
+    return {
+        "key_moments": decorate_key_moments(
+            moments,
+            suggestions_enabled=bool(seed.get("suggestions_enabled")),
+            explanations=explanations, playback=playback,
+            review_status=review, references=references,
+        ),
+        "explanations_available": bool(explanations),
+    }
+
+
+def _document_layers_section(database, arc_id, actor_id, snapshot_id, seed, core):
+    prior = seed.get("prior_edit") if isinstance(seed, dict) else None
+    result = {"prior_edit": prior}
+    # The publish-boundary bake when it is provably the same answer, else
+    # computed live — see `services.ideal_text_feedback_bake`.
+    from services.ideal_text_feedback_bake import changes_block_for
+    result.update(changes_block_for(database, arc_id, actor_id, snapshot_id, core))
+    return result
+
+
+def _learning_section(database, arc_id, actor_id, sessions, core):
+    latest_id = str(core.get("latest_take_session_id") or "")
+    latest = next((row for row in sessions
+                   if str(row.get("id") or "") == latest_id), None)
+    if not isinstance(latest, dict):
+        return {"learning_exposure": None}
+    from services.learning_exposures import prepare_ideal_text_presentation
+    handle = prepare_ideal_text_presentation(
+        database=database,
+        owner_principal_id=str(latest.get("owner_principal_id") or ""),
+        project_id=str(latest.get("project_id") or arc_id),
+        take_id=latest_id, actor_id=actor_id,
+        text=str(core.get("text") or ""), version=core.get("version"),
+        take_count=core.get("take_count"), title=core.get("title"),
+        parts=core.get("parts"), delivery_mode="canary",
+    )
+    return {"learning_exposure": handle}
+
+
+def section_readers(database, *, arc_id: str, actor_id: str, sessions: list,
+                    selected: Mapping[str, Any], snapshot_id: str,
+                    deps: EnrichmentDeps) -> dict[str, Callable[[], Any]]:
+    """Every section's reader, bound to one immutable document snapshot."""
+    core = selected.get("payload") or {}
+    seed = selected.get("enrichment_seed") or {}
+    moments = seed.get("moments") if isinstance(seed, dict) else []
+    moments = moments if isinstance(moments, list) else []
+    take_ids = [moment.get("take_session_id") for moment in moments
+                if isinstance(moment, dict)]
+    take_count = int(core.get("take_count") or 0)
+
+    def journey():
+        from services.coach_message_read import journey_payload
+        return journey_payload(database, actor_id, arc_id, take_count, sessions,
+                               core.get("latest_take_session_id"))
+
+    return {
+        "feedback": lambda: _feedback_section(
+            database, arc_id, seed, moments, take_ids, deps),
+        "document_layers": lambda: _document_layers_section(
+            database, arc_id, actor_id, snapshot_id, seed, core),
+        "notes": lambda: {
+            "notes_text": database.get_user_arc_ideal_notes(arc_id, actor_id)},
+        "history": lambda: {
+            "decision_history": database.list_intervention_decision_history(arc_id)},
+        "journey": journey,
+        "entitlement": lambda: {
+            "moments_unlocked": deps.moments_entitled(arc_id),
+            "price_tokens": deps.price_of("moment_explanation"),
+        },
+        "learning": lambda: _learning_section(database, arc_id, actor_id, sessions, core),
+    }
