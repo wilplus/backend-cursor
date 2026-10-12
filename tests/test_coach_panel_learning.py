@@ -27,10 +27,6 @@ from services import detector_rollout as dr
 from services import error_presence_audit as epa
 
 ROOT = Path(__file__).resolve().parents[1]
-PREF_ON = patch("config.Config.COACH_EXERCISE_PREFERENCE_ENABLED", True, create=True)
-AUDIT_ON = patch("config.Config.ERROR_PRESENCE_AUDIT_ENABLED", True, create=True)
-PICK_ON = patch("config.Config.COACH_BLOCK_PICK_ENABLED", True, create=True)
-WORDS_ON = patch("config.Config.COACH_WORD_PAIRS_ENABLED", True, create=True)
 
 
 class _Db:
@@ -189,10 +185,9 @@ class OffTests(unittest.TestCase):
     the coach-panel switches on from 2026-10-02 ("go with all of them in that
     order"), then 6a (N25) and 6d (N26) on the same day after the 3.3
     wording and document 02 v1.1; 6d and 8 went off again on 2026-10-03
-    (N29); 8 came back on 2026-10-08 (founder: "turn it all ON")."""
-    SWITCHES = ("COACH_EXERCISE_PREFERENCE_ENABLED", "ERROR_PRESENCE_AUDIT_ENABLED",
-                "COACH_BLOCK_PICK_ENABLED", "COACH_WORD_PAIRS_ENABLED",
-                "DETECTOR_TRAINING_AUTHORISED")
+    (N29); 8 came back on 2026-10-08 (founder: "turn it all ON"). The
+    hard-wired switches (1b, 6a, 7, 8) were deleted 2026-10-11; 6d stays."""
+    SWITCHES = ("DETECTOR_TRAINING_AUTHORISED",)
 
     def setUp(self):
         self._patches = []
@@ -209,30 +204,13 @@ class OffTests(unittest.TestCase):
             p.stop()
         try:
             from config import Config as _live
-            self.assertTrue(_live.ERROR_PRESENCE_AUDIT_ENABLED)
-            self.assertTrue(_live.ERROR_PRESENCE_AUDIT_VERBAL_ENABLED)
             self.assertEqual(_live.BLIND_CHECK_POLICY_VERSION, "phase1-2026-10-02")
             # ON again from 2026-10-08 (founder: "turn it all ON"): the fit
             # exists (#973, shadow only) and document 02 v1.2 is signed (N68).
             self.assertTrue(_live.DETECTOR_TRAINING_AUTHORISED)
-            # ON again from 2026-10-08 (founder: "turn it all ON").
-            self.assertTrue(_live.COACH_BLOCK_PICK_ENABLED)
         finally:
             for p in self._patches:
                 p.start()
-
-    def test_off_nothing_serves(self):
-        db = _Db()
-        self.assertEqual(cep.record(db, coach_id="c", take_session_id="t", snippet_id="s",
-                                    speaker_user_id="o", body={"action": "kept"})[0], 404)
-        self.assertEqual(epa.sample_for_coach(db, coach_id="c"), [])
-        self.assertEqual(epa.queue(db, coach_id="c")[0], 404)
-        self.assertEqual(bp.sample_for_coach(db, coach_id="c", week="2026-W40"), [])
-        self.assertEqual(bp.queue(db, coach_id="c")[0], 404)
-        self.assertEqual(cwp.draft_take_word(db, take_session_id="t", coach_id="c", body={})[0], 404)
-        self.assertIsNone(cwp.record_take_word_pair(db, word_row={"draft_text": "d"}, coach_id="c", final_text="f"))
-        self.assertEqual((db.prefs, db.audits, db.picks, db.pairs), ([], [], [], []))
-
 
 class ExposureTests(unittest.TestCase):
     def test_first_exposure_once_and_unexposed_filtering(self):
@@ -252,7 +230,6 @@ class ExposureTests(unittest.TestCase):
         self.assertEqual(ce.exposed_clip_ids(_Down(), "c", ["s1"]), {"s1"})
 
 
-@PREF_ON
 class PreferenceTests(unittest.TestCase):
     def test_the_served_view_shuffles_the_pool_marks_the_served_and_shows_no_rank(self):
         view = cep.served_view(_Db(), take_session_id="t", snippet_id="s", rng=random.Random(1))
@@ -376,7 +353,6 @@ class NoticeVersionTests(unittest.TestCase):
                                     {"p_acquisition_principal_id": "principal-1"}))
 
 
-@AUDIT_ON
 @patch("services.verbal_cues._practice_permitted", lambda db, take: not str(take).startswith("off-"))
 @patch("services.error_presence_audit._on_notice_version", lambda db, take: not str(take).startswith("old-"))
 @patch("services.error_presence_audit._objected", lambda db, take: str(take).startswith("obj-"))
@@ -464,7 +440,6 @@ ADMIT_ALL = patch("services.pair_consent.take_may_reach_a_coach_sheet",
                   lambda db, take: True)
 
 
-@PICK_ON
 @ADMIT_ALL
 class BlockPickTests(unittest.TestCase):
     def test_askable_blocks_need_two_eligible_candidates_and_a_pick(self):
@@ -565,7 +540,6 @@ class DetectorTests(unittest.TestCase):
         self.assertEqual(dc.rescore(db, version="nope", since="x")["error"], "unknown version")
 
 
-@WORDS_ON
 class WordPairTests(unittest.TestCase):
     def test_the_take_word_draft_waits_for_every_moment_and_is_text_only(self):
         db = _Db()

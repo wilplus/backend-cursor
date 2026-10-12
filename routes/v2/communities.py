@@ -1,8 +1,7 @@
 """Communities (founder 2026-10-06, decisions log N52.4; migration 0432): set
 up or join a community, share a Take with communities, the listener's queue
-and their answers. Every route answers 404 while ``COMMUNITIES_ENABLED`` is
-off, checked before any read; sharing also waits for
-``COMMUNITY_SHARE_POLICY_VERSION`` (CM2). Error codes only, no copy. The
+and their answers. On since 2026-10-08 (N67; the switch was deleted
+2026-10-11); sharing waits for ``COMMUNITY_SHARE_POLICY_VERSION`` (CM2). Error codes only, no copy. The
 work is ``services.communities``'.
 """
 from __future__ import annotations
@@ -21,14 +20,6 @@ from services.rate_limits import heavy_limit
 logger = logging.getLogger(__name__)
 
 
-def _off():
-    """The switch, read before anything else: off, every route is 404."""
-    from services.communities import communities_enabled
-    if communities_enabled():
-        return None
-    return jsonify({"code": "NOT_FOUND"}), 404
-
-
 def _run(name: str, call):
     try:
         status, payload = call()
@@ -45,9 +36,6 @@ def _run(name: str, call):
 def v2_community_create():
     """Body {name, pass_code}: set up a private community; its creator is
     its owner. 201 · 400 · 409 PASS_CODE_TAKEN · 503 PASS_CODES_UNAVAILABLE."""
-    off = _off()
-    if off:
-        return off
     from services.communities import create_community
     return _run("community create", lambda: create_community(
         db, owner_user_id=str(request.user_id), body=request.get_json(silent=True)))
@@ -59,9 +47,6 @@ def v2_community_create():
 def v2_community_join():
     """Body {pass_code}: join a private community by its pass code alone.
     200 · 400 · 404 COMMUNITY_NOT_FOUND · 503 PASS_CODES_UNAVAILABLE."""
-    off = _off()
-    if off:
-        return off
     from services.communities import join_community
     return _run("community join", lambda: join_community(
         db, user_id=str(request.user_id), body=request.get_json(silent=True)))
@@ -71,9 +56,6 @@ def v2_community_join():
 @require_auth
 def v2_communities_list():
     """The general community and the private ones the speaker belongs to."""
-    off = _off()
-    if off:
-        return off
     from services.communities import list_my_communities
     return _run("communities list", lambda: list_my_communities(
         db, user_id=str(request.user_id)))
@@ -91,9 +73,6 @@ def v2_take_share(take_id):
     Config.SHARE_WORDS_VERSIONS) and answers 409 TERMS_REACCEPT_REQUIRED until the speaker's current
     authorization is on the named Privacy/Terms (Q-B6 A). "none" needs
     neither."""
-    off = _off()
-    if off:
-        return off
     from services.communities import share_take
     if not _is_valid_uuid(take_id):
         return jsonify({"code": "INVALID_INPUT"}), 400
@@ -107,9 +86,6 @@ def v2_take_share(take_id):
 def v2_community_queue():
     """The listener's clips: their communities' first, then training clips.
     Audio only."""
-    off = _off()
-    if off:
-        return off
     from services.communities import queue_for
     return _run("community queue", lambda: queue_for(
         db, listener_id=str(request.user_id)))
@@ -120,9 +96,6 @@ def v2_community_queue():
 def v2_community_answer():
     """Body {clip_id, value}: one of the five answers on one clip of the
     queue, once per person per clip; never the listener's own."""
-    off = _off()
-    if off:
-        return off
     from services.communities import answer
     return _run("community answer", lambda: answer(
         db, listener_id=str(request.user_id), body=request.get_json(silent=True)))

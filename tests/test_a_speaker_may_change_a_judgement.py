@@ -17,7 +17,6 @@ from unittest.mock import patch
 
 from flask import Flask, request
 
-from services import judgement_follow_up as jf
 from services.db import DatabaseService
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -102,64 +101,6 @@ def test_the_three_answer_readers_overlay_and_the_writer_is_the_rpc():
     body = body[:body.index("\n    def ", 10)]
     assert '"revise_take_feedback_response_v1"' in body
     assert ".update(" not in body and ".upsert(" not in body
-
-
-# ── coach routing follows the latest answer ──────────────────────────────
-
-class _Requests:
-    def __init__(self, request=None):
-        self.request = request
-        self.kinds: list = []
-        self.raised: list = []
-
-    def get_exercise_coach_request(self, _take, _snip):
-        return self.request
-
-    def set_exercise_coach_request_answer_kind(self, **kwargs):
-        self.kinds.append(kwargs)
-        return {"id": "req"}
-
-    def get_confident_voice_exercise_assignment(self, *_a):
-        return None
-
-    def request_exercise_from_coach(self, **kwargs):
-        self.raised.append(kwargs)
-        return {"id": "req", **kwargs}
-
-
-def _revise(db, answer, *, read="weak", fired=False):
-    clip = {"read": read, "observed": {"rushing"} if fired else set(),
-            "verdict": {"pattern": "p"}, "snippet": {}}
-    with patch.object(jf, "_clip_read", lambda *_a: clip), \
-            patch("config.Config.JUDGEMENT_AFTER_FEEDBACK_ENABLED", False), \
-            patch.object(jf, "_raise_request",
-                         lambda _db, **kwargs: bool(db.raised.append(kwargs)) or True):
-        return jf.follow_up_for_revision(
-            db, take_session_id=TAKE, snippet_id=SNIP, owner_user_id=OWNER,
-            answer=answer)
-
-
-def test_an_unanswered_request_takes_the_latest_answers_kind():
-    db = _Requests({"id": "req", "kind": "ambiguity", "resolution": None})
-    assert _revise(db, "no") == "rewrite"
-    assert db.kinds == [{"take_session_id": TAKE, "snippet_id": SNIP,
-                         "answer_kind": "rewrite", "only_if_unset": False}]
-    assert db.raised == []
-
-
-def test_a_request_the_coach_answered_keeps_the_coachs_answer():
-    db = _Requests({"id": "req", "kind": "ambiguity", "resolution": "note_written"})
-    _revise(db, "no")
-    assert db.kinds == []
-
-
-def test_audio_unclear_changes_nothing_and_no_request_rises_the_ordinary_way():
-    db = _Requests({"id": "req", "kind": "praise", "resolution": None})
-    assert _revise(db, "audio_unclear") == "none"
-    assert db.kinds == []
-    fresh = _Requests(None)
-    _revise(fresh, "no", fired=True)
-    assert fresh.raised and fresh.raised[0]["kind"] == "error"
 
 
 # ── the route ─────────────────────────────────────────────────────────────

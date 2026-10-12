@@ -1,7 +1,7 @@
 """V4's two blind coach sheets (V4 Phase 1, B1.8 and B1.9; build plan
 D-ML-13; founder S-B8 A, Q-B8 A, QG4 B, QG9 A, QB7 B, QB8 A, V18 A, V19 A,
-V20 A, M9, H7; migration 0453), dark behind
-``Config.V4_COACH_SHEETS_ENABLED``.
+V20 A, M9, H7; migration 0453). On from 2026-10-08; the switch was
+deleted 2026-10-11.
 
 B1.8 "PICK THE MOMENT FOR FEEDBACK". Up to three moments (clips) of one
 block, each with its words and audio, in random order; the rater picks the
@@ -100,11 +100,6 @@ WORDING = {
         "kept": "Thank you. That one is kept.",
     },
 }
-
-
-def sheets_enabled() -> bool:
-    from config import Config
-    return bool(getattr(Config, "V4_COACH_SHEETS_ENABLED", False))
 
 
 def rater_role(user_id: str) -> str:
@@ -228,8 +223,6 @@ def _next_candidate(pool: list[dict], rng: Any) -> tuple[dict, str]:
 def fill_pick_sheets(database: Any, *, rater_id: str, week: str, rng: Any = None,
                      now: Optional[datetime] = None) -> list[dict]:
     """Fill this rater's week up to WEEKLY_CAP. [] off or when full."""
-    if not sheets_enabled():
-        return []
     rng = rng or random.Random()
     now = now or datetime.now(timezone.utc)
     role = rater_role(rater_id)
@@ -362,8 +355,6 @@ def _surer_for_take(database: Any, ctx: dict, frame_row: dict, room: int) -> lis
 def fill_surer_sheets(database: Any, *, rater_id: str, week: str, rng: Any = None) -> list[dict]:
     """Fill this rater's week of pairs up to WEEKLY_CAP, the 40/40/20 mix
     drawn per pair. [] off or when full."""
-    if not sheets_enabled():
-        return []
     rng = rng or random.Random()
     mine = [r for r in database.list_v4_surer_sheets(rater_id) or [] if isinstance(r, dict)]
     room = _week_room(mine, week)
@@ -388,9 +379,6 @@ def fill_surer_sheets(database: Any, *, rater_id: str, week: str, rng: Any = Non
 
 # ── the sheets and the answers ────────────────────────────────────────────
 
-_OFF = (404, {"code": "NOT_FOUND", "error": "not found"})
-
-
 def _ms(value: Any) -> Optional[int]:
     """Where a clip sits in its recording: a position, never a score."""
     return int(value) if isinstance(value, (int, float)) and value >= 0 else None
@@ -399,8 +387,6 @@ def _ms(value: Any) -> Optional[int]:
 def pick_queue(database: Any, *, rater_id: str) -> tuple[int, dict]:
     """Pending blocks: words, audio, letters. Nothing the machine chose."""
     from services.snippet_audio_url import snippet_clip_playback
-    if not sheets_enabled():
-        return _OFF
     memo: dict = {}
     rows = [r for r in database.list_v4_pick_sheets(rater_id) or []
             if isinstance(r, dict) and not r.get("answered_at")
@@ -421,8 +407,6 @@ def pick_queue(database: Any, *, rater_id: str) -> tuple[int, dict]:
 
 def pick_answer(database: Any, *, rater_id: str, sheet_id: str, body: Any) -> tuple[int, dict]:
     """Body {clip_id} or {none_needs_it: true}: one answer, once."""
-    if not sheets_enabled():
-        return _OFF
     fields: dict = body if isinstance(body, dict) else {}
     none = fields.get("none_needs_it") is True
     clip = fields.get("clip_id")
@@ -444,8 +428,6 @@ def pick_answer(database: Any, *, rater_id: str, sheet_id: str, body: Any) -> tu
 
 def surer_queue(database: Any, *, rater_id: str) -> tuple[int, dict]:
     """Pending pairs: the two texts, in a fixed order. No slice, no level."""
-    if not sheets_enabled():
-        return _OFF
     memo: dict = {}
     rows = [r for r in database.list_v4_surer_sheets(rater_id) or []
             if isinstance(r, dict) and not r.get("answered_at")
@@ -458,8 +440,6 @@ def surer_queue(database: Any, *, rater_id: str) -> tuple[int, dict]:
 
 def surer_answer(database: Any, *, rater_id: str, sheet_id: str, body: Any) -> tuple[int, dict]:
     """Body {answer: yes | no | cant_tell}: one answer, once."""
-    if not sheets_enabled():
-        return _OFF
     answer = (body if isinstance(body, dict) else {}).get("answer")
     if answer not in ("yes", "no", "cant_tell"):
         return 400, {"code": "INVALID_INPUT", "error": "answer must be yes, no or cant_tell"}

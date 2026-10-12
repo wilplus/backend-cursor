@@ -198,8 +198,7 @@ class TheBlindSheetsPlayTheClip(unittest.TestCase):
 
     def test_the_error_audit_serves_the_parent_and_its_window(self):
         from services import error_presence_audit as epa
-        with patch("config.Config.ERROR_PRESENCE_AUDIT_ENABLED", True, create=True), \
-                patch.object(cvs, "presigned_get_coach_object", _fake_sign):
+        with patch.object(cvs, "presigned_get_coach_object", _fake_sign):
             status, payload = epa.queue(_AuditDb(), coach_id="c")
         self.assertEqual(status, 200)
         snip, practice = payload["items"]
@@ -217,8 +216,7 @@ class TheBlindSheetsPlayTheClip(unittest.TestCase):
 
     def test_the_block_pick_serves_the_parent_and_its_window(self):
         from services import coach_block_pick as bp
-        with patch("config.Config.COACH_BLOCK_PICK_ENABLED", True, create=True), \
-                patch("services.pair_consent.take_may_reach_a_coach_sheet",
+        with patch("services.pair_consent.take_may_reach_a_coach_sheet",
                       lambda db, take: True), \
                 patch.object(cvs, "presigned_get_coach_object", _fake_sign):
             status, payload = bp.queue(_AuditDb(), coach_id="c")
@@ -232,9 +230,8 @@ class TheBlindSheetsPlayTheClip(unittest.TestCase):
 
     def test_an_unsignable_clip_has_no_player_and_no_crash(self):
         from services import error_presence_audit as epa
-        with patch("config.Config.ERROR_PRESENCE_AUDIT_ENABLED", True, create=True), \
-                patch.object(cvs, "presigned_get_coach_object",
-                             side_effect=RuntimeError("down")):
+        with patch.object(cvs, "presigned_get_coach_object",
+                          side_effect=RuntimeError("down")):
             db = _AuditDb()
             db.create_signed_url = lambda *a: (_ for _ in ()).throw(RuntimeError("x"))
             status, payload = epa.queue(db, coach_id="c")

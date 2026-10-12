@@ -3,8 +3,7 @@ the coach panel; migration 0411): the Take word, after every moment of the
 Take is judged, and the personal line on a moment, after the moment's blind
 rating. The draft is text from the transcript and the coach's notes; the
 coach edits every word, and the pair is recorded on save by the services
-the save already runs through. 404 while ``COACH_WORD_PAIRS_ENABLED`` is
-off. The work is ``services.coach_word_pairs``'.
+the save already runs through. The work is ``services.coach_word_pairs``'.
 """
 from __future__ import annotations
 

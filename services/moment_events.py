@@ -10,9 +10,8 @@ sees them on a requested moment after their own blind rating, and the
 coach-load report counts requests per opened moment before and after the
 switch.
 
-The event is recorded under either flow (a receipt, like the exercise
-render, so the "before" of that report exists); only the request at open
-waits for ``Config.JUDGEMENT_AFTER_FEEDBACK_ENABLED``. Nothing here reaches
+The event is recorded (a receipt, like the exercise render) and an open
+raises the moment's request. Nothing here reaches
 the speaker beyond "recorded" and what the sheet may show next: no read, no
 kind (AC-9, BLIND COACH). The settled read at the bottom is the one rule
 that decides, without a Path 1 answer, that a moment is no longer waiting on
@@ -44,9 +43,7 @@ def co_exposed_from(body: Any) -> dict:
 def record_moment_event(database: Any, *, user_id: str, snippet_id: str,
                         body: Any) -> tuple[int, dict]:
     """(status, payload) for one open or skip of a bookmark."""
-    from services.judgement_follow_up import (
-        follow_up_for_open, judgement_after_feedback_enabled,
-    )
+    from services.judgement_follow_up import follow_up_for_open
     fields: dict = body if isinstance(body, dict) else {}
     event = fields.get("event")
     if event not in EVENTS:
@@ -71,7 +68,7 @@ def record_moment_event(database: Any, *, user_id: str, snippet_id: str,
         )
         request_rebake_after_answer(session.get("arc_id"), str(user_id))
     follow_up = "none"
-    if event == "opened" and judgement_after_feedback_enabled():
+    if event == "opened":
         follow_up = follow_up_for_open(
             database, take_session_id=take_id, snippet_id=str(snippet_id),
             owner_user_id=str(user_id))

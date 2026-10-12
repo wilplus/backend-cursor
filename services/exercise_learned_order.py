@@ -1,11 +1,10 @@
-"""ML-13: the learned exercise order, behind a constant (founder 2026-09-29,
-E8; build plan ML-13). Built closed.
+"""ML-13: the learned exercise order (founder 2026-09-29, E8; build plan
+ML-13). Its constant was opened 2026-10-08 ("turn it all ON") and deleted
+2026-10-11.
 
 The matcher's order among exercises at the SAME fit (the same confidence
-distance) is editorial today. When all three hold —
+distance) is editorial today. When both hold —
 
-  * ``Config.EXERCISE_LEARNED_ORDER_ENABLED`` is True (a reviewed change
-    after the founder's yes),
   * the jar passed its bar (300 counted tries, 30 per exercise), and
   * the fair test's machine-only pile beats the fixed ranking by its bar
     (five points of success with the interval above zero; the test's own
@@ -41,10 +40,6 @@ CACHE_SECONDS = 600.0
 # fresh machine, so 0.0 would read as "just cached" for the first ten minutes.
 _CACHE: dict[str, Any] = {"at": None, "rates": None, "why": "not read yet"}
 _LOCK = threading.Lock()
-
-
-def _enabled(config: Any) -> bool:
-    return bool(getattr(config, "EXERCISE_LEARNED_ORDER_ENABLED", False))
 
 
 def learned_rates(database: Any) -> tuple[Optional[dict[str, float]], str]:
@@ -125,12 +120,9 @@ def _sort_group(group: list[tuple], rates: dict[str, float]) -> list[tuple]:
     return [item for _, item in indexed]
 
 
-def apply(ranked: list[tuple], database: Any, *, config: Any = None) -> list[tuple]:
-    """The matcher's hook: today's order unless the three conditions hold."""
-    if config is None:
-        from config import Config
-        config = Config
-    if not _enabled(config) or not ranked:
+def apply(ranked: list[tuple], database: Any) -> list[tuple]:
+    """The matcher's hook: today's order unless both conditions hold."""
+    if not ranked:
         return list(ranked)
     rates, _why = _rates_cached(database)
     return reorder(ranked, rates)

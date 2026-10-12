@@ -206,7 +206,7 @@ def erase_withdrawn_sheets(database: Any, principal_id: Any) -> dict:
 
 
 def take_may_reach_a_coach_sheet(database: Any, take_session_id: Any) -> bool:
-    """3.5 E4 (``V4_COACH_SHEETS_ENABLED``, ``COACH_BLOCK_PICK_ENABLED``):
+    """3.5 E4 (V4's coach sheets and the block pick):
     a coach hears a speaker's moment to answer a question that teaches the
     software (Privacy 3.5 §4a; the switch's fifth line), so a Take's
     moments go on a sheet only while its speaker holds the training yes and

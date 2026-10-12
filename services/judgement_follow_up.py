@@ -31,17 +31,16 @@ rewrites show only where an evidence-backed one exists (L2).
 This runs when the answer is SAVED (the feedback-response route), because
 the answer decides it. The request row is insert-once per moment.
 
-PHASE 2 OF THE AFTER-PRACTICE PATHS (founder 2026-10-01, F1; dark behind
-Config.JUDGEMENT_AFTER_FEEDBACK_ENABLED): "Opening a bookmark never asks for
+PHASE 2 OF THE AFTER-PRACTICE PATHS (founder 2026-10-01, F1; on, and its
+switch deleted 2026-10-11): "Opening a bookmark never asks for
 a judgment first. The machine's read chooses the feedback. The speaker
 judges themselves after it: on a confident moment right after the praise,
 on a moment that needed work after each practice attempt. Helper words open
-on Yes or In-between of that judgment." Under the switch the request rises
+on Yes or In-between of that judgment." The request rises
 when the moment OPENS (`follow_up_for_open`, migration 0408), under the
 machine's kind, and the later judgement sets its `answer_kind` from the
 same matrix; a practice judgement that disagrees with the machine's read of
-that attempt makes it an ambiguity (`practice_judgement`). Off, every line
-above holds exactly. One switch, both flows side by side until the cutover.
+that attempt makes it an ambiguity (`practice_judgement`).
 """
 from __future__ import annotations
 
@@ -55,12 +54,6 @@ JUDGEMENT_LANE = "v3_judgement"
 
 ANSWERS = ("yes", "in_between", "no", "not_sure", "audio_unclear")
 KINDS = ("error", "praise", "rewrite", "ambiguity")
-
-
-def judgement_after_feedback_enabled() -> bool:
-    """Phase 2 of the after-practice paths (founder 2026-10-01, F1), dark."""
-    from config import Config
-    return bool(getattr(Config, "JUDGEMENT_AFTER_FEEDBACK_ENABLED", False))
 
 
 def decide_at_open(read: str, fired: bool,
@@ -144,27 +137,9 @@ def follow_up_for_judgement(
         return "none"
     if answer == "audio_unclear" or answer not in ANSWERS:
         return "none"
-    if judgement_after_feedback_enabled():
-        return _answer_after_feedback(
-            database, take_session_id=take_session_id, snippet_id=snippet_id,
-            owner_user_id=owner_user_id, answer=answer)
-    clip = _clip_read(database, take_session_id, snippet_id)
-    if clip is None:
-        return "none"
-    matched = _exercise_on_moment(database, take_session_id, snippet_id)
-    now, kind = decide(answer, clip["read"], bool(clip["observed"]), matched)
-    if kind is None:
-        return now
-    if _request_on_moment(database, take_session_id, snippet_id) is None:
-        raised = _raise_request(
-            database, take_session_id=take_session_id, snippet_id=snippet_id,
-            owner_user_id=owner_user_id, kind=kind, clip=clip, matched=matched)
-        # The sentence is a promise: without the request it would be false.
-        if now == "coach_request" and not raised:
-            return "none"
-    if kind == "ambiguity":
-        _flag_disagreement(database, take_session_id, snippet_id)
-    return now
+    return _answer_after_feedback(
+        database, take_session_id=take_session_id, snippet_id=snippet_id,
+        owner_user_id=owner_user_id, answer=answer)
 
 
 def follow_up_for_revision(
@@ -181,21 +156,9 @@ def follow_up_for_revision(
         return "none"
     if answer not in ANSWERS:
         return "none"
-    request = _request_on_moment(database, take_session_id, snippet_id)
-    if request is None or judgement_after_feedback_enabled():
-        return follow_up_for_judgement(
-            database, take_session_id=take_session_id, snippet_id=snippet_id,
-            owner_user_id=owner_user_id, answer=answer)
-    if answer == "audio_unclear":
-        return "none"
-    clip = _clip_read(database, take_session_id, snippet_id)
-    if clip is None:
-        return "none"
-    matched = _exercise_on_moment(database, take_session_id, snippet_id)
-    now, kind = decide(answer, clip["read"], bool(clip["observed"]), matched)
-    if kind is not None and request.get("resolution") is None:
-        _set_answer_kind(database, take_session_id, snippet_id, kind)
-    return now
+    return follow_up_for_judgement(
+        database, take_session_id=take_session_id, snippet_id=snippet_id,
+        owner_user_id=owner_user_id, answer=answer)
 
 
 def follow_up_for_open(
@@ -263,8 +226,6 @@ def practice_judgement(database: Any, practice: Any, answer: Any,
     read of that attempt makes it an ambiguity (the first disagreement
     stays); one that agrees confirms the kind it rose under, once. Returns
     what was written, or None. Never raises."""
-    if not judgement_after_feedback_enabled():
-        return None
     if answer not in ANSWERS or answer == "audio_unclear":
         return None
     take = str((practice or {}).get("take_session_id") or "")
@@ -360,9 +321,7 @@ def open_cards(database: Any, *, take_session_id: str,
     see, AC-9).
 
     A moment is left out, and the page keeps its own rule, when its clip
-    cannot be read, when the switch for judgement after feedback is off (no
-    request rises at the open, so the coach's sentence would be no
-    promise), or when the cell is the coach's request and no coach is on
+    cannot be read, or when the cell is the coach's request and no coach is on
     the panel ("the promise needs a coach", founder 2026-09-30). Never
     raises: a failed read serves the rows without the field.
     """
@@ -370,7 +329,7 @@ def open_cards(database: Any, *, take_session_id: str,
         _median_wpm, coach_on_panel, detected_problem_vocabulary,
     )
     ids = [str(s) for s in dict.fromkeys(snippet_ids or []) if s]
-    if not take_session_id or not ids or not judgement_after_feedback_enabled():
+    if not take_session_id or not ids:
         return {}
     try:
         snippets = {

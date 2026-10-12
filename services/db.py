@@ -1601,25 +1601,6 @@ class DatabaseService:
         except Exception:
             return None
 
-    def get_student_names(self, user_ids: list) -> dict:
-        """{user_id: name} from v2_student_details for the ids that have a
-        non-empty name, in one query (Phase 0b, coach students)."""
-        ids = [str(u) for u in (user_ids or []) if u]
-        if not ids:
-            return {}
-        result = (
-            self.client.table("v2_student_details")
-            .select("user_id, name")
-            .in_("user_id", ids)
-            .execute()
-        )
-        out: dict = {}
-        for row in result.data or []:
-            name = str(row.get("name") or "").strip()
-            if row.get("user_id") and name:
-                out[str(row["user_id"])] = name
-        return out
-
     def v2_get_student_details(self, user_id: str):
         """Get student details row (name, price_per_live_lesson, credits, is_archived) or None."""
         result = (
@@ -15562,40 +15543,6 @@ class DatabaseService:
                .order("closed_at").execute())
         return list(res.data or [])
 
-    def list_coach_readings(self, coach_id: str) -> list[dict]:
-        """One coach's own readings (0409), newest first. Raises on failure."""
-        res = (self.client.table("coach_readings").select("*")
-               .eq("coach_id", str(coach_id))
-               .order("created_at", desc=True).limit(100).execute())
-        return list(res.data or [])
-
-    def list_published_coach_readings(self) -> list[dict]:
-        """Every published reading (0409), newest first, WITHOUT the coach:
-        the speaker hears a voice, never a name. Raises on failure."""
-        res = (self.client.table("coach_readings")
-               .select("id,passage,media_url,media_kind,published_at")
-               .not_.is_("published_at", "null")
-               .order("published_at", desc=True).limit(50).execute())
-        return list(res.data or [])
-
-    def insert_coach_reading(self, row: dict) -> Optional[dict]:
-        """A coach's new reading (0409). Raises on failure."""
-        res = self.client.table("coach_readings").insert(dict(row)).execute()
-        return (res.data or [None])[0]
-
-    def set_coach_reading_published(
-        self, *, reading_id: str, coach_id: str, published: bool,
-    ) -> Optional[dict]:
-        """Publish or withdraw one's own reading (0409); None when it is not
-        this coach's. Raises on failure."""
-        now = datetime.now(timezone.utc).isoformat()
-        res = (self.client.table("coach_readings")
-               .update({"published_at": now if published else None,
-                        "updated_at": now})
-               .eq("id", str(reading_id)).eq("coach_id", str(coach_id))
-               .execute())
-        return (res.data or [None])[0]
-
     def mark_after_practice_step(
         self, *, owner_user_id: str, take_session_id: str, step: str,
     ) -> bool:
@@ -15689,19 +15636,6 @@ class DatabaseService:
     def list_corpus_clips_active(self) -> list[dict]:
         return self.list_corpus_clips(active_only=True)
 
-    def insert_corpus_clip(self, row: dict) -> Optional[dict]:
-        res = self.client.table("corpus_clips").insert(dict(row)).execute()
-        return (res.data or [None])[0]
-
-    def set_corpus_clip_coach_value(
-        self, *, clip_id: str, coach_id: str, value: Optional[str],
-    ) -> Optional[dict]:
-        res = (self.client.table("corpus_clips")
-               .update({"coach_value": value, "coach_id": str(coach_id) if value else None,
-                        "labelled_at": datetime.now(timezone.utc).isoformat() if value else None})
-               .eq("id", str(clip_id)).execute())
-        return (res.data or [None])[0]
-
     def list_lend_your_ear_answered_clip_ids(self, listener_id: str) -> list[str]:
         res = (self.client.table("lend_your_ear_answers").select("clip_id")
                .eq("listener_user_id", str(listener_id)).limit(2000).execute())
@@ -15761,42 +15695,6 @@ class DatabaseService:
                 "shares_live": int(self.client.table("voice_album_shares")
                                    .select("id", count="exact").is_("revoked_at", "null")
                                    .limit(1).execute().count or 0)}
-
-    def insert_delayed_measure_pair(self, row: dict) -> Optional[dict]:
-        """One pair per practice (0410); the first write wins."""
-        res = (self.client.table("delayed_measure_pairs").upsert(
-            dict(row), on_conflict="practice_id", ignore_duplicates=True).execute())
-        return (res.data or [None])[0]
-
-    def get_delayed_measure_pair(self, pair_id: str) -> Optional[dict]:
-        res = (self.client.table("delayed_measure_pairs").select("*")
-               .eq("id", str(pair_id)).limit(1).execute())
-        return (res.data or [None])[0]
-
-    def list_delayed_measure_pairs_open(self) -> list[dict]:
-        res = (self.client.table("delayed_measure_pairs").select("*")
-               .eq("status", "open").order("created_at").limit(1000).execute())
-        return list(res.data or [])
-
-    def insert_delayed_measure_vote(self, row: dict) -> Optional[dict]:
-        """One vote per rater per clip: a duplicate answers None."""
-        try:
-            res = self.client.table("delayed_measure_votes").insert(dict(row)).execute()
-        except Exception as e:  # noqa: BLE001 — the unique key is the rule
-            if "23505" in str(e) or "duplicate" in str(e).lower():
-                return None
-            raise
-        return (res.data or [None])[0]
-
-    def list_delayed_measure_votes(self, pair_id: str) -> list[dict]:
-        res = (self.client.table("delayed_measure_votes").select("*")
-               .eq("pair_id", str(pair_id)).execute())
-        return list(res.data or [])
-
-    def list_delayed_measure_votes_by_rater(self, rater_id: str) -> list[dict]:
-        res = (self.client.table("delayed_measure_votes").select("pair_id,clip")
-               .eq("rater_id", str(rater_id)).limit(5000).execute())
-        return list(res.data or [])
 
     def coach_handled_moment(self, coach_id: str, take_session_id: str,
                              snippet_id: str) -> bool:

@@ -1,6 +1,6 @@
 """A student's new Take as a bubble in the coach's Lounge chat (founder
 2026-10-01, Phase 0c, A2): the Takes in this coach's queue not walked yet.
-404 while ``COACH_TAKE_BUBBLES_ENABLED`` is off. The work is
+The work is
 ``services.coach_take_bubbles``'; the queue's own gates and loaders are
 handed in from ``routes.v2.coach``.
 """

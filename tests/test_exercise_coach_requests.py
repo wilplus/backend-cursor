@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import pathlib
 import unittest
-from unittest.mock import patch
 
 from services import confident_voice_practice as cvp
 from services import exercise_coach_requests as ecr
@@ -116,29 +115,6 @@ class RequestTests(unittest.TestCase):
         self.assertEqual(_judge(db, {}), "rewrite")
         self.assertEqual(db.requested[0]["reason"], "nothing_spotted")
         self.assertEqual(db.requested[0]["kind"], "rewrite")
-
-    @patch("config.Config.JUDGEMENT_AFTER_FEEDBACK_ENABLED", False)
-    def test_every_answer_but_unclear_reaches_the_coach_with_its_kind(self):
-        # The follow-up matrix (founder 2026-09-29): a weak read with nothing
-        # fired is a rewrite (or an ambiguity on Not sure); with a problem
-        # fired, an error (or an ambiguity); Audio unclear raises nothing.
-        # The pre-F1 flow: since 2026-10-02 the request rises at the open
-        # (24e-1) and the judgement sets answer_kind; this pins the kind the
-        # judgement path records when F1 is off.
-        for answer, kind in (("yes", "ambiguity"), ("in_between", "rewrite"),
-                             ("not_sure", "ambiguity"), ("no", "rewrite")):
-            db = _Db([_row("any", ["rushing"])])
-            _judge(db, {}, answer)
-            self.assertEqual(db.requested[0]["kind"], kind, answer)
-        for answer, kind in (("yes", "ambiguity"), ("in_between", "error"),
-                             ("not_sure", "ambiguity"), ("no", "error")):
-            db = _Db([_row("elsewhere", ["ending_compression"])])
-            _judge(db, {"insufficient_pauses": True}, answer)
-            self.assertEqual(db.requested[0]["kind"], kind, answer)
-        db = _Db([_row("elsewhere", ["ending_compression"])])
-        self.assertEqual(_judge(db, {"insufficient_pauses": True}, "audio_unclear"),
-                         "none")
-        self.assertEqual(db.requested, [])
 
     def test_an_empty_library_still_reaches_the_coach(self):
         db = _Db([])

@@ -1,8 +1,7 @@
 """Phase 1b of the coach panel (founder 2026-10-01, F8): the coach keeps,
 swaps or replaces the exercise the machine served, and that explicit choice
 is recorded as the coach's preference. Behind the blind gate (the coach has
-rated the moment first) and 404 while ``COACH_EXERCISE_PREFERENCE_ENABLED``
-is off. The work is ``services.coach_exercise_preference``'.
+rated the moment first). The work is ``services.coach_exercise_preference``'.
 """
 from __future__ import annotations
 
@@ -30,14 +29,12 @@ def _gate(session_id, snippet_id):
 @require_admin_or_coach
 def v2_coach_exercise_preference_read(session_id, snippet_id):
     """What the machine served on this moment and the pool it could swap
-    to, shuffled, no rank, the served one marked; 404 off or when nothing
-    was served."""
-    from services.coach_exercise_preference import preference_enabled, served_view
+    to, shuffled, no rank, the served one marked; 404 when nothing was
+    served."""
+    from services.coach_exercise_preference import served_view
     error, owner_sid = _gate(session_id, snippet_id)
     if error:
         return error
-    if not preference_enabled():
-        return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
     try:
         view = served_view(db, take_session_id=owner_sid, snippet_id=snippet_id)
     except Exception as e:

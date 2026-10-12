@@ -130,14 +130,16 @@ class TheSummaryItselfIsHonest(unittest.TestCase):
                     f"{name}=on" in line or f"{name}=off" in line, line
                 )
 
-    def test_communities_follows_the_class_constant(self):
+    def test_a_code_switch_follows_the_class_constant(self):
         from config import Config
-        from services.gate_flags import gate_summary
+        from services import gate_flags
 
-        with patch.object(Config, "COMMUNITIES_ENABLED", True):
-            self.assertIn("COMMUNITIES_ENABLED=on", gate_summary())
-        with patch.object(Config, "COMMUNITIES_ENABLED", False):
-            self.assertIn("COMMUNITIES_ENABLED=off", gate_summary())
+        with patch.object(gate_flags, "CODE_SWITCHES", ("SOME_SWITCH_ENABLED",)):
+            with patch.object(Config, "SOME_SWITCH_ENABLED", True, create=True):
+                self.assertIn("SOME_SWITCH_ENABLED=on", gate_flags.gate_summary())
+            with patch.object(Config, "SOME_SWITCH_ENABLED", False, create=True):
+                self.assertIn("SOME_SWITCH_ENABLED=off", gate_flags.gate_summary())
+            self.assertIn("SOME_SWITCH_ENABLED=(unset)", gate_flags.gate_summary())
 
     def test_summary_round_trips_through_the_boot_report_parser(self):
         from services.gate_flags import CODE_SWITCHES, GATE_FLAGS, gate_summary

@@ -18,25 +18,10 @@ NOW = datetime(2026, 10, 8, tzinfo=timezone.utc)
 
 @pytest.fixture(autouse=True)
 def on(monkeypatch):
-    from config import Config
-    monkeypatch.setattr(Config, "V4_COACH_SHEETS_ENABLED", True, raising=False)
     monkeypatch.setattr(cs, "rater_role", lambda uid: "founder" if uid == "founder" else "coach")
     # 3.5 E4: every speaker here holds the training yes; the gate itself is
     # pinned in tests/test_learning_lanes_honour_3_5.py.
     monkeypatch.setattr(cs.pair_consent, "take_may_reach_a_coach_sheet", lambda db, take: True)
-
-
-def test_the_switch_is_on_by_default_and_every_door_404s_when_off(monkeypatch):
-    from config import Config
-    # ON since 2026-10-08 (founder: "turn it all ON"); still a code constant.
-    src = (ROOT / "config.py").read_text()
-    assert "    V4_COACH_SHEETS_ENABLED = True\n" in src
-    assert 'getenv("V4_COACH_SHEETS_ENABLED")' not in src
-    assert Config.V4_COACH_SHEETS_ENABLED is True
-    monkeypatch.setattr(Config, "V4_COACH_SHEETS_ENABLED", False)
-    assert cs.pick_queue(None, rater_id="c")[0] == 404
-    assert cs.surer_answer(None, rater_id="c", sheet_id="s", body={})[0] == 404
-    assert cs.fill_pick_sheets(None, rater_id="c", week="w") == []
 
 
 def test_the_sheet_holds_v4s_and_v3s_moments_among_three():

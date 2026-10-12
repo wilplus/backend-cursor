@@ -13,7 +13,6 @@ from unittest.mock import MagicMock, patch
 from flask import Flask, request
 
 import routes.v2.coach as route
-from config import Config
 from services.coach_moments_queue import moments_queue, speaker_goal
 from services.coach_speakers import speakers_summary
 
@@ -199,8 +198,3 @@ class SpeakersRouteTests(unittest.TestCase):
                 resp, status = _status(route.v2_coach_speakers.__wrapped__())
                 self.assertEqual(status, 500)
                 self.assertEqual(resp.get_json()["code"], "V2_ERROR")
-
-
-class FlagTests(unittest.TestCase):
-    def test_coach_students_still_off(self):
-        self.assertFalse(Config.COACH_STUDENTS_ENABLED)

@@ -131,14 +131,6 @@ def last_events(database: Any, unavailable: list[str]) -> dict:
     }
 
 
-def _peer_lane_counts(database: Any, since: str) -> dict:
-    """Counts only; empty and marked dark while the peer lane is off."""
-    from services.lend_your_ear import peer_lane_enabled
-    if not peer_lane_enabled():
-        return {"enabled": False}
-    return {"enabled": True, "since": since, **(database.count_lend_your_ear(since) or {})}
-
-
 def ledger(database: Any, *, config: Any = None) -> dict:
     """Everything the founder's page and the weekly job need, in one dict."""
     from services.feedback_pairs import (
@@ -199,11 +191,12 @@ def ledger(database: Any, *, config: Any = None) -> dict:
     after = _read("after_practice",
                   lambda: after_practice_counts(database, since=since),
                   unavailable) or {}
-    # Phase 4 and 5 (the founder's weekly line): peer answers, sets, live
-    # shares; the delayed measure's pairs and outcomes. Zero while dark.
-    from services.delayed_measure import report as delayed_report
-    peer = _read("peer_lane", lambda: _peer_lane_counts(database, since), unavailable) or {}
-    delayed = _read("delayed_measure", lambda: delayed_report(database), unavailable) or {}
+    # Phase 4 and 5 (the founder's weekly line): the peer lane and the
+    # delayed measure stayed dark; their switches and code were deleted
+    # 2026-10-11, and the line keeps the shape it had while dark.
+    peer = {"enabled": False}
+    delayed = {"measure_version": "exercise-human-delayed-v1", "enabled": False,
+               "exercises": {}}
     # The coach panel's learning additions (0411): the coach's exercise
     # preference (1b), the blind error audit's report card (6a), the fair
     # test of every detector version (6b-6d), the block pick (8) and the
@@ -228,25 +221,22 @@ def ledger(database: Any, *, config: Any = None) -> dict:
 
 def _coach_panel_rows(database: Any, unavailable: list[str]) -> dict:
     from services.coach_block_pick import ledger as block_pick_ledger
-    from services.coach_exercise_preference import ledger as preference_ledger, preference_enabled
-    from services.coach_word_pairs import unchanged_share, word_pairs_enabled
+    from services.coach_exercise_preference import ledger as preference_ledger
+    from services.coach_word_pairs import unchanged_share
     from services.detector_candidates import register_candidates
     from services.detector_rollout import fair_test
-    from services.error_presence_audit import audit_enabled, report_card
+    from services.error_presence_audit import report_card
     register_candidates()
-    preference = (_read("coach_preference", lambda: preference_ledger(database), unavailable)
-                  if preference_enabled() else {"enabled": False}) or {}
-    audit = (_read("error_audit",
-                   lambda: report_card(database.list_error_presence_audit_answered_all() or []),
-                   unavailable) if audit_enabled() else {"enabled": False}) or {}
-    # The fair test grades every version against the audit's answers, so
-    # it has nothing to say until the audit is on.
-    detectors = (_read("detector_fair_test", lambda: fair_test(database), unavailable)
-                 if audit_enabled() else {"enabled": False}) or {}
+    preference = _read("coach_preference", lambda: preference_ledger(database), unavailable) or {}
+    audit = _read("error_audit",
+                  lambda: report_card(database.list_error_presence_audit_answered_all() or []),
+                  unavailable) or {}
+    # The fair test grades every version against the audit's answers.
+    detectors = _read("detector_fair_test", lambda: fair_test(database), unavailable) or {}
     picks = _read("block_pick", lambda: block_pick_ledger(database), unavailable) or {}
-    words = (_read("coach_word_pairs",
-                   lambda: unchanged_share(database.list_coach_word_drafts() or []),
-                   unavailable) if word_pairs_enabled() else {"enabled": False}) or {}
+    words = _read("coach_word_pairs",
+                  lambda: unchanged_share(database.list_coach_word_drafts() or []),
+                  unavailable) or {}
     return {"coach_preference": preference, "error_audit": audit,
             "detector_fair_test": detectors, "block_pick": picks,
             "coach_word_pairs": words}

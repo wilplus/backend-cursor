@@ -1,5 +1,6 @@
 """The coach's own words as pair surfaces, C5-a (founder 2026-10-01; Phase 7
-of the coach panel), dark behind ``Config.COACH_WORD_PAIRS_ENABLED``.
+of the coach panel). On since the panel's flip; its switch was deleted
+2026-10-11.
 
 C5-a: "The coach's written words become preference surfaces like the other
 three. The model drafts them, the draft sits in the field the coach edits
@@ -45,11 +46,6 @@ _MAX_PASSAGE = 1200
 #: whose context does not name it was not drafted under this module's
 #: prompts as kept, and is never an example or a reference.
 PROMPT_FAMILY = "coach_word_drafts"
-
-
-def word_pairs_enabled() -> bool:
-    from config import Config
-    return bool(getattr(Config, "COACH_WORD_PAIRS_ENABLED", False))
 
 
 # ── drafting (text only) ──────────────────────────────────────────────────
@@ -119,8 +115,6 @@ def draft_take_word(database: Any, *, take_session_id: str, coach_id: str,
                     body: Any) -> tuple[int, dict]:
     """POST .../word/draft: a draft of the Take word from the Take's
     transcript and the coach's notes, kept on the coach's word row."""
-    if not word_pairs_enabled():
-        return 404, {"code": "NOT_FOUND", "error": "not found"}
     if not _every_moment_judged(database, take_session_id=take_session_id, coach_id=coach_id):
         return 409, {"code": "JUDGE_EVERY_MOMENT_FIRST",
                      "error": "Judge every moment of this Take before a draft."}
@@ -145,8 +139,6 @@ def draft_moment_line(database: Any, *, request_row: Any, coach_id: str,
     """POST .../moment-line/draft: a draft of the personal line on a moment
     (an answer in words of kind note), after the coach's rating; kept on
     the request row under draft_surface coach_moment_line."""
-    if not word_pairs_enabled():
-        return 404, {"code": "NOT_FOUND", "error": "not found"}
     if not isinstance(request_row, dict) or not request_row.get("id"):
         return 404, {"code": "NOT_FOUND", "error": "No request for this moment."}
     from services.coach_request_drafts import changed_by_another_coach
@@ -178,7 +170,7 @@ def record_take_word_pair(database: Any, *, word_row: Any, coach_id: str,
     the C5 rule (feedback_pairs.record_pair; surface coach_take_word). A
     transcript of the word's video is a second final (final_kind
     "transcript"). Never in the save's way."""
-    if not word_pairs_enabled() or not isinstance(word_row, dict):
+    if not isinstance(word_row, dict):
         return None
     draft = word_row.get("draft_text")
     if not draft or not final_text:
@@ -196,7 +188,7 @@ def record_take_word_pair(database: Any, *, word_row: Any, coach_id: str,
 def record_moment_line_pair(database: Any, *, request_row: Any, coach_id: str,
                             final_text: Optional[str]) -> Optional[dict]:
     """The line's pair on a note answered in words (resolution note_written)."""
-    if not word_pairs_enabled() or not isinstance(request_row, dict):
+    if not isinstance(request_row, dict):
         return None
     if str(request_row.get("draft_surface") or "") != "coach_moment_line":
         return None
@@ -260,7 +252,7 @@ def transcribe_take_word_video(database: Any, *, word_row: Any, coach_id: str) -
     it could not be read, or enforce mode refused the permit. A refusal
     costs only the transcript draft: the word and its video are already
     saved, and the coach types the words."""
-    if not word_pairs_enabled() or not isinstance(word_row, dict) or not word_row.get("video_ref"):
+    if not isinstance(word_row, dict) or not word_row.get("video_ref"):
         return None
     from services.processing_authorization import ProcessingAuthorizationError
     take = str(word_row.get("take_session_id") or "")

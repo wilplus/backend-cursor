@@ -193,8 +193,6 @@ class LedgerTests(unittest.TestCase):
             ("services.verbal_cue_validation.report", {}),
             ("services.coach_load.coach_load", {}),
             ("services.bold_voices.after_practice_counts", {}),
-            ("services.learning_ledger._peer_lane_counts", {"enabled": False}),
-            ("services.delayed_measure.report", {"enabled": False}),
             ("services.learning_ledger._coach_panel_rows", {}),
         ):
             patcher = mock.patch(target, return_value=value)

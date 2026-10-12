@@ -30,16 +30,13 @@ class LedgerTests(unittest.TestCase):
                            return_value={"since": "s", "practices_landed": 0})
         after.start()
         self.addCleanup(after.stop)
-        for target, value in (("services.learning_ledger._peer_lane_counts", {"enabled": False}),
-                              ("services.delayed_measure.report", {"enabled": False}),
-                              # The coach panel's rows (0411): one source like
-                              # the others, on or off, never read from these stubs.
-                              ("services.learning_ledger._coach_panel_rows",
-                               {"coach_preference": {}, "error_audit": {}, "detector_fair_test": {},
-                                "block_pick": {}, "coach_word_pairs": {}})):
-            patcher = mock.patch(target, return_value=value)
-            patcher.start()
-            self.addCleanup(patcher.stop)
+        # The coach panel's rows (0411): one source like the others, on or
+        # off, never read from these stubs.
+        patcher = mock.patch("services.learning_ledger._coach_panel_rows", return_value={
+            "coach_preference": {}, "error_audit": {}, "detector_fair_test": {},
+            "block_pick": {}, "coach_word_pairs": {}})
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_every_jar_and_every_door_is_named(self):
         with mock.patch("services.feedback_pairs.counts", return_value={

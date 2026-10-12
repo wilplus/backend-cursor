@@ -34,8 +34,7 @@ from typing import Any, Optional
 
 _log = logging.getLogger(__name__)
 
-#: The three answer surfaces, and (Phase 7, C5-a; dark behind
-#: COACH_WORD_PAIRS_ENABLED) the coach's own two.
+#: The three answer surfaces, and (Phase 7, C5-a) the coach's own two.
 SURFACES = ("praise_line", "clearer_version", "exercise_script",
             "coach_moment_line", "coach_take_word")
 #: The three answer surfaces: the drafts of services.coach_request_drafts.

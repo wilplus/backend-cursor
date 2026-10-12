@@ -1,5 +1,5 @@
 """The coach's exercise preference, F8 (founder 2026-10-01; Phase 1b of the
-coach panel), dark behind ``Config.COACH_EXERCISE_PREFERENCE_ENABLED``.
+coach panel). On; its switch was deleted 2026-10-11.
 
 F8: "When a coach keeps, swaps or replaces the exercise the machine served,
 that explicit choice is recorded as the coach's preference. It may propose
@@ -47,11 +47,6 @@ RANKER_VERSION = "exercise-coach-preferred-v1"
 #: Actions per exercise (within one draw) before its rate is trusted.
 MIN_ACTIONS = 30
 PROVENANCE = "coach_preference"
-
-
-def preference_enabled() -> bool:
-    from config import Config
-    return bool(getattr(Config, "COACH_EXERCISE_PREFERENCE_ENABLED", False))
 
 
 # ── what was served, and the swap list ────────────────────────────────────
@@ -140,8 +135,6 @@ def record(database: Any, *, coach_id: str, take_session_id: str, snippet_id: st
            speaker_user_id: Optional[str], body: Any) -> tuple[int, dict]:
     """One explicit choice: kept, swapped (to a named exercise), or new
     (an exercise authored now, named when known). (status, payload)."""
-    if not preference_enabled():
-        return 404, {"code": "NOT_FOUND", "error": "not found"}
     fields: dict = body if isinstance(body, dict) else {}
     action = fields.get("action")
     if action not in ACTIONS:

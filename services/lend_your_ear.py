@@ -35,9 +35,9 @@ never a coach label, never owner routing and never a training label by
 itself (L3). A training clip is not a snippet and takes no label. Owner
 answers never enter.
 
-``PEER_LANE_ENABLED`` no longer opens any speaker route. It still gates the
-coach's licensed-corpus tool (``services/corpus_clips.py``) and the
-ledger's historical counts of the retired lane.
+``PEER_LANE_ENABLED``, which last gated only the coach's licensed-corpus
+tool and the ledger's counts of the retired lane, stayed off and was
+deleted 2026-10-11 with that tool.
 """
 from __future__ import annotations
 
@@ -55,13 +55,6 @@ STRATA = ("confident", "weak", "unknown")
 #: the delayed measure's pair clips ("delayed") rode the retired switch
 #: and are no sources any more.
 SOURCES = ("community", "training")
-
-
-def peer_lane_enabled() -> bool:
-    """The coach's licensed-corpus tool and the ledger's historical counts.
-    No speaker route reads it since Q-B11 A."""
-    from config import Config
-    return bool(getattr(Config, "PEER_LANE_ENABLED", False))
 
 
 # ── the policy version a share rides ──────────────────────────────────────

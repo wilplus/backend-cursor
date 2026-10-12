@@ -163,9 +163,8 @@ def build_evaluation(records: list[dict],
     exercise-coach-preferred-v1 learns from the coach's keep and swap
     choices (study-group speakers), is graded on the same machine-draw
     units of exam-group speakers, and never serves (it stays dark: nothing
-    ranks a speaker's exercises by it). ``preference_rows`` is None while
-    the preference lane is off (COACH_EXERCISE_PREFERENCE_ENABLED) or its
-    read failed, and the grade then says so. Pure; unsealed, for fixtures
+    ranks a speaker's exercises by it). ``preference_rows`` is None when
+    its read failed, and the grade then says so. Pure; unsealed, for fixtures
     and ``evaluate_jar``."""
     from services.coach_exercise_preference import RANKER_VERSION, graded
     labels = [label(r) for r in records if r["excluded"] is None]
@@ -182,11 +181,8 @@ def build_evaluation(records: list[dict],
 
 
 def _preference_rows(database: Any) -> Optional[list[dict]]:
-    """The coach's keep and swap choices, or None while their lane is dark.
-    A read that fails is None too: the ranker is then not graded."""
-    from services.coach_exercise_preference import preference_enabled
-    if not preference_enabled():
-        return None
+    """The coach's keep and swap choices. A read that fails is None: the
+    ranker is then not graded."""
     try:
         return [r for r in (database.list_coach_exercise_preferences() or [])
                 if isinstance(r, dict)]

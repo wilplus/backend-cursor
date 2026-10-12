@@ -3,11 +3,9 @@ with no exercise sends it to the coach when the answer is saved."""
 from __future__ import annotations
 
 import unittest
-from unittest.mock import patch
 from pathlib import Path
 
 from services import confident_voice_practice as cvp
-from services.judgement_follow_up import follow_up_for_judgement
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -20,6 +18,7 @@ def _snippet():
 
 
 class _Db:
+    """A judgement's database, shared with tests/test_coach_listen_again.py."""
     def __init__(self, *, assignment=None, request=None):
         self.assignment = assignment
         self.request = request
@@ -51,12 +50,6 @@ class _Db:
         return {"id": "req-1", **kwargs}
 
 
-def _follow(db, answer):
-    return follow_up_for_judgement(
-        db, take_session_id="take-1", snippet_id="snip-1",
-        owner_user_id="owner-1", answer=answer)
-
-
 def _verdict(read, fired):
     pattern = {"confident": "confident", "weak": "low_confidence_rushing_dominant",
                "unknown": None}[read]
@@ -68,86 +61,10 @@ def _verdict(read, fired):
     return verdict
 
 
-def _judged(db, answer, *, read="weak", fired=False):
-    """One judgement, with the machine's read and what fired pinned."""
-    original = cvp.exercise_eligibility
-    cvp.exercise_eligibility = lambda *_a, **_k: _verdict(read, fired)
-    try:
-        return _follow(db, answer)
-    finally:
-        cvp.exercise_eligibility = original
-
-
-@patch("config.Config.JUDGEMENT_AFTER_FEEDBACK_ENABLED", False)
 class MatrixTests(unittest.TestCase):
-    """The matrix on the judgement path (24f). Since 2026-10-02 the request
-    rises at the open (24e-1) and the judgement sets answer_kind; these pin
-    the kinds the judgement path records when F1 is off."""
-    """The follow-up matrix (founder 2026-09-29), cell by cell."""
-
-    def test_read_confident_is_praise_now_for_every_answer(self):
-        for answer, kind in (("yes", "praise"), ("in_between", "praise"),
-                             ("no", "ambiguity"), ("not_sure", "ambiguity")):
-            db = _Db()
-            self.assertEqual(_judged(db, answer, read="confident"), "praise", answer)
-            self.assertEqual(db.raised[0]["kind"], kind, answer)
-
-    def test_read_weak_with_a_problem_fired_is_the_video_lane(self):
-        for answer, kind in (("in_between", "error"), ("no", "error"),
-                             ("not_sure", "ambiguity")):
-            db = _Db()
-            self.assertEqual(_judged(db, answer, fired=True), "coach_request", answer)
-            self.assertEqual(db.raised[0]["kind"], kind, answer)
-            self.assertEqual(db.raised[0]["reason"], "nothing_targets_it")
-        matched = _Db(assignment={"selected_exercise_id": "x"})
-        self.assertEqual(_judged(matched, "no", fired=True), "exercise")
-        self.assertEqual(matched.raised[0]["kind"], "error")
-        self.assertEqual(matched.raised[0]["reason"], "library_matched")
-
-    def test_read_weak_with_nothing_fired_is_the_rewrite(self):
-        for answer, kind in (("in_between", "rewrite"), ("no", "rewrite"),
-                             ("not_sure", "ambiguity")):
-            db = _Db()
-            self.assertEqual(_judged(db, answer), "rewrite", answer)
-            self.assertEqual(db.raised[0]["kind"], kind, answer)
-            self.assertEqual(db.raised[0]["reason"], "nothing_spotted")
-
-    def test_a_yes_the_machine_reads_weak_shows_nothing_and_asks_the_coach(self):
-        for fired in (True, False):
-            db = _Db()
-            self.assertEqual(_judged(db, "yes", fired=fired), "none")
-            self.assertEqual(db.raised[0]["kind"], "ambiguity")
-
-    def test_an_unreadable_clip_shows_nothing_and_asks_the_coach(self):
-        db = _Db()
-        self.assertEqual(_judged(db, "no", read="unknown"), "none")
-        self.assertEqual(db.raised[0]["kind"], "ambiguity")
-
-    def test_audio_unclear_raises_nothing(self):
-        db = _Db()
-        self.assertEqual(_judged(db, "audio_unclear", fired=True), "none")
-        self.assertEqual(db.raised, [])
-
-    def test_a_request_already_raised_is_not_raised_twice(self):
-        db = _Db(request={"id": "req-1", "resolution": None, "kind": "error"})
-        self.assertEqual(_judged(db, "no", fired=True), "coach_request")
-        self.assertEqual(db.raised, [])
-
-    def test_the_request_carries_the_trace_and_the_owner(self):
-        db = _Db()
-        _judged(db, "no", fired=True)
-        raised = db.raised[0]
-        self.assertEqual(raised["snippet_id"], "snip-1")
-        self.assertEqual(raised["owner_user_id"], "owner-1")
-        self.assertEqual(raised["request_trace"]["lane"], "v3_judgement")
-
-    def test_a_failed_write_never_fails_the_answer(self):
-        class _Broken(_Db):
-            def request_exercise_from_coach(self, **_kwargs):
-                raise RuntimeError("rpc down")
-        # A failed write shows nothing rather than promising the coach.
-        self.assertEqual(_judged(_Broken(), "no", fired=True), "none")
-        self.assertEqual(_judged(_Broken(), "no", fired=False), "rewrite")
+    """The follow-up matrix (founder 2026-09-29). The judgement-first flow it
+    once drove was retired with its switch (2026-10-11): the request rises
+    at the open (24e-1) and the judgement sets answer_kind."""
 
     def test_the_pure_matrix(self):
         from services.judgement_follow_up import decide

@@ -158,9 +158,6 @@ def test_an_open_or_skip_asks_for_a_rebake_too(monkeypatch):
         def record_moment_event(self, **_k):
             return True
 
-    monkeypatch.setattr(
-        "services.judgement_follow_up.judgement_after_feedback_enabled",
-        lambda: False)
     with patch.object(bake, "request_rebake_after_answer",
                       return_value=True) as asked:
         status, payload = moment_events.record_moment_event(

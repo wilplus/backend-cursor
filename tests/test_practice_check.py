@@ -1,6 +1,5 @@
 """The machine checks each practise try (founder lock 2026-10-06, the
-Feedback walk; decisions log N52.3), dark behind
-MACHINE_PRACTICE_CHECK_ENABLED.
+Feedback walk; decisions log N52.3). On; its switch was deleted 2026-10-11.
 
 Pins: the speaker is never asked; a try measurably better than the original
 (the targeted problem cleared, a cue moved, or the machine leg higher) is
@@ -99,8 +98,7 @@ def test_only_two_outcomes_and_the_screen_sees_no_measure():
 
 def test_praise_closes_the_practice_on_that_try_without_an_answer():
     db = _Db([_attempt(1), _attempt(2, snapshot={"pause_ratio": 0.2})])
-    with patch("services.delayed_measure.enrol") as enrol:
-        status, body = pc.check_attempt(db, PRACTICE, "a-2", "owner-1")
+    status, body = pc.check_attempt(db, PRACTICE, "a-2", "owner-1")
     assert status == 200 and body["outcome"] == "done"
     assert body["check"] == {"next": "praise", "key": "cleared:rushing"}
     assert body["attempt_transcript"] == "we doubled revenue"
@@ -110,7 +108,6 @@ def test_praise_closes_the_practice_on_that_try_without_an_answer():
     # L3: the machine's decision is never the speaker's answer.
     assert "final_user_answer" not in fields and "user_answer" not in fields
     assert fields["after_practice"]["decided_by"] == "machine"
-    enrol.assert_called_once()
 
 
 def test_again_keeps_the_practice_open_and_only_the_latest_try_is_checked():
@@ -170,20 +167,13 @@ def test_its_helper_words_can_be_tapped_from_the_praised_try():
     assert (status, body["code"]) == (409, "NOT_ADOPTED")
 
 
-# ── the switch and the route ──────────────────────────────────────────────
-
-def test_the_switch_is_on_now_the_walk_is_live():
-    from config import Config
-    assert Config.MACHINE_PRACTICE_CHECK_ENABLED is True
-    assert pc.machine_practice_check_enabled() is True
-
+# ── the route ──────────────────────────────────────────────
 
 def test_the_route_is_fenced_and_hides_the_measure():
     source = (ROOT / "routes/v2/user_sessions.py").read_text()
     start = source.index("def v2_check_confident_voice_practice_attempt")
     route = source[start:source.index("@v2_bp.route", start)]
-    assert "machine_practice_check_enabled()" in route
-    assert route.index("machine_practice_check_enabled()") < route.index("get_confident_voice_practice")
+    assert "machine_practice_check_enabled" not in route
     head = source[source.rindex("@v2_bp.route", 0, start):start]
     assert '"<attempt_id>/check", methods=["POST"]' in head
     for fence in ("@require_auth", 'operational_purpose_disabled("personalized_exercise_recommendation")',
@@ -229,16 +219,14 @@ def test_praise_on_the_third_try_still_wins():
     check = pc.decide(PRACTICE, three, "a-3")
     assert (check["next"], check["key"]) == ("praise", "cleared:rushing")
     db = _Db(three)
-    with patch("services.delayed_measure.enrol"):
-        status, body = pc.check_attempt(db, PRACTICE, "a-3", "owner-1")
+    status, body = pc.check_attempt(db, PRACTICE, "a-3", "owner-1")
     assert body["outcome"] == "done"
     assert db.updates[-1][2]["selected_attempt_id"] == "a-3"
 
 
 def test_moving_on_closes_the_practice_with_no_try_selected():
     db = _Db([_attempt(1), _attempt(2), _attempt(3)])
-    with patch("services.delayed_measure.enrol") as enrol:
-        status, body = pc.check_attempt(db, PRACTICE, "a-3", "owner-1")
+    status, body = pc.check_attempt(db, PRACTICE, "a-3", "owner-1")
     assert status == 200 and body["outcome"] == "moved_on"
     assert body["check"] == {"next": "moved_on", "key": "CM3b"}
     assert body["attempt_transcript"] is None
@@ -246,7 +234,6 @@ def test_moving_on_closes_the_practice_with_no_try_selected():
     assert fields["status"] == "completed" and fields["closed_at"]
     assert "selected_attempt_id" not in fields and "landed_attempt_index" not in fields
     assert "final_user_answer" not in fields and "user_answer" not in fields
-    enrol.assert_called_once()
     closed = body["practice_row"]
     # No helper words from a practice the machine moved on from.
     assert pc.machine_closed(closed) is False

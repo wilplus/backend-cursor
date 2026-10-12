@@ -88,10 +88,9 @@ def _eligibility(snippet, **_kw):
 
 class OpenCardTests(unittest.TestCase):
     def setUp(self):
-        for p in (patch("config.Config.JUDGEMENT_AFTER_FEEDBACK_ENABLED", True),
-                  patch.object(cvp, "exercise_eligibility", _eligibility)):
-            p.start()
-            self.addCleanup(p.stop)
+        p = patch.object(cvp, "exercise_eligibility", _eligibility)
+        p.start()
+        self.addCleanup(p.stop)
         cvp._coach_presence = (0.0, None)
         self.addCleanup(setattr, cvp, "_coach_presence", (0.0, None))
 
@@ -129,10 +128,6 @@ class OpenCardTests(unittest.TestCase):
     def test_no_coach_on_the_panel_leaves_the_coach_request_out(self):
         cards = self._cards(_Db(coach=False), ["weak-fired", "weak-quiet"])
         self.assertEqual(cards, {"weak-quiet": "rewrite"})
-
-    def test_switch_off_serves_no_field(self):
-        with patch("config.Config.JUDGEMENT_AFTER_FEEDBACK_ENABLED", False):
-            self.assertEqual(self._cards(_Db(), ["weak-fired"]), {})
 
     def test_unavailable_inputs_omit_the_field(self):
         self.assertEqual(self._cards(_Db(fail=True), ["weak-fired"]), {})

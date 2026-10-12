@@ -1,28 +1,20 @@
-"""Praise after practice, encouragement, Bold voices and the coach's
-readings (founder 2026-10-01, F5; Phase 3 of the after-practice paths),
-dark behind PRAISE_AFTER_PRACTICE_ENABLED.
+"""The after-practice rules (founder 2026-10-01, F5; Phase 3 of the
+after-practice paths). Its switch stayed off and was deleted 2026-10-11
+with the landing and dismissal hooks and the coach's readings tool.
 
-Pins: off, nothing is said, written or served; on, one sentence from the
-closed set names the targeted problem that cleared, else the one cue that
-moved, else that the attempt sounded more assured, else "Good job", about
-the attempt the speaker LANDED on; In-between hears the gentler line; a
-rewrite practice compares only attempts of the accepted text; a practice
-left hears a real step or the effort line; Bold voices serve the own
-landed attempt and published coach readings without a name; each step is
-shown once per Take; the coach tool refuses what it should.
+Pins: the cue reads and gains, the closed set (no number), the
+encouragement rule the machine's practise check reads, Bold voices retired,
+and the ledger counts.
 """
 from __future__ import annotations
 
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from services import after_practice as ap
 from services import bold_voices as bv
-from services import coach_readings as cr
 
 ROOT = Path(__file__).resolve().parents[1]
-ON = patch("config.Config.PRAISE_AFTER_PRACTICE_ENABLED", True)
 
 
 def _attempt(index, *, original=None, attempt=None, snapshot=None, aid=None):
@@ -62,48 +54,6 @@ class CueTests(unittest.TestCase):
 
 
 class PraiseTests(unittest.TestCase):
-    def test_the_targeted_problem_that_cleared_comes_first(self):
-        landed = _attempt(2, snapshot={"pause_ratio": 0.2}, original={"pitch_range": 0},
-                          attempt={"pitch_range": 2.0})
-        said = ap.praise_after_practice(PRACTICE, [_attempt(1), landed], "a-2", "yes")
-        self.assertEqual((said["key"], said["lane"], said["error"], said["attempt_index"]),
-                         ("cleared:rushing", "cleared", "rushing", 2))
-        self.assertEqual(said["sentence"], ap.PRAISE["cleared:rushing"][0])
-        self.assertEqual(said["rule_version"], ap.RULE_VERSION)
-
-    def test_then_the_one_cue_that_moved_then_the_machine_leg_then_good_job(self):
-        still_rushing = {"pause_ratio": 0.02}
-        landed = _attempt(1, snapshot=still_rushing, original={"pausing": 0.0},
-                          attempt={"pausing": 0.7})
-        said = ap.praise_after_practice(PRACTICE, [landed], "a-1", "in_between")
-        self.assertEqual((said["key"], said["cue"], said["variant"]),
-                         ("cue:no_hesitation", "no_hesitation", "in_between"))
-        self.assertEqual(said["sentence"], ap.PRAISE["cue:no_hesitation"][1])
-        landed = _attempt(1, snapshot={**still_rushing, "confidence": 0.6})
-        said = ap.praise_after_practice(PRACTICE, [landed], "a-1", "yes")
-        self.assertEqual((said["key"], said["lane"]), ("more_assured", "machine_leg"))
-        landed = _attempt(1, snapshot={**still_rushing, "confidence": 0.1})
-        said = ap.praise_after_practice(PRACTICE, [landed], "a-1", "yes")
-        self.assertEqual((said["key"], said["sentence"]), ("good_job", "Good job."))
-
-    def test_it_describes_the_attempt_the_speaker_landed_on(self):
-        first = _attempt(1, snapshot={"pause_ratio": 0.2})
-        third = _attempt(3, snapshot={"pause_ratio": 0.01, "confidence": 0.1})
-        said = ap.praise_after_practice(PRACTICE, [first, _attempt(2), third], "a-3", "yes")
-        self.assertEqual((said["attempt_index"], said["key"]), (3, "good_job"))
-        self.assertEqual(ap.praise_after_practice(PRACTICE, [first], "missing", "yes")["key"],
-                         "good_job")
-
-    def test_a_rewrite_practice_compares_only_the_accepted_text(self):
-        practice = {**PRACTICE, "kind": "rewrite"}
-        one = _attempt(1, snapshot={"pause_ratio": 0.5, "confidence": 0.9},
-                       original={"pausing": -1.0}, attempt={"pausing": 0.0})
-        self.assertEqual(ap.praise_after_practice(practice, [one], "a-1", "yes")["key"],
-                         "good_job")
-        two = _attempt(2, attempt={"pausing": 0.8})
-        said = ap.praise_after_practice(practice, [one, two], "a-2", "yes")
-        self.assertEqual((said["key"], said["lane"]), ("cue:no_hesitation", "cue"))
-
     def test_every_sentence_is_in_the_closed_set_and_carries_no_number(self):
         for key, (yes, gentle) in ap.PRAISE.items():
             for sentence in (yes, gentle):
@@ -184,128 +134,17 @@ class _Db:
                 "steps": {"bridge": 0, "lend_your_ear": 0, "bold_voices": 1}}
 
 
-class OffTests(unittest.TestCase):
-    """The off behaviour, under the switch patched off (the live default is
-    off again since 2026-10-05: no screen renders any of it)."""
-    def setUp(self):
-        self._off = patch("config.Config.PRAISE_AFTER_PRACTICE_ENABLED", False)
-        self._off.start()
-        self.addCleanup(self._off.stop)
-
-    def test_the_switch_is_off_until_a_screen_ships(self):
-        self._off.stop()
-        from config import Config as _live
-        self.assertFalse(_live.PRAISE_AFTER_PRACTICE_ENABLED)
-        self._off.start()
-
-    def test_off_nothing_is_said_written_or_served(self):
-        db = _Db()
-        self.assertIsNone(ap.after_landing(db, PRACTICE, [_attempt(1)], "a-1", "yes"))
-        self.assertIsNone(ap.after_dismissal(db, PRACTICE))
-        self.assertEqual(db.updates, [])
-        self.assertEqual(cr.list_readings(db, coach_id="c")[0], 404)
-        self.assertEqual(cr.create_reading(db, coach_id="c", passage="x", media_file=None,
-                                           media_kind="audio", max_mb=1)[0], 404)
-
-
-@ON
-class OnTests(unittest.TestCase):
-    def test_the_landing_keeps_the_sentence_on_the_practice(self):
-        db = _Db()
-        said = ap.after_landing(db, PRACTICE, [_attempt(1, snapshot={"pause_ratio": 0.2})], "a-1", "yes")
-        self.assertEqual(said["key"], "cleared:rushing")
-        self.assertEqual(db.updates[0][2], {"after_practice": said})
-        self.assertEqual(db.updates[0][:2], ("p-1", "owner-1"))
-
-    def test_the_dismissal_keeps_the_encouragement(self):
-        db = _Db()
-        said = ap.after_dismissal(db, PRACTICE)
-        self.assertEqual(said["key"], "effort")
-        self.assertEqual(db.updates[0][2]["after_practice"]["sentence"], ap.ENCOURAGEMENT["effort"])
-
-    def test_a_failed_write_never_costs_the_judgement(self):
-        class _Down(_Db):
-            def update_confident_voice_practice(self, *_a):
-                raise RuntimeError("down")
-        self.assertIsNone(ap.after_landing(_Down(), PRACTICE, [_attempt(1)], "a-1", "yes"))
-
+class RetiredTests(unittest.TestCase):
     def test_bold_voices_are_retired_whatever_the_switch_says(self):
         # Q-B11 A (founder 2026-10-07, N62): "The Album share switch and
         # Bold voices are retired." No service door, and the three routes
-        # answer 404 before any read, with the switch on.
-        from flask import Flask, request
-        import routes.v2.after_practice as route
+        # (404 tombstones until 2026-10-11) are gone with their module.
         for door in ("bold_voices_for_take", "mark_step", "record_heard", "STEPS", "CLIP_KINDS"):
             self.assertFalse(hasattr(bv, door), door)
-        source = (ROOT / "routes/v2/after_practice.py").read_text()
-        routes_ = {
-            "v2_bold_voices": ("/user/takes/<take_session_id>/bold-voices", "GET"),
-            "v2_after_practice_step": ("/user/takes/<take_session_id>/after-practice-step", "POST"),
-            "v2_bold_voices_heard": ("/user/takes/<take_session_id>/bold-voices/heard", "POST"),
-        }
-        self.assertEqual(source.count("@v2_bp.route("), len(routes_))
-        self.assertNotIn("services.db", source)
-        app = Flask(__name__)
-        for name, (path, method) in routes_.items():
-            self.assertIn(f'@v2_bp.route("{path}", methods=["{method}"])', source)
-            with app.test_request_context("/v2/x", method=method,
-                                          json={"step": "bold_voices", "clip_kind": "own_attempt",
-                                                "clip_id": "a-1"}):
-                request.user_id = "owner-1"
-                response, status = getattr(route, name).__wrapped__("take-1")
-            self.assertEqual(status, 404, name)
-            self.assertEqual(response.get_json()["code"], "NOT_FOUND", name)
+        self.assertFalse((ROOT / "routes/v2/after_practice.py").exists())
         # The ledger's count stays (never a speaker-facing number).
         db = _Db()
         self.assertEqual(bv.after_practice_counts(db, since="t0")["since"], "t0")
-
-    def test_the_coach_tool_records_and_publishes_a_reading(self):
-        class _File:
-            filename = "reading.mp3"
-            content_type = "audio/mpeg"
-
-            def read(self):
-                return b"abc"
-        db = _Db()
-        with patch("services.journal_media.put_object_bytes",
-                   return_value={"public_url": "https://m/x.mp3", "key": "k"}):
-            status, payload = cr.create_reading(
-                db, coach_id="coach-1", passage=" Say it whole. ", media_file=_File(),
-                media_kind="audio", max_mb=10)
-        self.assertEqual(status, 201)
-        self.assertEqual(payload["reading"]["passage"], "Say it whole.")
-        self.assertIsNone(payload["reading"]["published_at"])
-        self.assertEqual(cr.publish_reading(db, coach_id="coach-1", reading_id="r-1",
-                                            published=True)[1]["reading"]["published_at"], "now")
-        self.assertEqual(cr.publish_reading(db, coach_id="coach-2", reading_id="r-1",
-                                            published=True)[0], 404)
-        self.assertEqual(cr.list_readings(db, coach_id="coach-1")[1]["readings"][0]["id"], "r-1")
-
-    def test_the_coach_tool_refuses_what_it_should(self):
-        class _Big:
-            filename = "reading.wav"
-            content_type = "audio/wav"
-
-            def read(self):
-                return b"x" * (2 * 1024 * 1024)
-
-        class _Wrong:
-            filename = "reading.txt"
-            content_type = "text/plain"
-
-            def read(self):
-                return b"x"
-        db = _Db()
-        self.assertEqual(cr.create_reading(db, coach_id="c", passage="", media_file=_Big(),
-                                           media_kind="audio", max_mb=1)[0], 400)
-        self.assertEqual(cr.create_reading(db, coach_id="c", passage="x", media_file=None,
-                                           media_kind="audio", max_mb=1)[0], 400)
-        self.assertEqual(cr.create_reading(db, coach_id="c", passage="x", media_file=_Wrong(),
-                                           media_kind="audio", max_mb=1)[0], 415)
-        self.assertEqual(cr.create_reading(db, coach_id="c", passage="x", media_file=_Big(),
-                                           media_kind="audio", max_mb=1)[0], 413)
-        self.assertEqual(cr.publish_reading(db, coach_id="c", reading_id="r", published="yes")[0], 400)
-        self.assertEqual(db.readings, [])
 
     def test_the_ledger_counts_ride_the_window(self):
         self.assertEqual(bv.after_practice_counts(_Db(), since="s")["practices_landed"], 2)
@@ -314,7 +153,7 @@ class OnTests(unittest.TestCase):
 class WiringTests(unittest.TestCase):
     def test_the_judgement_the_dismissal_and_the_attempt_ask_the_rule(self):
         adoption = (ROOT / "services/practice_adoption.py").read_text()
-        self.assertIn("after_landing(database, result[\"practice_row\"], attempts,", adoption)
+        self.assertNotIn("after_landing", adoption)
         routes = (ROOT / "routes/v2/user_sessions.py").read_text()
         self.assertIn("_practice_user_payload(_dismissed(updated))", routes)
         self.assertIn("comparison = _attempt_comparison(", routes)
@@ -324,7 +163,7 @@ class WiringTests(unittest.TestCase):
     def test_the_contract_the_config_the_migration_and_the_routes_record_f5(self):
         self.assertIn("29c. **After the practice**",
                       (ROOT / "docs/CANONICAL_PRODUCT_CONTRACT.md").read_text())
-        self.assertIn("PRAISE_AFTER_PRACTICE_ENABLED = False", (ROOT / "config.py").read_text())
+        self.assertNotIn("PRAISE_AFTER_PRACTICE_ENABLED", (ROOT / "config.py").read_text())
         sql = (ROOT / "migrations/a_practice_hears_what_changed.sql").read_text()
         for needle in ("ADD COLUMN IF NOT EXISTS after_practice",
                        "CREATE TABLE IF NOT EXISTS public.coach_readings",
@@ -334,7 +173,8 @@ class WiringTests(unittest.TestCase):
         self.assertIn("a_practice_hears_what_changed.sql",
                       (ROOT / "migrations/manifest.txt").read_text())
         modules = (ROOT / "routes/v2/__init__.py").read_text()
-        self.assertIn('"coach_readings", "after_practice"', modules)
+        self.assertNotIn('"coach_readings"', modules)
+        self.assertNotIn('"after_practice"', modules)
         from services.data_purge_registry import DEPENDENCIES
         by = {d.relation: (d.selector_column, d.locator_kind) for d in DEPENDENCIES}
         self.assertEqual(by["after_practice_steps"], ("take_session_id", "take"))
