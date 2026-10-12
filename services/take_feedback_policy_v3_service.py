@@ -61,51 +61,24 @@ class _V3ServiceInventory:
 
 
 def _block_presentation(block: dict, block_id: str) -> dict:
-    """What the client is allowed to know about how to DRAW this block.
+    """What the client may know about how to DRAW this block (founder lock
+    2026-10-12, section 6).
 
-    THE LADDER WAS COMPUTED AND THEN THROWN AWAY (founder 2026-09-18: "there
-    are no green bookmarks... none of that actually landed"). `_practice_routing`
-    and `_mark_top_confidence` already decide, per block, which item carries the
-    exercise, which two are the Take's most confident, and which prompt practice
-    — and every one of those decisions stayed on the internal frame. The row the
-    browser received had no tier at all, so every bookmark could only render the
-    same colour and contract 24g was unbuildable.
-
-    AC-9 IS WHY THIS IS A TRANSLATION AND NOT A PASS-THROUGH.
-    `voice_confidence.band()` warns in its own docstring that the band IS a
-    verdict and must never reach a user payload, so `delivery_band` stays on the
-    frame and does not appear here. What crosses is a tier NAME and one boolean:
-    the client is told which bookmark to draw and that practice is offered,
-    never how it was scored, where it ranked, or how it compares.
-
-    TWO COLOURS BY THE READ (founder lock 2026-09-30, B7; contract 24g). The
-    tier is the machine's read of the block as a NAME: `confident` above the
-    threshold (green), `weak` at or below it (orange, once a practise is
-    attached — the client checks that), `standard` when the clip could not
-    be read (no bar). The threshold is the same cut the Manager anchors its
-    notes by and the matrix chooses follow-ups by (`CONFIDENT_BANDS`), so
-    the bar, the note and the follow-up never disagree about one moment.
-    Until the lock the tier named a rank (the two most confident, the
-    single weakest with an exercise); a threshold is a tier name, never a
-    position, so every green is identical (24i).
+    Only green is a tier: `confident` for a green moment, `standard` for
+    every other block. The exercise moment is never labelled weak; it says
+    only that practice is offered and which kind (`exercise_kind`, a routing
+    word: "clearer" or "voice"). No score, band or rank crosses (AC-9).
     """
-    from services.take_feedback_policy_v3 import CONFIDENT_BANDS
-
-    band = block.get("delivery_band")
-    tier = (
-        "standard" if band is None
-        else "confident" if band in CONFIDENT_BANDS
-        else "weak"
-    )
-    return {
+    presentation = {
         "block_id": block_id,
-        "bookmark_tier": tier,
-        # "Let's practice", one boolean. Which exercise a moment carries is
-        # the library's match to its own clip (contract 24f as of 2026-09-29:
-        # an exercise on any bookmark the machine reads weak; 35g-1), attached
-        # on the serve path, never decided here.
+        "bookmark_tier": "confident" if block.get("most_confident") else "standard",
         "practice_prompt": bool(block.get("practice_prompt")),
     }
+    if block.get("green_soft"):
+        presentation["green_soft"] = True
+    if block.get("exercise_kind"):
+        presentation["exercise_kind"] = block["exercise_kind"]
+    return presentation
 
 
 def _presentable(row: dict, presentation: dict) -> dict:

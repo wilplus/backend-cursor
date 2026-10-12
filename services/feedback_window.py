@@ -1,57 +1,28 @@
-"""The window of three (founder lock 2026-09-30, task 11; contract 24b/24c
-as amended).
+"""Which open moments reach the page (founder lock 2026-10-12,
+``docs/FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md``; replaces the window
+of three of 2026-09-30).
 
-At any moment the Ideal Text holds at most three OPEN feedbacks: moments
-still waiting for the speaker's judgement or practise. The Manager still
-evaluates every block and freezes every selection (24b); this is the last
-step before serving, and it chooses which of the open moments reach the
-page NOW. It re-decides on every read, so saving helper words on one moment
-frees its slot and the next candidate appears without a new Take.
+The Manager already chose them (`services.moment_pick`): up to three green
+moments, at most one per slide, and one exercise. Every open Confident Voice
+moment that is green (`bookmark_tier == "confident"`) or is the exercise
+(`practice_prompt`) shows; other open moments do not. On a Take where the
+machine could read nothing, at most two open moments show, in text order,
+so the speaker still has something to open.
 
-THE RULE (founder, Q2 A). Slots fill from the two ends of the read: the
-highest moment read above the confident threshold takes green, the lowest
-moment read below it with a practise attached takes orange, and the third
-slot goes to whichever side has the next candidate farthest from the
-threshold. Never three of one colour. When only one side has candidates,
-at most two show.
+WHAT LEAVES ENTIRELY. A paragraph saved with helper words is done: its open
+moments are not served, and its notes ride the locked screen. Everything
+already answered stays: history is never withheld. A praise or a rewrite
+rides its own paragraph's open moment and is withheld with it.
 
-THE UNCOLOURED MOMENT (founder 2026-10-05, N48.1, Wave 1 step 2). A moment
-the machine could not read, or read weak with nothing to practise, carries
-no bar and is no candidate on either side, so it never takes a slot while
-a coloured candidate exists: not the third beside one green and one
-orange, and not a third beside two of one colour ("when only one side has
-candidates, at most two show"). Only when the Take has no coloured
-candidate at all do uncoloured moments show, at most two, in text order,
-so the speaker still has something to open (24b: an item per valid
-block). A coloured moment the bundle carries no score for still carries
-its bar: it is a candidate on its side, after the scored ones, in text
-order, and counts against its colour.
-
-WHAT LEAVES THE WINDOW ENTIRELY. A paragraph saved with helper words is
-done (B8): its moments are not served for judgement, and its notes ride the
-locked screen, not the walk. Everything already answered stays: history is
-never withheld. A praise or a rewrite rides its own paragraph's open moment
-and is withheld with it, so no paragraph holds a note without the judgement
-that carries it (24f).
-
-AFTER DELETE (founder 2026-10-05, N48.2 Q6 A; lock B4-5). Deleting a
-paragraph's helper words unlocks it, so it leaves `saved_paragraphs` on the
-next read: its answered moment was never withheld and is there to show, and
-the notes riding it come back. The page makes that paragraph a walk stop at
-once, on its earlier answer; nothing here re-opens the answer.
-
-AC-9: the score orders the slots and never leaves this module; the served
-row carries the tier name and nothing else.
+AC-9: no score or band is read or served here.
 """
 from __future__ import annotations
 
 from typing import Any, Callable, Iterable, Optional
 
-WINDOW = 3
-PER_COLOUR = 2
-#: At most this many uncoloured moments, and only on a Take with no coloured
-#: candidate at all (founder lock Q2 A: "at most two show").
-UNCOLOURED = 2
+#: On a Take with no green moment and no exercise, at most this many open
+#: moments show, in text order.
+UNREAD = 2
 CONFIDENT_VOICE = "confident_voice"
 
 
@@ -64,127 +35,28 @@ def _open(row: dict) -> bool:
     return str(row.get("status") or "") not in ("approved", "dismissed")
 
 
-def _colour(row: dict) -> Optional[str]:
-    """"confident", "weak" (with a practise attached), or None for a moment
-    that carries no bar."""
-    tier = row.get("bookmark_tier")
-    if tier == "confident":
-        return "confident"
-    if tier == "weak" and row.get("practice_exercise"):
-        return "weak"
-    return None
+def _picked(row: dict) -> bool:
+    return row.get("bookmark_tier") == "confident" or bool(row.get("practice_prompt"))
 
 
-def _sides(
-    scored: list[tuple[dict, Optional[float]]],
-) -> tuple[list[tuple[dict, float]], list[tuple[dict, float]]]:
-    """The two ends of the read: the confident moments, highest first, and
-    the weak-with-a-practise moments, lowest first. A moment with no score
-    is on neither side."""
-    confident = sorted(
-        ((row, s) for row, s in scored
-         if _colour(row) == "confident" and s is not None),
-        key=lambda pair: -pair[1])
-    weak = sorted(
-        ((row, s) for row, s in scored
-         if _colour(row) == "weak" and s is not None),
-        key=lambda pair: pair[1])
-    return confident, weak
-
-
-class _Slots:
-    """The window filling up: at most WINDOW moments, at most PER_COLOUR of
-    one colour."""
-
-    def __init__(self) -> None:
-        self.chosen: list[dict] = []
-        self.taken = {"confident": 0, "weak": 0}
-
-    def full(self) -> bool:
-        return len(self.chosen) >= WINDOW
-
-    def take(self, side: str, pool: list) -> None:
-        if pool and self.taken[side] < PER_COLOUR and not self.full():
-            self.chosen.append(pool.pop(0)[0])
-            self.taken[side] += 1
-
-    def farthest(self, side: str, pool: list) -> Optional[float]:
-        """How far this side's next candidate sits from the threshold, or
-        None when the side is spent or capped."""
-        if not pool or self.taken[side] >= PER_COLOUR:
-            return None
-        return abs(pool[0][1])
-
-
-def _fill_from_the_ends(
-    slots: _Slots, confident: list, weak: list,
-) -> None:
-    """The third slot and any left: whichever side has the next candidate
-    farther from the threshold; never a third of one colour."""
-    while not slots.full() and (confident or weak):
-        far_c = slots.farthest("confident", confident)
-        far_w = slots.farthest("weak", weak)
-        if far_c is None and far_w is None:
-            break
-        if far_w is None or (far_c is not None and far_c >= far_w):
-            slots.take("confident", confident)
-        else:
-            slots.take("weak", weak)
-
-
-def choose_open_moments(
-    moments: list[dict], score_of: Callable[[dict], Optional[float]],
-) -> list[dict]:
-    """The open moments that fill the window, in the order they were given.
-
-    `moments` are the open Confident Voice rows on paragraphs not saved
-    with helper words, in text order. `score_of` is the internal read, above
-    zero being the confident side; a coloured moment with no score is
-    placed after the scored ones of its colour, and an uncoloured moment
-    shows only on a Take with no coloured candidate at all.
-    """
-    # NO SHORTCUT FOR THREE OR FEWER (F1 Repair Plan Phase 1). Returning
-    # every moment when there were three or fewer skipped the two-per-colour
-    # rule, so three greens could show. The fill below already returns up to
-    # three, at most two of one colour.
-    scored = [(row, score_of(row)) for row in moments]
-    confident, weak = _sides(scored)
-    slots = _Slots()
-    slots.take("confident", confident)
-    slots.take("weak", weak)
-    _fill_from_the_ends(slots, confident, weak)
-    # A coloured moment the bundle carries no score for, in text order. It
-    # still carries its bar, so it still counts against its colour: never
-    # three of one colour, scored or not.
-    for row, s in scored:
-        side = _colour(row)
-        if slots.full():
-            break
-        if side is None or s is not None or slots.taken[side] >= PER_COLOUR:
-            continue
-        slots.taken[side] += 1
-        slots.chosen.append(row)
-    # Uncoloured moments (unreadable, or weak with nothing to practise) only
-    # when no coloured candidate exists at all, and at most two (Q2 A).
-    if not any(_colour(row) is not None for row, _ in scored):
-        slots.chosen.extend(row for row, _ in scored[:UNCOLOURED])
-    kept = {id(row) for row in slots.chosen}
-    return [row for row in moments if id(row) in kept]
+def choose_open_moments(moments: list[dict]) -> list[dict]:
+    """The open moments to show, in the order they were given."""
+    picked = [row for row in moments if _picked(row)]
+    return picked if picked else moments[:UNREAD]
 
 
 def window_rows(
     rows: Iterable[Any], *, paragraph_of: Callable[[dict], Optional[int]],
-    saved_paragraphs: set[int], score_of: Callable[[dict], Optional[float]],
+    saved_paragraphs: set[int],
 ) -> list[dict]:
-    """The served rows after the window: at most three open moments, their
-    notes, everything answered, and nothing on a paragraph saved with helper
-    words."""
+    """The served rows: the picked open moments, their notes, everything
+    answered, and nothing on a paragraph saved with helper words."""
     rows = [row for row in rows if isinstance(row, dict)]
     open_moments = [
         row for row in rows
         if _is_moment(row) and _open(row)
         and paragraph_of(row) not in saved_paragraphs]
-    chosen = choose_open_moments(open_moments, score_of)
+    chosen = choose_open_moments(open_moments)
     chosen_ids = {id(row) for row in chosen}
     withheld_paragraphs = {
         paragraph_of(row) for row in open_moments if id(row) not in chosen_ids}

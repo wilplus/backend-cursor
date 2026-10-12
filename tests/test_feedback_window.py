@@ -1,31 +1,28 @@
-"""The window of three (founder lock 2026-09-30, task 11; contract 24b)."""
+"""Which open moments reach the page (founder lock 2026-10-12)."""
 from services.feedback_window import window_rows
 
 
-def _m(id_, start, tier, score, *, practise=True, status=None):
-    row = {"id": id_, "source": "confident_voice",
-           "feedback_family": "confident_voice", "span": {"start": start},
-           "bookmark_tier": tier, "status": status}
-    if practise and tier == "weak":
-        row["practice_exercise"] = {"exercise_id": "x"}
-    row["_score"] = score
-    return row
+def _m(id_, para, tier="standard", *, practise=False, status=None):
+    return {"id": id_, "source": "confident_voice",
+            "feedback_family": "confident_voice",
+            "span": {"start": para * 100}, "bookmark_tier": tier,
+            "practice_prompt": practise, "status": status}
 
 
 def _para(row):
     return row["span"]["start"] // 100
 
 
-def _score(row):
-    return row.get("_score")
+def test_green_moments_and_the_exercise_show_nothing_else_open_does():
+    rows = [_m("g1", 0, "confident"), _m("plain", 1), _m("g2", 2, "confident"),
+            _m("ex", 3, practise=True), _m("done", 4, status="approved"),
+            _m("g3", 5, "confident")]
+    out = window_rows(rows, paragraph_of=_para, saved_paragraphs={5})
+    assert [r["id"] for r in out] == ["g1", "g2", "ex", "done"]
+    assert all("candidate_score" not in r and "delivery_band" not in r for r in out)
 
 
-def test_the_score_never_reaches_the_served_row():
-    rows = [_m("c1", 0, "confident", 0.9)]
-    out = window_rows(rows, paragraph_of=_para, saved_paragraphs=set(),
-                      score_of=lambda r: 0.9)
-    assert "candidate_score" not in out[0] and "delivery_band" not in out[0]
-
-
-# F1 Repair Plan Phase 1 (founder lock 2026-09-30, Q2 A: "never three of one
-# colour").
+def test_a_take_with_nothing_picked_still_shows_two_moments():
+    rows = [_m("a", 0), _m("b", 1), _m("c", 2)]
+    out = window_rows(rows, paragraph_of=_para, saved_paragraphs=set())
+    assert [r["id"] for r in out] == ["a", "b"]
