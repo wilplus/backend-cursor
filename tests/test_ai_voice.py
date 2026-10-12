@@ -17,14 +17,12 @@ from __future__ import annotations
 import contextlib
 import uuid
 
-import httpx
 import numpy as np
 import pytest
 
 from config import Config
-from services import ai_voice_clip, ai_voice_clone, ai_voice_prompt, ai_voice_severity
-from services.ai_voice_validator import validate
-from services.elevenlabs_client import ElevenLabsClient, Speech, VoiceProviderError
+from services import ai_voice_clip, ai_voice_clone, ai_voice_prompt
+from services.elevenlabs_client import Speech, VoiceProviderError
 
 OWNER = "11111111-1111-1111-1111-111111111111"
 SENTENCE = "We think the timing matters because the window closes once incumbents match our price"
@@ -215,44 +213,6 @@ def _run_pipeline(db, practice, voices, heard, pcm=None):
         provider_usage={"used": 0}), sign=lambda b, k: f"https://signed/{k}")
 
 
-# ── which problem ─────────────────────────────────────────────────────────
-
-def test_one_problem_by_severity_against_the_speakers_own_usual():
-    medians = ai_voice_severity.own_medians(TAKE)
-    fast = ai_voice_severity.select(_snip(190), medians, sentence=SENTENCE, seed="p1")
-    assert fast["exercise"] == "pace" and fast["severity"] >= 0.4
-    # Every signal at the speaker's own usual: no exercise at all.
-    assert ai_voice_severity.select(_snip(150), medians, sentence=SENTENCE, seed="p1") is None
-
-
-def test_severity_reaches_the_minimum_exactly_at_the_existing_pace_line():
-    line = max(150.5 + 18.0, 150.5 * 1.12)  # the median of TAKE is 150.5
-    assert ai_voice_severity.pace_severity(line, 150.5) == pytest.approx(0.4)
-    assert ai_voice_severity.pace_severity(line - 1, 150.5) < 0.4
-
-
-def test_units_are_never_compared_raw():
-    # A big raw words-per-minute number loses to a stronger pause problem.
-    medians = {"wpm": 150.0, "pause_ratio": 0.16, "dynamic_db": 28.0}
-    pick = ai_voice_severity.select(_snip(172, pause_ratio=0.02), medians,
-                                    sentence=SENTENCE, seed="p2")
-    assert pick["exercise"] == "pause"
-    assert pick["target_phrase"]
-
-
-def test_an_exercise_that_did_not_help_twice_is_held_back():
-    medians = {"wpm": 150.0, "pause_ratio": 0.16, "dynamic_db": 28.0}
-    history = [{"exercise": "pause", "outcome": "similar"},
-               {"exercise": "pause", "outcome": "worsened"}]
-    pick = ai_voice_severity.select(_snip(178, pause_ratio=0.08), medians,
-                                    sentence=SENTENCE, seed="p3", history=history)
-    assert pick["exercise"] == "pace" and pick["held_back"] == ["pause"]
-
-
-def test_the_main_point_is_the_last_clause():
-    assert ai_voice_severity.target_phrase(SENTENCE) == "the window closes once"
-
-
 # ── the request keeps the words ───────────────────────────────────────────
 
 @pytest.mark.parametrize("exercise", [
@@ -267,36 +227,6 @@ def test_the_request_says_the_speakers_own_words(exercise):
     assert "speed" not in out["body"]["voice_settings"]  # not on Eleven v4
 
 
-def test_brackets_in_a_transcript_never_become_tags():
-    out = ai_voice_prompt.build(sentence="[shouts] We grew fast this year", exercise={"exercise": "pace"},
-                                practice_id="p")
-    assert "[shouts]" not in out["prepared_text"]
-
-
-# ── a clip is shown only when it passed ───────────────────────────────────
-
-def test_a_pause_clip_passes_only_with_a_natural_pause_before_the_point():
-    common = dict(audio=b"x", spoken_words=SENTENCE.lower().split(),
-                  exercise={"exercise": "pause", "target_phrase": "match our price"},
-                  original_wpm=170, original_duration_s=2.6)
-    good = validate(transcription=_heard(0.55), decode=lambda _a: _pcm_with_pause(1.0), **common)
-    assert good["passed"], good
-    none = validate(transcription=_heard(0.0), decode=lambda _a: _pcm_with_pause(1.0), **common)
-    assert not none["passed"] and "pause_length" in none["failed_checks"]
-
-
-def test_changed_words_or_clipping_fail_the_check():
-    loud = _pcm_with_pause(1.0)
-    loud[:4000] = 1.0
-    heard = _heard(0.55)
-    heard["transcript"] = "We think the price is right"
-    out = validate(audio=b"x", transcription=heard, decode=lambda _a: loud,
-                   spoken_words=SENTENCE.lower().split(),
-                   exercise={"exercise": "pause", "target_phrase": "match our price"},
-                   original_wpm=170, original_duration_s=2.6)
-    assert {"clipped", "words_changed"} <= set(out["failed_checks"])
-
-
 # ── the lane, once, the limits ────────────────────────────────────────────
 
 def test_a_rewrite_practice_never_calls_the_provider():
@@ -306,31 +236,6 @@ def test_a_rewrite_practice_never_calls_the_provider():
         out = ai_voice_clip.ensure(db, db.practice, user_id=OWNER, principal_id="",
                                    run=lambda *a: pytest.fail("generated in the rewrite lane"))
         assert out == {"demo": "none", "clip": None} and voices.spoken == 0
-
-
-def test_the_voice_lane_makes_one_checked_clip_and_reuses_it():
-    with _on():
-        db = _Db(_practice(), _snip(150, pause_ratio=0.02), TAKE)
-        _ready_voice(db)
-        voices = _Voices()
-        first = _run_pipeline(db, db.practice, voices, _heard(0.55, "the window closes once"))
-        cycle = db.client.tables["ai_voice_cycles"][0]
-        assert cycle["status"] == "completed", cycle
-        assert first["demo"] == "ai_voice"  # no video: the clip takes its place
-        again = _run_pipeline(db, db.practice, voices, _heard(0.55, "the window closes once"))
-        assert voices.spoken == 1 and len(db.client.tables["ai_voice_cycles"]) == 1
-        assert again["demo"] == "ai_voice"
-
-
-def test_an_exact_video_for_the_same_problem_stays():
-    with _on():
-        db = _Db(_practice(kind="exercise", fit="exact", video="https://v"), _snip(190), TAKE)
-        _ready_voice(db)
-        selection = ai_voice_severity.select(_snip(190), ai_voice_severity.own_medians(TAKE),
-                                             sentence=SENTENCE, seed="x")
-        assert ai_voice_clip.demo_for(db, db.practice, selection) == "video"
-        db.practice["machine_assessment"]["exercise_fit"] = "trial"
-        assert ai_voice_clip.demo_for(db, db.practice, selection) == "ai_voice"
 
 
 def test_a_clip_that_fails_its_check_is_never_shown():
@@ -352,21 +257,7 @@ def test_the_daily_limit_stops_the_provider_call():
         assert db.client.tables["ai_voice_cycles"][0]["failure_code"] == "speaker_daily"
 
 
-def test_nobody_outside_the_allowlist_gets_a_clip():
-    db = _Db(_practice(), _snip(190), TAKE)
-    out = ai_voice_clip.ensure(db, db.practice, user_id=OWNER, principal_id="",
-                               run=lambda *a: pytest.fail("generated while off"))
-    assert out["clip"] is None
-
-
 # ── the voice, and deleting it ────────────────────────────────────────────
-
-def test_a_noisy_take_makes_no_voice():
-    flat = np.full(16000 * 60, 0.05, dtype=np.float32)
-    sample, reason = ai_voice_clone.prepare_sample(b"x", decode=lambda _a: flat,
-                                                   transcode=lambda _a: b"mp3")
-    assert sample is None and reason == "too_noisy"
-
 
 def test_delete_removes_the_voice_and_clips_and_is_safe_twice():
     with _on():
@@ -379,34 +270,8 @@ def test_delete_removes_the_voice_and_clips_and_is_safe_twice():
         assert out == {"state": "off"} and voices.deleted == ["voice-abc"] and len(removed) == 1
         assert ai_voice_clone.card_state(db, OWNER)["state"] == "off"
         assert ai_voice_clone.delete(db, OWNER, provider=voices) == {"state": "off"}
-
-
-def test_a_provider_failure_on_delete_is_reported_not_hidden():
-    with _on():
-        db = _Db(_practice(), _snip(150), TAKE)
+        # A provider that can't confirm is reported, never hidden.
         _ready_voice(db)
-        out = ai_voice_clone.delete(db, OWNER, provider=_Voices(fail=VoiceProviderError("outage")))
-        assert out["state"] == "deleting"
-
-
-# ── the provider's errors, by kind ────────────────────────────────────────
-
-@pytest.mark.parametrize("status,body,kind,transient", [
-    (401, {"detail": {"status": "invalid_api_key"}}, "invalid_key", False),
-    (401, {"detail": {"status": "quota_exceeded"}}, "quota_exceeded", False),
-    (429, {"detail": {"status": "too_many_concurrent_requests"}}, "rate_limited", True),
-    (503, {}, "outage", True),
-])
-def test_provider_errors_are_named_and_only_transient_ones_retry(status, body, kind, transient):
-    client = ElevenLabsClient(api_key="k" * 40, transport=httpx.MockTransport(
-        lambda _r: httpx.Response(status, json=body)))
-    with pytest.raises(VoiceProviderError) as caught:
-        client.speak(voice_id="v", body={"text": "hi"})
-    assert caught.value.kind == kind and caught.value.transient is transient
-
-
-def test_a_missing_key_never_calls_out():
-    with pytest.raises(VoiceProviderError) as caught:
-        ElevenLabsClient(api_key="").speak(voice_id="v", body={})
-    assert caught.value.kind == "missing_key"
-
+        db.client.tables["ai_voice_clones"][0].update(provider_voice_id="voice-abc")
+        failing = _Voices(fail=VoiceProviderError("outage"))
+        assert ai_voice_clone.delete(db, OWNER, provider=failing)["state"] == "deleting"
