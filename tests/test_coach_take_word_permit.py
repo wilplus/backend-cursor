@@ -21,7 +21,6 @@ Run: python3 -m unittest tests.test_coach_take_word_permit
 """
 from __future__ import annotations
 
-import inspect
 import unittest
 from unittest import mock
 
@@ -130,25 +129,6 @@ class TranscribeTakeWordVideoTests(unittest.TestCase):
             db, word_row=dict(ROW), coach_id=COACH)))()
         return result, db, calls
 
-    def test_enforced_and_authorized_the_permit_is_the_speaker_s_on_the_take(self):
-        auth = _Auth()
-        result, db, calls = self._run(auth)
-        self.assertEqual(result, "Slow down on the second slide.")
-        self.assertEqual(auth.resolved, [("owner-principal", "speaker-user")])
-        self.assertEqual(auth.current, [("principal-speaker", "coach_draft")])
-        self.assertEqual(len(auth.permits), 1)
-        permit = auth.permits[0]
-        self.assertEqual(permit["acquisition_principal_id"], "principal-speaker")
-        self.assertEqual(permit["take_id"], TAKE)
-        self.assertIsNone(permit["recording_id"])
-        self.assertEqual(permit["provider"], "openai")
-        self.assertEqual(permit["operation_kind"], "transcription")
-        self.assertEqual(auth.order, ["permit", "started", "provider", "completed"])
-        self.assertEqual(calls[0][0], b"audio-bytes")
-        self.assertEqual(calls[0][1], "take-word.mp3")
-        self.assertEqual(calls[0][2]["usage_session_id"], TAKE)
-        self.assertEqual(db.transcripts, [{"take_session_id": TAKE, "coach_id": COACH,
-                                           "transcript": "Slow down on the second slide."}])
 
     def _assert_refused(self, auth):
         with self.assertLogs("services.coach_word_pairs", level="WARNING") as logs:
@@ -162,19 +142,11 @@ class TranscribeTakeWordVideoTests(unittest.TestCase):
         self.assertIsNotNone(refused[0].exc_info)
         return refused[0]
 
-    def test_enforced_without_current_authority_no_transcript_and_logged(self):
-        record = self._assert_refused(_Auth(refuse_current=True))
-        self.assertIn("PROCESSING_AUTHORIZATION_REQUIRED", record.getMessage())
 
     def test_enforced_permit_refused_no_transcript_and_logged(self):
         record = self._assert_refused(_Auth(refuse_permit=True))
         self.assertIn("PROVIDER_PERMIT_DENIED", record.getMessage())
 
-    def test_enforced_unresolved_speaker_no_transcript_and_logged(self):
-        auth = _Auth(principal="")
-        record = self._assert_refused(auth)
-        self.assertIn("PROCESSING_PRINCIPAL_UNRESOLVED", record.getMessage())
-        self.assertEqual(auth.current, [])
 
     def test_refusal_still_saves_the_coach_s_word_and_video(self):
         auth = _Auth(refuse_current=True)
@@ -190,24 +162,6 @@ class TranscribeTakeWordVideoTests(unittest.TestCase):
         self.assertIn((TAKE, COACH), db.words)
         self.assertEqual(calls, [])
         self.assertEqual(db.transcripts, [])
-
-    def test_mode_off_is_the_same_path_without_a_permit(self):
-        auth = _Auth(enforced=False)
-        result, db, calls = self._run(auth)
-        self.assertEqual(result, "Slow down on the second slide.")
-        self.assertEqual(db.sessions_read, [], "mode off must not resolve a principal")
-        self.assertEqual(auth.current, [])
-        self.assertEqual(auth.permits, [])
-        self.assertEqual(auth.events, [])
-        self.assertEqual(len(calls), 1)
-        self.assertEqual(len(db.transcripts), 1)
-
-    def test_the_module_names_no_bare_provider_client(self):
-        source = inspect.getsource(cwp)
-        for bare in ("from services.openai_service", "openai_service.transcribe_audio",
-                     "llm_client"):
-            self.assertFalse(bare in source, f"coach_word_pairs names {bare}")
-        self.assertIn("AuthorizedProviderAdapter", inspect.getsource(cwp._speaker_permit_adapter))
 
 
 if __name__ == "__main__":

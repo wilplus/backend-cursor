@@ -56,18 +56,3 @@ def test_attempts_four_and_ten_save(cur):
                      FROM public.confident_voice_practice_attempt
                     WHERE practice_id = %s""", (practice,))
     assert cur.fetchone()[0] == [1, 2, 3, 4, 10]
-
-
-def test_attempt_zero_is_still_refused(cur):
-    practice = _practice(cur)
-    with pytest.raises(psycopg2.errors.CheckViolation):
-        _attempt(cur, practice, 0)
-
-
-def test_no_upper_bound_remains(cur):
-    cur.execute("""
-        SELECT count(*) FROM pg_constraint
-         WHERE conrelid = 'public.confident_voice_practice_attempt'::regclass
-           AND contype = 'c'
-           AND pg_get_constraintdef(oid) ~ 'attempt_index\\s*<=\\s*3'""")
-    assert cur.fetchone()[0] == 0

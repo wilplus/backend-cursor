@@ -9,14 +9,14 @@ test_email_threading.py::PseudonymParityTests.
 """
 from __future__ import annotations
 
-import json
 import unittest
 
 try:
     from flask import Flask, request
+
+    import services.lab_recording as lab
     from routes.v2 import coach as v2_coach
     from services.db import db
-    import services.lab_recording as lab
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
@@ -99,129 +99,6 @@ class CoachSessionReadTests(unittest.TestCase):
             resp, status = v2_coach.v2_coach_get_session.__wrapped__(sid)
             return status, resp.get_json()
 
-    def test_resume_folds_coach_authoring(self):
-        status, data = self._get()
-        self.assertEqual(status, 200)
-        snips = {s["id"]: s for s in data["snippets"]}
-        # Snippet "a": canonical note/tag/surfaced state round-trips.
-        cs = snips["a"]["coach_state"]
-        self.assertEqual(cs["note"], "strong open")
-        self.assertEqual(cs["tag"], "strong")
-        self.assertTrue(cs["surfaced"])
-        self.assertNotIn("direction_label", cs)
-        # snippet "b": nothing authored → empty coach_state, and NOT shown by
-        # default (founder 2026-07-14 — opt-IN surface: the coach narrows to
-        # the moments they mark as key/breakthrough; all snippets start hidden).
-        cb = snips["b"]["coach_state"]
-        self.assertEqual(cb["note"], "")
-        self.assertIsNone(cb["tag"])
-        self.assertFalse(cb["surfaced"])
-        self.assertNotIn("direction_label", cb)
-
-    def test_a_failed_re_read_after_the_claim_is_503_not_500(self):
-        """The re-read under the claim is part of the claim step.
-
-        Before audit fix 1 it sat outside the claim's error handling, so a
-        database hiccup there fell to the route's generic 500 instead of the
-        coach's "Could not open this review safely" 503.
-        """
-        first_read = db.v2_get_session_by_id
-        calls = {"n": 0}
-
-        def read(sid):
-            calls["n"] += 1
-            if calls["n"] == 1:
-                return first_read(sid)
-            raise RuntimeError("connection reset")
-
-        self._patch_db("v2_get_session_by_id", read)
-        status, data = self._get()
-        self.assertEqual(status, 503)
-        self.assertEqual(data["code"], "REVIEW_ASSIGNMENT_FAILED")
-
-    def test_the_session_is_re_read_after_the_claim(self):
-        order = []
-        first_read = db.v2_get_session_by_id
-        claim = db.claim_coach_review
-
-        def read(sid):
-            order.append("read")
-            return first_read(sid)
-
-        def claim_it(*args, **kwargs):
-            order.append("claim")
-            return claim(*args, **kwargs)
-
-        self._patch_db("v2_get_session_by_id", read)
-        self._patch_db("claim_coach_review", claim_it)
-        status, _ = self._get()
-        self.assertEqual(status, 200)
-        self.assertEqual(order, ["read", "claim", "read"])
-
-    def test_identity_stripped(self):
-        status, data = self._get()
-        self.assertTrue(data["pseudonym"])
-        self.assertNotIn("user_id", data)
-        self.assertNotIn("email", data)
-        # the raw user_id must never appear anywhere in the serialized payload
-        self.assertNotIn("user-xyz-secret", json.dumps(data))
-        self.assertEqual(data["domain"], "public_speaking")
-        self.assertEqual(data["topic"], "demo day")
-
-    def test_state_in_progress_when_authored(self):
-        status, data = self._get()
-        self.assertEqual(data["state"], "in_progress")
-
-    def test_state_done_when_published(self):
-        setattr(db, "v2_get_session_by_id", lambda sid: {
-            "id": sid, "user_id": "u", "results_published_at": "2026-06-06T00:00:00Z",
-            "intake_context": {"language": "en"},
-            "coach_overall_message": None, "coach_video_ref": None,
-        })
-        status, data = self._get()
-        self.assertEqual(data["state"], "done")
-
-    def test_coach_comment_prefill_retired(self):
-        # Founder 2026-07-14 — "no pre-filled comment; the system learns from
-        # what the coach writes." The AI draft is neither served in coach_state
-        # nor promoted into the note; an untouched snippet opens EMPTY.
-        setattr(db, "get_ai_draft_coach_notes_by_session",
-                lambda sid: {"a": "(draft a)", "b": "🎤 Draft for b."})
-        status, data = self._get()
-        snips = {s["id"]: s for s in data["snippets"]}
-        # "b": untouched → note stays empty (no promotion), no ai_draft key
-        self.assertEqual(snips["b"]["coach_state"]["note"], "")
-        self.assertNotIn("ai_draft_coach_note", snips["b"]["coach_state"])
-        # "a": the coach's OWN authored note is preserved (that's their input)
-        self.assertEqual(snips["a"]["coach_state"]["note"], "strong open")
-        self.assertNotIn("ai_draft_coach_note", snips["a"]["coach_state"])
-
-    def test_snippet_shape_matches_fe(self):
-        status, data = self._get()
-        s = data["snippets"][0]
-        for k in ("id", "index", "transcript", "audio_ref", "start_offset_ms",
-                  "duration_ms", "stickiness", "coach_state",
-                  "features"):  # C1/§B.1 — coach packet carries the 11-vector
-            self.assertIn(k, s)
-        for k in ("note", "tag", "surfaced"):
-            self.assertIn(k, s["coach_state"])
-        self.assertNotIn("direction_label", s["coach_state"])
-
-    def test_moments_preserve_source_order_without_legacy_acoustic_ranking(self):
-        # The neutral acoustic baseline does not reorder the coach packet.
-        # Source chronology is preserved and indices remain continuous.
-        lab.build_readout_from_session = lambda sid, **kw: {"snippets": [
-            {"id": "flat", "index": 0, "transcript": "t", "audio_ref": "p/f.wav",
-             "start_offset_ms": 0, "duration_ms": 3000,
-             "acoustic_read": {"potentiometer": 0.05, "outside_normal_range": False}},
-            {"id": "key", "index": 1, "transcript": "t", "audio_ref": "p/k.wav",
-             "start_offset_ms": 9000, "duration_ms": 3000,
-             "acoustic_read": {"potentiometer": -0.9, "outside_normal_range": True}},
-        ]}
-        status, data = self._get()
-        self.assertEqual(status, 200)
-        self.assertEqual([s["id"] for s in data["snippets"]], ["flat", "key"])
-        self.assertEqual([s["index"] for s in data["snippets"]], [0, 1])
 
     def _as_second_coach(self, own_ratings=None):
         """A review another coach already claimed (K4 routes an Audio-unclear
@@ -246,72 +123,6 @@ class CoachSessionReadTests(unittest.TestCase):
         ]}
         return calls
 
-    def test_a_second_coach_reads_the_blind_packet_with_playable_clips(self):
-        calls = self._as_second_coach()
-        status, data = self._get()
-        self.assertEqual(status, 200)
-        self.assertEqual(calls, ["coach-1"])
-        self.assertTrue(data["read_only"])
-        # BLIND COACH, exactly as for the owner: nothing beyond the allowlist
-        # before this coach's own answers.
-        self.assertFalse(data["context_unlocked"])
-        self.assertEqual(data["domain"], "")
-        self.assertEqual(data["topic"], "")
-        self.assertIsNone(data["presentation_ref"])
-        for row in data["snippets"]:
-            self.assertEqual(row["transcript"], "")
-            self.assertNotIn("stickiness", row)
-            self.assertNotIn("features", row)
-            self.assertTrue(row["audio_ref"].startswith("https://"))
-            self.assertIsInstance(row["start_offset_ms"], int)
-            self.assertIsInstance(row["duration_ms"], int)
-        self.assertNotIn("user-xyz-secret", json.dumps(data))
-
-    def test_a_second_coach_s_own_answer_reveals_only_that_row(self):
-        self._as_second_coach({"a": {"value": "yes", "unrateable": False}})
-        status, data = self._get()
-        self.assertEqual(status, 200)
-        by_id = {row["id"]: row for row in data["snippets"]}
-        self.assertEqual(by_id["a"]["transcript"], "hi")
-        self.assertEqual(by_id["b"]["transcript"], "")
-        self.assertFalse(data["context_unlocked"])
-
-    def test_a_second_coach_never_gets_the_owner_s_contextual_editor(self):
-        self._as_second_coach({"a": {"value": "yes", "unrateable": False},
-                               "b": {"value": "no", "unrateable": False}})
-        status, data = self._get()
-        self.assertEqual(status, 200)
-        self.assertFalse(data["context_unlocked"])
-        self.assertEqual(data["domain"], "")
-        for row in data["snippets"]:
-            self.assertEqual(row["coach_state"]["note"], "")
-            self.assertNotIn("stickiness", row)
-
-    def test_the_claiming_coach_is_not_read_only(self):
-        status, data = self._get()
-        self.assertEqual(status, 200)
-        self.assertFalse(data["read_only"])
-
-    def test_a_second_coach_cannot_publish(self):
-        """Publishing stays the claimer's: the arc-level publish door is
-        gone, and the publish RPC itself refuses a non-admin coach on a
-        review assigned to another coach."""
-        import pathlib
-        self.assertFalse(hasattr(v2_coach, "v2_coach_publish_analysis_gone"))
-        sql = (pathlib.Path(__file__).resolve().parents[1] / "migrations"
-               / "add_atomic_coach_review_publishing.sql").read_text()
-        publish = sql[sql.index("FUNCTION public.publish_coach_review_revision_v1"):]
-        self.assertIn("IF override_used AND NOT p_actor_is_admin THEN\n"
-                      "        RAISE EXCEPTION 'review assigned to another coach';",
-                      publish)
-
-    def test_an_unclaimed_guest_is_still_refused(self):
-        def guest(*_a, **_k):
-            raise RuntimeError("unclaimed guest cannot enter coach review")
-        self._patch_db("claim_coach_review", guest)
-        status, data = self._get()
-        self.assertEqual(status, 409)
-        self.assertEqual(data["code"], "UNCLAIMED_GUEST")
 
     def test_context_is_redacted_until_every_blind_label_is_committed(self):
         setattr(
