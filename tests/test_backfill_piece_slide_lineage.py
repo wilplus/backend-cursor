@@ -1,4 +1,4 @@
-"""The detector that decides which Ideal Text heads render flat.
+"""Which Ideal Text heads the repair script republishes.
 
 Founder 2026-09-18: "after a lock the text skipped the slides and got
 concatenated again."  A head whose pieces all carry ``slide_index`` NULL makes
@@ -6,85 +6,103 @@ concatenated again."  A head whose pieces all carry ``slide_index`` NULL makes
 and the deck collapses into one unlinked "Your talk" section with no slide
 kickers and no slide preview.
 
-These hold the two halves that decide whether a canonical document gets
-republished, so both have to be exactly as strict as the client's reader: too
-loose and the script rewrites healthy documents, too tight and the broken ones
-stay broken.
+The script has to be exactly as strict as the client's reader: too loose and
+it rewrites healthy documents, too tight and the broken ones stay broken. One
+contract test through ``main()`` (founder 2026-10-12, "How to test"), in place
+of sixteen tests of its private helpers.
 """
-from scripts.backfill_piece_slide_lineage import (
-    _is_poisoned,
-    _linked,
-    _pieces,
-)
+import sys
+
+import scripts.backfill_piece_slide_lineage as backfill
 
 
 def piece(slide):
     return {"piece_key": 0, "text": "words", "slide_index": slide}
 
 
-class TestLinked:
-    def test_counts_real_slide_indexes(self):
-        assert _linked([piece(0), piece(1), piece(2)]) == 3
-
-    def test_zero_is_a_slide(self):
-        # The first slide is index 0, and a falsy check here would read the
-        # whole first slide of every deck as unlinked.
-        assert _linked([piece(0)]) == 1
-
-    def test_null_is_not_a_slide(self):
-        assert _linked([piece(None), piece(None)]) == 0
-
-    def test_a_bool_is_not_a_slide(self):
-        # bool is a subclass of int in Python; the client's reader rejects it
-        # explicitly and so must this, or True would count as slide 1.
-        assert _linked([piece(True), piece(False)]) == 0
-
-    def test_a_negative_index_is_not_a_slide(self):
-        assert _linked([piece(-1)]) == 0
-
-    def test_a_non_integer_is_not_a_slide(self):
-        assert _linked([piece("0"), piece(1.5), piece(None)]) == 0
-
-
-class TestIsPoisoned:
-    def test_every_index_null_is_poisoned(self):
-        assert _is_poisoned([piece(None), piece(None), piece(None)]) is True
-
-    def test_a_healthy_document_is_untouched(self):
-        assert _is_poisoned([piece(0), piece(1), piece(2)]) is False
-
-    def test_a_trailing_null_is_not_poisoned(self):
-        # A NULL that FOLLOWS a real index is legitimate: the paragraph
-        # continues on the slide it started on, and the client inherits it.
-        # Republishing this document would be a write with nothing to fix.
-        assert _is_poisoned([piece(0), piece(None), piece(1)]) is False
-
-    def test_a_leading_null_with_any_real_index_is_not_in_scope(self):
-        # This one DOES render flat (missing_parent_slide at index 0), but the
-        # lineage is partly provable, so a republish could change more than it
-        # repairs. Left out of the automatic sweep deliberately — it is a
-        # narrower case that wants its own look, not a bulk rewrite.
-        assert _is_poisoned([piece(None), piece(1)]) is False
-
-    def test_a_single_paragraph_is_not_worth_republishing(self):
-        # One paragraph renders as one section whether it is linked or not.
-        assert _is_poisoned([piece(None)]) is False
-
-    def test_no_pieces_at_all_is_not_poisoned(self):
-        # Nothing to re-derive from, and nothing this script can prove.
-        assert _is_poisoned([]) is False
+# arc -> the head's payload. Only the two marked POISONED render flat.
+HEADS = {
+    "all-null": {"pieces": [piece(None), piece(None), piece(None)]},  # POISONED
+    "healthy": {"pieces": [piece(0), piece(1), piece(2)]},
+    # The first slide is index 0; a falsy check would call this unlinked.
+    "zero-only": {"pieces": [piece(0), piece(0)]},
+    # A NULL that FOLLOWS a real index is legitimate: the client inherits it.
+    "trailing-null": {"pieces": [piece(0), piece(None), piece(1)]},
+    # Renders flat, but the lineage is partly provable: left out on purpose.
+    "leading-null": {"pieces": [piece(None), piece(1)]},
+    # One paragraph is one section either way: nothing to buy.
+    "single": {"pieces": [piece(None)]},
+    # Non-mapping rows are not paragraphs, so this is still one.
+    "single-with-junk": {"pieces": [piece(None), "junk", None]},
+    "empty": {"pieces": []},
+    "no-block": {},
+    "non-list": {"pieces": "nope"},
+    # The client's reader rejects bool, negative and non-int indexes, and
+    # drops non-mapping rows, so this document has no link at all.
+    "junk-indexes": {"pieces": [piece(True), piece(-1), piece("0"),    # POISONED
+                                piece(1.5), "junk", None]},
+}
 
 
-class TestPieces:
-    def test_reads_the_pieces_block(self):
-        assert _pieces({"pieces": [piece(0)]}) == [piece(0)]
+class _Query:
+    def __init__(self, rows):
+        self.rows = rows
 
-    def test_absent_block_is_empty(self):
-        assert _pieces({}) == []
-        assert _pieces(None) == []
+    def select(self, *_a):
+        return self
 
-    def test_non_mapping_rows_are_dropped(self):
-        assert _pieces({"pieces": [piece(0), "junk", None]}) == [piece(0)]
+    def eq(self, column, value):
+        return _Query([r for r in self.rows if r[column] == value])
 
-    def test_a_non_list_block_is_empty(self):
-        assert _pieces({"pieces": "nope"}) == []
+    def limit(self, _n):
+        return self
+
+    def execute(self):
+        return type("R", (), {"data": self.rows})()
+
+
+class _Db:
+    def __init__(self):
+        self.heads = dict(HEADS)
+        self.client = type("C", (), {"table": lambda _s, _name: _Query(
+            [{"arc_id": arc, "actor_id": "u1", "snapshot_id": "s"}
+             for arc in HEADS])})()
+
+    def get_ideal_text_document_snapshot(self, arc_id, _actor_id):
+        return {"payload": self.heads[arc_id]}
+
+
+def test_only_heads_that_lost_every_slide_link_are_republished(
+        monkeypatch, capsys):
+    published = []
+    database = _Db()
+
+    def publish(_db, arc, _actor, **_kw):
+        # The publisher re-derives the lineage where provenance proves it
+        # (here: slide 0 is index 0) and fails closed to NULL where not.
+        published.append(arc)
+        if arc == "all-null":
+            database.heads[arc] = {"pieces": [piece(0), piece(0), piece(1)]}
+        return {"snapshot_id": "new"}
+
+    monkeypatch.setattr(backfill, "db", database)
+    monkeypatch.setattr(backfill, "publish_for_arc", publish)
+
+    # Preview is the default: it names the poisoned heads and writes nothing.
+    monkeypatch.setattr(sys, "argv", ["backfill"])
+    assert backfill.main() == 0
+    out = capsys.readouterr().out
+    named = {line.split("arc=")[1].split()[0]
+             for line in out.splitlines() if "paragraphs=" in line}
+    assert named == {"all-null", "junk-indexes"}
+    assert published == []
+
+    # --apply republishes exactly those, and a head that is still unlinked
+    # after the publish is reported UNRECOVERED, never counted as repaired.
+    monkeypatch.setattr(sys, "argv", ["backfill", "--apply"])
+    assert backfill.main() == 0
+    out = capsys.readouterr().out
+    assert sorted(published) == ["all-null", "junk-indexes"]
+    assert "repaired arc=all-null (3/3 paragraphs linked)" in out
+    assert "UNRECOVERED arc=junk-indexes" in out
+    assert "repaired 1, unrecovered 1" in out

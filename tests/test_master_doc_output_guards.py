@@ -3,7 +3,8 @@
 These test the POST-GENERATION floor in services/master_doc_rag.py —
 the code that enforces the construct-prohibition (B1/AC-9) and the
 library-dump prohibition (RULE K) on the model's OUTPUT, independent of
-whether the prompt rule held. Pure functions, NO LLM, NO network — this
+whether the prompt rule held. The guards are driven through
+`answer_question` with the model call stubbed: NO LLM, NO network — this
 is the part of the probe's guarantee that can run keyless in CI.
 
 master_doc_rag imports services.will_voice (pure) + services.db lazily,
@@ -44,129 +45,77 @@ def tearDownModule():
         sys.modules.pop("supabase", None)
 
 
-class ConstructLeakGuardTests(unittest.TestCase):
-    """RULE A / B1 / AC-9 — the retired scoring construct must never
-    survive in the output, even if the prompt rule were crowded out."""
-
-    def _guard(self, answer, suggested_action=None):
-        from services.master_doc_rag import _enforce_output_guards
-        return _enforce_output_guards(answer, suggested_action)
-
-    def test_threat_challenge_ratio_is_replaced(self):
-        a, _sa, fired = self._guard(
-            "Your Threat:Challenge ratio came out strong this session."
-        )
-        self.assertEqual(fired, "construct_leak")
-        self.assertNotIn("threat", a.lower())
-        self.assertIn("Readout", a)
-
-    def test_tc_shorthand_is_replaced(self):
-        _a, _sa, fired = self._guard("Your T:C is trending up.")
-        self.assertEqual(fired, "construct_leak")
-
-    def test_kpi_is_replaced(self):
-        _a, _sa, fired = self._guard("Your KPI for this take is 0.72.")
-        self.assertEqual(fired, "construct_leak")
-
-    def test_charisma_score_is_replaced(self):
-        _a, _sa, fired = self._guard("Your charisma score went up.")
-        self.assertEqual(fired, "construct_leak")
-
-    def test_stress_classifier_is_replaced(self):
-        _a, _sa, fired = self._guard(
-            "The stress classifier flagged the opening."
-        )
-        self.assertEqual(fired, "construct_leak")
-
-    # ── False-positive guards: benign prose must pass UNTOUCHED ──
-
-    def test_bare_challenge_is_not_matched(self):
-        msg = "Speaking to a big room is a real challenge for most people."
-        a, _sa, fired = self._guard(msg)
-        self.assertIsNone(fired)
-        self.assertEqual(a, msg)
-
-    def test_bare_score_word_is_not_matched(self):
-        msg = "Scores of speakers freeze up — you're not alone."
-        a, _sa, fired = self._guard(msg)
-        self.assertIsNone(fired)
-        self.assertEqual(a, msg)
-
-    def test_word_containing_tc_substring_is_not_matched(self):
-        # "catch", "watch" etc. contain no standalone t:c token.
-        msg = "Catch your breath, watch your pace, and keep going."
-        _a, _sa, fired = self._guard(msg)
-        self.assertIsNone(fired)
-
-    def test_normal_product_answer_passes_through(self):
-        msg = (
-            "The system is mostly human-led and scaled by AI — a real "
-            "coach listens to your recordings and shapes what's next."
-        )
-        a, sa, fired = self._guard(msg, suggested_action=None)
-        self.assertIsNone(fired)
-        self.assertEqual(a, msg)
-        self.assertIsNone(sa)
+# A construct leak is replaced by the construct-safe answer; a recreated or
+# named retired collection is replaced by the Voice Album bridge; benign
+# prose passes untouched. Each row: (model output, guard expected or None).
+_GUARD_CASES = (
+    # RULE A / B1 / AC-9 — the retired scoring construct never survives.
+    ("Your Threat:Challenge ratio came out strong this session.",
+     "construct_leak"),
+    ("Your T:C is trending up.", "construct_leak"),
+    ("Your KPI for this take is 0.72.", "construct_leak"),
+    ("Your charisma score went up.", "construct_leak"),
+    ("The stress classifier flagged the opening.", "construct_leak"),
+    # Both at once: the stronger guard (the construct) wins.
+    ('coach noted: "your KPI is 0.9"', "construct_leak"),
+    # RULE K — the retired Strong Sides collection is never recreated.
+    ('Here they are: [strong] coach noted: "great open".',
+     "retired_collection_dump"),
+    ('coach noted: "watch the drop-off"', "retired_collection_dump"),
+    ("Your best moments: [strong] the open, [strong] the close.",
+     "retired_collection_dump"),
+    # MDR-14 (2026-09-25): a Polish answer coined a "Strong Sides" collection.
+    ('Twoje mocne strony są zebrane w kolekcji "Strong Sides", '
+     "którą znajdziesz w menu.", "retired_collection_dump"),
+    # False positives: benign prose passes UNTOUCHED.
+    ("Speaking to a big room is a real challenge for most people.", None),
+    ("Scores of speakers freeze up — you're not alone.", None),
+    ("Catch your breath, watch your pace, and keep going.", None),
+    ("The system is mostly human-led and scaled by AI — a real coach "
+     "listens to your recordings and shapes what's next.", None),
+    ("Your strong sides live in Voice Album in the menu.", None),
+    ("I can't see any coach notes for you yet — record a take?", None),
+)
 
 
-class RetiredCollectionGuardTests(unittest.TestCase):
-    """The bot must not recreate the retired Strong Sides collection."""
+class ChatAnswerGuardTests(unittest.TestCase):
+    """The deterministic floor on what the Lounge bot SAYS, through
+    `answer_question`, whatever the model returned (founder 2026-10-12: one
+    contract test in place of fifteen tests of `_enforce_output_guards`)."""
 
-    def _guard(self, answer, suggested_action=None):
-        from services.master_doc_rag import _enforce_output_guards
-        return _enforce_output_guards(answer, suggested_action)
+    def test_every_answer_leaves_through_the_guards(self):
+        import json
+        import os
+        from unittest.mock import patch
 
-    def test_marker_strong_triggers_bridge(self):
-        a, sa, fired = self._guard(
-            'Here they are: [strong] coach noted: "great open".'
-        )
-        self.assertEqual(fired, "retired_collection_dump")
-        self.assertIsNone(sa)
-        self.assertEqual(
-            a, "Your confirmed confident moments are in Voice Album in the menu.",
-        )
+        from services.master_doc_rag import answer_question
 
-    def test_marker_coach_noted_triggers_bridge(self):
-        _a, _sa, fired = self._guard('coach noted: "watch the drop-off"')
-        self.assertEqual(fired, "retired_collection_dump")
+        class _Response:
+            def __init__(self, text):
+                self.text = text
 
-    def test_named_retired_collection_triggers_bridge(self):
-        # MDR-14 (2026-09-25): the Polish answer pointed to a coined
-        # "Strong Sides" collection instead of Voice Album.
-        a, sa, fired = self._guard(
-            'Twoje mocne strony są zebrane w kolekcji "Strong Sides", '
-            "którą znajdziesz w menu."
-        )
-        self.assertEqual(fired, "retired_collection_dump")
-        self.assertIsNone(sa)
-        self.assertIn("Voice Album", a)
-
-    def test_everyday_strong_sides_phrase_passes(self):
-        msg = "Your strong sides live in Voice Album in the menu."
-        a, _sa, fired = self._guard(msg)
-        self.assertIsNone(fired)
-        self.assertEqual(a, msg)
-
-    def test_benign_answer_passes(self):
-        msg = "I can't see any coach notes for you yet — record a take?"
-        a, _sa, fired = self._guard(msg)
-        self.assertIsNone(fired)
-        self.assertEqual(a, msg)
-
-
-class GuardPrecedenceTests(unittest.TestCase):
-    def _guard(self, answer, suggested_action=None):
-        from services.master_doc_rag import _enforce_output_guards
-        return _enforce_output_guards(answer, suggested_action)
-
-    def test_construct_leak_takes_precedence_over_dump(self):
-        # An answer that both leaks the construct AND dumps the library
-        # is replaced by the construct-safe answer (the stronger guard).
-        a, _sa, fired = self._guard(
-            'coach noted: "your KPI is 0.9"',
-        )
-        self.assertEqual(fired, "construct_leak")
-        self.assertIn("Readout", a)
+        for output, guard in _GUARD_CASES:
+            with self.subTest(output=output), \
+                    patch.dict(os.environ, {"LOUNGE_ROUTER_ENABLED": "0"}), \
+                    patch("services.llm.chat_complete",
+                          lambda **_kw: _Response(json.dumps({
+                              "answer": output, "show_record_ui": False,
+                              "suggested_action": "trainings"}))):
+                payload, debug = answer_question("tell me about my talk")
+            answer = payload["answer"]
+            self.assertEqual(debug.get("output_guard"), guard)
+            if guard is None:
+                self.assertEqual(answer, output)
+                self.assertEqual(payload["suggested_action"], "trainings")
+            elif guard == "construct_leak":
+                self.assertIn("Readout", answer)
+                for leaked in ("threat", "t:c", "kpi", "charisma",
+                               "classifier", "coach noted"):
+                    self.assertNotIn(leaked, answer.lower())
+            else:
+                self.assertEqual(answer, "Your confirmed confident moments "
+                                         "are in Voice Album in the menu.")
+                self.assertIsNone(payload["suggested_action"])
 
 
 class SplitAnswerIntoBubblesTests(unittest.TestCase):
