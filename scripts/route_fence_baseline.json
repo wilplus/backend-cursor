@@ -23,17 +23,9 @@
     "lines": 32,
     "db_calls": 2
   },
-  "routes/journal.py:journal_community_generate": {
-    "lines": 81,
-    "db_calls": 4
-  },
   "routes/journal.py:journal_community_update": {
     "lines": 36,
     "db_calls": 2
-  },
-  "routes/journal.py:journal_image_generate": {
-    "lines": 132,
-    "db_calls": 5
   },
   "routes/journal.py:journal_image_select": {
     "lines": 25,
@@ -55,10 +47,6 @@
     "lines": 117,
     "db_calls": 2
   },
-  "routes/v2/admin.py:v2_admin_get_session": {
-    "lines": 221,
-    "db_calls": 1
-  },
   "routes/v2/admin.py:v2_admin_regenerate_next_session_icebreaker": {
     "lines": 85,
     "db_calls": 0
@@ -68,7 +56,7 @@
     "db_calls": 0
   },
   "routes/v2/admin.py:v2_admin_update_snippet_coaching_rationale": {
-    "lines": 181,
+    "lines": 180,
     "db_calls": 1
   },
   "routes/v2/admin.py:v2_public_unsubscribe": {
@@ -124,8 +112,8 @@
     "db_calls": 2
   },
   "routes/v2/coaching.py:v2_chat_query": {
-    "lines": 323,
-    "db_calls": 1
+    "lines": 99,
+    "db_calls": 0
   },
   "routes/v2/coaching.py:v2_chat_session_state": {
     "lines": 138,
@@ -159,16 +147,8 @@
     "lines": 98,
     "db_calls": 2
   },
-  "routes/v2/user_account.py:v2_user_set_profile": {
-    "lines": 118,
-    "db_calls": 4
-  },
   "routes/v2/user_sessions.py:v2_add_confident_voice_practice_attempt": {
     "lines": 33,
-    "db_calls": 2
-  },
-  "routes/v2/user_sessions.py:v2_post_take_feedback_response": {
-    "lines": 128,
     "db_calls": 2
   },
   "routes/v2/user_sessions.py:v2_put_confidence_agree": {
@@ -182,10 +162,6 @@
   "routes/v2/user_sessions.py:v2_user_put_session_intake_context": {
     "lines": 81,
     "db_calls": 1
-  },
-  "routes/v2/user_sessions.py:v2_user_put_transcript_edit": {
-    "lines": 125,
-    "db_calls": 3
   },
   "routes/v2/user_sessions.py:v2_user_sessions_current": {
     "lines": 87,

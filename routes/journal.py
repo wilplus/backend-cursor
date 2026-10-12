@@ -42,6 +42,12 @@ from flask import Blueprint, jsonify, request
 from config import Config as config
 from services import journal as jr
 from services.db import db
+from services.journal_generation import (
+    attach_to_post,
+    generate_community,
+    generate_cover,
+)
+from services.refusal import Refusal
 
 logger = logging.getLogger(__name__)
 
@@ -415,68 +421,10 @@ def journal_community_generate():
         return jsonify({"code": "DISABLED",
                         "error": "The content studio is switched off"}), 503
 
-    body = _body()
-    post_id = (body.get("post_id") or "").strip() \
-        if isinstance(body.get("post_id"), str) else ""
-    if not post_id:
-        return _invalid("post_id: required")
-
-    from services import community_content as cc
-
-    formats = body.get("formats")
-    if formats is None:
-        wanted = cc.FORMATS
-    elif (isinstance(formats, list) and formats
-            and all(f in cc.FORMATS for f in formats)):
-        wanted = tuple(dict.fromkeys(formats))
-    else:
-        return _invalid(
-            f"formats: must be a non-empty subset of {', '.join(cc.FORMATS)}")
-
-    notes = body.get("notes")
-    if notes is not None and not isinstance(notes, str):
-        return _invalid("notes: must be a string")
-
-    post = db.get_journal_post_by_id(post_id)
-    if not post:
-        return jsonify({"code": "NOT_FOUND", "error": "post not found"}), 404
-    if not (post.get("body") or "").strip():
-        return _invalid("This post has no body yet — there is nothing to "
-                        "derive from.")
-
     try:
-        payload = cc.generate_community_posts(post, formats=wanted,
-                                              notes=notes)
-    except Exception as e:  # pragma: no cover - the service swallows its own
-        logger.error("journal_community_generate failed post=%s: %s",
-                     post_id, e, exc_info=True)
-        payload = None
-    if not payload:
-        return jsonify({
-            "code": "V2_ERROR",
-            "error": "Could not write the posts right now. Try again.",
-        }), 503
-
-    # Single-format reroll: inherit the week's framing from a surviving
-    # sibling rather than letting one call re-theme the other two.
-    inherit = None
-    existing = db.list_journal_community_posts(post_id)
-    if len(wanted) < len(cc.FORMATS):
-        inherit = next((r for r in existing if r.get("kind") not in wanted),
-                       None)
-
-    rows = cc.rows_for_upsert(post_id, payload, inherit=inherit)
-    written = db.upsert_journal_community_posts(post_id, rows)
-    if not written:
-        return jsonify({
-            "code": "V2_ERROR",
-            "error": "Generated the posts but could not save them.",
-        }), 500
-
-    items = db.list_journal_community_posts(post_id) or written
-    return jsonify({
-        "items": [cc.serialize_community_item(r) for r in items],
-    }), 200
+        return jsonify(generate_community(db, _body())), 200
+    except Refusal as refusal:
+        return jsonify(refusal.body), refusal.status
 
 
 @journal_bp.route("/v2/internal/journal/community/list", methods=["POST"])
@@ -561,39 +509,6 @@ def journal_community_delete():
 #
 # Same auth as every other CMS route. Nothing public reads these.
 
-def _attach_to_post(post: dict, image_url: str, alt_text: str):
-    """Promote one candidate onto its post. (updated_post, error_message).
-
-    Runs through the ordinary CMS validator, so a generated cover is held to
-    the same https-only, length-capped contract as a pasted one — the R2
-    public base is configuration, and configuration can be wrong.
-
-    ``cover_alt`` is OVERWRITTEN, not preserved: alt text describes the image,
-    and the image just changed. Keeping the old sentence would leave the
-    public page describing a cover that is no longer there.
-
-    ``cover_kind`` is left alone on purpose — on a video post the image is the
-    poster frame, and flipping the kind would drop the video.
-
-    Returns the error as a message rather than raising: the image is already
-    drawn, paid for and stored, so a failed attach must not discard it.
-    """
-    changes = {"cover_image_url": image_url}
-    if (alt_text or "").strip():
-        changes["cover_alt"] = alt_text
-    try:
-        validated = jr.validate_post_body(changes, partial=True,
-                                          existing=post)
-    except jr.JournalError as ve:
-        return None, str(ve)
-    if not validated:
-        return None, "nothing to attach"
-    row = db.update_journal_post(post.get("id"), validated)
-    if not row or row == "DUPLICATE_SLUG":
-        return None, "Could not save the cover on the post."
-    return row, None
-
-
 @journal_bp.route("/v2/internal/journal/image/generate", methods=["POST"])
 def journal_image_generate():
     """Draw a cover image for one post.
@@ -623,110 +538,10 @@ def journal_image_generate():
         return jsonify({"code": "DISABLED",
                         "error": "Cover generation is switched off"}), 503
 
-    body = _body()
-    raw_post_id = body.get("post_id")
-    post_id = raw_post_id.strip() if isinstance(raw_post_id, str) else ""
-    if not post_id:
-        return _invalid("post_id: required")
-
-    notes = body.get("notes")
-    if notes is not None and not isinstance(notes, str):
-        return _invalid("notes: must be a string")
-    parent_id = _item_id({"id": body.get("parent_id")})
-
-    post = db.get_journal_post_by_id(post_id)
-    if not post:
-        return jsonify({"code": "NOT_FOUND", "error": "post not found"}), 404
-    if not (post.get("title") or "").strip() \
-            and not (post.get("body") or "").strip():
-        return _invalid("This post has no title or body yet — there is "
-                        "nothing to draw from.")
-
-    # What this attempt refines. An explicit parent must belong to THIS post:
-    # briefing from another post's cover would silently cross the two.
-    previous = None
-    if parent_id:
-        previous = db.get_journal_post_image(parent_id)
-        if not previous:
-            return jsonify({"code": "NOT_FOUND",
-                            "error": "that image was not found"}), 404
-        if str(previous.get("journal_post_id")) != str(post_id):
-            return _invalid("parent_id: belongs to a different post")
-    elif not body.get("fresh"):
-        history = db.list_journal_post_images(post_id, limit=1)
-        previous = history[0] if history else None
-
     try:
-        result = ji.generate_cover_image(post, notes=notes, previous=previous)
-    except ji.ImageRejected as re_:
-        # The safety system refused the brief — the author can act on this,
-        # so it is a 400 with the reason, not an opaque retry.
-        return jsonify({"code": "IMAGE_REJECTED", "error": str(re_)}), 400
-    except ji.JournalImageError as ge:
-        return jsonify({"code": "V2_ERROR", "error": str(ge)}), 503
-    except Exception as e:  # pragma: no cover - defensive
-        logger.error("journal_image_generate failed post=%s: %s", post_id, e,
-                     exc_info=True)
-        return jsonify({"code": "V2_ERROR",
-                        "error": "Could not draw the image right now."}), 503
-
-    try:
-        from services.journal_media import put_bytes, JournalMediaError
-        stored = put_bytes(data=result["image_bytes"],
-                           content_type=result["content_type"])
-    except JournalMediaError as me:
-        # The image exists but we have nowhere to keep it. 503, and say which
-        # half failed — "try again" is wrong advice for a missing bucket.
-        logger.error("journal_image_generate: storage failed post=%s: %s",
-                     post_id, me)
-        return jsonify({"code": "DISABLED", "error": str(me)}), 503
-    except Exception as e:
-        logger.error("journal_image_generate: storage failed post=%s: %s",
-                     post_id, e, exc_info=True)
-        return jsonify({"code": "V2_ERROR",
-                        "error": "Could not store the image."}), 500
-
-    row = db.insert_journal_post_image(ji.row_for_insert(
-        post_id, result, image_url=stored["public_url"],
-        storage_key=stored.get("key"), notes=notes,
-        parent_id=(previous or {}).get("id"),
-    ))
-    # A missing history table (migration pending) must not lose the cover the
-    # founder just paid for: serve the in-memory shape and carry on.
-    image = ji.serialize_image(row) if row else ji.serialize_image({
-        "journal_post_id": post_id,
-        "image_url": stored["public_url"],
-        "alt_text": result.get("alt_text"),
-        "prompt": result.get("prompt"),
-        "revised_prompt": result.get("revised_prompt"),
-        "notes": notes if isinstance(notes, str) else "",
-        "flags": result.get("flags"),
-        "model": result.get("model"), "size": result.get("size"),
-        "quality": result.get("quality"),
-    })
-
-    # null == absent == default TRUE. A FE that serializes untouched optional
-    # inputs as null would otherwise draw a cover and never attach it — the
-    # same null-vs-absent trap validate_post_body already guards against.
-    attach = body.get("attach")
-    attached, attach_error, updated = False, None, None
-    if attach is None or attach:
-        updated, attach_error = _attach_to_post(
-            post, image["image_url"], image["alt_text"])
-        attached = updated is not None
-
-    payload = {
-        "image": image,
-        "items": [ji.serialize_image(r)
-                  for r in db.list_journal_post_images(post_id,
-                                                       limit=ji.MAX_HISTORY)],
-        "post": jr.serialize_admin(updated) if updated else None,
-        "attached": attached,
-        "brief_source": result.get("brief_source"),
-    }
-    if attach_error:
-        payload["attach_error"] = attach_error
-    return jsonify(payload), 200
+        return jsonify(generate_cover(db, _body())), 200
+    except Refusal as refusal:
+        return jsonify(refusal.body), refusal.status
 
 
 @journal_bp.route("/v2/internal/journal/image/list", methods=["POST"])
@@ -765,8 +580,8 @@ def journal_image_select():
     if not post:
         return jsonify({"code": "NOT_FOUND", "error": "post not found"}), 404
 
-    updated, attach_error = _attach_to_post(
-        post, row.get("image_url") or "", row.get("alt_text") or "")
+    updated, attach_error = attach_to_post(
+        db, post, row.get("image_url") or "", row.get("alt_text") or "")
     if attach_error:
         return jsonify({"code": "V2_ERROR", "error": attach_error}), 500
     return jsonify({"post": jr.serialize_admin(updated),

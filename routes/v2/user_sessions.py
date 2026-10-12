@@ -29,8 +29,9 @@ from routes.v2.arcs import (
 )
 from routes.v2.blueprint import v2_bp
 from routes.v2.common import _is_valid_uuid, _resolve_snippet_audio_url
-from services.ideal_text_feedback_bake import request_rebake_for_take
 from services.refusal import Refusal
+from services.take_feedback_answer import save_feedback_answer
+from services.transcript_edits import save_transcript_edit
 from services.suggestion_feedback import record_suggestion_feedback, validated_tap
 from services.practice_attempts import add_attempt, complete_practice
 from services.practice_start import original_answer, start_practice
@@ -40,7 +41,6 @@ from services.project_ownership import GUEST_OWNER_HEADER
 from services.project_repository import ProjectRepository
 from services.take_repository import TakeHasLineageError
 from services.owner_feedback_answers import owner_answers
-from services.take_feedback_responses import album_routing_for
 from services.accepted_rewrite import text_update_for_answer
 from services.practice_adoption import (
     helper_words_from_practice,
@@ -633,9 +633,6 @@ def v2_user_get_session_readout(session_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch readout"}), 500
 
 
-_TRANSCRIPT_EDIT_MAX_LEN = 2000
-
-
 @v2_bp.route("/user/sessions/<session_id>/transcript-edits", methods=["PUT"])
 @optional_auth
 def v2_user_put_transcript_edit(session_id):
@@ -676,86 +673,10 @@ def v2_user_put_transcript_edit(session_id):
                 "code": "SESSION_NOT_FOUND", "error": "Session not found",
             }), 404
 
-        body = request.get_json(silent=True) or {}
-        # Type-check BEFORE .strip() — a truthy non-string ({"text": 5})
-        # must be a clean 400, not an AttributeError → 500 + Sentry noise
-        # (review finding).
-        text_raw = body.get("text")
-        if text_raw is not None and not isinstance(text_raw, str):
-            return jsonify({
-                "code": "INVALID_INPUT", "error": "text must be a string",
-            }), 400
-        text = (text_raw or "").strip()
-        if not text:
-            return jsonify({
-                "code": "INVALID_INPUT", "error": "text is required",
-            }), 400
-        if len(text) > _TRANSCRIPT_EDIT_MAX_LEN:
-            return jsonify({
-                "code": "INVALID_INPUT",
-                "error": f"text exceeds {_TRANSCRIPT_EDIT_MAX_LEN} characters",
-            }), 400
-
-        snippet_raw = body.get("snippet_id")
-        if snippet_raw is not None and not isinstance(snippet_raw, str):
-            return jsonify({
-                "code": "INVALID_INPUT", "error": "snippet_id must be a string",
-            }), 400
-        snippet_id = (snippet_raw or "").strip() or None
-        chunk_index = body.get("chunk_index")
-        has_snip = snippet_id is not None
-        has_chunk = isinstance(chunk_index, int) and not isinstance(
-            chunk_index, bool) and chunk_index >= 0
-        if has_snip == has_chunk:
-            return jsonify({
-                "code": "INVALID_INPUT",
-                "error": "exactly one of snippet_id or chunk_index is required",
-            }), 400
-        if has_snip and not _is_valid_uuid(snippet_id):
-            return jsonify({
-                "code": "INVALID_INPUT", "error": "snippet_id must be a UUID",
-            }), 400
-
-        # Target-existence checks (review must-fix): an edit may only land on
-        # a target this session actually has — otherwise orphan rows accrue
-        # invisibly (accepted with 200 but never surfaced by the readout
-        # fold), unbounded chunk_index rows bloat every readout re-read
-        # (including the coach view), and an INT4-overflow chunk_index would
-        # 500 at insert instead of 400 here.
-        if has_snip:
-            snip_row = db.get_snippet_by_id(snippet_id)
-            if not snip_row or str(snip_row.get("session_id") or "") != str(session_id):
-                return jsonify({
-                    "code": "SNIPPET_NOT_FOUND",
-                    "error": "That moment is not part of this session",
-                }), 404
-        else:
-            # SAME helper the readout fold uses — the two counts can't drift.
-            from services.slide_word_split import deckless_chunks_from_stx
-            _stx = db.takes.get_session_slide_transcripts(session_id) or []
-            n_chunks = len(deckless_chunks_from_stx(_stx))
-            if chunk_index >= n_chunks:
-                return jsonify({
-                    "code": "INVALID_INPUT",
-                    "error": "chunk_index is out of range for this session",
-                }), 400
-
-        ok = db.upsert_user_transcript_edit(
-            str(session_id),
-            snippet_id=snippet_id if has_snip else None,
-            chunk_index=chunk_index if has_chunk else None,
-            text=text,
-        )
-        if not ok:
-            return jsonify({
-                "code": "V2_ERROR", "error": "Could not save the edit",
-            }), 500
-        out = {"saved": True, "session_id": session_id}
-        if has_snip:
-            out["snippet_id"] = snippet_id
-        else:
-            out["chunk_index"] = chunk_index
-        return jsonify(out), 200
+        return jsonify(save_transcript_edit(
+            db, session_id, request.get_json(silent=True) or {})), 200
+    except Refusal as refusal:
+        return jsonify(refusal.body), refusal.status
     except Exception as e:
         logger.error(
             "transcript-edit PUT failed sid=%s err=%s",
@@ -1185,181 +1106,19 @@ def v2_post_take_feedback_response(take_session_id):
                 or str(session.get("user_id") or "") != str(request.user_id)
                 or not session.get("arc_id")):
             return jsonify({"code": "NOT_FOUND", "error": "Take not found"}), 404
-        arc_id = str(session["arc_id"])
-        from services.take_feedback_responses import parse_feedback_response
-        row, err = parse_feedback_response(request.get_json(silent=True) or {})
-        if err:
-            return jsonify({"code": "INVALID_INPUT", "error": err}), 400
-        canonical_identity = {
-            key: row.pop(key, None)
-            for key in (
-                "candidate_id", "feedback_membership_id",
-                "feedback_exposure_id",
-            )
-        }
-        result = db.insert_take_feedback_self_report(
-            arc_id=arc_id,
-            take_session_id=str(take_session_id),
+        return jsonify(save_feedback_answer(
+            db, session=session, take_session_id=str(take_session_id),
             owner_user_id=str(request.user_id),
-            **row,
-        )
-        if result is None:
-            return jsonify({"code": "V2_ERROR", "error": "Could not save this response."}), 500
-        outcome = str(result.get("outcome") or "")
-        if outcome == "not_member":
-            return jsonify({
-                "code": "INVALID_INPUT",
-                "error": "feedback item is not in this Take's frozen set",
-            }), 400
-        if outcome == "provenance_mismatch":
-            return jsonify({
-                "code": "INVALID_INPUT",
-                "error": "snippet provenance does not match the feedback item",
-            }), 400
-        # A changed judgement is kept beside the first (QA1 A, D-FW-9).
-        outcome, result = _changed_judgement(row, outcome, result,
-                                             str(take_session_id), str(request.user_id))
-        if outcome == "conflict":
-            return jsonify({
-                "code": "RESPONSE_ALREADY_FINAL",
-                "error": "This response is already final.",
-            }), 409
-        saved = result.get("row")
-        if outcome not in ("saved", "replayed", *_REVISED) or not isinstance(saved, dict):
-            return jsonify({
-                "code": "V2_ERROR",
-                "error": "Could not save this response.",
-            }), 500
-        request_rebake_for_take(session)  # F3: the answer retired the bake
-        # Downstream product and canonical writes use the database-derived
-        # snippet provenance, never the request echo.
-        row = {
-            **row,
-            "snippet_id": saved.get("snippet_id"),
-        }
-        feedback_set = {"selected_keys": result.get("selected_keys") or []}
-        if outcome in _REVISED:
-            return _revised_judgement(row, arc_id, str(take_session_id),
-                                      str(request.user_id))
-
-        from services.take_feedback_responses import canonical_dual_write
-        canonical_dual_write(db, session, str(take_session_id),
-                             str(request.user_id), row, canonical_identity,
-                             feedback_set)
-
-        # The budget/spend row records that the item was explicitly resolved;
-        # shown and skipped still mean nothing. Its key includes the frozen
-        # feedback identity, so three families sharing one snippet cannot
-        # overwrite each other.
-        from services.intervention_spend import spend
-        spend(
-            db,
-            arc_id,
-            db.takes.get_arc_sessions(arc_id) or [],
-            change_key=f"feedback:{row['feedback_family']}:{row['feedback_id']}",
-            decision=("approved" if row["response"] in (
-                "yes", "apply_suggestion", "useful") else "disregarded"),
-            lane=f"feedback:{row['feedback_family']}",
-            intervention_type=(
-                "NOTICE" if row["feedback_family"] == "confident_voice"
-                else "REWRITE" if row["feedback_family"] == "rewrite_clarity"
-                else "EMPHASISE"
-            ),
-        )
-
-        if row["feedback_family"] == "confident_voice" and row.get("snippet_id"):
-            _route_owner_voice_album(
-                db, row=row, arc_id=arc_id, owner_user_id=str(request.user_id))
-            from services.voice_album import refresh_voice_album
-            refresh_voice_album(arc_id, database=db)
-        # A JUDGEMENT IS ALWAYS ANSWERED (founder 2026-09-29; 24f matrix).
-        follow_up = "none"
-        if row["feedback_family"] == "confident_voice" and row.get("snippet_id"):
-            from services.judgement_follow_up import follow_up_for_judgement
-            follow_up = follow_up_for_judgement(
-                db, take_session_id=str(take_session_id),
-                snippet_id=str(row["snippet_id"]),
-                owner_user_id=str(request.user_id), answer=row["response"])
-        return jsonify({
-            "saved": True,
-            "feedback_id": row["feedback_id"],
-            "feedback_family": row["feedback_family"],
-            "response": row["response"],
-            "follow_up": follow_up,
-            **text_update_for_answer(  # 29b P1-1: the accepted rewrite's Paragraph
-                db, row, arc_id, str(request.user_id), str(take_session_id)),
-        }), 200
+            body=request.get_json(silent=True) or {},
+            text_update=text_update_for_answer)), 200
+    except Refusal as refusal:
+        return jsonify(refusal.body), refusal.status
     except Exception as e:
         logger.error("take feedback response failed take=%s: %s",
                      take_session_id, e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR",
                         "error": "Failed to save the response"}), 500
-
-
-_REVISED = ("revised", "revised_replay")
-
-
-def _changed_judgement(row: dict, outcome: str, result: dict,
-                       take_session_id: str, owner_user_id: str) -> tuple[str, dict]:
-    """A changed Confident Voice judgement is kept BESIDE the first (founder
-    QA1 A, D-FW-9): the first answer's row is never touched; the latest is
-    a revision every reader overlays. Only a Confident Voice judgement
-    reopens: a rewrite's answer wrote the Paragraph (L1). The first writer
-    compares with the FIRST answer, so a speaker going back to it after a
-    change reads there as a replay; the revision function compares with
-    the latest. Returns (outcome, result): "revised" or "revised_replay"
-    with the revision's result, "revision_failed" when a change could not
-    be saved, else what the first writer said."""
-    if (outcome not in ("conflict", "replayed")
-            or row["feedback_family"] != "confident_voice"):
-        return outcome, result
-    change = db.revise_take_feedback_self_report(
-        take_session_id=take_session_id, owner_user_id=owner_user_id,
-        feedback_id=row["feedback_id"], response=row["response"]) or {}
-    revision = str(change.get("outcome") or "")
-    try:
-        changed_before = int((change.get("row") or {}).get("revision") or 0) > 0
-    except (TypeError, ValueError):
-        changed_before = False
-    if revision == "revised":
-        return "revised", change
-    if revision == "replayed" and (outcome == "conflict" or changed_before):
-        return "revised_replay", change
-    if not revision:
-        # GPT-0440: going back to the first answer after a change reads as a
-        # replay at the first writer; if the revision cannot be saved the
-        # latest answer is stale, so the speaker is told it did not save.
-        return "revision_failed", result
-    return outcome, result
-
-
-def _revised_judgement(row: dict, arc_id: str, take_session_id: str,
-                       owner_user_id: str):
-    """A changed Confident Voice judgement (D-FW-9): the Album and coach
-    routing follow the latest answer. The canonical decision ledger and the
-    spend keep the first resolution: the item was resolved once, and the
-    revision table holds the change beside it (L3)."""
-    if row.get("snippet_id"):
-        _route_owner_voice_album(
-            db, row=row, arc_id=arc_id, owner_user_id=owner_user_id)
-        from services.voice_album import refresh_voice_album
-        refresh_voice_album(arc_id, database=db)
-    follow_up = "none"
-    if row.get("snippet_id"):
-        from services.judgement_follow_up import follow_up_for_revision
-        follow_up = follow_up_for_revision(
-            db, take_session_id=take_session_id,
-            snippet_id=str(row["snippet_id"]),
-            owner_user_id=owner_user_id, answer=row["response"])
-    return jsonify({
-        "saved": True,
-        "revised": True,
-        "feedback_id": row["feedback_id"],
-        "feedback_family": row["feedback_family"],
-        "response": row["response"],
-        "follow_up": follow_up,
-    }), 200
 
 
 def _practice_kind(practice) -> str:
@@ -1464,27 +1223,6 @@ def _practice_exercise_shape(practice, kind: str) -> dict:
             or exercise.get("explanation_video_ref")
         ),
     }
-
-
-def _route_owner_voice_album(
-    database, *, row: dict, arc_id: str, owner_user_id: str,
-) -> bool:
-    """Write the owner's Confident Voice answer as the Voice Album route.
-
-    The answer routes as itself (F-4): the five states are stored whole,
-    never folded into the legacy neutral/unrateable pair. Routing only; it
-    is never a label."""
-    snip = database.get_snippet_by_id(row["snippet_id"]) or {}
-    piece = ((snip.get("metrics") or {}).get("piece")
-             if isinstance(snip.get("metrics"), dict) else {})
-    return bool(database.upsert_owner_voice_album_route(
-        snippet_id=row["snippet_id"],
-        owner_user_id=owner_user_id,
-        arc_id=arc_id,
-        response=album_routing_for(row["response"]),
-        slide_index=(piece.get("slide_index")
-                     if isinstance(piece, dict) else None),
-    ))
 
 
 @v2_bp.route("/user/snippets/<snippet_id>/exercise-rendered", methods=["POST"])
