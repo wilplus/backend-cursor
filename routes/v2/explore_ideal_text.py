@@ -402,6 +402,31 @@ def v2_explore_arc_journey_next_steps(arc_id):
                         "error": "Failed to save next steps"}), 500
 
 
+@v2_bp.route("/explore/arc/<arc_id>/review/summary", methods=["POST"])
+@require_auth
+def v2_explore_arc_review_summary(arc_id):
+    """The closing summary after a Take's review, once per Take (founder
+    lock 2026-10-12, section 3). Body: {take_session_id, practice?,
+    helper_words?, coach_note?}. 200 {message} · 404 · 500"""
+    try:
+        owned, sessions = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        body = request.get_json(silent=True) or {}
+        from services.take_summary import summary_message
+        message = summary_message(
+            db, user_id=str(request.user_id), arc_id=str(arc_id),
+            takes=_completed_spoken_sessions(sessions),
+            take_session_id=str(body.get("take_session_id") or ""), body=body)
+        if message is None:
+            return jsonify({"code": "NOT_FOUND", "error": "take not found"}), 404
+        return jsonify({"message": message}), 200
+    except Exception as e:
+        logger.error("review summary failed arc=%s: %s", arc_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to save the summary"}), 500
+
+
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/notes", methods=["PUT"])
 @require_auth
 def v2_explore_put_ideal_notes(arc_id):

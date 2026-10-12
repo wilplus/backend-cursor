@@ -70,6 +70,17 @@ class LLMSpec:
 # useful — without it, the constants would just be model strings.
 
 
+SPEC_TAKE_SUMMARY = LLMSpec(
+    model=STRONG_MODEL,
+    temperature=0.6,
+    max_tokens=180,
+    timeout_seconds=20.0,
+)
+"""The closing summary after a Take's review (founder lock 2026-10-12,
+moment and feedback chat, section 3): 2-3 plain sentences, a coach
+talking. ``services.take_summary``."""
+
+
 SPEC_MASTER_DOC_RAG = LLMSpec(
     model=CHEAP_MODEL,
     temperature=0.4,
