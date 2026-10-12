@@ -129,10 +129,6 @@ def _client():
     return _s3_client
 
 
-def _clamp_ttl(expires_in: int) -> int:
-    return clamp_ttl(expires_in)
-
-
 def put_user_media_bytes(
     key: str,
     body: bytes,
@@ -176,7 +172,7 @@ def presigned_get_user_media(
             return _client().generate_presigned_url(
                 "get_object",
                 Params={"Bucket": resolved_bucket, "Key": key},
-                ExpiresIn=_clamp_ttl(expires_in),
+                ExpiresIn=clamp_ttl(expires_in),
             )
         except Exception as e:
             logger.warning(
