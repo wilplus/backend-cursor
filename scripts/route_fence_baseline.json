@@ -3,10 +3,6 @@
     "lines": 162,
     "db_calls": 1
   },
-  "routes/internal_webhooks.py:internal_copilot_video_retrain": {
-    "lines": 152,
-    "db_calls": 7
-  },
   "routes/internal_webhooks.py:internal_increment_student_credits": {
     "lines": 34,
     "db_calls": 2

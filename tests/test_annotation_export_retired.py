@@ -1,17 +1,15 @@
-"""The daily annotation export is retired, and stays retired (ML-1; audit
-2026-09-22 I-1 / LEGACY-4).
+"""The retired Phase-2 learning routes stay closed (ML-1; audit 2026-09-22
+I-1 / LEGACY-4).
 
-The route answers 410 (routes/phase2_guard), so a cron that POSTed to it
-failed every run. The cron script and its Dockerfile are gone so a dead job
-cannot be re-provisioned; the pairs the coach's answers make are read by the
-weekly job that a later, separately authorised door opens (build plan ML-9).
+The annotation export and the copilot-video retrain answered 410 on every
+request until 2026-10-12, when the founder had both removed. A retired path is
+now closed by absence: the server has no such route and answers 404. This is
+the evidence behind the counsel claim that every Phase-2 learning route is
+fail-closed.
 """
 from __future__ import annotations
 
-import pathlib
 import unittest
-
-ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 try:
     from app import app as flask_app
@@ -20,16 +18,21 @@ except Exception as e:  # pragma: no cover
     flask_app = None
     _IMPORT_ERROR = e
 
+RETIRED_PATHS = (
+    "/v2/internal/annotation-export",
+    "/v2/internal/copilot-video/retrain",
+)
 
-class AnnotationExportRetiredTests(unittest.TestCase):
-    def test_the_route_is_a_410(self):
+
+class RetiredPhase2RoutesAreAbsent(unittest.TestCase):
+    def test_each_retired_path_is_a_404(self):
         if flask_app is None:  # pragma: no cover
             self.skipTest(f"app import failed: {_IMPORT_ERROR}")
         flask_app.config["TESTING"] = True
         with flask_app.test_client() as client:
-            response = client.post("/v2/internal/annotation-export", json={})
-        self.assertEqual(response.status_code, 410)
-        self.assertEqual(response.get_json().get("code"), "PHASE2_DISABLED")
+            for path in RETIRED_PATHS:
+                with self.subTest(path=path):
+                    self.assertEqual(client.post(path, json={}).status_code, 404)
 
 
 if __name__ == "__main__":

@@ -13,28 +13,9 @@ half of H-1. The export/serve prompt divergence itself is Workstream 6's.
 """
 from __future__ import annotations
 
-import tempfile
 import unittest
-from datetime import datetime, timezone
-from pathlib import Path
-from unittest import mock
 
-from services.ml_dpo_release import write_evaluation_report
-from services.ml_surface_contracts import SURFACES, contract_for_surface
-
-
-def _passing_report(directory: Path, surface: str) -> Path:
-    contract = contract_for_surface(surface)
-    path = directory / "eval.json"
-    write_evaluation_report(path, {
-        "surface": contract.id,
-        "golden_eval_surface": contract.golden_eval_surface,
-        "candidate_model_id": "ft:gpt-4.1-mini:org:proj:abc123",
-        "evaluated_at": datetime.now(timezone.utc).isoformat(),
-        "passed": True,
-        "dataset_release_id": "rel-1",
-    })
-    return path
+from services.ml_surface_contracts import SURFACES
 
 
 class EverySurfaceHasALockedPromptHash(unittest.TestCase):
@@ -51,47 +32,6 @@ class EverySurfaceHasALockedPromptHash(unittest.TestCase):
 
         digests = {locked_prompt_hash(s) for s in SURFACES}
         self.assertEqual(len(digests), len(SURFACES))
-
-
-class PromotionRecordsThePromptItWasGatedUnder(unittest.TestCase):
-    """The named regression test for H-1."""
-
-    def test_promote_requires_locked_prompt_hash(self):
-        import scripts.promote_openai_model as promote
-        from services.ml_surface_contracts import locked_prompt_hash
-
-        surface = "say_it_stronger"
-        correct = locked_prompt_hash(surface)
-
-        with tempfile.TemporaryDirectory() as tmp:
-            report = _passing_report(Path(tmp), surface)
-            base = [
-                "promote_openai_model.py",
-                "--surface", surface,
-                "--model-id", "ft:gpt-4.1-mini:org:proj:abc123",
-                "--evaluation-report", str(report),
-            ]
-
-            # A stale or absent hash is refused, before any write.
-            for argv in (base, base + ["--prompt-hash", "0" * 64]):
-                with mock.patch.object(promote.Config, "PROMOTION_SURFACES", frozenset({surface})), \
-                     mock.patch("services.db.db.promote_runtime_surface_model") as spy, \
-                     mock.patch("sys.argv", argv):
-                    with self.assertRaises(SystemExit):
-                        promote.main()
-                    spy.assert_not_called()
-
-            # The current hash is accepted, and stored beside the model id.
-            argv = base + ["--prompt-hash", correct]
-            with mock.patch.object(promote.Config, "PROMOTION_SURFACES", frozenset({surface})), \
-                 mock.patch("services.db.db.promote_runtime_surface_model") as spy, \
-                 mock.patch("sys.argv", argv):
-                spy.return_value = {"key": "openai_surface_model_say_it_stronger"}
-                promote.main()
-
-        spy.assert_called_once()
-        metadata = spy.call_args.kwargs["metadata"]
-        self.assertEqual(metadata["prompt_lock_sha256"], correct)
 
 
 if __name__ == "__main__":  # pragma: no cover

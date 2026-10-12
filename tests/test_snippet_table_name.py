@@ -223,7 +223,7 @@ class TestRenameMigrationsReloadTheSchemaCache(unittest.TestCase):
     this codebase swallows by design. A perfect-looking migration with a dead
     app behind it.
 
-    The same class of failure is already on the record at services/db.py:8711
+    The same class of failure is already on the record at services/db.py:8628
     (PGRST204, 2026-05-11). Twice is a pattern, so it becomes a test.
 
     NOTIFY belongs INSIDE the transaction: it is delivered at COMMIT, making

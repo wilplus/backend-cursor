@@ -4863,7 +4863,7 @@
   "QA16": {
    "batch": 3,
    "closed_note": "answered and read by Claude, 6 Oct",
-   "evidence": "be services/db.py:15721-15743 count_exportable_pairs requires releasable, passage_text and draft_model_version not null; services/model_training.py:138-146 trainable_pairs requires passage_text; config.py:270-272 MLC2_TRAINING_ENABLED/PROMOTION False; #905 = fba74a6b 'the walk's exercise pair is stamped (... model version, main target, passage)'. Recoverability of old values not checked (production data).",
+   "evidence": "be services/db.py:15638-15660 count_exportable_pairs requires releasable, passage_text and draft_model_version not null; services/model_training.py:138-146 trainable_pairs requires passage_text; config.py:270-272 MLC2_TRAINING_ENABLED/PROMOTION False; #905 = fba74a6b 'the walk's exercise pair is stamped (... model version, main target, passage)'. Recoverability of old values not checked (production data).",
    "importance": 2,
    "options": [
     {
@@ -5115,7 +5115,7 @@
   "QA21": {
    "batch": 3,
    "closed_note": "answered and read by Claude, 6 Oct",
-   "evidence": "be services/paragraph_history.py:131-150 history_for_part passes list_practice_adoptions; services/practice_adoption.py:9-14 adoption rule retired, rows stay; db.py:16247 adopt_practice_passage has no caller (git grep). fe paragraphOverlay.ts:399-410 History rows from Takes and corrections only; answeredBookmark.ts:167-172 reads history.practice into an answered-view box only.",
+   "evidence": "be services/paragraph_history.py:131-150 history_for_part passes list_practice_adoptions; services/practice_adoption.py:9-14 adoption rule retired, rows stay; db.py:16164 adopt_practice_passage has no caller (git grep). fe paragraphOverlay.ts:399-410 History rows from Takes and corrections only; answeredBookmark.ts:167-172 reads history.practice into an answered-view box only.",
    "importance": 1,
    "options": [
     {
@@ -5709,7 +5709,7 @@
   "QB16": {
    "batch": 3,
    "closed_note": "answered and read by Claude, 6 Oct",
-   "evidence": "be docs/CANONICAL_PRODUCT_CONTRACT.md:872-874 (35j); services/db.py:7244-7268 insert_take_feedback_exposure upsert ignore_duplicates (insert-once); services/ideal_text_changes.py:1253-1260 caller. Missing model_version/prompt_version on that call is a separate engineering row (A180a).",
+   "evidence": "be docs/CANONICAL_PRODUCT_CONTRACT.md:872-874 (35j); services/db.py:7161-7185 insert_take_feedback_exposure upsert ignore_duplicates (insert-once); services/ideal_text_changes.py:1253-1260 caller. Missing model_version/prompt_version on that call is a separate engineering row (A180a).",
    "importance": 2,
    "options": [
     {
@@ -5745,7 +5745,7 @@
   "QB17": {
    "batch": 3,
    "closed_note": "answered and read by Claude, 6 Oct",
-   "evidence": "fe src/components/willab/DeckChunkModal.tsx:638 useVisibleLearningExposure (post-paint ack); be services/learning_exposures.py prepare_*_presentations + acknowledge_visible_render -> db create_learning_surface_presentation_v1 / ack_learning_surface_exposure_v1 (services/db.py:7600); routes/v2/confidence_chain_coach.py:44-60 ml render receipt is coach-only; docs/MLC2-FOUNDATION.md:144-147. Decisions log N48.5 Q27 A 'training stays closed'.",
+   "evidence": "fe src/components/willab/DeckChunkModal.tsx:638 useVisibleLearningExposure (post-paint ack); be services/learning_exposures.py prepare_*_presentations + acknowledge_visible_render -> db create_learning_surface_presentation_v1 / ack_learning_surface_exposure_v1 (services/db.py:7517); routes/v2/confidence_chain_coach.py:44-60 ml render receipt is coach-only; docs/MLC2-FOUNDATION.md:144-147. Decisions log N48.5 Q27 A 'training stays closed'.",
    "importance": 1,
    "options": [
     {
@@ -5959,7 +5959,7 @@
   "QB20": {
    "batch": 3,
    "closed_note": "answered and read by Claude, 6 Oct",
-   "evidence": "be routes/v2/user_sessions.py:1267 POST confidence-review, :1340 PUT confidence-agree; services/db.py:11904-11920 upsert_owner_voice_album_route docstring ('a ternary instrument with no frontend caller'; Take-review route sends the answer since F-4). fe src/services/api/confidenceReview.ts submitConfidenceReview used only by its test; src/services/api/stateRatings.ts:253 saveConfidenceAgreement has no caller; BFF routes src/app/api/v2/user/snippets/[snippetId]/confidence-review|confidence-agree/route.ts. docs/SPEC-DECISIONS-LOG.md N49.3 list does not include them.",
+   "evidence": "be routes/v2/user_sessions.py:1267 POST confidence-review, :1340 PUT confidence-agree; services/db.py:11821-11837 upsert_owner_voice_album_route docstring ('a ternary instrument with no frontend caller'; Take-review route sends the answer since F-4). fe src/services/api/confidenceReview.ts submitConfidenceReview used only by its test; src/services/api/stateRatings.ts:253 saveConfidenceAgreement has no caller; BFF routes src/app/api/v2/user/snippets/[snippetId]/confidence-review|confidence-agree/route.ts. docs/SPEC-DECISIONS-LOG.md N49.3 list does not include them.",
    "importance": 1,
    "options": [
     {
@@ -6808,7 +6808,7 @@
   "QG6": {
    "batch": 3,
    "closed_note": "answered and read by Claude, 6 Oct",
-   "evidence": "V4 page M5 'Humans check the recognizer; the recognizer teaches the picker every day. The recognizer is trained first.' Coach-panel lock :92 L9 'The confidence read stays rules until the SPEC's evaluation ... passes.' Ledger BP-b: recognizer training parked. services/label_quorum.py:26-31 docstring: confidence_labels.machine_value stored beside value, stamped server-side; services/db.py:11087-11141, :11249 write machine_value. I did not confirm that every coach-walk label row carries machine_value (db.py:11160 says it is re-derivable from the stored acoustic read). services/coach_block_pick.py ('Pick the most confident', an accuracy check) is off: config.py:449 COACH_BLOCK_PICK_ENABLED = False, parked in BP-f.",
+   "evidence": "V4 page M5 'Humans check the recognizer; the recognizer teaches the picker every day. The recognizer is trained first.' Coach-panel lock :92 L9 'The confidence read stays rules until the SPEC's evaluation ... passes.' Ledger BP-b: recognizer training parked. services/label_quorum.py:26-31 docstring: confidence_labels.machine_value stored beside value, stamped server-side; services/db.py:11004-11058, :11249 write machine_value. I did not confirm that every coach-walk label row carries machine_value (db.py:11077 says it is re-derivable from the stored acoustic read). services/coach_block_pick.py ('Pick the most confident', an accuracy check) is off: config.py:449 COACH_BLOCK_PICK_ENABLED = False, parked in BP-f.",
    "importance": 3,
    "options": [
     {

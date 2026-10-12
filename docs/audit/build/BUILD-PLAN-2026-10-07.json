@@ -5433,7 +5433,7 @@
      "item": "Training corpus import switch (coach-only import of audio the founder holds rights to)",
      "source": "N56.4 CO1 A ('the training corpus is switched on'); N58",
      "status": "dark",
-     "evidence": "config.py:288 TRAINING_IMPORT_ENABLED = False; routes/phase2_guard.py:46 answers 410 PHASE2_DISABLED while False; services/training_import.py:137-141 import_enabled(); migration 0435 header: 'False until the founder flips it'",
+     "evidence": "config.py:288 TRAINING_IMPORT_ENABLED = False; routes/phase2_guard.py:29 answers 410 PHASE2_DISABLED while False; services/training_import.py:137-141 import_enabled(); migration 0435 header: 'False until the founder flips it'",
      "difference": "N56.4 says 'switched on', but the code was shipped behind a constant that is still False (#919, #920, #921). No import can run, so no corpus labels exist. Founder question Q1."
     },
     {
@@ -5768,7 +5768,7 @@
      "item": "Until counsel approves, the app keeps the practise consent",
      "source": "N55 ('Until then nothing changes in the app'); consent lock N60 item 1 and item 2",
      "status": "built",
-     "evidence": "frontend src/components/willab/Phase1AcceptanceFlow.tsx:518 'Three things to confirm' and :567 Personalised practice tick; src/lib/legal/dataConsentCopy.ts:18-27. backend routes/v2/user_sessions.py:1971,2092,2108,2254,2313,2337,2363 @consent_choice_required('personalised_practice'); routes/phase2_guard.py:122."
+     "evidence": "frontend src/components/willab/Phase1AcceptanceFlow.tsx:518 'Three things to confirm' and :567 Personalised practice tick; src/lib/legal/dataConsentCopy.ts:18-27. backend routes/v2/user_sessions.py:1971,2092,2108,2254,2313,2337,2363 @consent_choice_required('personalised_practice'); routes/phase2_guard.py:105."
     },
     {
      "item": "Locked consent screens vs the coming N55 change",
@@ -5787,7 +5787,7 @@
      "item": "Retention cleaner real run (SP6)",
      "source": "N45 ('first real run waits for the founder's word'), N47.2 (report reads zero), N50 P7",
      "status": "dark",
-     "evidence": "backend services/retention_cleaner.py:78 RETENTION_CLEANER_LIVE = False, pinned by tests/test_retention_cleaner.py:549. A live run also needs RETENTION_CLEANER_SECRET on web (config.py:823), a Railway cron service with RETENTION_CLEANER_BACKEND_URL, RETENTION_CLEANER_SECRET and RETENTION_CLEANER_MODE=live, and PHASE1_PURGE_EXECUTION_ENABLED=true on web for rule 1 (guests). Ledger A210a, A212, A213a, A215a, A243b.",
+     "evidence": "backend services/retention_cleaner.py:78 RETENTION_CLEANER_LIVE = False, pinned by tests/test_retention_cleaner.py:549. A live run also needs RETENTION_CLEANER_SECRET on web (config.py:818), a Railway cron service with RETENTION_CLEANER_BACKEND_URL, RETENTION_CLEANER_SECRET and RETENTION_CLEANER_MODE=live, and PHASE1_PURGE_EXECUTION_ENABLED=true on web for rule 1 (guests). Ledger A210a, A212, A213a, A215a, A243b.",
      "difference": "Waits for: the founder's word after reading a dry run, a reviewed one-line flip, and the cron service and secrets in production, none of which can be confirmed from code."
     },
     {
@@ -5828,7 +5828,7 @@
      "item": "Account deletion completes by itself after 7 days",
      "source": "N48.4 Q14 A; ledger N08, A211a, A234a, A241a",
      "status": "dark",
-     "evidence": "backend services/deletion_completion.py:23-25 (two gates); config.py ~808 DELETION_COMPLETION_SECRET (unset means 503); config.py:815 PHASE1_PURGE_EXECUTION_ENABLED (only 'true' executes); bin/railway-deletion-completion-cron.sh:8-20 (hourly cron service needed).",
+     "evidence": "backend services/deletion_completion.py:23-25 (two gates); config.py ~808 DELETION_COMPLETION_SECRET (unset means 503); config.py:813 PHASE1_PURGE_EXECUTION_ENABLED (only 'true' executes); bin/railway-deletion-completion-cron.sh:8-20 (hourly cron service needed).",
      "difference": "In production the 7-day promise is kept only once the founder sets DELETION_COMPLETION_SECRET and PHASE1_PURGE_EXECUTION_ENABLED=true on web, creates the cron service, and registers v1.4 and v1.5. Before that, a request blocks processing but deletes nothing. A purge left for a person shows only on GET /v2/admin/deletions (routes/v2/projects.py:350); the frontend has no admin screen for it (src/app/admin has only project-deletions)."
     },
     {

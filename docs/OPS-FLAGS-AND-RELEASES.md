@@ -123,7 +123,7 @@ property of the repository rather than of whoever is deploying.
 > ```
 > It is also the fix's other half on the way *back* — a rollback without it
 > leaves PostgREST serving the name you just reverted. The same failure is
-> already on the record at `services/db.py:8711` (PGRST204, 2026-05-11).
+> already on the record at `services/db.py:8628` (PGRST204, 2026-05-11).
 
 **Have the Railway tab open before step 2.** Between 2 and 3 the running code
 queries a table that no longer exists; PostgREST returns 404 and this codebase

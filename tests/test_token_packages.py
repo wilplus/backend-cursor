@@ -119,7 +119,8 @@ def test_the_webhook_grants_packages_and_nothing_else():
     gone; a package is the only thing the webhook applies."""
     source = (ROOT / "routes/internal_webhooks.py").read_text()
     body = source[source.index("def stripe_checkout_webhook("):]
-    body = body[:body.index("@internal_webhooks_bp.route")]
+    end = body.find("@internal_webhooks_bp.route")
+    body = body if end < 0 else body[:end]
     assert "webhook_reply" in body
     for retired in ("apply_subscription_event", "apply_completed_arc_checkout",
                     "apply_paid_checkout_session_credits"):

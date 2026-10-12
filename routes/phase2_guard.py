@@ -1,31 +1,14 @@
-"""Fail-closed HTTP boundary for every Phase-2 learning operation.
+"""Route guards that fail closed.
 
-Phase 1 may keep historical handlers and data readable for audit, but no
-request is allowed to create a corpus, export a dataset, or start training.
-Keeping the response in one decorator prevents route-specific feature flags
-from accidentally reopening a retired path.
+The Phase-2 learning routes that once sat behind ``phase2_learning_disabled``
+(always 410) were removed on 2026-10-12 by founder decision, with that
+decorator: a retired learning path is now absent (404), not answered.
 """
 from __future__ import annotations
 
 from functools import wraps
 
 from flask import jsonify
-
-
-def phase2_learning_disabled(function):
-    """Return a stable terminal response without entering the handler."""
-    @wraps(function)
-    def disabled(*args, **kwargs):
-        return jsonify({
-            "code": "PHASE2_DISABLED",
-            "error": "Pooled datasets, training, and promotion are not active.",
-        }), 410
-
-    raw = function
-    while getattr(raw, "__wrapped__", None) is not None:
-        raw = raw.__wrapped__
-    disabled.__wrapped__ = raw
-    return disabled
 
 
 def confidence_chain_alive(function):

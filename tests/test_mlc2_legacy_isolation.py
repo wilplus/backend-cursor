@@ -123,11 +123,9 @@ CANONICAL_LEARNING_DOORS = (
     "services/model_promotion.py",       # door 4
     "services/dataset_releases.py",      # K10's release lane (dark)
     "services/confidence_dataset.py",
-    "services/ml_dpo_release.py",
     "services/training_corpus.py",       # TC-4 copies (dark)
     "services/object_verification.py",   # F-8
     "scripts/promote_pair_surface.py",
-    "scripts/promote_openai_model.py",
 )
 
 #: Read paths the audit's objects hide behind: the product modules that read

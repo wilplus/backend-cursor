@@ -312,7 +312,7 @@ the PR description** — "on main" ≠ "run in prod".
 ### 2.9 DB methods — `services/db.py`
 
 Follow the defensive pattern of the journal methods and
-`upsert_user_arc_ideal_notes` (~`services/db.py:9763`): guard args, try/except,
+`upsert_user_arc_ideal_notes` (~`services/db.py:9680`): guard args, try/except,
 detect the missing-table error and log `run migrations/add_journal_community_posts.sql`,
 return falsy instead of raising.
 

@@ -41,7 +41,7 @@ coach-surface only; the user readout already carried the same vector by design.
   Legacy coach templates (`/recordings/{id}/feedback`, `/admin/students/{id}`) are
   old-admin era and NOT wired into the willab send path. If a coach email is wanted
   it is net-new BE work → should link `/chat?review=<id>`.
-- **C2 — queue `done` reconcile:** ⚠️ **gap.** `db.list_review_queue` (db.py:8696)
+- **C2 — queue `done` reconcile:** ⚠️ **gap.** `db.list_review_queue` (db.py:8613)
   filters out published rows (`if not r.get("results_published_at")`), so a published
   session is **dropped from `/v2/coach/queue`** — it never returns `state:"done"`
   there. The per-session `GET /v2/coach/sessions/<id>` DOES return `"done"`.

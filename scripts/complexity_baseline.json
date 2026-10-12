@@ -1,5 +1,4 @@
 {
-  "routes/internal_webhooks.py:internal_copilot_video_retrain": 32,
   "routes/journal.py:journal_image_generate": 30,
   "routes/life_routes.py:life_day_update": 28,
   "routes/v2/coach.py:v2_coach_confident_voice_practice": 39,
