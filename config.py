@@ -845,15 +845,16 @@ class Config:
 
     # ── The AI version of your voice (founder lock 2026-10-12, N71) ──────
     # docs/FOUNDER-LOCK-ai-voice-practice-2026-10-12.md; docs/AI-VOICE-PRACTICE.md.
-    # OFF unless AI_VOICE_ENABLED=1; then on for every speaker (founder
-    # 2026-10-12). AI_VOICE_ALLOWLIST (comma-separated user ids), when set,
-    # narrows it to those accounts; empty means everyone.
+    # ALWAYS ON for every speaker (founder 2026-10-12): it works whenever
+    # ELEVENLABS_API_KEY is set, and does nothing without it. No switch to
+    # set. AI_VOICE_ENABLED=0 exists only as an emergency off.
+    # AI_VOICE_ALLOWLIST (user ids), when set, narrows it; empty = everyone.
     ELEVENLABS_API_KEY = _secret("ELEVENLABS_API_KEY") or ""
     ELEVENLABS_MODEL_ID = (os.getenv("ELEVENLABS_MODEL_ID") or "eleven_v4").strip()
     ELEVENLABS_API_BASE = (os.getenv("ELEVENLABS_API_BASE")
                            or "https://api.elevenlabs.io").strip().rstrip("/")
     ELEVENLABS_TIMEOUT_SECONDS = _env_int("ELEVENLABS_TIMEOUT_SECONDS", 30)
-    AI_VOICE_ENABLED = _env_flag("AI_VOICE_ENABLED")
+    AI_VOICE_ENABLED = _env_not_off("AI_VOICE_ENABLED")
     AI_VOICE_ALLOWLIST = frozenset(
         part.strip() for part in (os.getenv("AI_VOICE_ALLOWLIST") or "").split(",")
         if part.strip())

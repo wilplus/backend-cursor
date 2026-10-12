@@ -36,9 +36,10 @@ SAMPLE_MIN_RANGE_DB = 15.0
 
 
 def available_to(user_id: Any) -> bool:
-    """On for every speaker when switched on (founder 2026-10-12: "build it
-    for everyone"). A non-empty AI_VOICE_ALLOWLIST narrows it to those ids."""
-    if not Config.AI_VOICE_ENABLED or not user_id:
+    """On for every speaker whenever the ElevenLabs key is set (founder
+    2026-10-12: always on, for everyone). A non-empty AI_VOICE_ALLOWLIST
+    narrows it; AI_VOICE_ENABLED=0 is only an emergency off."""
+    if not Config.AI_VOICE_ENABLED or not Config.ELEVENLABS_API_KEY or not user_id:
         return False
     allow = Config.AI_VOICE_ALLOWLIST
     return not allow or str(user_id) in allow

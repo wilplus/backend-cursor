@@ -147,8 +147,10 @@ def _practice(kind="moment", fit=None, video=None):
 @contextlib.contextmanager
 def _on(**extra):
     saved = {k: getattr(Config, k) for k in (
-        "AI_VOICE_ENABLED", "AI_VOICE_ALLOWLIST", "AI_VOICE_EXPLORE_SHARE", *extra)}
-    Config.AI_VOICE_ENABLED, Config.AI_VOICE_ALLOWLIST = True, frozenset({OWNER})
+        "AI_VOICE_ENABLED", "AI_VOICE_ALLOWLIST", "AI_VOICE_EXPLORE_SHARE",
+        "ELEVENLABS_API_KEY", *extra)}
+    Config.AI_VOICE_ENABLED, Config.AI_VOICE_ALLOWLIST = True, frozenset()
+    Config.ELEVENLABS_API_KEY = "test-key-not-real"
     Config.AI_VOICE_EXPLORE_SHARE = 0.0
     for k, v in extra.items():
         setattr(Config, k, v)

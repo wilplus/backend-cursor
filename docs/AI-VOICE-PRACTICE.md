@@ -54,9 +54,10 @@ Stress is the least reliable of the three; measure it in the smoke test.
 ## Environment
 
 Put these in `.env` locally and on **every** Railway service (web, worker,
-cron) before merging (CONFIG-FIRST): `ELEVENLABS_API_KEY` and
-`AI_VOICE_ENABLED` (`1` turns it on for every speaker). `AI_VOICE_ALLOWLIST`
-(user ids, comma-separated) is optional and narrows it; empty means everyone. The rest have defaults; see
+cron) before merging (CONFIG-FIRST): `ELEVENLABS_API_KEY`. That's all: the
+feature is always on for every speaker once the key is there, and does nothing
+without it. `AI_VOICE_ENABLED=0` is only an emergency off; `AI_VOICE_ALLOWLIST`
+(user ids) optionally narrows it. The rest have defaults; see
 `.env.example`. The key is never logged and never sent to the frontend.
 
 ## Local testing

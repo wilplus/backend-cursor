@@ -72,8 +72,9 @@ speaker's own voice, said a little better**, then the speaker tries again.
 - **Agreed by using the app.** It is part of the Terms (L12) and the
   Privacy Policy (L13), on from the start. The founder chose this over a
   separate tick (D3a, D3b). Counsel reviews it before launch. It is built
-  for every speaker, behind one switch (`AI_VOICE_ENABLED`); an optional
-  allowlist can narrow it (founder 2026-10-12: "build it as for everyone").
+  for every speaker and always on (founder 2026-10-12: "build it as for
+  everyone", "it is always enabled"): it works whenever the ElevenLabs key
+  is set; `AI_VOICE_ENABLED=0` is only an emergency off.
 - **Data & consent card** (on for everyone): L6, L7, Delete (L8, confirm
   L9). Delete removes the voice at ElevenLabs and here, with every clip made
   from it, and stops new clips. Off: L10 and Turn on (L11), which makes it
