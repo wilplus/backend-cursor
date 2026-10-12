@@ -843,6 +843,39 @@ class Config:
     # the endpoints/tables stay DORMANT (recoverable — flip ON to restore).
     AUDIT_SURFACE_ENABLED = (os.getenv("AUDIT_SURFACE_ENABLED") or "false").strip().lower() == "true"
 
+    # ── The AI version of your voice (founder lock 2026-10-12, N71) ──────
+    # docs/FOUNDER-LOCK-ai-voice-practice-2026-10-12.md; docs/AI-VOICE-PRACTICE.md.
+    # OFF unless AI_VOICE_ENABLED=1, and then only for the accounts in
+    # AI_VOICE_ALLOWLIST (comma-separated user ids) until counsel signs.
+    ELEVENLABS_API_KEY = _secret("ELEVENLABS_API_KEY") or ""
+    ELEVENLABS_MODEL_ID = (os.getenv("ELEVENLABS_MODEL_ID") or "eleven_v4").strip()
+    ELEVENLABS_API_BASE = (os.getenv("ELEVENLABS_API_BASE")
+                           or "https://api.elevenlabs.io").strip().rstrip("/")
+    ELEVENLABS_TIMEOUT_SECONDS = _env_int("ELEVENLABS_TIMEOUT_SECONDS", 30)
+    AI_VOICE_ENABLED = _env_flag("AI_VOICE_ENABLED")
+    AI_VOICE_ALLOWLIST = frozenset(
+        part.strip() for part in (os.getenv("AI_VOICE_ALLOWLIST") or "").split(",")
+        if part.strip())
+    # The plan's month (Starter: 40,000 credits). The app warns at the first
+    # and stops making clips at the second; the plan itself caps the third.
+    AI_VOICE_MONTHLY_CREDITS = _env_int("AI_VOICE_MONTHLY_CREDITS", 40000)
+    AI_VOICE_WARN_CREDITS = _env_int("AI_VOICE_WARN_CREDITS", 28000)
+    AI_VOICE_STOP_CREDITS = _env_int("AI_VOICE_STOP_CREDITS", 38000)
+    # Credits per generated character, an estimate until the smoke test
+    # reads the provider's real cost header; never a promotional price.
+    AI_VOICE_CREDITS_PER_CHARACTER = _env_float("AI_VOICE_CREDITS_PER_CHARACTER", 1.0)
+    AI_VOICE_USD_PER_1000_CREDITS = _env_float("AI_VOICE_USD_PER_1000_CREDITS", 0.0)
+    AI_VOICE_DAILY_CLIPS_PER_SPEAKER = _env_int("AI_VOICE_DAILY_CLIPS_PER_SPEAKER", 3)
+    AI_VOICE_DAILY_CLIPS_TOTAL = _env_int("AI_VOICE_DAILY_CLIPS_TOTAL", 30)
+    AI_VOICE_DAILY_CLONES_TOTAL = _env_int("AI_VOICE_DAILY_CLONES_TOTAL", 3)
+    AI_VOICE_MAX_SENTENCE_CHARACTERS = _env_int("AI_VOICE_MAX_SENTENCE_CHARACTERS", 600)
+    AI_VOICE_MAX_PRACTICE_SECONDS = _env_int("AI_VOICE_MAX_PRACTICE_SECONDS", 45)
+    AI_VOICE_MIN_SEVERITY = _env_float("AI_VOICE_MIN_SEVERITY", 0.4)
+    # The share of picks that take the runner-up problem, so the stored
+    # cycles can later tell which exercise helps (never a trained model now).
+    AI_VOICE_EXPLORE_SHARE = _env_float("AI_VOICE_EXPLORE_SHARE", 0.15)
+    AI_VOICE_GENERATION_RETRIES = _env_int("AI_VOICE_GENERATION_RETRIES", 1)
+
     @property
     def is_production(self):
         return self.ENV == "production"
