@@ -131,37 +131,17 @@
     "lines": 138,
     "db_calls": 1
   },
-  "routes/v2/explore_ideal_text.py:_confidence_review_status_map": {
-    "lines": 58,
-    "db_calls": 3
-  },
-  "routes/v2/explore_ideal_text.py:_seed_parts_for_lock": {
-    "lines": 49,
-    "db_calls": 2
-  },
-  "routes/v2/explore_ideal_text.py:v2_explore_get_ideal_text": {
-    "lines": 477,
-    "db_calls": 4
-  },
   "routes/v2/explore_ideal_text.py:v2_explore_get_ideal_text_enrichment": {
-    "lines": 166,
-    "db_calls": 5
+    "lines": 70,
+    "db_calls": 3
   },
   "routes/v2/explore_ideal_text.py:v2_explore_get_recording_roots": {
     "lines": 33,
     "db_calls": 2
   },
-  "routes/v2/explore_ideal_text.py:v2_explore_put_ideal_user_edit": {
-    "lines": 113,
-    "db_calls": 1
-  },
   "routes/v2/explore_ideal_text.py:v2_explore_set_part_lock": {
-    "lines": 207,
-    "db_calls": 5
-  },
-  "routes/v2/explore_ideal_text.py:v2_explore_set_part_root": {
-    "lines": 119,
-    "db_calls": 6
+    "lines": 83,
+    "db_calls": 0
   },
   "routes/v2/lab_recording.py:_persist_lab_take": {
     "lines": 116,
