@@ -80,10 +80,11 @@ with this contract, this contract wins.
 ## 3. Decisions, protection, anchors, and roots
 
 13. Resolving Feedback and choosing helper words are separate steps. The
-    helper words (root phrase) are words the user taps, **at most four in one
-    pick** (founder lock 2026-09-30, B3: a cue is read at a glance while
+    helper words (root phrase) are words the user taps, **at most six in one
+    pick** (founder lock 2026-09-30, B3, raised from four to six 2026-10-12:
+    a cue is read at a glance while
     recording and found again in the next Take's words; the picker greys the
-    words a tap cannot reach and counts "N of 4 words"; phrases saved before
+    words a tap cannot reach and counts "N of 6 words"; phrases saved before
     the cap stay as they are); the one tap on "Use
     these helper words" saves and locks them — there is no separate Lock
     screen, and "lock" is an internal term the user never sees (founder

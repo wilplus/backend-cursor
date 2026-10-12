@@ -112,14 +112,16 @@ def lock(rows: list[Row], *, take_id: str, part_id: str, locked: bool,
     return _renumber(out)
 
 
-# THE FOUR-WORD CAP ON THE SERVER (founder lock 2026-09-30, B3; F1 Repair
-# Plan Phase 5). The client stops a fifth tap; until now every save route took
-# any length. Words saved before the cap are read as they are.
-HELPER_WORDS_MAX = 4
+# THE SIX-WORD CAP ON THE SERVER (founder lock 2026-09-30, B3; F1 Repair
+# Plan Phase 5; raised from four to six 2026-10-12). The client stops a
+# seventh tap; before the cap every save route took any length. Words saved
+# before the cap are read as they are. The frontend's HELPER_WORDS_MAX
+# (src/lib/willab/phraseTokens.ts) must match.
+HELPER_WORDS_MAX = 6
 
 
 def within_cap(phrase: Any) -> bool:
-    """One to four words."""
+    """One to six words."""
     return 0 < len(str(phrase or "").split()) <= HELPER_WORDS_MAX
 
 
