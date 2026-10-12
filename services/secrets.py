@@ -199,6 +199,14 @@ def audit(*, env: Optional[str] = None) -> dict:
                 "SEND_EMAILS=true with no EMAIL_REDIRECT_TO — staging would "
                 "email real users"
             )
+        # 4. The same for WhatsApp (services/whatsapp_notify.py).
+        sends_whatsapp = (os.getenv("WHATSAPP_NOTIFICATIONS", "false") or "") \
+            .strip().lower() == "true"
+        if sends_whatsapp and not (os.getenv("WHATSAPP_REDIRECT_TO") or "").strip():
+            errors.append(
+                "WHATSAPP_NOTIFICATIONS=true with no WHATSAPP_REDIRECT_TO — "
+                "staging would message real users"
+            )
 
     return {"env": env, "errors": errors, "warnings": warnings,
             "checked": checked}

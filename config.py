@@ -405,6 +405,19 @@ class Config:
     # against a copy of the user table. Unset = today's behaviour.
     EMAIL_REDIRECT_TO = (os.getenv("EMAIL_REDIRECT_TO") or "").strip()
 
+    # WhatsApp "the feedback from your coach is in" (Twilio). Off unless
+    # WHATSAPP_NOTIFICATIONS=true; numbers are still saved while it is off.
+    # Business-initiated WhatsApp messages need a Meta-approved template:
+    # TWILIO_WHATSAPP_CONTENT_SID names it (without it the plain body is
+    # sent, which only the Twilio sandbox delivers). WHATSAPP_REDIRECT_TO is
+    # EMAIL_REDIRECT_TO's twin for non-production.
+    WHATSAPP_NOTIFICATIONS = os.getenv("WHATSAPP_NOTIFICATIONS", "false").lower() == "true"
+    TWILIO_ACCOUNT_SID = (os.getenv("TWILIO_ACCOUNT_SID") or "").strip()
+    TWILIO_AUTH_TOKEN = _secret("TWILIO_AUTH_TOKEN") or ""
+    TWILIO_WHATSAPP_FROM = (os.getenv("TWILIO_WHATSAPP_FROM") or "").strip()
+    TWILIO_WHATSAPP_CONTENT_SID = (os.getenv("TWILIO_WHATSAPP_CONTENT_SID") or "").strip()
+    WHATSAPP_REDIRECT_TO = (os.getenv("WHATSAPP_REDIRECT_TO") or "").strip()
+
     # Current published Terms / Privacy Policy version. Must match the
     # "Last updated" date in the live legal docs (e.g. "1.0" = Terms
     # dated 7 May 2026; bump when docs are materially revised). The
