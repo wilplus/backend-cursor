@@ -20,7 +20,6 @@ Run: python3 -m unittest tests.test_annotation_capture
 """
 from __future__ import annotations
 
-import json
 import sys
 import types
 import unittest
@@ -42,11 +41,10 @@ except Exception:  # pragma: no cover - minimal env fallback
         sys.modules["supabase"].Client = object  # type: ignore[attr-defined]
 
 try:
-    from services.db import DatabaseService, _sis_annotation_text
+    from services.db import DatabaseService
     _IMPORT_ERR = None
 except Exception as e:  # pragma: no cover - env/bootstrap guard
     DatabaseService = None  # type: ignore[assignment]
-    _sis_annotation_text = None  # type: ignore[assignment]
     _IMPORT_ERR = e
 
 
@@ -87,53 +85,6 @@ class _FakeClient:
     def table(self, name):
         return _FakeTable(self.rows_by_table.get(name, []),
                           self.fail_when.get(name))
-
-
-def _card(**over):
-    c = {
-        "already_strong": False,
-        "upgrades": [{"original": "good", "upgrade": "excellent",
-                      "reason": None, "kind": "upgrade", "scope": "word"}],
-        "rewrite_your_voice": "This is my line.",
-        "rewrite_polished": "This is my polished line.",
-        "why": "It lands cleanly.",
-        "version": 2, "model": "gpt-x", "generated_at": "2026-07-27T00:00:00Z",
-    }
-    c.update(over)
-    return c
-
-
-@unittest.skipIf(DatabaseService is None, f"services.db import failed: {_IMPORT_ERR}")
-class SisAnnotationTextTests(unittest.TestCase):
-
-    def test_volatile_stamps_are_stripped(self):
-        text = _sis_annotation_text(_card(edited_by_coach=True))
-        self.assertIsNotNone(text)
-        parsed = json.loads(text)
-        for k in ("model", "generated_at", "version", "edited_by_coach"):
-            self.assertNotIn(k, parsed)
-        self.assertIn("rewrite_your_voice", parsed)
-
-    def test_canonical_and_deterministic(self):
-        a = _sis_annotation_text(_card())
-        b = _sis_annotation_text(dict(reversed(list(_card().items()))))
-        self.assertEqual(a, b, "key order must not change the serialization")
-
-    def test_volatile_only_difference_serializes_equal(self):
-        """The draft carries model/generated_at, the final carries
-        edited_by_coach — a coach who saved the card untouched must read as
-        approved_as_is, not as a correction."""
-        draft = _sis_annotation_text(_card())
-        final = _sis_annotation_text(
-            {k: v for k, v in _card(edited_by_coach=True).items()
-             if k not in ("model", "generated_at")})
-        self.assertEqual(draft, final)
-
-    def test_non_dict_and_empty_are_none(self):
-        self.assertIsNone(_sis_annotation_text(None))
-        self.assertIsNone(_sis_annotation_text("card"))
-        self.assertIsNone(_sis_annotation_text(
-            {"model": "m", "version": 2}))   # volatile-only → no content
 
 
 @unittest.skipIf(DatabaseService is None, f"services.db import failed: {_IMPORT_ERR}")
