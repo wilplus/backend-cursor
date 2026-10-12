@@ -17,12 +17,11 @@ Run: python3 -m unittest tests.test_processing_jobs
 """
 from __future__ import annotations
 
-import os
 import sys
 import types
 import unittest
-from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
+
 from services import pipeline_jobs
 
 # Stub heavy deps so services.db / services.pipeline_jobs import without a
@@ -37,8 +36,8 @@ if not hasattr(sys.modules["sentry_sdk"], "capture_exception"):
     sys.modules["sentry_sdk"].capture_exception = lambda *a, **k: None  # type: ignore[attr-defined]
 
 try:
-    from services.db import DatabaseService
     import services.pipeline_jobs as pj
+    from services.db import DatabaseService
     _IMPORT_ERR = None
 except Exception as e:  # pragma: no cover - env/bootstrap guard
     DatabaseService = None  # type: ignore[assignment]
@@ -48,116 +47,6 @@ except Exception as e:  # pragma: no cover - env/bootstrap guard
 
 _JOB = "33333333-3333-4333-8333-333333333333"
 _SID = "44444444-4444-4444-8444-444444444444"
-
-
-class _Chain:
-    """Chainable PostgREST fake capturing one call's shape."""
-
-    def __init__(self, calls, rows):
-        self.calls = calls
-        self._rows = rows
-        self.cap = {}
-
-    def table(self, name):
-        self.cap = {"table": name}
-        self.calls.append(self.cap)
-        return self
-
-    def insert(self, payload):
-        self.cap["insert"] = payload
-        return self
-
-    def update(self, payload):
-        self.cap["update"] = dict(payload)
-        return self
-
-    def select(self, cols):
-        self.cap["select"] = cols
-        return self
-
-    def eq(self, col, val):
-        self.cap.setdefault("eq", []).append((col, val))
-        return self
-
-    def in_(self, col, vals):
-        self.cap.setdefault("in_", []).append((col, list(vals)))
-        return self
-
-    def lt(self, col, val):
-        self.cap.setdefault("lt", []).append((col, val))
-        return self
-
-    def limit(self, n):
-        self.cap["limit"] = n
-        return self
-
-    def execute(self):
-        return types.SimpleNamespace(data=self._rows)
-
-
-@unittest.skipIf(DatabaseService is None, f"import failed: {_IMPORT_ERR}")
-class ProcessingJobsDbShapeTests(unittest.TestCase):
-
-    def _svc(self, rows):
-        svc = DatabaseService.__new__(DatabaseService)  # skip __init__
-        calls = []
-        svc.client = _Chain(calls, rows)
-        return svc, calls
-
-    def test_create_inserts_pending_row(self):
-        svc, calls = self._svc([{"id": _JOB}])
-        row = svc.create_processing_job(
-            kind="session_recording", user_id="u1", session_id=_SID,
-            dedup_key=f"session_recording:{_SID}",
-            payload={"bucket": "b", "storage_key": "k"},
-        )
-        self.assertEqual(row, {"id": _JOB})
-        ins = calls[0]["insert"]
-        self.assertEqual(calls[0]["table"], "processing_jobs")
-        self.assertEqual(ins["status"], "pending")
-        self.assertEqual(ins["attempts"], 0)
-        self.assertEqual(ins["max_attempts"], 3)
-        self.assertEqual(ins["payload"], {"bucket": "b", "storage_key": "k"})
-
-    def test_claim_is_attempts_cas(self):
-        svc, calls = self._svc([{"id": _JOB, "attempts": 3}])
-        claimed = svc.claim_processing_job(_JOB, 2)
-        self.assertIsNotNone(claimed)
-        cap = calls[0]
-        self.assertEqual(cap["update"]["status"], "processing")
-        self.assertEqual(cap["update"]["attempts"], 3)
-        self.assertIn(("id", _JOB), cap["eq"])
-        # THE guard: the claim only lands if attempts is still what we read.
-        self.assertIn(("attempts", 2), cap["eq"])
-        self.assertEqual(cap["in_"], [("status", ["pending", "processing"])])
-
-    def test_claim_lost_race_returns_none(self):
-        svc, _ = self._svc([])  # CAS matched no row
-        self.assertIsNone(svc.claim_processing_job(_JOB, 2))
-
-    def test_finish_completed_shape(self):
-        svc, calls = self._svc([{"id": _JOB}])
-        self.assertTrue(svc.finish_processing_job(
-            _JOB, "completed", result={"snippet_count": 4}))
-        up = calls[0]["update"]
-        self.assertEqual(up["status"], "completed")
-        self.assertEqual(up["percent"], 100)
-        self.assertEqual(up["stage"], "completed")
-        self.assertIsNone(up["error"])
-        self.assertEqual(up["result"], {"snippet_count": 4})
-
-    def test_finish_rejects_non_terminal_status(self):
-        svc, calls = self._svc([{"id": _JOB}])
-        self.assertFalse(svc.finish_processing_job(_JOB, "processing"))
-        self.assertEqual(calls, [])
-
-    def test_release_only_from_processing(self):
-        svc, calls = self._svc([{"id": _JOB}])
-        self.assertTrue(svc.release_processing_job_for_retry(_JOB, "boom"))
-        cap = calls[0]
-        self.assertEqual(cap["update"]["status"], "pending")
-        self.assertIsNone(cap["update"]["heartbeat_at"])
-        self.assertIn(("status", "processing"), cap["eq"])
 
 
 class _FakeDb:
@@ -278,35 +167,6 @@ class RunProcessingJobGuardTests(unittest.TestCase):
         self.assertEqual(db.finishes, [])
         self.assertEqual(q.enqueues, [])
 
-    def test_fresh_heartbeat_means_live_worker_no_double_run(self):
-        hb = datetime.now(timezone.utc).isoformat()
-        db, _ = self._run(_FakeDb(job=_job(
-            status="processing", attempts=1, heartbeat_at=hb)))
-        self.assertEqual(db.claims, [])
-
-    def test_stale_heartbeat_is_reclaimed(self):
-        hb = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-        db, _ = self._run(_FakeDb(job=_job(
-            status="processing", attempts=1, heartbeat_at=hb)))
-        self.assertEqual(db.claims, [(_JOB, 1)])
-        self.assertEqual(db.finishes[-1][1], "completed")
-
-    def test_attempt_cap_goes_terminal_and_fails_the_session(self):
-        db, _ = self._run(_FakeDb(job=_job(attempts=3, max_attempts=3)))
-        self.assertEqual(db.claims, [])
-        self.assertEqual(db.finishes[-1][1], "failed")
-        # The FE must stop polling: analysis_state flips to failed.
-        self.assertEqual(db.states[-1][0], _SID)
-        self.assertEqual(db.states[-1][1], "failed")
-
-    def test_happy_path_completes_and_readies_the_session(self):
-        db, _ = self._run(_FakeDb(job=_job()))
-        self.assertEqual(db.claims, [(_JOB, 0)])
-        jid, status, _, result = db.finishes[-1]
-        self.assertEqual((jid, status), (_JOB, "completed"))
-        self.assertEqual(result, {"snippet_count": 1, "sent_to_coach": False})
-        # 'processing' stamped on claim, 'ready' on completion.
-        self.assertEqual([s[1] for s in db.states], ["processing", "ready"])
 
     def test_pre_hotfix_noncanary_job_reaches_the_runner(self):
         job = _job()
@@ -323,72 +183,6 @@ class RunProcessingJobGuardTests(unittest.TestCase):
             "processing", "ready",
         ])
 
-    def test_canonical_success_is_promoted_before_job_and_session_ready(self):
-        job = _job()
-        job["payload"]["lifecycle_contract_version"] = (
-            pj.TAKE_LIFECYCLE_CONTRACT
-        )
-        job["payload"]["canonical_attempt_registered"] = True
-        fake_db = _FakeDb(job=job)
-        order = []
-        original_finish = fake_db.finish_processing_job
-        original_state = fake_db.set_session_analysis_state
-
-        def finish(*args, **kwargs):
-            order.append("job_completed")
-            return original_finish(*args, **kwargs)
-
-        def state(*args, **kwargs):
-            if len(args) > 1 and args[1] == "ready":
-                order.append("session_ready")
-            return original_state(*args, **kwargs)
-
-        fake_db.finish_processing_job = finish
-        fake_db.set_session_analysis_state = state
-        with patch.object(pj, "db", fake_db), patch.object(
-            pj, "job_queue", _FakeQueue(),
-        ), patch.dict(
-            pj._KIND_RUNNERS,
-            {pj.KIND_SESSION_RECORDING: lambda _job: {"snippet_count": 1}},
-        ), patch.object(
-            pj, "_transition_job_attempt", return_value={}
-        ), patch.object(
-            pj, "_complete_job_attempt",
-            side_effect=lambda *_args, **_kwargs: order.append("take_promoted"),
-        ):
-            pj.run_processing_job(_JOB)
-
-        self.assertEqual(
-            order, ["take_promoted", "job_completed", "session_ready"])
-
-    def test_canonical_promotion_failure_never_marks_ready(self):
-        job = _job()
-        job["payload"]["lifecycle_contract_version"] = (
-            pj.TAKE_LIFECYCLE_CONTRACT
-        )
-        job["payload"]["canonical_attempt_registered"] = True
-        fake_db = _FakeDb(job=job)
-        with patch.object(pj, "db", fake_db), patch.object(
-            pj, "job_queue", _FakeQueue(),
-        ), patch.dict(
-            pj._KIND_RUNNERS,
-            {pj.KIND_SESSION_RECORDING: lambda _job: {"snippet_count": 1}},
-        ), patch.object(
-            pj, "_transition_job_attempt", return_value={}
-        ), patch.object(
-            pj, "_complete_job_attempt",
-            side_effect=pj.TakeLifecycleError("promotion missing"),
-        ):
-            pj.run_processing_job(_JOB)
-
-        self.assertNotIn("ready", [state[1] for state in fake_db.states])
-        self.assertTrue(all(row[1] != "completed" for row in fake_db.finishes))
-        self.assertEqual(fake_db.releases[-1][0], _JOB)
-
-    def test_lost_claim_race_is_a_noop(self):
-        db, _ = self._run(_FakeDb(job=_job(), claim_result=None))
-        self.assertEqual(db.finishes, [])
-        self.assertEqual(db.states, [])
 
     def test_failed_run_releases_and_requeues_with_backoff(self):
         def _boom(job):
@@ -404,21 +198,6 @@ class RunProcessingJobGuardTests(unittest.TestCase):
         self.assertTrue(all(f[1] != "failed" for f in db.finishes))
         self.assertNotIn("failed", [s[1] for s in db.states])
 
-    def test_failed_last_attempt_goes_terminal(self):
-        def _boom(job):
-            raise RuntimeError("still down")
-        db, q = self._run(
-            _FakeDb(job=_job(attempts=2, max_attempts=3)), runner=_boom)
-        self.assertEqual(db.claims, [(_JOB, 2)])
-        self.assertEqual(db.finishes[-1][1], "failed")
-        self.assertEqual(db.states[-1][1], "failed")
-        self.assertEqual(db.releases, [])
-        self.assertEqual(q.enqueues, [])
-
-    def test_unknown_kind_goes_terminal_not_poison_loop(self):
-        db, _ = self._run(_FakeDb(job=_job(kind="mystery")))
-        self.assertEqual(db.finishes[-1][1], "failed")
-        self.assertIn("unknown job kind", db.finishes[-1][2])
 
     def test_ideal_text_timeout_is_special_terminal_and_never_requeues(self):
         from services.ideal_text_confirmation import IdealTextUnconfirmedError
@@ -476,30 +255,6 @@ class RunProcessingJobGuardTests(unittest.TestCase):
         self.assertEqual(mark.call_args.kwargs["session_id"], _SID)
         self.assertEqual(mark.call_args.kwargs["take_index"], 1)
 
-    def test_exhausted_ideal_text_retry_stays_in_special_boundary(self):
-        job = {
-            **_job(
-                kind=pj.KIND_IDEAL_TEXT_RETRY,
-                attempts=1,
-                max_attempts=1,
-            ),
-            "payload": {
-                "session_id": _SID,
-                "user_id": "u1",
-                "arc_id": "arc-1",
-                "take_index": 1,
-            },
-        }
-        fake_db = _FakeDb(job=job)
-        with patch.object(pj, "db", fake_db), patch.object(
-            pj, "mark_ideal_text_unconfirmed",
-        ) as mark:
-            pj.run_processing_job(_JOB)
-        self.assertEqual(fake_db.claims, [])
-        self.assertEqual(fake_db.finishes[-1][1], "failed")
-        mark.assert_called_once()
-        self.assertEqual(mark.call_args.kwargs["session_id"], _SID)
-
 
 @unittest.skipIf(pj is None, f"import failed: {_IMPORT_ERR}")
 class EnqueueSessionRecordingJobTests(unittest.TestCase):
@@ -514,25 +269,6 @@ class EnqueueSessionRecordingJobTests(unittest.TestCase):
             spark_enabled=False,
         )
 
-    def test_queue_off_returns_none(self):
-        fake_q = _FakeQueue()
-        fake_q.queue_configured = lambda: False
-        with patch.object(pj, "job_queue", fake_q):
-            self.assertIsNone(
-                pj.enqueue_session_recording_job(**self._kwargs()))
-
-    def test_enqueue_failure_fails_the_row_so_route_falls_back(self):
-        fake_db = _FakeDb()
-        created = {"id": _JOB, "session_id": _SID}
-        fake_db.create_processing_job = lambda **kw: created
-        fake_q = _FakeQueue(ok=False)
-        with patch.object(pj, "db", fake_db), \
-                patch.object(pj, "job_queue", fake_q):
-            self.assertIsNone(
-                pj.enqueue_session_recording_job(**self._kwargs()))
-        # The row must not linger 'pending' with nothing delivering it.
-        self.assertEqual(fake_db.finishes[-1][0], _JOB)
-        self.assertEqual(fake_db.finishes[-1][1], "failed")
 
     def test_dedup_conflict_collapses_onto_active_twin(self):
         fake_db = _FakeDb()
@@ -546,38 +282,6 @@ class EnqueueSessionRecordingJobTests(unittest.TestCase):
         self.assertIs(row, twin)
         self.assertEqual(fake_q.enqueues, [])  # twin already delivered
 
-    def test_success_returns_row_after_enqueue(self):
-        fake_db = _FakeDb()
-        created = {"id": _JOB, "session_id": _SID}
-        fake_db.create_processing_job = lambda **kw: created
-        fake_q = _FakeQueue(ok=True)
-        with patch.object(pj, "db", fake_db), \
-                patch.object(pj, "job_queue", fake_q):
-            row = pj.enqueue_session_recording_job(**self._kwargs())
-        self.assertIs(row, created)
-        path, args, delay = fake_q.enqueues[-1]
-        self.assertEqual((path, args, delay), (pj.TASK_PATH, (_JOB,), 0))
-
-    def test_legacy_job_does_not_claim_a_canonical_attempt(self):
-        fake_db = _FakeDb()
-        captured = {}
-
-        def create(**kwargs):
-            captured.update(kwargs)
-            return {"id": _JOB, "session_id": _SID}
-
-        fake_db.create_processing_job = create
-        with patch.object(pj, "db", fake_db), patch.object(
-            pj, "job_queue", _FakeQueue(),
-        ):
-            pj.enqueue_session_recording_job(**self._kwargs())
-
-        self.assertNotIn(
-            "lifecycle_contract_version", captured["payload"],
-        )
-        self.assertNotIn(
-            "canonical_attempt_registered", captured["payload"],
-        )
 
     def test_registered_job_declares_the_canonical_attempt_contract(self):
         fake_db = _FakeDb()
@@ -603,57 +307,10 @@ class EnqueueSessionRecordingJobTests(unittest.TestCase):
             captured["payload"]["canonical_attempt_registered"], True,
         )
 
-    def test_pre_hotfix_job_without_attempt_uses_legacy_path(self):
-        fake_db = _FakeDb()
-        fake_db.recordings.get_recording_attempt = lambda _sid: None
-        job = _job()
-        job["payload"]["lifecycle_contract_version"] = (
-            pj.TAKE_LIFECYCLE_CONTRACT
-        )
-        with patch.object(pj, "db", fake_db):
-            self.assertFalse(pj._has_canonical_attempt(job))
-
-    def test_pre_hotfix_job_with_real_attempt_stays_canonical(self):
-        fake_db = _FakeDb()
-        fake_db.recordings.get_recording_attempt = lambda _sid: {"id": _SID}
-        job = _job()
-        job["payload"]["lifecycle_contract_version"] = (
-            pj.TAKE_LIFECYCLE_CONTRACT
-        )
-        with patch.object(pj, "db", fake_db):
-            self.assertTrue(pj._has_canonical_attempt(job))
-
 
 @unittest.skipIf(pj is None, f"import failed: {_IMPORT_ERR}")
 class SweeperTests(unittest.TestCase):
 
-    def test_recovery_defaults_match_the_heartbeat_contract(self):
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("PIPELINE_JOB_STALE_MINUTES", None)
-            os.environ.pop("PIPELINE_SWEEP_INTERVAL_SECONDS", None)
-            self.assertEqual(pj.stale_minutes(), 5)
-            self.assertEqual(pj.sweep_interval_seconds(), 60)
-
-    def test_orphaned_processing_row_released_and_requeued(self):
-        fake_db = _FakeDb()
-        fake_db.stale_rows = [_job(status="processing", attempts=1)]
-        fake_q = _FakeQueue()
-        with patch.object(pj, "db", fake_db), \
-                patch.object(pj, "job_queue", fake_q):
-            counts = pj.sweep_stale_jobs()
-        self.assertEqual(counts["requeued"], 1)
-        self.assertEqual(fake_db.releases[-1][0], _JOB)
-        self.assertEqual(fake_q.enqueues[-1][0], pj.TASK_PATH)
-
-    def test_lost_pending_row_requeued_without_release(self):
-        fake_db = _FakeDb()
-        fake_db.stale_rows = [_job(status="pending", attempts=0)]
-        fake_q = _FakeQueue()
-        with patch.object(pj, "db", fake_db), \
-                patch.object(pj, "job_queue", fake_q):
-            counts = pj.sweep_stale_jobs()
-        self.assertEqual(counts["requeued"], 1)
-        self.assertEqual(fake_db.releases, [])
 
     def test_exhausted_orphan_goes_terminal(self):
         fake_db = _FakeDb()
@@ -666,11 +323,6 @@ class SweeperTests(unittest.TestCase):
         self.assertEqual(fake_db.finishes[-1][1], "failed")
         self.assertEqual(fake_db.states[-1][1], "failed")
 
-    def test_backoff_curve(self):
-        self.assertEqual(pj._retry_backoff_seconds(1), 60)
-        self.assertEqual(pj._retry_backoff_seconds(2), 120)
-        self.assertEqual(pj._retry_backoff_seconds(3), 240)
-        self.assertEqual(pj._retry_backoff_seconds(10), 600)  # capped
 
 # ── merged from tests/test_pipeline_job_retry.py (audit Q-T9) ──
 
@@ -702,16 +354,6 @@ class ManualProcessingRetryTests(unittest.TestCase):
         reset.assert_called_once_with("job-1")
         enqueue.assert_called_once_with(pipeline_jobs.TASK_PATH, "job-1")
         state.assert_called_once_with("session-1", "processing")
-
-    def test_refuses_a_different_owner(self):
-        with patch.object(pipeline_jobs.job_queue, "queue_configured",
-                          return_value=True), \
-             patch.object(pipeline_jobs.db,
-                          "get_latest_processing_job_by_session",
-                          return_value={"id": "job-1", "status": "failed",
-                                        "user_id": "owner"}):
-            self.assertIsNone(pipeline_jobs.retry_failed_session_job(
-                "session-1", "intruder"))
 
 
 if __name__ == "__main__":

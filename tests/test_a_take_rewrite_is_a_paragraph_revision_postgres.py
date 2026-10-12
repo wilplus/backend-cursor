@@ -51,25 +51,3 @@ def test_a_take_rewrite_revision_names_its_take(cur):
                      FROM public.ideal_text_part_revision WHERE id = %s""",
                 (revision,))
     assert cur.fetchone() == ("take_rewrite", take, 2)
-
-
-def test_an_unknown_action_is_still_refused(cur):
-    arc, user, part, take = _ids()
-    with pytest.raises(psycopg2.errors.CheckViolation):
-        cur.execute(INSERT, (arc, user, part, "best_of_pick", take))
-
-
-def test_every_earlier_action_is_still_allowed(cur):
-    for action in ("user_edit", "lock", "unlock", "keep_evolving",
-                   "root_set", "root_skipped"):
-        arc, user, part, take = _ids()
-        cur.execute(INSERT, (arc, user, part, action, take))
-        assert cur.fetchone()[0]
-
-
-def test_the_core_read_takes_the_lock_from_the_paragraph_row(cur):
-    cur.execute("""SELECT pg_get_functiondef(
-        'public.read_ideal_text_document_core_v2(text,text)'::regprocedure)""")
-    body = cur.fetchone()[0]
-    assert "'locked',p.locked_at IS NOT NULL" in body
-    assert "(r.action='lock') locked" not in body

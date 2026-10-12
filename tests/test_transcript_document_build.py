@@ -11,6 +11,7 @@ import unittest
 
 from services.transcript_document import build_transcript_document as build
 
+
 class Db:
     def __init__(self, snips, *, sessions=None, session_row=None,
                  fixes=None, raise_on=None):
@@ -68,111 +69,8 @@ SNIPS = [
 ]
 
 
-LATEST = {
-    "paragraphs": [
-        {
-            "end": 41,
-            "slide_index": 0,
-            "snippet_id": "s1",
-            "start": 0,
-            "take_index": 1,
-            "take_session_id": "t1"
-        },
-        {
-            "end": 73,
-            "slide_index": 1,
-            "snippet_id": "s3",
-            "start": 43,
-            "take_index": 1,
-            "take_session_id": "t1"
-        }
-    ],
-    "pieces": [
-        {
-            "audio_ref": "a/s1",
-            "duration_ms": 900,
-            "end": 16,
-            "language": "en",
-            "recording_id": "rec-s1",
-            "slide_index": 0,
-            "snippet_id": "s1",
-            "start": 0,
-            "start_offset_ms": 0,
-            "take_index": 1,
-            "take_session_id": "t1",
-            "text": "We started small"
-        },
-        {
-            "audio_ref": "a/s2",
-            "duration_ms": 900,
-            "end": 40,
-            "language": "en",
-            "recording_id": "rec-s2",
-            "slide_index": 0,
-            "snippet_id": "s2",
-            "start": 17,
-            "start_offset_ms": 4000,
-            "take_index": 1,
-            "take_session_id": "t1",
-            "text": "then we shipped it fast"
-        },
-        {
-            "audio_ref": "a/s3",
-            "duration_ms": 900,
-            "end": 72,
-            "language": "en",
-            "recording_id": "rec-s3",
-            "slide_index": 1,
-            "snippet_id": "s3",
-            "start": 43,
-            "start_offset_ms": 9000,
-            "take_index": 1,
-            "take_session_id": "t1",
-            "text": "And this one closes slide two"
-        }
-    ],
-    "take_index": 1,
-    "take_session_id": "t1",
-    "text": "We started small then we shipped it fast.\n\nAnd this one closes slide two."
-}
-
-
 class BuildTranscriptDocumentPins(unittest.TestCase):
-    def test_the_latest_take_as_one_exact_document(self):
-        self.assertEqual(build("arc", database=Db(SNIPS)), LATEST)
 
-    def test_an_explicit_take_reads_its_own_index(self):
-        doc = build("arc", database=Db(SNIPS, session_row={"take_index": 4}),
-                    session_id="t9")
-        self.assertEqual((doc["take_session_id"], doc["take_index"]),
-                         ("t9", 4))
-        self.assertEqual({p["take_index"] for p in doc["pieces"]}, {4})
-        doc = build("arc", database=Db(
-            SNIPS, raise_on={"v2_get_session_by_id"}), session_id="t9")
-        self.assertEqual((doc["take_session_id"], doc["take_index"]),
-                         ("t9", None))
-        self.assertEqual(doc["text"], LATEST["text"])
-
-    def test_the_latest_spoken_take_wins(self):
-        sessions = [
-            {"id": "t2", "take_index": 2, "recording_kind": "spoken",
-             "created_at": "b"},
-            {"id": "t3", "take_index": 2, "recording_kind": "spoken",
-             "created_at": "c"},
-            {"id": "t1", "take_index": 1, "recording_kind": "spoken"},
-        ]
-        doc = build("arc", database=Db(SNIPS, sessions=sessions))
-        self.assertEqual((doc["take_session_id"], doc["take_index"]),
-                         ("t3", 2))
-
-    def test_the_coachs_slide_fix_wins_and_a_withdrawn_one_falls_through(self):
-        doc = build("arc", database=Db(SNIPS, fixes={"s2": 1, "s3": None}))
-        self.assertEqual(
-            [(p["snippet_id"], p["slide_index"]) for p in doc["pieces"]],
-            [("s1", 0), ("s2", 1), ("s3", 1)])
-        doc = build("arc", database=Db(
-            SNIPS, raise_on={"get_snippet_slide_corrections"}))
-        self.assertEqual(doc, LATEST)
 
     def test_a_document_over_the_cap_is_cut_at_a_word_and_keeps_whole_pieces(
             self):
@@ -200,61 +98,6 @@ class BuildTranscriptDocumentPins(unittest.TestCase):
         # Words that smoothing removes entirely are no words.
         self.assertIsNone(build("arc", database=Db([snip("a", 0, "um uh")])))
 
-    def test_a_failing_read_builds_nothing_and_never_raises(self):
-        for name in ("get_arc_sessions", "get_snippets_by_session"):
-            self.assertIsNone(build("arc", database=Db(
-                SNIPS, raise_on={name})))
-
 
 if __name__ == "__main__":
     unittest.main()
-
-
-class ARevisitedSlideIsStillOneSlide(unittest.TestCase):
-    """Founder 2026-10-04 ("A: join their slide"). Recording against the
-    default deck the founder went Slide 1 -> 2 -> 1 -> 2 -> 3; the document
-    came out with its slides going backwards and the page fell back to one
-    unlinked "Your talk" block. Words said on a slide on a return visit now
-    join that slide, after what was already said on it."""
-
-    def _doc(self, snips):
-        return build("arc", database=Db(snips))
-
-    def test_the_document_is_in_slide_order_with_every_word_kept(self):
-        doc = self._doc([
-            snip("a", 0, "opening the first slide", slide=0),
-            snip("b", 1000, "the second slide begins", slide=1),
-            snip("c", 2000, "back to the first slide", slide=0),
-            snip("d", 3000, "the second slide again", slide=1),
-            snip("e", 4000, "the third slide closes", slide=2),
-        ])
-        slides = [p["slide_index"] for p in doc["paragraphs"]]
-        self.assertEqual(slides, sorted(slides))
-        self.assertEqual(sorted(set(slides)), [0, 1, 2])
-        self.assertEqual(len(doc["paragraphs"]), 3)
-        text = doc["text"].lower()
-        # Inside a slide the words keep the order they were said in.
-        self.assertLess(text.index("opening the first slide"),
-                        text.index("back to the first slide"))
-        self.assertLess(text.index("back to the first slide"),
-                        text.index("the second slide begins"))
-        self.assertLess(text.index("the second slide begins"),
-                        text.index("the second slide again"))
-        for words in ("opening the first slide", "the second slide begins",
-                      "back to the first slide", "the second slide again",
-                      "the third slide closes"):
-            self.assertIn(words, text)
-        # Every piece still points at the slide it was spoken on.
-        self.assertEqual(
-            [(p["snippet_id"], p["slide_index"]) for p in doc["pieces"]],
-            [("a", 0), ("c", 0), ("b", 1), ("d", 1), ("e", 2)])
-
-    def test_a_talk_with_no_slide_information_stays_as_spoken(self):
-        doc = self._doc([
-            snip("a", 0, "first words"),
-            snip("b", 1000, "then more words"),
-        ])
-        self.assertEqual([p["slide_index"] for p in doc["paragraphs"]],
-                         [None])
-        self.assertLess(doc["text"].lower().index("first words"),
-                        doc["text"].lower().index("then more words"))

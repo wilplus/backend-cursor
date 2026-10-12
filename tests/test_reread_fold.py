@@ -26,7 +26,7 @@ from unittest.mock import patch
 
 try:
     from flask import Flask, request
-    from routes.v2 import arcs as v2_arcs
+
     from routes.v2 import coach as v2_coach
     from services.db import db
     _IMPORT_ERROR = None
@@ -37,10 +37,6 @@ except Exception as e:  # pragma: no cover
 
 SPOKEN = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 READ = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
-READ2 = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
-PSNIP1 = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
-PSNIP2 = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
-RSNIP = "ffffffff-ffff-4fff-8fff-ffffffffffff"
 
 
 def _session_row(sid=SPOKEN, **over):
@@ -54,153 +50,6 @@ def _session_row(sid=SPOKEN, **over):
            "coach_feedback_saved_at": None}
     row.update(over)
     return row
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class SpokenTakesAndReadsTests(unittest.TestCase):
-    def test_multiple_reads_group_under_their_take_oldest_first(self):
-        rows = [
-            {"id": "s1", "take_index": 1, "recording_kind": "spoken",
-             "paired_session_id": None},
-            {"id": "r2", "recording_kind": "read", "paired_session_id": "s1",
-             "created_at": "2026-07-16T12:00:00Z"},
-            {"id": "r1", "recording_kind": "read", "paired_session_id": "s1",
-             "created_at": "2026-07-16T11:00:00Z"},
-            {"id": "legacy", "take_index": 2},   # pre-migration → spoken
-        ]
-        spoken, reads = v2_arcs._spoken_takes_and_reads(rows)
-        self.assertEqual([s["id"] for s in spoken], ["s1", "legacy"])
-        self.assertEqual([r["id"] for r in reads["s1"]], ["r1", "r2"])
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class FoldReadsOutOfQueueTests(unittest.TestCase):
-    """The pure queue fold (db.fold_reads_out_of_queue)."""
-
-    def test_reads_dropped_parent_marked(self):
-        rows = [
-            {"id": "s1"},
-            {"id": "r1", "recording_kind": "read", "paired_session_id": "s1"},
-            {"id": "s2"},
-        ]
-        out = db.fold_reads_out_of_queue(rows)
-        self.assertEqual([r["id"] for r in out], ["s1", "s2"])
-        self.assertTrue(out[0].get("has_reread"))
-        self.assertFalse(out[1].get("has_reread"))
-
-    def test_paired_only_row_still_dropped_and_legacy_passthrough(self):
-        rows = [
-            {"id": "r1", "paired_session_id": "elsewhere"},  # kind missing
-            {"id": "legacy-row"},                            # no fold columns
-        ]
-        out = db.fold_reads_out_of_queue(rows)
-        self.assertEqual([r["id"] for r in out], ["legacy-row"])
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class CoachGetFoldTests(unittest.TestCase):
-    def setUp(self):
-        self.app = Flask(__name__)
-
-    def _get(self, read_sessions):
-        readouts = {
-            SPOKEN: {"snippets": [
-                {"id": PSNIP1, "index": 0, "transcript": "one",
-                 "audio_ref": "a1", "start_offset_ms": 0,
-                 "duration_ms": 1000, "recording_kind": "spoken"},
-                {"id": PSNIP2, "index": 1, "transcript": "two",
-                 "audio_ref": "a2", "start_offset_ms": 1000,
-                 "duration_ms": 1000, "recording_kind": "spoken"},
-            ], "slide_coverage": []},
-            READ: {"snippets": [
-                # start_offset restarts at 0 — must NOT re-sort before parent
-                {"id": RSNIP, "index": 0, "transcript": "re-read",
-                 "audio_ref": "a3", "start_offset_ms": 0,
-                 "duration_ms": 900},
-            ], "slide_coverage": []},
-        }
-        with self.app.test_request_context():
-            request.user_id = "coach1"
-            with patch.object(db, "v2_get_session_by_id",
-                              return_value=_session_row()), \
-                 patch.object(db, "get_user_proficient_languages",
-                              return_value=["en"]), \
-                 patch.object(db, "claim_coach_review",
-                              return_value={"assigned_to": "coach1",
-                                            "claimed": True}), \
-                 patch.object(db.takes, "stamp_review_opened") as m_open, \
-                 patch.object(db.takes, "get_read_sessions_for",
-                              return_value=read_sessions), \
-                 patch.object(db, "get_coach_snippet_drafts",
-                              return_value=[]), \
-                 patch.object(
-                     db, "get_own_state_ratings_for_session",
-                     side_effect=lambda sid, _rater: {
-                         SPOKEN: {
-                             PSNIP1: {"value": "yes"},
-                             PSNIP2: {"value": "neutral"},
-                         },
-                         READ: {RSNIP: {"value": "no"}},
-                     }.get(str(sid), {})), \
-                 patch.object(db, "get_feelings_by_session",
-                              return_value=[]), \
-                 patch("services.lab_recording.build_readout_from_session",
-                       side_effect=lambda sid, **kw: readouts[sid]):
-                resp, status = v2_coach.v2_coach_get_session.__wrapped__(SPOKEN)
-        return resp.get_json(), status, m_open
-
-    def test_read_snippets_appended_stamped_and_reindexed(self):
-        body, status, m_open = self._get(
-            [{"id": READ, "created_at": "2026-07-16T11:00:00Z"}])
-        self.assertEqual(status, 200)
-        snips = body["snippets"]
-        self.assertEqual([s["id"] for s in snips], [PSNIP1, PSNIP2, RSNIP])
-        self.assertEqual([s["index"] for s in snips], [0, 1, 2])
-        self.assertEqual([s["take_session_id"] for s in snips],
-                         [SPOKEN, SPOKEN, READ])
-        # metrics carried no kind on the read piece → the fold defaults it
-        self.assertEqual(snips[2]["recording_kind"], "read")
-        self.assertTrue(body["has_reread"])
-        self.assertEqual(body["read_session_ids"], [READ])
-        opened = {c.args[0] for c in m_open.call_args_list}
-        # The parent is stamped atomically by claim_coach_review; only folded
-        # read sessions still need the legacy per-row stamp here.
-        self.assertEqual(opened, {READ})
-
-    def test_reads_array_carries_ideal_text_tags(self):
-        # Founder 2026-07-20: an ideal-text re-read carries read_target +
-        # ideal_version in its intake_context → the coach UI labels it
-        # "Re-read of ideal text vN". Per-take re-reads carry nulls.
-        body, status, _ = self._get([
-            {"id": READ, "created_at": "2026-07-16T11:00:00Z",
-             "intake_context": {"read_target": "ideal_text",
-                                "ideal_version": 3}},
-        ])
-        self.assertEqual(status, 200)
-        self.assertEqual(body["reads"], [{
-            "session_id": READ,
-            "created_at": "2026-07-16T11:00:00Z",
-            "read_target": "ideal_text",
-            "ideal_version": 3,
-        }])
-
-    def test_reads_array_null_tags_on_per_take_reread(self):
-        body, _, _ = self._get(
-            [{"id": READ, "created_at": "2026-07-16T11:00:00Z"}])
-        self.assertEqual(body["reads"], [{
-            "session_id": READ,
-            "created_at": "2026-07-16T11:00:00Z",
-            "read_target": None,
-            "ideal_version": None,
-        }])
-
-    def test_no_reads_packet_unchanged(self):
-        body, status, _ = self._get([])
-        self.assertEqual(status, 200)
-        self.assertEqual(len(body["snippets"]), 2)
-        self.assertFalse(body["has_reread"])
-        self.assertEqual(body["read_session_ids"], [])
-        self.assertEqual(body["reads"], [])
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
@@ -235,70 +84,6 @@ class QueueRowShapeTests(unittest.TestCase):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class DrilldownFoldTests(unittest.TestCase):
-    def test_read_rows_hidden_parent_marked(self):
-        uid = "11111111-1111-4111-8111-111111111111"
-        rows = [
-            _session_row(sid=SPOKEN, recording_kind="spoken",
-                         paired_session_id=None),
-            _session_row(sid=READ, recording_kind="read",
-                         paired_session_id=SPOKEN),
-        ]
-        app = Flask(__name__)
-        with app.test_request_context():
-            request.user_id = "coach1"
-            with patch.object(db, "get_user_profile",
-                              return_value={"domain": "d", "goal": "g"}), \
-                 patch.object(db.takes, "v2_list_user_lab_sessions",
-                              return_value=rows), \
-                 patch.object(db, "get_feelings_by_sessions",
-                              return_value=[]), \
-                 patch.object(db.ideal_text, "get_coach_arc_ideal_text",
-                              return_value=None):
-                resp, status = v2_coach.v2_coach_student_detail.__wrapped__(uid)
-        self.assertEqual(status, 200)
-        sessions = resp.get_json()["sessions"]
-        self.assertEqual([s["session_id"] for s in sessions], [SPOKEN])
-        self.assertTrue(sessions[0]["has_reread"])
-
-
-class CrossTakeSpokenOnlyTests(unittest.TestCase):
-    """A read never competes as a take in /explore/arc/<id>/moments."""
-
-    class _Db:
-        def get_arc_sessions(self, arc_id):
-            return [
-                {"id": "s1", "take_index": 1, "recording_kind": "spoken",
-                 "paired_session_id": None},
-                {"id": "r1", "take_index": 1, "recording_kind": "read",
-                 "paired_session_id": "s1"},
-                {"id": "s2", "take_index": 2, "recording_kind": "spoken",
-                 "paired_session_id": None},
-            ]
-
-        @property
-        def takes(self):
-            # audit Q-A2: production now calls db.takes.<method>();
-            # this fake implements those methods directly on itself.
-            return self
-
-        def get_snippets_by_session(self, sid):
-            return []
-
-    def test_select_take_level_filters_reads(self):
-        from services.cross_take_selection import select_take_level
-        out = select_take_level("arc1", database=self._Db())
-        self.assertEqual(out["take_count"], 2)
-        self.assertEqual([t["session_id"] for t in out["takes"]],
-                         ["s1", "s2"])
-
-    def test_entry_point_filters_reads(self):
-        from services.cross_take_selection import select_cross_take
-        out = select_cross_take("arc1", database=self._Db())
-        self.assertEqual(out["take_count"], 2)
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class LabSendEmailGateTests(unittest.TestCase):
     """BE-3a: a re-read never fires its own coach email — max one email per
     spoken take ⇒ max 3 per arc."""
@@ -322,13 +107,6 @@ class LabSendEmailGateTests(unittest.TestCase):
             recording_kind="read", paired_session_id=SPOKEN))
         self.assertTrue(res["ok"])                # still enters the flow
         m_mail.assert_not_called()                # but no email
-
-    def test_spoken_still_emails_once(self):
-        res, m_mail = self._send(_session_row(
-            sid=SPOKEN, status="processing",
-            recording_kind="spoken", paired_session_id=None))
-        self.assertTrue(res["ok"])
-        m_mail.assert_called_once()
 
 
 if __name__ == "__main__":

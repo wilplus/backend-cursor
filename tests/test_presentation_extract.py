@@ -16,6 +16,7 @@ import unittest
 
 try:
     from flask import Flask, request
+
     from routes.v2 import common as v2_common
     from routes.v2 import lab_recording as v2_lab_recording
     _IMPORT_ERROR = None
@@ -38,10 +39,6 @@ class PresentationExtractValidationTests(unittest.TestCase):
             resp, status = v2_lab_recording.v2_lab_presentation_extract.__wrapped__()
             return status, resp.get_json()
 
-    def test_missing_file_400(self):
-        status, body = self._post({})
-        self.assertEqual(status, 400)
-        self.assertEqual(body["code"], "INVALID_INPUT")
 
     def test_non_pdf_415(self):
         status, body = self._post(

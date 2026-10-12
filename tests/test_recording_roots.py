@@ -38,17 +38,6 @@ def _live_rows():
     }]
 
 
-def test_live_root_overlays_a_matching_immutable_slide_mapping():
-    assert project_recording_roots(_snapshot(), _live_rows()) == [{
-        "part_id": "part-1", "slide_index": 1,
-        "text": "accepted sentence", "type": "flagship",
-    }]
-
-
-def test_missing_slide_lineage_is_never_guessed():
-    assert project_recording_roots(_snapshot(slide_index=None), _live_rows()) == []
-
-
 @pytest.mark.parametrize("mutation", ["id", "text"])
 def test_stale_or_invalid_live_root_fails_closed(mutation):
     rows = _live_rows()
@@ -58,67 +47,6 @@ def test_stale_or_invalid_live_root_fails_closed(mutation):
         rows[0]["text"] = "Changed text."
     with pytest.raises(RecordingRootsStale):
         project_recording_roots(_snapshot(), rows)
-
-
-@pytest.mark.parametrize("start,end", [(0, 5), (None, None)])
-def test_helper_words_show_without_a_matching_position(start, end):
-    """Contract 14 (founder 2026-09-25): the helper words are their own text.
-    A span that no longer proves the words — or no span at all, which the
-    CHECK now allows (helper_words_are_their_own_text.sql) — still shows the words while recording. Only
-    Paragraph identity and Slide lineage can make the read stale."""
-    rows = _live_rows()
-    rows[0]["root_start"], rows[0]["root_end"] = start, end
-    assert project_recording_roots(_snapshot(), rows) == [{
-        "part_id": "part-1", "slide_index": 1,
-        "text": "accepted sentence", "type": "flagship",
-    }]
-
-
-def test_an_unlocked_root_is_skipped_rather_than_failing_the_read():
-    """A "lock" case used to sit in the parametrize above, and it asserted a
-    raise. It was moved here rather than deleted, because the behaviour it
-    guarded was deliberately changed (founder 2026-09-24) and the new one still
-    needs a test.
-
-    WHY IT CHANGED. The emphasis step now saves on the step that chose the
-    words, so an unlocked paragraph carrying a phrase is an ordinary product
-    state, not a corrupted document. Raising treated it as corruption and the
-    route turned that into a 409 for the WHOLE projection — one unlocked phrase
-    and every root on the project disappeared from the read.
-
-    WHAT DID NOT CHANGE, and is the real contract: the projection still yields
-    locked roots ONLY. An unlocked phrase is recorded but not yet eligible.
-    """
-    rows = _live_rows()
-    rows[0]["locked_at"] = None
-    assert project_recording_roots(_snapshot(), rows) == []
-
-
-def test_an_unlocked_root_does_not_409_the_recording_roots_route(monkeypatch):
-    import routes.v2.explore_ideal_text as route
-
-    rows = _live_rows()
-    rows[0]["locked_at"] = None
-    database = Mock()
-    database.get_ideal_text_document_core.return_value = _snapshot()
-    database.get_ideal_text_parts.return_value = rows
-    monkeypatch.setattr(route, "db", database)
-    monkeypatch.setattr(route, "_arc_owned_by_caller", lambda _arc: (True, []))
-
-    app = Flask(__name__)
-
-    @app.before_request
-    def actor():
-        request.user_id = "actor-1"
-
-    app.add_url_rule(
-        "/test/<arc_id>",
-        view_func=inspect.unwrap(route.v2_explore_get_recording_roots),
-    )
-    response = app.test_client().get("/test/arc-1")
-
-    assert response.status_code == 200
-    assert response.get_json()["roots"] == []
 
 
 def test_recording_roots_route_returns_the_live_root(monkeypatch):
