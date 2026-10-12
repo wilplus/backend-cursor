@@ -2436,3 +2436,12 @@ deleted, so every Take opens on **Getting your mic ready**. "Back" and
 "Next slide" are signed. `docs/FOUNDER-LOCK-recording-screens-2026-10-07.md`
 carries the amended lock; the frontend's `docs/LOCKS.md` points to the new
 prototype.
+
+**N70.1 · The arrow keys on the recording screen (founder, chat, 12 October
+2026).** "Let the left and right arrow keys move between slides on the
+recording screen, without the keys stealing presses from buttons." ← and →
+change the slide like Back and Next slide; a focused button keeps its own
+Space and Enter. Asked what → and Space do on the last slide, the founder
+chose "Nothing, small bounce": keys never end a Take, only the red Finish
+take does. Prototype <https://claude.ai/artifact/LU1XgQyqY2nPSvDAmsRJFo>
+(version 2), copy in `docs/design/recording-screens-2026-10-12-keys.html`.

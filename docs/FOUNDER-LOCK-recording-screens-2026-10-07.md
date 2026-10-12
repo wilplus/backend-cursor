@@ -89,8 +89,15 @@ was not practical").
 - **Only the slide and its helper words move.** The top bar, the "Take ·
   Slide" line, the strip and the two buttons stay exactly where they are
   and are never rebuilt during a move.
-- **Keyboard, no click first:** ↓, Page Down, Space forward; ↑, Page Up
-  back (as the prototype keeps them).
+- **Keyboard, no click first:** ← and → change the slide, exactly like
+  Back and Next slide (N70.1); ↓, Page Down, Space forward and ↑, Page Up
+  back, after scrolling long helper words. **Keys never end a Take**: on
+  the last slide → and Space only give a small bounce; only the red Finish
+  take ends it (founder, 2026-10-12). A focused button keeps its own Space
+  and Enter; a text field keeps every key; nothing is taken while
+  **Discard this take?** is open. Keys prototype:
+  <https://claude.ai/artifact/LU1XgQyqY2nPSvDAmsRJFo> (version 2), copy in
+  `docs/design/recording-screens-2026-10-12-keys.html`.
 - **Never a reload:** pulling or scrolling at the top never reloads or
   refreshes the page, on a phone or on the web.
 
@@ -130,3 +137,6 @@ green); the app shows the speaker's own slides, unchanged.
   no slide dots; slides move sideways; the learning screen is deleted.
   Prototype <https://claude.ai/artifact/4zD6Tjw4MWjooqWq6z4FAL> (version 4),
   copy in `docs/design/recording-screens-2026-10-12.html`.
+- **2026-10-12 · the arrow keys (N70.1).** ← → change the slide; keys never
+  end a Take; a focused button keeps Space and Enter. Prototype
+  <https://claude.ai/artifact/LU1XgQyqY2nPSvDAmsRJFo> (version 2).
