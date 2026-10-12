@@ -2,8 +2,8 @@
 2026-09-30, L8; contract 66).
 
 The nineteen speaker routes under /v2/user/mlc3/... and the eight coach
-routes under /v2/coach/mlc3/... answer 410 GONE through one tombstone per
-module, the way routes/v2/arcs.py and routes/phase2_guard.py retire a door.
+routes under /v2/coach/mlc3/... are gone; their two 410 tombstone modules
+were deleted 2026-10-11, so the paths answer the house 404.
 The composers' lanes (routes/v2/coach_guidance_delivery.py and the bundle
 module's coach feedback-language route) are gone; the monitors' cron
 scripts, the readiness checkers and their CLIs are gone; the coach corpus
@@ -76,6 +76,8 @@ DELETED = (
     "scripts/sign_mlc3_founder_deployment_attestation.py",
     "scripts/mlc3_repoint_rollout_to_active_policy.sql",
     "routes/v2/coach_guidance_delivery.py",
+    "routes/v2/mlc3_first_client_service.py",
+    "routes/v2/mlc3_first_client_coach.py",
 )
 
 
@@ -86,21 +88,18 @@ class Mlc3LoopRetiredTests(unittest.TestCase):
         flask_app.config["TESTING"] = True
         return flask_app.test_client()
 
-    def test_every_retired_path_is_a_410(self):
+    def test_every_retired_path_is_gone(self):
         with self._client() as client:
             for method, path in RETIRED:
                 with self.subTest(method=method, path=path):
                     response = client.open(path, method=method, json={})
-                    self.assertEqual(response.status_code, 410)
-                    body = response.get_json()
-                    self.assertEqual(body.get("code"), "GONE")
-                    self.assertIn("retired", body.get("error", ""))
+                    self.assertIn(response.status_code, (401, 404, 405))
 
-    def test_the_tombstones_keep_their_modules_and_registration(self):
+    def test_the_tombstone_modules_are_gone(self):
         from routes.v2 import DOMAIN_MODULES
 
-        self.assertIn("mlc3_first_client_service", DOMAIN_MODULES)
-        self.assertIn("mlc3_first_client_coach", DOMAIN_MODULES)
+        self.assertNotIn("mlc3_first_client_service", DOMAIN_MODULES)
+        self.assertNotIn("mlc3_first_client_coach", DOMAIN_MODULES)
         self.assertNotIn("coach_guidance_delivery", DOMAIN_MODULES)
 
     def test_the_bundle_exercise_correlation_read_is_not_shadowed(self):
@@ -114,10 +113,6 @@ class Mlc3LoopRetiredTests(unittest.TestCase):
             endpoint.endswith("get_confident_moment_exercise_correlation"),
             endpoint,
         )
-        gone, _args = adapter.match(
-            f"/v2/user/mlc3/exercise-offers/{U}", method="GET",
-        )
-        self.assertTrue(gone.endswith("v2_mlc3_user_service_retired"), gone)
 
     def test_the_composers_routes_are_gone(self):
         if flask_app is None:  # pragma: no cover

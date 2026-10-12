@@ -221,8 +221,7 @@ class TheKeptPrompt(unittest.TestCase):
             def set_coach_take_word_draft(self, **kw):
                 self.word = kw
         db = _Db()
-        with mock.patch.object(cwp, "word_pairs_enabled", return_value=True), \
-             mock.patch.object(cwp, "compose", return_value={"text": "Keep it.", "model_version": "m"}) as composed:
+        with mock.patch.object(cwp, "compose", return_value={"text": "Keep it.", "model_version": "m"}) as composed:
             status, _ = cwp.draft_take_word(db, take_session_id="t", coach_id="c",
                                             body={"notes": " the pause "})
         self.assertEqual(status, 200)

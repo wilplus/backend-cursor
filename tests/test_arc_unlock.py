@@ -1,9 +1,7 @@
-"""willab — $25/25-credit arc unlock (founder re-price 2026-07-06).
+"""The atomic credit-deduct CAS logic via a fake PostgREST client (no live DB).
 
-POST /v2/arc/<arc_id>/unlock route-level tests (mirrors the test_wave2_be.py /
-test_wave3_be.py harness: patch db.* on the v2 module, call the unwrapped
-handler directly) + the atomic credit-deduct CAS logic via a fake PostgREST
-client (no live DB).
+The $25 arc unlock route this file once also covered was retired 2026-07-17
+and its 410 tombstone deleted 2026-10-11.
 
 Run: python3 -m unittest tests.test_arc_unlock
 """
@@ -12,13 +10,9 @@ from __future__ import annotations
 import unittest
 
 try:
-    from flask import Flask, request
-    from routes.v2 import arcs as v2_arcs
     from services.db import db
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
-    Flask = None
-    request = None
     _IMPORT_ERROR = e
 
 
@@ -159,29 +153,6 @@ class DeductCreditsStrictTests(unittest.TestCase):
         self.assertIsNone(svc.deduct_credits_strict(None, 25))
         self.assertIsNone(svc.deduct_credits_strict("u1", 0))
         self.assertIsNone(svc.deduct_credits_strict("u1", -5))
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class ArcUnlockRouteTests(unittest.TestCase):
-    """POST /v2/arc/<arc_id>/unlock is RETIRED (single-deliverable, founder
-    2026-07-17): the $25 arc unlock is gone and the route is now an
-    UNCONDITIONAL 410 GONE tombstone. The ideal text + its deliverables are
-    free; the only paid item is the 5-credit key-moment explanations. No
-    deduct, no purchase insert, no ownership branch — just the tombstone."""
-
-    def setUp(self):
-        self.app = Flask(__name__)
-
-    def _call(self, arc_id="a1"):
-        with self.app.test_request_context():
-            request.user_id = "u1"
-            resp, status = v2_arcs.v2_arc_unlock.__wrapped__(arc_id)
-            return resp.get_json(), status
-
-    def test_unlock_is_gone_tombstone(self):
-        body, status = self._call()
-        self.assertEqual(status, 410)
-        self.assertEqual(body["code"], "GONE")
 
 
 if __name__ == "__main__":

@@ -19,22 +19,9 @@ def _ranked():
             (1, 0, "e", {"exercise_id": "e"})]
 
 
-class _Closed:
-    EXERCISE_LEARNED_ORDER_ENABLED = False
-
-
-class _Open:
-    EXERCISE_LEARNED_ORDER_ENABLED = True
-
-
 class LearnedOrderTests(unittest.TestCase):
     def setUp(self):
         lo.clear_cache()
-
-    def test_closed_in_code_means_todays_order_whatever_the_jar_says(self):
-        with mock.patch.object(lo, "learned_rates", return_value=({"c": 0.9}, "learned")) as read:
-            self.assertEqual(lo.apply(_ranked(), object(), config=_Closed()), _ranked())
-        read.assert_not_called()
 
     def test_reorder_touches_only_ties_at_one_fit(self):
         out = lo.reorder(_ranked(), {"c": 0.9, "a": 0.5, "e": 1.0})
@@ -64,11 +51,11 @@ class LearnedOrderTests(unittest.TestCase):
 
     def test_open_with_rates_reorders_and_the_pool_never_changes(self):
         with mock.patch.object(lo, "learned_rates", return_value=({"b": 0.8}, "learned")):
-            out = lo.apply(_ranked(), object(), config=_Open())
+            out = lo.apply(_ranked(), object())
         self.assertEqual([t[2] for t in out], ["b", "a", "c", "d", "e"])
         self.assertEqual({t[2] for t in out}, {t[2] for t in _ranked()})
 
-    def test_the_matcher_returns_todays_order_with_the_constant_false(self):
+    def test_the_matcher_returns_todays_order_without_learned_rates(self):
         from services import confident_voice_practice as cvp
         key = lambda d, e, i: (None, None, None, None, None, d, e, i)  # noqa: E731
         with mock.patch.object(cvp, "match_for_clip", return_value=(None, [

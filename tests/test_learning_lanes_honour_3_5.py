@@ -200,8 +200,6 @@ class _SheetDb(_Ledger):
 
 @pytest.fixture
 def sheets_on(monkeypatch):
-    from config import Config
-    monkeypatch.setattr(Config, "V4_COACH_SHEETS_ENABLED", True, raising=False)
     monkeypatch.setattr(cs, "rater_role", lambda uid: "coach")
 
 
@@ -299,7 +297,6 @@ class _PickDb(_Ledger):
 
 
 def test_only_yes_speakers_reach_the_block_pick_and_a_withdrawal_empties_it(monkeypatch):
-    monkeypatch.setattr("config.Config.COACH_BLOCK_PICK_ENABLED", True, raising=False)
     monkeypatch.setattr("services.snippet_audio_url.snippet_clip_playback",
                         lambda snippet, db: {"audio_ref": None, "start_offset_ms": None,
                                              "duration_ms": None})

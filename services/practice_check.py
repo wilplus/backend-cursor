@@ -1,6 +1,5 @@
 """The machine checks each practise try (founder lock 2026-10-06, the
-Feedback walk; decisions log N52.3), dark behind
-``Config.MACHINE_PRACTICE_CHECK_ENABLED``.
+Feedback walk; decisions log N52.3). On; the switch was deleted 2026-10-11.
 
 The founder: "don't ask me right away does my last take sound confident to
 me, you need to check it yourself". After each try the machine decides one
@@ -53,11 +52,6 @@ TRY_CAP = 3
 MOVED_ON_KEY = "CM3b"
 #: The after_practice lanes that count as measurably better.
 _BETTER_LANES = frozenset({"cleared", "cue", "machine_leg"})
-
-
-def machine_practice_check_enabled() -> bool:
-    from config import Config
-    return bool(getattr(Config, "MACHINE_PRACTICE_CHECK_ENABLED", False))
 
 
 def _index(row: Mapping) -> int:
@@ -150,15 +144,6 @@ def check_attempt(database: Any, practice: Mapping, attempt_id: str,
     result["practice_row"] = updated
     if check["next"] == "praise":
         result["attempt_transcript"] = practice_words(target.get("transcript"))
-        # Phase 5: the closed practice's pair for the delayed measure (off,
-        # nothing). The endpoint is the first valid attempt, not this one.
-        from services.delayed_measure import enrol
-        enrol(database, updated)
-    elif check["next"] == "moved_on":
-        # Like a dismissed practice: its first valid try may still pair
-        # for the delayed measure (off, nothing).
-        from services.delayed_measure import enrol
-        enrol(database, updated)
     return 200, result
 
 

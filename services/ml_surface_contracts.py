@@ -83,8 +83,7 @@ SURFACES: dict[str, SurfaceContract] = {
         runtime_aliases=("exercise_script",),
         golden_eval_surface="exercise_script",
     ),
-    # THE COACH'S OWN WORDS (founder 2026-10-01, C5-a; Phase 7, dark behind
-    # COACH_WORD_PAIRS_ENABLED): the personal line on a moment and the Take
+    # THE COACH'S OWN WORDS (founder 2026-10-01, C5-a; Phase 7): the personal line on a moment and the Take
     # word. Text only. Privacy/Terms 3.5, signed by the founder 2026-10-08
     # (decisions log N68), covers them as training data under the speaker's
     # training yes: doors 2, 3 and 4 know them like the answer surfaces

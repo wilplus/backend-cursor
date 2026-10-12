@@ -1,13 +1,13 @@
 """Judgement after feedback (founder 2026-10-01, F1; Phase 2 of the
-after-practice paths), dark behind JUDGEMENT_AFTER_FEEDBACK_ENABLED.
+after-practice paths). On since 2026-10-02; the switch and its off-branch
+were deleted 2026-10-11.
 
 F1: "Opening a bookmark never asks for a judgment first. The machine's read
 chooses the feedback. The speaker judges themselves after it: on a confident
 moment right after the praise, on a moment that needed work after each
 practice attempt. Helper words open on Yes or In-between of that judgment."
 
-Pins: off, the open is a receipt and the judgement flow is exactly today's;
-on, the open raises the moment's request under the machine's kind
+Pins: the open raises the moment's request under the machine's kind
 (insert-once, raised at the open), the later judgement sets its answer_kind
 from the matrix, a practice judgement that disagrees with the machine's
 read of the attempt makes it an ambiguity, no read and Audio unclear send
@@ -31,7 +31,6 @@ from services.moment_events import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-ON = patch("config.Config.JUDGEMENT_AFTER_FEEDBACK_ENABLED", True)
 
 
 def _snippet():
@@ -150,48 +149,6 @@ def _event(db, event, shown=("praise",), read="weak", fired=True):
 PRACTICE = {"id": "p-1", "take_session_id": "take-1", "snippet_id": "snip-1"}
 
 
-class OffTests(unittest.TestCase):
-    """The off behaviour, under the switch patched off (the live default is
-    on since the founder's yes of 2026-10-02)."""
-    def setUp(self):
-        self._off = patch("config.Config.JUDGEMENT_AFTER_FEEDBACK_ENABLED", False)
-        self._off.start()
-        self.addCleanup(self._off.stop)
-
-    def test_the_switch_is_on_since_the_founders_yes(self):
-        self._off.stop()
-        from config import Config as _live
-        self.assertTrue(_live.JUDGEMENT_AFTER_FEEDBACK_ENABLED)
-        self._off.start()
-
-    def test_off_the_open_is_a_receipt_and_raises_nothing(self):
-        db = _Db()
-        self.assertEqual(_event(db, "opened"),
-                         (200, {"recorded": True, "follow_up": "none"}))
-        self.assertEqual(_event(db, "opened")[1]["recorded"], False)
-        self.assertEqual(_event(db, "skipped")[1]["recorded"], True)
-        self.assertEqual(db.raised, [])
-
-    def test_off_the_judgement_flow_is_exactly_todays(self):
-        db = _Db()
-        self.assertEqual(_answer(db, "no"), "coach_request")
-        self.assertEqual(db.raised[0]["kind"], "error")
-        self.assertNotIn("raised_on", db.raised[0])
-        self.assertEqual(db.answer_kinds, [])
-        self.assertIsNone(jf.practice_judgement(db, PRACTICE, "yes", "no"))
-
-    def test_off_the_settled_read_and_the_start_gate_never_run(self):
-        source = (ROOT / "services/ideal_text_changes.py").read_text()
-        start = source.index("def _mark_settled_without_answer")
-        body = source[start:source.index("def _decision_backfill")]
-        self.assertIn("if not judgement_after_feedback_enabled()", body)
-        routes = (ROOT / "routes/v2/user_sessions.py").read_text()
-        for name in ("_practice_original_answer", "_practice_answer_gate"):
-            start = routes.index(f"def {name}")
-            self.assertIn("judgement_after_feedback_enabled()",
-                          routes[start:start + 900], name)
-
-
 class OpenMatrixTests(unittest.TestCase):
     def test_the_read_chooses_the_feedback_and_the_kind(self):
         self.assertEqual(jf.decide_at_open("confident", True, True), ("praise", "praise"))
@@ -221,7 +178,6 @@ class OpenMatrixTests(unittest.TestCase):
         self.assertFalse(jf.practice_disagrees("audio_unclear", "yes"))
 
 
-@ON
 class OnTests(unittest.TestCase):
     def test_the_open_raises_the_request_under_the_machine_s_kind(self):
         db = _Db()
@@ -426,8 +382,8 @@ class ContractTests(unittest.TestCase):
     def test_the_contract_the_config_and_the_migration_record_f1(self):
         contract = (ROOT / "docs/CANONICAL_PRODUCT_CONTRACT.md").read_text()
         self.assertIn("Opening a bookmark never asks for a judgment first", contract)
-        self.assertIn("JUDGEMENT_AFTER_FEEDBACK_ENABLED = True",
-                      (ROOT / "config.py").read_text())
+        self.assertNotIn("JUDGEMENT_AFTER_FEEDBACK_ENABLED",
+                         (ROOT / "config.py").read_text())
         sql = (ROOT / "migrations/a_moment_opens_before_it_is_judged.sql").read_text()
         for needle in ("ADD COLUMN IF NOT EXISTS answer_kind",
                        "ADD COLUMN IF NOT EXISTS raised_on",

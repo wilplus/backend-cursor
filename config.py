@@ -367,105 +367,7 @@ class Config:
     # door: changing it opens nothing.
     OPENAI_FINE_TUNE_BASE_MODEL = (os.getenv("OPENAI_FINE_TUNE_BASE_MODEL")
                                    or "gpt-4.1-mini-2025-04-14").strip()
-    # ML-13 (founder E8): the matcher orders equal-fit exercises by the
-    # learned helped rate only when this is True AND the jar's fair test
-    # meets its bar AND the founder said yes. A code constant; never an env.
-    # ON 2026-10-08 (founder: "turn it all ON"); the jar's fair test still gates it.
-    EXERCISE_LEARNED_ORDER_ENABLED = True
 
-    # PHASE 0b (founder 2026-10-01): the coach's Students screens. On, the
-    # roster and a student's profile carry the student's real name (coaches
-    # know their own students; the walk stays blind to the machine's read)
-    # and one Take can be read in the walk's shape from a profile. Off, the
-    # routes answer exactly as before and the walk-take read is 404. A
-    # reviewed change flips it after the founder's yes. The founder said no
-    # on 2026-10-05 (decisions log N48.5, Q26 A: "the Students screens stay
-    # off"); tests/test_coach_students.py pins it False and unset elsewhere.
-    COACH_STUDENTS_ENABLED = False
-
-    # PHASE 1 of the after-practice paths (founder 2026-10-01, F2): the
-    # exercise fallback ladder. On, a moment read weak with an error that no
-    # exercise targets gets the general exercise for that error (catalogue
-    # flag matching_criteria.general_for), else the universal warm-up
-    # (hear-every-word-v1, once a reviewed change activates it). Fallbacks
-    # are traced and never teach the exercise ranker. Off, matching is
-    # exactly what it was. OFF again from 2026-10-03 (founder, F1 Repair
-    # Plan Phase 0, N29): the ladder had no rungs (no exercise carries
-    # matching_criteria.general_for and the warm-up is seeded inactive) and
-    # no screen reads its caption. It comes back on with the three general
-    # exercises, the active warm-up and the caption's screen. Q30 A (founder
-    # 2026-10-05, decisions log N48.6): "the exercise fallback ladder stays
-    # off until three general exercises are filmed". A code constant, never
-    # an environment variable, so only a reviewed change can turn it on;
-    # tests/test_exercise_fallback_ladder.py pins it.
-    EXERCISE_FALLBACK_LADDER_ENABLED = False
-
-    # PHASE 2 of the after-practice paths (founder 2026-10-01, F1): the
-    # judgement comes after the feedback. On, opening a bookmark raises the
-    # moment's coach request under the machine's kind (migration 0408), the
-    # speaker's later judgement sets its answer_kind, a practice may start
-    # without an answer, and a landed or dismissed practice or a skipped
-    # bookmark settles the item. Off, every bookmark asks for the judgement
-    # first, exactly as before. One switch, both flows side by side until
-    # the cutover; the speaker's screens follow the designer session's build.
-    JUDGEMENT_AFTER_FEEDBACK_ENABLED = True
-
-    # PHASE 3 of the after-practice paths (founder 2026-10-01, F5): praise
-    # after practice. On, a practice that lands hears one signed sentence
-    # about what measurably changed in the attempt the speaker landed on
-    # (else "Good job"), a practice left hears an encouragement, Bold voices
-    # (own attempt, then a coach's published readings; plays only) may show
-    # once per Take, and coaches may record and publish readings (migration
-    # 0409). Off, nothing is said, written or served; the routes answer 404.
-    # OFF again since 2026-10-05 (second plan, Phase 1, founder "go"): no
-    # screen renders the sentence, the encouragement, Bold voices or the
-    # coach readings, so the switch acted with nothing behind it (as N29).
-    # Back on when a screen ships. Bold voices no longer rides it: RETIRED
-    # 2026-10-07 (founder, Q-B11 A, N62); its three routes answer 404
-    # whatever this says (routes/v2/after_practice.py).
-    PRAISE_AFTER_PRACTICE_ENABLED = False
-
-    # THE MACHINE CHECKS EACH PRACTISE TRY (founder lock 2026-10-06, the
-    # Feedback walk; decisions log N52.3): "don't ask me right away does my
-    # last take sound confident to me, you need to check it yourself". On,
-    # the walk posts each try to /attempts/<id>/check and the machine says
-    # praise or again (services/practice_check.py); the five-answer route
-    # stays for the screens that still use it. Off until the walk's
-    # screens ship: no screen calls the route yet.
-    MACHINE_PRACTICE_CHECK_ENABLED = True
-
-    # PHASE 4 of the after-practice paths (founder 2026-10-01, F3, F4): the
-    # peer lane. On, a Voice Album moment can be lent to other ears (share
-    # toggle, revocable), Lend your ear serves up to three blind clips once
-    # per Take after a practice that lands, answers count toward the coach +
-    # peer quorum, and Bold voices adds others' settled clips and the
-    # licensed corpus (migration 0410). ON from 2026-10-02 (founder: "You
-    # have my go on each of the flips"; N25) after his own determinations
-    # Q3 to Q5 (C1 to C3, N23) and the signed 3.3 wording (N24). The share
-    # switch itself exists only for a speaker on PEER_SHARE_POLICY_VERSION
-    # or later, so nothing is lent before the speaker has read 4b. Off, the
-    # routes answer 404 and nothing is written. OFF again from 2026-10-03
-    # (founder, F1 Repair Plan Phase 0, N29): no screen renders the share
-    # switch or Lend your ear, so nothing could be lent. RETIRED as a
-    # speaker switch 2026-10-07 (founder, Q-B11 A, N62): the Album share
-    # switch, the per-Take set it fed and Bold voices are gone and their
-    # routes answer 404 whatever this says; the walk's other voices are the
-    # communities' queue (COMMUNITIES_ENABLED below), served by the Lend
-    # your ear engine under the per-Take consent only. This now gates only
-    # the coach's licensed-corpus tool (/v2/coach/licensed-clips, whose
-    # clips are the walk's training clips) and the ledger's historical
-    # counts of the retired lane.
-    PEER_LANE_ENABLED = False
-
-    # PHASE 5 (founder 2026-10-01): the delayed blind human measure
-    # exercise-human-delayed-v1, docs/MEASURE-exercise-human-delayed-v1.md,
-    # written before any data. ON from 2026-10-02 (N25): the founder signed
-    # the definition 2026-10-02 (N24) and the pair rides the share switch
-    # (Q3-A), which rides PEER_SHARE_POLICY_VERSION. Off, no pair and no vote
-    # is written. OFF again from 2026-10-03 (founder, F1 Repair Plan Phase
-    # 0, N29): pairs were written at every practice close with no screen
-    # that could ever vote on them. It comes back on with the peer lane.
-    DELAYED_MEASURE_ENABLED = False
     # Q4-A (founder 2026-10-02): the share switch is written into both
     # Terms and Privacy, in a new Phase-1 policy version everyone re-accepts
     # before the switch appears (the 1 October path: Terms 3.2 + Privacy 3.2
@@ -482,21 +384,6 @@ class Config:
     # has read the line, never before the publish.
     BLIND_CHECK_POLICY_VERSION: str | None = "phase1-2026-10-02"
 
-    # COMMUNITIES (founder 2026-10-06, decisions log N52.4; migration 0432):
-    # after every finished review the speaker may share that Take with the
-    # general community, a private community joined with a pass code, or one
-    # of their own; "None" stands alone and only the coach judges. A shared
-    # Take is judged by its community; community answers are peer ratings
-    # (L3). Built DARK: off, every /user/communities and take-share route
-    # answers 404 and nothing is read or written (services/communities.py).
-    # Q-B11 A (founder 2026-10-07, N62): this is THE ONE PEER LANE. The
-    # queue serves at most 3 other voices per walk, community clips first,
-    # then training clips, through the Lend your ear engine
-    # (services/lend_your_ear.other_voices); the per-Take share is the one
-    # consent path that admits a speaker's moment to it.
-    # ON from 2026-10-08 (founder, D-FW-20, N67): the sharing screen ships
-    # in the Feedback walk; counsel's review of its words was not obtained.
-    COMMUNITIES_ENABLED = True
     # CM2 B (founder 2026-10-06, N53.2; Q-B6 A, N62): sharing switches on
     # with the sharing screen, under the founder's own signed words for it
     # (N54, WQ5 A / WQ6 A), without waiting for counsel; the founder took the
@@ -509,7 +396,8 @@ class Config:
     # any version. Each share row is stamped with it (take_shares.
     # consent_version) and with the version of the sharing screen's words
     # the speaker saw (take_shares.share_words_version, 0443), which the
-    # screen sends. COMMUNITIES_ENABLED above is the switch (on, N67).
+    # screen sends. Communities are on (N67; their switch was deleted
+    # 2026-10-11).
     COMMUNITY_SHARE_POLICY_VERSION: str | None = "phase1-2026-10-02"
     # The versions of the sharing screen's words a share may record (0443):
     # the server's own list, so a share can only name words that were really
@@ -521,40 +409,6 @@ class Config:
     # Any other version is refused (400 SHARE_WORDS_VERSION_UNKNOWN).
     SHARE_WORDS_VERSIONS: tuple[str, ...] = ("sharing-screen-2026-10-06",)
 
-    # THE COACH PANEL'S LEARNING ADDITIONS (founder 2026-10-01; migration
-    # 0411), each dark behind its own constant, each a reviewed flip after
-    # the founder's yes. Off, every route answers 404 and nothing is written.
-    # 1b (F8): the coach keeps, swaps or replaces the served exercise and
-    # the choice is recorded as the coach's preference; outcomes alone
-    # decide whether an exercise helps.
-    COACH_EXERCISE_PREFERENCE_ENABLED = True
-    # 7 (C5-a): the coach's personal line on a moment and the Take word are
-    # drafted from the transcript and the coach's notes, and the (draft,
-    # final) pair is recorded when the final differs. Door 2 stays shut for
-    # both surfaces until counsel's answer and the founder's sentence.
-    COACH_WORD_PAIRS_ENABLED = True
-    # 6a (F6): the blind error audit, Yes/No per (clip, error), sampled fired
-    # and not fired, 20 blind answers per coach per week shared with 8.
-    # ON from 2026-10-02 (N25): legitimate interest with the balancing test
-    # (15 §2), the Privacy line in 3.3 (15 §1), the speaker's Personalised
-    # practice choice as the Article 21 off switch read at sampling, and
-    # BLIND_CHECK_POLICY_VERSION keeping every speaker out of the pool until
-    # they are on 3.3. The retention row is 18 §2.
-    ERROR_PRESENCE_AUDIT_ENABLED = True
-    # 6a: the three verbal cues join the audit (rules on the transcript).
-    ERROR_PRESENCE_AUDIT_VERBAL_ENABLED = True
-    # 8 (C5-b): the coach's blind pick among a block's candidate moments,
-    # against the Manager's pick, never changing a bookmark. OFF again from
-    # 2026-10-03 (founder, F1 Repair Plan Phase 0, N29): it samples
-    # take_feedback_policy_v3_shadow_frames, which are written only for the
-    # founder's own Takes (take_feedback_policy_v3.dark_enabled), so it had
-    # no other speaker's blocks. It comes back on with a source of every
-    # speaker's blocks. ON again from 2026-10-08 (founder: "turn it all ON").
-    COACH_BLOCK_PICK_ENABLED = True
-    # V4's two blind coach sheets (B1.8 "Pick the moment for feedback", B1.9
-    # "Which sounds surer"; founder S-B8 A, Q-B8 A). ON from 2026-10-08
-    # (founder: "turn it all ON"); every route answers 404 while off.
-    V4_COACH_SHEETS_ENABLED = True
     # 6d: fitting a learned detector on audit answers. ON from 2026-10-02
     # (founder: "You have my go on each of the flips"; N26): the AI Act
     # determination is document 02 v1.1 (the founder's own, Q7, signed
@@ -570,9 +424,6 @@ class Config:
     # (#973, shadow only, consenting speakers' blind answers) and document 02
     # v1.2 is signed (N68, counsel not yet consulted, as the founder signed).
     DETECTOR_TRAINING_AUTHORISED = True
-    # 0c (A2): a student's new Take appears as a bubble in the coach's
-    # Lounge chat, opening the walk.
-    COACH_TAKE_BUBBLES_ENABLED = True
     # Slice 6 readiness replaces the ambiguous bool with an irreversible
     # three-state contract.  ``dark`` was the pre-cutover behavior;
     # ``founder_canary`` is THE FLIP (founder 2026-09-29, after the

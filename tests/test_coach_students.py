@@ -1,10 +1,8 @@
-"""The coach's students (founder 2026-10-01, Phase 0b), dark behind
-COACH_STUDENTS_ENABLED.
+"""The coach's students (founder 2026-10-01, Phase 0b) stay off (N48.5
+Q26 A); the switch and its on-branch were deleted 2026-10-11.
 
-Pins: off, the roster and the profile carry no name and the walk-take read
-is 404; on, the real name rides where the student has one, a profile lists
-its Takes with their index, and one Take comes back in the walk's shape
-with the name beside it, behind the queue's language gate.
+Pins: the roster and the profile carry no name, a profile lists its Takes
+with their index, and the walk-take read is 404 (400 for a bad id).
 """
 from __future__ import annotations
 
@@ -13,7 +11,6 @@ from unittest.mock import patch
 
 try:
     from flask import Flask, request
-    from config import Config
     from routes.v2 import coach as v2_coach
     from services.db import db
     _IMPORT_ERROR = None
@@ -35,26 +32,23 @@ def _session():
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class SwitchOffTests(unittest.TestCase):
+class StudentsTests(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
-        self.assertFalse(Config.COACH_STUDENTS_ENABLED)
 
     def test_the_roster_and_the_profile_carry_no_name(self):
         with self.app.test_request_context():
             request.user_id = "coach-1"
             with patch.object(db.takes, "list_coach_students",
                               return_value=[{"user_id": UID, "last_active": "x", "session_count": 1}]), \
-                 patch.object(db, "get_user_profiles", return_value={UID: {"domain": "sales"}}), \
-                 patch.object(db, "get_student_names", side_effect=AssertionError("never read while off")):
+                 patch.object(db, "get_user_profiles", return_value={UID: {"domain": "sales"}}):
                 resp, status = v2_coach.v2_coach_students.__wrapped__()
             self.assertEqual(status, 200)
             self.assertNotIn("name", resp.get_json()[0])
             with patch.object(db, "get_user_profile", return_value={"domain": "sales", "goal": "g"}), \
                  patch.object(db.takes, "v2_list_user_lab_sessions", return_value=[_session()]), \
                  patch.object(db, "get_feelings_by_sessions", return_value=[]), \
-                 patch.object(db.ideal_text, "get_coach_arc_ideal_texts", return_value={}), \
-                 patch.object(db, "get_student_names", side_effect=AssertionError("never read while off")):
+                 patch.object(db.ideal_text, "get_coach_arc_ideal_texts", return_value={}):
                 resp, status = v2_coach.v2_coach_student_detail.__wrapped__(UID)
             body = resp.get_json()
             self.assertEqual(status, 200)
@@ -64,115 +58,10 @@ class SwitchOffTests(unittest.TestCase):
     def test_the_walk_take_read_is_404(self):
         with self.app.test_request_context():
             request.user_id = "coach-1"
-            with patch.object(db, "v2_get_session_by_id", side_effect=AssertionError("never read while off")):
+            with patch.object(db, "v2_get_session_by_id", side_effect=AssertionError("never read")):
                 resp, status = v2_coach.v2_coach_walk_take.__wrapped__(SID)
-        self.assertEqual(status, 404)
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class SwitchOnTests(unittest.TestCase):
-    def setUp(self):
-        self.app = Flask(__name__)
-        self._on = patch.object(Config, "COACH_STUDENTS_ENABLED", True)
-        self._on.start()
-        self.addCleanup(self._on.stop)
-
-    def test_the_real_name_rides_where_the_student_has_one(self):
-        with self.app.test_request_context():
-            request.user_id = "coach-1"
-            with patch.object(db.takes, "list_coach_students",
-                              return_value=[{"user_id": UID, "last_active": "x", "session_count": 1},
-                                            {"user_id": "u-2", "last_active": "y", "session_count": 0}]), \
-                 patch.object(db, "get_user_profiles", return_value={}), \
-                 patch.object(db, "get_student_names", return_value={UID: "Anna"}) as names:
-                resp, status = v2_coach.v2_coach_students.__wrapped__()
-        self.assertEqual(status, 200)
-        rows = resp.get_json()
-        self.assertEqual(rows[0]["name"], "Anna")
-        self.assertNotIn("name", rows[1])
-        self.assertTrue(rows[1]["pseudonym"])
-        names.assert_called_once_with([UID, "u-2"])
-
-    def _walk(self, *, coach_languages, feedback_set):
-        with self.app.test_request_context():
-            request.user_id = "coach-1"
-            with patch.object(db, "v2_get_session_by_id", return_value=_session()), \
-                 patch.object(db, "get_snippets_by_session", return_value=[{"id": SNIP}]), \
-                 patch.object(db, "get_own_state_ratings_for_session", return_value={}), \
-                 patch.object(db, "get_confidence_labels_by_snippet_ids", return_value={}), \
-                 patch.object(db, "list_exercise_coach_requests_for_sessions", return_value={}), \
-                 patch.object(db, "list_moment_events_for_sessions",
-                              return_value=[{"take_session_id": SID, "snippet_id": SNIP,
-                                             "event": "opened"}]), \
-                 patch.object(db, "list_confident_voice_answered_moments", return_value=[]), \
-                 patch.object(db, "get_user_proficient_languages", return_value=coach_languages), \
-                 patch.object(db, "get_student_names", return_value={UID: "Anna"}), \
-                 patch.object(db, "get_ideal_text_feedback_set", return_value=feedback_set):
-                out = v2_coach.v2_coach_walk_take.__wrapped__(SID)
-        resp, status = out if isinstance(out, tuple) else (out, 200)
-        return resp.get_json(), status
-
-    def test_one_take_comes_back_in_the_walks_shape_with_the_name(self):
-        frozen = {"selected_keys": [{
-            "id": f"relative-confidence:{SID}:{SNIP}", "kind": "relative_confidence",
-            "source": "confident_voice", "feedback_family": "confident_voice",
-            "snippet_id": SNIP, "take_session_id": SID,
-        }]}
-        body, status = self._walk(coach_languages=["en"], feedback_set=frozen)
-        self.assertEqual(status, 200)
-        self.assertEqual(body["name"], "Anna")
-        take = body["speaker"]["takes"][0]
-        self.assertEqual(take["session_id"], SID)
-        self.assertEqual(take["take_index"], 2)
-        self.assertEqual(take["moments"], [{"snippet_id": SNIP, "state": "judge_it"}])
-        self.assertFalse(take["waiting_for_text"])
-        # The pseudonym stays the shape's label; the name rides beside it.
-        self.assertTrue(body["speaker"]["pseudonym"])
-        self.assertNotIn("user_id", body["speaker"])
-
-    def test_an_unfrozen_take_waits_for_the_text(self):
-        body, status = self._walk(coach_languages=["en"], feedback_set=None)
-        self.assertEqual(status, 200)
-        self.assertTrue(body["speaker"]["takes"][0]["waiting_for_text"])
-
-    def test_the_queues_language_gate_applies(self):
-        body, status = self._walk(coach_languages=["pl"], feedback_set=None)
-        self.assertEqual(status, 409)
-        self.assertEqual(body["code"], "RATER_LANGUAGE_MISMATCH")
-        body, status = self._walk(coach_languages=[], feedback_set=None)
-        self.assertEqual(status, 428)
-
-    def test_a_missing_take_is_404(self):
-        with self.app.test_request_context():
-            request.user_id = "coach-1"
-            with patch.object(db, "v2_get_session_by_id", return_value=None):
-                resp, status = v2_coach.v2_coach_walk_take.__wrapped__(SID)
-            self.assertEqual(status, 404)
-            self.assertEqual(v2_coach.v2_coach_walk_take.__wrapped__("nope")[1], 400)
-
-
-class TheStudentsScreensStayOffTests(unittest.TestCase):
-    """Q26 A (founder 2026-10-05, decisions log N48.5): "the Students screens
-    stay off." The switch is a literal False in code, never an environment
-    value, and nothing outside the tests sets it."""
-
-    ROOT = __import__("pathlib").Path(__file__).resolve().parents[1]
-
-    def test_the_switch_is_a_literal_false_in_code(self):
-        source = (self.ROOT / "config.py").read_text()
-        self.assertIn("\n    COACH_STUDENTS_ENABLED = False\n", source)
-
-    def test_nothing_outside_the_tests_turns_it_on(self):
-        import re
-        on = re.compile(r"COACH_STUDENTS_ENABLED\s*(=|,)\s*True|"
-                        r"setattr\([^)]*COACH_STUDENTS_ENABLED")
-        files = [self.ROOT / "app.py", self.ROOT / "worker.py", self.ROOT / "config.py",
-                 *(self.ROOT / "services").rglob("*.py"),
-                 *(self.ROOT / "routes").rglob("*.py"),
-                 *(self.ROOT / "scripts").rglob("*.py")]
-        hits = [str(f.relative_to(self.ROOT)) for f in files
-                if f.exists() and on.search(f.read_text())]
-        self.assertEqual(hits, [])
+                self.assertEqual(status, 404)
+                self.assertEqual(v2_coach.v2_coach_walk_take.__wrapped__("nope")[1], 400)
 
 
 if __name__ == "__main__":

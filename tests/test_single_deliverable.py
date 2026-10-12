@@ -15,7 +15,7 @@ Pinned here, token by token:
         text NEVER leaks unverified.
   BE-5  the 5-credit moments unlock (atomic; no grandfathering) + the gated
         explanations GET.
-  BE-6  the $25 unlock and publish-analysis routes answer 410 (retired).
+  BE-6  the $25 unlock and publish-analysis routes are gone (retired).
 
 Run: python3 -m unittest tests.test_single_deliverable
 """
@@ -29,7 +29,6 @@ from unittest.mock import patch
 try:
     from flask import Flask, jsonify, request
     from routes.v2 import arcs as v2_arcs
-    from routes.v2 import coach as v2_coach
     from routes.v2 import explore_ideal_text as v2_explore_ideal_text
     from routes.v2 import lab_recording as v2_lab_recording
     from services.db import db
@@ -723,33 +722,6 @@ class MomentExplanationGetTests(unittest.TestCase):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class LegacyRetirementTests(unittest.TestCase):
-    """The $25 unlock is retired — always 410. So is the coach's arc-level
-    publish (founder 2026-09-30, B3; contract 65; removed 2026-10-01 on the
-    founder's "do P2-19 now"): the FE's publish button is gone with it, and
-    what reaches the speaker is a shared answer on its moment and the Take
-    word."""
-
-    def setUp(self):
-        self.app = Flask(__name__)
-
-    def test_arc_unlock_410(self):
-        with self.app.test_request_context(json={}):
-            request.user_id = UID
-            out = v2_arcs.v2_arc_unlock.__wrapped__(ARC)
-            resp, status = out if isinstance(out, tuple) else (out, 200)
-        self.assertEqual(status, 410)
-
-    def test_publish_analysis_is_a_tombstone_again(self):
-        with self.app.test_request_context(json={}):
-            request.user_id = "coach1"
-            out = v2_coach.v2_coach_publish_analysis_gone.__wrapped__(ARC)
-            resp, status = out if isinstance(out, tuple) else (out, 200)
-        self.assertEqual(status, 410)
-        self.assertEqual(resp.get_json()["code"], "GONE")
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class IdealBubbleTests(unittest.TestCase):
     def _fire(self, fn_name, version, returns):
         from services import arc_notifications as an
@@ -812,26 +784,10 @@ class SeamSmoothingContractPinTests(unittest.TestCase):
 class PaywallRetirementTests(unittest.TestCase):
     """The $25 arc model is retired: best-presentation, breakthroughs, game,
     and every take's feedback are unconditionally free — no 402, no paywall,
-    no locked takes. (/unlock is a 410 tombstone.)"""
+    no locked takes. (/unlock and the best-presentation read are gone.)"""
 
     def setUp(self):
         self.app = Flask(__name__)
-
-    def _best_presentation(self):
-        with self.app.test_request_context():
-            request.user_id = UID
-            with patch("routes.v2.arcs._arc_owned_by_caller",
-                       return_value=(True, [])):
-                out = v2_arcs.v2_explore_arc_best_presentation.__wrapped__(ARC)
-        resp, status = out if isinstance(out, tuple) else (out, 200)
-        return resp.get_json(), status
-
-    def test_best_presentation_retired(self):
-        # Retired (L1; founder 2026-10-05, N48.3 Q13 A): no paywall and no
-        # body either — the read answers 410 and composes nothing.
-        body, status = self._best_presentation()
-        self.assertEqual(status, 410)
-        self.assertEqual(body.get("code"), "GONE")
 
     def _feedback(self):
         spoken = [{"id": "s1", "take_index": 1},

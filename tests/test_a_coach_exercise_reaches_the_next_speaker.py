@@ -156,7 +156,6 @@ def _next_speaker_moment(db, fired: dict):
     return rows[0]
 
 
-@patch("config.Config.EXERCISE_FALLBACK_LADDER_ENABLED", False)
 class TheNextSpeakerTests(unittest.TestCase):
     def test_after_a_share_the_next_moment_with_the_pattern_is_served_the_coach_s_exercise(self):
         db = _Db()

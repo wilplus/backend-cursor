@@ -812,13 +812,10 @@ class _ChangesRun:
         through the practice loop, or by skipping the bookmark, has no Path
         1 answer, so the join above leaves it open. The one settled read
         (services.moment_events.settled_status_by_moment) decides it, so
-        the page's bar and the lock gate agree. Off, nothing runs."""
-        from services.judgement_follow_up import (
-            judgement_after_feedback_enabled,
-        )
+        the page's bar and the lock gate agree."""
         from services.moment_events import settled_status_by_moment
 
-        if not judgement_after_feedback_enabled() or not self.changes:
+        if not self.changes:
             return
         settled = settled_status_by_moment(
             self.db, take_session_id=self.arm_sid,

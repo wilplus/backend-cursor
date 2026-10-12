@@ -1,6 +1,7 @@
 """Coach Yes/No answers about errors, blind (founder 2026-10-01, F6; task 1
-and Phase 6a), behind ``Config.ERROR_PRESENCE_AUDIT_ENABLED`` (on from
-2026-10-02, N25) and, per speaker, ``Config.BLIND_CHECK_POLICY_VERSION``.
+and Phase 6a), on from 2026-10-02 (N25; its switch, with the verbal cues'
+own, was deleted 2026-10-11) and, per speaker, behind
+``Config.BLIND_CHECK_POLICY_VERSION``.
 
 F6: "Coaches may answer blind Yes/No questions about errors on speakers'
 moments. The answers are stored for measuring and improving the error
@@ -70,18 +71,8 @@ WORDING = {
 }
 
 
-def audit_enabled() -> bool:
-    from config import Config
-    return bool(getattr(Config, "ERROR_PRESENCE_AUDIT_ENABLED", False))
-
-
-def verbal_errors_enabled() -> bool:
-    from config import Config
-    return bool(getattr(Config, "ERROR_PRESENCE_AUDIT_VERBAL_ENABLED", False))
-
-
 def errors_in_scope() -> tuple[str, ...]:
-    return ERRORS + (VERBAL_ERRORS if verbal_errors_enabled() else ())
+    return ERRORS + VERBAL_ERRORS
 
 
 def week_key(now: Optional[datetime] = None) -> str:
@@ -207,10 +198,8 @@ def sample_for_coach(database: Any, *, coach_id: str, now: Optional[datetime] = 
                      rng: Any = None) -> list[dict]:
     """Fill this coach's week up to the shared cap, blind. The rows are
     written with no answer and the coach's exposure to each clip is
-    recorded (task 4). [] off, or when the cap is spent."""
+    recorded (task 4). [] when the cap is spent."""
     from services.coach_exposure import record_exposure, unexposed
-    if not audit_enabled():
-        return []
     rng = rng or random.Random()
     week = week_key(now)
     spent = int(database.count_coach_blind_answers(str(coach_id), week) or 0)
@@ -282,9 +271,7 @@ def _clip_playback(database: Any, clip_id: str, clip_kind: str) -> dict:
 
 def queue(database: Any, *, coach_id: str) -> tuple[int, dict]:
     """The coach's pending items, blind: the clip, the error's own question,
-    nothing else. 404 off."""
-    if not audit_enabled():
-        return 404, {"code": "NOT_FOUND", "error": "not found"}
+    nothing else."""
     asks = {str(r.get("error_id")): r for r in (database.list_speaking_errors() or [])
             if isinstance(r, dict) and r.get("error_id")}
     items = []
@@ -307,8 +294,6 @@ def queue(database: Any, *, coach_id: str) -> tuple[int, dict]:
 
 def answer(database: Any, *, coach_id: str, audit_id: str, body: Any) -> tuple[int, dict]:
     """One answer, once; the row's measurements stay as sampled."""
-    if not audit_enabled():
-        return 404, {"code": "NOT_FOUND", "error": "not found"}
     fields: dict = body if isinstance(body, dict) else {}
     value = fields.get("answer")
     if value not in ANSWERS:
@@ -426,9 +411,7 @@ def report_card(rows: Iterable[dict], *, rng: Any = None) -> dict:
 def false_alarm_rate(database: Any, *, error_id: str,
                      detector_version: Optional[str] = None) -> Optional[float]:
     """The half verbal_cue_validation cannot measure, from blind answers;
-    None below the floor or off."""
-    if not audit_enabled():
-        return None
+    None below the floor."""
     rows = [r for r in (database.list_error_presence_audit_answered(str(error_id)) or [])
             if isinstance(r, dict)
             and (detector_version is None or str(r.get("detector_version")) == str(detector_version))]

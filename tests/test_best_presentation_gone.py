@@ -3,39 +3,20 @@ N48.3 Q13 A; N48.1 step 6).
 
 Its builder sent every pick's verbatim transcript to the model with no
 permit, from the student GET, the coach GET and the training import's
-legacy assembly. L1 had already retired the artifact. Both GETs answer
-the house 410, the training import pins its own recording (the
+legacy assembly. L1 had already retired the artifact. Both GETs were 410
+tombstones, deleted 2026-10-11; the training import pins its own recording (the
 deterministic transcript document), and the builder itself is removed
 (N48.3 Q13 A).
 """
 from __future__ import annotations
 
-import inspect
 import pathlib
 from unittest import mock
 
-import pytest
 
 from routes.v2 import arcs as arc_routes
-from routes.v2 import coach as coach_routes
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-
-
-def _never(*_a, **_k):
-    raise AssertionError("the retired builder ran")
-
-
-@pytest.mark.parametrize("view", [
-    arc_routes.v2_explore_arc_best_presentation,
-    coach_routes.v2_coach_arc_best_presentation,
-])
-def test_both_reads_answer_410_and_build_nothing(app_client, view):
-    with mock.patch("services.llm.chat_complete", _never), \
-         app_client.application.test_request_context("/"):
-        resp, status = inspect.unwrap(view)(arc_id="arc-1")
-    assert status == 410
-    assert resp.get_json()["code"] == "GONE"
 
 
 def test_the_routes_no_longer_import_the_builder():

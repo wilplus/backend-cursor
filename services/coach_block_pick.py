@@ -1,5 +1,5 @@
 """The blind "pick the most confident" (founder 2026-10-01, C5-b; Phase 8 of
-the coach panel), dark behind ``Config.COACH_BLOCK_PICK_ENABLED``.
+the coach panel). On from 2026-10-08; the switch was deleted 2026-10-11.
 
 C5-b: "On a sample of blocks, the coach hears that block's candidate
 moments, audio only, in random order, without knowing which one the machine
@@ -64,11 +64,6 @@ WORDING = {
 }
 
 
-def block_pick_enabled() -> bool:
-    from config import Config
-    return bool(getattr(Config, "COACH_BLOCK_PICK_ENABLED", False))
-
-
 def _admitted(database: Any, take_session_id: Any, memo: dict | None = None) -> bool:
     """3.5 E4: this Take's speaker holds the training yes and has not
     objected to the blind check. Memoised per call when given a dict."""
@@ -126,8 +121,6 @@ def sample_for_coach(database: Any, *, coach_id: str, week: str,
     judge blind. [] off or when the cap is spent."""
     from services.coach_exposure import exposed_clip_ids, record_exposure
     from services.error_presence_audit import WEEKLY_CAP
-    if not block_pick_enabled():
-        return []
     rng = rng or random.Random()
     spent = int(database.count_coach_blind_answers(str(coach_id), week) or 0)
     pending = database.list_coach_block_picks_pending(str(coach_id)) or []
@@ -174,10 +167,8 @@ def sample_for_coach(database: Any, *, coach_id: str, week: str,
 
 def queue(database: Any, *, coach_id: str) -> tuple[int, dict]:
     """The coach's pending picks, audio only; the Manager's pick is never
-    in the payload. 404 off."""
+    in the payload."""
     from services.snippet_audio_url import snippet_clip_playback
-    if not block_pick_enabled():
-        return 404, {"code": "NOT_FOUND", "error": "not found"}
     memo: dict = {}
     rows = [r for r in (database.list_coach_block_picks_pending(str(coach_id)) or [])
             if isinstance(r, dict) and _admitted(database, r.get("take_session_id"), memo)]
@@ -196,8 +187,6 @@ def queue(database: Any, *, coach_id: str) -> tuple[int, dict]:
 
 def answer(database: Any, *, coach_id: str, pick_id: str, body: Any) -> tuple[int, dict]:
     """Body {pick_clip_id} or {cant_tell: true}: one answer, once."""
-    if not block_pick_enabled():
-        return 404, {"code": "NOT_FOUND", "error": "not found"}
     fields: dict = body if isinstance(body, dict) else {}
     cant_tell = fields.get("cant_tell") is True
     pick = fields.get("pick_clip_id")
@@ -241,8 +230,6 @@ def match_rate(rows: Iterable[Any]) -> dict:
 
 
 def ledger(database: Any) -> dict:
-    if not block_pick_enabled():
-        return {"enabled": False, **match_rate([])}
     return {"enabled": True, **match_rate(database.list_coach_block_picks_all() or [])}
 
 

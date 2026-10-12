@@ -72,10 +72,10 @@ class FlagTests(unittest.TestCase):
         The flag rides every path that writes the ambiguity, and no other."""
         from services import judgement_follow_up as jfu
         source = inspect.getsource(jfu)
-        self.assertEqual(source.count("_flag_disagreement(database, "), 3)
-        for fn in (jfu.follow_up_for_judgement, jfu._answer_after_feedback, jfu.practice_judgement):
+        # Two paths since the judgement-first flow was retired (2026-10-11).
+        self.assertEqual(source.count("_flag_disagreement(database, "), 2)
+        for fn in (jfu._answer_after_feedback, jfu.practice_judgement):
             self.assertIn("_flag_disagreement(", inspect.getsource(fn), fn.__name__)
-        self.assertIn('if kind == "ambiguity":', inspect.getsource(jfu.follow_up_for_judgement))
         self.assertIn('if answer_kind == "ambiguity":', inspect.getsource(jfu._answer_after_feedback))
         body = inspect.getsource(jfu.practice_judgement)
         self.assertLess(body.index("if practice_disagrees("), body.index("_flag_disagreement("))

@@ -44,18 +44,16 @@ class RetiredRoutesTests(unittest.TestCase):
         registry = (ROOT / "services/data_purge_registry.py").read_text()
         self.assertIn('"star_verdicts"', registry)
 
-    def test_the_coach_ideal_text_routes_answer_410(self):
+    def test_the_coach_ideal_text_routes_are_gone(self):
         for method, path in (("GET", "/v2/coach/arc/a1/ideal-text"),
                              ("PUT", "/v2/coach/arc/a1/ideal-text"),
                              ("POST", "/v2/coach/arc/a1/verify"),
                              ("POST", "/v2/coach/arc/a1/ideal-text/approve")):
             with self.subTest(path=path):
                 response = self.client.open(path, method=method, json={})
-                # Unauthenticated callers meet the coach gate first; a coach
-                # meets the tombstone. Either way nothing is written.
-                self.assertIn(response.status_code, (401, 403, 410))
+                # The 410 tombstones were deleted (2026-10-11): no route.
+                self.assertIn(response.status_code, (404, 405))
         source = (ROOT / "routes/v2/coach.py").read_text()
-        self.assertIn('"code": "GONE"', source)
         self.assertNotIn("def v2_coach_approve_ideal_text(", source)
         self.assertNotIn("emit_ideal_text_annotations", source)
 
@@ -82,7 +80,7 @@ class RetiredRoutesTests(unittest.TestCase):
                      "/v2/coach/speaking-errors"):
             self.assertIn(path, self.rules, path)
 
-    def test_the_arc_level_delivery_routes_answer_410(self):
+    def test_the_arc_level_delivery_routes_are_gone(self):
         for method, path in (
                 ("POST", "/v2/coach/sessions/s1/snippets/n1"),
                 ("POST", "/v2/coach/sessions/s1/recut"),
@@ -93,7 +91,9 @@ class RetiredRoutesTests(unittest.TestCase):
                 ("POST", "/v2/internal/publish-session-results")):
             with self.subTest(path=path):
                 response = self.client.open(path, method=method, json={})
-                self.assertIn(response.status_code, (401, 403, 410))
+                # The coach tombstones were deleted (2026-10-11); the internal
+                # publish door still answers its gate or 410.
+                self.assertIn(response.status_code, (401, 403, 404, 405, 410))
         source = (ROOT / "routes/v2/coach.py").read_text()
         for gone in ("def v2_coach_publish_analysis(", "def v2_coach_save_feedback(",
                      "def v2_coach_session_recut(", "def v2_coach_arc_review_state(",

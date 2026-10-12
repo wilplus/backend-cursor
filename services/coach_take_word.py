@@ -60,14 +60,11 @@ def save_take_word(database: Any, *, take_session_id: str, coach_id: str,
 def _the_pair(database: Any, row: dict, *, coach_id: str, text: Optional[str]) -> None:
     """7 (C5-a, 0411): when a draft was shown and the coach's words differ,
     the (draft, final) pair; a video's transcript is a second final. Both
-    best-effort and only while the surface is on; the word is saved
-    either way."""
+    best-effort; the word is saved either way."""
     try:
         from services.coach_word_pairs import (
-            record_take_word_pair, transcribe_take_word_video, word_pairs_enabled,
+            record_take_word_pair, transcribe_take_word_video,
         )
-        if not word_pairs_enabled():
-            return
         record_take_word_pair(database, word_row=row, coach_id=coach_id, final_text=text)
         if row.get("video_ref") and not row.get("transcript"):
             transcribe_take_word_video(database, word_row=row, coach_id=coach_id)

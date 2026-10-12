@@ -1,7 +1,7 @@
 """Communities: a Take shared with the people who judge it (founder
 2026-10-06, decisions log N52.4; docs/FOUNDER-LOCK-feedback-walk-2026-10-06.md;
-migration 0432), dark behind ``Config.COMMUNITIES_ENABLED``; sharing also
-requires ``Config.COMMUNITY_SHARE_POLICY_VERSION``, the CURRENT Privacy/Terms
+migration 0432), on from 2026-10-08 (N67; the switch was deleted
+2026-10-11); sharing requires ``Config.COMMUNITY_SHARE_POLICY_VERSION``, the CURRENT Privacy/Terms
 (CM2 B, N53.2; Q-B6 A, N62: sharing goes live with the sharing screen under
 the founder's own signed words, without waiting for counsel), and each share
 records the version of the sharing screen's words the speaker saw
@@ -89,11 +89,6 @@ def _not_found() -> tuple[int, dict]:
     return 404, {"code": "NOT_FOUND"}
 
 
-def communities_enabled() -> bool:
-    from config import Config
-    return bool(getattr(Config, "COMMUNITIES_ENABLED", False))
-
-
 def share_policy_version() -> Optional[str]:
     from config import Config
     version = getattr(Config, "COMMUNITY_SHARE_POLICY_VERSION", None)
@@ -159,8 +154,6 @@ def _community_payload(row: dict, role: Optional[str]) -> dict:
 def create_community(database: Any, *, owner_user_id: str, body: Any) -> tuple[int, dict]:
     """Set up a private community with a name and a pass code; its creator
     is its owner and first member. 409 when the code is already in use."""
-    if not communities_enabled():
-        return _not_found()
     fields: dict = body if isinstance(body, dict) else {}
     raw_name = fields.get("name")
     name = " ".join(raw_name.split()) if isinstance(raw_name, str) else ""
@@ -184,8 +177,6 @@ def create_community(database: Any, *, owner_user_id: str, body: Any) -> tuple[i
 def join_community(database: Any, *, user_id: str, body: Any) -> tuple[int, dict]:
     """Join a private community by its pass code alone. Joining again is a
     no-op; an owner stays owner."""
-    if not communities_enabled():
-        return _not_found()
     fields: dict = body if isinstance(body, dict) else {}
     digest, error = _digest_or_error(fields.get("pass_code"))
     if error:
@@ -218,8 +209,6 @@ def _open_private(database: Any, user_id: str) -> tuple[list[dict], dict[str, st
 def list_my_communities(database: Any, *, user_id: str) -> tuple[int, dict]:
     """The general community (open to everyone) and the private ones this
     person belongs to."""
-    if not communities_enabled():
-        return _not_found()
     out: list[dict] = []
     general = database.get_general_community()
     if isinstance(general, dict) and general.get("id"):
@@ -287,8 +276,6 @@ def share_take(database: Any, *, owner_user_id: str, take_session_id: str,
     rest; "None" withdraws it from every community. A share names the
     current Privacy/Terms (Q-B6 A) and records the words the speaker saw
     (CM2 B, 0443); "None" needs neither."""
-    if not communities_enabled():
-        return _not_found()
     session = database.v2_get_session_by_id(str(take_session_id))
     if not isinstance(session, dict) or str(session.get("user_id")) != str(owner_user_id):
         return 404, {"code": "TAKE_NOT_FOUND"}
@@ -417,8 +404,6 @@ def queue_for(database: Any, *, listener_id: str, rng: Any = None) -> tuple[int,
     """The listener's queue: the walk's other voices, at most three,
     community clips first, then training clips (Q-B11 A), served by the
     Lend your ear engine. Audio only (AC-9)."""
-    if not communities_enabled():
-        return _not_found()
     from services.lend_your_ear import other_voices
     return 200, {"clips": other_voices(database, listener_id=str(listener_id), rng=rng)}
 
@@ -430,8 +415,6 @@ def answer(database: Any, *, listener_id: str, body: Any) -> tuple[int, dict]:
     rating and a peer label where the quorum still takes raters; a training
     clip's answer stays here alone. Never the listener's own clip."""
     from services.state_ratings import validate_rating
-    if not communities_enabled():
-        return _not_found()
     fields: dict = body if isinstance(body, dict) else {}
     clip_id = fields.get("clip_id")
     if not isinstance(clip_id, str) or not _is_uuid(clip_id):

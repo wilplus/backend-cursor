@@ -78,12 +78,10 @@ GATE_FLAGS: tuple[str, ...] = (
 
 #: Code constants, not variables. A reviewed change flips them, so services
 #: on the same deploy agree; printed so a service on a stale deploy shows up.
-CODE_SWITCHES: tuple[str, ...] = (
-    "JUDGEMENT_AFTER_FEEDBACK_ENABLED",
-    "PRAISE_AFTER_PRACTICE_ENABLED",
-    "MACHINE_PRACTICE_CHECK_ENABLED",
-    "COMMUNITIES_ENABLED",
-)
+#: Empty since 2026-10-11: the four it printed (judgement after feedback,
+#: praise after practice, the machine's practise check, communities) were
+#: hard-wired and their constants deleted.
+CODE_SWITCHES: tuple[str, ...] = ()
 
 #: Reported as set/unset, never by value. Extend this rather than adding a
 #: flag to GATE_FLAGS whenever the value identifies a person. Empty since

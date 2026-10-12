@@ -292,15 +292,11 @@ class CoachSessionReadTests(unittest.TestCase):
         self.assertFalse(data["read_only"])
 
     def test_a_second_coach_cannot_publish(self):
-        """Publishing stays the claimer's: the arc-level publish door answers
-        410 for everyone, and the publish RPC itself refuses a non-admin
-        coach on a review assigned to another coach."""
+        """Publishing stays the claimer's: the arc-level publish door is
+        gone, and the publish RPC itself refuses a non-admin coach on a
+        review assigned to another coach."""
         import pathlib
-        self._as_second_coach()
-        with self.app.test_request_context(method="POST"):
-            request.user_id = "coach-1"
-            resp, status = v2_coach.v2_coach_publish_analysis_gone.__wrapped__("arc-1")
-        self.assertEqual(status, 410)
+        self.assertFalse(hasattr(v2_coach, "v2_coach_publish_analysis_gone"))
         sql = (pathlib.Path(__file__).resolve().parents[1] / "migrations"
                / "add_atomic_coach_review_publishing.sql").read_text()
         publish = sql[sql.index("FUNCTION public.publish_coach_review_revision_v1"):]

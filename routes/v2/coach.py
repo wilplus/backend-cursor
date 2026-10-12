@@ -339,10 +339,6 @@ def v2_coach_students():
         # round trips before the coach saw a name.
         _profiles = db.get_user_profiles(
             [r.get("user_id") for r in rows if r.get("user_id")]) or {}
-        # Phase 0b (founder 2026-10-01): the real name rides only while
-        # COACH_STUDENTS_ENABLED; off, the row is exactly what it was.
-        from services.coach_students import name_field, student_names
-        _names = student_names(db, [r.get("user_id") for r in rows])
         out = []
         for r in rows:
             uid = r.get("user_id")
@@ -352,7 +348,6 @@ def v2_coach_students():
                 # this; a random UUID is not name/email.
                 "user_id": str(uid) if uid else "",
                 "pseudonym": _coach_pseudonym(uid),
-                **name_field(_names, uid),
                 "domain": (prof or {}).get("domain") or "",
                 "last_active": r.get("last_active") or "",
                 # read-only coach-load signal (the beta "drowning guard") —
@@ -444,11 +439,8 @@ def v2_coach_student_detail(user_id):
             if _row and (_row.get("text") or "").strip() \
                     and not _row.get("approved_at"):
                 _ideal_ready_arcs.append(str(_aid))
-        from services.coach_students import name_field, student_names
         return jsonify({
             "pseudonym": _coach_pseudonym(user_id),
-            # Phase 0b: the real name, only while COACH_STUDENTS_ENABLED.
-            **name_field(student_names(db, [user_id]), user_id),
             "domain": (prof or {}).get("domain") or "",
             "goal": (prof or {}).get("goal") or "",
             "ideal_ready_arc_ids": _ideal_ready_arcs,
@@ -1809,45 +1801,12 @@ def v2_coach_exercise_request_video(session_id, snippet_id):
 @v2_bp.route("/coach/sessions/<session_id>/walk-take", methods=["GET"])
 @require_admin_or_coach
 def v2_coach_walk_take(session_id):
-    """One Take in the walk's own shape (founder 2026-10-01, Phase 0b): the
-    speaker with this one take, its bookmarked moments and THIS coach's
-    state on each, plus the student's real name. Opened from a named
-    profile the walk may show the name; the kind still rides only once this
-    coach has rated the moment (BLIND COACH). Same language gate as the
-    queue. 404 while COACH_STUDENTS_ENABLED is off. Routed like the queue."""
-    from services.coach_moments_queue import (
-        labels_for_snippets, moments_queue, reached_for_sessions, remembered,
-    )
-    from services.coach_students import load_walk_take
+    """Always 404 for a valid id: the Students screens' walk-take read stays
+    off (founder 2026-10-05, N48.5 Q26 A), and its switch and body were
+    deleted 2026-10-11. The route stays because the FE still calls it."""
     if not _is_valid_uuid(session_id):
         return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a UUID"}), 400
-    try:
-        rater_id = str(getattr(request, "user_id", "") or "")
-        loaded = load_walk_take(db, session_id, rater_id)
-        if loaded is None:
-            return jsonify({"code": "NOT_FOUND", "error": "No such Take."}), 404
-        if not loaded["proficient"]:
-            return _rater_language_error("profile_required")
-        outcome, language = _rater_language_outcome(
-            loaded["row"], loaded["snippets"], proficient=loaded["proficient"])
-        language_error = _rater_language_error(outcome, language)
-        if language_error is not None:
-            return language_error
-        sid = str(loaded["row"]["id"])
-        moments_for = remembered(_queue_moments_for({sid: loaded["snippets"]}))
-        speakers = moments_queue(
-            [loaded["row"]], moments_for=moments_for,
-            reached_for=reached_for_sessions(db, [sid], loaded["requests"]),
-            ratings_for=lambda _sid: loaded["ratings"],
-            request_for=lambda _sid, snip: loaded["requests"].get((_sid, snip)),
-            pseudonym_for=_coach_pseudonym,
-            labels_for=labels_for_snippets(db, moments_for(loaded["row"]) or []),
-            rater_id=rater_id)
-        return jsonify({"speaker": speakers[0], "name": loaded["name"]}), 200
-    except Exception as e:
-        logger.error("coach/walk-take GET failed sid=%s: %s", session_id, e, exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({"code": "V2_ERROR", "error": "Failed to read the Take"}), 500
+    return jsonify({"code": "NOT_FOUND", "error": "No such Take."}), 404
 
 
 @v2_bp.route("/coach/sessions/<session_id>/word", methods=["GET", "PUT"])
@@ -1960,35 +1919,11 @@ def v2_coach_moment_diagnosis(session_id, snippet_id):
     return jsonify(payload), status
 
 
-# ── willab — the arc-level delivery: RETIRED ─────────────────────────────
-# Founder 2026-09-30, B3 to B6 (contract 65; docs/FOUNDER-LOCK-coach-panel-
-# 2026-10.md), removed 2026-10-01 on the founder's "do P2-19 now". The
-# per-snippet note and surface toggle, the re-cut, the per-take Save, the
-# wrap-up read, the slide-mapping correction and the arc-level publish
-# answer 410 and write nothing. Their tables (coach_snippet_drafts,
-# coach_review_revisions, coach_review_delivery_outbox,
-# snippet_slide_corrections, recording_feelings) stay as history and take no
-# new writes. What reaches the speaker now is a shared answer on its moment
-# (35g-2) and the Take word (35g-6); the coach's judgement is the one
+# The arc-level delivery (founder 2026-09-30, B3 to B6; contract 65) and its
+# 410 routes are gone (deleted 2026-10-11). Their tables stay as history and
+# take no new writes. What reaches the speaker now is a shared answer on its
+# moment (35g-2) and the Take word (35g-6); the coach's judgement is the one
 # instrument (35g-5), written by the confidence-label PUT below.
-
-def _coach_delivery_gone():
-    return jsonify({
-        "code": "GONE",
-        "error": "The arc-level delivery was retired (founder 2026-09-30, B3 to B6).",
-    }), 410
-
-
-@v2_bp.route("/coach/sessions/<session_id>/snippets/<snippet_id>", methods=["POST"])
-@require_admin_or_coach
-def v2_coach_save_snippet_gone(session_id, snippet_id):
-    return _coach_delivery_gone()
-
-
-@v2_bp.route("/coach/sessions/<session_id>/recut", methods=["POST"])
-@require_admin_or_coach
-def v2_coach_session_recut_gone(session_id):
-    return _coach_delivery_gone()
 
 
 @v2_bp.route("/coach/sessions/<session_id>/video", methods=["POST"])
@@ -2093,56 +2028,10 @@ def v2_coach_session_video(session_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to store coach video"}), 500
 
 
-@v2_bp.route("/coach/arc/<arc_id>/best-presentation", methods=["GET"])
-@require_admin_or_coach
-def v2_coach_arc_best_presentation(arc_id):
-    """RETIRED with the student read (L1; founder 2026-10-05, N48.3 Q13 A):
-    410, nothing composed, nothing sent to a model."""
-    from routes.v2.arcs import best_presentation_gone
-    return best_presentation_gone()
-
-
-# ── willab — the coach's Ideal Text edit, verify and approve: RETIRED ────
-# Founder 2026-09-30, B2 (contract 40, 64; docs/FOUNDER-LOCK-coach-panel-
-# 2026-10.md). A coach never edits the speaker's document (L1): the routes
-# answer 410 and write nothing. `coach_arc_ideal_text` and the annotation
-# rows they wrote stay as history.
-
-def _coach_ideal_text_gone():
-    return jsonify({
-        "code": "GONE",
-        "error": "The coach's Ideal Text edit and approve were retired (founder 2026-09-30, B2).",
-    }), 410
-
-
-@v2_bp.route("/coach/arc/<arc_id>/ideal-text", methods=["GET", "PUT"])
-@require_admin_or_coach
-def v2_coach_ideal_text_gone(arc_id):
-    return _coach_ideal_text_gone()
-
-
-@v2_bp.route("/coach/arc/<arc_id>/verify", methods=["POST"])
-@require_admin_or_coach
-def v2_coach_verify_ideal_text_gone(arc_id):
-    return _coach_ideal_text_gone()
-
-
-@v2_bp.route("/coach/arc/<arc_id>/ideal-text/approve", methods=["POST"])
-@require_admin_or_coach
-def v2_coach_approve_ideal_text_gone(arc_id):
-    return _coach_ideal_text_gone()
-
-
-@v2_bp.route("/coach/sessions/<session_id>/save-feedback", methods=["POST"])
-@require_admin_or_coach
-def v2_coach_save_feedback_gone(session_id):
-    return _coach_delivery_gone()
-
-
-@v2_bp.route("/coach/arc/<arc_id>/review-state", methods=["GET"])
-@require_admin_or_coach
-def v2_coach_arc_review_state_gone(arc_id):
-    return _coach_delivery_gone()
+# The coach's Ideal Text edit, verify and approve (retired founder
+# 2026-09-30, B2; contract 40, 64) and their 410 routes are gone: a coach
+# never edits the speaker's document (L1). `coach_arc_ideal_text` stays as
+# history.
 
 
 def _resolve_audio_refs(rows: list, *, expires_in: int = 6 * 3600) -> None:
@@ -3209,12 +3098,6 @@ def v2_coach_confirm_session_language(session_id):
         }), 500
 
 
-@v2_bp.route("/coach/snippets/<snippet_id>/slide", methods=["PUT"])
-@require_admin_or_coach
-def v2_coach_put_snippet_slide_gone(snippet_id):
-    return _coach_delivery_gone()
-
-
 def _reconcile_album_after_judgement(sess, snippet_id, session_id):
     """THE ALBUM'S COACH LEG (founder 2026-09-30, B3; contract 65): the
     walk's judgement is final when written, so the judgement write is the
@@ -3521,12 +3404,6 @@ def v2_coach_put_confidence_label(snippet_id):
         logger.warning("confidence rating failed snip=%s: %s", snippet_id, e)
         return jsonify({"code": "SERVER_ERROR",
                         "error": "could not save the rating"}), 500
-
-
-@v2_bp.route("/coach/arc/<arc_id>/publish-analysis", methods=["POST"])
-@require_admin_or_coach
-def v2_coach_publish_analysis_gone(arc_id):
-    return _coach_delivery_gone()
 
 
 # ── THE SPEAKING ERROR LIBRARY ────────────────────────────────────────────

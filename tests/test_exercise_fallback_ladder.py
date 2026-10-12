@@ -1,12 +1,10 @@
-"""The exercise fallback ladder (founder 2026-10-01, F2; Phase 1 of the
-after-practice paths), dark behind EXERCISE_FALLBACK_LADDER_ENABLED.
+"""The exercise fallback ladder (founder 2026-10-01, F2) stayed off (Q30 A)
+and its switch and rungs were deleted 2026-10-11.
 
-Pins: off, nothing changes; on, a moment whose fired error no pooled
-exercise targets gets the general exercise for that error, else the
-warm-up, else nothing; a general exercise never enters the ranked pool; the
-rung is marked in the trace and the offer; the readiness counter leaves a
-fallback out, so no label, fair test or evaluation ever learns from it; the
-coach request still rises.
+Pins: a "general" exercise or the warm-up is an ordinary catalogue
+exercise, no offer or trace names a rung, and the readiness counter still
+leaves a stored fallback out, so no label, fair test or evaluation ever
+learns from one.
 """
 from __future__ import annotations
 
@@ -88,100 +86,16 @@ def _offer(db, fired):
     return rows[0]
 
 
-class OffTests(unittest.TestCase):
-    """The off behaviour, under the switch patched off (the live default:
-    on from the founder's yes of 2026-10-02, off again from 2026-10-03)."""
-    def setUp(self):
-        self._off = patch("config.Config.EXERCISE_FALLBACK_LADDER_ENABLED", False)
-        self._off.start()
-        self.addCleanup(self._off.stop)
-
-    def test_the_switch_is_off_until_the_ladder_has_rungs(self):
-        # On from 2026-10-02, off again from 2026-10-03 (F1 Repair Plan
-        # Phase 0, N29): no general exercise and no active warm-up exist.
-        self._off.stop()
-        from config import Config as _live
-        self.assertFalse(_live.EXERCISE_FALLBACK_LADDER_ENABLED)
-        self._off.start()
-
-    def test_q30_a_keeps_it_a_reviewed_constant_set_off(self):
-        # Q30 A (founder 2026-10-05, decisions log N48.6): "the exercise
-        # fallback ladder stays off until three general exercises are
-        # filmed". A literal False in config.py, read from no environment
-        # variable, so no Railway setting can turn it on: only a reviewed
-        # change, after the three films exist, may.
-        from pathlib import Path
-        source = (Path(__file__).resolve().parent.parent / "config.py").read_text()
-        assignments = [line.strip() for line in source.splitlines()
-                       if line.strip().startswith("EXERCISE_FALLBACK_LADDER_ENABLED")]
-        self.assertEqual(assignments, ["EXERCISE_FALLBACK_LADDER_ENABLED = False"])
-        self.assertIn("Q30 A", source)
-        self._off.stop()
-        self.assertFalse(cvp.fallback_ladder_enabled())
-        self._off.start()
-
-    def test_off_is_exactly_yesterday(self):
+class NoLadderTests(unittest.TestCase):
+    def test_no_rung_is_ever_served(self):
         db = _Db([ENDING_ONLY, GENERAL_RUSHING, WARMUP])
         row = _offer(db, RUSHING)
-        # With the ladder off a "general" exercise is an ordinary one, and
+        # Without the ladder a "general" exercise is an ordinary one, and
         # the warm-up, if active, an ordinary one too: both target rushing.
         self.assertIn(row["practice_exercise"]["exercise_id"],
                       ("general-rushing", cvp.EXERCISE_ID))
         self.assertNotIn("fallback", row["practice_exercise"])
         self.assertIsNone(db.assigned[0]["trace"]["fallback"])
-
-
-@patch("config.Config.EXERCISE_FALLBACK_LADDER_ENABLED", True)
-class LadderTests(unittest.TestCase):
-    def test_the_general_exercise_serves_when_nothing_pooled_targets_the_error(self):
-        db = _Db([ENDING_ONLY, GENERAL_RUSHING, WARMUP])
-        row = _offer(db, RUSHING)
-        offer = row["practice_exercise"]
-        self.assertEqual(offer["exercise_id"], "general-rushing")
-        self.assertEqual(offer["fallback"], "general")
-        self.assertTrue(row["problem_recognised"])
-        trace = db.assigned[0]["trace"]
-        self.assertEqual((trace["fallback"], trace["fit"]), ("general", "general"))
-        self.assertEqual(db.assigned[0]["matching_policy_version"],
-                         "exercise-fit-tier-v1:general")
-        self.assertEqual([c["exercise_id"] for c in trace["candidates"]
-                          if c["outcome"] == "ranked"], ["general-rushing"])
-
-    def test_the_warm_up_is_the_last_rung(self):
-        db = _Db([ENDING_ONLY, WARMUP])
-        offer = _offer(db, RUSHING)["practice_exercise"]
-        self.assertEqual((offer["exercise_id"], offer["fallback"]),
-                         (cvp.EXERCISE_ID, "warmup"))
-
-    def test_no_rung_is_still_nothing_and_the_coach_still_hears(self):
-        db = _Db([ENDING_ONLY])
-        row = _offer(db, RUSHING)
-        self.assertNotIn("practice_exercise", row)
-        self.assertTrue(row["problem_recognised"])
-        self.assertEqual(db.assigned, [])
-
-    def test_nothing_spotted_gets_no_rung(self):
-        db = _Db([GENERAL_RUSHING, WARMUP])
-        row = _offer(db, {})
-        self.assertNotIn("practice_exercise", row)
-        self.assertEqual(db.assigned, [])
-
-    def test_a_general_exercise_never_enters_the_ranked_pool(self):
-        db = _Db([SPECIFIC_RUSHING, GENERAL_RUSHING, WARMUP])
-        row = _offer(db, RUSHING)
-        offer = row["practice_exercise"]
-        self.assertEqual(offer["exercise_id"], "specific-rushing")
-        self.assertNotIn("fallback", offer)
-        trace = db.assigned[0]["trace"]
-        self.assertIsNone(trace["fallback"])
-        self.assertEqual([c["exercise_id"] for c in trace["candidates"]
-                          if c["outcome"] == "ranked"], ["specific-rushing"])
-
-    def test_split_pool_sorts_the_catalogue(self):
-        pool, generals, warmup = cvp.split_pool([SPECIFIC_RUSHING, GENERAL_RUSHING, WARMUP])
-        self.assertEqual([e["exercise_id"] for e in pool], ["specific-rushing"])
-        self.assertEqual([e["exercise_id"] for e in generals], ["general-rushing"])
-        self.assertEqual(warmup["exercise_id"], cvp.EXERCISE_ID)
 
 
 class NeverLearnedFromTests(unittest.TestCase):

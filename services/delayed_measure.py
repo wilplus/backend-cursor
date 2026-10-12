@@ -1,8 +1,10 @@
 """The delayed blind human measure, exercise-human-delayed-v1 (founder
-2026-10-01; Phase 5 of the after-practice paths), dark behind
-``Config.DELAYED_MEASURE_ENABLED`` (on from 2026-10-02, N25: the founder
-signed docs/MEASURE-exercise-human-delayed-v1.md and answered C1 to C3
-himself, N24, N23; off again from 2026-10-03 with the peer lane, N29).
+2026-10-01; Phase 5 of the after-practice paths), DARK: on from 2026-10-02
+(N25: the founder signed docs/MEASURE-exercise-human-delayed-v1.md and
+answered C1 to C3 himself, N24, N23), off again from 2026-10-03 with the
+peer lane (N29). Its switch and every caller were deleted 2026-10-11; the
+module stays because the signed counsel pack cites it (legal/phase1-2026.1,
+items 14 and 16), and it enrols, serves and counts nothing.
 
 The definition is written BEFORE any data: which attempt (the first valid
 among the first three, F7), which horizon (seven days), what counts as
@@ -33,8 +35,8 @@ _LADDER = {"no": 0, "in_between": 1, "yes": 2}
 
 
 def delayed_measure_enabled() -> bool:
-    from config import Config
-    return bool(getattr(Config, "DELAYED_MEASURE_ENABLED", False))
+    """Always False: the measure is dark and nothing calls it."""
+    return False
 
 
 # ── the pair ───────────────────────────────────────────────────────────────

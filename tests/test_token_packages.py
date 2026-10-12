@@ -59,7 +59,7 @@ def test_only_a_package_on_sale_can_be_bought(package):
 
 def test_the_route_opens_a_package_not_a_subscription():
     source = (ROOT / "routes/token_routes.py").read_text()
-    route = source[source.index("def tokens_checkout("):source.index("def tokens_portal(")]
+    route = source[source.index("def tokens_checkout("):source.index("def tokens_history(")]
     assert "create_package_checkout_session" in route
     assert "create_tier_checkout_session" not in route
 
@@ -162,8 +162,8 @@ def test_the_billing_portal_is_gone(app_client, stub_verified_user):
     stub_verified_user("u1")
     resp = app_client.post("/v2/tokens/portal", json={},
                            headers={"Authorization": "Bearer t"})
-    assert resp.status_code == 410
-    assert resp.get_json()["code"] == "GONE"
+    # The 410 tombstone was deleted (2026-10-11): no route at all.
+    assert resp.status_code == 404
 
 
 def test_the_balance_carries_no_plan(db):

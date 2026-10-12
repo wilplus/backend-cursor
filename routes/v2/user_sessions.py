@@ -1643,13 +1643,8 @@ def _after_practice_public(said):
 
 
 def _dismissed(updated: dict) -> dict:
-    """The practice the speaker left, with its encouragement (Phase 3, F5)
-    when the switch is on; the row as closed otherwise."""
-    from services.after_practice import after_dismissal
-    from services.delayed_measure import enrol
-    said = after_dismissal(db, updated)
-    enrol(db, updated)   # Phase 5: a dismissed practice may still have a valid first attempt
-    return {**updated, "after_practice": said} if said else updated
+    """The practice the speaker left, as closed."""
+    return updated
 
 
 def _attempt_comparison(database, practice, original, current_snapshot,
@@ -1848,9 +1843,9 @@ def v2_exercise_rendered(snippet_id):
 def v2_moment_event(snippet_id):
     """The speaker opened or skipped this bookmark (0408; founder 2026-10-01,
     F1). Body {event: "opened" | "skipped", shown: [...]}; recorded once per
-    event however often it arrives. Under JUDGEMENT_AFTER_FEEDBACK_ENABLED an
-    open also raises the moment's coach request under the machine's kind
-    and says what the sheet may show next; off, it is a receipt. The work
+    event however often it arrives. An open also raises the moment's coach
+    request under the machine's kind and says what the sheet may show next.
+    The work
     is services.moment_events'.
     """
     if not _is_valid_uuid(snippet_id):
@@ -1874,10 +1869,8 @@ def _practice_original_answer(body: dict):
     """(answer, refusal). The speaker's answer about the original, one of
     the five; or None under Phase 2 (founder 2026-10-01, F1), where the
     judgement comes after the practice and the start carries no answer."""
-    from services.judgement_follow_up import judgement_after_feedback_enabled
-
     answer = body.get("original_user_answer")
-    if answer is None and judgement_after_feedback_enabled():
+    if answer is None:
         return None, None
     if answer not in _PRACTICE_ANSWERS:
         return None, (jsonify({"code": "INVALID_INPUT",
@@ -1892,9 +1885,7 @@ def _practice_answer_gate(database, *, session: dict, snippet_id: str,
     (the five answers, or the two-way yes/no the sheet sent before PR 5).
     Under F1 a start with no answer passes; a start that carries one is
     still checked, so the old sheet and the new run side by side."""
-    from services.judgement_follow_up import judgement_after_feedback_enabled
-
-    if answer is None and judgement_after_feedback_enabled():
+    if answer is None:
         return None
     owner_route = next((
         row for row in database.list_owner_voice_album_routes(
@@ -2308,9 +2299,7 @@ def v2_judge_confident_voice_practice_attempt(practice_id, attempt_id):
 def v2_check_confident_voice_practice_attempt(practice_id, attempt_id):
     """The machine checks the latest try (founder lock 2026-10-06, N52.3):
     praise ends the loop on it, again asks for another. Never a number."""
-    from services.practice_check import check_attempt, machine_practice_check_enabled
-    if not machine_practice_check_enabled():
-        return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
+    from services.practice_check import check_attempt
     if not _is_valid_uuid(practice_id) or not _is_valid_uuid(attempt_id):
         return jsonify({"code": "INVALID_INPUT",
                         "error": "ids must be valid UUIDs"}), 400

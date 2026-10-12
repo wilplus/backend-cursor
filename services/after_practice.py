@@ -1,6 +1,8 @@
 """What the speaker hears after a practice (founder 2026-10-01, F5; Phase 3
-of the after-practice paths), dark behind
-``Config.PRAISE_AFTER_PRACTICE_ENABLED``.
+of the after-practice paths). Its own switch, off since 2026-10-05 (no
+screen rendered it), and the landing and dismissal hooks it gated were
+deleted 2026-10-11; the machine's practise check (services/practice_check.py)
+reads the lanes and the closed set below.
 
 F5: "After a practice the speaker judges Yes or In-between, one signed
 sentence names what measurably changed. If nothing measurably changed, a
@@ -97,11 +99,6 @@ ENCOURAGEMENT: dict[str, str] = {
     "effort": "You gave it a go. That counts.",
 }
 VARIANTS = ("yes", "in_between")
-
-
-def praise_after_practice_enabled() -> bool:
-    from config import Config
-    return bool(getattr(Config, "PRAISE_AFTER_PRACTICE_ENABLED", False))
 
 
 # ── cue reads: kept beside each attempt, read by the praise ───────────────
@@ -204,24 +201,6 @@ def _confidence(snapshot: Any) -> Any:
     return snapshot.get("confidence") if isinstance(snapshot, dict) else None
 
 
-def praise_after_practice(practice: Any, attempts: Iterable[Any],
-                          landed_attempt_id: Any, answer: Any) -> dict:
-    """The one sentence for the attempt the speaker landed on. Pure.
-
-    {"key", "sentence", "variant", "lane", "rule_version", "attempt_index",
-     "cue" | "error" where one was named}."""
-    rows = [r for r in attempts if isinstance(r, dict)]
-    landed = next((r for r in rows if str(r.get("id")) == str(landed_attempt_id)), None)
-    variant = "in_between" if answer == "in_between" else "yes"
-    base = {"rule_version": RULE_VERSION, "variant": variant,
-            "attempt_index": (landed or {}).get("attempt_index")}
-    if landed is None:
-        return _say("good_job", variant, "none", base)
-    if str((practice or {}).get("kind") or "exercise") == "rewrite":
-        return _rewrite_praise(rows, landed, variant, base)
-    return _original_praise(practice, landed, variant, base)
-
-
 def _rewrite_praise(rows: list, landed: dict, variant: str, base: dict) -> dict:
     """The accepted text, never the original (Phase 3 addition): the
     previous attempt of the same words, or nothing to compare."""
@@ -268,42 +247,3 @@ def _say(key: str, variant: str, lane: str, base: dict, **named: Any) -> dict:
     yes, gentle = PRAISE[key]
     return {**base, "key": key, "lane": lane,
             "sentence": gentle if variant == "in_between" else yes, **named}
-
-
-# ── the hooks the live loop calls (never raise) ───────────────────────────
-
-def after_landing(database: Any, practice: Any, attempts: Iterable[Any],
-                  landed_attempt_id: Any, answer: Any) -> Optional[dict]:
-    """The praise for a practice that landed, kept on the practice row.
-    None when the switch is off or the write fails."""
-    if not praise_after_practice_enabled():
-        return None
-    try:
-        said = praise_after_practice(practice, attempts, landed_attempt_id, answer)
-        return said if _keep(database, practice, said) else None
-    except Exception as e:  # noqa: BLE001 — never costs the judgement
-        _log.warning("praise after practice failed practice=%s: %s",
-                     (practice or {}).get("id"), e, exc_info=True)
-        return None
-
-
-def after_dismissal(database: Any, practice: Any) -> Optional[dict]:
-    """The encouragement for a practice the speaker left, kept on the row.
-    Reads the attempts itself, so the route's fence stays."""
-    if not praise_after_practice_enabled():
-        return None
-    try:
-        attempts = database.list_confident_voice_practice_attempts(
-            str((practice or {}).get("id") or "")) or []
-        said = encouragement(attempts)
-        return said if _keep(database, practice, said) else None
-    except Exception as e:  # noqa: BLE001 — never costs the close
-        _log.warning("encouragement failed practice=%s: %s",
-                     (practice or {}).get("id"), e, exc_info=True)
-        return None
-
-
-def _keep(database: Any, practice: Any, said: dict) -> bool:
-    return database.update_confident_voice_practice(
-        str(practice.get("id")), str(practice.get("owner_user_id") or ""),
-        {"after_practice": said}) is not None

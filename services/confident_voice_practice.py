@@ -445,71 +445,12 @@ def problem_tag_overlap(observed: Any, exercise: Any) -> int:
 #:          spotted problem behind it is a guess, and a guess is not evidence.
 FIT_EXACT = "exact"
 FIT_TRIAL = "trial"
-#: The ladder's two rungs below a trial (founder 2026-10-01, F2): the
-#: general exercise for the error, then the universal warm-up. Never ranked
-#: against an exact or a trial; served only when the pool is empty.
+#: The retired fallback ladder's two rungs (founder 2026-10-01, F2; its
+#: switch, never on since 2026-10-03, was deleted 2026-10-11). Kept so a
+#: stored assignment's policy version still reads back.
 FIT_GENERAL = "general"
 FIT_WARMUP = "warmup"
 _FIT_ORDER = {FIT_EXACT: 0, FIT_TRIAL: 1, FIT_GENERAL: 2, FIT_WARMUP: 3}
-FALLBACK_FITS = (FIT_GENERAL, FIT_WARMUP)
-
-
-def fallback_ladder_enabled() -> bool:
-    from config import Config
-    return bool(getattr(Config, "EXERCISE_FALLBACK_LADDER_ENABLED", False))
-
-
-def general_for(exercise: Any) -> frozenset[str]:
-    """The errors an exercise is the GENERAL one for (catalogue flag
-    ``matching_criteria.general_for``), or empty. A general exercise is not
-    in the ranked pool: it would match every clip its error fires on and
-    crowd out the exercise written for that clip."""
-    if not isinstance(exercise, dict):
-        return frozenset()
-    criteria = exercise.get("matching_criteria")
-    raw = criteria.get("general_for") if isinstance(criteria, dict) else None
-    return frozenset(t for t in (raw if isinstance(raw, list) else [])
-                     if isinstance(t, str) and t)
-
-
-def is_warmup(exercise: Any) -> bool:
-    return isinstance(exercise, dict) and \
-        str(exercise.get("exercise_id") or "") == EXERCISE_ID
-
-
-def split_pool(exercises: list[dict]) -> tuple[list[dict], list[dict], Optional[dict]]:
-    """(ranked pool, general exercises, the warm-up) when the ladder is on;
-    with it off, everything is the pool and the rungs are empty, so the
-    catalogue routes exactly as it did."""
-    if not fallback_ladder_enabled():
-        return list(exercises), [], None
-    pool, generals, warmup = [], [], None
-    for exercise in exercises:
-        if is_warmup(exercise):
-            warmup = exercise
-        elif general_for(exercise):
-            generals.append(exercise)
-        else:
-            pool.append(exercise)
-    return pool, generals, warmup
-
-
-def fallback_rung(observed: Any, generals: list[dict],
-                  warmup: Optional[dict]) -> Optional[tuple[dict, str]]:
-    """The rung for a clip whose fired errors no pooled exercise targets:
-    the general exercise for one of them (ties broken by id), else the
-    warm-up, else None. Only with errors fired: nothing spotted stays
-    nothing (35g-1)."""
-    fired = {str(t) for t in (observed or ())}
-    if not fired:
-        return None
-    matches = sorted((ex for ex in generals if general_for(ex) & fired),
-                     key=lambda ex: str(ex.get("exercise_id") or ""))
-    if matches:
-        return matches[0], FIT_GENERAL
-    if warmup is not None:
-        return warmup, FIT_WARMUP
-    return None
 
 
 def exercise_targets(exercise: Any) -> tuple[frozenset[str], frozenset[str]]:
@@ -939,7 +880,7 @@ def rank_exercises_for_clip(
     ranked = [(key[KEY_DISTANCE], key[KEY_EDITORIAL], key[KEY_ID], exercise)
               for key, exercise in matched]
     # ML-13 (founder E8): equal-fit ties by the learned helped rate, only
-    # behind EXERCISE_LEARNED_ORDER_ENABLED, the jar's bar and the fair
+    # behind the jar's bar and the fair
     # test's bar. Closed today, so this returns `ranked` unchanged.
     from services.exercise_learned_order import apply as learned_order
     return learned_order(ranked, database)
@@ -1471,7 +1412,6 @@ def _attach_exercises(
     if not targets:
         return rows
     exercises = offerable_exercises(database)
-    pool, generals, warmup = split_pool(exercises)
     by_id = {str(r.get("id")): r for r in (
         database.get_confident_voice_practice_candidates(
             [str(row["snippet_id"]) for row in targets]) or [])}
@@ -1505,23 +1445,15 @@ def _attach_exercises(
                 history = speaker_history(database, owner_user_id, take_session_id)
             moment_history = history
         fit, keyed = matched_exercises(
-            str(verdict.get("pattern") or ""), pool,
+            str(verdict.get("pattern") or ""), exercises,
             observed_tags=observed, history=moment_history)
-        fallback: Optional[str] = None
-        if keyed:
-            ranked = [item[1] for item in keyed]
-        else:
+        if not keyed:
             # Read weak, a problem fired, nothing targets it: an "error" the
-            # coach will hear on the judgement, so the sheet can say so.
-            # THE LADDER (founder 2026-10-01, F2): exact, else the closest
-            # (the trial tier above), else the general exercise for the
-            # error, else the warm-up. The coach request still rises on this
-            # moment, and a coach-shared exercise replaces the rung.
+            # coach will hear on the judgement, so the sheet can say so. The
+            # coach request still rises on this moment.
             target["problem_recognised"] = bool(observed)
-            rung = fallback_rung(observed, generals, warmup)
-            if rung is None:
-                continue
-            ranked, fit, fallback = [rung[0]], rung[1], rung[1]
+            continue
+        ranked = [item[1] for item in keyed]
         evidence = ground(target)
         if not isinstance(evidence, dict):
             continue
@@ -1532,16 +1464,13 @@ def _attach_exercises(
             trace=build_match_trace(
                 lane="v3_exercise_block", verdict=verdict, vocabulary=vocabulary,
                 exercises=exercises, ranked=ranked, fit=fit, snippet=snippet,
-                history=moment_history, fallback=fallback,
+                history=moment_history,
                 take_session_id=take_session_id, snippet_id=snippet_id))
         if exercise is None:
             continue
         target["evidence"] = evidence
         target["practice_exercise"] = _offer_payload(
             exercise, verdict, snippet, target, existing)
-        if fallback:
-            # A rung, named for the sheet's caption; never a number.
-            target["practice_exercise"]["fallback"] = fallback
         target["practice_exercise"]["done_before"] = _done_before(
             database, owner_user_id, str(exercise.get("exercise_id") or ""),
             take_session_id)

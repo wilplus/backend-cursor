@@ -160,19 +160,16 @@ class CoachPreferredRankerTests(unittest.TestCase):
         self.assertTrue(graded["fair_test"]["requires_founder_approval"])
         self.assertEqual(graded["learned_from"]["actions"], 80)
 
-    def test_not_graded_while_the_preference_lane_is_off(self):
+    def test_not_graded_without_preference_rows(self):
         out = ev.build_evaluation(_records(PilesTests._world(PilesTests())))
         self.assertEqual(out["coach_preferred"],
                          {"version": "exercise-coach-preferred-v1", "enabled": False})
-        with patch("config.Config.COACH_EXERCISE_PREFERENCE_ENABLED", False):
-            self.assertIsNone(ev._preference_rows(_Db()))
 
     def test_a_failed_read_grades_nothing_and_the_piles_still_grade(self):
         class _Broken:
             def list_coach_exercise_preferences(self):
                 raise RuntimeError("down")
-        with patch("config.Config.COACH_EXERCISE_PREFERENCE_ENABLED", True):
-            self.assertIsNone(ev._preference_rows(_Broken()))
+        self.assertIsNone(ev._preference_rows(_Broken()))
 
     def test_units_carry_their_draw(self):
         units = ft.units_from(_records(PilesTests._world(PilesTests())))

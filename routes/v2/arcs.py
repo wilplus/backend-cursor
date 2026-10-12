@@ -772,25 +772,10 @@ def _album_note_json(saved):
     }
 
 
-# ── Best Presentation: RETIRED (L1; founder 2026-10-05, N48.3 Q13 A) ──────
-# Its builder sent every pick's transcript to the model with no permit
-# (N48.1 step 6). The read answers 410 and composes nothing; the FE's deck
-# ref now comes from the Ideal Text payload or the project's /setup read.
-# The cache and edit tables stay as history.
-
-def best_presentation_gone():
-    """The one 410 both Best Presentation reads answer (student + coach)."""
-    return jsonify({
-        "code": "GONE",
-        "error": "Best Presentation was retired (L1); the Ideal Text is the "
-                 "presentation document.",
-    }), 410
-
-
-@v2_bp.route("/explore/arc/<arc_id>/best-presentation", methods=["GET"])
-@require_owner_or_guest
-def v2_explore_arc_best_presentation(arc_id):
-    return best_presentation_gone()
+# Best Presentation is retired (L1; founder 2026-10-05, N48.3 Q13 A) and its
+# 410 reads were deleted 2026-10-11; the FE's deck ref comes from the Ideal
+# Text payload or the project's /setup read. The cache and edit tables stay
+# as history.
 
 
 @v2_bp.route("/explore/arc/<arc_id>/progress", methods=["GET"])
@@ -959,23 +944,8 @@ def v2_arc_redeem(arc_id):
         }), 500
 
 
-# ── willab — $25/25-credit arc unlock (founder re-price 2026-07-06) ─────
-
-@v2_bp.route("/arc/<arc_id>/unlock", methods=["POST"])
-@require_auth
-def v2_arc_unlock(arc_id):
-    """RETIRED (single-deliverable, founder 2026-07-17). The $25 arc unlock is
-    gone; this route is a 410 tombstone (the ideal text + deliverables are free,
-    the only paid item is the 5-credit key-moment explanations). 410 GONE."""
-    # RETIRED (single-deliverable, founder 2026-07-17): the $25 arc unlock is
-    # gone — the ideal text + its deliverables are free; the only paid item is
-    # the 5-credit key-moment explanations (POST /arc/<id>/unlock-moments). Kept
-    # as a 410 tombstone so any lingering client gets a clear signal.
-    return jsonify({
-        "code": "GONE",
-        "error": "This product was retired. The ideal text is free; "
-                 "key-moment explanations unlock with tokens.",
-    }), 410
+# The $25 arc unlock was retired 2026-07-17 (single deliverable); its 410
+# tombstone was deleted 2026-10-11.
 
 
 @v2_bp.route("/arc/<arc_id>/unlock-moments", methods=["POST"])

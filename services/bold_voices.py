@@ -12,7 +12,7 @@ lock (N52) has no such screen, and Q-B11 A retires it: the three routes in
 ``routes/v2/after_practice.py`` answer 404 whatever ``PRAISE_AFTER_PRACTICE_
 ENABLED`` says, nothing is served, and nothing is written to
 ``bold_voices_plays`` or ``after_practice_steps``. The coach's readings
-tool (``services/coach_readings.py``) is not this module's and stays as it
+tool (``services/coach_readings.py``, deleted 2026-10-11) was not this module's; it stayed as it
 is. No row is dropped: a retention operation on the two tables is a
 separately authorised, previewed step.
 

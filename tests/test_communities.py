@@ -1,9 +1,8 @@
 """Communities (founder 2026-10-06, decisions log N52.4; migration 0432),
-dark behind COMMUNITIES_ENABLED, sharing gated on
-COMMUNITY_SHARE_POLICY_VERSION (CM2: counsel approves the words first).
+on (their switch was deleted 2026-10-11), sharing gated on
+COMMUNITY_SHARE_POLICY_VERSION (CM2).
 
-Pins: both switches default off; off, every route and every service call
-answers 404 before any read; pass codes are normalised, at least six
+Pins: pass codes are normalised, at least six
 characters and kept only as a keyed digest (no secret, 503); joining is by
 pass code alone; "None" stands alone and revokes every share; a speaker
 shares only with communities they belong to (general is open) and each share
@@ -158,14 +157,6 @@ class _Db:
         return next((c for c in self.corpus if c["id"] == cid), None)
 
 
-class _Refuses:
-    """A database that fails the test on any read or write."""
-
-    def __getattr__(self, name):
-        raise AssertionError(f"read {name} while the switch is off")
-
-
-ON = patch.object(Config, "COMMUNITIES_ENABLED", True)
 POLICY = patch.object(Config, "COMMUNITY_SHARE_POLICY_VERSION", "phase1-2026-11-01")
 ACCEPTED = patch("services.lend_your_ear.accepted_policy_at_least", return_value=True)
 KEY = patch.object(Config, "SUPABASE_JWT_SECRET", SECRET)
@@ -174,7 +165,7 @@ AUDIO = patch.object(cm, "_clip_audio", lambda _db, s: f"https://a/{s['id']}.web
 
 @pytest.fixture(autouse=True)
 def _switches():
-    with ON, KEY, AUDIO:
+    with KEY, AUDIO:
         yield
 
 
@@ -201,34 +192,20 @@ def _share(db, take, owner="owner-1", **body):
 
 # ── the switches ──────────────────────────────────────────────────────────
 
-def test_the_switch_is_on_and_sharing_names_the_current_privacy_terms():
-    """COMMUNITIES_ENABLED is on from 2026-10-08 (founder, D-FW-20, N67;
-    counsel's review not obtained). CM2 B / Q-B6 A: the share policy version
+def test_sharing_names_the_current_privacy_terms():
+    """Communities are on from 2026-10-08 (founder, D-FW-20, N67; counsel's
+    review not obtained; the switch was deleted 2026-10-11). CM2 B / Q-B6 A:
+    the share policy version
     names the current Privacy/Terms, the same version the peer share and the
     blind check are on; a share records the signed words' version."""
     source = (ROOT / "config.py").read_text()
-    assert "    COMMUNITIES_ENABLED = True\n" in source
+    assert "COMMUNITIES_ENABLED" not in source
     assert Config.SHARE_WORDS_VERSIONS == ("sharing-screen-2026-10-06",)
     assert ('    COMMUNITY_SHARE_POLICY_VERSION: str | None = "phase1-2026-10-02"\n'
             in source)
     assert Config.COMMUNITY_SHARE_POLICY_VERSION == Config.PEER_SHARE_POLICY_VERSION
-    assert "N52.4" in source and "CM2 B" in source and "Q-B6 A" in source
+    assert "CM2 B" in source and "Q-B6 A" in source
     assert "share_words_version" in source
-
-
-def test_off_every_call_is_404_before_any_read():
-    with patch.object(Config, "COMMUNITIES_ENABLED", False):
-        db = _Refuses()
-        calls = [
-            lambda: cm.create_community(db, owner_user_id="u", body={"name": "x", "pass_code": "abcdefg"}),
-            lambda: cm.join_community(db, user_id="u", body={"pass_code": "abcdefg"}),
-            lambda: cm.list_my_communities(db, user_id="u"),
-            lambda: cm.share_take(db, owner_user_id="u", take_session_id=_uuid(901), body={"none": True}),
-            lambda: cm.queue_for(db, listener_id="u"),
-            lambda: cm.answer(db, listener_id="u", body={"clip_id": _uuid(1), "value": "yes"}),
-        ]
-        for call in calls:
-            assert call() == (404, {"code": "NOT_FOUND"})
 
 
 ROUTES = {
@@ -249,29 +226,12 @@ def test_the_routes_are_registered_authenticated_and_fenced():
     assert source.count("@require_auth") == len(ROUTES)
     for name, (path, method, _) in ROUTES.items():
         assert f'@v2_bp.route("{path}", methods=["{method}"])' in source
-        body = source[source.index(f"def {name}("):]
-        body = body[:body.index("@v2_bp.route") if "@v2_bp.route" in body else len(body)]
-        # The switch is read before anything else in the handler.
-        assert body.index("off = _off()") < min(
-            i for i in (body.find("db,"), body.find("_is_valid_uuid")) if i >= 0)
+    assert "_off()" not in source
     # The pass-code routes carry the rate limit against guessing.
     for name in ("v2_community_create", "v2_community_join"):
         head = source[:source.index(f"def {name}(")]
         assert head.rstrip().endswith("@require_auth")
         assert head[head.rindex("@v2_bp.route"):].count("@heavy_limit") == 1
-
-
-def test_off_every_route_answers_404_before_any_read():
-    import routes.v2.communities as route
-    app = Flask(__name__)
-    with patch.object(Config, "COMMUNITIES_ENABLED", False), \
-            patch.object(route, "db", _Refuses()):
-        for name, (_path, method, args) in ROUTES.items():
-            with app.test_request_context("/v2/x", method=method, json={"none": True}):
-                request.user_id = "u"
-                response, status = getattr(route, name).__wrapped__(*args)
-            assert status == 404, name
-            assert response.get_json() == {"code": "NOT_FOUND"}, name
 
 
 def test_on_the_routes_reach_the_service():

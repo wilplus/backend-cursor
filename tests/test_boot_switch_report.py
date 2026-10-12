@@ -42,10 +42,6 @@ def _line(**overrides: str) -> str:
         "TAKE_FEEDBACK_POLICY_V3_MODE": "off",
         "MLC3_SERVICE_ENABLED": "1",
         "MIGRATE_ON_BOOT": "(unset)",
-        "JUDGEMENT_AFTER_FEEDBACK_ENABLED": "on",
-        "PRAISE_AFTER_PRACTICE_ENABLED": "off",
-        "MACHINE_PRACTICE_CHECK_ENABLED": "off",
-        "COMMUNITIES_ENABLED": "off",
     }
     values.update(overrides)
     body = " ".join(f"{name}={value}" for name, value in values.items())
@@ -157,16 +153,16 @@ def test_migrate_on_boot_is_printed_not_compared(
     assert "MISMATCH" not in out
 
 
-def test_code_switch_mismatch(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+def test_watched_flag_mismatch(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
     module = _load()
     web = tmp_path / "web.txt"
     worker = tmp_path / "worker.txt"
-    web.write_text(_line(COMMUNITIES_ENABLED="on"), encoding="utf-8")
-    worker.write_text(_line(COMMUNITIES_ENABLED="off"), encoding="utf-8")
+    web.write_text(_line(MLC3_SERVICE_ENABLED="1"), encoding="utf-8")
+    worker.write_text(_line(MLC3_SERVICE_ENABLED="0"), encoding="utf-8")
     code = module.main([f"web={web}", f"worker={worker}"])
     out = capsys.readouterr().out
     assert code == 1
-    assert "MISMATCH COMMUNITIES_ENABLED: web=on worker=off" in out
+    assert "MISMATCH MLC3_SERVICE_ENABLED: web=1 worker=0" in out
 
 
 def test_malformed_argument(capsys: pytest.CaptureFixture[str]):

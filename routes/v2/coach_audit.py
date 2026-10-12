@@ -2,7 +2,7 @@
 audit (6a, F6) and the block pick (8, C5-b). Each lists this coach's pending
 items, sampled on the read up to the shared weekly cap, and takes one answer
 per item, once. Nothing here says what the detector or the Manager chose.
-Every route answers 404 while its constant is off. The work is
+The work is
 ``services.error_presence_audit`` and ``services.coach_block_pick``'.
 """
 from __future__ import annotations
@@ -37,11 +37,10 @@ def _coach_id() -> str:
 @require_admin_or_coach
 def v2_coach_error_audit_queue():
     """This coach's pending blind error checks, sampled up to the cap."""
-    from services.error_presence_audit import audit_enabled, queue, sample_for_coach
+    from services.error_presence_audit import queue, sample_for_coach
 
     def call():
-        if audit_enabled():
-            sample_for_coach(db, coach_id=_coach_id())
+        sample_for_coach(db, coach_id=_coach_id())
         return queue(db, coach_id=_coach_id())
     return _run("error audit queue", call)
 
@@ -60,12 +59,11 @@ def v2_coach_error_audit_answer(audit_id):
 @require_admin_or_coach
 def v2_coach_block_picks_queue():
     """This coach's pending block picks, sampled up to the shared cap."""
-    from services.coach_block_pick import block_pick_enabled, queue, sample_for_coach
+    from services.coach_block_pick import queue, sample_for_coach
     from services.error_presence_audit import week_key
 
     def call():
-        if block_pick_enabled():
-            sample_for_coach(db, coach_id=_coach_id(), week=week_key())
+        sample_for_coach(db, coach_id=_coach_id(), week=week_key())
         return queue(db, coach_id=_coach_id())
     return _run("block pick queue", call)
 
@@ -88,11 +86,10 @@ def v2_coach_v4_moment_picks_queue():
     """"Pick the moment for feedback": this rater's pending blocks, filled
     up to the week's cap. Words, audio, letters; nothing the machine chose."""
     from services.error_presence_audit import week_key
-    from services.v4_coach_sheets import fill_pick_sheets, pick_queue, sheets_enabled
+    from services.v4_coach_sheets import fill_pick_sheets, pick_queue
 
     def call():
-        if sheets_enabled():
-            fill_pick_sheets(db, rater_id=_coach_id(), week=week_key())
+        fill_pick_sheets(db, rater_id=_coach_id(), week=week_key())
         return pick_queue(db, rater_id=_coach_id())
     return _run("v4 moment pick queue", call)
 
@@ -113,11 +110,10 @@ def v2_coach_v4_surer_pairs_queue():
     """"Which sounds surer": this rater's pending pairs, filled up to the
     week's cap. Two texts only; never the slice or the level."""
     from services.error_presence_audit import week_key
-    from services.v4_coach_sheets import fill_surer_sheets, sheets_enabled, surer_queue
+    from services.v4_coach_sheets import fill_surer_sheets, surer_queue
 
     def call():
-        if sheets_enabled():
-            fill_surer_sheets(db, rater_id=_coach_id(), week=week_key())
+        fill_surer_sheets(db, rater_id=_coach_id(), week=week_key())
         return surer_queue(db, rater_id=_coach_id())
     return _run("v4 surer queue", call)
 

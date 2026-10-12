@@ -21,10 +21,6 @@ WATCHED: tuple[str, ...] = (
     "TAKE_FEEDBACK_POLICY_V3_MODE",
     "MLC3_SERVICE_ENABLED",
     "MIGRATE_ON_BOOT",
-    "JUDGEMENT_AFTER_FEEDBACK_ENABLED",
-    "PRAISE_AFTER_PRACTICE_ENABLED",
-    "MACHINE_PRACTICE_CHECK_ENABLED",
-    "COMMUNITIES_ENABLED",
 )
 
 #: Printed, never compared: only bin/railway-web.sh reads it. A worker

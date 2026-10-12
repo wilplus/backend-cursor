@@ -25,7 +25,6 @@ import inspect
 import unittest
 from unittest import mock
 
-from config import Config
 from services import coach_take_word as ctw
 from services import coach_word_pairs as cwp
 from services.processing_authorization import ProcessingAuthorizationError
@@ -116,7 +115,6 @@ class TranscribeTakeWordVideoTests(unittest.TestCase):
         db = db or _Db()
         calls: list = []
         patches = [
-            mock.patch.object(Config, "COACH_WORD_PAIRS_ENABLED", True, create=True),
             mock.patch("services.processing_authorization.ProcessingAuthorizationService",
                        return_value=auth),
             mock.patch("services.openai_service.OpenAIService", _provider(calls, auth.order)),

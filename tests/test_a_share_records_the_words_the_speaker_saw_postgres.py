@@ -273,8 +273,7 @@ def test_an_unknown_words_version_writes_no_row_and_a_listed_one_is_recorded(db)
 
     take, owner = str(uuid.uuid4()), str(uuid.uuid4())
     adapter = _PgShares(db, take, owner)
-    with patch.object(Config, "COMMUNITIES_ENABLED", True), \
-            patch.object(Config, "COMMUNITY_SHARE_POLICY_VERSION", POLICY), \
+    with patch.object(Config, "COMMUNITY_SHARE_POLICY_VERSION", POLICY), \
             patch("services.lend_your_ear.accepted_policy_at_least", return_value=True):
         status, payload = cm.share_take(
             adapter, owner_user_id=owner, take_session_id=take,

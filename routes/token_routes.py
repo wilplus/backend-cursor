@@ -171,17 +171,6 @@ def tokens_checkout():
     return jsonify(result.payload), result.http_status
 
 
-@tokens_bp.route("/v2/tokens/portal", methods=["POST"])
-@require_auth
-def tokens_portal():
-    """RETIRED (founder 2026-10-05, N48.3 Q13 A; contract 50): there are no
-    subscriptions to manage. Answers the house 410 rather than 404 because a
-    frontend deployed before this one, or a page left open, still calls it on
-    the click; the FE treats any refusal as "nothing to manage"."""
-    return jsonify({"code": "GONE", "error": "Plans are retired; purchases "
-                    "are one-time packages."}), 410
-
-
 @tokens_bp.route("/v2/tokens/history", methods=["GET"])
 @require_auth
 def tokens_history():
