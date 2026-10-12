@@ -41,6 +41,31 @@ version of this page is `docs/history/CLAUDE-2026-10-11.md`.
 **Does this make the transcript, the Ideal Text or the feedback better, or
 does a task in progress need it?** If not, say so and ask before building it.
 
+## How to test (founder, 2026-10-12)
+
+Test business behaviour and contracts, not lines of code. Before writing a
+test, ask:
+
+- **Does it map to something a speaker, coach or the founder cares about?**
+  Test public routes, service contracts and user outcomes, not private
+  helpers. A refactor that keeps the output right must not break a test.
+- **Is it a duplicate?** If another test already covers it, don't add one.
+- **Is it testing someone else's code?** Don't test libraries, the database
+  driver or the framework. Test only our own logic.
+- **Is it a style or layout check?** No snapshot or CSS tests unless a
+  break would stop the app working.
+- **Is it an unlikely edge case?** Handle it with defensive code (a
+  fallback, a try/except), not with many test variations.
+- **ML behaviour:** a strange model result becomes a new row in the one
+  golden evaluation set, never a new test script. Bad input data is caught
+  by validation in production code, not by mock datasets.
+- **One in, one out:** a feature that replaces an old one deletes the old
+  one's tests.
+- **Time budget:** a test that takes more than a few seconds or mocks
+  several services is the wrong test. Make it a small integration check.
+- **No coverage target.** Cover the critical path (record → Ideal Text →
+  feedback → next Take, consent, deletion, payments), not boilerplate.
+
 ## Security
 
 Never ask for or reuse passwords, tokens or keys in chat. Keys go into
