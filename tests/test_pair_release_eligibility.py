@@ -27,7 +27,6 @@ WEEK = date(2026, 10, 12)
 
 
 class _Config:
-    MLC2_PAIR_RELEASES_ENABLED = True
     PAIR_RELEASE_SURFACES = frozenset({"praise_line"})
     R2_PAIR_RELEASE_BUCKET = "willab-pair-releases"
     PAIR_RELEASE_SIGNING_KEY = "k" * 32

@@ -1119,12 +1119,6 @@ def is_corpus_import_session(session: Any) -> bool:
             and session.get("source") == CORPUS_IMPORT_SOURCE)
 
 
-def _import_switch_on() -> bool:
-    from services.training_import import import_enabled
-
-    return import_enabled()
-
-
 class CorpusImportAuthorization(ProcessingAuthorizationService):
     """The canonical boundary for a corpus import's provider calls.
 
@@ -1157,11 +1151,6 @@ class CorpusImportAuthorization(ProcessingAuthorizationService):
             raise ProcessingAuthorizationError(
                 "CORPUS_IMPORT_HAS_NO_PRINCIPAL",
                 "A corpus import is never processed under a person.", 403,
-            )
-        if not _import_switch_on():
-            raise ProcessingAuthorizationError(
-                "CORPUS_IMPORT_DISABLED",
-                "Training imports are switched off.", 403,
             )
         if not take_id:
             raise ProcessingAuthorizationError(

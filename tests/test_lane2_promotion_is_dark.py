@@ -5,16 +5,16 @@ LEGACY-1 (blocker) and J1-2 (major), audit 2026-09-22.
 ``scripts/promote_openai_model.py`` writes ``runtime_config`` and
 ``services/llm.py`` serves that model on the very next request — including
 the Take-1 Ideal Text composition (surface ``best_presentation``) and every
-Say It Stronger card. The three ``MLC2_*`` constants that document this lane
-as switched off were read by nothing on the path: an operator with the
-service-role key could change the words in a speaker's document, with the
-HTTP surface still answering "promotion is not active".
+Say It Stronger card. Before the audit nothing on the path was read: an
+operator with the service-role key could change the words in a speaker's
+document, with the HTTP surface still answering "promotion is not active".
 
-These tests are the gate. They assert refusal, never activation: every
-refusal test closes its constant explicitly and expects the lane to stand
-down. Since 2026-10-08 (founder: "turn it all ON") training and promotion
-ship open for the three coach-answer surfaces only; the Ideal Text and Say
-It Stronger stay on their stock model.
+These tests are the gate. They assert refusal, never activation. The gate is
+the founder's per-surface naming (``PROMOTION_SURFACES``; the global switch
+``MLC2_PROMOTION_ENABLED`` was removed 2026-10-12, "remove the learning
+doors"): since 2026-10-08 promotion ships open for the coach-answer and
+coach-word surfaces only; the Ideal Text and Say It Stronger stay on their
+stock model.
 """
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ class PromotionRefusesWhileTheGateIsShut(unittest.TestCase):
         clear_runtime_model_cache()
         self.addCleanup(clear_runtime_model_cache)
 
-    def test_promote_openai_model_refuses_when_mlc2_promotion_disabled(self):
+    def test_promote_openai_model_refuses_when_no_surface_is_named(self):
         import scripts.promote_openai_model as promote
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -72,21 +72,21 @@ class PromotionRefusesWhileTheGateIsShut(unittest.TestCase):
                 "--model-id", "ft:gpt-4.1-mini:org:proj:abc123",
                 "--evaluation-report", str(report),
             ]
-            with mock.patch.object(promote.Config, "MLC2_PROMOTION_ENABLED", False), \
+            with mock.patch.object(promote.Config, "PROMOTION_SURFACES", frozenset()), \
                  mock.patch("services.db.db.promote_runtime_surface_model") as spy, \
                  mock.patch("services.db.db.upsert_runtime_config") as legacy, \
                  mock.patch("sys.argv", argv):
                 with self.assertRaises(SystemExit) as caught:
                     promote.main()
 
-        self.assertIn("MLC2_PROMOTION_ENABLED", str(caught.exception))
+        self.assertIn("PROMOTION_SURFACES", str(caught.exception))
         spy.assert_not_called()
         legacy.assert_not_called()
 
     def test_resolve_surface_model_ignores_runtime_config_when_promotion_disabled(self):
         """The serving half. A row already in the table is not served."""
-        with mock.patch("services.runtime_model_gate.promotion_is_enabled",
-                        return_value=False):
+        with mock.patch("services.runtime_model_gate.promoted_keys",
+                        return_value=frozenset()):
             resolved = resolve_surface_model(
                 "best_presentation",
                 "gpt-4o-mini",
@@ -105,43 +105,7 @@ class PromotionRefusesWhileTheGateIsShut(unittest.TestCase):
 
         from services import llm
 
-        self.assertIn("MLC2_PROMOTION_ENABLED", inspect.getsource(llm))
-
-
-class TrainingAndExportRefuseWhileTheirGatesAreShut(unittest.TestCase):
-    """J1-2: the other two constants enforce something too."""
-
-    def test_finetune_script_refuses_when_training_disabled(self):
-        import scripts.run_openai_preference_finetune as finetune
-
-        argv = [
-            "run_openai_preference_finetune.py",
-            "--surface", "say_it_stronger",
-            "--train-file", "exports/train.jsonl",
-            "--val-file", "exports/val.jsonl",
-            "--manifest", "exports/rel.json",
-        ]
-        with mock.patch.object(finetune.Config, "MLC2_TRAINING_ENABLED", False), \
-             mock.patch("sys.argv", argv):
-            with self.assertRaises(SystemExit) as caught:
-                finetune.main()
-        self.assertIn("MLC2_TRAINING_ENABLED", str(caught.exception))
-
-    def test_export_script_refuses_when_dataset_releases_disabled(self):
-        import scripts.export_openai_preference_jsonl as export
-
-        argv = [
-            "export_openai_preference_jsonl.py",
-            "--surface", "say_it_stronger",
-            "--train-out", "exports/train.jsonl",
-            "--val-out", "exports/val.jsonl",
-            "--manifest-out", "exports/rel.json",
-        ]
-        with mock.patch.object(export.Config, "MLC2_DATASET_RELEASES_ENABLED", False), \
-             mock.patch("sys.argv", argv):
-            with self.assertRaises(SystemExit) as caught:
-                export.main()
-        self.assertIn("MLC2_DATASET_RELEASES_ENABLED", str(caught.exception))
+        self.assertIn("promoted_keys", inspect.getsource(llm))
 
 
 class TheGateAsShipped(unittest.TestCase):
@@ -151,33 +115,29 @@ class TheGateAsShipped(unittest.TestCase):
     three coach-answer surfaces only. The retired DPO lane stays shut.
     """
 
-    def test_the_lane2_constants_ship_as_the_founder_set_them(self):
-        self.assertIs(Config.MLC2_DATASET_RELEASES_ENABLED, False)
-        self.assertIs(Config.MLC2_TRAINING_ENABLED, True)
-        self.assertIs(Config.MLC2_PROMOTION_ENABLED, True)
+    def test_the_promotion_surfaces_ship_as_the_founder_set_them(self):
         self.assertEqual(Config.PROMOTION_SURFACES, frozenset(
             {"exercise_script", "praise_line", "clearer_version",
              "coach_moment_line", "coach_take_word"}))
 
-    def test_an_open_door_4_serves_only_the_named_surfaces(self):
-        """The global constant is not the decision; the named surfaces are.
+    def test_door_4_serves_only_the_named_surfaces(self):
+        """The named surfaces are the decision.
 
-        With door 4 open a stored row for the Ideal Text, Say It Stronger
-        or the chat models is still withheld: the founder named three
-        coach-answer surfaces, nothing else.
+        A stored row for the Ideal Text, Say It Stronger or the chat models
+        is withheld: the founder named the coach-answer and coach-word
+        surfaces, nothing else.
         """
         from services.runtime_model_gate import resolve_gated_model
 
-        with mock.patch.object(Config, "MLC2_PROMOTION_ENABLED", True):
-            for key in ("openai_surface_model_ideal_text",
-                        "openai_surface_model_say_it_stronger",
-                        "openai_surface_model_coach_comment_draft",
-                        "openai_chat_model", "openai_copilot_model"):
-                self.assertEqual(resolve_gated_model(
-                    key, read=lambda k: "ft:unnamed", default="stock"), "stock", key)
+        for key in ("openai_surface_model_ideal_text",
+                    "openai_surface_model_say_it_stronger",
+                    "openai_surface_model_coach_comment_draft",
+                    "openai_chat_model", "openai_copilot_model"):
             self.assertEqual(resolve_gated_model(
-                "openai_surface_model_praise_line",
-                read=lambda k: "ft:named", default="stock"), "ft:named")
+                key, read=lambda k: "ft:unnamed", default="stock"), "stock", key)
+        self.assertEqual(resolve_gated_model(
+            "openai_surface_model_praise_line",
+            read=lambda k: "ft:named", default="stock"), "ft:named")
 
     def test_the_promote_script_refuses_an_unnamed_surface(self):
         import scripts.promote_openai_model as promote
@@ -187,8 +147,7 @@ class TheGateAsShipped(unittest.TestCase):
             argv = ["promote_openai_model.py", "--surface", "ideal_text",
                     "--model-id", "ft:gpt-4.1-mini:org:proj:abc123",
                     "--evaluation-report", str(report)]
-            with mock.patch.object(promote.Config, "MLC2_PROMOTION_ENABLED", True), \
-                 mock.patch("services.db.db.promote_runtime_surface_model") as spy, \
+            with mock.patch("services.db.db.promote_runtime_surface_model") as spy, \
                  mock.patch("services.db.db.upsert_runtime_config") as legacy, \
                  mock.patch("sys.argv", argv):
                 with self.assertRaises(SystemExit) as caught:

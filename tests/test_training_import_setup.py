@@ -7,7 +7,6 @@ from unittest.mock import patch
 from flask import Flask, request
 
 import routes.v2.coach as route
-from config import Config
 from services.corpus_coach_queue import corpus_queue_open, queued_corpus_clip
 from services.corpus_split import speaker_key_for
 from services.training_import_setup import apply_setup, parse_setup, setup_complete
@@ -174,9 +173,8 @@ def test_unfinished_import_serves_no_queue_and_no_clip():
             "intake_context": {"topic": "Focus"}}
     done = {"id": SID, "source": "training_import",
             "intake_context": {"topic": "Focus", "language": "pl"}}
-    with patch("config.Config.TRAINING_IMPORT_ENABLED", True):
-        assert corpus_queue_open(bare) is False
-        assert corpus_queue_open(done) is True
+    assert corpus_queue_open(bare) is False
+    assert corpus_queue_open(done) is True
     snippet = {"id": SNIPPET_ID, "session_id": SID}
     session = {
         "id": SID,
@@ -225,17 +223,3 @@ def test_put_setup_route_saves_and_rejects_a_bad_uuid():
                 "not-a-uuid")
     assert status == 400
     assert response.get_json()["code"] == "INVALID_INPUT"
-
-
-def test_post_import_is_410_with_the_switch_off_and_the_default_is_on():
-    # ON since 2026-10-08 (founder: "turn it all ON"); the closed answer is
-    # pinned with the switch closed explicitly below.
-    assert Config.TRAINING_IMPORT_ENABLED is True
-    app = Flask(__name__)
-    with patch("config.Config.TRAINING_IMPORT_ENABLED", False):
-        with app.test_request_context(
-                "/v2/coach/training-imports", method="POST"):
-            result = route.v2_coach_training_import()
-    response, status = result[0], result[1]
-    assert status == 410
-    assert response.get_json()["code"] == "PHASE2_DISABLED"

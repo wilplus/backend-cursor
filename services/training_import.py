@@ -41,9 +41,9 @@ sees a project, because the project LIST is source-filtered. "Not a project"
 turns out to mean "an arc that isn't yours to see", not "no arc".
 
 SWITCHED ON, PROPERLY (founder 2026-10-06, panel answer CO1 A, decisions
-log N56.4). Behind ``Config.TRAINING_IMPORT_ENABLED`` (off: the fail-closed
-tombstone this lane answered since Phase 1), for coaches and admins only,
-for audio the founder holds the rights to, with the language required:
+log N56.4; its code switch removed 2026-10-12, "remove the learning
+doors"), for coaches and admins only, for audio the founder holds the
+rights to, with the language required:
 
   * each import runs the same confident-moment spotting as a Take, V3's
     blocks of about 75 words and the machine's pick per block
@@ -131,14 +131,6 @@ def normalize_stages(raw: Any) -> set:
     picked = {p for p in parts if p in ALL_STAGES}
     picked.add(STAGE_CONFIDENCE)
     return picked
-
-
-def import_enabled() -> bool:
-    """The founder's switch (``Config.TRAINING_IMPORT_ENABLED``), read on
-    every call."""
-    from config import Config
-
-    return Config.TRAINING_IMPORT_ENABLED is True
 
 
 _AUDIO_EXTS = (".webm", ".mp3", ".m4a", ".wav", ".ogg", ".flac", ".mp4",
@@ -230,15 +222,8 @@ def import_training_audio(
 
 
 def _refusal(language: Optional[str]) -> Optional[dict]:
-    """Why an import may not start, or None: the switch is closed (the
-    fail-closed tombstone this lane answered since Phase 1), or no language
-    was given (N56.4: the language is required)."""
-    if not import_enabled():
-        return {
-            "ok": False,
-            "reason": "phase2_training_disabled",
-            "detail": "Legacy training imports are unavailable under Phase 1.",
-        }
+    """Why an import may not start, or None: no language was given (N56.4:
+    the language is required)."""
     if not (isinstance(language, str) and language.strip()):
         return {"ok": False, "reason": "no_language",
                 "detail": "language is required (ISO-639-1, e.g. pl)"}
@@ -308,10 +293,8 @@ def prepare_training_import(
     Returns the prepared context for run_training_import_analysis, or an
     ``{"ok": False, "reason": ...}`` the caller can surface. Never raises.
 
-    OPEN ONLY WHILE ``Config.TRAINING_IMPORT_ENABLED`` (founder 2026-10-06,
-    CO1 A, N56.4). Closed, this answers the fail-closed tombstone it answered
-    before, for the route and the CLI alike, and touches nothing. An import
-    creates corpus rows only: no dataset release, no training."""
+    Open since 2026-10-06 (founder, CO1 A, N56.4). An import creates corpus
+    rows only: no dataset release, no training."""
     refused = _refusal(language)
     if refused is not None:
         return refused

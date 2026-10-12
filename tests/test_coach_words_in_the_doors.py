@@ -28,7 +28,6 @@ from services import coach_word_pairs as cwp
 from services import feedback_pairs as fp
 from services import golden_evaluation as ge
 from services import golden_set as gs
-from services import learning_ledger as ll
 from services import model_promotion as mp
 from services import model_training as mt
 from services import pair_consent as pc
@@ -88,7 +87,7 @@ class TheDoorsKnowBothSurfaces(unittest.TestCase):
 class DoorTwo(unittest.TestCase):
     def test_named_vs_not_named(self):
         for surface in COACH_WORDS:
-            self.assertIn("door 2 closed", pr.why_not(_Config2(), surface))
+            self.assertIn("no founder sentence", pr.why_not(_Config2(), surface))
             self.assertIn("no founder sentence", pr.why_not(_open2("praise_line"), surface))
             self.assertIsNone(pr.why_not(_open2(surface), surface))
             self.assertEqual(pr.authorised_surfaces(_open2(surface)), frozenset({surface}))
@@ -263,7 +262,7 @@ class DoorThree(unittest.TestCase):
 
     def test_named_vs_not_named(self):
         for surface in COACH_WORDS:
-            self.assertIn("door 3 closed", mt.why_not(_Config34(), surface))
+            self.assertIn("no founder sentence", mt.why_not(_Config34(), surface))
             self.assertIn("no founder sentence", mt.why_not(_open3("praise_line"), surface))
             self.assertIsNone(mt.why_not(_open3(surface), surface))
             db = _Db34(pairs=[_word_pair(i, surface=surface) for i in range(300)])
@@ -339,7 +338,7 @@ class DoorFour(unittest.TestCase):
 
     def test_named_vs_not_named(self):
         for surface in COACH_WORDS:
-            self.assertIn("door 4 closed", mp.why_not(_Config34(), surface))
+            self.assertIn("no founder sentence", mp.why_not(_Config34(), surface))
             db = self._db(surface)
             with self.assertRaises(mp.PromotionRefusal) as refused:
                 mp.promote(db, surface=surface, candidate_model="ft:w",
@@ -368,13 +367,6 @@ class DoorFour(unittest.TestCase):
 
 
 class TheLedger(unittest.TestCase):
-    def test_doors_three_and_four_list_their_named_surfaces(self):
-        c = _open3("coach_take_word")
-        c.PROMOTION_SURFACES = frozenset({"coach_moment_line"})
-        doors = ll.doors(c)
-        self.assertEqual(doors["training"]["surfaces"], ["coach_take_word"])
-        self.assertEqual(doors["promotion"]["surfaces"], ["coach_moment_line"])
-
     def test_the_pace_panel_has_a_jar_per_coach_word_surface(self):
         from services.learning_pace import JARS
         ids = {jar[0] for jar in JARS}

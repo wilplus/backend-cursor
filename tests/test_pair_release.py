@@ -1,13 +1,12 @@
-"""Doors 1 and 2, the machinery with both doors closed (founder 2026-09-30,
+"""Doors 1 and 2, the machinery (founder 2026-09-30,
 L1, L2, L5; build plan ML-8, ML-9).
 
 Pins:
   * a pair is stamped at write with its owner's consent; a surface outside
     counsel's list is releasable without a yes; no principal is unknown and
     not releasable; every surface needs the yes today;
-  * nothing leaves while door 2 is closed, or open without the founder's
-    sentence for the surface, or without a bucket and a key; the reason is
-    words;
+  * nothing leaves without the founder's sentence for the surface, or
+    without a bucket and a key; the reason is words;
   * with everything in place only releasable pairs leave, once, under one
     release, with a manifest whose sha256 is signed and verifiable, split
     speaker-disjoint, carrying no user id, coach id or take;
@@ -33,7 +32,6 @@ from services import learning_weekly as lw
 
 
 class _Config:
-    MLC2_PAIR_RELEASES_ENABLED = False
     PAIR_RELEASE_SURFACES: frozenset = frozenset()
     R2_PAIR_RELEASE_BUCKET = ""
     PAIR_RELEASE_SIGNING_KEY = ""
@@ -42,7 +40,6 @@ class _Config:
 
 def _open(*surfaces):
     c = _Config()
-    c.MLC2_PAIR_RELEASES_ENABLED = True
     c.PAIR_RELEASE_SURFACES = frozenset(surfaces)
     c.R2_PAIR_RELEASE_BUCKET = "willab-pair-releases"
     c.PAIR_RELEASE_SIGNING_KEY = "k" * 32
@@ -232,9 +229,9 @@ class StampTests(unittest.TestCase):
 
 
 class DoorTests(unittest.TestCase):
-    def test_nothing_leaves_while_the_door_is_closed_and_the_reason_is_words(self):
+    def test_nothing_leaves_without_the_founders_sentence_and_the_reason_is_words(self):
         self.assertEqual(pr.authorised_surfaces(_Config()), frozenset())
-        self.assertIn("door 2 closed", pr.why_not(_Config(), "praise_line"))
+        self.assertIn("no founder sentence", pr.why_not(_Config(), "praise_line"))
         c = _open()
         self.assertIn("no founder sentence", pr.why_not(c, "praise_line"))
         c = _open("praise_line")
@@ -255,19 +252,15 @@ class DoorTests(unittest.TestCase):
         self.assertEqual(db.releases, [])
 
     def test_the_doors_in_config_are_what_the_founder_said(self):
-        """Door 1 opened 2026-10-01 ("open door 1"); door 2 opened the same
-        day for exercise_script ("open door 2 for surface exercise_script",
-        N16) and then for praise_line and clearer_version by their own
-        sentences (C4, N18). Doors 3 and 4 opened 2026-10-08 for the same
-        three surfaces (founder: "turn it all ON"). The retired DPO dataset
-        lane stays dark; the Phase 7 coach-word surfaces have no sentence
-        yet."""
+        """Door 2 opened 2026-10-01 for exercise_script ("open door 2 for
+        surface exercise_script", N16) and then for praise_line and
+        clearer_version by their own sentences (C4, N18). Doors 3 and 4
+        opened 2026-10-08 (founder: "turn it all ON"), the coach-word
+        surfaces with them (N68). The door switches were removed 2026-10-12
+        ("remove the learning doors"); the named surfaces remain."""
         from config import Config
-        self.assertTrue(Config.MLC2_TRAINING_SWITCH_ENABLED)
-        self.assertTrue(Config.MLC2_PAIR_RELEASES_ENABLED)
         three = frozenset({"exercise_script", "praise_line", "clearer_version", "coach_moment_line", "coach_take_word"})  # five since 2026-10-08 (coach words, N68)
         self.assertEqual(Config.PAIR_RELEASE_SURFACES, three)
-        self.assertFalse(Config.MLC2_DATASET_RELEASES_ENABLED)
         self.assertEqual(pr.authorised_surfaces(Config), three)
         for surface in sorted(three):
             reason = pr.why_not(Config, surface)
@@ -275,8 +268,6 @@ class DoorTests(unittest.TestCase):
             # CI they are unset, so the only reason left is one of those two.
             self.assertTrue(reason is None or "no release bucket" in reason
                             or "no signing key" in reason, (surface, reason))
-        self.assertTrue(Config.MLC2_TRAINING_ENABLED)
-        self.assertTrue(Config.MLC2_PROMOTION_ENABLED)
         self.assertEqual(Config.TRAINING_SURFACES, three)
         self.assertEqual(Config.PROMOTION_SURFACES, three)
 
@@ -420,7 +411,7 @@ FILE = ("willab-pair-releases", "pair-releases/praise_line/2026-09-28/pairs.json
 MANIFEST = ("willab-pair-releases", "pair-releases/praise_line/2026-09-28/manifest.json")
 LEDGER = {"ledger_version": "learning-ledger-v1",
           "pairs": {"praise_line": {"total": 1, "unexported": 1}},
-          "exercise_jar": {}, "shadow_cues": {}, "doors": {}, "unavailable": []}
+          "exercise_jar": {}, "shadow_cues": {}, "unavailable": []}
 
 
 def _export(db, storage):
@@ -576,13 +567,13 @@ class WeeklyTests(unittest.TestCase):
         db = _Db(pairs=[_pair(1)])
         ledger = {"ledger_version": "learning-ledger-v1",
                   "pairs": {"praise_line": {"total": 1, "unexported": 1}},
-                  "exercise_jar": {}, "shadow_cues": {}, "doors": {}, "unavailable": []}
+                  "exercise_jar": {}, "shadow_cues": {}, "unavailable": []}
         with mock.patch("services.learning_ledger.ledger", return_value=ledger), \
              mock.patch.object(lw, "_export_pairs", wraps=lw._export_pairs) as export:
             report = lw.run_weekly(db, config=_Config(), now=datetime(2026, 9, 30, tzinfo=timezone.utc))
         self.assertEqual(report["consent_refresh"]["refreshed"], 3)
         self.assertEqual(report["release_sweep"]["purged"], 0)
-        self.assertIn("door 2 closed", report["exported"][0]["why"])
+        self.assertIn("no founder sentence", report["exported"][0]["why"])
         self.assertEqual(db.releases, [])
         self.assertTrue(export.called)
         self.assertEqual(db.snapshot["snapshot"]["doors_pass"]["consent_refresh"]["refreshed"], 3)
@@ -603,7 +594,7 @@ class FoundationHealthTests(unittest.TestCase):
         db = _Db(pairs=[])
         db.get_mlc2_foundation_health = lambda: dict(self.HEALTH)
         ledger = {"ledger_version": "learning-ledger-v1", "pairs": {},
-                  "exercise_jar": {}, "shadow_cues": {}, "doors": {}, "unavailable": []}
+                  "exercise_jar": {}, "shadow_cues": {}, "unavailable": []}
         with mock.patch("services.learning_ledger.ledger", return_value=ledger):
             report = lw.run_weekly(db, config=_Config(), now=datetime(2026, 10, 5, tzinfo=timezone.utc))
         health = report["foundation_health"]

@@ -17,8 +17,7 @@ bucket with a manifest the job signs:
     week never overwrites them; if anything after the row fails, the
     release is voided ('export_failed', 0456) and the sweep deletes what
     was written;
-  * a surface leaves only when the door is open in code AND the founder
-    named the surface (Config.PAIR_RELEASE_SURFACES) by a reviewed change
+  * a surface leaves only when the founder named the surface (Config.PAIR_RELEASE_SURFACES) by a reviewed change
     carrying his sentence; every other surface reports why it stayed. The
     door knows the three answer surfaces and, since Privacy/Terms 3.5
     (signed 2026-10-08, N68), the coach's own two (coach_moment_line,
@@ -62,28 +61,17 @@ class ReleaseRefusal(Exception):
     """Why a surface did not leave. Never a fault: the job reports it."""
 
 
-def door_open(config: Any) -> bool:
-    """Door 2 is MLC2_PAIR_RELEASES_ENABLED (its own constant since
-    2026-10-01: the DPO dataset-release lane keeps MLC2_DATASET_RELEASES_ENABLED
-    and stays dark)."""
-    return bool(getattr(config, "MLC2_PAIR_RELEASES_ENABLED", False))
-
-
 def authorised_surfaces(config: Any) -> frozenset:
-    """The surfaces the founder authorised, or nothing while door 2 is
-    closed in code (both flips are reviewed changes)."""
-    if not door_open(config):
-        return frozenset()
+    """The surfaces the founder authorised (door 2 open since 2026-10-01;
+    its code switch was removed 2026-10-12, "remove the learning doors")."""
     named: Any = getattr(config, "PAIR_RELEASE_SURFACES", frozenset()) or frozenset()
     return frozenset(s for s in named if s in SURFACES)
 
 
 def why_not(config: Any, surface: str) -> Optional[str]:
     """None when the surface may leave; else the reason, in words."""
-    if not door_open(config):
-        return "door 2 closed (MLC2_PAIR_RELEASES_ENABLED)"
     if surface not in authorised_surfaces(config):
-        return "door 2 open, but no founder sentence for this surface yet (PAIR_RELEASE_SURFACES)"
+        return "no founder sentence for this surface yet (PAIR_RELEASE_SURFACES)"
     if not (getattr(config, "R2_PAIR_RELEASE_BUCKET", "") or "").strip():
         return "no release bucket (R2_PAIR_RELEASE_BUCKET)"
     if not (getattr(config, "PAIR_RELEASE_SIGNING_KEY", "") or "").strip():

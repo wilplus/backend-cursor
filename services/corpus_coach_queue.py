@@ -2,7 +2,7 @@
 panel answer CO1 A, decisions log N56.4: "Tests cover the whole path:
 import, spotting, queue, label, split").
 
-THE GAP THIS CLOSES. With ``Config.TRAINING_IMPORT_ENABLED`` on, an import
+THE GAP THIS CLOSES. With the corpus import on, an import
 was analysed, spotted, queued and split, and still could not be judged:
 
   * ``GET /v2/coach/sessions/<id>/confidence-queue`` presents a row only
@@ -67,13 +67,11 @@ def is_corpus_import(session: Any) -> bool:
 
 
 def corpus_queue_open(session: Any) -> bool:
-    """An import's queue is served from its own cohort only while the
-    founder's switch is on; off, the queue route answers what it answered
-    before (no canonical evidence, so nothing)."""
-    from services.training_import import import_enabled
+    """An import's queue is served from its own cohort once its set-up is
+    complete."""
     from services.training_import_setup import setup_complete
 
-    return (is_corpus_import(session) and import_enabled()
+    return (is_corpus_import(session)
             and setup_complete(session.get("intake_context")))
 
 

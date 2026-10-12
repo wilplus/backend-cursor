@@ -25,10 +25,7 @@ from werkzeug.utils import secure_filename
 
 from config import Config
 from routes.admin import is_admin, require_admin_or_coach
-from routes.phase2_guard import (
-    operational_purpose_disabled,
-    training_import_enabled,
-)
+from routes.phase2_guard import operational_purpose_disabled
 from routes.v2.blueprint import v2_bp
 from routes.v2.processing_authorization import speaker_provider_route
 from services.rate_limits import heavy_limit, llm_limit, whisper_limit
@@ -2093,7 +2090,6 @@ def _register_corpus_import(prepared: dict):
 
 
 @v2_bp.route("/coach/training-imports", methods=["POST"])
-@training_import_enabled
 @whisper_limit
 @require_admin_or_coach
 def v2_coach_training_import():
@@ -2129,8 +2125,8 @@ def v2_coach_training_import():
                     divided across boundary, balance, and random exploration.
 
     ONE FILE PER REQUEST: per-file progress and failures, no job queue.
-    OPEN ONLY WHILE Config.TRAINING_IMPORT_ENABLED (founder 2026-10-06, CO1
-    A, N56.4); off, 410 PHASE2_DISABLED as before. Each import runs the V3
+    Open since 2026-10-06 (founder, CO1 A, N56.4); its code switch was
+    removed 2026-10-12 ("remove the learning doors"). Each import runs the V3
     spotting and its speaker's fixed 80/20 split. source='training_import'
     keeps it out of the speaker's project list AND their acoustic baseline
     (imports are z-scored against themselves): services/training_import.py.
@@ -2956,15 +2952,13 @@ def _confidence_queue_presented(visible_rows, *, sess, session_id):
 
 
 @v2_bp.route("/coach/corpus/clips/<snippet_id>/playback", methods=["GET"])
-@training_import_enabled
 @require_admin_or_coach
 def v2_coach_corpus_clip_playback(snippet_id):
     """Play one queued clip of a corpus import (founder 2026-10-06, CO1 A,
     N56.4). Replaces, for imports, the retired ``/v2/coach/mlc3/
     source-playback/<id>`` the corpus page still points at.
 
-    Open only while ``Config.TRAINING_IMPORT_ENABLED`` (off: the import's
-    410 PHASE2_DISABLED), coaches and admins only, language-matched like the
+    Coaches and admins only, language-matched like the
     queue and the label. Only a clip in an import's frozen label queue
     plays; anything else (unknown, an ordinary Take's clip, a clip the
     cohort did not draw) is the same 404.

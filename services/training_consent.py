@@ -14,12 +14,11 @@ answers to stable codes. User-facing words for those codes live in the
 frontend and are the founder's (N10).
 
 OPEN since 2026-10-01 (door 1, the founder's sentence "open door 1";
-docs/LEARNING-DOORS.md). `Config.MLC2_TRAINING_SWITCH_ENABLED` is a code
-constant, True since then; only a reviewed change setting it back to False
-makes the route answer 410 again. The training policy row the yes rests on
-(`training-only-v1`) was registered by the founder the same day, per that
-document; whenever no training policy is active, `_read` answers
-`available: false` and there is nothing to turn on.
+docs/LEARNING-DOORS.md). Its code switch was removed on 2026-10-12 (founder:
+"remove the learning doors"); the route always answers. The training policy
+row the yes rests on (`training-only-v1`) was registered by the founder the
+same day, per that document; whenever no training policy is active, `_read`
+answers `available: false` and there is nothing to turn on.
 
 THE ONE CONSENT AUTHORITY (founder 2026-10-05, N48.5 Q27 A; migration 0430).
 This yes is also what admits a person's Takes into the confidence chain; the
@@ -52,12 +51,6 @@ class TrainingSwitchError(Exception):
         super().__init__(code)
         self.code = code
         self.status = status
-
-
-def switch_enabled() -> bool:
-    from config import Config
-
-    return getattr(Config, "MLC2_TRAINING_SWITCH_ENABLED", False) is True
 
 
 def _read(database: Any, owner_id: str) -> tuple[dict | None, dict]:

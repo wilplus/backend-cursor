@@ -153,20 +153,19 @@ class GoldenTests(unittest.TestCase):
 
 
 class OverviewTests(unittest.TestCase):
-    def test_every_closed_door_is_named_in_words(self):
+    def test_every_empty_panel_is_named_in_words(self):
         class _Config:
-            MLC2_TRAINING_SWITCH_ENABLED = False
-            MLC2_PAIR_RELEASES_ENABLED = False
-            MLC2_TRAINING_ENABLED = False
-            MLC2_PROMOTION_ENABLED = False
+            PAIR_RELEASE_SURFACES: frozenset = frozenset()
         db = _Db()
         db.corpus = []
         out = rv.overview(db, config=_Config())
         self.assertEqual(out["view_version"], rv.VIEW_VERSION)
+        self.assertNotIn("doors", out)
         for surface in ("praise_line", "clearer_version", "exercise_script"):
-            self.assertIn("door 1 closed", out["datasets"][surface]["consent_note"])
-            self.assertIn("door 2 closed", out["datasets"][surface]["splits_note"])
-        self.assertIn("door 3 closed", out["evaluations"]["note"])
+            self.assertEqual(out["datasets"][surface]["consent_note"],
+                             "no pair on this surface yet")
+            self.assertIn("not open for this surface", out["datasets"][surface]["splits_note"])
+        self.assertEqual(out["evaluations"]["note"], "no candidate has been evaluated yet")
         self.assertTrue(all(p["model"] is None for p in out["promotions"]))
         self.assertEqual(out["golden"]["confidence"]["count"], 0)
         self.assertEqual(out["labels"]["labels"], 0)

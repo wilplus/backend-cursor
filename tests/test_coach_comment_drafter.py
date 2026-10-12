@@ -206,14 +206,15 @@ class GenerateCoachNoteDraftTests(unittest.TestCase):
 
         Until then this passed with the gate SHUT, which was the finding: a
         promoted model reached a user-facing generator with nobody deciding.
-        `services.llm` now withholds it unless the founder has opened
-        `MLC2_PROMOTION_ENABLED`, so what this asserts is the decision, not
-        the presence of a row.
+        `services.llm` now withholds it unless the founder has named the
+        surface for door 4 (`PROMOTION_SURFACES`), so what this asserts is
+        the decision, not the presence of a row.
         """
         from unittest.mock import patch
 
-        gate = patch("services.runtime_model_gate.promotion_is_enabled",
-                     return_value=True)
+        gate = patch("services.runtime_model_gate.promoted_keys",
+                     return_value=frozenset(
+                         {"openai_surface_model_coach_comment_draft"}))
         gate.start()
         self.addCleanup(gate.stop)
 

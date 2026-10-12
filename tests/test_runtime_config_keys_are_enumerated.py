@@ -77,8 +77,8 @@ class ReadingAModelKeyIsGated(unittest.TestCase):
         """R-13's own regression: the copilot/chat keys obey the same gate."""
         from services.openai_service import OpenAIService
 
-        with mock.patch("services.runtime_model_gate.promotion_is_enabled",
-                        return_value=False), \
+        with mock.patch("services.runtime_model_gate.promoted_keys",
+                        return_value=frozenset()), \
              mock.patch("services.db.db.get_runtime_config",
                         return_value="ft:gpt-4.1-mini:org:proj:smuggled"), \
              mock.patch("services.llm_client.build_openai_client", return_value=None):

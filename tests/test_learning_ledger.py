@@ -1,6 +1,6 @@
 """The founder's ledger (build plan ML-2): counts about the machine, never
 about a person; a source that fails is named, never read as zero; the
-doors are read from the constants and cannot be changed here."""
+door switches were removed 2026-10-12, so ``doors`` is always empty."""
 from __future__ import annotations
 
 import unittest
@@ -10,10 +10,7 @@ from services import learning_ledger as ll
 
 
 class _Config:
-    MLC2_TRAINING_SWITCH_ENABLED = False
-    MLC2_PAIR_RELEASES_ENABLED = False
-    MLC2_TRAINING_ENABLED = False
-    MLC2_PROMOTION_ENABLED = False
+    pass
 
 
 class LedgerTests(unittest.TestCase):
@@ -38,7 +35,7 @@ class LedgerTests(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def test_every_jar_and_every_door_is_named(self):
+    def test_every_jar_is_named(self):
         with mock.patch("services.feedback_pairs.counts", return_value={
                     "praise_line": {"total": 1, "unexported": 1},
                     "clearer_version": {"total": 0, "unexported": 0},
@@ -64,8 +61,8 @@ class LedgerTests(unittest.TestCase):
         self.assertFalse(out["shadow_cues"]["filler_cluster"]["ready"])
         self.assertIn("Yes answers", out["shadow_cues"]["filler_cluster"]["why_not"])
         self.assertEqual(out["shadow_cues"]["filler_cluster"]["named"], 40)
-        self.assertEqual(set(out["doors"]), {"consent", "dataset_release", "training", "promotion"})
-        self.assertFalse(any(d["open"] for d in out["doors"].values()))
+        # Kept empty until the frontend's pace panel stops reading it.
+        self.assertEqual(out["doors"], {})
         self.assertEqual(out["coach_load"]["moments_opened"], 0)
 
     def _with_exportable(self, exportable_unexported, *, down=False):
@@ -107,21 +104,6 @@ class LedgerTests(unittest.TestCase):
             out = ll.ledger(object(), config=_Config())
         self.assertEqual(out["unavailable"], ["pairs"])
         self.assertEqual(out["pairs"], {})
-
-    def test_the_doors_are_the_code_constants(self):
-        from config import Config
-        doors = ll.doors(Config())
-        # Doors 1 and 2 opened 2026-10-01 by the founder's sentences (door 2
-        # for exercise_script only); doors 3 and 4 opened 2026-10-08
-        # (founder: "turn it all ON") for the same three surfaces.
-        self.assertTrue(doors["consent"]["open"])
-        self.assertTrue(doors["dataset_release"]["open"])
-        # Door 2 for all three existing surfaces (N16, then C4 / N18).
-        self.assertEqual(doors["dataset_release"]["surfaces"],
-                         ["clearer_version", "coach_moment_line", "coach_take_word",
-                          "exercise_script", "praise_line"])
-        self.assertTrue(doors["training"]["open"])
-        self.assertTrue(doors["promotion"]["open"])
 
 
 if __name__ == "__main__":

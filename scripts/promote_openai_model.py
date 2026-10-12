@@ -60,21 +60,15 @@ def main() -> None:
     #
     # This script was the only writer of `runtime_config`, and
     # `services/llm.py` served what it wrote within sixty seconds — on the
-    # Take-1 Ideal Text composition and every Say It Stronger card. The three
-    # MLC2_* constants documented the lane as switched off and were read by
-    # nothing on the path, so an operator with the service-role key could
-    # change the words in a speaker's document while the HTTP surface still
-    # answered "promotion is not active".
+    # Take-1 Ideal Text composition and every Say It Stronger card, so an
+    # operator with the service-role key could change the words in a
+    # speaker's document while the HTTP surface still answered "promotion is
+    # not active".
     #
     # Checked FIRST, before the evaluation report is even opened, so that a
-    # refusal cannot be confused with a report problem.
-    if not Config.MLC2_PROMOTION_ENABLED:
-        raise SystemExit(
-            "Promotion is disabled: MLC2_PROMOTION_ENABLED is false. This is "
-            "the shipped posture; opening it is a founder decision taken in "
-            "the activation runbook with the readiness evaluators green, not "
-            "a flag flipped at promotion time."
-        )
+    # refusal cannot be confused with a report problem. (The global switch
+    # MLC2_PROMOTION_ENABLED was removed 2026-10-12, "remove the learning
+    # doors"; the per-surface naming is the gate.)
     # Door 4 is open per surface (founder 2026-10-08: the three surfaces in
     # PROMOTION_SURFACES); a surface the founder did not name stays shut.
     if contract.id not in (Config.PROMOTION_SURFACES or frozenset()):

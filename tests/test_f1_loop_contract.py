@@ -361,7 +361,9 @@ def test_a_promoted_model_cannot_reach_the_document_without_a_gate():
     """The only finding in the audit that can silently alter F1 output.
 
     Closed by WS1 (ws1-ungated-promotion): the promotion script refuses
-    before any write while `MLC2_PROMOTION_ENABLED` is false,
+    before any write for a surface the founder did not name in
+    `PROMOTION_SURFACES` (the global `MLC2_PROMOTION_ENABLED` switch it
+    first read was removed 2026-10-12),
     `resolve_surface_model` returns the caller's own default rather than the
     stored row, `llm.chat_complete` asserts the gate ran before the provider
     call, and migration 0352 makes the table itself refuse an ungated write.
@@ -373,7 +375,7 @@ def test_a_promoted_model_cannot_reach_the_document_without_a_gate():
     from services.runtime_model_gate import MODEL_CONFIG_KEYS
 
     # 1. The serving path consults the gate, where a reader will meet it.
-    assert "MLC2_PROMOTION_ENABLED" in inspect.getsource(llm), (
+    assert "promoted_keys" in inspect.getsource(llm), (
         "the serving path never consults the promotion gate"
     )
 
@@ -381,8 +383,8 @@ def test_a_promoted_model_cannot_reach_the_document_without_a_gate():
     ml_surface_contracts.clear_runtime_model_cache()
     try:
         with unittest.mock.patch(
-            "services.runtime_model_gate.promotion_is_enabled",
-            return_value=False,
+            "services.runtime_model_gate.promoted_keys",
+            return_value=frozenset(),
         ):
             served = ml_surface_contracts.resolve_surface_model(
                 "best_presentation", "gpt-4o-mini",

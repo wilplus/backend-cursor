@@ -1,12 +1,12 @@
 """Door 3: a fine-tune at 200 (founder 2026-09-30, L7; counsel 2026-10-01;
-build plan ML-11). Built with the door closed; door 3 OPEN since 2026-10-08
-for exercise_script, praise_line and clearer_version (founder: "turn it all
-ON"), held behind Privacy and Terms 3.5 publication.
+build plan ML-11). Door 3 OPEN since 2026-10-08 (founder: "turn it all
+ON"), held behind Privacy and Terms 3.5 publication; its code switch was
+removed 2026-10-12 (founder: "remove the learning doors").
 
 Once a week, after the export and the sweep (services.learning_weekly):
 
-  * a surface may train only when ``MLC2_TRAINING_ENABLED`` is True AND
-    the founder named it (``Config.TRAINING_SURFACES``, "open door 3 for
+  * a surface may train only when the founder named it
+    (``Config.TRAINING_SURFACES``, "open door 3 for
     surface S"), the key is set, and its golden set is sealed (ML-10);
     every other surface reports why it waited, in words;
   * the examples are pairs that LEFT through door 2 (``release_id``), are
@@ -60,23 +60,15 @@ PAIRS_PER_RUN = 200
 TERMINAL = ("succeeded", "failed", "cancelled")
 
 
-def door_open(config: Any) -> bool:
-    return bool(getattr(config, "MLC2_TRAINING_ENABLED", False))
-
-
 def authorised_surfaces(config: Any) -> frozenset:
-    if not door_open(config):
-        return frozenset()
     named: Any = getattr(config, "TRAINING_SURFACES", frozenset()) or frozenset()
     return frozenset(s for s in named if s in SURFACES)
 
 
 def why_not(config: Any, surface: str) -> Optional[str]:
     """None when the surface may train; else the reason, in words."""
-    if not door_open(config):
-        return "door 3 closed (MLC2_TRAINING_ENABLED)"
     if surface not in authorised_surfaces(config):
-        return "door 3 open, but no founder sentence for this surface yet (TRAINING_SURFACES)"
+        return "no founder sentence for this surface yet (TRAINING_SURFACES)"
     if not (getattr(config, "OPENAI_API_KEY", "") or "").strip():
         return "no OpenAI key (OPENAI_API_KEY)"
     return None
