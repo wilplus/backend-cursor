@@ -15,6 +15,7 @@ sections is in `docs/history/CLAUDE-2026-10-11.md`.
 | The recording screens (learning screen, mic ready, recording screen, keys, motion) | <https://claude.ai/artifact/9CFAAP2Ue7pvRdLvdesn9h> (v7) | `FOUNDER-LOCK-recording-screens-2026-10-07.md` |
 | The consent screens and Data & consent page | <https://claude.ai/artifact/TuMKSE2BH364ZQ1Eq4UMdd> (v2); settings <https://claude.ai/artifact/4jDJsvBAquMUgaGkJgHR76> | `FOUNDER-LOCK-consent-screens-2026-10-07.md` |
 | Moment and feedback as one chat with a lens: the walk (lens on) and the Lounge (lens off), green moments, one exercise, practice, judging others, the closing summary, the Ideal Text page without bookmarks, sharing before the next recording (amends the walk, Ideal Text and coach-answer locks) | <https://claude.ai/artifact/TXbwmupWJio6N1gHqdEa7p> (version 27) | `FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md` |
+| The AI version of your voice in practice: the AI clip in the voice Exercise (in place of a video that doesn't fit, and after a try that isn't better yet, at most 3), and its card on Data & consent (adds one step to the moment and feedback chat and one card to the consent screens) | <https://claude.ai/artifact/G8Am3fR3f3SzAdTkwyUGKZ> (v8); card <https://claude.ai/artifact/1AUfoqBtZThxVbQKz1BTih> (v2) | `FOUNDER-LOCK-ai-voice-practice-2026-10-12.md` |
 
 Three rules that always hold on these screens: the coach's Judge screen stays
 blind (nothing about the moment is fetched until the coach answers); the

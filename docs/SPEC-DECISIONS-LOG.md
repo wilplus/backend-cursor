@@ -2445,3 +2445,23 @@ Space and Enter. Asked what → and Space do on the last slide, the founder
 chose "Nothing, small bounce": keys never end a Take, only the red Finish
 take does. Prototype <https://claude.ai/artifact/LU1XgQyqY2nPSvDAmsRJFo>
 (version 2), copy in `docs/design/recording-screens-2026-10-12-keys.html`.
+
+**N71 · The AI version of your voice in practice (founder, chat, 12 October
+2026).** In the voice Exercise only, the app plays the speaker's own sentence
+in an AI version of their voice (ElevenLabs Instant Voice Clone, Eleven v4),
+said a little better: pace, pause or stress, chosen by a new per-problem
+severity (0–1, ≥ 0.4) against the speaker's baseline. The clip takes the
+library video's place when no video fits exactly (D-rule: exact fit and the
+same problem), and follows a try that is not yet better, at most 3 per
+exercise. It is made only in that lane, once per exercise (D4), checked
+before it is shown, words included (D7), never played by itself, and shows
+audio only, labelled "AI version of your voice". The voice is made once from
+Take 1 (A4; a noisy Take 1 waits for Take 2, D8). It is agreed by using the
+app, in the Terms, on from the start (D3a, D3b, the founder's choice over a
+separate tick); counsel reviews last, and until then it is on for the
+founder's account only. Data & consent gets one card to delete it and turn
+it back on. Words L1–L13 signed. Prototypes
+<https://claude.ai/artifact/G8Am3fR3f3SzAdTkwyUGKZ> (v8) and
+<https://claude.ai/artifact/1AUfoqBtZThxVbQKz1BTih> (v2); plan
+<https://claude.ai/artifact/RYMPxAqSyHinRStymsGwFr>. Lock:
+`docs/FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`.

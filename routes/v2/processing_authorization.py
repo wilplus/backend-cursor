@@ -486,6 +486,9 @@ def v2_processing_terminate():
             row = service.request_purge(
                 acquisition_principal_id=principal_id,
                 trigger_kind=trigger, idempotency_key=key, reason_code=reason)
+        # The AI version of your voice goes now, at ElevenLabs too (N71).
+        from services.ai_voice_clone import erase_on_termination
+        erase_on_termination(db, getattr(request, "user_id", None), principal_id)
         return jsonify(row), 202
     except ProcessingAuthorizationError as error:
         return jsonify({"code": error.code, "error": error.message}), error.status

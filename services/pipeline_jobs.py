@@ -798,6 +798,9 @@ def _run_session_recording(job: Dict[str, Any]) -> Dict[str, Any]:
         # confirmed the document. Stamp that proof into the durable job row as
         # well, so inspection never has to infer Take 1 success from 100%.
         result["ideal_text_confirmed"] = True
+    # The AI version of your voice (N71): queued on its own, never awaited.
+    from services.ai_voice_clone import after_take_job
+    after_take_job(db, payload, principal_id)
     return result
 
 
