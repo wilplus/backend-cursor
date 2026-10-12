@@ -358,7 +358,10 @@ class Config:
     # version is added here in the same PR as the screen that shows it; an
     # old version stays listed while a screen that shows it may still be open.
     # Any other version is refused (400 SHARE_WORDS_VERSION_UNKNOWN).
-    SHARE_WORDS_VERSIONS: tuple[str, ...] = ("sharing-screen-2026-10-06",)
+    # 2026-10-12: the question asked before the next recording ("Do you agree
+    # to share your next take with others?", founder lock of the moment and
+    # feedback chat, section 9).
+    SHARE_WORDS_VERSIONS: tuple[str, ...] = ("sharing-screen-2026-10-06", "sharing-screen-2026-10-12")
 
     # 6d: fitting a learned detector on audit answers. ON from 2026-10-02
     # (founder: "You have my go on each of the flips"; N26): the AI Act
