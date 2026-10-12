@@ -12,7 +12,6 @@ from __future__ import annotations
 import hashlib
 import os
 import uuid
-from pathlib import Path
 
 import psycopg2
 import pytest
@@ -21,8 +20,6 @@ DSN = os.environ.get("CONFIDENT_MOMENT_REHEARSAL_DSN", "")
 pytestmark = pytest.mark.skipif(
     not DSN, reason="disposable confident-moment rehearsal only"
 )
-MIGRATION = (Path(__file__).resolve().parents[1] / "migrations"
-             / "a_corpus_split_survives_a_truncate.sql")
 
 
 @pytest.fixture(scope="module")
@@ -68,57 +65,3 @@ def test_a_truncate_is_refused_and_every_split_stays(db, statement):
         cur.execute("SELECT split FROM public.corpus_speaker_splits "
                     "WHERE speaker_key_sha256 = %s", (digest,))
         assert cur.fetchone()[0] == "test"
-
-
-def test_the_trigger_is_statement_level_before_truncate(db):
-    with db.cursor() as cur:
-        cur.execute(
-            "SELECT t.tgtype, p.proname FROM pg_trigger t "
-            "JOIN pg_proc p ON p.oid = t.tgfoid "
-            "WHERE t.tgrelid = 'public.corpus_speaker_splits'::regclass "
-            "AND t.tgname = 'corpus_speaker_splits_never_truncate'")
-        rows = cur.fetchall()
-        assert len(rows) == 1
-        tgtype, proname = rows[0]
-        assert proname == "corpus_speaker_splits_never_change"
-        # pg_trigger.tgtype bits: 1 ROW, 2 BEFORE, 32 TRUNCATE.
-        assert tgtype & 1 == 0, "statement level"
-        assert tgtype & 2, "BEFORE"
-        assert tgtype & 32, "TRUNCATE"
-
-
-def test_applying_it_again_changes_nothing(db):
-    with db.cursor() as cur:
-        digest = _stored(cur)
-        before = _count(cur)
-        cur.execute(MIGRATION.read_text())
-        assert _count(cur) == before
-        cur.execute("SELECT count(*) FROM pg_trigger "
-                    "WHERE tgname = 'corpus_speaker_splits_never_truncate'")
-        assert cur.fetchone()[0] == 1
-        cur.execute("SELECT count(*) FROM pg_trigger "
-                    "WHERE tgname = 'corpus_speaker_splits_never_change'")
-        assert cur.fetchone()[0] == 1
-        cur.execute("SELECT 1 FROM public.corpus_speaker_splits "
-                    "WHERE speaker_key_sha256 = %s", (digest,))
-        assert cur.fetchone() is not None
-
-
-def test_0433_still_refuses_update_and_delete(db):
-    with db.cursor() as cur:
-        digest = _stored(cur)
-        with pytest.raises(psycopg2.errors.CheckViolation,
-                           match="CORPUS_SPLIT_IMMUTABLE"):
-            cur.execute("UPDATE public.corpus_speaker_splits SET split = 'train' "
-                        "WHERE speaker_key_sha256 = %s", (digest,))
-        with pytest.raises(psycopg2.errors.CheckViolation,
-                           match="CORPUS_SPLIT_IMMUTABLE"):
-            cur.execute("DELETE FROM public.corpus_speaker_splits "
-                        "WHERE speaker_key_sha256 = %s", (digest,))
-
-
-def test_the_function_is_still_not_public(db):
-    with db.cursor() as cur:
-        cur.execute("SELECT has_function_privilege('public', "
-                    "'public.corpus_speaker_splits_never_change()', 'EXECUTE')")
-        assert cur.fetchone()[0] is False

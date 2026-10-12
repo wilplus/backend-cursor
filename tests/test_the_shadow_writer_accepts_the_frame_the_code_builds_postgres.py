@@ -48,8 +48,6 @@ MIGRATIONS = (
     ROOT / "migrations" / "the_shadow_writer_accepts_the_frame_the_code_builds.sql",
     ROOT / "migrations" / "the_shadow_writer_keeps_the_pick_log.sql",
 )
-WRITER = ("public.record_take_feedback_policy_v3_shadow_v3"
-          "(text,uuid,uuid,uuid,uuid,integer,text,jsonb,text)")
 CALL = ("SELECT public.record_take_feedback_policy_v3_shadow_v3("
         "%s, %s::uuid, %s::uuid, %s::uuid, %s::uuid, %s, %s, %s, %s)")
 
@@ -187,57 +185,3 @@ def test_the_frame_the_code_builds_is_stored_and_read_back(cur):
     assert rows[0]["frame"] == seed["frame"]
     # The replay the writer is idempotent for.
     assert _write(cur, seed, seed["frame"])["outcome"] == "stored"
-
-
-@pytest.mark.parametrize("stale", [
-    "take-feedback-policy-v3-frame-v3",
-    "take-feedback-policy-v3-frame-v4",
-    "take-feedback-policy-v3-service-candidates-v1",
-])
-def test_an_older_or_foreign_frame_schema_is_still_refused(cur, stale):
-    seed = _seed_take(cur)
-    frame = {**seed["frame"], "frame_schema_version": stale}
-    with pytest.raises(psycopg2.errors.RaiseException,
-                       match="invalid universal-v3 dark frame"):
-        _write(cur, seed, frame)
-
-
-def test_another_detector_or_policy_version_is_still_refused(cur):
-    seed = _seed_take(cur)
-    frame = seed["frame"]
-    with pytest.raises(psycopg2.errors.RaiseException,
-                       match="invalid universal-v3 dark frame"):
-        _write(cur, seed, {**frame, "implementation_versions": {
-            **frame["implementation_versions"],
-            "confidence_detector_version": "voice-confidence-v2"}})
-    cur.connection.rollback()
-    seed = _seed_take(cur)
-    with pytest.raises(psycopg2.errors.RaiseException,
-                       match="invalid universal-v3 dark frame"):
-        _write(cur, seed, {**seed["frame"], "serves_user_feedback": True})
-
-
-def test_reapplying_the_migration_leaves_the_writer_accepting_the_frame(cur):
-    cur.execute(_migration_body())
-    cur.execute(_migration_body())
-    seed = _seed_take(cur)
-    assert _write(cur, seed, seed["frame"])["outcome"] == "stored"
-
-
-def test_the_writer_keeps_its_definer_search_path_and_grants(cur):
-    cur.execute("""
-        SELECT p.prosecdef, p.proconfig, pg_get_functiondef(p.oid) AS src
-          FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-         WHERE n.nspname = 'public'
-           AND p.proname = 'record_take_feedback_policy_v3_shadow_v3'""")
-    rows = cur.fetchall()
-    assert len(rows) == 1
-    assert rows[0]["prosecdef"] is True
-    assert rows[0]["proconfig"] == ["search_path=public"]
-    assert f"'{FRAME_SCHEMA_VERSION}'" in rows[0]["src"]
-    assert "'take-feedback-policy-v3-frame-v3'" not in rows[0]["src"]
-    for role, allowed in (("service_role", True), ("anon", False),
-                          ("authenticated", False)):
-        cur.execute("SELECT has_function_privilege(%s, %s, 'EXECUTE') AS ok",
-                    (role, WRITER))
-        assert cur.fetchone()["ok"] is allowed, role

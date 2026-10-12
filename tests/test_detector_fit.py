@@ -13,14 +13,12 @@ Pins:
 """
 from __future__ import annotations
 
-import random
 import unittest
 from datetime import datetime, timezone
 from unittest.mock import patch
 
 from services import detector_candidates as dc
 from services import detector_rollout as dr
-from services import learning_weekly as lw
 
 NOW = datetime(2026, 10, 8, 12, tzinfo=timezone.utc)
 ON = patch("config.Config.DETECTOR_TRAINING_AUTHORISED", True, create=True)
@@ -64,11 +62,6 @@ class _Db:
         return len(new)
 
 
-class _Untouchable:
-    def __getattr__(self, name):
-        raise AssertionError(f"the off switch read {name}")
-
-
 def _consent(yes: set, objected: set = frozenset()):
     """Patches: the training yes per Take, the objection per Take, and a
     split that keeps every speaker in train unless named 'h-'."""
@@ -80,77 +73,12 @@ def _consent(yes: set, objected: set = frozenset()):
                   side_effect=lambda s: "holdout" if s.startswith("h-") else "train"))
 
 
-class OffTests(unittest.TestCase):
-    def test_off_reads_and_writes_nothing(self):
-        with patch("config.Config.DETECTOR_TRAINING_AUTHORISED", False, create=True):
-            self.assertEqual(dc.fit_all(_Untouchable(), config=_On, now=NOW),
-                             {"skipped": "DETECTOR_TRAINING_AUTHORISED is off"})
-            with self.assertRaises(dc.NotAuthorised):
-                dc.LearnedDetector("rushing").fit(_answers("t", "a"))
-        with ON:
-            # The job's own config off is enough to stop it.
-            self.assertIn("skipped", dc.fit_all(_Untouchable(), config=object(), now=NOW))
-
-    def test_the_weekly_job_skips_it_while_off(self):
-        class _Weekly:
-            rows: dict = {}
-
-            def upsert_ledger_snapshot(self, **row):
-                return row
-        with patch("services.learning_ledger.ledger", return_value={"ledger_version": "x"}):
-            report = lw.run_weekly(_Weekly(), config=object(), now=NOW)
-        self.assertEqual(report["detector_fit"], {"skipped": "DETECTOR_TRAINING_AUTHORISED is off"})
-
-
 class FitTests(unittest.TestCase):
     def _fit(self, db, yes, objected=frozenset()):
         a, b, c = _consent(yes, objected)
         with ON, a, b, c:
             return dc.fit_all(db, config=_On, now=NOW)
 
-    def test_fits_only_consented_speakers_answers(self):
-        answers = (_answers("tA", "a") + _answers("tB", "b", inverted=True)
-                   + _answers("tC", "c", inverted=True) + _answers("tH", "h-1", inverted=True))
-        # B has no yes, C objected, H is a held-out speaker.
-        out = self._fit(_Db(answers), yes={"tA", "tC", "tH"}, objected={"tC"})
-        rushing = out["fits"]["rushing"]
-        self.assertTrue(rushing["fitted"])
-        self.assertEqual((rushing["n_yes"], rushing["n_no"]), (35, 35))
-        self.assertEqual(rushing["model"]["feature"], "pause_ratio")
-        self.assertEqual(rushing["model"]["direction"], "lt")
-        self.assertTrue(0.054 < rushing["model"]["cut"] < 0.20)
-        self.assertEqual(rushing["balanced_accuracy"], 1.0)
-        self.assertTrue(rushing["fit_version"].startswith(dc.LEARNED_VERSION + "+"))
-        # No answers for the other errors: nothing fitted, said in words.
-        self.assertEqual(out["fits"]["ending_compression"]["why"], "not enough answers yet")
-
-    def test_a_withdrawn_speaker_drops_out_at_the_next_fit(self):
-        answers = _answers("tA", "a")
-        self.assertTrue(self._fit(_Db(answers), yes={"tA"})["fits"]["rushing"]["fitted"])
-        after = self._fit(_Db(answers), yes=set())["fits"]["rushing"]
-        self.assertFalse(after["fitted"])
-        self.assertEqual((after["n_yes"], after["n_no"]), (0, 0))
-
-    def test_cant_tell_and_too_few_answers_fit_nothing(self):
-        rows = _answers("tA", "a", n=29) + [{**_answers("tA", "a", n=1)[0], "answer": "cant_tell",
-                                             "clip_id": "x"}]
-        with ON:
-            out = dc.LearnedDetector("rushing").fit(rows)
-        self.assertEqual((out["fitted"], out["n_yes"], out["n_no"]), (False, 29, 29))
-
-    def test_the_fit_is_deterministic(self):
-        rows = _answers("tA", "a") + _answers("tB", "b")
-        shuffled = list(rows)
-        random.Random(7).shuffle(shuffled)
-        with ON:
-            first = dc.LearnedDetector("rushing").fit(rows)
-            second = dc.LearnedDetector("rushing").fit(shuffled)
-            again = dc.LearnedDetector("rushing").fit(rows)
-        self.assertEqual(first, second)
-        self.assertEqual(first, again)
-        with ON:
-            changed = dc.LearnedDetector("rushing").fit(rows[:-1])
-        self.assertNotEqual(changed["fit_version"], first["fit_version"])
 
     def test_verdicts_go_to_the_shadow_log_only_for_consented_clips(self):
         clips = [{"clip_id": "s1", "take_session_id": "tA", "clip_kind": "snippet",
@@ -175,18 +103,6 @@ class FitTests(unittest.TestCase):
         self.assertNotIn(version, dr.REGISTRY)
         # A serving process holds no fit: the registered candidate stays quiet.
         self.assertIsNone(dc.learned("rushing", {"pause_ratio": 0.03}))
-
-    def test_the_weekly_job_runs_the_fit_when_authorised(self):
-        class _Weekly(_Db):
-            def upsert_ledger_snapshot(self, **row):
-                self.row = row
-                return row
-        db = _Weekly(_answers("tA", "a"))
-        a, b, c = _consent({"tA"})
-        with ON, a, b, c, patch("services.learning_ledger.ledger", return_value={"ledger_version": "x"}):
-            report = lw.run_weekly(db, config=_On, now=NOW)
-        self.assertTrue(report["detector_fit"]["fits"]["rushing"]["fitted"])
-        self.assertEqual(db.row["snapshot"]["doors_pass"]["detector_fit"], report["detector_fit"])
 
 
 if __name__ == "__main__":

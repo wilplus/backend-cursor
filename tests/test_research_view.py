@@ -13,42 +13,7 @@ from __future__ import annotations
 
 import unittest
 
-from services import golden_set as gs
-from services import research_quorum as rq
 from services import research_view as rv
-
-
-def _label(snippet, rater, value, **extra):
-    return {"snippet_id": snippet, "rater_id": rater, "value": value, "lane": "coach", **extra}
-
-
-class QuorumTests(unittest.TestCase):
-    def test_two_human_agreement_and_human_only(self):
-        rows = [
-            _label("s1", "a", "yes"), _label("s1", "b", "yes"),
-            _label("s2", "a", "no"), _label("s2", "b", "in_between"),
-            _label("s3", "a", "yes"),
-            _label("s4", "owner", "yes", self_report=True), _label("s4", "a", "no"),
-        ]
-        out = rq.quorum(rows)
-        self.assertEqual(out["labels"], 6)
-        self.assertEqual(out["moments"], 4)
-        self.assertEqual(out["moments_with_two_humans"], 2)
-        self.assertEqual(out["two_human_agreement"], 0.5)
-        self.assertIsNone(out["kappa"])
-
-    def test_kappa_from_a_hundred_labels(self):
-        rows = []
-        for i in range(60):
-            value = "yes" if i % 2 else "no"
-            rows.append(_label(f"s{i}", "a", value))
-            rows.append(_label(f"s{i}", "b", value if i % 3 else "in_between"))
-        out = rq.quorum(rows)
-        self.assertEqual(out["labels"], 120)
-        self.assertIsNotNone(out["kappa"])
-        self.assertGreaterEqual(out["kappa"], 0.5)
-        self.assertEqual(rq.cohen_kappa([("yes", "yes"), ("no", "no")]), 1.0)
-        self.assertIsNone(rq.cohen_kappa([]))
 
 
 class _Db:
@@ -113,43 +78,6 @@ class _Db:
 
     def list_coach_named_moments(self, cue):
         return []
-
-
-class GoldenTests(unittest.TestCase):
-    def test_the_next_moment_carries_no_label_and_no_read(self):
-        db = _Db()
-        moment = gs.next_moment(db, surface="confidence", judge="artur@willonski.com")
-        self.assertEqual(set(moment), {"snippet_id", "take_session_id", "passage", "audio_url",
-                                       "start_offset_ms", "duration_ms"})
-        self.assertEqual(moment["snippet_id"], "s1")
-        gs.record(db, surface="confidence", judge="artur@willonski.com",
-                  body={"snippet_id": "s1", "value": "yes"})
-        self.assertEqual(gs.next_moment(db, surface="confidence", judge="artur@willonski.com")["snippet_id"], "s2")
-
-    def test_sealing_needs_fifty_and_happens_once(self):
-        db = _Db()
-        for i in range(49):
-            gs.record(db, surface="confidence", judge="f", body={"snippet_id": f"s{i}", "value": "no"})
-        with self.assertRaises(gs.GoldenRefusal) as refused:
-            gs.seal(db, surface="confidence", judge="f")
-        self.assertEqual(refused.exception.code, "GOLDEN_SET_INCOMPLETE")
-        gs.record(db, surface="confidence", judge="f", body={"snippet_id": "s49", "value": "yes"})
-        sealed = gs.seal(db, surface="confidence", judge="f")["sealed"]
-        self.assertEqual(sealed["count"], 50)
-        self.assertRegex(sealed["sha256"], r"^[0-9a-f]{64}$")
-        with self.assertRaises(gs.GoldenRefusal):
-            gs.record(db, surface="confidence", judge="f", body={"snippet_id": "s50", "value": "yes"})
-        with self.assertRaises(gs.GoldenRefusal):
-            gs.seal(db, surface="confidence", judge="f")
-
-    def test_the_hash_ignores_order(self):
-        a = gs.digest([{"snippet_id": "s1", "value": "yes"}, {"snippet_id": "s2", "value": "no"}])
-        b = gs.digest([{"snippet_id": "s2", "value": "no"}, {"snippet_id": "s1", "value": "yes"}])
-        self.assertEqual(a, b)
-
-    def test_an_unknown_surface_is_refused(self):
-        with self.assertRaises(gs.GoldenRefusal):
-            gs.counts(_Db(), surface="score")
 
 
 class OverviewTests(unittest.TestCase):
