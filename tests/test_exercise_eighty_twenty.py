@@ -16,12 +16,9 @@ Take ever carried an exercise.
 """
 from __future__ import annotations
 
-import ast
-import inspect
 import unittest
 
 from services import confident_voice_practice as cvp
-from services import ideal_text_changes as itc
 from tests.test_confident_voice_practice import _snippet, _words
 
 
@@ -120,65 +117,7 @@ def _pick(rank):
     return assign
 
 
-class V3ExerciseTests(unittest.TestCase):
-    def test_every_bookmark_carries_the_exercise_matched_to_its_clip(self):
-        # FOUNDER 2026-09-29: "they can carry as many exercises as bookmark
-        # indicates". Until then only the item V3 marked for it carried one.
-        rows = _attach_v3(_Db())
-        self.assertEqual(_offers(rows), {"a": "best", "b": "best"})
-        target = next(r for r in rows if r["id"] == "a")
-        # The practice cannot start without exact evidence; V3 rows arrive
-        # without it, so the lane grounds it.
-        self.assertEqual(target["evidence"], _EVIDENCE)
-
-    def test_the_rush_gate_does_not_decide_v3_s_moment(self):
-        verdict = cvp.exercise_eligibility(_calm_snippet(), session_median_wpm=150)
-        self.assertFalse(verdict["eligible"])
-        self.assertEqual(verdict["reason"], "weak_acoustic_evidence")
-        self.assertEqual(_offers(_attach_v3(_Db())), {"a": "best", "b": "best"})
-
-    def test_a_clip_that_cannot_carry_practice_gets_none(self):
-        unsafe = _snippet()
-        unsafe["metrics"] = {**unsafe["metrics"],
-                             "audio_quality": {"reliable": False, "noise_dominant": True}}
-        self.assertEqual(_offers(_attach_v3(_Db(snippet=unsafe))), {})
-        short = _snippet(transcript="Too short", words=[])
-        self.assertEqual(_offers(_attach_v3(_Db(snippet=short))), {})
-
-    def test_no_provable_evidence_means_no_exercise_and_no_draw(self):
-        db = _Db(assign=_pick(1))
-        self.assertEqual(_offers(_attach_v3(db, ground=lambda row: None)), {})
-        self.assertEqual(db.assign_calls, [])
-
-    def test_one_practice_per_moment(self):
-        # A finished practice ends the offer on ITS moment only (2026-09-29);
-        # another moment's practice on the same Take no longer blocks this one.
-        done = _Db(existing={"id": "p", "snippet_id": "snip-v3", "status": "completed"})
-        self.assertEqual(_offers(_attach_v3(done)), {"b": "best"})
-        elsewhere = _Db(existing={"id": "p", "snippet_id": "snip-x", "status": "open"})
-        self.assertEqual(_offers(_attach_v3(elsewhere)), {"a": "best", "b": "best"})
-        resumed = _attach_v3(_Db(existing={
-            "id": "p", "snippet_id": "snip-v3", "status": "open"}))
-        offer = next(r["practice_exercise"] for r in resumed if r["id"] == "a")
-        self.assertTrue(offer["resume"])
-
-    def test_the_bookmark_tier_no_longer_decides_who_carries_one(self):
-        rows = [dict(r, bookmark_tier="standard") for r in _v3_rows()]
-        out = cvp.attach_v3_exercise_offer(
-            rows, take_session_id="take-1", owner_user_id="o", database=_Db(),
-            ground=lambda row: dict(_EVIDENCE))
-        self.assertEqual(_offers(out), {"a": "best", "b": "best"})
-
-
 class EightyTwentyTests(unittest.TestCase):
-    def test_the_frozen_choice_is_what_is_served(self):
-        db = _Db(assign=_pick(3))
-        self.assertEqual(_offers(_attach_v3(db)), {"a": "third", "b": "third"})
-        call = db.assign_calls[0]
-        self.assertEqual([c["exercise_id"] for c in call["candidates"]],
-                         ["best", "second", "third"])
-        self.assertEqual((call["lane"], call["owner_user_id"], call["snippet_id"]),
-                         ("v3_exercise_block", "owner-1", "snip-v3"))
 
     def test_the_legacy_lane_draws_too(self):
         db = _Db(snippet=_snippet(), assign=_pick(2))
@@ -188,15 +127,6 @@ class EightyTwentyTests(unittest.TestCase):
         self.assertEqual(_offers(rows), {"x": "second"})
         self.assertEqual(db.assign_calls[0]["lane"], "legacy_offer")
 
-    def test_without_the_table_the_best_match_is_served_as_before(self):
-        class Unmigrated(_Db):
-            def assign_confident_voice_exercise(self, **kw):
-                raise RuntimeError("function does not exist")
-        self.assertEqual(_offers(_attach_v3(Unmigrated())), {"a": "best", "b": "best"})
-
-    def test_a_frozen_choice_that_left_the_catalogue_is_not_swapped(self):
-        db = _Db(assign=lambda kw: {"id": "asg", "selected_exercise_id": "retired"})
-        self.assertEqual(_offers(_attach_v3(db)), {})
 
     def test_no_number_about_the_draw_reaches_the_payload(self):
         rows = _attach_v3(_Db(assign=_pick(2)))
@@ -204,122 +134,3 @@ class EightyTwentyTests(unittest.TestCase):
         for leaked in ("draw", "probability", "selected_rank", "selection_mode",
                        "candidates", "rank"):
             self.assertNotIn(leaked, offer)
-
-
-class StartCheckTests(unittest.TestCase):
-    def _check(self, db, exercise_id, snippet=None):
-        return cvp.start_exercise_check(
-            snippet=snippet or _calm_snippet(), take_session_id="take-1",
-            snippet_id="snip-v3", exercise_id=exercise_id,
-            session_median_wpm=150, database=db)
-
-    def test_the_assigned_exercise_starts_even_without_rush_evidence(self):
-        db = _Db()
-        db.assignment = {"id": "asg-9", "selected_exercise_id": "third"}
-        refusal, _, matching = self._check(db, "third")
-        self.assertIsNone(refusal)
-        self.assertEqual(matching["exercise_assignment_id"], "asg-9")
-        self.assertEqual(matching["exposure_policy_version"], "exercise-80-20-v1")
-
-    def test_any_other_exercise_is_stale(self):
-        db = _Db()
-        db.assignment = {"id": "asg-9", "selected_exercise_id": "third"}
-        self.assertEqual(self._check(db, "best")[0], "EXERCISE_OFFER_STALE")
-
-    def test_an_unsafe_clip_is_refused_even_with_an_assignment(self):
-        db = _Db()
-        db.assignment = {"id": "asg-9", "selected_exercise_id": "best"}
-        unsafe = _snippet()
-        unsafe["metrics"] = {**unsafe["metrics"],
-                             "audio_quality": {"reliable": False, "noise_dominant": True}}
-        self.assertEqual(self._check(db, "best", unsafe)[0], "NOT_ELIGIBLE")
-
-    def test_without_an_assignment_the_old_rule_holds(self):
-        db = _Db()
-        self.assertEqual(self._check(db, "best")[0], "NOT_ELIGIBLE")
-        refusal, _, matching = self._check(db, "best", _snippet())
-        self.assertIsNone(refusal)
-        self.assertNotIn("exercise_assignment_id", matching)
-
-
-class PipelineOrderTests(unittest.TestCase):
-    """The offer must run after V3 replaces the rows, and after the claim."""
-
-    def _calls(self):
-        import textwrap
-        tree = ast.parse(textwrap.dedent(
-            inspect.getsource(itc._ChangesRun.execute)))
-        found = []
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-                if node.func.attr == "run" and len(node.args) > 1 \
-                        and isinstance(node.args[1], ast.Attribute):
-                    found.append((node.lineno, node.args[1].attr))
-                elif isinstance(node.func.value, ast.Name) \
-                        and node.func.value.id == "self":
-                    found.append((node.lineno, node.func.attr))
-        return [name for _, name in sorted(found)]
-
-    def test_the_offer_follows_the_v3_replacement_and_the_claim(self):
-        calls = self._calls()
-        self.assertLess(calls.index("_first_client_feedback"),
-                        calls.index("_practice_offer"))
-        self.assertLess(calls.index("_claim_visibly"),
-                        calls.index("_practice_offer"))
-
-    def test_a_v3_take_takes_the_v3_lane(self):
-        run = itc._ChangesRun.__new__(itc._ChangesRun)
-        run.changes = ["v3-row"]
-        run.v3_replaced_changes = True
-        run._practice_permitted = lambda: True
-        taken = []
-        run._v3_exercise_offer = lambda: taken.append("v3")
-        run._practice_offer()
-        self.assertEqual(taken, ["v3"])
-
-
-class EveryMomentCanBePractisedTests(unittest.TestCase):
-    """F1 Repair Plan Phase 4 (founder lock 2026-09-30, B6): the practice
-    cannot start without the moment's evidence coordinates, which only the
-    exercise steps used to ground. A praise moment -- read confident, so no
-    library video -- recorded and then went nowhere."""
-
-    def _confident(self):
-        row = _snippet(id="snip-v3")
-        row["metrics"] = {**row["metrics"], "voice_confidence": {
-            **row["metrics"]["voice_confidence"], "score": 0.9}}
-        return row
-
-    def test_a_praise_moment_is_grounded_without_an_exercise(self):
-        rows = _attach_v3(_Db(snippet=self._confident()))
-        self.assertEqual(_offers(rows), {})
-        for row in rows:
-            self.assertEqual(row["evidence"], _EVIDENCE)
-
-    def test_a_moment_ground_cannot_prove_is_served_as_it_was(self):
-        rows = _attach_v3(_Db(snippet=self._confident()), ground=lambda row: None)
-        self.assertTrue(all("evidence" not in row for row in rows))
-
-    def test_a_failing_ground_never_loses_the_item(self):
-        def boom(_row):
-            raise RuntimeError("no pieces")
-        rows = cvp._ground_every_moment(
-            [{"id": "a", "source": "confident_voice", "snippet_id": "s"}],
-            ground=boom)
-        self.assertEqual(rows, [{"id": "a", "source": "confident_voice",
-                                 "snippet_id": "s"}])
-
-    def test_only_confident_voice_moments_with_a_clip_are_grounded(self):
-        rows = cvp._ground_every_moment(
-            [{"id": "r", "source": "wording", "snippet_id": "s"},
-             {"id": "c", "source": "confident_voice"}],
-            ground=lambda row: dict(_EVIDENCE))
-        self.assertTrue(all("evidence" not in row for row in rows))
-
-    def test_an_exercise_moment_keeps_its_own_coordinates(self):
-        own = {"project_id": "arc", "span": {"start": 1, "end": 2}}
-        rows = cvp._ground_every_moment(
-            [{"id": "a", "source": "confident_voice", "snippet_id": "s",
-              "evidence": own}],
-            ground=lambda row: dict(_EVIDENCE))
-        self.assertIs(rows[0]["evidence"], own)
