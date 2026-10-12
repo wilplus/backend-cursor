@@ -16137,17 +16137,6 @@ class DatabaseService:
             raise RuntimeError(f"{name} gave no object")
         return data
 
-    def get_mlc2_confidence_canary_readiness(self) -> dict:
-        """The confidence chain's own invariants, exactly as the five-minute
-        readiness cron reads them (scripts/check_mlc2_confidence_canary_
-        readiness.py): aggregate counts only. Raises."""
-        return self._rpc_object("get_mlc2_confidence_canary_readiness_v1",
-                                {"p_founder_principal_id": None})
-
-    def get_ring_confidence_readiness(self) -> dict:
-        """The ring rows' readiness, as the same cron reads it. Raises."""
-        return self._rpc_object("get_ring_confidence_readiness_v1", {})
-
     def list_voided_unpurged_pair_releases(self) -> list[dict]:
         res = (self.client.table("pair_releases")
                .select("id,surface,storage_bucket,storage_key,voided_at")

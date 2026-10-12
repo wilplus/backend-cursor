@@ -1,7 +1,7 @@
 """The research screen's one read (founder 2026-09-30, L4 to L9; build plan
 ML-7). What the data scientist sees: datasets per surface, the label
 quorum, the exclusions, the exports, the evaluations, the promotions, the
-drift and the monitors, and the golden set. Every panel with nothing to
+drift and the golden set. Every panel with nothing to
 show says why in words rather than showing a zero that looks like a
 measurement. Pseudonyms only; no row here names a person.
 
@@ -11,11 +11,10 @@ measurement. Pseudonyms only; no row here names a person.
     validation, test, speaker-disjoint 80/10/10, summed from the signed
     manifests of the releases still standing);
   * drift: the weekly PSI 2x2 (PM-3) as the weekly learning job stored it
-    with its newest week, most urgent dimension first;
-  * monitors: the confidence readiness monitor's checks, read NOW from the
-    database the way the five-minute cron reads them (aggregate counts and
-    codes only). Whether that cron has its own switch and Sentry is read on
-    the cron service and is not judged here.
+    with its newest week, most urgent dimension first.
+
+The monitors panel (the confidence readiness monitor's checks) was removed
+2026-10-12 with the monitor itself (founder: "remove the monitor too").
 
 Read-only, for the research role and the founder; the routes gate it.
 """
@@ -123,48 +122,6 @@ def _drift(snapshots: list) -> dict:
                      "exists, or “Run the weekly job now” on the pace panel)")}
 
 
-#: The two checks that are about the cron service's own variables; the web
-#: service cannot see them, so the research view does not judge them.
-CRON_ONLY_CHECKS = ("production_monitor_not_enabled", "production_alert_sink_not_configured")
-
-
-def _monitors(database: Any, config: Any) -> dict:
-    """The confidence readiness monitor, read now: the same two aggregate
-    reads and the same pure assessment the five-minute cron runs
-    (scripts/check_mlc2_confidence_canary_readiness.py). Codes and counts,
-    never a row. Raises when a read fails (the view names it)."""
-    from datetime import datetime, timezone
-    from services.coach_video_storage import coach_videos_use_r2
-    from services.mlc2_confidence_readiness import assess_confidence_canary_readiness
-    report = assess_confidence_canary_readiness(
-        database.get_mlc2_confidence_canary_readiness(),
-        cutover_mode=getattr(config, "MLC2_CONFIDENCE_CUTOVER_MODE", None),
-        ring_health=database.get_ring_confidence_readiness(),
-        monitoring_enabled=bool(getattr(config, "MLC2_CONFIDENCE_MONITORING_ENABLED", False)),
-        alert_sink_configured=bool(getattr(config, "SENTRY_DSN", None)),
-        # The learning switches were removed 2026-10-12 (founder: "remove the
-        # learning doors") with the values they held: the retired DPO export
-        # off, training and promotion on.
-        dataset_creation_enabled=False,
-        training_enabled=True,
-        promotion_enabled=True,
-        source_audio_store_is_r2=coach_videos_use_r2(),
-    ).as_dict()
-    blockers = [c for c in report.get("blocker_codes") or [] if c not in CRON_ONLY_CHECKS]
-    return {
-        "confidence_canary": {
-            "ready": not blockers,
-            "blocker_codes": blockers,
-            "warning_codes": list(report.get("warning_codes") or []),
-            "cutover_mode": (report.get("evidence") or {}).get("cutover_mode"),
-            "read_at": datetime.now(timezone.utc).isoformat(),
-        },
-        "note": ("read now from the database: the checks the five-minute readiness cron runs. "
-                 "Whether that cron has its own switch and Sentry is read on the cron service, "
-                 "not here"),
-    }
-
-
 def _promotions(database: Any) -> list[dict]:
     """Which model each contract surface serves today (the runtime row is
     the present); the history is ``model_promotions`` (door 4, ML-12)."""
@@ -231,7 +188,6 @@ def _sources(database: Any, config: Any, unavailable: list[str]) -> dict:
         "training": (_read("training", lambda: _training(database), unavailable)
                      or {"runs": [], "note": "fine-tune runs unreadable"}),
         "history": _read("promotion_history", lambda: _promotion_history(database), unavailable) or [],
-        "monitors": _read("monitors", lambda: _monitors(database, config), unavailable),
     }
 
 
@@ -282,8 +238,6 @@ def overview(database: Any, *, config: Any = None) -> dict:
         "promotions": src["promotions"],
         "promotion_history": src["history"],
         "drift": _drift(src["snapshots"]),
-        "monitors": src["monitors"] or {"confidence_canary": None,
-                                        "note": "the readiness monitor could not be read now"},
         "golden": src["golden"],
         "weekly": [{"week_start": s.get("week_start"), "ready_cues": s.get("ready_cues"),
                     "updated_at": s.get("updated_at")} for s in src["snapshots"] if isinstance(s, dict)],

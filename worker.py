@@ -324,7 +324,7 @@ def main() -> int:
     # `founder_canary`, the deployed mode since the flip of 2026-09-29, the
     # chain starts for the ring's one eligible person; `dark` started nothing
     # and touched no broker key. The constant changes only by a reviewed code
-    # change (services/mlc2_confidence_readiness.py keeps guarding it).
+    # change.
     try:
         from services.mlc2_confidence_frame_factory import (
             start_confidence_producer_chain,

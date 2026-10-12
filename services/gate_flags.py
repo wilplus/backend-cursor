@@ -48,7 +48,6 @@ GATE_FLAGS: tuple[str, ...] = (
     "MLC3_SERVICE_ENABLED",
     "MLC3_COACH_INLINE_AUTHORING_ENABLED",
     "CONFIDENT_MOMENT_BUNDLE_V1_ENABLED",
-    "MLC2_CONFIDENCE_MONITORING_ENABLED",
     # Last, and the one this line matters most for after the Phase-1 boundary:
     # it decides which Confident Voice item is SELECTED, and the selection is
     # then FROZEN with the Take. Two services holding different values do not

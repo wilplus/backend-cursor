@@ -1,5 +1,7 @@
 # MLC-2 Confidence founder-canary activation runbook
 
+> 2026-10-12: the readiness monitor (its cron, script and evaluator) was removed (founder: "remove the monitor too"); there is nothing to run.
+
 Owner: Artur Willoński
 
 Engineering design: `ED-2.4`

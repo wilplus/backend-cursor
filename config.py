@@ -395,13 +395,6 @@ class Config:
     # readiness reads the row and the ring-eligible principals. The founder
     # email constant and the canary principal variable that used to say it
     # were retired on 2026-09-29.
-    # Monitoring may be deployed while the producer remains dark.  Readiness
-    # requires this plus Sentry configuration before activation can be
-    # proposed; neither setting activates a producer.
-    MLC2_CONFIDENCE_MONITORING_ENABLED = (
-        (os.getenv("MLC2_CONFIDENCE_MONITORING_ENABLED") or "false")
-        .strip().lower() in ("1", "true", "yes", "on")
-    )
     # Non-production recipient redirect. When set (and ENV != production),
     # services.email_service.send_email_resend sends EVERY message here
     # instead of the real recipient, subject-tagged with who it was for.
