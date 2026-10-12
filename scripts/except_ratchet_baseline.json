@@ -41,7 +41,7 @@
   "services/context_document.py": 4,
   "services/create_take.py": 1,
   "services/cross_take_selection.py": 2,
-  "services/db.py": 375,
+  "services/db.py": 306,
   "services/deck_parser.py": 1,
   "services/degradation.py": 1,
   "services/delivery_alignment.py": 3,

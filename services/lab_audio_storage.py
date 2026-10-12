@@ -67,12 +67,6 @@ def _config():
     return _cfg
 
 
-def _reset_config_cache() -> None:
-    """Test hook — drop the memoised Config so env changes take effect."""
-    global _cfg
-    _cfg = None
-
-
 def lab_audio_bucket() -> str:
     """The dedicated lab-audio bucket name, or "" when unconfigured."""
     return (getattr(_config(), "R2_LAB_AUDIO_BUCKET", None) or "").strip()
