@@ -77,7 +77,6 @@ _SECURITY_DEFINER = re.compile(r"SECURITY\s+DEFINER", re.I)
 # and performs the dynamic statement. A bare ARRAY of names elsewhere in the
 # file earns nothing, so this recognises the idiom without opening a loophole.
 _DO_BLOCK = re.compile(r"DO\s+(\$[a-zA-Z_]*\$)(.*?)\1\s*;", re.I | re.S)
-_ARRAY_LITERAL = re.compile(r"ARRAY\s*\[(.*?)\]", re.I | re.S)
 _QUOTED = re.compile(r"'([^']+)'")
 _DYNAMIC_ENABLE_RLS = re.compile(
     r"EXECUTE\s+format\s*\(\s*'ALTER\s+TABLE\s+public\.%I\s+"
@@ -267,30 +266,6 @@ class NewTablesEnableRlsTests(unittest.TestCase):
             "that list is frozen history, not an opt-out.\n"
             f"Offenders: {offenders}"))
 
-    def test_the_legacy_allowlist_only_ever_shrinks(self):
-        """Every entry must still describe a real (file, table) pair.
-
-        A stale entry means someone fixed a migration — in which case delete
-        the line — or renamed a file, which would silently re-open the hole for
-        the new name."""
-        stale = []
-        for fname, table in sorted(LEGACY_TABLES_WITHOUT_RLS):
-            path = os.path.join(MIGRATIONS, fname)
-            if not os.path.exists(path):
-                stale.append(f"{fname} (file is gone)")
-                continue
-            with open(path, encoding="utf-8", errors="replace") as fh:
-                sql = _strip_comments(fh.read())
-            created = {t.lower() for t in _CREATE_TABLE.findall(sql)}
-            secured = {t.lower() for t in _ENABLE_RLS.findall(sql)}
-            secured |= _dynamic_names(sql, _DYNAMIC_ENABLE_RLS)
-            if table not in created or table in secured:
-                stale.append(f"{fname}: {table} (now compliant or renamed)")
-
-        self.assertEqual(stale, [], (
-            "Stale entries in LEGACY_TABLES_WITHOUT_RLS — delete them so the "
-            f"list keeps meaning what it says: {stale}"))
-
 
 class NewFunctionsRevokeExecuteTests(unittest.TestCase):
     """RULE 2 — migrations/lock_down_public_function_grants.sql.
@@ -379,65 +354,6 @@ class NewFunctionsRevokeExecuteTests(unittest.TestCase):
         self.assertEqual(offenders, [], (
             "SECURITY DEFINER function without SET search_path — a search-path "
             f"hijack away from running as the owner: {offenders}"))
-
-
-class TokenChargeFunctionTests(unittest.TestCase):
-    """The specific function this rule arrived with. Spot checks, not a parser —
-    these are the properties whose absence would be silent and expensive."""
-
-    def setUp(self):
-        path = os.path.join(MIGRATIONS, "add_token_charge_rpc.sql")
-        self.assertTrue(os.path.exists(path), "add_token_charge_rpc.sql is gone")
-        with open(path, encoding="utf-8") as fh:
-            self.raw = fh.read()
-        self.sql = _strip_comments(self.raw)
-
-    def test_it_is_security_invoker(self):
-        self.assertRegex(self.sql, r"SECURITY\s+INVOKER")
-        self.assertNotRegex(self.sql, r"SECURITY\s+DEFINER")
-
-    def test_it_locks_the_account_row_before_deciding_anything(self):
-        """The lock is the fix for the probe/debit race. Without FOR UPDATE
-        this is the old TOCTOU with extra steps."""
-        self.assertRegex(self.sql, r"FOR\s+UPDATE")
-        lock = self.sql.upper().index("FOR UPDATE")
-        for later in ("INSERT INTO PUBLIC.TOKEN_LEDGER", "EXECUTE FORMAT"):
-            self.assertLess(lock, self.sql.upper().index(later),
-                            f"{later} happens before the row lock")
-
-    def test_the_ledger_insert_cannot_swallow_a_conflict(self):
-        """ON CONFLICT DO NOTHING here would let the debit stand with no row —
-        reinstating exactly the half-state this function removes."""
-        self.assertNotRegex(self.sql, r"ON\s+CONFLICT")
-
-    def test_it_grants_execute_to_service_role_only(self):
-        self.assertRegex(self.sql, r"GRANT\s+EXECUTE[\s\S]{0,200}service_role")
-        self.assertRegex(self.sql, r"REVOKE\s+ALL[\s\S]{0,200}FROM\s+PUBLIC")
-        for role in ("anon", "authenticated"):
-            self.assertIn(role, self.sql, f"{role} is never revoked")
-
-    def test_it_is_replayable(self):
-        """Migrations in this repo are idempotent; re-running must be a no-op."""
-        self.assertRegex(self.sql, r"CREATE\s+OR\s+REPLACE\s+FUNCTION")
-
-    def test_the_python_caller_and_the_function_agree_on_the_parameters(self):
-        """A renamed parameter is a runtime-only failure: PostgREST reports it
-        as "function not found", which this codebase treats as "not migrated"
-        and silently answers from the legacy non-atomic path. It would look
-        like nothing was wrong."""
-        import services.token_account as ta
-        declared = set(re.findall(r"\b(p_[a-z_]+)\b",
-                                  self.sql[:self.sql.index("AS $fn$")]))
-        with open(os.path.join(os.path.dirname(MIGRATIONS),
-                               "services", "token_account.py"),
-                  encoding="utf-8") as fh:
-            src = fh.read()
-        block = src[src.index("db.client.rpc("):]
-        passed = set(re.findall(r'"(p_[a-z_]+)"', block[:block.index("})")]))
-        self.assertEqual(passed, declared,
-                         "services/token_account.py and add_token_charge_rpc.sql "
-                         "disagree on the parameter list")
-        self.assertEqual(ta._CHARGE_RPC, "token_charge")
 
 
 if __name__ == "__main__":

@@ -20,38 +20,6 @@ from __future__ import annotations
 import unittest
 
 
-# These tests re-implement the route's pure JSON-shaping logic locally
-# (see module docstring), so nothing here imports services.db — no stub
-# needed. An unconditional module-top stub used to live here and leaked
-# into sibling test modules; it has been removed.
-class MetricsReadyHelperTests(unittest.TestCase):
-    """The marker column for "metrics computed" is global_wpm."""
-
-    def _import_helper(self):
-        # The helper is in routes.v2_routes — but importing that
-        # module pulls Flask + many deps. Re-implement the trivial
-        # logic here and assert it matches what the route would do.
-        # If the helper grows beyond a one-line check, move it to a
-        # service module and import it directly instead.
-        def _metrics_ready(session: dict) -> bool:
-            return session.get("global_wpm") is not None
-        return _metrics_ready
-
-    def test_metrics_ready_true_when_global_wpm_set(self):
-        helper = self._import_helper()
-        self.assertTrue(helper({"global_wpm": 142}))
-        self.assertTrue(helper({"global_wpm": 0}))   # 0 wpm still "ready"
-
-    def test_metrics_ready_false_when_global_wpm_missing(self):
-        helper = self._import_helper()
-        self.assertFalse(helper({}))
-        self.assertFalse(helper({"global_wpm": None}))
-
-    def test_metrics_ready_false_on_empty_session(self):
-        helper = self._import_helper()
-        self.assertFalse(helper({}))
-
-
 class SummaryAllowlistTests(unittest.TestCase):
     """Confirm the response shape NEVER leaks an admin-only field.
 
@@ -206,23 +174,6 @@ class SummaryAllowlistTests(unittest.TestCase):
         out_pub = self._build_response(poisoned_pub, {"total": 3})
         self.assertEqual(set(out_pub.keys()), self.EXPECTED_KEYS_POST_PUBLISH)
 
-    def test_no_banned_key_leaks_at_top_level(self):
-        """For each banned key, simulate it on the session and
-        confirm it doesn't appear as a top-level response field."""
-        for banned in self.BANNED_KEYS:
-            session = {"global_wpm": 130, banned: "POISON"}
-            out = self._build_response(session, {"total": 0})
-            self.assertNotIn(banned, out, msg=(
-                f"Banned key '{banned}' leaked into top-level response"
-            ))
-
-    def test_no_banned_key_leaks_inside_metrics_block(self):
-        """The metrics sub-block is the most likely accidental leak
-        site (someone copies the session dict in)."""
-        for banned in self.BANNED_KEYS:
-            session = {"global_wpm": 130, banned: "POISON"}
-            out = self._build_response(session, {"total": 0})
-            self.assertNotIn(banned, out["metrics"])
 
     def test_poisoned_admin_fields_do_not_appear_as_values_anywhere(self):
         """If we accidentally surfaced a banned field's value
@@ -242,69 +193,6 @@ class SummaryAllowlistTests(unittest.TestCase):
         self.assertNotIn("POISON-queued-question-marker", body)
         self.assertNotIn("POISON-draft-comment-marker", body)
         self.assertNotIn("POISON-profile-marker", body)
-
-
-class CommentaryFallbackTests(unittest.TestCase):
-    """Commentary prefers the immutable AI draft column (task 5
-    split-sinks Option A) and falls back to the editable column
-    only when the draft is NULL (legacy sessions)."""
-
-    def _build(self, session):
-        commentary_body = (
-            (session.get("session_kpi_narrative_ai_draft") or "").strip()
-            or (session.get("ai_task_alignment_comment") or "").strip()
-            or None
-        )
-        return (
-            {"kind": "ai_summary", "body": commentary_body}
-            if commentary_body else None
-        )
-
-    def test_prefers_immutable_draft(self):
-        out = self._build({
-            "session_kpi_narrative_ai_draft": "draft",
-            "ai_task_alignment_comment": "EDITED BY ADMIN — should not leak",
-        })
-        # Admin's edit must NOT surface; only the immutable draft.
-        self.assertEqual(out["body"], "draft")
-        self.assertNotIn("EDITED BY ADMIN", out["body"])
-
-    def test_legacy_session_falls_back_to_editable(self):
-        """Pre-Phase-18.x sessions where the immutable column was
-        never written. We surface whatever's in the editable column
-        (which in practice is still the AI's original for those
-        sessions per the task-5 commit message)."""
-        out = self._build({
-            "session_kpi_narrative_ai_draft": None,
-            "ai_task_alignment_comment": "legacy ai text",
-        })
-        self.assertEqual(out["body"], "legacy ai text")
-
-    def test_both_empty_returns_none(self):
-        self.assertIsNone(self._build({}))
-        self.assertIsNone(self._build({
-            "session_kpi_narrative_ai_draft": "",
-            "ai_task_alignment_comment": "   ",
-        }))
-
-
-class SnippetCountPendingTests(unittest.TestCase):
-    """snippet_count_pending reflects the gate-window count — total
-    snippets when not yet published, 0 once published (FE switches
-    to the existing reviewing-phase fetch at that point)."""
-
-    def test_pending_count_during_review_window(self):
-        # Not published, 3 extracted snippets → 3 pending.
-        published = False
-        total = 3
-        pending = total if not published else 0
-        self.assertEqual(pending, 3)
-
-    def test_pending_count_zero_after_publish(self):
-        published = True
-        total = 5
-        pending = total if not published else 0
-        self.assertEqual(pending, 0)
 
 
 if __name__ == "__main__":

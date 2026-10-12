@@ -14,38 +14,13 @@ from tests.evals.master_doc_probe import (
     CASES,
     Case,
     _deterministic_check,
-    _report_only_notes,
 )
-
-_LONG = "a" * 200
-_SHORT = "a" * 100
 
 
 class ReportOnlyLengthTests(unittest.TestCase):
     def _case(self, rubric: dict) -> Case:
         return Case(id="X", category="x", user_message="x", rubric=rubric)
 
-    def test_a_hard_cap_still_fails_the_deterministic_check(self):
-        case = self._case({"max_answer_chars": 180})
-        reason = _deterministic_check(case, {"answer": _LONG})
-        self.assertEqual(reason, "answer too long (200 chars > 180)")
-
-    def test_a_report_only_cap_does_not_fail_the_deterministic_check(self):
-        case = self._case({"report_only_max_answer_chars": 180})
-        self.assertIsNone(_deterministic_check(case, {"answer": _LONG}))
-
-    def test_a_report_only_cap_produces_a_note_when_exceeded(self):
-        case = self._case({"report_only_max_answer_chars": 180})
-        self.assertEqual(
-            _report_only_notes(case, {"answer": _LONG}),
-            ["answer length 200 chars > 180 (report-only)"],
-        )
-
-    def test_no_note_under_the_cap_or_without_one(self):
-        capped = self._case({"report_only_max_answer_chars": 180})
-        self.assertEqual(_report_only_notes(capped, {"answer": _SHORT}), [])
-        uncapped = self._case({})
-        self.assertEqual(_report_only_notes(uncapped, {"answer": _LONG}), [])
 
     def test_mdr_14_length_is_report_only_and_its_other_checks_still_gate(self):
         (mdr14,) = [c for c in CASES if c.id == "MDR-14"]

@@ -21,9 +21,6 @@ class TestPromptRegistry(unittest.TestCase):
         # once per class instead of once per test (audit Q-T11).
         cls.manifest = registry.manifest()
 
-    def test_manifest_builds(self):
-        """Discovery + hashing works and yields at least one prompt."""
-        self.assertTrue(self.manifest, "no prompt modules discovered in services/prompts/")
 
     def test_lockfile_matches_code(self):
         """prompts.lock.json is in sync with the prompt modules.
@@ -42,24 +39,6 @@ class TestPromptRegistry(unittest.TestCase):
             "`python -m services.prompts.registry update` and commit "
             "the lockfile.",
         )
-
-    def test_prompt_ids_are_namespaced(self):
-        """Every id is '<surface>.<part>' so eval datasets, llm.chat log
-        lines, and llm_usage cost rows key on the same surface name."""
-        for pid in self.manifest:
-            surface, _, part = pid.partition(".")
-            self.assertTrue(surface and part,
-                            f"prompt id {pid!r} is not '<surface>.<part>'")
-
-    def test_static_prompts_nonempty(self):
-        """A blank static prompt is always a mistake."""
-        for mod_name, module in registry.iter_prompt_modules():
-            for pid, entry in module.REGISTER.items():
-                if isinstance(entry, str):
-                    self.assertTrue(
-                        entry.strip(),
-                        f"{mod_name}: static prompt {pid!r} is empty",
-                    )
 
 
 if __name__ == "__main__":

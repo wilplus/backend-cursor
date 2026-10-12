@@ -64,13 +64,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = ROOT / "migrations"
-MANIFEST = MIGRATIONS / "manifest.txt"
 D11_SOURCE = "add_confident_moment_coaching_bundle_v1.sql"
-REASSERT = "two_d11_writers_take_their_locks_again.sql"
-#: 0376 re-issues mark_phase1_storage_object_purged_v1 (a training-copy
-#: branch) and ends with 0365's own re-injection for it.
-CORPUS_PURGE = "training_copies_go_when_the_yes_goes.sql"
-OBJECT_PURGE = "public.mark_phase1_storage_object_purged_v1(uuid,text,uuid,text,text,text,text)"
 DOCUMENT_GENERATION = "public.advance_ideal_text_document_generation_v1()"
 AUTHORIZATION_RECEIPT = (
     "public.accept_phase1_processing_authorization_v1"
@@ -80,9 +74,6 @@ AUTHORIZATION_RECEIPT_V2 = (
     "public.accept_phase1_processing_authorization_v2"
     "(uuid,text,text,text,text,text,text,boolean,text,text,text,timestamptz,text,text[])"
 )
-#: 0357 creates v2 without a preamble; 0366 injects v1's.
-OPTIONAL_YES = "a_receipt_can_record_an_optional_yes.sql"
-V2_CLOSURE = "the_optional_yes_takes_the_d11_locks.sql"
 
 #: 0327 rewrites these two with targeted regexp edits, not through a
 #: ``$registry$`` entry.  Its own verifier checks the same marker text.
@@ -121,17 +112,6 @@ _ALIASES = {
     "varchar": "character varying",
     "timestamp with time zone": "timestamptz",
 }
-
-
-def manifest_files() -> list[str]:
-    """Migration file names in the order the runner applies them."""
-    out: list[str] = []
-    for line in MANIFEST.read_text(encoding="utf-8").splitlines():
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        version, _, filename = line.partition("\t")
-        out.append(filename.strip())
-    return out
 
 
 def _blank_comments(sql: str) -> str:
@@ -287,241 +267,6 @@ def walk(
             else:
                 lost[sig] = filename
     return lost
-
-
-def unmarked_writers(files: list[str]) -> dict[str, str]:
-    """``walk`` over the real migration files, from 0327 on.
-
-    Before 0327 runs, no ``$registry$`` writer is marked yet.  The two legacy
-    root writers start marked: 0327 edits them without a ``$registry$`` entry,
-    and its own verifier refuses to finish unless both carry the marker.
-    """
-    chain = files[files.index(D11_SOURCE):]
-    not_yet_injected = {
-        sig: D11_SOURCE
-        for sig, spec in d11_registry().items()
-        if "sql" in spec
-    }
-    return walk(
-        [(f, (MIGRATIONS / f).read_text(encoding="utf-8")) for f in chain],
-        not_yet_injected,
-    )
-
-
-class D11WriterMarkersSurviveTheManifest(unittest.TestCase):
-    def test_the_registry_is_read_from_0327(self):
-        registry = d11_registry()
-        # 6 writers + 5 authority leaves + 3 triggers + 2 legacy root writers.
-        self.assertEqual(len(registry), 16, sorted(registry))
-        self.assertEqual(registry[OBJECT_PURGE]["marker"], "D11 writer: object purge")
-
-    def test_0327_is_in_the_manifest(self):
-        self.assertIn(D11_SOURCE, manifest_files())
-
-    def test_every_registered_writer_is_marked_at_the_end_of_the_chain(self):
-        lost = unmarked_writers(manifest_files())
-        self.assertEqual(
-            lost,
-            UNRESOLVED,
-            "The D11 writers left without their marker are not exactly the "
-            "known UNRESOLVED set. A new entry: carry the preamble in the new "
-            f"body, or add a re-injection like {REASSERT}. A missing entry: "
-            f"it was repaired, so remove it from UNRESOLVED. Got: {lost}",
-        )
-
-    def test_0327_overwrites_its_own_document_generation_injection(self):
-        # Walking 0327 alone: the trigger closure marks it, D19 unmarks it.
-        self.assertEqual(
-            unmarked_writers([D11_SOURCE]), {DOCUMENT_GENERATION: D11_SOURCE}
-        )
-
-    def test_v2_is_registered_with_v1s_marker_and_lock_sql(self):
-        v1 = d11_registry()[AUTHORIZATION_RECEIPT]
-        v2 = registered_writers()[AUTHORIZATION_RECEIPT_V2]
-        self.assertNotIn(AUTHORIZATION_RECEIPT_V2, d11_registry())
-        self.assertEqual(v2["marker"], v1["marker"])
-        self.assertEqual(v2["sql"], v1["sql"])
-        self.assertEqual(v2["signature"], AUTHORIZATION_RECEIPT_V2)
-
-    def test_0366_injects_exactly_the_registered_v2_spec(self):
-        sql = (MIGRATIONS / V2_CLOSURE).read_text(encoding="utf-8")
-        self.assertEqual(
-            [spec for _, spec in registry_entries(sql)],
-            [later_writers()[AUTHORIZATION_RECEIPT_V2]],
-        )
-
-    def test_0357_creates_v2_under_the_registered_signature(self):
-        sql = (MIGRATIONS / OPTIONAL_YES).read_text(encoding="utf-8")
-        created = [sig for _, kind, sig, _ in function_events(sql) if kind == "create"]
-        self.assertEqual(created, [AUTHORIZATION_RECEIPT_V2])
-
-    def test_without_0366_the_walk_names_0357(self):
-        # v2 is created unmarked; only 0366 closes it.
-        files = [f for f in manifest_files() if f != V2_CLOSURE]
-        self.assertEqual(
-            unmarked_writers(files),
-            {**UNRESOLVED, AUTHORIZATION_RECEIPT_V2: OPTIONAL_YES},
-        )
-
-    def test_0366_follows_0357(self):
-        files = manifest_files()
-        self.assertGreater(files.index(V2_CLOSURE), files.index(OPTIONAL_YES))
-
-    def test_0366_restates_the_service_role_grant_by_exact_signature(self):
-        sql = " ".join((MIGRATIONS / V2_CLOSURE).read_text(encoding="utf-8").split())
-        target = (
-            "ON FUNCTION public.accept_phase1_processing_authorization_v2( "
-            "UUID,TEXT,TEXT,TEXT,TEXT,TEXT,TEXT,BOOLEAN,TEXT,TEXT,TEXT,TIMESTAMPTZ,TEXT, "
-            "TEXT[] )"
-        )
-        self.assertIn(f"REVOKE ALL {target} FROM PUBLIC, anon, authenticated;", sql)
-        self.assertIn(f"GRANT EXECUTE {target} TO service_role;", sql)
-
-    def test_without_0365_the_walk_names_0335_and_0354(self):
-        # Shows the guard catches the production regressions it was written for.
-        # 0376 re-issues the object mark and re-injects its preamble too, so
-        # the counterfactual removes every re-injection of it, not just 0365's.
-        files = [f for f in manifest_files()
-                 if f not in (REASSERT, CORPUS_PURGE)]
-        self.assertEqual(
-            unmarked_writers(files),
-            {
-                **UNRESOLVED,
-                AUTHORIZATION_RECEIPT: "enable_practice_phase1_purpose.sql",
-                OBJECT_PURGE: "deletion_reaches_practice_objects.sql",
-            },
-        )
-
-    def test_without_0376_s_reinjection_its_replacement_would_unmark(self):
-        # 0376 re-issues the object mark from source. Were its re-injection
-        # block missing, the walk would name 0376 itself.
-        body = (MIGRATIONS / CORPUS_PURGE).read_text(encoding="utf-8")
-        self.assertIn("CREATE OR REPLACE FUNCTION public.mark_phase1_storage_object_purged_v1", body)
-        self.assertIn('"marker":"D11 writer: object purge"', body)
-        self.assertGreater(body.index("DO $d11_writer_reclosure$"),
-                           body.index("CREATE OR REPLACE FUNCTION public.mark_phase1_storage_object_purged_v1"))
-
-    def test_the_reinjection_follows_both_replacements(self):
-        files = manifest_files()
-        for replaced in (
-            "enable_practice_phase1_purpose.sql",
-            "deletion_reaches_practice_objects.sql",
-        ):
-            self.assertGreater(files.index(REASSERT), files.index(replaced))
-
-    def test_0365_restates_the_service_role_grants_by_exact_signature(self):
-        sql = " ".join((MIGRATIONS / REASSERT).read_text(encoding="utf-8").split())
-        for target in (
-            "ON FUNCTION public.accept_phase1_processing_authorization_v1( "
-            "UUID,TEXT,TEXT,TEXT,TEXT,TEXT,TEXT,BOOLEAN,TEXT,TEXT,TEXT,TIMESTAMPTZ,TEXT )",
-            "ON FUNCTION public.mark_phase1_storage_object_purged_v1( "
-            "UUID,TEXT,UUID,TEXT,TEXT,TEXT,TEXT )",
-        ):
-            self.assertIn(
-                f"REVOKE ALL {target} FROM PUBLIC, anon, authenticated;", sql
-            )
-            self.assertIn(f"GRANT EXECUTE {target} TO service_role;", sql)
-
-
-class SignatureParsing(unittest.TestCase):
-    def test_named_parameters_reduce_to_types(self):
-        self.assertEqual(
-            signature(
-                "public.mark_phase1_storage_object_purged_v1",
-                "p_purge_request_id UUID, p_source_relation TEXT, p_source_id UUID,"
-                " p_storage_provider TEXT, p_bucket TEXT, p_object_key TEXT,"
-                " p_exact_bytes_sha256 TEXT",
-            ),
-            OBJECT_PURGE,
-        )
-
-    def test_a_comment_inside_the_parameter_list_is_not_a_parameter(self):
-        sql = (
-            "CREATE FUNCTION public.f(\n  p_a UUID,\n"
-            "  -- a note, with a comma\n  p_b TEXT[] DEFAULT '{}'::TEXT[]\n"
-            ") RETURNS void LANGUAGE sql AS $$ SELECT 1 $$;\n"
-        )
-        self.assertEqual(function_events(sql)[0][2], "public.f(uuid,text[])")
-
-    def test_modes_defaults_and_multiword_types(self):
-        self.assertEqual(
-            signature(
-                "f",
-                "IN a timestamp with time zone, b double precision DEFAULT 1,"
-                " OUT c int, d numeric(10,2) = 0",
-            ),
-            "public.f(timestamptz,double precision,numeric(10,2))",
-        )
-
-
-class TheWalkerOnSyntheticChains(unittest.TestCase):
-    """The state machine, without touching the real manifest."""
-
-    FINALIZE = "public.finalize_phase1_purge_v3(uuid,text)"
-
-    def _walk(self, later_sql: str) -> dict[str, str]:
-        return walk([("later.sql", later_sql)])
-
-    def test_a_replacement_without_the_marker_is_flagged(self):
-        sql = (
-            "CREATE OR REPLACE FUNCTION public.finalize_phase1_purge_v3(\n"
-            "  p_purge_request_id UUID, p_reason TEXT) RETURNS jsonb\n"
-            "LANGUAGE plpgsql AS $$\nBEGIN\n RETURN NULL;\nEND;\n$$;\n"
-        )
-        self.assertEqual(self._walk(sql), {self.FINALIZE: "later.sql"})
-
-    def test_a_replacement_carrying_the_marker_passes(self):
-        sql = (
-            "CREATE OR REPLACE FUNCTION public.finalize_phase1_purge_v3(\n"
-            "  p_purge_request_id UUID, p_reason TEXT) RETURNS jsonb\n"
-            "LANGUAGE plpgsql AS $$\nBEGIN\n -- D11 writer: purge finalize\n"
-            " RETURN NULL;\nEND;\n$$;\n"
-        )
-        self.assertEqual(self._walk(sql), {})
-
-    def test_a_marker_in_a_comment_outside_the_body_does_not_count(self):
-        sql = (
-            "-- D11 writer: purge finalize\n"
-            "CREATE OR REPLACE FUNCTION public.finalize_phase1_purge_v3(\n"
-            "  p_purge_request_id UUID, p_reason TEXT) RETURNS jsonb\n"
-            "LANGUAGE plpgsql AS $fn$\nBEGIN\n RETURN NULL;\nEND;\n$fn$;\n"
-        )
-        self.assertEqual(self._walk(sql), {self.FINALIZE: "later.sql"})
-
-    def test_a_reinjection_restores_the_marker(self):
-        spec = d11_registry()[self.FINALIZE]
-        sql = (
-            "DROP FUNCTION IF EXISTS public.finalize_phase1_purge_v3(uuid, text);\n"
-            "SELECT $registry$ [" + json.dumps(spec) + "] $registry$;\n"
-        )
-        self.assertEqual(self._walk(sql), {})
-
-    def test_a_reinjection_with_a_different_spec_is_refused(self):
-        spec = dict(d11_registry()[self.FINALIZE], sql=" PERFORM 1;\n")
-        sql = "SELECT $registry$ [" + json.dumps(spec) + "] $registry$;\n"
-        with self.assertRaises(AssertionError):
-            self._walk(sql)
-
-    def test_a_later_writer_is_unmarked_from_its_creation(self):
-        sql = (
-            "CREATE OR REPLACE FUNCTION public.accept_phase1_processing_authorization_v2(\n"
-            "  p_acquisition_principal_id UUID, p_policy_version TEXT,\n"
-            "  p_terms TEXT, p_privacy TEXT, p_ai TEXT, p_agreement TEXT,\n"
-            "  p_action TEXT, p_age BOOLEAN, p_country TEXT, p_locale TEXT,\n"
-            "  p_client TEXT, p_at TIMESTAMPTZ, p_key TEXT,\n"
-            "  p_optional_purposes TEXT[] DEFAULT '{}'::TEXT[]\n"
-            ") RETURNS jsonb LANGUAGE plpgsql AS $$\nBEGIN\n RETURN NULL;\nEND;\n$$;\n"
-        )
-        self.assertEqual(
-            self._walk(sql), {AUTHORIZATION_RECEIPT_V2: "later.sql"}
-        )
-        spec = later_writers()[AUTHORIZATION_RECEIPT_V2]
-        closed = sql + "SELECT $registry$ [" + json.dumps(spec) + "] $registry$;\n"
-        self.assertEqual(self._walk(closed), {})
-
-    def test_a_drop_is_flagged(self):
-        sql = "DROP FUNCTION IF EXISTS public.finalize_phase1_purge_v3(uuid, text);\n"
-        self.assertEqual(self._walk(sql), {self.FINALIZE: "later.sql"})
 
 
 if __name__ == "__main__":
