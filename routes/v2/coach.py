@@ -29,14 +29,15 @@ from services.rate_limits import heavy_limit, llm_limit, whisper_limit
 # its own imports — otherwise the handler NameErrors while handling.
 from routes.v2.common import _is_valid_uuid
 from services.db import db
+from services.refusal import Refusal
 from services.coach_pseudonym import coach_pseudonym as _coach_pseudonym
 from services.coach_queue import load_review_queue
 from services.coach_confidence_rating import (
-    RatingRefusal, admit_rater, rating_body, rating_response, record_rating,
+    admit_rater, rating_body, rating_response, record_rating,
 )
 from services.coach_students import student_detail
 from services.coach_video_upload import (
-    VideoRefusal, read_video_upload, store_session_video, video_max_mb,
+    read_video_upload, store_session_video, video_max_mb,
 )
 from services.training_import_request import start_training_import
 from services.training_import_setup import setup_complete
@@ -46,7 +47,7 @@ from services.coach_moment_errors import (
     apply_moment_edit,
     coach_moment_fields,
 )
-from services.coach_practice_review import PracticeRefusal, save_coach_decision
+from services.coach_practice_review import save_coach_decision
 # Module level, because the packet SHAPER uses them and it is module level too
 # — the blind rules belong beside the row they gate, not inside one route.
 from services.coach_blind_gate import (
@@ -1403,7 +1404,7 @@ def v2_coach_confident_voice_practice(session_id, snippet_id):
         updated = save_coach_decision(
             db, practice, request.get_json(silent=True) or {},
             str(request.user_id))
-    except PracticeRefusal as refusal:
+    except Refusal as refusal:
         return jsonify(refusal.body), refusal.status
     return jsonify({"practice": _coach_practice_payload(updated)}), 200
 
@@ -1705,7 +1706,7 @@ def v2_coach_session_video(session_id):
         return jsonify(store_session_video(
             db, session_id, upload,
             (request.form.get("upload_idempotency_key") or "").strip() or None)), 200
-    except VideoRefusal as refusal:
+    except Refusal as refusal:
         return jsonify(refusal.body), refusal.status
     except Exception as e:
         logger.error("coach/session-video failed sid=%s err=%s", session_id, e, exc_info=True)
@@ -2785,7 +2786,7 @@ def v2_coach_put_confidence_label(snippet_id):
 
     try:
         body, legacy_intensity = rating_body(body)
-    except RatingRefusal as refusal:
+    except Refusal as refusal:
         return jsonify(refusal.body), refusal.status
 
     try:
@@ -2842,7 +2843,7 @@ def v2_coach_put_confidence_label(snippet_id):
                               legacy_intensity, canonical_judgment),
             **_moment_read_after_rating(session_id, snippet_id),  # C2, after the write
         }), 200
-    except RatingRefusal as refusal:
+    except Refusal as refusal:
         return jsonify(refusal.body), refusal.status
     except Exception as e:
         logger.warning("confidence rating failed snip=%s: %s", snippet_id, e)

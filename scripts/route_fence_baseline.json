@@ -184,12 +184,8 @@
     "db_calls": 4
   },
   "routes/v2/user_sessions.py:v2_add_confident_voice_practice_attempt": {
-    "lines": 141,
-    "db_calls": 5
-  },
-  "routes/v2/user_sessions.py:v2_complete_confident_voice_practice": {
-    "lines": 52,
-    "db_calls": 5
+    "lines": 33,
+    "db_calls": 2
   },
   "routes/v2/user_sessions.py:v2_post_take_feedback_response": {
     "lines": 128,
@@ -198,10 +194,6 @@
   "routes/v2/user_sessions.py:v2_put_confidence_agree": {
     "lines": 67,
     "db_calls": 3
-  },
-  "routes/v2/user_sessions.py:v2_start_confident_voice_practice": {
-    "lines": 121,
-    "db_calls": 6
   },
   "routes/v2/user_sessions.py:v2_user_get_session_readout": {
     "lines": 104,
@@ -224,7 +216,7 @@
     "db_calls": 3
   },
   "routes/v2/user_sessions.py:v2_user_suggestion_feedback": {
-    "lines": 233,
-    "db_calls": 5
+    "lines": 67,
+    "db_calls": 2
   }
 }

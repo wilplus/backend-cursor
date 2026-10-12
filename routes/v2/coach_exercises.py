@@ -24,8 +24,9 @@ from flask import jsonify, request
 from config import Config
 from routes.admin import require_admin_or_coach, require_founder
 from routes.v2.blueprint import v2_bp
-from services.coach_video_upload import VideoRefusal, read_video_upload, video_max_mb
+from services.coach_video_upload import read_video_upload, video_max_mb
 from services.db import db
+from services.refusal import Refusal
 from services.rate_limits import heavy_limit, llm_limit
 
 logger = logging.getLogger(__name__)
@@ -84,7 +85,7 @@ def v2_coach_exercise_video(exercise_id):
     try:
         upload = read_video_upload(
             request.files, request.content_length, video_max_mb(config))
-    except VideoRefusal as refusal:
+    except Refusal as refusal:
         return jsonify(refusal.body), refusal.status
     status, payload = attach_video(
         db, exercise_id=str(exercise_id), coach_id=str(request.user_id),

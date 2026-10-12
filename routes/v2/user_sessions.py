@@ -10,8 +10,6 @@ Formerly re-exported from the ``routes.v2_routes`` façade (removed 2026-09-14,
 audit Q-A3); import from this module.
 """
 import logging
-import uuid
-from datetime import datetime, timezone
 
 import sentry_sdk
 from flask import jsonify, request
@@ -32,21 +30,22 @@ from routes.v2.arcs import (
 from routes.v2.blueprint import v2_bp
 from routes.v2.common import _is_valid_uuid, _resolve_snippet_audio_url
 from services.ideal_text_feedback_bake import request_rebake_for_take
+from services.refusal import Refusal
+from services.suggestion_feedback import record_suggestion_feedback, validated_tap
+from services.practice_attempts import add_attempt, complete_practice
+from services.practice_start import original_answer, start_practice
 from services.db import db
 from services.create_take import session_owned_by_principal
 from services.project_ownership import GUEST_OWNER_HEADER
 from services.project_repository import ProjectRepository
-from services.snippet_values import resolve_all
 from services.take_repository import TakeHasLineageError
 from services.owner_feedback_answers import owner_answers
 from services.take_feedback_responses import album_routing_for
 from services.accepted_rewrite import text_update_for_answer
 from services.practice_adoption import (
-    ANSWERS as _PRACTICE_ANSWERS,
     helper_words_from_practice,
     judge_attempt,
     judgeable_attempt,
-    route_matches as _route_matches,
 )
 
 logger = logging.getLogger(__name__)
@@ -766,35 +765,6 @@ def v2_user_put_transcript_edit(session_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to save edit"}), 500
 
 
-_SUGGESTION_TARGETS = ("upgrade", "rewrite_your_voice", "rewrite_polished",
-                       "comment", "comment_video",
-                       # Star suggestions (2026-07-18): per-star Approve /
-                       # Revert on the SD ideal text (no apply_all surfaced).
-                       "moment_emphasize", "moment_replace",
-                       # LIVING TRANSCRIPT (FE contract 2026-07-21): a
-                       # span-anchored tracked change on the document.
-                       # Founder bug 2026-07-22: the FE shipped these and
-                       # this allowlist rejected them with 400 — every
-                       # Accept/Keep on the document failed ("Couldn't
-                       # save that just now"). The #221 bug class: new
-                       # vocabulary on one side, an unwidened guard on
-                       # the other.
-                       "document_replace", "document_bold",
-                       # Structural stars are delivery prompts (no Approve);
-                       # this target is accepted forward-compatibly for
-                       # engagement feedback but changes NO serve behavior
-                       # (never in the applied-map / fold).
-                       "moment_structure")
-# "reverted" (2026-07-15): Approve is a reversible toggle on the FE — the
-# undo reports here so applied→reverted pairs keep the preference signal
-# honest (second-order lane, below coach truth, as ever).
-# "dismissed" (2026-07-20, gradual refinement rule 2): an explicit
-# rejection of a star — recorded on the decision ledger so the same
-# suggestion is never generated again for that phrase.
-_SUGGESTION_ACTIONS = ("applied", "preferred", "apply_all", "reverted",
-                       "dismissed")
-
-
 @v2_bp.route("/user/snippets/<snippet_id>/suggestion-feedback",
              methods=["POST"])
 @optional_auth
@@ -825,27 +795,10 @@ def v2_user_suggestion_feedback(snippet_id):
                 "code": "INVALID_INPUT",
                 "error": "snippet_id and session_id must be UUIDs",
             }), 400
-        target = body.get("target")
-        if target not in _SUGGESTION_TARGETS:
-            return jsonify({
-                "code": "INVALID_INPUT",
-                "error": f"target: must be one of {', '.join(_SUGGESTION_TARGETS)}",
-            }), 400
-        action = body.get("action")
-        if action not in _SUGGESTION_ACTIONS:
-            return jsonify({
-                "code": "INVALID_INPUT",
-                "error": f"action: must be one of {', '.join(_SUGGESTION_ACTIONS)}",
-            }), 400
-        upgrade_index = body.get("upgrade_index")
-        if upgrade_index is not None and (
-            not isinstance(upgrade_index, int)
-            or isinstance(upgrade_index, bool) or upgrade_index < 0
-        ):
-            return jsonify({
-                "code": "INVALID_INPUT",
-                "error": "upgrade_index: must be a non-negative integer",
-            }), 400
+        try:
+            target, action, upgrade_index = validated_tap(body)
+        except Refusal as refusal:
+            return jsonify(refusal.body), refusal.status
 
         session = db.v2_get_session_by_id(session_id)
         if not session:
@@ -864,160 +817,12 @@ def v2_user_suggestion_feedback(snippet_id):
             return jsonify({"code": "SNIPPET_NOT_FOUND",
                             "error": "That moment is not part of this session"}), 404
 
-        ok = db.insert_user_suggestion_feedback(
-            snippet_id=snippet_id,
-            session_id=session_id,
-            user_id=caller,
-            target=target,
-            action=action,
-            upgrade_index=upgrade_index,
-            suggestion_version=(
-                str(body.get("suggestion_version"))
-                if body.get("suggestion_version") is not None else None
-            ),
-        )
-        request_rebake_for_take(session, written=bool(ok))  # F3
-        # ── DECISION LEDGER (founder 2026-07-20, gradual refinement):
-        # a star tap is also a durable per-PHRASE decision — applied bakes
-        # into every future version, dismissed is never re-offered,
-        # reverted wipes the slate. Phrase = the snippet's piece text (the
-        # anchor's verbatim span). Best-effort: never breaks the POST. ──
-        if target in ("moment_replace", "moment_emphasize",
-                      "document_replace", "document_bold") \
-                and action in ("applied", "dismissed", "reverted"):
-            try:
-                _arc = session.get("arc_id")
-                if _arc:
-                    from services.ideal_decision_ledger import (
-                        record_star_decision,
-                    )
-                    _sug_row = (db.get_moment_suggestions_by_arc(_arc)
-                                or {}).get(str(snippet_id))
-                    _ver = None
-                    try:
-                        _ver = (db.ideal_text.get_coach_arc_ideal_text(_arc)
-                                or {}).get("version")
-                    except Exception:
-                        _ver = None
-                    # The ledger is keyed on the phrase AS IT APPEARS IN
-                    # THE DOCUMENT — not the raw snippet transcript.
-                    # Founder bug 2026-07-22: the document is smoothed
-                    # (fillers out, casing/punctuation applied), so a row
-                    # keyed on the raw transcript could never be found by
-                    # the bake and the approval silently did nothing
-                    # ("the system does not accept my approval").
-                    # §12.3 — the intent key's location: the cutter's own
-                    # slide bucket for this snippet (the one cross-take
-                    # key). Missing/legacy metrics → None; the row then
-                    # carries the phrase key only, exactly as before.
-                    _piece = (snip.get("metrics") or {}).get("piece") \
-                        if isinstance(snip.get("metrics"), dict) else None
-                    _slide_i = _piece.get("slide_index") \
-                        if isinstance(_piece, dict) else None
-                    _decision_text = _document_phrase_for(
-                        _arc, snippet_id,
-                        fallback=(snip.get("transcript")
-                                  or snip.get("transcription_text")))
-                    # A coach revision is a new proposal against the text the
-                    # user currently has. Store its visible before/after pair
-                    # so accepting it never mutates an earlier machine
-                    # decision in place.
-                    if body.get("source") == "coach_revision":
-                        _quote = body.get("quote")
-                        _proposed = body.get("proposed_text")
-                        if (isinstance(_quote, str) and _quote.strip()
-                                and isinstance(_proposed, str)
-                                and _proposed.strip()):
-                            _decision_text = _quote.strip()
-                            _sug_row = {
-                                **(_sug_row or {}),
-                                "replacement_text": _proposed.strip(),
-                            }
-                    record_star_decision(
-                        db, _arc, suggestion=_sug_row, target=target,
-                        action=action, target_text=_decision_text,
-                        snippet_id=snippet_id, version=_ver,
-                        slide_index=_slide_i)
-                    # THE VOICE ALBUM (founder 2026-08-14, mirror ruling):
-                    # an APPLIED emphasize is the USER signal of the entry
-                    # rule — if the acoustic star and a published coach
-                    # 'strong' already agree, the moment lands now. A
-                    # REVERT withdraws that signal, and the album is a
-                    # pure reflection of current state ("not an
-                    # append-only graveyard of changed minds"), so the
-                    # same refresh REMOVES the entry. Best-effort: never
-                    # breaks the decide POST.
-                    if action in ("applied", "reverted") and target in (
-                            "moment_emphasize", "document_bold"):
-                        try:
-                            from services.voice_album import (
-                                refresh_voice_album,
-                            )
-                            refresh_voice_album(_arc, database=db)
-                        except Exception as _va_err:
-                            logger.warning(
-                                "voice_album: decide hook failed arc=%s: "
-                                "%s", _arc, _va_err)
-                    # THE TAKE'S BUDGET (founder 2026-08-10): a decided star
-                    # keeps its slot — applied and dismissed alike; a revert
-                    # returns it (undecided again, SPEC R4). The row doubles
-                    # as SPEC §6's ground truth. Best-effort.
-                    from services.intervention_spend import spend, unspend
-                    _star_key = f"star:{target}:{snippet_id}"
-                    _arc_sessions = db.takes.get_arc_sessions(_arc) or []
-                    # THE STYLE LANE (slice 2, founder 2026-08-11): a post-
-                    # lock bold decision rides OUTSIDE the ≤3 — the FE marks
-                    # it and the row lands with lane:style, which
-                    # spent_count excludes. The row still lands (the
-                    # learning loop wants every explicit decision). A
-                    # forged flag frees only the student's own slots —
-                    # no fence rides on it.
-                    _style = bool(body.get("style_lane")) \
-                        and target == "document_bold"
-                    # PROPOSAL HISTORY: the texts ride when the client
-                    # sends them (optional — older clients simply write
-                    # text-less rows, which the history read skips).
-                    _q = body.get("quote")
-                    _pt = body.get("proposed_text")
-                    _wk = body.get("why_key")
-                    if action == "reverted":
-                        unspend(db, _arc, _arc_sessions,
-                                change_key=_star_key)
-                    else:
-                        spend(db, _arc, _arc_sessions,
-                              change_key=_star_key,
-                              decision=("approved" if action == "applied"
-                                        else "disregarded"),
-                              lane=("lane:style" if _style else None),
-                              intervention_type=(
-                                  "EMPHASISE"
-                                  if target in ("moment_emphasize",
-                                                "document_bold")
-                                  else "REWRITE"),
-                              quote=(str(_q) if isinstance(_q, str)
-                                     and _q.strip() else None),
-                              proposed_text=(str(_pt)
-                                             if isinstance(_pt, str)
-                                             and _pt.strip() else None),
-                              why_key=(str(_wk) if isinstance(_wk, str)
-                                       and _wk.strip() else None))
-                    # A dismissed star also stops being OFFERED right now:
-                    # the ledger remembers the decision; the row removal
-                    # kills the anchor/star on every future serve (rule 2
-                    # applies to the current version too, not only the
-                    # next assembly).
-                    if action == "dismissed":
-                        db.delete_moment_suggestion(str(snippet_id))
-                    if action in ("applied", "reverted"):
-                        # Living Transcript: an approved change must
-                        # appear in the document NOW, and an Undo must restore
-                        # the original NOW rather than waiting for another
-                        # take to trigger assembly.
-                        _reassemble_after_decision(_arc)
-            except Exception as _led_err:
-                logger.warning(
-                    "suggestion-feedback: ledger write failed snip=%s: %s",
-                    snippet_id, _led_err)
+        ok = record_suggestion_feedback(
+            db, session=session, snip=snip, snippet_id=snippet_id,
+            session_id=session_id, user_id=caller, target=target,
+            action=action, upgrade_index=upgrade_index, body=body,
+            phrase_for=_document_phrase_for,
+            reassemble=_reassemble_after_decision)
         # Degrade gracefully (standing constraint): this is a best-effort,
         # capture-only second-order signal. A missing table (migration pending)
         # or a transient write hiccup returns 200 {saved:false} — the Apply/✓
@@ -1345,21 +1150,6 @@ def v2_put_confidence_agree(snippet_id):
         }), 500
 
 
-def _passage_refused(practice, alignment) -> bool:
-    """The attempt did not say the shown words, and the coach did not ask
-    for different ones (founder 2026-09-28, 14B)."""
-    return (not alignment.get("matches")
-            and not _coach_asked_own_wording(practice))
-
-
-def _coach_asked_own_wording(practice) -> bool:
-    """The shown words are required unless the coach's shared exercise asks
-    for different wording (founder 2026-09-28, 14B)."""
-    shared = practice.get("coach_shared_exercise") if isinstance(
-        practice, dict) else None
-    return isinstance(shared, dict) and shared.get("own_wording") is True
-
-
 @v2_bp.route("/user/takes/<take_session_id>/feedback-responses",
              methods=["GET"])
 @require_owner_or_guest
@@ -1642,32 +1432,6 @@ def _after_practice_public(said):
     return said
 
 
-def _dismissed(updated: dict) -> dict:
-    """The practice the speaker left, as closed."""
-    return updated
-
-
-def _attempt_comparison(database, practice, original, current_snapshot,
-                        previous, metrics, baseline, baseline_kind) -> dict:
-    """The versioned before/after observation (no automatic outcome), with
-    both sides' delivery-cue reads beside it (Phase 3, F5) whenever the
-    speaker has a baseline. Raw, versioned, never an improvement label."""
-    from services.after_practice import attach_cue_reads
-    comparison = {
-        "contract_version": "practice-product-observation-v1",
-        "baseline": original,
-        "attempt": current_snapshot,
-        "previous_attempt": previous,
-        "no_automatic_outcome": True,
-    }
-    if not baseline:
-        return comparison
-    snippet = database.get_snippet_by_id(str(practice.get("snippet_id") or "")) or {}
-    return attach_cue_reads(
-        comparison, original_metrics=snippet.get("metrics"),
-        attempt_metrics=metrics, baseline=baseline, baseline_kind=baseline_kind)
-
-
 def _practice_exercise_shape(practice, kind: str) -> dict:
     """The exercise as the owner may see it. A coach's private draft is
     never user-visible: only an explicit Share copies a complete exercise
@@ -1702,77 +1466,6 @@ def _practice_exercise_shape(practice, kind: str) -> dict:
     }
 
 
-def _practice_start_kind(body):
-    """The practice's kind and, for a library exercise, its row. Returns
-    (refusal response or None, kind, exercise_id, exercise). A rewrite or
-    the plain moment (founder lock 2026-09-30, D1) needs no exercise row.
-    Its own function so the route stays under the complexity ratchet."""
-    from services.practice_adoption import KINDS
-
-    kind = str(body.get("kind") or "exercise")
-    if kind not in KINDS:
-        return (jsonify({"code": "INVALID_INPUT",
-                         "error": "kind is not valid"}), 400), kind, None, None
-    if kind != "exercise":
-        return None, kind, None, None
-    exercise_id = str(body.get("exercise_id") or "hear-every-word-v1")
-    exercise = db.get_active_diagnostic_exercise(exercise_id)
-    if not exercise:
-        return (jsonify({"code": "EXERCISE_UNAVAILABLE",
-                         "error": "This exercise is not available."}), 409), \
-            kind, exercise_id, None
-    return None, kind, exercise_id, exercise
-
-
-def _practice_start_gate(kind, snip, take_id, snippet_id, exercise_id,
-                         median_wpm):
-    """The exercise gate for a library exercise (the offer froze its
-    choice, 80/20); a rewrite or the plain moment has no exercise to gate,
-    and the clip's read is still recorded with the practice, as evidence,
-    never as a verdict shown. Returns (refusal, verdict, matching)."""
-    from services.confident_voice_practice import (
-        exercise_eligibility, start_exercise_check,
-    )
-
-    if kind != "exercise":
-        return None, exercise_eligibility(
-            snip, session_median_wpm=median_wpm), None
-    return start_exercise_check(
-        snippet=snip, take_session_id=take_id, snippet_id=snippet_id,
-        exercise_id=str(exercise_id), database=db,
-        owner_user_id=request.user_id, session_median_wpm=median_wpm)
-
-
-def _practice_snapshot(kind, exercise_id, exercise, body):
-    """What the practice froze: the library exercise as served, or the
-    kind of passage with the feedback item it came from."""
-    if exercise:
-        return {
-            "exercise_id": exercise_id,
-            "version": int(exercise.get("version") or 1),
-            "title": exercise.get("title"),
-            "instruction": exercise.get("instruction"),
-            "explanation_video_url": exercise.get("explanation_video_url"),
-            "source": "diagnostic_library",
-        }
-    return {
-        "exercise_id": None, "version": 0, "title": None,
-        "instruction": None, "explanation_video_url": None,
-        "source": kind,
-        "feedback_id": str(body.get("feedback_id") or "") or None,
-    }
-
-
-#: start_exercise_check refusal → (code, message). The codes and messages
-#: are the ones this route already returned; only the owner moved.
-_START_REFUSALS = {
-    "NOT_ELIGIBLE": ("NOT_ELIGIBLE", "This moment does not match the exercise."),
-    "NOT_MATCHABLE": ("NOT_ELIGIBLE", "This exercise cannot be matched safely."),
-    "EXERCISE_OFFER_STALE": ("EXERCISE_OFFER_STALE",
-                             "A better matching exercise is now available."),
-}
-
-
 def _route_owner_voice_album(
     database, *, row: dict, arc_id: str, owner_user_id: str,
 ) -> bool:
@@ -1792,22 +1485,6 @@ def _route_owner_voice_album(
         slide_index=(piece.get("slide_index")
                      if isinstance(piece, dict) else None),
     ))
-
-
-def _yes_or_no(owner_route: dict) -> str:
-    return "yes" if owner_route.get("response") == "yes" else "no"
-
-
-def _answer_matches_route(owner_route: dict, answer: str) -> bool:
-    """The first answer as the owner route stored it (founder 2026-09-25).
-
-    The sheet sends one of the five answers since PR 5; before it, "no"
-    stood for every answer but Yes (wilplus/backend-cursor#673). Both are
-    accepted, so neither the old nor the new sheet is refused. The stored
-    route is the answer itself since F-4, or one of the four legacy values
-    before it; `route_matches` reads both."""
-    return (_route_matches(str(owner_route.get("response") or ""), answer)
-            or _yes_or_no(owner_route) == answer)
 
 
 @v2_bp.route("/user/snippets/<snippet_id>/exercise-rendered", methods=["POST"])
@@ -1865,41 +1542,6 @@ def v2_moment_event(snippet_id):
     return jsonify(payload), status
 
 
-def _practice_original_answer(body: dict):
-    """(answer, refusal). The speaker's answer about the original, one of
-    the five; or None under Phase 2 (founder 2026-10-01, F1), where the
-    judgement comes after the practice and the start carries no answer."""
-    answer = body.get("original_user_answer")
-    if answer is None:
-        return None, None
-    if answer not in _PRACTICE_ANSWERS:
-        return None, (jsonify({"code": "INVALID_INPUT",
-                               "error": "original_user_answer is not valid"}), 400)
-    return answer, None
-
-
-def _practice_answer_gate(database, *, session: dict, snippet_id: str,
-                          user_id: str, answer):
-    """ANSWER FIRST, until Phase 2: the practice starts only once the
-    Confident Voice question was answered, as the owner route records it
-    (the five answers, or the two-way yes/no the sheet sent before PR 5).
-    Under F1 a start with no answer passes; a start that carries one is
-    still checked, so the old sheet and the new run side by side."""
-    if answer is None:
-        return None
-    owner_route = next((
-        row for row in database.list_owner_voice_album_routes(
-            str(session.get("arc_id")))
-        if str(row.get("snippet_id")) == str(snippet_id)
-        and str(row.get("owner_user_id")) == str(user_id)
-    ), None)
-    if not owner_route or not _answer_matches_route(owner_route, answer):
-        return (jsonify({"code": "ANSWER_REQUIRED",
-                         "error": "Answer the Confident Voice question first."}),
-                409)
-    return None
-
-
 @v2_bp.route("/user/snippets/<snippet_id>/confidence-practice",
              methods=["POST"])
 @require_auth
@@ -1911,109 +1553,19 @@ def v2_start_confident_voice_practice(snippet_id):
         return jsonify({"code": "INVALID_INPUT",
                         "error": "snippet_id must be a valid UUID"}), 400
     body = request.get_json(silent=True) or {}
-    original_answer, refused = _practice_original_answer(body)
-    if refused:
-        return refused
     try:
-        snip = db.get_snippet_by_id(snippet_id)
-        session = db.v2_get_session_by_id(
-            str((snip or {}).get("session_id") or ""))
-        if (not snip or not session
-                or str(session.get("user_id")) != str(request.user_id)
-                or not session.get("arc_id")):
-            return jsonify({"code": "NOT_FOUND",
-                            "error": "snippet not found"}), 404
-        refused = _practice_answer_gate(
-            db, session=session, snippet_id=str(snippet_id),
-            user_id=str(request.user_id), answer=original_answer)
-        if refused:
-            return refused
-        # THREE KINDS OF PASSAGE (founder lock 2026-09-30, D1): the library
-        # exercise matched to the clip, the Manager's rewrite as the words to
-        # say, or the plain moment said again. Only the first needs an
-        # exercise row and the exercise gate below.
-        refused, kind, exercise_id, exercise = _practice_start_kind(body)
-        if refused:
-            return refused
-        take_id = str(session.get("id"))
-        # ONE PRACTICE PER MOMENT (founder 2026-09-29): every bookmark may
-        # carry its own exercise, so another moment's practice on this Take
-        # no longer refuses this one. This moment's own row resumes.
-        existing = db.get_confident_voice_practice_by_moment(
-            take_id, str(snippet_id), str(request.user_id))
-        if existing:
-            return jsonify({"practice": _practice_user_payload(existing)}), 200
-
-        take_snippets = db.get_snippets_by_session(take_id) or []
-        wpms = []
-        for row in take_snippets:
-            resolved = resolve_all(row)
-            wpm = resolved.get("wpm")
-            if isinstance(wpm, (int, float)) and not isinstance(wpm, bool):
-                wpms.append(float(wpm))
-        import statistics
-        # The offer froze its choice (80/20, founder 2026-09-26); the tapped
-        # exercise must be that one. services.confident_voice_practice owns
-        # the rule, so the offer and this route cannot drift apart.
-        refusal, verdict, matching = _practice_start_gate(
-            kind, snip, take_id, str(snippet_id), exercise_id,
-            statistics.median(wpms) if wpms else None)
-        if refusal:
-            return jsonify({"code": _START_REFUSALS[refusal][0],
-                            "error": _START_REFUSALS[refusal][1]}), 409
-        evidence = body.get("evidence") if isinstance(body.get("evidence"), dict) else {}
-        span = evidence.get("span") if isinstance(evidence.get("span"), dict) else {}
-        slide_index = evidence.get("slide_index")
-        paragraph_index = evidence.get("paragraph_index")
-        if str(evidence.get("project_id") or "") != str(session.get("arc_id")) \
-                or str(evidence.get("take_session_id") or "") != take_id \
-                or not isinstance(slide_index, int) or slide_index < 0 \
-                or not isinstance(paragraph_index, int) or paragraph_index < 0 \
-                or not isinstance(span.get("start"), int) \
-                or not isinstance(span.get("end"), int) \
-                or span["end"] <= span["start"]:
-            return jsonify({"code": "INVALID_INPUT",
-                            "error": "exact feedback evidence is required"}), 400
-        from services.practice_adoption import passage_for
-        passage = passage_for(
-            kind, (snip.get("transcript") or "").strip(), body.get("passage"))
-        if not passage:
-            return jsonify({"code": "INVALID_INPUT",
-                            "error": "the words to practise are required"}), 400
-        audio_ref = snip.get("audio_segment_path") or snip.get("audio_ref")
-        snapshot = _practice_snapshot(kind, exercise_id, exercise, body)
-        created = db.create_confident_voice_practice({
-            "owner_user_id": str(request.user_id),
-            "project_id": str(session["arc_id"]),
-            "take_session_id": take_id,
-            "snippet_id": str(snippet_id),
-            "exercise_id": exercise_id,
-            "exercise_version": int(snapshot["version"]),
-            "exercise_snapshot": snapshot,
-            "kind": kind,
-            "slide_index": slide_index,
-            "paragraph_index": paragraph_index,
-            "evidence_span": span,
-            "exact_passage": passage,
-            "original_audio_ref": str(audio_ref),
-            "original_start_offset_ms": int(snip.get("start_offset_ms") or 0),
-            "original_duration_ms": int(snip.get("duration_ms") or 0),
-            "machine_assessment": {
-                "pattern": verdict.get("pattern"),
-                "priority": verdict.get("priority"),
-                **(matching or {}),
-            },
-            "acoustic_evidence": {
-                "signals": verdict.get("signals"),
-                "snapshot": verdict.get("snapshot"),
-                "pace_high": verdict.get("pace_high"),
-            },
-            "original_user_answer": original_answer,
-        })
+        answer = original_answer(body)
+    except Refusal as refusal:
+        return jsonify(refusal.body), refusal.status
+    try:
+        practice, created = start_practice(
+            db, snippet_id=snippet_id, body=body, user_id=request.user_id,
+            answer=answer)
         if not created:
-            return jsonify({"code": "V2_ERROR",
-                            "error": "Could not start this practice."}), 500
-        return jsonify({"practice": _practice_user_payload(created, [])}), 201
+            return jsonify({"practice": _practice_user_payload(practice)}), 200
+        return jsonify({"practice": _practice_user_payload(practice, [])}), 201
+    except Refusal as refusal:
+        return jsonify(refusal.body), refusal.status
     except Exception as e:
         logger.error("confidence-practice start failed snip=%s: %s",
                      snippet_id, e, exc_info=True)
@@ -2064,119 +1616,12 @@ def v2_add_confident_voice_practice_attempt(practice_id):
         return jsonify({"code": "INVALID_INPUT",
                         "error": "audio_file is required"}), 400
     try:
-        audio_bytes = upload.read()
-        if len(audio_bytes) < 1000:
-            return jsonify({"code": "AUDIO_TOO_SHORT",
-                            "error": "That recording was too short. Try again."}), 422
-        from services.webm_remux import remux_webm_for_seeking
-        audio_bytes = remux_webm_for_seeking(audio_bytes, label="practice")
-        mime = (upload.mimetype or "audio/webm").split(";", 1)[0]
-        ext = ".webm" if "webm" in mime else ".m4a" if "mp4" in mime else ".wav"
-        from services.practice_transcription import transcribe_practice_attempt
-        transcription = transcribe_practice_attempt(
-            db, practice, audio_bytes, hint_filename=f"practice{ext}")
-        if not transcription or not transcription.get("transcript"):
-            return jsonify({"code": "TRANSCRIPTION_FAILED",
-                            "error": "We couldn't hear that clearly. Try again."}), 422
-        from services.confident_voice_practice import (
-            acoustic_snapshot, machine_confidence_decision, passage_alignment,
-        )
-        alignment = passage_alignment(
-            str(practice.get("exact_passage") or ""),
-            str(transcription.get("transcript") or ""))
-        if _passage_refused(practice, alignment):
-            return jsonify({"code": "PASSAGE_MISMATCH",
-                            "error": "Please read the exact passage shown and try again."}), 422
-        from services.audio_metrics import analyze_audio
-        duration_ms = transcription.get("transcribed_duration_ms")
-        try:
-            captured_duration_sec = max(
-                0.0, float(request.form.get("duration_sec") or 0.0))
-        except (TypeError, ValueError):
-            captured_duration_sec = 0.0
-        duration_sec = (float(duration_ms) / 1000.0
-                        if isinstance(duration_ms, int) and duration_ms > 0
-                        else captured_duration_sec)
-        metrics = analyze_audio(
-            audio_bytes, str(transcription["transcript"]), duration_sec)
-        if not metrics:
-            return jsonify({"code": "ANALYSIS_FAILED",
-                            "error": "We couldn't compare that attempt. Try again."}), 422
-        # Apply the SAME existing, self-relative acoustic confidence signal
-        # used by full-take snippets when a valid speaker/take baseline is
-        # available. Honest absence stays None; we never synthesize a score.
-        baseline, baseline_kind = None, "none"
-        try:
-            from services.voice_confidence import (
-                read_for_piece, resolve_confidence_baseline,
-            )
-            take_rows = db.get_snippets_by_session(
-                str(practice.get("take_session_id"))) or []
-            take_metrics = [row.get("metrics") for row in take_rows
-                            if isinstance(row.get("metrics"), dict)]
-            baseline, baseline_kind = resolve_confidence_baseline(
-                str(practice.get("owner_user_id") or request.user_id),
-                take_metrics, database=db)
-            confidence_read = read_for_piece(
-                metrics, baseline, baseline_kind)
-            if confidence_read:
-                metrics["voice_confidence"] = confidence_read
-        except Exception as confidence_err:
-            logger.info(
-                "confidence-practice attempt confidence unavailable id=%s: %s",
-                practice_id, confidence_err)
-        current_snapshot = acoustic_snapshot({
-            "metrics": metrics,
-            "words": transcription.get("words") or [],
-            "duration_ms": duration_ms or int(duration_sec * 1000),
-            "audio_ref": "captured",
-            "transcript": transcription["transcript"],
-        })
-        original = ((practice.get("acoustic_evidence") or {}).get("snapshot")
-                    if isinstance(practice.get("acoustic_evidence"), dict) else {}) or {}
-        previous = (existing[-1].get("acoustic_metrics") if existing else None)
-        # Keep raw, versioned before/after observations for later validation,
-        # but do not manufacture an improvement label or choose a "best"
-        # attempt before the need-specific thresholds are approved.
-        comparison = _attempt_comparison(
-            db, practice, original, current_snapshot, previous, metrics,
-            baseline, baseline_kind)
-        attempt_index = len(existing) + 1
-        key = (f"confidence-practice/{request.user_id}/{practice_id}/"
-               f"{attempt_index}-{uuid.uuid4().hex}{ext}")
-        from services.lab_audio_storage import (
-            lab_audio_public_url, put_lab_audio_bytes, target_bucket)
-        bucket = put_lab_audio_bytes(key, audio_bytes, mime)
-        audio_ref = lab_audio_public_url(key) or f"s3://{bucket or target_bucket()}/{key}"
-        from services.practice_audio_objects import record_practice_attempt
-        inserted = record_practice_attempt(db, {
-            "practice_id": str(practice_id),
-            "attempt_index": attempt_index,
-            "storage_path": key,
-            "audio_ref": audio_ref,
-            "mime_type": mime,
-            "duration_ms": int(duration_ms or max(1, duration_sec * 1000)),
-            "transcript": str(transcription["transcript"]),
-            "transcript_alignment": alignment,
-            "acoustic_metrics": current_snapshot,
-            "comparison": comparison,
-            "assessment_key": "recorded_for_comparison",
-            "machine_confidence_decision": machine_confidence_decision(current_snapshot),
-        }, practice=practice, bucket=bucket, audio_bytes=audio_bytes)
-        if not inserted:
-            return jsonify({"code": "V2_ERROR",
-                            "error": "Could not save that attempt."}), 500
-        candidates = existing + [inserted]
-        # The first passage-valid attempt is the stable comparison target.
-        # Later attempts remain visible, but cannot be cherry-picked by an
-        # unvalidated score.
-        strongest = min(candidates, key=lambda row: int(
-            row.get("attempt_index") or 2**31 - 1
-        ))
-        db.set_confident_voice_practice_strongest(
-            practice_id, str(strongest.get("id")))
-        refreshed = db.list_confident_voice_practice_attempts(practice_id)
+        refreshed = add_attempt(
+            db, practice=practice, practice_id=practice_id, existing=existing,
+            upload=upload, form=request.form, user_id=request.user_id)
         return jsonify({"practice": _practice_user_payload(practice, refreshed)}), 201
+    except Refusal as refusal:
+        return jsonify(refusal.body), refusal.status
     except Exception as e:
         logger.error("confidence-practice attempt failed id=%s: %s",
                      practice_id, e, exc_info=True)
@@ -2222,48 +1667,12 @@ def v2_complete_confident_voice_practice(practice_id):
         practice_id, str(request.user_id))
     if not practice:
         return jsonify({"code": "NOT_FOUND", "error": "practice not found"}), 404
-    body = request.get_json(silent=True) or {}
-    if practice.get("status") != "open":
-        return jsonify({"code": "PRACTICE_CLOSED",
-                        "error": "This practice is already closed."}), 409
-    now = datetime.now(timezone.utc).isoformat()
-    if body.get("action") == "dismiss":
-        updated = db.update_confident_voice_practice(
-            practice_id, str(request.user_id),
-            {"status": "dismissed", "closed_at": now})
-        if not updated:
-            return jsonify({"code": "V2_ERROR",
-                            "error": "Could not close this practice."}), 500
-        return jsonify({"practice": _practice_user_payload(_dismissed(updated))}), 200
-    answer, attempt_id = body.get("user_answer"), body.get("attempt_id")
-    if answer not in ("yes", "no") or not _is_valid_uuid(str(attempt_id or "")):
-        return jsonify({"code": "INVALID_INPUT",
-                        "error": "attempt_id and user_answer are required"}), 400
-    attempts = db.list_confident_voice_practice_attempts(practice_id)
-    comparison_attempt = next(
-        (row for row in attempts if row.get("is_strongest")), None
-    )
-    if (not comparison_attempt
-            or str(comparison_attempt.get("id")) != str(attempt_id)):
-        return jsonify({"code": "INVALID_INPUT",
-                        "error": "Use the frozen first valid attempt."}), 400
-    kept = db.keep_confident_voice_practice_attempt(
-        practice_id, str(attempt_id), str(answer))
-    if not kept:
-        return jsonify({"code": "NOT_FOUND",
-                        "error": "attempt not found"}), 404
-    updated = db.update_confident_voice_practice(
-        practice_id, str(request.user_id), {
-            "status": "completed",
-            "selected_attempt_id": str(attempt_id),
-            "final_user_answer": str(answer),
-            "closed_at": now,
-        })
-    if not updated:
-        return jsonify({"code": "V2_ERROR",
-                        "error": "Could not finish this practice."}), 500
-    # Deliberate absence: no ideal-text, decision, style, cue, flagship or
-    # voice_album call belongs here. Professional review remains separate.
+    try:
+        updated = complete_practice(
+            db, practice=practice, practice_id=practice_id,
+            user_id=request.user_id, body=request.get_json(silent=True) or {})
+    except Refusal as refusal:
+        return jsonify(refusal.body), refusal.status
     return jsonify({"practice": _practice_user_payload(updated)}), 200
 
 

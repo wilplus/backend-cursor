@@ -20,19 +20,11 @@ from typing import Any, Optional
 from werkzeug.utils import secure_filename
 
 from services.coach_video_storage import refreshed_media_url
+from services.refusal import Refusal
 
 logger = logging.getLogger(__name__)
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".m4v"}
-
-
-class VideoRefusal(Exception):
-    """A refused upload: the route answers ``body`` with ``status``."""
-
-    def __init__(self, code: str, error: str, status: int) -> None:
-        super().__init__(code)
-        self.status = status
-        self.body = {"code": code, "error": error}
 
 
 @dataclass(frozen=True)
@@ -47,8 +39,8 @@ def video_max_mb(app_config: Any) -> int:
     return max(1, int(getattr(app_config, "COACH_FEEDBACK_VIDEO_MAX_MB", 100)))
 
 
-def _too_large(max_mb: int) -> VideoRefusal:
-    return VideoRefusal(
+def _too_large(max_mb: int) -> Refusal:
+    return Refusal(
         "PAYLOAD_TOO_LARGE", f"Video is too large. Max allowed is {max_mb}MB.", 413)
 
 
@@ -62,15 +54,15 @@ def read_video_upload(files: Any, content_length: Optional[int],
         raise _too_large(max_mb)
     video_file = files.get("video_file")
     if video_file is None or not (video_file.filename or "").strip():
-        raise VideoRefusal("INVALID_INPUT", "video_file is required", 400)
+        raise Refusal("INVALID_INPUT", "video_file is required", 400)
     safe_name = secure_filename(video_file.filename or "")
     ext = os.path.splitext(safe_name)[1].lower()
     if ext not in VIDEO_EXTENSIONS:
-        raise VideoRefusal("INVALID_VIDEO_FORMAT",
-                           "Supported formats: .mp4, .mov, .webm, .m4v", 415)
+        raise Refusal("INVALID_VIDEO_FORMAT",
+                      "Supported formats: .mp4, .mov, .webm, .m4v", 415)
     data = video_file.read() or b""
     if not data:
-        raise VideoRefusal("INVALID_INPUT", "video_file is empty", 400)
+        raise Refusal("INVALID_INPUT", "video_file is empty", 400)
     if len(data) > max_bytes:
         raise _too_large(max_mb)
     return VideoUpload(safe_name=safe_name, ext=ext, data=data,
@@ -80,7 +72,7 @@ def read_video_upload(files: Any, content_length: Optional[int],
 def store_session_video(database: Any, session_id: str, upload: VideoUpload,
                         idempotency_key: Optional[str]) -> dict:
     """Store the coach's feedback video for a Take and point the session at
-    it; the response payload. Raises ``VideoRefusal`` (502) when storage
+    it; the response payload. Raises ``Refusal`` (502) when storage
     refuses the bytes."""
     # Local import on purpose: binds at CALL time, so tests that monkeypatch
     # services.coach_video_storage attributes take effect.
@@ -106,8 +98,8 @@ def store_session_video(database: Any, session_id: str, upload: VideoUpload,
         put_coach_object_bytes(bucket, storage_key, upload.data, upload.content_type)
     except Exception as upload_err:
         logger.error("coach video upload failed sid=%s err=%s", session_id, upload_err)
-        raise VideoRefusal("UPLOAD_FAILED", "Failed to upload video to storage.",
-                           502) from upload_err
+        raise Refusal("UPLOAD_FAILED", "Failed to upload video to storage.",
+                      502) from upload_err
 
     video_ref = f"s3://{bucket}/{storage_key}"  # private bucket: signed on read
     database.takes.set_session_coach_video_ref(session_id, video_ref)
