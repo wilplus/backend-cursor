@@ -422,3 +422,16 @@ def test_user_edit_refusals():
                          json={"text": "One", "version": 3})[:2] == (
                 409, {"code": "VERSION_SUPERSEDED", "current_version": 4})
     rec.publish.assert_not_called()
+
+
+def test_a_typed_ideal_text_refusal_from_the_database_is_a_409():
+    """Founder 2026-10-12, option 1: the edit database's IDEAL_TEXT_*
+    refusals answer 409 with their code (the app reads the "document moved"
+    ones as a supersede and the rest as a failed save)."""
+    with patch.object(db, "compare_and_set_user_ideal_edit",
+                      side_effect=RuntimeError("IDEAL_TEXT_PART_REQUIRES_UNLOCK")), \
+            patch("services.ideal_text_core_snapshot.publish_for_arc") as publish:
+        assert _call(route.v2_explore_put_ideal_user_edit, ARC, method="PUT",
+                     json=_cas_body())[:2] == (
+            409, {"code": "IDEAL_TEXT_PART_REQUIRES_UNLOCK"})
+    publish.assert_not_called()
