@@ -26,91 +26,61 @@ from __future__ import annotations
 
 import unittest
 
-from services.rate_windows import Piece, _aggregate
+from services.rate_windows import Piece, build_windows
 
 
-def _piece(pause_ms, pause_count, duration_ms, **kw):
+def _piece(pause_ms, pause_count, duration_ms, start_ms):
     weights = {} if pause_count is None else {"pause_ms": pause_count}
     return Piece(
-        snippet_id=kw.get("sid", "s"),
+        snippet_id=f"s{start_ms}",
         recording_id="r",
-        start_ms=0.0,
+        start_ms=float(start_ms),
         duration_ms=float(duration_ms),
-        words=kw.get("words", 0),
+        words=0,
         values={"pause_ms": pause_ms},
         weights=weights,
     )
 
 
-class TestCountWeightingIsExact(unittest.TestCase):
+def _window_pause_ms(*pieces):
+    """pause_ms of the one window two adjacent pieces form (24 s < 60 s)."""
+    at, laid_out = 0, []
+    for pause_ms, count, duration_ms in pieces:
+        laid_out.append(_piece(pause_ms, count, duration_ms, at))
+        at += duration_ms
+    (window,) = build_windows(laid_out, dimensions=["pause_ms"])
+    return window.values["pause_ms"]
 
-    def test_it_matches_the_hand_computed_pooled_mean(self):
-        """Two snippets: one long pause in a short snippet, three short pauses
-        in a long one. Exact answer = (1*900 + 3*300) / 4 = 450."""
-        pieces = [_piece(900.0, 1, 4000), _piece(300.0, 3, 20000)]
-        got = _aggregate(pieces, "pause_ms", seconds=24.0, words=0)
-        self.assertAlmostEqual(got, 450.0)
 
-    def test_duration_weighting_would_have_been_wrong_here(self):
-        """The fixture is chosen so the two weightings disagree — otherwise
-        this suite would pass without the feature. Duration-weighted:
-        (900*4000 + 300*20000) / 24000 = 400.0, not 450.0."""
-        pieces = [_piece(900.0, 1, 4000), _piece(300.0, 3, 20000)]
-        duration_weighted = (900.0 * 4000 + 300.0 * 20000) / 24000
-        self.assertAlmostEqual(duration_weighted, 400.0)
-        self.assertNotAlmostEqual(
-            _aggregate(pieces, "pause_ms", seconds=24.0, words=0),
-            duration_weighted)
+class TestTheWindowsPauseMeanIsExact(unittest.TestCase):
+    """One long pause in a short snippet, three short pauses in a long one.
+    Count-weighted (exact) = (1*900 + 3*300) / 4 = 450; duration-weighted =
+    (900*4000 + 300*20000) / 24000 = 400. The fixture is chosen so the two
+    disagree, otherwise this would pass without the feature. (wpm stays
+    duration-weighted: tests/test_rate_windows.py pins that.)"""
 
-    def test_equal_counts_reduce_to_a_plain_mean(self):
-        pieces = [_piece(400.0, 2, 9000), _piece(600.0, 2, 1000)]
+    DURATION_WEIGHTED = (900.0 * 4000 + 300.0 * 20000) / 24000
+
+    def test_counts_make_it_exact_and_anything_less_falls_back_whole(self):
         self.assertAlmostEqual(
-            _aggregate(pieces, "pause_ms", seconds=10.0, words=0), 500.0)
-
-
-class TestTheFallbackIsAllOrNothing(unittest.TestCase):
-
-    def test_one_missing_count_drops_the_whole_window_to_duration(self):
-        """Mixing the two weightings in one mean is neither quantity. The
-        window must pick one — and the pre-`pause_count` snippet is the one
-        that decides."""
-        pieces = [_piece(900.0, 1, 4000), _piece(300.0, None, 20000)]
-        got = _aggregate(pieces, "pause_ms", seconds=24.0, words=0)
-        self.assertAlmostEqual(got, (900.0 * 4000 + 300.0 * 20000) / 24000)
-
-    def test_no_counts_at_all_is_the_old_behaviour(self):
-        """Every snippet written before 2026-08-06."""
-        pieces = [_piece(900.0, None, 4000), _piece(300.0, None, 20000)]
+            _window_pause_ms((900.0, 1, 4000), (300.0, 3, 20000)), 450.0)
+        self.assertAlmostEqual(self.DURATION_WEIGHTED, 400.0)
+        # Equal counts reduce to a plain mean, whatever the durations.
         self.assertAlmostEqual(
-            _aggregate(pieces, "pause_ms", seconds=24.0, words=0), 400.0)
-
-    def test_a_zero_count_is_not_a_weight(self):
-        """A snippet contributing no pauses contributes no pause_ms either, so
-        a 0 must never become a divisor or silently zero a term."""
-        pieces = [_piece(900.0, 0, 4000), _piece(300.0, 3, 20000)]
-        got = _aggregate(pieces, "pause_ms", seconds=24.0, words=0)
-        self.assertAlmostEqual(got, (900.0 * 4000 + 300.0 * 20000) / 24000)
-
-    def test_a_boolean_count_is_not_a_weight(self):
-        """bool subclasses int; True must not pass for a count of 1."""
-        pieces = [_piece(900.0, True, 4000), _piece(300.0, 3, 20000)]
-        got = _aggregate(pieces, "pause_ms", seconds=24.0, words=0)
-        self.assertAlmostEqual(got, (900.0 * 4000 + 300.0 * 20000) / 24000)
-
-
-class TestWpmStaysDurationWeighted(unittest.TestCase):
-    """Duration-weighting IS the exact roll-up for a rate. If a future change
-    hands wpm a weight, this fails — and it should."""
-
-    def test_wpm_is_total_words_over_total_minutes(self):
-        pieces = [
-            Piece(snippet_id="a", recording_id="r", start_ms=0.0,
-                  duration_ms=6000.0, words=15, values={"wpm": 150.0}),
-            Piece(snippet_id="b", recording_id="r", start_ms=6000.0,
-                  duration_ms=54000.0, words=90, values={"wpm": 100.0}),
-        ]
-        got = _aggregate(pieces, "wpm", seconds=60.0, words=105)
-        self.assertAlmostEqual(got, 105 / 1.0)   # 105 words in 60 s
+            _window_pause_ms((400.0, 2, 9000), (600.0, 2, 1000)), 500.0)
+        # The fallback is all-or-nothing: one snippet that predates
+        # `pause_count`, a zero count (never a divisor, never a silent zero
+        # term) or a boolean (bool subclasses int; True is not a count of 1)
+        # sends the WHOLE window to duration-weighting, because a mean mixing
+        # the two weightings is neither quantity.
+        for unusable in (None, 0, True):
+            self.assertAlmostEqual(
+                _window_pause_ms((900.0, unusable, 4000), (300.0, 3, 20000)),
+                self.DURATION_WEIGHTED, msg=repr(unusable))
+        # Every snippet written before 2026-08-06: the old behaviour.
+        self.assertAlmostEqual(
+            _window_pause_ms((900.0, None, 4000), (300.0, None, 20000)),
+            self.DURATION_WEIGHTED)
 
 
 class TestThePipelineEmitsTheCount(unittest.TestCase):

@@ -562,6 +562,23 @@ def test_the_block_is_read_by_the_item_it_serves():
         == ("weak", True, True)
 
 
+def test_the_bar_is_the_read_in_two_colours_or_none():
+    """B7 / 24g: the tier NAMES the machine's read of the block it is drawn
+    on: `confident` above neutral, `weak` at neutral and below (the prompt
+    still cuts strictly below neutral), `standard` when the clip could not be
+    read. It is never a rank: both blocks here are the Take's top two."""
+    def drawn(scores):
+        inventory = inventory_for(service_frame(scores=scores))
+        return [(row["bookmark_tier"], row["practice_prompt"])
+                for row in inventory["visible_rows"]
+                if row["feedback_family"] == "confident_voice"]
+
+    assert drawn({S0A: 0.9, S0B: 0.6, S1B: 0.0}) == [
+        ("confident", False), ("weak", False)]
+    assert drawn({S0A: None, S0B: None}) == [
+        ("standard", False), ("confident", False)]
+
+
 def test_the_served_fallback_carries_nothing_a_winner_does_not():
     inventory = inventory_for(service_frame())
     rows = {row["snippet_id"]: row for row in inventory["visible_rows"]}
@@ -569,6 +586,7 @@ def test_the_served_fallback_carries_nothing_a_winner_does_not():
     serialized = json.dumps(inventory["visible_rows"])
     assert "unservable" not in serialized
     for row in inventory["visible_rows"]:
-        for key in ("candidate_score", "reason_tier", "eligibility",
-                    "exclusion_reason", "selection_reason", "delivery_band"):
+        for key in ("candidate_score", "reason_tier", "reason_degraded",
+                    "eligibility", "exclusion_reason", "selection_reason",
+                    "delivery_band"):
             assert key not in row

@@ -4,7 +4,8 @@ The headline regression: canonical coach-authored note/tag/surfaced state
 resumes on reopen without reviving the retired psychological construct lane.
 
 Also guards the §S.4 identity strip (pseudonym + domain only; NO user_id /
-name / email) and the §B.4 friendly pseudonym.
+name / email). The §B.4 pseudonym itself is pinned by
+test_email_threading.py::PseudonymParityTests.
 """
 from __future__ import annotations
 
@@ -336,24 +337,6 @@ class CoachSessionReadTests(unittest.TestCase):
         self.assertNotEqual(by_id["a"]["transcript"], "")
         self.assertEqual(by_id["b"]["transcript"], "")
         self.assertEqual(data["snippets"][0]["coach_state"]["note"], "")
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class PseudonymTests(unittest.TestCase):
-    def test_stable(self):
-        self.assertEqual(v2_coach._coach_pseudonym("user-1"), v2_coach._coach_pseudonym("user-1"))
-
-    def test_friendly_two_words_no_raw_id(self):
-        p = v2_coach._coach_pseudonym("user-1")
-        self.assertIn(" ", p)                 # "Adjective Animal"
-        self.assertNotIn("user-1", p)
-
-    def test_variety_not_all_collide(self):
-        names = {v2_coach._coach_pseudonym(f"u{i}") for i in range(8)}
-        self.assertGreater(len(names), 1)
-
-    def test_empty_anonymous(self):
-        self.assertEqual(v2_coach._coach_pseudonym(None), "Anonymous")
 
 
 if __name__ == "__main__":

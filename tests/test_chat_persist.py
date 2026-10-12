@@ -1,6 +1,6 @@
 """BE-owned Lounge persistence for /v2/chat/query (#2 — bubbles must never
-disappear). Unit-tests the pure persistence helper with a stubbed db (no
-network, no Flask request context).
+disappear). The route's contract test, plus the few helper tests the route
+cannot show (stubbed db, no network).
 
 Run: python3 -m unittest tests.test_chat_persist
 """
@@ -10,6 +10,7 @@ import unittest
 import uuid
 from io import BytesIO
 from types import SimpleNamespace
+from unittest.mock import patch
 
 try:
     from routes.v2 import coaching as v2_coaching
@@ -20,65 +21,176 @@ except Exception as e:  # pragma: no cover
     _RT_ERR = e
 
 
+USER = "9f4e75b8-268b-468d-9111-000000000077"
+CHIP = {"intent": "library_recall", "answer": "Tap the button below.",
+        "show_record_ui": False, "suggested_action": "trainings"}
+CHOICE = {"intent": "replace_pre_take_deck",
+          "answer": "Choose what happens next.",
+          "suggested_actions": ["replace_pdf", "create_new_project"]}
+
+
 @unittest.skipIf(_RT_ERR is not None, f"needs app deps: {_RT_ERR}")
-class PersistChatTurnTests(unittest.TestCase):
+class ChatRoutePersistsTheTurnTests(unittest.TestCase):
+    """POST /v2/chat/query: a signed-in turn that opts in is written once,
+    user row and bot row, with the bot's choices in its metadata so they
+    come back on reload (founder #2 — bubbles must never disappear). The
+    route's one contract test; the answer itself comes from a deterministic
+    intercept, so no model is called."""
+
+    def setUp(self):
+        import auth
+        from flask import Flask
+        from routes.v2 import register_domains
+        from routes.v2.blueprint import v2_bp
+        from services.rate_limits import limiter
+
+        # Every /v2 route must be attached before the shared blueprint is
+        # registered: Flask refuses route additions after that.
+        register_domains()
+
+        if hasattr(limiter, "initialized"):
+            self.addCleanup(setattr, limiter, "initialized", limiter.initialized)
+            limiter.initialized = False
+        app = Flask(__name__)
+        app.register_blueprint(v2_bp, url_prefix="/v2")
+        self.client = app.test_client()
+
+        self.rows = []
+        self.contexts = []
+        self.histories = []
+
+        def _insert(user_id, messages):
+            if self.fail_db:
+                raise RuntimeError("db down")
+            self.rows.append((user_id, messages))
+            return messages
+
+        def _answer(question, history=None, **_kw):
+            self.histories.append(history)
+            return {"answer": "It's a voice coach."}, {"intent": "faq"}
+
+        def _presentation(question, context=None):
+            self.contexts.append(context)
+            return CHOICE if "deck" in question else None
+
+        self.fail_db = False
+        self._patches = [
+            patch.object(auth, "verify_supabase_token",
+                         lambda token: {"sub": USER}),
+            patch.object(db, "insert_lounge_messages", _insert),
+            patch("services.goal_update.handle_goal_update",
+                  lambda user_id, question: None),
+            patch("services.presentation_change_intent."
+                  "handle_presentation_change", _presentation),
+            patch("services.chat_intents.detect_chat_intent",
+                  lambda question: (
+                      CHIP if "trainings" in question
+                      else {**CHIP, "answer": "   "} if "blank" in question
+                      else None)),
+            patch("services.master_doc_rag.answer_question", _answer),
+            patch.object(db, "get_user_settings", lambda user_id: {}),
+            patch("services.token_account.charge", lambda *a, **k: None),
+        ]
+        for p in self._patches:
+            p.start()
+            self.addCleanup(p.stop)
+
+    def post(self, body=None, *, signed_in=True, data=None):
+        headers = {"Authorization": "Bearer t"} if signed_in else {}
+        if data is not None:
+            return self.client.post("/v2/chat/query", data=data,
+                                    headers=headers,
+                                    content_type="multipart/form-data")
+        return self.client.post("/v2/chat/query", json=body, headers=headers)
+
+    def test_a_signed_in_turn_is_written_once_with_its_choices(self):
+        cid = str(uuid.uuid4())
+        turn = {"question": "show my trainings", "persist": True,
+                "client_id": cid, "client_created_at": "2026-06-22T10:00:00Z",
+                "presentation_context": {"project_id": "p1"}}
+        resp = self.post(turn)
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        user_id, (user_row, bot_row) = self.rows[0]
+        self.assertEqual(user_id, USER)
+        self.assertEqual(
+            (user_row["role"], user_row["kind"], user_row["body"],
+             user_row["client_id"], user_row["client_created_at"]),
+            ("user", "text", "show my trainings", cid, "2026-06-22T10:00:00Z"))
+        self.assertEqual(
+            (bot_row["role"], bot_row["kind"], bot_row["body"]),
+            ("bot", "text", "Tap the button below."))
+        # The chip and the bubbles ride the bot row, so they rehydrate.
+        self.assertEqual(bot_row["metadata"], {
+            "intent": "library_recall", "suggested_action": "trainings",
+            "bubbles": ["Tap the button below."]})
+        self.assertTrue(body["persisted"])
+        self.assertEqual(body["persisted_client_id"], bot_row["client_id"])
+        self.assertEqual(self.contexts[-1], {"project_id": "p1"})
+
+        # Re-posting the same turn lands on the same two rows (idempotent).
+        self.post(turn)
+        self.assertEqual([r["client_id"] for r in self.rows[1][1]],
+                         [cid, bot_row["client_id"]])
+
+        # Without a usable FE id the ids derive from (user, question), so a
+        # retry is still one slot; a deliberate choice pair rides too.
+        for _ in range(2):
+            self.post({"question": "replace my deck", "persist": True,
+                       "client_id": "not-a-uuid"})
+        first, second = self.rows[2][1], self.rows[3][1]
+        self.assertEqual([r["client_id"] for r in first],
+                         [r["client_id"] for r in second])
+        self.assertNotEqual(first[0]["client_id"], "not-a-uuid")
+        self.assertEqual(first[1]["metadata"]["suggested_actions"],
+                         ["replace_pdf", "create_new_project"])
+
+    def test_nothing_is_written_unless_a_signed_in_caller_opts_in(self):
+        self.assertEqual(self.post({"question": "show my trainings"})
+                         .status_code, 200)
+        self.post({"question": "show my trainings", "persist": True},
+                  signed_in=False)
+        self.assertEqual(self.rows, [])
+        self.assertEqual(self.post({"question": "  ", "persist": True})
+                         .status_code, 400)
+        blank = self.post({"question": "blank", "persist": True})
+        self.assertFalse(blank.get_json()["persisted"])
+        self.assertEqual(self.rows, [])
+
+    def test_a_failed_write_never_fails_the_answer(self):
+        self.fail_db = True
+        resp = self.post({"question": "show my trainings", "persist": True})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json()["answer"], "Tap the button below.")
+        self.assertFalse(resp.get_json()["persisted"])
+
+    def test_both_transports_carry_the_same_turn_to_the_answer(self):
+        self.post(data={"question": "  show my trainings  ", "persist": "yes",
+                        "presentation_context": '{"take_count":1}'})
+        user_row, _bot_row = self.rows[0][1]
+        self.assertEqual(user_row["body"], "show my trainings")
+        self.assertEqual(self.contexts[-1], {"take_count": 1})
+        # History reaches the answer only as a list, from either transport.
+        self.post({"question": "what is this?", "history": "not-a-list"})
+        self.post(data={"question": "what is this?",
+                        "history": '[{"role":"user","content":"hi"}]'})
+        self.assertEqual(self.histories,
+                         [None, [{"role": "user", "content": "hi"}]])
+
+
+@unittest.skipIf(_RT_ERR is not None, f"needs app deps: {_RT_ERR}")
+class ProductActionMetadataTests(unittest.TestCase):
+    """Kept as helper tests: no path of /v2/chat/query sets `product_action`
+    today, so the route cannot show this validation. If a path starts to,
+    move these into the route test."""
+
     def setUp(self):
         self.captured = []
-        self._orig = getattr(db, "insert_lounge_messages", None)
-
-        def _fake(user_id, messages):
-            self.captured.append((user_id, messages))
-            return [{"id": "srv", **m} for m in messages]
-
-        db.insert_lounge_messages = _fake
-
-    def tearDown(self):
-        if self._orig is not None:
-            db.insert_lounge_messages = self._orig
-
-    def test_writes_user_and_bot_rows(self):
-        cid = str(uuid.uuid4())
-        bot_cid = v2_coaching._persist_chat_turn(
-            "u1", "what is this?", "It's a voice coach.",
-            suggested_action=None, bubbles=["It's a voice coach."],
-            intent="faq", user_client_id=cid,
-            user_created_at="2026-06-22T10:00:00Z",
-        )
-        self.assertTrue(bot_cid)
-        _, msgs = self.captured[0]
-        self.assertEqual(len(msgs), 2)
-        user_row, bot_row = msgs
-        self.assertEqual(user_row["role"], "user")
-        self.assertEqual(user_row["client_id"], cid)        # FE id preserved
-        self.assertEqual(user_row["body"], "what is this?")
-        self.assertEqual(user_row["client_created_at"], "2026-06-22T10:00:00Z")
-        self.assertEqual(bot_row["role"], "bot")
-        self.assertEqual(bot_row["kind"], "text")
-        self.assertEqual(bot_row["body"], "It's a voice coach.")
-        self.assertEqual(bot_row["client_id"], bot_cid)
-
-    def test_chip_rides_in_bot_metadata(self):
-        # the contextual chip (the thing that vanished on relogin) reconstructs
-        # from the persisted bot row's metadata.
-        v2_coaching._persist_chat_turn(
-            "u1", "show my trainings", "Tap the button below.",
-            suggested_action="trainings", bubbles=["Tap the button below."],
-            intent="library_recall", user_client_id=str(uuid.uuid4()),
-        )
-        _, msgs = self.captured[0]
-        bot_row = msgs[-1]
-        self.assertEqual(bot_row["metadata"]["suggested_action"], "trainings")
-        self.assertEqual(bot_row["metadata"]["bubbles"], ["Tap the button below."])
-
-    def test_project_choice_pair_rides_in_bot_metadata(self):
-        actions = ["replace_pdf", "create_new_project"]
-        v2_coaching._persist_chat_turn(
-            "u1", "replace my deck", "Choose what happens next.",
-            suggested_actions=actions,
-            intent="replace_pre_take_deck", user_client_id=str(uuid.uuid4()),
-        )
-        _, msgs = self.captured[0]
-        self.assertEqual(msgs[-1]["metadata"]["suggested_actions"], actions)
+        patcher = patch.object(
+            db, "insert_lounge_messages",
+            lambda user_id, messages: self.captured.append(messages))
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_structured_product_action_rides_in_bot_metadata(self):
         action = {
@@ -93,8 +205,8 @@ class PersistChatTurnTests(unittest.TestCase):
             "u1", "what next?", "Your next step is ready.",
             product_action=action, user_client_id=str(uuid.uuid4()),
         )
-        _, msgs = self.captured[0]
-        self.assertEqual(msgs[-1]["metadata"]["product_action"], action)
+        self.assertEqual(self.captured[0][-1]["metadata"]["product_action"],
+                         action)
 
     def test_invalid_product_action_is_not_persisted(self):
         v2_coaching._persist_chat_turn(
@@ -109,69 +221,11 @@ class PersistChatTurnTests(unittest.TestCase):
             },
             user_client_id=str(uuid.uuid4()),
         )
-        _, msgs = self.captured[0]
-        self.assertNotIn("product_action", msgs[-1]["metadata"])
-
-    def test_deterministic_ids_idempotent(self):
-        # same user id → same user+bot client_ids (re-post is a DB no-op).
-        cid = str(uuid.uuid4())
-        b1 = v2_coaching._persist_chat_turn("u1", "hi", "hello", user_client_id=cid)
-        b2 = v2_coaching._persist_chat_turn("u1", "hi", "hello", user_client_id=cid)
-        self.assertEqual(b1, b2)
-        self.assertEqual(self.captured[0][1][0]["client_id"],
-                         self.captured[1][1][0]["client_id"])
-
-    def test_bot_id_stable_without_fe_client_id(self):
-        # no FE client_id → derive deterministically from (user, question).
-        b1 = v2_coaching._persist_chat_turn("u1", "same q", "ans one")
-        b2 = v2_coaching._persist_chat_turn("u1", "same q", "ans two")
-        # user-turn id is derived from (user, question) → identical
-        self.assertEqual(self.captured[0][1][0]["client_id"],
-                         self.captured[1][1][0]["client_id"])
-        # bot id derives from the user id → also identical (idempotent slot)
-        self.assertEqual(b1, b2)
-
-    def test_empty_answer_skips(self):
-        self.assertIsNone(v2_coaching._persist_chat_turn("u1", "q", "   "))
-        self.assertEqual(self.captured, [])
-
-    def test_no_user_skips(self):
-        self.assertIsNone(v2_coaching._persist_chat_turn(None, "q", "a"))
-        self.assertEqual(self.captured, [])
-
-    def test_db_failure_returns_none(self):
-        def _boom(user_id, messages):
-            raise RuntimeError("db down")
-        db.insert_lounge_messages = _boom
-        self.assertIsNone(
-            v2_coaching._persist_chat_turn("u1", "q", "a", user_client_id=str(uuid.uuid4()))
-        )
+        self.assertNotIn("product_action", self.captured[0][-1]["metadata"])
 
 
 @unittest.skipIf(_RT_ERR is not None, f"needs app deps: {_RT_ERR}")
 class ParseChatRequestTests(unittest.TestCase):
-    def test_json_transport_normalizes_optional_fields(self):
-        req = SimpleNamespace(
-            content_type="application/json",
-            get_json=lambda silent: {
-                "question": "hello",
-                "history": "not-a-list",
-                "persist": True,
-                "client_id": 123,
-                "client_created_at": "2026-08-22T10:00:00Z",
-                "presentation_context": {"project_id": "p1"},
-            },
-        )
-
-        parsed = _parse_chat_request(req)
-
-        self.assertEqual(parsed["question"], "hello")
-        self.assertIsNone(parsed["history"])
-        self.assertTrue(parsed["persist_thread"])
-        self.assertIsNone(parsed["user_client_id"])
-        self.assertEqual(parsed["user_created_at"], "2026-08-22T10:00:00Z")
-        self.assertEqual(parsed["presentation_context"], {"project_id": "p1"})
-
     def test_multipart_transport_preserves_audio_and_context(self):
         req = SimpleNamespace(
             content_type="multipart/form-data; boundary=test",

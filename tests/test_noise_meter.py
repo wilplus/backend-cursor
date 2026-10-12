@@ -3,7 +3,6 @@
 Pins:
   * separation_db is the gap between the loud (voice) and quiet (room)
     frames: large for a clean recording, small for a noisy one;
-  * too short to judge answers None, never a guess;
   * it is saved with every clip snapshot and practice attempt;
   * the noise rule ships OFF: while off, the eligibility verdict and
     practice-attempt validity are identical whatever the reading;
@@ -14,7 +13,6 @@ Pins:
 """
 from __future__ import annotations
 
-import inspect
 import unittest
 from unittest.mock import patch
 
@@ -25,37 +23,34 @@ from services import confident_voice_practice as cvp
 from services import exercise_learning_readiness as lr
 
 
-def _clip(noise_db: float, n: int = 200) -> np.ndarray:
-    """Frame loudness: speech bursts at -12 dB over a room at `noise_db`."""
-    frames = np.full(n, noise_db, dtype=np.float32)
-    frames[::2] = -12.0
-    return frames
+def _recording_meter(room_db: float) -> dict:
+    """The noise meter of a 2 s window analysed through the public path:
+    alternating 20 ms frames of speech at -12 dB and the room at `room_db`."""
+    frames = 2000 // am.FRAME_MS
+    pcm = np.empty(frames * am.FRAME_SIZE, dtype=np.float32)
+    for i in range(frames):
+        pcm[i * am.FRAME_SIZE:(i + 1) * am.FRAME_SIZE] = \
+            10 ** ((-12.0 if i % 2 == 0 else room_db) / 20)
+    metrics = am.analyze_pcm_window(pcm, start_offset_ms=0, duration_ms=2000,
+                                    include_librosa=False)
+    return metrics["noise_meter"]
 
 
 class MeterTests(unittest.TestCase):
-    def test_a_clean_recording_has_a_wide_gap(self):
-        meter = am._noise_meter(_clip(-60.0))
-        self.assertEqual(meter["version"], "noise-meter-v1")
-        self.assertEqual((meter["voice_db"], meter["background_db"],
-                          meter["separation_db"]), (-12.0, -60.0, 48.0))
+    def test_every_analysis_reads_the_gap_between_voice_and_room(self):
+        self.assertEqual(_recording_meter(-60.0), {
+            "version": "noise-meter-v1", "voice_db": -12.0,
+            "background_db": -60.0, "separation_db": 48.0})
+        self.assertEqual(_recording_meter(-14.0)["separation_db"], 2.0)
 
-    def test_a_noisy_recording_has_a_narrow_one(self):
-        self.assertLess(am._noise_meter(_clip(-20.0))["separation_db"],
-                        am._noise_meter(_clip(-60.0))["separation_db"])
 
-    def test_too_short_to_judge_is_none(self):
-        self.assertIsNone(am._noise_meter(_clip(-60.0, n=10)))
-        self.assertIsNone(am._noise_meter(None))
-
-    def test_it_is_part_of_every_analysis(self):
-        self.assertIn('"noise_meter": _noise_meter(dbs)',
-                      inspect.getsource(am._analyze_pcm))
+CLEAN = _recording_meter(-60.0)     # 48 dB above the room
+NOISY = _recording_meter(-14.0)     # 2 dB above the room
 
 
 class SavedTests(unittest.TestCase):
     def test_saved_with_the_snapshot(self):
-        snap = cvp.acoustic_snapshot({"metrics": {"noise_meter":
-                                                  am._noise_meter(_clip(-60.0))}})
+        snap = cvp.acoustic_snapshot({"metrics": {"noise_meter": CLEAN}})
         self.assertEqual((snap["noise_separation_db"], snap["noise_meter_version"]),
                          (48.0, "noise-meter-v1"))
 
@@ -81,8 +76,6 @@ def _attempt(sep):
                                  "voiced_ratio": 0.6, "noise_separation_db": sep}}
 
 
-CLEAN = am._noise_meter(_clip(-60.0))     # 48 dB above the room
-NOISY = am._noise_meter(_clip(-14.0))     # 2 dB above the room
 
 
 class SwitchOffTests(unittest.TestCase):

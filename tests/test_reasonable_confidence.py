@@ -23,7 +23,7 @@ from services.reasonable_confidence import (
     selection_summary,
     tier_rank,
 )
-from services.take_feedback_policy_v3 import _confidence_rank
+from services.take_feedback_policy_v3 import build_shadow_frame
 
 
 def _layer(on: bool):
@@ -143,54 +143,68 @@ class TestTheFlagIsATrueRollback:
             assert ordering_rank({}) == UNMEASURED_RANK
 
 
-def _cand(cid, score, tier):
-    return {"candidate_id": cid, "machine_score": score,
-            "reason_tier": tier, "ordinal": 0}
+def _winner(clips, *, layer_on):
+    """The item one 75-word block selects through the public frame.
+
+    `clips` is a list of (name, delivery score, slide composite or None)."""
+    pieces, snippets, at = [], [], 0
+    for i, (name, score, composite) in enumerate(clips):
+        text = " ".join(f"{name}{n}" for n in range(75 // len(clips)))
+        pieces.append({
+            "snippet_id": name, "take_session_id": "take-2", "slide_index": 0,
+            "start": at, "end": at + len(text), "text": text,
+            "recording_id": "recording-1",
+            "start_offset_ms": i * 5000, "duration_ms": 5000,
+        })
+        at += len(text) + 1
+        metrics = {"voice_confidence": {
+            "version": "voice-confidence-universal-v3", "score": score}}
+        if composite is not None:
+            metrics.update(_metrics(composite))
+        snippets.append({
+            "id": name, "session_id": "take-2", "recording_id": "recording-1",
+            "start_offset_ms": i * 5000, "duration_ms": 5000,
+            "metrics": metrics,
+        })
+    text = " ".join(piece["text"] for piece in pieces)
+    with _layer(layer_on):
+        frame = build_shadow_frame(
+            take_document={"take_session_id": "take-2", "text": text,
+                           "pieces": pieces},
+            snippets=snippets, suggestions={}, feedback_candidates=[],
+            take_index=2, expected_recording_id="recording-1",
+            served_text=text,
+        )
+    (block,) = frame["blocks"]
+    return block["selected_candidate_id"].rsplit(":", 1)[1]
 
 
 class TestSequencedNotBlended:
     """The product consequence, on the example that settled the design: a
     fluently delivered tangent must not beat a plainer moment that landed the
-    slide's point."""
+    slide's point. Through the frame, so the ranking's own shape is free to
+    change (founder 2026-10-12: one public test in place of six of
+    `_confidence_rank`)."""
 
-    TANGENT = _cand("tangent", 0.72, "not")
-    WORKHORSE = _cand("workhorse", 0.21, "covered")
-
-    def test_today_the_tangent_wins_on_voice_alone(self):
-        with _layer(False):
-            best = min([self.TANGENT, self.WORKHORSE], key=_confidence_rank)
-            assert best["candidate_id"] == "tangent"
-
-    def test_with_the_reason_layer_the_point_wins(self):
-        with _layer(True):
-            best = min([self.TANGENT, self.WORKHORSE], key=_confidence_rank)
-            assert best["candidate_id"] == "workhorse"
-
-    def test_the_voice_still_decides_inside_a_tier(self):
-        # The delivery read is not demoted — it orders every candidate that
-        # made the same verdict, which is the whole of "sequenced".
-        quiet = _cand("quiet", 0.10, "covered")
-        loud = _cand("loud", 0.80, "covered")
-        with _layer(True):
-            assert min([quiet, loud], key=_confidence_rank)["candidate_id"] == "loud"
-
-    def test_a_block_of_nothing_on_point_still_yields_a_winner(self):
-        # 24b. The bottom tier is never empty, so the block is never empty.
-        nothing = [_cand("a", 0.10, "not"), _cand("b", 0.60, "not")]
-        with _layer(True):
-            assert min(nothing, key=_confidence_rank)["candidate_id"] == "b"
-
-    def test_an_unmeasured_candidate_never_beats_a_measured_one(self):
-        unmeasured = _cand("unmeasured", 0.95, None)
-        measured = _cand("measured", 0.05, "not")
-        with _layer(True):
-            best = min([unmeasured, measured], key=_confidence_rank)
-            assert best["candidate_id"] == "measured"
-
-    def test_but_an_all_unmeasured_block_still_yields_one(self):
-        rows = [_cand("a", 0.10, None), _cand("b", 0.60, None)]
-        with _layer(True):
-            assert min(rows, key=_confidence_rank)["candidate_id"] == "b"
+    def test_the_point_leads_and_the_voice_orders_within_it(self):
+        talk = [("tangent", 0.72, 0.0), ("workhorse", 0.21, 1.0),
+                ("aside", 0.10, 0.5)]
+        # Off (the default): voice alone, byte-for-byte the old order.
+        assert _winner(talk, layer_on=False) == "tangent"
+        # On: what the words did leads.
+        assert _winner(talk, layer_on=True) == "workhorse"
+        # The delivery read still decides inside a tier (sequenced).
+        assert _winner([("quiet", 0.10, 1.0), ("loud", 0.80, 1.0),
+                        ("off", -0.5, 0.0)], layer_on=True) == "loud"
+        # 24b: a block with nothing on point still yields its loudest.
+        assert _winner([("a", 0.10, 0.0), ("b", 0.60, 0.0),
+                        ("c", -0.2, 0.0)], layer_on=True) == "b"
+        # An unmeasured moment never beats a measured one, however it
+        # sounds, and an all-unmeasured block still yields one.
+        assert _winner([("unmeasured", 0.95, None), ("measured", 0.05, 0.0),
+                        ("other", -0.3, 0.0)], layer_on=True) == "measured"
+        assert _winner([("a", 0.10, None), ("b", 0.60, None),
+                        ("c", -0.1, None)], layer_on=True) == "b"
 
 
 def _block(bid, tier, degraded=False, selected=True):
