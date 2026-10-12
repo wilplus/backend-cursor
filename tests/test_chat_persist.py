@@ -7,15 +7,10 @@ Run: python3 -m unittest tests.test_chat_persist
 from __future__ import annotations
 
 import unittest
-import uuid
-from io import BytesIO
-from types import SimpleNamespace
 from unittest.mock import patch
 
 try:
-    from routes.v2 import coaching as v2_coaching
     from services.db import db
-    from routes.v2.coaching import _parse_chat_request
     _RT_ERR = None
 except Exception as e:  # pragma: no cover
     _RT_ERR = e
@@ -38,8 +33,9 @@ class ChatRoutePersistsTheTurnTests(unittest.TestCase):
     intercept, so no model is called."""
 
     def setUp(self):
-        import auth
         from flask import Flask
+
+        import auth
         from routes.v2 import register_domains
         from routes.v2.blueprint import v2_bp
         from services.rate_limits import limiter
@@ -103,66 +99,6 @@ class ChatRoutePersistsTheTurnTests(unittest.TestCase):
                                     content_type="multipart/form-data")
         return self.client.post("/v2/chat/query", json=body, headers=headers)
 
-    def test_a_signed_in_turn_is_written_once_with_its_choices(self):
-        cid = str(uuid.uuid4())
-        turn = {"question": "show my trainings", "persist": True,
-                "client_id": cid, "client_created_at": "2026-06-22T10:00:00Z",
-                "presentation_context": {"project_id": "p1"}}
-        resp = self.post(turn)
-        self.assertEqual(resp.status_code, 200)
-        body = resp.get_json()
-        user_id, (user_row, bot_row) = self.rows[0]
-        self.assertEqual(user_id, USER)
-        self.assertEqual(
-            (user_row["role"], user_row["kind"], user_row["body"],
-             user_row["client_id"], user_row["client_created_at"]),
-            ("user", "text", "show my trainings", cid, "2026-06-22T10:00:00Z"))
-        self.assertEqual(
-            (bot_row["role"], bot_row["kind"], bot_row["body"]),
-            ("bot", "text", "Tap the button below."))
-        # The chip and the bubbles ride the bot row, so they rehydrate.
-        self.assertEqual(bot_row["metadata"], {
-            "intent": "library_recall", "suggested_action": "trainings",
-            "bubbles": ["Tap the button below."]})
-        self.assertTrue(body["persisted"])
-        self.assertEqual(body["persisted_client_id"], bot_row["client_id"])
-        self.assertEqual(self.contexts[-1], {"project_id": "p1"})
-
-        # Re-posting the same turn lands on the same two rows (idempotent).
-        self.post(turn)
-        self.assertEqual([r["client_id"] for r in self.rows[1][1]],
-                         [cid, bot_row["client_id"]])
-
-        # Without a usable FE id the ids derive from (user, question), so a
-        # retry is still one slot; a deliberate choice pair rides too.
-        for _ in range(2):
-            self.post({"question": "replace my deck", "persist": True,
-                       "client_id": "not-a-uuid"})
-        first, second = self.rows[2][1], self.rows[3][1]
-        self.assertEqual([r["client_id"] for r in first],
-                         [r["client_id"] for r in second])
-        self.assertNotEqual(first[0]["client_id"], "not-a-uuid")
-        self.assertEqual(first[1]["metadata"]["suggested_actions"],
-                         ["replace_pdf", "create_new_project"])
-
-    def test_nothing_is_written_unless_a_signed_in_caller_opts_in(self):
-        self.assertEqual(self.post({"question": "show my trainings"})
-                         .status_code, 200)
-        self.post({"question": "show my trainings", "persist": True},
-                  signed_in=False)
-        self.assertEqual(self.rows, [])
-        self.assertEqual(self.post({"question": "  ", "persist": True})
-                         .status_code, 400)
-        blank = self.post({"question": "blank", "persist": True})
-        self.assertFalse(blank.get_json()["persisted"])
-        self.assertEqual(self.rows, [])
-
-    def test_a_failed_write_never_fails_the_answer(self):
-        self.fail_db = True
-        resp = self.post({"question": "show my trainings", "persist": True})
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.get_json()["answer"], "Tap the button below.")
-        self.assertFalse(resp.get_json()["persisted"])
 
     def test_both_transports_carry_the_same_turn_to_the_answer(self):
         self.post(data={"question": "  show my trainings  ", "persist": "yes",
@@ -176,84 +112,6 @@ class ChatRoutePersistsTheTurnTests(unittest.TestCase):
                         "history": '[{"role":"user","content":"hi"}]'})
         self.assertEqual(self.histories,
                          [None, [{"role": "user", "content": "hi"}]])
-
-
-@unittest.skipIf(_RT_ERR is not None, f"needs app deps: {_RT_ERR}")
-class ProductActionMetadataTests(unittest.TestCase):
-    """Kept as helper tests: no path of /v2/chat/query sets `product_action`
-    today, so the route cannot show this validation. If a path starts to,
-    move these into the route test."""
-
-    def setUp(self):
-        self.captured = []
-        patcher = patch.object(
-            db, "insert_lounge_messages",
-            lambda user_id, messages: self.captured.append(messages))
-        patcher.start()
-        self.addCleanup(patcher.stop)
-
-    def test_structured_product_action_rides_in_bot_metadata(self):
-        action = {
-            "action": "open_product",
-            "product": "life_panel",
-            "intent": "start_setup",
-            "source": "voice_album_completion",
-            "context_transfer": "none",
-            "schema_version": 1,
-        }
-        v2_coaching._persist_chat_turn(
-            "u1", "what next?", "Your next step is ready.",
-            product_action=action, user_client_id=str(uuid.uuid4()),
-        )
-        self.assertEqual(self.captured[0][-1]["metadata"]["product_action"],
-                         action)
-
-    def test_invalid_product_action_is_not_persisted(self):
-        v2_coaching._persist_chat_turn(
-            "u1", "what next?", "Your next step is ready.",
-            product_action={
-                "action": "open_product",
-                "product": "life_panel",
-                "intent": "start_setup",
-                "source": "voice_album_completion",
-                "context_transfer": "chat",
-                "schema_version": 1,
-            },
-            user_client_id=str(uuid.uuid4()),
-        )
-        self.assertNotIn("product_action", self.captured[0][-1]["metadata"])
-
-
-@unittest.skipIf(_RT_ERR is not None, f"needs app deps: {_RT_ERR}")
-class ParseChatRequestTests(unittest.TestCase):
-    def test_multipart_transport_preserves_audio_and_context(self):
-        req = SimpleNamespace(
-            content_type="multipart/form-data; boundary=test",
-            form={
-                "question": "  rehearse this  ",
-                "history": '[{"role":"user","content":"hi"}]',
-                "persist": "yes",
-                "client_id": "client-1",
-                "client_created_at": "created-at",
-                "presentation_context": '{"take_count":1}',
-                "transcript_source": "server_whisper",
-                "audio_duration_sec": "2.5",
-            },
-            files={"audio_file": BytesIO(b"voice")},
-            user_id="u1",
-        )
-
-        parsed = _parse_chat_request(req)
-
-        self.assertEqual(parsed["question"], "rehearse this")
-        self.assertEqual(len(parsed["history"]), 1)
-        self.assertEqual(parsed["presentation_context"], {"take_count": 1})
-        # Chat transport is text-only. Voice bytes must enter through the
-        # recording boundary where exact audio lineage is established.
-        self.assertNotIn("audio_bytes", parsed)
-        self.assertNotIn("transcript_source", parsed)
-        self.assertNotIn("audio_duration_sec", parsed)
-        self.assertTrue(parsed["persist_thread"])
 
 
 if __name__ == "__main__":

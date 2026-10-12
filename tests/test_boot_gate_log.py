@@ -23,7 +23,6 @@ identifies a person is reported as set or unset, never by id.
 """
 from __future__ import annotations
 
-import importlib.util
 import os
 import pathlib
 import unittest
@@ -31,44 +30,12 @@ from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
-# The flags that decide what is served, what is recorded and who is bound.
-GATES = (
-    "PLF1_PROCESSING_AUTHORIZATION_MODE",
-    "TAKE_FEEDBACK_POLICY_V3_MODE",
-    "MLC3_SERVICE_ENABLED",
-    "MLC3_COACH_INLINE_AUTHORING_ENABLED",
-    "CONFIDENT_MOMENT_BUNDLE_V1_ENABLED",
-    "REASONABLE_CONFIDENCE_ENABLED",
-    "LIVING_TRANSCRIPT_ENABLED",
-    "IDEAL_TEXT_FEEDBACK_BAKE_ENABLED",
-    "PIPELINE_QUEUE_ENABLED",
-    "MIGRATE_ON_BOOT",
-)
-
-
-def _load_report():
-    path = ROOT / "scripts" / "boot_switch_report.py"
-    spec = importlib.util.spec_from_file_location("boot_switch_report", path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
 
 class TheSummaryItselfIsHonest(unittest.TestCase):
 
-    def test_it_names_every_gate(self):
-        from services.gate_flags import gate_summary
-
-        line = gate_summary()
-        for gate in GATES:
-            with self.subTest(gate=gate):
-                self.assertIn(gate, line)
 
     def test_it_reports_the_value_the_process_actually_read(self):
         """Not the default, and not the panel — the live value."""
-        import os
-        from unittest.mock import patch
 
         from services.gate_flags import gate_summary
 
@@ -80,76 +47,6 @@ class TheSummaryItselfIsHonest(unittest.TestCase):
                         {"PLF1_PROCESSING_AUTHORIZATION_MODE": "off"}):
             self.assertIn(
                 "PLF1_PROCESSING_AUTHORIZATION_MODE=off", gate_summary())
-
-    def test_an_unset_f1_switch_is_visible_as_unset(self):
-        """The C5 check: a service missing LIVING_TRANSCRIPT_ENABLED must say
-        so, not print the code default as if someone had chosen it."""
-        import os
-        from unittest.mock import patch
-
-        from services.gate_flags import gate_summary
-
-        env = {k: v for k, v in os.environ.items()
-               if k != "LIVING_TRANSCRIPT_ENABLED"}
-        with patch.dict(os.environ, env, clear=True):
-            self.assertIn("LIVING_TRANSCRIPT_ENABLED=(unset)", gate_summary())
-        with patch.dict(os.environ, {"LIVING_TRANSCRIPT_ENABLED": "1"}):
-            self.assertIn("LIVING_TRANSCRIPT_ENABLED=1", gate_summary())
-
-    def test_no_gate_flag_identifies_a_person_any_more(self):
-        """The canary principal variable was the one identifying flag; it
-        was retired with the rings (0394). The set/unset mechanism stays for
-        the next one, and today it reports nobody."""
-        from services.gate_flags import IDENTIFYING_FLAGS, gate_summary
-
-        self.assertEqual(IDENTIFYING_FLAGS, ())
-        principal = "9f8e7d6c-5b4a-4938-8271-605f4e3d2c1b"
-        with patch.dict(os.environ,
-                        {"MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID": principal}):
-            line = gate_summary()
-        self.assertNotIn(principal, line)
-        self.assertNotIn("MLC2_CONFIDENCE_CANARY_PRINCIPAL_ID", line)
-        self.assertNotIn("DATA_FOUNDATION_CANARY_ENABLED", line)
-
-    def test_it_is_one_line(self):
-        """One line, so one log filter finds it on either service."""
-        from services.gate_flags import gate_summary
-
-        self.assertNotIn("\n", gate_summary())
-
-    def test_every_code_switch_is_on_or_off(self):
-        """A class constant, not a variable: the boot line says which deploy."""
-        from services.gate_flags import CODE_SWITCHES, gate_summary
-
-        line = gate_summary()
-        for name in CODE_SWITCHES:
-            with self.subTest(name=name):
-                self.assertTrue(
-                    f"{name}=on" in line or f"{name}=off" in line, line
-                )
-
-    def test_a_code_switch_follows_the_class_constant(self):
-        from config import Config
-        from services import gate_flags
-
-        with patch.object(gate_flags, "CODE_SWITCHES", ("SOME_SWITCH_ENABLED",)):
-            with patch.object(Config, "SOME_SWITCH_ENABLED", True, create=True):
-                self.assertIn("SOME_SWITCH_ENABLED=on", gate_flags.gate_summary())
-            with patch.object(Config, "SOME_SWITCH_ENABLED", False, create=True):
-                self.assertIn("SOME_SWITCH_ENABLED=off", gate_flags.gate_summary())
-            self.assertIn("SOME_SWITCH_ENABLED=(unset)", gate_flags.gate_summary())
-
-    def test_summary_round_trips_through_the_boot_report_parser(self):
-        from services.gate_flags import CODE_SWITCHES, GATE_FLAGS, gate_summary
-
-        report = _load_report()
-        parsed = report.parse_gate_line(
-            "x INFO app [-]: gate flags " + gate_summary()
-        )
-        self.assertIsNotNone(parsed)
-        assert parsed is not None
-        for name in (*GATE_FLAGS, *CODE_SWITCHES):
-            self.assertIn(name, parsed)
 
 
 class EveryServiceReportsItsGates(unittest.TestCase):

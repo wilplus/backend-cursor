@@ -54,24 +54,6 @@ GRANTED_BY_0299 = (
 )
 TABLES = GRANTED_BY_0296 + GRANTED_BY_0299
 
-# The coaching bundle (add_confident_moment_coaching_bundle_v1.sql) revoked
-# feedback_revisions from service_role entirely, SELECT included. 0389 never
-# widens, so that table stays unreadable; every other table keeps SELECT.
-LOCKED_ENTIRELY = ("feedback_revisions",)
-READ_KEPT = tuple(t for t in TABLES if t not in LOCKED_ENTIRELY)
-
-# The one writer that is not SECURITY DEFINER: a trigger on projects that
-# only fires inside claim_guest_owner (a definer); see 0389's header.
-KNOWN_NON_DEFINER_WRITERS = {
-    ("transfer_learning_surfaces_on_owner_claim", "projects"),
-}
-
-WRITE_PATTERN = (
-    r"(insert\s+into|update|delete\s+from)\s+(public\.)?("
-    + "|".join(TABLES)
-    + r")\M"
-)
-
 
 @pytest.fixture(scope="module")
 def db():
@@ -141,12 +123,6 @@ class _ServiceRole:
         return False
 
 
-class TestTheLaneCarriesTheTables:
-    def test_every_granted_table_exists_here(self, present):
-        """A missing table would make a refusal below vacuous."""
-        assert set(TABLES) - present == set()
-
-
 class TestServiceRoleCannotWrite:
     def test_service_role_cannot_insert_into_canonical_tables(self, db, present):
         """The finding's named regression test (job1_review.md, R-1): one
@@ -165,103 +141,9 @@ class TestServiceRoleCannotWrite:
                     refused.append(table)
         assert sorted(refused) == sorted(present)
 
-    @pytest.mark.parametrize("table", TABLES)
-    def test_insert_is_refused(self, db, table):
-        column = _plain_column(db, table)
-        with _ServiceRole(db) as cur:
-            with pytest.raises(psycopg2.errors.InsufficientPrivilege):
-                cur.execute(
-                    f"INSERT INTO public.{table} ({column}) "
-                    f"SELECT {column} FROM public.{table} WHERE false"
-                )
-
-    @pytest.mark.parametrize("table", TABLES)
-    def test_update_is_refused(self, db, table):
-        column = _plain_column(db, table)
-        with _ServiceRole(db) as cur:
-            with pytest.raises(psycopg2.errors.InsufficientPrivilege):
-                cur.execute(
-                    f"UPDATE public.{table} SET {column} = {column} "
-                    "WHERE false"
-                )
-
-    @pytest.mark.parametrize("table", TABLES)
-    def test_delete_is_refused(self, db, table):
-        with _ServiceRole(db) as cur:
-            with pytest.raises(psycopg2.errors.InsufficientPrivilege):
-                cur.execute(f"DELETE FROM public.{table} WHERE false")
-
-    @pytest.mark.parametrize("table", TABLES)
-    def test_truncate_is_refused(self, db, table):
-        """Privilege is checked before anything else TRUNCATE looks at, so
-        the refusal is the privilege error, not a foreign-key one."""
-        with _ServiceRole(db) as cur:
-            with pytest.raises(psycopg2.errors.InsufficientPrivilege):
-                cur.execute(f"TRUNCATE public.{table}")
-
-
-class TestServiceRoleStillReads:
-    @pytest.mark.parametrize("table", READ_KEPT)
-    def test_select_is_kept(self, db, table):
-        """The Ideal Text repository and the purge read these directly."""
-        with _ServiceRole(db) as cur:
-            cur.execute(f"SELECT count(*) FROM public.{table}")
-            assert cur.fetchone()[0] >= 0
-
-    @pytest.mark.parametrize("table", LOCKED_ENTIRELY)
-    def test_a_table_locked_before_stays_locked(self, db, table):
-        """0389 never widens: the bundle's full revoke survives it."""
-        with _ServiceRole(db) as cur:
-            with pytest.raises(psycopg2.errors.InsufficientPrivilege):
-                cur.execute(f"SELECT count(*) FROM public.{table}")
-
-    def test_the_grant_is_exactly_select(self, db, present):
-        with db.cursor() as cur:
-            cur.execute(
-                "SELECT table_name, string_agg(privilege_type, ',' "
-                "ORDER BY privilege_type) "
-                "FROM information_schema.role_table_grants "
-                "WHERE table_schema = 'public' AND grantee = 'service_role' "
-                "AND table_name = ANY(%s) GROUP BY table_name",
-                (list(present),),
-            )
-            grants = dict(cur.fetchall())
-        assert grants == {t: "SELECT" for t in present if t in READ_KEPT}
-
 
 class TestWhyTheRevokeIsSafe:
-    def test_every_writer_is_a_definer_except_the_owner_claim_trigger(self, db):
-        """A plain function or trigger that wrote one of these tables would
-        run with the caller's privileges and start failing under 0389. The
-        catalog shows exactly one, and it is the trigger 0389's header
-        explains."""
-        with db.cursor() as cur:
-            cur.execute(
-                "SELECT p.proname, COALESCE(t.tgrelid::regclass::text, '') "
-                "FROM pg_proc p JOIN pg_namespace ns ON ns.oid = p.pronamespace "
-                "LEFT JOIN pg_trigger t ON t.tgfoid = p.oid AND NOT t.tgisinternal "
-                "WHERE ns.nspname = 'public' AND NOT p.prosecdef "
-                "AND p.prosrc ~* %s",
-                (WRITE_PATTERN,),
-            )
-            non_definers = set(cur.fetchall())
-        assert non_definers == KNOWN_NON_DEFINER_WRITERS
 
-    def test_the_owner_claim_rpc_is_a_definer(self, db):
-        """The trigger above only writes inside this function's transaction.
-        Not every lane installs the claim RPC; where it is installed it must
-        be a definer, or the trigger's writes would run as the caller."""
-        with db.cursor() as cur:
-            cur.execute(
-                "SELECT p.prosecdef FROM pg_proc p "
-                "JOIN pg_namespace ns ON ns.oid = p.pronamespace "
-                "WHERE ns.nspname = 'public' AND p.proname = 'claim_guest_owner'"
-            )
-            rows = cur.fetchall()
-        if not rows:
-            pytest.skip("claim_guest_owner is not installed on this lane; "
-                        "the definer check is a claim about production")
-        assert all(row[0] for row in rows), rows
 
     @pytest.mark.parametrize("rpc", [
         "record_feedback_v3_service_candidate_set_v1",

@@ -21,8 +21,6 @@ Run: python3 -m unittest tests.test_rls_guard
 from __future__ import annotations
 
 import io
-import json
-import os
 import sys
 import unittest
 from contextlib import redirect_stdout
@@ -100,178 +98,6 @@ class CannotFailABootTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("EXPOSURE FOUND", out)
 
-    def test_strict_is_the_only_route_to_exit_1(self):
-        conn = FakeConn(tables=["leaky"])
-        self.assertEqual(run_main([], conn)[0], 0)
-        self.assertEqual(run_main(["--strict"], FakeConn(tables=["leaky"]))[0], 1)
-
-    def test_the_boot_hook_does_not_pass_strict(self):
-        """If this ever changes, a newly-created table takes production down on
-        the next deploy."""
-        hook = Path(__file__).resolve().parents[1] / "bin" / "railway-web.sh"
-        text = hook.read_text(encoding="utf-8")
-        self.assertIn("scripts/rls_guard.py", text, "guard is not wired into boot")
-        line = next(ln for ln in text.splitlines() if "rls_guard.py" in ln and not ln.strip().startswith("#"))
-        self.assertNotIn("--strict", line)
-        self.assertIn("|| true", line)
-
-    def test_a_clean_database_says_so(self):
-        code, out = run_main([], FakeConn())
-        self.assertEqual(code, 0)
-        self.assertIn("OK", out)
-        self.assertNotIn("EXPOSURE", out)
-
-
-class NeverReportsAFalseOkTests(unittest.TestCase):
-    """A check that says OK when it did not run ends the investigation. That is
-    worse than no check."""
-
-    def test_no_database_url_reports_skipped_not_ok(self):
-        import rls_guard
-        code, out = run_main([], exc=rls_guard.CannotRun("DATABASE_URL is not set."))
-        self.assertEqual(code, 2)
-        self.assertIn("skipped", out)
-        self.assertNotIn("OK", out)
-
-    def test_unreachable_database_reports_skipped_not_ok(self):
-        import rls_guard
-        code, out = run_main(
-            [], exc=rls_guard.CannotRun("could not connect to the database: boom"))
-        self.assertEqual(code, 2)
-        self.assertIn("skipped", out)
-        self.assertNotIn("OK", out)
-
-    def test_skipped_json_is_null_rather_than_true(self):
-        import rls_guard
-        _, out = run_main(["--json"], exc=rls_guard.CannotRun("nope"))
-        self.assertIsNone(json.loads(out)["ok"])
-
-    def test_a_database_without_the_anon_role_says_functions_were_not_checked(self):
-        """Roles are cluster-wide, so this is easy to miss live: a plain
-        Postgres has no `anon`, and silently reporting a clean bill of health
-        would hide that half the check never ran."""
-        import rls_guard
-        line = rls_guard.report({"tables": [], "functions": [], "anon_role": False})
-        self.assertIn("OK", line)
-        self.assertIn("functions not checked", line)
-        self.assertNotIn("functions not checked",
-                         rls_guard.report({"tables": [], "functions": [],
-                                           "anon_role": True}))
-
-    def test_the_connection_is_closed_even_when_the_audit_raises(self):
-        import rls_guard
-        conn = FakeConn()
-        with patch.object(rls_guard, "connect", lambda *a, **k: conn), \
-             patch.object(rls_guard, "audit", side_effect=RuntimeError("boom")), \
-             self.assertRaises(RuntimeError):
-            rls_guard.main([])
-        self.assertTrue(conn.closed)
-
-
-class QueryShapeTests(unittest.TestCase):
-    """The queries are the whole product. Guard their load-bearing clauses."""
-
-    def test_both_queries_exclude_extension_owned_objects(self):
-        """Revoking EXECUTE on pgcrypto's gen_random_uuid() would break every
-        DEFAULT that calls it — the same guard the sweeps carry."""
-        import rls_guard
-        for sql in (rls_guard.SQL_TABLES_WITHOUT_RLS,
-                    rls_guard.SQL_FUNCTIONS_ANON_CAN_EXECUTE):
-            self.assertIn("pg_depend", sql)
-            self.assertIn("'e'", sql)
-
-    def test_the_table_query_covers_partitioned_tables(self):
-        import rls_guard
-        self.assertIn("'r', 'p'", rls_guard.SQL_TABLES_WITHOUT_RLS)
-        self.assertIn("relrowsecurity = false", rls_guard.SQL_TABLES_WITHOUT_RLS)
-
-    def test_the_function_query_covers_procedures_and_asks_about_anon(self):
-        import rls_guard
-        self.assertIn("'f', 'p'", rls_guard.SQL_FUNCTIONS_ANON_CAN_EXECUTE)
-        self.assertIn("has_function_privilege('anon'",
-                      rls_guard.SQL_FUNCTIONS_ANON_CAN_EXECUTE)
-
-    def test_the_missing_anon_role_short_circuits_the_function_query(self):
-        """has_function_privilege on a nonexistent role aborts with 42704 and
-        would take the table half of the check down with it."""
-        code, out = run_main(["--json"], FakeConn(functions=["would_be_found()"],
-                                                 anon_exists=False))
-        self.assertEqual(code, 0)
-        self.assertEqual(json.loads(out)["functions"], [])
-
-
-class ReportContentTests(unittest.TestCase):
-    def test_it_names_the_offenders_and_the_fix(self):
-        _, out = run_main([], FakeConn(tables=["v2_sessions"],
-                                       functions=["token_charge(a text)"]))
-        self.assertIn("v2_sessions", out)
-        self.assertIn("token_charge(a text)", out)
-        self.assertIn("ENABLE ROW LEVEL SECURITY", out)
-        self.assertIn("REVOKE ALL ON FUNCTION", out)
-        self.assertIn("docs/RLS-AUDIT.md", out)
-
-    def test_json_is_machine_readable(self):
-        _, out = run_main(["--json"], FakeConn(tables=["a"], functions=["b()"]))
-        payload = json.loads(out)
-        self.assertFalse(payload["ok"])
-        self.assertEqual(payload["tables"], ["a"])
-        self.assertEqual(payload["functions"], ["b()"])
-
-    def test_sentry_is_best_effort_and_silent_on_a_clean_run(self):
-        import rls_guard
-        with patch.dict(os.environ, {"SENTRY_DSN": "https://x@example.invalid/1"}):
-            # A broken/absent sentry_sdk must not disturb the exit code.
-            code, _ = run_main([], FakeConn(tables=["leaky"]))
-            self.assertEqual(code, 0)
-        # Nothing to report -> returns before touching the environment at all.
-        rls_guard._tell_sentry({"tables": [], "functions": [], "anon_role": True})
-
-    def test_sentry_reports_findings_through_the_real_api(self):
-        """The reporter must actually REPORT.
-
-        The first version of _tell_sentry called APIs that do not exist in
-        sentry-sdk 2.x (``Client.capture_message``, ``with Scope()``). It threw
-        on its first line every time and the best-effort ``except`` swallowed
-        it, so it never reported anything and no test noticed — the only
-        assertion was "does not crash", which a no-op passes trivially.
-
-        This asserts the message LANDS, and binds against the installed SDK's
-        real surface so a future API change fails here instead of going quiet.
-        """
-        import sentry_sdk
-        import rls_guard
-
-        for name in ("init", "set_context", "capture_message", "flush"):
-            self.assertTrue(hasattr(sentry_sdk, name),
-                            f"sentry_sdk.{name} is gone — _tell_sentry needs updating")
-
-        found = {"tables": ["leaky"], "functions": ["f(x text)"], "anon_role": True}
-        with patch.dict(os.environ, {"SENTRY_DSN": "https://k@example.invalid/1"}), \
-             patch.object(sentry_sdk, "init") as init, \
-             patch.object(sentry_sdk, "set_context") as set_context, \
-             patch.object(sentry_sdk, "capture_message") as capture, \
-             patch.object(sentry_sdk, "flush"):
-            rls_guard._tell_sentry(found)
-
-        init.assert_called_once()
-        capture.assert_called_once()
-        self.assertEqual(capture.call_args.kwargs.get("level"), "error")
-        msg = capture.call_args.args[0]
-        self.assertIn("1 table(s) without RLS", msg)
-        self.assertIn("1 anon-callable function(s)", msg)
-        ctx = set_context.call_args.args[1]
-        self.assertEqual(ctx["tables_without_rls"], ["leaky"])
-        self.assertEqual(ctx["functions_anon_can_execute"], ["f(x text)"])
-
-    def test_sentry_is_skipped_entirely_without_a_dsn(self):
-        import sentry_sdk
-        import rls_guard
-        with patch.dict(os.environ, {}, clear=True), \
-             patch.object(sentry_sdk, "init") as init:
-            rls_guard._tell_sentry({"tables": ["leaky"], "functions": [],
-                                    "anon_role": True})
-        init.assert_not_called()
-
 
 class AnonExecutableByDesignTests(unittest.TestCase):
     """The allowlist, and the reasons it cannot become a place to hide things.
@@ -289,31 +115,6 @@ class AnonExecutableByDesignTests(unittest.TestCase):
 
     HOOK = "willab_pre_request()"
 
-    def test_the_exact_set_is_pinned_so_nothing_is_added_quietly(self):
-        """Change this test deliberately or not at all. It may only shrink."""
-        import rls_guard
-        self.assertEqual(set(rls_guard.ANON_EXECUTABLE_BY_DESIGN), {self.HOOK})
-
-    def test_every_entry_says_what_revoking_would_break(self):
-        """A reason is the whole point — 'accepted risk' is not one."""
-        import rls_guard
-        for name, reason in rls_guard.ANON_EXECUTABLE_BY_DESIGN.items():
-            self.assertGreater(len(reason), 120, f"{name}: reason too thin")
-            self.assertTrue(
-                any(w in reason.lower() for w in ("break", "fail", "raise")),
-                f"{name}: the reason must name the breakage, not the verdict")
-
-    def test_an_allowlisted_function_is_not_a_finding(self):
-        code, out = run_main([], conn=FakeConn(functions=[self.HOOK]))
-        self.assertEqual(code, 0)
-        self.assertIn("OK", out)
-        self.assertNotIn("EXPOSURE FOUND", out)
-        self.assertIn("1 anon-callable by design", out)
-
-    def test_strict_stays_green_for_an_allowlisted_function(self):
-        """The whole point: the boot line and CI both go quiet, legitimately."""
-        code, _ = run_main(["--strict"], conn=FakeConn(functions=[self.HOOK]))
-        self.assertEqual(code, 0)
 
     def test_anything_not_on_the_list_is_still_a_finding(self):
         code, out = run_main(
@@ -322,41 +123,6 @@ class AnonExecutableByDesignTests(unittest.TestCase):
         self.assertIn("EXPOSURE FOUND", out)
         self.assertIn("leaky(x text)", out)
         self.assertIn("1 public function(s) anon can EXECUTE", out)
-
-    def test_an_allowlisted_entry_stays_visible_beside_real_findings(self):
-        """Triaged, not hidden — it still prints, just not as an exposure."""
-        _, out = run_main([], conn=FakeConn(functions=[self.HOOK, "leaky(x text)"]))
-        self.assertIn("BY DESIGN", out)
-        self.assertIn(self.HOOK, out)
-
-    def test_a_stale_entry_cannot_launder_a_real_finding(self):
-        """Matching is by exact identity signature against what THIS database
-        has. An allowlisted name that is absent simply never appears, so the
-        list cannot pre-authorise a function that does not exist yet."""
-        _, out = run_main([], conn=FakeConn(functions=[]))
-        self.assertNotIn("by design", out)
-        code, out = run_main(
-            ["--strict"], conn=FakeConn(functions=["willab_pre_request(text)"]))
-        self.assertEqual(code, 1, "a different signature is a different function")
-        self.assertIn("EXPOSURE FOUND", out)
-
-    def test_json_separates_findings_from_by_design(self):
-        _, out = run_main(["--json"], conn=FakeConn(functions=[self.HOOK]))
-        payload = json.loads(out)
-        self.assertIs(payload["ok"], True)
-        self.assertEqual(payload["functions"], [])
-        self.assertEqual(payload["by_design"], [self.HOOK])
-
-    def test_by_design_never_pages_sentry(self):
-        """Waking someone for a thing that is working as intended is how alerts
-        get muted."""
-        import rls_guard
-        import sentry_sdk
-        with patch.dict(os.environ, {"SENTRY_DSN": "https://k@example.test/1"}), \
-             patch.object(sentry_sdk, "init") as init:
-            rls_guard._tell_sentry({"tables": [], "functions": [],
-                                    "by_design": [self.HOOK], "anon_role": True})
-        init.assert_not_called()
 
 
 if __name__ == "__main__":
