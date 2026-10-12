@@ -21,7 +21,6 @@ import sentry_sdk
 from flask import jsonify, request
 
 import json
-import uuid
 from typing import Any
 
 from auth import optional_auth, require_auth
@@ -30,6 +29,7 @@ from services.rate_limits import llm_limit
 from config import Config
 from routes.v2.blueprint import v2_bp
 from routes.v2.processing_authorization import phase1_provider_route
+from services.chat_query import answer_chat, finish_chat_turn
 from services.db import db
 from services.snippet_values import resolve_all
 
@@ -179,88 +179,6 @@ def v2_chat_session_state():
         }), 500
 
 
-def _persist_chat_turn(
-    user_id, question, answer, *, suggested_action=None,
-    suggested_actions=None, bubbles=None, product_action=None, intent=None,
-    user_client_id=None, user_created_at=None,
-):
-    """BE-owned persistence of one Lounge chat turn (founder #2 — bubbles must
-    never disappear). Writes the user message + the bot reply to lounge_messages
-    so the thread survives reload + relogin on ANY device, rather than relying on
-    a best-effort FE append that can silently fail or race the auth token.
-
-    Idempotent: client_ids are deterministic (uuid5), so re-posting the same turn
-    is a no-op (UNIQUE(user_id, client_id)). The user-turn id prefers the FE's
-    own client_id (so it de-dupes with the FE's optimistic local copy + preserves
-    merge ordering); the bot-turn id derives from it → exactly one bot row per
-    user turn. The bot row carries suggested_action/suggested_actions, bubbles,
-    and any validated structured product destination in metadata so the FE
-    reconstructs contextual choices on rehydrate. Mirrors the existing
-    server-insert pattern (publish 'insights ready' card, session cadence).
-
-    Returns the bot row's client_id (so the FE can de-dupe its optimistic
-    bubble) or None on failure. Best-effort — never raises to the route.
-    """
-    from datetime import datetime as _dt, timezone as _tz
-
-    q = (question or "").strip()
-    a = (answer or "").strip()
-    if not user_id or not a:
-        return None
-
-    def _is_uuid(v):
-        try:
-            uuid.UUID(str(v))
-            return True
-        except (ValueError, AttributeError, TypeError):
-            return False
-
-    # User-turn id: prefer the FE's own (dedupe + merge order); else derive
-    # deterministically from the text so an identical re-post stays a no-op.
-    if user_client_id and _is_uuid(user_client_id):
-        u_id = str(user_client_id)
-    else:
-        u_id = str(uuid.uuid5(
-            uuid.NAMESPACE_URL, f"willab-chat-user:{user_id}:{q}"))
-    # Bot-turn id derives from the user-turn id → one bot row per user turn.
-    b_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"willab-chat-bot:{u_id}"))
-
-    now_iso = _dt.now(_tz.utc).isoformat()
-    u_ts = (user_created_at if isinstance(user_created_at, str)
-            and user_created_at.strip() else now_iso)
-
-    rows = []
-    if q:
-        rows.append({
-            "client_id": u_id, "role": "user", "kind": "text",
-            "body": q, "metadata": None, "client_created_at": u_ts,
-        })
-    meta = {"intent": intent}
-    if suggested_action:
-        meta["suggested_action"] = suggested_action
-    if suggested_actions:
-        meta["suggested_actions"] = suggested_actions
-    if bubbles:
-        meta["bubbles"] = bubbles
-    if product_action is not None:
-        from services.product_discovery import parse_product_action
-        parsed_action = parse_product_action({"product_action": product_action})
-        if parsed_action is not None:
-            meta["product_action"] = parsed_action
-    rows.append({
-        "client_id": b_id, "role": "bot", "kind": "text",
-        "body": a, "metadata": meta, "client_created_at": now_iso,
-    })
-
-    try:
-        db.insert_lounge_messages(str(user_id), rows)
-        return b_id
-    except Exception as e:
-        logger.warning(
-            "chat/query: persist turn failed user=%s: %s", user_id, e)
-        return None
-
-
 def _parse_chat_request(req) -> dict:
     """Normalize JSON and multipart chat requests into one transport shape.
 
@@ -319,35 +237,6 @@ def _parse_chat_request(req) -> dict:
     parsed["user_created_at"] = req.form.get("client_created_at") or None
 
     return parsed
-
-
-def _finalize_chat_response(
-    resp, *, user_id, question, persist_thread, user_client_id,
-    user_created_at, intent=None,
-):
-    """Persist/charge one completed Chat turn and create its HTTP response."""
-    if persist_thread and user_id:
-        bot_cid = _persist_chat_turn(
-            user_id, question, resp.get("answer"),
-            suggested_action=resp.get("suggested_action"),
-            suggested_actions=resp.get("suggested_actions"),
-            bubbles=resp.get("bubbles"),
-            product_action=resp.get("product_action"), intent=intent,
-            user_client_id=user_client_id,
-            user_created_at=user_created_at,
-        )
-        resp["persisted"] = bool(bot_cid)
-        if bot_cid:
-            resp["persisted_client_id"] = bot_cid
-    # Charge after answering, never before. Chat is repeatable, so it has no
-    # idempotency ref; billing failure must never replace the answer.
-    if user_id:
-        try:
-            from services.token_account import charge as _charge
-            _charge(str(user_id), "chat")
-        except Exception:
-            pass
-    return jsonify(resp), 200
 
 
 @v2_bp.route("/chat/query", methods=["POST"])
@@ -435,240 +324,16 @@ def v2_chat_query():
                 "error": "question must be a non-empty string",
             }), 400
 
-        def _finalize(resp, *, intent=None):
-            """Persist this turn server-side (founder #2) when the FE opted in
-            and the caller is signed in, then return the 200. The bot row carries
-            suggested_action + bubbles in its metadata so the contextual chip
-            (trainings / Ideal Text) reconstructs on
-            rehydrate — exactly what was vanishing on relogin. Best-effort: a
-            persist failure never fails the chat response."""
-            return _finalize_chat_response(
-                resp, user_id=request.user_id, question=question,
-                persist_thread=persist_thread,
-                user_client_id=user_client_id,
-                user_created_at=user_created_at, intent=intent,
-            )
+        def _finalize(resp, intent):
+            return jsonify(finish_chat_turn(
+                db, resp, user_id=request.user_id, question=question,
+                persist_thread=persist_thread, user_client_id=user_client_id,
+                user_created_at=user_created_at, intent=intent)), 200
 
-        # ── Life Panel hashtag router (founder 2026-07-26) — the FIRST
-        # intercept, and the feature's ONLY contact point with this file.
-        #
-        # It fires on a leading `#tag` from a signed-in user who has consented
-        # to the Life Panel, and on nothing else. Three guards, cheapest
-        # first, so a normal chat turn pays ~nothing:
-        #   1. LIFE_PANEL_ENABLED (default 0) — off, and this block is a
-        #      boolean check that falls straight through.
-        #   2. signed in — anonymous Lounge chat never reaches it.
-        #   3. handle_note returns None for an untagged message BEFORE any DB
-        #      read, and None for a non-consented user. None ⇒ we do not
-        #      touch this turn at all.
-        #
-        # N3 is the contract: for a non-participating user every response on
-        # this endpoint is byte-identical to main. That is why the fall-
-        # through is `return None → keep going` rather than any modified
-        # answer, and why the whole block is inside its own try/except — a
-        # broken Life Panel must cost the panel, never the chat.
-        if request.user_id and getattr(config, "LIFE_PANEL_ENABLED", False):
-            try:
-                from services.life_chat import handle_note
-                from services.master_doc_rag import split_answer_into_bubbles
-                _ln = handle_note(request.user_id, question.strip())
-                if _ln:
-                    _ans = _ln.get("answer") or ""
-                    # The founder's own words, returned at the moment they
-                    # apply — appended only when the wall actually had
-                    # something above the relevance floor.
-                    _ph = _ln.get("phrase") or {}
-                    if _ph.get("body"):
-                        _ans = f"{_ans}\n\n“{_ph['body']}”"
-                    return _finalize({
-                        "answer": _ans,
-                        "bubbles": split_answer_into_bubbles(_ans),
-                        "show_record_ui": False,
-                        "suggested_action": None,
-                        "debug": {"intent": "life_panel",
-                                  "route": _ln.get("route"),
-                                  "link": _ln.get("link")},
-                    }, intent="life_panel")
-            except Exception as _le:
-                logger.warning(
-                    "chat/query: life-panel intercept failed user=%s: %s",
-                    request.user_id, _le,
-                )
-
-        # ── Goal-update intercept (Prompt A §6 C4) — BEFORE the librarian.
-        # §0: never add rules to master_doc_rag (attention ceiling). A
-        # signed-in user saying "change my goal to X" (any language) updates
-        # user_settings.profile_goal and gets an in-language confirmation;
-        # the librarian is short-circuited for that turn. Cheap pre-gate
-        # inside, so normal chat turns spend no extra LLM call. Best-effort:
-        # any failure falls through to the normal answer.
-        if request.user_id:
-            try:
-                from services.goal_update import handle_goal_update
-                from services.master_doc_rag import split_answer_into_bubbles
-                _gu = handle_goal_update(request.user_id, question.strip())
-                if _gu and _gu.get("answer"):
-                    return _finalize({
-                        "answer": _gu["answer"],
-                        "bubbles": split_answer_into_bubbles(_gu["answer"]),
-                        "show_record_ui": False,
-                        "suggested_action": None,
-                        "debug": {
-                            "intent": "goal_update",
-                            "new_goal": _gu.get("new_goal"),
-                        },
-                    }, intent="goal_update")
-            except Exception as _ge:
-                logger.warning(
-                    "chat/query: goal-update intercept failed user=%s: %s",
-                    request.user_id, _ge,
-                )
-
-        # ── Audit intercept (Prompt C §5) — BEFORE the librarian (§0: no
-        # master_doc_rag rule edits). A signed-in user asking for their audit
-        # gets a short bubble + the audit button (suggested_action="audit")
-        # opening the audits page. Deterministic keyword pre-gate inside, so
-        # normal chat pays nothing. Best-effort: any failure falls through.
-        # Prompt D: RETIRED by default (the Best-Presentation replaces the
-        # audit). AUDIT_SURFACE_ENABLED=1 restores it (endpoints stay dormant).
-        if request.user_id and getattr(config, "AUDIT_SURFACE_ENABLED", False):
-            try:
-                from services.audit_intent import handle_audit_intent
-                from services.master_doc_rag import split_answer_into_bubbles
-                _ai = handle_audit_intent(request.user_id, question.strip())
-                if _ai and _ai.get("suggested_action") == "audit":
-                    _ans = _ai.get("answer") or ""
-                    return _finalize({
-                        "answer": _ans,
-                        "bubbles": split_answer_into_bubbles(_ans),
-                        "show_record_ui": False,
-                        "suggested_action": "audit",
-                        "debug": {"intent": "audit"},
-                    }, intent="audit")
-            except Exception as _ae:
-                logger.warning(
-                    "chat/query: audit intercept failed user=%s: %s",
-                    request.user_id, _ae,
-                )
-
-        # Presentation/deck changes are project-boundary decisions, not open-
-        # ended coaching prose.  Resolve them deterministically from the
-        # current project's explicit state before the general librarian can
-        # improvise a mutation or collapse two talks together.
-        try:
-            from services.presentation_change_intent import (
-                handle_presentation_change,
-            )
-            from services.master_doc_rag import split_answer_into_bubbles
-            _pi = handle_presentation_change(
-                question.strip(), presentation_context,
-            )
-            if _pi:
-                _ans = _pi["answer"]
-                return _finalize({
-                    "answer": _ans,
-                    "bubbles": split_answer_into_bubbles(_ans),
-                    "show_record_ui": False,
-                    "suggested_action": None,
-                    "suggested_actions": _pi["suggested_actions"],
-                    "debug": {"intent": _pi["intent"]},
-                }, intent=_pi["intent"])
-        except Exception as _pie:
-            logger.warning(
-                "chat/query: presentation-change intercept failed: %s", _pie,
-            )
-
-        # ── Lounge-bot deterministic intercepts (chat-audit 2026-06-21) —
-        # BEFORE the librarian (§0: keep these OUT of master_doc_rag's mega-
-        # prompt; the attention ceiling is full and the probe grades the LLM
-        # path). Crisis (safety) → record CTA (the acquisition lever, #4:
-        # show_record_ui + suggested_action="record_again", reversing #119 for
-        # CLEAR intent) → off-mission generative deflect. Runs for anonymous +
-        # signed-in; the goal/audit intercepts above are signed-in-only + more
-        # specific, so they win for those phrasings. Best-effort.
-        try:
-            from services.chat_intents import detect_chat_intent
-            from services.master_doc_rag import split_answer_into_bubbles
-            _ci = detect_chat_intent(question.strip())
-            if _ci:
-                _ans = _ci["answer"]
-                return _finalize({
-                    "answer": _ans,
-                    "bubbles": split_answer_into_bubbles(_ans),
-                    "show_record_ui": _ci["show_record_ui"],
-                    "suggested_action": _ci["suggested_action"],
-                    "debug": {"intent": _ci["intent"]},
-                }, intent=_ci["intent"])
-        except Exception as _cie:
-            logger.warning("chat/query: chat-intent intercept failed: %s", _cie)
-
-        # ── Path A — LLM answer (the only thing the HTTP response
-        # carries back). Unchanged from the pre-BE-3 behavior.
-        # Pull admin's private notes for this user → don't-ask block
-        # in the FAQ chat system prompt. @require_auth guarantees a
-        # user_id; best-effort on the DB read.
-        # Private admin notes apply only when signed in. Anonymous
-        # (unsigned-home, §3) gets the general bot — no per-user reads.
-        admin_dont_ask_notes: str | None = None
-        if request.user_id:
-            try:
-                _settings = db.get_user_settings(request.user_id) or {}
-                admin_dont_ask_notes = (
-                    _settings.get("private_admin_notes") or None
-                )
-            except Exception as e:
-                logger.warning(
-                    "chat/query: private_admin_notes load failed "
-                    "user=%s: %s", request.user_id, e,
-                )
-
-        # BE-9 — the Life Panel's per-user block, for participating users only.
-        # Retrieved at request time from the requesting user's OWN rows, capped
-        # to the top few by relevance; the renderer in master_doc_rag trims and
-        # caps again. Everyone else — flag off, not signed in, not consented —
-        # passes None, so their prompt is byte-for-byte what it is today.
-        # Best-effort: a failed load costs the grounding, never the answer.
-        life_context = None
-        if request.user_id and getattr(config, "LIFE_PANEL_ENABLED", False):
-            try:
-                from services.life_chat import has_consented
-                if has_consented(request.user_id):
-                    from services.life_engine import life_chat_context
-                    life_context = life_chat_context(
-                        request.user_id, question.strip())
-            except Exception as _lce:
-                logger.warning(
-                    "chat/query: life context load failed user=%s: %s",
-                    request.user_id, _lce,
-                )
-
-        from services.master_doc_rag import (
-            answer_question, split_answer_into_bubbles,
-        )
-        payload, debug = answer_question(
-            question.strip(),
-            history=history,
-            admin_dont_ask_notes=admin_dont_ask_notes,
-            life_context=life_context,
-        )
-
-        # S1 — per-turn intent → the one contextual button the FE renders.
-        # ("audit" is set by the audit intercept above, not the librarian, but
-        # is a valid enum value so the FE contract stays consistent.)
-        _sa = payload.get("suggested_action")
-        if _sa not in ("trainings", "audit"):
-            _sa = None
-        _answer = payload.get("answer", "")
-        return _finalize({
-            "answer": _answer,
-            # FE #157 — pre-split chat bubbles (renders 1:1; falls back to
-            # splitting `answer` on blank lines when absent). `answer` stays
-            # the fallback.
-            "bubbles": split_answer_into_bubbles(_answer),
-            "show_record_ui": bool(payload.get("show_record_ui", False)),
-            "suggested_action": _sa,
-            "debug": debug,
-        }, intent=(debug or {}).get("intent") or "faq")
+        return answer_chat(
+            db, user_id=request.user_id, question=question, history=history,
+            context=presentation_context, app_config=config,
+            finalize=_finalize)
 
     except Exception as e:
         logger.error("chat/query failed: %s", e, exc_info=True)

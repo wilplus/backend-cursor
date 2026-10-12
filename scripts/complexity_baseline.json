@@ -1,9 +1,4 @@
 {
-  "routes/journal.py:journal_image_generate": 30,
-  "routes/life_routes.py:life_day_update": 28,
-  "routes/v2/coaching.py:v2_chat_query": 36,
-  "routes/v2/user_sessions.py:v2_post_take_feedback_response": 28,
-  "routes/v2/user_sessions.py:v2_user_put_transcript_edit": 30,
   "services/analysis_worker.py:_run_full_analysis_impl": 31,
   "services/annotation_export.py:run_annotation_export": 29,
   "services/confident_voice_practice.py:attach_exercise_offer": 29,
@@ -13,8 +8,6 @@
   "services/db.py:DatabaseService.persist_auto_ideal_text": 32,
   "services/db.py:DatabaseService.record_dimension_evaluations": 28,
   "services/db.py:DatabaseService.set_ideal_text_part_lock": 29,
-  "services/db.py:DatabaseService.v2_get_sessions_with_previews": 44,
-  "services/db.py:_session_preview_row": 33,
   "services/life_engine.py:compare_to_strategy": 31,
   "services/life_engine.py:derive_principles_from_wins": 38,
   "services/life_engine.py:rank_goals_by_expected_value": 29,

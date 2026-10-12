@@ -414,9 +414,6 @@ def v2_user_put_sharing_consent():
 # admin-authored v2_speaker_profiles. Domain is metadata, never a flow
 # fork. GET prefills the form / the Lab's read-only goal reminder.
 
-_PROFILE_GOAL_MAX_LEN = 500
-
-
 @v2_bp.route("/user/profile", methods=["GET"])
 @require_auth
 def v2_user_get_profile():
@@ -484,96 +481,13 @@ def v2_user_set_profile():
       422 INVALID_INPUT — bad domain or over-long goal
       500 V2_ERROR — persist failed
     """
+    from services.refusal import Refusal
+    from services.user_profile import save_profile
     try:
-        from services.domains import (
-            default_domain_vocabulary, is_valid_domain,
-        )
-
-        body = request.get_json(silent=True) or {}
-        if not isinstance(body, dict):
-            return jsonify({
-                "code": "INVALID_INPUT", "error": "Body must be a JSON object",
-            }), 422
-
-        raw_domain = body.get("domain")
-        domain: str | None = None
-        if raw_domain is not None:
-            if not is_valid_domain(raw_domain):
-                return jsonify({
-                    "code": "INVALID_INPUT",
-                    "error": (
-                        "domain: must be one of public_speaking, sales, "
-                        "executive_presence, customer_service, interview_prep"
-                    ),
-                }), 422
-            domain = raw_domain
-
-        raw_goal = body.get("goal")
-        goal: str | None = None
-        if raw_goal is not None:
-            if not isinstance(raw_goal, str):
-                return jsonify({
-                    "code": "INVALID_INPUT", "error": "goal: must be a string",
-                }), 422
-            cleaned = raw_goal.strip()
-            if cleaned:
-                if len(cleaned) > _PROFILE_GOAL_MAX_LEN:
-                    return jsonify({
-                        "code": "INVALID_INPUT",
-                        "error": (
-                            f"goal: must be {_PROFILE_GOAL_MAX_LEN} "
-                            "characters or fewer"
-                        ),
-                    }), 422
-                goal = cleaned
-
-        languages_present = "proficient_languages" in body
-        languages: list[str] | None = None
-        if languages_present:
-            from services.rater_languages import validate_proficient_languages
-            languages, language_error = validate_proficient_languages(
-                body.get("proficient_languages"))
-            if language_error:
-                return jsonify({
-                    "code": "INVALID_INPUT", "error": language_error,
-                }), 422
-
-        # {domain, goal} is a full set; only write it when the body actually
-        # carries one of them, otherwise an unrelated partial post would null
-        # the intake.
-        if "domain" in body or "goal" in body:
-            if not db.set_user_profile(
-                request.user_id, domain=domain, goal=goal,
-            ):
-                return jsonify({
-                    "code": "V2_ERROR", "error": "Failed to persist profile",
-                }), 500
-        else:
-            stored = db.get_user_profile(request.user_id) or {}
-            domain, goal = stored.get("domain"), stored.get("goal")
-
-        if languages_present:
-            if not db.set_user_proficient_languages(
-                request.user_id, languages or [],
-            ):
-                return jsonify({
-                    "code": "V2_ERROR", "error": "Failed to persist profile",
-                }), 500
-        else:
-            languages = db.get_user_proficient_languages(request.user_id)
-
-        logger.info(
-            "user/profile.set user=%s domain=%s goal_len=%d "
-            "rater_languages_set=%s",
-            request.user_id, domain or "-", len(goal or ""), languages_present,
-        )
-        return jsonify({
-            "domain": domain,
-            "goal": goal,
-            "proficient_languages": languages,
-            "domain_vocabulary_default": default_domain_vocabulary(domain),
-        }), 200
-
+        return jsonify(save_profile(
+            db, request.user_id, request.get_json(silent=True) or {})), 200
+    except Refusal as refusal:
+        return jsonify(refusal.body), refusal.status
     except Exception as e:
         logger.error(
             "user/profile POST failed: %s", e, exc_info=True,

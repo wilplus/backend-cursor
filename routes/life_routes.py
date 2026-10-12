@@ -54,6 +54,8 @@ from services import life_panel as lp
 # asserts both.
 from services import life_reminders as reminders
 from services import life_store as store
+from services.life_day_card import update_day_card
+from services.refusal import Refusal
 from services.rate_limits import heavy_limit, llm_limit
 from services.context_document import (SUPPORTED_UPLOAD_EXTENSIONS,
                                        extract_document_text)
@@ -1262,72 +1264,10 @@ def life_day_update(day_id):
     The FRAME is fixed: ``one_thing`` can be changed, but it cannot be removed
     — there is always a one thing for the day, and blanking it is how the card
     quietly becomes optional."""
-    user_id = _uid()
-    body = _body()
-    allowed = ("morning_checks", "one_thing", "focus_blocks",
-               "distraction_flagged", "evening_habits_ran",
-               "evening_one_thing", "evening_distraction", "evening_line",
-               "evening_measure", "edit_why")
-    fields = {k: body[k] for k in allowed if k in body}
-    swap_to = body.get("one_thing_goal_id")
-    if swap_to is not None and not isinstance(swap_to, str):
-        return _invalid("one_thing_goal_id: must be a goal id string")
-    if not fields and not swap_to:
-        return _invalid("no fields to update")
-    if "one_thing" in fields and not str(fields["one_thing"] or "").strip():
-        return _invalid("one_thing: cannot be blank — change it, don't remove it")
-
-    # Both learning-contract records happen here, and they need the CURRENT
-    # row: draft_meta is a merge into what the morning wrote, never a blind
-    # overwrite. A row we cannot read degrades to the plain update — the tick
-    # is saved, the record is the cost (docs/life-checkin-learning-contract.md).
-    current = (store.day_by_id(user_id, day_id)
-               if (swap_to or "one_thing" in fields) else None)
-
-    if swap_to:
-        # Priority is GATED, never learned: the swap names the displaced
-        # ranked goal for the Sunday-review counter and nothing else. The
-        # drafting learner never sees it.
-        if current is None:
-            return _not_found()
-        swap_fields = engine.swap_one_thing(user_id, current, swap_to)
-        if swap_fields is None:
-            return _invalid("one_thing_goal_id: not one of your active goals")
-        # An explicit text edit in the same call wins over the swap's default
-        # text — the swap decides the GOAL, the person still owns the words.
-        swap_fields.update(fields)
-        fields = swap_fields
-
-    if "one_thing" in fields and current is not None:
-        # Extraction/formulation are LEARNED silently: the accepted text is
-        # the output side of the (drafted → accepted) pair. Recorded only
-        # when the morning actually drafted a slot — a hand-built card has
-        # no pair to teach with.
-        meta = dict(fields.get("draft_meta")
-                    or current.get("draft_meta") or {})
-        slot = meta.get("one_thing")
-        if isinstance(slot, dict):
-            slot["accepted"] = str(fields["one_thing"]).strip()[:500]
-            fields["draft_meta"] = meta
-
-    if "evening_measure" in fields:
-        # "Where did it land, in your words" - free text, capped,
-        # stored verbatim. The system never computes against it.
-        fields["evening_measure"] = (str(fields["evening_measure"]
-                                         or "").strip()[:2000] or None)
-    row = store.update_day(user_id, day_id, fields)
-    if row is None and "evening_measure" in fields:
-        # add_life_metric_readback.sql not yet run: the record is the
-        # cost, never the edit.
-        fields.pop("evening_measure")
-        row = store.update_day(user_id, day_id, fields)
-    if row is None and "draft_meta" in fields:
-        # The column ships with migrations/add_life_days_draft_meta.sql; an
-        # unrun migration costs the record, never the edit.
-        fields.pop("draft_meta")
-        row = store.update_day(user_id, day_id, fields)
-    if not row:
-        return _not_found()
+    try:
+        row = update_day_card(_uid(), day_id, _body())
+    except Refusal as refusal:
+        return jsonify(refusal.body), refusal.status
     return jsonify({"day": lp.serialize_day(row)}), 200
 
 

@@ -31,7 +31,7 @@ from config import Config
 from routes.v2.blueprint import v2_bp
 from services.db import db
 from services import admin_user_directory
-from services.snippet_values import resolve_all
+from services.admin_session_detail import session_detail
 from services.snippet_tables import SNIPPETS_TABLE
 
 logger = logging.getLogger(__name__)
@@ -571,34 +571,6 @@ def v2_admin_update_snippet_coaching_rationale(snippet_id):
         }), 500
 
 
-def _snippet_start_time(snippet: dict) -> float | None:
-    """API-boundary derivation of seconds-float start time.
-
-    The seconds-float pair (start_time / end_time) referenced through
-    older API contracts is NOT a persisted schema column — every
-    attempt to write it raises PGRST204 (see
-    services/db.py::update_snippet_boundaries). All snippets store
-    their bounds in the canonical millisecond-integer pair
-    (start_offset_ms / duration_ms). We synthesise the seconds-float
-    values at response time so any frontend that still consumes the
-    old contract keeps working without a stale write.
-    """
-    ms = snippet.get("start_offset_ms")
-    return None if ms is None else round(float(ms) / 1000.0, 3)
-
-
-def _snippet_end_time(snippet: dict) -> float | None:
-    """API-boundary derivation of seconds-float end time. See
-    :func:`_snippet_start_time` for why this is computed rather than
-    read from the row.
-    """
-    start_ms = snippet.get("start_offset_ms")
-    dur_ms = snippet.get("duration_ms")
-    if start_ms is None or dur_ms is None:
-        return None
-    return round((float(start_ms) + float(dur_ms)) / 1000.0, 3)
-
-
 def _resolve_turn_audio_url(snippet: dict) -> str | None:
     """Playback URL for a *turn* row (Chat Transcript / Conversation Timeline).
 
@@ -682,175 +654,15 @@ def v2_admin_get_session(session_id):
         }
     """
     try:
-        session = db.takes.get_session_with_global_metrics(session_id)
-        if not session:
+        detail = session_detail(
+            db, session_id, turn_audio_url=_resolve_turn_audio_url,
+            snippet_audio_url=_resolve_snippet_audio_url)
+        if detail is None:
             return jsonify({
                 "code": "SESSION_NOT_FOUND",
                 "error": "Session not found.",
             }), 404
-
-        user_id = session.get("user_id")
-
-        # One DB read for every snippet on this session — interview turns
-        # AND extracted moments live in the same charisma_snippets table,
-        # distinguished by whether `turn_number` is populated.
-        all_snippets = db.get_snippets_by_session(session_id) or []
-
-        # ── Turns: flatten interview rows into AI/user message pairs ────
-        # Interview rows are the ones with turn_number set. We sort by
-        # turn_number then start_offset_ms so within-turn ordering stays
-        # stable even if turn_number duplicates appear.
-        interview_rows = [s for s in all_snippets if s.get("turn_number") is not None]
-        interview_rows.sort(
-            key=lambda s: (
-                s.get("turn_number") or 0,
-                s.get("start_offset_ms") or 0,
-            )
-        )
-
-        turns: list[dict] = []
-        for s in interview_rows:
-            q_text = (s.get("question_text") or "").strip()
-            if q_text:
-                turns.append({
-                    "role": "ai",
-                    "content": q_text,
-                    "tone": s.get("question_tone"),
-                    "turn_number": s.get("turn_number"),
-                })
-            turns.append({
-                "role": "user",
-                "content": (s.get("transcript") or "").strip(),
-                # Per-turn ORIGINAL audio URL — plays standalone in the
-                # chat bubble. Distinct from the snippet panel below
-                # which gets concat'd-file slice URLs.
-                "audio_url": _resolve_turn_audio_url(s),
-                "duration_ms": s.get("duration_ms"),
-                # Offset within the audio_url, for chat bubbles that need
-                # to clamp playback. ZERO when audio_url points at the
-                # per-turn original file (the common case); the row's
-                # actual start_offset_ms (set by finalize) when audio_url
-                # falls through to the concat'd full.webm. Frontend uses
-                # (start_offset_ms, duration_ms) to seek+stop on play.
-                "start_offset_ms": (
-                    0
-                    if (s.get("audio_segment_path") or "").strip()
-                    else int(s.get("start_offset_ms") or 0)
-                ),
-                "snippet_id": str(s.get("id")) if s.get("id") else None,
-                "turn_number": s.get("turn_number"),
-                # PM-9: the six denormalized columns are dead on the live path
-                # (services/snippet_values) — the admin metrics panel has been
-                # rendering six NULLs for every auto-extracted snippet, which
-                # is every snippet the lab pipeline produces.
-                "metrics": resolve_all(s),
-            })
-
-        # ── Snippets: ONLY extracted highlight snippets ──────────────────
-        # The snippet panel in the admin UI is a highlight reel — moments
-        # of interest within the full session recording, NOT one row per
-        # turn. Turn rows belong in the Chat Transcript / Conversation
-        # Timeline (served via the `turns` array above).
-        #
-        # Distinction: turn rows have `turn_number IS NOT NULL` (set at
-        # upload time by /v2/public/interview/upload-answer). Extracted
-        # snippets have `turn_number IS NULL` and `source_type` populated
-        # (typically "auto_extracted" or "student").
-        extracted_only = [s for s in all_snippets if s.get("turn_number") is None]
-        snippets = [
-            {
-                "id": str(s.get("id")) if s.get("id") else None,
-                "session_id": str(s.get("session_id")) if s.get("session_id") else str(session_id),
-                "user_id": str(s.get("user_id")) if s.get("user_id") else None,
-                "recording_id": str(s.get("recording_id")) if s.get("recording_id") else None,
-                "type": s.get("snippet_type") or s.get("coach_label"),
-                "snippet_type": s.get("snippet_type"),
-                # Provenance tag — "auto_extracted" for highlights from
-                # services.snippet_truncation, "student" for user-uploaded
-                # clips, NULL for legacy path-B rows. Frontend filters
-                # the snippet panel on this so legacy noise stays hidden.
-                "source_type": s.get("source_type"),
-                "coach_label": s.get("coach_label"),
-                "audio_url": _resolve_snippet_audio_url(s),
-                "audio_segment_path": s.get("audio_segment_path"),
-                "storage_path": s.get("storage_path"),
-                "transcript": s.get("transcript"),
-                "duration_ms": s.get("duration_ms"),
-                "start_offset_ms": s.get("start_offset_ms"),
-                "admin_comment": s.get("admin_comment"),
-                "is_skipped": bool(s.get("is_skipped", False)),
-                "turn_number": s.get("turn_number"),
-                # Derived at API boundary — these columns don't exist
-                # in the schema. See services/db.py::update_snippet_
-                # boundaries for the canonical model rationale.
-                "start_time": _snippet_start_time(s),
-                "end_time": _snippet_end_time(s),
-                # Coaching-outcome blob written by
-                # services.coaching_outcomes.evaluate_and_record_followup_
-                # outcome after the user answered turn 1 of a contextual
-                # chat that this snippet seeded (via /chat?sourceSnippet=
-                # <id>). Surfaced here so the admin page can render the
-                # score + the user's actual answer next to the comment
-                # the admin originally wrote — closing the feedback
-                # loop. NULL until the user has clicked the CTA AND
-                # answered the first question.
-                "follow_up_outcome": s.get("follow_up_outcome"),
-                "created_at": s.get("created_at"),
-            }
-            for s in extracted_only
-        ]
-
-        global_metrics = {
-            "wpm": session.get("global_wpm"),
-            "fillers": session.get("global_fillers"),
-            "pause_ms": session.get("global_pause_ms"),
-            "dynamic_db": session.get("global_dynamic_db"),
-            "pitch_center": session.get("global_pitch_center"),
-            "energy": session.get("global_energy"),
-            "kpi_score": session.get("kpi_score"),
-            # Phase 11 — stickiness-topic. Three NULL fields when the
-            # admin hasn't yet clicked "Compute Metrics" on this
-            # session; the frontend renders "—" in that case. The
-            # legacy ai_score / ai_summary block was removed when the
-            # panel was redesigned to KPI + Stickiness.
-            "stickiness_top_topic": session.get("stickiness_top_topic"),
-            "stickiness_score": session.get("stickiness_score"),
-            "stickiness_topic_distribution": session.get(
-                "stickiness_topic_distribution"
-            ),
-            "stickiness_computed_at": session.get("stickiness_computed_at"),
-            # Phase 17.1 — drift-guard verdict. The admin UI can
-            # render a "needs review" banner when this is True and
-            # surface drift_diagnostic for the explanation.
-            "needs_admin_review": bool(session.get("needs_admin_review")),
-            "drift_diagnostic": session.get("drift_diagnostic"),
-            # Phase 18.x — Performance summary narrative. The DB
-            # column is the legacy ai_task_alignment_comment (the
-            # column name pre-dates the API rename); the FE-canonical
-            # field name is session_kpi_narrative. The immutable AI
-            # draft baseline lives in session_kpi_narrative_ai_draft
-            # and is the diff source for the trivial-edit gate on
-            # PATCH /v2/admin/sessions/<id>/kpi-narrative.
-            "session_kpi_narrative": session.get(
-                "ai_task_alignment_comment"
-            ),
-            "session_kpi_narrative_ai_draft": session.get(
-                "session_kpi_narrative_ai_draft"
-            ),
-        }
-
-        return jsonify({
-            "id": str(session_id),
-            "user_id": str(user_id) if user_id else None,
-            "status": session.get("status"),
-            "results_published_at": session.get("results_published_at"),
-            "created_at": session.get("created_at"),
-            "global_metrics": global_metrics,
-            "turns": turns,
-            "snippets": snippets,
-            "total_turns": len(turns),
-            "total_snippets": len(snippets),
-        }), 200
+        return jsonify(detail), 200
 
     except Exception as e:
         logger.error("admin/sessions/<id> GET failed: %s", e, exc_info=True)
