@@ -153,7 +153,6 @@ class TestTheWeeklyObjectCheck:
 # ── Door 2 ────────────────────────────────────────────────────────────────
 
 class _Config:
-    MLC2_PAIR_RELEASES_ENABLED = True
     PAIR_RELEASE_SURFACES = frozenset({"praise_line"})
     R2_PAIR_RELEASE_BUCKET = "willab-pair-releases"
     PAIR_RELEASE_SIGNING_KEY = KEY
@@ -277,7 +276,7 @@ class TestTheReleaseIsReadBack:
 
     def test_a_row_without_a_release_is_left_alone(self):
         db, storage = _ReleaseDb(), _Storage()
-        stayed = {"surface": "praise_line", "exported": 0, "why": "door 2 closed"}
+        stayed = {"surface": "praise_line", "exported": 0, "why": "no founder sentence for this surface yet (PAIR_RELEASE_SURFACES)"}
         assert ov.read_back_exports(db, storage, _Config(), [stayed]) == set()
         assert "verified" not in stayed and db.checks == []
 

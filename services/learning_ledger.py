@@ -16,7 +16,9 @@ SYSTEM and never about a person:
   * the shadow cues: coaches' Yes answers in the blind error audit
     against 30 and the audit's catch rate against 80% (N48.5 Q24 A;
     services.verbal_cue_validation);
-  * the four doors, as the code constants say them today;
+  * ``doors``: always empty. The door switches were removed on 2026-10-12
+    (founder: "remove the learning doors"); the key stays, empty, only
+    until the frontend's pace panel stops reading it;
   * what last happened, where a table records it: the newest pair
     release, fine-tune run and promotion (``last``).
 
@@ -47,24 +49,6 @@ def _read(name: str, reader: Callable[[], Any], unavailable: list[str]) -> Any:
         _log.warning("ledger source %s unavailable: %s", name, e, exc_info=True)
         unavailable.append(name)
         return None
-
-
-def doors(config: Any) -> dict:
-    """The four doors as the code constants say them. `open` is the literal
-    value; nothing here can change one."""
-    return {
-        "consent": {"open": bool(getattr(config, "MLC2_TRAINING_SWITCH_ENABLED", False)),
-                    "constant": "MLC2_TRAINING_SWITCH_ENABLED"},
-        "dataset_release": {"open": bool(getattr(config, "MLC2_PAIR_RELEASES_ENABLED", False)),
-                            "constant": "MLC2_PAIR_RELEASES_ENABLED",
-                            "surfaces": sorted(getattr(config, "PAIR_RELEASE_SURFACES", ()) or ())},
-        "training": {"open": bool(getattr(config, "MLC2_TRAINING_ENABLED", False)),
-                     "constant": "MLC2_TRAINING_ENABLED",
-                     "surfaces": sorted(getattr(config, "TRAINING_SURFACES", ()) or ())},
-        "promotion": {"open": bool(getattr(config, "MLC2_PROMOTION_ENABLED", False)),
-                      "constant": "MLC2_PROMOTION_ENABLED",
-                      "surfaces": sorted(getattr(config, "PROMOTION_SURFACES", ()) or ())},
-    }
 
 
 def cue_rows(report: Any, *, min_yes: int, min_caught_rate: float) -> dict:
@@ -132,7 +116,9 @@ def last_events(database: Any, unavailable: list[str]) -> dict:
 
 
 def ledger(database: Any, *, config: Any = None) -> dict:
-    """Everything the founder's page and the weekly job need, in one dict."""
+    """Everything the founder's page and the weekly job need, in one dict.
+    ``config`` is accepted for the callers and no longer read (the door
+    switches it was read for were removed 2026-10-12)."""
     from services.feedback_pairs import (
         counts, exportable as exportable_pairs, exposures as draft_exposures,
     )
@@ -142,9 +128,6 @@ def ledger(database: Any, *, config: Any = None) -> dict:
     )
     from services.verbal_cues import CUES, VERBAL_CUES_VERSION
 
-    if config is None:
-        from config import Config
-        config = Config()
     unavailable: list[str] = []
     pairs = _read("pairs", lambda: counts(database), unavailable) or {}
     jar = _read("exercise_jar", lambda: readiness(database), unavailable) or {}
@@ -208,7 +191,8 @@ def ledger(database: Any, *, config: Any = None) -> dict:
         "exercise_jar": jar,
         "shadow_cues": cue_rows(cues, min_yes=PROMOTION_MIN_YES,
                                 min_caught_rate=PROMOTION_MIN_CAUGHT_RATE),
-        "doors": doors(config),
+        # Kept empty until the frontend's pace panel drops it (2026-10-12).
+        "doors": {},
         "last": last_events(database, unavailable),
         "coach_load": load,
         "after_practice": after,

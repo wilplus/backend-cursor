@@ -273,71 +273,23 @@ class Config:
     # 2026-09-29: whose Takes get a canonical row is the `canonical_take_rows`
     # ring row (0394), its kill switch is the row's kill. A Railway panel that
     # still carries them sets nothing.
-    # MLC-2 / ED-2.4 is additive and dark until the separately reviewed
-    # per-surface cutovers.  This flag may enable foundation workers only; it
-    # never authorizes a dataset release, training run or model promotion.
-    # Approval boundaries.  They intentionally are not env toggles: each is
-    # flipped only by a reviewed change carrying the founder's decision.
-    # MLC2_DATASET_RELEASES_ENABLED is the retired DPO export lane and stays
-    # hard-disabled (ED-2.4).
-    MLC2_DATASET_RELEASES_ENABLED = False
-    # DOORS 3 AND 4 OPENED 2026-10-08 by the founder ("turn it all ON"; Privacy
-    # and Terms 3.5 signed and published first; OpenAI DPA, coach agreement and
-    # corpus rights confirmed in chat). Held behind 3.5: the change does not
-    # merge before Privacy and Terms 3.5 are signed and published. The
-    # per-surface sets below name the surfaces; each run still needs 200
-    # trainable pairs and a sealed golden set, and a promoted model is served
-    # only on a named surface (services/runtime_model_gate.py): the Ideal
-    # Text, Say It Stronger and the chat models stay on their stock model.
-    MLC2_TRAINING_ENABLED = True
-    MLC2_PROMOTION_ENABLED = True
-    # The training-corpus copy job (SPEC-training-corpus P3). Same rule: a
-    # code constant, flipped only by a reviewed change at P5 (counsel +
-    # founder), never by a dashboard.
-    # OPENED 2026-10-08 by the founder ("turn it all ON", P5 with 3.5 signed).
-    MLC2_TRAINING_CORPUS_COPY_ENABLED = True
-    # THE CORPUS IMPORT (founder 2026-10-06, panel answer CO1 A, decisions log
-    # N56.4: "switch the training corpus on and build it properly"). On, the
-    # coach-only POST /v2/coach/training-imports (and the CLI behind
-    # services/training_import.py) imports audio the founder holds the rights
-    # to: each import runs the Take's V3 spotting (75-word blocks, the
-    # machine's pick per block, stored and never shown) and its speaker gets
-    # one fixed 80/20 learn/test assignment (services/corpus_split.py,
-    # migration 0433). Off, the route answers 410 PHASE2_DISABLED exactly as
-    # before. A code constant the founder flips by a reviewed change, never an
-    # env variable. It opens the import only: dataset releases, training,
-    # evaluation and promotion keep their own constants above (dataset
-    # releases closed; training and promotion opened 2026-10-08, per surface).
-    # ON 2026-10-08 (founder: "turn it all ON"; he holds the rights to the audio).
-    TRAINING_IMPORT_ENABLED = True
-    # The training switch route (P5 packet §4 item 6). A code constant,
-    # flipped only by a reviewed change; never an env variable.
-    # DOOR 1 OPENED 2026-10-01 by the founder's sentence "open door 1"
-    # (counsel's wording signed the same day; docs/LEARNING-DOORS.md). The
-    # route answers; the Settings card stays hidden until a training policy
-    # row exists (configure_mlc2_training_consent_policy_v1), and the
-    # database refuses a yes from anyone who has not accepted the policy
-    # version that introduced training (C1). The switch opens nothing by
-    # itself.
-    MLC2_TRAINING_SWITCH_ENABLED = True
-
+    # THE LEARNING DOORS' SWITCHES WERE REMOVED on 2026-10-12 (founder: "remove
+    # the learning doors"), each with the value it held: the training switch
+    # (door 1), pair releases (door 2), training (door 3), promotion (door 4),
+    # the training-corpus copy and the corpus import were on and now simply
+    # run; the retired DPO dataset-release export was off and its code was
+    # deleted. Consent is untouched: every training use still needs the
+    # speaker's own training yes, checked in code and refused by the database.
+    #
     # DOOR 2, PER SURFACE (founder 2026-09-30, L5; build plan ML-9). The
-    # weekly job exports a pair surface only when MLC2_PAIR_RELEASES_ENABLED
-    # is True AND the surface is named here, each by a reviewed change carrying
-    # the founder's sentence ("open door 2 for surface S").
-    # OPENED 2026-10-01 for exercise_script by the founder's sentence "open
-    # door 2 for surface exercise_script" (N16), and the same day for
-    # praise_line and clearer_version by "open door 2 for surface
-    # praise_line" and "open door 2 for surface clearer_version" (C4, N18).
-    # The pair door is its own constant: MLC2_DATASET_RELEASES_ENABLED above
-    # gates the retired DPO export lane
-    # (scripts/export_openai_preference_jsonl.py) and stays False; a pair
-    # release and a DPO dataset release are different lanes. The coach-word
-    # surfaces of Phase 7 (coach_moment_line, coach_take_word) are named here
-    # and in doors 3 and 4 from 2026-10-08 (founder: "turn it all ON"), under
+    # weekly job exports a pair surface only when the surface is named here,
+    # each by a reviewed change carrying the founder's sentence ("open door 2
+    # for surface S"). Opened 2026-10-01 for exercise_script (N16),
+    # praise_line and clearer_version (C4, N18); the coach-word surfaces of
+    # Phase 7 (coach_moment_line, coach_take_word) are named here and in
+    # doors 3 and 4 from 2026-10-08 (founder: "turn it all ON"), under
     # Privacy/Terms 3.5 signed 2026-10-08 (N68) and published that evening;
     # the speaker's training yes governs them like the answer surfaces (#972).
-    MLC2_PAIR_RELEASES_ENABLED = True
     PAIR_RELEASE_SURFACES: frozenset = frozenset({
         "exercise_script", "praise_line", "clearer_version",
         "coach_moment_line", "coach_take_word",
@@ -349,11 +301,10 @@ class Config:
     PAIR_RELEASE_SIGNING_KEY_ID = (os.getenv("PAIR_RELEASE_SIGNING_KEY_ID") or "pair-release-key-1").strip()
     # DOORS 3 AND 4, PER SURFACE (founder 2026-09-30, L6 to L9; build plan
     # ML-11, ML-12). The weekly job starts a fine-tune for a surface only when
-    # MLC2_TRAINING_ENABLED is True AND the surface is named here ("open door
-    # 3 for surface S"); a promotion writes runtime_config only when
-    # MLC2_PROMOTION_ENABLED is True AND the surface is named here ("open
-    # door 4 for surface S"). Both were empty until 2026-10-08; both are
-    # reviewed changes.
+    # the surface is named here ("open door 3 for surface S"); a promotion
+    # writes runtime_config, and a promoted model is served, only when the
+    # surface is named here ("open door 4 for surface S"). Both were empty
+    # until 2026-10-08; both are reviewed changes.
     # Named 2026-10-08 (founder: "turn it all ON"): the three answer surfaces.
     TRAINING_SURFACES: frozenset = frozenset({
         "exercise_script", "praise_line", "clearer_version",

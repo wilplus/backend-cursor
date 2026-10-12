@@ -95,9 +95,12 @@ def main(argv: list[str] | None = None) -> int:
         ring_health=ring_health,
         monitoring_enabled=Config.MLC2_CONFIDENCE_MONITORING_ENABLED,
         alert_sink_configured=bool(Config.SENTRY_DSN),
-        dataset_creation_enabled=Config.MLC2_DATASET_RELEASES_ENABLED,
-        training_enabled=Config.MLC2_TRAINING_ENABLED,
-        promotion_enabled=Config.MLC2_PROMOTION_ENABLED,
+        # The learning switches were removed 2026-10-12 (founder: "remove
+        # the learning doors") with the values they held: the retired DPO
+        # export off, training and promotion on.
+        dataset_creation_enabled=False,
+        training_enabled=True,
+        promotion_enabled=True,
         source_audio_store_is_r2=coach_videos_use_r2(),
     ).as_dict()
     if args.alert:

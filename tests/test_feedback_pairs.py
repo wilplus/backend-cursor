@@ -120,7 +120,7 @@ class CountTests(unittest.TestCase):
         and, since doors 3 and 4 were built (ML-11, ML-12, 2026-10-01), a
         model slot: a contract with a runtime key on the allowlist and an
         accepted canonical alias. The slot serves the stock model while
-        MLC2_PROMOTION_ENABLED is False (services.llm)."""
+        the surface is not named in PROMOTION_SURFACES (services.llm)."""
         import json
         import pathlib
         from services.ml_surface_contracts import SURFACES, runtime_config_key

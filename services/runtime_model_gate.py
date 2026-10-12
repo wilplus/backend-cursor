@@ -8,18 +8,17 @@ Say It Stronger card. A row appearing in that table therefore changed the
 words in a speaker's document, within the sixty-second cache TTL, with no
 flag consulted, no evaluation recorded and nothing in the codebase surprised.
 
-The three constants that documented this lane as switched off
-(``MLC2_DATASET_RELEASES_ENABLED``, ``MLC2_TRAINING_ENABLED``,
-``MLC2_PROMOTION_ENABLED``) were read only by the readiness evaluators. They
-are now load-bearing.
+The global promotion switch (``MLC2_PROMOTION_ENABLED``) that once gated
+this was removed on 2026-10-12 (founder: "remove the learning doors"); the
+per-surface naming below is the gate.
 
 Two properties, and the module exists to make both testable in one place:
 
   CLOSED   a key that is not in ``MODEL_CONFIG_KEYS`` is never resolved into
            a model id. Adding a key is a code change, reviewable as one.
-  GATED    reading one of them requires ``Config.MLC2_PROMOTION_ENABLED``
-           AND the key belonging to a surface the founder named in
-           ``Config.PROMOTION_SURFACES`` ("open door 4 for surface S").
+  GATED    reading one of them requires the key belonging to a surface
+           the founder named in ``Config.PROMOTION_SURFACES`` ("open door 4
+           for surface S").
            Otherwise the caller's own default is used and one
            ``promotion_disabled`` line is logged. Door 4 opened 2026-10-08
            (founder: "turn it all ON") for the three coach-answer surfaces
@@ -74,20 +73,13 @@ MODEL_CONFIG_KEYS = frozenset({
 })
 
 
-def promotion_is_enabled() -> bool:
-    """The one place the promotion gate is read."""
-    from config import Config
-
-    return bool(getattr(Config, "MLC2_PROMOTION_ENABLED", False))
-
-
 def promoted_keys() -> frozenset:
-    """The keys of the surfaces the founder named for door 4.
+    """The keys of the surfaces the founder named for door 4: the one place
+    the promotion gate is read.
 
-    The global constant alone is not the decision: on 2026-10-08 the founder
-    opened door 4 for ``PROMOTION_SURFACES`` (three coach-answer surfaces),
-    not for every key above. Without this a row for the Ideal Text or a chat
-    model would be served the moment ``MLC2_PROMOTION_ENABLED`` turned True.
+    On 2026-10-08 the founder opened door 4 for ``PROMOTION_SURFACES`` (the
+    coach-answer and coach-word surfaces), not for every key above. Without
+    this a row for the Ideal Text or a chat model would be served.
     """
     from config import Config
 
@@ -114,7 +106,7 @@ def resolve_gated_model(
             "services.runtime_model_gate.MODEL_CONFIG_KEYS and guard it in "
             "migrations/guard_runtime_config_model_keys.sql first"
         )
-    if not promotion_is_enabled() or name not in promoted_keys():
+    if name not in promoted_keys():
         # Not a warning: this is the shipped posture, and a warning per call
         # would train the operator to ignore the log. It is logged at all
         # because "the row is there and is not being served" is otherwise

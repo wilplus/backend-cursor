@@ -27,12 +27,7 @@ from services import research_view as rv
 
 
 class _Config:
-    MLC2_TRAINING_SWITCH_ENABLED = True
-    MLC2_PAIR_RELEASES_ENABLED = True
     PAIR_RELEASE_SURFACES = frozenset({"exercise_script", "praise_line", "clearer_version"})
-    MLC2_TRAINING_ENABLED = False
-    MLC2_PROMOTION_ENABLED = False
-    MLC2_DATASET_RELEASES_ENABLED = False
     MLC2_CONFIDENCE_CUTOVER_MODE = "founder_canary"
     MLC2_CONFIDENCE_MONITORING_ENABLED = False      # set on the cron service, not the web
     SENTRY_DSN = None
@@ -190,9 +185,14 @@ class MonitorTests(unittest.TestCase):
         out = _overview(_Db())
         canary = out["monitors"]["confidence_canary"]
         # The web service has no monitoring switch or Sentry here: those are
-        # the cron's, so they are not blockers on this screen.
-        self.assertTrue(canary["ready"], canary)
-        self.assertEqual(canary["blocker_codes"], [])
+        # the cron's, so they are not blockers on this screen. Training and
+        # promotion are on (their switches, True since 2026-10-08, were
+        # removed 2026-10-12 with the values they held), and the readiness
+        # assessment names both as it did while the switches stood.
+        self.assertEqual(canary["blocker_codes"],
+                         ["training_must_remain_disabled",
+                          "promotion_must_remain_disabled"])
+        self.assertFalse(canary["ready"], canary)
         self.assertEqual(canary["cutover_mode"], "founder_canary")
         self.assertNotIn("monitors", out["unavailable"])
 

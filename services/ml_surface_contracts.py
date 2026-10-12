@@ -62,9 +62,9 @@ SURFACES: dict[str, SurfaceContract] = {
     # doors 3 and 4 were built (ML-11, ML-12, 2026-10-01) each is a model
     # slot: a fine-tune produces a candidate, the golden evaluation runs it
     # through ``compose_draft`` under ``evaluation_model_override``, and a
-    # promotion writes its runtime_config key. Both doors stay closed in
-    # code; with them shut ``_model_the_promotion_gate_allows`` serves the
-    # stock model whatever the row says.
+    # promotion writes its runtime_config key. A surface not named in
+    # ``PROMOTION_SURFACES`` is served the stock model whatever the row says
+    # (``_model_the_promotion_gate_allows``).
     "praise_line": SurfaceContract(
         id="praise_line",
         annotation_fields=("praise_line",),
@@ -240,7 +240,8 @@ def resolve_surface_model(
     # LEGACY-1 / J1-2 (audit 2026-09-22). THE PROMOTION GATE, NOT THE ROW.
     # This read is what put a promoted fine-tune on the Take-1 Ideal Text
     # composition and every Say It Stronger card within sixty seconds of an
-    # operator writing one row, while `MLC2_PROMOTION_ENABLED` stayed False
+    # operator writing one row, while the promotion gate (then the
+    # `MLC2_PROMOTION_ENABLED` switch, now `PROMOTION_SURFACES`) stayed shut
     # and the HTTP surface still answered "promotion is not active".
     #
     # The read is fenced, not removed: when the founder opens the gate the

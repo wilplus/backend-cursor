@@ -80,20 +80,26 @@ def _model_the_promotion_gate_allows(
     if resolved == default:
         return resolved
 
-    from services.ml_surface_contracts import active_evaluation_override
-    from services.runtime_model_gate import promotion_is_enabled
+    from services.ml_surface_contracts import (
+        active_evaluation_override, runtime_config_key,
+    )
+    from services.runtime_model_gate import promoted_keys
 
     # A golden evaluation is not a promotion: it runs the candidate through
     # this very adapter, in-process, to decide whether the gate should open at
     # all. Gating it would make promotion unreachable.
     if active_evaluation_override(surface) == resolved:
         return resolved
-    if promotion_is_enabled():
+    try:
+        key = runtime_config_key(surface)
+    except ValueError:
+        key = ""
+    if key and key in promoted_keys():
         return resolved
 
     logger.error(
         "llm.chat surface=%s promoted_model_withheld "
-        "MLC2_PROMOTION_ENABLED=false model=%s served=%s",
+        "not_in_PROMOTION_SURFACES model=%s served=%s",
         surface, resolved, default,
     )
     return default

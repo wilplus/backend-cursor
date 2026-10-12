@@ -22,9 +22,8 @@ Usage:
 
   --dry-run   list what WOULD be imported (no upload, no analysis, no rows)
 
-Only for audio the founder holds the rights to, and only while
-Config.TRAINING_IMPORT_ENABLED is True (founder 2026-10-06, CO1 A, N56.4);
-closed, every file fails with phase2_training_disabled and nothing is written.
+Only for audio the founder holds the rights to (founder 2026-10-06, CO1 A,
+N56.4).
 """
 from __future__ import annotations
 

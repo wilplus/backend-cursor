@@ -3,7 +3,8 @@
 Pins:
   * one snapshot per ISO week, replaced on a second fire (idempotent);
   * a READY cue gets its migration drafted, never merged or promoted;
-  * pairs export nothing while door 2 is closed, and the job says why;
+  * pairs export nothing for a surface the founder did not name, and the
+    job says why;
   * the pace reads a rate only from two or more readings and never guesses;
   * the cron route is dead without its secret, refuses a wrong one, and
     the founder's route needs the founder.
@@ -40,8 +41,6 @@ def _ledger(ready=False, unexported=3, releasable=None, exportable=None):
         "exercise_jar": {"counted": 12},
         "shadow_cues": {"hedging": {"audit_yes": 31 if ready else 4, "audit_yes_bar": 30, "caught_rate": 0.85 if ready else None,
                                     "caught_bar": 0.8, "clips_measured": 100, "false_alarm_rate": None, "ready": ready}},
-        "doors": {"consent": {"open": False}, "dataset_release": {"open": False},
-                  "training": {"open": False}, "promotion": {"open": False}},
         "unavailable": [],
     }
 
@@ -58,7 +57,7 @@ class WeeklyTests(unittest.TestCase):
         self.assertTrue(again["stored"])
         self.assertEqual(again["ready_cues"], [])
         self.assertEqual(again["exported"][0]["exported"], 0)
-        self.assertIn("door 2 closed", again["exported"][0]["why"])
+        self.assertIn("no founder sentence", again["exported"][0]["why"])
 
     def test_a_ready_cue_gets_its_migration_drafted_not_merged(self):
         db = _Db()

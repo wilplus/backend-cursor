@@ -1,4 +1,4 @@
-"""Doors 3 and 4, the machinery with both doors closed (founder 2026-09-30,
+"""Doors 3 and 4, the machinery (founder 2026-09-30,
 L6 to L9; counsel 2026-10-01; build plan ML-10, ML-11, ML-12).
 
 Pins:
@@ -8,16 +8,15 @@ Pins:
   * the evaluation scores candidate against baseline on the founder's
     yes-moments, needs twenty of them, and fails a candidate that
     reproduces an 8-word window of a withdrawn speaker's text;
-  * nothing trains while door 3 is closed, or open without the founder's
-    sentence, a key, a sealed set, or 200 trainable pairs; with everything
+  * nothing trains without the founder's sentence, a key, a sealed set, or 200 trainable pairs; with everything
     in place the file is the serving prompt, split by owner, uploaded, the
     job started, the pairs marked once, the owners recorded;
   * the poll finishes a finished job, deletes its files at the provider and
     evaluates a succeeded one; the withdrawal sweep cancels a running job
     and deletes the files;
-  * nothing promotes while door 4 is closed; a promotion needs a passed
-    report under the current prompt lock; a kill returns the stock model
-    with the door shut.
+  * nothing promotes on a surface the founder did not name; a promotion
+    needs a passed report under the current prompt lock; a kill returns the
+    stock model.
 """
 from __future__ import annotations
 
@@ -36,10 +35,6 @@ NOW = datetime(2026, 10, 5, 9, 0, tzinfo=timezone.utc)
 
 
 class _Config:
-    MLC2_TRAINING_ENABLED = False
-    MLC2_PROMOTION_ENABLED = False
-    MLC2_PAIR_RELEASES_ENABLED = False
-    MLC2_TRAINING_SWITCH_ENABLED = False
     TRAINING_SURFACES: frozenset = frozenset()
     PROMOTION_SURFACES: frozenset = frozenset()
     PAIR_RELEASE_SURFACES: frozenset = frozenset()
@@ -52,7 +47,6 @@ class _Config:
 
 def _open3(*surfaces):
     c = _Config()
-    c.MLC2_TRAINING_ENABLED = True
     c.TRAINING_SURFACES = frozenset(surfaces)
     c.OPENAI_API_KEY = "sk-test"
     return c
@@ -60,7 +54,6 @@ def _open3(*surfaces):
 
 def _open4(*surfaces):
     c = _Config()
-    c.MLC2_PROMOTION_ENABLED = True
     c.PROMOTION_SURFACES = frozenset(surfaces)
     return c
 
@@ -335,11 +328,11 @@ class EvaluationTests(unittest.TestCase):
 
 
 class TrainingTests(unittest.TestCase):
-    def test_nothing_trains_while_door_3_is_closed_and_the_reasons_are_words(self):
+    def test_nothing_trains_without_the_founders_sentence_and_the_reasons_are_words(self):
         db = _Db(pairs=[_pair(i) for i in range(300)])
         out = mt.start_run(db, _Provider(), surface="praise_line", config=_Config(), now=NOW)
         self.assertFalse(out["started"])
-        self.assertIn("door 3 closed", out["why"])
+        self.assertIn("no founder sentence", out["why"])
         half = _open3("clearer_version")
         self.assertIn("no founder sentence", mt.start_run(db, _Provider(), surface="praise_line", config=half, now=NOW)["why"])
         keyless = _open3("praise_line")
@@ -490,7 +483,7 @@ class TrainingTests(unittest.TestCase):
         self.assertEqual([s["surface"] for s in out["training"]["surfaces"]],
                          ["clearer_version", "coach_moment_line", "coach_take_word",
                           "exercise_script", "praise_line"])
-        self.assertTrue(all("door 3 closed" in s["why"] for s in out["training"]["surfaces"]))
+        self.assertTrue(all("no founder sentence" in s["why"] for s in out["training"]["surfaces"]))
         self.assertIn("training", db.row["snapshot"]["doors_pass"])
 
 
@@ -505,12 +498,12 @@ class PromotionTests(unittest.TestCase):
                            "prompt_lock_sha256": lock or locked_prompt_hash("praise_line")})
         return db
 
-    def test_nothing_promotes_while_door_4_is_closed(self):
+    def test_nothing_promotes_on_an_unnamed_surface(self):
         db = self._db_with_report()
         with self.assertRaises(mp.PromotionRefusal) as closed:
             mp.promote(db, surface="praise_line", candidate_model="ft:x",
                        evaluation_report_id="rep-1", by="founder", config=_Config())
-        self.assertIn("door 4 closed", closed.exception.message)
+        self.assertIn("no founder sentence", closed.exception.message)
         with self.assertRaises(mp.PromotionRefusal):
             mp.promote(db, surface="praise_line", candidate_model="ft:x",
                        evaluation_report_id="rep-1", by="founder", config=_open4("clearer_version"))
@@ -540,9 +533,9 @@ class PromotionTests(unittest.TestCase):
         self.assertTrue(killed["killed"])
         self.assertEqual(db.promotions[0]["kill_reason"], "tone")
 
-    def test_the_stock_model_is_served_while_the_door_is_shut(self):
+    def test_the_stock_model_is_served_on_an_unnamed_surface(self):
         from services.llm import _model_the_promotion_gate_allows
-        with mock.patch("services.runtime_model_gate.promotion_is_enabled", return_value=False):
+        with mock.patch("services.runtime_model_gate.promoted_keys", return_value=frozenset()):
             self.assertEqual(_model_the_promotion_gate_allows("praise_line", "ft:x", "stock"), "stock")
 
 

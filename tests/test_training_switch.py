@@ -67,34 +67,6 @@ def _on(**over):
     return body
 
 
-def test_the_switch_is_open_in_code_since_the_founders_sentence():
-    """Door 1 opened 2026-10-01 ("open door 1"). The constant is True; the
-    card still waits on a policy row, which `_read` reports as
-    available=False until one exists."""
-    from config import Config
-
-    assert Config.MLC2_TRAINING_SWITCH_ENABLED is True
-    assert tc.switch_enabled() is True
-
-
-def test_the_route_is_closed_while_the_switch_is_off():
-    """The 410 the route gave until 2026-10-01, kept as the contract for a
-    closed switch: patched shut here, since the constant is now True."""
-    from flask import Flask
-
-    from routes.v2 import training_consent as route
-
-    app = Flask(__name__)
-    with app.test_request_context("/v2/user/training-consent", method="POST",
-                                  json=_on()):
-        with mock.patch.object(route, "handle") as handle, \
-                mock.patch.object(route, "switch_enabled", return_value=False):
-            response, status = route.v2_user_training_consent.__wrapped__()
-    assert status == 410
-    assert response.get_json() == {"code": "TRAINING_SWITCH_DISABLED"}
-    handle.assert_not_called()
-
-
 def test_without_a_training_policy_there_is_nothing_to_turn_on():
     database = FakeDatabase(policy=None)
     assert tc.handle(database, "owner", "GET", None, "web") == {
@@ -193,16 +165,6 @@ def test_the_due_copy_sweep_erases_for_every_person_with_due_copies():
     database.list_principals_with_due_training_copies.assert_called_once_with(5)
 
 
-def test_the_late_label_sweep_is_dark_with_the_copy_switch_off():
-    # The copy switch ships ON since 2026-10-08 (founder: "turn it all ON");
-    # the OFF behaviour is pinned by closing the switch here explicitly.
-    database = mock.Mock()
-    with mock.patch("config.Config.MLC2_TRAINING_CORPUS_COPY_ENABLED", False):
-        assert corpus.sweep_late_coach_labels(database=database) == {
-            "status": "disabled"}
-    database.list_training_moments.assert_not_called()
-
-
 def _moment(snippet, kind, grant="grant-1"):
     suffix = {"transcript_span": "transcript",
               "coach_label": "coach_label:yes"}[kind]
@@ -222,9 +184,8 @@ def test_the_late_label_sweep_copies_only_missing_labels():
         _moment("s3", "transcript_span", grant="grant-2"),
         _moment("s3", "coach_label"),
     ]
-    with mock.patch.object(corpus, "copy_enabled", return_value=True), \
-            mock.patch.object(corpus, "_copy_coach_label",
-                              return_value=True) as copy:
+    with mock.patch.object(corpus, "_copy_coach_label",
+                           return_value=True) as copy:
         result = corpus.sweep_late_coach_labels(database=database)
     assert result == {"status": "swept", "labels": 2}
     copied = [(call.args[1]["training_grant_event_id"], call.args[2])

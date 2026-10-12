@@ -2,7 +2,7 @@
 panel answer CO1 A, decisions log N56.4: "Tests cover the whole path:
 import, spotting, queue, label, split").
 
-With ``Config.TRAINING_IMPORT_ENABLED`` on, one import walks the whole path
+With the corpus import on, one import walks the whole path
 against fakes, through the real routes and their real decorators:
 
   import (prepare_training_import) -> analysis (the authorized wrapper
@@ -12,14 +12,14 @@ against fakes, through the real routes and their real decorators:
   returns a short-lived signed URL -> PUT confidence-label saves a coach
   label -> the speaker's split is recorded.
 
-Plus: playback refuses a speaker, an anonymous caller, a clip outside an
-import's queue and a closed switch; an ordinary Take's queue is unchanged.
+Plus: playback refuses a speaker, an anonymous caller and a clip outside an
+import's queue; an ordinary Take's queue is unchanged.
 
 Under PLF1 enforce mode (founder 2026-10-07, CO2, decisions log N58) an
 import registered by the coach import route is analysed under the founder's
 corpus basis: its permit names N58 and the session, the provider is called
 and the spotting stored; never under the importing coach's principal. Refused:
-the switch off, an ordinary or guest Take, a forged source flag, an import
+an ordinary or guest Take, a forged source flag, an import
 the route did not create, no basis in force. CO3 A: the importer's own blind
 judgement on their import is not a self-report.
 """
@@ -263,20 +263,6 @@ def _stub_analysis(fake: FakeDB, *, count: int = 12, words_each: int = 30):
 
 
 @pytest.fixture
-def on():
-    with patch("config.Config.TRAINING_IMPORT_ENABLED", True):
-        yield
-
-
-@pytest.fixture
-def off():
-    # The import switch ships ON since 2026-10-08 (founder: "turn it all ON");
-    # the closed behaviour is pinned by closing it here explicitly.
-    with patch("config.Config.TRAINING_IMPORT_ENABLED", False):
-        yield
-
-
-@pytest.fixture
 def fake():
     store = FakeDB()
     with patch.object(v2_coach, "db", store), patch("services.db.db", store):
@@ -367,7 +353,7 @@ def _assert_blind(payload: Any):
 
 # ── the whole path ─────────────────────────────────────────────────────────
 
-def test_a_coach_judges_an_imported_clip_end_to_end(on, fake):
+def test_a_coach_judges_an_imported_clip_end_to_end(fake):
     sid = _import(fake)
     sess = fake.sessions[sid]
 
@@ -456,7 +442,7 @@ def test_a_coach_judges_an_imported_clip_end_to_end(on, fake):
 
 # ── playback refusals ──────────────────────────────────────────────────────
 
-def test_playback_refuses_a_speaker_and_an_anonymous_caller(on, fake):
+def test_playback_refuses_a_speaker_and_an_anonymous_caller(fake):
     sid = _import(fake)
     queued = fake.sessions[sid]["intake_context"]["label_queue_selection"][0]["snippet_id"]
     resp, status = _play(queued, user=SPEAKER, coach=False, admin=False)
@@ -465,12 +451,7 @@ def test_playback_refuses_a_speaker_and_an_anonymous_caller(on, fake):
     assert status == 401
 
 
-def test_playback_is_closed_with_the_switch(off, fake):
-    resp, status = _play(str(uuid.UUID(int=1)))
-    assert status == 410 and resp.get_json()["code"] == "PHASE2_DISABLED"
-
-
-def test_playback_plays_only_a_queued_import_clip(on, fake):
+def test_playback_plays_only_a_queued_import_clip(fake):
     sid = _import(fake, count=40, words_each=10)
     cohort = {r["snippet_id"] for r in
               fake.sessions[sid]["intake_context"]["label_queue_selection"]}
@@ -491,7 +472,7 @@ def test_playback_plays_only_a_queued_import_clip(on, fake):
     assert status == 400
 
 
-def test_playback_follows_the_rater_language(on, fake):
+def test_playback_follows_the_rater_language(fake):
     sid = _import(fake)
     queued = fake.sessions[sid]["intake_context"]["label_queue_selection"][0]["snippet_id"]
     fake.languages[COACH] = ["pl"]
@@ -499,7 +480,7 @@ def test_playback_follows_the_rater_language(on, fake):
     assert status == 409 and resp.get_json()["code"] == "RATER_LANGUAGE_MISMATCH"
 
 
-def test_unsignable_audio_is_503_never_a_raw_reference(on, fake):
+def test_unsignable_audio_is_503_never_a_raw_reference(fake):
     sid = _import(fake)
     queued = fake.sessions[sid]["intake_context"]["label_queue_selection"][0]["snippet_id"]
     with patch("services.coach_video_storage.presigned_get_coach_object",
@@ -509,16 +490,7 @@ def test_unsignable_audio_is_503_never_a_raw_reference(on, fake):
     assert "s3://" not in json.dumps(resp.get_json())
 
 
-# ── the switch and ordinary Takes ──────────────────────────────────────────
-
-def test_with_the_switch_off_an_import_queue_answers_as_before(fake):
-    with patch("config.Config.TRAINING_IMPORT_ENABLED", True):
-        sid = _import(fake)
-    with patch("config.Config.TRAINING_IMPORT_ENABLED", False):
-        body, status = _queue(sid)
-    assert status == 200
-    assert body["queue"] == [] and body["count"] == 0
-
+# ── ordinary Takes ──────────────────────────────────────────
 
 def _ordinary_take(fake: FakeDB, *, owned: bool) -> str:
     sid = str(uuid.uuid4())
@@ -538,13 +510,11 @@ def _ordinary_take(fake: FakeDB, *, owned: bool) -> str:
     return sid
 
 
-@pytest.mark.parametrize("switch", [False, True])
-def test_an_ordinary_take_queue_is_unchanged(fake, switch):
+def test_an_ordinary_take_queue_is_unchanged(fake):
     sid = _ordinary_take(fake, owned=True)
     evidence = {"evidence_span_id": str(uuid.uuid4()), "audio_ref": "a",
                 "start_ms": 0, "end_ms": 1}
-    with patch("config.Config.TRAINING_IMPORT_ENABLED", switch), \
-            patch.object(fake.ideal_text, "get_canonical_confidence_evidence",
+    with patch.object(fake.ideal_text, "get_canonical_confidence_evidence",
                          return_value=evidence), \
             patch("services.feedback_data_contract.blind_packet_hash",
                   return_value="h"), \
@@ -563,11 +533,9 @@ def test_an_ordinary_take_queue_is_unchanged(fake, switch):
         assert row["learning_exposures"] == [{"presentation": "p"}]
 
 
-@pytest.mark.parametrize("switch", [False, True])
-def test_an_unowned_ordinary_take_still_presents_nothing(fake, switch):
+def test_an_unowned_ordinary_take_still_presents_nothing(fake):
     sid = _ordinary_take(fake, owned=False)
-    with patch("config.Config.TRAINING_IMPORT_ENABLED", switch):
-        body, status = _queue(sid)
+    body, status = _queue(sid)
     assert status == 200 and body["queue"] == []
 
 
@@ -737,7 +705,7 @@ def _through_whisper(fake: FakeDB):
 
 
 @pytest.fixture
-def enforce(on, fake, monkeypatch):
+def enforce(fake, monkeypatch):
     monkeypatch.setenv("PLF1_PROCESSING_AUTHORIZATION_MODE", "enforce")
     client = _EnforceClient(fake)
     fake.client = client  # type: ignore[assignment]
@@ -815,17 +783,6 @@ def test_under_enforce_an_import_is_analysed_under_the_corpus_basis(enforce, fak
     assert sess["intake_context"]["corpus_v3_spotting"]["outcome"] == "spotted"
     assert sess["intake_context"]["label_queue_selection"]
 
-
-def test_with_the_switch_off_no_corpus_permit_is_issued(enforce, fake):
-    body, status, run = _route_import(fake)
-    assert status == 202, body
-    with patch("config.Config.TRAINING_IMPORT_ENABLED", False):
-        out = _analyse(fake, run)
-    assert out["ok"] is False and out["reason"] == "analysis_failed"
-    assert "Training imports are switched off" in out["detail"]
-    assert enforce.permits == [] and _Whisper.calls == []
-    assert "issue_corpus_provider_permit_v1" not in _names(enforce)
-    assert "corpus_v3_spotting" not in fake.sessions[body["session_id"]]["intake_context"]
 
 
 def _owned_take(fake: FakeDB, *, source: str, user_id) -> tuple:
@@ -958,7 +915,7 @@ def test_an_admin_tool_never_speaks_for_an_import_as_its_importer(fake):
     assert speaker_of_session(fake, sid).owner_principal_id == ACQUIRER
 
 
-def test_gate_off_registration_is_best_effort(on, fake):
+def test_gate_off_registration_is_best_effort(fake):
     """Off, nothing is permitted at all (as for every Take); registering
     never fails the import."""
     from services.processing_authorization import register_corpus_import
@@ -968,7 +925,7 @@ def test_gate_off_registration_is_best_effort(on, fake):
 
 # ── CO3 A: a coach's judgement on a clip they imported counts ──────────────
 
-def test_the_importer_judging_their_import_is_not_a_self_report(on, fake):
+def test_the_importer_judging_their_import_is_not_a_self_report(fake):
     sid = _import(fake)
     assert fake.sessions[sid]["user_id"] == IMPORTER
     pick = fake.sessions[sid]["intake_context"]["label_queue_selection"][0]["snippet_id"]

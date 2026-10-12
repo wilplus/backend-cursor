@@ -24,10 +24,10 @@ Which items were shown is read from the frozen feedback set, which the bake or
 the first open writes a little after processing ends. If it is not there yet,
 the job waits and asks again, a bounded number of times.
 
-DARK. `Config.MLC2_TRAINING_CORPUS_COPY_ENABLED` is a code constant, False
-until P5; both the enqueue and the job return at once while it is. Behind it
-the database refuses every copy anyway: nobody can hold a training yes, and the
-`training_corpus` retention rule does not exist.
+ON. Its code switch (opened 2026-10-08, "turn it all ON") was removed on
+2026-10-12 (founder: "remove the learning doors"). The speaker's own training
+yes still gates every copy: the job checks it, and the database refuses a copy
+without it.
 
 Provenance (L3): each item carries one kind. The coach label is copied as the
 coach's judgment and nothing else; owner answers, peer ratings and machine
@@ -48,20 +48,14 @@ MAX_WAITS = 6
 WAIT_SECONDS = 300
 
 
-def copy_enabled() -> bool:
-    from config import Config
-
-    return Config.MLC2_TRAINING_CORPUS_COPY_ENABLED is True
-
-
 def enqueue_corpus_copy(take_session_id: Any, arc_id: Any, user_id: Any,
                         attempt: int = 0) -> bool:
     """Ask for one copy run, off the critical path. Never raises.
 
     Called unbranched at the end of the analysis run, so every condition
-    lives here. While the switch is off this is a constant False.
+    lives here.
     """
-    if not copy_enabled() or not take_session_id or not arc_id:
+    if not take_session_id or not arc_id:
         return False
     try:
         from services.job_queue import enqueue
@@ -101,8 +95,6 @@ def _shown_confident_voice(frozen: dict) -> list[str]:
 def run_corpus_copy(take_session_id: str, arc_id: str, user_id: str = "",
                     attempt: int = 0, *, database: Any = None) -> dict:
     """The RQ entrypoint. Returns what it did, for the log and the tests."""
-    if not copy_enabled():
-        return {"status": "disabled"}
     if database is None:
         from services.db import db as database
     principal = _principal(database, take_session_id, arc_id)
@@ -297,10 +289,8 @@ def sweep_late_coach_labels(*, database: Any = None, limit: int = 100) -> dict:
     coach usually rates days later. This finds copied moments (their words)
     with no copied label yet and copies the coach's label if there is one
     now. The database re-checks the same training yes the moment was copied
-    under, so nothing is copied after a withdrawal. DARK with the copy job.
+    under, so nothing is copied after a withdrawal.
     """
-    if not copy_enabled():
-        return {"status": "disabled"}
     if database is None:
         from services.db import db as database
     rows = database.list_training_moments(limit)

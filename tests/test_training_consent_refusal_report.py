@@ -21,8 +21,7 @@ from services.training_consent import TrainingSwitchError
 )
 def test_a_refusal_is_reported_by_code(code: str) -> None:
     app = Flask(__name__)
-    with patch.object(route, "switch_enabled", return_value=True), \
-            patch.object(route, "_repository") as repo, \
+    with patch.object(route, "_repository") as repo, \
             patch.object(route, "identity_coordinates", return_value={}), \
             patch.object(route, "handle",
                          side_effect=TrainingSwitchError(code, 409)), \
@@ -43,23 +42,10 @@ def test_a_refusal_is_reported_by_code(code: str) -> None:
     assert "owner-1" not in message
 
 
-def test_disabled_switch_answers_410_and_does_not_report() -> None:
-    app = Flask(__name__)
-    with patch.object(route, "switch_enabled", return_value=False), \
-            patch.object(route.sentry_sdk, "capture_message") as capture:
-        with app.test_request_context(
-                "/v2/user/training-consent", method="POST", json={}):
-            response, status = route.v2_user_training_consent.__wrapped__()
-    assert status == 410
-    assert response.get_json() == {"code": "TRAINING_SWITCH_DISABLED"}
-    capture.assert_not_called()
-
-
 def test_status_unavailable_is_reported_and_answered_503() -> None:
     code = "TRAINING_STATUS_UNAVAILABLE"
     app = Flask(__name__)
-    with patch.object(route, "switch_enabled", return_value=True), \
-            patch.object(route, "_repository") as repo, \
+    with patch.object(route, "_repository") as repo, \
             patch.object(route, "identity_coordinates", return_value={}), \
             patch.object(route, "handle",
                          side_effect=TrainingSwitchError(code, 503)), \

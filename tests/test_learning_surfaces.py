@@ -81,11 +81,8 @@ def test_module_8_is_refused_a_packet_with_its_reason():
 
 
 def test_the_release_builder_accepts_module_8_as_a_surface_name():
-    """Naming is not authorizing: the constants stay False and the epoch
-    CHECK stays; a manifest may now say which surface it is for."""
-    from config import Config
-
-    assert Config.MLC2_DATASET_RELEASES_ENABLED is False
+    """Naming is not authorizing: the epoch CHECK stays; a manifest may now
+    say which surface it is for."""
     assert EXERCISE_ADEQUACY_SURFACE in dataset_releases.LEARNING_SURFACES
 
 

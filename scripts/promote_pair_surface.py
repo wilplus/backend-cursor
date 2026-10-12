@@ -5,9 +5,8 @@
       --model ft:gpt-4.1-mini-2025-04-14:willab:praise-line:abc --report <evaluation_report id>
   python3 scripts/promote_pair_surface.py kill --surface praise_line --reason "wrong tone"
 
-Refuses while MLC2_PROMOTION_ENABLED is False or the surface is not in
-PROMOTION_SURFACES (the founder's "open door 4 for surface S" is a reviewed
-change). The kill never refuses on the door.
+Refuses while the surface is not in PROMOTION_SURFACES (the founder's "open
+door 4 for surface S" is a reviewed change). The kill never refuses on it.
 """
 from __future__ import annotations
 

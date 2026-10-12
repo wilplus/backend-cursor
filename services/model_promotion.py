@@ -1,15 +1,15 @@
 """Door 4: promote by the founder's word (founder 2026-09-30, L8, L9;
-build plan ML-12). Built with the door closed; door 4 OPEN since 2026-10-08
-for exercise_script, praise_line and clearer_version (founder: "turn it all
-ON"), held behind Privacy and Terms 3.5 publication.
+build plan ML-12). Door 4 OPEN since 2026-10-08 (founder: "turn it all
+ON"), held behind Privacy and Terms 3.5 publication; its code switch was
+removed 2026-10-12 (founder: "remove the learning doors").
 
 A promotion writes one runtime_config key for one surface, through the
 only writer there is (``promote_runtime_surface_model_v1``, 0352, widened
 in 0406), and leaves a history row (``model_promotions``) because the
 runtime row holds only the present. It refuses unless:
 
-  * ``MLC2_PROMOTION_ENABLED`` is True AND the founder named the surface
-    (``Config.PROMOTION_SURFACES``, "open door 4 for surface S");
+  * the founder named the surface (``Config.PROMOTION_SURFACES``, "open
+    door 4 for surface S");
   * an evaluation report for that candidate on that surface passed, and
     its prompt lock is the current one (a prompt edit since the evaluation
     re-points a gated model at text it was never judged under, H-1);
@@ -26,7 +26,7 @@ runtime row holds only the present. It refuses unless:
 A kill returns the surface to the stock model within one request: the key
 is set to the stock model id (which ``_model_the_promotion_gate_allows``
 serves as the caller's own default) and the history row is marked killed.
-The kill works with the door shut, because closing is never gated.
+Closing is never gated.
 
 Only the named surface changes model; the coach's draft comes from the
 promoted id through ``compose_draft`` (an answer surface) or
@@ -52,13 +52,7 @@ class PromotionRefusal(Exception):
         self.message, self.code = message, code
 
 
-def door_open(config: Any) -> bool:
-    return bool(getattr(config, "MLC2_PROMOTION_ENABLED", False))
-
-
 def authorised_surfaces(config: Any) -> frozenset:
-    if not door_open(config):
-        return frozenset()
     named: Any = getattr(config, "PROMOTION_SURFACES", frozenset()) or frozenset()
     return frozenset(s for s in named if s in SURFACES)
 
@@ -66,10 +60,8 @@ def authorised_surfaces(config: Any) -> frozenset:
 def why_not(config: Any, surface: str) -> Optional[str]:
     if surface not in SURFACES:
         return f"{surface} is not a pair surface any door knows"
-    if not door_open(config):
-        return "door 4 closed (MLC2_PROMOTION_ENABLED)"
     if surface not in authorised_surfaces(config):
-        return "door 4 open, but no founder sentence for this surface yet (PROMOTION_SURFACES)"
+        return "no founder sentence for this surface yet (PROMOTION_SURFACES)"
     return None
 
 

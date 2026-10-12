@@ -74,8 +74,7 @@ class PromotionRecordsThePromptItWasGatedUnder(unittest.TestCase):
 
             # A stale or absent hash is refused, before any write.
             for argv in (base, base + ["--prompt-hash", "0" * 64]):
-                with mock.patch.object(promote.Config, "MLC2_PROMOTION_ENABLED", True), \
-                     mock.patch.object(promote.Config, "PROMOTION_SURFACES", frozenset({surface})), \
+                with mock.patch.object(promote.Config, "PROMOTION_SURFACES", frozenset({surface})), \
                      mock.patch("services.db.db.promote_runtime_surface_model") as spy, \
                      mock.patch("sys.argv", argv):
                     with self.assertRaises(SystemExit):
@@ -84,8 +83,7 @@ class PromotionRecordsThePromptItWasGatedUnder(unittest.TestCase):
 
             # The current hash is accepted, and stored beside the model id.
             argv = base + ["--prompt-hash", correct]
-            with mock.patch.object(promote.Config, "MLC2_PROMOTION_ENABLED", True), \
-                 mock.patch.object(promote.Config, "PROMOTION_SURFACES", frozenset({surface})), \
+            with mock.patch.object(promote.Config, "PROMOTION_SURFACES", frozenset({surface})), \
                  mock.patch("services.db.db.promote_runtime_surface_model") as spy, \
                  mock.patch("sys.argv", argv):
                 spy.return_value = {"key": "openai_surface_model_say_it_stronger"}

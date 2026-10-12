@@ -179,11 +179,7 @@ class _LedgerDb(DatabaseService):
 
 
 class _Config:
-    MLC2_TRAINING_SWITCH_ENABLED = True
-    MLC2_PAIR_RELEASES_ENABLED = True
     PAIR_RELEASE_SURFACES = frozenset({"exercise_script", "praise_line", "clearer_version"})
-    MLC2_TRAINING_ENABLED = False
-    MLC2_PROMOTION_ENABLED = False
 
 
 class LedgerTests(unittest.TestCase):

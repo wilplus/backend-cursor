@@ -3,9 +3,8 @@ panel answer CO1 A, decisions log N56.4).
 
 Pins the whole path with fakes:
 
-  * the switch: ``Config.TRAINING_IMPORT_ENABLED`` off answers exactly the
-    410 / fail-closed tombstone of before and writes nothing; on, a coach is
-    accepted, a speaker refused, a missing language is a 400;
+  * the route: a coach is accepted, a speaker refused, a missing language
+    is a 400;
   * the spotting: each import runs V3's own 75-word blocks and per-block
     pick over its words, and stores blocks, picks and the policy version;
   * the queue: each block's pick and one rival from the same block, then the
@@ -15,11 +14,12 @@ Pins the whole path with fakes:
   * the split: deterministic, about 20% test, grouped by speaker, a
     nameless import a speaker of its own, the stored assignment winning;
   * nothing trains by the import alone: the retired DPO release lane stays
-    closed; training and promotion follow their own doors, which the founder
-    opened 2026-10-08 ("turn it all ON") for the three coach-answer surfaces.
+    closed; training and promotion follow the surfaces the founder named
+    on 2026-10-08 ("turn it all ON").
 
-The import switch itself ships ON since 2026-10-08 (founder: "turn it all
-ON"; he holds the rights to the audio); the off tests close it explicitly.
+The import is on since 2026-10-08 (founder: "turn it all ON"; he holds the
+rights to the audio); its code switch was removed 2026-10-12 ("remove the
+learning doors").
 """
 from __future__ import annotations
 
@@ -179,42 +179,11 @@ def _snippets(count=12, words_each=30, sid=SID, rec=REC):
     return rows
 
 
-@pytest.fixture
-def on():
-    # By name, resolved now: a test elsewhere may reload `config`, and the
-    # switch is read from whatever `config.Config` is at call time.
-    with patch("config.Config.TRAINING_IMPORT_ENABLED", True):
-        yield
-
-
-@pytest.fixture
-def off():
-    # The switch ships ON since 2026-10-08; the closed behaviour is pinned
-    # by closing it here, by name, like ``on``.
-    with patch("config.Config.TRAINING_IMPORT_ENABLED", False):
-        yield
-
-
-# ── the switch ─────────────────────────────────────────────────────────────
-
-def test_the_switch_is_a_code_constant_the_founder_turned_on():
-    # ON 2026-10-08 (founder: "turn it all ON"). Still a code constant.
-    source = (ROOT / "config.py").read_text()
-    assert "    TRAINING_IMPORT_ENABLED = True\n" in source
-    assert 'getenv("TRAINING_IMPORT_ENABLED")' not in source
-    assert Config.TRAINING_IMPORT_ENABLED is True
-
-
 def test_what_trains_is_what_the_founder_said():
     """N56.4: "nothing trains on the labels until the founder says so".
-    He said so on 2026-10-08 ("turn it all ON"): doors 3 and 4 and the
-    corpus copy open, for the three coach-answer surfaces only; the
-    retired DPO release lane stays closed."""
+    He said so on 2026-10-08 ("turn it all ON"): training and promotion
+    for the named surfaces only."""
     three = frozenset({"exercise_script", "praise_line", "clearer_version", "coach_moment_line", "coach_take_word"})  # five since 2026-10-08 (coach words, N68)
-    assert Config.MLC2_DATASET_RELEASES_ENABLED is False
-    assert Config.MLC2_TRAINING_ENABLED is True
-    assert Config.MLC2_PROMOTION_ENABLED is True
-    assert Config.MLC2_TRAINING_CORPUS_COPY_ENABLED is True
     assert Config.TRAINING_SURFACES == three
     assert Config.PROMOTION_SURFACES == three
 
@@ -243,25 +212,7 @@ def _form(**over):
     return {k: v for k, v in form.items() if v is not None}
 
 
-def test_off_the_route_answers_410_before_anything(off):
-    with patch.object(training_import, "prepare_training_import") as prepare:
-        body, status = _post(_form(), token=False)
-    assert status == 410
-    assert body["code"] == "PHASE2_DISABLED"
-    prepare.assert_not_called()
-
-
-def test_off_prepare_is_the_tombstone_and_writes_nothing(off):
-    fake = FakeDB()
-    out = training_import.prepare_training_import(
-        audio_bytes=b"x", filename="t.wav", user_id=COACH, topic="t",
-        language="en", database=fake)
-    assert out == {"ok": False, "reason": "phase2_training_disabled",
-                   "detail": "Legacy training imports are unavailable under Phase 1."}
-    assert fake.calls == []
-
-
-def test_on_a_coach_is_accepted(on):
+def test_on_a_coach_is_accepted():
     prepared = {"ok": True, "session_id": SID, "arc_id": ARC, "stages": ["confidence"],
                 "duration_sec": 12.0, "speaker_label": "Jane Doe", "language": "en"}
     with patch.object(training_import, "prepare_training_import",
@@ -275,7 +226,7 @@ def test_on_a_coach_is_accepted(on):
     run.assert_called_once()
 
 
-def test_on_an_admin_is_accepted(on):
+def test_on_an_admin_is_accepted():
     prepared = {"ok": True, "session_id": SID, "arc_id": ARC, "stages": ["confidence"]}
     with patch.object(training_import, "prepare_training_import", return_value=prepared), \
             patch.object(training_import, "run_training_import_analysis"):
@@ -283,7 +234,7 @@ def test_on_an_admin_is_accepted(on):
     assert status == 202
 
 
-def test_on_a_speaker_is_refused(on):
+def test_on_a_speaker_is_refused():
     with patch.object(training_import, "prepare_training_import") as prepare:
         body, status = _post(_form(), admin=False, coach=False)
     assert status == 403
@@ -291,7 +242,7 @@ def test_on_a_speaker_is_refused(on):
     prepare.assert_not_called()
 
 
-def test_on_an_unsigned_caller_is_refused(on):
+def test_on_an_unsigned_caller_is_refused():
     with patch.object(training_import, "prepare_training_import") as prepare:
         _body, status = _post(_form(), token=False)
     assert status == 401
@@ -299,7 +250,7 @@ def test_on_an_unsigned_caller_is_refused(on):
 
 
 @pytest.mark.parametrize("language", [None, "", "   "])
-def test_on_a_missing_language_is_400(on, language):
+def test_on_a_missing_language_is_400(language):
     with patch.object(training_import, "prepare_training_import") as prepare:
         body, status = _post(_form(language=language))
     assert status == 400
@@ -307,7 +258,7 @@ def test_on_a_missing_language_is_400(on, language):
     prepare.assert_not_called()
 
 
-def test_on_prepare_refuses_a_missing_language_too(on):
+def test_on_prepare_refuses_a_missing_language_too():
     fake = FakeDB()
     out = training_import.prepare_training_import(
         audio_bytes=b"x", filename="t.wav", user_id=COACH, topic="t",
@@ -317,20 +268,14 @@ def test_on_prepare_refuses_a_missing_language_too(on):
 
 
 def test_only_the_import_route_moved_off_the_phase2_guard():
-    """The switch guards the import and, since the corpus queue was made
-    judgeable, the corpus clip's playback; nothing else."""
+    """The import route is not behind the phase-2 guard (and, since
+    2026-10-12, behind no switch of its own)."""
     source = (ROOT / "routes" / "v2" / "coach.py").read_text()
-    guarded = ('@v2_bp.route("/coach/training-imports", methods=["POST"])',
-               '@v2_bp.route("/coach/corpus/clips/<snippet_id>/playback", '
-               'methods=["GET"])')
-    for route in guarded:
-        head = source[source.index(route):]
-        assert head.splitlines()[1] == "@training_import_enabled"
-    assert source.count("@training_import_enabled") == len(guarded)
     assert "@phase2_learning_disabled" not in source
+    assert "training_import_enabled" not in source
 
 
-def test_on_prepare_writes_the_import_rows(on):
+def test_on_prepare_writes_the_import_rows():
     fake = FakeDB()
     with patch("services.min_content_gate.evaluate_min_content_bytes",
                return_value={"ok": True, "duration_sec": 120.0}), \

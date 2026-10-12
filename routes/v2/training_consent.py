@@ -2,9 +2,9 @@
 
 SPEC-training-corpus §3; the logic and the refusals live in
 ``services.training_consent``. Door 1 is OPEN since 2026-10-01 (the
-founder's sentence "open door 1"; docs/LEARNING-DOORS.md):
-``Config.MLC2_TRAINING_SWITCH_ENABLED`` is True, so the route answers. It
-answers 410 only if a reviewed change sets the constant back to False.
+founder's sentence "open door 1"; docs/LEARNING-DOORS.md); its code switch
+was removed on 2026-10-12 ("remove the learning doors"), so the route always
+answers.
 While no training policy row is active it answers ``available: false`` and
 the Settings card hides itself. Responses carry codes only; the words are
 the frontend's, signed by the founder (N10). Refusals are reported to
@@ -26,9 +26,7 @@ from routes.v2.blueprint import v2_bp
 from services.db import db
 from services.project_repository import ProjectOwnershipError, ProjectRepository
 from services.speaker_identity import identity_coordinates
-from services.training_consent import (
-    TrainingSwitchError, handle, switch_enabled,
-)
+from services.training_consent import TrainingSwitchError, handle
 
 logger = logging.getLogger(__name__)
 _repository = ProjectRepository(db)
@@ -44,8 +42,6 @@ def _client_version() -> str:
 @v2_bp.route("/user/training-consent", methods=["GET", "POST", "DELETE"])
 @require_auth
 def v2_user_training_consent():
-    if not switch_enabled():
-        return jsonify({"code": "TRAINING_SWITCH_DISABLED"}), 410
     try:
         user_id = str(getattr(request, "user_id", "")).strip()
         owner = _repository.owner_for_user(user_id)

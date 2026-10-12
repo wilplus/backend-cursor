@@ -9,12 +9,11 @@ Once a week, poked by a Railway cron through a shared secret:
      cleared it, the migration text a promotion would merge is drafted and
      stored beside the snapshot. The job never promotes: merging the
      drafted file after the founder's go is the promotion (ML-14);
-  3. pairs are exported per surface ONLY where the dataset-release door is
-     open AND the founder named the surface (services/pair_release.py);
-     before that the consent refresh and the voided-release sweep run
-     (services/pair_consent.py, ML-8). Both are code constants: door 2 is
-     open since 2026-10-01 for exercise_script, praise_line and
-     clearer_version (N16, N18); every other surface, and any surface
+  3. pairs are exported per surface ONLY where the founder named the
+     surface (services/pair_release.py); before that the consent refresh
+     and the voided-release sweep run (services/pair_consent.py, ML-8).
+     Door 2 is open since 2026-10-01 (N16, N18; its code switch removed
+     2026-10-12); every other surface, and any surface
      while the bucket or the signing key is missing, exports nothing and
      its row says why. Each pair is re-decided at release time (PLF-P5);
   4. the drift run (PM-3, services/drift_job.py: PSI on the inputs, the
@@ -120,8 +119,8 @@ def run_weekly(database: Any, *, config: Any = None,
     verifications = _verification_pass(database, storage, config, exported)
     # Door 3's weekly pass (ML-11): the withdrawal sweep at the provider,
     # the poll of running jobs (a finished one is evaluated), and a start
-    # where the door, the founder's sentence, the sealed golden set and 200
-    # trainable pairs all hold. Closed today: every surface says why.
+    # where the founder's sentence, the sealed golden set and 200 trainable
+    # pairs all hold; every other surface says why.
     training = _training_pass(database, config, now=moment, provider=provider)
     # 3.5 E3: the learned detectors, fitted only while
     # DETECTOR_TRAINING_AUTHORISED is on, on consented answers, into the
@@ -161,16 +160,15 @@ def run_weekly(database: Any, *, config: Any = None,
         "foundation_health": foundation,
         "verifications": verifications,
         "unavailable": list(snapshot.get("unavailable") or []),
-        "doors": snapshot.get("doors"),
     }
 
 
 def _export_pairs(database: Any, snapshot: dict, config: Any,
                   *, week_start_day: Optional[date] = None,
                   storage: Any = None) -> list[dict]:
-    """Per surface: the release, or the reason it stayed. The door is a code
-    constant and each surface needs the founder's sentence (ML-9); while
-    either is missing the row says so in words."""
+    """Per surface: the release, or the reason it stayed. Each surface needs
+    the founder's sentence (ML-9); while it is missing the row says so in
+    words."""
     from services.pair_release import R2ReleaseStorage, export_surface, why_not
     out = []
     for surface in (snapshot.get("pairs") or {}):

@@ -509,8 +509,7 @@ class LearningTests(unittest.TestCase):
             v2_get_session_by_id=lambda _sid: {"owner_principal_id": PRINCIPAL},
             get_mlc2_training_consent_status=lambda _p: {"active": True,
                                                          "grant_event_id": "g1"})
-        with mock.patch.object(training_corpus, "copy_enabled", return_value=True):
-            out = training_corpus.run_corpus_copy("take-1", "arc-1", database=database)
+        out = training_corpus.run_corpus_copy("take-1", "arc-1", database=database)
         self.assertEqual(out, {"status": "learning_stopped"})
 
 

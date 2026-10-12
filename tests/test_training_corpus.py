@@ -1,8 +1,7 @@
 """The training-corpus copy job (services/training_corpus.py, P3).
 
-Dark first: the switch is a code constant, False, and while it is the enqueue
-and the job both return at once. Then, with the switch forced on in-process
-only, what the job copies (SPEC §4.3, §10 invariant 7): nothing without an
+What the job copies (its code switch was removed 2026-10-12, "remove the
+learning doors") (SPEC §4.3, §10 invariant 7): nothing without an
 active training yes, only the Confident Voice moments the speaker was shown,
 never a snippet from another Take, and never any audio (3.5 pack, file 22
 D1, signed 2026-10-08: text and measurements only).
@@ -13,38 +12,10 @@ import inspect
 import unittest
 from unittest import mock
 
-from config import Config
 from services import training_corpus as tc
 
 
-class DarkTests(unittest.TestCase):
-    """The copy switch ships ON since 2026-10-08 (founder: "turn it all ON");
-    the off behaviour is pinned by closing the switch explicitly."""
-
-    def setUp(self):
-        self._off = mock.patch("config.Config.MLC2_TRAINING_CORPUS_COPY_ENABLED", False)
-
-    def test_the_switch_is_a_code_constant_and_it_is_on(self):
-        self.assertIs(Config.MLC2_TRAINING_CORPUS_COPY_ENABLED, True)
-        import config
-        source = inspect.getsource(config)
-        line = next(line for line in source.splitlines()
-                    if "MLC2_TRAINING_CORPUS_COPY_ENABLED =" in line)
-        self.assertNotIn("getenv", line)
-
-    def test_off_means_nothing_is_enqueued(self):
-        with self._off, mock.patch("services.job_queue.enqueue") as enqueue:
-            self.assertFalse(tc.enqueue_corpus_copy("take", "arc", "user"))
-        enqueue.assert_not_called()
-
-    def test_off_means_the_job_does_nothing(self):
-        db = mock.Mock()
-        with self._off:
-            self.assertEqual(tc.run_corpus_copy("take", "arc", database=db),
-                             {"status": "disabled"})
-        db.assert_not_called()
-        self.assertEqual(db.method_calls, [])
-
+class WiringTests(unittest.TestCase):
     def test_the_analysis_run_calls_it_unbranched_after_the_bake(self):
         from services import analysis_worker
         source = inspect.getsource(analysis_worker._run_full_analysis_impl)
@@ -116,9 +87,6 @@ class _Db:
 class JobTests(unittest.TestCase):
     def setUp(self):
         patches = [
-            # The job's own switch reader, not Config: other suites reload
-            # the config module, and a patch on a stale class reaches nobody.
-            mock.patch.object(tc, "copy_enabled", return_value=True),
             # D1: any touch of audio storage fails the test.
             mock.patch("services.lab_audio_storage.get_exact_storage_object_bytes",
                        side_effect=AssertionError("D1: no audio is read")),
@@ -131,7 +99,7 @@ class JobTests(unittest.TestCase):
         self.mocks = [p.start() for p in patches]
         for p in patches:
             self.addCleanup(p.stop)
-        self.enqueue = self.mocks[4]
+        self.enqueue = self.mocks[3]
 
     def test_no_training_yes_copies_nothing(self):
         db = _Db(consent={"active": False})

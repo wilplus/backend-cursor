@@ -6,11 +6,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from services.ml_dpo_export import (
-    DpoFilterConfig,
-    row_to_dpo_example,
-    split_train_val,
-)
 from services.ml_dpo_release import (
     load_evaluation_report,
     load_release_manifest,
@@ -104,7 +99,7 @@ class SurfaceContractTests(unittest.TestCase):
         # A golden evaluation runs with the gate still SHUT — passing it is
         # what the gate is opened on — so the override must win there.
         clear_runtime_model_cache()
-        with patch.object(Config, "MLC2_PROMOTION_ENABLED", False):
+        with patch.object(Config, "PROMOTION_SURFACES", frozenset()):
             with evaluation_model_override("ideal_text", "ft:candidate"):
                 self.assertEqual(
                     resolve_surface_model(
@@ -121,25 +116,10 @@ class SurfaceContractTests(unittest.TestCase):
             )
         self.assertEqual(calls, [])
 
-        # Door 4 open but the surface not named (as shipped 2026-10-08: the
-        # founder named the three coach-answer surfaces, not the Ideal
-        # Text): the row is still inert and not read.
-        clear_runtime_model_cache()
-        with patch.object(Config, "MLC2_PROMOTION_ENABLED", True), \
-                patch.object(Config, "PROMOTION_SURFACES", frozenset()):
-            self.assertEqual(
-                resolve_surface_model(
-                    "best_presentation", "base", config_getter=get,
-                ),
-                "base",
-            )
-        self.assertEqual(calls, [])
-
         # With the gate open for this surface, the promoted model is served
         # as before.
         clear_runtime_model_cache()
-        with patch.object(Config, "MLC2_PROMOTION_ENABLED", True), \
-                patch.object(Config, "PROMOTION_SURFACES", frozenset({"ideal_text"})):
+        with patch.object(Config, "PROMOTION_SURFACES", frozenset({"ideal_text"})):
             self.assertEqual(
                 resolve_surface_model(
                     "best_presentation", "base", config_getter=get,
@@ -159,43 +139,7 @@ class SurfaceContractTests(unittest.TestCase):
         self.assertEqual(calls, [])
 
 
-class DpoCorpusTests(unittest.TestCase):
-    def _row(self, field: str = "say_it_stronger") -> dict:
-        return {
-            "field_name": field,
-            "section_type": "snippet",
-            "ai_original_text": "This is the machine's original draft.",
-            "coach_final_text": "This is the coach's improved final version.",
-        }
-
-    def test_row_must_belong_to_requested_surface(self):
-        cfg = DpoFilterConfig(surface="say_it_stronger")
-        example, reason = row_to_dpo_example(self._row(), session=None, cfg=cfg)
-        self.assertIsNotNone(example)
-        self.assertIsNone(reason)
-        wrong, reason = row_to_dpo_example(
-            self._row("moment_suggestion"), session=None, cfg=cfg,
-        )
-        self.assertIsNone(wrong)
-        self.assertEqual(reason, "surface_filtered_out")
-
-    def test_split_is_owner_disjoint(self):
-        examples = [
-            {"event_id": f"e{i}-{j}", "_split_group": f"user:{i}"}
-            for i in range(30)
-            for j in range(3)
-        ]
-        train, val = split_train_val(examples, val_ratio=0.25)
-        train_groups = {row["_split_group"] for row in train}
-        val_groups = {row["_split_group"] for row in val}
-        self.assertTrue(train)
-        self.assertTrue(val)
-        self.assertFalse(train_groups & val_groups)
-
-    def test_split_refuses_event_level_fallback(self):
-        with self.assertRaisesRegex(ValueError, "owner split group"):
-            split_train_val([{"event_id": "event-only"}], val_ratio=0.1)
-
+class SurfaceFieldTests(unittest.TestCase):
     def test_surface_field_sets_are_not_overlapping(self):
         surfaces = (
             "say_it_stronger",
