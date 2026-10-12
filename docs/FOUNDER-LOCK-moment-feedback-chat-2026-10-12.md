@@ -4,7 +4,7 @@
 
 Locked by the founder on 2026-10-12 ("approved, lock it and write the lock
 file"), from the clickable prototype
-<https://claude.ai/artifact/TXbwmupWJio6N1gHqdEa7p> (version 27). The
+<https://claude.ai/artifact/TXbwmupWJio6N1gHqdEa7p> (version 27; version 28 aligns the practice recorder with the 2026-10-12 recording lock). The
 prototype is the design; this file is its written record and the acceptance
 check when it is built. Nothing here is built yet.
 
@@ -68,10 +68,13 @@ Where this lock disagrees with an older one, this lock wins. It amends:
    - **Voice weaker:** Exercise, with the video and the instruction (from
      the coach when there is one, otherwise Line A), then "Practise" and
      "Skip".
-5. **Practise.** The recorder is the locked recording screen without the
-   slide card, with the coach's or app's message as a bubble at the top,
-   the words to say, and the Take's strip with "Stop". "Skip" skips; ✕ goes
-   back to the walk. After Stop the walk returns instantly, with no rise
+5. **Practise.** The recorder is the recording screen as re-locked on
+   2026-10-12 (N70, `FOUNDER-LOCK-recording-screens-2026-10-07.md`), without
+   the slide card. At the top is the coach's or app's message as a bubble,
+   then the words to say. The strip holds only the dot, the clock and the
+   bar. Under it is the pair: "Skip" (the Back style) and a red "Stop" (the
+   Finish-take style, because a practice is one sentence). ✕ goes back to
+   the walk. After Stop the walk returns instantly, with no rise
    animation; the breathing mark shows while the try is checked.
    - Each try comes back as an orange bubble labelled "Practise N". Then:
      - **Not yet:** "Practise" with the signed encouragement, then
@@ -200,5 +203,3 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
 
 - **Self-judgement of your own practice try.** It's off until the founder
   has run the query pack.
-- **The recording screens were re-locked on 2026-10-12 (N70).** The
-  practice recorder follows that current lock, minus the slide card.
