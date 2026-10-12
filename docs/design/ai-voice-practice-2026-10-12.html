@@ -1,0 +1,1113 @@
+<title>Moment Feedback with AI Voice</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Page chrome: quiet cool grey so the phone is the only thing with colour. */
+:root{
+  --bg:#eef0f3; --surface:#ffffff; --ink:#15171c; --ink-2:#4b5160; --ink-3:#7d8492; --line:#dde1e7;
+  --sel:#15171c; --sel-ink:#ffffff; --phone:#111318; --phone-edge:#2a2e36;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#121418; --surface:#1c1f25; --ink:#eceef2; --ink-2:#b5bac4; --ink-3:#808796; --line:#2e323b;
+  --sel:#eceef2; --sel-ink:#121418; --phone:#000; --phone-edge:#3a3f49; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#121418; --surface:#1c1f25; --ink:#eceef2; --ink-2:#b5bac4; --ink-3:#808796; --line:#2e323b;
+  --sel:#eceef2; --sel-ink:#121418; --phone:#000; --phone-edge:#3a3f49; color-scheme:dark;}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 "IBM Plex Sans",system-ui,sans-serif;padding-inline:16px;padding-block:16px}
+.layout{display:flex;gap:28px;justify-content:center;align-items:flex-start;max-width:1100px;margin:0 auto}
+.side{width:300px;flex:none;display:flex;flex-direction:column;gap:16px;padding-top:8px}
+.side h1{font-size:20px;line-height:1.2;margin:0;text-wrap:balance}
+.side p{margin:0;color:var(--ink-2);font-size:13.5px}
+.knob{display:flex;flex-direction:column;gap:7px}
+.knob .lab{font:500 11px "IBM Plex Mono",monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{font:500 13px "IBM Plex Sans",sans-serif;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:99px;padding:6px 12px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--sel);color:var(--sel-ink);border-color:var(--sel)}
+.seg button:focus-visible,.restart:focus-visible{outline:2px solid #6b7280;outline-offset:2px}
+.where{font:500 12px "IBM Plex Mono",monospace;color:var(--ink-2);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:44px}
+.restart{align-self:flex-start;font:600 13px "IBM Plex Sans",sans-serif;border:0;background:var(--sel);color:var(--sel-ink);border-radius:99px;padding:8px 16px;cursor:pointer}
+.notes{font-size:12.5px;color:var(--ink-3);border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:6px}
+.notes b{color:var(--ink-2);font-weight:600}
+.stage{flex:none;display:flex;justify-content:center}
+.phonewrap{transform-origin:top center}
+.ph{width:402px;height:860px;border-radius:52px;background:var(--phone);padding:10px;border:1px solid var(--phone-edge);box-shadow:0 20px 50px rgba(0,0,0,.18)}
+
+.locked{max-width:1100px;margin:40px auto 24px;display:flex;flex-direction:column;gap:18px}
+.locked h2{font-size:24px;line-height:1.2;margin:0;text-wrap:balance}
+.locked .lede{margin:0;color:var(--ink-2);font-size:14.5px;max-width:75ch}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:16px}
+.cols .col.open{grid-column:1/-1}
+.col{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;min-width:0}
+.col h3{margin:0 0 8px;font:600 11px "IBM Plex Mono",monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.col ol,.col ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;font-size:13.5px;color:var(--ink-2)}
+.col b{color:var(--ink);font-weight:600}
+.col.open{border-style:dashed}
+@media (max-width:820px){.layout{flex-direction:column;align-items:center}.side{width:100%;max-width:420px;padding-top:0}}
+
+/* ---------------- the app, at real size ---------------- */
+.sc{--bg:#fff;--fg:#121212;--mut:#737373;--line:#e5e5e5;--mutbg:#f4f4f5;--pri:#ff6a14;--pri-soft:rgba(255,106,20,.07);--green:#2f8a5e;--rec:#e2463a;
+  position:relative;height:100%;border-radius:42px;overflow:hidden;background:var(--bg);color:var(--fg);
+  font:17px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;user-select:none;-webkit-user-select:none}
+.sc button,.sc input{font:inherit;color:inherit}
+.sc button{background:none;border:0;padding:0;cursor:pointer;text-align:inherit}
+.status{position:relative;z-index:30;height:44px;display:flex;justify-content:space-between;align-items:center;padding:6px 28px 0;font-size:15px;font-weight:600;background:var(--bg)}
+.status i{font-style:normal;letter-spacing:2px;font-size:12px}
+.view{position:absolute;inset:44px 0 0 0;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;justify-content:space-between;padding:12px 20px 10px;gap:10px}
+.top .tt{display:flex;flex-direction:column;min-width:0}
+.top .tt b{font-size:17.5px;font-weight:600}
+.top .tt small{font-size:12px;color:var(--mut)}
+.ico{display:inline-flex;gap:8px}
+.ico span{width:28px;height:28px;border-radius:99px;background:var(--mutbg);color:var(--mut);display:inline-flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;cursor:pointer}
+.body{flex:1;padding:8px 22px 8px 34px;display:flex;flex-direction:column;gap:22px;overflow:hidden}
+.sliderow{display:flex;align-items:center;gap:12px;margin-left:-12px}
+.thumb{width:48%;aspect-ratio:16/9;border-radius:8px;background:linear-gradient(135deg,#dde3ee,#c7d0e0);color:#4b5670;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none}
+.kick{font-size:11px;font-weight:500;letter-spacing:.16em;text-transform:uppercase;color:var(--mut);flex:1}
+.pen{width:26px;height:26px;border:1px solid var(--line);border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:var(--mut);font-size:13px}
+.paras{display:flex;flex-direction:column;gap:20px}
+.para{position:relative;font-size:17px;line-height:1.65;width:100%;border-radius:8px}
+.para:active{background:var(--mutbg)}
+.para::before{content:"";position:absolute;left:-13px;top:2px;bottom:2px;width:3px;border-radius:99px;background:transparent}
+.para.o::before{background:var(--pri)}
+.para.g::before{background:var(--green)}
+.para .hl{display:block;color:var(--pri);font-weight:700;font-size:23px;line-height:1.25;margin-bottom:3px}
+.foot{padding:10px 20px 30px;display:flex;flex-direction:column;gap:4px}
+.sc .pill{height:54px;border-radius:99px;background:var(--fg);color:var(--bg);display:flex;align-items:center;justify-content:center;gap:9px;font-size:16px;font-weight:600;width:100%;text-align:center}
+.sc .pill:disabled{opacity:.3;cursor:default}
+.sc .pill .rd{width:10px;height:10px;border-radius:99px;background:#ef4444}
+.sc .lnk{height:40px;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--mut);width:100%}
+
+/* The overlay: the whole screen, nothing of the page behind it. */
+.ov{position:absolute;inset:0;background:var(--bg);display:flex;flex-direction:column;z-index:10}
+.ovtop{display:flex;align-items:center;justify-content:space-between;padding:8px 10px 0 10px;min-height:44px}
+.ovtop .nav{display:flex;align-items:center;gap:2px;font-size:13.5px;font-weight:600}
+.ovtop .nav span{width:36px;height:36px;border-radius:99px;display:inline-flex;align-items:center;justify-content:center;color:var(--mut);font-size:20px;cursor:pointer}
+.ovtop .nav span.off{opacity:.25;cursor:default}
+.ovtop .x{margin-right:10px}
+.x{width:30px;height:30px;border-radius:99px;background:var(--mutbg);color:var(--mut);display:inline-flex;align-items:center;justify-content:center;font-size:15px;flex:none;cursor:pointer}
+.ttl{font-size:22px;font-weight:700;letter-spacing:-.01em;line-height:1.2;padding:12px 20px 4px}
+.sb{flex:1;padding:12px 20px;display:flex;flex-direction:column;gap:18px;overflow-y:auto}
+.sfoot{padding:8px 20px 30px;display:flex;flex-direction:column;gap:4px}
+.q{font-size:16px;font-weight:600;margin:0}
+.ans{display:flex;flex-direction:column;gap:8px}
+.ans button{border:1.5px solid rgba(18,18,18,.16)!important;border-radius:99px;padding:14px;text-align:center;font-size:16px;font-weight:600;width:100%}
+.ans .two{display:flex;gap:8px;margin-top:2px}
+.ans .two button{padding:9px;font-size:14px;font-weight:500;color:var(--mut)}
+.ans button.on{background:var(--fg);color:var(--bg)!important;border-color:var(--fg)!important}
+.toast{position:absolute;left:50%;transform:translateX(-50%);bottom:110px;background:#121212;color:#fff;border-radius:99px;padding:8px 16px;font-size:14px;white-space:nowrap;z-index:40;box-shadow:0 6px 16px rgba(0,0,0,.3);animation:toast 1.6s ease forwards;pointer-events:none}
+@keyframes toast{0%{opacity:0;transform:translate(-50%,8px)}12%{opacity:1;transform:translate(-50%,0)}80%{opacity:1}100%{opacity:0}}
+@keyframes up{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes inR{from{transform:translateX(26px);opacity:0}to{transform:none;opacity:1}}
+
+/* ---- one player, everywhere ---- */
+.you{background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.you .words{font-size:16.5px;line-height:1.55}
+.play{display:flex;align-items:center;gap:10px;width:100%}
+.play .pb{width:34px;height:34px;border-radius:99px;background:var(--fg);flex:none;position:relative}
+.play .pb::after{content:"";position:absolute;left:13px;top:10px;border-left:11px solid var(--bg);border-top:7px solid transparent;border-bottom:7px solid transparent}
+.play.on .pb::after{left:11px;border:0;width:12px;height:14px;background:linear-gradient(90deg,var(--bg) 0 4px,transparent 4px 8px,var(--bg) 8px 12px)}
+.wave{display:flex;align-items:center;gap:2.5px;height:22px;flex:1}
+.wave i{width:3px;border-radius:2px;background:var(--fg);opacity:.22;display:block;transition:opacity .2s}
+.wave i.on{opacity:.9}
+.play .tm{font-size:12.5px;color:var(--mut);font-variant-numeric:tabular-nums}
+
+/* ---- feedback: plain black text; the coach's carries their small photo ---- */
+.fb{font-size:17px;line-height:1.55;margin:0;color:var(--fg)}
+.fb.coach{display:flex;gap:10px;align-items:flex-start}
+.av{width:24px;height:24px;border-radius:99px;flex:none;display:inline-flex;align-items:flex-end;justify-content:center;overflow:hidden;background:#d9d9de;margin-top:1px}
+.av svg{width:19px;height:19px;fill:#8a8a93}
+.av.wl{background:#121212;align-items:center}
+.av.wl svg{width:16px;height:16px;fill:#fff}
+.fb .msg{display:flex;flex-direction:column;gap:10px;min-width:0}
+.fb .new{font-size:18px;line-height:1.45;font-weight:600}
+.fb .new em{font-style:normal;color:var(--pri)}
+.you .words s{color:var(--mut);text-decoration-thickness:1.5px}
+.vid{position:relative;aspect-ratio:16/9;border-radius:14px;background:linear-gradient(135deg,#30343c,#17191e);display:flex;align-items:center;justify-content:center;width:100%;overflow:hidden;flex:none;cursor:pointer}
+.vid.tall{aspect-ratio:4/5}
+.vid .pl{width:52px;height:52px;border-radius:99px;background:rgba(255,255,255,.94);position:relative}
+.vid .pl::after{content:"";position:absolute;left:21px;top:16px;border-left:16px solid #121212;border-top:10px solid transparent;border-bottom:10px solid transparent}
+.vid .len{position:absolute;right:10px;bottom:8px;font-size:11.5px;color:#fff}
+.vid.playing .pl{display:none}
+.vid .bar{position:absolute;left:0;bottom:0;height:3px;background:#fff;width:0}
+.vid.playing .bar{animation:vbar 6s linear forwards}
+@keyframes vbar{to{width:100%}}
+
+/* ---- the app's own loading mark (LoadingState / VoiceMark, 64px) ---- */
+.vm{position:relative;width:64px;height:64px;display:flex;align-items:center;justify-content:center}
+.vm .ring{position:absolute;border-radius:99px;animation:breath 3.6s ease-in-out infinite}
+.vm .r1{inset:0;border:1px solid rgba(18,18,18,.10)}
+.vm .r2{inset:6px;border:1px solid rgba(18,18,18,.15);animation-delay:.6s}
+.vm .r3{inset:12px;border:1px solid rgba(255,106,20,.30);animation-delay:1.2s}
+.vm svg circle{transform-box:fill-box;transform-origin:center;animation:vdot 1.4s ease-in-out infinite}
+.vm svg circle:nth-child(2){animation-delay:.15s}.vm svg circle:nth-child(3){animation-delay:.3s}
+@keyframes breath{0%{transform:scale(.92);opacity:0}50%{opacity:1}100%{transform:scale(1.18);opacity:0}}
+@keyframes vdot{0%,60%,100%{transform:scaleY(.5);opacity:.6}30%{transform:scaleY(1);opacity:1}}
+.center{flex:1;display:flex;align-items:center;justify-content:center}
+
+/* ---- full-screen moments ---- */
+.splash{flex:1;display:flex;align-items:center;justify-content:center;padding:30px;text-align:center;animation:fade .35s ease}
+.splash h2{margin:0;font-size:26px;line-height:1.15;font-weight:800;letter-spacing:-.02em}
+.judgeintro{flex:1;display:flex;flex-direction:column;justify-content:center;gap:14px;padding:0 28px;text-align:center}
+.judgeintro h2{margin:0;font-size:26px;line-height:1.15;font-weight:800;letter-spacing:-.02em}
+.judgeintro p{margin:0;font-size:16px;line-height:1.5;color:var(--fg)}
+.judgeintro a{font-size:14px;color:var(--mut);text-decoration:underline;text-underline-offset:3px}
+.ask .head{padding:28px 24px 6px;display:flex;flex-direction:column;gap:10px}
+.ask h2{margin:0;font-size:26px;line-height:1.15;font-weight:800;letter-spacing:-.02em;text-wrap:balance}
+.ask p{margin:0;font-size:16px;line-height:1.5}
+.opts{padding:14px 20px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;flex:1}
+.opt{display:flex;flex-direction:column;gap:8px;border:1.5px solid var(--line);border-radius:16px;padding:12px 14px;width:100%;cursor:pointer}
+.opt.on{border-color:var(--fg)}
+.opt .row{display:flex;gap:12px;align-items:flex-start}
+.opt .tick{width:22px;height:22px;border-radius:7px;border:1.5px solid rgba(18,18,18,.35);flex:none;margin-top:1px;display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--bg)}
+.opt.on .tick{background:var(--fg);border-color:var(--fg)}
+.opt b{font-size:16px;font-weight:600;display:block}
+.opt small{font-size:13.5px;color:var(--mut);display:block;margin-top:1px}
+.opt .fields{display:flex;gap:8px;padding-left:34px}
+.opt input{width:100%;min-width:0;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:14.5px;background:var(--bg);outline:none}
+.opt input:focus{border-color:var(--fg)}
+
+/* ---- practising: the words, and the Take's own recording bar ---- */
+.say{font-size:25px;line-height:1.35;font-weight:600;margin:0}
+.strip{display:flex;align-items:center;gap:12px;background:var(--mutbg);border-radius:18px;padding:12px 14px}
+.strip .dotp{width:10px;height:10px;border-radius:99px;background:rgba(226,70,58,.5);animation:pulse 1.2s ease-in-out infinite;flex:none}
+.strip .clk{font:600 17px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+.strip .tr{height:4px;flex:1;border-radius:99px;background:var(--line);overflow:hidden}
+.strip .tr i{display:block;height:100%;width:100%;background:rgba(115,115,115,.4);animation:pulse 1.2s ease-in-out infinite}
+.strip .stop{height:40px;border-radius:99px;background:var(--rec);color:#fff;display:flex;align-items:center;gap:7px;padding:0 16px;font-size:13.5px;font-weight:600;flex:none}
+.strip .stop i{width:12px;height:12px;border-radius:2px;background:#fff;display:block}
+@keyframes pulse{50%{opacity:.35}}
+.tok{display:flex;flex-wrap:wrap;gap:2px 4px;font-size:18px;line-height:1.35}
+.tok button{padding:6px 5px;border-radius:7px}
+.tok button.sel{background:var(--pri-soft);color:var(--pri);font-weight:600}
+.count{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut)}
+.sub{font-size:14.5px;color:var(--mut);margin:0}
+
+/* ---- the Lounge ---- */
+.lounge{flex:1;display:flex;flex-direction:column;gap:10px;padding:8px 16px;overflow:hidden;justify-content:flex-end}
+.ltop{display:flex;align-items:center;justify-content:center;padding:10px 20px;font-size:16px;font-weight:600;border-bottom:1px solid var(--line)}
+.lb{max-width:85%;border-radius:16px;padding:8px 12px;font-size:15px;line-height:1.45}
+.lb.me{margin-left:auto;background:var(--pri);color:#fff}
+.itcard{margin-right:auto;width:80%;border:1px solid var(--line);border-radius:18px;padding:10px;display:flex;gap:10px;align-items:center;position:relative;background:var(--bg)}
+.itcard.marked{outline:2px solid var(--pri);outline-offset:3px}
+.itcard .newtag{position:absolute;right:-6px;top:-14px;background:var(--pri);color:#fff;font-size:11px;font-weight:600;border-radius:99px;padding:1px 9px;line-height:1.5}
+.itcard .mini{width:72px;aspect-ratio:16/9;border-radius:6px;background:linear-gradient(135deg,#dde3ee,#c7d0e0);flex:none}
+.itcard b{display:block;font-size:15px}
+.itcard small{display:block;font-size:12px;color:var(--mut)}
+.composer{margin:8px 14px 26px;border:1px solid var(--line);border-radius:24px;padding:12px 16px;font-size:15px;color:var(--mut)}
+.done-mark{width:56px;height:56px;border-radius:99px;background:rgba(47,138,94,.12);color:var(--green);display:flex;align-items:center;justify-content:center;font-size:26px}
+.endsheet{position:absolute;left:0;right:0;bottom:0;background:var(--bg);border-radius:26px 26px 0 0;box-shadow:0 -10px 30px rgba(0,0,0,.18);display:flex;flex-direction:column;align-items:center;gap:14px;padding:26px 20px 30px;z-index:12;animation:up .3s cubic-bezier(.2,.8,.2,1)}
+.endsheet .pill,.endsheet .lnk{width:100%}
+.dim{position:absolute;inset:0;background:rgba(18,18,18,.32);z-index:11;animation:fade .25s ease}
+
+/* ---------- motion: one set of moves, used everywhere in the app ----------
+   ease-out for what arrives, ease-in for what leaves; nothing just blinks. */
+.sc{--ease-in:cubic-bezier(.2,.8,.2,1);--ease-out:cubic-bezier(.4,0,1,1)}
+.ghost{pointer-events:none!important}
+/* open: the overlay rises from the bottom over the page */
+.ov.m-open{animation:sheetUp .38s var(--ease-in) both}
+/* close: the overlay sinks and fades, the page is already underneath */
+.ov.ghost.m-close{z-index:10;animation:sheetDown .28s var(--ease-out) forwards}
+/* next / back inside the overlay: the header stays, the content slides */
+.ov.ghost.m-swap{background:transparent;z-index:11}
+.ov.ghost.m-swap>.ovtop{visibility:hidden}
+.ov.m-next>:not(.ovtop){animation:inR .3s var(--ease-in) .1s both}
+.ov.m-back>:not(.ovtop){animation:inL .3s var(--ease-in) .1s both}
+.ov.ghost.m-next>:not(.ovtop){animation:outL .14s var(--ease-out) forwards}
+.ov.ghost.m-back>:not(.ovtop){animation:outR .14s var(--ease-out) forwards}
+/* a screen that stands apart (Judgement time, sharing) or the same moment
+   changing state (recording -> checking -> result): a soft cross-fade */
+.ov.m-fade>:not(.ovtop){animation:fadeUp .34s var(--ease-in) .1s both}
+.ov.ghost.m-fade>:not(.ovtop){animation:fadeOut .14s var(--ease-out) forwards}
+/* whole screens (Lounge <-> text): a short push */
+.view.m-next{animation:inR .32s var(--ease-in) .08s both}
+.view.m-back{animation:inL .32s var(--ease-in) .08s both}
+.view.ghost.m-next{z-index:1;background:var(--bg);animation:outL .16s var(--ease-out) forwards}
+.view.ghost.m-back{z-index:1;background:var(--bg);animation:outR .16s var(--ease-out) forwards}
+.view.m-dark{animation:fade .4s ease both}
+/* the end sheet leaving: it sinks, the dim fades */
+.endsheet.ghost{animation:down .24s var(--ease-out) forwards}
+.dim.ghost{animation:fadeOut .24s ease forwards}
+@keyframes down{to{transform:translateY(48px);opacity:0}}
+@keyframes sheetUp{from{transform:translateY(100%)}to{transform:none}}
+@keyframes sheetDown{from{transform:none}to{transform:translateY(100%)}}
+@keyframes inL{from{transform:translateX(-26px);opacity:0}to{transform:none;opacity:1}}
+@keyframes outL{to{transform:translateX(-22px);opacity:0}}
+@keyframes outR{to{transform:translateX(22px);opacity:0}}
+@keyframes fadeUp{from{transform:translateY(8px) scale(.985);opacity:0}to{transform:none;opacity:1}}
+@keyframes fadeOut{to{opacity:0}}
+/* small touches: a press gives way, a choice fills in, nothing jumps */
+.sc .pill,.ans button,.opt,.tok button,.itcard,.ovtop .nav span,.x,.lnk{transition:transform .12s ease,background-color .16s ease,color .16s ease,border-color .16s ease,opacity .16s ease}
+.sc .pill:active,.ans button:active,.opt:active,.itcard:active{transform:scale(.98)}
+.tok button:active,.ovtop .nav span:active,.x:active{transform:scale(.92)}
+.opt .tick{transition:background-color .16s ease,border-color .16s ease}
+.opt .fields{animation:fadeUp .22s var(--ease-in)}
+.para{transition:background-color .16s ease}
+.para::before{transition:background-color .3s ease}
+
+/* ===== v8 OVERRIDES on top of the locked walk (2026-10-06) ===== */
+:root{--ai:#e8590c;--ai-soft:#fff1e8;--good:#1f7a55;--good-soft:#dff1e8;--hid:#6d4bd8;--hid-soft:#eee9fc;--warn:#b4233a;--warn-soft:#fbe3e6}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ai:#ff8a40;--ai-soft:#3a2416;--good:#4cc08e;--good-soft:#15302a;--hid:#a993f5;--hid-soft:#2a2340;--warn:#f0596c;--warn-soft:#3b1c22}}
+:root[data-theme="dark"]{--ai:#ff8a40;--ai-soft:#3a2416;--good:#4cc08e;--good-soft:#15302a;--hid:#a993f5;--hid-soft:#2a2340;--warn:#f0596c;--warn-soft:#3b1c22}
+/* text is inert: no press state, no pointer */
+.para{cursor:default}.para:active{background:none}
+/* the Ideal Text page's ⋯ menu, from the locked Ideal Text prototype */
+.pmenu{position:absolute;right:16px;top:100px;background:var(--bg);border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.2);padding:6px 0;font-size:15px;z-index:20;min-width:200px;animation:fadeUp .2s var(--ease-in) both}
+.pmenu div{padding:9px 16px}
+/* practise = the official recording screen (locked recording v7), ported class for class */
+.recv{position:absolute;inset:44px 0 0 0;display:flex;flex-direction:column;background:var(--bg)}
+.recv .rh{height:48px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 16px}
+.recv .rwhere{margin:0;font-size:13px;font-weight:600;color:var(--mut);font-variant-numeric:tabular-nums}
+.recv .rband{flex:1;min-height:0;display:flex;flex-direction:column;padding:0 16px 20px}
+.recv .rslidebox{flex:none;padding-bottom:16px}
+.recv .rslide{position:relative;width:100%;aspect-ratio:16/9;border-radius:16px;border:1px solid #ebebeb;overflow:hidden;background:#0B2350;color:#fff;display:flex;flex-direction:column;justify-content:center;padding:5% 6%}
+.recv .rslide .rorb{position:absolute;right:-12%;top:-30%;width:62%;aspect-ratio:1;border-radius:999px;background:rgba(255,255,255,.08)}
+.recv .rslide .rbar{height:4px;width:12%;border-radius:999px;background:#F26B21;margin-bottom:5%}
+.recv .rslide h3{margin:0;font-weight:600;line-height:1.05;letter-spacing:-.025em;font-size:26px;width:78%}
+.recv .rslide p{margin:5% 0 0;font-size:13px;line-height:1.35;color:rgba(255,255,255,.92);width:78%}
+.recv .rslide .rpg{position:absolute;right:5%;bottom:7%;font-size:11px;font-weight:600;color:rgba(255,255,255,.7)}
+.recv .rroad{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:16px;padding:16px 0}
+.recv .rdock{flex:none;padding-top:16px}
+/* one big judgement screen: the locked answer look, made large */
+.bigj{flex:1;display:flex;flex-direction:column;gap:16px;padding:6px 20px 28px}
+.bigj h2{margin:0;font-size:26px;line-height:1.15;font-weight:800;letter-spacing:-.02em;text-align:center;text-wrap:balance}
+.bigj .lineb{margin:0;font-size:16px;text-align:center}
+.faces{flex:1;display:flex;flex-direction:column;gap:10px;min-height:0}
+.faces button{flex:1;min-height:72px;border:1.5px solid rgba(18,18,18,.16)!important;border-radius:24px;display:flex;align-items:center;gap:18px;padding:0 24px;font-size:19px;font-weight:600;transition:transform .12s ease,background-color .16s ease,color .16s ease}
+.faces button span{font-size:38px;line-height:1}
+.faces button.on{background:var(--fg);color:var(--bg)!important;border-color:var(--fg)!important}
+.faces button:active{transform:scale(.98)}
+.bigj .lnk{height:34px;font-size:14px}
+/* prototype-only marks (not part of the app) */
+.draft{display:inline-block;font:500 9.5px "IBM Plex Mono",monospace;letter-spacing:.06em;background:#eee9fc;color:#6d4bd8;border-radius:4px;padding:1px 6px;vertical-align:2px;margin-left:6px}
+.behind{font:500 12px/1.6 "IBM Plex Mono",monospace;color:var(--hid);background:var(--hid-soft);border:2px dashed var(--hid);border-radius:10px;padding:10px 12px;white-space:pre-wrap;min-height:5em}
+.behind b{color:var(--ink)}
+.legend2{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--ink-2)}
+.legend2 span{display:inline-flex;gap:6px;align-items:center}
+.sw{width:13px;height:13px;border-radius:4px;display:inline-block;border:2px solid}
+.sw.u{border-color:var(--good);background:var(--good-soft)}
+.sw.h{border-color:var(--hid);background:var(--hid-soft);border-style:dashed}
+/* below the phone: overrides, backend, learning */
+.v8{max-width:1100px;margin:40px auto 24px;display:flex;flex-direction:column;gap:22px}
+.v8 h2{font-size:24px;line-height:1.2;margin:0;text-wrap:balance}
+.v8 .lede{margin:0;color:var(--ink-2);font-size:14.5px;max-width:78ch}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.panel h3{margin:0;font-size:16px}
+.popen{border-left:4px solid var(--hid)}
+.dec{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:7px;color:var(--ink-2);font-size:13.5px}
+.dec b{color:var(--ink)}
+.chip{display:inline-block;font:500 10px "IBM Plex Mono",monospace;letter-spacing:.08em;text-transform:uppercase;border-radius:4px;padding:1px 6px;vertical-align:1px}
+.chip.lock{background:var(--good-soft);color:var(--good)}
+.chip.q{background:var(--hid-soft);color:var(--hid)}
+.chip.new{background:var(--warn-soft);color:var(--warn)}
+.split{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:16px}
+.flow{display:flex;flex-direction:column;gap:10px}
+.frow{display:flex;gap:10px;flex-wrap:wrap;align-items:stretch}
+.node{flex:1 1 220px;min-width:0;border-radius:12px;padding:12px 14px;border:2px dashed var(--hid);background:var(--hid-soft);display:flex;flex-direction:column;gap:4px}
+.node.u{border:2px solid var(--good);background:var(--good-soft)}
+.node .k{font:500 10px "IBM Plex Mono",monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.node h4{margin:0;font-size:15px;color:var(--ink)}
+.node p{margin:0;font-size:13px;color:var(--ink-2)}
+.node code,.panel code{font:500 12px "IBM Plex Mono",monospace;color:var(--ink)}
+.dn{align-self:center;color:var(--ink-3);font-size:18px;line-height:1}
+.formula{font:500 13px/1.7 "IBM Plex Mono",monospace;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow-x:auto;white-space:pre;color:var(--ink)}
+.tscroll{overflow-x:auto}
+.tscroll table{border-collapse:collapse;width:100%;font-size:13px;min-width:460px}
+.tscroll th,.tscroll td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.tscroll th{font:500 10.5px "IBM Plex Mono",monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+
+@media (prefers-reduced-motion:reduce){.sc *,.sc{animation-duration:.01s!important;animation-iteration-count:1!important;transition-duration:.01s!important}.ghost{display:none!important}}
+</style>
+
+<style>
+/* ===== v10: ONE chat, two views. Lens ON = the walk overlay (big, one step); lens OFF = the Lounge chat ===== */
+.sc>.ov{top:44px}
+/* chat view (lens off): the locked Lounge, scrollable */
+.sc .lounge{overflow-y:auto;justify-content:flex-start;padding:10px 14px 14px;gap:8px}
+.sc .lounge>:first-child{margin-top:auto}
+.row-l{display:flex;gap:6px;align-items:flex-end;max-width:88%;margin-right:auto}
+.lounge .av{width:20px;height:20px}.lounge .av svg{width:15px;height:15px}
+.row-r{display:flex;justify-content:flex-end;max-width:100%}
+.lb.them{background:var(--mutbg);color:var(--fg);max-width:100%}
+.lb .new{font-weight:600}.lb .new em{font-style:normal;color:var(--pri)}
+.lb s{color:var(--mut);text-decoration-thickness:1.5px}.lb.me s{color:rgba(255,255,255,.72)}
+.meta-l{align-self:center;font-size:11.5px;color:var(--mut);padding:6px 0 0}
+.lb.me.aud{width:78%;padding:8px 12px;display:flex;flex-direction:column;gap:4px}
+.lb.me .play .pb{background:#fff}.lb.me .play .pb::after{border-left-color:var(--pri)}
+.lb.me .play.on .pb::after{background:linear-gradient(90deg,var(--pri) 0 4px,transparent 4px 8px,var(--pri) 8px 12px)}
+.lb.me .wave i{background:#fff;opacity:.45}.lb.me .wave i.on{opacity:1}
+.lb.me .play .tm{color:rgba(255,255,255,.85)}
+.lb.me .cap{font-size:13px;opacity:.92}
+/* a special bubble: tap it and the lens turns on, on that step */
+.lb.spc{cursor:pointer;position:relative;padding-right:30px;transition:transform .12s ease,box-shadow .16s ease}
+.lb.spc::after{content:"›";position:absolute;right:11px;top:50%;transform:translateY(-50%);font-size:20px;color:var(--mut)}
+.lb.spc:active{transform:scale(.98)}
+.lb.spc.waiting{box-shadow:0 0 0 2px var(--pri)}
+.lb.me.spc::after{color:#fff}
+.lb .hint{display:block;font-size:12.5px;color:var(--mut);margin-top:3px}
+.lb.me .old{text-decoration:line-through;opacity:.7}
+.itcard{cursor:pointer}
+.itcard.spc{padding-right:28px}
+.itcard.spc::after{content:"›";position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:20px;color:var(--mut)}
+/* lens view (on): the locked overlay, made into a big chat with built-in buttons */
+.ov.lens .sb{gap:16px;padding:14px 20px}
+.ov.lens .row-l{max-width:94%;gap:10px}
+.ov.lens .av{width:22px;height:22px}
+.ov.lens .av svg{width:17px;height:17px}
+.ov.lens .row-l{gap:7px}
+.ov.lens .lb{font-size:18.5px;line-height:1.45;padding:13px 17px;border-radius:22px}
+.ov.lens .lb.me.aud{width:90%;padding:13px 17px;gap:8px}
+.ov.lens .lb.me .cap{font-size:16px}
+.ov.lens .play .pb{width:42px;height:42px}
+.ov.lens .play .pb::after{left:16px;top:12px;border-left-width:13px;border-top-width:9px;border-bottom-width:9px}
+.ov.lens .wave{height:30px}
+/* the helper-words interface: the whole screen */
+.picker{flex:1;display:flex;flex-direction:column;gap:14px;border:1.5px solid var(--line);border-radius:24px;padding:18px 16px;min-height:0}
+.picker .tok{font-size:25px;line-height:1.3;gap:6px 6px}
+.picker .tok button{padding:8px 9px;border-radius:10px;border:1.5px solid var(--line)}
+.picker .tok button.sel{background:var(--pri-soft);color:var(--pri);border-color:var(--pri);font-weight:600}
+.picker .count{font-size:13px}
+.ov.lens .faces{flex:1}
+/* judging, as system bubbles: the clip in one, the question with its options in the next */
+.ov.lens .row-l:has(.wide){max-width:100%}
+.lb.them.wide{flex:1}
+.lb.them.wide .play{margin-top:10px}
+.lb.them.qb .q3{display:block;font-weight:700;margin-bottom:10px}
+.lb.them.qb .faces{flex:none;display:flex;flex-direction:column;gap:8px}
+.lb.them.qb .faces button{min-height:52px;flex:none;background:var(--bg);border-radius:16px;font-size:17px;padding:0 16px;gap:12px}
+.lb.them.qb .faces button span{font-size:26px}
+.lb.them.qb .faces button.on{background:var(--fg)}
+.lb.them.qb .lnk{height:34px;font-size:14px;margin-top:4px}
+/* answers: full width, like the sharing options */
+.ov.lens .faces.wide-ans{flex:1;display:flex;flex-direction:column;gap:10px;min-height:0}
+.ov.lens .faces.wide-ans button{flex:1;min-height:72px;max-height:120px;border:1.5px solid var(--line)!important;border-radius:16px;padding:0 22px;gap:18px;font-size:21px;font-weight:600;background:var(--bg)}
+.ov.lens .faces.wide-ans button span{font-size:36px}
+.ov.lens .faces.wide-ans button.on{background:var(--bg);color:var(--fg)!important;border-color:var(--fg)!important}
+.ov.lens .q2{margin:6px 0 0;font-size:26px;line-height:1.15;font-weight:800;letter-spacing:-.02em;text-align:center}
+.answered{font-size:13px;color:var(--mut);text-align:center}
+.locked .faces button:not(.on),.locked .opt:not(.on){opacity:.35}
+.locked .faces button,.locked .opt{pointer-events:none}
+.ov.lens .vid{max-height:320px}
+.procmark{display:flex;justify-content:center;padding:20px 0}
+.lensflag{font:500 11px "IBM Plex Mono",monospace;letter-spacing:.1em;text-transform:uppercase;padding:3px 9px;border-radius:99px;align-self:flex-start}
+.lensflag.on{background:var(--ink);color:var(--surface)}
+.lensflag.off{border:1px solid var(--line);color:var(--ink-2)}
+/* the practise recorder: no slide; the coach's bubble on top */
+.recv .rroad{justify-content:flex-start;padding-top:8px}
+.recv .rroad .row-l{max-width:100%}
+.recv .rroad .lb{font-size:18.5px;line-height:1.45;padding:13px 17px;border-radius:22px}
+.recv .rroad .av{width:22px;height:22px}.recv .rroad .av svg{width:17px;height:17px}
+.recv .rroad .row-l{gap:7px}
+.recv .rroad .say{margin-top:auto;margin-bottom:auto}
+.para.gr::before{background:#d6d2cb}
+.para.nob::before{display:none}
+.para em.hw{font-style:normal;color:var(--pri);font-weight:600;cursor:pointer}
+.para.tap{cursor:pointer}.para.tap:active{background:var(--mutbg)}
+/* the flow diagram */
+.fd{display:flex;flex-direction:column;gap:8px}
+.fd .r{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch}
+.fd .n{flex:1 1 150px;min-width:0;background:var(--surface);border:2px solid var(--good);border-radius:12px;padding:9px 11px;display:flex;flex-direction:column;gap:2px}
+.fd .n.h{border:2px dashed var(--hid);background:var(--hid-soft)}
+.fd .n.full{border-color:var(--ink)}
+.fd .n.ai{border:3px solid var(--ai);background:var(--ai-soft)}
+.fd .n.ai i{color:var(--ai)}
+.sw.a{border-color:var(--ai);background:var(--ai-soft)}
+.fd .n b{font-size:13.5px;color:var(--ink)}
+.fd .n span{font-size:12px;color:var(--ink-2)}
+.fd .n i{font:500 10px "IBM Plex Mono",monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-style:normal}
+.fd .ar{align-self:center;color:var(--ink-3);font-size:16px}
+.fd .loop{border-left:3px solid var(--line);margin-left:14px;padding-left:12px;display:flex;flex-direction:column;gap:8px}
+.fd .lt{font:500 11px "IBM Plex Mono",monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.av.coach{background:#bfc7d6}.av.coach svg{fill:#5d6b85}
+.opt .sub{display:flex;align-items:center;gap:10px;font-size:15px;padding:6px 2px;cursor:pointer}
+.opt .tick.sm{width:18px;height:18px;border-radius:5px;font-size:11px;border:1.5px solid rgba(18,18,18,.35);display:inline-flex;align-items:center;justify-content:center;color:var(--bg)}
+.opt .sub.on .tick.sm{background:var(--fg);border-color:var(--fg)}
+.opt .addc{font-size:14px;color:var(--mut);text-align:left;padding:6px 2px}
+.opt .addok{border:1px solid var(--line)!important;border-radius:10px;padding:0 12px;font-size:14px;font-weight:600}
+.opt .sub:not(.on) .tick.sm{background:transparent!important;border-color:rgba(18,18,18,.35)!important}
+.vthumb{display:flex;align-items:center;justify-content:center;position:relative;width:150px;aspect-ratio:16/9;border-radius:10px;background:linear-gradient(135deg,#30343c,#17191e);margin:6px 0}
+.vthumb .pl{width:26px;height:26px;border-radius:99px;background:rgba(255,255,255,.94);position:relative}
+.vthumb .pl::after{content:"";position:absolute;left:10px;top:7px;border-left:9px solid #121212;border-top:6px solid transparent;border-bottom:6px solid transparent}
+.vthumb .len{position:absolute;right:6px;bottom:4px;font-size:10px;color:#fff}
+.oldv{display:block;margin-top:8px;font-size:12.5px;color:var(--mut);text-decoration:underline;text-underline-offset:3px;text-align:left}
+.oldtxt{display:block;margin-top:6px;padding-top:6px;border-top:1px solid var(--line);font-size:13.5px;color:var(--mut)}
+.qa{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:16px}
+.qa .panel p{margin:0;font-size:13.5px;color:var(--ink-2)}
+.qa .panel p b{color:var(--ink)}
+/* ===== AI voice addition (draft, not locked): one grey app bubble with the one player ===== */
+.ailab{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;margin-bottom:8px}
+.ov.lens .ailab{font-size:14px}
+.ailab .spark{width:17px;height:17px;border-radius:5px;background:var(--fg);color:var(--bg);display:inline-flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;letter-spacing:.02em}
+.lb .aimake{display:block;margin-top:10px;height:42px;border-radius:99px;background:var(--fg);color:var(--bg);font-size:15px;font-weight:600;width:100%;text-align:center}
+.recv .say.read{font-size:19px;line-height:1.5;font-weight:500}
+.aiadd{border-left:4px solid var(--pri)}
+</style>
+
+<section class="v8" style="margin-top:8px" aria-labelledby="fl">
+  <h2 id="fl">The flow</h2>
+  <p class="lede">Green border = the speaker sees it in the lens (the walk). Black border = full screen. Dashed purple = backend only. <b>Thick orange = the new AI voice step</b> (draft). ✕ at any point turns the lens off and shows the same steps in the Lounge chat.</p>
+  <div class="fd">
+    <div class="r">
+      <div class="n full"><i>full screen</i><b>Record the Take</b><span>Official recording screen (v7)</span></div><span class="ar">→</span>
+      <div class="n h"><i>backend</i><b>Pick the moments</b><span>willfidence = S × W per sentence. Green = the best per slide, ≥ 0.6, ≥ 5 words, top 3. Exercise = the lowest.</span></div><span class="ar">→</span>
+      <div class="n"><i>lens on by itself</i><b>Green moment 1…3</b><span>Your clip (orange) + "Good job" and a signed line</span></div><span class="ar">→</span>
+      <div class="n"><i>after each moment</i><b>Choose your helper words</b><span>Full-screen picker · Skip</span></div>
+    </div>
+    <div class="r">
+      <div class="n"><i>one per Take</i><b>Exercise</b><span>Words weaker → <b>Clearer version</b> (Accept and practise · Keep my words). Voice weaker → <b>Exercise</b> (video + line · Practise · Skip)</span></div><span class="ar">→</span>
+      <div class="n full"><i>full screen</i><b>Practise</b><span>Recorder without the slide: the coach's bubble, the words, Stop</span></div><span class="ar">→</span>
+      <div class="n"><i>message</i><b>Better → Good job</b><span>The locked praise for a better try ("That sounded more assured than the first.") · Next → judging</span></div>
+    </div>
+    <div class="lt" style="margin-top:6px">The voice Exercise, in order (new)</div>
+    <div class="r">
+      <div class="n"><i>1 · exercise</i><b>Exercise</b><span><b>Video fits exactly</b> (exact fit, same problem as picked) → the video and its instruction. <b>No good match</b> → the AI clip in its place: "Here’s how you could say it." · ▶ AI version of your voice · "Now try saying it like that." Then Practise.</span></div><span class="ar">→</span>
+      <div class="n full"><i>2 · locked</i><b>First try</b><span>The recorder; the machine checks it</span></div><span class="ar">→</span>
+      <div class="n"><i>3a · better</i><b>Good job</b><span>Locked praise. No AI clip.</span></div>
+    </div>
+    <div class="r">
+      <span class="ar" style="padding-left:6px">↳ 3b · not yet</span>
+      <div class="n ai"><i>new · AI voice</i><b>That was good. But what if you said it more like this?</b><span>Only after the video and a try. Replaces the encouragement. The AI version of your voice, audio only, tap to play · "Now try saying it like that." · Practise again · Skip</span></div><span class="ar">→</span>
+      <div class="n ai"><i>new · each later not yet</i><b>Not yet. Listen to how you sound and how you might sound. Keep calm and try again.</b><span>Your try (orange) and the AI clip again. <b>At most 3 AI clips per exercise</b>, the Exercise screen's one included.</span></div><span class="ar">→</span>
+      <div class="n full"><i>4 · locked</i><b>Practise again</b><span>The same recorder; the next try is measured on the one exercise metric too</span></div>
+    </div>
+    <div class="loop"><span class="lt">↺ practice loop: up to 3 tries, nothing in between</span></div>
+    <div class="r">
+      <div class="n"><i>once, after practice</i><b>Judge other speakers</b><span>1 per try, at least 1, at most 3 · bridge bubble · "1 of N" · each answer moves on</span></div><span class="ar">→</span>
+      <div class="n"><i>GPT-4o · 2–3 sentences</i><b>Closing summary</b><span>Signed journey copy + real progress, practice, coach's asks, helper words · Next</span></div><span class="ar">→</span>
+      <div class="n full"><i>full screen</i><b>Ideal Text</b><span>No bookmarks · helper words orange (tap → their step) · tap a moment sentence → its step · <b>Record Take 3</b> · grey <b>Close</b> → the chat</span></div><span class="ar">→</span>
+      <div class="n"><i>Take 2 on</i><b>Sharing</b><span>General community · Only my community (saved, ticked) · Only me → then the recorder</span></div>
+    </div>
+    <div class="r">
+      <div class="n h"><i>backend</i><b>Learning</b><span>Others' answers → soft labels (2 matching) → willfidence weights · relevance from behaviour</span></div>
+      <div class="n"><i>lens off</i><b>The Lounge chat</b><span>The same steps as bubbles. Tap a bubble with › → the lens opens on that step. Ends with the Ideal Text card + the summary (plain). A coach update rewrites the summary in place; the earlier version stays one tap away.</span></div>
+    </div>
+  </div>
+</section>
+<div class="layout">
+  <aside class="side" aria-label="Prototype controls">
+    <h1>Lens on, lens off · v10</h1>
+    <p>There's one chat, always. <b>Lens on</b> shows its current step full screen, in the walk's look, with built-in buttons and no message box. <b>✕ turns the lens off</b> and shows the same chat as normal Lounge bubbles. <b>Tap a bubble with ›</b> and the lens turns on again on that step.</p>
+    <span class="lensflag on" id="lensflag">Lens on</span>
+    <div class="legend2"><span><i class="sw u"></i>The speaker sees it</span><span><i class="sw h"></i>Backend only</span></div>
+    <div class="knob"><span class="lab">Exercise sentence's problem</span>
+      <div class="seg" data-knob="low"><button data-v="words">Words → Clearer version</button><button data-v="voice">Voice → Exercise</button></div></div>
+    <div class="knob"><span class="lab">Green moments this Take</span>
+      <div class="seg" data-knob="green"><button data-v="three">3 above the floor</button><button data-v="none">None above the floor</button></div></div>
+    <div class="knob"><span class="lab">Coach left a note for the Take</span>
+      <div class="seg" data-knob="coach"><button data-v="off">No</button><button data-v="on">Yes</button></div></div>
+    <div class="knob"><span class="lab">Other speakers' clips to judge</span>
+      <div class="seg" data-knob="pool"><button data-v="full">Available</button><button data-v="empty">None yet</button></div></div>
+    <div class="knob"><span class="lab">Coach sends feedback after the review</span>
+      <div class="seg" data-knob="update"><button data-v="off">No</button><button data-v="on">Yes (after Record Take 3)</button></div></div>
+    <div class="knob"><span class="lab">Your communities</span>
+      <div class="seg" data-knob="comm"><button data-v="none">None yet</button><button data-v="one">One (Invita)</button><button data-v="two">Two</button></div></div>
+    <div class="knob"><span class="lab">The machine hears an improvement</span>
+      <div class="seg" data-knob="better"><button data-v="2">On the 2nd try</button><button data-v="1">On the 1st try</button><button data-v="0">Never</button></div></div>
+    <button class="restart" id="walkai" type="button" style="background:#e8590c;color:#fff">Walk it: video → try → AI voice</button>
+    <button class="restart" id="jumpai" type="button" style="background:var(--surface);color:var(--ink);border:1px solid var(--line)">Jump to the AI voice step</button>
+    <div class="knob"><span class="lab">AI version of your voice <span class="draft">new</span></span>
+      <div class="seg" data-knob="ai"><button data-v="ready">Ready</button><button data-v="first">Not made yet</button><button data-v="off">Turned off</button></div></div>
+    <div class="knob"><span class="lab">Voice exercise the machine picks <span class="draft">new</span></span>
+      <div class="seg" data-knob="ex"><button data-v="pace">Pace</button><button data-v="pause">Pause</button><button data-v="stress">Stress</button></div></div>
+    <div class="knob"><span class="lab">The library video for this problem <span class="draft">new</span></span>
+      <div class="seg" data-knob="fit"><button data-v="exact">Fits exactly</button><button data-v="poor">No good match</button></div></div>
+    <div class="knob"><span class="lab">The AI example <span class="draft">new</span></span>
+      <div class="seg" data-knob="gen"><button data-v="ok">Passes its check</button><button data-v="bad">Fails, or provider down</button></div></div>
+    <div class="behind" id="behind" aria-live="polite"></div>
+    <div class="knob"><span class="lab">Show the coach cases</span>
+      <div class="seg"><button id="pv" type="button">Video from the coach</button><button id="pt" type="button">Message from the coach</button><button id="pu" type="button">Coach updates the feedback</button><button id="pe" type="button">Exercise with a coach video</button><button id="pl" type="button">Coached Take in the Lounge</button></div></div>
+    <button class="restart" id="coached" type="button" style="background:var(--surface);color:var(--ink);border:1px solid var(--line)">Show a coached Take</button>
+    <button class="restart" id="restart" type="button">Finish Take 2 again</button>
+  </aside>
+  <div class="stage"><div class="phonewrap" id="pw"><div class="ph"><div class="sc" id="app"></div></div></div></div>
+</div>
+
+<section class="v8" aria-labelledby="ai1">
+  <h2 id="ai1">What the AI voice adds <span class="draft">draft for your review</span></h2>
+  <p class="lede">Everything above this line is the locked design, unchanged. The AI voice changes one message on one screen: <b>after a try that is not yet better</b>, in the voice Exercise. Use <b>Show the AI voice step</b> in the panel to jump there.</p>
+  <div class="qa">
+    <div class="panel aiadd"><h3>What the speaker sees</h3><ol class="dec">
+      <li><b>Not yet, AI voice ready:</b> in place of the encouragement, one app bubble: "That was good. But what if you said it more like this?", the label "AI version of your voice" and the one player. The speaker taps play to hear it; nothing plays by itself. Then the locked "Practise again" and "Skip".</li>
+      <li><b>Again, at most 3 times:</b> the first AI clip after a try says "That was good. But what if you said it more like this?"; every later one says "Not yet. Listen to how you sound and how you might sound. Keep calm and try again." At most 3 AI clips per exercise, counting the Exercise screen's. The locked 3-try limit and move-on line stay.</li>
+      <li><b>The video rule:</b> the Exercise shows the library video only when it fits <b>exactly</b> (its main target was detected) <b>and</b> targets the same problem the severity picker chose. Otherwise the AI clip takes the video's place on the Exercise screen, before the first try. When you later record a video that fits, it replaces the AI clip.</li>
+      <li><b>No question and no consent screen in the walk.</b> The agreement is part of agreeing to use the app, and the AI voice is made in the background (from Take 1 unless you decide otherwise).</li>
+      <li><b>No AI voice yet, or turned off in Data &amp; consent:</b> the locked screen, unchanged.</li>
+      <li><b>The example fails its check, or ElevenLabs is down:</b> no bubble at all. The speaker never hears an unchecked clip, and the walk is the locked one.</li>
+      <li><b>Better, and the move-on line,</b> stay the locked words. The machine still decides "better" by willfidence (+0.05).</li>
+      <li><b>In the chat</b> (lens off), the AI bubble stays in the thread under the encouragement, like every other step.</li>
+    </ol></div>
+    <div class="panel aiadd"><h3>Behind it (backend only)</h3><ol class="dec">
+      <li><b>Which voice exercise:</b> pace, pause or stress, by normalized severity 0–1 against the speaker's own baseline; one at most, none when all are weak. Nothing of it reaches the screen but the listening line.</li>
+      <li><b>The clip:</b> the exercise sentence, same words, made with Eleven v4 from the speaker's clone, then checked: decodes, not clipped, the words kept, and the change really there (pace slower, a pause before the target phrase, the phrase louder and higher, never shouted).</li>
+      <li><b>The second try</b> is also measured on that one metric only (improved, similar, worsened, unclear) and stored with the before and after, for the future exercise picker. It changes nothing on screen.</li>
+      <li><b>Labels:</b> the AI clip is never a label and never enters a training set (L3).</li>
+    </ol></div>
+    <div class="panel popen"><h3><span class="chip lock">signed 12 Oct</span> New words</h3><ol class="dec">
+      <li><b>Label:</b> "AI version of your voice" (your pick).</li>
+      <li><b>"Not yet. Listen to how you sound and how you might sound. Keep calm and try again."</b> (your words) on every later not-yet.</li>
+      <li><b>The lines</b> (your words): "That was good. But what if you said it more like this?", then only the audio, no words of the sentence, then "Now try saying it like that." before the locked "Practise again".</li>
+      <li><b>The agreement:</b> where it sits in the app's first agreement is open (a tick on "Three things to confirm", or in the Terms), and counsel reviews it last.</li>
+    </ol></div>
+    <div class="panel popen"><h3><span class="chip q">open</span> For you to decide</h3><ol class="dec">
+      <li><b>A1:</b> the Clearer version branch: should the AI voice also read the accepted clearer sentence? It's left out for now, since your brief's exercises are all voice ones.</li>
+      <li><b>A2 (amended):</b> with a fitting video, the AI clip comes only after a try; without one, it takes the video's place before the first try.</li>
+      <li><b>A3 (decided):</b> Data &amp; consent gets one card, "AI version of your voice", to turn it off and delete it.</li>
+      <li><b>A4:</b> the clone is made from Take 1 in the background (no extra screen), or from a one-minute sample read once in Data &amp; consent?</li>
+    </ol></div>
+  </div>
+</section>
+<section class="v8" aria-labelledby="qa10">
+  <h2 id="qa10">How the lens works</h2>
+  <div class="qa">
+    <div class="panel"><h3>One chat, stored once</h3>
+      <p>Every step is a message in <b>one thread</b> (<code>lounge_messages</code>), each with its author: you, the app (line bank), the coach, the rewrite (LLM), or the journey message. Nothing is copied. The lens and the chat are two views of the same rows.</p>
+      <p><b>Lens on</b> (the walk): one step fills the screen, with big bubbles, ‹ › between steps, and built-in buttons. There's no message box, so the review stays fast.</p>
+      <p><b>Lens off</b> (the Lounge): the same steps as normal bubbles, answered ones with your reply, the message box at the bottom.</p>
+    </div>
+    <div class="panel"><h3>When the lens turns on</h3>
+      <p><b>By itself</b> after every Take, on the first new step.</p>
+      <p><b>When you tap a bubble with ›</b>: a moment, "Choose your helper words", the Clearer version or Exercise, a judgement, sharing, the end message, or the Ideal Text card. It opens on that step.</p>
+      <p><b>Practice, then judging:</b> try → message → "Practise again" (up to 3 tries) with nothing in between. Then, <b>once</b>, a bridge bubble ("Now 2 moments from other speakers.") and as many judgements as tries (max 3), counted in the top bar. Each answer moves on by itself.</p>
+      <p>A step still waiting for you has an <b>orange outline</b> in the chat. Answered steps open read-only, showing your answer. <b>Helper words stay editable</b>: open them, change them, and the chat keeps the old words crossed out above the new ones (rule 5: every version stays in the history).</p>
+    </div>
+    <div class="panel"><h3><span class="chip lock">lock</span> Decided 2026-10-12</h3><ol class="dec">
+      <li><b>New words approved:</b> Lines A and B, the judging bridge ("Now N moments from other speakers.", "Moment N of N"), "Close", the closing-message lines and "Continue review".</li>
+      <li><b>No sentence above the floor:</b> the single best, with the softer signed line.</li>
+      <li><b>The coach's note</b> comes first when there is one.</li>
+      <li><b>No clips from other speakers yet:</b> no judging. Sharing comes next.</li>
+      <li><b>✕ while practising</b> goes back to the walk (Skip still skips).</li>
+      <li><b>Helper words of an earlier Take</b> are locked once a newer Take exists.</li>
+      <li><b>"Continue review"</b> shows in the chat while a step waits.</li>
+      <li><b>Judgements stay locked</b> once answered (my call). The first answer is the clean one.</li>
+      <li><b>Sharing</b> is asked before the next recording (Take 2 on), not at the end of the review. Options: General community · Only my community (saved communities inside, all ticked by default, "+ Add a community with a passcode") · Only me.</li>
+      <li><b>End of the review in the chat (locked by the founder, 2026-10-12):</b> the Ideal Text card ("Q3 Board pitch · AI-generated text · Take N", with ›), then the closing summary as a plain bubble: 2–3 sentences by GPT-4o, starting from the signed journey copy and adding this Take's real progress, the practice result, the coach's asks and the helper words. No numbers, and nothing to tap. A coach update rewrites the summary in place; the earlier version stays one tap away under it.</li>
+      <li><b>Ideal Text page:</b> no bookmarks (no margin bars). Helper words are simply orange in the text; tapping them opens that slide's helper-words step. Tapping a moment or exercise sentence opens that step in the walk.</li>
+      <li><b>An accepted clearer version</b> doesn't change the Ideal Text. It's what you practise, and it shows in the Ideal Text once you say it in the next Take (rule 5).</li>
+      <li><b>The summary after Take 1</b> claims no progress (there's nothing to compare yet). GPT-4o starts from the signed Take 1 copy plus the moments, practice and helper words.</li>
+      <li><b>A coach update that arrives during a recording</b> waits in the chat. The recording is never interrupted (rule 3).</li>
+      <li><b>Guests</b> get the same chat and lens, kept in their browser. Signing in moves it to the server (my call).</li>
+    </ol></div>
+    <div class="panel popen" hidden><h3><span class="chip q">open</span> For you to decide</h3>
+      <ol class="dec">
+        <li>Can an answered <b>judgement</b> be changed by reopening it? The database already keeps revisions. The prototype shows it locked.</li>
+        <li>Should the <b>Ideal Text card</b> open in the lens like the other steps, or keep its own page (as shown)?</li>
+        <li>In the chat, should a small <b>"Continue review"</b> button appear while steps are still waiting (new words), or is the orange outline enough?</li>
+      </ol>
+    </div>
+  </div>
+</section>
+<section class="v8"><h2>Backend: how a moment is picked</h2>
+  <div class="flow">
+    <div class="frow"><div class="node u"><span class="k">in</span><h4>The Take</h4><p>Audio + slides, through processing authorization, as today.</p></div></div>
+    <span class="dn">↓</span>
+    <div class="frow"><div class="node"><span class="k">1 · split</span><h4>Sentences, per slide</h4><p>Transcript → sentences, each with its time and slide. <b>New:</b> today the unit is a 75-word block.</p></div></div>
+    <span class="dn">↓</span>
+    <div class="frow">
+      <div class="node"><span class="k">2a · sound</span><h4>S, voice score</h4><p>The 7 voice cues against the speaker's usual voice, 0–1. <code>voice_confidence.py</code>, unchanged.</p></div>
+      <div class="node"><span class="k">2b · words</span><h4>W, words score</h4><p>Few fillers and hedges · fits the slide · holds together. <code>willfidence.py</code>, now per sentence.</p></div>
+    </div>
+    <span class="dn">↓</span>
+    <div class="formula">willfidence(sentence) = S × W                                  0 … 1
+green(slide)  = the sentence with max willfidence on the slide, if ≥ FLOOR (0.6) and ≥ 5 words
+moments       = the top 3 green sentences, in slide order
+none above    → the single best sentence, softer signed line
+exercise      = the sentence with the lowest willfidence (never labelled)
+  W &lt; S       → Clearer version (LLM rewrite, as today)
+  S ≤ W       → voice Exercise (library match, as today)
+practice try  Δ = willfidence(try) − willfidence(original)
+  Δ ≥ +0.05   → "Good job" (signed)   ·   otherwise → "Practise" encouragement (signed), up to 3 tries</div>
+    <div class="split">
+      <div class="panel"><h3>What changes in the backend</h3><ul class="dec">
+        <li><b>Unit:</b> 75-word block → sentence.</li>
+        <li><b>Picker:</b> 5 sound bands → one willfidence number with a floor.</li>
+        <li><b>Served label:</b> confident / weak → <b>green only</b>. The exercise target is sent with no label.</li>
+        <li><b>Caps:</b> unlimited → 1 per slide, 3 per Take. Rewrites: at most 1 per Take.</li>
+        <li><b>Willfidence</b> goes from dark and per Take to live and per sentence. Same S × W.</li>
+      </ul></div>
+      <div class="panel"><h3>Numbers</h3><ul class="dec">
+        <li><span class="chip lock">lock</span> FLOOR 0.6 at launch, then calibrated so about 7 in 10 blind judges say 👍 to green sentences.</li>
+        <li><span class="chip lock">lock</span> MARGIN +0.05 for a better try.</li>
+        <li><span class="chip lock">lock</span> At least 5 words for a sentence to be green.</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <h2>Learning pipes</h2>
+  <div class="flow">
+    <div class="frow">
+      <div class="node"><span class="k">source a</span><h4>Coach, blind</h4><p>Judges before seeing the machine's guess. Moves to 👍 / 😐 / 👎 + Audio unclear (coach panel lock).</p></div>
+      <div class="node u"><span class="k">source b · new</span><h4>Other speakers, blind</h4><p>Inside practice. One moment per try, from people who share. <b>Becomes a label once 2 judges match.</b></p></div>
+      <div class="node u"><span class="k">not a label</span><h4>Your own try</h4><p>On hold. If kept: stored, never a training label (L3).</p></div>
+    </div>
+    <span class="dn">↓</span>
+    <div class="frow"><div class="node"><span class="k">1 · label</span><h4>Soft label per sentence</h4><p>👍 1 · 😐 0.5 · 👎 0. The average of blind judges, counted once 2 match. Audio unclear → a fresh judge, and twice → quarantine (<code>label_quorum.py</code>).</p></div></div>
+    <span class="dn">↓</span>
+    <div class="frow">
+      <div class="node"><span class="k">2 · learn</span><h4>Tune the willfidence weights</h4><p>Fit the 7 voice cues and 3 word parts so S × W predicts the soft label. Speaker-disjoint split, starting after ≥200 labels.</p></div>
+      <div class="node"><span class="k">2b · calibrate</span><h4>Set the FLOOR</h4><p>Where about 7 in 10 blind judges said 👍 to green sentences (<code>v4_reached_bar.py</code>).</p></div>
+    </div>
+    <span class="dn">↓</span>
+    <div class="frow">
+      <div class="node"><span class="k">3 · check</span><h4>Golden set</h4><p>The one sealed set of 50, re-sealed under the new question version. A new weight set must beat the current one.</p></div>
+      <div class="node"><span class="k">4 · promote</span><h4>You promote it</h4><p><code>willfidence-v2</code>. The old version stays in the history.</p></div>
+    </div>
+    <span class="dn">↓</span>
+    <div class="frow"><div class="node"><span class="k">side pipe · relevance</span><h4>Did the message help?</h4><p>Practised · skipped · retried · did the next Take's willfidence on that slide rise. A report for you, not a model label.</p></div></div>
+  </div>
+</section>
+<script>
+(function(){
+const P=["Last quarter our growth doubled, and it came from two markets we entered in spring.",
+  "We think the timing matters, because the window closes once the incumbents catch up with pricing.",
+  "So today I'm asking for approval on the hiring plan.",
+  "Two hires by March keep that lead."];
+const P2V="The window closes once the incumbents match our price.";
+const GREENS=[
+  {i:0,slide:1,t:"0:09",w:"0.78",S:"0.86",W:"0.91",line:"Sounded more confident than usual!",bank:"B01"},
+  {i:2,slide:2,t:"0:05",w:"0.71",S:"0.80",W:"0.89",line:"You ended it like a statement, not a question. Straight and sure!",bank:"B07"},
+  {i:3,slide:4,t:"0:04",w:"0.83",S:"0.90",W:"0.92",line:"Your voice had real melody. It sounded alive!",bank:"B02"}];
+const LOW={i:1,slide:3,t:"0:11"};
+const INSTR="Slow down on “March”, then let the sentence end low.";
+const LINE_A="Say this one like your confident moment.";
+const LINE_B="Now one moment from another speaker.";
+const ENCOURAGE="It was better, and I have yet another practice for you to try!";
+const IMPROVED="That sounded more assured than the first.";
+const MOVEON="Great effort! Let's move on and come back to this one later.";
+const JOURNEY2="Your presentation is stronger now.<br><br>We’ve seen your message become clearer. Now let’s focus on making the delivery feel natural and confident.<br><br>Use the orange-marked text as your anchors - not a script - and try to speak as to a friend.";
+const Q="Does this sound confident to you?";
+/* ---- AI voice addition (draft) ---- */
+const AI_LISTEN={pace:"Listen to how this version gives each idea a little more space.",pause:"Listen for the pause before the main point.",stress:"Listen to how the important phrase stands out."};
+const AI_THEN="Then try it again in your own voice.";
+const AI_LINE="That was good. But what if you said it more like this?";
+const AI_NOW="Now try saying it like that.";
+const AI_AGAIN="Not yet. Listen to how you sound and how you might sound. Keep calm and try again.";
+const AI_MAX=3;
+const AI_OFFER="Want to hear how this could sound, in your own voice?";
+const AI_AGREE="To make it, a one-minute recording of your voice goes to ElevenLabs, a voice AI company that builds the AI version for us. Only you hear it, and you can delete it at any time in Data & consent.";
+const AI_SAMPLE="I grew up in a small town, and every summer we drove to the coast. The road took six hours, and my father would stop at the same café halfway there. We always ordered the same thing. Years later I went back, and the café was still there, with the same blue door. I sat by the window for a long time, and for a moment I was ten years old again.";
+let aiReady=false,aiNo=false,aiFlow=null,aiFrom=null,aiTicks={own:false,agree:false},recMode=null;
+const knobs={coachKind:"video",comm:"one",low:"words",better:"2",green:"three",coach:"off",pool:"full",update:"off",ai:"ready",ex:"pace",gen:"ok",fit:"exact"};
+const COACHUPD="I listened to Take 2 again: the pricing line rushes. Take a breath before “match our price” and let it land.";
+const SOFT='On this take, this landed the most confident — and there is still room to improve.';const COACHNOTE='You opened with the numbers, which is exactly right. Now let the pause after “doubled” breathe. It’s the moment the board decides to lean in.';
+try{const s=JSON.parse(localStorage.getItem("mf-v10-ai3-knobs")||"null");if(s)Object.assign(knobs,s);}catch(e){}
+
+const app=document.getElementById("app"),behindEl=document.getElementById("behind"),flag=document.getElementById("lensflag");
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const AV=`<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="4.2"/><path d="M3.5 24c.6-5 4.1-8 8.5-8s7.9 3 8.5 8z"/></svg>`;
+const vthumb=len=>`<span class="vthumb"><span class="pl"></span><span class="len">${len}</span></span>`;
+const avC=()=>`<span class="av coach" aria-label="your coach">${AV}</span>`;
+const av=()=>`<span class="av" aria-label="profile picture">${AV}</span>`;
+function wave(n,seed){let h="";for(let i=0;i<n;i++)h+=`<i style="height:${5+((i*7+seed)%15)}px"></i>`;return `<div class="wave">${h}</div>`;}
+const player=(t,seed=0)=>`<button class="play" data-play type="button" aria-label="Play"><span class="pb"></span>${wave(24,seed)}<span class="tm">${t}</span></button>`;
+const pill=(t,act,o={})=>`<button class="pill" type="button" data-act="${act}" ${o.disabled?"disabled":""}>${o.dot?'<span class="rd"></span>':""}${t}</button>`;
+const lnk=(t,act)=>`<button class="lnk" type="button" data-act="${act}">${t}</button>`;
+const voiceMark=()=>`<div class="vm" role="status" aria-label="Loading"><span class="ring r1"></span><span class="ring r2"></span><span class="ring r3"></span><svg width="27" height="27" viewBox="0 0 56 56"><circle cx="12" cy="28" r="4" fill="#121212"/><circle cx="28" cy="28" r="6" fill="#121212"/><circle cx="44" cy="28" r="4" fill="#121212"/></svg></div>`;
+const L=h=>`<div class="row-l">${av()}<div class="lb them">${h}</div></div>`;
+const Lsp=(h,i,coach)=>`<div class="row-l">${coach?avC():av()}<div class="lb them spc${waiting(i)?" waiting":""}" data-open="${i}" role="button">${h}</div></div>`;
+const R=h=>`<div class="row-r"><div class="lb me">${h}</div></div>`;
+const Raud=(cap,t,seed,i)=>`<div class="row-r"><div class="lb me aud${i!=null?" spc":""}"${i!=null?` data-open="${i}" role="button"`:""}>${cap?`<span class="cap">${cap}</span>`:""}${player(t,seed)}</div></div>`;
+const crossed=`<s>We think the timing matters, because the</s> window closes once the incumbents <s>catch up with pricing</s>.`;
+const newer=`<span class="new"><em>The</em> window closes once the incumbents <em>match our price</em>.</span>`;
+const FACE={Yes:"👍",["In-between"]:"😐",No:"👎"};
+
+/* ---------- the one store: a list of steps (each = one or more messages, one author each) ---------- */
+let steps,lens,walkDone,procTimer;
+const waiting=i=>steps[i]&&!steps[i].done&&!steps[i].chatOnly&&steps[i].k!=="end";
+function addStep(s){steps.push(s);return steps.length-1;}
+function firstWaiting(){return steps.findIndex((s,i)=>waiting(i));}
+
+function start(){
+  steps=[];fromText=false;rec3=false;walkDone=false;clearTimeout(procTimer);
+  aiReady=knobs.ai==="ready";aiNo=knobs.ai==="off";aiFlow=null;aiFrom=null;aiTicks={own:false,agree:false};recMode=null;
+  addStep({k:"history",chatOnly:true});
+  addStep({k:"take",chatOnly:true,proc:true});
+  if(knobs.coach==="on")addStep({k:"coach"});
+  const G=knobs.green==="none"?[GREENS[2]]:GREENS;
+  G.forEach((g,n)=>{addStep({k:"moment",g,n,N:G.length,soft:knobs.green==="none"});addStep({k:"helpers",g,sel:[],versions:[]});});
+  addStep(knobs.low==="words"?{k:"clearer"}:{k:"exercise"});
+  /* processing (the locked recording screen shows it; if you leave it, the chat shows it) */
+  lens=null;render("same");
+  procTimer=setTimeout(()=>{steps[1].proc=false;lens=2;render("open");},1800);
+}
+/* answering the step the lens shows */
+function answer(i,val){
+  const s=steps[i];s.done=true;s.ans=val;
+  const nx=nextAfter(i);
+  if(nx==="rec"){openRecorder(i);return;}
+  if(nx!=null){lens=nx;render("next");}else{lens=null;render("close");}
+}
+/* what comes after step i: existing next step, or the walk grows */
+function nextAfter(i){
+  const s=steps[i];
+  if(i+1<steps.length&&!(s.k==="try"||s.k==="judge"||s.k==="clearer"||s.k==="exercise"))return i+1;
+  if(s.k==="clearer"){if(i+1<steps.length)return i+1;return "rec";}
+  if(s.k==="exercise"){if(s.ans==="go")return "rec";return startJudging();}
+  if(s.k==="try"){if(i+1<steps.length)return i+1;
+    if(s.ans==="again")return "rec";
+    return startJudging();}
+  if(s.k==="judge"){if(i+1<steps.length)return i+1;return addTail();}
+  if(s.k==="share")return "go3";
+  if(s.k==="end"||s.k==="update")return null;
+  return i+1<steps.length?i+1:null;
+}
+function addTail(){return addStep({k:"end"});}
+/* AI voice: one app bubble on a "not yet" try in the voice Exercise; nothing otherwise */
+function aiShows(s){return knobs.low==="voice"&&s.k==="try"&&!s.proc&&s.level!=="more"&&s.n<2;}
+function aiRank(s){let n=steps.some(x=>x.k==="exercise")&&exAI()?1:0;
+  for(const x of steps){if(x===s)return n;if(aiShows(x))n++;}return n;}
+function aiOn(s){return aiShows(s)&&aiReady&&!aiNo&&knobs.gen==="ok"&&aiRank(s)<AI_MAX;}
+const aiAvail=()=>aiReady&&!aiNo&&knobs.gen==="ok";
+/* the video rule: the video only when it fits exactly AND targets the problem picked; otherwise the AI clip takes its place */
+const videoFits=()=>knobs.fit==="exact";
+const exAI=()=>knobs.low==="voice"&&!videoFits()&&aiAvail();
+const AI_EX="Here’s how you could say it.";
+const aiClip=(seed)=>`<span class="ailab"><span class="spark" aria-hidden="true">AI</span>AI version of your voice</span>${player("0:07",seed).replace('data-play','data-play data-aiplay')}`;
+function aiBubble(s,inLens){
+  if(!aiOn(s))return "";
+  const again=aiRank(s)>0;
+  const inner=`<span style="display:block;margin-bottom:10px">${esc(again?AI_AGAIN:AI_LINE)}</span><span class="ailab"><span class="spark" aria-hidden="true">AI</span>AI version of your voice</span>${player("0:07",11).replace('data-play','data-play data-aiplay')}${again?"":`<span style="display:block;margin-top:10px">${esc(AI_NOW)}</span>`}`;
+  return inLens?`<div class="row-l">${av()}<div class="lb them wide">${inner}</div></div>`:`<div class="row-l">${av()}<div class="lb them spc${waiting(steps.indexOf(s))?" waiting":""}" data-open="${steps.indexOf(s)}" role="button">${inner}</div></div>`;
+}
+function aiHTML(){
+  if(aiFlow==="consent"){const t=(k,txt)=>`<div class="opt ${aiTicks[k]?"on":""}" data-aitick="${k}" role="checkbox" aria-checked="${aiTicks[k]}"><div class="row"><span class="tick">${aiTicks[k]?"✓":""}</span><span><b>${txt}</b></span></div></div>`;
+    return `<div class="ov lens"><div class="ovtop"><span class="nav"><span class="off">‹</span>AI version of your voice<span class="off">›</span></span><span class="x" data-act="aiNotNow" role="button" aria-label="Close">✕</span></div>
+    <div class="sb">${L(esc(AI_AGREE))}<div class="opts" style="padding:0;flex:none">${t("own","This is my own voice.")}${t("agree","I agree that ElevenLabs processes my recording to make an AI version of my voice.")}</div></div>
+    <div class="sfoot">${pill("Continue","aiAgree",{disabled:!(aiTicks.own&&aiTicks.agree)})}${lnk("Not now","aiNotNow")}</div></div>`;}
+  if(aiFlow==="making")return `<div class="ov lens"><div class="ovtop"><span class="nav"><span class="off">‹</span>AI version of your voice<span class="off">›</span></span><span></span></div>
+    <div class="sb">${L("Making the AI version of your voice")}<div class="procmark">${voiceMark()}</div></div><div class="sfoot"></div></div>`;
+  return "";
+}
+/* judging comes ONCE, after the practice: as many moments as tries (max 3) */
+function startJudging(){if(knobs.pool==="empty")return addTail();const N=Math.max(1,Math.min(3,tries));
+  let first=null;for(let j=0;j<N;j++){const ix=addStep({k:"judge",j,N});if(first==null)first=ix;}return first;}
+let tries=0;
+function recorded(fromIdx){
+  const n=tries++;const need=Number(knobs.better);
+  const level=(need>0&&n+1>=need)?"more":"notyet";
+  const ix=addStep({k:"try",n,level,proc:true});
+  lens=ix;render("instant");
+  procTimer=setTimeout(()=>{steps[ix].proc=false;if(lens===ix)render("same");else render("same");},1600);
+}
+
+/* ---------- chat view (lens off) ---------- */
+function chatHTML(){
+  let h="";const upto=(steps[1]&&steps[1].proc)?1:firstWaiting();
+  steps.forEach((s,i)=>{if(upto>=0&&i>upto&&s.k!=="endUpd")return;
+    switch(s.k){
+      case"history":h+=R("Here’s my Q3 board pitch, first take.")+L("We have successfully registered your first take 🎉<br><br>You have recorded some of the helper words and recognized your confident moments.<br><br>Use the helper words and record the second take of your presentation ⬇️")+`<div class="meta-l">Earlier · Take 1 review</div>`+`<div class="row-l">${av()}<div class="lb them"><b>Choose your helper words</b><span class="hint">🔒 Take 1</span></div></div>`+R("<b>Picture last Friday</b>");break;
+      case"take":h+=R("Here’s my Q3 board pitch, second take.");
+        if(s.proc){h+=`<div class="row-l">${av()}<div class="lb them" style="display:flex;align-items:center;gap:10px">${voiceMark().replace('width:64px;height:64px','')}<span>Processing your recording</span></div></div>`;break;}
+        h+=`<button class="itcard spc" type="button" data-open="text" style="position:relative"><span class="mini"></span><span><b>Q3 Board pitch</b><small>AI-generated text · Take 2</small></span></button>`;break;
+      case"coach":h+=Lsp(`<b>Your coach</b>${knobs.coachKind==="video"?vthumb("1:12"):"<br>"}${esc(COACHNOTE)}`,i,true);break;
+      case"update":h+=`<div class="meta-l">Later · from your coach</div>`+Lsp(`<b>Your coach</b>${vthumb("0:48")}${esc(COACHUPD)}`,i,true);break;
+      case"endUpd":break; /* the update rewrites the summary in place (see "end") */
+      case"moment":h+=`<div class="meta-l">Slide ${s.g.slide} · moment ${s.n+1} of ${s.N}</div>`+Raud("",s.g.t,s.n*5)+Lsp(`<b>Good job</b><br>${esc(s.soft?SOFT:s.g.line)}`,i);break;
+      case"helpers":h+=Lsp(`<b>Choose your helper words</b><span class="hint">Tap the words</span>`,i);
+        s.versions.forEach((v,j)=>{h+=R(`<span class="${j<s.versions.length-1?"old":""}"><b>${esc(v.join(" "))}</b></span>`);});
+        if(s.done&&!s.versions.length)h+=R("Skip");break;
+      case"clearer":h+=`<div class="meta-l">Slide ${LOW.slide}</div>`+`<div class="row-r"><div class="lb me aud"><span class="cap">${crossed}</span>${player(LOW.t,9)}</div></div>`+Lsp(`<b>Clearer version</b><br>Here is a slightly more polished option:<br>${newer}`,i);
+        if(s.done)h+=R(s.ans==="accept"?"Accept and practise":"Keep my words");break;
+      case"exercise":h+=`<div class="meta-l">Slide ${LOW.slide}</div>`+Raud("",LOW.t,9)+(exAI()
+          ?Lsp(`<b>Exercise</b><span style="display:block;margin:4px 0 8px">${esc(AI_EX)}</span>${aiClip(13)}<span style="display:block;margin-top:8px">${esc(AI_NOW)}</span>`,i)
+          :Lsp(`<b>Exercise</b>${videoFits()?vthumb("0:42"):"<br>"}${esc(knobs.coach==="on"?INSTR:LINE_A)}`,i,knobs.coach==="on"));
+        if(s.done)h+=R(s.ans==="go"?"Practise":"Skip");break;
+      case"try":h+=Raud(`Practise ${s.n+1}`,"0:06",s.n*3+2);
+        if(!s.proc)h+=aiOn(s)?aiBubble(s,false):Lsp(s.level==="more"?`<b>Good job</b><br>${esc(IMPROVED)}`:s.n===2?esc(MOVEON):`<b>Practise</b><br>${esc(ENCOURAGE)}`,i);
+        if(s.done&&s.ans==="again")h+=R("Practise again");if(s.done&&s.ans==="skip")h+=R("Skip");break;
+      case"judge":h+=(s.j===0?`<div class="meta-l">Other speakers</div>`:"")+Lsp(`${s.j===0?esc(s.N===1?LINE_B:`Now ${s.N} moments from other speakers.`):`Moment ${s.j+1} of ${s.N}`}<span class="hint">${Q}</span>`,i);
+        if(s.done)h+=R(s.ans==="unclear"?"Audio unclear":`${FACE[s.ans]} ${s.ans}`);break;
+      case"share":h+=R("Record Take 3")+Lsp(`<b>After all, it's about speaking publicly!</b><br>Do you agree to share this take with others?`,i);
+        if(s.done)h+=R(s.c.map(v=>v==="mine"?"Only my community ("+s.mine.join(", ")+")":({general:"General community",none:"Only me"}[v])).join(", "));break;
+      case"end":h+=`<button class="itcard spc" type="button" data-open="text" style="position:relative"><span class="mini"></span><span><b>Q3 Board pitch</b><small>AI-generated text · Take 2</small></span></button>`+(steps.some(x=>x.k==="update")
+          ?L(`${closing(true).html}<button type="button" class="oldv" data-oldv>Updated with your coach's note · ${showOld?"hide":"see"} the earlier version</button>${showOld?`<span class="oldtxt">${closing().html}</span>`:""}`)
+          :L(closing().html));break;
+    }
+  });
+  const cw=firstWaiting(),cont=cw>=0&&!(steps[1]&&steps[1].proc)&&steps[cw].k!=="update";
+  return `<div class="view"><div class="ltop">WillpowerLab</div><div class="lounge" id="th">${h}</div>${cont?`<div style="padding:0 14px"><button class="pill" type="button" data-open="${cw}" style="height:46px;font-size:15px">Continue review</button></div>`:""}<div class="composer">Message</div></div>`;
+}
+
+/* ---------- lens view (on): the locked overlay as a big chat with built-in buttons ---------- */
+function navOf(i){const s=steps[i];
+  if(s.k==="moment")return `Slide ${s.g.slide} · moment ${s.n+1} of ${s.N}`;
+  if(s.k==="coach"||s.k==="update")return "Your coach";
+  if(s.k==="helpers")return `Slide ${s.g.slide} · helper words`;
+  if(s.k==="judge")return `Other speakers · ${s.j+1} of ${s.N}`;
+  if(["clearer","exercise","try"].includes(s.k))return `Slide ${LOW.slide}`;
+  return "Take 2";}
+function lensHTML(i){
+  const s=steps[i],done=s.done;let body="",foot="",locked=false;
+  const prev=(()=>{for(let j=i-1;j>=0;j--)if(!steps[j].chatOnly)return j;return null;})();
+  const nextIx=i+1<steps.length?i+1:null;
+  const browseNext=done&&nextIx!=null?pill("Next","browseNext"):"";
+  switch(s.k){
+    case"coach":case"update":body=`<div class="row-l">${avC()}<div class="lb them wide">${s.k==="update"?"":"<b>Your coach</b><br>"}${s.k==="coach"&&knobs.coachKind==="text"?"":`<div class="vid" data-vid style="margin:8px 0"><span class="pl"></span><span class="len">${s.k==="update"?"0:48":"1:12"}</span><span class="bar"></span></div>`}${esc(s.k==="update"?COACHUPD:COACHNOTE)}</div></div>`;foot=done?browseNext:pill(s.k==="update"?"Close":"Continue",s.k==="update"?"updDone":"ok");break;
+    case"moment":body=Raud("",s.g.t,s.n*5)+L(`<b>Good job</b><br>${esc(s.soft?SOFT:s.g.line)}`);foot=done?browseNext:pill("Next","ok");break;
+    case"helpers":{const sel=s.sel;
+      body=L(`<b>Choose your helper words</b><br>These words show while you record your next take`)+
+      `<div class="picker"><div style="display:flex;justify-content:space-between"><span class="count">Tap the words</span><span class="count">${sel.length} of 4 words</span></div><div class="tok">${P[s.g.i].split(" ").map(w=>`<button type="button" data-tok="${esc(w)}" class="${sel.includes(w)?"sel":""}">${esc(w)}</button>`).join("")}</div></div>`;
+      foot=pill("Use these helper words","useHelpers",{disabled:!sel.length})+lnk(done?"Keep these":"Skip",done?"browseNext":"skipHelpers");break;}
+    case"clearer":body=`<div class="row-r"><div class="lb me aud"><span class="cap">${crossed}</span>${player(LOW.t,9)}</div></div>`+L(`<b>Clearer version</b><br>Here is a slightly more polished option:<br>${newer}<br>Do you accept and want to practise it?`);
+      foot=done?`<p class="answered">✓ ${s.ans==="accept"?"You accepted and practised it":"You kept your words"}</p>`+browseNext:pill("Accept and practise","accept")+lnk("Keep my words","keep");break;
+    case"exercise":body=Raud("",LOW.t,9)+(exAI()
+        ?`<div class="row-l">${av()}<div class="lb them wide"><b>Exercise</b><span style="display:block;margin:6px 0 10px">${esc(AI_EX)}</span>${aiClip(13)}<span style="display:block;margin-top:10px">${esc(AI_NOW)}</span></div></div>`
+        :`<div class="row-l">${knobs.coach==="on"?avC():av()}<div class="lb them wide"><b>Exercise</b>${videoFits()?`<div class="vid tall" data-vid style="margin:8px 0;max-height:300px"><span class="pl"></span><span class="len">0:42</span><span class="bar"></span></div>`:"<br>"}${esc(knobs.coach==="on"?INSTR:LINE_A)}</div></div>`);
+      foot=done?`<p class="answered">✓ ${s.ans==="go"?"Practised":"Skipped"}</p>`+browseNext:pill("Practise","go",{dot:true})+lnk("Skip","skipEx");break;
+    case"try":body=Raud(`Practise ${s.n+1}`,"0:06",s.n*3+2)+(s.proc?`<div class="procmark">${voiceMark()}</div>`:aiOn(s)?"":L(s.level==="more"?`<b>Good job</b><br>${esc(IMPROVED)}`:s.n===2?esc(MOVEON):`<b>Practise</b><br>${esc(ENCOURAGE)}`));
+      body+=aiBubble(s,true);
+      foot=s.proc?"":done?browseNext:(s.level==="more"||s.n===2?pill("Next","ok"):pill("Practise again","again",{dot:true})+lnk("Skip","skipTry"));break;
+    case"judge":{locked=done;const f=(x,e)=>`<button type="button" data-face="${x}" class="${s.ans===x?"on":""}"><span aria-hidden="true">${e}</span>${x}</button>`;
+      const intro=s.j===0?`${esc(s.N===1?LINE_B:`Now ${s.N} moments from other speakers.`)}`:"";
+      body=`<div class="row-l">${av()}<div class="lb them wide">${intro?intro+"<br>":""}${player("0:0"+(7-s.j),4+s.j*3)}<span style="display:block;margin-top:10px">${Q}</span></div></div>`+
+        `<div class="faces wide-ans">${f("Yes","👍")}${f("In-between","😐")}${f("No","👎")}</div>${done?"":`<button class="lnk" type="button" data-act="unclear" style="height:34px;font-size:14px">Audio unclear</button>`}`;
+      foot=done?`<p class="answered">✓ Answered</p>`+browseNext:"";break;}
+    case"share":{locked=done;const c=new Set(s.c),my=COMMS[knobs.comm];
+      const o=(v,bt,sm,extra)=>`<div class="opt ${c.has(v)?"on":""}" data-opt="${v}" role="checkbox" aria-checked="${c.has(v)}"><div class="row"><span class="tick">${c.has(v)?"✓":""}</span><span><b>${bt}</b>${sm?`<small>${sm}</small>`:""}</span></div>${c.has(v)&&extra?extra:""}</div>`;
+      const sub=`<div class="fields" style="flex-direction:column;gap:6px">${my.map(n=>`<div class="sub ${s.mine.includes(n)?"on":""}" data-comm="${esc(n)}" role="checkbox" aria-checked="${s.mine.includes(n)}"><span class="tick sm">${s.mine.includes(n)?"✓":""}</span>${esc(n)}</div>`).join("")}
+        ${s.adding?`<div style="display:flex;gap:6px"><input placeholder="Passcode" aria-label="Passcode" id="pc"><button type="button" class="addok" data-act="addComm">Add</button></div>`:`<button type="button" class="addc" data-act="showAdd">+ Add a community with a passcode</button>`}</div>`;
+      body=L(`<b>After all, it's about speaking publicly!</b><br>Do you agree to share this take with others?`)+`<div class="opts" style="padding:0;flex:none">${o("general","General community","Fastest improvement in speaking publicly")}${o("mine","Only my community","Slower but steady growth",sub)}${o("none","Only me","Slowest progress, but safe")}</div>`;
+      foot=done?`<p class="answered">✓ Answered</p>`:pill("Continue","shareOk",{disabled:!c.size||(c.has("mine")&&!s.mine.length)});break;}
+    case"end":body=L(closing().html+``);foot=pill("Next","toText");break;
+  }
+  return `<div class="ov lens"><div class="ovtop"><span class="nav"><span class="${prev==null?"off":""}" data-act="prev">‹</span>${navOf(i)}<span class="${nextIx==null||(!done&&!steps[i].done)?"off":""}" data-act="browseNext">›</span></span><span class="x" data-act="lensOff" role="button" aria-label="Close">✕</span></div>
+    <div class="sb ${locked?"locked":""}">${body}</div><div class="sfoot">${foot}</div></div>`;
+}
+/* the Ideal Text, opened from its card (its own full page) */
+function textHTML(){
+  return `<div class="ov"><div class="top"><span class="tt"><b>Q3 Board pitch</b><small>AI-generated text · Take 2</small></span><span class="ico"><span data-act="menu">⋯</span><span data-act="lensOff">✕</span></span></div>
+  <div class="body"><div class="sliderow"><div class="thumb">Why now</div><span class="kick">Slide 2 of 6</span></div>
+  <div class="paras">${P.map((p,i)=>{const st=stepForPara(i);return `<p class="para nob${st!=null?" tap":""}" style="margin:0"${st!=null?` data-para="${st}" role="button"`:""}>${paintHelpers(p,i)}</p>`;}).join("")}</div></div>
+  <div class="foot">${pill("Record Take 3","rec3",{dot:true})}${lnk("Close","lensOff")}</div></div>`;
+}
+
+/* the closing message: GPT-4o writes 2–3 sentences, blending the signed journey copy with this Take's real data */
+function closingInput(){
+  const tr=steps.filter(x=>x.k==="try"&&!x.proc),better=tr.find(x=>x.level==="more");
+  const hw=steps.filter(x=>x.k==="helpers"&&x.versions.length).map(x=>x.versions[x.versions.length-1].join(" "));
+  return {take:2,next_take:3,
+    anchor_copy:"Your presentation is stronger now. We’ve seen your message become clearer. Now let’s focus on making the delivery feel natural and confident. Use the orange-marked text as your anchors - not a script - and try to speak as to a friend.",
+    rises_since_take_1:[{slide:"Why now",cue:"ending came down (f0_mid_end_delta)"},{slide:"Opening",cue:"voice moved more (f0_sd)"}],
+    flat_since_take_1:[{slide:"Pricing",cue:"pace (wpm) and pauses (pause_ratio) unchanged"}],
+    practice:tr.length?{sentence:"the pricing line",tries:tr.length,rose_on_try:better?better.n+1:null}:null,
+    helper_words:hw,
+    coach_note:knobs.coach==="on"?{text:COACHNOTE,ask:"let the pause after “doubled” breathe"}:null};
+}
+function closing(upd){
+  const d=closingInput(),p=d.practice,hw=d.helper_words;if(upd)d.coach_update={text:COACHUPD,ask:"take a breath before “match our price” and let it land"};
+  /* written the way a coach would say it out loud: you, contractions, plain words, no metrics talk */
+  const pr=!p?"":p.rose_on_try?(p.rose_on_try===1?" and the pricing line sounded surer on your first practice":` and your ${["","first","second","third"][p.rose_on_try]} go at the pricing line sounded much surer`):", and the pricing line is getting there";
+  let a=`That was a stronger Take: your endings landed this time${pr}.`;
+  let b,c;
+  const hw2=[...new Set(hw)].slice(0,2);const anchor=hw.length?`glance at “${hw2.join("” and “")}” when you need it`:"lean on the orange words when you need them";
+  if(upd){
+    b=`Your coach had another listen and says: take a breath before “match our price”${d.coach_note?", and keep that pause after “doubled”":""}.`;
+    c=`Then just ${anchor} and talk to them like a friend.`;
+  }else if(d.coach_note){
+    b=`In Take 3, keep the pause after “doubled” like your coach said, ${anchor}, and talk to the board like you'd talk to a friend.`;c="";
+  }else{
+    b=`In Take 3, ${anchor} and just talk to them like you'd talk to a friend.`;c="";
+  }
+  return {html:[a,b,c].filter(Boolean).map(esc).join(" "),src:d};
+}
+/* the speaker's saved communities (a passcode entered once is kept) */
+const COMMS={none:[],one:["Invita"],two:["Invita","Speakers Lab"]};
+function newShare(){const my=COMMS[knobs.comm];return {k:"share",c:my.length?["mine"]:["general"],mine:[...my],adding:false};}
+/* Record Take N → (from Take 2 on) the sharing question first, then the recorder */
+function recordNext(){lens=addStep(newShare());render("open");}
+function go3(){rec3=true;lens=null;fromText=false;
+  if(knobs.update==="on")setTimeout(()=>{addStep({k:"update"});addStep({k:"endUpd",chatOnly:true});render("same");behindEl.innerHTML="<b>The coach's feedback arrives later</b> as a new bubble in the chat, with the orange outline (the Lounge's 'new'). Tap it → the lens opens on it.\nRight under it, <b>a fresh summary</b> (GPT-4o, the same 2–3 sentence rules) folds the coach's new ask into what's next. The earlier summary stays in the history above.";},1500);
+  render("close");behindEl.innerHTML="Shared as chosen → <b>Record Take 3</b>: the official recording screen (locked v7). The next Take's review turns the lens on again.";}
+/* helper words: simply coloured orange inside the text; a tap opens that slide's helper-words step */
+function paintHelpers(p,i){
+  const hs=steps.findIndex(x=>x.k==="helpers"&&x.g.i===i);
+  const words=hs>=0&&steps[hs].versions.length?steps[hs].versions[steps[hs].versions.length-1]:[];
+  if(!words.length)return esc(p);
+  const W=words.map(x=>x.replace(/[.,!?;:]/g,""));return p.split(" ").map(w=>{const bare=w.replace(/[.,!?;:]/g,"");return W.includes(bare)?`<em class="hw" data-hw="${hs}" role="button">${esc(w)}</em>`:esc(w);}).join(" ");
+}
+/* which walk step a paragraph opens (green moments, and the exercise sentence) */
+function stepForPara(p){const ix=steps.findIndex(s=>(s.k==="moment"&&s.g.i===p)||((s.k==="clearer"||s.k==="exercise")&&p===LOW.i));return ix>=0?ix:null;}
+let fromText=false,rec3=false,showOld=false;
+/* ---------- render with the locked motion ---------- */
+function render(move){
+  const old=app.querySelector(".ov:not(.ghost)");
+  const th=app.querySelector("#th"),keep=th?th.scrollTop:null;
+  app.innerHTML=`<div class="status"><span>9:41</span><i>▮▮▮ ◖</i></div>`+chatHTML()+(aiFlow?aiHTML():lens==null?"":lens==="text"?textHTML():lensHTML(lens));
+  const th2=app.querySelector("#th");if(th2)th2.scrollTop=th2.scrollHeight;
+  const ov=app.querySelector(".ov");
+  if(move==="instant"){}
+  else if(ov&&(move==="open"||!old))ov.classList.add("m-open");
+  else if(ov&&old&&move==="next"){ov.classList.add("m-next");ghost(old,"m-swap m-next");}
+  else if(ov&&old&&move==="back"){ov.classList.add("m-back");ghost(old,"m-swap m-back");}
+  else if(ov&&old&&move==="fade"){ov.classList.add("m-fade");ghost(old,"m-swap m-fade");}
+  else if(!ov&&old&&move==="close"){ghost(old,"m-close");}
+  flag.textContent=lens==null?"Lens off · the Lounge chat":"Lens on · "+(lens==="text"?"the Ideal Text":"the walk");
+  flag.className="lensflag "+(lens==null?"off":"on");
+  behind();
+}
+function ghost(node,cls){const g=node.cloneNode(true);g.classList.remove("m-open","m-next","m-back","m-fade");g.classList.add("ghost",...cls.split(" "));app.appendChild(g);setTimeout(()=>g.remove(),360);}
+function behind(){
+  let h;
+  if(lens==null&&steps[1]&&steps[1].proc){h="<b>Processing your recording.</b> The machine's feedback is automatic and takes about a minute. The locked recording screen shows its progress. If the speaker leaves it, the chat shows this bubble, and the lens opens by itself when it's ready.";}
+  else if(lens==null){const w=firstWaiting();h=`<b>Lens off.</b> The same thread as plain Lounge bubbles. Nothing is copied: these are the same rows the lens shows.\nBubbles with › turn the lens on, on that step.${w>=0?"\nThe <b>orange outline</b> marks the step still waiting for you.":"\nThe review is complete. Everything is in the history."}`;}
+  else if(lens==="text")h="<b>No bookmarks any more</b>: no bars in the margin. <b>Helper words are simply orange</b> in the text: tap them → that slide's helper-words step (editable). Tap a sentence that was a moment or the exercise → that step in the walk.\nAn accepted clearer version does <b>not</b> change the text here: the Ideal Text is only what you said (rule 5). It changes when you say it in Take 3.\n\n<b>The Ideal Text</b> at the end of the walk (or from its card).\n<b>Tap a moment</b> (green bar = a green moment, grey bar = the exercise sentence) and the lens opens that step of the walk. ✕ there brings you back to the text.\n<b>Record Take 3</b> is the main button, and grey <b>Close</b> goes back to the chat.\n(Override: until now, tapping text opened nothing.)";
+  else{const s=steps[lens];const g=s.g;
+    h={moment:g?`<b>Lens on · green moment.</b> willfidence S ${g.S} × W ${g.W} = ${g.w} ≥ 0.6.\nLine: signed bank <b>${g.bank}</b> (<code>line_bank.py</code>), author: the app.\nYour voice is your orange bubble.`:"",
+      helpers:`<b>Lens on · helper words.</b> The picker takes the whole screen.${s.done?"\nReopened: <b>editable</b>. A change adds a new version, and the old one stays crossed out in the chat (rule 5).":""}\nSaved to <code>ideal_text_slide_helper_words_log</code>.`,
+      clearer:"<b>The exercise sentence</b>: the lowest willfidence, with words as the lower half → Clearer version.\nAuthor: the LLM rewrite. Lines B13/B14 are signed.",
+      exercise:"<b>The exercise sentence</b>: the lowest willfidence, with the voice as the lower half → a library voice Exercise.",
+      try:s.proc?"Your try is being processed (the app's breathing mark).":`<b>Level: ${s.level==="more"?"more confident":"not yet"}.</b> Δ willfidence vs the original ${s.level==="more"?"≥":"<"} +0.05. Signed line.\n${s.level==="more"||s.n===2?"The practice ends here, and judging comes next.":"\"Practise again\" goes straight back to the recorder. Nothing in between."}`,
+      judge:`<b>Judging, once, after the practice.</b> ${s.N} moment${s.N>1?"s":""}: one per try, at least 1, at most 3.\nBlind: no name, no text, no machine guess. Each answer is a training label (👍 1 · 😐 0.5 · 👎 0), counted once 2 judges match.\nAn answer moves on by itself after 0.28 s, as locked.`+(s.done?"\nReopened: locked (open question).":""),
+      share:`<b>Sharing, before the next recording</b> (from Take 2 on; never before Take 1).\nOnly my community: your saved communities (a passcode entered once is kept). ${COMMS[knobs.comm].length>1?"All of them are ticked by default; untick any.":COMMS[knobs.comm].length?"Your one community is ticked.":"No community yet: add one with a passcode."}\nOnly me stands alone. The choice applies to the Take you're about to record.`,
+      coach:knobs.coachKind==="video"?"<b>A video from the coach</b> comes first, as locked: the video inside the coach's bubble, then their words. Author: the coach. It also feeds the closing summary.":"<b>A message from the coach</b> (no video): the coach's bubble with their words only. It comes first and feeds the closing summary.",
+      update:"<b>A coach update after the review</b>: the same lens, opened from its new bubble.",
+      end:"<b>The closing message: GPT-4o</b> (<code>STRONG_MODEL</code>), via <code>session_cadence.fire_post_take</code> (built, not wired yet), through the processing-authorization path.\n<b>Rules:</b> 2–3 sentences · sound like a coach talking, not a report: 'you', contractions, plain words ('your endings landed', not 'f0 delta rose') · keep the spirit of the signed journey copy (anchors, not a script; talk like to a friend) · only facts in the input · no numbers, scores or verdicts · warm, not cheerleading (no 'amazing').\n<b>Input (from librosa metrics, the practice and the helper-words log):</b>\n"+esc(JSON.stringify(closing().src,null,1)).replace(/\n/g,"\n")+"\n<i>The text shown is an example written to this spec. GPT-4o writes the real one.</i>"}[s.k]||"";
+    if(s.done&&s.k!=="helpers")h+="\n<b>Answered</b>: shown read-only.";}
+  if(aiFlow==="consent")h="<b>AI voice · the agreement</b> (draft, also for counsel). A message with controls, like every step. Saved with its version and time; nothing goes to ElevenLabs before both ticks and Continue. Not now: the offer never shows again unless turned on in Data & consent.";
+  else if(aiFlow==="making")h="<b>AI voice · making the clone</b>: one Instant Voice Clone per speaker, made once and reused, never one per session. Its ElevenLabs id stays on the server.";
+  else if(lens!=null&&lens!=="text"&&steps[lens]&&aiShows(steps[lens])&&!aiNo){
+    h+=aiReady?(knobs.gen==="ok"?`\n\n<b>AI voice (new).</b> The speaker taps play to hear it.\n Exercise picked by normalized severity: <b>${knobs.ex}</b> (pace 0.75 · pause 0.45 · stress 0.30 in this example; never shown).\nThe exercise sentence, same words, made with Eleven v4 from your clone, then checked: ${({pace:"pace slower, inside the natural range",pause:"one pause before “the window closes”, 0.3–0.9 s",stress:"“the window closes” louder and higher, not clipped"})[knobs.ex]}. Passed → shown.\nYour next try is also measured on <b>${knobs.ex}</b> alone and stored (before, after, outcome) for the future picker. The screen still follows willfidence.`:"\n\n<b>AI voice (new):</b> the example failed its check, or ElevenLabs is down → no bubble. The speaker never hears an unchecked clip; the walk is the locked one.")
+      :"\n\n<b>AI voice (new):</b> no AI voice yet (it is made in the background from Take 1) → the locked screen, unchanged.";}
+  behindEl.innerHTML=h;
+}
+
+/* ---------- the practise recorder (full screen; no slide; the coach's bubble) ---------- */
+function openRecorder(fromIdx){
+  if(recMode==="sample")return openSampleRecorder();
+  const accepted=steps.find(s=>s.k==="clearer")?.ans==="accept";
+  const ex=knobs.low==="voice";
+  const words=ex?P[LOW.i]:accepted?P2V:P[LOW.i];
+  const line=ex?INSTR:accepted?"Say it this way, and let “price” land at the end.":LINE_A;
+  lens=null;
+  app.innerHTML=`<div class="status"><span>9:41</span><i>▮▮▮ ◖</i></div>`+chatHTML()+`<div class="view recv" style="z-index:25;animation:fade .4s ease both"><header class="rh"><p class="rwhere">Practise · Slide ${LOW.slide}</p><span class="x" data-rec="back" role="button" aria-label="Close">✕</span></header>
+    <div class="rband"><div class="rroad">${L(esc(line)+(!ex&&!accepted?``:""))}<p class="say">${esc(words)}</p></div>
+    <div class="rdock"><div class="strip"><span class="dotp"></span><span class="clk" id="clk">0:00</span><span class="tr"><i></i></span><button class="stop" type="button" data-rec="stop"><i></i>Stop</button></div></div><button class="lnk" type="button" data-rec="skip">Skip</button></div></div>`;
+  flag.textContent="Recording (full screen)";flag.className="lensflag on";
+  behindEl.innerHTML="<b>Practise</b>: the official recording screen without the slide. The coach's message is a bubble on top, then the words and the Take's strip.";
+  let sec=0;const t=setInterval(()=>{const c=document.getElementById("clk");if(!c){clearInterval(t);return;}c.textContent=`0:${String(Math.min(59,++sec)).padStart(2,"0")}`;},1000);
+}
+
+/* the AI voice sample: the same locked practise recorder, reading the sample instead of the sentence */
+function openSampleRecorder(){
+  lens=null;
+  app.innerHTML=`<div class="status"><span>9:41</span><i>▮▮▮ ◖</i></div>`+chatHTML()+`<div class="view recv" style="z-index:25;animation:fade .4s ease both"><header class="rh"><p class="rwhere">AI version of your voice</p><span class="x" data-rec="back" role="button" aria-label="Close">✕</span></header>
+    <div class="rband"><div class="rroad">${L("Read this aloud at your own pace. About a minute is enough.")}<p class="say read">${esc(AI_SAMPLE)}</p></div>
+    <div class="rdock"><div class="strip"><span class="dotp"></span><span class="clk" id="clk">0:00</span><span class="tr"><i></i></span><button class="stop" type="button" data-rec="stop"><i></i>Stop</button></div></div></div></div>`;
+  flag.textContent="Recording the voice sample (full screen)";flag.className="lensflag on";
+  behindEl.innerHTML="<b>AI voice · the voice sample</b>: the locked practise recorder, reading a sample instead of the sentence. About a minute, once per speaker. In the app Stop waits until 45 s; here it works at once.";
+  let sec=0;const t=setInterval(()=>{const c=document.getElementById("clk");if(!c){clearInterval(t);return;}sec++;c.textContent=`${Math.floor(sec/60)}:${String(sec%60).padStart(2,"0")}`;},1000);
+}
+/* ---------- input ---------- */
+app.addEventListener("click",e=>{
+  if(e.target.closest("[data-oldv]")){showOld=!showOld;render("same");return;}
+  const play=e.target.closest("[data-play]");
+  if(play){e.stopPropagation();play.classList.toggle("on");const on=play.classList.contains("on");play.querySelectorAll(".wave i").forEach((w,k)=>{w.classList.remove("on");if(on)setTimeout(()=>w.classList.add("on"),k*110);});return;}
+  const vid=e.target.closest("[data-vid]");if(vid){vid.classList.toggle("playing");return;}
+  const rec=e.target.closest("[data-rec]");
+  if(rec&&recMode==="sample"){recMode=null;
+    if(rec.dataset.rec==="stop"){aiFlow="making";render("fade");procTimer=setTimeout(()=>{aiFlow=null;aiReady=true;lens=aiFrom;render("fade");},2200);}
+    else{aiFlow=null;lens=aiFrom;render("open");}
+    return;}
+  if(aiFlow==="consent"){const tk=e.target.closest("[data-aitick]");if(tk){aiTicks[tk.dataset.aitick]=!aiTicks[tk.dataset.aitick];render("same");return;}
+    const a=e.target.closest("[data-act]");if(!a)return;
+    if(a.dataset.act==="aiAgree"){aiFlow=null;recMode="sample";openRecorder();return;}
+    if(a.dataset.act==="aiNotNow"){aiFlow=null;aiNo=true;lens=aiFrom;render("back");return;}
+    return;}
+  if(aiFlow)return;
+  if(rec){if(rec.dataset.rec==="stop")recorded();
+    else if(rec.dataset.rec==="back"){const ex=steps.findIndex(x=>x.k==="clearer"||x.k==="exercise");const lt=[...steps].reverse().findIndex(x=>x.k==="try");
+      if(lt>=0){lens=steps.length-1-lt;}else{steps[ex].done=false;steps[ex].ans=null;lens=ex;}render("open");}
+    else{const ix=startJudging();lens=ix;render("open");}return;}
+  if(e.target.closest(".ghost"))return;
+  const op=e.target.closest("[data-open]");
+  if(op&&lens==null){lens=op.dataset.open==="text"?"text":Number(op.dataset.open);render("open");return;}
+  if(lens==="text"){const hw=e.target.closest("[data-hw]");if(hw){fromText=true;lens=Number(hw.dataset.hw);render("next");return;}
+    const pa=e.target.closest("[data-para]");if(pa){fromText=true;lens=Number(pa.dataset.para);render("next");return;}}
+  if(lens==null||lens==="text"){const a=e.target.closest("[data-act]");if(!a)return;
+    if(a.dataset.act==="lensOff"){lens=null;fromText=false;render("close");}
+    if(a.dataset.act==="rec3"){fromText=false;recordNext();return;}
+    if(false){if(knobs.update==="on")setTimeout(()=>{addStep({k:"update"});addStep({k:"endUpd",chatOnly:true});render("same");behindEl.innerHTML="<b>The coach's feedback arrives later</b> as a new bubble in the chat, with the orange outline (the Lounge's 'new'). Tap it → the lens opens on it.\nRight under it, <b>a fresh summary</b> (GPT-4o, the same 2–3 sentence rules) folds the coach's new ask into what's next. The earlier summary stays in the history above.";},1500);render("close");behindEl.innerHTML="Record Take 3 → the official recording screen (locked v7). The next Take's review turns the lens on again.";}
+    if(a.dataset.act==="menu"){const ov=app.querySelector(".ov");const m=ov.querySelector(".pmenu");if(m){m.remove();return;}ov.insertAdjacentHTML("beforeend",`<div class="pmenu" style="top:56px"><div>Presentation Mode</div><div>Export</div><div><b>History</b></div><div>Copy the text</div><div>Save the ideal text</div></div>`);}
+    return;}
+  const i=lens,s=steps[i];
+  const tok=e.target.closest("[data-tok]");
+  if(tok){const w=tok.dataset.tok,ix=s.sel.indexOf(w);if(ix>=0)s.sel.splice(ix,1);else if(s.sel.length<4)s.sel.push(w);render("same");return;}
+  const face=e.target.closest("[data-face]");
+  if(face&&!s.done){face.classList.add("on");setTimeout(()=>answer(i,face.dataset.face),280);return;}
+  const cm=e.target.closest("[data-comm]");
+  if(cm&&!s.done){const n=cm.dataset.comm,ix=s.mine.indexOf(n);if(ix>=0)s.mine.splice(ix,1);else s.mine.push(n);render("same");return;}
+  if(e.target.closest("#pc"))return;
+  const opt=e.target.closest("[data-opt]");
+  if(opt&&!s.done&&!e.target.closest(".addc,.addok")){const v=opt.dataset.opt,c=new Set(s.c);if(c.has(v))c.delete(v);else{if(v==="none")c.clear();else c.delete("none");c.add(v);}s.c=[...c];render("same");return;}
+  const a=e.target.closest("[data-act]");if(!a)return;
+  const act=a.dataset.act;
+  if(act==="lensOff"){if(fromText){fromText=false;lens="text";render("back");return;}lens=null;render("close");return;}
+  if(act==="toText"){s.done=true;lens="text";render("next");return;}
+  if(act==="rec3"){recordNext();return;}
+  if(act==="prev"){for(let j=i-1;j>=0;j--)if(!steps[j].chatOnly){lens=j;render("back");return;}return;}
+  if(act==="browseNext"){if(i+1<steps.length&&(s.done)){lens=i+1;render("next");}return;}
+  if(act==="aiOffer"){aiFrom=i;aiFlow="consent";render("next");return;}
+  if(act==="ok")return answer(i,"ok");
+  if(act==="updDone"){s.done=true;lens=null;render("close");return;}
+  if(act==="useHelpers"){s.versions.push([...s.sel]);if(s.done){render("same");return;}return answer(i,"use");}
+  if(act==="skipHelpers"){s.sel=[];return answer(i,"skip");}
+  if(act==="accept"||act==="keep")return answer(i,act);
+  if(act==="go")return answer(i,"go");
+  if(act==="skipEx")return answer(i,"skip");
+  if(act==="skipTry")return answer(i,"skip");
+  if(act==="unclear")return answer(i,"unclear");
+  if(act==="again"){s.done=true;s.ans="again";openRecorder(i);return;}
+  if(act==="shareOk"){s.done=true;return go3();}
+  if(act==="showAdd"){s.adding=true;render("same");setTimeout(()=>{const x=document.getElementById("pc");x&&x.focus();},50);return;}
+  if(act==="addComm"){const v=(document.getElementById("pc")||{}).value||"";const n=v.trim()?"Community "+v.trim().slice(0,6):"Q3 Board Club";COMMS[knobs.comm]=[...COMMS[knobs.comm],n];s.mine.push(n);s.adding=false;render("same");return;}
+  if(act==="openText"){lens="text";render("fade");return;}
+});
+/* the walk's recorder hands control back here */
+const _answer=answer;
+answer=function(i,val){const s=steps[i];
+  if((s.k==="clearer")&&!s.done){s.done=true;s.ans=val;openRecorder(i);return;}
+  _answer(i,val);};
+document.querySelectorAll(".seg").forEach(seg=>seg.addEventListener("click",e=>{
+  if(!seg.dataset.knob)return;
+  const b=e.target.closest("button");if(!b)return;knobs[seg.dataset.knob]=b.dataset.v;
+  try{localStorage.setItem("mf-v10-ai3-knobs",JSON.stringify(knobs));}catch(err){}
+  paint();tries=0;start();}));
+function paint(){document.querySelectorAll(".seg").forEach(seg=>seg.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",String(knobs[seg.dataset.knob]===b.dataset.v))));}
+document.getElementById("restart").addEventListener("click",()=>{tries=0;start();});
+document.getElementById("coached").addEventListener("click",()=>{knobs.coach="on";knobs.coachKind="video";knobs.low="voice";knobs.update="on";paint();tries=0;start();});
+function preset(kind){
+  knobs.coach="on";knobs.coachKind=kind==="text"?"text":"video";knobs.low="voice";knobs.update=kind==="update"?"on":"off";paint();tries=0;start();
+  clearTimeout(procTimer);steps[1].proc=false;
+  if(kind!=="update"){lens=2;render("open");return;}
+  /* jump to: review finished, Take 3 started, then the coach updates the feedback */
+  steps.forEach(x=>{if(!x.chatOnly){x.done=true;x.ans=x.k==="exercise"?"go":"ok";if(x.k==="helpers")x.versions=[({0:["growth","doubled"],2:["asking"],3:["two","hires"]})[x.g.i]||["growth"]];}});
+  tries=1;steps.push({k:"try",n:0,level:"more",done:true,ans:"ok"});
+  steps.push({k:"judge",j:0,N:1,done:true,ans:"Yes"});steps.push({k:"end",done:true});
+  const sh=newShare();sh.done=true;steps.push(sh);rec3=true;
+  steps.push({k:"update"});steps.push({k:"endUpd",chatOnly:true});
+  lens=null;render("same");
+  behindEl.innerHTML="<b>The coach updates the feedback</b> after the review (here, after Record Take 3).\n1 · A new coach bubble arrives under 'Later · from your coach', with the orange outline (new). Tap it → the walk opens on it.\n2 · The summary under the Ideal Text card is <b>rewritten in place</b> with the coach's new ask. The earlier version stays in the history: tap \"see the earlier version\".\n3 · The Lounge bubble outside the thread gets the orange 'new' outline, as locked.";
+}
+document.getElementById("pv").addEventListener("click",()=>preset("video"));
+document.getElementById("pt").addEventListener("click",()=>preset("text"));
+document.getElementById("pu").addEventListener("click",()=>preset("update"));
+document.getElementById("pl").addEventListener("click",()=>{preset("update");const th=document.getElementById("th");if(th)th.scrollTop=0;behindEl.innerHTML="<b>A coached Take in the Lounge</b> (lens off). Scroll the chat: the coach's video note, your green moments and helper words, the coach's exercise video, your practice, judging, the Ideal Text card and the summary, then sharing, Record Take 3, the coach's later update and the fresh summary.\nThe coach's bubbles have the grey-blue avatar. Tap any bubble with › to open it big.";});
+document.getElementById("pe").addEventListener("click",()=>{knobs.coach="on";knobs.coachKind="video";knobs.low="voice";knobs.update="off";paint();tries=0;start();clearTimeout(procTimer);steps[1].proc=false;
+  steps.forEach(x=>{if(!x.chatOnly&&x.k!=="exercise"){x.done=true;x.ans="ok";}});lens=steps.findIndex(x=>x.k==="exercise");render("open");
+  behindEl.innerHTML="<b>An exercise with the coach's video.</b> Your clip (orange), then the coach's bubble: Exercise, their video, their instruction. Practise opens the recorder; Skip moves on.\nIn the chat it stays as the coach's bubble with a video thumbnail.";});
+/* walk the lane from the Exercise screen: video, Practise, try, then the AI voice */
+document.getElementById("walkai").addEventListener("click",()=>{knobs.low="voice";knobs.better="0";knobs.coach="off";knobs.ai="ready";knobs.gen="ok";paint();tries=0;start();clearTimeout(procTimer);steps[1].proc=false;
+  steps.forEach(x=>{if(!x.chatOnly&&x.k!=="exercise"){x.done=true;x.ans="ok";}});lens=steps.findIndex(x=>x.k==="exercise");render("open");
+  behindEl.innerHTML="<b>1 · The Exercise</b> (locked): the video and its instruction. Tap Practise to record the first try, then Stop.\nIf the try is not yet better, <b>the AI version of your voice</b> comes next, ready to play.";});
+/* jump straight to the new step: voice Exercise, a try that is not yet better */
+document.getElementById("jumpai").addEventListener("click",()=>{knobs.low="voice";knobs.better="0";knobs.coach="off";paint();tries=0;start();clearTimeout(procTimer);steps[1].proc=false;
+  steps.forEach(x=>{if(!x.chatOnly){x.done=true;x.ans=x.k==="exercise"?"go":"ok";}});recorded();
+  behindEl.innerHTML="<b>The new step.</b> Your practise try comes back; then, in place of the encouragement, the AI version of your voice, ready to play. Use the three new switches to see every case.";});
+function fit(){const pw=document.getElementById("pw");const narrow=innerWidth<820;const availH=innerHeight-32;const availW=Math.min(innerWidth-32,420);
+  const s=Math.min(1,availW/404,narrow?1:availH/862);pw.style.transform=`scale(${s})`;pw.parentElement.style.height=(862*s)+"px";pw.parentElement.style.width=(404*s)+"px";}
+addEventListener("resize",fit);fit();paint();start();
+})();
+</script>
