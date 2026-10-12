@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import copy
 import logging
-from typing import Any, Callable, Iterable, Optional
+from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -94,14 +94,3 @@ def compute(database: Any, next_take_session_id: Any) -> Optional[dict]:
         logger.warning("v4 pick outcomes not computed take=%s: %s", take, error)
         return None
 
-
-def rise_share(rows: Iterable[dict], kinds: Iterable[str]) -> Optional[float]:
-    """Of the measured moments picked for any of ``kinds``, the share that
-    rose: the next-Take rise BEXIT compares. Pure."""
-    wanted = set(kinds)
-    measured = [r for r in rows
-                if r.get("outcome") in ("rose", "did_not_rise")
-                and wanted & set(r.get("picks") or r.get("v3_picks") or [])]
-    if not measured:
-        return None
-    return sum(1 for r in measured if r["outcome"] == "rose") / len(measured)

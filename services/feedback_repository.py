@@ -29,21 +29,6 @@ _LEGACY_FAMILY = {
     "to_work_on": FeedbackFamily.REWRITE_FOR_CLARITY,
 }
 
-LEGACY_COACH_TAGS = tuple(_LEGACY_FAMILY)
-
-
-def normalize_coach_overall_message(value: Any) -> str | None:
-    """Validate the optional take-level summary kept beside FeedbackItems."""
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise FeedbackContractError("overall_message: must be a string")
-    clean = value.strip()
-    if len(clean) > 4000:
-        raise FeedbackContractError("overall_message: 4000 chars max")
-    return clean or None
-
-
 def _family(row: dict) -> FeedbackFamily:
     raw = row.get("feedback_family")
     if raw:

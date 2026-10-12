@@ -153,14 +153,6 @@ def contract_for_surface(surface: str) -> SurfaceContract:
     return SURFACES[canonical]
 
 
-def surface_for_annotation_field(field_name: str) -> Optional[str]:
-    return _FIELD_TO_SURFACE.get(str(field_name or "").strip())
-
-
-def fields_for_surface(surface: str) -> set[str]:
-    return set(contract_for_surface(surface).annotation_fields)
-
-
 def runtime_config_key(surface: str) -> str:
     return contract_for_surface(surface).runtime_config_key
 

@@ -13,13 +13,11 @@ from config import Config
 from services.confident_moment_bundle import (
     ConfidentMomentProjectionInvalid,
     validate_bundle_text_update,
-    validate_coach_authoring_context,
     validate_family_response,
     validate_owner_edit_transport,
     validate_root_action_result,
 )
 from services.confident_moment_bundle_repository import (
-    ConfidentMomentBundleDisabled,
     ConfidentMomentBundleRepository,
 )
 
@@ -52,11 +50,6 @@ def _rpc_client(response: dict):
 def test_all_bundle_rooting_and_pam_gates_default_disabled():
     assert Config.CONFIDENT_MOMENT_BUNDLE_V1_ENABLED is False
     assert Config.ROOTING_COVERAGE_V1_ENABLED is False
-    assert Config.PAM_PROFILE_V1_ENABLED is False
-    assert Config.PAM_BASELINE_V1_ENABLED is False
-    assert Config.PAM_MATCHING_V1_ENABLED is False
-    assert Config.PAM_COACH_AUTHORING_V1_ENABLED is False
-    assert Config.PAM_USER_SERVING_V1_ENABLED is False
 
 
 def test_update_text_repository_uses_d23_database_derived_shape(monkeypatch):
@@ -76,24 +69,6 @@ def test_update_text_repository_uses_d23_database_derived_shape(monkeypatch):
     assert "p_target_part_id" not in payload
     assert "p_accepted_replacement_text" not in payload
     assert payload["p_expected_part_inventory"] == []
-
-
-def test_root_repository_requires_both_bundle_and_coverage_gates(monkeypatch):
-    monkeypatch.setattr(Config, "CONFIDENT_MOMENT_BUNDLE_V1_ENABLED", False)
-    monkeypatch.setattr(Config, "ROOTING_COVERAGE_V1_ENABLED", True)
-    client = _rpc_client({})
-    repo = ConfidentMomentBundleRepository(lambda: client)
-    with pytest.raises(ConfidentMomentBundleDisabled) as caught:
-        repo.freeze_coverage_frame(
-            acquisition_principal_id=U1, project_id=U2, take_id=U3,
-            feedback_membership_id=U4, document_snapshot_id=U5,
-            policy_version="rooting-coverage-30-80-100-v1",
-            idempotency_key="coverage-1",
-        )
-    assert getattr(caught.value, "code", None) == (
-        "CONFIDENT_MOMENT_BUNDLE_DISABLED"
-    )
-    client.rpc.assert_not_called()
 
 
 def test_update_route_rejects_browser_wording_and_numeric_bigints(monkeypatch):
@@ -224,57 +199,6 @@ def test_delivery_worker_enabled_uses_exact_rpc_and_validates_result(monkeypatch
     client.rpc.assert_called_once_with(
         "materialize_feedback_language_delivery_job_v1",
         {"p_job_id": U1, "p_idempotency_key": f"materialize:{U1}"},
-    )
-
-
-def test_coach_authoring_extension_is_recursively_closed():
-    context = {
-        "items": [{
-            "review_batch_id": U1,
-            "bundle_authoring_context": {
-                "bundle_id": U2,
-                "source_review_attachment_id": U3,
-                "authorized_targets": [{
-                    "bundle_attachment_id": U4,
-                    "review_assignment_id": U1,
-                    "reveal_access_id": U2,
-                    "feedback_family": "rewrite_clarity",
-                    "allowed_output_kind": "rephrase",
-                    "allowed_comment_purpose": None,
-                    "source_passage": {
-                        "evidence_span_id": U5,
-                        "text": "Use one clear next step.",
-                        "text_sha256": H,
-                    },
-                    "expected_current_revision_id": None,
-                    "expected_current_delivery_id": None,
-                }],
-            },
-        }],
-    }
-    assert validate_coach_authoring_context(context) is context
-    context["items"][0]["bundle_authoring_context"]["authorized_targets"][0][
-        "blind_judgment_id"
-    ] = U1
-    with pytest.raises(ConfidentMomentProjectionInvalid):
-        validate_coach_authoring_context(context)
-
-
-def test_coach_context_repository_uses_database_derived_principal_v2(monkeypatch):
-    monkeypatch.setattr(Config, "CONFIDENT_MOMENT_BUNDLE_V1_ENABLED", True)
-    context = {"items": []}
-    client = _rpc_client(context)
-    repo = ConfidentMomentBundleRepository(lambda: client)
-    assert repo.project_coach_authoring_context(
-        project_id=U1, reviewer_principal_id=U2, idempotency_key="context-1"
-    ) == context
-    client.rpc.assert_called_once_with(
-        "project_confident_moment_coach_authoring_context_v2",
-        {
-            "p_project_id": U1,
-            "p_reviewer_principal_id": U2,
-            "p_idempotency_key": "context-1",
-        },
     )
 
 

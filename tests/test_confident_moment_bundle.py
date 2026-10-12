@@ -8,7 +8,6 @@ from __future__ import annotations
 import ast
 import copy
 import hashlib
-import uuid
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -29,19 +28,6 @@ from services.confident_moment_bundle_repository import (
     ConfidentMomentBundleDisabled,
     ConfidentMomentBundleRepository,
 )
-from services.feedback_language import (
-    build_comment,
-    build_rephrase,
-    validate_output_kind_and_purpose,
-)
-from services.rooting_coverage import (
-    AnchorCandidate,
-    coverage_target_for_take,
-    extract_exact_clauses,
-    lexicographic_coverage_order,
-    one_root_per_block_ok,
-)
-
 # ── Gate ────────────────────────────────────────────────────────────────────
 
 
@@ -487,15 +473,11 @@ def test_repository_exact_d11_rpc_registry_and_execute_boundary():
     tree = ast.parse(source)
     expected = {
         "project_take_bundles": "project_confident_moment_bundles_v1",
-        "prepare_bundle": "prepare_confident_moment_bundle_v1",
         "ack_item_render": "ack_confident_moment_bundle_item_render_v3",
         "ack_revision_render": "ack_feedback_language_revision_render_v3",
-        "freeze_coverage_frame": "freeze_root_phrase_coverage_frame_v1",
         "record_family_response": "record_confident_moment_bundle_family_response_v1",
         "record_root_action": "record_confident_moment_bundle_root_action_v1",
         "update_text": "apply_confident_moment_bundle_text_update_v1",
-        "project_coach_authoring_context": "project_confident_moment_coach_authoring_context_v2",
-        "publish_coach_feedback_language": "publish_confident_moment_coach_feedback_language_v1",
     }
     actual: dict[str, str] = {}
     for function in (node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)):
@@ -516,185 +498,7 @@ def test_repository_exact_d11_rpc_registry_and_execute_boundary():
     assert ".table(" not in source
 
 
-# ── Subject kind derivation ─────────────────────────────────────────────────
-
-
-# ── Nearest same-slide attachment ───────────────────────────────────────────
-
-
-# ── Feedback Language ───────────────────────────────────────────────────────
-
-
-def test_build_comment_and_rephrase():
-    c = build_comment("positive_praise", "Great clarity on the close.")
-    assert c.output_kind == "comment"
-    assert c.canonical_family == "great_formulation"
-    assert c.comment_purpose == "positive_praise"
-
-    r = build_rephrase("We will deliver the report by Friday.")
-    assert r.output_kind == "rephrase"
-    assert r.comment_purpose is None
-    assert r.canonical_family == "rewrite_clarity"
-
-
-def test_validate_output_kind_and_purpose():
-    validate_output_kind_and_purpose("comment", "actionable_observation")
-    validate_output_kind_and_purpose("rephrase", None)
-    with pytest.raises(ValueError):
-        validate_output_kind_and_purpose("rephrase", "positive_praise")
-    with pytest.raises(ValueError):
-        validate_output_kind_and_purpose("comment", None)
-
-
-# ── Clause extraction ───────────────────────────────────────────────────────
-
-
-def test_extract_prefers_5_to_20_word_clauses():
-    text = (
-        "Welcome everyone. "
-        "Today we will review the quarterly results and the outlook for next year. "
-        "Questions later."
-    )
-    clauses = extract_exact_clauses(text)
-    assert clauses
-    assert any(5 <= c.normalized_word_count <= 20 for c in clauses)
-
-
-def test_extract_falls_back_to_shortest_when_no_preferred():
-    text = "Yes."
-    clauses = extract_exact_clauses(text)
-    assert len(clauses) == 1
-    assert clauses[0].normalized_word_count >= 1
-
-
-def test_extract_empty_transcript():
-    assert extract_exact_clauses("") == []
-    assert extract_exact_clauses("   ") == []
-
-
-def test_extract_clause_preserves_exact_utf8_substring_and_hash():
-    transcript = "  Héllo,\n  this   is a precise clause!  Next."
-    clauses = extract_exact_clauses(transcript)
-    assert len(clauses) == 1
-    expected = "Héllo,\n  this   is a precise clause!"
-    assert clauses[0].text == expected
-    assert clauses[0].span_sha256 == hashlib.sha256(
-        expected.encode("utf-8")
-    ).hexdigest()
-
-
-# ── Coverage targets ────────────────────────────────────────────────────────
-
-
-def test_coverage_targets_30_80_100():
-    t1 = coverage_target_for_take(1, 10)
-    assert t1.target_count == 3
-    t2 = coverage_target_for_take(2, 10)
-    assert t2.target_count == 8
-    t3 = coverage_target_for_take(3, 10)
-    assert t3.target_count == 10
-    t4 = coverage_target_for_take(4, 10)
-    assert t4.target_count == 10
-
-
-def test_coverage_target_mandatory_at_least_one():
-    t1 = coverage_target_for_take(1, 1)
-    assert t1.target_count == 1
-    t1b = coverage_target_for_take(1, 2)
-    assert t1b.target_count == 1
-
-
-def test_one_root_per_block():
-    existing = [(0, 0), (0, 1), (1, 0)]
-    assert one_root_per_block_ok(existing, 0, 2) is True
-    assert one_root_per_block_ok(existing, 0, 0) is False
-
-
-# ── Lexicographic routing ───────────────────────────────────────────────────
-
-
-def _anchor(
-    slide: int,
-    block: int,
-    cid: str,
-    *,
-    aligned: bool = True,
-    yes: bool = True,
-    has_root: bool = False,
-    locked: bool = False,
-    order: int = 0,
-) -> AnchorCandidate:
-    candidate_id = str(uuid.uuid5(uuid.NAMESPACE_URL, cid))
-    return AnchorCandidate(
-        slide_index=slide,
-        block_key=block,
-        candidate_id=candidate_id,
-        membership_item_order=order,
-        has_aligned_semantics=aligned,
-        owner_response_confident_yes=yes,
-        has_playable_audio=True,
-        has_exact_transcript=True,
-        already_has_root=has_root,
-        is_owner_locked=locked,
-    )
-
-
-def test_lexicographic_orders_slide1_and_uncovered_first():
-    anchors = [
-        _anchor(2, 0, "c-late", has_root=False),
-        _anchor(0, 0, "c-slide1", has_root=False),
-        _anchor(1, 0, "c-covered", has_root=True),
-        _anchor(1, 1, "c-uncovered", has_root=False),
-    ]
-    ordered = lexicographic_coverage_order(anchors)
-    ids = [a.candidate_id for a in ordered]
-    expected = {
-        label: str(uuid.uuid5(uuid.NAMESPACE_URL, label))
-        for label in ("c-slide1", "c-uncovered", "c-covered")
-    }
-    assert ids[0] == expected["c-slide1"]
-    assert expected["c-uncovered"] in ids
-    assert ids.index(expected["c-uncovered"]) < ids.index(expected["c-covered"])
-
-
-def test_lexicographic_excludes_misaligned_and_non_yes():
-    anchors = [
-        _anchor(0, 0, "good"),
-        _anchor(0, 1, "misaligned", aligned=False),
-        _anchor(0, 2, "not-yes", yes=False),
-        _anchor(0, 3, "locked", locked=True),
-    ]
-    ordered = lexicographic_coverage_order(anchors)
-    ids = [a.candidate_id for a in ordered]
-    assert ids == [str(uuid.uuid5(uuid.NAMESPACE_URL, "good"))]
-
-
-def test_lexicographic_final_tie_uses_uuid_bytes():
-    high = _anchor(1, 1, "high", order=1)
-    low = _anchor(1, 1, "low", order=1)
-    high = AnchorCandidate(**{**high.__dict__, "candidate_id": "ffffffff-ffff-ffff-ffff-ffffffffffff"})
-    low = AnchorCandidate(**{**low.__dict__, "candidate_id": "00000000-0000-0000-0000-000000000001"})
-    assert [row.candidate_id for row in lexicographic_coverage_order([high, low])] == [
-        low.candidate_id, high.candidate_id
-    ]
-
-
 # ── Repository: disabled gate ───────────────────────────────────────────────
-
-
-def test_repository_prepare_fails_closed_when_disabled():
-    client = MagicMock()
-    repo = ConfidentMomentBundleRepository(client_provider=lambda: client)
-    with pytest.raises(ConfidentMomentBundleDisabled):
-        repo.prepare_bundle(
-            acquisition_principal_id="p1",
-            project_id="proj",
-            take_id="take",
-            feedback_membership_id="mem",
-            bundle_subject_candidate_id="cand",
-            idempotency_key="k1",
-        )
-    client.rpc.assert_not_called()
 
 
 def test_repository_ack_fails_closed_when_disabled():
@@ -707,22 +511,6 @@ def test_repository_ack_fails_closed_when_disabled():
             bundle_attachment_id="att",
             feedback_exposure_id="exposure",
             render_instance_id="ri",
-            idempotency_key="k1",
-        )
-    client.rpc.assert_not_called()
-
-
-def test_repository_coverage_fails_closed_when_disabled():
-    client = MagicMock()
-    repo = ConfidentMomentBundleRepository(client_provider=lambda: client)
-    with pytest.raises(ConfidentMomentBundleDisabled):
-        repo.freeze_coverage_frame(
-            acquisition_principal_id="p1",
-            project_id="proj",
-            take_id="take",
-            feedback_membership_id="mem",
-            document_snapshot_id="snap",
-            policy_version="rooting-coverage-30-80-100-v1",
             idempotency_key="k1",
         )
     client.rpc.assert_not_called()
@@ -748,38 +536,6 @@ def test_repository_rejects_list_and_multirow_rpc_shapes():
 
 
 # ── Repository: enabled-path with mocked RPC ────────────────────────────────
-
-
-def test_repository_prepare_calls_exact_rpc_when_enabled(monkeypatch):
-    monkeypatch.setattr(
-        "services.confident_moment_bundle_repository.runtime_is_enabled",
-        lambda: True,
-    )
-    client = MagicMock()
-    client.rpc.return_value.execute.return_value = MagicMock(
-        data={
-            "bundle_id": "cand-1",
-            "bundle_subject_kind": "confidence_anchor",
-            "attachments": [],
-            "serves_user": False,
-            "dataset_eligible": False,
-        }
-    )
-    repo = ConfidentMomentBundleRepository(client_provider=lambda: client)
-    out = repo.prepare_bundle(
-        acquisition_principal_id="p1",
-        project_id="proj",
-        take_id="take",
-        feedback_membership_id="mem",
-        bundle_subject_candidate_id="cand-1",
-        idempotency_key="k1",
-    )
-    client.rpc.assert_called_once()
-    name, params = client.rpc.call_args[0]
-    assert name == "prepare_confident_moment_bundle_v1"
-    assert params["p_bundle_subject_candidate_id"] == "cand-1"
-    assert out["dataset_eligible"] is False
-    assert out["serves_user"] is False
 
 
 def test_repository_ack_calls_exact_rpc_when_enabled(monkeypatch):

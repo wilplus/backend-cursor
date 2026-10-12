@@ -420,19 +420,6 @@ def observed_problem_tags(
     return frozenset(tags)
 
 
-def problem_tag_overlap(observed: Any, exercise: Any) -> int:
-    """How many of the clip's observed problems this exercise claims to treat.
-
-    Counts main and secondary targets alike. Ranking no longer reads it — it
-    reads ``exercise_fit`` — but it stays as the plain answer to "does this
-    exercise say it treats anything that fired here".
-    """
-    if not observed or not isinstance(exercise, dict):
-        return 0
-    main, secondary = exercise_targets(exercise)
-    return len((main | secondary) & set(observed))
-
-
 #: How close an exercise is to what fired on a clip (founder 2026-09-28,
 #: decisions D1, D5, D5a, D6). A category, never a number, so there is no
 #: closeness figure to leak and anyone can check why an exercise was chosen.
@@ -821,26 +808,6 @@ def build_match_trace(*, lane: str, verdict: dict, vocabulary: Any,
             catalogue, key=lambda r: r["exercise_id"])),
         "candidates": candidates,
     })
-
-
-def rank_exercises_for_pattern(
-    pattern: str, exercises: list[dict], *, observed_tags: Any = None,
-) -> list[tuple[int, int, str, dict]]:
-    """Complete deterministic order for already reviewed active exercises.
-
-    ``observed_tags`` is the clip's fired problems (``observed_problem_tags``).
-    Only exercises at the clip's best fit are returned (``matched_exercises``);
-    with nothing fired the list is empty. The tuple shape — (confidence
-    distance, -editorial, id, exercise) — is unchanged for every caller.
-
-    This ordering must agree with the offer lanes below, because the
-    practice-start route re-ranks here to decide whether an offer has gone
-    stale. They all rank through ``matched_exercises`` for that reason.
-    """
-    _, matched = matched_exercises(
-        pattern, exercises, observed_tags=observed_tags)
-    return [(key[KEY_DISTANCE], key[KEY_EDITORIAL], key[KEY_ID], exercise)
-            for key, exercise in matched]
 
 
 def reviewed_active_exercises(database: Any) -> list[dict]:

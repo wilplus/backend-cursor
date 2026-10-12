@@ -88,18 +88,6 @@ def stage_of(version: str) -> str:
     return REGISTRY.get(version, ("off", None))[0]
 
 
-def live_version_for(error_id: str) -> Optional[str]:
-    return LIVE_DETECTOR.get(error_id)
-
-
-def stamp_live_versions(trace: dict) -> dict:
-    """Write the versions in force into a match trace, beside
-    signal_rules_version, so every choice says which detector made it."""
-    if isinstance(trace, dict):
-        trace["detector_versions"] = dict(LIVE_DETECTOR)
-    return trace
-
-
 # ── the shadow log ─────────────────────────────────────────────────────────
 
 def observations(snapshot: Any, *, clip_id: str, take_session_id: str,

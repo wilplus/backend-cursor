@@ -6,21 +6,6 @@
       "module": "pending",
       "sha256": "79230a19ab7b4c0141fb330c1d1729be9a5d4981c6b1e50894373c54f9cb71a8"
     },
-    "baseline_summary.context_block": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "d5006b34b9ab8dc966b390bd237f09ec32dc40281f0a4b56449d82c6d3605a11"
-    },
-    "baseline_summary.system": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "ef74839a10884d2aa7f2c7265e176ec93ca19721b4346ada900c07f2dfc9a165"
-    },
-    "baseline_summary.user": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "9f08a4c2bd924f9cd34a63cee0b7a1045fe5365f1b0bef042070f0de7dd72a1f"
-    },
     "best_presentation.system": {
       "kind": "builder",
       "module": "best_presentation",
@@ -90,16 +75,6 @@
       "kind": "source_ref",
       "module": "pending",
       "sha256": "6b90f2ba31acc990f238b4940ef86a422c0798ffaa72e1fd573e7e8d67a8b420"
-    },
-    "conversation_summary.builder": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "8f71d934262525743c484b670f9eb2404185ac229321d4c43f9f541065255e21"
-    },
-    "conversation_summary.context_block": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "cdb4b6fb64be101f6470a496c9147fc02a148f0946ff1d533efdab414d625122"
     },
     "delivery_alignment.system": {
       "kind": "static",
@@ -254,7 +229,7 @@
     "llm_schemas.all": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "3e282149557e70b3ae8af006d4cc65f9a36fb49afdd6359ceb6f5084a1210f1a"
+      "sha256": "ac4f4edd978e586660b333559117f9d8e15560aab35128fd95f3973c8036222f"
     },
     "master_doc_rag.life_block": {
       "kind": "source_ref",
@@ -386,30 +361,10 @@
       "module": "slide_alignment",
       "sha256": "aa4ff982c6226e14201cbb476b5bee27a4af387d36e7c6d085715dd2a61c6627"
     },
-    "snippet_drafts.charisma_system": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "18b7ae5bbb15ee6a1e8e7d11c4e24e7de082edfb11819c342dd8ab8bcb0df237"
-    },
-    "snippet_drafts.charisma_user": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "de2e3eff1a264b2ea35f1e3829b87339bb269950ae8a93001281a5823164a4de"
-    },
     "snippet_stickiness.system": {
       "kind": "builder",
       "module": "snippet_stickiness",
       "sha256": "76a78a620e6e8810691d4792a67e9a0ed6189d4845c323d96432bf82eda4ab51"
-    },
-    "stickiness_topics.builder": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "694511433f4158a4c73c8e069a27a938460838fe4bb49d49eb75cb95dd82cb88"
-    },
-    "stickiness_topics.user": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "526fdfd629717ab013fdf5c025263640d4229d6b6182daab5d21705fb21c3dd0"
     },
     "structural_star.system": {
       "kind": "static",

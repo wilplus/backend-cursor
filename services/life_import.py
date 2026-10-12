@@ -423,41 +423,6 @@ def plan_phrases(user_id: str, blob: Any,
 # timeline
 # ═════════════════════════════════════════════════════════════════════════
 
-def plan_events(user_id: str, events: Iterable[dict]) -> list[dict]:
-    """The timeline export → ``event`` items.
-
-    ``categoryColor`` already matches the bets' 🟢🔵🟣, so it is kept as the
-    body prefix rather than being re-derived — the canvas colours the bands
-    from it today and re-deriving would be a chance to get it wrong."""
-    rows: list[dict] = []
-    for index, raw in enumerate(events or []):
-        if not isinstance(raw, dict):
-            continue
-        title = _text(_pick(raw, _EVENT_KEYS["title"]))
-        if not title:
-            continue
-        label = _text(_pick(raw, _EVENT_KEYS["due_label"])) or None
-        due_at = _date_only(_pick(raw, _EVENT_KEYS["due_at"])) \
-            or lp.parse_due_label(label)
-        item = {
-            "external_id": _external_id("timeline", raw, _EVENT_KEYS["id"],
-                                        title),
-            "kind": "event",
-            "title": title,
-            "body": _text(_pick(raw, _EVENT_KEYS["body"])),
-            "status": "active",
-            "due_label": label,
-            "due_at": due_at,
-            "collection": _text(_pick(raw, _EVENT_KEYS["category"])) or None,
-            "order_key": _order_key(raw, _EVENT_KEYS["order"], index),
-        }
-        created = _iso(_pick(raw, _EVENT_KEYS["created_at"]))
-        if created:
-            item["created_at"] = created
-        rows.append(item)
-    return rows
-
-
 # ═════════════════════════════════════════════════════════════════════════
 # strategy documents
 # ═════════════════════════════════════════════════════════════════════════
@@ -548,44 +513,6 @@ def plan_strategy(user_id: str, payload: dict) -> dict:
 # ═════════════════════════════════════════════════════════════════════════
 # The runner
 # ═════════════════════════════════════════════════════════════════════════
-
-def build_plan(user_id: str, *, principles_export: Optional[dict] = None,
-               timeline_export: Optional[dict] = None,
-               strategy_export: Optional[dict] = None) -> dict:
-    """Everything that WOULD be written, as data. Pure — no I/O."""
-    plan: dict[str, Any] = {"cases": [], "items": [], "notes": [],
-                            "strategy": [], "review": []}
-
-    if principles_export:
-        cases = plan_cases(user_id, principles_export.get("principles") or [])
-        plan["cases"].extend(cases["cases"])
-        plan["items"].extend(cases["items"])
-        plan["review"].extend(cases["review"])
-        plan["items"].extend(
-            plan_wins(user_id, principles_export.get("wins") or []))
-        phrases = plan_phrases(user_id, principles_export.get("prayer"))
-        plan["items"].extend(phrases["items"])
-        plan["notes"].extend(phrases["notes"])
-
-    if timeline_export:
-        events = (timeline_export.get("events")
-                  if isinstance(timeline_export, dict) else timeline_export)
-        plan["items"].extend(plan_events(user_id, events or []))
-
-    if strategy_export:
-        strategy = plan_strategy(user_id, strategy_export)
-        plan["strategy"].extend(strategy["strategy"])
-        plan["items"].extend(strategy["items"])
-
-    plan["counts"] = {
-        "cases": len(plan["cases"]),
-        "items": len(plan["items"]),
-        "notes": len(plan["notes"]),
-        "strategy": len(plan["strategy"]),
-        "needs_review": len(plan["review"]),
-    }
-    return plan
-
 
 def apply_plan(user_id: str, plan: dict, *, dry_run: bool = True) -> dict:
     """Write the plan. ``dry_run=True`` (the DEFAULT) writes nothing.

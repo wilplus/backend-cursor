@@ -10,7 +10,7 @@ import unittest
 import uuid
 
 from services.arc_notifications import (
-    fire_human_check_note, maybe_fire_best_presentation_ready,
+    fire_human_check_note,
 )
 
 
@@ -69,80 +69,6 @@ def _snip(sid):
     return {"id": sid, "start_offset_ms": 0, "duration_ms": 1000,
             "transcript": "a line", "storage_path": f"s3://{sid}",
             "metrics": {"overall_score": 0.5}}
-
-
-class BestPresentationCardTests(unittest.TestCase):
-    # Founder #1: the best-presentation buttons appear ONLY when the coach has
-    # FINALIZED the ideal text (corrected every slide — the real signal from
-    # services.slide_selection) AND the arc is paid; otherwise the
-    # transcript card.
-    def _sessions(self, n, **kw):
-        return [_sess(sid=f"s{i}", **kw) for i in range(n)]
-
-    def _snips(self, n):
-        return {f"s{i}": [_snip(f"c{i}")] for i in range(n)}
-
-    def test_under_three_takes_fires_nothing(self):
-        db = _FakeDB(sessions=self._sessions(2), snips_by_sid=self._snips(2))
-        self.assertIsNone(maybe_fire_best_presentation_ready(db, "a1"))
-        self.assertEqual(db.inserted, [])
-
-    def test_three_takes_unfinalized_fires_transcript_ready(self):
-        db = _FakeDB(sessions=self._sessions(3), snips_by_sid=self._snips(3))
-        self.assertEqual(
-            maybe_fire_best_presentation_ready(db, "a1"), "transcript_ready")
-        _, msg = db.inserted[0]
-        self.assertEqual(msg["kind"], "transcript_ready")
-
-    def test_finalized_but_unpaid_still_transcript_ready(self):
-        db = _FakeDB(sessions=self._sessions(3), snips_by_sid=self._snips(3),
-                     purchase=None, coach_edits={0: "coach's corrected line"})
-        self.assertEqual(
-            maybe_fire_best_presentation_ready(db, "a1"), "transcript_ready")
-
-    def test_paid_but_unfinalized_still_transcript_ready(self):
-        db = _FakeDB(sessions=self._sessions(3), snips_by_sid=self._snips(3),
-                     purchase={"arc_id": "a1", "user_id": "u1"})
-        self.assertEqual(
-            maybe_fire_best_presentation_ready(db, "a1"), "transcript_ready")
-
-    def test_paid_and_all_takes_published_but_not_finalized_still_transcript(self):
-        # Review must-fix (retained): "all takes published" is NOT the same as
-        # coach_finalized — with the free take-1 human check + auto-publish,
-        # a proxy on published-status alone would fire the bp card too early.
-        db = _FakeDB(
-            sessions=self._sessions(3, published=True),
-            snips_by_sid=self._snips(3),
-            purchase={"arc_id": "a1", "user_id": "u1"},
-        )
-        self.assertEqual(
-            maybe_fire_best_presentation_ready(db, "a1"), "transcript_ready")
-
-    def test_finalized_and_paid_gets_the_transcript_card_too(self):
-        # Best Presentation is retired (L1; second plan, Phase 1, 2026-10-05):
-        # the paid, coach-finalised arc no longer gets its hero card.
-        db = _FakeDB(sessions=self._sessions(3), snips_by_sid=self._snips(3),
-                     purchase={"arc_id": "a1", "user_id": "u1"},
-                     coach_edits={0: "coach's corrected line"})
-        self.assertEqual(
-            maybe_fire_best_presentation_ready(db, "a1"), "transcript_ready")
-        kinds = [m["kind"] for _, m in db.inserted]
-        self.assertNotIn("best_presentation_ready", kinds)
-
-    def test_no_best_presentation_is_composed_to_decide_the_card(self):
-        import services.slide_selection as selection
-        db = _FakeDB(sessions=self._sessions(3), snips_by_sid=self._snips(3))
-        # The builder is removed (N48.3 Q13 A), so nothing can compose.
-        self.assertFalse(hasattr(selection, "build_best_presentation"))
-        self.assertEqual(
-            maybe_fire_best_presentation_ready(db, "a1"), "transcript_ready")
-
-    def test_idempotent_client_id_per_arc_and_kind(self):
-        db = _FakeDB(sessions=self._sessions(3), snips_by_sid=self._snips(3))
-        maybe_fire_best_presentation_ready(db, "a1")
-        maybe_fire_best_presentation_ready(db, "a1")
-        ids = [m["client_id"] for _, m in db.inserted]
-        self.assertEqual(len(set(ids)), 1)  # same uuid5 → server dedupes
 
 
 class NotesTests(unittest.TestCase):

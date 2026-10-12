@@ -395,13 +395,6 @@ class Config:
     # readiness reads the row and the ring-eligible principals. The founder
     # email constant and the canary principal variable that used to say it
     # were retired on 2026-09-29.
-    # Monitoring may be deployed while the producer remains dark.  Readiness
-    # requires this plus Sentry configuration before activation can be
-    # proposed; neither setting activates a producer.
-    MLC2_CONFIDENCE_MONITORING_ENABLED = (
-        (os.getenv("MLC2_CONFIDENCE_MONITORING_ENABLED") or "false")
-        .strip().lower() in ("1", "true", "yes", "on")
-    )
     # Non-production recipient redirect. When set (and ENV != production),
     # services.email_service.send_email_resend sends EVERY message here
     # instead of the real recipient, subject-tagged with who it was for.
@@ -516,27 +509,12 @@ class Config:
     ).strip()
 
 
-    # MLC-3 first-client pilot.  This is deliberately independent from every
-    # dataset/training switch: enabling the product loop must never authorize
-    # pooled learning.  The global switch and the exact subject allowlist are
-    # both required, so an incomplete deployment remains invisible (404).
-    MLC3_PILOT_ENABLED = (
-        (os.getenv("MLC3_PILOT_ENABLED") or "0").strip().lower()
-        in ("1", "true", "yes", "on")
-    )
-    # General-user MLC-3 serving. This is intentionally independent from the
-    # founder-pilot switches above: legacy pilot configuration must never
+    # General-user MLC-3 serving. Legacy pilot configuration must never
     # broaden the rollout-aware database authorization boundary. Disabled is
     # the only safe default.
     MLC3_SERVICE_ENABLED = (
         (os.getenv("MLC3_SERVICE_ENABLED") or "0").strip().lower()
         in ("1", "true", "yes", "on")
-    )
-    MLC3_PILOT_MAX_VIDEO_MB = int(
-        os.getenv("MLC3_PILOT_MAX_VIDEO_MB", "200")
-    )
-    MLC3_PILOT_MAX_AUDIO_MB = int(
-        os.getenv("MLC3_PILOT_MAX_AUDIO_MB", "25")
     )
     # Coach-side drafting is intentionally separable from user serving.
     # The database still requires the complete blind-review/reveal contract.
@@ -558,29 +536,6 @@ class Config:
     ROOTING_COVERAGE_V1_ENABLED = (
         (os.getenv("ROOTING_COVERAGE_V1_ENABLED") or "0")
         .strip().lower() in ("1", "true", "yes", "on")
-    )
-    # PAM remains an independently gated, non-serving future layer.  These
-    # literal default-off seams prevent Bundle activation from implicitly
-    # enabling profile extraction, baselines, matching or authoring.
-    PAM_PROFILE_V1_ENABLED = (
-        (os.getenv("PAM_PROFILE_V1_ENABLED") or "0").strip().lower()
-        in ("1", "true", "yes", "on")
-    )
-    PAM_BASELINE_V1_ENABLED = (
-        (os.getenv("PAM_BASELINE_V1_ENABLED") or "0").strip().lower()
-        in ("1", "true", "yes", "on")
-    )
-    PAM_MATCHING_V1_ENABLED = (
-        (os.getenv("PAM_MATCHING_V1_ENABLED") or "0").strip().lower()
-        in ("1", "true", "yes", "on")
-    )
-    PAM_COACH_AUTHORING_V1_ENABLED = (
-        (os.getenv("PAM_COACH_AUTHORING_V1_ENABLED") or "0").strip().lower()
-        in ("1", "true", "yes", "on")
-    )
-    PAM_USER_SERVING_V1_ENABLED = (
-        (os.getenv("PAM_USER_SERVING_V1_ENABLED") or "0").strip().lower()
-        in ("1", "true", "yes", "on")
     )
     # ── Cloudflare R2 — USER INTERVIEW AUDIO ─────────────────────────────────
     # Deliberately a separate bucket from coach feedback videos because the
@@ -647,32 +602,10 @@ class Config:
     # Frontend URL (for email links)
     FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
-    # ── Phase 14: PostSessionResultsEmail rollout ────────────────────────
-    # PUBLIC_FRONTEND_URL  — base for user-facing links baked into emails
-    #                        (e.g. /unsubscribe?token=...). Falls back to
-    #                        FRONTEND_URL so a single env var still works
-    #                        in dev / preview deploys.
-    # FRONTEND_BASE_URL    — base for server-to-server calls into the
-    #                        Next.js render endpoint
-    #                        (/api/internal/emails/post-session-results).
-    #                        Same value as PUBLIC_FRONTEND_URL in prod;
-    #                        kept distinct so private-network deploys
-    #                        can point the server-to-server hop at an
-    #                        internal hostname.
-    # EMAIL_RENDER_SECRET  — shared secret the frontend's render
-    #                        endpoint checks. Backend sends it in the
-    #                        x-internal-secret header.
     # UNSUBSCRIBE_TOKEN_SECRET — dedicated HS256 signing key for the
     #                        unsubscribe JWTs. Distinct from the auth
     #                        JWT secret so a leak here doesn't burn
     #                        session credentials.
-    PUBLIC_FRONTEND_URL = (
-        os.getenv("PUBLIC_FRONTEND_URL") or FRONTEND_URL
-    ).rstrip("/")
-    FRONTEND_BASE_URL = (
-        os.getenv("FRONTEND_BASE_URL") or PUBLIC_FRONTEND_URL
-    ).rstrip("/")
-    EMAIL_RENDER_SECRET = (os.getenv("EMAIL_RENDER_SECRET") or "").strip()
     UNSUBSCRIBE_TOKEN_SECRET = (os.getenv("UNSUBSCRIBE_TOKEN_SECRET") or "").strip()
 
     # Optional: shared secret for POST /v2/internal/student-credits/increment (Stripe webhook / BFF).
@@ -887,15 +820,6 @@ class Config:
     COPILOT_VIDEO_RETRAIN_SECRET = (os.getenv("COPILOT_VIDEO_RETRAIN_SECRET") or "").strip()
     COPILOT_VIDEO_RETRAIN_WEBHOOK_URL = (os.getenv("COPILOT_VIDEO_RETRAIN_WEBHOOK_URL") or "").strip() or None
 
-    METAVOICE_API_URL = (os.getenv("METAVOICE_API_URL") or "").strip() or None
-    METAVOICE_API_KEY = (os.getenv("METAVOICE_API_KEY") or "").strip() or None
-    METAVOICE_VOICE_ID = (os.getenv("METAVOICE_VOICE_ID") or "").strip() or None
-    METAVOICE_OUTPUT_FORMAT = (os.getenv("METAVOICE_OUTPUT_FORMAT") or "wav").strip() or "wav"
-
-    BYTEDANCE_API_URL = (os.getenv("BYTEDANCE_API_URL") or "").strip() or None
-    BYTEDANCE_API_KEY = (os.getenv("BYTEDANCE_API_KEY") or "").strip() or None
-    ARTUR_BASE_AVATAR_URL = (os.getenv("ARTUR_BASE_AVATAR_URL") or "").strip() or None
-
     # Reference video → Whisper: extract compact mono MP3 via ffmpeg before transcription
     # for video/common containers (and large inputs), to stay under OpenAI ~25MB request limit.
     FFMPEG_PATH = (os.getenv("FFMPEG_PATH") or "ffmpeg").strip() or "ffmpeg"
@@ -914,8 +838,6 @@ class Config:
     # after upload or on the first play, and players are handed it once it
     # exists; the original stays the record (services/playback_copy.py).
     PLAYBACK_COPY_ENABLED = True
-    # Cap extracted audio length for Whisper (API max ~25MB); first N seconds only if longer.
-    REFERENCE_VIDEO_WHISPER_MAX_AUDIO_SECONDS = int(os.getenv("REFERENCE_VIDEO_WHISPER_MAX_AUDIO_SECONDS", "3600"))
 
 
     # willab Prompt D — the audit is REPLACED by the Best-Presentation. Default

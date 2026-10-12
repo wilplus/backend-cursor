@@ -119,53 +119,6 @@ class PersistAutoIdealDualWriteTests(unittest.TestCase):
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class InstantBubbleTests(unittest.TestCase):
-
-    def _fire(self, insert_returns):
-        from services.arc_notifications import fire_instant_ideal_ready
-        captured = {}
-
-        class _Db:
-            def insert_lounge_messages(self, uid, msgs):
-                captured["uid"] = uid
-                captured["msgs"] = msgs
-                return insert_returns
-
-        ok = fire_instant_ideal_ready(_Db(), "u1", ARC)
-        return ok, captured
-
-    def test_fires_idempotent_variant_tagged_bubble(self):
-        ok, cap = self._fire(insert_returns=[{"id": "row"}])
-        self.assertTrue(ok)
-        msg = cap["msgs"][0]
-        from services.lounge_messages import VALID_KINDS
-        self.assertIn(msg["kind"], VALID_KINDS)   # no CHECK migration needed
-        self.assertEqual(msg["kind"], "ideal_text")
-        self.assertEqual(msg["metadata"]["variant"], "instant")
-        self.assertEqual(msg["metadata"]["arc_id"], ARC)
-        # deterministic client_id = idempotent per arc
-        ok2, cap2 = self._fire(insert_returns=[{"id": "row"}])
-        self.assertEqual(msg["client_id"], cap2["msgs"][0]["client_id"])
-        # ...and distinct from the publish-time purple bubble's key
-        import uuid as _uuid
-        purple = str(_uuid.uuid5(_uuid.NAMESPACE_URL,
-                                 f"willab-idealtext:{ARC}"))
-        self.assertNotEqual(msg["client_id"], purple)
-
-    def test_swallowed_rejection_reads_as_not_fired(self):
-        # The #201 lesson: insert_lounge_messages returns [] on a DB refusal.
-        with self.assertLogs("services.arc_notifications",
-                             level="ERROR") as logs:
-            ok, _ = self._fire(insert_returns=[])
-        self.assertFalse(ok)
-        self.assertTrue(any("dropped" in line for line in logs.output))
-
-    def test_missing_ids_no_fire(self):
-        from services.arc_notifications import fire_instant_ideal_ready
-        self.assertFalse(fire_instant_ideal_ready(None, None, ARC))
-        self.assertFalse(fire_instant_ideal_ready(None, "u1", None))
-
-
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class FlagDefaultTests(unittest.TestCase):
     def test_flag_defaults_off(self):
@@ -219,34 +172,8 @@ class BubbleCarriesItsOwnNameTests(unittest.TestCase):
     def _meta(self, db):
         return db.rows[0]["metadata"]
 
-    def test_the_instant_bubble_carries_the_topic(self):
-        from services.arc_notifications import fire_instant_ideal_ready
-        db = self._Db()
-        self.assertTrue(fire_instant_ideal_ready(db, "u1", "arc-1"))
-        self.assertEqual(self._meta(db)["topic"], "Book really")
-
     def test_the_version_bubble_carries_the_topic(self):
         from services.arc_notifications import fire_ideal_version_ready
         db = self._Db()
         fire_ideal_version_ready(db, "u1", "arc-1", 2)
         self.assertEqual(self._meta(db)["topic"], "Book really")
-
-    def test_a_missing_topic_is_None_not_an_empty_string(self):
-        # The FE falls back on a falsy topic either way, but "" stored as if it
-        # were a name is the same class of lie the FE cache refuses to persist.
-        from services.arc_notifications import fire_instant_ideal_ready
-        db = self._Db(sessions=[{"id": "s1", "user_id": "u1",
-                                 "recording_kind": "spoken",
-                                 "intake_context": {"topic": "   "}}])
-        fire_instant_ideal_ready(db, "u1", "arc-1")
-        self.assertIsNone(self._meta(db)["topic"])
-
-    def test_a_topic_lookup_failure_NEVER_blocks_the_bubble(self):
-        # The name is decoration; the bubble is the delivery. A DB hiccup must
-        # cost a heading, never the card telling the student their text is
-        # ready (LIVE LOOP).
-        from services.arc_notifications import fire_instant_ideal_ready
-        db = self._Db(boom=True)
-        self.assertTrue(fire_instant_ideal_ready(db, "u1", "arc-1"))
-        self.assertIsNone(self._meta(db)["topic"])
-        self.assertEqual(self._meta(db)["arc_id"], "arc-1")

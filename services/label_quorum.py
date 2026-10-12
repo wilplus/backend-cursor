@@ -442,32 +442,6 @@ def routing_priority(resolution: Any, machine_value: Any = None) -> int:
     return P_UNRATED
 
 
-def rating_queue(items: Any) -> list:
-    """Order snippets for the rating queue, most informative first.
-
-    ``items`` is a list of ``{snippet_id, resolution, machine_value?}``.
-    Ties break on ``snippet_id`` so the queue is DETERMINISTIC and replayable
-    — the same property the game's round order already holds; a queue that
-    reshuffles on every read cannot be reasoned about when a rating goes
-    missing.
-    """
-    out = []
-    for it in (items if isinstance(items, list) else []):
-        if not isinstance(it, dict):
-            continue
-        res = it.get("resolution")
-        # An item with no snippet or no resolution is not an unrated clip, it
-        # is a malformed row. Queueing it would send a rater to nothing.
-        if not it.get("snippet_id") or not isinstance(res, dict):
-            continue
-        prio = routing_priority(res, it.get("machine_value"))
-        if prio <= P_SETTLED:
-            continue                      # settled clips leave the queue
-        out.append((prio, str(it.get("snippet_id") or ""), it))
-    out.sort(key=lambda t: (-t[0], t[1]))
-    return [{**t[2], "priority": t[0]} for t in out]
-
-
 def rater_submission_access(rows: Any, rater_id: Any) -> dict:
     """Whether one authenticated human may submit on this snippet now.
 
@@ -524,37 +498,3 @@ def rater_submission_access(rows: Any, rater_id: Any) -> dict:
         "resolution": resolution,
     }
 
-
-def corpus_ledger(resolutions: Any) -> dict:
-    """Roll a bag of resolutions into the ledger dial — how much of the corpus
-    is actually usable, by status.
-
-    ``gold`` is the honest denominator for anything that calls itself ground
-    truth: settled snippets only. ``weak`` (singletons) and ``blocked``
-    (needs_third) are the two work queues, and surfacing them is what stops a
-    corpus that is 80% singletons from reading as 80% labelled.
-    """
-    by_status: dict = {}
-    n_self_report = 0
-    for res in (resolutions or []):
-        if not isinstance(res, dict):
-            continue
-        by_status[res.get("status")] = by_status.get(res.get("status"), 0) + 1
-        n_self_report += int(res.get("n_self_report") or 0)
-    total = sum(by_status.values())
-    gold = sum(by_status.get(s, 0) for s in SETTLED_STATUSES)
-    return {
-        "snippets": total,
-        "by_status": by_status,
-        "gold": gold,
-        "weak": by_status.get(SINGLETON, 0),
-        "blocked": by_status.get(NEEDS_THIRD, 0),
-        "unresolved": by_status.get(UNRESOLVED, 0),
-        "audio_retry": by_status.get(AUDIO_RETRY, 0),
-        "audio_quarantined": by_status.get(AUDIO_QUARANTINED, 0),
-        "self_reports_excluded": n_self_report,
-        "gold_share": round(gold / total, 3) if total else None,
-        # Rule 1 as a reported number: if this is ever non-zero, a machine
-        # got a vote and the corpus is circular.
-        "machine_votes": MACHINE_VOTES,
-    }

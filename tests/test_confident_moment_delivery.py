@@ -13,10 +13,6 @@ from services.confident_moment_bundle import (
     ConfidentMomentProjectionInvalid,
     validate_ideal_text_core_v2,
 )
-from services.confident_moment_bundle_repository import (
-    ConfidentMomentBundleRepository,
-    PublishCoachFeedbackLanguageResult,
-)
 
 U1 = "00000000-0000-0000-0000-000000000001"
 U2 = "00000000-0000-0000-0000-000000000002"
@@ -69,34 +65,6 @@ def test_core_v2_timestamp_is_exact_six_digit_utc(created_at):
     value["snapshot"]["created_at"] = created_at
     with pytest.raises(ConfidentMomentProjectionInvalid):
         validate_ideal_text_core_v2(value)
-
-
-def test_publish_repository_strips_internal_job_identity(monkeypatch):
-    monkeypatch.setattr(Config, "CONFIDENT_MOMENT_BUNDLE_V1_ENABLED", True)
-    public = {
-        "coach_feedback_language_contract_version": (
-            "confident-moment-coach-feedback-language-v1"
-        ),
-        "bundle_id": U1, "bundle_attachment_id": U2,
-        "revision_id": U3, "revision_sha256": H,
-        "delivery_id": None, "delivery_state": None, "target_take_id": None,
-        "dataset_eligible": False,
-    }
-    client = MagicMock()
-    client.rpc.return_value.execute.return_value = SimpleNamespace(
-        data={**public, "_materialization_job_id": U3}
-    )
-    repo = ConfidentMomentBundleRepository(lambda: client)
-    result = repo.publish_coach_feedback_language(
-        reviewer_principal_id=U3, bundle_id=U1, bundle_attachment_id=U2,
-        review_batch_id=U1, reveal_grant_id=U1, reveal_access_id=U1,
-        review_assignment_id=U1, output_kind="comment",
-        comment_purpose="positive_praise", revision_text="Good.",
-        expected_current_revision_id=None, expected_current_delivery_id=None,
-        idempotency_key="publish-1",
-    )
-    assert result == PublishCoachFeedbackLanguageResult(public, U3)
-    assert "_materialization_job_id" not in result.public_payload
 
 
 def test_worker_identity_is_pid_local_and_only_digest_is_stable(monkeypatch):

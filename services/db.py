@@ -16,32 +16,6 @@ config = Config()
 logger = logging.getLogger(__name__)
 
 
-# Volatile stamps stripped from Say-It-Stronger cards before they are compared
-# and serialized as annotation-event text: model/generated_at ride only the
-# auto draft, edited_by_coach rides only the final, and version can differ
-# between them — none is content, and any one of them would turn a genuinely
-# untouched card into false "corrected" signal.
-_SIS_VOLATILE_KEYS = ("model", "generated_at", "version", "edited_by_coach")
-
-
-def _sis_annotation_text(card: Any) -> Optional[str]:
-    """A Say-It-Stronger card as canonical annotation-event text.
-
-    Deterministic (sorted keys) so that draft-vs-final equality — and
-    therefore the approved_as_is chip — compares CONTENT, not dict ordering
-    or the volatile stamps. None for anything that isn't a dict with content.
-    """
-    if not isinstance(card, dict):
-        return None
-    slim = {k: v for k, v in card.items() if k not in _SIS_VOLATILE_KEYS}
-    if not slim:
-        return None
-    try:
-        return json.dumps(slim, ensure_ascii=False, sort_keys=True)
-    except (TypeError, ValueError):
-        return None
-
-
 def _session_preview_row(
     session: dict, session_fields: tuple,
     recordings_by_id: dict, sniper_metrics_by_session: dict,
@@ -539,22 +513,6 @@ class DatabaseService:
         
         return result.data[0] if result.data else None
 
-    def get_user_admin_context(self, user_id: str):
-        """Return admin context for report generation. V2: no professional_notes tables; minimal dict.
-
-        Note: the legacy V1 admin-instructions field (tied to the
-        deleted professional_notes_report_tech table) was removed
-        from this stub when the FE killed its corresponding surface
-        in commit ed9ed70. The downstream prompt branch in
-        services.openai_service was always reading None here, so
-        the branch was dead code; both ends were dropped together.
-        """
-        return {
-            "general_notes": None,
-            "max_words": 120,
-            "specific_questions": [],
-        }
-    
     def create_signed_url(self, bucket: str, path: str, expires_in: int = 3600):
         """Create a signed URL for a file in Supabase Storage"""
         import logging
@@ -813,16 +771,6 @@ class DatabaseService:
                 sentry_sdk.capture_exception(e)
         return len(deleted_ids), deleted_ids
 
-    # ---------- V2 flow ----------
-    def v2_get_student_overrides(self, user_id: str):
-        """Overrides for user (tasks, prompts, metric/skip flags, pending tutor video)."""
-        result = self.client.table("v2_student_overrides").select("*").eq("user_id", user_id).execute()
-        rows = result.data or []
-        for row in rows:
-            if str(row.get("user_id") or "") == str(user_id):
-                return row
-        return None
-
     def v2_cleanup_incomplete_sessions(self, hours: float = 1.0, dry_run: bool = False) -> Tuple[int, List[str]]:
         """
         Delete incomplete v2_sessions (status != 'completed') older than hours.
@@ -893,18 +841,6 @@ class DatabaseService:
     def v2_get_session_by_id(self, session_id: str):
         """Get v2 session by id only (no user filter). For debugging 404: check if session exists and which user_id owns it."""
         return self.takes.v2_get_session(session_id, None)
-
-    def v2_get_charisma_snippet_for_user(self, snippet_id: str, user_id: str) -> Optional[dict]:
-        """Fetch a charisma_snippets row, scoped to the authenticated owner."""
-        result = (
-            self.client.table(SNIPPETS_TABLE)
-            .select("*")
-            .eq("id", snippet_id)
-            .eq("user_id", user_id)
-            .limit(1)
-            .execute()
-        )
-        return result.data[0] if result.data else None
 
     def v2_get_results_snippets_for_session(self, session_id: str, user_id: str) -> List[dict]:
         """Snippets for the /results page.
@@ -1023,42 +959,8 @@ class DatabaseService:
             )
             return 0
 
-    def v2_insert_charisma_snippets(self, snippets: list[dict]) -> list[dict]:
-        """Bulk insert charisma snippet candidates."""
-        if not snippets:
-            return []
-        result = (
-            self.client.table(SNIPPETS_TABLE)
-            .insert(snippets)
-            .execute()
-        )
-        return result.data or []
-
-    def v2_get_charisma_snippet(self, snippet_id: str) -> Optional[dict]:
-        """Return one charisma snippet row by id."""
-        result = (
-            self.client.table(SNIPPETS_TABLE)
-            .select("*")
-            .eq("id", snippet_id)
-            .limit(1)
-            .execute()
-        )
-        return result.data[0] if result.data else None
-
-
-    # ---------- Sniper adaptive (user_sniper_profile, session_sniper_metrics) ----------
-
     # ---------- Homework tasks (per-student public.tasks; pool public.tasks_pool) ----------
     DEFAULT_STUDENT_TASK_TEXT = "Do you think you are a good communicator? Why?"
-    TASK_TEMPLATE_ALLOWED_PROFILES = {
-        "The Overwhelmed",
-        "The Stressor",
-        "The Drifter",
-        "The Master",
-    }
-    TASK_TEMPLATE_DEFAULT_PROFILE = "The Overwhelmed"
-    TASK_TEMPLATE_DEFAULT_LEVEL = 1
-    TASK_TEMPLATE_DEFAULT_STEP = 1
 
     def v2_ensure_default_student_task(self, user_id: str) -> bool:
         """If user has no homework tasks, create the default one. Idempotent."""
@@ -1140,131 +1042,6 @@ class DatabaseService:
             return result.data[0] if result.data else None
         result = self.client.table("tasks").update(payload).eq("id", task_id).execute()
         return result.data[0] if result.data else None
-
-    def _normalize_task_template_fields(self, data: dict, *, partial: bool = False) -> dict:
-        payload = {}
-        if "target_profile" in data or not partial:
-            raw_profile = data.get("target_profile", self.TASK_TEMPLATE_DEFAULT_PROFILE)
-            profile = (raw_profile or "").strip()
-            if profile not in self.TASK_TEMPLATE_ALLOWED_PROFILES:
-                raise ValueError("INVALID_TARGET_PROFILE")
-            payload["target_profile"] = profile
-        if "level" in data or not partial:
-            raw_level = data.get("level", self.TASK_TEMPLATE_DEFAULT_LEVEL)
-            try:
-                level = int(raw_level)
-            except (TypeError, ValueError):
-                raise ValueError("INVALID_LEVEL")
-            if level < 1:
-                raise ValueError("INVALID_LEVEL")
-            payload["level"] = level
-        if "step_in_level" in data or not partial:
-            raw_step = data.get("step_in_level", self.TASK_TEMPLATE_DEFAULT_STEP)
-            try:
-                step = int(raw_step)
-            except (TypeError, ValueError):
-                raise ValueError("INVALID_STEP_IN_LEVEL")
-            if step < 1 or step > 10:
-                raise ValueError("INVALID_STEP_IN_LEVEL")
-            payload["step_in_level"] = step
-        if "is_active" in data or not partial:
-            payload["is_active"] = bool(data.get("is_active", True))
-        if "replaces_task_id" in data:
-            payload["replaces_task_id"] = data.get("replaces_task_id") or None
-        return payload
-
-    def v2_get_task_pool_by_id(self, pool_id: str):
-        result = self.client.table("tasks_pool").select("*").eq("id", pool_id).execute()
-        return result.data[0] if result.data else None
-
-    def v2_insert_task_pool(self, data: dict):
-        data = dict(data)
-        data.setdefault("order_index", 0)
-        data.setdefault("max_performance_score", 1.0)
-        data.setdefault("updated_at", datetime.now(timezone.utc).isoformat())
-        data.update(self._normalize_task_template_fields(data, partial=False))
-        result = self.client.table("tasks_pool").insert(data).execute()
-        return result.data[0] if result.data else None
-
-    def v2_delete_task_pool(self, pool_id: str, *, hard_delete: bool = False):
-        if hard_delete:
-            self.client.table("tasks_pool").delete().eq("id", pool_id).execute()
-            return
-        try:
-            self.client.table("tasks_pool").update(
-                {
-                    "is_active": False,
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
-                }
-            ).eq("id", pool_id).execute()
-            return
-        except Exception:
-            # Backward compatibility for old schema (no is_active).
-            self.client.table("tasks_pool").delete().eq("id", pool_id).execute()
-
-    def v2_sync_student_tasks_from_pool(self, user_id: str, pool_task_ids: list):
-        """Replace student's tasks from tasks_pool ids (display order)."""
-        self.client.table("tasks").delete().eq("user_id", user_id).execute()
-        if not pool_task_ids:
-            return []
-        inserted = []
-        for idx, pool_id in enumerate(pool_task_ids):
-            row = self.v2_get_task_pool_by_id(pool_id)
-            if not row:
-                continue
-            raw_score = row.get("max_performance_score", 1.0)
-            try:
-                score = round(float(raw_score), 2)
-            except (TypeError, ValueError):
-                score = 1.0
-            data = {
-                "user_id": user_id,
-                "pool_task_id": pool_id,
-                "text": row["text"],
-                "order_index": int(idx),
-                "max_performance_score": score,
-            }
-            new_row = self.v2_insert_student_task(data)
-            if new_row:
-                inserted.append(new_row)
-        return inserted
-
-    def v2_get_next_active_task_pool_template(
-        self,
-        *,
-        target_profile: str,
-        level: int,
-        exclude_pool_task_ids: Optional[List[str]] = None,
-        limit: int = 1,
-        is_behavioral: Optional[bool] = None,
-    ) -> List[dict]:
-        """Deterministic template lookup: active rows ordered by step_in_level then creation.
-
-        `is_behavioral` scopes the lookup to one partition of `tasks_pool`:
-          * True  -> only the 12 canonical behavioral recommendation-engine tasks
-          * False -> only legacy warm-up tasks
-          * None  -> no filter (historical behavior; may return mixed rows)
-        """
-        q = (
-            self.client.table("tasks_pool")
-            .select("*")
-            .eq("is_active", True)
-            .eq("target_profile", target_profile)
-            .eq("level", int(level))
-        )
-        if is_behavioral is not None:
-            q = q.eq("is_behavioral", bool(is_behavioral))
-        q = (
-            q.order("step_in_level")
-            .order("created_at")
-            .limit(max(1, int(limit)))
-        )
-        result = q.execute()
-        rows = result.data or []
-        if exclude_pool_task_ids:
-            excluded = {str(x) for x in exclude_pool_task_ids if x}
-            rows = [r for r in rows if str(r.get("id")) not in excluded]
-        return rows
 
     # ── Canonical owner / project compatibility repository ─────────────
 
@@ -1531,35 +1308,6 @@ class DatabaseService:
             payload = {"user_id": user_id, "updated_at": datetime.now(timezone.utc).isoformat(), "pitch_variance_ideal": val}
             self.client.table("v2_student_overrides").upsert(payload, on_conflict="user_id").execute()
         return self.v2_get_user_metric_questions(user_id)
-
-    def v2_upsert_student_overrides(self, user_id: str, data: dict):
-        """Atomic column-specific upsert — only touches columns present in *data*.
-
-        PostgREST ``ON CONFLICT (user_id) DO UPDATE`` only sets the columns
-        included in the payload, so untouched columns keep their current
-        value.  This removes the old read-merge-write cycle that was
-        vulnerable to concurrent-write races.
-        """
-        payload: dict = {}
-        for col in self._V2_OVERRIDES_COLUMNS:
-            if col not in data:
-                continue
-            val = data[col]
-            if col == "assigned_task_id" and val == "":
-                val = None
-            payload[col] = val
-        if "skip_metric_questions" in payload and payload["skip_metric_questions"] is None:
-            payload["skip_metric_questions"] = False
-        if not payload:
-            return self.v2_get_student_overrides(user_id)
-        payload["user_id"] = user_id
-        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
-        result = self.client.table("v2_student_overrides").upsert(payload, on_conflict="user_id").execute()
-        rows = result.data or []
-        for row in rows:
-            if str(row.get("user_id") or "") == str(user_id):
-                return row
-        return self.v2_get_student_overrides(user_id)
 
     def v2_list_auth_users(self, limit: int = 50, offset: int = 0):
         """List all auth users (id, email) via Supabase Auth Admin API so new students appear in admin list.
@@ -1958,15 +1706,6 @@ class DatabaseService:
             out.append(rec)
         return out
 
-    def v2_get_speaker_profile(self, user_id: str):
-        """Get speaker profile for admin panel (main_goal, motivation, coach_notes, etc.)."""
-        result = self.client.table("v2_speaker_profiles").select("*").eq("user_id", user_id).execute()
-        rows = result.data or []
-        for row in rows:
-            if str(row.get("user_id") or "") == str(user_id):
-                return row
-        return None
-
     def get_user_email_from_auth(self, user_id: str) -> str | None:
         """Fetch user email from Supabase Auth (admin API). Returns None if not found or on error."""
         try:
@@ -2100,18 +1839,6 @@ class DatabaseService:
             payload.pop("new_value_hash", None)
             self.client.table("admin_annotation_events").insert(payload).execute()
 
-    def list_admin_student_send_drafts(self, *, status: Optional[str] = None) -> List[Dict[str, Any]]:
-        q = (
-            self.client.table("admin_student_send_drafts")
-            .select("*")
-            .order("updated_at", desc=True)
-            .order("created_at", desc=True)
-        )
-        if status:
-            q = q.eq("status", status)
-        res = q.execute()
-        return res.data or []
-
     def try_claim_admin_send_draft_delivery_in_progress(self, draft_id: str, user_id: str) -> Optional[Dict[str, Any]]:
         """Atomically move lifecycle idle|failed → delivering. Returns row if claim succeeded."""
         now = datetime.now(timezone.utc).isoformat()
@@ -2135,77 +1862,6 @@ class DatabaseService:
         except Exception as e:
             logger.warning("try_claim_admin_send_draft_delivery_in_progress: %s", e)
             return None
-
-    def create_admin_uploaded_reference_video(
-        self,
-        *,
-        draft_id: Optional[str],
-        user_id: str,
-        session_id: Optional[str],
-        storage_path: str,
-        source_video_url: Optional[str],
-        transcript_text: Optional[str],
-        feature_metadata: Optional[Dict[str, Any]],
-        tags: Optional[List[str]],
-        is_universal: bool,
-        created_by: Optional[str],
-        transcription_status: Optional[str] = None,
-        transcription_error: Optional[str] = None,
-        title: Optional[str] = None,
-    ) -> Optional[Dict[str, Any]]:
-        clean_title = (title or "").strip() or None
-        fm = dict(feature_metadata or {})
-        # Mirror fields that may be missing at top-level into feature_metadata.
-        # Some prod DBs pre-date migrations adding title/transcription_status/transcription_error.
-        if clean_title and "title" not in fm:
-            fm["title"] = clean_title
-        if transcription_status and "transcription_status" not in fm:
-            fm["transcription_status"] = transcription_status
-        if transcription_error and "transcription_error" not in fm:
-            fm["transcription_error"] = transcription_error
-        payload = {
-            "draft_id": draft_id,
-            "user_id": user_id,
-            "session_id": session_id,
-            "storage_path": storage_path,
-            "source_video_url": source_video_url,
-            "transcript_text": transcript_text,
-            "feature_metadata": fm,
-            "tags": tags or [],
-            "is_universal": bool(is_universal),
-            "created_by": created_by,
-            "transcription_status": (transcription_status or "pending"),
-            "transcription_error": transcription_error,
-            "title": clean_title,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        # Columns that may be absent from older prod schemas. Retry without them
-        # when PostgREST reports PGRST204 "could not find column" for any of these.
-        _OPTIONAL_COLS = ("title", "transcription_status", "transcription_error", "updated_at")
-        import re as _re
-        res = None
-        for _attempt in range(len(_OPTIONAL_COLS) + 1):
-            try:
-                res = self.client.table("admin_uploaded_reference_videos").insert(payload).execute()
-                break
-            except Exception as e:
-                msg = str(e)
-                if "PGRST204" not in msg and "schema cache" not in msg:
-                    raise
-                dropped = False
-                for col in _OPTIONAL_COLS:
-                    if col in payload and f"'{col}'" in msg:
-                        payload.pop(col, None)
-                        dropped = True
-                        break
-                if not dropped:
-                    m = _re.search(r"'([A-Za-z_][A-Za-z0-9_]*)'", msg)
-                    if m and m.group(1) in payload:
-                        payload.pop(m.group(1), None)
-                        dropped = True
-                if not dropped:
-                    raise
-        return res.data[0] if (res and res.data) else None
 
     def list_admin_uploaded_reference_videos_for_training(
         self,
@@ -2337,21 +1993,6 @@ class DatabaseService:
             if hit:
                 return hit
         return _query({"user_id": user_id})
-
-    def update_admin_uploaded_reference_video(
-        self,
-        reference_video_id: str,
-        fields: Dict[str, Any],
-    ) -> Optional[Dict[str, Any]]:
-        payload = dict(fields or {})
-        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
-        res = (
-            self.client.table("admin_uploaded_reference_videos")
-            .update(payload)
-            .eq("id", reference_video_id)
-            .execute()
-        )
-        return res.data[0] if res.data else None
 
     def update_copilot_reference_upload_job(
         self,
@@ -10305,22 +9946,6 @@ class DatabaseService:
                                "arc=%s: %s", arc_id, e)
             return None
 
-    def get_ideal_text_composition_head(
-            self, arc_id: Optional[str]) -> Optional[dict]:
-        if not arc_id:
-            return None
-        try:
-            res = (
-                self.client.table("ideal_text_composition_head")
-                .select("*")
-                .eq("arc_id", str(arc_id))
-                .limit(1)
-                .execute()
-            )
-            return (res.data or [None])[0]
-        except Exception:
-            return None
-
     def set_ideal_text_composition_head(self, arc_id: str,
                                         revision: int) -> bool:
         """Repoint the one live pointer — undo/restore IS this write."""
@@ -10454,31 +10079,6 @@ class DatabaseService:
             if isinstance(r, dict) and isinstance(r.get("slide_index"), int):
                 out.setdefault(str(r.get("arc_id")), {})[r["slide_index"]] = r.get("text")
         return out
-
-    def get_coach_best_presentation_key_phrases(self, arc_id) -> dict:
-        """{slide_index: [phrases]} — the coach-corrected key phrases (Engine
-        2, 2026-07-11). {} on missing table/column / none / error (the auto-
-        derived set serves)."""
-        if not arc_id:
-            return {}
-        try:
-            res = (
-                self.client.table("coach_best_presentation_edits")
-                .select("slide_index, key_phrases")
-                .eq("arc_id", arc_id)
-                .execute()
-            )
-            out = {}
-            for r in (res.data or []):
-                kp = r.get("key_phrases")
-                if isinstance(r.get("slide_index"), int) and isinstance(kp, list):
-                    phrases = [str(x).strip() for x in kp
-                               if isinstance(x, str) and str(x).strip()]
-                    if phrases:
-                        out[r["slide_index"]] = phrases
-            return out
-        except Exception:
-            return {}
 
     # (upsert_coach_best_presentation_edit DELETED 2026-07-15 — the per-
     #  slide coach editor was replaced by the ONE-block ideal text
@@ -14880,23 +14480,6 @@ class DatabaseService:
             logger.warning("training copy erase failed item=%s: %s", item_id, e)
             return False
 
-    def get_take_audio_object(self, take_session_id: str) -> Optional[dict]:
-        """The Take's own recording object (processing_audio_objects)."""
-        if not take_session_id:
-            return None
-        try:
-            rows = (self.client.table("processing_audio_objects")
-                    .select("id,storage_provider,bucket,object_key,"
-                            "exact_bytes_sha256")
-                    .eq("recording_attempt_id", str(take_session_id))
-                    .is_("deleted_at", "null")
-                    .limit(1).execute().data or [])
-            return rows[0] if rows else None
-        except Exception as e:
-            logger.warning("take audio object read failed sid=%s: %s",
-                           take_session_id, e)
-            return None
-
     def assign_confident_voice_exercise(
         self, *, owner_user_id: str, take_session_id: str, snippet_id: str,
         lane: str, matching_policy_version: str, candidates: list[dict],
@@ -15313,14 +14896,6 @@ class DatabaseService:
         }).execute()
         return self._rpc_row(result.data)
 
-    def list_exercise_coach_request_answer_versions(self, request_id: str) -> list[dict]:
-        """The answers a request had and no longer has (0446), oldest
-        first: the coach's own history for the Summary screen, never the
-        speaker's. Raises on failure."""
-        res = (self.client.table("exercise_coach_request_answer_versions").select("*")
-               .eq("request_id", str(request_id)).order("version").execute())
-        return list(res.data or [])
-
     def set_exercise_coach_request_draft(
         self, *, request_id: str, surface: str, text: str,
         model_version: Optional[str], prompt: Optional[dict] = None,
@@ -15528,52 +15103,6 @@ class DatabaseService:
             query = query.eq("owner_user_id", str(owner_user_id))
         return list(query.execute().data or [])
 
-    def list_landed_practices_for_take(
-        self, take_session_id: str, owner_user_id: str,
-    ) -> list[dict]:
-        """The practices on this Take that landed (Yes or In-between on an
-        attempt, 29a), oldest first, for Bold voices (0409). Raises on
-        failure."""
-        res = (self.client.table("confident_voice_practice")
-               .select("id,snippet_id,selected_attempt_id,exact_passage,kind,closed_at")
-               .eq("take_session_id", str(take_session_id))
-               .eq("owner_user_id", str(owner_user_id))
-               .eq("status", "completed")
-               .in_("final_user_answer", ["yes", "in_between"])
-               .order("closed_at").execute())
-        return list(res.data or [])
-
-    def mark_after_practice_step(
-        self, *, owner_user_id: str, take_session_id: str, step: str,
-    ) -> bool:
-        """The Take showed this step (0409), once per Take per step. True
-        when THIS call recorded it. Raises on failure."""
-        res = (self.client.table("after_practice_steps").upsert(
-            {"owner_user_id": str(owner_user_id),
-             "take_session_id": str(take_session_id), "step": str(step)},
-            on_conflict="take_session_id,step",
-            ignore_duplicates=True).execute())
-        return bool(res.data)
-
-    def list_after_practice_steps(self, take_session_id: str) -> list[dict]:
-        """Which steps this Take has shown (0409). Raises on failure."""
-        res = (self.client.table("after_practice_steps")
-               .select("step,shown_at")
-               .eq("take_session_id", str(take_session_id)).execute())
-        return list(res.data or [])
-
-    def record_bold_voices_play(
-        self, *, owner_user_id: str, take_session_id: str, clip_kind: str,
-        clip_id: str,
-    ) -> Optional[dict]:
-        """The speaker heard a clip (0409): a receipt. Raises on failure."""
-        res = self.client.table("bold_voices_plays").insert({
-            "owner_user_id": str(owner_user_id),
-            "take_session_id": str(take_session_id),
-            "clip_kind": str(clip_kind), "clip_id": str(clip_id),
-        }).execute()
-        return (res.data or [None])[0]
-
     def count_after_practice(self, since: str) -> dict:
         """{practices_landed, bold_voices_heard, steps: {step: n}} since
         `since` (0409), for the founder's ledger. Raises on failure."""
@@ -15600,27 +15129,6 @@ class DatabaseService:
 
     # ── Phase 4 and 5 of the after-practice paths (0410) ─────────────────
 
-    def voice_album_has(self, arc_id: str, snippet_id: str) -> bool:
-        """Whether this moment is in the speaker's Voice Album now."""
-        res = (self.client.table("voice_album").select("snippet_id")
-               .eq("arc_id", str(arc_id)).eq("snippet_id", str(snippet_id))
-               .limit(1).execute())
-        return bool(res.data)
-
-    def set_voice_album_share(
-        self, *, owner_user_id: str, arc_id: str, snippet_id: str,
-        take_session_id: Optional[str], shared: bool,
-    ) -> Optional[dict]:
-        """Lend or withdraw one moment (0410): one row per moment; a share
-        clears revoked_at, a withdrawal stamps it. Raises on failure."""
-        now = datetime.now(timezone.utc).isoformat()
-        res = (self.client.table("voice_album_shares").upsert({
-            "owner_user_id": str(owner_user_id), "arc_id": str(arc_id),
-            "snippet_id": str(snippet_id), "take_session_id": take_session_id,
-            "shared_at": now, "revoked_at": None if shared else now,
-        }, on_conflict="snippet_id").execute())
-        return (res.data or [None])[0]
-
     def list_shared_clips_live(self) -> list[dict]:
         """Every moment lent and still in an Album (the view, 0410)."""
         res = (self.client.table("shared_clips_live").select("*")
@@ -15635,66 +15143,6 @@ class DatabaseService:
 
     def list_corpus_clips_active(self) -> list[dict]:
         return self.list_corpus_clips(active_only=True)
-
-    def list_lend_your_ear_answered_clip_ids(self, listener_id: str) -> list[str]:
-        res = (self.client.table("lend_your_ear_answers").select("clip_id")
-               .eq("listener_user_id", str(listener_id)).limit(2000).execute())
-        return [str(r.get("clip_id")) for r in (res.data or []) if r.get("clip_id")]
-
-    def _with_answers(self, the_set: Optional[dict]) -> Optional[dict]:
-        if not isinstance(the_set, dict):
-            return None
-        res = (self.client.table("lend_your_ear_answers").select("clip_id")
-               .eq("set_id", str(the_set.get("id"))).execute())
-        return {**the_set, "answered_clip_ids": [str(r.get("clip_id")) for r in (res.data or [])]}
-
-    def get_lend_your_ear_set_for_take(self, take_session_id: str) -> Optional[dict]:
-        res = (self.client.table("lend_your_ear_sets").select("*")
-               .eq("take_session_id", str(take_session_id)).limit(1).execute())
-        return self._with_answers((res.data or [None])[0])
-
-    def get_lend_your_ear_set(self, set_id: str, listener_id: str) -> Optional[dict]:
-        res = (self.client.table("lend_your_ear_sets").select("*")
-               .eq("id", str(set_id)).eq("listener_user_id", str(listener_id))
-               .limit(1).execute())
-        return self._with_answers((res.data or [None])[0])
-
-    def insert_lend_your_ear_set(self, row: dict) -> Optional[dict]:
-        res = self.client.table("lend_your_ear_sets").insert(dict(row)).execute()
-        return (res.data or [None])[0]
-
-    def insert_lend_your_ear_answer(self, row: dict) -> Optional[dict]:
-        """One per person per clip: a duplicate answers None."""
-        try:
-            res = self.client.table("lend_your_ear_answers").insert(dict(row)).execute()
-        except Exception as e:  # noqa: BLE001 — the unique key is the rule
-            if "23505" in str(e) or "duplicate" in str(e).lower():
-                return None
-            raise
-        return (res.data or [None])[0]
-
-    def list_recent_pair_ids_for_listener(self, listener_id: str, *, days: int) -> list[str]:
-        """The pairs whose clip this listener was shown within `days`, so the
-        partner waits (correction 5)."""
-        since = (datetime.now(timezone.utc) - timedelta(days=max(1, int(days)))).isoformat()
-        res = (self.client.table("lend_your_ear_sets").select("clips")
-               .eq("listener_user_id", str(listener_id)).gte("created_at", since).execute())
-        out: list[str] = []
-        for row in res.data or []:
-            for clip in (row.get("clips") or []) if isinstance(row, dict) else []:
-                if isinstance(clip, dict) and clip.get("pair_id"):
-                    out.append(str(clip["pair_id"]))
-        return out
-
-    def count_lend_your_ear(self, since: str) -> dict:
-        def _count(table: str) -> int:
-            return int(self.client.table(table).select("id", count="exact")
-                       .gte("created_at", since).limit(1).execute().count or 0)
-        return {"sets_opened": _count("lend_your_ear_sets"),
-                "answers": _count("lend_your_ear_answers"),
-                "shares_live": int(self.client.table("voice_album_shares")
-                                   .select("id", count="exact").is_("revoked_at", "null")
-                                   .limit(1).execute().count or 0)}
 
     def coach_handled_moment(self, coach_id: str, take_session_id: str,
                              snippet_id: str) -> bool:
@@ -15752,11 +15200,6 @@ class DatabaseService:
         res = (self.client.table("community_members")
                .select("community_id,role,joined_at")
                .eq("user_id", str(user_id)).limit(500).execute())
-        return list(res.data or [])
-
-    def list_take_shares(self, take_session_id: str) -> list[dict]:
-        res = (self.client.table("take_shares").select("*")
-               .eq("take_session_id", str(take_session_id)).execute())
         return list(res.data or [])
 
     def upsert_take_share(self, *, take_session_id: str, owner_user_id: str,
@@ -15955,12 +15398,6 @@ class DatabaseService:
                .limit(1).execute())
         return bool(res.data)
 
-    def list_dataset_releases(self) -> list[dict]:
-        res = (self.client.table("dataset_releases")
-               .select("id,release_identifier,learning_surface,source_cutoff_at,item_counts,manifest_checksum,created_at")
-               .order("created_at", desc=True).limit(50).execute())
-        return list(res.data or [])
-
     def list_dataset_exclusions(self) -> list[dict]:
         res = (self.client.table("dataset_exclusions").select("reason_code")
                .limit(5000).execute())
@@ -16124,29 +15561,6 @@ class DatabaseService:
                        "voided_reason,purged_at")
                .order("exported_at", desc=True).limit(int(limit)).execute())
         return list(res.data or [])
-
-    def _rpc_object(self, name: str, params: dict) -> dict:
-        """A JSONB-returning RPC's object. Raises on failure or on an answer
-        that is not an object: a monitor that cannot be read is named."""
-        data: Any = self.client.rpc(name, params).execute().data
-        if isinstance(data, list):
-            data = data[0] if data else None
-        if isinstance(data, dict) and len(data) == 1 and isinstance(data.get(name), dict):
-            data = data[name]
-        if not isinstance(data, dict):
-            raise RuntimeError(f"{name} gave no object")
-        return data
-
-    def get_mlc2_confidence_canary_readiness(self) -> dict:
-        """The confidence chain's own invariants, exactly as the five-minute
-        readiness cron reads them (scripts/check_mlc2_confidence_canary_
-        readiness.py): aggregate counts only. Raises."""
-        return self._rpc_object("get_mlc2_confidence_canary_readiness_v1",
-                                {"p_founder_principal_id": None})
-
-    def get_ring_confidence_readiness(self) -> dict:
-        """The ring rows' readiness, as the same cron reads it. Raises."""
-        return self._rpc_object("get_ring_confidence_readiness_v1", {})
 
     def list_voided_unpurged_pair_releases(self) -> list[dict]:
         res = (self.client.table("pair_releases")
@@ -16910,31 +16324,6 @@ class DatabaseService:
             logger.warning("keep_confident_voice_practice_attempt failed id=%s: %s",
                            attempt_id, e)
             return None
-
-    def adopt_practice_passage(
-        self, *, arc_id: str, owner_user_id: str, expected_text: str,
-        new_text: str, new_document: Optional[dict], slide_index: Any,
-        practice_id: str, attempt_id: str, before: str, after: str,
-    ) -> Optional[dict]:
-        """Atomic: the adopted words + Slide map + history row, or nothing
-        when the document moved since it was read (see the migration)."""
-        result = self.client.rpc("adopt_practice_passage_v1", {
-            "p_arc_id": str(arc_id),
-            "p_owner_user_id": str(owner_user_id),
-            "p_expected_text": expected_text,
-            "p_new_text": new_text,
-            "p_new_document": new_document,
-            "p_slide_index": (slide_index if isinstance(slide_index, int)
-                              and not isinstance(slide_index, bool) else None),
-            "p_practice_id": str(practice_id),
-            "p_attempt_id": str(attempt_id),
-            "p_before": before,
-            "p_after": after,
-        }).execute()
-        data = result.data
-        if isinstance(data, list):
-            return data[0] if data and isinstance(data[0], dict) else None
-        return data if isinstance(data, dict) else None
 
     def list_practice_adoptions(self, arc_id: str, user_id: str,
                                 slide_index: int) -> list:

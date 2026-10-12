@@ -10,7 +10,6 @@ from __future__ import annotations
 from collections import Counter
 from datetime import datetime, timezone
 import hashlib
-import json
 import uuid
 from typing import Any, Iterable
 
@@ -214,10 +213,3 @@ def build_dataset_release_manifest(
         "manifest_checksum": checksum,
     }
 
-
-def manifest_json(manifest: dict) -> str:
-    """Stable bytes for manual inspection and external checksum verification."""
-    return json.dumps(
-        manifest, ensure_ascii=False, sort_keys=True,
-        separators=(",", ":"),
-    )

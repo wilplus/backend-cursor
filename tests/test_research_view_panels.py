@@ -9,9 +9,6 @@ Pins:
     voided release counts for nothing); every missing value says why;
   * drift: the weekly learning job stores the PSI 2x2 with its week, and
     the screen reads the newest stored reading, most urgent first;
-  * monitors: the confidence readiness checks are read now, the way the
-    five-minute cron reads them, without judging the cron's own variables;
-    a monitor that cannot be read is named, never shown as ready;
   * nothing on the screen names a person.
 """
 from __future__ import annotations
@@ -29,7 +26,6 @@ from services import research_view as rv
 class _Config:
     PAIR_RELEASE_SURFACES = frozenset({"exercise_script", "praise_line", "clearer_version"})
     MLC2_CONFIDENCE_CUTOVER_MODE = "founder_canary"
-    MLC2_CONFIDENCE_MONITORING_ENABLED = False      # set on the cron service, not the web
     SENTRY_DSN = None
 
 
@@ -50,24 +46,6 @@ def _release(surface, week, splits, voided=False):
             "manifest_sha256": "b" * 64, "voided_at": "2026-10-12T06:00:00Z" if voided else None}
 
 
-HEALTH = {"readiness_contract_version": "mlc2-confidence-canary-readiness-v1",
-          "active_consent_policy_count": 1, "valid_active_consent_policy_count": 1,
-          # The chain's one consent authority is the training yes (0430).
-          "active_training_consent_policy_count": 1,
-          "valid_active_training_consent_policy_count": 1,
-          "pending_confidence_outbox_count": 0, "failed_confidence_outbox_count": 0,
-          "receipt_without_outbox_count": 0, "processed_without_frame_count": 0,
-          "blind_assignment_without_packet_count": 0, "revealed_without_judgment_count": 0,
-          "oldest_pending_confidence_outbox_at": None, "dataset_creation_enabled": False,
-          "training_enabled": False, "promotion_enabled": False}
-RING = {"ring_readiness_contract_version": "rings-confidence-readiness-v1",
-        "confidence_ring_row_present": True, "confidence_ring_row_killed": False,
-        "confidence_ring_row_one_way": True, "canonical_take_rows_row_present": True,
-        "canonical_take_rows_row_killed": False, "eligible_principal_count": 1,
-        "eligible_bundled_consent_grant_count": 1, "eligible_training_consent_grant_count": 1,
-        "noneligible_producer_receipt_count": 0,
-        "noneligible_canonical_event_count": 0, "eligible_producer_receipt_count": 4}
-
 DRIFT = {"version": "frozen_v1", "minted": 0, "note": None, "worst": "PIPELINE_CHANGED",
          "sessions_by_dimension": {"wpm": 60, "fillers": 58},
          "dimensions": {
@@ -78,24 +56,15 @@ DRIFT = {"version": "frozen_v1", "minted": 0, "note": None, "worst": "PIPELINE_C
 
 
 class _Db:
-    def __init__(self, releases=(), snapshots=(), monitor_down=False):
+    def __init__(self, releases=(), snapshots=()):
         self.releases = list(releases)
         self.snapshots = list(snapshots)
-        self.monitor_down = monitor_down
 
     def list_pair_releases(self, limit=20):
         return self.releases[:limit]
 
     def list_ledger_snapshots(self, limit=8):
         return self.snapshots[:limit]
-
-    def get_mlc2_confidence_canary_readiness(self):
-        if self.monitor_down:
-            raise RuntimeError("rpc down")
-        return HEALTH
-
-    def get_ring_confidence_readiness(self):
-        return RING
 
     def get_runtime_config(self, key):
         return None
@@ -125,8 +94,7 @@ def _overview(db):
             "open": True, "surfaces": ["clearer_version", "exercise_script", "praise_line"]},
         "training": {"open": False}, "promotion": {"open": False}}}
     with mock.patch("services.learning_ledger.ledger", return_value=ledger), \
-         mock.patch("services.golden_set.counts", return_value={"count": 0}), \
-         mock.patch("services.coach_video_storage.coach_videos_use_r2", return_value=True):
+         mock.patch("services.golden_set.counts", return_value={"count": 0}):
         return rv.overview(db, config=_Config())
 
 
@@ -180,34 +148,7 @@ class DriftTests(unittest.TestCase):
         self.assertIn("no stored week carries a drift reading yet", out["note"])
 
 
-class MonitorTests(unittest.TestCase):
-    def test_the_monitor_is_read_now_without_judging_the_crons_variables(self):
-        out = _overview(_Db())
-        canary = out["monitors"]["confidence_canary"]
-        # The web service has no monitoring switch or Sentry here: those are
-        # the cron's, so they are not blockers on this screen. Training and
-        # promotion are on (their switches, True since 2026-10-08, were
-        # removed 2026-10-12 with the values they held), and the readiness
-        # assessment names both as it did while the switches stood.
-        self.assertEqual(canary["blocker_codes"],
-                         ["training_must_remain_disabled",
-                          "promotion_must_remain_disabled"])
-        self.assertFalse(canary["ready"], canary)
-        self.assertEqual(canary["cutover_mode"], "founder_canary")
-        self.assertNotIn("monitors", out["unavailable"])
-
-    def test_a_real_blocker_shows(self):
-        db = _Db()
-        db.get_ring_confidence_readiness = lambda: {**RING, "confidence_ring_row_killed": True}
-        canary = _overview(db)["monitors"]["confidence_canary"]
-        self.assertFalse(canary["ready"])
-        self.assertIn("confidence_ring_row_killed", canary["blocker_codes"])
-
-    def test_a_monitor_that_cannot_be_read_is_named_never_ready(self):
-        out = _overview(_Db(monitor_down=True))
-        self.assertIn("monitors", out["unavailable"])
-        self.assertIsNone(out["monitors"]["confidence_canary"])
-
+class PrivacyTests(unittest.TestCase):
     def test_nothing_on_the_screen_names_a_person(self):
         text = json.dumps(_overview(_Db(releases=[
             _release("praise_line", "2026-10-12", {"train": 1, "validation": 0, "test": 0})],

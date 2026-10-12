@@ -71,38 +71,6 @@ def _arc_owner_and_topic(db, arc_id: str) -> tuple[Optional[str], int, Any]:
     return owner, len(sessions), topic
 
 
-def maybe_fire_best_presentation_ready(db, arc_id: Any) -> Optional[str]:
-    """Fire the arc's >=3-takes card: transcript_ready (the transcript).
-
-    Best Presentation is retired (L1; second plan, Phase 1, founder "go"
-    2026-10-05): the paid, coach-finalised arc used to get the
-    ``best_presentation_ready`` hero card instead, opening a best-of
-    document the Ideal Text replaced. Every arc now gets the transcript card,
-    and no Best Presentation is composed to decide it. The name stays for its
-    callers (upload, publish, checkout, the coach's edit save). Idempotent
-    per arc. Returns the kind fired, or None. Never raises."""
-    try:
-        if not arc_id:
-            return None
-        owner, take_count, topic = _arc_owner_and_topic(db, arc_id)
-        if not owner or take_count < TAKES_TARGET:
-            return None
-        body = (f"Your full transcript for {topic} is ready."
-                if topic else "Your full transcript is ready.")
-        _insert(
-            db, owner,
-            client_key=f"willab-transcript:{arc_id}",
-            kind="transcript_ready",
-            body=body,
-            metadata={"arc_id": str(arc_id), "topic": topic},
-        )
-        return "transcript_ready"
-    except Exception as e:
-        logger.warning("arc_notifications: bp-ready check failed arc=%s: %s",
-                       arc_id, e)
-        return None
-
-
 def fire_human_check_note(db, user_id: Any, arc_id: Any) -> bool:
     """Retired human-check note hook, retained for caller compatibility."""
     return False
@@ -253,41 +221,6 @@ def _arc_topic(db, arc_id: Any) -> Optional[str]:
         logger.warning("arc_notifications: topic lookup failed arc=%s: %s",
                        arc_id, e)
         return None
-
-
-def fire_instant_ideal_ready(db, user_id: Any, arc_id: Any) -> bool:
-    """The INSTANT ideal-text bubble (founder re-lock 2026-07-17): fired the
-    moment the arc's machine draft persists at spoken take 3 — the free,
-    labeled instant lane. Distinct from the publish-time purple bubble
-    (client_id uuid5 "willab-idealtext:<arc>"; this key differs, no
-    collision); the FE tells them apart by metadata.variant. Reuses the
-    existing 'ideal_text' lounge kind — no CHECK migration. Idempotent per
-    arc; counts the ACTUAL insert (a swallowed rejection must not read as
-    fired). Copy = founder sign-off."""
-    if not user_id or not arc_id:
-        return False
-    try:
-        persisted = db.insert_lounge_messages(str(user_id), [{
-            "client_id": str(uuid.uuid5(
-                uuid.NAMESPACE_URL, f"willab-idealtext-instant:{arc_id}")),
-            "role": "bot",
-            "kind": "ideal_text",
-            "body": ("Your instant ideal text is ready. Your coach is "
-                     "still polishing the full version."),
-            "metadata": {"arc_id": str(arc_id), "variant": "instant",
-                         "topic": _arc_topic(db, arc_id)},
-            "client_created_at": datetime.now(timezone.utc).isoformat(),
-        }])
-        if not persisted:
-            logger.error(
-                "arc_notifications: instant ideal bubble dropped arc=%s "
-                "(check the lounge kind CHECK)", arc_id)
-            return False
-        return True
-    except Exception as e:
-        logger.warning("arc_notifications: instant ideal bubble failed "
-                       "arc=%s: %s", arc_id, e)
-        return False
 
 
 def _fire_ideal_bubble(db, user_id: Any, arc_id: Any, *, client_key: str,

@@ -45,7 +45,6 @@ capture and the composition snapshot remain.
 from __future__ import annotations
 
 import logging
-import os
 import re
 from typing import Any, Optional
 
@@ -54,14 +53,6 @@ logger = logging.getLogger(__name__)
 _WORD_RE = re.compile(r"\S+")
 _MAX_VARIANT_CHARS = 20000
 _SNAPSHOT_RETRIES = 3
-
-
-def variants_enabled() -> bool:
-    """The READ gate (picker payload, select, revisions, restore) —
-    default OFF; writes dual-run best-effort so history exists the day
-    the flag flips."""
-    return (os.getenv("BLOCK_VARIANTS_ENABLED") or "0").strip().lower() \
-        in ("1", "true", "yes")
 
 
 def _join_pieces(pieces: Any) -> str:
@@ -104,24 +95,6 @@ def record_take_variant(database, arc_id: Any, block_key: Any,
         logger.warning("variants: take capture failed arc=%s key=%s: %s",
                        arc_id, block_key, e)
         return None
-
-
-def capture_take_variants(database, arc_id: Any, session_id: Any,
-                          take_index: Any, mapping: Any) -> int:
-    """Every mapped segment of a new take → the pool, WINNERS AND LOSERS
-    ALIKE — the fear-#1 fix: losing a duel (or being displaced by a
-    newer offer) no longer loses the text. Best-effort, never raises."""
-    written = 0
-    try:
-        for key, seg in (mapping or {}).items():
-            if not seg:
-                continue
-            if record_take_variant(database, arc_id, key, session_id,
-                                   take_index, seg):
-                written += 1
-    except Exception as e:
-        logger.warning("variants: take sweep failed arc=%s: %s", arc_id, e)
-    return written
 
 
 def _variant_for_incumbent(database, arc_id: str, row: dict,

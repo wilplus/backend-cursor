@@ -47,10 +47,6 @@ def _is_fk_violation(exc: BaseException) -> bool:
 
 
 class TakeRepository(TableRepository):
-    def v2_update_session(self, session_id: str, user_id: str, data: dict):
-        """Update v2 session; verify user_id."""
-        result = self.client.table("v2_sessions").update(data).eq("id", session_id).eq("user_id", user_id).execute()
-        return result.data[0] if result.data else None
 
     def v2_delete_session(self, session_id: str, user_id: str) -> bool:
         """Delete one v2 session (owner only). See ``v2_delete_sessions``."""
@@ -223,36 +219,6 @@ class TakeRepository(TableRepository):
             logger.warning("v2_get_published_sessions_for_user failed: %s", e)
             return []
 
-    def v2_get_last_completed_session(self, user_id: str):
-        """Return the most recent completed session for the user (for tutor_feedback_deadline when no active session). Includes tutor_feedback_sent_at so deadline is omitted once feedback is sent."""
-        wide = "id, report_id, completed_at, created_at, tutor_feedback_sent_at, student_completion_email_sent_at, score_for_display"
-        base = "id, report_id, completed_at, created_at, tutor_feedback_sent_at, student_completion_email_sent_at"
-        try:
-            result = (
-                self.client.table("v2_sessions")
-                .select(wide)
-                .eq("user_id", user_id)
-                .eq("status", "completed")
-                .order("completed_at", desc=True)
-                .limit(1)
-                .execute()
-            )
-            return result.data[0] if result.data else None
-        except Exception as e:
-            msg = str(e).lower()
-            if "score_for_display" in msg or "42703" in msg or "does not exist" in msg:
-                result = (
-                    self.client.table("v2_sessions")
-                    .select(base)
-                    .eq("user_id", user_id)
-                    .eq("status", "completed")
-                    .order("completed_at", desc=True)
-                    .limit(1)
-                    .execute()
-                )
-                return result.data[0] if result.data else None
-            raise
-
     def v2_get_latest_session_id_for_user(self, user_id: str) -> Optional[str]:
         """Most recent v2_sessions.id by created_at (any status). For admin UI when no completed row exists."""
         try:
@@ -271,14 +237,6 @@ class TakeRepository(TableRepository):
         except Exception as e:
             logger.warning("v2_get_latest_session_id_for_user failed user_id=%s: %s", user_id, e)
             return None
-
-    def v2_mark_tutor_feedback_sent(self, session_id: str, user_id: str):
-        """Set tutor_feedback_sent_at to now for this session (idempotent)."""
-        from datetime import datetime, timezone
-        self.client.table("v2_sessions").update({
-            "tutor_feedback_sent_at": datetime.now(timezone.utc).isoformat(),
-        }).eq("id", session_id).eq("user_id", user_id).execute()
-        return True
 
     def _session_homework_recording_words_per_minute(self, session_id: str):
         """Words per minute from the recording linked to a v2 session (recording_1)."""

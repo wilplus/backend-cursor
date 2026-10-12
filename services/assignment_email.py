@@ -3,21 +3,6 @@ from html import escape
 
 from services.email_wordmark import wordmark_html
 
-DEFAULT_COACH_MESSAGE = "Good work. It is a small step for you, but a huge step for your progress!"
-DEFAULT_AI_INSIGHT = (
-    "You had strong energy and clear intent. Focus next on slowing transitions between points and reducing filler words in openings."
-)
-
-
-def _initials(name: str | None) -> str:
-    raw = (name or "").strip()
-    if not raw:
-        return "CO"
-    parts = [p for p in raw.replace("_", " ").split(" ") if p.strip()]
-    if len(parts) >= 2:
-        return (parts[0][0] + parts[1][0]).upper()
-    return (parts[0][:2]).upper()
-
 
 def _short(text: str | None, limit: int) -> str:
     t = (text or "").strip()
@@ -26,18 +11,6 @@ def _short(text: str | None, limit: int) -> str:
     return t[:limit].rstrip() + "..."
 
 
-def _logo_html(_logo_url: str | None = None) -> str:
-    """Always renders the Willab text logo in Pacifico, matching the navbar WillabLogo component.
-    Uses an inline <style>@import for Gmail compatibility (Gmail strips <link> tags)."""
-    return (
-        '<style>@import url("https://fonts.googleapis.com/css2?family=Pacifico&display=swap");</style>'
-        '<span style="font-family:\'Pacifico\',cursive;'
-        'font-size:24px;font-weight:400;color:#2d3748;letter-spacing:-0.5px;">'
-        'Willab<span style="color:#f97316;">.</span></span>'
-    )
-
-
-LOGO_URL = "https://www.willpowerlab.com/willab-logo"
 # Mirrored from emails/PostSessionResultsEmail.tsx (FONT_STACK_SYSTEM).
 _FONT_STACK = (
     "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "
@@ -154,98 +127,3 @@ def build_admin_homework_completed_email_html(
 </body>
 </html>"""
 
-
-def build_student_new_homework_email_html(
-    *,
-    student_first_name: str,
-    coach_message: str,
-    coach_name: str,
-    coach_role: str,
-    homework_url: str,
-    logo_url: str | None = None,
-) -> str:
-    safe_coach = escape((coach_name or "Coach").strip() or "Coach")
-    safe_role = escape((coach_role or "Public Speaking Coach").strip() or "Public Speaking Coach")
-    safe_message = escape((coach_message or DEFAULT_COACH_MESSAGE).strip() or DEFAULT_COACH_MESSAGE)
-    initials = escape(_initials(safe_coach))
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>New Homework Available — Willab</title>
-</head>
-<body style="margin:0;padding:0;background-color:#fafafa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#fafafa;padding:48px 16px;">
-<tr><td align="center">
-<table width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;">
-<tr><td style="padding-bottom:40px;">
-  {_logo_html(logo_url)}
-</td></tr>
-<tr><td style="background-color:#ffffff;border-radius:8px;">
-<table width="100%" cellpadding="0" cellspacing="0">
-<tr><td style="padding:36px 36px 0;">
-  <p style="margin:0;font-size:18px;font-weight:600;color:#1e293b;line-height:1.4;">Hey! New practice available!</p>
-</td></tr>
-<tr><td style="padding:20px 36px 0;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#fafafa;border-radius:6px;border-left:2px solid #f97316;">
-    <tr><td style="padding:16px 20px;">
-      <p style="margin:0;font-size:14px;color:#1e293b;line-height:1.6;font-style:italic;">"{safe_message}"</p>
-    </td></tr>
-  </table>
-</td></tr>
-<tr><td style="padding:28px 36px 0;">
-  <a href="{escape(homework_url)}" style="display:inline-block;background-color:#f97316;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:12px 28px;border-radius:6px;">View homework →</a>
-</td></tr>
-<tr><td style="padding:28px 36px 0;"><div style="border-top:1px solid #f1f5f9;"></div></td></tr>
-<tr><td style="padding:24px 36px 32px;">
-  <table cellpadding="0" cellspacing="0">
-    <tr>
-      <td style="width:36px;vertical-align:top;">
-        <div style="width:32px;height:32px;border-radius:50%;background-color:#1e293b;color:#ffffff;font-size:12px;font-weight:600;text-align:center;line-height:32px;">{initials}</div>
-      </td>
-      <td style="padding-left:10px;">
-        <p style="margin:0;font-size:14px;font-weight:600;color:#1e293b;">{safe_coach}</p>
-        <p style="margin:0;font-size:12px;color:#94a3b8;">{safe_role}</p>
-      </td>
-    </tr>
-  </table>
-</td></tr>
-</table>
-</td></tr>
-<tr><td style="padding:32px 0;text-align:center;">
-  <p style="margin:0;font-size:12px;color:#cbd5e1;">Willab</p>
-</td></tr>
-</table>
-</td></tr>
-</table>
-</body>
-</html>"""
-
-
-# Backward-compatible wrapper; keep while callers migrate.
-def build_assignment_email_html(
-    *,
-    video_url: str | None = None,
-    coach_message: str | None = None,
-    homework_link: str,
-    student_name: str = "there",
-    meta_label: str = "Session Recap",
-    homework_title: str = "Public speaking!",
-    homework_subtitle: str = "Your next assignment is ready.",
-    coach_name: str = "Your Coach",
-    coach_role: str = "Public Speaking Coach",
-    coach_image_url: str | None = None,
-    unsubscribe_link: str = "#",
-    preferences_link: str = "#",
-    logo_url: str | None = None,
-) -> str:
-    _ = (video_url, meta_label, homework_title, homework_subtitle, coach_image_url, unsubscribe_link, preferences_link)
-    return build_student_new_homework_email_html(
-        student_first_name=student_name,
-        coach_message=coach_message or DEFAULT_COACH_MESSAGE,
-        coach_name=coach_name,
-        coach_role=coach_role,
-        homework_url=homework_link,
-        logo_url=logo_url,
-    )

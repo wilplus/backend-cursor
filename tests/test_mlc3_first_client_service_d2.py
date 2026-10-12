@@ -10,9 +10,6 @@ ROOT = Path(__file__).resolve().parents[1]
 SQL = (
     ROOT / "migrations/add_mlc3_first_client_service_d2.sql"
 ).read_text()
-PRACTICE_ORCHESTRATOR = (
-    ROOT / "services/practice_attempt_orchestrator.py"
-).read_text()
 FIRST_CLIENT_REPOSITORY = (
     ROOT / "services/first_client_repository.py"
 ).read_text()
@@ -26,11 +23,7 @@ def _function(name: str) -> str:
 
 
 def test_first_client_http_and_persistence_glue_have_narrow_boundaries():
-    assert "class PracticeAttemptOrchestrator" in PRACTICE_ORCHESTRATOR
     assert "class FirstClientRepository" in FIRST_CLIENT_REPOSITORY
-    assert "def reserve_exercise_practice_service_upload" in (
-        FIRST_CLIENT_REPOSITORY
-    )
     assert "def reserve_exercise_practice_service_upload" not in SHARED_DATABASE
 
 
@@ -39,7 +32,6 @@ def test_all_four_service_gates_are_independent_and_default_closed(monkeypatch):
 
     assert Config.MLC3_SERVICE_ENABLED is False
     monkeypatch.setattr(Config, "MLC3_SERVICE_ENABLED", True)
-    monkeypatch.setattr(Config, "MLC3_PILOT_ENABLED", True)
     assert not hasattr(Config, "MLC3_PILOT_PRINCIPAL_IDS")  # legacy allowlist deleted (audit Q-A5)
     assert principal_is_allowlisted(principal_id="principal") is True
     assert "state = 'disabled'" in SQL
@@ -186,7 +178,6 @@ def test_provider_write_is_reserved_and_verified_before_attachment():
     assert "coach_guidance_media_validity_events" in coach_finalize
     assert "independent_clean_media" in coach_finalize
     assert "result.status = 'attached'" in acknowledge
-    assert "write_required" in PRACTICE_ORCHESTRATOR
 
 
 def test_practice_transcription_has_exact_authorized_run_provenance():
@@ -228,22 +219,8 @@ def test_practice_transcription_has_exact_authorized_run_provenance():
     assert "does not require continuing service authority" in reconcile_request
     assert "response_sha256" in finalize
     assert "provider_error_code" in finalize
-    assert 'status="uncertain"' in PRACTICE_ORCHESTRATOR
-    assert "SnippetTranscriptionProviderError" in PRACTICE_ORCHESTRATOR
-    assert (
-        "mark_exercise_practice_transcription_dispatched"
-        in PRACTICE_ORCHESTRATOR
-    )
-    assert "reconcile_exercise_practice_transcription" in PRACTICE_ORCHESTRATOR
-    assert (
-        "reconcile_exercise_practice_transcription_request"
-        in PRACTICE_ORCHESTRATOR
-    )
     assert "transcription_run.run_sha256" in measurement
     assert "row.status = 'finalized'" in measurement
-    assert 'run.get("status") == "finalized"' in PRACTICE_ORCHESTRATOR
-    assert "normalized_output" in PRACTICE_ORCHESTRATOR
-    assert "occurred_at=command.capture_completed_at" in PRACTICE_ORCHESTRATOR
     assert any(
         dependency.code == "exercise_practice_transcription_runs"
         for dependency in DEPENDENCIES
@@ -344,8 +321,6 @@ def test_raw_measurements_never_create_improvement_or_dataset_labels():
     assert "safeguards" in measurement
     assert "improved" not in measurement
     assert "improved" not in validity
-    assert "extract_rushed_phrase_endings_n1" in PRACTICE_ORCHESTRATOR
-    assert "acoustic_snapshot" not in PRACTICE_ORCHESTRATOR
     selection = _function("freeze_exercise_practice_service_selection_v1")
     assert selection.count("practice.validity_contract_version") >= 3
 
@@ -358,7 +333,6 @@ def test_service_playback_uses_authoritative_resolvers_and_strict_r2():
         "resolve_exercise_confidence_media_read_v1",
     ):
         assert "require_" in _function(name)
-    assert "presigned_get_user_media_r2" not in PRACTICE_ORCHESTRATOR
 
 
 def test_service_window_uses_fresh_current_authority_not_historical_permit():

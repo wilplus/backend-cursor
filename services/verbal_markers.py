@@ -122,10 +122,6 @@ def lexicon(marker_class: str, language: Optional[str] = None) -> dict[str, bool
     return LEXICONS.get(lang, LEXICONS[DEFAULT_LANGUAGE]).get(marker_class, {})
 
 
-def supported_languages() -> tuple[str, ...]:
-    return tuple(sorted(LEXICONS))
-
-
 # ── counting ────────────────────────────────────────────────────────────────
 
 _WORD_RE = re.compile(r"[a-z']+")

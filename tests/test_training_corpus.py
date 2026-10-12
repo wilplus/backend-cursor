@@ -90,8 +90,6 @@ class JobTests(unittest.TestCase):
             # D1: any touch of audio storage fails the test.
             mock.patch("services.lab_audio_storage.get_exact_storage_object_bytes",
                        side_effect=AssertionError("D1: no audio is read")),
-            mock.patch("services.blind_review_media.render_blind_clip_wav",
-                       side_effect=AssertionError("D1: no clip is cut")),
             mock.patch("services.lab_audio_storage.put_lab_audio_bytes",
                        side_effect=AssertionError("D1: no audio is stored")),
             mock.patch("services.job_queue.enqueue", return_value=True),
@@ -99,7 +97,7 @@ class JobTests(unittest.TestCase):
         self.mocks = [p.start() for p in patches]
         for p in patches:
             self.addCleanup(p.stop)
-        self.enqueue = self.mocks[3]
+        self.enqueue = self.mocks[2]
 
     def test_no_training_yes_copies_nothing(self):
         db = _Db(consent={"active": False})

@@ -75,18 +75,6 @@ def test_the_side_writes_never_raise(monkeypatch):
     assert po.compute(db, "t") == {"outcome": "computed"} and db.computed == ["t"]
 
 
-def test_the_rise_share_counts_measured_picks_of_the_kinds_asked():
-    rows = [
-        {"outcome": "rose", "v3_picks": ["rewrite"]},
-        {"outcome": "did_not_rise", "v3_picks": ["exercise"]},
-        {"outcome": "rose", "v3_picks": ["praise"]},
-        {"outcome": "not_measured", "v3_picks": ["rewrite"]},
-        {"outcome": "rose", "v3_picks": []},
-    ]
-    assert po.rise_share(rows, ["rewrite", "exercise"]) == 0.5
-    assert po.rise_share(rows, ["nothing"]) is None
-
-
 def test_wiring_map_before_the_read_and_outcomes_after_it():
     changes = (ROOT / "services" / "ideal_text_changes.py").read_text()
     assert changes.index("map_paragraphs(db, _arm_sid") < changes.index("enqueue_read(_arm_sid)")

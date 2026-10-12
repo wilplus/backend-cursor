@@ -866,22 +866,6 @@ class ImporterTests(unittest.TestCase):
         bets = [i for i in items if i["kind"] == "bet"]
         self.assertEqual([b["order_key"] for b in bets], [1.0, 2.0, 3.0])
 
-    def test_dry_run_is_the_default(self):
-        # The destructive direction should require a word, not the absence of
-        # one.
-        plan = importer.build_plan(USER, principles_export=self._export())
-        self.assertTrue(importer.apply_plan(USER, plan)["dry_run"])
-        self.assertEqual(
-            importer.apply_plan(USER, plan)["written"],
-            {"cases": 0, "items": 0, "notes": 0, "strategy": 0})
-
-    def test_the_dry_run_reports_the_same_counts_the_real_run_would_write(self):
-        plan = importer.build_plan(USER, principles_export=self._export())
-        reported = importer.apply_plan(USER, plan)["planned"]
-        self.assertEqual(reported["cases"], len(plan["cases"]))
-        self.assertEqual(reported["items"], len(plan["items"]))
-
-
 # ═════════════════════════════════════════════════════════════════════════
 # Serialization
 # ═════════════════════════════════════════════════════════════════════════

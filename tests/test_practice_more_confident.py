@@ -12,7 +12,9 @@ from pathlib import Path
 import pytest
 
 from services.practice_more_confident import (
-    coach_leg, machine_leg, outcome, record_after_coach_decision,
+    machine_leg,
+    outcome,
+    record_after_coach_decision,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,17 +47,6 @@ def test_machine_leg(original, attempt, expected):
 ])
 def test_outcome(machine, coach, expected):
     assert outcome(machine, coach) == expected
-
-
-@pytest.mark.parametrize("before, after, expected", [
-    ("no", "yes", "yes"), ("no", "in_between", "yes"), ("neutral", "yes", "yes"),
-    ("no", "no", "no"), ("yes", "in_between", "no"), ("neutral", "in_between", "no"),
-    ("yes", "yes", None),           # already confident: cannot tell
-    ("no", "not_sure", None), ("no", "audio_unclear", None),
-    (None, "yes", None), ("no", None, None),
-])
-def test_coach_leg(before, after, expected):
-    assert coach_leg(before, after) == expected
 
 
 def test_the_migration_states_the_same_rule():

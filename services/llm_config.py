@@ -86,9 +86,6 @@ SPEC_MASTER_DOC_ROUTER = LLMSpec(
     model=CHEAP_MODEL, temperature=0.0, max_tokens=40,
 )
 
-SPEC_STICKINESS_TOPICS = LLMSpec(
-    model=CHEAP_MODEL, temperature=0.2, max_tokens=400,
-)
 SPEC_COACH_COMMENT_DRAFT = LLMSpec(
     model=CHEAP_MODEL, temperature=0.6, max_tokens=320,
 )
@@ -105,14 +102,6 @@ SPEC_COACH_ANSWER_DRAFT = LLMSpec(
 exercise script, a praise line or a clearer version. Shown to the coach
 only; the coach's edited final is what anyone else sees, and the (draft,
 final) pair is the learning record (services.feedback_pairs)."""
-
-SPEC_SNIPPET_DRAFT = LLMSpec(
-    model=CHEAP_MODEL, temperature=0.5, max_tokens=220,
-)
-SPEC_BASELINE_SUMMARY = LLMSpec(
-    model=CHEAP_MODEL, temperature=0.4, max_tokens=600,
-    timeout_seconds=8.0,
-)
 
 
 SPEC_CONVERSATION_SUMMARY = LLMSpec(
@@ -322,14 +311,6 @@ only as key-phrase DISPLAY HINTS (bolding spans already verbatim-present;
 off entirely under POLISH_AS_SUGGESTIONS)."""
 
 
-SPEC_MASTER_CHUNKING = LLMSpec(
-    model=CHEAP_MODEL,
-    # Segmentation is deterministic work — no creativity wanted.
-    temperature=0.0,
-    # Index boundaries + short labels for up to ~40 blocks.
-    max_tokens=1600,
-    response_format={"type": "json_object"},
-)
 """Master-document skeleton chunking (founder 2026-07-22): ONE pass per
 project splitting the take-1 transcript into logical blocks. Returns
 piece INDEX boundaries + short labels ONLY — never transcript text
@@ -349,19 +330,6 @@ replace kind). Suggestion overlay ONLY — approved replacements write the
 student's own copy at serve time, never the canonical ideal text (L1)."""
 
 
-SPEC_CONTEXTUAL_FOLLOWUP = LLMSpec(
-    model=CHEAP_MODEL,
-    # Moderate warmth — the question should feel like a coach who
-    # actually listened, not a stock prompt. Lower than the
-    # icebreaker (0.7) because the LLM has TWO constraints to
-    # juggle (bridge naturally AND elicit a specific intent) and
-    # higher temp loses one of them under load.
-    temperature=0.55,
-    # Two-sentence question + a 5-12 word bridge_to debug tag.
-    # 150 leaves room for verbose model wrapping without truncating.
-    max_tokens=150,
-    response_format={"type": "json_object"},
-)
 """FIX.1 — Contextual follow-up question for the interview funnel.
 Replaces the legacy alternation prompt that produced bicycle →
 boardroom non-sequiturs (tester feedback)."""

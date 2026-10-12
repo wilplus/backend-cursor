@@ -478,22 +478,6 @@ class BlockPickTests(unittest.TestCase):
 
 
 class DetectorTests(unittest.TestCase):
-    def test_the_live_versions_and_the_shadow_rows(self):
-        self.assertEqual(set(dr.LIVE_DETECTOR), set(dr.ERRORS))
-        self.assertEqual(dr.stage_of("rules-v1"), "live")
-        self.assertEqual(dr.stamp_live_versions({})["detector_versions"], dr.LIVE_DETECTOR)
-        rows = dr.observations({"pause_ratio": 0.02, "pause_regularity": 0.9, "ending_duration_ratio": 0.9},
-                               clip_id="s1", take_session_id="t")
-        rushing = next(r for r in rows if r["error_id"] == "rushing" and r["detector_version"] == "rules-v1")
-        self.assertTrue(rushing["fired"])
-        ending = next(r for r in rows if r["error_id"] == "ending_compression" and r["detector_version"] == "rules-v1")
-        self.assertFalse(ending["fired"])
-        self.assertFalse(any(r["error_id"] == "word_compression" for r in rows))
-        self.assertEqual(dr.record_take(_Db(), "t") if False else 0, 0)
-        attempt_rows = dr.observations({"pause_ratio": 0.5}, clip_id="a1", take_session_id="t",
-                                       clip_kind="practice_attempt")
-        self.assertEqual({r["clip_kind"] for r in attempt_rows}, {"practice_attempt"})
-
     def test_the_fair_test_grades_held_out_speakers_and_the_bar_flips_nothing(self):
         audit = [{"clip_id": f"c{i}", "error_id": "rushing", "answer": "yes" if i % 2 == 0 else "no",
                   "speaker_user_id": f"h{i}" if i % 3 else f"t{i}", "sampling_probability": 1.0}

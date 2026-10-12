@@ -17,13 +17,11 @@ try:
     from routes.v2 import coach as v2_coach
     from services.db import db
     import services.coach_video_storage as cvs
-    import services.coach_video_capture as cvc
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover - env/bootstrap guard
     Flask = None
     request = None
     cvs = None
-    cvc = None
     _IMPORT_ERROR = e
 
 
@@ -52,10 +50,6 @@ class CoachVideoTests(unittest.TestCase):
                        lambda prior_id, new_id: self.superseded.append(
                            (prior_id, new_id)))
         self.superseded = []
-        # Transcription spawns a daemon thread that hits ffmpeg + Whisper.
-        # Keep the test hermetic.
-        self._orig_spawn = cvc._spawn_transcription
-        cvc._spawn_transcription = lambda *a, **k: None
         self._orig_put = cvs.put_coach_object_bytes
         self._orig_url = cvs.coach_media_public_url
         self._orig_sign = cvs.presigned_get_coach_object
@@ -70,7 +64,6 @@ class CoachVideoTests(unittest.TestCase):
         cvs.put_coach_object_bytes = self._orig_put
         cvs.coach_media_public_url = self._orig_url
         cvs.presigned_get_coach_object = self._orig_sign
-        cvc._spawn_transcription = self._orig_spawn
 
     def _capture_asset(self, row):
         created = {"id": f"asset-{len(self.assets) + 1}", **row}

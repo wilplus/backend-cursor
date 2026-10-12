@@ -145,14 +145,6 @@ def question_for_state(state_id: Any) -> Optional[str]:
     return CURRENT_QUESTION_BY_STATE.get(str(state_id or "").strip())
 
 
-def describe_question(question_version: Any) -> Optional[dict]:
-    """The operational definition behind a stored rating, live or retired.
-    Retired versions resolve so an old row can still be read; only live ones
-    may be served to a rater."""
-    key = str(question_version or "").strip()
-    return QUESTIONS.get(key) or _RETIRED_QUESTIONS.get(key)
-
-
 # ── validation ──────────────────────────────────────────────────────────────
 
 def validate_rating(payload: Any, *,
