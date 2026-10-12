@@ -4,7 +4,7 @@
 
 Locked by the founder on 2026-10-12 ("approved, lock it and write the lock
 file"), from the clickable prototype
-<https://claude.ai/artifact/TXbwmupWJio6N1gHqdEa7p> (version 27; version 30 is final: version 28 aligns the practice recorder with the 2026-10-12 recording lock, and versions 29–30 apply the last answers in section 9). The
+<https://claude.ai/artifact/TXbwmupWJio6N1gHqdEa7p> (version 27; version 31 is final: version 28 aligns the practice recorder with the 2026-10-12 recording lock, and versions 29–31 apply the last answers in section 9). The
 prototype is the design; this file is its written record and the acceptance
 check when it is built. Nothing here is built yet.
 
@@ -209,6 +209,17 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
   while it's pressed.
 - **The helper-word picker** uses big plain words with no borders. The
   chosen words turn orange.
+
+- **No bold in any bubble,** in the walk or the chat.
+- **Who you judge follows who you share with.**
+  - **Only my community:** the moments you judge come from your community
+    first, and the general community fills in. The bridge line names it:
+    "Now one moment from Invita." / "Now N moments from Invita.", and the
+    top bar reads "Invita · 1 of N".
+  - **General community:** you judge the general community, and its
+    members may hear your Take.
+  - **Only me:** nobody but the coach hears your Take, but you still judge
+    general-community moments.
 
 ## Still open
 
