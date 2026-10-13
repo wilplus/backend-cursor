@@ -429,6 +429,7 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
     db.client.table("bookings").update({
         "user_id": user_id, "list_price_cents": int(offer["list_price_cents"]),
         "bonus_tokens": 0 if skip else int(offer["bonus_tokens"]),
+        "due_cents": int(offer["price_cents"]) if skip else None,
     }).eq("id", booking_id).execute()
     base = (config.FRONTEND_URL or "https://www.willpowerlab.com").rstrip("/")
 
@@ -574,6 +575,7 @@ def booking_for_guest(*, session_id: str = "", booking_id: str = "") -> Optional
         "price_cents": row["price_cents"], "currency": row["currency"],
         "list_price_cents": row.get("list_price_cents") or row["price_cents"],
         "bonus_tokens": row.get("bonus_tokens") or 0,
+        "due_cents": row.get("due_cents") or 0,
     }
 
 

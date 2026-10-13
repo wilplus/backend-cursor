@@ -504,3 +504,4 @@
 0466	add_person_asks.sql
 0467	add_booking_new_user_discount.sql
 0468	grant_booking_hold_service_role.sql
+0469	add_booking_due_and_first_lesson_half_off.sql
