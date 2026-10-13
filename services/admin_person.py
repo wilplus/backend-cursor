@@ -90,27 +90,40 @@ def _settings(user_id: str) -> dict:
     return rows[0] if rows else {}
 
 
-def _no_count_phase1(receipt_id: Optional[str], choice: str) -> int:
+NoCount = tuple[int, Optional[str]]  # (how many times they said no, when last)
+
+
+def _count(rows: list[dict], at: str) -> NoCount:
+    times = sorted(str(r[at]) for r in rows if r.get(at))
+    return len(rows), (times[-1] if times else None)
+
+
+def _no_count_phase1(receipt_id: Optional[str], choice: str) -> NoCount:
     if not receipt_id:
-        return 0
-    rows = (db.client.table("processing_consent_choice_events").select("seq")
+        return 0, None
+    rows = (db.client.table("processing_consent_choice_events").select("created_at")
             .eq("receipt_id", receipt_id).eq("choice", choice)
             .eq("event_kind", "withdraw").execute().data) or []
-    return len(rows)
+    return _count(rows, "created_at")
 
 
-def _no_count_training(principal: str) -> int:
-    rows = (db.client.table("ml_consent_events").select("id")
+def _no_count_training(principal: str) -> NoCount:
+    rows = (db.client.table("ml_consent_events").select("occurred_at")
             .eq("acquisition_principal_id", principal)
             .eq("event_kind", "withdraw").execute().data) or []
-    return len(rows)
+    return _count(rows, "occurred_at")
 
 
-def _no_count_legacy(user_id: str, consent_type: str) -> int:
-    rows = (db.client.table("user_consent_events").select("id")
+def _no_count_legacy(user_id: str, consent_type: str) -> NoCount:
+    rows = (db.client.table("user_consent_events").select("set_at")
             .eq("user_id", user_id).eq("consent_type", f"{consent_type}_consent")
             .eq("consent_value", False).execute().data) or []
-    return len(rows)
+    return _count(rows, "set_at")
+
+
+def _no(future) -> dict:
+    count, last = future.result() or (0, None)
+    return {"no_count": count, "last_no_at": last}
 
 
 def _state(value: Optional[bool]) -> str:
@@ -141,30 +154,30 @@ def consents(user_id: str, principal: Optional[str], settings: dict,
         if principal:
             out.append({"key": "processing", "label": "Processing my recordings",
                         "state": "yes" if receipt else "missing",
-                        "at": (receipt or {}).get("accepted_at"), "no_count": 0})
+                        "at": (receipt or {}).get("accepted_at"), "no_count": 0, "last_no_at": None})
             for key, label in (("personalised_practice", "Personalised practice"),
                                ("sensitive_information", "Sensitive information")):
                 value = choices.get(key) if choices.get("has_receipt") else None
                 out.append({"key": key, "label": label, "state": _state(value), "at": None,
-                            "no_count": f_phase1_no[key].result() or 0})
+                            **_no(f_phase1_no[key])})
             training = f_training.result() or {}
             withdrawn = bool(training.get("withdrawn"))
             out.append({"key": "training", "label": "Recordings help train the model",
                         "state": "yes" if training.get("active") else ("no" if withdrawn else "missing"),
-                        "at": training.get("granted_at"), "no_count": f_training_no.result() or 0})
+                        "at": training.get("granted_at"), **_no(f_training_no)})
         for key, label, f_no in (("share", "Coach may share examples", f_share_no),
                                  ("email", "Email updates", f_email_no)):
             value = settings.get(f"{key}_consent_preference")
             if value is None:
                 value = settings.get(f"{key}_consent")
             out.append({"key": key, "label": label, "state": _state(value),
-                        "at": settings.get(f"{key}_consent_set_at"), "no_count": f_no.result() or 0})
+                        "at": settings.get(f"{key}_consent_set_at"), **_no(f_no)})
     return out
 
 
 def person(user_id: str) -> Optional[dict]:
     """The whole profile, or None when there is no such account."""
-    from services import booking, token_account
+    from services import booking, person_asks, token_account
     # SPEED: the reads don't depend on each other, so they run side by side
     # (one round trip's wait instead of ten in a row).
     with ThreadPoolExecutor(max_workers=8) as pool:
@@ -174,6 +187,7 @@ def person(user_id: str) -> Optional[dict]:
         f_account = pool.submit(_safe, "tokens", partial(token_account.get_account, user_id))
         f_price = pool.submit(_safe, "lesson price", partial(booking.user_price, user_id))
         f_list = pool.submit(_safe, "list price", lambda: booking.get_settings()["price_cents"])
+        f_asks = pool.submit(_safe, "asks", partial(person_asks.list_for, user_id))
         user = f_user.result()
         if not user:
             return None
@@ -204,6 +218,7 @@ def person(user_id: str) -> Optional[dict]:
         },
         "lesson_price_cents": f_price.result(),
         "list_price_cents": f_list.result(),
+        "asks": f_asks.result() or [],
     }
 
 
@@ -214,4 +229,6 @@ def mark_home_screen(user_id: str) -> str:
     if not at:
         at = datetime.now(timezone.utc).isoformat()
         set_metadata(user_id, {"home_screen_at": at})
+    from services import person_asks
+    _safe("home-screen ask", partial(person_asks.answered, user_id, "home_screen"))
     return at
