@@ -2,7 +2,7 @@
 Server-to-server hooks (no student JWT).
 
 - POST /v2/internal/student-credits/increment — X-Internal-Secret: INTERNAL_CREDITS_WEBHOOK_SECRET
-- POST /v2/internal/stripe/webhook — Stripe-Signature (STRIPE_WEBHOOK_SECRET); one-time token packages only
+- POST /v2/internal/stripe/webhook — Stripe-Signature (STRIPE_WEBHOOK_SECRET); one-time token packages and booking-page lessons
 
 REMOVED (founder 2026-10-12): POST /v2/internal/annotation-export and POST
 /v2/internal/copilot-video/retrain. Both answered 410 (Phase 2 disabled) on
@@ -131,6 +131,18 @@ def stripe_checkout_webhook():
     if isinstance(md, dict) and md.get("kind") == PACKAGE_KIND:
         package_payload, package_status = webhook_reply(str(session_id), config)
         return jsonify(package_payload), package_status
+
+    # A booking-page lesson (services/booking.py), confirmed from the re-read
+    # session. A booking that cannot be confirmed answers 500 so Stripe retries.
+    if isinstance(md, dict) and md.get("kind") == "booking":
+        from services.booking import confirm_checkout
+        try:
+            row = confirm_checkout(str(session_id))
+        except Exception as e:
+            logger.error("stripe webhook: booking confirm failed session=%s: %s", session_id, e, exc_info=True)
+            return jsonify({"code": "BOOKING_CONFIRM_FAILED", "error": "booking confirm failed"}), 500
+        return jsonify({"received": True, "booking": bool(row),
+                        "status": (row or {}).get("status")}), 200
 
     # Not a package: an arc checkout, a credit pack, or a sale of something
     # that is not willab's. None of them is applied any more.

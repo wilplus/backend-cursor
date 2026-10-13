@@ -174,6 +174,10 @@ from routes.v2.ceo import ceo_bp
 app.register_blueprint(ceo_bp)
 from routes.v2.ceo_work_items import ceo_work_items_bp
 app.register_blueprint(ceo_work_items_bp)
+# Booking page v1 (founder 2026-10-13): public /v2/booking/* (the guest has
+# no account) + @require_admin /v2/admin/booking*. Full paths baked in.
+from routes.v2.booking import booking_bp
+app.register_blueprint(booking_bp)
 
 # Rate limiting (services/rate_limits.py). The @rate_limits.*_limit
 # decorators on the paid routes registered themselves while the blueprints
