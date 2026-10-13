@@ -221,8 +221,13 @@ def offer_for(slug: str, user_id: str) -> dict:
         "price_cents": price,
         "currency": page["currency"],
         "bonus_tokens": page["bonus_tokens"],
-        "allow_skip_payment": bool(get_settings().get("allow_skip_payment")),
+        "allow_skip_payment": PAYMENT_OFF or bool(get_settings().get("allow_skip_payment")),
     }
+
+
+# Founder 2026-10-13: no payment for now; every booking confirms without
+# Stripe. Set back to False to charge again.
+PAYMENT_OFF = True
 
 
 # ------------------------------------------------------ calendar busy times
@@ -390,7 +395,7 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
     price = int(offer["price_cents"])
     # Booking without paying (temporary, only while the admin allows it): a
     # confirmed booking at 0 with no tokens; the lesson is settled outside.
-    skip = skip_payment and offer["allow_skip_payment"]
+    skip = PAYMENT_OFF or (skip_payment and offer["allow_skip_payment"])
     if skip:
         price = 0
     name, email, note = (name or "").strip()[:120], (email or "").strip()[:254], (note or "").strip()[:2000]
