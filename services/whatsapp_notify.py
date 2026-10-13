@@ -1,0 +1,167 @@
+"""WhatsApp: "the feedback from your coach is in" (founder 2026-10-12).
+
+The speaker leaves a phone number in the Lounge's second footer offer (after
+"Add to home screen"). When a coach first shares their word for a Take, the
+speaker gets one WhatsApp message beside the Lounge bubble bump. It carries
+no speaker content and no score (AC-9): only that feedback is in, and the
+link to the app.
+
+Storage is two columns on ``user_settings`` (0465), so the account-deletion
+purge already takes the number with it.
+
+Sent through Meta's WhatsApp Cloud API directly (no reseller). Sending is
+off unless ``WHATSAPP_NOTIFICATIONS=true`` and the Meta variables are set
+(config.py). It is always best-effort: a failed or skipped
+message never fails the coach's save (LIVE LOOP).
+"""
+from __future__ import annotations
+
+import logging
+import re
+import threading
+from datetime import datetime, timezone
+from typing import Any, Optional
+
+import httpx
+
+from config import Config
+
+_log = logging.getLogger(__name__)
+
+#: The message, as the founder worded it (2026-10-12).
+COACH_FEEDBACK_IN = "The feedback from your coach is in!"
+
+# E.164: a plus, a country code that does not start with 0, 8 to 15 digits.
+_E164 = re.compile(r"^\+[1-9]\d{7,14}$")
+_SEPARATORS = re.compile(r"[\s\-().]")
+_GRAPH_URL = "https://graph.facebook.com/v21.0/{phone_number_id}/messages"
+_TIMEOUT_SEC = 8.0
+
+
+class WhatsAppRefusal(Exception):
+    def __init__(self, message: str, code: str = "INVALID_INPUT", status: int = 422):
+        super().__init__(message)
+        self.message, self.code, self.status = message, code, status
+
+    @property
+    def body(self) -> dict:
+        return {"code": self.code, "error": self.message}
+
+
+def normalize_phone(raw: Any) -> str:
+    """The number in E.164 (+447700900123), or WhatsAppRefusal. Spaces,
+    dashes, dots and brackets are dropped; a leading 00 counts as +."""
+    text = _SEPARATORS.sub("", str(raw or "").strip())
+    if text.startswith("00"):
+        text = "+" + text[2:]
+    if not _E164.match(text):
+        raise WhatsAppRefusal(
+            "Enter the number with its country code, for example +44 7700 900123.")
+    return text
+
+
+def _settings(database: Any):
+    return database.client.table("user_settings")
+
+
+def whatsapp_state(database: Any, user_id: str) -> dict:
+    """GET: {"phone": str|None}. A read failure reads as no number."""
+    try:
+        res = (_settings(database).select("whatsapp_phone")
+               .eq("user_id", str(user_id)).limit(1).execute())
+        row = (res.data or [{}])[0] or {}
+        return {"phone": row.get("whatsapp_phone") or None}
+    except Exception as e:  # noqa: BLE001 -- the offer just shows again
+        _log.warning("whatsapp state read failed user=%s: %s", user_id, e)
+        return {"phone": None}
+
+
+def save_phone(database: Any, user_id: str, body: Any) -> dict:
+    """PUT {"phone": "..."}: validate and save, stamping the opt-in time."""
+    fields = body if isinstance(body, dict) else {}
+    phone = normalize_phone(fields.get("phone"))
+    now = datetime.now(timezone.utc).isoformat()
+    _settings(database).upsert({
+        "user_id": str(user_id),
+        "whatsapp_phone": phone,
+        "whatsapp_opted_in_at": now,
+        "updated_at": now,
+    }, on_conflict="user_id").execute()
+    return {"phone": phone}
+
+
+def remove_phone(database: Any, user_id: str) -> dict:
+    """DELETE: no more WhatsApp messages."""
+    (_settings(database)
+     .update({"whatsapp_phone": None, "whatsapp_opted_in_at": None,
+              "updated_at": datetime.now(timezone.utc).isoformat()})
+     .eq("user_id", str(user_id)).execute())
+    return {"phone": None}
+
+
+def _message_body() -> str:
+    link = (Config.FRONTEND_URL or "").rstrip("/")
+    return f"{COACH_FEEDBACK_IN}\n{link}/chat" if link else COACH_FEEDBACK_IN
+
+
+def _payload(to: str, cfg: Any) -> dict:
+    """The approved template when one is named (what WhatsApp requires for a
+    message the business starts); else the plain text, which WhatsApp only
+    delivers within 24 hours of the person's last message to the number."""
+    base = {"messaging_product": "whatsapp", "to": to.lstrip("+")}
+    if cfg.WHATSAPP_TEMPLATE_NAME:
+        template: dict[str, Any] = {
+            "name": cfg.WHATSAPP_TEMPLATE_NAME,
+            "language": {"code": cfg.WHATSAPP_TEMPLATE_LANGUAGE or "en"}}
+        # A template with an image header needs the image on every send (the
+        # one uploaded with the template is only Meta's review sample).
+        image = (cfg.WHATSAPP_TEMPLATE_HEADER_IMAGE_URL or "").strip()
+        if image:
+            template["components"] = [{"type": "header", "parameters": [
+                {"type": "image", "image": {"link": image}}]}]
+        return {**base, "type": "template", "template": template}
+    return {**base, "type": "text", "text": {"body": _message_body()}}
+
+
+def send_whatsapp(to: str, *, config: Any = None) -> bool:
+    """One message through Meta's WhatsApp Cloud API. True when Meta accepted
+    it; False when sending is off or not configured. Raises on a provider
+    error."""
+    cfg = config or Config()
+    if not cfg.WHATSAPP_NOTIFICATIONS:
+        return False
+    if not (cfg.WHATSAPP_ACCESS_TOKEN and cfg.WHATSAPP_PHONE_NUMBER_ID):
+        _log.warning("whatsapp: WHATSAPP_NOTIFICATIONS is on but Meta is not configured")
+        return False
+    redirect = (cfg.WHATSAPP_REDIRECT_TO or "").strip()
+    if redirect and not cfg.is_production:
+        _log.info("whatsapp: redirecting a message to WHATSAPP_REDIRECT_TO (env=%s)", cfg.ENV)
+        to = redirect
+    res = httpx.post(_GRAPH_URL.format(phone_number_id=cfg.WHATSAPP_PHONE_NUMBER_ID),
+                     json=_payload(to, cfg),
+                     headers={"Authorization": f"Bearer {cfg.WHATSAPP_ACCESS_TOKEN}"},
+                     timeout=_TIMEOUT_SEC)
+    res.raise_for_status()
+    return True
+
+
+def notify_coach_feedback_in(database: Any, user_id: Optional[str]) -> bool:
+    """The speaker's coach feedback is in: one WhatsApp message if they left
+    a number. Best-effort; never raises."""
+    if not user_id or not Config.WHATSAPP_NOTIFICATIONS:
+        return False
+    try:
+        phone = whatsapp_state(database, str(user_id)).get("phone")
+        return send_whatsapp(str(phone)) if phone else False
+    except Exception as e:  # noqa: BLE001 -- the coach's save stands either way
+        _log.warning("whatsapp coach-feedback message failed user=%s: %s",
+                     user_id, type(e).__name__)
+        return False
+
+
+def notify_coach_feedback_in_background(database: Any, user_id: Optional[str]) -> None:
+    """The same, off the coach's request so Meta never slows the save."""
+    if not user_id or not Config.WHATSAPP_NOTIFICATIONS:
+        return
+    threading.Thread(target=notify_coach_feedback_in, args=(database, str(user_id)),
+                     name="whatsapp-coach-feedback", daemon=True).start()

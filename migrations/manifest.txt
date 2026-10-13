@@ -500,3 +500,4 @@
 0462	the_ai_version_of_your_voice_in_practice.sql
 0463	add_booking.sql
 0464	add_booking_user_prices.sql
+0465	the_speaker_may_leave_a_whatsapp_number.sql

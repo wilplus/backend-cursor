@@ -13,7 +13,7 @@ by the split.
 # endpoint names and the URL map are unchanged.
 DOMAIN_MODULES = (
     "blueprint", "common", "arcs", "explore_ideal_text", "user_account",
-    "mlc2_consent", "training_consent", "rooting_phrase_qualification",
+    "user_whatsapp", "mlc2_consent", "training_consent", "rooting_phrase_qualification",
     "confident_moment_bundles",
     # coach_guidance_delivery (the composers' lanes) and the two mlc3_*
     # 410 tombstones were deleted with the MLC-3 service loop (founder

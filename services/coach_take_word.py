@@ -52,7 +52,8 @@ def save_take_word(database: Any, *, take_session_id: str, coach_id: str,
     if not isinstance(row, dict):
         raise TakeWordRefusal("Could not save the word.", "V2_ERROR", 500)
     if share:
-        _tell_the_speaker(database, str(take_session_id), text=text, video_ref=video_ref)
+        _tell_the_speaker(database, str(take_session_id), text=text, video_ref=video_ref,
+                          first_share=_first_share(row))
         # The Take's closing summary is rewritten with the word, in place
         # (founder lock 2026-10-12, section 3). Behind the save.
         from services.take_summary import coach_update
@@ -76,17 +77,29 @@ def _the_pair(database: Any, row: dict, *, coach_id: str, text: Optional[str]) -
         _log.info("take word pair skipped take=%s: %s", row.get("take_session_id"), e)
 
 
+def _first_share(row: dict) -> bool:
+    """This save stamped shared_at (the upsert stamps it once, with the same
+    time as updated_at); a later edit of a shared word keeps the old stamp."""
+    shared_at = row.get("shared_at")
+    return bool(shared_at) and shared_at == row.get("updated_at")
+
+
 def _tell_the_speaker(database: Any, take_session_id: str, *,
-                      text: Optional[str], video_ref: Optional[str]) -> None:
+                      text: Optional[str], video_ref: Optional[str],
+                      first_share: bool = False) -> None:
     """The project's Ideal Text bubble comes back to the bottom of the chat,
     as a publish did (founder 2026-09-25, Q39 B); after the Take's review, the
-    word is its own coach update bubble (lock 2026-10-12, section 3).
-    Best-effort."""
+    word is its own coach update bubble (lock 2026-10-12, section 3). On the
+    first share the speaker also gets one WhatsApp message if they left a
+    number (founder 2026-10-12). Best-effort."""
     try:
         from services.arc_notifications import bump_ideal_bubble
         session = database.v2_get_session_by_id(take_session_id) or {}
         if session.get("user_id") and session.get("arc_id"):
             bump_ideal_bubble(database, session["user_id"], session["arc_id"])
+        if first_share and session.get("user_id"):
+            from services.whatsapp_notify import notify_coach_feedback_in_background
+            notify_coach_feedback_in_background(database, session["user_id"])
     except Exception as e:  # noqa: BLE001 -- the word is saved either way
         _log.info("take word bubble bump skipped take=%s: %s", take_session_id, e)
     try:

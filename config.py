@@ -405,6 +405,23 @@ class Config:
     # against a copy of the user table. Unset = today's behaviour.
     EMAIL_REDIRECT_TO = (os.getenv("EMAIL_REDIRECT_TO") or "").strip()
 
+    # WhatsApp "the feedback from your coach is in", through Meta's WhatsApp
+    # Cloud API. Off unless WHATSAPP_NOTIFICATIONS=true; numbers are still
+    # saved while it is off. A message the business starts needs a template
+    # Meta approved: WHATSAPP_TEMPLATE_NAME names it (without it the plain
+    # text is sent, which WhatsApp only delivers within 24 hours of the
+    # person's last message). WHATSAPP_REDIRECT_TO is EMAIL_REDIRECT_TO's
+    # twin for non-production.
+    WHATSAPP_NOTIFICATIONS = os.getenv("WHATSAPP_NOTIFICATIONS", "false").lower() == "true"
+    WHATSAPP_ACCESS_TOKEN = _secret("WHATSAPP_ACCESS_TOKEN") or ""
+    WHATSAPP_PHONE_NUMBER_ID = (os.getenv("WHATSAPP_PHONE_NUMBER_ID") or "").strip()
+    WHATSAPP_TEMPLATE_NAME = (os.getenv("WHATSAPP_TEMPLATE_NAME") or "").strip()
+    WHATSAPP_TEMPLATE_LANGUAGE = (os.getenv("WHATSAPP_TEMPLATE_LANGUAGE") or "en").strip()
+    # The public image for a template with an image header (e.g. the logo at
+    # https://willpowerlab.com/brand/...png); unset for a text-only template.
+    WHATSAPP_TEMPLATE_HEADER_IMAGE_URL = (os.getenv("WHATSAPP_TEMPLATE_HEADER_IMAGE_URL") or "").strip()
+    WHATSAPP_REDIRECT_TO = (os.getenv("WHATSAPP_REDIRECT_TO") or "").strip()
+
     # Current published Terms / Privacy Policy version. Must match the
     # "Last updated" date in the live legal docs (e.g. "1.0" = Terms
     # dated 7 May 2026; bump when docs are materially revised). The
