@@ -1,14 +1,18 @@
 """Booking page v1 (founder 2026-10-13). Logic in services/booking.py.
 
-Public (no login; the guest has no account):
+Public (no login):
   GET  /v2/booking/<slug>                    the page: title, length, price
   GET  /v2/booking/<slug>/slots?from=&to=    open start times, UTC ISO
-  POST /v2/booking/<slug>/checkout           hold the slot, open Stripe
   GET  /v2/booking/confirmation?session_id=  what the success page shows
+
+Signed in (booking needs a WillpowerLab account):
+  GET  /v2/booking/<slug>/offer[?as=]        my price and tokens (admins may preview anyone)
+  POST /v2/booking/<slug>/checkout           hold the slot, open Stripe at my price
 
 Admin:
   GET  /v2/admin/booking                     settings + upcoming bookings
   PUT  /v2/admin/booking/settings            save settings
+  GET/PUT /v2/admin/booking/user-price       one person's lesson price
 
 The Stripe webhook (routes/internal_webhooks.py) confirms on
 checkout.session.completed with metadata.kind == "booking".
@@ -19,7 +23,8 @@ from datetime import timedelta, timezone
 
 from flask import Blueprint, jsonify, request
 
-from routes.admin import require_admin
+from auth import require_auth
+from routes.admin import is_admin, require_admin
 from services import booking
 from services.rate_limits import client_ip, limiter
 
@@ -59,15 +64,35 @@ def booking_slots(slug: str):
     return _reply({"slots": [s.isoformat().replace("+00:00", "Z") for s in slots]})
 
 
+@booking_bp.route("/v2/booking/<slug>/offer", methods=["GET"])
+@require_auth
+def booking_offer(slug: str):
+    """The signed-in person's price and tokens. An admin may pass ?as=<user_id>
+    to see someone else's page as they will."""
+    user_id = str(getattr(request, "user_id", ""))
+    preview = (request.args.get("as") or "").strip()
+    if preview and preview != user_id:
+        if not is_admin(user_id):
+            return _reply({"code": "FORBIDDEN", "error": "Admin access required"}, 403)
+        return _reply({**booking.offer_for(slug, preview), "preview": True})
+    payload = getattr(request, "token_payload", None) or {}
+    meta = payload.get("user_metadata") or {}
+    return _reply({**booking.offer_for(slug, user_id), "preview": False,
+                   "email": payload.get("email") or "",
+                   "name": meta.get("full_name") or meta.get("name") or ""})
+
+
 @booking_bp.route("/v2/booking/<slug>/checkout", methods=["POST"])
 @limiter.limit("30 per hour", key_func=client_ip, scope="booking_checkout")
+@require_auth
 def booking_checkout(slug: str):
     body = request.get_json(silent=True) or {}
     return _reply(booking.start_checkout(
         slug=slug,
+        user_id=str(getattr(request, "user_id", "")),
         start_iso=str(body.get("start") or ""),
         name=str(body.get("name") or ""),
-        email=str(body.get("email") or ""),
+        email=str((getattr(request, "token_payload", None) or {}).get("email") or ""),
         guest_timezone=str(body.get("timezone") or "UTC"),
         note=str(body.get("note") or ""),
     ))
@@ -94,3 +119,27 @@ def admin_booking():
 @require_admin
 def admin_booking_settings():
     return _reply({"settings": booking.save_settings(request.get_json(silent=True) or {})})
+
+
+@booking_bp.route("/v2/admin/booking/user-price", methods=["GET", "PUT"])
+@require_admin
+def admin_booking_user_price():
+    """One person's lesson price, set from /admin/tokens. PUT
+    {"user_id", "price_cents"}; price_cents null goes back to the list price."""
+    if request.method == "GET":
+        user_id = (request.args.get("user_id") or "").strip()
+        if not user_id:
+            return _reply({"code": "INVALID_INPUT", "error": "user_id is required"}, 400)
+        settings = booking.get_settings()
+        return _reply({"user_id": user_id, "price_cents": booking.user_price(user_id),
+                       "list_price_cents": settings["price_cents"], "slug": settings["slug"]})
+    body = request.get_json(silent=True) or {}
+    user_id = str(body.get("user_id") or "").strip()
+    if not user_id:
+        return _reply({"code": "INVALID_INPUT", "error": "user_id is required"}, 400)
+    raw = body.get("price_cents")
+    try:
+        price = None if raw is None or raw == "" else int(raw)
+    except (TypeError, ValueError):
+        return _reply({"code": "INVALID_INPUT", "error": "price_cents must be a whole number"}, 400)
+    return _reply({"user_id": user_id, "price_cents": booking.set_user_price(user_id, price)})
