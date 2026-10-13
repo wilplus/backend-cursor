@@ -24,6 +24,6 @@
   "services/session_concatenation.py:concatenate_session_audio": 36,
   "services/take_feedback_policy_v3.py:_verbal_inventory": 29,
   "services/take_feedback_policy_v3.py:build_shadow_frame": 27,
-  "services/training_import.py:prepare_training_import": 42,
+  "services/training_import.py:prepare_training_import": 40,
   "services/tutor_video_url.py:resolve_tutor_video_playable_url": 33
 }

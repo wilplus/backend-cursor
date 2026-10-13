@@ -37,8 +37,8 @@ def _is_uuid(value) -> bool:
         return False
 
 
-def _bot_metadata(*, intent, suggested_action, suggested_actions, bubbles,
-                  product_action) -> dict:
+def _bot_metadata(*, intent, suggested_action, suggested_actions,
+                  bubbles) -> dict:
     meta: dict[str, Any] = {"intent": intent}
     if suggested_action:
         meta["suggested_action"] = suggested_action
@@ -46,17 +46,12 @@ def _bot_metadata(*, intent, suggested_action, suggested_actions, bubbles,
         meta["suggested_actions"] = suggested_actions
     if bubbles:
         meta["bubbles"] = bubbles
-    if product_action is not None:
-        from services.product_discovery import parse_product_action
-        parsed_action = parse_product_action({"product_action": product_action})
-        if parsed_action is not None:
-            meta["product_action"] = parsed_action
     return meta
 
 
 def persist_chat_turn(
     database, user_id, question, answer, *, suggested_action=None,
-    suggested_actions=None, bubbles=None, product_action=None, intent=None,
+    suggested_actions=None, bubbles=None, intent=None,
     user_client_id=None, user_created_at=None,
 ):
     """BE-owned persistence of one Lounge chat turn (founder #2 — bubbles must
@@ -92,8 +87,7 @@ def persist_chat_turn(
         "client_id": b_id, "role": "bot", "kind": "text", "body": a,
         "metadata": _bot_metadata(
             intent=intent, suggested_action=suggested_action,
-            suggested_actions=suggested_actions, bubbles=bubbles,
-            product_action=product_action),
+            suggested_actions=suggested_actions, bubbles=bubbles),
         "client_created_at": now_iso,
     })
     try:
@@ -113,8 +107,7 @@ def finish_chat_turn(database, resp: dict, *, user_id, question,
             database, user_id, question, resp.get("answer"),
             suggested_action=resp.get("suggested_action"),
             suggested_actions=resp.get("suggested_actions"),
-            bubbles=resp.get("bubbles"),
-            product_action=resp.get("product_action"), intent=intent,
+            bubbles=resp.get("bubbles"), intent=intent,
             user_client_id=user_client_id, user_created_at=user_created_at,
         )
         resp["persisted"] = bool(bot_cid)

@@ -248,8 +248,8 @@ Raw horizons stay separate and are all still stored:
    before at least **300** first-exposure attempts with a valid endpoint, and
    at least **30** for every exercise it would rank.
    `services/exercise_learning_readiness.py` counts toward this bar
-   (`POST /v2/internal/journal/exercise-learning-readiness`, or
-   `scripts/exercise_learning_readiness.py`). It counts only; it never
+   (`POST /v2/internal/journal/exercise-learning-readiness`). It counts
+   only; it never
    computes whether an exercise helped. `services/exercise_adequacy_labels.py`
    (the scorekeeper) labels those same exposures under item 1, using the
    original clip's own signal rules (`clip_signals`), and stays sealed —
