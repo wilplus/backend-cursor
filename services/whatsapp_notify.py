@@ -6,7 +6,7 @@ speaker gets one WhatsApp message beside the Lounge bubble bump. It carries
 no speaker content and no score (AC-9): only that feedback is in, and the
 link to the app.
 
-Storage is two columns on ``user_settings`` (0462), so the account-deletion
+Storage is two columns on ``user_settings`` (0463), so the account-deletion
 purge already takes the number with it.
 
 Sent through Meta's WhatsApp Cloud API directly (no reseller). Sending is
