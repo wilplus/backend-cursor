@@ -53,6 +53,10 @@ def save_take_word(database: Any, *, take_session_id: str, coach_id: str,
         raise TakeWordRefusal("Could not save the word.", "V2_ERROR", 500)
     if share:
         _tell_the_speaker(database, str(take_session_id))
+        # The Take's closing summary is rewritten with the word, in place
+        # (founder lock 2026-10-12, section 3). Behind the save.
+        from services.take_summary import coach_update
+        coach_update(database, str(take_session_id), text)
     _the_pair(database, row, coach_id=str(coach_id), text=text)
     return take_word_payload(row) or {}
 
