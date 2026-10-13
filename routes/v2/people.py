@@ -8,16 +8,22 @@ The person themself:
   PUT    /v2/user/whatsapp            {"phone": "+44…"}  (E.164, as the app sends it)
   DELETE /v2/user/whatsapp            forget the number
   PUT    /v2/user/home-screen         they opened the app from their home screen
+
+Asks (services/person_asks.py):
+  POST   /v2/admin/people/<user_id>/asks   {"kind", "consent_key"?}  send one
+  GET    /v2/user/asks/next                the person's oldest open ask, or null
+  POST   /v2/user/asks/<id>                {"event": "shown" | "opened"}
 """
 from __future__ import annotations
 
 import re
+from functools import partial
 
 from flask import Blueprint, jsonify, request
 
 from auth import require_auth
 from routes.admin import require_admin
-from services import admin_person
+from services import admin_person, person_asks
 
 people_bp = Blueprint("people", __name__)
 
@@ -57,6 +63,8 @@ def my_whatsapp():
         return _reply({"code": "INVALID_PHONE",
                        "error": "Enter the number with its country code, for example +44 7700 900123."}, 400)
     admin_person.set_metadata(_me(), {"whatsapp_phone": phone})
+    # Never let the ask bookkeeping block saving the number itself.
+    admin_person._safe("whatsapp ask", partial(person_asks.answered, _me(), "whatsapp"))
     return _reply({"phone": phone})
 
 
@@ -64,3 +72,33 @@ def my_whatsapp():
 @require_auth
 def my_home_screen():
     return _reply({"home_screen_at": admin_person.mark_home_screen(_me())})
+
+
+@people_bp.errorhandler(person_asks.AskError)
+def _ask_refused(e: person_asks.AskError):
+    return _reply({"code": e.code, "error": str(e)}, e.status)
+
+
+@people_bp.route("/v2/admin/people/<user_id>/asks", methods=["POST"])
+@require_admin
+def send_ask(user_id: str):
+    body = request.get_json(silent=True) or {}
+    profile = admin_person.person(user_id)
+    if not profile:
+        return _reply({"code": "NOT_FOUND", "error": "No account with this id"}, 404)
+    ask = person_asks.create(user_id, str(body.get("kind") or ""), body.get("consent_key"),
+                             admin_id=_me(), consents=profile["consents"])
+    return _reply({"ask": ask}, 201)
+
+
+@people_bp.route("/v2/user/asks/next", methods=["GET"])
+@require_auth
+def my_next_ask():
+    return _reply({"ask": person_asks.next_for(_me())})
+
+
+@people_bp.route("/v2/user/asks/<ask_id>", methods=["POST"])
+@require_auth
+def mark_my_ask(ask_id: str):
+    person_asks.mark(_me(), ask_id, str((request.get_json(silent=True) or {}).get("event") or ""))
+    return _reply({"ok": True})
