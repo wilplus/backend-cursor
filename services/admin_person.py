@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from typing import Any, Callable, Optional
 
@@ -116,51 +117,72 @@ def _state(value: Optional[bool]) -> str:
     return "missing" if value is None else ("yes" if value else "no")
 
 
-def consents(user_id: str, principal: Optional[str], settings: dict) -> list[dict]:
+def consents(user_id: str, principal: Optional[str], settings: dict,
+             receipt: Optional[dict]) -> list[dict]:
     """Every consent the app asks for: its state (yes / no / missing), when
-    it was set, and how many times the person said no."""
-    out: list[dict] = []
-    if principal:
-        receipt = _safe("receipt", lambda: _receipt(principal))
-        out.append({"key": "processing", "label": "Processing my recordings",
-                    "state": "yes" if receipt else "missing",
-                    "at": (receipt or {}).get("accepted_at"), "no_count": 0})
-        from services.processing_authorization import ProcessingAuthorizationService
-        choices = _safe("choices", lambda: ProcessingAuthorizationService(db)
-                        .consent_choices(principal)) or {}
-        rid = choices.get("receipt_id")
-        for key, label in (("personalised_practice", "Personalised practice"),
-                           ("sensitive_information", "Sensitive information")):
-            value = choices.get(key) if choices.get("has_receipt") else None
-            out.append({"key": key, "label": label, "state": _state(value), "at": None,
-                        "no_count": _safe(key, partial(_no_count_phase1, rid, key)) or 0})
-        training = _safe("training", lambda: db.get_mlc2_training_consent_status(principal)) or {}
-        withdrawn = bool(training.get("withdrawn"))
-        out.append({"key": "training", "label": "Recordings help train the model",
-                    "state": "yes" if training.get("active") else ("no" if withdrawn else "missing"),
-                    "at": training.get("granted_at"),
-                    "no_count": _safe("training no", lambda: _no_count_training(principal)) or 0})
-    for key, label in (("share", "Coach may share examples"), ("email", "Email updates")):
-        value = settings.get(f"{key}_consent_preference")
-        if value is None:
-            value = settings.get(f"{key}_consent")
-        out.append({"key": key, "label": label, "state": _state(value),
-                    "at": settings.get(f"{key}_consent_set_at"),
-                    "no_count": _safe(f"{key} no", partial(_no_count_legacy, user_id, key)) or 0})
+    it was set, and how many times the person said no. The reads run side
+    by side."""
+    from services.processing_authorization import ProcessingAuthorizationService
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        f_share_no = pool.submit(_safe, "share no", partial(_no_count_legacy, user_id, "share"))
+        f_email_no = pool.submit(_safe, "email no", partial(_no_count_legacy, user_id, "email"))
+        if principal:
+            f_choices = pool.submit(_safe, "choices", partial(
+                ProcessingAuthorizationService(db).consent_choices, principal))
+            f_training = pool.submit(_safe, "training", partial(
+                db.get_mlc2_training_consent_status, principal))
+            f_training_no = pool.submit(_safe, "training no", partial(_no_count_training, principal))
+            choices = f_choices.result() or {}
+            rid = choices.get("receipt_id")
+            f_phase1_no = {key: pool.submit(_safe, key, partial(_no_count_phase1, rid, key))
+                           for key in ("personalised_practice", "sensitive_information")}
+
+        out: list[dict] = []
+        if principal:
+            out.append({"key": "processing", "label": "Processing my recordings",
+                        "state": "yes" if receipt else "missing",
+                        "at": (receipt or {}).get("accepted_at"), "no_count": 0})
+            for key, label in (("personalised_practice", "Personalised practice"),
+                               ("sensitive_information", "Sensitive information")):
+                value = choices.get(key) if choices.get("has_receipt") else None
+                out.append({"key": key, "label": label, "state": _state(value), "at": None,
+                            "no_count": f_phase1_no[key].result() or 0})
+            training = f_training.result() or {}
+            withdrawn = bool(training.get("withdrawn"))
+            out.append({"key": "training", "label": "Recordings help train the model",
+                        "state": "yes" if training.get("active") else ("no" if withdrawn else "missing"),
+                        "at": training.get("granted_at"), "no_count": f_training_no.result() or 0})
+        for key, label, f_no in (("share", "Coach may share examples", f_share_no),
+                                 ("email", "Email updates", f_email_no)):
+            value = settings.get(f"{key}_consent_preference")
+            if value is None:
+                value = settings.get(f"{key}_consent")
+            out.append({"key": key, "label": label, "state": _state(value),
+                        "at": settings.get(f"{key}_consent_set_at"), "no_count": f_no.result() or 0})
     return out
 
 
 def person(user_id: str) -> Optional[dict]:
     """The whole profile, or None when there is no such account."""
-    user = auth_user(user_id)
-    if not user:
-        return None
-    meta = user.get("user_metadata") or {}
-    principal = _safe("principal", lambda: _principal(user_id))
-    receipt = _safe("receipt", lambda: _receipt(principal)) if principal else None
-    settings = _safe("settings", lambda: _settings(user_id)) or {}
     from services import booking, token_account
-    account = _safe("tokens", lambda: token_account.get_account(user_id))
+    # SPEED: the reads don't depend on each other, so they run side by side
+    # (one round trip's wait instead of ten in a row).
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        f_user = pool.submit(auth_user, user_id)
+        f_principal = pool.submit(_safe, "principal", partial(_principal, user_id))
+        f_settings = pool.submit(_safe, "settings", partial(_settings, user_id))
+        f_account = pool.submit(_safe, "tokens", partial(token_account.get_account, user_id))
+        f_price = pool.submit(_safe, "lesson price", partial(booking.user_price, user_id))
+        f_list = pool.submit(_safe, "list price", lambda: booking.get_settings()["price_cents"])
+        user = f_user.result()
+        if not user:
+            return None
+        principal = f_principal.result()
+        settings = f_settings.result() or {}
+        receipt = _safe("receipt", partial(_receipt, principal)) if principal else None
+        consent_rows = consents(user_id, principal, settings, receipt)
+        account = f_account.result()
+    meta = user.get("user_metadata") or {}
     name = meta.get("full_name") or meta.get("name") or meta.get("display_name")
     return {
         "user_id": user_id,
@@ -175,13 +197,13 @@ def person(user_id: str) -> Optional[dict]:
         "goal": settings.get("profile_goal"),
         "phone": meta.get("whatsapp_phone"),
         "home_screen_at": meta.get("home_screen_at"),
-        "consents": consents(user_id, principal, settings),
+        "consents": consent_rows,
         "tokens": account and {
             "balance": account.get("balance"), "monthly": account.get("monthly_balance"),
             "bonus": account.get("bonus_balance"), "tier": account.get("tier"),
         },
-        "lesson_price_cents": _safe("lesson price", lambda: booking.user_price(user_id)),
-        "list_price_cents": _safe("list price", lambda: booking.get_settings()["price_cents"]),
+        "lesson_price_cents": f_price.result(),
+        "list_price_cents": f_list.result(),
     }
 
 
