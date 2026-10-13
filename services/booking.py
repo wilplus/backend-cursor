@@ -609,15 +609,19 @@ def _ics_text(value: str) -> str:
             .replace("\r\n", "\\n").replace("\n", "\\n"))
 
 
-def build_invite(row: dict, *, organizer_email: str, host_email: str, host_name: str) -> str:
+def build_invite(row: dict, *, organizer_email: str, host_email: str, host_name: str,
+                 publish: bool = False) -> str:
     """An iCalendar REQUEST both mail apps (Proton, Gmail, Apple, Outlook)
-    offer to add to the calendar."""
+    offer to add to the calendar. `publish` makes the host's own copy: a
+    plain event with no organizer or attendees, because Proton refuses
+    ("Invalid response") an invitation whose organizer is one of the
+    reader's own addresses."""
     fmt = "%Y%m%dT%H%M%SZ"
     start, end = _dt(row["start_at"]), _dt(row["end_at"])
     desc = f"Join on Google Meet: {row['meet_url']}\n\nTo cancel or move, reply to the confirmation email."
     lines = [
         "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//WillpowerLab//Booking//EN",
-        "CALSCALE:GREGORIAN", "METHOD:REQUEST", "BEGIN:VEVENT",
+        "CALSCALE:GREGORIAN", f"METHOD:{'PUBLISH' if publish else 'REQUEST'}", "BEGIN:VEVENT",
         f"UID:booking-{row['id']}@willpowerlab.com",
         f"DTSTAMP:{datetime.now(timezone.utc).strftime(fmt)}",
         f"DTSTART:{start.astimezone(timezone.utc).strftime(fmt)}",
@@ -626,9 +630,11 @@ def build_invite(row: dict, *, organizer_email: str, host_email: str, host_name:
         f"DESCRIPTION:{_ics_text(desc)}",
         f"LOCATION:{_ics_text(row['meet_url'])}",
         f"URL:{row['meet_url']}",
-        f"ORGANIZER;CN={_ics_text(host_name)}:mailto:{organizer_email}",
-        f"ATTENDEE;CN={_ics_text(host_name)};ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:{host_email}",
-        f"ATTENDEE;CN={_ics_text(row['guest_name'])};ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:{row['guest_email']}",
+        *([] if publish else [
+            f"ORGANIZER;CN={_ics_text(host_name)}:mailto:{organizer_email}",
+            f"ATTENDEE;CN={_ics_text(host_name)};ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:{host_email}",
+            f"ATTENDEE;CN={_ics_text(row['guest_name'])};ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:{row['guest_email']}",
+        ]),
         "SEQUENCE:0", "STATUS:CONFIRMED", "TRANSP:OPAQUE",
         "BEGIN:VALARM", "TRIGGER:-PT1H", "ACTION:DISPLAY",
         f"DESCRIPTION:{_ics_text(row['title'])} in 1 hour", "END:VALARM",
@@ -670,6 +676,16 @@ def send_confirmation_emails(row: dict) -> None:
         "content": base64.b64encode(invite.encode("utf-8")).decode("ascii"),
         "content_type": "text/calendar; method=REQUEST; charset=UTF-8",
     }]
+    own = build_invite(row, organizer_email=organizer, host_email=host_email,
+                       host_name=s["host_name"], publish=True)
+    host_attachment = [{
+        "filename": "booking.ics",
+        "content": base64.b64encode(own.encode("utf-8")).decode("ascii"),
+        "content_type": "text/calendar; method=PUBLISH; charset=UTF-8",
+    }]
+    due = int(row.get("due_cents") or 0)
+    paid = (f"To be paid {money(due, row['currency'])}." if due and not int(row["price_cents"])
+            else f"Paid {money(int(row['price_cents']), row['currency'])}.")
     start, end = _dt(row["start_at"]), _dt(row["end_at"])
     e = html.escape
     meet = e(row["meet_url"])
@@ -701,9 +717,9 @@ def send_confirmation_emails(row: dict) -> None:
             f"<strong>{e(row['guest_name'])}</strong> ({e(row['guest_email'])}) booked {e(row['title'])}.",
             f"<strong>{e(_when(start, end, s['timezone']))}</strong><br>"
             f"Their time: {e(_when(start, end, guest_tz))}",
-            f"Paid {e(money(int(row['price_cents']), row['currency']))}.{note}",
+            f"{e(paid)}{note}",
             f"Google Meet: {meet_link}",
         ]),
         headers={"Reply-To": row["guest_email"]},
-        attachments=attachment,
+        attachments=host_attachment,
     )
