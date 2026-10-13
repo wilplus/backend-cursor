@@ -502,3 +502,4 @@
 0464	add_booking_user_prices.sql
 0465	the_speaker_may_leave_a_whatsapp_number.sql
 0466	add_person_asks.sql
+0467	add_booking_new_user_discount.sql

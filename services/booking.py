@@ -50,7 +50,7 @@ DAYS = ("0", "1", "2", "3", "4", "5", "6")  # Sunday=0, JS getDay() order
 SETTINGS_FIELDS = (
     "slug", "title", "host_name", "duration_min", "price_cents", "currency",
     "buffer_before_min", "buffer_after_min", "notice_hours", "horizon_days",
-    "timezone", "weekly_hours", "calendar_ics_url", "meet_url", "enabled", "bonus_tokens",
+    "timezone", "weekly_hours", "calendar_ics_url", "meet_url", "enabled", "bonus_tokens", "new_user_discount_pct", "allow_skip_payment",
 )
 
 
@@ -131,6 +131,7 @@ def validate_settings(payload: dict, current: dict) -> dict:
     s["notice_hours"] = _int("notice_hours", 0, 720)
     s["horizon_days"] = _int("horizon_days", 1, 365)
     s["bonus_tokens"] = _int("bonus_tokens", 0, 10_000_000)
+    s["new_user_discount_pct"] = _int("new_user_discount_pct", 0, 100)
     s["currency"] = str(s["currency"] or "").lower()
     if s["currency"] not in CURRENCIES:
         raise BookingError("INVALID_CURRENCY", f"Currency must be one of {', '.join(CURRENCIES)}.")
@@ -139,12 +140,16 @@ def validate_settings(payload: dict, current: dict) -> dict:
     except (ZoneInfoNotFoundError, ValueError):
         raise BookingError("INVALID_TIMEZONE", f"Unknown time zone {s['timezone']!r}.")
     s["weekly_hours"] = _clean_hours(s["weekly_hours"])
-    for key in ("calendar_ics_url", "meet_url"):
-        url = str(s[key] or "").strip()
+    # Calendar links: one per line, every calendar listed blocks the page.
+    links = [u.strip() for u in str(s["calendar_ics_url"] or "").splitlines() if u.strip()]
+    meet = str(s["meet_url"] or "").strip()
+    for url in [*links, meet]:
         if url and not re.match(r"^(https?|webcal)://", url):
-            raise BookingError("INVALID_URL", f"{key} must be a web link.")
-        s[key] = url
+            raise BookingError("INVALID_URL", "Each link must be a web link.")
+    s["calendar_ics_url"] = "\n".join(links)
+    s["meet_url"] = meet
     s["enabled"] = bool(s["enabled"])
+    s["allow_skip_payment"] = bool(s.get("allow_skip_payment"))
     if s["enabled"] and not s["meet_url"]:
         raise BookingError("MEET_REQUIRED", "Add the Google Meet link before turning the page on.")
     return s
@@ -194,16 +199,29 @@ def set_user_price(user_id: str, price_cents: Optional[int]) -> Optional[int]:
     return int(price_cents)
 
 
+def _has_lesson(user_id: str) -> bool:
+    rows = (db.client.table("bookings").select("id").eq("user_id", user_id)
+            .eq("status", "confirmed").limit(1).execute().data) or []
+    return bool(rows)
+
+
 def offer_for(slug: str, user_id: str) -> dict:
     """What this person pays and gets. The page shows the list price crossed
     out when their price is lower."""
     page = public_settings(slug)
     own = user_price(user_id)
+    price = page["price_cents"] if own is None else own
+    # New-user offer: a % off for someone without a paid lesson yet. A price
+    # set on their profile wins over it.
+    pct = int(get_settings().get("new_user_discount_pct") or 0)
+    if own is None and pct and not _has_lesson(user_id):
+        price = round(page["price_cents"] * (100 - pct) / 100)
     return {
         "list_price_cents": page["price_cents"],
-        "price_cents": page["price_cents"] if own is None else own,
+        "price_cents": price,
         "currency": page["currency"],
         "bonus_tokens": page["bonus_tokens"],
+        "allow_skip_payment": bool(get_settings().get("allow_skip_payment")),
     }
 
 
@@ -275,18 +293,22 @@ def parse_busy(body: bytes, start: datetime, end: datetime, host_tz: ZoneInfo) -
 
 
 def calendar_busy(s: dict, start: datetime, end: datetime) -> Optional[list[Interval]]:
-    """None means the calendar could not be read, so nothing is offered."""
-    url = (s.get("calendar_ics_url") or "").strip()
-    if not url:
-        return []
-    body = _fetch_ics(url)
-    if body is None:
-        return None
-    try:
-        return parse_busy(body, start, end, ZoneInfo(s["timezone"]))
-    except Exception as e:
-        logger.warning("booking: calendar feed could not be parsed: %s", e, exc_info=True)
-        return None
+    """Busy times from every calendar link (one per line). None means one
+    of them could not be read, so nothing is offered."""
+    busy: list[Interval] = []
+    for url in (s.get("calendar_ics_url") or "").splitlines():
+        url = url.strip()
+        if not url:
+            continue
+        body = _fetch_ics(url)
+        if body is None:
+            return None
+        try:
+            busy += parse_busy(body, start, end, ZoneInfo(s["timezone"]))
+        except Exception as e:
+            logger.warning("booking: calendar feed could not be parsed: %s", e, exc_info=True)
+            return None
+    return busy
 
 
 def live_bookings(start: datetime, end: datetime) -> list[Interval]:
@@ -356,7 +378,8 @@ EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
 def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email: str,
-                   guest_timezone: str, note: str = "", embedded: bool = False) -> dict:
+                   guest_timezone: str, note: str = "", embedded: bool = False,
+                   skip_payment: bool = False) -> dict:
     """Hold the slot and open Stripe Checkout for a signed-in account, at that
     person's price (charged as an amount, not a Stripe product). Returns
     {"client_secret": ...} for the card form inside the booking page when
@@ -365,6 +388,11 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
     s = get_settings()
     offer = offer_for(slug, user_id)  # raises NOT_FOUND when off or wrong link
     price = int(offer["price_cents"])
+    # Booking without paying (temporary, only while the admin allows it): a
+    # confirmed booking at 0 with no tokens; the lesson is settled outside.
+    skip = skip_payment and offer["allow_skip_payment"]
+    if skip:
+        price = 0
     name, email, note = (name or "").strip()[:120], (email or "").strip()[:254], (note or "").strip()[:2000]
     if not name:
         raise BookingError("NAME_REQUIRED", "Add your name.")
@@ -395,7 +423,7 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
     booking_id = str(booking_id)
     db.client.table("bookings").update({
         "user_id": user_id, "list_price_cents": int(offer["list_price_cents"]),
-        "bonus_tokens": int(offer["bonus_tokens"]),
+        "bonus_tokens": 0 if skip else int(offer["bonus_tokens"]),
     }).eq("id", booking_id).execute()
     base = (config.FRONTEND_URL or "https://www.willpowerlab.com").rstrip("/")
 
