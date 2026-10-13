@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from collections.abc import Iterable, Mapping
 from typing import Any, Callable, Optional
 
@@ -82,18 +83,42 @@ def undecided(rows: Iterable[Mapping[str, Any]]) -> list:
 
 
 
-def saved_paragraphs(parts: list, slide_saved_ids: set[str]) -> set[int]:
-    """The paragraph indexes saved with helper words (B8): locked, with the
-    words on the paragraph itself or on its Slide row naming it. Until F1
-    Repair Plan Phase 1 only the paragraph's own words counted, so a
-    paragraph saved from practice or an earlier Take kept a bar that could
-    never be answered and held a window slot. Pure."""
+def _instant(value: Any) -> Optional[datetime]:
+    """A stored timestamp as an aware UTC datetime; naive is read as UTC
+    (v2_sessions.created_at carries no offset). None when unreadable."""
+    if isinstance(value, datetime):
+        moment = value
+    else:
+        try:
+            moment = datetime.fromisoformat(str(value or "").replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
+def saved_paragraphs(parts: list, slide_saved_ids: set[str],
+                     take_started_at: Any = None) -> set[int]:
+    """The paragraph indexes saved with helper words (B8) IN THIS TAKE:
+    locked, with the words on the paragraph itself or on its Slide row
+    naming it (the caller passes only this Take's Slide rows).
+
+    A Paragraph keeps its id and its lock from one Take to the next, so a
+    save from an earlier Take must not count (founder 2026-10-13, project
+    "S": every paragraph saved in Take 1 had its moments withheld in Takes
+    2-4, and the review never opened). The paragraph's own words count only
+    when it was locked at or after `take_started_at`; without that time they
+    do not count. Pure."""
+    since = _instant(take_started_at) if take_started_at else None
     saved = set()
     for index, part in enumerate(parts or []):
         if not isinstance(part, dict) or not part.get("locked_at"):
             continue
-        if part.get("root_phrase") or str(
-                part.get("id") or "").lower() in slide_saved_ids:
+        if str(part.get("id") or "").lower() in slide_saved_ids:
+            saved.add(index)
+            continue
+        locked = _instant(part.get("locked_at"))
+        if (part.get("root_phrase") and since is not None
+                and locked is not None and locked >= since):
             saved.add(index)
     return saved
 
@@ -1529,7 +1554,8 @@ class _ChangesRun:
 
         parts = self.deps.locked_parts(
             self.arc_id, str(self.user_id), self.served_text) or []
-        saved = saved_paragraphs(parts, self._slide_saved_part_ids())
+        saved = saved_paragraphs(parts, self._slide_saved_part_ids(),
+                                 self._take_started_at())
 
         def paragraph(row: dict) -> Optional[int]:
             span = row.get("span")
@@ -1566,10 +1592,15 @@ class _ChangesRun:
                 row["open_card"] = card
 
     def _slide_saved_part_ids(self) -> set[str]:
-        """Paragraphs whose helper words were saved on their Slide only --
-        from a practice attempt or from an earlier Take (B4, B6), which
-        store the words on the Slide row and leave the paragraph's own
-        root empty. Best-effort: an unreadable store saves nothing more."""
+        """Paragraphs whose helper words were saved on their Slide in THIS
+        Take -- also from a practice attempt (B4, B6), which stores the
+        words on the Slide row and leaves the paragraph's own root empty.
+        Words kept from an earlier Take do not make a paragraph done for
+        this one (see `saved_paragraphs`). Best-effort: an unreadable store
+        saves nothing more."""
+        take = str(self.review_sid or self.take_session_id or "")
+        if not take:
+            return set()
         try:
             rows = self.db.get_slide_helper_words(
                 self.arc_id, str(self.user_id)) or []
@@ -1580,7 +1611,25 @@ class _ChangesRun:
         return {str(row.get("source_part_id") or "").lower()
                 for row in rows
                 if isinstance(row, dict) and row.get("locked_at")
-                and row.get("phrase") and row.get("source_part_id")}
+                and row.get("phrase") and row.get("source_part_id")
+                and str(row.get("take_session_id") or "") == take}
+
+    def _take_started_at(self) -> Any:
+        """When the Take under review was recorded, or None."""
+        take = str(self.review_sid or self.take_session_id or "")
+        if not take:
+            return None
+        session = self.session if (
+            isinstance(self.session, dict)
+            and str(self.session.get("id") or "") == take) else None
+        if session is None:
+            try:
+                session = self.db.v2_get_session_by_id(take) or {}
+            except Exception as error:
+                logger.info("take unreadable for the window arc=%s: %s",
+                            self.arc_id, error, exc_info=True)
+                return None
+        return session.get("created_at") if isinstance(session, dict) else None
 
     def _v3_learning_presentations(self) -> None:
         # One packet per surface for every served V3 card, from the bundle

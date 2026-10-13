@@ -26,3 +26,28 @@ def test_a_take_with_nothing_picked_still_shows_two_moments():
     rows = [_m("a", 0), _m("b", 1), _m("c", 2)]
     out = window_rows(rows, paragraph_of=_para, saved_paragraphs=set())
     assert [r["id"] for r in out] == ["a", "b"]
+
+
+def test_a_paragraph_saved_in_an_earlier_take_gets_its_moments_again():
+    """Founder 2026-10-13, project "S": helper words saved in Take 1 must not
+    withhold every moment on that paragraph in Take 2 and after."""
+    from services.ideal_text_changes import saved_paragraphs
+    take_2_started = "2026-10-13T19:01:22.244848"
+    parts = [
+        # Saved in Take 1 (words on the paragraph, locked before Take 2).
+        {"id": "p0", "locked_at": "2026-10-13T18:31:59+00:00",
+         "root_phrase": "I think you should"},
+        # Saved in Take 1 on its Slide only (the caller passes no Take-1 rows).
+        {"id": "p1", "locked_at": "2026-10-10T09:18:21+00:00"},
+        # Saved during Take 2's own review.
+        {"id": "p2", "locked_at": "2026-10-13T19:05:00+00:00",
+         "root_phrase": "You can actually use"},
+        # Saved on its Slide during Take 2's review.
+        {"id": "P3", "locked_at": "2026-10-13T19:06:00+00:00"},
+    ]
+    saved = saved_paragraphs(parts, {"p3"}, take_2_started)
+    assert saved == {2, 3}
+    rows = [_m("a", 0, "confident"), _m("b", 1, "confident"),
+            _m("c", 2, "confident")]
+    out = window_rows(rows, paragraph_of=_para, saved_paragraphs=saved)
+    assert [r["id"] for r in out] == ["a", "b"]
