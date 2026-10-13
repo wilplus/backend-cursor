@@ -1,5 +1,7 @@
 # The learning doors — how each one opens (founder 2026-09-30, L1 to L9)
 
+> 2026-10-12: the door constants named below (`MLC2_TRAINING_SWITCH_ENABLED`, `MLC2_PAIR_RELEASES_ENABLED`, `MLC2_TRAINING_ENABLED`, `MLC2_PROMOTION_ENABLED`, `MLC2_TRAINING_CORPUS_COPY_ENABLED`, `MLC2_DATASET_RELEASES_ENABLED`, `TRAINING_IMPORT_ENABLED`) were removed 2026-10-12 with the values they held (founder: "remove the learning doors"); each door is now gated by its per-surface set only.
+
 Four doors, each a code constant in `config.py`, each opened only by a
 reviewed change carrying the founder's sentence in the commit. Never a
 toggle, never an environment variable. The machinery behind every door is

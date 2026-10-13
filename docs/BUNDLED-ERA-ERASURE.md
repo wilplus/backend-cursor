@@ -36,8 +36,7 @@ once, when the steps below reach it.
    - the rows per table;
    - group C's counts;
    - how many people accepted each terms version.
-3. **Freeze what could still copy it.** Confirm `MLC2_TRAINING_ENABLED` is off.
-   In the OpenAI dashboard, list the fine-tuning files and models, and note
+3. **Freeze what could still copy it.** In the OpenAI dashboard, list the fine-tuning files and models, and note
    each one.
 4. **Prepare.** Run `SELECT public.prepare_bundled_era_erasure_v1();`. It
    returns a `snapshot_id`, a `sha256` and the counts. The snapshot is the

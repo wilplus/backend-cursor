@@ -117,6 +117,7 @@ need counsel's reviewed policy text and the signed retention schedule v1.1),
     (P1), which does not exist yet.
 11. **Flip `Config.MLC2_TRAINING_CORPUS_COPY_ENABLED = True`**, last, in its
     own reviewed change.
+    (Flipped 2026-10-08; the constant was removed 2026-10-12.)
 
 ## 5 · What is already true (built, tested, dark)
 
