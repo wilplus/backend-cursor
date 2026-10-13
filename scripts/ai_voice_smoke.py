@@ -39,10 +39,19 @@ SENTENCE = ("We think the timing matters because the window closes "
 
 
 def _transcribe(audio: bytes):
-    if not os.getenv("OPENAI_API_KEY"):
+    """The clip re-heard by Whisper, with word times, called directly: the
+    app's own transcription path needs its database, which a laptop run
+    doesn't have (and must not touch)."""
+    from services.llm_client import build_openai_client
+    client = build_openai_client(os.getenv("OPENAI_API_KEY"), timeout=60.0, max_retries=1)
+    if client is None:
         return None
-    from services.snippet_transcription import transcribe_snippet_bytes
-    return transcribe_snippet_bytes(audio, "smoke.mp3", language_hint="en")
+    resp = client.audio.transcriptions.create(
+        model="whisper-1", file=("smoke.mp3", audio, "audio/mpeg"), language="en",
+        response_format="verbose_json", timestamp_granularities=["word"])
+    words = [{"word": w.word, "start": w.start, "end": w.end}
+             for w in (getattr(resp, "words", None) or [])]
+    return {"transcript": getattr(resp, "text", "") or "", "words": words}
 
 
 def _ms(started: float) -> int:
