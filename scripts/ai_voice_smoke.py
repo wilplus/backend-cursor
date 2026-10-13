@@ -42,10 +42,11 @@ def _transcribe(audio: bytes):
     """The clip re-heard by Whisper, with word times, called directly: the
     app's own transcription path needs its database, which a laptop run
     doesn't have (and must not touch)."""
-    if not os.getenv("OPENAI_API_KEY"):
+    from services.llm_client import build_openai_client
+    client = build_openai_client(os.getenv("OPENAI_API_KEY"), timeout=60.0, max_retries=1)
+    if client is None:
         return None
-    from openai import OpenAI
-    resp = OpenAI().audio.transcriptions.create(
+    resp = client.audio.transcriptions.create(
         model="whisper-1", file=("smoke.mp3", audio, "audio/mpeg"), language="en",
         response_format="verbose_json", timestamp_granularities=["word"])
     words = [{"word": w.word, "start": w.start, "end": w.end}
