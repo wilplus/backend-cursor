@@ -86,13 +86,20 @@ def main() -> int:
     parser.add_argument("--original-wpm", type=float, default=175.0)
     parser.add_argument("--i-consent-this-is-my-own-voice", action="store_true")
     parser.add_argument("--keep-voice", action="store_true")
+    parser.add_argument("--max-seconds", type=float, default=12.0,
+                        help="longest clip allowed (founder 2026-10-13: 12 s here, 17 s in the app)")
     args = parser.parse_args()
     if not args.i_consent_this_is_my_own_voice:
         print("Refusing: pass --i-consent-this-is-my-own-voice (your own voice only).")
         return 2
 
+    from config import Config
     from services import ai_voice_prompt, ai_voice_severity
     from services.elevenlabs_client import ElevenLabsClient, VoiceProviderError
+
+    # The smoke's own limit: a sentence too long to say in it is refused
+    # before anything is sent, and a longer clip fails its check.
+    Config.AI_VOICE_MAX_CLIP_SECONDS = args.max_seconds
 
     client = ElevenLabsClient()
     out_dir = args.sample.expanduser().resolve().parent / "ai-voice-smoke"
@@ -117,6 +124,9 @@ def main() -> int:
     except VoiceProviderError as error:
         print(f"ElevenLabs refused: {error.kind} (status {error.status})")
         report["error"] = {"kind": error.kind, "status": error.status}
+    except ai_voice_prompt.PromptRejected as error:
+        print(f"Not sent: {error} (the sentence is too long for {args.max_seconds:g} s?)")
+        report["error"] = {"kind": str(error)}
     finally:
         # The test clone never outlives the run, even when a step failed.
         if voice_id and not args.keep_voice:
