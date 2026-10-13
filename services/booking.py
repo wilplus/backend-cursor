@@ -173,6 +173,8 @@ def public_settings(slug: str) -> dict:
         "duration_min": s["duration_min"], "price_cents": s["price_cents"],
         "currency": s["currency"], "horizon_days": s["horizon_days"],
         "host_timezone": s["timezone"], "bonus_tokens": s.get("bonus_tokens") or 0,
+        # What a first-time person pays, shown before sign-in.
+        "new_user_price_cents": round(s["price_cents"] * (100 - int(s.get("new_user_discount_pct") or 0)) / 100),
     }
 
 
