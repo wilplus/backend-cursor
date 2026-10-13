@@ -239,6 +239,24 @@ class IdealTextRepository(TableRepository):
                            arc_id, e)
             return False
 
+    def ideal_text_saved(self, arc_id: str, version: Any) -> Optional[bool]:
+        """Whether this version of the document was saved; None when the read
+        fails (the ⋯ menu then withholds "Save the ideal text")."""
+        if not arc_id or not isinstance(version, int) or version < 1:
+            return None
+        try:
+            res = (self.client.table("ideal_text_saves")
+                   .select("version")
+                   .eq("arc_id", str(arc_id))
+                   .eq("version", version)
+                   .limit(1)
+                   .execute())
+            return bool(res.data)
+        except Exception as e:
+            logger.warning("ideal_text_saved failed arc=%s: %s", arc_id, e,
+                           exc_info=True)
+            return None
+
     def insert_ideal_text_save(self, arc_id: str, version: int) -> bool:
         """One save row per (arc, version) — idempotent (a double-tap on
         Save re-stamps the same version harmlessly)."""
