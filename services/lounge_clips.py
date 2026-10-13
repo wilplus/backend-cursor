@@ -44,3 +44,55 @@ def refresh_walk_clips(messages: list, user_id: str, database: Any,
                 clip["src"] = url
                 clip["start_ms"] = row.get("start_offset_ms")
                 clip["duration_ms"] = row.get("duration_ms")
+
+
+def _practice_allowed(user_id: str, database: Any) -> bool:
+    """The practice page's own gates: the purpose is on, and this person's
+    "Personalised practice" choice says yes (routes/phase2_guard.py)."""
+    from services.processing_authorization import (
+        ProcessingAuthorizationService,
+    )
+    from services.processing_purposes import purpose_is_operational
+
+    if not purpose_is_operational("personalized_exercise_recommendation"):
+        return False
+    service = ProcessingAuthorizationService(database)
+    principal = service.user_acquisition_principal(str(user_id))
+    if not principal:
+        return not service.enforced
+    return bool(service.choice_permitted(principal, "personalised_practice"))
+
+
+def refresh_practice_clips(messages: list, user_id: str, database: Any,
+                           resolve: Callable[[Any], Optional[str]]) -> None:
+    """Re-sign a practise try's clip in place, from the reader's own
+    practice, behind the same gates as the practice page."""
+    wanted: dict = {}
+    for m in messages or []:
+        meta = m.get("metadata") if m.get("kind") == "walk_step" else None
+        clip = meta.get("clip") if isinstance(meta, dict) else None
+        if isinstance(clip, dict) and clip.get("practice_id") and clip.get("attempt_id"):
+            wanted.setdefault(str(clip["practice_id"]), []).append(clip)
+    if not wanted:
+        return
+    try:
+        if not _practice_allowed(user_id, database):
+            return
+    except Exception:
+        logger.warning("lounge clips: practice gates unreadable", exc_info=True)
+        return
+    for pid, clips in wanted.items():
+        try:
+            if not database.get_confident_voice_practice(pid, str(user_id)):
+                continue
+            rows = {str(r.get("id")): r
+                    for r in database.list_confident_voice_practice_attempts(pid) or []}
+        except Exception:
+            logger.warning("lounge clips: practice %s unreadable", pid,
+                           exc_info=True)
+            continue
+        for clip in clips:
+            row = rows.get(str(clip["attempt_id"]))
+            url = resolve(row.get("audio_ref")) if row else None
+            if url:
+                clip["src"] = url
