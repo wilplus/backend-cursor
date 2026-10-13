@@ -166,9 +166,20 @@ class _Job:
     def update(self, fields: dict) -> None:
         store.update_cycle(self.db, self.cycle_id, fields)
 
+    def end_clock(self) -> dict[str, int]:
+        """Each stage, the job's total, and end to end: since the walk asked
+        for the clip (the cycle's creation) and since the Take was saved."""
+        self.clock["total"] = int((time.monotonic() - self.t0) * 1000)
+        for name, since in (("since_request", self.cycle.get("created_at")),
+                            ("since_take_saved", _take_saved_at(self.db, self.practice))):
+            waited = _ms_since(since)
+            if waited is not None:
+                self.clock[name] = waited
+        return self.clock
+
     def fail(self, kind: str, code: str) -> str:
         self.update({"status": "failed", "failure_kind": kind,
-                     "failure_code": code[:80], "latency_ms": self.clock})
+                     "failure_code": code[:80], "latency_ms": self.end_clock()})
         _log.info("ai voice: clip not shown cycle=%s kind=%s code=%s",
                   self.cycle_id, kind, code)
         return "failed"
@@ -201,7 +212,7 @@ def generate(cycle_id: str, principal_id: str, *, database: Any = None,
                 "selection": selection, "metrics_before": context["before"]})
     if selection is None:
         job.update({"status": "skipped", "failure_kind": "no_exercise",
-                    "latency_ms": job.clock})
+                    "latency_ms": job.end_clock()})
         return "skipped"
     return _make(job, selection, context)
 
@@ -278,7 +289,9 @@ def _speak_until_checked(job: _Job, voice_id: str, request: dict, selection: dic
         # One fresh take may land the pause or the pace; a seed change is safe.
         request["body"]["seed"] = (int(request["body"]["seed"]) + 1) % 4294967295
     job.update({"generation_attempts": attempts, "characters": characters,
-                "credits_estimated": estimated_credits(characters), "validation": result})
+                "credits_estimated": estimated_credits(characters), "validation": result,
+                "generation_metadata": {**request["metadata"],
+                                        "provider_retries": int(asked_again)}})
     return audio, result, failure
 
 
@@ -290,7 +303,7 @@ def _keep(job: _Job, audio: bytes, result: dict, selection: dict) -> str:
         _log.warning("ai voice: clip not stored cycle=%s", job.cycle_id, exc_info=True)
         return job.fail("internal", type(error).__name__)
     job.lap("store")
-    job.clock["total"] = int((time.monotonic() - job.t0) * 1000)
+    job.end_clock()
     job.update({
         "status": "completed", "storage_provider": "r2", "bucket": bucket,
         "storage_key": key, "content_sha256": hashlib.sha256(audio).hexdigest(),
@@ -299,6 +312,29 @@ def _keep(job: _Job, audio: bytes, result: dict, selection: dict) -> str:
     _log.info("ai voice: clip ready cycle=%s exercise=%s total=%dms",
               job.cycle_id, selection["exercise"], job.clock["total"])
     return "completed"
+
+
+def _ms_since(stamp: Any) -> Optional[int]:
+    """Milliseconds from an ISO timestamp to now; None when unreadable."""
+    from datetime import datetime, timezone
+    try:
+        then = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if then.tzinfo is None:
+        then = then.replace(tzinfo=timezone.utc)
+    waited = int((datetime.now(timezone.utc) - then).total_seconds() * 1000)
+    return waited if waited >= 0 else None
+
+
+def _take_saved_at(database: Any, practice: dict) -> Any:
+    """When the practised Take finished processing (end of recording to
+    saved Take), or None."""
+    try:
+        session = database.v2_get_session_by_id(str(practice.get("take_session_id"))) or {}
+        return session.get("completed_at")
+    except Exception:  # noqa: BLE001 — an unread time is simply not reported
+        return None
 
 
 def _cycle_by_id(database: Any, cycle_id: str) -> Optional[dict]:
@@ -424,9 +460,13 @@ def erase_clips(database: Any, owner_user_id: str, *, delete_object=None) -> int
                              cycle.get("id"), type(error).__name__, exc_info=True)
                 left += 1
                 continue
+        # The clip and everything describing it: its words, the request
+        # and the check. What stays is about the speaker's own tries
+        # (metrics before and after, the pick, the outcome), for the picker.
         store.update_cycle(database, str(cycle["id"]), {
             "status": "deleted", "storage_key": None, "bucket": None,
-            "content_sha256": None, "prepared_text": None})
+            "content_sha256": None, "prepared_text": None,
+            "generation_metadata": None, "validation": None, "duration_ms": None})
     return left
 
 

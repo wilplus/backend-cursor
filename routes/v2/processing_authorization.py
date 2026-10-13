@@ -476,6 +476,11 @@ def v2_processing_terminate():
                         "error": "A request idempotency key is required"}), 422
     service = ProcessingAuthorizationService(db)
     reason = str(payload.get("reason_code") or trigger.upper())
+    # The AI version of your voice goes now, at ElevenLabs too (N71), and
+    # FIRST: once the request below blocks the principal, the provider
+    # permit for the delete would be refused and the voice would stay.
+    from services.ai_voice_clone import erase_on_termination
+    erase_on_termination(db, getattr(request, "user_id", None), principal_id)
     try:
         if trigger == "account_deletion":
             # N48.4 Q14 A: blocked now, deleted after seven days unless the
@@ -486,9 +491,6 @@ def v2_processing_terminate():
             row = service.request_purge(
                 acquisition_principal_id=principal_id,
                 trigger_kind=trigger, idempotency_key=key, reason_code=reason)
-        # The AI version of your voice goes now, at ElevenLabs too (N71).
-        from services.ai_voice_clone import erase_on_termination
-        erase_on_termination(db, getattr(request, "user_id", None), principal_id)
         return jsonify(row), 202
     except ProcessingAuthorizationError as error:
         return jsonify({"code": error.code, "error": error.message}), error.status

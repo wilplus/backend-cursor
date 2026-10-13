@@ -21,7 +21,8 @@ import numpy as np
 import pytest
 
 from config import Config
-from services import ai_voice_clip, ai_voice_clone, ai_voice_prompt
+from services import ai_voice_clip, ai_voice_clone, ai_voice_prompt, ai_voice_severity
+from services import ai_voice_store as store
 from services.elevenlabs_client import Speech, VoiceProviderError
 
 OWNER = "11111111-1111-1111-1111-111111111111"
@@ -208,11 +209,46 @@ def _ready_voice(db):
          "provider_voice_id": "voice-abc", "created_at": "2026-10-11T00:00:00+00:00"})
 
 
-def _run_pipeline(db, practice, voices, heard, pcm=None):
+def _run_pipeline(db, practice, voices, heard, pcm=None, objects=None):
+    def put(key, audio):
+        if objects is not None:
+            objects[key] = audio
+        return "bucket"
     return ai_voice_clip.ensure(db, practice, user_id=OWNER, principal_id="", run=lambda cid, p: ai_voice_clip.generate(
         cid, p, database=db, provider=voices, transcribe=lambda _a: heard,
-        put_object=lambda k, a: "bucket", decode=lambda _a: pcm if pcm is not None else _pcm_with_pause(1.0),
+        put_object=put, decode=lambda _a: pcm if pcm is not None else _pcm_with_pause(1.0),
         provider_usage={"used": 0}), sign=lambda b, k: f"https://signed/{k}")
+
+
+# ── which one problem: severity against the speaker's own usual ──────────
+
+@pytest.mark.parametrize("pause_ratio, picked", [
+    (0.0915, None),     # severity just below 0.4: no exercise at all
+    (0.09, "pause"),    # exactly 0.4: the line itself counts
+    (0.08, "pause"),    # above it
+])
+def test_one_problem_is_picked_only_from_the_line_up(pause_ratio, picked):
+    with _on():
+        medians = ai_voice_severity.own_medians(TAKE)
+        out = ai_voice_severity.select(_snip(150, pause_ratio=pause_ratio), medians,
+                                       sentence=SENTENCE, seed="s")
+        assert (out or {}).get("exercise") == picked
+        if out:
+            assert 0.0 <= out["severity"] <= 1.0 and out["target_phrase"]
+
+
+def test_raw_units_are_never_compared_and_the_phrase_has_a_fallback():
+    """168 words a minute is a big number and 0.05 a small one; on the
+    speaker's own scale the missing pauses are the worse problem."""
+    with _on():
+        medians = ai_voice_severity.own_medians(TAKE)
+        out = ai_voice_severity.select(_snip(168, pause_ratio=0.05), medians,
+                                       sentence=SENTENCE, seed="s")
+        scores = out["severity_scores"]
+        assert out["exercise"] == "pause" and scores["pause"] > scores["pace"] > 0
+    # No comma or joining word: the last third of the sentence.
+    assert ai_voice_severity.target_phrase(
+        "Our revenue grew twelve percent last quarter in Europe") == "quarter in Europe"
 
 
 # ── the request keeps the words ───────────────────────────────────────────
@@ -259,7 +295,78 @@ def test_the_daily_limit_stops_the_provider_call():
         assert db.client.tables["ai_voice_cycles"][0]["failure_code"] == "speaker_daily"
 
 
+def test_one_recording_makes_one_checked_clip_then_measures_the_next_try(monkeypatch):
+    """The whole cycle with a fake provider: one exercise, one clip that
+    passed its check, stored with what it was made from and how long each
+    stage took, never made twice; then the next try's outcome."""
+    seen = []
+    real_update, real_claim = store.update_cycle, store.claim_cycle
+    monkeypatch.setattr(store, "update_cycle", lambda d, c, f: (
+        seen.append(f["status"]) if "status" in f else None, real_update(d, c, f))[1])
+    monkeypatch.setattr(store, "claim_cycle", lambda d, c: (
+        seen.append("analyzing"), real_claim(d, c))[1])
+    with _on():
+        db = _Db(_practice(), _snip(150, pause_ratio=0.02), TAKE)
+        _ready_voice(db)
+        voices = _Voices()
+        out = _run_pipeline(db, db.practice, voices, _heard(0.55, "the window closes once"))
+        assert out["demo"] == "ai_voice" and out["clip"]["state"] == "ready"
+        assert "voice-abc" not in str(out) and "settings" not in str(out)
+        assert seen == ["analyzing", "choosing_exercise", "generating", "validating", "completed"]
+        cycle = db.client.tables["ai_voice_cycles"][0]
+        assert cycle["exercise"] == "pause" and cycle["validation"]["passed"]
+        assert {"reason", "severity_scores", "target_change", "generation_intent"} <= set(cycle["selection"])
+        assert cycle["metrics_before"]["pause_ratio"] == 0.02
+        assert {"choose_exercise", "generation", "validation", "store", "total",
+                "since_request"} <= set(cycle["latency_ms"])
+        assert (cycle["generation_attempts"], cycle["characters"]) == (1, 90)
+        assert cycle["credits_estimated"] > 0
+        # Asked again (a retry, a second screen): the same clip, no second generation.
+        again = _run_pipeline(db, db.practice, voices, _heard(0.55, "the window closes once"))
+        assert voices.spoken == 1 and again["clip"]["url"] == out["clip"]["url"]
+        # The next try, on the one problem only.
+        ai_voice_clip.note_attempts(db, db.practice, [
+            {"attempt_index": 1, "duration_ms": 3000, "acoustic_metrics": {"pause_ratio": 0.15}}])
+        assert cycle["outcome"] == "improved" and cycle["retried"]
+        ai_voice_clip.note_attempts(db, db.practice, [
+            {"attempt_index": 2, "duration_ms": 3000, "acoustic_metrics": {}}])
+        assert cycle["outcome"] == "inconclusive"
+
+
 # ── the voice, and deleting it ────────────────────────────────────────────
+
+def test_after_delete_an_old_link_no_longer_serves_the_clip():
+    """The link a speaker was given points at a stored object; Delete removes
+    that object, so the old link has nothing behind it, and no new link is
+    ever issued for the clip."""
+    with _on():
+        db = _Db(_practice(), _snip(150, pause_ratio=0.02), TAKE)
+        _ready_voice(db)
+        objects: dict = {}
+        out = _run_pipeline(db, db.practice, _Voices(), _heard(0.55, "the window closes once"),
+                            objects=objects)
+        old = out["clip"]["url"]
+        served = lambda url: objects.get(url.split("https://signed/", 1)[1])  # noqa: E731
+        assert served(old) == b"mp3"
+        ai_voice_clone.delete(db, OWNER, provider=_Voices(),
+                              delete_clip_objects=lambda key, *_a: objects.pop(key))
+        assert served(old) is None
+        cycle = db.client.tables["ai_voice_cycles"][0]
+        after = ai_voice_clip.state(db, db.practice, cycle, sign=lambda b, k: f"https://signed/{k}")
+        assert after["clip"]["url"] is None and after["demo"] != "ai_voice"
+        assert all(cycle[k] is None for k in ("storage_key", "prepared_text",
+                                              "generation_metadata", "validation"))
+        ai_voice_clip.note_play(db, db.practice["id"])
+        assert cycle["plays"] == 0
+
+
+def test_account_deletion_removes_the_voice_before_the_account_is_blocked():
+    """Once the account is blocked the provider permit is refused, so the AI
+    voice must go first (routes/v2/processing_authorization.py)."""
+    from pathlib import Path
+    source = (Path(__file__).resolve().parents[1] / "routes/v2/processing_authorization.py").read_text()
+    route = source[source.index("def v2_processing_terminate"):]
+    assert route.index("erase_on_termination(") < route.index("request_account_deletion(")
 
 def test_delete_removes_the_voice_and_clips_and_is_safe_twice():
     with _on():
