@@ -52,7 +52,11 @@ def save_take_word(database: Any, *, take_session_id: str, coach_id: str,
     if not isinstance(row, dict):
         raise TakeWordRefusal("Could not save the word.", "V2_ERROR", 500)
     if share:
-        _tell_the_speaker(database, str(take_session_id))
+        _tell_the_speaker(database, str(take_session_id), text=text, video_ref=video_ref)
+        # The Take's closing summary is rewritten with the word, in place
+        # (founder lock 2026-10-12, section 3). Behind the save.
+        from services.take_summary import coach_update
+        coach_update(database, str(take_session_id), text)
     _the_pair(database, row, coach_id=str(coach_id), text=text)
     return take_word_payload(row) or {}
 
@@ -72,9 +76,12 @@ def _the_pair(database: Any, row: dict, *, coach_id: str, text: Optional[str]) -
         _log.info("take word pair skipped take=%s: %s", row.get("take_session_id"), e)
 
 
-def _tell_the_speaker(database: Any, take_session_id: str) -> None:
+def _tell_the_speaker(database: Any, take_session_id: str, *,
+                      text: Optional[str], video_ref: Optional[str]) -> None:
     """The project's Ideal Text bubble comes back to the bottom of the chat,
-    as a publish did (founder 2026-09-25, Q39 B). Best-effort."""
+    as a publish did (founder 2026-09-25, Q39 B); after the Take's review, the
+    word is its own coach update bubble (lock 2026-10-12, section 3).
+    Best-effort."""
     try:
         from services.arc_notifications import bump_ideal_bubble
         session = database.v2_get_session_by_id(take_session_id) or {}
@@ -82,6 +89,12 @@ def _tell_the_speaker(database: Any, take_session_id: str) -> None:
             bump_ideal_bubble(database, session["user_id"], session["arc_id"])
     except Exception as e:  # noqa: BLE001 -- the word is saved either way
         _log.info("take word bubble bump skipped take=%s: %s", take_session_id, e)
+    try:
+        from services.take_summary import coach_update_message
+        coach_update_message(database, take_session_id=take_session_id,
+                             text=text, video_ref=video_ref)
+    except Exception as e:  # noqa: BLE001 -- the word is saved either way
+        _log.info("coach update bubble skipped take=%s: %s", take_session_id, e)
 
 
 def take_word_payload(row: Any) -> Optional[dict]:

@@ -70,3 +70,34 @@ def test_a_coach_update_rewrites_the_summary_in_place_and_keeps_the_earlier(monk
     assert msg["body"] == later
     assert msg["metadata"]["earlier"] == first and msg["metadata"]["coach_update"] is True
     assert len(db.rows) == 1
+
+
+def test_a_shared_coach_word_rewrites_a_reviewed_take_once_per_word(monkeypatch):
+    db = _Db()
+    db.takes = type("T", (), {"get_arc_sessions": staticmethod(lambda arc: TAKES)})()
+    db.v2_get_session_by_id = lambda take: {"user_id": "u", "arc_id": "a"}
+    monkeypatch.setattr("services.parallel.start_scoped_thread", lambda run, name=None: run())
+    _run(db, monkeypatch, "Your voice sounded surer than last time. Keep the endings you found.",
+         {"coach_note": "Slow the opening.", "practice": "better"})
+    later = "Your coach wants you to pause before the ask. The rest already sounds sure."
+    monkeypatch.setattr(take_summary, "write_summary", lambda *a, **kw: later)
+    take_summary.coach_update(db, "t2", "Pause before the ask.")
+    row = next(iter(db.rows.values()))
+    assert row["body"] == later and row["metadata"]["practice"] == "better"
+    monkeypatch.setattr(take_summary, "write_summary", lambda *a, **kw: "Never written. Not again.")
+    take_summary.coach_update(db, "t2", "Pause before the ask.")
+    assert next(iter(db.rows.values()))["body"] == later
+
+
+def test_a_coach_word_shared_after_the_review_is_its_own_bubble(monkeypatch):
+    db = _Db()
+    db.v2_get_session_by_id = lambda take: {"user_id": "u", "arc_id": "a"}
+    db.takes = type("T", (), {"get_arc_sessions": staticmethod(lambda arc: TAKES)})()
+    word = {"take_session_id": "t2", "text": "Breathe before the price.", "video_ref": None}
+    assert take_summary.coach_update_message(db, **word) is None  # review not ended: the walk shows it
+    _run(db, monkeypatch, "Your voice sounded surer than last time. Keep the endings you found.")
+    msg = take_summary.coach_update_message(db, **word)
+    assert msg["body"] == "Your coach\nBreathe before the price."
+    assert msg["metadata"]["heading"] == "Later · from your coach" and msg["metadata"]["coach_update"] is True
+    take_summary.coach_update_message(db, **word)
+    assert len(db.rows) == 2  # the summary and one update, stored once

@@ -18,13 +18,17 @@ Anything that fails (no permit, no provider, a reply that breaks the
 rules) falls back to the signed journey copy, so the speaker always gets
 the bubble. Stored once per Take (a fixed client id).
 
-A coach update: when the Take's review ends with a coach note and the
-stored summary was written without one, the summary is written again with
-it and rewrites the bubble in place; the earlier words stay in its
-metadata (``earlier``), one tap away in the Lounge.
+A coach update: when a coach shares a word on a Take whose summary is
+already stored (``coach_update``, called from the coach's share), or the
+walk's summary step brings a coach note the stored summary was not written
+with, the summary is written again with it and rewrites the bubble in place;
+the earlier words stay in its metadata (``earlier``), one tap away in the
+Lounge. The practice result and helper words it was first written with are
+kept in its metadata, so a rewrite hears them too.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 import uuid
@@ -159,6 +163,22 @@ def _ask(body: dict) -> tuple[Optional[str], list[str], Optional[str]]:
     return practice, words, (note.strip() if note and note.strip() else None)
 
 
+def _note_key(note: Optional[str]) -> Optional[str]:
+    return hashlib.sha256(note.encode("utf-8")).hexdigest()[:16] if note else None
+
+
+def _heard_before(held: Optional[dict], note: Optional[str]) -> bool:
+    """The stored summary already hears this note (or there is none to
+    hear). A summary stored before the note key was kept counts its note
+    as heard. Pure."""
+    if not held or note is None:
+        return bool(held)
+    meta = held.get("metadata") or {}
+    if meta.get("coach_note_key"):
+        return meta["coach_note_key"] == _note_key(note)
+    return bool(meta.get("coach_noted"))
+
+
 def _written(database: Any, take: str, anchor: str, facts: list[str], practice: Optional[str],
              words: list[str], note: Optional[str], arc_id: str, user_id: str) -> Optional[str]:
     """GPT-4o's summary under the Take's authority; None when refused or failed."""
@@ -185,14 +205,19 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
     client_id = summary_client_id(user_id, arc_id, take_index)
     practice, words, note = _ask(body)
     held = database.get_lounge_message_by_client_id(str(user_id), client_id)
-    if held and (note is None or ((held.get("metadata") or {}).get("coach_noted"))):
+    if held and _heard_before(held, note):
         return held
+    if held:
+        first = held.get("metadata") or {}
+        practice = practice or (first.get("practice") if first.get("practice") in ("better", "not_yet") else None)
+        words = words or [w for w in (first.get("helper_words") or []) if isinstance(w, str)][:2]
     anchor = _COPY.get(take_index) or _COPY[3]
     now, before = _reads(database, ids, take_index)
     text = _written(database, take, anchor, progress_facts(now, before), practice, words,
                     note, str(arc_id), str(user_id))
     meta = {"summary": True, "arc_id": str(arc_id), "take_index": take_index,
-            "take_session_id": take, "written": bool(text), "coach_noted": note is not None}
+            "take_session_id": take, "written": bool(text), "coach_noted": note is not None,
+            "coach_note_key": _note_key(note), "practice": practice, "helper_words": words}
     if held:
         if not text:
             return held  # the coach's update could not be written: keep it
@@ -204,6 +229,93 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
         "kind": "cadence",
         "body": text or anchor,
         "metadata": meta,
+        "client_created_at": datetime.now(timezone.utc).isoformat(),
+    }])
+    return persisted[0] if persisted else None
+
+
+def _rewrite_for_coach(database: Any, take: str, note: str) -> None:
+    session = database.v2_get_session_by_id(take) or {}
+    user_id, arc_id = session.get("user_id"), session.get("arc_id")
+    if not user_id or not arc_id:
+        return
+    from services.slide_selection import spoken_arc_sessions
+    takes = [s for s in spoken_arc_sessions(database.takes.get_arc_sessions(str(arc_id)))
+             if s.get("analysis_state") in (None, "ready")]
+    ids = [str(t.get("id")) for t in takes]
+    if take not in ids:
+        return
+    client_id = summary_client_id(user_id, arc_id, ids.index(take) + 1)
+    if not database.get_lounge_message_by_client_id(str(user_id), client_id):
+        return  # not reviewed yet: the walk's summary hears the note
+    summary_message(database, user_id=str(user_id), arc_id=str(arc_id), takes=takes,
+                    take_session_id=take, body={"coach_note": note})
+
+
+def coach_update(database: Any, take_session_id: str, note: Optional[str]) -> None:
+    """A coach shared a word on a Take: its stored summary is written again
+    with it, in place, behind the coach's save. Best-effort, never blocks
+    and never raises; a Take not reviewed yet is left to the walk."""
+    note = note.strip() if isinstance(note, str) else ""
+    if not note:
+        return
+    take = str(take_session_id)
+
+    def run() -> None:
+        try:
+            _rewrite_for_coach(database, take, note)
+        except Exception as error:  # noqa: BLE001 -- the word is shared either way
+            logger.warning("take summary coach update failed take=%s: %s", take, error,
+                           exc_info=True)
+
+    try:
+        from services.parallel import start_scoped_thread
+        start_scoped_thread(run, name="take-summary-coach-update")
+    except Exception as error:  # noqa: BLE001 -- the word is shared either way
+        logger.warning("take summary coach update not started take=%s: %s", take, error)
+
+
+#: The coach update's label and first line (lock 2026-10-12, sections 3 and 8).
+COACH_UPDATE_LABEL = "Later · from your coach"
+COACH_TITLE = "Your coach"
+
+
+def coach_update_message(database: Any, *, take_session_id: str, text: Optional[str],
+                         video_ref: Optional[str]) -> Optional[dict]:
+    """A coach's word shared after the Take's review ended (its summary is
+    stored): its own Lounge bubble under "Later · from your coach", as the
+    coach wrote it (lock 2026-10-12, section 3). Stored once per word.
+    None when the review has not ended (the walk shows the word as its
+    first step) or anything is missing."""
+    from services.slide_selection import spoken_arc_sessions
+    take = str(take_session_id)
+    session = database.v2_get_session_by_id(take) or {}
+    user_id, arc_id = session.get("user_id"), session.get("arc_id")
+    if not user_id or not arc_id or not (text or video_ref):
+        return None
+    takes = [s for s in spoken_arc_sessions(database.takes.get_arc_sessions(str(arc_id)))
+             if s.get("analysis_state") in (None, "ready")]
+    ids = [str(s.get("id")) for s in takes]
+    if take not in ids:
+        return None
+    take_index = ids.index(take) + 1
+    if not database.get_lounge_message_by_client_id(
+            str(user_id), summary_client_id(user_id, arc_id, take_index)):
+        return None
+    video_url = None
+    if video_ref:
+        from services.coach_video_storage import refreshed_media_url
+        video_url = refreshed_media_url(video_ref)
+    body = f"{COACH_TITLE}\n{text}" if text else COACH_TITLE
+    persisted = database.insert_lounge_messages(str(user_id), [{
+        "client_id": str(uuid.uuid5(_NAMESPACE, f"{take}:coach-update:{text or ''}:{video_ref or ''}")),
+        "role": "bot",
+        "kind": "walk_step",
+        "body": body,
+        "metadata": {"step": "coachnote", "author": "coach", "coach_update": True,
+                     "heading": COACH_UPDATE_LABEL, "arc_id": str(arc_id),
+                     "take_session_id": take, "take_index": take_index,
+                     "video": video_url},
         "client_created_at": datetime.now(timezone.utc).isoformat(),
     }])
     return persisted[0] if persisted else None
