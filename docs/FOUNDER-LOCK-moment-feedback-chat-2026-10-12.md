@@ -221,6 +221,16 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
   - **Only me:** nobody but the coach hears your Take, but you still judge
     general-community moments.
 
+## Decided after the lock
+
+- **An old judging bubble in the chat opens "Other speakers" afresh, not a
+  read-only replay** (founder, 2026-10-13: "the way it is right now is
+  actually better"). The prototype showed the answered moment read-only,
+  which would need other speakers' clips saved in each listener's chat.
+  Instead the tap opens the "Other speakers" step: while the review is open
+  it serves new moments to judge, and no other speaker's recording is ever
+  stored in a speaker's thread. Do not build the read-only replay.
+
 ## Still open
 
 - **Self-judgement of your own practice try is off for launch** (founder,
