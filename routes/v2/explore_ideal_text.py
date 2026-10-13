@@ -23,7 +23,7 @@ import sentry_sdk
 from flask import jsonify, request
 
 from auth import require_auth
-from routes.v2.guest_owner import require_owner_or_guest
+from routes.v2.guest_owner import caller_is_guest, require_owner_or_guest
 from routes.v2.arcs import (
     _arc_owned_by_caller,
     _fold_applied_moments,
@@ -178,6 +178,7 @@ def v2_explore_get_ideal_text_core(arc_id):
         # rather than an address that resolves to nothing.
         payload["presentation_ref"] = refreshed_media_url(
             payload.get("presentation_ref")) or None
+        _serve_is_saved(payload, arc_id)
         response = jsonify(payload)
     elapsed = (perf_counter() - started) * 1000
     response.headers["Cache-Control"] = "private, no-store"
@@ -362,6 +363,8 @@ def v2_explore_get_ideal_text(arc_id):
             db, arc_id=arc_id, user_id=request.user_id, sessions=_sessions,
             requested_version=request.args.get("version"),
             deps=_notebook_deps())
+        if status == 200 and not payload.get("historical"):
+            _serve_is_saved(payload, arc_id)
         return jsonify(payload), status
     except Exception as e:
         logger.error("explore ideal-text GET failed arc=%s: %s", arc_id, e,
@@ -533,9 +536,17 @@ def v2_explore_select_block_variant(arc_id, block_key):
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/revisions", methods=["GET"])
 @require_auth
 def v2_explore_ideal_revisions(arc_id):
-    """Always 404: the variant pool sat on top of the retired master
-    document (audit C2). The route stays because the FE still calls it."""
-    return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
+    """The History under ⋯ (lock 2026-10-12, section 4): every version of
+    the document, newest first, each with its Take and its words. Read only
+    (rule 5). Owner only."""
+    owned, _sessions = _arc_owned_by_caller(arc_id)
+    if not owned:
+        return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+    from services.paragraph_history import document_history
+    response = jsonify({"revisions": document_history(
+        db.list_ideal_text_versions(arc_id))})
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
 
 
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/revisions/<int:revision>"
@@ -551,11 +562,35 @@ def v2_explore_restore_ideal_revision(arc_id, revision):
 @llm_limit
 @require_auth
 def v2_explore_save_ideal_text(arc_id):
-    """Always 404: Save belonged to the retired master document (audit C2).
+    """"Save the ideal text", the last item under ⋯: stamps the version on
+    screen as saved. It changes no word. Owner only.
 
-    Its body only ran when ``master_document_enabled()`` was true, which it
-    never is. The route stays because the FE still calls it."""
-    return jsonify({"code": "NOT_FOUND", "error": "not found"}), 404
+    200 {saved: true, arc_id, saved_version} · 404 · 500"""
+    owned, _sessions = _arc_owned_by_caller(arc_id)
+    if not owned:
+        return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+    snapshot = db.get_ideal_text_document_core(arc_id, str(request.user_id))
+    version = ((snapshot or {}).get("payload") or {}).get("version")
+    if not isinstance(version, int):
+        return jsonify({"code": "IDEAL_TEXT_DOCUMENT_PENDING",
+                        "error": "no document yet"}), 404
+    if not db.ideal_text.insert_ideal_text_save(str(arc_id), version):
+        return jsonify({"code": "V2_ERROR",
+                        "error": "Failed to save the ideal text"}), 500
+    return jsonify({"saved": True, "arc_id": arc_id,
+                    "saved_version": version}), 200
+
+
+def _serve_is_saved(payload, arc_id) -> None:
+    """`is_saved` on a read: whether the version on screen was saved. Left
+    out for a guest (who cannot save) or when unknown; the FE then withholds
+    the item."""
+    version = payload.get("version")
+    if caller_is_guest() or not isinstance(version, int):
+        return
+    saved = db.ideal_text.ideal_text_saved(str(arc_id), version)
+    if isinstance(saved, bool):
+        payload["is_saved"] = saved
 
 
 def _generated_text(arc_id, user_id) -> "str | None":

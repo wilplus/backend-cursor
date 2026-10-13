@@ -90,6 +90,30 @@ def slide_history(versions: Any, helper_log: Any, slide_index: int,
             "helper_words": helper_words, "practice": practice}
 
 
+
+def document_history(versions: Any) -> list:
+    """The whole document's versions, newest first, for the History under ⋯
+    (lock 2026-10-12, section 4; rule 5: every old version stays in the
+    history). One row per snapshot with its words and its Take; the newest
+    is the head. Read only: an old version is never brought back, because
+    the Ideal Text is what the latest Take said. Pure."""
+    rows = []
+    for row in versions or []:
+        if not isinstance(row, Mapping):
+            continue
+        text = row.get("text")
+        if not isinstance(row.get("version"), int) or not isinstance(text, str) \
+                or not text.strip():
+            continue
+        rows.append({"revision": row.get("version"),
+                     "take_index": _take_index(row),
+                     "text": text,
+                     "created_at": row.get("created_at")})
+    rows.reverse()
+    for index, row in enumerate(rows):
+        row["is_head"] = index == 0
+    return rows
+
 def _when(value: Any) -> Optional[datetime]:
     """A row's time, or None when it cannot be read. A time without a zone
     is UTC, as the database writes it."""
