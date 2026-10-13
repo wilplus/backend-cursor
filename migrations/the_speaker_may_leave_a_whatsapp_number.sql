@@ -1,4 +1,4 @@
--- 0464 · The speaker may leave a WhatsApp number, so "the feedback from
+-- 0465 · The speaker may leave a WhatsApp number, so "the feedback from
 -- your coach is in" can reach them on WhatsApp as well as in the app
 -- (founder 2026-10-12, "Add Phone Input for WhatsApp Notifications").
 --
