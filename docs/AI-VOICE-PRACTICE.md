@@ -40,7 +40,15 @@ The lock (flow, words, rules) is
 Job states (`ai_voice_cycles.status`): `pending → analyzing →
 choosing_exercise → generating → validating → completed | failed | skipped`.
 Provider failures and validation failures are told apart in `failure_kind`.
-Latency per stage is in `latency_ms`.
+Latency is in `latency_ms`: each stage (`choose_exercise`, `generation`,
+`validation`, `store`), the job's `total`, and end to end: `since_request`
+(the walk asked for the clip → clip ready, what the speaker waits) and
+`since_take_saved` (the Take finished processing → clip ready).
+Provider retries are counted in `generation_metadata.provider_retries`.
+
+The severity minimum (`AI_VOICE_MIN_SEVERITY`, 0.4) and every
+normalization range (`AI_VOICE_PACE_*`, `AI_VOICE_PAUSE_*`,
+`AI_VOICE_STRESS_GAP_DB`) are environment settings; see `config.py`.
 
 ## What Eleven v4 can and cannot do
 
@@ -68,6 +76,29 @@ without it. `AI_VOICE_ENABLED=0` is only an emergency off; `AI_VOICE_ALLOWLIST`
   `scripts/ai_voice_smoke.py --sample <your file> --i-consent-this-is-my-own-voice`.
   It writes the three clips and a report next to the sample and deletes the
   clone afterwards.
+
+## Measured prototype latency
+
+Not measured yet: the real-service smoke test is waiting on the founder
+(ELEVENLABS_API_KEY in the local `.env` and on every Railway service, the
+plan's credits confirmed, and their own consented voice sample). Run:
+
+    .venv-ci/bin/python scripts/ai_voice_smoke.py \
+        --sample <your own sample> --i-consent-this-is-my-own-voice
+
+It prints, per exercise, PASS/FAIL, the failed checks and `latency_ms`
+(`build`, `generation`, `re_transcription`, `validation`, `end_to_end`),
+writes `report.json`, and deletes the test clone even when a step fails.
+The numbers go in the table below. They are a prototype's numbers on one
+voice, not a real-time claim.
+
+| exercise | generation | re-transcription | validation | end to end | passed |
+|---|---|---|---|---|---|
+| pace | — | — | — | — | — |
+| pause | — | — | — | — | — |
+| stress (expected least reliable) | — | — | — | — | — |
+
+Clone creation (once per speaker, in the background after Take 1): —
 
 ## Known limitations
 

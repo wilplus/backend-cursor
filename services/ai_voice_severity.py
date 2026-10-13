@@ -19,10 +19,12 @@ pitch, voice level or speaking style is ever the target:
           there is no stress severity (no absolute loudness is a problem).
 
 The highest severity wins if it reaches ``Config.AI_VOICE_MIN_SEVERITY``
-(0.4); otherwise there is no exercise. An exercise that didn't help this
-speaker twice running is held back, and a small share of picks takes the
-runner-up, so the stored cycles can later tell which exercise helps. Both
-are deterministic from the practice id. Internal only (AC-9): no number
+(0.4); otherwise there is no exercise. The minimum and every normalization
+range (``Config.AI_VOICE_PACE_*``, ``AI_VOICE_PAUSE_*``,
+``AI_VOICE_STRESS_GAP_DB``) are configuration, read at each pick. An
+exercise that didn't help this speaker twice running is held back, and a
+small share of picks takes the runner-up, so the stored cycles can later
+tell which exercise helps. Both are deterministic from the practice id. Internal only (AC-9): no number
 leaves the server.
 """
 from __future__ import annotations
@@ -43,12 +45,6 @@ AT_THE_LINE = 0.4
 #: in a row is held back (its severity scaled by HELD_BACK_FACTOR).
 HELD_BACK_AFTER = 2
 HELD_BACK_FACTOR = 0.75
-
-_PACE_NO_MEDIAN_LINE = 175.0
-_PACE_NO_MEDIAN_COMFORT = 155.0
-_PAUSE_ABSOLUTE_LINE = 0.08
-_PAUSE_GAP = 0.06
-_STRESS_GAP_DB = 4.0
 
 REASONS = {
     "pace": "speech_rate_above_own_usual",
@@ -92,28 +88,38 @@ def own_medians(take_snippets: Iterable[dict]) -> dict:
     return out
 
 
+def _ranged(over: float, gap: float) -> float:
+    """How far past the comfortable point, on a range where ``gap`` reaches
+    AT_THE_LINE; 0 when the range is not a positive number."""
+    return _clamp(AT_THE_LINE * over / gap) if gap > 0 else 0.0
+
+
 def pace_severity(wpm: Optional[float], median: Optional[float]) -> float:
     if wpm is None:
         return 0.0
     if median is None:
-        comfort, line = _PACE_NO_MEDIAN_COMFORT, _PACE_NO_MEDIAN_LINE
+        comfort = float(Config.AI_VOICE_PACE_COMFORT_NO_MEDIAN)
+        line = float(Config.AI_VOICE_PACE_LINE_NO_MEDIAN)
     else:
-        comfort, line = median, max(median + 18.0, median * 1.12)
-    return _clamp(AT_THE_LINE * (wpm - comfort) / (line - comfort))
+        comfort = median
+        line = max(median + float(Config.AI_VOICE_PACE_OVER_MEDIAN_WPM),
+                   median * float(Config.AI_VOICE_PACE_OVER_MEDIAN_RATIO))
+    return _ranged(wpm - comfort, line - comfort)
 
 
 def pause_severity(ratio: Optional[float], median: Optional[float]) -> float:
     if ratio is None:
         return 0.0
+    gap = float(Config.AI_VOICE_PAUSE_GAP_RATIO)
     comfort = max(median if median is not None else 0.0,
-                  _PAUSE_ABSOLUTE_LINE + _PAUSE_GAP)
-    return _clamp(AT_THE_LINE * (comfort - ratio) / _PAUSE_GAP)
+                  float(Config.AI_VOICE_PAUSE_FLOOR_RATIO) + gap)
+    return _ranged(comfort - ratio, gap)
 
 
 def stress_severity(dynamic_db: Optional[float], median: Optional[float]) -> float:
     if dynamic_db is None or median is None:
         return 0.0
-    return _clamp(AT_THE_LINE * (median - dynamic_db) / _STRESS_GAP_DB)
+    return _ranged(median - dynamic_db, float(Config.AI_VOICE_STRESS_GAP_DB))
 
 
 def severities(snippet: dict, medians: dict) -> dict[str, float]:

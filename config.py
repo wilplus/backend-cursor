@@ -873,6 +873,16 @@ class Config:
     AI_VOICE_MAX_SENTENCE_CHARACTERS = _env_int("AI_VOICE_MAX_SENTENCE_CHARACTERS", 600)
     AI_VOICE_MAX_PRACTICE_SECONDS = _env_int("AI_VOICE_MAX_PRACTICE_SECONDS", 45)
     AI_VOICE_MIN_SEVERITY = _env_float("AI_VOICE_MIN_SEVERITY", 0.4)
+    # The normalization ranges each severity is read on (services/
+    # ai_voice_severity.py): where 0.4 is reached, in the problem's own unit,
+    # against the speaker's own usual. Tuning them is a config change.
+    AI_VOICE_PACE_LINE_NO_MEDIAN = _env_float("AI_VOICE_PACE_LINE_NO_MEDIAN", 175.0)
+    AI_VOICE_PACE_COMFORT_NO_MEDIAN = _env_float("AI_VOICE_PACE_COMFORT_NO_MEDIAN", 155.0)
+    AI_VOICE_PACE_OVER_MEDIAN_WPM = _env_float("AI_VOICE_PACE_OVER_MEDIAN_WPM", 18.0)
+    AI_VOICE_PACE_OVER_MEDIAN_RATIO = _env_float("AI_VOICE_PACE_OVER_MEDIAN_RATIO", 1.12)
+    AI_VOICE_PAUSE_FLOOR_RATIO = _env_float("AI_VOICE_PAUSE_FLOOR_RATIO", 0.08)
+    AI_VOICE_PAUSE_GAP_RATIO = _env_float("AI_VOICE_PAUSE_GAP_RATIO", 0.06)
+    AI_VOICE_STRESS_GAP_DB = _env_float("AI_VOICE_STRESS_GAP_DB", 4.0)
     # The share of picks that take the runner-up problem, so the stored
     # cycles can later tell which exercise helps (never a trained model now).
     AI_VOICE_EXPLORE_SHARE = _env_float("AI_VOICE_EXPLORE_SHARE", 0.15)
