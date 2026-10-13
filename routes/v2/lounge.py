@@ -92,6 +92,8 @@ def v2_user_lounge_messages_get():
         from services.lounge_clips import refresh_practice_clips
         refresh_practice_clips(page["messages"], request.user_id, db,
                                resolve_playable_ref)
+        from services.lounge_clips import attach_card_decks
+        attach_card_decks(page["messages"], request.user_id, db)
         if before is None:
             # The Ideal Text bubble's "new" (D-FW-5, walk lock flow 1): one
             # yes/no per project, never a count; {} when it cannot be read.

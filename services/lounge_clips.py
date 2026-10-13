@@ -96,3 +96,33 @@ def refresh_practice_clips(messages: list, user_id: str, database: Any,
             url = resolve(row.get("audio_ref")) if row else None
             if url:
                 clip["src"] = url
+
+
+def attach_card_decks(messages: list, user_id: str, database: Any) -> None:
+    """The Ideal Text card at a review's end shows its project's first
+    slide: each card gets `metadata.deck.presentation_ref`, a fresh link to
+    the reader's own project's deck (null for a deckless project, whose
+    card shows the default deck). Unowned or unreadable: no `deck`."""
+    from services.coach_video_storage import refreshed_media_url
+    from services.ideal_text_read import _deck_identity
+    from services.project_ownership import session_actor_id
+
+    decks: dict = {}
+    for m in messages or []:
+        meta = m.get("metadata") if m.get("kind") == "walk_step" else None
+        if not isinstance(meta, dict) or meta.get("step") != "end":
+            continue
+        arc = str(meta.get("arc_id") or "")
+        if not arc:
+            continue
+        if arc not in decks:
+            try:
+                sessions = database.takes.get_arc_sessions(arc) or []
+                owned = any(session_actor_id(s) == str(user_id) for s in sessions)
+                ref = _deck_identity(sessions)[0] if owned else None
+                decks[arc] = {"presentation_ref": refreshed_media_url(ref) if ref else None} if owned else None
+            except Exception:
+                logger.warning("lounge cards: deck unreadable for %s", arc, exc_info=True)
+                decks[arc] = None
+        if decks[arc] is not None:
+            meta["deck"] = decks[arc]
