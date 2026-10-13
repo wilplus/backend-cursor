@@ -120,6 +120,7 @@ class CoachFeedbackMessageTest(unittest.TestCase):
                   patch.object(Config, "WHATSAPP_PHONE_NUMBER_ID", "1055"),
                   patch.object(Config, "WHATSAPP_TEMPLATE_NAME", "coach_feedback_in"),
                   patch.object(Config, "WHATSAPP_TEMPLATE_LANGUAGE", "en"),
+                  patch.object(Config, "WHATSAPP_TEMPLATE_HEADER_IMAGE_URL", ""),
                   patch.object(Config, "WHATSAPP_REDIRECT_TO", ""),
                   patch.object(wn.httpx, "post", _post),
                   patch.object(wn.threading, "Thread", _SyncThread),
@@ -140,6 +141,13 @@ class CoachFeedbackMessageTest(unittest.TestCase):
         self.assertEqual(body["to"], "447700900123")
         self.assertEqual(body["template"], {"name": "coach_feedback_in",
                                             "language": {"code": "en"}})
+
+    def test_an_image_header_template_carries_its_image(self):
+        logo = "https://willpowerlab.com/brand/willpowerlab-logo-black-1760.png"
+        with swap_attr(Config, "WHATSAPP_TEMPLATE_HEADER_IMAGE_URL", logo):
+            self._share(_Db())
+        self.assertEqual(self.posts[0][1]["template"]["components"], [
+            {"type": "header", "parameters": [{"type": "image", "image": {"link": logo}}]}])
 
     def test_editing_a_shared_word_sends_nothing_more(self):
         self._share(_Db(existing_shared_at="2026-10-11T09:00:00+00:00"))

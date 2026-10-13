@@ -417,6 +417,9 @@ class Config:
     WHATSAPP_PHONE_NUMBER_ID = (os.getenv("WHATSAPP_PHONE_NUMBER_ID") or "").strip()
     WHATSAPP_TEMPLATE_NAME = (os.getenv("WHATSAPP_TEMPLATE_NAME") or "").strip()
     WHATSAPP_TEMPLATE_LANGUAGE = (os.getenv("WHATSAPP_TEMPLATE_LANGUAGE") or "en").strip()
+    # The public image for a template with an image header (e.g. the logo at
+    # https://willpowerlab.com/brand/...png); unset for a text-only template.
+    WHATSAPP_TEMPLATE_HEADER_IMAGE_URL = (os.getenv("WHATSAPP_TEMPLATE_HEADER_IMAGE_URL") or "").strip()
     WHATSAPP_REDIRECT_TO = (os.getenv("WHATSAPP_REDIRECT_TO") or "").strip()
 
     # Current published Terms / Privacy Policy version. Must match the

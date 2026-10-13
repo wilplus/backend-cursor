@@ -110,9 +110,16 @@ def _payload(to: str, cfg: Any) -> dict:
     delivers within 24 hours of the person's last message to the number."""
     base = {"messaging_product": "whatsapp", "to": to.lstrip("+")}
     if cfg.WHATSAPP_TEMPLATE_NAME:
-        return {**base, "type": "template", "template": {
+        template: dict[str, Any] = {
             "name": cfg.WHATSAPP_TEMPLATE_NAME,
-            "language": {"code": cfg.WHATSAPP_TEMPLATE_LANGUAGE or "en"}}}
+            "language": {"code": cfg.WHATSAPP_TEMPLATE_LANGUAGE or "en"}}
+        # A template with an image header needs the image on every send (the
+        # one uploaded with the template is only Meta's review sample).
+        image = (cfg.WHATSAPP_TEMPLATE_HEADER_IMAGE_URL or "").strip()
+        if image:
+            template["components"] = [{"type": "header", "parameters": [
+                {"type": "image", "image": {"link": image}}]}]
+        return {**base, "type": "template", "template": template}
     return {**base, "type": "text", "text": {"body": _message_body()}}
 
 
