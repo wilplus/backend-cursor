@@ -84,6 +84,10 @@ def v2_user_lounge_messages_get():
             request.user_id, limit=limit, before=before,
         )
         page = shape_lounge_page(rows_desc, limit)
+        from routes.v2.common import _resolve_snippet_audio_url
+        from services.lounge_clips import refresh_walk_clips
+        refresh_walk_clips(page["messages"], request.user_id, db,
+                           _resolve_snippet_audio_url)
         if before is None:
             # The Ideal Text bubble's "new" (D-FW-5, walk lock flow 1): one
             # yes/no per project, never a count; {} when it cannot be read.
