@@ -871,6 +871,11 @@ class Config:
     AI_VOICE_DAILY_CLIPS_TOTAL = _env_int("AI_VOICE_DAILY_CLIPS_TOTAL", 30)
     AI_VOICE_DAILY_CLONES_TOTAL = _env_int("AI_VOICE_DAILY_CLONES_TOTAL", 3)
     AI_VOICE_MAX_SENTENCE_CHARACTERS = _env_int("AI_VOICE_MAX_SENTENCE_CHARACTERS", 600)
+    # Founder 2026-10-13: the whole sentence, and no AI clip longer than 17
+    # seconds. A sentence too long to say slowly in that time is never sent;
+    # a longer clip fails its check and is never shown. (The smoke script
+    # runs at 12 s.)
+    AI_VOICE_MAX_CLIP_SECONDS = _env_float("AI_VOICE_MAX_CLIP_SECONDS", 17.0)
     AI_VOICE_MAX_PRACTICE_SECONDS = _env_int("AI_VOICE_MAX_PRACTICE_SECONDS", 45)
     AI_VOICE_MIN_SEVERITY = _env_float("AI_VOICE_MIN_SEVERITY", 0.4)
     # The normalization ranges each severity is read on (services/

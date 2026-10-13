@@ -39,6 +39,11 @@ _SPACE = re.compile(r"\s+")
 _CLAUSE = re.compile(r"\s(because|but|so|and|which|when|if)\s", re.IGNORECASE)
 
 
+#: Words a second at the slightly slower pace a clip is asked for (about
+#: 130 a minute): how long a sentence takes to say, before it is sent.
+SLOW_WORDS_PER_SECOND = 2.2
+
+
 class PromptRejected(ValueError):
     """The exercise or sentence can't make a safe request; nothing is sent."""
 
@@ -104,6 +109,9 @@ def build(*, sentence: str, exercise: dict, practice_id: str) -> dict:
         raise PromptRejected("SENTENCE_TOO_SHORT")
     if len(text) > int(Config.AI_VOICE_MAX_SENTENCE_CHARACTERS):
         raise PromptRejected("SENTENCE_TOO_LONG")
+    # Said a little slower, with one pause, it must fit the clip limit.
+    if len(text.split()) / SLOW_WORDS_PER_SECOND + 0.6 > float(Config.AI_VOICE_MAX_CLIP_SECONDS):
+        raise PromptRejected("SENTENCE_TOO_LONG_TO_SAY")
     phrase = (exercise or {}).get("target_phrase")
     if problem == "pace":
         prepared = _pace(text)

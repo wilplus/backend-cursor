@@ -265,6 +265,20 @@ def test_the_request_says_the_speakers_own_words(exercise):
     assert "speed" not in out["body"]["voice_settings"]  # not on Eleven v4
 
 
+def test_no_clip_is_longer_than_the_limit():
+    """Founder 2026-10-13: the whole sentence, at most 17 s. A sentence too
+    long to say in that time is never sent; a longer clip fails its check."""
+    with pytest.raises(ai_voice_prompt.PromptRejected):
+        ai_voice_prompt.build(sentence=" ".join([SENTENCE] * 3), exercise={"exercise": "pace"},
+                              practice_id="p")
+    from services.ai_voice_validator import validate
+    pcm = (0.2 * np.sin(2 * np.pi * 180 * np.arange(18 * 16000) / 16000)).astype(np.float32)
+    out = validate(audio=b"x", transcription=None, spoken_words=SENTENCE.lower().split(),
+                   exercise={"exercise": "pace"}, original_wpm=None,
+                   original_duration_s=None, decode=lambda _a: pcm)
+    assert "too_long" in out["failed_checks"] and not out["passed"]
+
+
 # ── the lane, once, the limits ────────────────────────────────────────────
 
 def test_a_rewrite_practice_never_calls_the_provider():

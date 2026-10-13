@@ -6,7 +6,8 @@ only when every check passes:
   exists      the bytes are there and decode
   clipping    almost no samples at full scale
   silence     not mostly silence, no long dead air
-  duration    near what the sentence takes to say
+  duration    near what the sentence takes to say, and never over
+              Config.AI_VOICE_MAX_CLIP_SECONDS (17 s, founder 2026-10-13)
   words       re-transcribed (the existing Whisper, through the permit), the
               same words as the speaker's own sentence
   exercise    pace: slower than the original, but not dragged out
@@ -21,6 +22,8 @@ from __future__ import annotations
 import re
 import statistics
 from typing import Any, Optional
+
+from config import Config
 
 VALIDATOR_VERSION = "ai-voice-validator-v1"
 
@@ -202,6 +205,8 @@ def validate(*, audio: bytes, transcription: Optional[dict], spoken_words: list[
                 failed.append("mostly_silence")
             if m["longest_silence_s"] > MAX_DEAD_AIR_S:
                 failed.append("dead_air")
+            if duration > float(Config.AI_VOICE_MAX_CLIP_SECONDS):
+                failed.append("too_long")
             if original_duration_s and original_duration_s > 0:
                 ratio = duration / original_duration_s
                 m["duration_ratio"] = round(ratio, 3)
