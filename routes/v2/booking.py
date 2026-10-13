@@ -95,6 +95,7 @@ def booking_checkout(slug: str):
         email=str((getattr(request, "token_payload", None) or {}).get("email") or ""),
         guest_timezone=str(body.get("timezone") or "UTC"),
         note=str(body.get("note") or ""),
+        embedded=body.get("embedded") is True,
     ))
 
 
