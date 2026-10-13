@@ -273,3 +273,49 @@ def coach_update(database: Any, take_session_id: str, note: Optional[str]) -> No
         start_scoped_thread(run, name="take-summary-coach-update")
     except Exception as error:  # noqa: BLE001 -- the word is shared either way
         logger.warning("take summary coach update not started take=%s: %s", take, error)
+
+
+#: The coach update's label and first line (lock 2026-10-12, sections 3 and 8).
+COACH_UPDATE_LABEL = "Later · from your coach"
+COACH_TITLE = "Your coach"
+
+
+def coach_update_message(database: Any, *, take_session_id: str, text: Optional[str],
+                         video_ref: Optional[str]) -> Optional[dict]:
+    """A coach's word shared after the Take's review ended (its summary is
+    stored): its own Lounge bubble under "Later · from your coach", as the
+    coach wrote it (lock 2026-10-12, section 3). Stored once per word.
+    None when the review has not ended (the walk shows the word as its
+    first step) or anything is missing."""
+    from services.slide_selection import spoken_arc_sessions
+    take = str(take_session_id)
+    session = database.v2_get_session_by_id(take) or {}
+    user_id, arc_id = session.get("user_id"), session.get("arc_id")
+    if not user_id or not arc_id or not (text or video_ref):
+        return None
+    takes = [s for s in spoken_arc_sessions(database.takes.get_arc_sessions(str(arc_id)))
+             if s.get("analysis_state") in (None, "ready")]
+    ids = [str(s.get("id")) for s in takes]
+    if take not in ids:
+        return None
+    take_index = ids.index(take) + 1
+    if not database.get_lounge_message_by_client_id(
+            str(user_id), summary_client_id(user_id, arc_id, take_index)):
+        return None
+    video_url = None
+    if video_ref:
+        from services.coach_video_storage import refreshed_media_url
+        video_url = refreshed_media_url(video_ref)
+    body = f"{COACH_TITLE}\n{text}" if text else COACH_TITLE
+    persisted = database.insert_lounge_messages(str(user_id), [{
+        "client_id": str(uuid.uuid5(_NAMESPACE, f"{take}:coach-update:{text or ''}:{video_ref or ''}")),
+        "role": "bot",
+        "kind": "walk_step",
+        "body": body,
+        "metadata": {"step": "coachnote", "author": "coach", "coach_update": True,
+                     "heading": COACH_UPDATE_LABEL, "arc_id": str(arc_id),
+                     "take_session_id": take, "take_index": take_index,
+                     "video": video_url},
+        "client_created_at": datetime.now(timezone.utc).isoformat(),
+    }])
+    return persisted[0] if persisted else None
