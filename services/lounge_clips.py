@@ -126,3 +126,26 @@ def attach_card_decks(messages: list, user_id: str, database: Any) -> None:
                 decks[arc] = None
         if decks[arc] is not None:
             meta["deck"] = decks[arc]
+
+
+def attach_take_audio(messages: list, user_id: str, database: Any,
+                      resolve: Callable[[Any], Optional[str]]) -> None:
+    """The "Your Recording" bubble plays the whole Take, as a moment's clip
+    plays its part: each gets `metadata.audio.src`, a fresh link to the
+    reader's own recording. Unowned or unreadable: no `audio`."""
+    for m in messages or []:
+        meta = m.get("metadata") if m.get("kind") == "recording_summary" else None
+        sid = meta.get("session_id") if isinstance(meta, dict) else None
+        if not sid:
+            continue
+        try:
+            rows = [r for r in database.get_snippets_by_session(str(sid)) or []
+                    if str(r.get("user_id") or "") == str(user_id)
+                    and r.get("audio_segment_path")]
+            url = resolve(rows[0]["audio_segment_path"]) if rows else None
+        except Exception:
+            logger.warning("lounge takes: audio unreadable for %s", sid,
+                           exc_info=True)
+            url = None
+        if url and isinstance(meta, dict):
+            meta["audio"] = {"src": url}
