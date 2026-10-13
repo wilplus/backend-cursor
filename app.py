@@ -178,6 +178,10 @@ app.register_blueprint(ceo_work_items_bp)
 # no account) + @require_admin /v2/admin/booking*. Full paths baked in.
 from routes.v2.booking import booking_bp
 app.register_blueprint(booking_bp)
+# One person's admin profile + their WhatsApp number and home-screen install
+# (founder 2026-10-13). Full paths baked in.
+from routes.v2.people import people_bp
+app.register_blueprint(people_bp)
 
 # Rate limiting (services/rate_limits.py). The @rate_limits.*_limit
 # decorators on the paid routes registered themselves while the blueprints

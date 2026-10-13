@@ -198,7 +198,7 @@ Occasionally an iteration includes more than analysis — a hands-on task, a res
 
 Can I just have a 1-on-1 call?
 
-Yes — that's possible. We'll be honest about our bias though: for most work we deliberately prefer asynchronous. It's not a limitation, it's the method — it gives a human time to actually analyse what you sent rather than react to it live, and it's what makes the feedback worth waiting a few hours for. So if your situation fits the normal flow, async will usually serve you better than a call. But some cases genuinely call for a live conversation — and when they do, we're here for it. Book a 60-minute 1-on-1 directly: https://cal.com/artur-willonski-zywzu7/lesson?duration=60&overlayCalendar=true. Either way, you reach a real person. The call is just a different door into the same thing.
+Yes — that's possible. We'll be honest about our bias though: for most work we deliberately prefer asynchronous. It's not a limitation, it's the method — it gives a human time to actually analyse what you sent rather than react to it live, and it's what makes the feedback worth waiting a few hours for. So if your situation fits the normal flow, async will usually serve you better than a call. But some cases genuinely call for a live conversation — and when they do, we're here for it. Book a 60-minute 1-on-1 directly: https://www.willpowerlab.com/book/artur. Sign in and the page shows your price. Either way, you reach a real person. The call is just a different door into the same thing.
 
 Q&A
 
