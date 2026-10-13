@@ -140,11 +140,14 @@ def validate_settings(payload: dict, current: dict) -> dict:
     except (ZoneInfoNotFoundError, ValueError):
         raise BookingError("INVALID_TIMEZONE", f"Unknown time zone {s['timezone']!r}.")
     s["weekly_hours"] = _clean_hours(s["weekly_hours"])
-    for key in ("calendar_ics_url", "meet_url"):
-        url = str(s[key] or "").strip()
+    # Calendar links: one per line, every calendar listed blocks the page.
+    links = [u.strip() for u in str(s["calendar_ics_url"] or "").splitlines() if u.strip()]
+    meet = str(s["meet_url"] or "").strip()
+    for url in [*links, meet]:
         if url and not re.match(r"^(https?|webcal)://", url):
-            raise BookingError("INVALID_URL", f"{key} must be a web link.")
-        s[key] = url
+            raise BookingError("INVALID_URL", "Each link must be a web link.")
+    s["calendar_ics_url"] = "\n".join(links)
+    s["meet_url"] = meet
     s["enabled"] = bool(s["enabled"])
     if s["enabled"] and not s["meet_url"]:
         raise BookingError("MEET_REQUIRED", "Add the Google Meet link before turning the page on.")
@@ -288,18 +291,22 @@ def parse_busy(body: bytes, start: datetime, end: datetime, host_tz: ZoneInfo) -
 
 
 def calendar_busy(s: dict, start: datetime, end: datetime) -> Optional[list[Interval]]:
-    """None means the calendar could not be read, so nothing is offered."""
-    url = (s.get("calendar_ics_url") or "").strip()
-    if not url:
-        return []
-    body = _fetch_ics(url)
-    if body is None:
-        return None
-    try:
-        return parse_busy(body, start, end, ZoneInfo(s["timezone"]))
-    except Exception as e:
-        logger.warning("booking: calendar feed could not be parsed: %s", e, exc_info=True)
-        return None
+    """Busy times from every calendar link (one per line). None means one
+    of them could not be read, so nothing is offered."""
+    busy: list[Interval] = []
+    for url in (s.get("calendar_ics_url") or "").splitlines():
+        url = url.strip()
+        if not url:
+            continue
+        body = _fetch_ics(url)
+        if body is None:
+            return None
+        try:
+            busy += parse_busy(body, start, end, ZoneInfo(s["timezone"]))
+        except Exception as e:
+            logger.warning("booking: calendar feed could not be parsed: %s", e, exc_info=True)
+            return None
+    return busy
 
 
 def live_bookings(start: datetime, end: datetime) -> list[Interval]:
