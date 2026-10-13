@@ -26,6 +26,12 @@ yardstick (founder 2026-10-01). Saying the accepted words is the practise:
 its first try is ``praise``. A later try is ``praise`` too, named by the
 cue that moved since the previous try when one did.
 
+A "NOT YET" NAMES WHAT WENT THE WRONG WAY (founder 2026-10-13, option A):
+the cue that moved furthest away from confident against the original clip,
+read on the same within-speaker baseline as the praise, past the same
+``CUE_GAIN_MIN``; when none did, the general line. The reads are made when
+the try uploads, so the check waits on nothing new.
+
 PROVENANCE (L3). This is a machine decision about one try. It is never
 written as the speaker's answer (``user_answer``, ``final_user_answer``),
 never a label, and never reaches the coach as the speaker's side. The
@@ -43,7 +49,7 @@ from typing import Any, Iterable, Optional
 
 _log = logging.getLogger(__name__)
 
-RULE_VERSION = "practice-check-v2"
+RULE_VERSION = "practice-check-v3"
 #: The three outcomes. Nothing else is ever decided.
 NEXT = ("praise", "again", "moved_on")
 #: CM3a A: the loop stops after the third try that is not praise.
@@ -62,11 +68,11 @@ def decide(practice: Any, attempts: Iterable[Any], attempt_id: Any) -> dict:
     """The decision for one try. Pure.
 
     {"next", "key", "lane", "attempt_id", "attempt_index", "rule_version",
-     "decided_by"}; ``key`` names the praise line on ``praise``, the
-    encouragement ("step" or "effort") on ``again``, and the signed CM3b
-    bank on ``moved_on`` (the third try or later that is not praise)."""
+    "decided_by"}; ``key`` names the praise line on ``praise``, the reading
+    that went the wrong way on ``again`` (``miss:<cue key>``, else
+    ``effort``), and the signed CM3b line on ``moved_on``."""
     from services.after_practice import (
-        _original_praise, _rewrite_praise, encouragement,
+        _original_praise, _reads, _rewrite_praise, cue_drops,
     )
     rows = [r for r in attempts if isinstance(r, Mapping)]
     tried = next((r for r in rows if str(r.get("id")) == str(attempt_id)), None)
@@ -84,8 +90,11 @@ def decide(practice: Any, attempts: Iterable[Any], attempt_id: Any) -> dict:
     upto = [r for r in rows if _index(r) <= _index(tried)]
     if len(upto) >= TRY_CAP:
         return {**base, "next": "moved_on", "key": MOVED_ON_KEY, "lane": "none"}
-    step = encouragement(upto)
-    return {**base, "next": "again", "key": step["key"], "lane": "none"}
+    # Option A (founder 2026-10-13): name the reading that went furthest the
+    # wrong way against the original clip; none clearly moved: the general.
+    drops = cue_drops(_reads(tried, "original"), _reads(tried, "attempt"))
+    key = f"miss:{drops[0][0]}" if drops else "effort"
+    return {**base, "next": "again", "key": key, "lane": "none"}
 
 
 def checkable_attempt(attempts: list) -> Optional[dict]:
