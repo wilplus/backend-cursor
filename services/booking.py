@@ -50,7 +50,7 @@ DAYS = ("0", "1", "2", "3", "4", "5", "6")  # Sunday=0, JS getDay() order
 SETTINGS_FIELDS = (
     "slug", "title", "host_name", "duration_min", "price_cents", "currency",
     "buffer_before_min", "buffer_after_min", "notice_hours", "horizon_days",
-    "timezone", "weekly_hours", "calendar_ics_url", "meet_url", "enabled",
+    "timezone", "weekly_hours", "calendar_ics_url", "meet_url", "enabled", "bonus_tokens",
 )
 
 
@@ -130,6 +130,7 @@ def validate_settings(payload: dict, current: dict) -> dict:
     s["buffer_after_min"] = _int("buffer_after_min", 0, 240)
     s["notice_hours"] = _int("notice_hours", 0, 720)
     s["horizon_days"] = _int("horizon_days", 1, 365)
+    s["bonus_tokens"] = _int("bonus_tokens", 0, 10_000_000)
     s["currency"] = str(s["currency"] or "").lower()
     if s["currency"] not in CURRENCIES:
         raise BookingError("INVALID_CURRENCY", f"Currency must be one of {', '.join(CURRENCIES)}.")
@@ -166,7 +167,43 @@ def public_settings(slug: str) -> dict:
         "slug": s["slug"], "title": s["title"], "host_name": s["host_name"],
         "duration_min": s["duration_min"], "price_cents": s["price_cents"],
         "currency": s["currency"], "horizon_days": s["horizon_days"],
-        "host_timezone": s["timezone"],
+        "host_timezone": s["timezone"], "bonus_tokens": s.get("bonus_tokens") or 0,
+    }
+
+
+# ------------------------------------------------------- per-person prices
+
+def user_price(user_id: str) -> Optional[int]:
+    """The admin's price for this person, or None when they pay the list price."""
+    rows = (db.client.table("booking_user_prices").select("price_cents").eq("user_id", user_id)
+            .limit(1).execute().data) or []
+    return int(rows[0]["price_cents"]) if rows else None
+
+
+def set_user_price(user_id: str, price_cents: Optional[int]) -> Optional[int]:
+    """Set one person's price; None goes back to the list price."""
+    if price_cents is None:
+        db.client.table("booking_user_prices").delete().eq("user_id", user_id).execute()
+        return None
+    if not 0 <= int(price_cents) <= 10_000_000:
+        raise BookingError("INVALID_INPUT", "The price must be zero or more.")
+    db.client.table("booking_user_prices").upsert({
+        "user_id": user_id, "price_cents": int(price_cents),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).execute()
+    return int(price_cents)
+
+
+def offer_for(slug: str, user_id: str) -> dict:
+    """What this person pays and gets. The page shows the list price crossed
+    out when their price is lower."""
+    page = public_settings(slug)
+    own = user_price(user_id)
+    return {
+        "list_price_cents": page["price_cents"],
+        "price_cents": page["price_cents"] if own is None else own,
+        "currency": page["currency"],
+        "bonus_tokens": page["bonus_tokens"],
     }
 
 
@@ -318,12 +355,14 @@ def open_slots(s: dict, start: datetime, end: datetime, *, now: Optional[datetim
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
-def start_checkout(*, slug: str, start_iso: str, name: str, email: str,
+def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email: str,
                    guest_timezone: str, note: str = "") -> dict:
-    """Hold the slot and open Stripe Checkout. Returns {"url": ...}; a free
-    meeting skips Stripe and is confirmed at once."""
+    """Hold the slot and open Stripe Checkout for a signed-in account, at that
+    person's price. Returns {"url": ...}; a free meeting skips Stripe and is
+    confirmed at once."""
     s = get_settings()
-    public_settings(slug)  # raises NOT_FOUND when off or wrong link
+    offer = offer_for(slug, user_id)  # raises NOT_FOUND when off or wrong link
+    price = int(offer["price_cents"])
     name, email, note = (name or "").strip()[:120], (email or "").strip()[:254], (note or "").strip()[:2000]
     if not name:
         raise BookingError("NAME_REQUIRED", "Add your name.")
@@ -347,14 +386,18 @@ def start_checkout(*, slug: str, start_iso: str, name: str, email: str,
         "p_buffer_before": int(s["buffer_before_min"]), "p_buffer_after": int(s["buffer_after_min"]),
         "p_held_until": held_until.isoformat(), "p_guest_name": name, "p_guest_email": email,
         "p_guest_timezone": guest_timezone, "p_note": note, "p_title": s["title"],
-        "p_price_cents": int(s["price_cents"]), "p_currency": s["currency"], "p_meet_url": s["meet_url"],
+        "p_price_cents": price, "p_currency": s["currency"], "p_meet_url": s["meet_url"],
     }).execute().data
     if not booking_id:
         raise BookingError("SLOT_TAKEN", "That time was just taken. Pick another.", 409)
     booking_id = str(booking_id)
+    db.client.table("bookings").update({
+        "user_id": user_id, "list_price_cents": int(offer["list_price_cents"]),
+        "bonus_tokens": int(offer["bonus_tokens"]),
+    }).eq("id", booking_id).execute()
     base = (config.FRONTEND_URL or "https://www.willpowerlab.com").rstrip("/")
 
-    if int(s["price_cents"]) == 0:
+    if price == 0:
         _confirm(booking_id, session_id=None)
         return {"url": f"{base}/book/{s['slug']}/done?booking={booking_id}"}
 
@@ -372,7 +415,7 @@ def start_checkout(*, slug: str, start_iso: str, name: str, email: str,
             line_items=[{
                 "price_data": {
                     "currency": s["currency"],
-                    "unit_amount": int(s["price_cents"]),
+                    "unit_amount": price,
                     "product_data": {"name": f"{s['title']} with {s['host_name']}"},
                 },
                 "quantity": 1,
@@ -443,6 +486,7 @@ def _confirm(booking_id: str, *, session_id: Optional[str]) -> dict:
     # Claim the emails exactly once, whoever gets here first.
     claimed = (db.client.table("bookings").update({"emails_sent_at": now}).eq("id", booking_id)
                .eq("status", "confirmed").is_("emails_sent_at", "null").execute().data) or []
+    _grant_tokens(booking_id)
     row = (db.client.table("bookings").select("*").eq("id", booking_id).limit(1).execute().data or [{}])[0]
     if claimed:
         try:
@@ -450,6 +494,25 @@ def _confirm(booking_id: str, *, session_id: Optional[str]) -> dict:
         except Exception as e:  # the booking stands; the host sees it in admin
             logger.error("booking: confirmation emails failed booking=%s: %s", booking_id, e, exc_info=True)
     return row
+
+
+def _grant_tokens(booking_id: str) -> None:
+    """Add the lesson's tokens to the booker's account, once. A failed grant is
+    released so the next confirm (Stripe retry or the success page) tries again."""
+    now = datetime.now(timezone.utc).isoformat()
+    claimed = (db.client.table("bookings").update({"tokens_granted_at": now}).eq("id", booking_id)
+               .eq("status", "confirmed").gt("bonus_tokens", 0).not_.is_("user_id", "null")
+               .is_("tokens_granted_at", "null").execute().data) or []
+    if not claimed:
+        return
+    row = claimed[0]
+    from services import token_account
+    outcome = token_account.package_grant(
+        str(row["user_id"]), tokens=int(row["bonus_tokens"]), coach_reviews=0,
+        ref_id=f"booking:{booking_id}", package="booking_lesson")
+    if not outcome.get("ok"):
+        logger.error("booking: token grant failed booking=%s reason=%s", booking_id, outcome.get("reason"))
+        db.client.table("bookings").update({"tokens_granted_at": None}).eq("id", booking_id).execute()
 
 
 def booking_for_guest(*, session_id: str = "", booking_id: str = "") -> Optional[dict]:
@@ -470,13 +533,15 @@ def booking_for_guest(*, session_id: str = "", booking_id: str = "") -> Optional
         "guest_timezone": row["guest_timezone"],
         "meet_url": row["meet_url"] if row["status"] == "confirmed" else "",
         "price_cents": row["price_cents"], "currency": row["currency"],
+        "list_price_cents": row.get("list_price_cents") or row["price_cents"],
+        "bonus_tokens": row.get("bonus_tokens") or 0,
     }
 
 
 def admin_bookings() -> list[dict]:
     since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     rows = (db.client.table("bookings")
-            .select("id,start_at,end_at,status,guest_name,guest_email,guest_timezone,note,price_cents,currency,confirmed_at")
+            .select("id,start_at,end_at,status,guest_name,guest_email,guest_timezone,note,price_cents,list_price_cents,currency,bonus_tokens,tokens_granted_at,confirmed_at")
             .eq("status", "confirmed").gte("end_at", since).order("start_at").execute().data) or []
     return rows
 
@@ -580,6 +645,8 @@ def send_confirmation_emails(row: dict) -> None:
             f"You're booked: {e(row['title'])} with {e(s['host_name'])}.",
             f"<strong>{e(_when(start, end, guest_tz))}</strong>",
             f"Join on Google Meet: {meet_link}",
+            *([f"{int(row['bonus_tokens']):,} tokens are added to your WillpowerLab account."]
+              if row.get("bonus_tokens") and row.get("user_id") else []),
             "The calendar invite is attached. Need to cancel or move it? Reply to this email.",
         ]),
         headers={"Reply-To": host_email},

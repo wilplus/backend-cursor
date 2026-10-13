@@ -499,3 +499,4 @@
 0461	the_lounge_holds_the_walk_steps.sql
 0462	the_ai_version_of_your_voice_in_practice.sql
 0463	add_booking.sql
+0464	add_booking_user_prices.sql
