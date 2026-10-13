@@ -50,7 +50,7 @@ DAYS = ("0", "1", "2", "3", "4", "5", "6")  # Sunday=0, JS getDay() order
 SETTINGS_FIELDS = (
     "slug", "title", "host_name", "duration_min", "price_cents", "currency",
     "buffer_before_min", "buffer_after_min", "notice_hours", "horizon_days",
-    "timezone", "weekly_hours", "calendar_ics_url", "meet_url", "enabled", "bonus_tokens",
+    "timezone", "weekly_hours", "calendar_ics_url", "meet_url", "enabled", "bonus_tokens", "new_user_discount_pct",
 )
 
 
@@ -131,6 +131,7 @@ def validate_settings(payload: dict, current: dict) -> dict:
     s["notice_hours"] = _int("notice_hours", 0, 720)
     s["horizon_days"] = _int("horizon_days", 1, 365)
     s["bonus_tokens"] = _int("bonus_tokens", 0, 10_000_000)
+    s["new_user_discount_pct"] = _int("new_user_discount_pct", 0, 100)
     s["currency"] = str(s["currency"] or "").lower()
     if s["currency"] not in CURRENCIES:
         raise BookingError("INVALID_CURRENCY", f"Currency must be one of {', '.join(CURRENCIES)}.")
@@ -194,14 +195,26 @@ def set_user_price(user_id: str, price_cents: Optional[int]) -> Optional[int]:
     return int(price_cents)
 
 
+def _has_lesson(user_id: str) -> bool:
+    rows = (db.client.table("bookings").select("id").eq("user_id", user_id)
+            .eq("status", "confirmed").limit(1).execute().data) or []
+    return bool(rows)
+
+
 def offer_for(slug: str, user_id: str) -> dict:
     """What this person pays and gets. The page shows the list price crossed
     out when their price is lower."""
     page = public_settings(slug)
     own = user_price(user_id)
+    price = page["price_cents"] if own is None else own
+    # New-user offer: a % off for someone without a paid lesson yet. A price
+    # set on their profile wins over it.
+    pct = int(get_settings().get("new_user_discount_pct") or 0)
+    if own is None and pct and not _has_lesson(user_id):
+        price = round(page["price_cents"] * (100 - pct) / 100)
     return {
         "list_price_cents": page["price_cents"],
-        "price_cents": page["price_cents"] if own is None else own,
+        "price_cents": price,
         "currency": page["currency"],
         "bonus_tokens": page["bonus_tokens"],
     }
