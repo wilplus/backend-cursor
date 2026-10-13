@@ -131,7 +131,7 @@ def main() -> int:
                   f"{row['failed_checks']} {row['latency_ms']}")
         report["plan_after"] = client.subscription()
     except VoiceProviderError as error:
-        print(f"ElevenLabs refused: {error.kind} (status {error.status})")
+        print(f"ElevenLabs refused: {error.kind} (status {error.status}, code {error.code})")
         report["error"] = {"kind": error.kind, "status": error.status}
     except ai_voice_prompt.PromptRejected as error:
         print(f"Not sent: {error} (the sentence is too long for {args.max_seconds:g} s?)")
@@ -144,7 +144,10 @@ def main() -> int:
                 report["voice_deleted"] = not client.voice_exists(voice_id)
             except VoiceProviderError as error:
                 report["voice_deleted"] = False
-                print(f"Clone NOT deleted ({error.kind}): delete it in ElevenLabs.")
+                report["delete_error"] = {"kind": error.kind, "status": error.status,
+                                          "code": error.code}
+                print(f"Clone NOT confirmed deleted ({error.kind}, status {error.status}, "
+                      f"code {error.code}): check Voices in ElevenLabs.")
     (out_dir / "report.json").write_text(json.dumps(report, indent=2, default=str))
     print(f"Clips and report in {out_dir}")
     return 1 if "error" in report else 0

@@ -55,6 +55,9 @@ class Speech:
 
 
 _QUOTA_CODES = ("quota_exceeded", "insufficient_credits", "credits_exhausted")
+#: ElevenLabs answers a voice that isn't there with a 400 and one of these
+#: codes, not a 404; a delete must read it as "already gone".
+_MISSING_CODES = ("voice_not_found", "voice_does_not_exist", "not_found")
 
 
 def _error(response: httpx.Response) -> VoiceProviderError:
@@ -70,7 +73,7 @@ def _error(response: httpx.Response) -> VoiceProviderError:
         return VoiceProviderError("quota_exceeded", status, code)
     if status == 401:
         return VoiceProviderError("invalid_key", status, code)
-    if status == 404:
+    if status == 404 or code in _MISSING_CODES:
         return VoiceProviderError("not_found", status, code)
     if status == 429:
         return VoiceProviderError("rate_limited", status, code)

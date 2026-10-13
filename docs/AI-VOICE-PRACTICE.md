@@ -79,26 +79,33 @@ without it. `AI_VOICE_ENABLED=0` is only an emergency off; `AI_VOICE_ALLOWLIST`
 
 ## Measured prototype latency
 
-Not measured yet: the real-service smoke test is waiting on the founder
-(ELEVENLABS_API_KEY in the local `.env` and on every Railway service, the
-plan's credits confirmed, and their own consented voice sample). Run:
-
-    .venv-ci/bin/python scripts/ai_voice_smoke.py \
-        --sample <your own sample> --i-consent-this-is-my-own-voice
-
-It prints, per exercise, PASS/FAIL, the failed checks and `latency_ms`
-(`build`, `generation`, `re_transcription`, `validation`, `end_to_end`),
-writes `report.json`, and deletes the test clone even when a step fails.
-The numbers go in the table below. They are a prototype's numbers on one
-voice, not a real-time claim.
+One run, the founder's own consented voice, on their laptop, 2026-10-13
+(`scripts/ai_voice_smoke.py`, Eleven v4, the default sentence, Whisper
+re-hearing the clip). Milliseconds. A prototype's numbers on one voice and
+one sentence, not a real-time claim.
 
 | exercise | generation | re-transcription | validation | end to end | passed |
 |---|---|---|---|---|---|
-| pace | — | — | — | — | — |
-| pause | — | — | — | — | — |
-| stress (expected least reliable) | — | — | — | — | — |
+| pace | 8,853 | 4,356 | 3,990 | 17,203 | yes |
+| pause | 1,978 | 879 | 66 | 2,925 | no: `pause_length`, `pause_not_distinct` |
+| stress | 1,707 | 2,224 | 64 | 3,997 | yes |
 
-Clone creation (once per speaker, in the background after Take 1): —
+- The pace row is the run's first clip: its generation and validation
+  include cold starts (the first provider connection, the audio decoder's
+  first load). The later clips took 3 to 4 s end to end.
+- The pause clip's gap before the target phrase was too short with the
+  `[pause]` tag alone; the prompt now puts an ellipsis before the tag. To be
+  measured again.
+- In the app the job also waits on the queue and stores the clip; the walk
+  shows the breathing mark meanwhile (`latency_ms.since_request`).
+- The run's delete of the test clone was reported as refused: ElevenLabs
+  answers a missing voice with a 400 `voice_not_found`, which the client
+  now reads as already deleted.
+
+To measure again:
+
+    .venv-ci/bin/python scripts/ai_voice_smoke.py \
+        --sample <your own sample> --i-consent-this-is-my-own-voice
 
 ## Known limitations
 

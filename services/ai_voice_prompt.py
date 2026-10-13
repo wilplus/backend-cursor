@@ -82,7 +82,9 @@ def _pause(text: str, phrase: str) -> str:
     if match is None:
         raise PromptRejected("TARGET_PHRASE_NOT_IN_SENTENCE")
     before = text[:match.start()].rstrip(" ,;:")
-    return f"{before} [pause] {text[match.start():]}".strip()
+    # The tag alone made too short a gap on Eleven v4 (founder's smoke run,
+    # 2026-10-13); an ellipsis before it is the documented way to hold a beat.
+    return f"{before}... [pause] {text[match.start():]}".strip()
 
 
 def _stress(text: str, phrase: str) -> str:
