@@ -19,6 +19,25 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # ── the decision ──────────────────────────────────────────────────────────
 
+def _try(original: dict, attempt: dict, index: int = 1) -> dict:
+    return {"id": f"a{index}", "attempt_index": index,
+            "comparison": {"cues": {"original": original, "attempt": attempt}}}
+
+
+def test_a_not_yet_names_the_reading_that_went_the_wrong_way():
+    """Option A (founder 2026-10-13): the cue that dropped most against the
+    original names the line; none clearly moved is the general one. The
+    screen still sees only the outcome and the key (AC-9)."""
+    from services.practice_check import decide, public_check
+    practice = {"kind": "exercise"}
+    # The pitch sat much higher than the original; the pace dipped a little.
+    tried = _try({"mean_pitch": 0.4, "speech_rate": 0.2}, {"mean_pitch": -0.9, "speech_rate": -0.4})
+    check = decide(practice, [tried], "a1")
+    assert (check["next"], check["key"]) == ("again", "miss:settled_pitch")
+    assert public_check(check) == {"next": "again", "key": "miss:settled_pitch"}
+    calm = _try({"mean_pitch": 0.1}, {"mean_pitch": 0.0})
+    assert decide(practice, [calm], "a1")["key"] == "effort"
+
 
 # ── the loop ──────────────────────────────────────────────────────────────
 

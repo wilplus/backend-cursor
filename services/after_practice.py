@@ -117,6 +117,15 @@ def cue_key(name: str) -> Optional[str]:
     return next((key for (cue, _sign), key in _CUE_KEYS.items() if cue == name), None)
 
 
+def cue_drops(before: Any, after: Any) -> list[tuple[str, float]]:
+    """[(praise key, drop)] for every cue that moved AWAY from confident by
+    at least CUE_GAIN_MIN, the biggest drop first: what a "not yet" names
+    (founder 2026-10-13, option A). The key is the confident direction's, so
+    "settled_pitch" here means the pitch went higher. Pure."""
+    gains = cue_gains(after, before)
+    return sorted(gains, key=lambda kv: -kv[1])
+
+
 def attach_cue_reads(comparison: dict, *, original_metrics: Any,
                      attempt_metrics: Any, baseline: Any,
                      baseline_kind: Any) -> dict:
