@@ -374,6 +374,19 @@ def test_after_delete_an_old_link_no_longer_serves_the_clip():
         assert cycle["plays"] == 0
 
 
+def test_a_voice_already_gone_at_elevenlabs_counts_as_deleted():
+    """ElevenLabs answers a missing voice with a 400 "voice_not_found", not
+    a 404 (founder's smoke run, 2026-10-13); a repeated Delete must not stick
+    at "deleting" because of it."""
+    import httpx
+    from services.elevenlabs_client import ElevenLabsClient
+    gone = httpx.MockTransport(lambda _r: httpx.Response(
+        400, json={"detail": {"status": "voice_not_found"}}))
+    client = ElevenLabsClient(api_key="test-key-not-real", transport=gone)
+    client.delete_voice("voice-abc")
+    assert client.voice_exists("voice-abc") is False
+
+
 def test_account_deletion_removes_the_voice_before_the_account_is_blocked():
     """Once the account is blocked the provider permit is refused, so the AI
     voice must go first (routes/v2/processing_authorization.py)."""
