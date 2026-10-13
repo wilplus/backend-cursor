@@ -50,7 +50,7 @@ DAYS = ("0", "1", "2", "3", "4", "5", "6")  # Sunday=0, JS getDay() order
 SETTINGS_FIELDS = (
     "slug", "title", "host_name", "duration_min", "price_cents", "currency",
     "buffer_before_min", "buffer_after_min", "notice_hours", "horizon_days",
-    "timezone", "weekly_hours", "calendar_ics_url", "meet_url", "enabled", "bonus_tokens", "new_user_discount_pct",
+    "timezone", "weekly_hours", "calendar_ics_url", "meet_url", "enabled", "bonus_tokens", "new_user_discount_pct", "allow_skip_payment",
 )
 
 
@@ -149,6 +149,7 @@ def validate_settings(payload: dict, current: dict) -> dict:
     s["calendar_ics_url"] = "\n".join(links)
     s["meet_url"] = meet
     s["enabled"] = bool(s["enabled"])
+    s["allow_skip_payment"] = bool(s.get("allow_skip_payment"))
     if s["enabled"] and not s["meet_url"]:
         raise BookingError("MEET_REQUIRED", "Add the Google Meet link before turning the page on.")
     return s
@@ -220,6 +221,7 @@ def offer_for(slug: str, user_id: str) -> dict:
         "price_cents": price,
         "currency": page["currency"],
         "bonus_tokens": page["bonus_tokens"],
+        "allow_skip_payment": bool(get_settings().get("allow_skip_payment")),
     }
 
 
@@ -376,7 +378,8 @@ EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
 def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email: str,
-                   guest_timezone: str, note: str = "", embedded: bool = False) -> dict:
+                   guest_timezone: str, note: str = "", embedded: bool = False,
+                   skip_payment: bool = False) -> dict:
     """Hold the slot and open Stripe Checkout for a signed-in account, at that
     person's price (charged as an amount, not a Stripe product). Returns
     {"client_secret": ...} for the card form inside the booking page when
@@ -385,6 +388,11 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
     s = get_settings()
     offer = offer_for(slug, user_id)  # raises NOT_FOUND when off or wrong link
     price = int(offer["price_cents"])
+    # Booking without paying (temporary, only while the admin allows it): a
+    # confirmed booking at 0 with no tokens; the lesson is settled outside.
+    skip = skip_payment and offer["allow_skip_payment"]
+    if skip:
+        price = 0
     name, email, note = (name or "").strip()[:120], (email or "").strip()[:254], (note or "").strip()[:2000]
     if not name:
         raise BookingError("NAME_REQUIRED", "Add your name.")
@@ -415,7 +423,7 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
     booking_id = str(booking_id)
     db.client.table("bookings").update({
         "user_id": user_id, "list_price_cents": int(offer["list_price_cents"]),
-        "bonus_tokens": int(offer["bonus_tokens"]),
+        "bonus_tokens": 0 if skip else int(offer["bonus_tokens"]),
     }).eq("id", booking_id).execute()
     base = (config.FRONTEND_URL or "https://www.willpowerlab.com").rstrip("/")
 

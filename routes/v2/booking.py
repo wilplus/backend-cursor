@@ -96,6 +96,7 @@ def booking_checkout(slug: str):
         guest_timezone=str(body.get("timezone") or "UTC"),
         note=str(body.get("note") or ""),
         embedded=body.get("embedded") is True,
+        skip_payment=body.get("skip_payment") is True,
     ))
 
 
