@@ -356,10 +356,12 @@ EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
 def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email: str,
-                   guest_timezone: str, note: str = "") -> dict:
+                   guest_timezone: str, note: str = "", embedded: bool = False) -> dict:
     """Hold the slot and open Stripe Checkout for a signed-in account, at that
-    person's price. Returns {"url": ...}; a free meeting skips Stripe and is
-    confirmed at once."""
+    person's price (charged as an amount, not a Stripe product). Returns
+    {"client_secret": ...} for the card form inside the booking page when
+    `embedded`, else {"url": ...} for Stripe's own page; a free meeting skips
+    Stripe and returns {"url": ...} to the confirmation."""
     s = get_settings()
     offer = offer_for(slug, user_id)  # raises NOT_FOUND when off or wrong link
     price = int(offer["price_cents"])
@@ -408,8 +410,13 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
     import stripe
     stripe.api_key = api_key
     metadata = {"kind": BOOKING_KIND, "booking_id": booking_id}
+    done_url = f"{base}/book/{s['slug']}/done?session_id={{CHECKOUT_SESSION_ID}}"
+    where: dict[str, Any] = (
+        {"ui_mode": "embedded", "return_url": done_url} if embedded
+        else {"success_url": done_url, "cancel_url": f"{base}/book/{s['slug']}"})
     try:
         session = stripe.checkout.Session.create(
+            **where,
             mode="payment",
             customer_email=email,
             line_items=[{
@@ -425,17 +432,16 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
             payment_intent_data={"metadata": metadata},
             invoice_creation={"enabled": True},
             expires_at=int(time.time()) + CHECKOUT_MINUTES * 60,
-            success_url=f"{base}/book/{s['slug']}/done?session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"{base}/book/{s['slug']}",
         )
     except Exception as e:
         logger.warning("booking: checkout open failed booking=%s: %s", booking_id, e, exc_info=True)
         _release(booking_id)
         raise BookingError("PAYMENT_ERROR", "Payment could not start. Try again.", 502)
     sid = session.get("id") if isinstance(session, dict) else getattr(session, "id", None)
-    url = session.get("url") if isinstance(session, dict) else getattr(session, "url", None)
     db.client.table("bookings").update({"stripe_session_id": sid}).eq("id", booking_id).execute()
-    return {"url": url}
+    if embedded:
+        return {"client_secret": _get(session, "client_secret")}
+    return {"url": _get(session, "url")}
 
 
 def _release(booking_id: str) -> None:
