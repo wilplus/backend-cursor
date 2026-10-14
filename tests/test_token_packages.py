@@ -46,7 +46,8 @@ def test_checkout_is_one_time_at_the_published_price():
     assert item["price_data"]["unit_amount"] == TIERS["coaching"]["usd"] * 100
     assert item["price_data"]["currency"] == "usd"
     assert kwargs["metadata"] == {"user_id": "u1", "package": "coaching",
-                                  "tier": "coaching", "kind": tp.PACKAGE_KIND}
+                                  "tier": "coaching", "kind": tp.PACKAGE_KIND,
+                                  "cents": str(TIERS["coaching"]["usd"] * 100)}
 
 
 # ── webhook ─────────────────────────────────────────────────────────────

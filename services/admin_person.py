@@ -177,7 +177,7 @@ def consents(user_id: str, principal: Optional[str], settings: dict,
 
 def person(user_id: str) -> Optional[dict]:
     """The whole profile, or None when there is no such account."""
-    from services import booking, person_asks, token_account
+    from services import booking, person_asks, plan_promotions, token_account
     # SPEED: the reads don't depend on each other, so they run side by side
     # (one round trip's wait instead of ten in a row).
     with ThreadPoolExecutor(max_workers=8) as pool:
@@ -188,6 +188,7 @@ def person(user_id: str) -> Optional[dict]:
         f_price = pool.submit(_safe, "lesson price", partial(booking.user_price, user_id))
         f_list = pool.submit(_safe, "list price", lambda: booking.get_settings()["price_cents"])
         f_asks = pool.submit(_safe, "asks", partial(person_asks.list_for, user_id))
+        f_promo = pool.submit(_safe, "promotion", partial(plan_promotions.active, user_id))
         user = f_user.result()
         if not user:
             return None
@@ -219,6 +220,7 @@ def person(user_id: str) -> Optional[dict]:
         "lesson_price_cents": f_price.result(),
         "list_price_cents": f_list.result(),
         "asks": f_asks.result() or [],
+        "promotion": f_promo.result(),
     }
 
 

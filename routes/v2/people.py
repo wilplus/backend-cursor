@@ -13,6 +13,11 @@ Asks (services/person_asks.py):
   POST   /v2/admin/people/<user_id>/asks   {"kind", "consent_key"?}  send one
   GET    /v2/user/asks/next                the person's oldest open ask, or null
   POST   /v2/user/asks/<id>                {"event": "shown" | "opened"}
+
+Prices for one person (step 3, services/plan_promotions.py):
+  PUT    /v2/admin/people/<user_id>/promotion   {"plan", "price_cents", "ends_on": "YYYY-MM-DD"}
+  DELETE /v2/admin/people/<user_id>/promotion   end it now
+  GET    /v2/user/offers                        {"promotion", "lesson"} for the pricing screen
 """
 from __future__ import annotations
 
@@ -23,7 +28,7 @@ from flask import Blueprint, jsonify, request
 
 from auth import require_auth
 from routes.admin import require_admin
-from services import admin_person, person_asks
+from services import admin_person, person_asks, plan_promotions
 
 people_bp = Blueprint("people", __name__)
 
@@ -102,3 +107,35 @@ def my_next_ask():
 def mark_my_ask(ask_id: str):
     person_asks.mark(_me(), ask_id, str((request.get_json(silent=True) or {}).get("event") or ""))
     return _reply({"ok": True})
+
+
+@people_bp.errorhandler(plan_promotions.PromotionError)
+def _promotion_refused(e: plan_promotions.PromotionError):
+    return _reply({"code": e.code, "error": str(e)}, e.status)
+
+
+@people_bp.route("/v2/admin/people/<user_id>/promotion", methods=["PUT", "DELETE"])
+@require_admin
+def person_promotion(user_id: str):
+    if request.method == "DELETE":
+        plan_promotions.end(user_id)
+        return _reply({"promotion": None})
+    body = request.get_json(silent=True) or {}
+    try:
+        price = int(str(body.get("price_cents") or ""))
+    except (TypeError, ValueError):
+        return _reply({"code": "INVALID_PRICE", "error": "Enter their price."}, 400)
+    return _reply({"promotion": plan_promotions.save(
+        user_id, plan=str(body.get("plan") or ""), price_cents=price,
+        ends_on=str(body.get("ends_on") or ""), admin_id=_me())})
+
+
+@people_bp.route("/v2/user/offers", methods=["GET"])
+@require_auth
+def my_offers():
+    """What the pricing screen shows for me: my plan promotion, if any, and
+    my 1-on-1 lesson card."""
+    return _reply({
+        "promotion": admin_person._safe("promotion", partial(plan_promotions.active, _me())),
+        "lesson": admin_person._safe("lesson", partial(person_asks.lesson_offer, _me())),
+    })

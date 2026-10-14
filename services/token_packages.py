@@ -102,10 +102,22 @@ def create_package_checkout_session(
     if not api_key:
         return TierCheckoutResult.error(503, "DISABLED", "STRIPE_SECRET_KEY not configured")
 
+    # A promotion the admin set for this person on this plan (step 3).
+    # A failed read sells at the normal price rather than blocking the sale.
+    from services import plan_promotions
+    try:
+        promo = plan_promotions.active(str(user_id))
+    except Exception:
+        logger.warning("package checkout: promotion read failed user=%s", user_id, exc_info=True)
+        promo = None
+    if promo and promo["plan"] == spec["package"]:
+        spec = {**spec, "cents": promo["price_cents"]}
+
     base = (getattr(app_config, "FRONTEND_URL", None) or
             "https://www.willpowerlab.com").rstrip("/")
     metadata = {"user_id": str(user_id), "package": spec["package"],
-                "tier": spec["package"], "kind": PACKAGE_KIND}
+                "tier": spec["package"], "kind": PACKAGE_KIND,
+                "cents": str(spec["cents"])}
     stripe.api_key = api_key
     try:
         params: dict[str, Any] = {
@@ -149,6 +161,16 @@ def _get(obj: Any, key: str) -> Any:
     return getattr(obj, key, None)
 
 
+def _expected_cents(metadata: Any, spec: dict) -> int:
+    """What this session should have charged: the price written into its
+    metadata at checkout (a promotion), never more than the list price."""
+    try:
+        cents = int(_get(metadata, "cents") or spec["cents"])
+    except (TypeError, ValueError):
+        return int(spec["cents"])
+    return cents if 0 < cents <= int(spec["cents"]) else int(spec["cents"])
+
+
 def apply_completed_package_checkout(session_id: str, app_config: Any, *,
                                      database=None) -> TierCheckoutResult:
     """Grant a paid package from its Checkout Session. Idempotent.
@@ -182,7 +204,7 @@ def apply_completed_package_checkout(session_id: str, app_config: Any, *,
     elif _get(session, "payment_status") != "paid":
         problem = "not_paid"
     elif (str(_get(session, "currency") or "").lower() != "usd"
-          or int(_get(session, "amount_total") or -1) != spec["cents"]):
+          or int(_get(session, "amount_total") or -1) != _expected_cents(metadata, spec)):
         problem = "amount_mismatch"
     if problem or spec is None:
         logger.error("package checkout not granted session=%s reason=%s",
