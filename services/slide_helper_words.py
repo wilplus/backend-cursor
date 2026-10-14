@@ -179,6 +179,45 @@ def project(rows: Any) -> list[Row]:
     return out
 
 
+def anchor_to_snapshot(slide_roots: list[Row], snapshot: Any) -> list[Row]:
+    """Each Slide's helper words on a Paragraph the document still has.
+
+    The words belong to the Slide (contract 13-14) and stay until the
+    speaker picks new ones (rule 5), but each row remembers the Paragraph
+    they were picked on. A later Take can give the Slide a fresh Paragraph,
+    and the page draws words only on a Paragraph it has, so they vanished
+    (founder 2026-10-13, project "S": slide 3's words named a Paragraph two
+    Takes old). A row whose Paragraph is gone moves to the Slide's Paragraph
+    that says the words, else the Slide's first. A Slide the snapshot cannot
+    place keeps its rows unchanged. Pure."""
+    payload = snapshot.get("payload") if isinstance(snapshot, Mapping) else None
+    parts = payload.get("parts") if isinstance(payload, Mapping) else None
+    pieces = payload.get("pieces") if isinstance(payload, Mapping) else None
+    if (not isinstance(parts, list) or not isinstance(pieces, list)
+            or len(parts) != len(pieces)):
+        return slide_roots
+    on_slide: dict[int, list[tuple[str, str]]] = {}
+    for part, piece in zip(parts, pieces):
+        if not isinstance(part, Mapping) or not isinstance(piece, Mapping):
+            continue
+        slide = piece.get("slide_index")
+        if isinstance(slide, int) and not isinstance(slide, bool) and part.get("id"):
+            on_slide.setdefault(slide, []).append(
+                (str(part["id"]), _flat(part.get("text")).lower()))
+    out: list[Row] = []
+    for root in slide_roots:
+        here = on_slide.get(root.get("slide_index"))  # type: ignore[arg-type]
+        part = str(root.get("part_id") or "").lower()
+        if not here or any(pid.lower() == part for pid, _ in here):
+            out.append(root)
+            continue
+        words = _flat(root.get("text")).lower()
+        home = next((pid for pid, text in here if words and words in text),
+                    here[0][0])
+        out.append(dict(root, part_id=home))
+    return out
+
+
 def merge_recording_roots(legacy: list[Row], slide_roots: list[Row]) -> list[Row]:
     """Slide-level helper words win for every Paragraph that has any.
 
@@ -290,3 +329,30 @@ def slide_roots(database: Any, arc_id: str, user_id: str) -> list[Row]:
         logger.warning("slide helper words read failed arc=%s: %s",
                        arc_id, error)
         return []
+
+
+def page_roots(database: Any, arc_id: str, user_id: str,
+               snapshot: Any) -> list[Row]:
+    """The helper words the page draws over this immutable document.
+
+    The Paragraphs' own locked words, joined to the snapshot's exact Slide
+    lineage; then the Slides' words on a Paragraph the document still has.
+    When the live Paragraphs are mid-change (a new Take publishes in two
+    steps), the snapshot's own words stand in: refusing dropped every helper
+    word on the project for that read (founder 2026-10-13, project "S")."""
+    from services.recording_roots import (
+        RecordingRootsStale,
+        frozen_recording_roots,
+        project_recording_roots,
+    )
+    try:
+        roots = project_recording_roots(
+            snapshot,
+            database.get_ideal_text_parts(arc_id, user_id, with_lock=True),
+        )
+    except RecordingRootsStale as error:
+        logger.info("recording roots from the snapshot arc=%s: %s",
+                    arc_id, error)
+        roots = frozen_recording_roots(snapshot)
+    return merge_recording_roots(
+        roots, anchor_to_snapshot(slide_roots(database, arc_id, user_id), snapshot))

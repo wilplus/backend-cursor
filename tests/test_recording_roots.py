@@ -74,3 +74,44 @@ def test_recording_roots_route_returns_the_live_root(monkeypatch):
     assert response.get_json()["roots"][0]["text"] == "accepted sentence"
     database.get_ideal_text_parts.assert_called_once_with(
         "arc-1", "actor-1", with_lock=True)
+
+
+def _route_response(monkeypatch, *, live_rows, slide_rows):
+    import routes.v2.explore_ideal_text as route
+
+    database = Mock()
+    database.get_ideal_text_document_core.return_value = _snapshot()
+    database.get_ideal_text_parts.return_value = live_rows
+    database.get_slide_helper_words.return_value = slide_rows
+    monkeypatch.setattr(route, "db", database)
+    monkeypatch.setattr(route, "_arc_owned_by_caller", lambda _arc: (True, []))
+    app = Flask(__name__)
+
+    @app.before_request
+    def actor():
+        request.user_id = "actor-1"
+
+    app.add_url_rule(
+        "/test/<arc_id>",
+        view_func=inspect.unwrap(route.v2_explore_get_recording_roots),
+    )
+    return app.test_client().get("/test/arc-1")
+
+
+def test_helper_words_from_an_earlier_take_stay_on_their_slide(monkeypatch):
+    """Founder 2026-10-13, project "S": the Paragraph the words were picked
+    on is gone after a later Take, and the live Paragraphs are mid-change.
+    The words still reach the page, on the Slide's Paragraph now."""
+    rows = _live_rows()
+    rows[0]["text"] = "Changed text."
+    response = _route_response(monkeypatch, live_rows=rows, slide_rows=[{
+        "slide_index": 1, "ord": 0, "phrase": "accepted sentence",
+        "take_session_id": "take-1", "source_part_id": "part-from-take-1",
+        "locked_at": "2026-10-10T09:00:00Z",
+    }])
+
+    assert response.status_code == 200
+    assert response.get_json()["roots"] == [{
+        "part_id": "part-1", "slide_index": 1,
+        "text": "accepted sentence", "type": "flagship",
+    }]

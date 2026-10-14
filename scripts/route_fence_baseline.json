@@ -123,10 +123,6 @@
     "lines": 70,
     "db_calls": 3
   },
-  "routes/v2/explore_ideal_text.py:v2_explore_get_recording_roots": {
-    "lines": 33,
-    "db_calls": 2
-  },
   "routes/v2/explore_ideal_text.py:v2_explore_set_part_lock": {
     "lines": 83,
     "db_calls": 0
