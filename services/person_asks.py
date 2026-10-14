@@ -9,6 +9,8 @@ slot the app's own offers use.
                next opened from the home screen)
   consent      a pointer to the Data & consent page, where the person answers
                on the locked consent screen itself (opened when they tap it)
+  promo        their special plan price, pointing to the pricing screen
+  lesson       their lesson price, pointing to the booking page
 
 Any consent can be asked again, also after a "no", but not within 30 days of
 the last "no" (founder 2026-10-13: privacy law wants consent given freely).
@@ -20,7 +22,7 @@ from typing import Optional
 
 from services.db import db
 
-KINDS = ("whatsapp", "home_screen", "consent")
+KINDS = ("whatsapp", "home_screen", "consent", "promo", "lesson")
 CONSENT_KEYS = ("processing", "personalised_practice", "sensitive_information",
                 "training", "share", "email")
 WAIT_AFTER_NO = timedelta(days=30)
@@ -48,7 +50,7 @@ def create(user_id: str, kind: str, consent_key: Optional[str], *,
     """Send one ask. `consents` is the profile's consent list, which carries
     each consent's state and the date of its last "no"."""
     if kind not in KINDS:
-        raise AskError("INVALID_KIND", "Ask for a phone number, the home screen or a consent.")
+        raise AskError("INVALID_KIND", "Unknown ask.")
     if kind == "consent":
         if consent_key not in CONSENT_KEYS:
             raise AskError("INVALID_CONSENT", "Unknown consent.")
@@ -74,11 +76,39 @@ def create(user_id: str, kind: str, consent_key: Optional[str], *,
 
 
 def next_for(user_id: str) -> Optional[dict]:
-    """The oldest ask the person has not answered yet."""
+    """The oldest ask the person has not answered yet. A price ask carries
+    the price it tells them about; one whose price has ended is closed."""
     rows = (db.client.table("person_asks").select("id,kind,consent_key,status")
             .eq("user_id", user_id).in_("status", list(OPEN))
-            .order("created_at").limit(1).execute().data) or []
-    return rows[0] if rows else None
+            .order("created_at").limit(5).execute().data) or []
+    for ask in rows:
+        if ask["kind"] == "promo":
+            from services import plan_promotions
+            ask["promotion"] = plan_promotions.active(user_id)
+            if not ask["promotion"]:
+                answered(user_id, "promo")
+                continue
+        if ask["kind"] == "lesson":
+            ask["lesson"] = lesson_offer(user_id)
+            if not ask["lesson"] or ask["lesson"]["price_cents"] >= ask["lesson"]["list_price_cents"]:
+                answered(user_id, "lesson")
+                continue
+        return ask
+    return None
+
+
+def lesson_offer(user_id: str) -> Optional[dict]:
+    """This person's 1-on-1 lesson: price, list price, tokens and the
+    booking link, or None when the booking page is off."""
+    from services import booking
+    s = booking.get_settings()
+    try:
+        offer = booking.offer_for(s["slug"], user_id)
+    except booking.BookingError:
+        return None
+    return {"slug": s["slug"], "host_name": s["host_name"], "duration_min": s["duration_min"],
+            "price_cents": offer["price_cents"], "list_price_cents": offer["list_price_cents"],
+            "currency": offer["currency"], "bonus_tokens": offer["bonus_tokens"]}
 
 
 def mark(user_id: str, ask_id: str, event: str) -> None:
