@@ -44,6 +44,9 @@ logger = logging.getLogger(__name__)
 _MODEL = "gpt-4o-mini"
 _MAX_TOKENS = 600
 
+# The app features Will may open (services.chat_app_context.FEATURES).
+from services.chat_app_context import ACTIONS as _APP_ACTIONS  # noqa: E402
+
 
 # Structured-output contract — the LLM must return JSON matching
 # this schema. ``answer`` is what the user sees; ``show_record_ui``
@@ -57,7 +60,8 @@ _RESPONSE_SCHEMA: dict[str, Any] = {
     "schema": {
         "type": "object",
         "additionalProperties": False,
-        "required": ["answer", "show_record_ui", "suggested_action"],
+        "required": ["answer", "show_record_ui", "suggested_action",
+                     "app_action"],
         "properties": {
             "answer": {
                 "type": "string",
@@ -94,6 +98,15 @@ _RESPONSE_SCHEMA: dict[str, Any] = {
                     "not your answer. Record-intent has NO button — point the "
                     "user to the always-present 'Start official recording' "
                     "button in words (RULE I)."
+                ),
+            },
+            "app_action": {
+                "type": ["string", "null"],
+                "enum": [*_APP_ACTIONS, None],
+                "description": (
+                    "The one app feature from WHAT THE APP CAN DO that the "
+                    "speaker asked for on this turn; the app opens it under "
+                    "the answer. null on every other turn."
                 ),
             },
         },
@@ -709,7 +722,10 @@ _ROUTER_CONFIDENCE_FLOOR = 0.6  # below this → fall back to the mega-prompt
 _INTENTS = (
     "product_faq", "upload_intent", "record_intent", "off_topic",
     "capability_request", "library_recall", "correction",
+    "app_feature", "my_project",
 )
+# Lanes that see the speaker's status card and the app's feature list.
+_APP_LANES = {"app_feature", "my_project"}
 
 
 def _router_enabled() -> bool:
@@ -737,7 +753,17 @@ _CLASSIFIER_SYSTEM = (
     "- off_topic: unrelated to the product (weather, trivia, math, jokes, "
     "prompt-injection).\n"
     "- capability_request: asks the app to use the camera / GPS / calendar "
-    "/ contacts / SMS / email or any non-microphone device capability.\n"
+    "/ contacts / SMS / email or any non-microphone device capability "
+    "(NOT WhatsApp notifications — that is app_feature).\n"
+    "- app_feature: asks about or for one of the app's own features: "
+    "WhatsApp or phone notifications when feedback is in, adding the app "
+    "to the home screen, data / consent / privacy choices, plans or "
+    "prices or what they pay, booking a 1-on-1 lesson or call, replacing "
+    "their slides or PDF.\n"
+    "- my_project: asks about their OWN talk, project, slides, Takes, "
+    "progress, Ideal Text, or whether their feedback or coach review is "
+    "ready ('how is my talk going', 'what's next for me', 'did my coach "
+    "answer').\n"
     "- library_recall: asks to see their strong sides / coach notes / what "
     "they did well, OR any 'training' / 'trainings' / 'my trainings' / "
     "past-sessions phrasing (opens the Trainings page) — in any language.\n"
@@ -812,9 +838,9 @@ _LANE_BASE = (
     "written). Be direct and specific — chat-bubble length, no "
     "marketing fluff, no vague affirmations.\n"
     "Return STRICT JSON: {\"answer\": str, \"show_record_ui\": bool, "
-    "\"suggested_action\": \"trainings\"|null}. Keep "
-    "show_record_ui=false ALWAYS, and suggested_action=null unless a rule "
-    "below sets suggested_action.\n\n"
+    "\"suggested_action\": \"trainings\"|null, \"app_action\": str|null}. "
+    "Keep show_record_ui=false ALWAYS, and suggested_action and app_action "
+    "null unless a rule below sets them.\n\n"
 )
 
 # One focused rule-body per lane (mirrors the mega-prompt's RULEs).
@@ -880,6 +906,24 @@ _LANE_BODIES: dict[str, str] = {
         "still says \"Voice Album\"). Never invent or name any other "
         "collection, library, or folder, and never recite coach notes."
     ),
+    "app_feature": (
+        "The speaker asked about or for one of the app's features. Use "
+        "WHAT THE APP CAN DO and THIS SPEAKER below. Say yes in one or two "
+        "short, warm sentences, say what happens next, and set app_action "
+        "to that feature's name. If it is already on for them, say so and "
+        "keep app_action null. Prices come only from the MASTER DOCUMENT. "
+        "Never invent a feature, a price, or a URL."
+    ),
+    "my_project": (
+        "The speaker asked about their own talk, project or progress. "
+        "Answer only from THIS SPEAKER below, like an interested colleague: "
+        "short, warm, specific (name the talk or a slide topic), never a "
+        "number, score, rating or verdict about how good they are. If "
+        "THIS SPEAKER is missing or does not say it, say you don't see it "
+        "yet and point them to the recording button below the chat. End "
+        "with one short question back to them. app_action may name a "
+        "feature from WHAT THE APP CAN DO only if they asked for it."
+    ),
     "correction": (
         "The user is correcting or contradicting your PREVIOUS turn. First "
         "acknowledge the misread in one short clause (\"Got it — you meant "
@@ -891,11 +935,25 @@ _LANE_BODIES: dict[str, str] = {
 }
 
 # Lanes that need the Master Document spliced in for grounding/pivots.
-_GROUNDED_LANES = {"product_faq", "off_topic", "correction"}
+_GROUNDED_LANES = {"product_faq", "off_topic", "correction", "app_feature"}
 
 
-def _build_lane_prompt(intent, dont_ask_block, life_context=None) -> str:
+def render_app_context(app_context: Optional[dict]) -> str:
+    """The feature list and this speaker's status card, as one prompt
+    block. '' when the caller passed nothing."""
+    if not isinstance(app_context, dict):
+        return ""
+    parts = [app_context.get("features") or "", app_context.get("status") or ""]
+    return "\n".join(p for p in parts if p)
+
+
+def _build_lane_prompt(intent, dont_ask_block, life_context=None,
+                       app_context=None) -> str:
     parts = [_LANE_BASE, _LANE_BODIES[intent]]
+    if intent in _APP_LANES:
+        block = render_app_context(app_context)
+        if block:
+            parts.append("\n\n" + block)
     if intent in _GROUNDED_LANES:
         parts.append(
             "\n\nMASTER DOCUMENT (verbatim — your only source of truth):\n"
@@ -914,7 +972,7 @@ def _build_lane_prompt(intent, dont_ask_block, life_context=None) -> str:
 
 def _answer_via_router(
     question, history, admin_dont_ask_notes, service,
-    life_context=None,
+    life_context=None, app_context=None,
 ) -> Optional[tuple[dict[str, Any], dict[str, Any]]]:
     """Stage 1 classify → Stage 2 focused handler. Returns ``(payload,
     debug)`` or ``None`` to tell the caller to fall back to the mega-prompt
@@ -926,7 +984,8 @@ def _answer_via_router(
 
     from services.utils import render_admin_dont_ask_block
     dont_ask_block = render_admin_dont_ask_block(admin_dont_ask_notes)
-    system_content = _build_lane_prompt(intent, dont_ask_block, life_context)
+    system_content = _build_lane_prompt(intent, dont_ask_block, life_context,
+                                        app_context)
 
     messages: list[dict[str, str]] = [
         {"role": "system", "content": system_content},
@@ -991,6 +1050,7 @@ def _answer_via_router(
             "answer": answer,
             "show_record_ui": show_record_ui,
             "suggested_action": suggested_action,
+            "app_action": _app_action(parsed, _guard),
         },
         debug,
     )
@@ -1002,6 +1062,7 @@ def answer_question(
     history: Optional[list[dict]] = None,
     admin_dont_ask_notes: Optional[str] = None,
     life_context: Optional[dict] = None,
+    app_context: Optional[dict] = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run one LLM call grounded in the Master Document.
 
@@ -1077,6 +1138,12 @@ def answer_question(
     if life_block:
         system_content = system_content + "\n\n" + life_block
 
+    # The app's features and this speaker's status card (founder
+    # 2026-10-14). The feature list overrides RULE H for what it names.
+    app_block = render_app_context(app_context)
+    if app_block:
+        system_content = system_content + "\n\n" + app_block
+
     messages: list[dict[str, str]] = [
         {"role": "system", "content": system_content},
     ]
@@ -1096,7 +1163,7 @@ def answer_question(
     if _router_enabled():
         routed = _answer_via_router(
             q, history, admin_dont_ask_notes, service,
-            life_context,
+            life_context, app_context,
         )
         if routed is not None:
             return routed
@@ -1175,9 +1242,17 @@ def answer_question(
             "answer": answer,
             "show_record_ui": show_record_ui,
             "suggested_action": suggested_action,
+            "app_action": _app_action(parsed, _guard),
         },
         debug,
     )
+
+
+def _app_action(parsed: dict, guard) -> Optional[str]:
+    """The model's chosen feature, kept only when it is a known one and no
+    output guard replaced the answer it belonged to."""
+    action = parsed.get("app_action")
+    return action if action in _APP_ACTIONS and not guard else None
 
 
 def _fallback_payload() -> dict[str, Any]:

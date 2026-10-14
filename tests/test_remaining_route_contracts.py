@@ -113,7 +113,7 @@ def test_the_librarian_answers_the_rest_and_a_blank_question_is_refused():
             "debug": {"intent": "faq", "model": "m"}})
         answer.assert_called_once_with(
             "how?", history=[{"r": 1}], admin_dont_ask_notes="no money talk",
-            life_context=None)
+            life_context=None, app_context=ANY)
         rec.insert.assert_not_called()
         status, body = _call(coaching.v2_chat_query, method="POST",
                              json={"question": "  "})

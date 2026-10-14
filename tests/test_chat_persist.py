@@ -63,13 +63,16 @@ class ChatRoutePersistsTheTurnTests(unittest.TestCase):
 
         def _answer(question, history=None, **_kw):
             self.histories.append(history)
-            return {"answer": "It's a voice coach."}, {"intent": "faq"}
+            return {"answer": "It's a voice coach.",
+                    "app_action": self.app_action}, {"intent": "faq"}
 
         def _presentation(question, context=None):
             self.contexts.append(context)
             return CHOICE if "deck" in question else None
 
         self.fail_db = False
+        self.app_action = None
+        self.card = {"whatsapp_on": False}
         self._patches = [
             patch.object(auth, "verify_supabase_token",
                          lambda token: {"sub": USER}),
@@ -84,6 +87,8 @@ class ChatRoutePersistsTheTurnTests(unittest.TestCase):
                       else {**CHIP, "answer": "   "} if "blank" in question
                       else None)),
             patch("services.master_doc_rag.answer_question", _answer),
+            patch("services.chat_app_context.status_card",
+                  lambda database, user_id: self.card),
             patch.object(db, "get_user_settings", lambda user_id: {}),
             patch("services.token_account.charge", lambda *a, **k: None),
         ]
@@ -112,6 +117,45 @@ class ChatRoutePersistsTheTurnTests(unittest.TestCase):
                         "history": '[{"role":"user","content":"hi"}]'})
         self.assertEqual(self.histories,
                          [None, [{"role": "user", "content": "hi"}]])
+
+    def test_a_visitor_gets_two_answers_then_the_signup_line(self):
+        """Founder 2026-10-14: the chat costs money, so a visitor who is not
+        signed in gets two answers; the third turn asks them to sign up,
+        without a model call."""
+        from services.chat_app_context import SIGNUP_LINE
+        two_asked = [{"role": "user", "content": "what is this?"},
+                     {"role": "assistant", "content": "A voice coach."},
+                     {"role": "user", "content": "how much?"},
+                     {"role": "assistant", "content": "See the plans."}]
+        second = self.post({"question": "how much?", "history": two_asked[:2]},
+                           signed_in=False).get_json()
+        self.assertEqual(second["answer"], "It's a voice coach.")
+        third = self.post({"question": "and then?", "history": two_asked},
+                          signed_in=False).get_json()
+        self.assertEqual(third["answer"], SIGNUP_LINE)
+        self.assertEqual(len(self.histories), 1)
+
+    def test_asking_for_whatsapp_opens_the_form_unless_it_is_on(self):
+        """Founder 2026-10-14: Will knows the app's features. Asked for
+        WhatsApp alerts, his reply comes with the WhatsApp offer bubble the
+        Lounge already draws; a speaker who has it on gets no second form."""
+        self.app_action = "whatsapp"
+        body = self.post({"question": "can I get a whatsapp?",
+                          "persist": True}).get_json()
+        self.assertEqual(body["offer"], "whatsapp")
+        offer_row = self.rows[-1][1][-1]
+        self.assertEqual(offer_row["metadata"], {"offer": "whatsapp"})
+        self.card = {"whatsapp_on": True}
+        self.post({"question": "can I get a whatsapp again?", "persist": True})
+        self.assertEqual(len(self.rows[-1][1]), 2)  # user + bot, no offer
+
+    def test_a_feature_with_a_page_comes_with_its_link(self):
+        self.app_action = "booking"
+        body = self.post({"question": "can I book a lesson?"}).get_json()
+        self.assertTrue(body["answer"].endswith(
+            "https://www.willpowerlab.com/book/artur"))
+        self.assertIn("https://www.willpowerlab.com/book/artur",
+                      body["bubbles"])
 
 
 if __name__ == "__main__":
