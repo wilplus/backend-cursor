@@ -197,6 +197,7 @@ def person(user_id: str) -> Optional[dict]:
         receipt = _safe("receipt", partial(_receipt, principal)) if principal else None
         consent_rows = consents(user_id, principal, settings, receipt)
         account = f_account.result()
+        deletion_row = _safe("deletion", partial(deletion, user_id, principal))
     meta = user.get("user_metadata") or {}
     name = meta.get("full_name") or meta.get("name") or meta.get("display_name")
     return {
@@ -221,7 +222,45 @@ def person(user_id: str) -> Optional[dict]:
         "list_price_cents": f_list.result(),
         "asks": f_asks.result() or [],
         "promotion": f_promo.result(),
+        "deletion": deletion_row,
     }
+
+
+def deletion(user_id: str, principal: Optional[str]) -> Optional[dict]:
+    """The account deletion that governs this person now, if any."""
+    if not principal:
+        return None
+    from services.account_deletion import AccountDeletionService, deletion_view
+    return deletion_view(AccountDeletionService(db).live_for_principal(principal))
+
+
+def request_deletion(user_id: str, admin_id: str) -> dict:
+    """The admin deletes this account (founder 2026-10-14). The same road as
+    the person's own "Delete my account": processing stops now, the AI voice
+    goes now, and everything else is purged after the seven-day window, in
+    which the deletion can still be cancelled. An account that never agreed
+    to processing holds no recordings, so its login is removed at once."""
+    principal = _principal(user_id)
+    if not principal:
+        resp = httpx.delete(_auth_url(user_id), headers=_auth_headers(), timeout=10)
+        resp.raise_for_status()
+        logger.info("admin %s removed login without data user=%s", admin_id, user_id)
+        return {"state": "done", "kind": "login_only"}
+    from services.ai_voice_clone import erase_on_termination
+    from services.processing_authorization import ProcessingAuthorizationService
+    erase_on_termination(db, user_id, principal)
+    row = ProcessingAuthorizationService(db).request_account_deletion(
+        principal, idempotency_key=f"admin-delete:{user_id}", reason_code="ADMIN_DELETION")
+    logger.info("admin %s requested account deletion user=%s", admin_id, user_id)
+    return row
+
+
+def cancel_deletion(user_id: str, request_id: str) -> dict:
+    principal = _principal(user_id)
+    if not principal:
+        return {}
+    from services.processing_authorization import ProcessingAuthorizationService
+    return ProcessingAuthorizationService(db).cancel_account_deletion(principal, request_id)
 
 
 def mark_home_screen(user_id: str) -> str:
