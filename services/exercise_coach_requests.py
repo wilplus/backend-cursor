@@ -265,12 +265,15 @@ def resolve_request(database: Any, request: dict, body: Any,
 
 def _tell_the_speaker(database: Any, request: dict) -> None:
     """This save shared the answer (a first share, or a share again after the
-    coach changed it): the speaker gets the WhatsApp, as for the Take's word
-    (founder 2026-10-14: any message the coach shares). Best-effort, off the
-    coach's request."""
+    coach changed it): the speaker gets the WhatsApp and the email, as for
+    the Take's word (founder 2026-10-14: any message the coach shares).
+    Best-effort, off the coach's request."""
     try:
+        from services.coach_feedback_email import send_coach_feedback_email_in_background
         from services.whatsapp_notify import notify_coach_feedback_in_background
         notify_coach_feedback_in_background(database, request.get("owner_user_id"))
+        send_coach_feedback_email_in_background(
+            database, take_session_id=request.get("take_session_id"), moments=1)
     except Exception as e:  # noqa: BLE001 -- the answer is saved either way
         logger.info("coach answer whatsapp skipped request=%s: %s", request.get("id"), e)
 
