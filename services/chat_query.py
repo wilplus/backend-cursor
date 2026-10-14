@@ -66,6 +66,7 @@ def persist_chat_turn(
     database, user_id, question, answer, *, suggested_action=None,
     suggested_actions=None, bubbles=None, intent=None,
     user_client_id=None, user_created_at=None, offer=None,
+    speaker_feedback=False,
 ):
     """BE-owned persistence of one Lounge chat turn (founder #2 — bubbles must
     never disappear): the user message and the bot reply, in lounge_messages,
@@ -94,7 +95,8 @@ def persist_chat_turn(
     if q:
         rows.append({
             "client_id": u_id, "role": "user", "kind": "text",
-            "body": q, "metadata": None, "client_created_at": u_ts,
+            "body": q, "client_created_at": u_ts,
+            "metadata": {"speaker_feedback": True} if speaker_feedback else None,
         })
     rows.append({
         "client_id": b_id, "role": "bot", "kind": "text", "body": a,
@@ -125,6 +127,7 @@ def finish_chat_turn(database, resp: dict, *, user_id, question,
             bubbles=resp.get("bubbles"), intent=intent,
             user_client_id=user_client_id, user_created_at=user_created_at,
             offer=resp.get("offer"),
+            speaker_feedback=intent == "speaker_feedback",
         )
         resp["persisted"] = bool(bot_cid)
         if bot_cid:
@@ -293,6 +296,10 @@ def _librarian(database, user_id, question, history, app_config,
     if opened.get("link") and opened["link"] not in answer:
         answer = f"{answer}\n\n{opened['link']}"
     extra = {"offer": opened["offer"]} if opened.get("offer") else {}
+    if (debug or {}).get("router_intent") == "speaker_feedback":
+        # Kept in the speaker's own thread (services.speaker_feedback).
+        return _reply(answer, suggested_action=suggested, debug=debug,
+                      **extra), "speaker_feedback"
     return _reply(answer,
                   show_record_ui=bool(payload.get("show_record_ui", False)),
                   suggested_action=suggested, debug=debug, **extra), \

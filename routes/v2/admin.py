@@ -1709,3 +1709,21 @@ def v2_admin_dad_jokes_health():
             "code":  "V2_ERROR",
             "error": "Failed to probe dad_jokes health",
         }), 500
+
+
+@v2_bp.route("/admin/speaker-feedback", methods=["GET"])
+@require_admin
+def v2_admin_speaker_feedback():
+    """What speakers told Will about the app or about him, newest first
+    (founder 2026-10-14). ?limit=1..200 (default 50). 200 {items} · 500"""
+    from services import speaker_feedback
+    try:
+        limit = int(request.args.get("limit", "50"))
+    except (TypeError, ValueError):
+        limit = 50
+    try:
+        return jsonify({"items": speaker_feedback.recent(db, limit)}), 200
+    except Exception as e:
+        logger.error("admin speaker feedback failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to read feedback"}), 500

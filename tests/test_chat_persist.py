@@ -64,7 +64,7 @@ class ChatRoutePersistsTheTurnTests(unittest.TestCase):
         def _answer(question, history=None, **_kw):
             self.histories.append(history)
             return {"answer": "It's a voice coach.",
-                    "app_action": self.app_action}, {"intent": "faq"}
+                    "app_action": self.app_action}, dict(self.debug)
 
         def _presentation(question, context=None):
             self.contexts.append(context)
@@ -72,6 +72,7 @@ class ChatRoutePersistsTheTurnTests(unittest.TestCase):
 
         self.fail_db = False
         self.app_action = None
+        self.debug = {"intent": "faq"}
         self.card = {"whatsapp_on": False}
         self._patches = [
             patch.object(auth, "verify_supabase_token",
@@ -156,6 +157,18 @@ class ChatRoutePersistsTheTurnTests(unittest.TestCase):
             "https://www.willpowerlab.com/book/artur"))
         self.assertIn("https://www.willpowerlab.com/book/artur",
                       body["bubbles"])
+
+    def test_what_a_speaker_tells_will_is_kept_in_their_thread(self):
+        """Founder 2026-10-14: feedback a speaker gives Will is saved so we
+        learn from it, in their own thread (deleted with their account)."""
+        self.debug = {"router_intent": "speaker_feedback"}
+        self.post({"question": "The walk was too long for me", "persist": True})
+        user_row, bot_row = self.rows[-1][1]
+        self.assertEqual(user_row["metadata"], {"speaker_feedback": True})
+        self.assertEqual(bot_row["metadata"]["intent"], "speaker_feedback")
+        self.debug = {"router_intent": "product_faq"}
+        self.post({"question": "what is this?", "persist": True})
+        self.assertIsNone(self.rows[-1][1][0]["metadata"])
 
 
 if __name__ == "__main__":
