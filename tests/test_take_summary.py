@@ -6,14 +6,25 @@ from services.journey_messages import _COPY
 
 
 class _Db:
-    def __init__(self):
+    def __init__(self, phone="+48600000000"):
         self.rows = {}
+        self.phone = phone
+
+    def get_v4_dark_frame(self, take):
+        return {"blocks": [{"block_id": "b1", "snippet_ids": ["s1"]},
+                           {"block_id": "b2", "snippet_ids": ["s2"]}]}
+
+    def get_snippets_by_session(self, take):
+        return [{"id": "s1", "transcript": "Our churn fell because we listened."},
+                {"id": "s2", "transcript": "So here is what we do next."}]
 
     def get_lounge_message_by_client_id(self, user_id, client_id):
         return self.rows.get(client_id)
 
     def list_v4_willfidence_reads(self, take):
-        return {"t1": [{"s": 0.5, "w": 0.6}], "t2": [{"s": 0.7, "w": 0.6}]}.get(take, [])
+        return {"t1": [{"s": 0.5, "w": 0.6}],
+                "t2": [{"block_id": "b1", "s": 0.7, "w": 0.6, "willfident": 0.42},
+                       {"block_id": "b2", "s": 0.4, "w": 0.5, "willfident": 0.2}]}.get(take, [])
 
     def rewrite_lounge_message(self, user_id, client_id, body, metadata):
         self.rows[client_id] = {**self.rows[client_id], "body": body, "metadata": metadata}
@@ -25,7 +36,9 @@ class _Db:
         return [self.rows[m["client_id"]] for m in messages]
 
 
-TAKES = [{"id": "t1"}, {"id": "t2"}]
+TAKES = [{"id": "t1", "intake_context": {"topic": "Churn in Q3",
+                                          "slides": [{"title": "Why churn fell"}]}},
+         {"id": "t2"}]
 
 
 def _run(db, monkeypatch, reply, body=None):
@@ -35,9 +48,11 @@ def _run(db, monkeypatch, reply, body=None):
         return write()
 
     def write(anchor, facts, **kw):
-        seen["facts"] = facts
+        seen["facts"], seen["signed"] = facts, kw.get("signed")
         return take_summary._clean(reply)
 
+    monkeypatch.setattr("services.whatsapp_notify.whatsapp_state",
+                        lambda _db, _user: {"phone": db.phone})
     monkeypatch.setattr(take_summary, "_under_authority", lambda _db, _take, w: fake(w))
     monkeypatch.setattr(take_summary, "write_summary", write)
     msg = take_summary.summary_message(db, user_id="u", arc_id="a", takes=TAKES,
@@ -101,3 +116,29 @@ def test_a_coach_word_shared_after_the_review_is_its_own_bubble(monkeypatch):
     assert msg["metadata"]["heading"] == "Later · from your coach" and msg["metadata"]["coach_update"] is True
     take_summary.coach_update_message(db, **word)
     assert len(db.rows) == 2  # the summary and one update, stored once
+
+
+def test_the_summary_knows_the_talk_and_asks_for_whatsapp_once(monkeypatch):
+    """Founder 2026-10-14: the bubble is about their talk (its title, its
+    slides, what they said, their most confident moment), praises only
+    through the signed lines, and a speaker without a WhatsApp number gets
+    the Lounge's WhatsApp offer right after it."""
+    db = _Db(phone=None)
+    msg, seen = _run(db, monkeypatch, "Churn in Q3, nailed it! Another Take?")
+    facts = " ".join(seen["facts"])
+    assert 'called "Churn in Q3"' in facts and "Why churn fell" in facts
+    assert 'most confident moment this Take: "Our churn fell because we listened."' in facts
+    assert seen["signed"] and all(line in take_summary.line_bank_lines() for line in seen["signed"][:4])
+    offers = [r for r in db.rows.values() if (r.get("metadata") or {}).get("offer") == "whatsapp"]
+    assert msg["metadata"]["summary"] is True and len(offers) == 1
+
+
+def test_a_reply_that_drifts_from_the_signed_lines_is_the_signed_copy():
+    signed = ["You sounded like you really believed it this time!"]
+    near = "Churn in Q3 was the talk! You sounded like you believed it this time! Another go?"
+    assert take_summary._clean(near, signed, ("Churn in Q3",)) == near
+    assert take_summary._clean("Churn in Q3 was the talk. You're a natural genius. Another go?",
+                               signed, ("Churn in Q3",)) is None
+    assert take_summary._clean("Fewer stops here than on Take 1. Lovely! Again?",
+                               ["Fewer stops here than on Take 1."]) is not None
+

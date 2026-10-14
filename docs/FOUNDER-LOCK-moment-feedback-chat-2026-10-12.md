@@ -268,6 +268,20 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
   W7 0.70, W8 0.80, W9 0.88, W10 0.95 and up. The lines live in the
   frontend's `src/lib/willab/praiseLevels.ts`.
 
+- **The closing summary is cheeky and curious** (founder, 2026-10-14, in
+  chat; amends section 3's "how it sounds"). Two to four short sentences,
+  playful like a colleague: exclamation marks are fine, one emoji at most.
+  It knows the talk's title, its slide topics, what the speaker said and
+  their most confident moment. Its praise is one signed line from
+  `services/line_bank.py`, varied lightly at most; code checks the line
+  is there and falls back to the signed journey copy if not. It gives no
+  advice (the walk did) and asks whether the talk matches its title only
+  with curiosity. It ends with a question back to the speaker. It speaks
+  only to what the Take showed about whether they can do it, never to
+  their self-esteem or self-worth. Still no numbers but a signed line's
+  Take number, no scores, no verdicts. A speaker with no WhatsApp number
+  gets the Lounge's WhatsApp offer right after it.
+
 ## Still open
 
 - **Self-judgement of your own practice try is off for launch** (founder,
