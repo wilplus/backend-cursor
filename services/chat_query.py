@@ -37,6 +37,19 @@ def _is_uuid(value) -> bool:
         return False
 
 
+def _offer_row(bot_client_id: str, offer: str, created_at: str) -> dict:
+    """A Lounge offer the chat opened (founder 2026-10-14): its own bubble,
+    in the shape the Lounge already draws (kind text + metadata.offer), so
+    tapping it opens the form. The body is the offer's existing copy."""
+    from services.chat_app_context import OFFER_PROMPTS
+    return {
+        "client_id": str(uuid.uuid5(uuid.NAMESPACE_URL,
+                                    f"willab-chat-offer:{bot_client_id}")),
+        "role": "bot", "kind": "text", "body": OFFER_PROMPTS[offer],
+        "metadata": {"offer": offer}, "client_created_at": created_at,
+    }
+
+
 def _bot_metadata(*, intent, suggested_action, suggested_actions,
                   bubbles) -> dict:
     meta: dict[str, Any] = {"intent": intent}
@@ -52,7 +65,7 @@ def _bot_metadata(*, intent, suggested_action, suggested_actions,
 def persist_chat_turn(
     database, user_id, question, answer, *, suggested_action=None,
     suggested_actions=None, bubbles=None, intent=None,
-    user_client_id=None, user_created_at=None,
+    user_client_id=None, user_created_at=None, offer=None,
 ):
     """BE-owned persistence of one Lounge chat turn (founder #2 — bubbles must
     never disappear): the user message and the bot reply, in lounge_messages,
@@ -90,6 +103,8 @@ def persist_chat_turn(
             suggested_actions=suggested_actions, bubbles=bubbles),
         "client_created_at": now_iso,
     })
+    if offer:
+        rows.append(_offer_row(b_id, offer, now_iso))
     try:
         database.insert_lounge_messages(str(user_id), rows)
         return b_id
@@ -109,6 +124,7 @@ def finish_chat_turn(database, resp: dict, *, user_id, question,
             suggested_actions=resp.get("suggested_actions"),
             bubbles=resp.get("bubbles"), intent=intent,
             user_client_id=user_client_id, user_created_at=user_created_at,
+            offer=resp.get("offer"),
         )
         resp["persisted"] = bool(bot_cid)
         if bot_cid:
@@ -244,21 +260,42 @@ def _life_context(user_id, question, app_config):
     return None
 
 
-def _librarian(database, user_id, question, history, app_config) -> tuple[dict, str]:
+def _librarian(database, user_id, question, history, app_config,
+               context=None) -> tuple[dict, str]:
     """Path A — the librarian's answer. S1: the one contextual button the FE
-    renders is kept only when it is a known value."""
+    renders is kept only when it is a known value.
+
+    The librarian also knows the app's features and, for a signed-in
+    speaker, their status card (``services.chat_app_context``); the feature
+    it opens becomes a chip, an offer bubble or a link."""
+    from services import chat_app_context as app
+    if not user_id:
+        gate = app.signup_gate(history)
+        if gate:
+            return _reply(gate, debug={"intent": "signup_gate"}), "signup_gate"
     admin_notes = _admin_notes(database, user_id)
     life_context = _life_context(user_id, question, app_config)
+    card = app.status_card(database, user_id) if user_id else None
     from services.master_doc_rag import answer_question
     payload, debug = answer_question(
         question, history=history, admin_dont_ask_notes=admin_notes,
-        life_context=life_context)
+        life_context=life_context,
+        app_context={"features": app.features_block(card),
+                     "status": app.render_status(card)})
     suggested = payload.get("suggested_action")
     if suggested not in ("trainings", "audit"):
         suggested = None
-    return _reply(payload.get("answer", ""),
+    answer = payload.get("answer", "")
+    opened = app.apply_app_action(payload.get("app_action"), card=card,
+                                  signed_in=bool(user_id), context=context)
+    if opened.get("suggested_action"):
+        suggested = opened["suggested_action"]
+    if opened.get("link") and opened["link"] not in answer:
+        answer = f"{answer}\n\n{opened['link']}"
+    extra = {"offer": opened["offer"]} if opened.get("offer") else {}
+    return _reply(answer,
                   show_record_ui=bool(payload.get("show_record_ui", False)),
-                  suggested_action=suggested, debug=debug), \
+                  suggested_action=suggested, debug=debug, **extra), \
         (debug or {}).get("intent") or "faq"
 
 
@@ -277,4 +314,5 @@ def answer_chat(database, *, user_id, question: str, history, context,
         except Exception as error:
             args = (user_id, error) if "user=%s" in failure else (error,)
             logger.warning("chat/query: " + failure, *args)
-    return finalize(*_librarian(database, user_id, question, history, app_config))
+    return finalize(*_librarian(database, user_id, question, history,
+                                app_config, context))
