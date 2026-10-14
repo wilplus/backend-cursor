@@ -1,8 +1,9 @@
 """WhatsApp: "the feedback from your coach is in" (founder 2026-10-12).
 
 The speaker leaves a phone number in the Lounge's second footer offer (after
-"Add to home screen"). When a coach first shares their word for a Take, the
-speaker gets one WhatsApp message beside the Lounge bubble bump. It carries
+"Add to home screen"). Each message a coach shares (their word for a Take,
+or their answer on one moment; founder 2026-10-14) sends the speaker one
+WhatsApp message beside the Lounge bubble. It carries
 no speaker content and no score (AC-9): only that feedback is in, and the
 link to the app.
 
