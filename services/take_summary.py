@@ -14,9 +14,17 @@ protected provider scope for the Take, as ``services.willfidence`` does).
   "cue" or a metric name; no number, score or verdict (AC-9); no
   cheerleading. After Take 1 it claims no progress.
 
+Cheeky and curious (founder 2026-10-14): the bubble now also knows the
+talk's title and slide topics, what the speaker said, and their most
+willfident moment. It praises through one SIGNED line (``line_bank``),
+lightly varied at most, checked in code; it gives no advice (the walk
+did) and ends with a question back to the speaker. If they have no
+WhatsApp number yet, the Lounge's own WhatsApp offer follows the bubble.
+
 Anything that fails (no permit, no provider, a reply that breaks the
-rules) falls back to the signed journey copy, so the speaker always gets
-the bubble. Stored once per Take (a fixed client id).
+rules or drifts from the signed lines) falls back to the signed journey
+copy, so the speaker always gets the bubble. Stored once per Take (a
+fixed client id).
 
 A coach update: when a coach shares a word on a Take whose summary is
 already stored (``coach_update``, called from the coach's share), or the
@@ -42,15 +50,33 @@ _SURFACE = "take_summary"
 #: A move smaller than this between two Takes is "held" (internal only).
 _MOVE = 0.03
 _BANNED = re.compile(r"\d|%|\bcue\b|\bscore\b|\bmetric|\bwillfidence\b|\bpercent", re.I)
+#: A signed later-line names its Take; that is the one number allowed.
+_TAKE_NUMBER = re.compile(r"\bTake \d+\b")
+_EMOJI = re.compile("[\U0001F300-\U0001FAFF\u2600-\u27BF]")
+#: How close a sentence must be to a signed line (shared words).
+_NEAR = 0.5
+_MAX_CHARS = 420
 
 _SYSTEM = (
-    "You are a speaking coach writing one short chat message to a speaker "
-    "after they reviewed a recording of their talk. Write 2 or 3 plain "
-    "sentences, like a coach talking to a friend: use 'you' and "
-    "contractions. Never use numbers, scores, percentages, verdicts, the "
-    "word 'cue', or names of measurements. No cheerleading, no exclamation "
-    "marks, no emoji. Only say what the facts support. If the facts say "
-    "there is no earlier take, do not claim any progress."
+    "You are Will, a speaking coach and a curious, cheeky colleague. Write "
+    "one short chat message to a speaker right after they reviewed a "
+    "recording of their talk. 2 to 4 short sentences, like a friend at "
+    "work: 'you', contractions, playful and warm. Exclamation marks are "
+    "fine; at most one emoji.\n"
+    "- Use exactly one of the SIGNED LINES below for the praise, word for "
+    "word or with a light touch. Never write other praise.\n"
+    "- Make it about their talk: name the talk or one slide topic.\n"
+    "- If what they said seems to wander from the talk's title, ask about "
+    "it with curiosity, never as a correction.\n"
+    "- Give no feedback and no advice: their walk already did that.\n"
+    "- End with one question back to them: how it went, whether they like "
+    "it, another Take, or anything they want to tell you.\n"
+    "- Speak only to what this Take showed about whether they can do "
+    "this; never judge them as a person, their self-esteem or their worth.\n"
+    "Never use numbers (a Take number inside a signed line is the one "
+    "exception), scores, percentages, verdicts, the words 'cue' or "
+    "'willfidence', or names of measurements. Only say what the facts "
+    "support. If there is no earlier take, claim no progress."
 )
 
 
@@ -87,25 +113,54 @@ def progress_facts(now: list[dict], before: Optional[list[dict]]) -> list[str]:
     return facts or ["There is not enough to compare this take with the last one."]
 
 
-def _clean(text: Optional[str]) -> Optional[str]:
-    """The reply, if it keeps the rules: 2-3 sentences, no number or banned
-    word, no exclamation. Else None."""
+def _words(text: str) -> set:
+    return set(re.findall(r"[a-z']+", text.lower()))
+
+
+def _near_signed(sentences: list[str], lines: list[str]) -> bool:
+    """Some sentence shares most of its words with a signed line. Pure."""
+    for line in lines:
+        signed = _words(line)
+        for sentence in sentences:
+            said = _words(sentence)
+            if signed and said and len(signed & said) / len(signed | said) >= _NEAR:
+                return True
+    return False
+
+
+def _clean(text: Optional[str], lines: Optional[list[str]] = None,
+           names: tuple = ()) -> Optional[str]:
+    """The reply, if it keeps the rules: 2-4 short sentences, no number
+    (but a signed line's Take number, or one inside the talk's own title
+    or slide names) or banned word, at most one emoji and, when signed
+    lines were given, one of them said near-verbatim. Else None."""
     if not text:
         return None
     body = " ".join(text.strip().strip('"').split())
-    sentences = [s for s in re.split(r"(?<=[.?])\s+", body) if s]
-    if not 2 <= len(sentences) <= 3 or _BANNED.search(body) or "!" in body:
+    sentences = [s for s in re.split(r"(?<=[.?!])\s+", body) if s]
+    if not 2 <= len(sentences) <= 4 or len(body) > _MAX_CHARS:
+        return None
+    checked = _TAKE_NUMBER.sub("Take", body)
+    for name in sorted((n for n in names if n), key=len, reverse=True):
+        checked = checked.replace(name, "")
+    if _BANNED.search(checked) or len(_EMOJI.findall(body)) > 1:
+        return None
+    if lines and not _near_signed(sentences, lines):
         return None
     return body
 
 
 def write_summary(anchor: str, facts: list[str], *, practice: Optional[str],
                   helper_words: list[str], coach_note: Optional[str],
-                  session_id: str, arc_id: str, user_id: str) -> Optional[str]:
+                  session_id: str, arc_id: str, user_id: str,
+                  signed: Optional[list[str]] = None,
+                  names: tuple = ()) -> Optional[str]:
     from services.llm import chat_complete
     from services.llm_config import SPEC_TAKE_SUMMARY
-    lines = [f"The usual message for this point (use its spirit, not its words): {anchor}",
-             "Facts:"] + [f"- {f}" for f in facts]
+    lines = [f"The usual message for this point (use its spirit, not its words): {anchor}"]
+    if signed:
+        lines += ["SIGNED LINES (use exactly one):"] + [f"- {s}" for s in signed]
+    lines += ["Facts:"] + [f"- {f}" for f in facts]
     if practice == "better":
         lines.append("- In practice, their last try sounded more assured than the first.")
     elif practice == "not_yet":
@@ -117,7 +172,7 @@ def write_summary(anchor: str, facts: list[str], *, practice: Optional[str],
     result = chat_complete(spec=SPEC_TAKE_SUMMARY, system=_SYSTEM, user="\n".join(lines),
                            surface=_SURFACE, user_id=user_id, session_id=session_id,
                            arc_id=arc_id)
-    return _clean(getattr(result, "text", None) if result else None)
+    return _clean(getattr(result, "text", None) if result else None, signed, names)
 
 
 def _under_authority(database: Any, take: str, write) -> Optional[str]:
@@ -180,15 +235,97 @@ def _heard_before(held: Optional[dict], note: Optional[str]) -> bool:
 
 
 def _written(database: Any, take: str, anchor: str, facts: list[str], practice: Optional[str],
-             words: list[str], note: Optional[str], arc_id: str, user_id: str) -> Optional[str]:
+             words: list[str], note: Optional[str], arc_id: str, user_id: str,
+             signed: Optional[list[str]] = None, names: tuple = ()) -> Optional[str]:
     """GPT-4o's summary under the Take's authority; None when refused or failed."""
     try:
         return _under_authority(database, take, lambda: write_summary(
             anchor, facts, practice=practice, helper_words=words, coach_note=note,
-            session_id=take, arc_id=arc_id, user_id=user_id))
+            session_id=take, arc_id=arc_id, user_id=user_id, signed=signed,
+            names=names))
     except Exception as error:  # noqa: BLE001 -- refused or failed: the signed copy
         logger.warning("take summary refused take=%s: %s", take, error, exc_info=True)
         return None
+
+
+_SAID_CHARS = 1500
+_MOMENT_CHARS = 300
+
+
+def talk_names(takes: list[dict]) -> tuple:
+    """The talk's title and slide topics, from its Takes' intake. Pure."""
+    from services.chat_app_context import slide_topics, talk_title
+    contexts = [t.get("intake_context") or {} for t in takes]
+    return (talk_title(contexts), *slide_topics(contexts))
+
+
+def talk_facts(takes: list[dict]) -> list[str]:
+    """The talk's title and slide topics as facts. Pure."""
+    from services.chat_app_context import slide_topics, talk_title
+    contexts = [t.get("intake_context") or {} for t in takes]
+    facts = []
+    title = talk_title(contexts)
+    if title:
+        facts.append(f'The talk is called "{title}".')
+    topics = slide_topics(contexts)
+    if topics:
+        facts.append("Its slides, in order: " + " | ".join(topics) + ".")
+    return facts
+
+
+def _moments(database: Any, take: str) -> list[dict]:
+    """This Take's moments as text ({ref, text}); [] when unread."""
+    try:
+        from services.willfidence import moments_text
+        frame = database.get_v4_dark_frame(take)
+        if not isinstance(frame, dict):
+            return []
+        return moments_text(frame, database.get_snippets_by_session(take) or [])
+    except Exception as error:  # noqa: BLE001 -- the summary stands without it
+        logger.warning("take summary moments unread take=%s: %s", take, error, exc_info=True)
+        return []
+
+
+def said_facts(moments: list[dict], now: list[dict]) -> list[str]:
+    """What the speaker said, and their most willfident moment. Pure."""
+    said = " ".join(m["text"] for m in moments if m.get("text")).strip()
+    facts = [f"What they said this Take: {said[:_SAID_CHARS]}"] if said else []
+    rated = [r for r in now if isinstance(r.get("willfident"), (int, float))]
+    best = max(rated, key=lambda r: r["willfident"], default=None)
+    text = next((m["text"] for m in moments
+                 if best and m.get("ref") == str(best.get("block_id")) and m.get("text")), "")
+    if text:
+        facts.append(f"Their most confident moment this Take: \"{text[:_MOMENT_CHARS]}\"")
+    return facts
+
+
+def signed_lines(now: list[dict], before: Optional[list[dict]], take_index: int) -> list[str]:
+    """The signed praise lines this Take may use (``line_bank``): the bank
+    for what carried it (the voice or the words), the gentle general bank,
+    and, from Take 2 on when the voice rose, the signed later-line. Rotated
+    by the Take so a speaker does not hear the same line twice. Pure."""
+    from services import line_bank
+    voice, words = _mean(now, "s"), _mean(now, "w")
+    lead = "B07" if (words or 0) > (voice or 0) else "B01"
+    picks = []
+    for bank in (lead, "B09"):
+        options = line_bank.BANKS[bank]
+        picks += [options[(take_index + i) % len(options)] for i in range(2)]
+    if before is not None and _move(voice, _mean(before, "s")) == "rose":
+        picks.append(line_bank.later_line("B01", take_index - 1))
+    return picks
+
+
+def _whatsapp_offer(database: Any, user_id: str, client_id: str, at: str) -> list[dict]:
+    """The Lounge's WhatsApp offer after the bubble, when the speaker has
+    no number yet (founder 2026-10-14); [] otherwise."""
+    from services.whatsapp_notify import whatsapp_state
+    if whatsapp_state(database, user_id).get("phone"):
+        return []
+    from services.chat_app_context import OFFER_PROMPTS
+    return [{"client_id": str(uuid.uuid5(_NAMESPACE, f"{client_id}:whatsapp")),
+             "role": "bot", "kind": "text", "body": OFFER_PROMPTS["whatsapp"],
+             "metadata": {"offer": "whatsapp"}, "client_created_at": at}]
 
 
 def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dict],
@@ -213,8 +350,12 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
         words = words or [w for w in (first.get("helper_words") or []) if isinstance(w, str)][:2]
     anchor = _COPY.get(take_index) or _COPY[3]
     now, before = _reads(database, ids, take_index)
-    text = _written(database, take, anchor, progress_facts(now, before), practice, words,
-                    note, str(arc_id), str(user_id))
+    facts = (talk_facts(takes) + said_facts(_moments(database, take), now)
+             + progress_facts(now, before))
+    text = _written(database, take, anchor, facts, practice, words,
+                    note, str(arc_id), str(user_id),
+                    signed=signed_lines(now, before, take_index),
+                    names=talk_names(takes))
     meta = {"summary": True, "arc_id": str(arc_id), "take_index": take_index,
             "take_session_id": take, "written": bool(text), "coach_noted": note is not None,
             "coach_note_key": _note_key(note), "practice": practice, "helper_words": words}
@@ -223,14 +364,15 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
             return held  # the coach's update could not be written: keep it
         meta.update({"coach_update": True, "earlier": held.get("body")})
         return database.rewrite_lounge_message(str(user_id), client_id, text, meta) or held
+    at = datetime.now(timezone.utc).isoformat()
     persisted = database.insert_lounge_messages(str(user_id), [{
         "client_id": client_id,
         "role": "bot",
         "kind": "cadence",
         "body": text or anchor,
         "metadata": meta,
-        "client_created_at": datetime.now(timezone.utc).isoformat(),
-    }])
+        "client_created_at": at,
+    }] + _whatsapp_offer(database, str(user_id), client_id, at))
     return persisted[0] if persisted else None
 
 
@@ -319,3 +461,10 @@ def coach_update_message(database: Any, *, take_session_id: str, text: Optional[
         "client_created_at": datetime.now(timezone.utc).isoformat(),
     }])
     return persisted[0] if persisted else None
+
+
+def line_bank_lines() -> set:
+    """Every signed line and later-line text, for checks. Pure."""
+    from services import line_bank
+    lines = {line for bank in line_bank.BANKS.values() for line in bank}
+    return lines | set(line_bank.LATER.values())

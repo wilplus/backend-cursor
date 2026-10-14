@@ -161,15 +161,16 @@ def _hidden(database, arc_id: str) -> bool:
             or arc_id in service.archived_projects([arc_id]))
 
 
-def _title(contexts: list, payload: dict) -> str:
+def talk_title(contexts: list, payload: Optional[dict] = None) -> str:
+    """The talk's title: the newest Take's topic, else the Ideal Text's."""
     for c in reversed(contexts):
         topic = c.get("topic")
         if isinstance(topic, str) and topic.strip():
             return topic.strip()
-    return (payload.get("title") or "").strip()
+    return ((payload or {}).get("title") or "").strip()
 
 
-def _slide_topics(contexts: list) -> list:
+def slide_topics(contexts: list) -> list:
     """The project's deck is the longest slide list across its Takes."""
     slides = max((c.get("slides") or [] for c in contexts), key=len, default=[])
     topics = [((s.get("title") or (s.get("body") or "").split("\n")[0]).strip())
@@ -207,8 +208,8 @@ def _project(database, uid: str) -> dict:
     payload = (database.get_ideal_text_document_core(arc_id, uid) or {}
                ).get("payload") or {}
     project = {
-        "title": _title(contexts, payload),
-        "slide_topics": _slide_topics(contexts),
+        "title": talk_title(contexts, payload),
+        "slide_topics": slide_topics(contexts),
         "takes_done": len(done),
         "processing": any(s.get("analysis_state") == "processing"
                           for s in spoken),

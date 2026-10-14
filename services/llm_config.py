@@ -77,8 +77,8 @@ SPEC_TAKE_SUMMARY = LLMSpec(
     timeout_seconds=20.0,
 )
 """The closing summary after a Take's review (founder lock 2026-10-12,
-moment and feedback chat, section 3): 2-3 plain sentences, a coach
-talking. ``services.take_summary``."""
+moment and feedback chat, section 3; cheeky and curious since 2026-10-14):
+2-4 short sentences, a colleague talking. ``services.take_summary``."""
 
 
 SPEC_MASTER_DOC_RAG = LLMSpec(
