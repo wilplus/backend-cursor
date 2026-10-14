@@ -231,6 +231,28 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
   it serves new moments to judge, and no other speaker's recording is ever
   stored in a speaker's thread. Do not build the read-only replay.
 
+- **Walk first** (founder, 2026-10-14, approved on the "Walk First"
+  prototype, https://claude.ai/artifact/Bsf3x3HWN2jJVY35edRKw8):
+  - **One Ideal Text bubble per Take:** the small card with the first slide,
+    the project's name and a version tag ("2.0"), and the coach's "new" dot
+    on the project's newest card. The big "Open your ideal text" card is
+    gone; a Take whose review has not posted its card shows the same small
+    card instead.
+  - **The card** opens the Ideal Text page on the text, from the top. Every
+    other bubble with › opens that Take's walk on that step.
+  - **The walk ends on the Ideal Text page.** Next goes to the next step
+    that still waits; when nothing waits, step by step.
+  - **✕** goes back where the step was opened from: the chat, or the Ideal
+    Text page for a step opened from a paragraph.
+  - **Answered steps are read only.** Helper words stay editable on the
+    latest Take only (rule 5). An exercise already done plays its tries; a
+    new practice comes with the next Take.
+  - **Bookmarks are back as the margin line, now black,** on every
+    paragraph that opens a step (this amends section 4, "No bookmarks").
+    That paragraph, or its orange helper words, opens its step; Next walks
+    on from there to the end.
+  - An older Take's walk is read only and ends on that Take's Ideal Text.
+
 ## Still open
 
 - **Self-judgement of your own practice try is off for launch** (founder,
