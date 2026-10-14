@@ -97,7 +97,9 @@ def _tell_the_speaker(database: Any, take_session_id: str, *,
         session = database.v2_get_session_by_id(take_session_id) or {}
         if session.get("user_id") and session.get("arc_id"):
             bump_ideal_bubble(database, session["user_id"], session["arc_id"])
-        if first_share and session.get("user_id"):
+        if not first_share:
+            _log.info("whatsapp: take=%s was shared before, no message", take_session_id)
+        elif session.get("user_id"):
             from services.whatsapp_notify import notify_coach_feedback_in_background
             notify_coach_feedback_in_background(database, session["user_id"])
     except Exception as e:  # noqa: BLE001 -- the word is saved either way
