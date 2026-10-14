@@ -99,8 +99,8 @@ def refresh_practice_clips(messages: list, user_id: str, database: Any,
 
 
 def attach_card_decks(messages: list, user_id: str, database: Any) -> None:
-    """The Ideal Text card at a review's end shows its project's first
-    slide: each card gets `metadata.deck.presentation_ref`, a fresh link to
+    """The Ideal Text card (a review's end, or a Take's Ideal Text bubble)
+    shows its project's first slide: each card gets `metadata.deck.presentation_ref`, a fresh link to
     the reader's own project's deck (null for a deckless project, whose
     card shows the default deck). Unowned or unreadable: no `deck`."""
     from services.coach_video_storage import refreshed_media_url
@@ -109,8 +109,12 @@ def attach_card_decks(messages: list, user_id: str, database: Any) -> None:
 
     decks: dict = {}
     for m in messages or []:
-        meta = m.get("metadata") if m.get("kind") == "walk_step" else None
-        if not isinstance(meta, dict) or meta.get("step") != "end":
+        # A review's card, or a Take's Ideal Text bubble drawn as the same
+        # small card (founder 2026-10-14, one card per Take).
+        meta = m.get("metadata") if m.get("kind") in ("walk_step", "ideal_text") else None
+        if not isinstance(meta, dict):
+            continue
+        if m.get("kind") == "walk_step" and meta.get("step") != "end":
             continue
         arc = str(meta.get("arc_id") or "")
         if not arc:
