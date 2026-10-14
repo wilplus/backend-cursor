@@ -74,6 +74,27 @@ def test_the_sheet_payload_is_blind():
                                                        "start_offset_ms", "duration_ms"}
 
 
+
+def test_a_take_with_two_frames_still_fills_the_pick_sheets():
+    """A Take has one frame per policy version and they share block ids.
+    Each block is asked once (v4_moment_pick_sheets_once), and a block the
+    database refuses is skipped, not a 500."""
+    db = _Db()
+    frames = db.list_recent_v3_frames()
+    db.list_recent_v3_frames = lambda limit=200: frames + frames
+    insert = db.insert_v4_pick_sheet
+
+    def once(row):
+        if any(s["block_id"] == row["block_id"] for s in db.sheets):
+            raise RuntimeError("duplicate key value violates v4_moment_pick_sheets_once")
+        if row["block_id"] == "b0":
+            raise RuntimeError("the database refused this one")
+        return insert(row)
+    db.insert_v4_pick_sheet = once
+    written = cs.fill_pick_sheets(db, rater_id="c1", week="w", rng=random.Random(3), now=NOW)
+    ids = [w["block_id"] for w in written]
+    assert written and len(ids) == len(set(ids)) and "b0" not in ids
+
 def test_the_pair_payload_is_blind():
     """Post-merge review of 0453: the rows are read whole (select *), and the
     payload is built field by field, so a pair's slice, level, bar and the

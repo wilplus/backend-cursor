@@ -145,17 +145,25 @@ def sample_for_coach(database: Any, *, coach_id: str, week: str,
         for block in askable_blocks(frame_row.get("frame"), take_session_id=take):
             if len(written) >= room or block["block_id"] in done:
                 continue
+            # A Take has one frame per policy version and they share block
+            # ids; the block is asked once (coach_block_pick_once).
+            done.add(block["block_id"])
             if exposed_clip_ids(database, str(coach_id), block["candidate_ids"]):
                 continue
             clips = sheet_clips(block, rng=rng)
-            row = database.insert_coach_block_pick({
-                "coach_id": str(coach_id), "take_session_id": take,
-                "block_id": block["block_id"], "candidate_snippet_ids": clips,
-                "manager_pick_snippet_id": block["manager_pick"],
-                "policy_version": POLICY_VERSION,
-                "frame_policy_version": frame_row.get("policy_version"),
-                "week": week, "provenance": PROVENANCE,
-            })
+            try:
+                row = database.insert_coach_block_pick({
+                    "coach_id": str(coach_id), "take_session_id": take,
+                    "block_id": block["block_id"], "candidate_snippet_ids": clips,
+                    "manager_pick_snippet_id": block["manager_pick"],
+                    "policy_version": POLICY_VERSION,
+                    "frame_policy_version": frame_row.get("policy_version"),
+                    "week": week, "provenance": PROVENANCE,
+                })
+            except Exception as e:  # noqa: BLE001 -- one refused block never empties the queue
+                _log.warning("block pick not written coach=%s block=%s: %s",
+                             coach_id, block["block_id"], e)
+                continue
             if isinstance(row, dict):
                 written.append(row)
                 for clip in clips:

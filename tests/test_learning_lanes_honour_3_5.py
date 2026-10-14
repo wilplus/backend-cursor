@@ -136,4 +136,25 @@ def test_only_yes_speakers_reach_the_block_pick_and_a_withdrawal_empties_it(monk
     assert bp.answer(db, coach_id="c", pick_id=gone["id"], body={"cant_tell": True})[0] == 404
 
 
+
+def test_a_take_with_two_frames_still_fills_the_block_pick(monkeypatch):
+    """A Take has one frame per policy version and they share block ids.
+    The coach's queue still fills, each block once, and a block the
+    database refuses (coach_block_pick_once) is skipped, not a 500."""
+    db = _PickDb()
+    frames = db.list_recent_v3_frames()
+    db.list_recent_v3_frames = lambda limit=200: frames + [
+        {**f, "policy_version": "v3-older"} for f in frames]
+    insert = db.insert_coach_block_pick
+
+    def once(row):
+        if any(p["block_id"] == row["block_id"] for p in db.picks):
+            raise RuntimeError("duplicate key value violates coach_block_pick_once")
+        if row["take_session_id"] == "t-gone":
+            raise RuntimeError("the database refused this one")
+        return insert(row)
+    db.insert_coach_block_pick = once
+    written = bp.sample_for_coach(db, coach_id="c", week="w", rng=random.Random(2))
+    assert [w["take_session_id"] for w in written] == ["t-yes"]
+
 # ── E5: the learned exercise order ───────────────────────────────────────
