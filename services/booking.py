@@ -40,9 +40,10 @@ config = Config()
 
 BOOKING_KIND = "booking"
 SLOT_STEP_MIN = 30
-# Stripe's shortest Checkout expiry is 30 minutes. The hold outlives it a
-# little, so a guest who pays in the last second still finds the slot held.
-CHECKOUT_MINUTES = 30
+# Stripe refuses a Checkout expiry under 30 minutes from its own clock, so
+# leave room. The hold outlives it a little, so a guest who pays in the last
+# second still finds the slot held.
+CHECKOUT_MINUTES = 35
 HOLD_MINUTES = CHECKOUT_MINUTES + 5
 CURRENCIES = ("usd", "eur", "pln", "gbp")
 DAYS = ("0", "1", "2", "3", "4", "5", "6")  # Sunday=0, JS getDay() order
@@ -201,9 +202,10 @@ def set_user_price(user_id: str, price_cents: Optional[int]) -> Optional[int]:
     return int(price_cents)
 
 
-def offer_for(slug: str, user_id: str) -> dict:
+def offer_for(slug: str, user_id: str, email: str = "") -> dict:
     """What this person pays and gets. The page shows the list price crossed
-    out when their price is lower."""
+    out when their price is lower. `pay` says whether they pay by card now;
+    `allow_skip_payment` whether "Book without paying" is offered."""
     page = public_settings(slug)
     own = user_price(user_id)
     price = page["price_cents"] if own is None else own
@@ -217,13 +219,19 @@ def offer_for(slug: str, user_id: str) -> dict:
         "price_cents": price,
         "currency": page["currency"],
         "bonus_tokens": page["bonus_tokens"],
-        "allow_skip_payment": PAYMENT_OFF or bool(get_settings().get("allow_skip_payment")),
+        "pay": pays(email),
+        "allow_skip_payment": not pays(email) or bool(get_settings().get("allow_skip_payment")),
     }
 
 
-# Founder 2026-10-13: no payment for now; every booking confirms without
-# Stripe. Set back to False to charge again.
-PAYMENT_OFF = True
+# Founder 2026-10-14: card payment is on only for these accounts while it is
+# tested; everyone else books without paying. For them the admin's "Allow
+# booking without paying" box decides, as for everyone once this is None.
+PAYMENT_ONLY_FOR: Optional[set[str]] = {"a.willonski@gmail.com"}
+
+
+def pays(email: str) -> bool:
+    return PAYMENT_ONLY_FOR is None or (email or "").strip().lower() in PAYMENT_ONLY_FOR
 
 
 # ------------------------------------------------------ calendar busy times
@@ -387,11 +395,11 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
     `embedded`, else {"url": ...} for Stripe's own page; a free meeting skips
     Stripe and returns {"url": ...} to the confirmation."""
     s = get_settings()
-    offer = offer_for(slug, user_id)  # raises NOT_FOUND when off or wrong link
+    offer = offer_for(slug, user_id, email)  # raises NOT_FOUND when off or wrong link
     price = int(offer["price_cents"])
     # Booking without paying (temporary, only while the admin allows it): a
     # confirmed booking at 0 with no tokens; the lesson is settled outside.
-    skip = PAYMENT_OFF or (skip_payment and offer["allow_skip_payment"])
+    skip = not offer["pay"] or (skip_payment and offer["allow_skip_payment"])
     if skip:
         price = 0
     name, email, note = (name or "").strip()[:120], (email or "").strip()[:254], (note or "").strip()[:2000]

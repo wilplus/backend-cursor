@@ -77,7 +77,7 @@ def booking_offer(slug: str):
         return _reply({**booking.offer_for(slug, preview), "preview": True})
     payload = getattr(request, "token_payload", None) or {}
     meta = payload.get("user_metadata") or {}
-    return _reply({**booking.offer_for(slug, user_id), "preview": False,
+    return _reply({**booking.offer_for(slug, user_id, payload.get("email") or ""), "preview": False,
                    "email": payload.get("email") or "",
                    "name": meta.get("full_name") or meta.get("name") or ""})
 
