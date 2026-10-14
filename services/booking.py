@@ -201,22 +201,16 @@ def set_user_price(user_id: str, price_cents: Optional[int]) -> Optional[int]:
     return int(price_cents)
 
 
-def _has_lesson(user_id: str) -> bool:
-    rows = (db.client.table("bookings").select("id").eq("user_id", user_id)
-            .eq("status", "confirmed").limit(1).execute().data) or []
-    return bool(rows)
-
-
 def offer_for(slug: str, user_id: str) -> dict:
     """What this person pays and gets. The page shows the list price crossed
     out when their price is lower."""
     page = public_settings(slug)
     own = user_price(user_id)
     price = page["price_cents"] if own is None else own
-    # New-user offer: a % off for someone without a paid lesson yet. A price
-    # set on their profile wins over it.
+    # The % off (founder 2026-10-14: for everyone, returning people too). A
+    # price set on their profile wins over it.
     pct = int(get_settings().get("new_user_discount_pct") or 0)
-    if own is None and pct and not _has_lesson(user_id):
+    if own is None and pct:
         price = round(page["price_cents"] * (100 - pct) / 100)
     return {
         "list_price_cents": page["price_cents"],
