@@ -392,6 +392,12 @@ def _structural_stars_enabled() -> bool:
         in ("1", "true", "yes")
 
 
+#: How many waves of candidates the structural search may spend before it
+#: stops looking — a wave is one `STRUCTURAL_STARS_MAX_PER_TAKE` of pieces,
+#: so this bounds the search at 3 × cap pieces, in document order.
+STRUCTURAL_STAR_SEARCH_WAVES = 3
+
+
 def _generate_structural(database, arc_id, candidates, *,
                          user_id=None) -> int:
     """Detect + persist structural stars for the no-acoustic-star snippets,
@@ -438,6 +444,16 @@ def _generate_structural(database, arc_id, candidates, *,
                 return None
         return _run
 
+    # BOUNDED SEARCH (founder 2026-10-14, the wait). The loop below fires a
+    # wave, and another, and another, until the cap is met or the candidates
+    # run out — on a long take where few pieces carry a device, that is a
+    # wave of model calls per three pieces, one after the other, all on the
+    # speaker's wait. The praise is one device per Take on screen; it does
+    # not need the whole take searched to find it. So the search stops at
+    # `STRUCTURAL_STAR_SEARCH_WAVES` full waves' worth of candidates, taken
+    # in the same document order with the same prompt: a Take whose first
+    # pieces carry devices stores exactly what it stored before.
+    candidates = candidates[:_cap * STRUCTURAL_STAR_SEARCH_WAVES]
     stored = 0
     at = 0
     while at < len(candidates) and stored < _cap:
