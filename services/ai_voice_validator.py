@@ -11,7 +11,9 @@ only when every check passes:
   words       re-transcribed (the existing Whisper, through the permit), the
               same words as the speaker's own sentence
   exercise    pace: slower than the original, but not dragged out
-              pause: one natural pause right before the target phrase
+              pause: one natural pause right before the target phrase,
+                     read from the audio's silence (Whisper's word times
+                     swallow short silences)
               stress: the target phrase louder than the rest, not shouted
 
 Every threshold is a named constant here, so tuning is one reviewed edit.
@@ -122,17 +124,42 @@ def _check_pace(words: list[dict], original_wpm: Optional[float]) -> dict:
     return {"passed": not failed, "measurements": m, "failed": failed}
 
 
-def _check_pause(words: list[dict], index: int) -> dict:
-    gaps = [max(0.0, words[i]["start"] - words[i - 1]["end"])
-            for i in range(1, len(words))]
-    gap = gaps[index - 1]
-    others = [g for k, g in enumerate(gaps) if k != index - 1] or [0.0]
-    median = statistics.median(others)
-    m = {"pause_s": round(gap, 3), "median_gap_s": round(median, 3)}
+def _silent_runs(dbs: list[float]) -> list[tuple[int, int]]:
+    """(first frame, frame count) of each silence inside the speech: the
+    lead-in and the tail are not pauses."""
+    runs, start = [], None
+    for i, db in enumerate(list(dbs) + [0.0]):
+        if db <= SILENT_DB and start is None:
+            start = i
+        elif db > SILENT_DB and start is not None:
+            if start > 0 and i < len(dbs):
+                runs.append((start, i - start))
+            start = None
+    return runs
+
+
+def _check_pause(words: list[dict], dbs: list[float], index: int) -> dict:
+    """The pause before the target phrase, read from the audio's silence.
+
+    Whisper's word times stretch the words over a short silence (the
+    founder's smoke run, 2026-10-13: a clearly audible pause read as 0 s),
+    so the pause is the longest silence between the start of the word
+    before the phrase and the end of the phrase's first word; the word gap
+    counts only when it is longer."""
+    gap = max(0.0, words[index]["start"] - words[index - 1]["end"])
+    lo = int(words[index - 1]["start"] / _FRAME_S)
+    hi = int(words[index]["end"] / _FRAME_S) + 1
+    runs = _silent_runs(dbs)
+    here = [n for (i, n) in runs if i < hi and i + n > lo]
+    others = [n * _FRAME_S for (i, n) in runs if not (i < hi and i + n > lo)]
+    pause = max([gap] + [n * _FRAME_S for n in here])
+    median = statistics.median(others) if others else 0.0
+    m = {"pause_s": round(pause, 3), "word_gap_s": round(gap, 3),
+         "median_other_silence_s": round(median, 3)}
     failed = []
-    if not PAUSE_MIN_S <= gap <= PAUSE_MAX_S:
+    if not PAUSE_MIN_S <= pause <= PAUSE_MAX_S:
         failed.append("pause_length")
-    if gap < PAUSE_OVER_MEDIAN * max(median, 0.05):
+    if pause < PAUSE_OVER_MEDIAN * max(median, 0.05):
         failed.append("pause_not_distinct")
     return {"passed": not failed, "measurements": m, "failed": failed}
 
@@ -165,7 +192,7 @@ def check_exercise(problem: str, *, words: list[dict], dbs: list[float],
     if index is None or index == 0:
         return {"passed": False, "measurements": {}, "failed": ["target_not_found"]}
     if problem == "pause":
-        return _check_pause(words, index)
+        return _check_pause(words, dbs, index)
     return _check_stress(words, dbs, index, phrase or "")
 
 
