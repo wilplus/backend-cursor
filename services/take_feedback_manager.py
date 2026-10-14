@@ -395,10 +395,12 @@ CLIENT_READ_ROW_FIELDS = frozenset({
     "visual", "pending_better_version", "pending_copy", "cue_keys",
     "praise_line", "rewrite_move", "snippet_audio_ref", "start_offset_ms",
     "duration_ms", "practice_exercise", "learning_exposures", "level_key",
+    # The coach's shared answer in words, `{kind, text, video_url?}`
+    # (`confident_voice_practice.coach_shared_answer`), read by the walk
+    # since 2026-10-14. No number, no draft.
+    "coach_answer",
 })
-#: The coach's shared answer in words, `{kind, text, video_url?}`
-#: (`confident_voice_practice.coach_shared_answer`). No number, no draft.
-UNRENDERED_ROW_FIELDS = frozenset({"coach_answer"})
+UNRENDERED_ROW_FIELDS: frozenset[str] = frozenset()
 CLIENT_ROW_FIELDS = CLIENT_READ_ROW_FIELDS | UNRENDERED_ROW_FIELDS
 
 
