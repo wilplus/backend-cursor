@@ -258,7 +258,21 @@ def resolve_request(database: Any, request: dict, body: Any,
         return _error(500, "V2_ERROR", "Could not save your answer.")
     _file_answer(database, request, resolved, fields, exercise, coach_id,
                  previous=request)
+    if resolved.get("shared_at") and not request.get("shared_at"):
+        _tell_the_speaker(database, request)
     return 200, {"request": coach_request_payload(resolved, database)}
+
+
+def _tell_the_speaker(database: Any, request: dict) -> None:
+    """This save shared the answer (a first share, or a share again after the
+    coach changed it): the speaker gets the WhatsApp, as for the Take's word
+    (founder 2026-10-14: any message the coach shares). Best-effort, off the
+    coach's request."""
+    try:
+        from services.whatsapp_notify import notify_coach_feedback_in_background
+        notify_coach_feedback_in_background(database, request.get("owner_user_id"))
+    except Exception as e:  # noqa: BLE001 -- the answer is saved either way
+        logger.info("coach answer whatsapp skipped request=%s: %s", request.get("id"), e)
 
 
 def _authored_for_this_moment(request: dict, resolution: str,
