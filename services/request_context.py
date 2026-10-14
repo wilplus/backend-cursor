@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 import contextvars
 import logging
 import re
+import time
 import uuid
 from typing import Any, Optional
 
@@ -80,6 +81,21 @@ def install_log_record_factory() -> None:
     _factory_installed = True
 
 
+# The stopwatch (founder 2026-10-14): how long each request took and how
+# many database calls it made, so slow screens are measured, not guessed.
+# Sent back as a Server-Timing header and logged when a request is slow.
+SLOW_REQUEST_MS = 500
+_DB_CALLS: contextvars.ContextVar[Optional[list[int]]] = contextvars.ContextVar(
+    "db_calls", default=None)
+
+
+def count_db_call() -> None:
+    """One database call inside the current request (no-op outside one)."""
+    box = _DB_CALLS.get()
+    if box is not None:
+        box[0] += 1
+
+
 def install_request_id(app: Any) -> None:
     """Bind the incoming id for each Flask request and echo it back."""
     from flask import g, request
@@ -90,12 +106,30 @@ def install_request_id(app: Any) -> None:
         # When the request arrived, for timings measured from arrival (V4
         # B1.4: the practise read's server-side wait).
         g.received_at = datetime.now(timezone.utc)
+        g.started_perf = time.perf_counter()
+        _DB_CALLS.set([0])
 
     @app.after_request
     def _echo_request_id(response: Any) -> Any:
         response.headers[HEADER] = current_request_id()
+        try:
+            started = g.get("started_perf")
+            box = _DB_CALLS.get()
+            if started is not None:
+                ms = (time.perf_counter() - started) * 1000.0
+                calls = box[0] if box else 0
+                timing = f"app;dur={ms:.0f}, db;desc=\"calls\";dur={calls}"
+                existing = response.headers.get("Server-Timing")
+                response.headers["Server-Timing"] = f"{existing}, {timing}" if existing else timing
+                if ms >= SLOW_REQUEST_MS:
+                    logging.getLogger("request_timing").info(
+                        "slow request %s %s status=%s ms=%.0f db_calls=%d",
+                        request.method, request.path, response.status_code, ms, calls)
+        except Exception:  # noqa: BLE001 -- the stopwatch never breaks a response
+            logging.getLogger("request_timing").warning("timing failed", exc_info=True)
         return response
 
     @app.teardown_request
     def _clear_request_id(_exc: Any) -> None:
         _REQUEST_ID.set(NO_REQUEST)
+        _DB_CALLS.set(None)

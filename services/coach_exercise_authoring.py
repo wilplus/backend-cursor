@@ -84,16 +84,23 @@ _DRAFT_SYSTEM = (
 
 
 def library_for_authoring(database: Any) -> dict:
-    """Every exercise with its latest version row, and the error library."""
-    exercises = database.list_diagnostic_exercises() or []
+    """Every exercise with its latest version row, and the error library.
+    The latest versions come in one read; the per-exercise read is only the
+    fallback when that read fails."""
+    exercises = [e for e in (database.list_diagnostic_exercises() or [])
+                 if isinstance(e, dict)]
+    ids = [str(e.get("exercise_id") or "") for e in exercises]
+    batch = getattr(database, "latest_exercise_versions", None)
+    newest = batch(ids) if batch is not None else None
     lister = getattr(database, "list_exercise_versions", None)
     rows = []
-    for exercise in exercises:
-        if not isinstance(exercise, dict):
-            continue
-        versions = lister(str(exercise.get("exercise_id") or "")) \
-            if lister is not None else []
-        rows.append({**exercise, "latest_version": (versions or [None])[0]})
+    for exercise, exercise_id in zip(exercises, ids):
+        if isinstance(newest, dict):
+            latest = newest.get(exercise_id)
+        else:
+            versions = lister(exercise_id) if lister is not None else []
+            latest = (versions or [None])[0]
+        rows.append({**exercise, "latest_version": latest})
     errors = database.list_speaking_errors(active_only=False) \
         if hasattr(database, "list_speaking_errors") else []
     return {"exercises": rows, "speaking_errors": errors or []}

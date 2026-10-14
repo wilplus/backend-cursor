@@ -48,7 +48,10 @@ def install() -> None:
         return
     original = SyncClient.request
 
+    from services.request_context import count_db_call
+
     def request(self, method, url, *args, **kwargs):
+        count_db_call()
         attempt = 0
         while True:
             try:

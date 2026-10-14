@@ -2,10 +2,43 @@
 from flask import Blueprint, request, jsonify
 from services.db import db
 import logging
+import threading
+import time
 from utils.errors import safe_error
 
 logger = logging.getLogger(__name__)
 admin_bp = Blueprint("admin", __name__)
+
+# A role answer is remembered for a minute per worker (founder 2026-10-14:
+# every admin and coach request asked the database again). Removing someone
+# from admin_users or coach_users therefore takes up to ROLE_TTL_S to bite on
+# a worker that answered yes just before. A failed lookup is never kept. The
+# entry is tied to the client object it was read with, so a rebuilt client
+# (or a test's stand-in) always asks afresh.
+ROLE_TTL_S = 60.0
+_role_cache: dict[tuple[str, str], tuple[float, int, bool]] = {}
+_role_lock = threading.Lock()
+
+
+def _role_lookup(table: str, email: str) -> bool:
+    key = (table, email.strip().lower())
+    client = db.client
+    now = time.monotonic()
+    with _role_lock:
+        hit = _role_cache.get(key)
+    if hit and hit[1] == id(client) and now - hit[0] < ROLE_TTL_S:
+        return hit[2]
+    result = (
+        client.table(table)
+        .select("id")
+        .eq("email", email)
+        .eq("is_active", True)
+        .execute()
+    )
+    answer = len(result.data) > 0
+    with _role_lock:
+        _role_cache[key] = (now, id(client), answer)
+    return answer
 
 
 def is_admin(user_id: str) -> bool:
@@ -17,14 +50,7 @@ def is_admin(user_id: str) -> bool:
         user_email = token_payload.get("email")
         if not user_email:
             return False
-        admin_result = (
-            db.client.table("admin_users")
-            .select("id")
-            .eq("email", user_email)
-            .eq("is_active", True)
-            .execute()
-        )
-        return len(admin_result.data) > 0
+        return _role_lookup("admin_users", user_email)
     except Exception as e:
         logger.error(f"Error checking admin status: {str(e)}")
         return False
@@ -61,14 +87,7 @@ def is_coach(user_id: str) -> bool:
         user_email = token_payload.get("email")
         if not user_email:
             return False
-        coach_result = (
-            db.client.table("coach_users")
-            .select("id")
-            .eq("email", user_email)
-            .eq("is_active", True)
-            .execute()
-        )
-        return len(coach_result.data) > 0
+        return _role_lookup("coach_users", user_email)
     except Exception as e:
         logger.error(f"Error checking coach status: {str(e)}")
         return False
