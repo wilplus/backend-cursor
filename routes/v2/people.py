@@ -19,6 +19,10 @@ Prices for one person (step 3, services/plan_promotions.py):
   DELETE /v2/admin/people/<user_id>/promotion   end it now
   GET    /v2/user/offers                        {"promotion", "lesson"} for the pricing screen
 
+Takes and acoustic data (services/admin_takes.py, admin only):
+  GET    /v2/admin/people/<user_id>/takes                  every Take with its measures
+  GET    /v2/admin/people/<user_id>/takes/<session_id>     one Take's pieces, every measure
+
 Deleting an account (the person's own deletion road, seven-day window):
   POST   /v2/admin/people/<user_id>/delete              request it
   POST   /v2/admin/people/<user_id>/delete/<id>/cancel  cancel it inside the window
@@ -165,3 +169,20 @@ def cancel_delete_person(user_id: str, request_id: str):
         return _reply({"deletion": admin_person.cancel_deletion(user_id, request_id)})
     except ProcessingAuthorizationError as e:
         return _reply({"code": e.code, "error": e.message}, e.status)
+
+
+@people_bp.route("/v2/admin/people/<user_id>/takes", methods=["GET"])
+@require_admin
+def person_takes(user_id: str):
+    from services import admin_takes
+    return _reply(admin_takes.takes(user_id))
+
+
+@people_bp.route("/v2/admin/people/<user_id>/takes/<session_id>", methods=["GET"])
+@require_admin
+def person_take_pieces(user_id: str, session_id: str):
+    from services import admin_takes
+    rows = admin_takes.pieces(user_id, session_id)
+    if rows is None:
+        return _reply({"code": "NOT_FOUND", "error": "No such Take for this person"}, 404)
+    return _reply({"pieces": rows})
