@@ -1,0 +1,13 @@
+-- a_coach_hears_when_nothing_fits.sql gave the backend's service_role only
+-- SELECT and DELETE on exercise_coach_requests. The video a coach adds to an
+-- answer not yet given (0403) is a direct UPDATE of `answer_video_ref`
+-- (services/coach_answer_video.py), so every such upload stored the file and
+-- then failed with "permission denied": the coach saw "Could not keep the
+-- video." Give the backend that one column back, nothing else.
+--
+-- The guard trigger (guard_exercise_coach_request_update_v2, 0446) still
+-- refuses a direct change of the video once the answer is given; that change
+-- goes through resolve_exercise_coach_request_v3 as before.
+--
+-- Additive and safe to re-run. No env var.
+GRANT UPDATE (answer_video_ref) ON public.exercise_coach_requests TO service_role;

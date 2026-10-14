@@ -506,3 +506,4 @@
 0468	grant_booking_hold_service_role.sql
 0469	add_booking_due_and_first_lesson_half_off.sql
 0470	add_plan_promotions.sql
+0471	grant_answer_video_update_service_role.sql
