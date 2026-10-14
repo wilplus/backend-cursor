@@ -76,6 +76,10 @@ def _block_presentation(block: dict, block_id: str) -> dict:
     }
     if block.get("green_soft"):
         presentation["green_soft"] = True
+    if block.get("level_key"):
+        # Which signed opening line the praise uses (founder 2026-10-14). A
+        # copy key like `why_key`; the willfidence itself never crosses.
+        presentation["level_key"] = block["level_key"]
     if block.get("exercise_kind"):
         presentation["exercise_kind"] = block["exercise_kind"]
     return presentation
