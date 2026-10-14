@@ -109,7 +109,13 @@ def served_view(database: Any, *, take_session_id: str, snippet_id: str,
     trace = trace if isinstance(trace, dict) else {}
     served_id = str(assignment.get("selected_exercise_id") or "")
     pool_ids = _pool_ids(trace, served_id, rng)
-    rows = {eid: _exercise(database, eid) for eid in pool_ids}
+    from services.confident_voice_practice import active_exercises_batch
+    live = active_exercises_batch(database) if len(pool_ids) > 1 else None
+    if live is not None:
+        by_id = {str(r.get("exercise_id")): r for r in live}
+        rows = {eid: by_id.get(eid) or {} for eid in pool_ids}
+    else:
+        rows = {eid: _exercise(database, eid) for eid in pool_ids}
     served = rows.get(served_id) or {}
     return {
         "served": {

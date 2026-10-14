@@ -124,11 +124,14 @@ def _drift(snapshots: list) -> dict:
 
 def _promotions(database: Any) -> list[dict]:
     """Which model each contract surface serves today (the runtime row is
-    the present); the history is ``model_promotions`` (door 4, ML-12)."""
+    the present); the history is ``model_promotions`` (door 4, ML-12).
+    One read for every surface."""
     from services.ml_surface_contracts import SURFACES
+    values = database.get_runtime_configs(
+        [c.runtime_config_key for c in SURFACES.values()])
     out = []
     for surface_id, contract in SURFACES.items():
-        value = database.get_runtime_config(contract.runtime_config_key)
+        value = values.get(contract.runtime_config_key)
         out.append({"surface": surface_id, "key": contract.runtime_config_key,
                     "model": value, "note": None if value else "stock model (never promoted)"})
     return out
@@ -165,24 +168,34 @@ def _promotion_history(database: Any) -> list[dict]:
              "kill_reason": r.get("kill_reason")} for r in rows]
 
 
+def _pairs(database: Any, unavailable: list[str]) -> dict:
+    """Per pair surface: the pair counts and the drafts shown. Only these
+    two reads, not the whole learning ledger (founder 2026-10-14: the
+    screen took seconds building a ledger it then threw away). Drafts
+    shown are None on every surface when they cannot be read (named),
+    never a zero."""
+    from services.feedback_pairs import counts, exposures
+    pairs = _read("pairs", lambda: counts(database), unavailable) or {}
+    shown = _read("exposures", lambda: exposures(database), unavailable)
+    for surface, entry in pairs.items():
+        entry["exposures"] = (int(shown.get(surface) or 0)
+                              if isinstance(shown, dict) else None)
+    return {"pairs": pairs}
+
+
 def _sources(database: Any, config: Any, unavailable: list[str]) -> dict:
-    """Every read the view makes, each named when it cannot be made."""
-    from services.learning_ledger import ledger as read_ledger
-    from services.golden_set import SURFACES as GOLDEN_SURFACES, counts as golden_counts
-    ledger = _read("ledger", lambda: read_ledger(database, config=config), unavailable) or {}
-    golden = {}
-    for surface in GOLDEN_SURFACES:
-        def _count(s: str = surface) -> dict:
-            return golden_counts(database, surface=s)
-        golden[surface] = _read(f"golden.{surface}", _count, unavailable)
+    """Every read the view makes, each named when it cannot be made. The
+    golden sets' counts are their own read (GET /v2/research/golden), so
+    they are not counted again here."""
     return {
-        "ledger": ledger, "golden": golden,
+        "ledger": _pairs(database, unavailable),
         "labels": _read("labels", lambda: database.get_confidence_label_corpus(limit=5000), unavailable) or [],
         "exclusions": _read("exclusions", lambda: database.list_dataset_exclusions(), unavailable) or [],
         "exports": _read("exports", lambda: database.list_annotation_export_runs(limit=20), unavailable) or [],
         "promotions": _read("promotions", lambda: _promotions(database), unavailable) or [],
-        "snapshots": _read("snapshots", lambda: database.list_ledger_snapshots(limit=8), unavailable) or [],
-        "pair_releases": _read("pair_releases", lambda: database.list_pair_releases(limit=500), unavailable) or [],
+        "snapshots": _read("snapshots", lambda: database.list_ledger_snapshot_drift(limit=8), unavailable) or [],
+        "pair_releases": _read("pair_releases", lambda: database.list_pair_release_summaries(limit=500),
+                               unavailable) or [],
         "evaluations": (_read("evaluations", lambda: _evaluations(database), unavailable)
                         or {"reports": [], "note": "evaluation reports unreadable"}),
         "training": (_read("training", lambda: _training(database), unavailable)
@@ -238,7 +251,6 @@ def overview(database: Any, *, config: Any = None) -> dict:
         "promotions": src["promotions"],
         "promotion_history": src["history"],
         "drift": _drift(src["snapshots"]),
-        "golden": src["golden"],
         "weekly": [{"week_start": s.get("week_start"), "ready_cues": s.get("ready_cues"),
                     "updated_at": s.get("updated_at")} for s in src["snapshots"] if isinstance(s, dict)],
         "unavailable": unavailable,
