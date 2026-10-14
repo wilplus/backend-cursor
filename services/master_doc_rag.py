@@ -722,7 +722,7 @@ _ROUTER_CONFIDENCE_FLOOR = 0.6  # below this → fall back to the mega-prompt
 _INTENTS = (
     "product_faq", "upload_intent", "record_intent", "off_topic",
     "capability_request", "library_recall", "correction",
-    "app_feature", "my_project",
+    "app_feature", "my_project", "speaker_feedback",
 )
 # Lanes that see the speaker's status card and the app's feature list.
 _APP_LANES = {"app_feature", "my_project"}
@@ -764,6 +764,10 @@ _CLASSIFIER_SYSTEM = (
     "progress, Ideal Text, or whether their feedback or coach review is "
     "ready ('how is my talk going', 'what's next for me', 'did my coach "
     "answer').\n"
+    "- speaker_feedback: tells YOU what they think of the app, of you, or "
+    "of how this went — praise, a complaint, a wish, a suggestion, a bug "
+    "('the walk was too long', 'I love the helper words', 'you should "
+    "remember my slides').\n"
     "- library_recall: asks to see their strong sides / coach notes / what "
     "they did well, OR any 'training' / 'trainings' / 'my trainings' / "
     "past-sessions phrasing (opens the Trainings page) — in any language.\n"
@@ -923,6 +927,14 @@ _LANE_BODIES: dict[str, str] = {
         "yet and point them to the recording button below the chat. End "
         "with one short question back to them. app_action may name a "
         "feature from WHAT THE APP CAN DO only if they asked for it."
+    ),
+    "speaker_feedback": (
+        "The speaker is telling you what they think of the app, of you, or "
+        "of how it went. Reply naturally, like a colleague who is glad to "
+        "hear it: thank them in a few words, take it seriously, and ask one "
+        "short follow-up question if it would help you understand. Never "
+        "promise a change or a date, never argue, never say you saved or "
+        "recorded it."
     ),
     "correction": (
         "The user is correcting or contradicting your PREVIOUS turn. First "
