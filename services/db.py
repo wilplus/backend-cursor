@@ -1928,6 +1928,23 @@ class DatabaseService:
             logger.warning("get_runtime_config failed for key=%s: %s", key, e)
             return None
 
+
+    def get_runtime_configs(self, keys: list[str]) -> dict[str, Optional[str]]:
+        """Several runtime values in one read (the research screen's
+        promotions panel). Same reading as ``get_runtime_config``: a blank
+        or missing value is None. Raises on failure."""
+        wanted = [str(k) for k in keys if k]
+        out: dict[str, Optional[str]] = {k: None for k in wanted}
+        if not wanted:
+            return out
+        res = (self.client.table("runtime_config").select("key,value")
+               .in_("key", wanted).execute())
+        for row in res.data or []:
+            value = row.get("value")
+            text = str(value).strip() if value is not None else ""
+            out[str(row.get("key"))] = text or None
+        return out
+
     def promote_runtime_surface_model(
         self,
         *,
@@ -11359,6 +11376,31 @@ class DatabaseService:
                            exercise_id, e)
             return None
 
+    def list_active_diagnostic_exercises(self) -> Optional[list[dict]]:
+        """Every exercise ``get_active_diagnostic_exercise`` would serve, in
+        catalogue order, in two reads instead of one (or two) per exercise:
+        active, with its video, and any attached post published. None when
+        unreadable, so callers fall back to the per-exercise gate."""
+        try:
+            res = (self.client.table("diagnostic_exercise").select("*")
+                   .eq("active", True).order("exercise_id").execute())
+            rows = [r for r in (res.data or [])
+                    if isinstance(r, dict) and r.get("explanation_video_url")]
+            post_ids = sorted({str(r["journal_post_id"]) for r in rows
+                               if r.get("journal_post_id")})
+            published: set[str] = set()
+            if post_ids:
+                posts = (self.client.table("journal_post").select("id,status")
+                         .in_("id", post_ids).execute())
+                published = {str(p.get("id")) for p in (posts.data or [])
+                             if p.get("status") == "published"}
+            return [r for r in rows if not r.get("journal_post_id")
+                    or str(r["journal_post_id"]) in published]
+        except Exception as e:
+            logger.warning("list_active_diagnostic_exercises failed: %s", e,
+                           exc_info=True)
+            return None
+
     def list_diagnostic_exercises(self) -> list[dict]:
         try:
             res = (self.client.table("diagnostic_exercise").select("*")
@@ -11526,6 +11568,31 @@ class DatabaseService:
             logger.warning("list_exercise_versions failed id=%s: %s",
                            exercise_id, e, exc_info=True)
             return []
+
+    def latest_exercise_versions(self, exercise_ids: list[str]) -> Optional[dict[str, dict]]:
+        """The newest version row of each exercise, in ONE read (the library
+        used to ask once per exercise). Same columns as
+        ``list_exercise_versions``. None when unreadable, so the caller can
+        fall back to the per-exercise read."""
+        ids = sorted({str(i) for i in exercise_ids if i})
+        if not ids:
+            return {}
+        try:
+            res = (self.client.table("diagnostic_exercise_version")
+                   .select("id,exercise_id,version,title,source,created_by,"
+                           "created_at,transcript_status,transcript_language,"
+                           "video_sha256,video_bytes,explanation_video_url,"
+                           "ai_draft_model_version")
+                   .in_("exercise_id", ids)
+                   .order("exercise_id").order("version", desc=True).execute())
+        except Exception as e:
+            logger.warning("latest_exercise_versions failed n=%d: %s",
+                           len(ids), e, exc_info=True)
+            return None
+        newest: dict[str, dict] = {}
+        for row in res.data or []:
+            newest.setdefault(str(row.get("exercise_id")), row)
+        return newest
 
     def get_exercise_version_transcript(
         self, exercise_id: str, version: int,
@@ -12867,6 +12934,19 @@ class DatabaseService:
                .order("week_start", desc=True).limit(int(limit)).execute())
         return list(res.data or [])
 
+
+    def list_ledger_snapshot_drift(self, limit: int = 8) -> list[dict]:
+        """The newest weeks first, carrying only what the research screen
+        reads: the week, its ready cues, when it was written and the drift
+        reading (not the whole stored ledger). Shaped like
+        ``list_ledger_snapshots`` rows. Raises on failure."""
+        res = (self.client.table("ledger_snapshots")
+               .select("week_start,ready_cues,updated_at,drift:snapshot->drift")
+               .order("week_start", desc=True).limit(int(limit)).execute())
+        return [{"week_start": r.get("week_start"), "ready_cues": r.get("ready_cues"),
+                 "updated_at": r.get("updated_at"), "snapshot": {"drift": r.get("drift")}}
+                for r in (res.data or [])]
+
     def is_research_user(self, email: str) -> bool:
         res = (self.client.table("research_users").select("email")
                .eq("email", str(email).strip().lower()).eq("is_active", True)
@@ -13036,6 +13116,23 @@ class DatabaseService:
                        "voided_reason,purged_at")
                .order("exported_at", desc=True).limit(int(limit)).execute())
         return list(res.data or [])
+
+
+    def list_pair_release_summaries(self, limit: int = 500) -> list[dict]:
+        """``list_pair_releases`` without the signed manifests: only their
+        split counts, which is all the research screen sums. Shaped like
+        those rows (``manifest`` holds ``split_counts``). Raises."""
+        res = (self.client.table("pair_releases")
+               .select("id,surface,week_start,item_count,storage_key,manifest_sha256,"
+                       "file_sha256,exported_at,voided_at,voided_reason,purged_at,"
+                       "split_counts:manifest->split_counts")
+               .order("exported_at", desc=True).limit(int(limit)).execute())
+        out = []
+        for row in res.data or []:
+            row = dict(row)
+            row["manifest"] = {"split_counts": row.pop("split_counts", None)}
+            out.append(row)
+        return out
 
     def list_voided_unpurged_pair_releases(self) -> list[dict]:
         res = (self.client.table("pair_releases")

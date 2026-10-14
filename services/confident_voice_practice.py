@@ -817,6 +817,9 @@ def reviewed_active_exercises(database: Any) -> list[dict]:
     must carry both an explanation video and a journal post that is actually
     published. A row that names assets it does not have never reaches matching.
     """
+    batch = active_exercises_batch(database)
+    if batch is not None:
+        return batch
     out: list[dict] = []
     for row in database.list_diagnostic_exercises() or []:
         active = database.get_active_diagnostic_exercise(
@@ -824,6 +827,15 @@ def reviewed_active_exercises(database: Any) -> list[dict]:
         if active:
             out.append(active)
     return out
+
+
+def active_exercises_batch(database: Any) -> Optional[list[dict]]:
+    """The live catalogue in one read when the database offers it (the
+    per-exercise gate made one query per exercise, every time a coach
+    opened a moment). None means: use the per-exercise gate."""
+    reader = getattr(database, "list_active_diagnostic_exercises", None)
+    rows = reader() if callable(reader) else None
+    return rows if isinstance(rows, list) else None
 
 
 def rank_exercises_for_clip(
@@ -977,6 +989,10 @@ def offerable_exercises(database: Any) -> list[dict]:
         if hasattr(database, "list_diagnostic_exercises")
         else [{"exercise_id": EXERCISE_ID}]
     )
+    batch = active_exercises_batch(database) \
+        if hasattr(database, "list_diagnostic_exercises") else None
+    if batch is not None:
+        return [_with_default_patterns(row) for row in batch]
     exercises = []
     for row in exercise_rows:
         active = database.get_active_diagnostic_exercise(
