@@ -68,6 +68,14 @@ def budget_for(requested: Iterable[str]) -> float:
     )
 
 
+class SectionPending(Exception):
+    """A reader that knows its answer is on its way but not yet here: the
+    section goes out `pending`/`retryable` (ASK ME AGAIN), exactly as a reader
+    that ran out of budget does, without the reader having to run out of it.
+    `changes_block_for` raises it when the bake it is waiting for is still in
+    flight at the request's deadline."""
+
+
 @dataclass(frozen=True)
 class EnrichmentSection:
     status: str
@@ -104,6 +112,9 @@ def run_sections(
                 sections[name] = EnrichmentSection("ready", data).wire()
             except TimeoutError:
                 future.cancel()
+                sections[name] = EnrichmentSection(
+                    "pending", retryable=True).wire()
+            except SectionPending:
                 sections[name] = EnrichmentSection(
                     "pending", retryable=True).wire()
             except Exception:
