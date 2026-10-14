@@ -141,8 +141,24 @@ def send_whatsapp(to: str, *, config: Any = None) -> bool:
                      json=_payload(to, cfg),
                      headers={"Authorization": f"Bearer {cfg.WHATSAPP_ACCESS_TOKEN}"},
                      timeout=_TIMEOUT_SEC)
+    if res.status_code >= 400:
+        # Meta's own reason (code + message) so the Railway log says what to
+        # fix; the request carried the token in a header, the reply never does.
+        _log.warning("whatsapp: Meta refused the message status=%s error=%s",
+                     res.status_code, _meta_error(res))
     res.raise_for_status()
+    _log.info("whatsapp: Meta accepted the message template=%s",
+              cfg.WHATSAPP_TEMPLATE_NAME or "(plain text)")
     return True
+
+
+def _meta_error(res: Any) -> str:
+    try:
+        err = (res.json() or {}).get("error") or {}
+        detail = (err.get("error_data") or {}).get("details") or ""
+        return f"{err.get('code')} {err.get('message')} {detail}".strip()
+    except Exception:  # noqa: BLE001 -- a log line, never a failure
+        return (getattr(res, "text", "") or "")[:300]
 
 
 def notify_coach_feedback_in(database: Any, user_id: Optional[str]) -> bool:
@@ -152,7 +168,10 @@ def notify_coach_feedback_in(database: Any, user_id: Optional[str]) -> bool:
         return False
     try:
         phone = whatsapp_state(database, str(user_id)).get("phone")
-        return send_whatsapp(str(phone)) if phone else False
+        if not phone:
+            _log.info("whatsapp: no number saved for user=%s, nothing sent", user_id)
+            return False
+        return send_whatsapp(str(phone))
     except Exception as e:  # noqa: BLE001 -- the coach's save stands either way
         _log.warning("whatsapp coach-feedback message failed user=%s: %s",
                      user_id, type(e).__name__)
@@ -161,7 +180,10 @@ def notify_coach_feedback_in(database: Any, user_id: Optional[str]) -> bool:
 
 def notify_coach_feedback_in_background(database: Any, user_id: Optional[str]) -> None:
     """The same, off the coach's request so Meta never slows the save."""
-    if not user_id or not Config.WHATSAPP_NOTIFICATIONS:
+    if not user_id:
+        return
+    if not Config.WHATSAPP_NOTIFICATIONS:
+        _log.info("whatsapp: WHATSAPP_NOTIFICATIONS is off, nothing sent")
         return
     threading.Thread(target=notify_coach_feedback_in, args=(database, str(user_id)),
                      name="whatsapp-coach-feedback", daemon=True).start()

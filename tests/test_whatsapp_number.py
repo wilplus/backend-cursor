@@ -107,13 +107,23 @@ class CoachFeedbackMessageTest(unittest.TestCase):
     def setUp(self):
         self.posts = []
 
+        self.refusal = None
+
         class _Res:
+            def __init__(self, refusal):
+                self.status_code = 400 if refusal else 200
+                self._refusal = refusal
+
+            def json(self):
+                return {"error": self._refusal}
+
             def raise_for_status(self):
-                return None
+                if self._refusal:
+                    raise RuntimeError("400")
 
         def _post(url, json, headers, **_kw):
             self.posts.append((url, json, headers))
-            return _Res()
+            return _Res(self.refusal)
 
         for p in (patch.object(Config, "WHATSAPP_NOTIFICATIONS", True),
                   patch.object(Config, "WHATSAPP_ACCESS_TOKEN", "tok"),
@@ -148,6 +158,12 @@ class CoachFeedbackMessageTest(unittest.TestCase):
             self._share(_Db())
         self.assertEqual(self.posts[0][1]["template"]["components"], [
             {"type": "header", "parameters": [{"type": "image", "image": {"link": logo}}]}])
+
+    def test_a_refusal_logs_metas_reason(self):
+        self.refusal = {"code": 132001, "message": "Template name does not exist in the translation"}
+        with self.assertLogs("services.whatsapp_notify", level="WARNING") as logs:
+            self._share(_Db())
+        self.assertTrue(any("132001" in line and "Template name" in line for line in logs.output))
 
     def test_editing_a_shared_word_sends_nothing_more(self):
         self._share(_Db(existing_shared_at="2026-10-11T09:00:00+00:00"))
