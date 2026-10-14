@@ -191,15 +191,20 @@ def _write_pick(database: Any, *, rater_id: str, role: str, week: str, candidate
     from services.coach_exposure import exposed_clip_ids, record_exposure
     if repick_of is None and exposed_clip_ids(database, rater_id, chosen):
         return None
-    row = database.insert_v4_pick_sheet({
-        "rater_id": rater_id, "rater_role": role,
-        "take_session_id": candidate["take_session_id"],
-        "policy_version": POLICY_VERSION, "picker_version": PICKER_VERSION,
-        "block_id": str(candidate["block"].get("block_id")), "clip_ids": chosen,
-        "v4_snippet_id": candidate["v4"] if candidate["v4"] in chosen else None,
-        "v3_snippet_id": candidate["v3"] if candidate["v3"] in chosen else None,
-        "slice": slice_, "repick_of": repick_of, "week": week,
-    })
+    try:
+        row = database.insert_v4_pick_sheet({
+            "rater_id": rater_id, "rater_role": role,
+            "take_session_id": candidate["take_session_id"],
+            "policy_version": POLICY_VERSION, "picker_version": PICKER_VERSION,
+            "block_id": str(candidate["block"].get("block_id")), "clip_ids": chosen,
+            "v4_snippet_id": candidate["v4"] if candidate["v4"] in chosen else None,
+            "v3_snippet_id": candidate["v3"] if candidate["v3"] in chosen else None,
+            "slice": slice_, "repick_of": repick_of, "week": week,
+        })
+    except Exception as e:  # noqa: BLE001 -- one refused block never empties the queue
+        _log.warning("v4 pick sheet not written rater=%s block=%s: %s",
+                     rater_id, candidate["block"].get("block_id"), e)
+        return None
     if not isinstance(row, dict):
         return None
     for clip in chosen:
@@ -234,8 +239,14 @@ def fill_pick_sheets(database: Any, *, rater_id: str, week: str, rng: Any = None
     frames = _open_frames(database, rater_id)
     picks = {str(f["take_session_id"]): database.list_v4_picks(str(f["take_session_id"])) or []
              for f in frames}
-    pool = [c for c in candidate_blocks(frames, picks)
-            if (c["take_session_id"], str(c["block"].get("block_id"))) not in asked]
+    # A Take has one frame per policy version and they share block ids; a
+    # block is asked once (v4_moment_pick_sheets_once).
+    pool = []
+    for c in candidate_blocks(frames, picks):
+        key = (c["take_session_id"], str(c["block"].get("block_id")))
+        if key not in asked:
+            asked.add(key)
+            pool.append(c)
     common = {"rater_id": rater_id, "role": role, "week": week}
     written: list[dict] = []
     due = _due_repick(mine, now) if role == "coach" else None
