@@ -6,7 +6,7 @@ Public (no login):
   GET  /v2/booking/confirmation?session_id=  what the success page shows
 
 Signed in (booking needs a WillpowerLab account):
-  GET  /v2/booking/<slug>/offer[?as=]        my price and tokens (admins may preview anyone)
+  GET  /v2/booking/<slug>/offer[?as=]        my price (admins may preview anyone)
   POST /v2/booking/<slug>/checkout           hold the slot, open Stripe at my price
 
 Admin:
@@ -67,7 +67,7 @@ def booking_slots(slug: str):
 @booking_bp.route("/v2/booking/<slug>/offer", methods=["GET"])
 @require_auth
 def booking_offer(slug: str):
-    """The signed-in person's price and tokens. An admin may pass ?as=<user_id>
+    """The signed-in person's price. An admin may pass ?as=<user_id>
     to see someone else's page as they will."""
     user_id = str(getattr(request, "user_id", ""))
     preview = (request.args.get("as") or "").strip()
@@ -77,7 +77,7 @@ def booking_offer(slug: str):
         return _reply({**booking.offer_for(slug, preview), "preview": True})
     payload = getattr(request, "token_payload", None) or {}
     meta = payload.get("user_metadata") or {}
-    return _reply({**booking.offer_for(slug, user_id, payload.get("email") or ""), "preview": False,
+    return _reply({**booking.offer_for(slug, user_id), "preview": False,
                    "email": payload.get("email") or "",
                    "name": meta.get("full_name") or meta.get("name") or ""})
 

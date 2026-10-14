@@ -51,7 +51,7 @@ DAYS = ("0", "1", "2", "3", "4", "5", "6")  # Sunday=0, JS getDay() order
 SETTINGS_FIELDS = (
     "slug", "title", "host_name", "duration_min", "price_cents", "currency",
     "buffer_before_min", "buffer_after_min", "notice_hours", "horizon_days",
-    "timezone", "weekly_hours", "calendar_ics_url", "meet_url", "enabled", "bonus_tokens", "new_user_discount_pct", "allow_skip_payment",
+    "timezone", "weekly_hours", "calendar_ics_url", "meet_url", "enabled", "new_user_discount_pct",
 )
 
 
@@ -131,7 +131,6 @@ def validate_settings(payload: dict, current: dict) -> dict:
     s["buffer_after_min"] = _int("buffer_after_min", 0, 240)
     s["notice_hours"] = _int("notice_hours", 0, 720)
     s["horizon_days"] = _int("horizon_days", 1, 365)
-    s["bonus_tokens"] = _int("bonus_tokens", 0, 10_000_000)
     s["new_user_discount_pct"] = _int("new_user_discount_pct", 0, 100)
     s["currency"] = str(s["currency"] or "").lower()
     if s["currency"] not in CURRENCIES:
@@ -150,7 +149,6 @@ def validate_settings(payload: dict, current: dict) -> dict:
     s["calendar_ics_url"] = "\n".join(links)
     s["meet_url"] = meet
     s["enabled"] = bool(s["enabled"])
-    s["allow_skip_payment"] = bool(s.get("allow_skip_payment"))
     if s["enabled"] and not s["meet_url"]:
         raise BookingError("MEET_REQUIRED", "Add the Google Meet link before turning the page on.")
     return s
@@ -173,7 +171,7 @@ def public_settings(slug: str) -> dict:
         "slug": s["slug"], "title": s["title"], "host_name": s["host_name"],
         "duration_min": s["duration_min"], "price_cents": s["price_cents"],
         "currency": s["currency"], "horizon_days": s["horizon_days"],
-        "host_timezone": s["timezone"], "bonus_tokens": s.get("bonus_tokens") or 0,
+        "host_timezone": s["timezone"],
         # What a first-time person pays, shown before sign-in.
         "new_user_price_cents": round(s["price_cents"] * (100 - int(s.get("new_user_discount_pct") or 0)) / 100),
     }
@@ -202,10 +200,10 @@ def set_user_price(user_id: str, price_cents: Optional[int]) -> Optional[int]:
     return int(price_cents)
 
 
-def offer_for(slug: str, user_id: str, email: str = "") -> dict:
-    """What this person pays and gets. The page shows the list price crossed
-    out when their price is lower. `pay` says whether they pay by card now;
-    `allow_skip_payment` whether "Book without paying" is offered."""
+def offer_for(slug: str, user_id: str) -> dict:
+    """What this person pays. The page shows the list price crossed out when
+    their price is lower. Everyone may pay now by card or book and pay later
+    (founder 2026-10-14); a lesson adds no tokens."""
     page = public_settings(slug)
     own = user_price(user_id)
     price = page["price_cents"] if own is None else own
@@ -218,20 +216,7 @@ def offer_for(slug: str, user_id: str, email: str = "") -> dict:
         "list_price_cents": page["price_cents"],
         "price_cents": price,
         "currency": page["currency"],
-        "bonus_tokens": page["bonus_tokens"],
-        "pay": pays(email),
-        "allow_skip_payment": not pays(email) or bool(get_settings().get("allow_skip_payment")),
     }
-
-
-# Founder 2026-10-14: card payment is on only for these accounts while it is
-# tested; everyone else books without paying. For them the admin's "Allow
-# booking without paying" box decides, as for everyone once this is None.
-PAYMENT_ONLY_FOR: Optional[set[str]] = {"a.willonski@gmail.com"}
-
-
-def pays(email: str) -> bool:
-    return PAYMENT_ONLY_FOR is None or (email or "").strip().lower() in PAYMENT_ONLY_FOR
 
 
 # ------------------------------------------------------ calendar busy times
@@ -395,12 +380,10 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
     `embedded`, else {"url": ...} for Stripe's own page; a free meeting skips
     Stripe and returns {"url": ...} to the confirmation."""
     s = get_settings()
-    offer = offer_for(slug, user_id, email)  # raises NOT_FOUND when off or wrong link
+    offer = offer_for(slug, user_id)  # raises NOT_FOUND when off or wrong link
     price = int(offer["price_cents"])
-    # Booking without paying (temporary, only while the admin allows it): a
-    # confirmed booking at 0 with no tokens; the lesson is settled outside.
-    skip = not offer["pay"] or (skip_payment and offer["allow_skip_payment"])
-    if skip:
+    # Book and pay later: a confirmed booking at 0 that remembers what is due.
+    if skip_payment:
         price = 0
     name, email, note = (name or "").strip()[:120], (email or "").strip()[:254], (note or "").strip()[:2000]
     if not name:
@@ -432,8 +415,7 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
     booking_id = str(booking_id)
     db.client.table("bookings").update({
         "user_id": user_id, "list_price_cents": int(offer["list_price_cents"]),
-        "bonus_tokens": 0 if skip else int(offer["bonus_tokens"]),
-        "due_cents": int(offer["price_cents"]) if skip else None,
+        "due_cents": int(offer["price_cents"]) if skip_payment else None,
     }).eq("id", booking_id).execute()
     base = (config.FRONTEND_URL or "https://www.willpowerlab.com").rstrip("/")
 
@@ -530,7 +512,6 @@ def _confirm(booking_id: str, *, session_id: Optional[str]) -> dict:
     # Claim the emails exactly once, whoever gets here first.
     claimed = (db.client.table("bookings").update({"emails_sent_at": now}).eq("id", booking_id)
                .eq("status", "confirmed").is_("emails_sent_at", "null").execute().data) or []
-    _grant_tokens(booking_id)
     row = (db.client.table("bookings").select("*").eq("id", booking_id).limit(1).execute().data or [{}])[0]
     if claimed:
         try:
@@ -538,25 +519,6 @@ def _confirm(booking_id: str, *, session_id: Optional[str]) -> dict:
         except Exception as e:  # the booking stands; the host sees it in admin
             logger.error("booking: confirmation emails failed booking=%s: %s", booking_id, e, exc_info=True)
     return row
-
-
-def _grant_tokens(booking_id: str) -> None:
-    """Add the lesson's tokens to the booker's account, once. A failed grant is
-    released so the next confirm (Stripe retry or the success page) tries again."""
-    now = datetime.now(timezone.utc).isoformat()
-    claimed = (db.client.table("bookings").update({"tokens_granted_at": now}).eq("id", booking_id)
-               .eq("status", "confirmed").gt("bonus_tokens", 0).not_.is_("user_id", "null")
-               .is_("tokens_granted_at", "null").execute().data) or []
-    if not claimed:
-        return
-    row = claimed[0]
-    from services import token_account
-    outcome = token_account.package_grant(
-        str(row["user_id"]), tokens=int(row["bonus_tokens"]), coach_reviews=0,
-        ref_id=f"booking:{booking_id}", package="booking_lesson")
-    if not outcome.get("ok"):
-        logger.error("booking: token grant failed booking=%s reason=%s", booking_id, outcome.get("reason"))
-        db.client.table("bookings").update({"tokens_granted_at": None}).eq("id", booking_id).execute()
 
 
 def booking_for_guest(*, session_id: str = "", booking_id: str = "") -> Optional[dict]:
@@ -578,7 +540,6 @@ def booking_for_guest(*, session_id: str = "", booking_id: str = "") -> Optional
         "meet_url": row["meet_url"] if row["status"] == "confirmed" else "",
         "price_cents": row["price_cents"], "currency": row["currency"],
         "list_price_cents": row.get("list_price_cents") or row["price_cents"],
-        "bonus_tokens": row.get("bonus_tokens") or 0,
         "due_cents": row.get("due_cents") or 0,
     }
 
@@ -586,7 +547,7 @@ def booking_for_guest(*, session_id: str = "", booking_id: str = "") -> Optional
 def admin_bookings() -> list[dict]:
     since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     rows = (db.client.table("bookings")
-            .select("id,start_at,end_at,status,guest_name,guest_email,guest_timezone,note,price_cents,list_price_cents,currency,bonus_tokens,tokens_granted_at,confirmed_at")
+            .select("id,start_at,end_at,status,guest_name,guest_email,guest_timezone,note,price_cents,list_price_cents,due_cents,currency,confirmed_at")
             .eq("status", "confirmed").gte("end_at", since).order("start_at").execute().data) or []
     return rows
 
@@ -706,8 +667,6 @@ def send_confirmation_emails(row: dict) -> None:
             f"You're booked: {e(row['title'])} with {e(s['host_name'])}.",
             f"<strong>{e(_when(start, end, guest_tz))}</strong>",
             f"Join on Google Meet: {meet_link}",
-            *([f"{int(row['bonus_tokens']):,} tokens are added to your WillpowerLab account."]
-              if row.get("bonus_tokens") and row.get("user_id") else []),
             "The calendar invite is attached. Need to cancel or move it? Reply to this email.",
         ]),
         headers={"Reply-To": host_email},
