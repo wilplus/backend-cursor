@@ -98,7 +98,7 @@ def next_for(user_id: str) -> Optional[dict]:
 
 
 def lesson_offer(user_id: str) -> Optional[dict]:
-    """This person's 1-on-1 lesson: price, list price, tokens and the
+    """This person's 1-on-1 lesson: price, list price and the
     booking link, or None when the booking page is off."""
     from services import booking
     s = booking.get_settings()
@@ -108,7 +108,7 @@ def lesson_offer(user_id: str) -> Optional[dict]:
         return None
     return {"slug": s["slug"], "host_name": s["host_name"], "duration_min": s["duration_min"],
             "price_cents": offer["price_cents"], "list_price_cents": offer["list_price_cents"],
-            "currency": offer["currency"], "bonus_tokens": offer["bonus_tokens"]}
+            "currency": offer["currency"]}
 
 
 def mark(user_id: str, ask_id: str, event: str) -> None:
