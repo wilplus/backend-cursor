@@ -253,6 +253,14 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
     on from there to the end.
   - An older Take's walk is read only and ends on that Take's Ideal Text.
 
+- **The moment's opening line follows its willfidence** (founder,
+  2026-10-14, signed): ten levels, three lines each, all locked and
+  rotated, an icon before each; the cue line stays under it. The backend
+  sends only the key `level_key` ("W1".."W10"), never the number. Levels by
+  willfidence: W1 < 0.30, W2 0.30, W3 0.40, W4 0.50, W5 0.60, W6 0.65,
+  W7 0.70, W8 0.80, W9 0.88, W10 0.95 and up. The lines live in the
+  frontend's `src/lib/willab/praiseLevels.ts`.
+
 ## Still open
 
 - **Self-judgement of your own practice try is off for launch** (founder,

@@ -394,7 +394,7 @@ CLIENT_READ_ROW_FIELDS = frozenset({
     "snippet_id", "take_session_id", "evidence", "take_index", "block_key",
     "visual", "pending_better_version", "pending_copy", "cue_keys",
     "praise_line", "rewrite_move", "snippet_audio_ref", "start_offset_ms",
-    "duration_ms", "practice_exercise", "learning_exposures",
+    "duration_ms", "practice_exercise", "learning_exposures", "level_key",
 })
 #: The coach's shared answer in words, `{kind, text, video_url?}`
 #: (`confident_voice_practice.coach_shared_answer`). No number, no draft.

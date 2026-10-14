@@ -476,6 +476,22 @@ def _selected_candidate(block: dict) -> Optional[dict]:
                  if row.get("candidate_id") == selected_id), None)
 
 
+# The ten levels of a green moment's opening line (founder 2026-10-14):
+# the lower bound of each level's willfidence, highest first.
+_LEVEL_FLOORS = ((0.95, 10), (0.88, 9), (0.80, 8), (0.70, 7), (0.65, 6),
+                 (0.60, 5), (0.50, 4), (0.40, 3), (0.30, 2))
+
+
+def willfidence_level_key(value) -> str | None:
+    """"W1".."W10" for a willfidence (0..1); None when there is none."""
+    if not isinstance(value, (int, float)):
+        return None
+    for floor, level in _LEVEL_FLOORS:
+        if value >= floor:
+            return f"W{level}"
+    return "W1"
+
+
 def _mark_moments(blocks: list[dict],
                   snippet_map: dict) -> tuple[list[dict], list[dict]]:
     """Green moments and the one exercise, by willfidence (founder lock
@@ -506,9 +522,13 @@ def _mark_moments(blocks: list[dict],
         })
     picked = moment_pick.pick(reads)
     green = set(picked["green"])
+    value_of = {r["block_id"]: (r["read"] or {}).get("value") for r in reads}
     for block in blocks:
         is_exercise = block["block_id"] == picked["exercise"]
         block["most_confident"] = block["block_id"] in green
+        # The opening line's level (founder 2026-10-14): a key, never a number.
+        block["level_key"] = (willfidence_level_key(value_of.get(block["block_id"]))
+                              if block["most_confident"] else None)
         block["green_soft"] = picked["soft"] and block["most_confident"]
         block["practice_prompt"] = is_exercise
         block["carries_exercise"] = is_exercise
