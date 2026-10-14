@@ -271,7 +271,8 @@ def _tell_the_speaker(database: Any, request: dict) -> None:
     try:
         from services.coach_feedback_email import send_coach_feedback_email_in_background
         from services.whatsapp_notify import notify_coach_feedback_in_background
-        notify_coach_feedback_in_background(database, request.get("owner_user_id"))
+        notify_coach_feedback_in_background(database, request.get("owner_user_id"),
+                                            request.get("take_session_id"))
         send_coach_feedback_email_in_background(
             database, take_session_id=request.get("take_session_id"), moments=1)
     except Exception as e:  # noqa: BLE001 -- the answer is saved either way

@@ -421,6 +421,10 @@ class Config:
     # https://willpowerlab.com/brand/...png); unset for a text-only template.
     WHATSAPP_TEMPLATE_HEADER_IMAGE_URL = (os.getenv("WHATSAPP_TEMPLATE_HEADER_IMAGE_URL") or "").strip()
     WHATSAPP_REDIRECT_TO = (os.getenv("WHATSAPP_REDIRECT_TO") or "").strip()
+    # True once the template's first button is a dynamic URL
+    # (https://www.willpowerlab.com/{{1}}): each message then fills it with the
+    # project's feedback address. Off = the template's link as Meta stores it.
+    WHATSAPP_TEMPLATE_LINK_BUTTON = os.getenv("WHATSAPP_TEMPLATE_LINK_BUTTON", "false").lower() == "true"
 
     # Current published Terms / Privacy Policy version. Must match the
     # "Last updated" date in the live legal docs (e.g. "1.0" = Terms

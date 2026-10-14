@@ -103,7 +103,7 @@ def _tell_the_speaker(database: Any, take_session_id: str, *,
         elif session.get("user_id"):
             from services.coach_feedback_email import send_coach_feedback_email_in_background
             from services.whatsapp_notify import notify_coach_feedback_in_background
-            notify_coach_feedback_in_background(database, session["user_id"])
+            notify_coach_feedback_in_background(database, session["user_id"], take_session_id)
             send_coach_feedback_email_in_background(
                 database, take_session_id=take_session_id, moments=0)
     except Exception as e:  # noqa: BLE001 -- the word is saved either way
