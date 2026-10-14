@@ -54,6 +54,10 @@ python-docx==1.1.2
 # delivery module — tests/test_life_panel.py::NoNudgesTests fences everything else);
 # missing package or missing VAPID keys degrade to "nothing sent".
 pywebpush==2.0.3
+# pywebpush's own dependency, pinned (2026-10-14): py-vapid 1.9.5, published
+# that evening, ships an sdist pip refuses ("'venv/bin/python' is a link to
+# an absolute path"), which failed every install. 1.9.4 is the last good one.
+py-vapid==1.9.4
 # Durable recording-pipeline queue (async-queue work 2026-08-03): Redis is
 # the DELIVERY rail only — job state of record is Postgres
 # (migrations/add_processing_jobs.sql). Both are lazy-imported
