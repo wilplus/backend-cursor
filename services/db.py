@@ -10,6 +10,11 @@ import time
 import sentry_sdk
 from services.snippet_tables import SNIPPETS_TABLE
 from services.take_repository import TakeHasLineageError
+from services import db_transport
+
+# A read on a dropped pooled connection is resent instead of failing the
+# request (see services/db_transport.py).
+db_transport.install()
 
 config = Config()
 logger = logging.getLogger(__name__)
