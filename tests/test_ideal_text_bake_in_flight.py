@@ -3,8 +3,9 @@
 The bake is enqueued the moment a Take flips ready and the speaker's screen
 asks for the marks within the same second. The reader used to run the whole
 Manager live beside the bake worker's identical run. These pin the contract:
-a reader that finds a bake in flight waits for its row and never computes a
-second copy; still in flight at the deadline, it answers "ask me again".
+a reader that finds a bake in flight answers "ask me again" at once, never
+computes a second copy and never holds the request while it waits; the next
+read is served the bake's row.
 """
 from __future__ import annotations
 
@@ -75,27 +76,20 @@ def world(monkeypatch):
         runs.append("bake")
         return BLOCK, 10
     monkeypatch.setattr(bake, "_compute_block", _compute)
-    # No real sleeping: the clock is the number of waits taken.
-    waited: list[float] = []
-    monkeypatch.setattr(bake, "sleep", lambda s: waited.append(s))
-    monkeypatch.setattr(bake, "monotonic", lambda: float(len(waited)))
-    return redis, runs, waited
+    return redis, runs
 
 
-def test_a_reader_waits_for_the_bake_in_flight_instead_of_recomputing(
-        world, monkeypatch):
-    redis, runs, waited = world
+def test_a_reader_finding_a_bake_in_flight_asks_again_and_never_recomputes(
+        world):
+    _redis, runs = world
     db = _FakeDb()
     assert bake.enqueue_bake(ARC, ACTOR, "spoken") is True
-    assert bake.bake_in_flight(ARC, ACTOR, SNAPSHOT) is True
+    with pytest.raises(SectionPending):
+        bake.changes_block_for(db, ARC, ACTOR, SNAPSHOT, CORE)
+    assert runs == []
 
-    # The worker picks the job up during the reader's third wait.
-    def _sleep(seconds):
-        waited.append(seconds)
-        if len(waited) == 3:
-            assert bake.bake_for_snapshot(db, ARC, ACTOR, HEAD) is True
-    monkeypatch.setattr(bake, "sleep", _sleep)
-
+    # The worker bakes; the page's next ask is served the stored row.
+    assert bake.bake_for_snapshot(db, ARC, ACTOR, HEAD) is True
     block = bake.changes_block_for(db, ARC, ACTOR, SNAPSHOT, CORE)
     assert [row["id"] for row in block["changes"]] == ["cand-1"]
     assert runs == ["bake"]
@@ -103,18 +97,8 @@ def test_a_reader_waits_for_the_bake_in_flight_instead_of_recomputing(
     assert bake.bake_in_flight(ARC, ACTOR, SNAPSHOT) is False
 
 
-def test_a_bake_still_in_flight_at_the_deadline_answers_ask_again(world):
-    redis, runs, waited = world
-    db = _FakeDb()
-    bake.enqueue_bake(ARC, ACTOR, "spoken")
-    with pytest.raises(SectionPending):
-        bake.changes_block_for(db, ARC, ACTOR, SNAPSHOT, CORE)
-    assert runs == []
-    assert len(waited) >= bake.BAKE_WAIT_SECONDS
-
-
 def test_without_a_bake_in_flight_the_reader_computes_live_as_before(world):
-    _redis, runs, _waited = world
+    _redis, runs = world
     db = _FakeDb()
     block = bake.changes_block_for(db, ARC, ACTOR, SNAPSHOT, CORE)
     assert [row["id"] for row in block["changes"]] == ["cand-1"]

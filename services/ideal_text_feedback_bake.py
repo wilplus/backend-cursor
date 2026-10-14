@@ -36,12 +36,10 @@ untouched (L1); the Manager still arbitrates (L2); no provenance moves (L3).
 from __future__ import annotations
 
 import logging
-from time import monotonic, perf_counter, sleep
-from typing import Any, Callable, Mapping, TypeGuard
+from time import perf_counter
+from typing import Any, Mapping, TypeGuard
 
-from services.ideal_text_enrichment import (
-    FOCUSED_RETRY_BUDGET_SECONDS, SectionPending,
-)
+from services.ideal_text_enrichment import SectionPending
 
 logger = logging.getLogger(__name__)
 
@@ -55,10 +53,18 @@ BAKE_TASK_PATH = "services.ideal_text_feedback_bake.run_pending_bake"
 #  the bake worker ran the identical Manager beside it: two 20–40 s runs over
 #  one document, each slowing the other, for one answer. The reader now asks
 #  Redis whether a bake for this document is queued or running and, when it
-#  is, waits for the stored row instead — polling it once a second, inside
-#  the request's own budget. Still in flight at the deadline, the section
-#  goes out `pending`/`retryable` and the page asks again (its settle loop),
-#  which finds the row the moment the bake writes it.
+#  is, answers `pending`/`retryable` at once. The page asks again on its own
+#  widening schedule (its settle loop) and finds the row the moment the bake
+#  writes it.
+#
+#  NEVER WAIT INSIDE A REQUEST (2026-10-14, the coach panel's 504s). The
+#  first version polled the stored row once a second for up to 27 s inside
+#  the request. The web service has eight request threads in all (2 workers
+#  x 4), so a few speakers' pages waiting on bakes held most of them, and
+#  every other request — the coach panel's, three database calls — queued
+#  behind them for over a minute until the proxy gave up. A "pending" costs
+#  the page one cheap request per retry and costs the server nothing while
+#  it waits.
 #
 #  TWO MARKS, because the queue has a gap. "Queued" is set by `enqueue_bake`
 #  (it does not know the snapshot: the job reads the head when it runs) and
@@ -68,7 +74,7 @@ BAKE_TASK_PATH = "services.ideal_text_feedback_bake.run_pending_bake"
 #  before. No database, no migration, no state the reader cannot lose safely.
 #
 #  WITHOUT A BROKER NOTHING CHANGES. No Redis (dev, tests, an outage) means
-#  no marks and no wait; the reader computes live, as every reader did.
+#  no marks; the reader computes live, as every reader did.
 
 #: How long the "queued" mark lives. A bake that has not started in this
 #: time is stuck behind something, and a live computation is then the
@@ -76,11 +82,6 @@ BAKE_TASK_PATH = "services.ideal_text_feedback_bake.run_pending_bake"
 BAKE_QUEUED_TTL_SECONDS = 90
 #: How long the "running" mark lives: past the slowest Manager run seen.
 BAKE_RUNNING_TTL_SECONDS = 180
-#: How long one request waits for an in-flight bake: inside the request's
-#: own budget, with room for the response to go out.
-BAKE_WAIT_SECONDS = FOCUSED_RETRY_BUDGET_SECONDS - 3.0
-#: Between two reads of the stored row while waiting.
-BAKE_WAIT_POLL_SECONDS = 1.0
 
 
 def _bake_enabled() -> bool:
@@ -192,39 +193,6 @@ def bake_in_flight(arc_id: str, actor_id: str, snapshot_id: str) -> bool:
         return False
 
 
-def _await_bake(
-    database: Any, arc_id: str, actor_id: str, snapshot_id: str, *,
-    clock: Callable[[], float] | None = None,
-    wait: Callable[[float], None] | None = None,
-    in_flight: Callable[[str, str, str], bool] = bake_in_flight,
-) -> dict | None:
-    """The stored block once an in-flight bake writes it; None at once when
-    no bake is in flight, or when the one in flight finished without a row
-    (an empty lane, a failure) — the reader then computes live.
-
-    Raises `SectionPending` when the bake is still in flight at the
-    deadline: the section goes out retryable and the next request waits
-    again, rather than this one running a second Manager beside the bake.
-    """
-    if not in_flight(arc_id, actor_id, snapshot_id):
-        return None
-    # Resolved here, not in the signature, so a test can stand in for them.
-    clock = clock or monotonic
-    wait = wait or sleep
-    deadline = clock() + BAKE_WAIT_SECONDS
-    logger.info("ideal-text bookmarks waiting on the bake arc=%s", arc_id)
-    while True:
-        wait(BAKE_WAIT_POLL_SECONDS)
-        baked = database.read_ideal_text_feedback_bake(
-            arc_id, actor_id, snapshot_id)
-        if is_a_bake(baked):
-            return baked
-        if not in_flight(arc_id, actor_id, snapshot_id):
-            return None
-        if clock() >= deadline:
-            raise SectionPending("ideal-text bake still in flight")
-
-
 def changes_block_for(
     database: Any, arc_id: str, actor_id: str, document_snapshot_id: str,
     core: Mapping[str, Any],
@@ -274,15 +242,13 @@ def changes_block_for(
     if is_a_bake(baked):
         logger.info("ideal-text bookmarks served from storage arc=%s", arc_id)
         return _client_rows_only(_with_fresh_playback(baked))
-    # A BAKE ALREADY ON ITS WAY IS THIS ANSWER (founder 2026-10-14): wait for
-    # it rather than run the same Manager a second time beside it.
-    if _bake_enabled():
-        awaited = _await_bake(database, str(arc_id), str(actor_id),
-                              str(document_snapshot_id or ""))
-        if awaited is not None:
-            logger.info("ideal-text bookmarks served from the bake just "
-                        "made arc=%s", arc_id)
-            return _client_rows_only(_with_fresh_playback(awaited))
+    # A BAKE ALREADY ON ITS WAY IS THIS ANSWER (founder 2026-10-14): the page
+    # asks again rather than this request running the same Manager a second
+    # time beside it, or holding a request thread while it waits.
+    if _bake_enabled() and bake_in_flight(
+            str(arc_id), str(actor_id), str(document_snapshot_id or "")):
+        logger.info("ideal-text bookmarks pending on the bake arc=%s", arc_id)
+        raise SectionPending("ideal-text bake in flight")
     # A MISS IS NOT A FAILURE, but it IS the four and a half seconds the
     # speaker waits, so it says which kind it is. Off means the flag; absent
     # means nothing was ever stored for this document; stale means an answer
