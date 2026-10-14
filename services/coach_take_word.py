@@ -91,7 +91,8 @@ def _tell_the_speaker(database: Any, take_session_id: str, *,
     as a publish did (founder 2026-09-25, Q39 B); after the Take's review, the
     word is its own coach update bubble (lock 2026-10-12, section 3). On the
     first share the speaker also gets one WhatsApp message if they left a
-    number (founder 2026-10-12). Best-effort."""
+    number (founder 2026-10-12) and the coach-feedback email (2026-10-14).
+    Best-effort."""
     try:
         from services.arc_notifications import bump_ideal_bubble
         session = database.v2_get_session_by_id(take_session_id) or {}
@@ -100,8 +101,11 @@ def _tell_the_speaker(database: Any, take_session_id: str, *,
         if not first_share:
             _log.info("whatsapp: take=%s was shared before, no message", take_session_id)
         elif session.get("user_id"):
+            from services.coach_feedback_email import send_coach_feedback_email_in_background
             from services.whatsapp_notify import notify_coach_feedback_in_background
             notify_coach_feedback_in_background(database, session["user_id"])
+            send_coach_feedback_email_in_background(
+                database, take_session_id=take_session_id, moments=0)
     except Exception as e:  # noqa: BLE001 -- the word is saved either way
         _log.info("take word bubble bump skipped take=%s: %s", take_session_id, e)
     try:
