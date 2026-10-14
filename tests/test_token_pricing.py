@@ -372,14 +372,14 @@ class ChargeTests(unittest.TestCase):
         self.assertEqual(r.balance, 11_000)
 
 
-    def test_coach_cap_binds_independently_of_a_large_balance(self):
-        """A Max user holding 1.4M tokens can still be out of reviews. That is
-        the design: the cap protects the founder's calendar, not the margin."""
+    def test_a_coach_review_is_paid_in_tokens(self):
+        """Founder 2026-10-14: plans differ by tokens only, so a coach review
+        costs tokens like any action instead of a plan's review slot."""
         db = FakeDB(account_row("intensive", balance=400_000, reviews=8))
         r = self.ta.charge("u1", "coach_feedback", ref_id="s9", database=db)
-        self.assertFalse(r.ok)
-        self.assertEqual(r.reason, "coach_cap_reached")
-        self.assertEqual(r.balance, 400_000, "balance must be untouched")
+        self.assertTrue(r.ok)
+        self.assertEqual(r.charged, 35_000)
+        self.assertEqual(r.balance, 365_000)
 
 
 class FailOpenTests(unittest.TestCase):

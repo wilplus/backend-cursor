@@ -50,10 +50,13 @@ PRICE_VERSION = "2026-08-14-v3"
 
 TIERS: dict[str, dict] = {
     # ── SOLD ──
-    "free":      {"tokens":  12_000, "coach_reviews": 0, "usd":  0},
-    "practice":  {"tokens": 150_000, "coach_reviews": 0, "usd": 12},
-    "coaching":  {"tokens": 150_000, "coach_reviews": 3, "usd": 39},
-    "intensive": {"tokens": 400_000, "coach_reviews": 8, "usd": 89},
+    # Founder 2026-10-14: plans differ by TOKENS ONLY. A coach review is
+    # paid in tokens like any action (`coach_feedback` below), so no plan
+    # carries review slots any more. Shown as Starter / Plus / Pro.
+    "free":      {"tokens":    12_000, "coach_reviews": 0, "usd":  0},
+    "practice":  {"tokens":   150_000, "coach_reviews": 0, "usd": 12},
+    "coaching":  {"tokens":   550_000, "coach_reviews": 0, "usd": 39},
+    "intensive": {"tokens": 1_400_000, "coach_reviews": 0, "usd": 89},
 
     # ── RETIRED, NOT SOLD (founder 2026-08-14: the grandfathering SCHEME is
     # dropped — no aliases, no legacy cards, no special entitlement rules).
@@ -141,17 +144,14 @@ PRICES: dict[str, int] = {
     "insights":           1_000,
     # Conversation
     "chat":                 150,
-    # HUMAN WORK IS METERED IN REVIEWS, NOT TOKENS (v3, founder 2026-08-14).
-    #
-    # Delivery of a coach review costs ZERO tokens and consumes ONE of the
-    # tier's monthly coach slots instead. The tier price already bought the
-    # sitting: charging 35,000 tokens on top would bill the same thing twice
-    # and, at v3's grants, a single review would eat a quarter of a Coached
-    # month's tokens for something the user had already paid for.
+    # A COACH REVIEW IS PAID IN TOKENS (founder 2026-10-14). Plans no longer
+    # carry review slots, so the review itself carries the price. The charge
+    # stays soft at delivery (services/lab_send.py): the Take reaches the
+    # coach whatever the balance.
     #
     # Charged per SESSION (ref_id=session_id), so a re-publish never
-    # re-charges or double-counts a slot.
-    "coach_feedback":         0,
+    # re-charges.
+    "coach_feedback":    35_000,
 }
 
 PER_ARC_ACTIONS: tuple[str, ...] = (
@@ -225,9 +225,11 @@ def legacy_credit_tokens(credits: Optional[int]) -> int:
     return max(0, c - LEGACY_CREDIT_FREE_FLOOR) * LEGACY_CREDIT_TOKENS
 
 
-COACH_ACTIONS = frozenset({"coach_feedback"})
-"""Actions that consume the per-period coach-review allowance. Kept as a set
-rather than a flag on the price so the two limits stay visibly separate.
+COACH_ACTIONS: frozenset[str] = frozenset()
+"""Actions that consume the per-period coach-review allowance. EMPTY since
+2026-10-14: a coach review is paid in tokens (`coach_feedback` in PRICES), so
+nothing spends review slots. Kept so purchased review credits and the RPC's
+coach branch stay readable until they are retired.
 
 ⚠️ THE MEMBER CHANGED IN v3 (founder 2026-08-14), and it is the fix for a
 meter that was dead in production. The only member used to be `coach_review`
