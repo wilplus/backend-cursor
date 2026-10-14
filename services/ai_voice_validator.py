@@ -37,7 +37,9 @@ MAX_DEAD_AIR_S = 1.6
 MIN_DURATION_RATIO, MAX_DURATION_RATIO = 0.6, 2.2
 MAX_WORD_ERROR_RATE = 0.10
 PACE_MAX_RATIO, PACE_MIN_RATIO = 0.97, 0.70
-PAUSE_MIN_S, PAUSE_MAX_S = 0.3, 1.2
+# Up to 1.5 s: the founder's smoke run held a natural 1.24 s beat before the
+# main point (2026-10-14); still under MAX_DEAD_AIR_S.
+PAUSE_MIN_S, PAUSE_MAX_S = 0.3, 1.5
 PAUSE_OVER_MEDIAN = 1.8
 STRESS_MIN_DB, STRESS_MAX_DB = 1.5, 10.0
 
