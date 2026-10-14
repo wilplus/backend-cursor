@@ -18,6 +18,10 @@ Prices for one person (step 3, services/plan_promotions.py):
   PUT    /v2/admin/people/<user_id>/promotion   {"plan", "price_cents", "ends_on": "YYYY-MM-DD"}
   DELETE /v2/admin/people/<user_id>/promotion   end it now
   GET    /v2/user/offers                        {"promotion", "lesson"} for the pricing screen
+
+Deleting an account (the person's own deletion road, seven-day window):
+  POST   /v2/admin/people/<user_id>/delete              request it
+  POST   /v2/admin/people/<user_id>/delete/<id>/cancel  cancel it inside the window
 """
 from __future__ import annotations
 
@@ -139,3 +143,25 @@ def my_offers():
         "promotion": admin_person._safe("promotion", partial(plan_promotions.active, _me())),
         "lesson": admin_person._safe("lesson", partial(person_asks.lesson_offer, _me())),
     })
+
+
+@people_bp.route("/v2/admin/people/<user_id>/delete", methods=["POST"])
+@require_admin
+def delete_person(user_id: str):
+    from services.processing_authorization import ProcessingAuthorizationError
+    if user_id == _me():
+        return _reply({"code": "SELF", "error": "You cannot delete your own account here."}, 409)
+    try:
+        return _reply({"deletion": admin_person.request_deletion(user_id, _me())}, 202)
+    except ProcessingAuthorizationError as e:
+        return _reply({"code": e.code, "error": e.message}, e.status)
+
+
+@people_bp.route("/v2/admin/people/<user_id>/delete/<request_id>/cancel", methods=["POST"])
+@require_admin
+def cancel_delete_person(user_id: str, request_id: str):
+    from services.processing_authorization import ProcessingAuthorizationError
+    try:
+        return _reply({"deletion": admin_person.cancel_deletion(user_id, request_id)})
+    except ProcessingAuthorizationError as e:
+        return _reply({"code": e.code, "error": e.message}, e.status)
