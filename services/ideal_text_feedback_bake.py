@@ -36,12 +36,51 @@ untouched (L1); the Manager still arbitrates (L2); no provenance moves (L3).
 from __future__ import annotations
 
 import logging
-from time import perf_counter
-from typing import Any, Mapping, TypeGuard
+from time import monotonic, perf_counter, sleep
+from typing import Any, Callable, Mapping, TypeGuard
+
+from services.ideal_text_enrichment import (
+    FOCUSED_RETRY_BUDGET_SECONDS, SectionPending,
+)
 
 logger = logging.getLogger(__name__)
 
 BAKE_TASK_PATH = "services.ideal_text_feedback_bake.run_pending_bake"
+
+#  ONE MANAGER PER DOCUMENT (founder 2026-10-14, the blank lens screen).
+#
+#  The bake is enqueued the moment the Take flips ready, and the speaker's
+#  screen asks for `document_layers` within the same second. Until now the
+#  reader found no stored row, ran the whole Manager LIVE in the request, and
+#  the bake worker ran the identical Manager beside it: two 20–40 s runs over
+#  one document, each slowing the other, for one answer. The reader now asks
+#  Redis whether a bake for this document is queued or running and, when it
+#  is, waits for the stored row instead — polling it once a second, inside
+#  the request's own budget. Still in flight at the deadline, the section
+#  goes out `pending`/`retryable` and the page asks again (its settle loop),
+#  which finds the row the moment the bake writes it.
+#
+#  TWO MARKS, because the queue has a gap. "Queued" is set by `enqueue_bake`
+#  (it does not know the snapshot: the job reads the head when it runs) and
+#  "running" by `bake_for_snapshot` for the exact snapshot. Both are keys
+#  with a TTL and nothing else: a worker that dies mid-bake leaves a mark
+#  that expires on its own, after which the reader computes live exactly as
+#  before. No database, no migration, no state the reader cannot lose safely.
+#
+#  WITHOUT A BROKER NOTHING CHANGES. No Redis (dev, tests, an outage) means
+#  no marks and no wait; the reader computes live, as every reader did.
+
+#: How long the "queued" mark lives. A bake that has not started in this
+#: time is stuck behind something, and a live computation is then the
+#: faster answer.
+BAKE_QUEUED_TTL_SECONDS = 90
+#: How long the "running" mark lives: past the slowest Manager run seen.
+BAKE_RUNNING_TTL_SECONDS = 180
+#: How long one request waits for an in-flight bake: inside the request's
+#: own budget, with room for the response to go out.
+BAKE_WAIT_SECONDS = FOCUSED_RETRY_BUDGET_SECONDS - 3.0
+#: Between two reads of the stored row while waiting.
+BAKE_WAIT_POLL_SECONDS = 1.0
 
 
 def _bake_enabled() -> bool:
@@ -96,6 +135,96 @@ def _snapshot_id_of(result: Any) -> str:
     return str(value) if value else ""
 
 
+# ── the in-flight marks ────────────────────────────────────────────────────
+
+
+def _queued_key(arc_id: str, actor_id: str) -> str:
+    return f"ideal-text-bake-queued:{arc_id}:{actor_id}"
+
+
+def _running_key(arc_id: str, actor_id: str, snapshot_id: str) -> str:
+    return f"ideal-text-bake-running:{arc_id}:{actor_id}:{snapshot_id}"
+
+
+def _broker() -> Any:
+    """The web side's Redis, or None when there is none. Never raises."""
+    try:
+        from services import job_queue
+        if not job_queue.queue_configured():
+            return None
+        return job_queue.get_redis()
+    except Exception:  # noqa: BLE001 -- no broker, no marks
+        return None
+
+
+def _mark(key: str, ttl_seconds: int) -> None:
+    conn = _broker()
+    if conn is None:
+        return
+    try:
+        conn.set(key, "1", ex=ttl_seconds)
+    except Exception as error:  # noqa: BLE001 -- a mark is advisory
+        logger.warning("ideal-text bake mark failed key=%s: %s", key, error)
+
+
+def _unmark(*keys: str) -> None:
+    conn = _broker()
+    if conn is None:
+        return
+    try:
+        conn.delete(*keys)
+    except Exception as error:  # noqa: BLE001 -- the TTL clears it anyway
+        logger.warning("ideal-text bake unmark failed: %s", error)
+
+
+def bake_in_flight(arc_id: str, actor_id: str, snapshot_id: str) -> bool:
+    """Is a bake for this document queued or running right now? False
+    without a broker, so the reader computes live as it always did."""
+    conn = _broker()
+    if conn is None:
+        return False
+    try:
+        return bool(conn.exists(_queued_key(arc_id, actor_id),
+                                _running_key(arc_id, actor_id, snapshot_id)))
+    except Exception as error:  # noqa: BLE001 -- unknown means not waiting
+        logger.warning("ideal-text bake in-flight read failed arc=%s: %s",
+                       arc_id, error)
+        return False
+
+
+def _await_bake(
+    database: Any, arc_id: str, actor_id: str, snapshot_id: str, *,
+    clock: Callable[[], float] | None = None,
+    wait: Callable[[float], None] | None = None,
+    in_flight: Callable[[str, str, str], bool] = bake_in_flight,
+) -> dict | None:
+    """The stored block once an in-flight bake writes it; None at once when
+    no bake is in flight, or when the one in flight finished without a row
+    (an empty lane, a failure) — the reader then computes live.
+
+    Raises `SectionPending` when the bake is still in flight at the
+    deadline: the section goes out retryable and the next request waits
+    again, rather than this one running a second Manager beside the bake.
+    """
+    if not in_flight(arc_id, actor_id, snapshot_id):
+        return None
+    # Resolved here, not in the signature, so a test can stand in for them.
+    clock = clock or monotonic
+    wait = wait or sleep
+    deadline = clock() + BAKE_WAIT_SECONDS
+    logger.info("ideal-text bookmarks waiting on the bake arc=%s", arc_id)
+    while True:
+        wait(BAKE_WAIT_POLL_SECONDS)
+        baked = database.read_ideal_text_feedback_bake(
+            arc_id, actor_id, snapshot_id)
+        if is_a_bake(baked):
+            return baked
+        if not in_flight(arc_id, actor_id, snapshot_id):
+            return None
+        if clock() >= deadline:
+            raise SectionPending("ideal-text bake still in flight")
+
+
 def changes_block_for(
     database: Any, arc_id: str, actor_id: str, document_snapshot_id: str,
     core: Mapping[str, Any],
@@ -145,6 +274,15 @@ def changes_block_for(
     if is_a_bake(baked):
         logger.info("ideal-text bookmarks served from storage arc=%s", arc_id)
         return _client_rows_only(_with_fresh_playback(baked))
+    # A BAKE ALREADY ON ITS WAY IS THIS ANSWER (founder 2026-10-14): wait for
+    # it rather than run the same Manager a second time beside it.
+    if _bake_enabled():
+        awaited = _await_bake(database, str(arc_id), str(actor_id),
+                              str(document_snapshot_id or ""))
+        if awaited is not None:
+            logger.info("ideal-text bookmarks served from the bake just "
+                        "made arc=%s", arc_id)
+            return _client_rows_only(_with_fresh_playback(awaited))
     # A MISS IS NOT A FAILURE, but it IS the four and a half seconds the
     # speaker waits, so it says which kind it is. Off means the flag; absent
     # means nothing was ever stored for this document; stale means an answer
@@ -336,7 +474,7 @@ def enqueue_bake(arc_id: Any, actor_id: Any, recording_kind: Any) -> bool:
         from services import job_queue
         if not job_queue.queue_configured():
             return False
-        return job_queue.enqueue(
+        queued = job_queue.enqueue(
             BAKE_TASK_PATH, arc, actor,
             # A LANE OF ITS OWN WHEN THERE IS ONE (#596). `bake_queue_name`
             # falls back to the pipeline queue, so unset this is exactly what
@@ -349,6 +487,11 @@ def enqueue_bake(arc_id: Any, actor_id: Any, recording_kind: Any) -> bool:
             # one that bakes the current document.
             rq_job_id=f"ideal-text-bake:{arc_id}:{actor_id}",
         )
+        if queued:
+            # The reader that arrives before the worker picks this up waits
+            # for it instead of computing the same block (see the marks).
+            _mark(_queued_key(arc, actor), BAKE_QUEUED_TTL_SECONDS)
+        return bool(queued)
     except Exception as error:
         logger.warning("ideal-text feedback bake not enqueued arc=%s: %s",
                        arc_id, error)
@@ -522,6 +665,24 @@ def bake_for_snapshot(
     served = _served_head(published)
     if served is None:
         return False
+    # RUNNING, for this exact snapshot: a reader that opens now waits for the
+    # row this writes. The "queued" mark has done its job. The mark comes off
+    # in `finally`, so a bake that stores nothing releases its readers to
+    # compute live at once rather than at the TTL.
+    running = _running_key(str(arc_id), str(actor_id), snapshot_id)
+    _mark(running, BAKE_RUNNING_TTL_SECONDS)
+    _unmark(_queued_key(str(arc_id), str(actor_id)))
+    try:
+        return _bake_and_store(database, arc_id, actor_id, snapshot_id, served)
+    finally:
+        _unmark(running)
+
+
+def _bake_and_store(
+    database: Any, arc_id: str, actor_id: str, snapshot_id: str,
+    served: tuple[str, str, Any],
+) -> bool:
+    """The Manager over the served head, stored when it has marks."""
     computed = _compute_block(arc_id, actor_id, *served)
     if computed is None:
         return False
