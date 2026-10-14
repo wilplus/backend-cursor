@@ -57,16 +57,8 @@ from services.coach_video_storage import refreshed_media_url
 from services.intervention_spend import (
     latest_spoken_take_sid as _latest_take_sid,
 )
-from services.recording_roots import (
-    RecordingRootsStale,
-    project_recording_roots,
-)
 from services.paragraph_history import history_for_part
-from services.slide_helper_words import (
-    merge_recording_roots,
-    record_pick,
-    slide_roots,
-)
+from services.slide_helper_words import page_roots, record_pick
 
 logger = logging.getLogger(__name__)
 
@@ -193,8 +185,7 @@ def v2_explore_get_recording_roots(arc_id):
 
     Root choice is product state, not document content and not an ML label.
     The immutable core owns exact Paragraph -> Slide lineage; current part rows
-    own the latest lock/root choice.  The projection refuses any identity or
-    content mismatch rather than guessing where a phrase belongs.
+    own the latest lock/root choice (``slide_helper_words.page_roots``).
     """
     owned, _sessions = _arc_owned_by_caller(arc_id)
     if not owned:
@@ -206,14 +197,7 @@ def v2_explore_get_recording_roots(arc_id):
             "code": "IDEAL_TEXT_DOCUMENT_PENDING",
             "state": "pending",
         }), 404
-    try:
-        roots = project_recording_roots(
-            snapshot,
-            db.get_ideal_text_parts(arc_id, actor_id, with_lock=True),
-        )
-    except RecordingRootsStale as error:
-        return jsonify({"code": str(error)}), 409
-    roots = merge_recording_roots(roots, slide_roots(db, arc_id, actor_id))
+    roots = page_roots(db, arc_id, actor_id, snapshot)
     response = jsonify({
         "document_snapshot_id": str(snapshot.get("id")),
         "document_snapshot_sha256": snapshot.get("payload_sha256"),

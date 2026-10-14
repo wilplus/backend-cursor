@@ -101,3 +101,28 @@ def _locked_root(live: Any, piece: Mapping[str, Any]) -> dict[str, Any] | None:
         "text": phrase,
         "type": "flagship",
     }
+
+
+def frozen_recording_roots(snapshot: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The locked helper words the snapshot itself carries, Slide by Slide.
+
+    For a read that met the live Paragraphs mid-change (a new Take is
+    published in two steps, and its Paragraphs are rewritten between them):
+    the page shows this snapshot, so its own words are the honest answer.
+    Refusing instead dropped every helper word on the project for that read
+    (founder 2026-10-13, project "S")."""
+    payload = snapshot.get("payload") if isinstance(snapshot, Mapping) else None
+    if not isinstance(payload, Mapping):
+        return []
+    parts, pieces = payload.get("parts"), payload.get("pieces")
+    if (not isinstance(parts, list) or not isinstance(pieces, list)
+            or len(parts) != len(pieces)):
+        return []
+    roots: list[dict[str, Any]] = []
+    for part, piece in zip(parts, pieces):
+        if isinstance(part, Mapping) and isinstance(piece, Mapping) \
+                and part.get("id"):
+            root = _locked_root(part, piece)
+            if root is not None:
+                roots.append(root)
+    return roots
