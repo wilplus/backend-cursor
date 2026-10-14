@@ -338,7 +338,21 @@ def _process_lab_recording_impl(
     )
     from services.audio_metrics import decode_audio_to_pcm
     from services.pipeline_stage_execution import ReadyStage, run_ready_stages
+    from services.slide_alignment import prewarm_slide_claims
 
+    # The slide-claims decomposition needs only the deck, so it rides the
+    # first wave and warms the cache the scoring wave reads (founder
+    # 2026-10-14, the wait). Optional: a failure here costs nothing — the
+    # scoring wave decomposes for itself, as it always did. Only on the live
+    # path; the import lane runs no LLM layer (``stages``).
+    _prewarm = (
+        (ReadyStage(
+            "slide_claims",
+            lambda: prewarm_slide_claims(session_context),
+            required=False,
+        ),)
+        if _run_analytics else ()
+    )
     first_wave = run_ready_stages(
         ReadyStage(
             "audio_decode",
@@ -349,6 +363,7 @@ def _process_lab_recording_impl(
             lambda: transcribe_recording(initial_state, log=logger),
             canonical_stage="transcription",
         ),
+        *_prewarm,
         stage_recorder=stage_recorder,
         log=logger,
     )

@@ -185,6 +185,54 @@ def decompose_slides_to_claims(slides_by_index):
     return out
 
 
+def shown_slide_indices(slides, slide_advances) -> set:
+    """Which slides this Take showed, from the click timeline alone.
+
+    The cutter stamps a piece's slide from the same timeline
+    (``slide_word_split``: a word before the first tap, or a timeline with
+    no usable tap, is slide 0; every tap is clamped into the deck), so this
+    is a superset of the slides any piece can map to — and it needs no
+    transcript to compute.
+    """
+    n = len(slides or [])
+    if n <= 0:
+        return set()
+    shown = {0}
+    for a in (slide_advances or []):
+        idx = a.get("index") if isinstance(a, dict) else None
+        if isinstance(idx, int) and not isinstance(idx, bool):
+            shown.add(max(0, min(idx, n - 1)))
+    return shown
+
+
+def prewarm_slide_claims(session_context) -> int:
+    """Decompose the shown slides into claims BEFORE the transcript exists.
+
+    Founder 2026-10-14 (the wait): the claim decomposition only needs the
+    deck, yet it ran inside the second wave, after Whisper, as the first of
+    two serial model calls on the slide-scoring branch. Run during the
+    first wave — alongside the decode and the transcription — it fills the
+    per-slide-text cache, so the scoring wave's `decompose_slides_to_claims`
+    finds every slide it needs already there and pays for the entailment
+    call alone. Same prompt, same spec, same authorization scope (the wave
+    copies the Take's provider context into its threads); it merely starts
+    earlier. Best-effort: the scoring wave decomposes for itself whatever
+    this did not reach. Returns how many slides now hold claims.
+    """
+    ctx = session_context if isinstance(session_context, dict) else {}
+    slides = ctx.get("slides") or []
+    if not isinstance(slides, list) or not slides:
+        return 0
+    subset = {
+        i: slides[i]
+        for i in sorted(shown_slide_indices(slides, ctx.get("slide_advances")))
+        if _slide_text(slides[i])
+    }
+    if not subset:
+        return 0
+    return len(decompose_slides_to_claims(subset))
+
+
 def _llm_decompose(slides_by_index):
     try:
         from services.llm import chat_complete

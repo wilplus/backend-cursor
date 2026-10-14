@@ -32,6 +32,27 @@ def tearDownModule():
         sys.modules.pop("services.db", None)
 
 
+class CardsSurviveTheJobTests(unittest.TestCase):
+    """The RQ work horse exits the moment the job returns, taking a daemon
+    thread with it. The dispatch registers its thread so the job can wait,
+    bounded, for the cards to land (founder 2026-10-14, the wait)."""
+
+    def test_the_job_can_wait_for_the_cards(self):
+        import threading
+        from unittest.mock import patch
+        import services.say_it_stronger as sis
+
+        done = threading.Event()
+        with patch.object(sis, "_generate_all",
+                          lambda *a, **k: done.set()):
+            sis.dispatch_say_it_stronger(
+                "sess-wait", [{"id": "s1", "transcript": "x"}])
+            self.assertTrue(sis.wait_for_cards("sess-wait", timeout=5))
+        self.assertTrue(done.is_set())
+        # Nothing left to wait for is not a failure.
+        self.assertTrue(sis.wait_for_cards("sess-wait"))
+
+
 class GuardCopyTests(unittest.TestCase):
     """AC-9: user-facing coaching copy — no digits, no construct family."""
 

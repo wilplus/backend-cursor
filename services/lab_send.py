@@ -207,7 +207,8 @@ def _notify_admin(db, session: dict, session_id: str, user_id: str) -> None:
         )
 
 
-def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
+def send_lab_recording_to_coach(session_id: str, user_id: str, *,
+                                notify_admin: bool = True) -> dict:
     """Idempotently send a (claimed) Lab session to the coach queue.
 
     Returns::
@@ -217,6 +218,11 @@ def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
     admin email is best-effort and never gates ``ok``. Never raises —
     the caller must not unwind durable ownership on a send hiccup; a retry
     re-sends the exact Project Take.
+
+    ``notify_admin=False`` lands the hand-off without the coach email; the
+    caller sends it later with :func:`notify_coach_of_take`. The analysis
+    worker does this so the email (a synchronous provider round trip) is
+    paid after the speaker has been told the Take is ready, not before.
     """
     if not session_id or not user_id:
         return {"ok": False, "already_sent": False, "status": None}
@@ -282,9 +288,25 @@ def send_lab_recording_to_coach(session_id: str, user_id: str) -> dict:
                 "reason": "queue_write_failed"}
 
     _record_delivery_completed(adapter, permit_id, session_id)
-    _notify_admin(db, session, session_id, user_id)
+    if notify_admin:
+        _notify_admin(db, session, session_id, user_id)
 
     logger.info("lab_send: sent to coach sid=%s user=%s", session_id, user_id)
     return {"ok": True, "already_sent": False,
             "status": "pending_admin_review",
             "coach_review_status": "queued"}
+
+
+def notify_coach_of_take(session_id: str, user_id: str) -> None:
+    """The coach email for a hand-off that already landed.
+
+    The second half of ``send_lab_recording_to_coach(..., notify_admin=
+    False)``: same rules (one email per spoken Take, none for a re-read),
+    same best-effort contract. Never raises.
+    """
+    from services.db import db
+
+    session = _load_session(db, session_id)
+    if session is None:
+        return
+    _notify_admin(db, session, session_id, user_id)

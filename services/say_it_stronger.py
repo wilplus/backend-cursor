@@ -34,6 +34,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 from datetime import datetime, timezone
 from typing import Any, Optional
 from services.parallel import start_scoped_thread
@@ -302,14 +303,51 @@ def dispatch_say_it_stronger(session_id: str, snippets: list,
     try:
         # B-6: the scope carrying this Take's provider authority lives in a
         # contextvar, and a raw threading.Thread starts with an empty context.
-        start_scoped_thread(
+        thread = start_scoped_thread(
             _generate_all,
             args=(session_id, snippets, context, means),
             name=f"say-it-stronger-{str(session_id)[:8]}",
         )
+        with _inflight_lock:
+            _inflight[str(session_id)] = thread
     except Exception as e:
         logger.warning(
             "say_it_stronger: dispatch failed sid=%s: %s", session_id, e)
+
+
+# THE THREAD OUTLIVES NOTHING. The RQ work horse is a forked child that
+# `os._exit`s the moment the job function returns (rq.Worker.main_work_horse),
+# and a daemon thread dies with it — so on the queue path a card still being
+# generated when the pipeline returned was simply lost, and the readout
+# re-read carried null for it forever. The dispatch above registers the
+# thread so the job can wait for it AFTER the speaker has been told the Take
+# is ready (services/analysis_worker.py) and BEFORE it returns; the speaker
+# never waits on it, and the cards land.
+_inflight: dict = {}
+_inflight_lock = threading.Lock()
+
+#: How long the job waits for the cards before giving them up. Five cards
+#: run concurrently (one provider round trip each, ~4-20 s); a thread still
+#: alive past this is a provider stall, and the Take must not hang on it.
+WAIT_FOR_CARDS_SECONDS = 90.0
+
+
+def wait_for_cards(session_id: str,
+                   timeout: float = WAIT_FOR_CARDS_SECONDS) -> bool:
+    """Join this Take's generation thread, bounded. True when it finished
+    (or there was none); False when it is still running at the deadline,
+    in which case it is left to die with the process, as before."""
+    with _inflight_lock:
+        thread = _inflight.pop(str(session_id), None)
+    if thread is None:
+        return True
+    thread.join(timeout)
+    if thread.is_alive():
+        logger.warning(
+            "say_it_stronger: cards still generating after %.0fs sid=%s "
+            "— not waiting longer", timeout, session_id)
+        return False
+    return True
 
 
 def _generate_all(session_id, snippets, context=None, means=None) -> None:

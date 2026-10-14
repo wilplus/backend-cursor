@@ -98,6 +98,7 @@ class _JobDb:
 
     def __init__(self):
         self.updates = []
+        self.states = []
 
     def update_processing_job(self, job_id, patch_):
         self.updates.append(patch_)
@@ -105,6 +106,14 @@ class _JobDb:
 
     def v2_get_session_by_id(self, sid):
         return {}
+
+    @property
+    def takes(self):
+        return self
+
+    def set_session_analysis_state(self, sid, state, error=None):
+        self.states.append((sid, state))
+        return True
 
 
 class _Adapter:
@@ -123,14 +132,15 @@ class _Authorization:
         return "principal-1"
 
 
-def _run_job(fake_run):
+def _run_job(fake_run, job_db=None):
     import services.pipeline_jobs as pj
     job = {"id": "job-1", "attempts": 1, "kind": "session_recording",
+           "session_id": SID,
            "payload": {"storage_provider": "r2", "storage_key": "k",
                        "bucket": "b", "session_id": SID,
                        "recording_id": REC, "user_id": "u1",
                        "recording_kind": "spoken", "take_index": 2}}
-    with patch.object(pj, "db", _JobDb()), \
+    with patch.object(pj, "db", job_db or _JobDb()), \
             patch.object(pj, "_storage_provider", lambda: "r2"), \
             patch.object(pj, "confidence_source_manifest",
                          lambda **k: None), \
@@ -152,3 +162,17 @@ def test_a_healthy_job_result_is_the_old_shape():
     assert _run_job(fake_run) == {"snippet_count": 2, "sent_to_coach": True}
     assert isinstance(seen["degradation"], DegradationLog)
     assert seen["degradation"].path == "take_analysis"
+
+
+def test_the_job_tells_the_speaker_ready_before_it_finishes():
+    """Founder 2026-10-14: the pipeline's early flip writes the SESSION's
+    `ready` while the job row is still processing — the readout serves on
+    the session row, so the speaker is in before the trailing work runs."""
+    job_db = _JobDb()
+
+    def fake_run(**kwargs):
+        kwargs["on_ready"]()
+        return {"snippets": [1]}, True
+
+    assert _run_job(fake_run, job_db)["snippet_count"] == 1
+    assert job_db.states == [(SID, "ready")]
