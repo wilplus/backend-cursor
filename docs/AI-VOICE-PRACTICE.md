@@ -93,9 +93,15 @@ one sentence, not a real-time claim.
 - The pace row is the run's first clip: its generation and validation
   include cold starts (the first provider connection, the audio decoder's
   first load). The later clips took 3 to 4 s end to end.
-- The pause clip's gap before the target phrase was too short with the
-  `[pause]` tag alone; the prompt now puts an ellipsis before the tag. To be
-  measured again.
+- Second run, same day (ellipsis before the `[pause]` tag): pace 10,888 ms
+  end to end (8,574 generation, 2,127 re-transcription, 183 validation),
+  passed; pause 3,913 ms, failed; stress 3,275 ms, passed. The test clone
+  was deleted and confirmed gone.
+- The pause clip had a clearly audible pause (the founder listened; the
+  audio held a 1.24 s silence), but Whisper's word times showed no gap at
+  all: they stretch the words over short silences. The check now reads the
+  pause from the audio's silence around the target phrase. To be measured
+  again.
 - In the app the job also waits on the queue and stores the clip; the walk
   shows the breathing mark meanwhile (`latency_ms.since_request`).
 - The run's delete of the test clone was reported as refused: ElevenLabs

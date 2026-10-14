@@ -294,7 +294,9 @@ def test_a_clip_that_fails_its_check_is_never_shown():
     with _on():
         db = _Db(_practice(), _snip(150, pause_ratio=0.02), TAKE)
         _ready_voice(db)
-        out = _run_pipeline(db, db.practice, _Voices(), _heard(0.0, "the window closes once"))
+        # No silence before the target phrase, in the words or in the audio.
+        out = _run_pipeline(db, db.practice, _Voices(), _heard(0.0, "the window closes once"),
+                            pcm=_pcm_with_pause(2.4))
         assert out["clip"]["state"] == "unavailable" and out["clip"]["url"] is None
         assert db.client.tables["ai_voice_cycles"][0]["failure_kind"] == "validation"
 
@@ -307,6 +309,19 @@ def test_the_daily_limit_stops_the_provider_call():
         _run_pipeline(db, db.practice, voices, _heard(0.55, "the window closes once"))
         assert voices.spoken == 0
         assert db.client.tables["ai_voice_cycles"][0]["failure_code"] == "speaker_daily"
+
+
+def test_a_pause_heard_in_the_audio_passes_when_the_words_hide_it():
+    """The founder's smoke run: Whisper put no gap between the words, yet
+    the clip had a clear pause before the target phrase."""
+    from services.ai_voice_validator import validate
+    out = validate(audio=b"x", transcription=_heard(0.0, "the window closes once"),
+                   spoken_words=SENTENCE.lower().split(),
+                   exercise={"exercise": "pause", "target_phrase": "the window closes once"},
+                   original_wpm=None, original_duration_s=None,
+                   decode=lambda _a: _pcm_with_pause(1.0))
+    assert out["passed"] and out["measurements"]["word_gap_s"] < 0.1
+    assert out["measurements"]["pause_s"] >= 0.3
 
 
 def test_one_recording_makes_one_checked_clip_then_measures_the_next_try(monkeypatch):
