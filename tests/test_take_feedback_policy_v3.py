@@ -200,18 +200,17 @@ def test_a_whole_take_is_partitioned_read_marked_noted_and_covered():
         (8, 75, None),
     ]
 
-    # Founder lock 2026-10-12, section 6: green = the best moment per slide
-    # by willfidence, at or above the floor, top three for the Take. Slides
-    # 0, 1 and 7 beat slide 2; every other block is written False.
+    # One praise moment per Take (founder 2026-10-14): the best, slide 0;
+    # every other block is written False.
     assert [b["most_confident"] for b in blocks] == [
-        True, True, False, False, False, False, False, True, False, False]
+        True, False, False, False, False, False, False, False, False, False]
     assert not any(b["green_soft"] for b in blocks)
 
-    # One exercise per Take, on the lowest moment; its sound is the weaker
-    # half here (no transcript), so it is the voice exercise.
+    # One practise moment per Take, the second best (slide 1); its sound is
+    # the weaker half here (no transcript), so it is the voice exercise.
     routed = [(b["slide_index"], b["practice_prompt"], b["carries_exercise"],
                b["exercise_kind"]) for b in blocks if b["carries_exercise"]]
-    assert routed == [(4, True, True, "voice")]
+    assert routed == [(1, True, True, "voice")]
     assert sum(b["practice_prompt"] for b in blocks) == 1
 
     # Praise anchors only on green moments, from inside the block; a voice
@@ -223,8 +222,7 @@ def test_a_whole_take_is_partitioned_read_marked_noted_and_covered():
     assert praise["selected_candidate_ids"] == ["p-best"]
     assert praise["anchors"] == [
         {"block_id": by_slide[0][0]["block_id"], "candidate_id": "p-best"}]
-    assert [row["block_id"] for row in praise["blocks_without_note"]] == [
-        by_slide[1][0]["block_id"], by_slide[7][0]["block_id"]]
+    assert praise["blocks_without_note"] == []
 
     # 24c: the denominator is Slides with a block. Slide 7 is covered by its
     # one selected block; slide 8 formed a block but has no clip, and says so.

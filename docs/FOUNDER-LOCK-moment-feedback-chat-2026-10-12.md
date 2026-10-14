@@ -223,6 +223,13 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
 
 ## Decided after the lock
 
+- **One praise moment and one practise moment per Take** (founder,
+  2026-10-14). Praise goes to the strongest moment (section 6's green, now
+  one instead of three). Practise goes to the second best: close enough that
+  one practise improves it. When that one is too short, the next closest one
+  with enough words gets it. Never the praise moment. A Take with one moment
+  gets praise only.
+
 - **An old judging bubble in the chat opens "Other speakers" afresh, not a
   read-only replay** (founder, 2026-10-13: "the way it is right now is
   actually better"). The prototype showed the answered moment read-only,

@@ -15,7 +15,9 @@ Green: on each slide the best clip, if it reaches ``FLOOR`` and has at least
 none reaches the floor, the single best clip is shown with the softer signed
 line (``soft``).
 
-The exercise: the lowest clip that is not green. Its kind follows the lower
+The exercise (founder 2026-10-14): the strongest clip that is not green, so
+the second best of the Take (with ``MIN_WORDS`` words when one has them):
+close enough that one practise improves it. Its kind follows the lower
 half: words (W < S) gives the clearer version, otherwise the voice exercise.
 
 Internal only (AC-9): the numbers order the moments and never leave the
@@ -31,7 +33,8 @@ from services import willfidence
 #: that about 7 in 10 blind judges say Yes to green moments.
 FLOOR = 0.6
 MIN_WORDS = 5
-GREEN_LIMIT = 3
+#: One praise moment and one practise moment per Take (founder 2026-10-14).
+GREEN_LIMIT = 1
 
 EXERCISE_CLEARER = "clearer"
 EXERCISE_VOICE = "voice"
@@ -71,14 +74,15 @@ def pick(reads: list[dict]) -> dict:
         soft = True
     green_ids = [row["block_id"] for row in green]
     rest = [row for row in scored if row["block_id"] not in green_ids]
-    lowest = min(rest, key=lambda r: r["read"]["value"]) if rest else None
+    worded = [row for row in rest if (row.get("word_count") or 0) >= MIN_WORDS] or rest
+    practise = max(worded, key=lambda r: r["read"]["value"]) if worded else None
     kind = None
-    if lowest is not None:
-        kind = (EXERCISE_CLEARER if lowest["read"]["w"] < lowest["read"]["s"]
+    if practise is not None:
+        kind = (EXERCISE_CLEARER if practise["read"]["w"] < practise["read"]["s"]
                 else EXERCISE_VOICE)
     return {
         "green": green_ids,
         "soft": soft,
-        "exercise": lowest["block_id"] if lowest else None,
+        "exercise": practise["block_id"] if practise else None,
         "exercise_kind": kind,
     }
