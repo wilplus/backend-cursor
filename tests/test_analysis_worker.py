@@ -100,5 +100,82 @@ class RunFullAnalysisGuestPathTests(unittest.TestCase):
         self.assertEqual(build.call_args.kwargs["source_session_id"], _SID)
 
 
+@unittest.skipIf(aw is None, f"import failed: {_IMPORT_ERR}")
+class ReadyBeforeTrailingWorkTests(unittest.TestCase):
+    """The speaker hears "ready" before the work they never waited on
+    (founder 2026-10-14, the wait): the shadow logs, the coach email and
+    the Say-It-Stronger cards run after the flip, inside the job, and a
+    failure among them never reaches the speaker."""
+
+    def _run(self, *, shadow_raises=False):
+        from services.degradation import DegradationLog
+        order = []
+
+        def _module(name, **attrs):
+            mod = types.ModuleType(name)
+            for key, value in attrs.items():
+                setattr(mod, key, value)
+            return mod
+
+        def _verbal(db, sid):
+            order.append("verbal_cue_shadow")
+            if shadow_raises:
+                raise RuntimeError("shadow log down")
+            return 1
+
+        log = DegradationLog("take_analysis")
+        with patch.dict(sys.modules, {
+            "services.lab_recording": _module(
+                "services.lab_recording",
+                process_lab_recording=lambda **kw: {"snippets": [1]}),
+            "services.verbal_cues": _module(
+                "services.verbal_cues", record_take=_verbal),
+            "services.acoustic_cues": _module(
+                "services.acoustic_cues",
+                record_take=lambda db, sid: order.append(
+                    "acoustic_cue_shadow")),
+            "services.detector_candidates": _module(
+                "services.detector_candidates",
+                register_candidates=lambda: None),
+            "services.detector_rollout": _module(
+                "services.detector_rollout",
+                record_take=lambda db, sid: order.append(
+                    "detector_rollout_shadow")),
+            "services.say_it_stronger": _module(
+                "services.say_it_stronger",
+                wait_for_cards=lambda sid: order.append("cards") or True),
+        }):
+            readout, sent = aw.run_full_analysis(
+                session_id=_SID,
+                user_id=None,
+                recording_id=_REC,
+                audio_bytes=b"x",
+                filename="lab.webm",
+                session_context=None,
+                parent_audio_url="https://a",
+                degradation=log,
+                on_ready=lambda: order.append("ready"),
+            )
+        return order, readout, log
+
+    def test_ready_comes_first_and_the_cards_are_waited_for(self):
+        order, readout, _ = self._run()
+        self.assertEqual(readout, {"snippets": [1]})
+        self.assertEqual(order[0], "ready")
+        self.assertEqual(set(order[1:-1]), {
+            "verbal_cue_shadow", "acoustic_cue_shadow",
+            "detector_rollout_shadow"})
+        self.assertEqual(order[-1], "cards")
+
+    def test_trailing_work_failing_never_reaches_the_speaker(self):
+        order, readout, log = self._run(shadow_raises=True)
+        self.assertEqual(readout, {"snippets": [1]})
+        self.assertEqual(order[0], "ready")
+        self.assertEqual(order[-1], "cards")
+        self.assertIn({"stage": "take_analysis.verbal_cue_shadow",
+                       "kind": "RuntimeError"},
+                      log.payload()["degraded"])
+
+
 if __name__ == "__main__":
     unittest.main()

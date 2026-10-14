@@ -37,7 +37,7 @@ from __future__ import annotations
 from contextlib import nullcontext
 import logging
 import threading
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 import uuid
 
 import sentry_sdk
@@ -633,6 +633,30 @@ def _cleanup_before_rerun(payload: Dict[str, Any]) -> None:
                            sid, e)
 
 
+def _ready_flipper(job: Dict[str, Any]) -> Optional[Callable[[], None]]:
+    """The early ``ready`` write for one job's Take (founder 2026-10-14).
+
+    `run_full_analysis` calls it the moment everything a speaker-facing read
+    depends on is persisted, and then goes on with the work nobody is waiting
+    for (the shadow logs, the coach email, the Say-It-Stronger cards). The
+    readout routes serve on the SESSION row's state, so a Take reads as
+    ready while its job row is still `processing`; `run_processing_job`
+    writes `ready` once more at the finish, as it always did — idempotent.
+    A failure in that trailing work cannot reach the speaker: the pipeline
+    fences it and the job still completes.
+    """
+    payload = job.get("payload") or {}
+    sid = str(job.get("session_id") or payload.get("session_id") or "")
+    if not sid:
+        return None
+
+    def _mark_ready() -> None:
+        db.takes.set_session_analysis_state(sid, "ready")
+        logger.info("pipeline_jobs: Take ready ahead of job finish sid=%s "
+                    "job=%s", sid, job.get("id"))
+    return _mark_ready
+
+
 def _run_session_recording(job: Dict[str, Any]) -> Dict[str, Any]:
     """Execute one attempt of the full analysis for a claimed job.
     Raises on failure — the caller decides retry vs terminal."""
@@ -774,6 +798,7 @@ def _run_session_recording(job: Dict[str, Any]) -> Dict[str, Any]:
         progress=_progress,
         stage_recorder=_stage_recorder,
         degradation=_degradation,
+        on_ready=_ready_flipper(job),
     )
     # Small mechanical summary only — the readout itself is served by the
     # existing GETs, and job rows never carry scores/verdicts (AC-9). The

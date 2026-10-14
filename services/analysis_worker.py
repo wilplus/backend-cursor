@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple, cast
 
 from services.db import db
 from services.ideal_text_confirmation import IdealTextUnconfirmedError
@@ -169,15 +169,22 @@ def _run_full_analysis_impl(
     progress: ProgressFn = None,
     stage_recorder: Optional[Any] = None,
     degradation: Optional[Any] = None,
+    on_ready: Optional[Callable[[], None]] = None,
 ) -> Tuple[Dict[str, Any], bool]:
     """Runs the full pipeline to completion. Returns (readout, sent_to_coach).
 
     Transcribe → cut pieces → metrics → persist → cadence → auto-send →
-    arc cards → eager ideal-text. Stage semantics and ordering are the
-    closure's, unchanged. Every best-effort stage runs through
-    ``degradation`` (a ``DegradationLog``, audit Q-C1): the same fallback as
-    before, and the caller's job row names what degraded instead of a log
-    line nobody sees at request time.
+    arc cards → eager ideal-text → KPI fold → later-take review. Stage
+    semantics and ordering are the closure's, unchanged. Every best-effort
+    stage runs through ``degradation`` (a ``DegradationLog``, audit Q-C1):
+    the same fallback as before, and the caller's job row names what
+    degraded instead of a log line nobody sees at request time.
+
+    ``on_ready`` is called once everything a speaker-facing read depends on
+    is persisted (founder 2026-10-14, the wait): the queue runner uses it to
+    write ``analysis_state='ready'`` there, and the work that follows it —
+    see ``_after_ready`` — is work the speaker was never waiting on. Without
+    a callback the caller writes ``ready`` after the return, as before.
     """
     from services.degradation import DegradationLog
     from services.lab_recording import process_lab_recording
@@ -242,39 +249,10 @@ def _run_full_analysis_impl(
                         session_id, _globals is not None)
         _deg.run("session_globals", _session_globals)
 
-        # SHADOW-STAGE SPOKEN-WORD CUES (founder 2026-09-28, D3). Measured once
-        # per Take on the clips just persisted, logged, and nothing else: they
-        # route no exercise and reach no user. Best-effort like the step above
-        # — a failure here is recorded and the Take goes on.
-        def _verbal_cue_shadow() -> None:
-            from services.verbal_cues import record_take
-            added = record_take(db, session_id)
-            logger.info("lab: verbal cue shadow sid=%s added=%s",
-                        session_id, added)
-        _deg.run("verbal_cue_shadow", _verbal_cue_shadow)
-
-        # SHADOW-STAGE ACOUSTIC CUES (founder 2026-09-30, E10; ML-14): low
-        # volume and flat pitch from the clips' stored metrics, logged into
-        # the same shadow log, routing nothing. Best-effort like the above.
-        def _acoustic_cue_shadow() -> None:
-            from services.acoustic_cues import record_take as record_acoustic
-            added = record_acoustic(db, session_id)
-            logger.info("lab: acoustic cue shadow sid=%s added=%s",
-                        session_id, added)
-        _deg.run("acoustic_cue_shadow", _acoustic_cue_shadow)
-
-        # DETECTOR VERSIONS IN SHADOW (founder 2026-10-01, 6b/6d; 0411): the
-        # live rules and every candidate version give their verdict on each
-        # clip, insert-once into the same log; the fair test grades them
-        # against the blind audit. Routes nothing. Best-effort like the above.
-        def _detector_rollout_shadow() -> None:
-            from services.detector_candidates import register_candidates
-            from services.detector_rollout import record_take as record_versions
-            register_candidates()
-            added = record_versions(db, session_id)
-            logger.info("lab: detector rollout shadow sid=%s added=%s",
-                        session_id, added)
-        _deg.run("detector_rollout_shadow", _detector_rollout_shadow)
+        # The three shadow logs (verbal cues, acoustic cues, detector
+        # versions) used to run here. They route nothing and reach no user,
+        # so they now run in ``_after_ready``, once the speaker has been told
+        # the Take is ready.
 
         _emit(progress, "ideal_text", 55, "Building your Ideal Text…")
         tl.mark("ideal_text")
@@ -295,20 +273,26 @@ def _run_full_analysis_impl(
         # AUTO-SEND to the coach (founder re-lock 2026-07-06, bug #4):
         # EVERY registered recording reaches the coach queue. Idempotent
         # + best-effort; the merge-path send stays the guest fallback.
-        sent_local = False
+        #
+        # The status flip stays HERE, before the ready flip: the readout GET
+        # derives its `state` from it. The coach EMAIL does not — it is sent
+        # from ``_after_ready``, so a slow mail provider is never in the
+        # speaker's wait.
+        _send_res: Dict[str, Any] = {}
         if user_id:
-            def _auto_send() -> bool:
+            def _auto_send() -> Dict[str, Any]:
                 from services.lab_send import send_lab_recording_to_coach
-                _send_res = send_lab_recording_to_coach(
-                    session_id, str(user_id),
+                _res = send_lab_recording_to_coach(
+                    session_id, str(user_id), notify_admin=False,
                 )
                 logger.info(
                     "lab: auto-send sid=%s ok=%s already=%s",
-                    session_id, _send_res.get("ok"),
-                    _send_res.get("already_sent"),
+                    session_id, _res.get("ok"), _res.get("already_sent"),
                 )
-                return bool(_send_res.get("ok"))
-            sent_local = bool(_deg.run("auto_send", _auto_send, False))
+                return _res
+            _send_res = cast(Dict[str, Any],
+                             _deg.run("auto_send", _auto_send, {}))
+        sent_local = bool(_send_res.get("ok"))
 
         # Arc lifecycle cards + notes (founder #1/#11) — idempotent per
         # (arc, kind), best-effort.
@@ -536,48 +520,31 @@ def _run_full_analysis_impl(
                 _deg.note("review_version_card", "card_not_persisted")
         _deg.run("review_version_card", _review_version_card)
 
-    # THE BOOKMARKS, ASKED FOR AT THE LAST POSSIBLE MOMENT (founder
+    # THE SPEAKER-FACING TERMINAL STATE (founder 2026-10-14, the wait).
+    # Everything a read depends on is persisted above this line: the
+    # snippets, the session globals the FE's phase gate reads, the coach
+    # queue flip the readout derives its `state` from, the Ideal Text and
+    # its review version, the ready card, the KPI fold and the swap offer
+    # the Manager's first open reads. Everything below it is work the
+    # speaker was never waiting on, so the flip comes first.
+    _flip_ready(on_ready, session_id)
+
+    # THE BOOKMARKS, ASKED FOR THE MOMENT THE SPEAKER CAN OPEN THEM (founder
     # 2026-09-20: "there need to be bookmarks right away the moment we see
     # it. Otherwise, that makes no sense because people will quit").
     #
-    # DEAD LAST, below the terminal boundary and below the version card, and
-    # every line of distance is deliberate. Everything above this point is
-    # something the speaker is waiting on; this is the first thing that is
-    # not. `enqueue_bake` hands the work to the queue and returns, so the run
-    # ends when it would have ended and the wait screen closes when it would
-    # have closed.
+    # Below the terminal boundary and below the version card, and every line
+    # of distance is deliberate: the bake computes the feedback block, and
+    # the stages that produce the evidence it arbitrates over run above. A
+    # bake asked for at the assembly — which is what #580 effectively did —
+    # computes an empty lane on a fresh take, because
+    # `ideal_text_confirmation` runs before the feedback stages do.
     #
     # HERE RATHER THAN AT THE PUBLISH is the entire content of task #43. The
     # Manager needs 20-40 seconds over a real document and it must be spent
     # where nobody is holding a request open — not on `publish_for_arc`,
-    # which Take 1 creation and the cold-open GET both call.
-    #
-    # It also has to be here rather than earlier in this function: the bake
-    # computes the feedback block, and the stages that produce the evidence it
-    # arbitrates over run above. A bake asked for at the assembly — which is
-    # what #580 effectively did — computes an empty lane on a fresh take,
-    # because `ideal_text_confirmation` runs before the feedback stages do.
-    #
-    # Not wrapped in `_deg`, and unconditional on purpose — twice over.
-    #
-    # There is nothing to degrade: `enqueue_bake` cannot raise, and a false
-    # return means the next reader computes live, which is what every reader
-    # did before this existed.
-    #
-    # And every condition worth applying — a spoken take, a real arc, a real
-    # actor, the flag — lives inside `enqueue_bake`, so this call site has no
-    # branch in it at all. That is not only to keep this function off the
-    # complexity ratchet it is already grandfathered against: whether a bake
-    # is worth making is the bake's own question, and answering half of it
-    # here is how the two halves drift.
-    # THE BOOKMARKS, ASKED FOR AT THE LAST POSSIBLE MOMENT (founder
-    # 2026-09-20: "there need to be bookmarks right away the moment we see
-    # it. Otherwise, that makes no sense because people will quit").
-    #
-    # DEAD LAST, below the terminal boundary and below the version card.
-    # Everything above this point is something the speaker is waiting on;
-    # this is the first thing that is not. `enqueue_bake` hands the work to
-    # the queue and returns, so the run ends when it would have ended.
+    # which Take 1 creation and the cold-open GET both call. `enqueue_bake`
+    # hands the work to the queue and returns.
     #
     # REINSTATED (#595) after #593 removed it on a queue jam that never
     # happened. `processing_jobs` shows `waited_s` of two to three seconds on
@@ -604,7 +571,89 @@ def _run_full_analysis_impl(
     # constant keeps it a no-op until P5.
     from services.training_corpus import enqueue_corpus_copy
     enqueue_corpus_copy(session_id, arc_id, user_id)
+
+    # Work the speaker is not waiting on, still inside the job (so the
+    # heartbeat covers it and a retry sees it done): the shadow logs, the
+    # coach email, and the wait for the Say-It-Stronger cards.
+    _after_ready(session_id=session_id, user_id=user_id,
+                 send_result=_send_res, deg=_deg)
     return readout_local, sent_local
+
+
+def _flip_ready(on_ready: Optional[Callable[[], None]],
+                session_id: str) -> None:
+    """Tell the speaker the Take is ready — through the caller's callback,
+    because which row carries that state is the dispatcher's business.
+
+    Best-effort: the queue runner writes ``ready`` again when the job
+    finishes, so a failed flip here costs the speaker the trailing work's
+    seconds, never the Take.
+    """
+    if on_ready is None:
+        return
+    try:
+        on_ready()
+    except Exception:
+        logger.error("lab: early ready flip failed sid=%s (the job's own "
+                     "finish writes it)", session_id, exc_info=True)
+
+
+def _shadow_stages(session_id: str, deg: Any) -> None:
+    """The three shadow logs, measured once per Take on the persisted clips
+    and nothing else: they route no exercise and reach no user. Each is
+    best-effort through ``deg``, exactly as when they ran before the Ideal
+    Text (D3 2026-09-28, E10 2026-09-30, 6b/6d 2026-10-01)."""
+    def _verbal_cue_shadow() -> None:
+        from services.verbal_cues import record_take
+        added = record_take(db, session_id)
+        logger.info("lab: verbal cue shadow sid=%s added=%s",
+                    session_id, added)
+    deg.run("verbal_cue_shadow", _verbal_cue_shadow)
+
+    def _acoustic_cue_shadow() -> None:
+        from services.acoustic_cues import record_take as record_acoustic
+        added = record_acoustic(db, session_id)
+        logger.info("lab: acoustic cue shadow sid=%s added=%s",
+                    session_id, added)
+    deg.run("acoustic_cue_shadow", _acoustic_cue_shadow)
+
+    def _detector_rollout_shadow() -> None:
+        from services.detector_candidates import register_candidates
+        from services.detector_rollout import record_take as record_versions
+        register_candidates()
+        added = record_versions(db, session_id)
+        logger.info("lab: detector rollout shadow sid=%s added=%s",
+                    session_id, added)
+    deg.run("detector_rollout_shadow", _detector_rollout_shadow)
+
+
+def _after_ready(*, session_id: str, user_id: Optional[str],
+                 send_result: Dict[str, Any], deg: Any) -> None:
+    """Work no speaker-facing read depends on, run after the ready flip.
+
+    Nothing here may raise: the Take is already ``ready`` to the speaker,
+    and a failure in work they never waited on must not turn it into a
+    failed one. Every stage is best-effort through ``deg`` (the job row
+    still names it), and the whole block is fenced once more below.
+    """
+    try:
+        _shadow_stages(session_id, deg)
+        # The coach email for the hand-off `_auto_send` landed above: one per
+        # spoken Take, none for a Take that was already in the queue.
+        if send_result.get("ok") and not send_result.get("already_sent"):
+            def _coach_notice() -> None:
+                from services.lab_send import notify_coach_of_take
+                notify_coach_of_take(session_id, str(user_id))
+            deg.run("coach_notification", _coach_notice)
+        # The Say-It-Stronger cards generate on a thread the work horse
+        # would otherwise kill at return (services/say_it_stronger.py).
+        from services.say_it_stronger import wait_for_cards
+        wait_for_cards(session_id)
+    except Exception as error:
+        import sentry_sdk
+        sentry_sdk.capture_exception(error)
+        logger.error("lab: after-ready work failed sid=%s: %s",
+                     session_id, error, exc_info=True)
 
 
 def run_full_analysis(**kwargs) -> Tuple[Dict[str, Any], bool]:
