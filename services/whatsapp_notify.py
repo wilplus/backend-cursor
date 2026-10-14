@@ -22,6 +22,7 @@ import re
 import threading
 from datetime import datetime, timezone
 from typing import Any, Optional
+from urllib.parse import quote
 
 import httpx
 
@@ -100,15 +101,29 @@ def remove_phone(database: Any, user_id: str) -> dict:
     return {"phone": None}
 
 
-def _message_body() -> str:
+def feedback_path(arc_id: Any = None) -> str:
+    """Where the message opens, after the site: the project's walk on the
+    coach's feedback (`/chat?lens=<arc>`, the address the coach bubble opens;
+    founder 2026-10-14: tap and go), or the chat when the project is unknown."""
+    arc = str(arc_id or "").strip()
+    return f"chat?lens={quote(arc, safe='')}" if arc else "chat"
+
+
+def _message_body(path: str = "chat") -> str:
     link = (Config.FRONTEND_URL or "").rstrip("/")
-    return f"{COACH_FEEDBACK_IN}\n{link}/chat" if link else COACH_FEEDBACK_IN
+    return f"{COACH_FEEDBACK_IN}\n{link}/{path}" if link else COACH_FEEDBACK_IN
 
 
-def _payload(to: str, cfg: Any) -> dict:
+def _payload(to: str, cfg: Any, path: str = "chat") -> dict:
     """The approved template when one is named (what WhatsApp requires for a
     message the business starts); else the plain text, which WhatsApp only
-    delivers within 24 hours of the person's last message to the number."""
+    delivers within 24 hours of the person's last message to the number.
+
+    A template's link lives in Meta's template. With
+    WHATSAPP_TEMPLATE_LINK_BUTTON on, the template's first button must be a
+    dynamic URL (`https://www.willpowerlab.com/{{1}}`) and `path` fills it,
+    so the button opens the project's feedback; off, the template's own
+    link is sent as Meta stores it."""
     base = {"messaging_product": "whatsapp", "to": to.lstrip("+")}
     if cfg.WHATSAPP_TEMPLATE_NAME:
         template: dict[str, Any] = {
@@ -116,15 +131,21 @@ def _payload(to: str, cfg: Any) -> dict:
             "language": {"code": cfg.WHATSAPP_TEMPLATE_LANGUAGE or "en"}}
         # A template with an image header needs the image on every send (the
         # one uploaded with the template is only Meta's review sample).
+        components: list[dict] = []
         image = (cfg.WHATSAPP_TEMPLATE_HEADER_IMAGE_URL or "").strip()
         if image:
-            template["components"] = [{"type": "header", "parameters": [
-                {"type": "image", "image": {"link": image}}]}]
+            components.append({"type": "header", "parameters": [
+                {"type": "image", "image": {"link": image}}]})
+        if getattr(cfg, "WHATSAPP_TEMPLATE_LINK_BUTTON", False):
+            components.append({"type": "button", "sub_type": "url", "index": "0",
+                               "parameters": [{"type": "text", "text": path}]})
+        if components:
+            template["components"] = components
         return {**base, "type": "template", "template": template}
-    return {**base, "type": "text", "text": {"body": _message_body()}}
+    return {**base, "type": "text", "text": {"body": _message_body(path)}}
 
 
-def send_whatsapp(to: str, *, config: Any = None) -> bool:
+def send_whatsapp(to: str, *, config: Any = None, path: str = "chat") -> bool:
     """One message through Meta's WhatsApp Cloud API. True when Meta accepted
     it; False when sending is off or not configured. Raises on a provider
     error."""
@@ -139,7 +160,7 @@ def send_whatsapp(to: str, *, config: Any = None) -> bool:
         _log.info("whatsapp: redirecting a message to WHATSAPP_REDIRECT_TO (env=%s)", cfg.ENV)
         to = redirect
     res = httpx.post(_GRAPH_URL.format(phone_number_id=cfg.WHATSAPP_PHONE_NUMBER_ID),
-                     json=_payload(to, cfg),
+                     json=_payload(to, cfg, path),
                      headers={"Authorization": f"Bearer {cfg.WHATSAPP_ACCESS_TOKEN}"},
                      timeout=_TIMEOUT_SEC)
     if res.status_code >= 400:
@@ -162,9 +183,11 @@ def _meta_error(res: Any) -> str:
         return (getattr(res, "text", "") or "")[:300]
 
 
-def notify_coach_feedback_in(database: Any, user_id: Optional[str]) -> bool:
+def notify_coach_feedback_in(database: Any, user_id: Optional[str],
+                             take_session_id: Optional[str] = None) -> bool:
     """The speaker's coach feedback is in: one WhatsApp message if they left
-    a number. Best-effort; never raises."""
+    a number, opening the Take's project on its feedback. Best-effort; never
+    raises."""
     if not user_id or not Config.WHATSAPP_NOTIFICATIONS:
         return False
     try:
@@ -172,19 +195,26 @@ def notify_coach_feedback_in(database: Any, user_id: Optional[str]) -> bool:
         if not phone:
             _log.info("whatsapp: no number saved for user=%s, nothing sent", user_id)
             return False
-        return send_whatsapp(str(phone))
+        arc_id = None
+        if take_session_id:
+            session = database.v2_get_session_by_id(str(take_session_id)) or {}
+            arc_id = session.get("arc_id")
+        return send_whatsapp(str(phone), path=feedback_path(arc_id))
     except Exception as e:  # noqa: BLE001 -- the coach's save stands either way
         _log.warning("whatsapp coach-feedback message failed user=%s: %s",
                      user_id, type(e).__name__)
         return False
 
 
-def notify_coach_feedback_in_background(database: Any, user_id: Optional[str]) -> None:
+def notify_coach_feedback_in_background(database: Any, user_id: Optional[str],
+                                        take_session_id: Optional[str] = None) -> None:
     """The same, off the coach's request so Meta never slows the save."""
     if not user_id:
         return
     if not Config.WHATSAPP_NOTIFICATIONS:
         _log.info("whatsapp: WHATSAPP_NOTIFICATIONS is off, nothing sent")
         return
-    threading.Thread(target=notify_coach_feedback_in, args=(database, str(user_id)),
+    threading.Thread(target=notify_coach_feedback_in,
+                     args=(database, str(user_id),
+                           str(take_session_id) if take_session_id else None),
                      name="whatsapp-coach-feedback", daemon=True).start()
