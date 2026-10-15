@@ -1256,8 +1256,12 @@ def _ground_every_moment(rows: list[dict], *, ground: Any) -> list[dict]:
 
 
 def _moment_practice(database: Any, take_session_id: str,
-                     snippet_id: str) -> Any:
-    """This moment's own practice row, on either database shape."""
+                     snippet_id: str, known: Optional[dict] = None) -> Any:
+    """This moment's own practice row, on either database shape. ``known``
+    is the Take's practices already read, keyed by moment
+    (`_by_moment_for_take`): then no read is made."""
+    if known is not None:
+        return known.get(str(snippet_id))
     getter = getattr(database, "get_confident_voice_practice_by_moment", None)
     if getter is not None:
         return getter(take_session_id, snippet_id)
@@ -1267,11 +1271,52 @@ def _moment_practice(database: Any, take_session_id: str,
     return None
 
 
+def _by_moment_for_take(database: Any, reader_name: str,
+                        take_session_id: str) -> Optional[dict]:
+    """ONE READ PER TAKE, NOT ONE PER MOMENT (founder 2026-10-15: the
+    exercise offer measured 1.4-1.9 s on every Manager run, most of it the
+    per-moment reads of the practice, the draw and the coach's request).
+    {snippet_id: row} from the Take-wide reader when the database offers
+    it, else None, and the caller reads per moment exactly as before: a
+    reader that is missing or fails must never read as "nothing there"."""
+    reader = getattr(database, reader_name, None)
+    if not callable(reader):
+        return None
+    try:
+        rows = reader(take_session_id)
+    except Exception as e:  # noqa: BLE001 -- the per-moment read stands in
+        _log.warning("%s failed take=%s: %s", reader_name, take_session_id, e)
+        return None
+    if isinstance(rows, dict):
+        return rows
+    if not isinstance(rows, list):
+        return None
+    out: dict = {}
+    for row in rows:
+        if isinstance(row, dict) and row.get("snippet_id"):
+            out.setdefault(str(row["snippet_id"]), row)
+    return out
+
+
 def _moment_closed(existing: Any) -> bool:
     """A finished or declined practice ends the offer on its moment; an open
     one keeps its exercise (its passage and audio are bound)."""
     return bool(existing) and existing.get("status") in (
         "completed", "dismissed")
+
+
+def _coach_request_for(getter: Any, requests: Optional[dict],
+                       take_session_id: str, snippet_id: str) -> Any:
+    """The coach's request on one moment: from the Take-wide read when it
+    was made, else the per-moment read. A failed read is None and logged:
+    never lose the feedback over it."""
+    try:
+        return (requests.get(snippet_id) if requests is not None
+                else getter(take_session_id, snippet_id))
+    except Exception as e:  # noqa: BLE001 — never lose the feedback
+        _log.warning("coach request read failed take=%s snip=%s: %s",
+                     take_session_id, snippet_id, e)
+        return None
 
 
 def _annotate_coach_answers(
@@ -1299,14 +1344,12 @@ def _annotate_coach_answers(
     snippets: dict[str, dict] = {}
     median = None
     vocabulary: frozenset[str] = frozenset()
+    requests = _by_moment_for_take(
+        database, "list_exercise_coach_requests_for_take", take_session_id)
     for row in pending:
         snippet_id = str(row["snippet_id"])
-        try:
-            request = getter(take_session_id, snippet_id)
-        except Exception as e:  # noqa: BLE001 — never lose the feedback
-            _log.warning("coach request read failed take=%s snip=%s: %s",
-                         take_session_id, snippet_id, e)
-            continue
+        request = _coach_request_for(getter, requests, take_session_id,
+                                     snippet_id)
         if not isinstance(request, dict):
             continue
         exercise = coach_shared_exercise(request, database)
@@ -1401,10 +1444,17 @@ def _attach_exercises(
     median = _median_wpm(database.get_snippets_by_session(take_session_id) or [])
     vocabulary = detected_problem_vocabulary(database)
     getter = getattr(database, "get_confident_voice_exercise_assignment", None)
+    # The Take's practices and draws, once each, where the database can.
+    practices = _by_moment_for_take(
+        database, "list_confident_voice_practice_for_take", take_session_id)
+    draws = _by_moment_for_take(
+        database, "list_confident_voice_exercise_assignments_for_take",
+        take_session_id)
     history: Optional[dict] = None
     for target in targets:
         snippet_id = str(target["snippet_id"])
-        existing = _moment_practice(database, take_session_id, snippet_id)
+        existing = _moment_practice(database, take_session_id, snippet_id,
+                                    known=practices)
         if _moment_closed(existing):
             continue
         snippet = by_id.get(snippet_id)
@@ -1420,7 +1470,9 @@ def _attach_exercises(
         # History is read only when a moment has not been drawn yet: once it
         # has, the draw is frozen and ranking again changes nothing, and this
         # runs on every poll of the Ideal Text.
-        drawn = getter(take_session_id, snippet_id) if getter is not None else None
+        drawn = (draws.get(snippet_id) if draws is not None
+                 else getter(take_session_id, snippet_id)
+                 if getter is not None else None)
         if isinstance(drawn, dict):
             moment_history: dict = dict(EMPTY_HISTORY)
         else:

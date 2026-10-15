@@ -26,6 +26,7 @@ remediation decision (C4). Git history keeps ``services/key_points.py``.
 """
 from __future__ import annotations
 
+import copy
 import logging
 from time import perf_counter
 from dataclasses import dataclass
@@ -124,6 +125,68 @@ def saved_paragraphs(parts: list, slide_saved_ids: set[str],
     return saved
 
 
+#  THE SAME ROWS, READ ONCE PER RUN (founder 2026-10-15, the timing lines).
+#
+#  The stages below were written one at a time, each asking the database for
+#  what it needed, and several of them need the same thing: the review Take's
+#  session row was read in six stages, its snippets in four (the document
+#  builder, the shadow, V3, the exercise offer), the arc's sessions in three,
+#  the decision ledger in two, the document's overlays twice. On the
+#  production timing line that is `current_take_confident_voice=4364`,
+#  `first_client_feedback=2344`: round trips to PostgREST, not work.
+#
+#  `_ReadMemo` wraps the database for the length of ONE run and remembers
+#  the reads named in `_MEMO_READS`, by method and arguments. Only reads of
+#  rows the run itself never writes (sessions, snippets, overlays, the
+#  ledger, the catalogue), so a stage can never be served a value another
+#  stage of the same run has changed. A hit is served a deep copy, so a
+#  stage that edits what it was handed cannot edit what the next stage
+#  reads. Everything else — every write, every other read, `.client` —
+#  passes straight through; a method the database lacks is still an
+#  AttributeError, so `getattr(database, name, None)` guards keep working.
+#  Nothing is kept past the run.
+
+_MEMO_READS = frozenset({
+    "v2_get_session_by_id",
+    "get_snippets_by_session",
+    "get_arc_sessions",
+    "list_ideal_decisions",
+    "get_coach_snippet_drafts",
+    "get_user_transcript_edits",
+    "get_snippet_slide_corrections",
+    "get_confident_voice_practice_candidates",
+    "list_speaking_errors",
+})
+#: The sub-repositories reached as `db.takes.<read>` / `db.ideal_text.<read>`.
+_MEMO_REPOSITORIES = frozenset({"takes", "ideal_text"})
+
+
+class _ReadMemo:
+    """The database, with this run's repeated reads remembered."""
+
+    def __init__(self, inner: Any, cache: Optional[dict] = None):
+        self._inner = inner
+        self._cache: dict = cache if cache is not None else {}
+
+    def __getattr__(self, name: str) -> Any:
+        value = getattr(self._inner, name)
+        if name in _MEMO_REPOSITORIES:
+            return _ReadMemo(value, self._cache)
+        if name in _MEMO_READS and callable(value):
+            return self._remembered(name, value)
+        return value
+
+    def _remembered(self, name: str, read: Callable[..., Any]) -> Callable[..., Any]:
+        def remembered(*args: Any, **kwargs: Any) -> Any:
+            key = (name, repr(args), repr(sorted(kwargs.items())))
+            if key in self._cache:
+                return copy.deepcopy(self._cache[key])
+            value = read(*args, **kwargs)
+            self._cache[key] = copy.deepcopy(value)
+            return value
+        return remembered
+
+
 class _ChangesRun:
     """One read's state, stage by stage. Attributes are the former locals of
     the one-function version, under the same names without the underscore."""
@@ -137,8 +200,12 @@ class _ChangesRun:
         self.take_session_id = take_session_id
         self.review_version = review_version
         self.deps = deps
-        self.db = deps.database
+        self.db = _ReadMemo(deps.database)
         self.log = log
+        # The document's locked parts, read once (`_locked_parts`): the
+        # gate, V3's binding, the declines, the window and the shadow's
+        # paragraph map all ask for the same list.
+        self._parts: Optional[list] = None
         # THE SHADOW OFF THE SPEAKER'S PATH (founder 2026-10-15). The V3
         # dark frame is a log nothing served reads (`_v3_shadow`); on the
         # live read it measured 380-1,860 ms of the speaker's wait. With
@@ -200,6 +267,14 @@ class _ChangesRun:
         # True once V3 has REPLACED `self.changes` with its own rows. The
         # playback attach has to run again when it does — see `execute`.
         self.v3_replaced_changes = False
+
+    def _locked_parts(self) -> list:
+        """The document's parts with their lock state, read once per run; a
+        fresh copy each time, so no stage can edit what the next one reads."""
+        if self._parts is None:
+            self._parts = self.deps.locked_parts(
+                self.arc_id, str(self.user_id or ""), self.served_text) or []
+        return copy.deepcopy(self._parts)
 
     def _stage(self, name: str, fn: Callable[[], Any], *,
                degradable: bool = False) -> Any:
@@ -758,9 +833,7 @@ class _ChangesRun:
             map_paragraphs(db, _arm_sid, _v3_frame, _v3_doc,
                            served_text=self.served_text,
                            slide_regions=self.slide_regions,
-                           parts=lambda: self.deps.locked_parts(
-                               self.arc_id, str(self.user_id),
-                               self.served_text))
+                           parts=self._locked_parts)
             from services.willfidence import enqueue_read
             enqueue_read(_arm_sid)
 
@@ -981,7 +1054,7 @@ class _ChangesRun:
             # the STYLE LANE (bold only) plus a pending Confident Voice.
             # Both still enter the same whole-Take exact-three selection
             # after admissibility.
-            parts=self.deps.locked_parts(arc_id, user_id, served_text))
+            parts=self._locked_parts())
         self.changes = self.sel["changes"]
         # Style has a distinct payload only because it has a distinct
         # action; its membership was already selected inside the same
@@ -1495,8 +1568,7 @@ class _ChangesRun:
         # `review_sid` may name a different Take from the one `self.doc` was
         # built for, and a snippet id from one Take cannot address a piece of
         # another.
-        _parts = self.deps.locked_parts(
-            self.arc_id, str(self.user_id), self.served_text)
+        _parts = self._locked_parts()
         _service_doc = bind_pieces_to_parts(
             _service_doc,
             served_text=self.served_text,
@@ -1601,8 +1673,7 @@ class _ChangesRun:
         from services.feedback_window import window_rows
         from services.intervention_spend import paragraph_index_at
 
-        parts = self.deps.locked_parts(
-            self.arc_id, str(self.user_id), self.served_text) or []
+        parts = self._locked_parts()
         saved = saved_paragraphs(parts, self._slide_saved_part_ids(),
                                  self._take_started_at())
 
