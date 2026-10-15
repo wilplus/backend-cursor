@@ -231,9 +231,9 @@ How does training me through the app actually work if I'm not stressed talking t
 """
 
 
-from services.will_voice import with_voice_rules
+from services.will_tone import WILL_TONE, with_tone
 
-_SYSTEM_PROMPT = with_voice_rules(
+_SYSTEM_PROMPT = with_tone(
     "You are an FAQ assistant for a voice-analysis coaching product. "
     "Users ask you about the product's philosophy, the science behind "
     "the voice work, what the system actually does, who is behind it, "
@@ -968,7 +968,7 @@ def render_app_context(app_context: Optional[dict]) -> str:
 
 def _build_lane_prompt(intent, dont_ask_block, life_context=None,
                        app_context=None) -> str:
-    parts = [_LANE_BASE, _LANE_BODIES[intent]]
+    parts = [_LANE_BASE, _LANE_BODIES[intent], "\n\n" + WILL_TONE]
     if intent in _APP_LANES:
         block = render_app_context(app_context)
         if block:
