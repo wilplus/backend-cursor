@@ -2,8 +2,8 @@
 
 **Approved by the founder in chat, 15 October 2026: "approve all"**, and the
 same day, told that 3.6 was already published: "yes, go ahead as 3.7"
-(decisions log N74). Counsel has not seen it. Not yet published: the founder
-runs `PUBLISH-3.7-2026-10-15.sql`.
+(decisions log N74). Counsel has not seen it. Published 2026-10-15 12:49 UTC
+by the founder (`PUBLISH-3.7-2026-10-15.sql`, `phase1-2026-10-15-3.7`).
 
 ## Why
 

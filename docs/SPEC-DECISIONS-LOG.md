@@ -2548,3 +2548,7 @@ already published and cannot change in place, the founder: "yes, go ahead as
   after.
 - **Risk the founder accepted:** OpenAI now receives each slide's points and
   the full Ideal Text for chat answers, and counsel hasn't seen this.
+- **Published** (founder, 15 October 2026, 12:49 UTC): `PUBLISH-3.7-2026-10-15.sql`
+  run in Supabase. `phase1-2026-10-15-3.7` is in force with the approved
+  bytes and the United States; training-only-v4 stays the one wording in
+  force. The code that gives Will the whole talk may now go live.
