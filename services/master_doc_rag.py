@@ -71,16 +71,11 @@ _RESPONSE_SCHEMA: dict[str, Any] = {
         "properties": {
             "answer": {
                 "type": "string",
-                "maxLength": 4000,
+                "maxLength": 400,
                 "description": (
-                    "The full answer string. The frontend splits "
-                    "it into bubbles on natural sentence/clause "
-                    "boundaries when it exceeds 75 chars (RULE F "
-                    "is a render trigger, not a write gate). "
-                    "Master-Document-grounded answers pass through "
-                    "at faithful length; declines stay short on "
-                    "their own merit. No split markers, no layout "
-                    "newlines — frontend chunks."
+                    "The answer: two to three sentences, about 50 "
+                    "words, at most one question. No split markers, "
+                    "no layout newlines — the frontend chunks."
                 ),
             },
             "show_record_ui": {
@@ -278,17 +273,17 @@ _SYSTEM_PROMPT = with_tone(
     "\n"
     "  RULE C — VOICE & TONE:\n"
     "    Echo the document's own voice — direct, second-person, "
-    "    no marketing fluff. Quote phrases from it where they "
-    "    land naturally; the user can verify what you said.\n"
+    "    no marketing fluff. Never reproduce more than one "
+    "    sentence of the MASTER DOCUMENT; say the rest in your "
+    "    own short words.\n"
     "    Keep answers conversational — chat-bubble length, not "
-    "    essay. 2–4 sentences is the bar; only go longer when the "
-    "    question demands it (e.g. the science explainer).\n"
+    "    essay. RULE F sets the length.\n"
     "    SHORT-QUESTION DISCIPLINE: a one-line user question "
     "    (\"what is this?\", \"who are you?\", \"why should I "
     "    care?\") deserves a 1–2 sentence answer, not the full "
     "    philosophy monologue. Lead with the simplest grounded "
     "    statement from the Master Document, then stop. "
-    "    500 characters is a hard ceiling for these — past that "
+    "    Past that "
     "    you're padding, not answering.\n"
     "    YOU ARE WILL: the bot persona is \"Will\" (short for "
     "    Willab). Will is direct — names what's true from the "
@@ -325,38 +320,13 @@ _SYSTEM_PROMPT = with_tone(
     "    document is explicit that the system is mostly HUMAN-led, "
     "    scaled by AI. Honour that framing.\n"
     "\n"
-    "  RULE F — LENGTH (RENDER-SPLIT, NOT TRUNCATE):\n"
-    "    The 75-character per-bubble value is a FRONTEND "
-    "    RENDERING trigger, NOT a writing gate on you. You "
-    "    ALWAYS produce the complete, correct answer. Length "
-    "    never causes you to truncate, refuse, paraphrase down, "
-    "    or regenerate. The backend emits your full `answer` "
-    "    string verbatim; the frontend splits it into multiple "
-    "    sequential chat bubbles on natural sentence/clause "
-    "    boundaries when it exceeds 75 chars. The user receives "
-    "    100% of what you write — only the visual chunking "
-    "    changes.\n"
-    "    What this means in practice:\n"
-    "      • Write the right answer at the right length for the "
-    "        content. Do NOT compress to hit 75. Do NOT pad to "
-    "        seem more substantial. Do NOT insert any split "
-    "        markers (no '|||', no newlines for layout) — the "
-    "        frontend chunks on natural boundaries.\n"
-    "      • Master-Document-grounded answers (philosophy, "
-    "        science explainer with citations, pricing, "
-    "        community/Toastmasters section, 1-on-1 call "
-    "        section) PASS THROUGH at whatever length faithful "
-    "        grounding requires. NEVER shorten or paraphrase "
-    "        Master-Doc content down to approach 75 chars. "
-    "        Fidelity outranks brevity.\n"
-    "      • Chit-chat, acknowledgements, \"yes / no / thanks\" "
-    "        replies, and graceful pivots are short BY CONTENT, "
-    "        not by truncation — there's nothing more to say, "
-    "        not that you cut something off.\n"
-    "      • Capability declines (RULE H below) stay short on "
-    "        their own merit. They do NOT borrow Master-Doc "
-    "        phrasing as cover to seem authoritative, and they "
-    "        do NOT get padded to feel substantial.\n"
+    "  RULE F — LENGTH:\n"
+    "    Two to three sentences, about 50 words, hard cap. Ask at "
+    "    most one question. If more is needed, give the one most "
+    "    useful point and offer to go on. Shorter never means "
+    "    invented: every fact still comes from the MASTER DOCUMENT "
+    "    (RULE A). No split markers, no newlines for layout — the "
+    "    frontend splits bubbles.\n"
     "\n"
     "  RULE G — UPLOAD-INTENT (uploads are LIVE for deckless topics, "
     "  2026-07-07):\n"
@@ -414,8 +384,7 @@ _SYSTEM_PROMPT = with_tone(
     "    user asks about RECORDING — the microphone IS available; "
     "    RULE I owns that path.\n"
     "    Declines are SHORT BY MERIT, not by truncation. "
-    "    Capability declines do NOT get the RULE F Master-Document "
-    "    grounded-answer exemption — do NOT pad them with borrowed "
+    "    Capability declines do NOT pad them with borrowed "
     "    Master-Doc phrasing to seem authoritative, do NOT stretch "
     "    them with citations or background, and do NOT hallucinate "
     "    features that would justify a longer answer. If the "
@@ -845,8 +814,12 @@ _LANE_BASE = (
     "user's own language (detect it from their message + history; never "
     "mix languages, except that menu and button names — Voice Album, "
     "Trainings, Start official recording — stay in English exactly as "
-    "written). Be direct and specific — chat-bubble length, no "
-    "marketing fluff, no vague affirmations.\n"
+    "written). Be direct and specific, no marketing fluff, no vague "
+    "affirmations. Two to three sentences, about 50 words, hard cap. "
+    "Ask at most one question. If more is needed, give the one most "
+    "useful point and offer to go on. Never reproduce more than one "
+    "sentence of the MASTER DOCUMENT; say the rest in your own short "
+    "words.\n"
     "Return STRICT JSON: {\"answer\": str, \"show_record_ui\": bool, "
     "\"suggested_action\": \"trainings\"|null, \"app_action\": str|null}. "
     "Keep show_record_ui=false ALWAYS, and suggested_action and app_action "
@@ -860,8 +833,7 @@ _LANE_BODIES: dict[str, str] = {
         "knowledge, no invented prices / features / timelines / team size. "
         "If the document doesn't say it, say so plainly and pivot to the "
         "closest fact it does carry. A one-line question gets a 1-2 "
-        "sentence answer (500 chars max); grounded explainers may run "
-        "longer. If asked what is measured or how it works, describe the "
+        "sentence answer. If asked what is measured or how it works, describe the "
         "Readout — raw acoustics (pace, pauses, pitch range) read by a "
         "HUMAN COACH; never a score, ratio, or classifier. When describing "
         "what the user GETS from recording, name the concrete "
@@ -957,13 +929,36 @@ _LANE_BODIES: dict[str, str] = {
 _GROUNDED_LANES = {"product_faq", "off_topic", "correction", "app_feature"}
 
 
-def render_app_context(app_context: Optional[dict]) -> str:
+def render_app_context(app_context) -> str:
     """The feature list and this speaker's status card, as one prompt
-    block. '' when the caller passed nothing."""
+    block. '' when the caller passed nothing. ``app_context`` may be a
+    no-argument callable returning the dict, so the card's database reads
+    run only for the lanes (and the fallback) that use it."""
+    if callable(app_context):
+        app_context = app_context()
     if not isinstance(app_context, dict):
         return ""
     parts = [app_context.get("features") or "", app_context.get("status") or ""]
     return "\n".join(p for p in parts if p)
+
+
+_HISTORY_ASSISTANT_CHARS = 300
+
+
+def _history_messages(history) -> list[dict[str, str]]:
+    """The last _ANSWER_TURNS user/assistant turns. Will's own past turns
+    are cut to ~300 chars so old long answers don't teach it to run long."""
+    out: list[dict[str, str]] = []
+    if not isinstance(history, list):
+        return out
+    for m in history[-_ANSWER_TURNS:]:
+        role = (m.get("role") or "").strip()
+        content = (m.get("content") or "").strip()
+        if role == "assistant":
+            content = content[:_HISTORY_ASSISTANT_CHARS]
+        if role in ("user", "assistant") and content:
+            out.append({"role": role, "content": content})
+    return out
 
 
 def _build_lane_prompt(intent, dont_ask_block, life_context=None,
@@ -1010,12 +1005,7 @@ def _answer_via_router(
     messages: list[dict[str, str]] = [
         {"role": "system", "content": system_content},
     ]
-    if isinstance(history, list):
-        for m in history[-_ANSWER_TURNS:]:
-            role = (m.get("role") or "").strip()
-            content = (m.get("content") or "").strip()
-            if role in ("user", "assistant") and content:
-                messages.append({"role": role, "content": content})
+    messages.extend(_history_messages(history))
     messages.append({"role": "user", "content": question})
 
     try:
@@ -1082,7 +1072,7 @@ def answer_question(
     history: Optional[list[dict]] = None,
     admin_dont_ask_notes: Optional[str] = None,
     life_context: Optional[dict] = None,
-    app_context: Optional[dict] = None,
+    app_context=None,  # dict, or a callable returning one
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run one LLM call grounded in the Master Document.
 
@@ -1142,6 +1132,21 @@ def answer_question(
             {"error": "empty_question"},
         )
 
+    service = None
+
+    # Runs before the mega-prompt is built, so a routed turn never pays
+    # for the status card unless its lane uses it.
+    # PARALLEL two-stage router (default ON). On success it
+    # returns the payload; None means low confidence / failure → fall
+    # through to the mega-prompt path below (the safety net).
+    if _router_enabled():
+        routed = _answer_via_router(
+            q, history, admin_dont_ask_notes, service,
+            life_context, app_context,
+        )
+        if routed is not None:
+            return routed
+
     # Compose system prompt: base + optional admin don't-ask block.
     # Shared helper so all four chat surfaces use identical wording.
     from services.utils import render_admin_dont_ask_block
@@ -1167,26 +1172,8 @@ def answer_question(
     messages: list[dict[str, str]] = [
         {"role": "system", "content": system_content},
     ]
-    if isinstance(history, list):
-        for m in history[-_ANSWER_TURNS:]:
-            role = (m.get("role") or "").strip()
-            content = (m.get("content") or "").strip()
-            if role in ("user", "assistant") and content:
-                messages.append({"role": role, "content": content})
+    messages.extend(_history_messages(history))
     messages.append({"role": "user", "content": q})
-
-    service = None
-
-    # PARALLEL two-stage router (flag-gated, default OFF). On success it
-    # returns the payload; None means low confidence / failure → fall
-    # through to the mega-prompt path below (the safety net).
-    if _router_enabled():
-        routed = _answer_via_router(
-            q, history, admin_dont_ask_notes, service,
-            life_context, app_context,
-        )
-        if routed is not None:
-            return routed
 
     try:
         from services.llm import chat_complete

@@ -84,7 +84,10 @@ moment and feedback chat, section 3; cheeky and curious since 2026-10-14):
 SPEC_MASTER_DOC_RAG = LLMSpec(
     model=CHEAP_MODEL,
     temperature=0.4,
-    max_tokens=600,
+    # ~50-word answer (≤400 chars ≈ 100 tokens) plus the JSON wrapper
+    # (~30 tokens). A reply cut off mid-JSON fails json.loads and falls
+    # back (lane → mega-prompt → _fallback_payload), never crashes.
+    max_tokens=220,
     # Master Doc RAG uses a strict json_schema; the schema dict lives
     # in services/master_doc_rag.py as ``_RESPONSE_SCHEMA`` and is
     # passed through at call time. Spec leaves response_format=None

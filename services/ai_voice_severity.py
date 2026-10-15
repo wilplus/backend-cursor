@@ -19,7 +19,7 @@ pitch, voice level or speaking style is ever the target:
           there is no stress severity (no absolute loudness is a problem).
 
 The highest severity wins if it reaches ``Config.AI_VOICE_MIN_SEVERITY``
-(0.4); otherwise the default, stress on the main point, marked
+(0.2 since 2026-10-15; 0.4 is the line itself); otherwise the default, stress on the main point, marked
 ``default`` (founder 2026-10-15: always a better version to copy). The minimum and every normalization
 range (``Config.AI_VOICE_PACE_*``, ``AI_VOICE_PAUSE_*``,
 ``AI_VOICE_STRESS_GAP_DB``) are configuration, read at each pick. An

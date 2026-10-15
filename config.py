@@ -888,7 +888,8 @@ class Config:
     # reads the provider's real cost header; never a promotional price.
     AI_VOICE_CREDITS_PER_CHARACTER = _env_float("AI_VOICE_CREDITS_PER_CHARACTER", 1.0)
     AI_VOICE_USD_PER_1000_CREDITS = _env_float("AI_VOICE_USD_PER_1000_CREDITS", 0.0)
-    AI_VOICE_DAILY_CLIPS_PER_SPEAKER = _env_int("AI_VOICE_DAILY_CLIPS_PER_SPEAKER", 3)
+    # Founder 2026-10-15: more accepting, so the clip is there more often.
+    AI_VOICE_DAILY_CLIPS_PER_SPEAKER = _env_int("AI_VOICE_DAILY_CLIPS_PER_SPEAKER", 10)
     AI_VOICE_DAILY_CLIPS_TOTAL = _env_int("AI_VOICE_DAILY_CLIPS_TOTAL", 30)
     AI_VOICE_DAILY_CLONES_TOTAL = _env_int("AI_VOICE_DAILY_CLONES_TOTAL", 3)
     AI_VOICE_MAX_SENTENCE_CHARACTERS = _env_int("AI_VOICE_MAX_SENTENCE_CHARACTERS", 600)
@@ -898,7 +899,9 @@ class Config:
     # runs at 12 s.)
     AI_VOICE_MAX_CLIP_SECONDS = _env_float("AI_VOICE_MAX_CLIP_SECONDS", 17.0)
     AI_VOICE_MAX_PRACTICE_SECONDS = _env_int("AI_VOICE_MAX_PRACTICE_SECONDS", 45)
-    AI_VOICE_MIN_SEVERITY = _env_float("AI_VOICE_MIN_SEVERITY", 0.4)
+    # Founder 2026-10-15: half the line, so a clip is made for a moment that
+    # only leans towards a problem; 0.4 was the line itself.
+    AI_VOICE_MIN_SEVERITY = _env_float("AI_VOICE_MIN_SEVERITY", 0.2)
     # The normalization ranges each severity is read on (services/
     # ai_voice_severity.py): where 0.4 is reached, in the problem's own unit,
     # against the speaker's own usual. Tuning them is a config change.

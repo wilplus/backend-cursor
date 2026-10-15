@@ -26,6 +26,7 @@ remediation decision (C4). Git history keeps ``services/key_points.py``.
 """
 from __future__ import annotations
 
+import copy
 import logging
 from time import perf_counter
 from dataclasses import dataclass
@@ -124,20 +125,95 @@ def saved_paragraphs(parts: list, slide_saved_ids: set[str],
     return saved
 
 
+#  THE SAME ROWS, READ ONCE PER RUN (founder 2026-10-15, the timing lines).
+#
+#  The stages below were written one at a time, each asking the database for
+#  what it needed, and several of them need the same thing: the review Take's
+#  session row was read in six stages, its snippets in four (the document
+#  builder, the shadow, V3, the exercise offer), the arc's sessions in three,
+#  the decision ledger in two, the document's overlays twice. On the
+#  production timing line that is `current_take_confident_voice=4364`,
+#  `first_client_feedback=2344`: round trips to PostgREST, not work.
+#
+#  `_ReadMemo` wraps the database for the length of ONE run and remembers
+#  the reads named in `_MEMO_READS`, by method and arguments. Only reads of
+#  rows the run itself never writes (sessions, snippets, overlays, the
+#  ledger, the catalogue), so a stage can never be served a value another
+#  stage of the same run has changed. A hit is served a deep copy, so a
+#  stage that edits what it was handed cannot edit what the next stage
+#  reads. Everything else — every write, every other read, `.client` —
+#  passes straight through; a method the database lacks is still an
+#  AttributeError, so `getattr(database, name, None)` guards keep working.
+#  Nothing is kept past the run.
+
+_MEMO_READS = frozenset({
+    "v2_get_session_by_id",
+    "get_snippets_by_session",
+    "get_arc_sessions",
+    "list_ideal_decisions",
+    "get_coach_snippet_drafts",
+    "get_user_transcript_edits",
+    "get_snippet_slide_corrections",
+    "get_confident_voice_practice_candidates",
+    "list_speaking_errors",
+})
+#: The sub-repositories reached as `db.takes.<read>` / `db.ideal_text.<read>`.
+_MEMO_REPOSITORIES = frozenset({"takes", "ideal_text"})
+
+
+class _ReadMemo:
+    """The database, with this run's repeated reads remembered."""
+
+    def __init__(self, inner: Any, cache: Optional[dict] = None):
+        self._inner = inner
+        self._cache: dict = cache if cache is not None else {}
+
+    def __getattr__(self, name: str) -> Any:
+        value = getattr(self._inner, name)
+        if name in _MEMO_REPOSITORIES:
+            return _ReadMemo(value, self._cache)
+        if name in _MEMO_READS and callable(value):
+            return self._remembered(name, value)
+        return value
+
+    def _remembered(self, name: str, read: Callable[..., Any]) -> Callable[..., Any]:
+        def remembered(*args: Any, **kwargs: Any) -> Any:
+            key = (name, repr(args), repr(sorted(kwargs.items())))
+            if key in self._cache:
+                return copy.deepcopy(self._cache[key])
+            value = read(*args, **kwargs)
+            self._cache[key] = copy.deepcopy(value)
+            return value
+        return remembered
+
+
 class _ChangesRun:
     """One read's state, stage by stage. Attributes are the former locals of
     the one-function version, under the same names without the underscore."""
 
     def __init__(self, arc_id, served_text, user_id, take_session_id,
-                 review_version, deps: ChangesDeps, log: DegradationLog):
+                 review_version, deps: ChangesDeps, log: DegradationLog,
+                 *, background_shadow: bool = False):
         self.arc_id = arc_id
         self.served_text = served_text
         self.user_id = user_id
         self.take_session_id = take_session_id
         self.review_version = review_version
         self.deps = deps
-        self.db = deps.database
+        self.db = _ReadMemo(deps.database)
         self.log = log
+        # The document's locked parts, read once (`_locked_parts`): the
+        # gate, V3's binding, the declines, the window and the shadow's
+        # paragraph map all ask for the same list.
+        self._parts: Optional[list] = None
+        # THE SHADOW OFF THE SPEAKER'S PATH (founder 2026-10-15). The V3
+        # dark frame is a log nothing served reads (`_v3_shadow`); on the
+        # live read it measured 380-1,860 ms of the speaker's wait. With
+        # this on, the stage snapshots its inputs and the write runs on a
+        # scoped thread once the block is built (`deferred`). The bake
+        # worker keeps it inline: its job returns when the run does.
+        self.background_shadow = background_shadow
+        self.deferred: list[Callable[[], None]] = []
         # Milliseconds per stage, logged once per run (founder 2026-10-15:
         # find which part of the 20-40 s bake is slow).
         self.timings: dict[str, int] = {}
@@ -191,6 +267,41 @@ class _ChangesRun:
         # True once V3 has REPLACED `self.changes` with its own rows. The
         # playback attach has to run again when it does — see `execute`.
         self.v3_replaced_changes = False
+        # One read per Take per run: the stages below used to read the same
+        # session five times and its snippets twice. Only a found row is
+        # kept, so a failed read is tried again by the next stage as before.
+        self._sessions: dict[str, dict] = {}
+        self._snippets: dict[str, list] = {}
+
+    def _session_row(self, session_id: Any) -> dict:
+        sid = str(session_id or "")
+        if not sid:
+            return {}
+        if sid not in self._sessions:
+            row = self.db.v2_get_session_by_id(sid) or {}
+            if not row:
+                return {}
+            self._sessions[sid] = row
+        return self._sessions[sid]
+
+    def _take_snippets(self, session_id: Any) -> list:
+        sid = str(session_id or "")
+        if not sid:
+            return []
+        if sid not in self._snippets:
+            rows = self.db.get_snippets_by_session(sid) or []
+            if not rows:
+                return []
+            self._snippets[sid] = rows
+        return self._snippets[sid]
+
+    def _locked_parts(self) -> list:
+        """The document's parts with their lock state, read once per run; a
+        fresh copy each time, so no stage can edit what the next one reads."""
+        if self._parts is None:
+            self._parts = self.deps.locked_parts(
+                self.arc_id, str(self.user_id or ""), self.served_text) or []
+        return copy.deepcopy(self._parts)
 
     def _stage(self, name: str, fn: Callable[[], Any], *,
                degradable: bool = False) -> Any:
@@ -658,71 +769,100 @@ class _ChangesRun:
         # it cannot create a rendered exposure. Default OFF; ML/data reviews
         # these frames before any user-visible activation. Shadow evaluation
         # can never darken the current feedback product.
+        #
+        # NOTHING SERVED READS IT. The frame is read by the V4 dark run
+        # (`get_v4_dark_frame`: willfidence, the reached-bar, the Take
+        # summary) and the coach sheets (`list_recent_v3_frames`); no later
+        # stage of this run and nothing in `mlc3_first_client_feedback` do.
+        # So on the live path it runs AFTER the block is built, on a thread
+        # that keeps the request's processing-authorization context
+        # (`start_scoped_thread`), over copies of the inputs as they stand at
+        # this stage — later stages replace and mark `changes` in place.
+        from services.take_feedback_policy_v3 import dark_enabled
+        _arm_sid = self.arm_sid
+        _v3_session = (
+            self.db.v2_get_session_by_id(_arm_sid) or {}
+            if _arm_sid else {}
+        )
+        if not (_arm_sid and dark_enabled(_v3_session.get("owner_principal_id"))):
+            return
+        if not self.background_shadow:
+            self._write_v3_shadow(_v3_session, self.review_doc,
+                                  self.user_sugs, self.changes)
+            return
+        import copy
+        session, doc = copy.deepcopy(_v3_session), copy.deepcopy(self.review_doc)
+        sugs, changes = copy.deepcopy(self.user_sugs), copy.deepcopy(self.changes)
+
+        def _later() -> None:
+            try:
+                self._write_v3_shadow(session, doc, sugs, changes)
+            except Exception as error:  # noqa: BLE001 -- a log, off the path
+                logger.warning("take feedback v3 shadow failed arc=%s take=%s: "
+                               "%s", self.arc_id, _arm_sid, error, exc_info=True)
+        self.deferred.append(_later)
+
+    def _write_v3_shadow(self, _v3_session: dict, _v3_doc: Any,
+                         _user_sugs: Any, _changes: list) -> None:
+        """The dark frame and what follows it (the V4 draw, the paragraph
+        map, the willfidence read), as `_v3_shadow` wrote them inline."""
         from services.take_feedback_policy_v3 import (
             POLICY_VERSION as V3_POLICY_VERSION,
             build_shadow_frame,
-            dark_enabled,
         )
         from services.transcript_document import build_transcript_document
         db = self.db
         _arm_sid = self.arm_sid
-        _v3_session = (
-            db.v2_get_session_by_id(_arm_sid) or {}
-            if _arm_sid else {}
-        )
         _v3_principal_id = _v3_session.get("owner_principal_id")
-        if _arm_sid and dark_enabled(_v3_principal_id):
-            _v3_take_index = _v3_session.get("take_index")
-            _v3_doc = self.review_doc
-            if not isinstance(_v3_doc, dict):
-                _v3_doc = build_transcript_document(
-                    self.arc_id, database=db, session_id=_arm_sid)
-            _v3_frame = build_shadow_frame(
-                take_document=_v3_doc,
-                snippets=db.get_snippets_by_session(_arm_sid) or [],
-                suggestions=self.user_sugs,
-                feedback_candidates=self.changes,
-                take_index=_v3_take_index,
-                expected_recording_id=_v3_session.get("recording_id"),
-                served_text=self.served_text,
+        _v3_take_index = _v3_session.get("take_index")
+        if not isinstance(_v3_doc, dict):
+            _v3_doc = build_transcript_document(
+                self.arc_id, database=db, session_id=_arm_sid)
+        _v3_frame = build_shadow_frame(
+            take_document=_v3_doc,
+            snippets=db.get_snippets_by_session(_arm_sid) or [],
+            suggestions=_user_sugs,
+            feedback_candidates=_changes,
+            take_index=_v3_take_index,
+            expected_recording_id=_v3_session.get("recording_id"),
+            served_text=self.served_text,
+        )
+        if _v3_frame is None:
+            return
+        _v3_saved = db.record_take_feedback_policy_v3_shadow(
+            arc_id=str(self.arc_id),
+            take_session_id=_arm_sid,
+            recording_id=str(_v3_frame["recording_id"]),
+            acquisition_principal_id=str(_v3_principal_id),
+            owner_user_id=str(self.user_id),
+            take_index=int(_v3_frame["take_index"]),
+            policy_version=V3_POLICY_VERSION,
+            frame=_v3_frame,
+            frame_hash=_v3_frame["frame_hash"],
+        )
+        if not _v3_saved or _v3_saved.get("outcome") != "stored":
+            logger.warning(
+                "take feedback v3 dark frame not stored "
+                "arc=%s take=%s", self.arc_id, _arm_sid,
             )
-            if _v3_frame is not None:
-                _v3_saved = db.record_take_feedback_policy_v3_shadow(
-                    arc_id=str(self.arc_id),
-                    take_session_id=_arm_sid,
-                    recording_id=str(_v3_frame["recording_id"]),
-                    acquisition_principal_id=str(_v3_principal_id),
-                    owner_user_id=str(self.user_id),
-                    take_index=int(_v3_frame["take_index"]),
-                    policy_version=V3_POLICY_VERSION,
-                    frame=_v3_frame,
-                    frame_hash=_v3_frame["frame_hash"],
-                )
-                if not _v3_saved or _v3_saved.get("outcome") != "stored":
-                    logger.warning(
-                        "take feedback v3 dark frame not stored "
-                        "arc=%s take=%s", self.arc_id, _arm_sid,
-                    )
-                else:
-                    # V4 B1.2: the Take's seeded random 20% of moments,
-                    # drawn by the database from the stored frame and kept
-                    # apart from the picks. A side write; never raises.
-                    from services.v4_random_moments import draw
-                    _v4_draw = draw(db, _arm_sid)
-                    # V4 B1.3: once the moments are first drawn, the
-                    # machine's willfidence read is queued, off this path.
-                    # V4 B1.5: the paragraph each moment belongs to, bound
-                    # once, before the read is queued (it reads the map).
-                    if (_v4_draw or {}).get("outcome") == "drawn":
-                        from services.v4_pick_outcomes import map_paragraphs
-                        map_paragraphs(db, _arm_sid, _v3_frame, _v3_doc,
-                                       served_text=self.served_text,
-                                       slide_regions=self.slide_regions,
-                                       parts=lambda: self.deps.locked_parts(
-                                           self.arc_id, str(self.user_id),
-                                           self.served_text))
-                        from services.willfidence import enqueue_read
-                        enqueue_read(_arm_sid)
+            return
+        # V4 B1.2: the Take's seeded random 20% of moments, drawn by the
+        # database from the stored frame and kept apart from the picks. A
+        # side write; never raises.
+        from services.v4_random_moments import draw
+        _v4_draw = draw(db, _arm_sid)
+        # V4 B1.3: once the moments are first drawn, the machine's
+        # willfidence read is queued, off this path.
+        # V4 B1.5: the paragraph each moment belongs to, bound once, before
+        # the read is queued (it reads the map).
+        if (_v4_draw or {}).get("outcome") == "drawn":
+            from services.v4_pick_outcomes import map_paragraphs
+            map_paragraphs(db, _arm_sid, _v3_frame, _v3_doc,
+                           served_text=self.served_text,
+                           slide_regions=self.slide_regions,
+                           parts=self._locked_parts)
+            from services.willfidence import enqueue_read
+            enqueue_read(_arm_sid)
 
     def _immutable_membership(self) -> None:
         # IMMUTABLE TAKE MEMBERSHIP (founder 2026-08-26). The first complete
@@ -852,7 +992,7 @@ class _ChangesRun:
             canonical_feedback_decision,
         )
         db = self.db
-        _decision_session = db.v2_get_session_by_id(self.arm_sid) or {}
+        _decision_session = self._session_row(self.arm_sid)
         if _decision_session.get("project_id"):
             for _response_row in self.response_rows:
                 if not isinstance(_response_row, dict):
@@ -941,7 +1081,7 @@ class _ChangesRun:
             # the STYLE LANE (bold only) plus a pending Confident Voice.
             # Both still enter the same whole-Take exact-three selection
             # after admissibility.
-            parts=self.deps.locked_parts(arc_id, user_id, served_text))
+            parts=self._locked_parts())
         self.changes = self.sel["changes"]
         # Style has a distinct payload only because it has a distinct
         # action; its membership was already selected inside the same
@@ -1173,7 +1313,7 @@ class _ChangesRun:
                 len(self.feedback_set["selected_keys"]), len(_served_rows),
             )
         elif self.take_contract_on and self.arm_sid:
-            self.session = db.v2_get_session_by_id(self.arm_sid) or {}
+            self.session = self._session_row(self.arm_sid)
             _take_index = self.session.get("take_index")
             _version_int = (
                 self.review_version if isinstance(self.review_version, int)
@@ -1285,7 +1425,7 @@ class _ChangesRun:
         user_id = self.user_id
         _canonical_session = self.session
         if not isinstance(_canonical_session, dict):
-            _canonical_session = db.v2_get_session_by_id(_arm_sid) or {}
+            _canonical_session = self._session_row(_arm_sid)
         _selected_ids = {
             str(key.get("id") or "")
             for key in self.feedback_set["selected_keys"]
@@ -1435,8 +1575,7 @@ class _ChangesRun:
                 build_transcript_document):
         db = self.db
         _arm_sid = self.arm_sid
-        _service_session = db.v2_get_session_by_id(_arm_sid) or {} \
-            if _arm_sid else {}
+        _service_session = self._session_row(_arm_sid)
         _service_doc = self.review_doc
         if not isinstance(_service_doc, dict) and _arm_sid:
             _service_doc = build_transcript_document(
@@ -1455,8 +1594,7 @@ class _ChangesRun:
         # `review_sid` may name a different Take from the one `self.doc` was
         # built for, and a snippet id from one Take cannot address a piece of
         # another.
-        _parts = self.deps.locked_parts(
-            self.arc_id, str(self.user_id), self.served_text)
+        _parts = self._locked_parts()
         _service_doc = bind_pieces_to_parts(
             _service_doc,
             served_text=self.served_text,
@@ -1469,10 +1607,7 @@ class _ChangesRun:
             session=_service_session,
             take_document=_service_doc,
             served_text=self.served_text,
-            snippets=(
-                db.get_snippets_by_session(_arm_sid) or []
-                if _arm_sid else []
-            ),
+            snippets=self._take_snippets(_arm_sid),
             suggestions=self.user_sugs,
             feedback_candidates=self.feedback_exposure,
             owner_user_id=str(self.user_id),
@@ -1561,8 +1696,7 @@ class _ChangesRun:
         from services.feedback_window import window_rows
         from services.intervention_spend import paragraph_index_at
 
-        parts = self.deps.locked_parts(
-            self.arc_id, str(self.user_id), self.served_text) or []
+        parts = self._locked_parts()
         saved = saved_paragraphs(parts, self._slide_saved_part_ids(),
                                  self._take_started_at())
 
@@ -1633,7 +1767,7 @@ class _ChangesRun:
             and str(self.session.get("id") or "") == take) else None
         if session is None:
             try:
-                session = self.db.v2_get_session_by_id(take) or {}
+                session = self._session_row(take)
             except Exception as error:
                 logger.info("take unreadable for the window arc=%s: %s",
                             self.arc_id, error, exc_info=True)
@@ -1734,18 +1868,25 @@ def v3_outcome(service_rows, legacy_changes, *, service_on: bool):
 
 def build_changes_block(arc_id, served_text, user_id="", take_session_id="",
                         review_version=None, *, deps: ChangesDeps,
-                        degradation: Optional[DegradationLog] = None) -> dict:
+                        degradation: Optional[DegradationLog] = None,
+                        background_shadow: bool = False) -> dict:
     """The `changes` block — {} when the Living Transcript flag is off, so
     the key is simply ABSENT and the FE keeps rendering today's star layer.
 
     ``degradation`` is the request's log; the route passes its own so the
     payload carries one `degraded` list. Without one (the internal callers
     and the tests), the block owns a log and appends `degraded` itself.
+
+    ``background_shadow``: the live read passes True, and the V3 dark frame
+    is then written on a scoped thread after the block is built instead of
+    inside the speaker's wait (see `_ChangesRun.__init__`). The served block
+    is the same either way.
     """
     own_log = degradation is None
     log = degradation if degradation is not None else DegradationLog(READ_PATH)
     run = _ChangesRun(arc_id, served_text, user_id, take_session_id,
-                      review_version, deps, log)
+                      review_version, deps, log,
+                      background_shadow=background_shadow)
     started = perf_counter()
     try:
         result = run.execute()
@@ -1766,7 +1907,21 @@ def build_changes_block(arc_id, served_text, user_id="", take_session_id="",
                 " ".join(f"{k.removeprefix('changes.')}={v}" for k, v in slowest))
     if own_log:
         result = {**result, **log.payload()}
+    _start_deferred(run)
     return result
+
+
+def _start_deferred(run: _ChangesRun) -> None:
+    """The work the run put off until the block was built (the V3 shadow on
+    the live path), each on a thread that keeps this request's context. A
+    thread that cannot start is logged; the block is already served."""
+    from services.parallel import start_scoped_thread
+    for job in run.deferred:
+        try:
+            start_scoped_thread(job, name="willab-v3-shadow")
+        except Exception as error:  # noqa: BLE001 -- the shadow is optional
+            logger.warning("deferred shadow not started arc=%s: %s",
+                           run.arc_id, error, exc_info=True)
 
 
 # ── Evidence coordinates (moved from routes.v2.explore_ideal_text, founder

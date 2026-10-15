@@ -1211,11 +1211,18 @@ def _moments_entitled(arc_id) -> bool:
 
 
 def _moment_explanations_map(session_ids) -> dict:
-    """Metadata for every surfaced coach explanation. Batch and best-effort."""
+    """Metadata for every surfaced coach explanation. Batch and best-effort:
+    one read for every Take (it used to be one per Take)."""
     out: dict = {}
-    for sid in {str(s) for s in (session_ids or []) if s}:
+    try:
+        drafts_by_session = db.get_coach_snippet_drafts_by_sessions(
+            sorted({str(s) for s in (session_ids or []) if s})) or {}
+    except Exception:
+        logger.warning("moment explanations unreadable", exc_info=True)
+        return out
+    for drafts in drafts_by_session.values():
         try:
-            for d in (db.get_coach_snippet_drafts(sid) or []):
+            for d in (drafts or []):
                 _snip = d.get("snippet_id")
                 if _snip is None or not d.get("surfaced"):
                     continue
@@ -1239,15 +1246,32 @@ def _moment_reference_map(slugs):
     Batched deliberately. The obvious implementation resolves inside the
     per-moment decorator, which is an N+1: a talk with ten verified moments
     would issue ten post lookups on every ideal-text GET — the exact shape the
-    load-time ticket is about. Distinct slugs on one arc are typically 0–2, so
-    one lookup each is effectively constant.
+    load-time ticket is about. All distinct slugs are read in one query.
     """
     out: dict = {}
-    for slug in {s for s in (slugs or []) if isinstance(s, str) and s.strip()}:
-        ref = _moment_reference(slug)
-        if ref:
-            out[slug.strip()] = ref
+    wanted = sorted({s.strip() for s in (slugs or [])
+                     if isinstance(s, str) and s.strip()})
+    if not wanted:
+        return out
+    try:
+        rows = db.get_journal_posts_by_slugs(wanted, published_only=True)
+    except Exception as e:
+        logger.warning("moment reference lookup failed slugs=%s: %s", wanted, e,
+                       exc_info=True)
+        return out
+    for row in rows or []:
+        if isinstance(row, dict) and row.get("slug") in wanted:
+            out[row["slug"]] = _reference_of(row)
     return out
+
+
+def _reference_of(row):
+    """The {slug, title, url} a moment links to, from one published post."""
+    return {
+        "slug": row.get("slug"),
+        "title": row.get("title") or "",
+        "url": f"/blog/{row.get('slug')}",
+    }
 
 
 def _moment_reference(slug):
@@ -1273,11 +1297,7 @@ def _moment_reference(slug):
         return None
     if not isinstance(row, dict) or not row.get("slug"):
         return None
-    return {
-        "slug": row.get("slug"),
-        "title": row.get("title") or "",
-        "url": f"/blog/{row.get('slug')}",
-    }
+    return _reference_of(row)
 
 
 def _moment_playback_map(session_ids) -> dict:
@@ -1289,11 +1309,20 @@ def _moment_playback_map(session_ids) -> dict:
     Parent+offset model: the ref is usually the WHOLE take's audio, so the
     offsets ride along and the FE must clamp to [start, start+duration].
     Uses the shared column-resolver so post-finalize rows (audio_segment_
-    path NULL) still play. Batched per session; best-effort → no player."""
+    path NULL) still play. One read for every Take; best-effort → no player."""
     out: dict = {}
-    for sid in {str(s) for s in (session_ids or []) if s}:
+    try:
+        # Full rows (include_words): the audio resolver reads every
+        # historical column shape, exactly as the per-Take read gave it.
+        snippets_by_session = db.get_snippets_by_sessions(
+            sorted({str(s) for s in (session_ids or []) if s}),
+            include_words=True) or {}
+    except Exception:
+        logger.warning("moment playback unreadable", exc_info=True)
+        return out
+    for snippets in snippets_by_session.values():
         try:
-            for s in (db.get_snippets_by_session(sid) or []):
+            for s in (snippets or []):
                 _snip = s.get("id")
                 if _snip is None:
                     continue

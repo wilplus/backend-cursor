@@ -234,7 +234,9 @@ def enforce_phase1_processing_gate():
 #: The reads whose gate YES may be remembered for a few seconds (S1). Only
 #: GET and HEAD, so a write always asks the database.
 _CACHED_GATE_PREFIXES = ("/v2/explore/", "/v2/user/sessions/",
-                         "/v2/user/snippets/")
+                         "/v2/user/snippets/",
+                         # The /chat boot read (read-only, GET only).
+                         "/v2/chat/session-state")
 
 
 def _gate_cache_key(service, path: str):

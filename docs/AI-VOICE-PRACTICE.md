@@ -46,7 +46,7 @@ Latency is in `latency_ms`: each stage (`choose_exercise`, `generation`,
 `since_take_saved` (the Take finished processing → clip ready).
 Provider retries are counted in `generation_metadata.provider_retries`.
 
-The severity minimum (`AI_VOICE_MIN_SEVERITY`, 0.4) and every
+The severity minimum (`AI_VOICE_MIN_SEVERITY`, 0.2; 0.4 is the line itself) and every
 normalization range (`AI_VOICE_PACE_*`, `AI_VOICE_PAUSE_*`,
 `AI_VOICE_STRESS_GAP_DB`) are environment settings; see `config.py`.
 

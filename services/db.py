@@ -4000,6 +4000,28 @@ class DatabaseService:
                 raise
             return None
 
+    def get_journal_posts_by_slugs(self, slugs, *,
+                                   published_only: bool = True) -> list[dict]:
+        """Many posts by slug in one read (missing slugs are simply absent).
+        Same draft rule as `get_journal_post_by_slug`. [] on a hiccup."""
+        wanted = sorted({str(s) for s in (slugs or []) if s})
+        if not wanted:
+            return []
+        try:
+            q = (
+                self.client.table("journal_post")
+                .select(self._JOURNAL_COLUMNS)
+                .in_("slug", wanted)
+            )
+            if published_only:
+                q = q.eq("status", "published")
+            res = q.execute()
+            return list(getattr(res, "data", None) or [])
+        except Exception as e:
+            logger.warning("get_journal_posts_by_slugs failed n=%d: %s",
+                           len(wanted), e, exc_info=True)
+            return []
+
     def get_journal_post_by_id(self, post_id: str) -> Optional[dict]:
         """One post by id for the CMS editor (any status), or None."""
         if not post_id:
@@ -12428,6 +12450,24 @@ class DatabaseService:
                            take_session_id, e)
             return None
 
+    def list_exercise_coach_requests_for_take(
+        self, take_session_id: str,
+    ) -> dict[str, dict]:
+        """`get_exercise_coach_request` for every moment of one Take in one
+        read: {snippet_id: row}, whole rows. Raises on failure, so the
+        caller can fall back to the per-moment read."""
+        if not take_session_id:
+            return {}
+        res = (self.client.table("exercise_coach_requests")
+               .select("*")
+               .eq("take_session_id", str(take_session_id))
+               .execute())
+        out: dict[str, dict] = {}
+        for row in (res.data or []):
+            if isinstance(row, dict) and row.get("snippet_id"):
+                out.setdefault(str(row["snippet_id"]), row)
+        return out
+
     def get_exercise_coach_request_by_id(self, request_id: str) -> Optional[dict]:
         """One request by its id: the walk's exercise is filed under
         ``coach-request-<id>`` (the upload seam), and the server reads the
@@ -13476,6 +13516,28 @@ class DatabaseService:
                 "get_confident_voice_exercise_assignment failed sid=%s: %s",
                 take_session_id, e)
             return None
+
+    def list_confident_voice_exercise_assignments_for_take(
+        self, take_session_id: str,
+    ) -> dict[str, dict]:
+        """`get_confident_voice_exercise_assignment` for every moment of one
+        Take in one read: {snippet_id: row}, the same columns and the same
+        80/20 policy. Raises on failure, so the caller can fall back to
+        the per-moment read rather than take "no draw" for an answer."""
+        if not take_session_id:
+            return {}
+        res = (self.client.table("confident_voice_exercise_assignments")
+               .select("id,snippet_id,selected_exercise_id,"
+                       "selected_exercise_version,selection_mode,"
+                       "exposure_policy_version,lane,matching_policy_version")
+               .eq("take_session_id", str(take_session_id))
+               .eq("exposure_policy_version", "exercise-80-20-v1")
+               .execute())
+        out: dict[str, dict] = {}
+        for row in (res.data or []):
+            if isinstance(row, dict) and row.get("snippet_id"):
+                out.setdefault(str(row["snippet_id"]), row)
+        return out
 
     def get_confident_voice_practice_by_moment(
         self, take_session_id: str, snippet_id: str,
