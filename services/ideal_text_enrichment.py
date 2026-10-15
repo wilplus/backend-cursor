@@ -142,6 +142,13 @@ ALLOWED_SECTIONS = frozenset({
 })
 
 
+#: The sections whose answer carries a presentation acknowledgement token (and
+#: writes to get it): `learning` directly, `document_layers` through the
+#: Manager's learning packets and feedback claims. A ready answer from either
+#: must pass the post-read generation fence before it leaves the server.
+FENCED_SECTIONS = frozenset({"learning", "document_layers"})
+
+
 def requested_sections(raw: str) -> tuple[set, list]:
     """(the sections asked for, the unknown ones sorted). An empty ask is
     every section."""

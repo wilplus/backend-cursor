@@ -213,7 +213,8 @@ def v2_explore_get_ideal_text_enrichment(arc_id):
     """Optional sections bound to one immutable document snapshot."""
     from time import perf_counter
     from services.ideal_text_enrichment import (
-        EnrichmentDeps, budget_for, requested_sections as requested_sections_of,
+        FENCED_SECTIONS, EnrichmentDeps, budget_for,
+        requested_sections as requested_sections_of,
         run_sections, section_readers, stale_snapshot)
     started = perf_counter()
     owned, sessions = _arc_owned_by_caller(arc_id)
@@ -228,8 +229,13 @@ def v2_explore_get_ideal_text_enrichment(arc_id):
     # would let enrichment attach to an old document during republishing.
     current = db.get_ideal_text_document_core(
         arc_id, str(request.user_id))
-    selected = db.get_ideal_text_document_snapshot(
-        arc_id, str(request.user_id), snapshot_id)
+    # The core read returns the whole snapshot row, so when it IS the asked-for
+    # snapshot there is nothing more to read. Only a mismatch needs the
+    # by-id read, to tell "stale" (409) from "never existed" (404).
+    selected = (
+        current if current and str(current.get("id")) == snapshot_id
+        else db.get_ideal_text_document_snapshot(
+            arc_id, str(request.user_id), snapshot_id))
     if not selected:
         return jsonify({"code": "SNAPSHOT_NOT_FOUND"}), 404
     if (stale := stale_snapshot(current, selected)) is not None:
@@ -263,10 +269,17 @@ def v2_explore_get_ideal_text_enrichment(arc_id):
     # reader has settled.  A source mutation during enrichment must return a
     # retryable stale response and, crucially, must never deliver a stale
     # presentation acknowledgement token to the browser.
-    final_current = db.get_ideal_text_document_core(
-        arc_id, str(request.user_id))
-    if (stale := stale_snapshot(final_current, selected)) is not None:
-        return jsonify(stale), 409
+    #
+    # Only `learning` and `document_layers` hand out such tokens (and write
+    # on the way), and only when they answer. Every other answer is a plain
+    # read bound to the snapshot already checked above, so a pending marks
+    # retry or a read-only lane skips this second round trip.
+    if any(sections.get(name, {}).get("status") == "ready"
+           for name in FENCED_SECTIONS):
+        final_current = db.get_ideal_text_document_core(
+            arc_id, str(request.user_id))
+        if (stale := stale_snapshot(final_current, selected)) is not None:
+            return jsonify(stale), 409
     elapsed = (perf_counter() - started) * 1000
     response = jsonify({
         "document_snapshot_id": snapshot_id,
