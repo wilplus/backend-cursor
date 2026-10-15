@@ -123,3 +123,11 @@ the OpenAI dashboard. It is the only placeholder.
 **After sending:** add the row to the table above with the date, and set a
 reminder for 72 hours. If no receipt confirmation arrives, that silence is
 itself the next row — record it rather than only recording replies.
+
+## ElevenLabs and Meta (WhatsApp), October 2026
+
+| # | Date | Processor | What | Status |
+|---|---|---|---|---|
+| 1 | 2026-10-15 | ElevenLabs | DPA supplied by the founder: ElevenLabs Data Processing Addendum, last updated 8 April 2026 (elevenlabs.io/dpa), part of the self-serve terms | **In place.** Controller request drafted (training opt-out, deletion of clones and backups, retention of TTS output, region, subprocessors); *awaiting send by the founder* |
+| 2 | 2026-10-15 | Meta (WhatsApp) | The Global Data Protection Addendum (facebook.com/legal/terms/Privacy) was supplied first. It is the vendor-side document and does not cover us | Not the right document |
+| 3 | 2026-10-15 | Meta (WhatsApp) | DPA supplied by the founder: WhatsApp Business Data Processing Terms, last updated 22 August 2025, part of the WhatsApp Business terms | **In place.** Still to file: the WhatsApp Business Data Transfer Addendum and a screenshot of the terms accepted in WhatsApp Manager |
