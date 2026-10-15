@@ -77,3 +77,26 @@ to the settings screen".
 - The ☰ menu has no Support and no Community row; the row for the page you
   are on stays orange on light orange, not only on hover.
 - "Support" and "Back" are signed (ST1 A).
+
+## Amended 2026-10-15: the 3.6 consent screens (founder, N73)
+
+Approved on the clickable prototype <https://claude.ai/artifact/YCM8rQKkkwA2HKb4UYajeo>
+(version 19; copy in `docs/design/consent-screens-2026-10-15.html`): "this
+looks perfect". It replaces the 2026-10-07 prototype as the reference.
+
+- **Documents:** on a computer each opens in its own fixed-height window,
+  only the text scrolls; the button is **Continue** (was "Done reading"),
+  with **Back** under it.
+- **Where do you live?:** Poland, then **United States (California)**, then
+  the rest by name.
+- **Three things to confirm:** "I am 18 or older. *", "I agree that
+  WillpowerLab may process my recordings. *", then **Can we make the product
+  so much better for you?** / "We'd train our feedback on your practice."
+  with an underlined **Read more** in the same colour / the tick **Yes,
+  make it so much better.** (no asterisk, no "Optional" label). **Agree and
+  continue** / **Do not agree**; no Back on this step.
+- **Before a Take** (only while training is off) and the **Help improve
+  WillpowerLab** card: the same question, sentence and Read more.
+- **Read more:** Privacy section 4a in a window, **Continue** to close.
+- **Data & consent:** the WhatsApp card (Remove, with its confirm) and Stop
+  sharing on a shared Take, in the words shown with dashed outlines.

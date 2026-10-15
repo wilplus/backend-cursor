@@ -44,6 +44,12 @@ logger = logging.getLogger(__name__)
 _MODEL = "gpt-4o-mini"
 _MAX_TOKENS = 600
 
+# How much of the conversation each step reads (founder 2026-10-15: "it
+# does not hold the context"). The sorter needs the recent turns; the
+# writer gets more, so a reply to the summary after a Take still reads it.
+_ROUTER_TURNS = 10
+_ANSWER_TURNS = 20
+
 # The app features Will may open (services.chat_app_context.FEATURES).
 from services.chat_app_context import ACTIONS as _APP_ACTIONS  # noqa: E402
 
@@ -220,9 +226,9 @@ How does training me through the app actually work if I'm not stressed talking t
 """
 
 
-from services.will_voice import with_voice_rules
+from services.will_tone import WILL_GLOSSARY, WILL_TONE, with_tone
 
-_SYSTEM_PROMPT = with_voice_rules(
+_SYSTEM_PROMPT = with_tone(
     "You are an FAQ assistant for a voice-analysis coaching product. "
     "Users ask you about the product's philosophy, the science behind "
     "the voice work, what the system actually does, who is behind it, "
@@ -693,8 +699,6 @@ _INTENTS = (
     "capability_request", "library_recall", "correction",
     "app_feature", "my_project", "speaker_feedback",
 )
-# Lanes that see the speaker's status card and the app's feature list.
-_APP_LANES = {"app_feature", "my_project"}
 
 
 def _router_enabled() -> bool:
@@ -736,14 +740,16 @@ _CLASSIFIER_SYSTEM = (
     "- speaker_feedback: tells YOU what they think of the app, of you, or "
     "of how this went — praise, a complaint, a wish, a suggestion, a bug "
     "('the walk was too long', 'I love the helper words', 'you should "
-    "remember my slides').\n"
+    "remember my slides', 'the run was too long'). A comment on how a "
+    "Take, the walk or the app went is speaker_feedback.\n"
     "- library_recall: asks to see their strong sides / coach notes / what "
     "they did well, OR any 'training' / 'trainings' / 'my trainings' / "
     "past-sessions phrasing (opens the Trainings page) — in any language.\n"
     "- correction: corrects or contradicts YOUR previous answer ('no, "
     "that's not what I meant', 'I meant X not Y'); use the history.\n"
     "Return STRICT JSON {\"intent\": <one>, \"confidence\": 0.0-1.0}. When "
-    "genuinely unsure, pick product_faq with a low confidence."
+    "genuinely unsure, pick product_faq with a low confidence.\n"
+    + WILL_GLOSSARY
 )
 
 _CLASSIFIER_SCHEMA: dict[str, Any] = {
@@ -768,7 +774,7 @@ def _classify_intent(question, history, service=None) -> tuple[Optional[str], fl
         {"role": "system", "content": _CLASSIFIER_SYSTEM},
     ]
     if isinstance(history, list):
-        for m in history[-6:]:
+        for m in history[-_ROUTER_TURNS:]:
             role = (m.get("role") or "").strip()
             content = (m.get("content") or "").strip()
             if role in ("user", "assistant") and content:
@@ -940,12 +946,12 @@ _HISTORY_ASSISTANT_CHARS = 300
 
 
 def _history_messages(history) -> list[dict[str, str]]:
-    """The last ten user/assistant turns. Will's own past turns are cut
-    to ~300 chars so old long answers don't teach it to run long."""
+    """The last _ANSWER_TURNS user/assistant turns. Will's own past turns
+    are cut to ~300 chars so old long answers don't teach it to run long."""
     out: list[dict[str, str]] = []
     if not isinstance(history, list):
         return out
-    for m in history[-10:]:  # cap context; FAQ chats rarely go deep
+    for m in history[-_ANSWER_TURNS:]:
         role = (m.get("role") or "").strip()
         content = (m.get("content") or "").strip()
         if role == "assistant":
@@ -957,11 +963,12 @@ def _history_messages(history) -> list[dict[str, str]]:
 
 def _build_lane_prompt(intent, dont_ask_block, life_context=None,
                        app_context=None) -> str:
-    parts = [_LANE_BASE, _LANE_BODIES[intent]]
-    if intent in _APP_LANES:
-        block = render_app_context(app_context)
-        if block:
-            parts.append("\n\n" + block)
+    parts = [_LANE_BASE, _LANE_BODIES[intent],
+             "\n\n" + WILL_GLOSSARY + "\n" + WILL_TONE]
+    # Every lane knows the app and the speaker (Privacy 3.7 section 4).
+    block = render_app_context(app_context)
+    if block:
+        parts.append("\n\n" + block)
     if intent in _GROUNDED_LANES:
         parts.append(
             "\n\nMASTER DOCUMENT (verbatim — your only source of truth):\n"

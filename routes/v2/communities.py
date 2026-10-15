@@ -61,6 +61,17 @@ def v2_communities_list():
         db, user_id=str(request.user_id)))
 
 
+@v2_bp.route("/user/takes/shares", methods=["GET"])
+@require_auth
+def v2_my_take_shares():
+    """The speaker's Takes shared right now, and where (Data & consent, Stop
+    sharing). 200 {takes: [{take_session_id, take_index, project,
+    communities: [{id, name, kind}]}]}. Stopping is PUT
+    /user/takes/<id>/share with {"none": true}."""
+    from services.communities import my_live_shares
+    return _run("take shares", lambda: my_live_shares(db, owner_user_id=str(request.user_id)))
+
+
 @v2_bp.route("/user/takes/<take_id>/share", methods=["PUT"])
 @require_auth
 def v2_take_share(take_id):

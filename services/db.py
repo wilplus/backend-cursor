@@ -2334,6 +2334,39 @@ class DatabaseService:
                 raise
             return []
 
+    def get_snippet_audio_rows_by_sessions(self, session_ids) -> Optional[dict]:
+        """The columns a playable link needs, for many sessions at once
+        (founder 2026-10-14: the Lounge read every Take's pieces one Take at
+        a time, with their word timings, twice). {session_id: [rows ordered
+        by start_offset_ms]}; None when unreadable, so the caller falls back
+        to ``get_snippets_by_session``. Paged like get_snippets_by_sessions."""
+        ids = sorted({str(s) for s in (session_ids or []) if s})
+        if not ids:
+            return {}
+        cols = ("id, session_id, user_id, start_offset_ms, duration_ms, "
+                "audio_segment_path, storage_path")
+        out: dict = {sid: [] for sid in ids}
+        try:
+            for i in range(0, len(ids), 20):
+                chunk = ids[i:i + 20]
+                offset = 0
+                while True:
+                    rows = (self.client.table(SNIPPETS_TABLE).select(cols)
+                            .in_("session_id", chunk)
+                            .order("start_offset_ms", desc=False)
+                            .order("id", desc=False)
+                            .range(offset, offset + 999).execute().data) or []
+                    for r in rows:
+                        out.setdefault(str(r.get("session_id")), []).append(r)
+                    if len(rows) < 1000:
+                        break
+                    offset += 1000
+        except Exception as e:
+            logger.warning("get_snippet_audio_rows_by_sessions failed n=%d: %s",
+                           len(ids), e, exc_info=True)
+            return None
+        return out
+
     def get_snippets_by_sessions(
         self, session_ids, *, include_words: bool = False,
     ) -> dict:
@@ -12780,6 +12813,44 @@ class DatabaseService:
             "shared_at": datetime.now(timezone.utc).isoformat(), "revoked_at": None,
         }, on_conflict="take_session_id,community_id").execute())
         return (res.data or [None])[0]
+
+    def list_live_take_shares(self, owner_user_id: str) -> list[dict]:
+        """The owner's live shares, newest first, each with its community's
+        name and kind and its Take's number and project name:
+        {take_session_id, community_id, community_name, community_kind,
+        take_index, project}. A share whose Take is not the owner's is
+        left out. Raises on failure."""
+        shares = (self.client.table("take_shares")
+                  .select("take_session_id,community_id,shared_at")
+                  .eq("owner_user_id", str(owner_user_id)).is_("revoked_at", "null")
+                  .order("shared_at", desc=True).execute().data) or []
+        if not shares:
+            return []
+        community_ids = sorted({str(r["community_id"]) for r in shares})
+        take_ids = sorted({str(r["take_session_id"]) for r in shares})
+        communities = {str(c["id"]): c for c in (self.client.table("communities")
+                       .select("id,name,kind").in_("id", community_ids).execute().data or [])}
+        sessions = {str(t["id"]): t for t in (self.client.table("v2_sessions")
+                    .select("id,take_index,project_id").in_("id", take_ids)
+                    .eq("user_id", str(owner_user_id)).execute().data or [])}
+        project_ids = sorted({str(t["project_id"]) for t in sessions.values()
+                              if t.get("project_id")})
+        projects = ({str(p["id"]): p.get("display_name") or "" for p in (
+            self.client.table("projects").select("id,display_name")
+            .in_("id", project_ids).execute().data or [])} if project_ids else {})
+        out = []
+        for row in shares:
+            session = sessions.get(str(row["take_session_id"]))
+            if session is None:
+                continue
+            community = communities.get(str(row["community_id"])) or {}
+            out.append({"take_session_id": str(row["take_session_id"]),
+                        "community_id": str(row["community_id"]),
+                        "community_name": community.get("name"),
+                        "community_kind": community.get("kind"),
+                        "take_index": session.get("take_index"),
+                        "project": projects.get(str(session.get("project_id") or ""), "")})
+        return out
 
     def revoke_take_shares(self, take_session_id: str, *,
                            keep_community_ids: list[str]) -> int:

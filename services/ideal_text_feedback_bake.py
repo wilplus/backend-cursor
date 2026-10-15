@@ -558,13 +558,45 @@ def run_pending_bake(arc_id: str, actor_id: str) -> None:
     """
     try:
         from services.db import db
-        head = db.get_ideal_text_document_snapshot(str(arc_id), str(actor_id))
+        head = _current_head(db, str(arc_id), str(actor_id))
         if head is None:
             return
         bake_for_snapshot(db, str(arc_id), str(actor_id), head)
     except Exception as error:
         logger.warning("ideal-text feedback bake job failed arc=%s: %s",
                        arc_id, error)
+
+
+def _current_head(database: Any, arc_id: str, actor_id: str) -> Any:
+    """The head for the document as it stands now, republished first when
+    the stored one is behind the arc's generation; None when it cannot be.
+
+    A STALE HEAD BAKED THE PREVIOUS TAKE (founder 2026-10-15, "feedback set
+    not claimable ... index=2 version=3 families=[]"). `finalize_later_take_
+    review` publishes while the new Take is still `processing`, and the
+    publisher counts only ready Takes, so that head names the PREVIOUS Take
+    with the NEW version. The ready flip then advances the generation, and
+    this job runs within seconds — long before the sweep republishes. It
+    re-ran the Manager over the old Take against the new text, which every
+    guard refuses (version != Take index), so the Take's bookmarks were
+    thrown away and the speaker's first open computed them live.
+    """
+    head = database.get_ideal_text_document_snapshot(arc_id, actor_id)
+    current = database.get_ideal_text_document_generation(arc_id)
+    stored = head.get("source_generation") if isinstance(head, Mapping) else None
+    if head is not None and (current is None or stored == current):
+        return head
+    from services.ideal_text_core_snapshot import publish_for_arc
+    publish_for_arc(database, arc_id, actor_id, enqueue_on_failure=False)
+    head = database.get_ideal_text_document_snapshot(arc_id, actor_id)
+    stored = head.get("source_generation") if isinstance(head, Mapping) else None
+    if head is None or (current is not None and stored != current):
+        logger.warning("ideal-text feedback bake skipped: head stale arc=%s "
+                       "head_generation=%s current=%s", arc_id, stored, current)
+        return None
+    logger.info("ideal-text feedback bake republished a stale head arc=%s "
+                "generation=%s", arc_id, current)
+    return head
 
 
 def _served_head(published: Any) -> tuple[str, str, Any] | None:
@@ -654,6 +686,8 @@ def _bake_and_store(
         return False
     block, computed_over_ms = computed
     if not is_a_bake(block):
+        logger.info("ideal-text feedback bake empty arc=%s snapshot=%s "
+                    "computed_ms=%d", arc_id, snapshot_id, computed_over_ms)
         # AN EMPTY LANE IS NOT A BAKE (founder, 2026-09-20, on the first take
         # after this shipped: "I just recorded and none of the bookmarks
         # appeared").
@@ -684,8 +718,8 @@ def _bake_and_store(
     if stored:
         logger.info(
             "ideal-text feedback baked arc=%s snapshot=%s changes=%d "
-            "styles=%d", arc_id, snapshot_id,
+            "styles=%d computed_ms=%d", arc_id, snapshot_id,
             len(block.get("changes") or []),
-            len(block.get("style_changes") or []),
+            len(block.get("style_changes") or []), computed_over_ms,
         )
     return stored

@@ -1,0 +1,19 @@
+WillpowerLab — how the automated part works
+
+Your transcript, the written version of your talk, and the feedback on your
+delivery are produced by automated systems, including AI models.
+
+The feedback is a reading, not a measurement. It describes how a passage came
+across; it does not score you, rank you, or decide anything about you. You are
+free to disagree with any of it, and disagreeing changes nothing about your
+account.
+
+Will, in the Lounge, is an AI assistant, not a person. What Will says can be
+wrong.
+
+The AI version of your voice is made by AI from your own recording. Every
+practice example made with it is labelled "AI version of your voice", and only
+you hear it.
+
+A person may review that automated feedback afterwards. Nothing about you is
+decided automatically.

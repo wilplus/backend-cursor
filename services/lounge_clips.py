@@ -13,36 +13,49 @@ from typing import Any, Callable, Optional
 logger = logging.getLogger(__name__)
 
 
-def page_snippets(messages: list, database: Any) -> dict:
-    """{take_session_id: snippet rows} for every Take this page's clips and
-    recordings name, in one read (it used to be one read per Take, twice).
-    Full rows: the owner check and the audio resolver read every column.
-    {} when nothing is named or the read fails (stored links stay)."""
+class _SessionSnippets:
+    """The database, with ``get_snippets_by_session`` served from one batch
+    read of every Take on the page (light columns only). Anything else, and
+    any session the batch could not read, goes to the database as before."""
+
+    def __init__(self, database: Any, rows_by_session: dict):
+        self._database = database
+        self._rows = rows_by_session
+
+    def get_snippets_by_session(self, session_id: str, **kwargs: Any) -> list:
+        rows = self._rows.get(str(session_id))
+        if rows is None or kwargs:
+            return self._database.get_snippets_by_session(session_id, **kwargs)
+        return rows
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._database, name)
+
+
+def with_page_snippets(messages: list, database: Any) -> Any:
+    """Read the recordings of every Take on this page in one go (founder
+    2026-10-14: the Lounge took seven seconds reading each Take's pieces
+    with their word timings, once for moment clips and again for the whole
+    Take). Falls back to the plain database when the batch read fails."""
     sids: set = set()
     for m in messages or []:
         meta = m.get("metadata")
         if not isinstance(meta, dict):
             continue
-        if m.get("kind") == "walk_step" and isinstance(meta.get("clip"), dict):
-            sids.add(str(meta.get("take_session_id") or ""))
-        elif m.get("kind") == "recording_summary":
-            sids.add(str(meta.get("session_id") or ""))
-    sids.discard("")
-    if not sids:
-        return {}
-    try:
-        return database.get_snippets_by_sessions(
-            sorted(sids), include_words=True) or {}
-    except Exception:
-        logger.warning("lounge clips: snippets unreadable", exc_info=True)
-        return {}
+        if m.get("kind") == "walk_step" and meta.get("take_session_id"):
+            sids.add(str(meta["take_session_id"]))
+        elif m.get("kind") == "recording_summary" and meta.get("session_id"):
+            sids.add(str(meta["session_id"]))
+    reader = getattr(database, "get_snippet_audio_rows_by_sessions", None)
+    if not sids or not callable(reader):
+        return database
+    rows = reader(sorted(sids))
+    return _SessionSnippets(database, rows) if isinstance(rows, dict) else database
 
 
 def refresh_walk_clips(messages: list, user_id: str, database: Any,
-                       resolve: Callable[[dict], Optional[str]],
-                       snippets: Optional[dict] = None) -> None:
-    """Re-sign `metadata.clip.src` in place on the reader's walk steps.
-    ``snippets`` is `page_snippets` for this page, when the caller has it."""
+                       resolve: Callable[[dict], Optional[str]]) -> None:
+    """Re-sign `metadata.clip.src` in place on the reader's walk steps."""
     wanted: dict = {}
     for m in messages or []:
         meta = m.get("metadata") if m.get("kind") == "walk_step" else None
@@ -50,14 +63,15 @@ def refresh_walk_clips(messages: list, user_id: str, database: Any,
         sid = meta.get("take_session_id") if isinstance(meta, dict) else None
         if isinstance(clip, dict) and clip.get("snippet_id") and sid:
             wanted.setdefault(str(sid), []).append(clip)
-    if not wanted:
-        return
-    if snippets is None:
-        snippets = page_snippets(messages, database)
     for sid, clips in wanted.items():
-        rows = {str(r.get("id")): r
-                for r in snippets.get(sid) or []
-                if str(r.get("user_id") or "") == str(user_id)}
+        try:
+            rows = {str(r.get("id")): r
+                    for r in database.get_snippets_by_session(sid) or []
+                    if str(r.get("user_id") or "") == str(user_id)}
+        except Exception:
+            logger.warning("lounge clips: snippets unreadable for %s", sid,
+                           exc_info=True)
+            continue
         for clip in clips:
             row = rows.get(str(clip["snippet_id"]))
             try:
@@ -159,22 +173,17 @@ def attach_card_decks(messages: list, user_id: str, database: Any) -> None:
 
 
 def attach_take_audio(messages: list, user_id: str, database: Any,
-                      resolve: Callable[[Any], Optional[str]],
-                      snippets: Optional[dict] = None) -> None:
+                      resolve: Callable[[Any], Optional[str]]) -> None:
     """The "Your Recording" bubble plays the whole Take, as a moment's clip
     plays its part: each gets `metadata.audio.src`, a fresh link to the
-    reader's own recording. Unowned or unreadable: no `audio`.
-    ``snippets`` is `page_snippets` for this page, when the caller has it."""
-    if snippets is None and any(
-            m.get("kind") == "recording_summary" for m in messages or []):
-        snippets = page_snippets(messages, database)
+    reader's own recording. Unowned or unreadable: no `audio`."""
     for m in messages or []:
         meta = m.get("metadata") if m.get("kind") == "recording_summary" else None
         sid = meta.get("session_id") if isinstance(meta, dict) else None
         if not sid:
             continue
         try:
-            rows = [r for r in (snippets or {}).get(str(sid)) or []
+            rows = [r for r in database.get_snippets_by_session(str(sid)) or []
                     if str(r.get("user_id") or "") == str(user_id)
                     and r.get("audio_segment_path")]
             url = resolve(rows[0]["audio_segment_path"]) if rows else None

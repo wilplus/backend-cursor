@@ -67,7 +67,6 @@ def persist_chat_turn(
     database, user_id, question, answer, *, suggested_action=None,
     suggested_actions=None, bubbles=None, intent=None,
     user_client_id=None, user_created_at=None, offer=None,
-    speaker_feedback=False,
 ):
     """BE-owned persistence of one Lounge chat turn (founder #2 — bubbles must
     never disappear): the user message and the bot reply, in lounge_messages,
@@ -97,7 +96,7 @@ def persist_chat_turn(
         rows.append({
             "client_id": u_id, "role": "user", "kind": "text",
             "body": q, "client_created_at": u_ts,
-            "metadata": {"speaker_feedback": True} if speaker_feedback else None,
+            "metadata": None,
         })
     rows.append({
         "client_id": b_id, "role": "bot", "kind": "text", "body": a,
@@ -128,7 +127,6 @@ def finish_chat_turn(database, resp: dict, *, user_id, question,
             bubbles=resp.get("bubbles"), intent=intent,
             user_client_id=user_client_id, user_created_at=user_created_at,
             offer=resp.get("offer"),
-            speaker_feedback=intent == "speaker_feedback",
         )
         resp["persisted"] = bool(bot_cid)
         if bot_cid:
@@ -279,8 +277,7 @@ def _librarian(database, user_id, question, history, app_config,
             return _reply(gate, debug={"intent": "signup_gate"}), "signup_gate"
     admin_notes = _admin_notes(database, user_id)
     life_context = _life_context(user_id, question, app_config)
-    # The status card costs several reads; only the app lanes and the
-    # mega-prompt fallback use it, so it is read on first use, once.
+    # The status card costs several reads: it is read on first use, once.
     card = functools.cache(
         lambda: app.status_card(database, user_id) if user_id else None)
     from services.master_doc_rag import answer_question
@@ -302,22 +299,70 @@ def _librarian(database, user_id, question, history, app_config,
         answer = f"{answer}\n\n{opened['link']}"
     extra = {"offer": opened["offer"]} if opened.get("offer") else {}
     if (debug or {}).get("router_intent") == "speaker_feedback":
-        # Kept in the speaker's own thread (services.speaker_feedback).
+        # Will answers it like any other turn. Nothing marks it for a
+        # person to read (founder 2026-10-15: the chat is as private as any
+        # other AI chat; Privacy 3.6 section 4).
         return _reply(answer, suggested_action=suggested, debug=debug,
-                      **extra), "speaker_feedback"
+                      **extra), "faq"
     return _reply(answer,
                   show_record_ui=bool(payload.get("show_record_ui", False)),
                   suggested_action=suggested, debug=debug, **extra), \
         (debug or {}).get("intent") or "faq"
 
 
+#: Thread rows Will reads as the conversation: chat turns, the summary
+#: after a Take (cadence), the walk's steps and the coach's word
+#: (walk_step). Status cards are not conversation.
+_HISTORY_KINDS = {"text", "joke", "cadence", "walk_step"}
+_HISTORY_ROWS = 24
+
+
+def _retired(row: dict) -> bool:
+    """The rows the Lounge hides (frontend isRetiredLoungeMessage)."""
+    meta = row.get("metadata") or {}
+    return (row.get("kind") == "cadence" and meta.get("beat") == 0) or \
+        meta.get("note") in ("human_check", "coach_video_shared")
+
+
+def thread_history(database, user_id, question: str, user_client_id=None) -> list:
+    """A signed-in speaker's conversation, read from their own Lounge thread
+    (founder 2026-10-15: "it does not hold the context"): the client sends
+    only plain chat turns, so a reply to the summary after a Take, a walk
+    step or the coach's word arrived with no idea what it answered. Oldest
+    first, as {role, content}; this turn's own message (already stored by
+    the client) is left out. [] when nothing can be read."""
+    try:
+        rows = database.get_lounge_messages_page(str(user_id), limit=_HISTORY_ROWS) or []
+    except Exception as e:
+        logger.warning("chat/query: thread unread user=%s: %s", user_id, e,
+                       exc_info=True)
+        return []
+    turns = []
+    for row in reversed(rows):
+        body = (row.get("body") or "").strip()
+        if (row.get("role") not in ("user", "bot") or not body
+                or row.get("kind") not in _HISTORY_KINDS or _retired(row)
+                or (user_client_id and row.get("client_id") == user_client_id)):
+            continue
+        turns.append({"role": "user" if row["role"] == "user" else "assistant",
+                      "content": body})
+    if turns and turns[-1]["role"] == "user" and turns[-1]["content"] == question:
+        turns.pop()
+    return turns
+
+
 def answer_chat(database, *, user_id, question: str, history, context,
-                app_config, finalize: Callable[[dict, str], Any]) -> Any:
+                app_config, finalize: Callable[[dict, str], Any],
+                user_client_id=None) -> Any:
     """Answer one turn and hand it to ``finalize(response, intent)``.
 
-    An intercept is finalized inside its own guard, exactly as the route did:
-    a failure anywhere in it falls through to the next one."""
+    A signed-in speaker's history is their stored thread (``thread_history``);
+    the client's copy is the fallback. An intercept is finalized inside its
+    own guard, exactly as the route did: a failure anywhere in it falls
+    through to the next one."""
     question = question.strip()
+    if user_id:
+        history = thread_history(database, user_id, question, user_client_id) or history
     for failure, intercept in _intercepts(user_id, app_config):
         try:
             claimed = intercept(user_id, question, context, history)

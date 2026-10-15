@@ -4,9 +4,8 @@ Admin:
   GET    /v2/admin/people/<user_id>   the whole profile (services/admin_person.py)
 
 The person themself:
-  GET    /v2/user/whatsapp            {"phone": "+44…" | null}
-  PUT    /v2/user/whatsapp            {"phone": "+44…"}  (E.164, as the app sends it)
-  DELETE /v2/user/whatsapp            forget the number
+  (The WhatsApp number lives in routes/v2/user_whatsapp.py, one copy in
+  user_settings; the second handler that kept it in auth metadata is gone.)
   PUT    /v2/user/home-screen         they opened the app from their home screen
 
 Asks (services/person_asks.py):
@@ -29,7 +28,6 @@ Deleting an account (the person's own deletion road, seven-day window):
 """
 from __future__ import annotations
 
-import re
 from functools import partial
 
 from flask import Blueprint, jsonify, request
@@ -40,7 +38,6 @@ from services import admin_person, person_asks, plan_promotions
 
 people_bp = Blueprint("people", __name__)
 
-PHONE_RE = re.compile(r"^\+[1-9]\d{7,14}$")
 
 
 def _reply(payload, status: int = 200):
@@ -60,25 +57,6 @@ def get_person(user_id: str):
     if not profile:
         return _reply({"code": "NOT_FOUND", "error": "No account with this id"}, 404)
     return _reply(profile)
-
-
-@people_bp.route("/v2/user/whatsapp", methods=["GET", "PUT", "DELETE"])
-@require_auth
-def my_whatsapp():
-    if request.method == "GET":
-        meta = (admin_person.auth_user(_me()) or {}).get("user_metadata") or {}
-        return _reply({"phone": meta.get("whatsapp_phone") or None})
-    if request.method == "DELETE":
-        admin_person.set_metadata(_me(), {"whatsapp_phone": None})
-        return _reply({"phone": None})
-    phone = re.sub(r"[\s\-().]", "", str((request.get_json(silent=True) or {}).get("phone") or ""))
-    if not PHONE_RE.match(phone):
-        return _reply({"code": "INVALID_PHONE",
-                       "error": "Enter the number with its country code, for example +44 7700 900123."}, 400)
-    admin_person.set_metadata(_me(), {"whatsapp_phone": phone})
-    # Never let the ask bookkeeping block saving the number itself.
-    admin_person._safe("whatsapp ask", partial(person_asks.answered, _me(), "whatsapp"))
-    return _reply({"phone": phone})
 
 
 @people_bp.route("/v2/user/home-screen", methods=["PUT"])

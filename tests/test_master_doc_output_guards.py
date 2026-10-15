@@ -118,40 +118,5 @@ class ChatAnswerGuardTests(unittest.TestCase):
                 self.assertIsNone(payload["suggested_action"])
 
 
-class StatusCardIsLazyTest(unittest.TestCase):
-    """Speed (founder 2026-10-15): a product question never pays for the
-    speaker's status card; the app lanes still get it."""
-
-    def test_card_is_read_only_by_the_lanes_that_use_it(self):
-        import json
-        import os
-        from unittest.mock import patch
-
-        from services.master_doc_rag import answer_question
-
-        class _Response:
-            def __init__(self, text):
-                self.text = text
-
-        for intent, wants_card in (("product_faq", False),
-                                   ("my_project", True)):
-            def fake(*, surface, **_kw):
-                if surface == "master_doc_rag_router":
-                    return _Response(json.dumps(
-                        {"intent": intent, "confidence": 0.9}))
-                return _Response(json.dumps({
-                    "answer": "Short answer.", "show_record_ui": False,
-                    "suggested_action": None, "app_action": None}))
-            reads = []
-            with self.subTest(intent=intent), \
-                    patch.dict(os.environ, {"LOUNGE_ROUTER_ENABLED": "1"}), \
-                    patch("services.llm.chat_complete", fake):
-                payload, _ = answer_question(
-                    "a question",
-                    app_context=lambda: reads.append(1) or {"status": "x"})
-                self.assertEqual(payload["answer"], "Short answer.")
-                self.assertEqual(bool(reads), wants_card)
-
-
 if __name__ == "__main__":
     unittest.main()
