@@ -2483,4 +2483,10 @@ to what speakers write to Will, the United States for California residents
   optional Help improve WillpowerLab tick as the third thing to confirm, Back
   on the confirm step, and the United States listed below Poland as "United
   States (California)"."
+- **Two corrections, confirmed the same day** (25 §8): Meta's US transfers
+  rest on the EU-US Data Privacy Framework (WhatsApp Business Data Transfer
+  Addendum, 16 February 2024), and a coach's video answers are kept while
+  the account is open, outside training. The founder: "I confirm both
+  Privacy 3.6 corrections: the transfer lines in section 6 and the coach
+  videos in section 7."
 

@@ -193,7 +193,7 @@ and their draft line replaced by the signature line; nothing else changed.
 **Signing published nothing.** Section 5 continues from step 2: the E-items,
 then the PAdES signature of 26's PDF, then the publish script.
 
-## 8. Correction after signature, pending the founder's confirmation (15 October 2026)
+## 8. Corrections after signature, confirmed by the founder (15 October 2026)
 
 The WhatsApp Business Data Transfer Addendum (16 February 2024), filed after
 the signature, says Meta's US transfers rest on the EU-US Data Privacy
@@ -208,8 +208,7 @@ SCCs for Meta. Two sentences change in `copy/privacy-3.6.txt`, nothing else:
   Clauses instead."
 
 sha256 of `copy/privacy-3.6.txt`: was `5aa2ffc447bf4543ec74412fe455b60bf439ca708c024d4fdfb0b41797d3ddd3` (as
-signed in §7), after this change `b69bf6434e5a939e8f64f80912e6e2fbee2300456b77ce4a0875f996a809c92b`, and after the second change below `2518d96703dfd632d409d6fc84f9729a86958278054992215972ad2417818864`. **Not in force until the
-founder confirms it in chat**; 3.6 is not published before then.
+signed in §7), after this change `b69bf6434e5a939e8f64f80912e6e2fbee2300456b77ce4a0875f996a809c92b`, and after the second change below `2518d96703dfd632d409d6fc84f9729a86958278054992215972ad2417818864`. Confirmed by the founder (below).
 
 **Second change, same day (founder, chat: keep the coach videos).** The
 founder wants coach video answers kept: "keep the coach videos permanent …
@@ -220,4 +219,9 @@ outside training (§4a, "Your coach's videos are not part of it either"):
 using them to train a model later needs a new policy version and the
 speaker's yes. Fix 7 keeps the private links and drops "deleted with the
 Take". sha256 of `copy/privacy-3.6.txt` after both changes: `2518d96703dfd632d409d6fc84f9729a86958278054992215972ad2417818864`.
-Not in force until the founder confirms both changes.
+
+**Confirmed by the founder, chat, 15 October 2026:** "I confirm both Privacy
+3.6 corrections: the transfer lines in section 6 and the coach videos in
+section 7." The bytes to publish are `copy/privacy-3.6.txt` with sha256
+`2518d96703dfd632d409d6fc84f9729a86958278054992215972ad2417818864`.
+
