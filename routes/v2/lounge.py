@@ -85,9 +85,12 @@ def v2_user_lounge_messages_get():
         )
         page = shape_lounge_page(rows_desc, limit)
         from routes.v2.common import _resolve_snippet_audio_url
-        from services.lounge_clips import refresh_walk_clips
+        from services.lounge_clips import page_snippets, refresh_walk_clips
+        # One snippet read for the whole page, shared by the clips and the
+        # recordings below.
+        snippets = page_snippets(page["messages"], db)
         refresh_walk_clips(page["messages"], request.user_id, db,
-                           _resolve_snippet_audio_url)
+                           _resolve_snippet_audio_url, snippets)
         from services.audio_ref_resolver import resolve_playable_ref
         from services.lounge_clips import refresh_practice_clips
         refresh_practice_clips(page["messages"], request.user_id, db,
@@ -95,7 +98,7 @@ def v2_user_lounge_messages_get():
         from services.lounge_clips import attach_card_decks, attach_take_audio
         attach_card_decks(page["messages"], request.user_id, db)
         attach_take_audio(page["messages"], request.user_id, db,
-                          resolve_playable_ref)
+                          resolve_playable_ref, snippets)
         if before is None:
             # The Ideal Text bubble's "new" (D-FW-5, walk lock flow 1): one
             # yes/no per project, never a count; {} when it cannot be read.

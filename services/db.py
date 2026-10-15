@@ -3967,6 +3967,28 @@ class DatabaseService:
                 raise
             return None
 
+    def get_journal_posts_by_slugs(self, slugs, *,
+                                   published_only: bool = True) -> list[dict]:
+        """Many posts by slug in one read (missing slugs are simply absent).
+        Same draft rule as `get_journal_post_by_slug`. [] on a hiccup."""
+        wanted = sorted({str(s) for s in (slugs or []) if s})
+        if not wanted:
+            return []
+        try:
+            q = (
+                self.client.table("journal_post")
+                .select(self._JOURNAL_COLUMNS)
+                .in_("slug", wanted)
+            )
+            if published_only:
+                q = q.eq("status", "published")
+            res = q.execute()
+            return list(getattr(res, "data", None) or [])
+        except Exception as e:
+            logger.warning("get_journal_posts_by_slugs failed n=%d: %s",
+                           len(wanted), e, exc_info=True)
+            return []
+
     def get_journal_post_by_id(self, post_id: str) -> Optional[dict]:
         """One post by id for the CMS editor (any status), or None."""
         if not post_id:

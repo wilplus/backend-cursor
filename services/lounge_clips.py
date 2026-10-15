@@ -13,9 +13,36 @@ from typing import Any, Callable, Optional
 logger = logging.getLogger(__name__)
 
 
+def page_snippets(messages: list, database: Any) -> dict:
+    """{take_session_id: snippet rows} for every Take this page's clips and
+    recordings name, in one read (it used to be one read per Take, twice).
+    Full rows: the owner check and the audio resolver read every column.
+    {} when nothing is named or the read fails (stored links stay)."""
+    sids: set = set()
+    for m in messages or []:
+        meta = m.get("metadata")
+        if not isinstance(meta, dict):
+            continue
+        if m.get("kind") == "walk_step" and isinstance(meta.get("clip"), dict):
+            sids.add(str(meta.get("take_session_id") or ""))
+        elif m.get("kind") == "recording_summary":
+            sids.add(str(meta.get("session_id") or ""))
+    sids.discard("")
+    if not sids:
+        return {}
+    try:
+        return database.get_snippets_by_sessions(
+            sorted(sids), include_words=True) or {}
+    except Exception:
+        logger.warning("lounge clips: snippets unreadable", exc_info=True)
+        return {}
+
+
 def refresh_walk_clips(messages: list, user_id: str, database: Any,
-                       resolve: Callable[[dict], Optional[str]]) -> None:
-    """Re-sign `metadata.clip.src` in place on the reader's walk steps."""
+                       resolve: Callable[[dict], Optional[str]],
+                       snippets: Optional[dict] = None) -> None:
+    """Re-sign `metadata.clip.src` in place on the reader's walk steps.
+    ``snippets`` is `page_snippets` for this page, when the caller has it."""
     wanted: dict = {}
     for m in messages or []:
         meta = m.get("metadata") if m.get("kind") == "walk_step" else None
@@ -23,15 +50,14 @@ def refresh_walk_clips(messages: list, user_id: str, database: Any,
         sid = meta.get("take_session_id") if isinstance(meta, dict) else None
         if isinstance(clip, dict) and clip.get("snippet_id") and sid:
             wanted.setdefault(str(sid), []).append(clip)
+    if not wanted:
+        return
+    if snippets is None:
+        snippets = page_snippets(messages, database)
     for sid, clips in wanted.items():
-        try:
-            rows = {str(r.get("id")): r
-                    for r in database.get_snippets_by_session(sid) or []
-                    if str(r.get("user_id") or "") == str(user_id)}
-        except Exception:
-            logger.warning("lounge clips: snippets unreadable for %s", sid,
-                           exc_info=True)
-            continue
+        rows = {str(r.get("id")): r
+                for r in snippets.get(sid) or []
+                if str(r.get("user_id") or "") == str(user_id)}
         for clip in clips:
             row = rows.get(str(clip["snippet_id"]))
             try:
@@ -133,17 +159,22 @@ def attach_card_decks(messages: list, user_id: str, database: Any) -> None:
 
 
 def attach_take_audio(messages: list, user_id: str, database: Any,
-                      resolve: Callable[[Any], Optional[str]]) -> None:
+                      resolve: Callable[[Any], Optional[str]],
+                      snippets: Optional[dict] = None) -> None:
     """The "Your Recording" bubble plays the whole Take, as a moment's clip
     plays its part: each gets `metadata.audio.src`, a fresh link to the
-    reader's own recording. Unowned or unreadable: no `audio`."""
+    reader's own recording. Unowned or unreadable: no `audio`.
+    ``snippets`` is `page_snippets` for this page, when the caller has it."""
+    if snippets is None and any(
+            m.get("kind") == "recording_summary" for m in messages or []):
+        snippets = page_snippets(messages, database)
     for m in messages or []:
         meta = m.get("metadata") if m.get("kind") == "recording_summary" else None
         sid = meta.get("session_id") if isinstance(meta, dict) else None
         if not sid:
             continue
         try:
-            rows = [r for r in database.get_snippets_by_session(str(sid)) or []
+            rows = [r for r in (snippets or {}).get(str(sid)) or []
                     if str(r.get("user_id") or "") == str(user_id)
                     and r.get("audio_segment_path")]
             url = resolve(rows[0]["audio_segment_path"]) if rows else None

@@ -3,9 +3,10 @@ from services.lounge_clips import refresh_walk_clips
 
 
 class _Db:
-    def get_snippets_by_session(self, sid):
-        return [{"id": "s1", "user_id": "me", "start_offset_ms": 10, "duration_ms": 20},
-                {"id": "s2", "user_id": "other"}]
+    def get_snippets_by_sessions(self, sids, **_):
+        return {sid: [{"id": "s1", "user_id": "me", "start_offset_ms": 10,
+                       "duration_ms": 20},
+                      {"id": "s2", "user_id": "other"}] for sid in sids}
 
 
 def _msg(snippet):
