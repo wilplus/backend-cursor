@@ -9,13 +9,12 @@ Version 3.6 replaces every earlier version. It adds what the service now
 does: the AI version of your voice, Will in the Lounge, WhatsApp messages and
 one-to-one lessons (sections 1 and 2); it sets out the plans as they are sold
 today (section 2); it opens the service to residents of California (sections
-4 and 16); and it widens the training choice to what you write to
-Will (section 8), and asks you for it again. Under these terms the sound of
+4 and 16); and it asks you again for the training choice (section 8), in
+fewer words. Under these terms the sound of
 your recordings is processed to deliver your own coaching and is never used
 to train models.
 Three things are yours to choose, and all are off unless you choose them: your
-practice text, your coach's words and answers about it, what you write to
-Will, and measurements of your practice may train the models that give every
+practice may train the models that give every
 WillpowerLab speaker feedback when you turn on Help improve WillpowerLab
 (section 8 and the Privacy Policy, section 4a); a short clip of a recording
 may be played to other users when you lend that recording (section 8 and the
@@ -185,8 +184,8 @@ limited to your own service and ends when your content is deleted.
 
 Your practice. In these terms and in the Privacy Policy, "your practice"
 means the words of the passages you practise, the numbers measured from them,
-what your coach writes and answers about them, and your chats with Will. It
-never includes the sound of your recordings.
+and what your coach writes and answers about them. It never includes the
+sound of your recordings or your conversation with Will.
 
 We do not use the sound of your recordings to train models, and the AI
 version of your voice is made for you alone. Your practice is used to train
@@ -195,8 +194,7 @@ if you turn on Help improve WillpowerLab (Privacy Policy, section 4a), and
 never for anyone else.
 
 If you turn on Help improve WillpowerLab, you give us a licence to reproduce
-and adapt the words of the passages you practise and of what you write to
-Will, for two purposes only:
+and adapt the words of the passages you practise, for two purposes only:
 training the models that give WillpowerLab's feedback, and using those models
 to write feedback for every WillpowerLab speaker. The licence is non-exclusive
 and free of charge, it covers no audio, and it ends when you turn the choice

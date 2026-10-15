@@ -268,7 +268,7 @@ uploaded to its `object_key` by the founder.
 
 | # | `object_key` | source | `sha256` of the UNSIGNED render |
 |---|---|---|---|
-| 27 | `phase1-2026.1/legal/training-consent-wording-v4.pdf` | `27-training-consent-wording-v4-DRAFT.md` | `46a87ecf968fd896af812dce4f40f091dad3552467866eccd23a636b62aa2ee3` |
+| 27 | `phase1-2026.1/legal/training-consent-wording-v4.pdf` | `27-training-consent-wording-v4-DRAFT.md` | `21e249c821de0ce9f1ec1b55a0659fb638b5b26e1601175a1db439ecb72104e7` |
 
 Document 26 (v3), signed earlier the same day, is superseded by 27 and is
 never registered; its row in **Current** stays as the record of that

@@ -31,9 +31,10 @@ We'd train our feedback on your practice. Read more
 - **Read more** opens Privacy 3.6 section 4a in its own scrolling window,
   with **Continue** to close it.
 - **"Your practice"** is defined in Terms 3.6 §8: the words of the passages
-  practised, the numbers measured from them, what the coach writes and
-  answers about them, and the chats with Will; never the sound of the
-  recordings.
+  practised, the numbers measured from them, and what the coach writes and
+  answers about them; never the sound of the recordings, and never the
+  conversation with Will (founder, 15 October: "the conversational chat is
+  all private").
 - On the screen before a Take the tick is the **Yes** button (Skip below
   it); on the card it is **Turn on** / **Turn off**.
 - No lines above the switch. v3's nine lines are gone; their content is in
@@ -62,7 +63,7 @@ ece8d1da2709971302542a490e41cf44d071028918daadc1880d65e339aac286
 2. **"Your practice" carries the scope.** The sentence names no category;
    the definition is in the Terms, and the full list in Privacy §4a. A
    regulator may read the on-screen yes as covering less than the
-   definition, chats with Will most of all.
+   definition.
 
 ## Registration
 

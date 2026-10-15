@@ -2510,4 +2510,8 @@ Approved on the clickable prototype (<https://claude.ai/artifact/YCM8rQKkkwA2HKb
   no withdrawal notice where consent is given (Art 7(3)); the sensitive tick
   no longer names sensitive information (Art 9(2)(a)); scope carried by a
   defined term.
+- **Will's conversation is not training data** (founder, same day: "the
+  conversational chat is all private"). Taken out of Privacy 3.6 §4a and §7
+  and the Terms 3.6 §8 definition and licence; the 3.6 texts say it is never
+  used for training.
 

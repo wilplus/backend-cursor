@@ -253,3 +253,13 @@ was offered and declined. No withdrawal notice on these screens (27, risks).
 Back is removed from the confirm step. "Done reading" becomes "Continue" on
 every document window.
 
+**Will's conversation stays out of training** (founder, chat, 15 October
+2026: "do we actually train on the talk with will? … I think the
+conversational chat is all private"). No code has ever trained on Lounge
+messages. Privacy 3.6 (version note, §4a, §7) and Terms 3.6 (version note,
+§8 definition and licence) no longer put it in training, and say it is
+never used for it; D6 is withdrawn. The founder reading the messages Will
+marks as about the app (D2) is unchanged and still disclosed in §4.
+sha256 now: `copy/privacy-3.6.txt` `c0dbb2727a120cd7843cf65725291f885a8ab3d10cb4f2bca16ae707530525b7`, `copy/terms-3.6.txt`
+`843fb6a273b35f2659f657fcf154d0fe81145a44c383efcf0b32a5e55c17c6fa`. Pending with v4.
+

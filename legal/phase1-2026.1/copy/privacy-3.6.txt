@@ -12,12 +12,11 @@ lessons you book with a coach (section 4); signing in with Google or
 LinkedIn (section 2); sharing a take with a community (section 4d); and
 what residents of California should know, now that the service is open to
 them (section 14). It
-also widens one choice, Help improve WillpowerLab (section 4a): with your
-yes, what you write to Will joins your practice text in training. A yes you
-gave under an earlier version does not carry over: it covered less, so it
-counts as off until you say yes again. Everything else is unchanged: no
-recording of your voice, and no clip of one, is ever copied or sent for
-training.
+also asks you again for one choice, Help improve WillpowerLab (section 4a),
+in fewer words: a yes you gave under an earlier version does not carry over,
+so it counts as off until you say yes again. Your conversation with Will is
+never used for training. No recording of your voice, and no clip of one, is
+ever copied or sent for training.
 
 
 1. WHO IS RESPONSIBLE FOR YOUR DATA
@@ -228,8 +227,9 @@ or similarly significantly affect you.
 If you turn on Help improve WillpowerLab, we use your practice to train the
 models that give feedback to every WillpowerLab speaker. Your practice, as
 the Terms define it, is the words of the passages you practise, the numbers
-measured from them, what your coach writes and answers about them, and your
-chats with Will; never the sound of your recordings. The screen asks "Can we
+measured from them, and what your coach writes and answers
+about them; never the sound of your recordings, and never your conversation
+with Will. The screen asks "Can we
 make the product so much better for you?", says "We'd train our feedback on
 your practice.", and you say yes with "Yes, make it so much better."
 
@@ -240,9 +240,6 @@ What we use, and what for:
   a praise line, a clearer version, the words of an exercise, your coach's own
   line on one moment of a take, and your coach's word for a whole take. They
   train the models that write those five kinds of feedback.
-- What you write to Will. Your messages in the Lounge, and Will's answers to
-  them, train the models that answer every WillpowerLab speaker in the
-  Lounge and write their feedback.
 - A coach's answers about your clips. With your yes, a coach may hear a short
   moment of a recording, sometimes with its words and never with your name,
   to answer one question: which moment of a passage most needs feedback, or
@@ -266,8 +263,7 @@ copied or sent for training. The AI version of your voice, the examples made
 with it, and your coach's videos are not part of it either.
 
 What is used from before you turn it on: the words of passages already in your
-account, your coach's words about them, and your conversation with Will, can
-be used too. Separate copies are made only from takes you record while the
+account, and your coach's words about them, can be used too. Separate copies are made only from takes you record while the
 switch is on.
 
 Legal basis: your consent (Article 6(1)(a) GDPR). You give it on its own
@@ -538,8 +534,8 @@ Your answers about other users' clips are kept while your account is open
 and deleted when you delete it.
 
 Training copies, if you chose to make them (section 4a) — text only, never
-audio: the words of practised passages, what your coach wrote about them, what
-you wrote to Will, and a coach's yes or no about a moment. Kept until you turn
+audio: the words of practised passages, what your coach wrote about them, and a
+coach's yes or no about a moment. Kept until you turn
 the choice off or delete your account, then deleted here and at OpenAI.
 
 A coach's answer about a moment of yours given for section 4a, and the two
