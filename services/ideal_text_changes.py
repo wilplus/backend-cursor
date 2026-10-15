@@ -191,6 +191,33 @@ class _ChangesRun:
         # True once V3 has REPLACED `self.changes` with its own rows. The
         # playback attach has to run again when it does — see `execute`.
         self.v3_replaced_changes = False
+        # One read per Take per run: the stages below used to read the same
+        # session five times and its snippets twice. Only a found row is
+        # kept, so a failed read is tried again by the next stage as before.
+        self._sessions: dict[str, dict] = {}
+        self._snippets: dict[str, list] = {}
+
+    def _session_row(self, session_id: Any) -> dict:
+        sid = str(session_id or "")
+        if not sid:
+            return {}
+        if sid not in self._sessions:
+            row = self.db.v2_get_session_by_id(sid) or {}
+            if not row:
+                return {}
+            self._sessions[sid] = row
+        return self._sessions[sid]
+
+    def _take_snippets(self, session_id: Any) -> list:
+        sid = str(session_id or "")
+        if not sid:
+            return []
+        if sid not in self._snippets:
+            rows = self.db.get_snippets_by_session(sid) or []
+            if not rows:
+                return []
+            self._snippets[sid] = rows
+        return self._snippets[sid]
 
     def _stage(self, name: str, fn: Callable[[], Any], *,
                degradable: bool = False) -> Any:
@@ -666,10 +693,7 @@ class _ChangesRun:
         from services.transcript_document import build_transcript_document
         db = self.db
         _arm_sid = self.arm_sid
-        _v3_session = (
-            db.v2_get_session_by_id(_arm_sid) or {}
-            if _arm_sid else {}
-        )
+        _v3_session = self._session_row(_arm_sid)
         _v3_principal_id = _v3_session.get("owner_principal_id")
         if _arm_sid and dark_enabled(_v3_principal_id):
             _v3_take_index = _v3_session.get("take_index")
@@ -679,7 +703,7 @@ class _ChangesRun:
                     self.arc_id, database=db, session_id=_arm_sid)
             _v3_frame = build_shadow_frame(
                 take_document=_v3_doc,
-                snippets=db.get_snippets_by_session(_arm_sid) or [],
+                snippets=self._take_snippets(_arm_sid),
                 suggestions=self.user_sugs,
                 feedback_candidates=self.changes,
                 take_index=_v3_take_index,
@@ -852,7 +876,7 @@ class _ChangesRun:
             canonical_feedback_decision,
         )
         db = self.db
-        _decision_session = db.v2_get_session_by_id(self.arm_sid) or {}
+        _decision_session = self._session_row(self.arm_sid)
         if _decision_session.get("project_id"):
             for _response_row in self.response_rows:
                 if not isinstance(_response_row, dict):
@@ -1173,7 +1197,7 @@ class _ChangesRun:
                 len(self.feedback_set["selected_keys"]), len(_served_rows),
             )
         elif self.take_contract_on and self.arm_sid:
-            self.session = db.v2_get_session_by_id(self.arm_sid) or {}
+            self.session = self._session_row(self.arm_sid)
             _take_index = self.session.get("take_index")
             _version_int = (
                 self.review_version if isinstance(self.review_version, int)
@@ -1285,7 +1309,7 @@ class _ChangesRun:
         user_id = self.user_id
         _canonical_session = self.session
         if not isinstance(_canonical_session, dict):
-            _canonical_session = db.v2_get_session_by_id(_arm_sid) or {}
+            _canonical_session = self._session_row(_arm_sid)
         _selected_ids = {
             str(key.get("id") or "")
             for key in self.feedback_set["selected_keys"]
@@ -1435,8 +1459,7 @@ class _ChangesRun:
                 build_transcript_document):
         db = self.db
         _arm_sid = self.arm_sid
-        _service_session = db.v2_get_session_by_id(_arm_sid) or {} \
-            if _arm_sid else {}
+        _service_session = self._session_row(_arm_sid)
         _service_doc = self.review_doc
         if not isinstance(_service_doc, dict) and _arm_sid:
             _service_doc = build_transcript_document(
@@ -1469,10 +1492,7 @@ class _ChangesRun:
             session=_service_session,
             take_document=_service_doc,
             served_text=self.served_text,
-            snippets=(
-                db.get_snippets_by_session(_arm_sid) or []
-                if _arm_sid else []
-            ),
+            snippets=self._take_snippets(_arm_sid),
             suggestions=self.user_sugs,
             feedback_candidates=self.feedback_exposure,
             owner_user_id=str(self.user_id),
@@ -1633,7 +1653,7 @@ class _ChangesRun:
             and str(self.session.get("id") or "") == take) else None
         if session is None:
             try:
-                session = self.db.v2_get_session_by_id(take) or {}
+                session = self._session_row(take)
             except Exception as error:
                 logger.info("take unreadable for the window arc=%s: %s",
                             self.arc_id, error, exc_info=True)

@@ -31,10 +31,11 @@ _SURFACE = "goal_update"
 # before we spend an LLM call. Multilingual-ish (EN/PL/ES/DE/FR/IT/PT) —
 # a miss only means the librarian answers instead (graceful), never a
 # wrong write. Intentionally broad on the keyword side, the LLM is the
-# precise gate.
+# precise gate. No "but" (French goal, English "but"), "meta" or
+# "target": ordinary words that fired the extra call by mistake.
 _GOAL_HINT = re.compile(
-    r"\b(goal|goals|objective|aim|target|cel|cele|meta|metas|ziel|"
-    r"but|objectif|obiettivo|objetivo|obiettivi)\b",
+    r"\b(goal|goals|objective|aim|cel|cele|ziel|"
+    r"objectif|obiettivo|objetivo|obiettivi)\b",
     re.IGNORECASE,
 )
 _CHANGE_HINT = re.compile(
