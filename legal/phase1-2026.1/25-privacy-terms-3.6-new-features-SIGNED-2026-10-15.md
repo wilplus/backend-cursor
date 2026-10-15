@@ -208,5 +208,16 @@ SCCs for Meta. Two sentences change in `copy/privacy-3.6.txt`, nothing else:
   Clauses instead."
 
 sha256 of `copy/privacy-3.6.txt`: was `5aa2ffc447bf4543ec74412fe455b60bf439ca708c024d4fdfb0b41797d3ddd3` (as
-signed in §7), now `b69bf6434e5a939e8f64f80912e6e2fbee2300456b77ce4a0875f996a809c92b`. **Not in force until the
+signed in §7), after this change `b69bf6434e5a939e8f64f80912e6e2fbee2300456b77ce4a0875f996a809c92b`, and after the second change below `2518d96703dfd632d409d6fc84f9729a86958278054992215972ad2417818864`. **Not in force until the
 founder confirms it in chat**; 3.6 is not published before then.
+
+**Second change, same day (founder, chat: keep the coach videos).** The
+founder wants coach video answers kept: "keep the coach videos permanent …
+now I need them". Privacy 3.6 §7 said they are deleted with the Take. It
+now says they are kept while the account is open, including after the Take
+is deleted, and deleted on request or when the account is closed. They stay
+outside training (§4a, "Your coach's videos are not part of it either"):
+using them to train a model later needs a new policy version and the
+speaker's yes. Fix 7 keeps the private links and drops "deleted with the
+Take". sha256 of `copy/privacy-3.6.txt` after both changes: `2518d96703dfd632d409d6fc84f9729a86958278054992215972ad2417818864`.
+Not in force until the founder confirms both changes.

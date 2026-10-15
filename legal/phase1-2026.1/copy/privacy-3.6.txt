@@ -509,8 +509,9 @@ the recording they came from and are never kept after it.
 A coach's answer in a blind check is deleted together with the recording it
 was about, and never kept after it.
 
-Your coach's video answers: kept while the take they answer exists, and
-deleted with it.
+Your coach's video answers: kept while your account is open, including
+after you delete the take they answer, so that you can watch them again.
+They are deleted when you ask us or when you close your account.
 
 The AI version of your voice and the practice examples made with it: kept
 until you delete it or close your account, then deleted here and at

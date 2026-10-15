@@ -242,3 +242,15 @@ Kept so that a signed file found later can be identified rather than trusted.
 A superseded artifact is **superseded, never edited** — `04` §5 says
 re-registering the same `(artifact_kind, version)` with any field changed raises
 a version conflict, and that is the behaviour we want.
+
+## Rendered 2026-10-15, awaiting the founder's PAdES signature
+
+One render made on 2026-10-15 by `scripts/render_doc_pdf.py` from the
+markdown in the same commit as this table. The founder signed the content in
+chat the same day (decisions log N72). The hash of the **unsigned** render is
+recorded so that the signed file can be checked to be that render plus a
+signature and nothing else; it is never the value to register.
+
+| # | `object_key` | source | `sha256` of the UNSIGNED render |
+|---|---|---|---|
+| 26 | `phase1-2026.1/legal/training-consent-wording-v3.pdf` | `26-training-consent-wording-v3-SIGNED-2026-10-15.md` | `497c5e16b944b0874db78085897b8e61aa05ef6b07f53d693ec6755e413db032` |
