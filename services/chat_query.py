@@ -21,6 +21,7 @@ charges after answering, never before.
 """
 from __future__ import annotations
 
+import functools
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -278,20 +279,23 @@ def _librarian(database, user_id, question, history, app_config,
             return _reply(gate, debug={"intent": "signup_gate"}), "signup_gate"
     admin_notes = _admin_notes(database, user_id)
     life_context = _life_context(user_id, question, app_config)
-    card = app.status_card(database, user_id) if user_id else None
+    # The status card costs several reads; only the app lanes and the
+    # mega-prompt fallback use it, so it is read on first use, once.
+    card = functools.cache(
+        lambda: app.status_card(database, user_id) if user_id else None)
     from services.master_doc_rag import answer_question
     payload, debug = answer_question(
         question, history=history, admin_dont_ask_notes=admin_notes,
         life_context=life_context,
-        app_context={"features": app.features_block(card),
-                     "status": app.render_status(card)})
+        app_context=lambda: {"features": app.features_block(card()),
+                             "status": app.render_status(card())})
     suggested = payload.get("suggested_action")
     if suggested not in ("trainings", "audit"):
         suggested = None
     answer = payload.get("answer", "")
     action = app.named_feature(question) or payload.get("app_action")
-    opened = app.apply_app_action(action, card=card,
-                                  signed_in=bool(user_id), context=context)
+    opened = app.apply_app_action(action, signed_in=bool(user_id),
+                                  context=context)
     if opened.get("suggested_action"):
         suggested = opened["suggested_action"]
     if opened.get("link") and opened["link"] not in answer:

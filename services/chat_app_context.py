@@ -113,8 +113,8 @@ def named_feature(question: Any) -> Optional[str]:
     return next((action for action, pattern in _NAMED if pattern.search(text)), None)
 
 
-def apply_app_action(action: Any, *, card: Optional[dict],
-                     signed_in: bool, context: Optional[dict]) -> dict:
+def apply_app_action(action: Any, *, signed_in: bool,
+                     context: Optional[dict]) -> dict:
     """The response fields for the model's chosen action, or {} when it
     has none, is unknown, or makes no sense for this speaker.
 
