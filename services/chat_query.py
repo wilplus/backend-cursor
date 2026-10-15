@@ -289,7 +289,8 @@ def _librarian(database, user_id, question, history, app_config,
     if suggested not in ("trainings", "audit"):
         suggested = None
     answer = payload.get("answer", "")
-    opened = app.apply_app_action(payload.get("app_action"), card=card,
+    action = app.named_feature(question) or payload.get("app_action")
+    opened = app.apply_app_action(action, card=card,
                                   signed_in=bool(user_id), context=context)
     if opened.get("suggested_action"):
         suggested = opened["suggested_action"]
