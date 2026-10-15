@@ -63,10 +63,25 @@ def propose_rooting_phrase(value: Any) -> Optional[dict]:
             "start": first.start(), "end": first.end()}
 
 
+def _scattered(text: str, phrase: str, start: Any, end: Any) -> Optional[dict]:
+    """Words picked apart (founder 2026-10-15): each piece is exact words of
+    the paragraph, in the order said, and there is no single span."""
+    from services.slide_helper_words import phrase_in_version, within_cap
+    if start is not None or end is not None or _MARKER_RE.search(phrase):
+        return None
+    words = phrase_in_version(phrase, [_alignment_mask(text)])
+    if words is None or not within_cap(words):
+        return None
+    return {"text": words, "start": None, "end": None}
+
+
 def validate_rooting_phrase(
     part_text: Any, phrase: Any, start: Any, end: Any,
 ) -> Optional[dict]:
     text = part_text if isinstance(part_text, str) else ""
+    from services.slide_helper_words import PIECE_SEP
+    if isinstance(phrase, str) and PIECE_SEP in phrase:
+        return _scattered(text, phrase, start, end)
     if (not isinstance(phrase, str) or not phrase
             or not isinstance(start, int) or isinstance(start, bool)
             or not isinstance(end, int) or isinstance(end, bool)
@@ -74,7 +89,7 @@ def validate_rooting_phrase(
             or text[start:end] != phrase
             or _MARKER_RE.search(phrase)):
         return None
-    # The six-word cap on the server (B3; F1 Repair Plan Phase 5).
+    # The eight-word cap on the server (B3; F1 Repair Plan Phase 5).
     from services.slide_helper_words import within_cap
     if not within_cap(phrase):
         return None

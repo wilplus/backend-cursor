@@ -72,6 +72,7 @@ class ChatRoutePersistsTheTurnTests(unittest.TestCase):
 
         self.fail_db = False
         self.app_action = None
+        self.thread = []
         self.debug = {"intent": "faq"}
         self.card = {"whatsapp_on": False}
         self._patches = [
@@ -83,7 +84,7 @@ class ChatRoutePersistsTheTurnTests(unittest.TestCase):
             patch("services.presentation_change_intent."
                   "handle_presentation_change", _presentation),
             patch("services.chat_intents.detect_chat_intent",
-                  lambda question: (
+                  lambda question, history=None: (
                       CHIP if "trainings" in question
                       else {**CHIP, "answer": "   "} if "blank" in question
                       else None)),
@@ -91,6 +92,8 @@ class ChatRoutePersistsTheTurnTests(unittest.TestCase):
             patch("services.chat_app_context.status_card",
                   lambda database, user_id: self.card),
             patch.object(db, "get_user_settings", lambda user_id: {}),
+            patch.object(db, "get_lounge_messages_page",
+                         lambda user_id, limit, before=None: list(self.thread)),
             patch("services.token_account.charge", lambda *a, **k: None),
         ]
         for p in self._patches:
@@ -136,19 +139,20 @@ class ChatRoutePersistsTheTurnTests(unittest.TestCase):
         self.assertEqual(third["answer"], SIGNUP_LINE)
         self.assertEqual(len(self.histories), 1)
 
-    def test_asking_for_whatsapp_opens_the_form_unless_it_is_on(self):
-        """Founder 2026-10-14: Will knows the app's features. Asked for
-        WhatsApp alerts, his reply comes with the WhatsApp offer bubble the
-        Lounge already draws; a speaker who has it on gets no second form."""
+    def test_asking_for_whatsapp_always_opens_the_form(self):
+        """Founder 2026-10-14/15: Will knows the app's features. A speaker
+        who names WhatsApp gets the WhatsApp form the Lounge already draws,
+        whatever the model chose, and also when a number is already saved
+        (the form changes it)."""
         self.app_action = "whatsapp"
-        body = self.post({"question": "can I get a whatsapp?",
+        body = self.post({"question": "can I get alerts on my phone?",
                           "persist": True}).get_json()
         self.assertEqual(body["offer"], "whatsapp")
-        offer_row = self.rows[-1][1][-1]
-        self.assertEqual(offer_row["metadata"], {"offer": "whatsapp"})
-        self.card = {"whatsapp_on": True}
-        self.post({"question": "can I get a whatsapp again?", "persist": True})
-        self.assertEqual(len(self.rows[-1][1]), 2)  # user + bot, no offer
+        self.assertEqual(self.rows[-1][1][-1]["metadata"], {"offer": "whatsapp"})
+        self.app_action, self.card = None, {"whatsapp_on": True}
+        body = self.post({"question": "show me the WhatsApp form",
+                          "persist": True}).get_json()
+        self.assertEqual(body["offer"], "whatsapp")
 
     def test_a_feature_with_a_page_comes_with_its_link(self):
         self.app_action = "booking"
@@ -167,6 +171,23 @@ class ChatRoutePersistsTheTurnTests(unittest.TestCase):
         user_row, bot_row = self.rows[-1][1]
         self.assertIsNone(user_row["metadata"])
         self.assertNotEqual(bot_row["metadata"].get("intent"), "speaker_feedback")
+
+    def test_will_reads_the_summary_he_wrote_after_the_take(self):
+        """Founder 2026-10-15: "it does not hold the context". A signed-in
+        speaker's reply to the summary after a Take reaches Will with that
+        summary, read from their own thread; the turn being asked is not
+        repeated."""
+        self.thread = [  # newest first, as the database returns it
+            {"client_id": "now", "role": "user", "kind": "text", "body": "great, yes!"},
+            {"client_id": "s", "role": "bot", "kind": "cadence",
+             "body": "Churn in Q3, nailed it! How did it go?", "metadata": {"summary": True}},
+            {"client_id": "c", "role": "bot", "kind": "transcript_ready", "body": "card"},
+            {"client_id": "e", "role": "user", "kind": "text", "body": "hi Will"},
+        ]
+        self.post({"question": "great, yes!", "persist": True, "client_id": "now"})
+        self.assertEqual(self.histories[-1], [
+            {"role": "user", "content": "hi Will"},
+            {"role": "assistant", "content": "Churn in Q3, nailed it! How did it go?"}])
 
 
 if __name__ == "__main__":

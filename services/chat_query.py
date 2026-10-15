@@ -154,7 +154,7 @@ def _reply(answer: str, *, show_record_ui=False, suggested_action=None,
     }
 
 
-def _life_panel(user_id, question, _context) -> Optional[tuple[dict, str]]:
+def _life_panel(user_id, question, _context, _history=None) -> Optional[tuple[dict, str]]:
     """N3: for a non-participating user every response is byte-identical to
     main, so this returns None (keep going) for anything it does not own."""
     from services.life_chat import handle_note
@@ -172,7 +172,7 @@ def _life_panel(user_id, question, _context) -> Optional[tuple[dict, str]]:
                                  "link": note.get("link")}), "life_panel"
 
 
-def _goal_update(user_id, question, _context) -> Optional[tuple[dict, str]]:
+def _goal_update(user_id, question, _context, _history=None) -> Optional[tuple[dict, str]]:
     """Prompt A §6 C4: "change my goal to X" updates the profile goal and
     confirms in the speaker's language; a cheap pre-gate inside."""
     from services.goal_update import handle_goal_update
@@ -183,7 +183,7 @@ def _goal_update(user_id, question, _context) -> Optional[tuple[dict, str]]:
         "intent": "goal_update", "new_goal": update.get("new_goal")}), "goal_update"
 
 
-def _audit(user_id, question, _context) -> Optional[tuple[dict, str]]:
+def _audit(user_id, question, _context, _history=None) -> Optional[tuple[dict, str]]:
     """Prompt C §5 (retired by default, AUDIT_SURFACE_ENABLED=1 restores)."""
     from services.audit_intent import handle_audit_intent
     audit = handle_audit_intent(user_id, question)
@@ -193,7 +193,7 @@ def _audit(user_id, question, _context) -> Optional[tuple[dict, str]]:
                   debug={"intent": "audit"}), "audit"
 
 
-def _presentation_change(_user_id, question, context) -> Optional[tuple[dict, str]]:
+def _presentation_change(_user_id, question, context, _history=None) -> Optional[tuple[dict, str]]:
     """Deck changes are project-boundary decisions, resolved from the
     current project's explicit state before the librarian can improvise."""
     from services.presentation_change_intent import handle_presentation_change
@@ -205,11 +205,11 @@ def _presentation_change(_user_id, question, context) -> Optional[tuple[dict, st
                   debug={"intent": change["intent"]}), change["intent"]
 
 
-def _chat_intent(_user_id, question, _context) -> Optional[tuple[dict, str]]:
+def _chat_intent(_user_id, question, _context, history=None) -> Optional[tuple[dict, str]]:
     """Lounge-bot deterministic intercepts (chat-audit 2026-06-21): crisis →
     record CTA → off-mission deflect; anonymous and signed in alike."""
     from services.chat_intents import detect_chat_intent
-    intent = detect_chat_intent(question)
+    intent = detect_chat_intent(question, history)
     if not intent:
         return None
     return _reply(intent["answer"], show_record_ui=intent["show_record_ui"],
@@ -287,7 +287,8 @@ def _librarian(database, user_id, question, history, app_config,
     if suggested not in ("trainings", "audit"):
         suggested = None
     answer = payload.get("answer", "")
-    opened = app.apply_app_action(payload.get("app_action"), card=card,
+    action = app.named_feature(question) or payload.get("app_action")
+    opened = app.apply_app_action(action, card=card,
                                   signed_in=bool(user_id), context=context)
     if opened.get("suggested_action"):
         suggested = opened["suggested_action"]
@@ -306,16 +307,62 @@ def _librarian(database, user_id, question, history, app_config,
         (debug or {}).get("intent") or "faq"
 
 
+#: Thread rows Will reads as the conversation: chat turns, the summary
+#: after a Take (cadence), the walk's steps and the coach's word
+#: (walk_step). Status cards are not conversation.
+_HISTORY_KINDS = {"text", "joke", "cadence", "walk_step"}
+_HISTORY_ROWS = 24
+
+
+def _retired(row: dict) -> bool:
+    """The rows the Lounge hides (frontend isRetiredLoungeMessage)."""
+    meta = row.get("metadata") or {}
+    return (row.get("kind") == "cadence" and meta.get("beat") == 0) or \
+        meta.get("note") in ("human_check", "coach_video_shared")
+
+
+def thread_history(database, user_id, question: str, user_client_id=None) -> list:
+    """A signed-in speaker's conversation, read from their own Lounge thread
+    (founder 2026-10-15: "it does not hold the context"): the client sends
+    only plain chat turns, so a reply to the summary after a Take, a walk
+    step or the coach's word arrived with no idea what it answered. Oldest
+    first, as {role, content}; this turn's own message (already stored by
+    the client) is left out. [] when nothing can be read."""
+    try:
+        rows = database.get_lounge_messages_page(str(user_id), limit=_HISTORY_ROWS) or []
+    except Exception as e:
+        logger.warning("chat/query: thread unread user=%s: %s", user_id, e,
+                       exc_info=True)
+        return []
+    turns = []
+    for row in reversed(rows):
+        body = (row.get("body") or "").strip()
+        if (row.get("role") not in ("user", "bot") or not body
+                or row.get("kind") not in _HISTORY_KINDS or _retired(row)
+                or (user_client_id and row.get("client_id") == user_client_id)):
+            continue
+        turns.append({"role": "user" if row["role"] == "user" else "assistant",
+                      "content": body})
+    if turns and turns[-1]["role"] == "user" and turns[-1]["content"] == question:
+        turns.pop()
+    return turns
+
+
 def answer_chat(database, *, user_id, question: str, history, context,
-                app_config, finalize: Callable[[dict, str], Any]) -> Any:
+                app_config, finalize: Callable[[dict, str], Any],
+                user_client_id=None) -> Any:
     """Answer one turn and hand it to ``finalize(response, intent)``.
 
-    An intercept is finalized inside its own guard, exactly as the route did:
-    a failure anywhere in it falls through to the next one."""
+    A signed-in speaker's history is their stored thread (``thread_history``);
+    the client's copy is the fallback. An intercept is finalized inside its
+    own guard, exactly as the route did: a failure anywhere in it falls
+    through to the next one."""
     question = question.strip()
+    if user_id:
+        history = thread_history(database, user_id, question, user_client_id) or history
     for failure, intercept in _intercepts(user_id, app_config):
         try:
-            claimed = intercept(user_id, question, context)
+            claimed = intercept(user_id, question, context, history)
             if claimed:
                 return finalize(*claimed)
         except Exception as error:

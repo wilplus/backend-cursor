@@ -44,6 +44,12 @@ logger = logging.getLogger(__name__)
 _MODEL = "gpt-4o-mini"
 _MAX_TOKENS = 600
 
+# How much of the conversation each step reads (founder 2026-10-15: "it
+# does not hold the context"). The sorter needs the recent turns; the
+# writer gets more, so a reply to the summary after a Take still reads it.
+_ROUTER_TURNS = 10
+_ANSWER_TURNS = 20
+
 # The app features Will may open (services.chat_app_context.FEATURES).
 from services.chat_app_context import ACTIONS as _APP_ACTIONS  # noqa: E402
 
@@ -225,9 +231,9 @@ How does training me through the app actually work if I'm not stressed talking t
 """
 
 
-from services.will_voice import with_voice_rules
+from services.will_tone import WILL_TONE, with_tone
 
-_SYSTEM_PROMPT = with_voice_rules(
+_SYSTEM_PROMPT = with_tone(
     "You are an FAQ assistant for a voice-analysis coaching product. "
     "Users ask you about the product's philosophy, the science behind "
     "the voice work, what the system actually does, who is behind it, "
@@ -799,7 +805,7 @@ def _classify_intent(question, history, service=None) -> tuple[Optional[str], fl
         {"role": "system", "content": _CLASSIFIER_SYSTEM},
     ]
     if isinstance(history, list):
-        for m in history[-6:]:
+        for m in history[-_ROUTER_TURNS:]:
             role = (m.get("role") or "").strip()
             content = (m.get("content") or "").strip()
             if role in ("user", "assistant") and content:
@@ -914,8 +920,9 @@ _LANE_BODIES: dict[str, str] = {
         "The speaker asked about or for one of the app's features. Use "
         "WHAT THE APP CAN DO and THIS SPEAKER below. Say yes in one or two "
         "short, warm sentences, say what happens next, and set app_action "
-        "to that feature's name. If it is already on for them, say so and "
-        "keep app_action null. Prices come only from the MASTER DOCUMENT. "
+        "to that feature's name. If it is already on for them, say so; the "
+        "form still opens so they can change it, so still set app_action. "
+        "Prices come only from the MASTER DOCUMENT. "
         "Never invent a feature, a price, or a URL."
     ),
     "my_project": (
@@ -961,7 +968,7 @@ def render_app_context(app_context: Optional[dict]) -> str:
 
 def _build_lane_prompt(intent, dont_ask_block, life_context=None,
                        app_context=None) -> str:
-    parts = [_LANE_BASE, _LANE_BODIES[intent]]
+    parts = [_LANE_BASE, _LANE_BODIES[intent], "\n\n" + WILL_TONE]
     if intent in _APP_LANES:
         block = render_app_context(app_context)
         if block:
@@ -1003,7 +1010,7 @@ def _answer_via_router(
         {"role": "system", "content": system_content},
     ]
     if isinstance(history, list):
-        for m in history[-10:]:
+        for m in history[-_ANSWER_TURNS:]:
             role = (m.get("role") or "").strip()
             content = (m.get("content") or "").strip()
             if role in ("user", "assistant") and content:
@@ -1160,7 +1167,7 @@ def answer_question(
         {"role": "system", "content": system_content},
     ]
     if isinstance(history, list):
-        for m in history[-10:]:  # cap context; FAQ chats rarely go deep
+        for m in history[-_ANSWER_TURNS:]:
             role = (m.get("role") or "").strip()
             content = (m.get("content") or "").strip()
             if role in ("user", "assistant") and content:

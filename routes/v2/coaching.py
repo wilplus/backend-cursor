@@ -333,7 +333,7 @@ def v2_chat_query():
         return answer_chat(
             db, user_id=request.user_id, question=question, history=history,
             context=presentation_context, app_config=config,
-            finalize=_finalize)
+            finalize=_finalize, user_client_id=user_client_id)
 
     except Exception as e:
         logger.error("chat/query failed: %s", e, exc_info=True)
