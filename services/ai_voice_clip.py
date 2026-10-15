@@ -57,8 +57,10 @@ def principal_for(database: Any, take_id: Any, user_id: Any) -> str:
 # ── the lane and the video rule ──────────────────────────────────────────
 
 def in_voice_lane(practice: dict) -> bool:
-    """Only the voice Exercise: never the Clearer version (a rewrite)."""
-    return str((practice or {}).get("kind") or "") in ("exercise", "moment")
+    """Only the voice Exercise: a library exercise or the moment's own words
+    (stored as ``plain``), never the Clearer version (a rewrite). A row
+    without a kind is an exercise, as practice_adoption reads it."""
+    return str((practice or {}).get("kind") or "exercise") in ("exercise", "plain")
 
 
 def _coach_picked(practice: dict) -> bool:

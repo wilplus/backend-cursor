@@ -138,7 +138,7 @@ def _snip(wpm, pause_ratio=0.15, dynamic_db=28.0):
 TAKE = [_snip(150), _snip(152), _snip(148), _snip(151)]
 
 
-def _practice(kind="moment", fit=None, video=None):
+def _practice(kind="plain", fit=None, video=None):
     return {"id": str(uuid.uuid4()), "kind": kind, "take_session_id": str(uuid.uuid4()),
             "snippet_id": str(uuid.uuid4()), "exact_passage": SENTENCE,
             "exercise_id": "x", "exercise_snapshot": {"explanation_video_url": video},
