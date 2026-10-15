@@ -279,6 +279,19 @@ Document 27 signed by the founder (PAdES, `/SubFilter /ETSI.CAdES.detached`,
 signing time 2026-10-15 08:18:11) and checked the same day: the signed
 file's first 66,242 bytes are the unsigned render above, byte for byte, with
 one signature appended. Its hash is in **Current** and in
-`PUBLISH-3.6-2026-10-15.sql`. Not counsel-reviewed. To be uploaded to its
-`object_key` by the founder.
+`PUBLISH-3.6-2026-10-15.sql`. Not counsel-reviewed. Uploaded 2026-10-15 to
+Supabase Storage, private bucket `coach_feedback_videos`, at its
+`object_key`; read back and its hash matched. 3.6 and v4 were published the
+same day, 08:42 UTC.
+
+## Approved 2026-10-15 in chat: Privacy 3.7 (no PDF)
+
+`28-privacy-3.7-will-context-APPROVED-2026-10-15.md`: Privacy 3.7
+(`copy/privacy-3.7.txt`, sha256
+`ac0942acb19a41a2a20c707ae73241517644c35c20bcd004e48631c96157c46d`), what
+Will is given in the Lounge. Approved by the founder in chat ("approve all";
+"yes, go ahead as 3.7", N74), like the 3.6 texts; no PDF is rendered or
+signed for it. Terms 3.6 (`843fb6a2…`), AI notice 3.2 (`8b85806c…`) and the
+3.1 agreement are unchanged. Published only by `PUBLISH-3.7-2026-10-15.sql`.
+Not counsel-reviewed.
 
