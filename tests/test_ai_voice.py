@@ -425,3 +425,227 @@ def test_delete_removes_the_voice_and_clips_and_is_safe_twice():
         db.client.tables["ai_voice_clones"][0].update(provider_voice_id="voice-abc")
         failing = _Voices(fail=VoiceProviderError("outage"))
         assert ai_voice_clone.delete(db, OWNER, provider=failing)["state"] == "deleting"
+
+
+# ── the clip starts when the exercise moment is known (founder 2026-10-15, B) ──
+
+ARC, ACTOR, TAKE_ID, SNIP_ID = (str(uuid.uuid4()) for _ in range(4))
+
+
+def _item(**extra):
+    row = {"id": "cand-1", "kind": "bold", "source": "confident_voice",
+           "feedback_family": "confident_voice", "block_id": "b1",
+           "snippet_id": SNIP_ID, "take_session_id": TAKE_ID,
+           "span": {"start": 0, "end": 20}, "quote": SENTENCE[:20],
+           "bookmark_tier": "standard", "practice_prompt": True,
+           "evidence": {"project_id": ARC, "take_session_id": TAKE_ID,
+                        "slide_index": 0, "paragraph_index": 0,
+                        "span": {"start": 0, "end": 20}}}
+    row.update(extra)
+    return row
+
+
+class _BakeDb:
+    def __init__(self):
+        self.stored = 0
+
+    def v2_get_session_by_id(self, take_id):
+        return {"id": take_id, "user_id": ACTOR, "arc_id": ARC, "analysis_state": "ready"}
+
+    def write_ideal_text_feedback_bake(self, *_a):
+        self.stored += 1
+        return True
+
+
+@pytest.fixture
+def baked(monkeypatch):
+    """A bake whose Manager answer the test chooses, a broker that remembers
+    its marks, and a queue that records what was asked of it."""
+    from services import ideal_text_feedback_bake as bake
+    from services import job_queue
+    marks: dict = {}
+
+    class _Redis:
+        def set(self, key, value, nx=False, ex=None):
+            if nx and key in marks:
+                return None
+            marks[key] = value
+            return True
+
+        def delete(self, *keys):
+            return sum(marks.pop(k, None) is not None for k in keys)
+
+    queued: list = []
+    monkeypatch.setattr(job_queue, "queue_configured", lambda: True)
+    monkeypatch.setattr(job_queue, "get_redis", lambda **_k: _Redis())
+    monkeypatch.setattr(job_queue, "bake_queue_name", lambda: "bakes")
+    monkeypatch.setattr(job_queue, "enqueue",
+                        lambda path, *a, **k: (queued.append((path, a, k)), True)[1])
+    monkeypatch.setattr(ai_voice_clip, "principal_for", lambda *_a: "principal-1")
+    answers: dict = {}
+    monkeypatch.setattr(bake, "_compute_block", lambda *_a, **_k: (answers["block"], 5))
+
+    def run(block):
+        answers["block"] = block
+        db = _BakeDb()
+        return bake._bake_and_store(db, ARC, ACTOR, "snap-1", (SENTENCE, TAKE_ID, 1)), db
+    return run, queued
+
+
+def test_a_stored_bake_with_a_voice_exercise_queues_one_prewarm_once(baked):
+    """The moment the bake knows the exercise moment, the clip's job is
+    queued in the bake's lane with what the walk would open (here the
+    moment's own words); a rebake of the same Take never queues a second."""
+    run, queued = baked
+    with _on():
+        stored, db = run({"changes": [_item()], "style_changes": []})
+        assert stored and db.stored == 1
+        assert len(queued) == 1
+        path, args, kwargs = queued[0]
+        assert path == "services.ai_voice_clip.prewarm" and kwargs["queue"] == "bakes"
+        assert kwargs["rq_job_id"] == f"ai-voice-prewarm-{TAKE_ID}-{SNIP_ID}"
+        user_id, take_id, snippet_id, principal, start, lane = args
+        assert (user_id, take_id, snippet_id, principal, lane) == (ACTOR, TAKE_ID, SNIP_ID, "principal-1", "bakes")
+        assert start["kind"] == "plain" and start["evidence"]["project_id"] == ARC
+        # The rebake after an answer: the same Take, the same moment, no second job.
+        stored, _db = run({"changes": [_item(status="approved")], "style_changes": []})
+        assert stored and len(queued) == 1
+
+
+def test_the_bake_queues_the_offered_exercise_and_never_a_rewrite_or_praise(baked):
+    """With an exercise offered on the moment the practice is the exercise's
+    (the walk's own choice); a clearer version riding it, or a Take whose
+    marked moment is green, starts no clip."""
+    run, queued = baked
+    offer = {"exercise_id": "hear-every-word-v1", "passage": SENTENCE, "version": 1}
+    with _on():
+        run({"changes": [_item(practice_exercise=offer)], "style_changes": []})
+        assert len(queued) == 1 and queued[0][1][4]["kind"] == "exercise"
+        assert queued[0][1][4]["exercise_id"] == "hear-every-word-v1"
+        run({"changes": [_item(block_id="b2", id="cand-2"),
+                         _item(block_id="b2", id="rw-1", kind="replace",
+                               feedback_family="rewrite_clarity",
+                               proposed_text="A clearer version.")],
+             "style_changes": []})
+        run({"changes": [_item(block_id="b3", bookmark_tier="confident")],
+             "style_changes": []})
+        assert len(queued) == 1
+
+
+class _PrewarmDb(_Db):
+    """The reads the practice start makes, over the in-memory tables."""
+
+    def __init__(self, snippet, take):
+        super().__init__(None, snippet, take)
+        self.practices: list = []
+
+    def v2_get_session_by_id(self, take_id):
+        return {"id": take_id, "user_id": OWNER, "arc_id": ARC}
+
+    def get_confident_voice_practice_by_moment(self, take_id, snippet_id, owner=None):
+        return next((p for p in self.practices
+                     if p["take_session_id"] == take_id and p["snippet_id"] == snippet_id), None)
+
+    def get_confident_voice_practice(self, practice_id, *_a):
+        return next((p for p in self.practices if p["id"] == practice_id), None)
+
+    def create_confident_voice_practice(self, row):
+        self.practices.append({"id": str(uuid.uuid4()), "status": "open", **row})
+        return self.practices[-1]
+
+
+def _start_for(kind="plain"):
+    return {"snippet_id": SNIP_ID, "take_session_id": TAKE_ID, "kind": kind,
+            "exercise_id": None, "feedback_id": "cand-1",
+            "evidence": {"project_id": ARC, "take_session_id": TAKE_ID,
+                         "slide_index": 0, "paragraph_index": 0,
+                         "span": {"start": 0, "end": 20}}}
+
+
+@pytest.fixture
+def allowed(monkeypatch):
+    """The practice's purpose is on and the speaker's choice allows it."""
+    from services import processing_authorization, processing_purposes
+    monkeypatch.setattr(processing_purposes, "purpose_is_operational", lambda *_a, **_k: True)
+
+    class _Gate:
+        enforced = False
+
+        def __init__(self, *_a):
+            pass
+
+        def choice_permitted(self, *_a):
+            return True
+    monkeypatch.setattr(processing_authorization, "ProcessingAuthorizationService", _Gate)
+
+
+def test_prewarm_opens_the_practice_and_the_clip_and_skips_without_a_voice(allowed):
+    """Before the walk reaches the Exercise screen the practice row exists
+    (one per moment, as the walk would open it) and its clip is made; the
+    walk's own ask then resumes both. With no voice coming, nothing is
+    opened."""
+    snippet = {**_snip(150, pause_ratio=0.02), "id": SNIP_ID, "session_id": TAKE_ID,
+               "audio_segment_path": "a.webm", "start_offset_ms": 0}
+    with _on():
+        db = _PrewarmDb(snippet, TAKE)
+        assert ai_voice_clip.prewarm(OWNER, TAKE_ID, SNIP_ID, "", _start_for(),
+                                     database=db) == "skipped:no_voice"
+        assert db.practices == [] and "ai_voice_cycles" not in db.client.tables
+        _ready_voice(db)
+        voices = _Voices()
+
+        def run(cid, p):
+            ai_voice_clip.generate(cid, p, database=db, provider=voices,
+                                   transcribe=lambda _a: _heard(0.55, "the window closes once"),
+                                   put_object=lambda k, a: "bucket",
+                                   decode=lambda _a: _pcm_with_pause(1.0),
+                                   provider_usage={"used": 0})
+        assert ai_voice_clip.prewarm(OWNER, TAKE_ID, SNIP_ID, "", _start_for(),
+                                     database=db, run=run) == "ready"
+        assert len(db.practices) == 1 and db.practices[0]["kind"] == "plain"
+        assert db.practices[0]["original_user_answer"] is None
+        assert voices.spoken == 1
+        # The walk's own ask: the same practice, the same clip, no second one.
+        practice = db.practices[0]
+        again = ai_voice_clip.ensure(db, practice, user_id=OWNER, principal_id="",
+                                     run=run, sign=lambda b, k: f"https://signed/{k}")
+        assert again["clip"]["state"] == "ready" and voices.spoken == 1
+        assert ai_voice_clip.prewarm(OWNER, TAKE_ID, SNIP_ID, "", _start_for(),
+                                     database=db, run=run) == "ready"
+        assert len(db.practices) == 1 and voices.spoken == 1
+
+
+def test_a_voice_still_being_made_is_waited_for_a_bounded_number_of_times(monkeypatch):
+    """Asked for before the clone is ready: the cycle waits (`no_voice`),
+    the walk already sees the clip's place, one delayed retry is queued per
+    wait, and after the last wait only the next ask retries."""
+    from services import job_queue
+    queued: list = []
+    monkeypatch.setattr(job_queue, "enqueue",
+                        lambda path, *a, **k: (queued.append((path, a, k)), True)[1])
+    with _on():
+        db = _Db(_practice(), _snip(150, pause_ratio=0.02), TAKE)
+        db.client.tables.setdefault("ai_voice_clones", []).append(
+            {"owner_user_id": OWNER, "status": "creating", "enabled": True,
+             "created_at": "2026-10-11T00:00:00+00:00"})
+        voices = _Voices()
+        out = _run_pipeline(db, db.practice, voices, _heard(0.55, "the window closes once"))
+        cycle = db.client.tables["ai_voice_cycles"][0]
+        assert out == {"demo": "ai_voice", "clip": {"state": "pending", "url": None,
+                                                    "max_appearances": 3}}
+        assert (cycle["status"], cycle["failure_kind"]) == ("pending", "no_voice")
+        assert cycle["generation_metadata"] == {"no_voice_waits": 1}
+        assert voices.spoken == 0 and len(queued) == 1
+        path, args, kwargs = queued[0]
+        assert path == "services.ai_voice_clip.generate" and args[0] == cycle["id"]
+        assert kwargs["delay_seconds"] == ai_voice_clip.NO_VOICE_RETRY_SECONDS
+        assert kwargs["rq_job_id"].endswith("-wait1")
+        for _ in range(ai_voice_clip.NO_VOICE_MAX_WAITS + 2):
+            ai_voice_clip.generate(cycle["id"], "", database=db, provider=voices)
+        assert cycle["generation_metadata"] == {"no_voice_waits": ai_voice_clip.NO_VOICE_MAX_WAITS}
+        assert len(queued) == ai_voice_clip.NO_VOICE_MAX_WAITS
+        # The voice arrives: the next ask makes the clip as before.
+        db.client.tables["ai_voice_clones"][0].update(
+            {"status": "ready", "provider_voice_id": "voice-abc"})
+        done = _run_pipeline(db, db.practice, voices, _heard(0.55, "the window closes once"))
+        assert done["clip"]["state"] == "ready" and voices.spoken == 1

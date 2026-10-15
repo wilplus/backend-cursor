@@ -1,16 +1,23 @@
 """One AI clip per practice, made only in the voice Exercise lane
 (founder lock 2026-10-12, docs/FOUNDER-LOCK-ai-voice-practice-2026-10-12.md).
 
+  prewarm    the bake's job (founder 2026-10-15, B: "start it the moment you
+             know it will be needed"): at the end of the bake the exercise
+             moment is known, so the practice row is opened server-side,
+             exactly as the walk would open it, and the clip is started
+             then. The walk's own ask (below) finds the row and the clip
+             already there.
   ensure     the walk asks for the clip when it enters the lane: when the
              Exercise screen opens (no video fits) or when Practise is
              tapped (a video fits). The rewrite lane and praise never get
              here; a rewrite practice is refused before anything is read.
              One cycle row per practice (UNIQUE), so a repeated request never
-             makes a second clip.
+             makes a second clip. Since the prewarm this is the fallback.
   generate   the background job: choose the exercise, build the request,
              check the limits, call ElevenLabs through the permit, check the
              clip (words re-heard through the existing Whisper permit), store
-             it. A failed check is never shown.
+             it. A failed check is never shown. A voice still on its way
+             from Take 1 is waited for: a bounded, delayed retry.
   state      what the walk may know: video or AI clip, and the clip's state
              and short-lived link when it passed. No id, setting, score or
              check result ever leaves.
@@ -39,6 +46,17 @@ LINK_SECONDS = 900
 #: problem" (confident_voice_practice._SIGNAL_PROBLEM_TAGS). Stress has no
 #: library name yet, so stress always takes the AI clip.
 PROBLEM_TAGS = {"pace": {"rushing"}, "pause": {"rushing"}, "stress": set()}
+#: A voice not ready at generate time (the clone still on its way from
+#: Take 1) is asked for again after this many seconds, at most this many
+#: times; the count rides the cycle row's ``generation_metadata`` (no
+#: migration). After that the next walk ask retries, as before.
+NO_VOICE_RETRY_SECONDS = 30
+NO_VOICE_MAX_WAITS = 5
+#: The guards the walk's routes put before a practice and before a clip
+#: (routes/v2/user_sessions.py, routes/v2/ai_voice.py); the prewarm, which
+#: reaches neither route, asks the same questions itself.
+PRACTICE_PURPOSE = "personalized_exercise_recommendation"
+PRACTICE_CHOICE = "personalised_practice"
 
 
 def principal_for(database: Any, take_id: Any, user_id: Any) -> str:
@@ -95,8 +113,11 @@ def demo_for(database: Any, practice: dict, selection: Optional[dict]) -> str:
 # ── ensure / generate ────────────────────────────────────────────────────
 
 def ensure(database: Any, practice: dict, *, user_id: str, principal_id: str,
-           run=None, sign=None) -> dict:
-    """Start (once) the clip for this practice and return ``state``."""
+           run=None, sign=None, queue: Optional[str] = None) -> dict:
+    """Start (once) the clip for this practice and return ``state``.
+
+    ``queue`` is the lane the job rides (the pipeline's unless told other);
+    a job already started by the prewarm is found, never started again."""
     from services.ai_voice_clone import available_to
     if not available_to(user_id) or not in_voice_lane(practice):
         return {"demo": "video" if _has_video(practice) else "none", "clip": None}
@@ -109,11 +130,11 @@ def ensure(database: Any, practice: dict, *, user_id: str, principal_id: str,
     retry_waiting = (cycle.get("status") == "pending"
                      and cycle.get("failure_kind") == "no_voice")
     if created or retry_waiting:
-        args = (str(cycle["id"]), principal_id)
+        args = (str(cycle["id"]), principal_id, queue)
         if run is not None:
-            run(*args)
+            run(*args[:2])
         else:
-            _start(args, cycle_id=str(cycle["id"]))
+            _start(args, cycle_id=str(cycle["id"]), queue=queue)
         cycle = store.get_cycle(database, str(practice["id"])) or cycle
     return state(database, practice, cycle, sign=sign)
 
@@ -123,14 +144,179 @@ def _has_video(practice: dict) -> bool:
             and bool(((practice or {}).get("exercise_snapshot") or {}).get("explanation_video_url")))
 
 
-def _start(args: tuple, *, cycle_id: str) -> None:
+def _start(args: tuple, *, cycle_id: str, queue: Optional[str] = None,
+           delay_seconds: int = 0, attempt: int = 0) -> bool:
+    """Queue ``generate`` (a delayed one for a voice still on its way);
+    without a queue it runs on a thread, as the walk's ask always has."""
     from services.job_queue import enqueue
-    if enqueue("services.ai_voice_clip.generate", *args,
-               rq_job_id=f"ai-voice-clip-{cycle_id}"):
-        return
+    job_id = f"ai-voice-clip-{cycle_id}" + (f"-wait{attempt}" if attempt else "")
+    if enqueue("services.ai_voice_clip.generate", *args, rq_job_id=job_id,
+               queue=queue, delay_seconds=delay_seconds):
+        return True
     import threading
+    if delay_seconds > 0:
+        timer = threading.Timer(delay_seconds, generate, args=args)
+        timer.daemon = True
+        timer.name = "ai-voice-clip-wait"
+        timer.start()
+        return True
     threading.Thread(target=generate, args=args, daemon=True,
                      name="ai-voice-clip").start()
+    return True
+
+
+# ── the prewarm: the clip starts when the exercise moment is known ───────
+
+def exercise_moment_of(block: Any) -> Optional[dict]:
+    """The voice-exercise moment in a stored feedback block, read exactly as
+    the walk reads it (frontend `lockedMoments` and `practiseOpening`, lock
+    2026-10-12): the moment that is not green and carries `practice_prompt`
+    is practised as a clearer version when a rewrite rides it (never a
+    clip), else on its exercise, else said again. The stored rows are the
+    client's rows (`strip_internal_evidence`), so this reads the same keys.
+
+    Returns ``{snippet_id, take_session_id, kind, exercise_id, evidence,
+    feedback_id}`` or None when the Take has no voice exercise.
+    """
+    for group in _moment_groups(block):
+        green = any(r.get("bookmark_tier") == "confident" for r in group)
+        marked = any(r.get("practice_prompt") is True for r in group)
+        if green or not marked:
+            continue
+        return _practise_of(group)
+    return None
+
+
+def _moment_groups(block: Any) -> list[list[dict]]:
+    """The walk's moments: rows by block, else by where they start."""
+    rows = [r for r in ((block or {}).get("changes") or []) if isinstance(r, dict)]
+    groups: dict[str, list[dict]] = {}
+    for row in sorted(rows, key=lambda r: int((r.get("span") or {}).get("start") or 0)):
+        start = (row.get("span") or {}).get("start")
+        key = f"b:{row['block_id']}" if row.get("block_id") else f"s:{start}"
+        groups.setdefault(key, []).append(row)
+    return list(groups.values())
+
+
+def _practise_of(group: list[dict]) -> Optional[dict]:
+    """What the walk opens on the exercise moment: nothing when a clearer
+    version rides it, else its exercise, else the moment said again."""
+    if any(_rides_rewrite(r) for r in group):
+        return None
+    exercise = next((r for r in group if _carries_exercise(r)), None)
+    marked = [r for r in group if r.get("practice_prompt") is True and _practisable(r)]
+    source = exercise or next(iter(marked), None) \
+        or next((r for r in group if _practisable(r)), None)
+    if source is None:
+        return None
+    offer = (exercise or {}).get("practice_exercise") or {}
+    return {
+        "snippet_id": str(source["snippet_id"]),
+        "take_session_id": str(source["evidence"]["take_session_id"]),
+        "kind": "exercise" if exercise else "plain",
+        "exercise_id": str(offer.get("exercise_id")) if exercise else None,
+        "evidence": dict(source["evidence"]),
+        "feedback_id": str(source.get("id") or "") or None,
+    }
+
+
+def _practisable(row: dict) -> bool:
+    evidence = row.get("evidence")
+    return bool(row.get("snippet_id")) and isinstance(evidence, dict) \
+        and bool(evidence.get("take_session_id"))
+
+
+def _rides_rewrite(row: dict) -> bool:
+    return (row.get("kind") == "replace" and bool(str(row.get("proposed_text") or "").strip())
+            and (row.get("feedback_family") == "rewrite_clarity" or row.get("open_card") == "rewrite"))
+
+
+def _carries_exercise(row: dict) -> bool:
+    offer = row.get("practice_exercise")
+    if not isinstance(offer, dict) or not offer.get("exercise_id") or not _practisable(row):
+        return False
+    if (row.get("open_card") != "exercise" and offer.get("chosen_by_coach") is not True
+            and row.get("practice_prompt") is not True):
+        return False
+    return bool(str(offer.get("passage") or row.get("quote") or "").strip())
+
+
+def _voice_on_its_way(database: Any, user_id: str) -> bool:
+    """A voice that is ready, or one being made (the retry in ``generate``
+    waits for it). None, failed, off or deleted: no clip is coming."""
+    row = store.get_clone(database, user_id)
+    return bool(row and row.get("enabled", True)
+                and row.get("status") in ("creating", "ready"))
+
+
+def _practice_allowed(database: Any, principal_id: str) -> Optional[str]:
+    """The reason the walk's routes would refuse, or None."""
+    from services.processing_authorization import ProcessingAuthorizationService
+    from services.processing_purposes import purpose_is_operational
+    if not purpose_is_operational(PRACTICE_PURPOSE):
+        return "purpose_not_operational"
+    service = ProcessingAuthorizationService(database)
+    allowed = (service.choice_permitted(principal_id, PRACTICE_CHOICE)
+               if principal_id else not service.enforced)
+    return None if allowed else "consent_choice_off"
+
+
+def prewarm(user_id: str, take_session_id: str, snippet_id: str, principal_id: str,
+            start: dict, queue: Optional[str] = None, *, database: Any = None,
+            run=None) -> str:
+    """The bake's job: open the exercise moment's practice as the walk
+    would and start its clip. Never raises; returns what it did.
+
+    ``start`` is ``exercise_moment_of``'s answer: the kind the walk would
+    open (``plain``, or ``exercise`` with the offered exercise id), the
+    exact evidence and the feedback item. A refusal the practice route
+    would give is a quiet skip, so the walk later opens exactly what it
+    always has."""
+    from services.ai_voice_clone import available_to
+    from services.practice_start import start_practice
+    from services.refusal import Refusal
+    if database is None:
+        from services.db import db as database
+    try:
+        if not available_to(user_id):
+            return "skipped:off"
+        if not _voice_on_its_way(database, str(user_id)):
+            _log.info("ai voice: prewarm skipped, no voice take=%s", take_session_id)
+            return "skipped:no_voice"
+        refused = _practice_allowed(database, principal_id)
+        if refused:
+            _log.info("ai voice: prewarm skipped take=%s: %s", take_session_id, refused)
+            return f"skipped:{refused}"
+        body: dict[str, Any] = {"kind": str(start.get("kind") or "plain"),
+                                "evidence": dict(start.get("evidence") or {})}
+        if body["kind"] == "exercise":
+            body["exercise_id"] = start.get("exercise_id")
+        elif start.get("feedback_id"):
+            body["feedback_id"] = start["feedback_id"]
+        try:
+            practice, created = start_practice(
+                database, snippet_id=str(snippet_id), body=body,
+                user_id=str(user_id), answer=None)
+        except Refusal as refusal:
+            _log.info("ai voice: prewarm skipped take=%s: practice refused %s",
+                      take_session_id, refusal.body.get("code"))
+            return f"skipped:{refusal.body.get('code')}"
+        if str(practice.get("take_session_id")) != str(take_session_id):
+            return "skipped:other_take"
+        # No link is issued here: nobody receives this answer, the walk
+        # signs its own when it asks. The clip's state is all that is read.
+        out = ensure(database, practice, user_id=str(user_id), principal_id=principal_id,
+                     run=run or (lambda cid, p: generate(cid, p, queue, database=database)),
+                     queue=queue, sign=lambda _bucket, _key: "stored")
+        clip = out.get("clip") or {}
+        _log.info("ai voice: prewarm take=%s practice=%s %s clip=%s",
+                  take_session_id, practice.get("id"),
+                  "opened" if created else "resumed", clip.get("state") or "none")
+        return str(clip.get("state") or "none")
+    except Exception as error:  # noqa: BLE001 — the walk's own ask is the fallback
+        _log.warning("ai voice: prewarm failed take=%s: %s", take_session_id,
+                     type(error).__name__, exc_info=True)
+        return "failed"
 
 
 def _choose(database: Any, practice: dict, cycle: dict) -> tuple[Optional[dict], dict]:
@@ -187,10 +373,11 @@ class _Job:
         return "failed"
 
 
-def generate(cycle_id: str, principal_id: str, *, database: Any = None,
-             provider: Any = None, transcribe=None, put_object=None,
-             decode=None, provider_usage=None) -> str:
-    """The clip job; returns the cycle's end status."""
+def generate(cycle_id: str, principal_id: str, queue: Optional[str] = None, *,
+             database: Any = None, provider: Any = None, transcribe=None,
+             put_object=None, decode=None, provider_usage=None) -> str:
+    """The clip job; returns the cycle's end status. ``queue`` is the lane
+    it rode, so a wait for the voice is queued in the same lane."""
     if database is None:
         from services.db import db as database
     cycle = _cycle_by_id(database, cycle_id)
@@ -202,7 +389,7 @@ def generate(cycle_id: str, principal_id: str, *, database: Any = None,
         str(cycle["practice_id"]), str(cycle["owner_user_id"])) or {}
     job = _Job(database, cycle, practice, principal_id, {
         "provider": provider, "transcribe": transcribe, "put_object": put_object,
-        "decode": decode, "provider_usage": provider_usage})
+        "decode": decode, "provider_usage": provider_usage, "queue": queue})
     try:
         selection, context = _choose(database, practice, cycle)
     except Exception as error:  # noqa: BLE001 — recorded as the cycle's failure
@@ -225,10 +412,10 @@ def _make(job: _Job, selection: dict, context: dict) -> str:
     from services.ai_voice_prompt import PromptRejected, build
     voice_id = voice_for(job.db, job.owner)
     if not voice_id:
-        # The clone may still be on its way from Take 1: the next ensure retries.
-        job.update({"status": "pending", "failure_kind": "no_voice",
-                    "exercise": selection["exercise"]})
-        return "pending"
+        # The clone may still be on its way from Take 1: ask again in a
+        # little while, a bounded number of times; the walk's next ask
+        # also retries, as it always has.
+        return _wait_for_voice(job, selection)
     try:
         request = build(sentence=context["sentence"], exercise=selection,
                         practice_id=str(job.practice["id"]))
@@ -248,6 +435,28 @@ def _make(job: _Job, selection: dict, context: dict) -> str:
     if not result or not result["passed"]:
         return job.fail("validation", str((result or {}).get("reason") or "unchecked"))
     return _keep(job, audio, result, selection)
+
+
+def _wait_for_voice(job: _Job, selection: dict) -> str:
+    """Back to ``pending`` with ``no_voice``; the wait count rides
+    ``generation_metadata`` (written over by the request's own metadata
+    once a voice is there). Within the bound, one delayed retry is queued
+    in the lane the job rode."""
+    waited = int(((job.cycle.get("generation_metadata") or {}).get("no_voice_waits") or 0))
+    waits = waited + 1 if waited < NO_VOICE_MAX_WAITS else waited
+    job.update({"status": "pending", "failure_kind": "no_voice",
+                "exercise": selection["exercise"],
+                "generation_metadata": {"no_voice_waits": waits}})
+    if waited < NO_VOICE_MAX_WAITS:
+        _start((job.cycle_id, job.principal_id, job.tools.get("queue")),
+               cycle_id=job.cycle_id, queue=job.tools.get("queue"),
+               delay_seconds=NO_VOICE_RETRY_SECONDS, attempt=waits)
+        _log.info("ai voice: no voice yet cycle=%s wait=%d/%d retry_in=%ds",
+                  job.cycle_id, waits, NO_VOICE_MAX_WAITS, NO_VOICE_RETRY_SECONDS)
+    else:
+        _log.info("ai voice: no voice after %d waits cycle=%s; the next ask retries",
+                  waited, job.cycle_id)
+    return "pending"
 
 
 def _speak_until_checked(job: _Job, voice_id: str, request: dict, selection: dict,
@@ -386,6 +595,13 @@ def state(database: Any, practice: dict, cycle: Optional[dict], *, sign=None) ->
         return {"demo": "video" if _has_video(practice) else "none", "clip": None}
     status = str(cycle.get("status") or "")
     demo = cycle.get("demo") or ("video" if _has_video(practice) else "none")
+    if not cycle.get("demo") and status in ("pending", "analyzing") \
+            and not (_has_video(practice) and _coach_picked(practice)):
+        # The job has not chosen yet (queued by the bake, or waiting for
+        # the voice): the walk shows the clip's place, the breathing mark,
+        # rather than the locked screen and then a swap. A coach's video
+        # is never displaced. `unavailable` below still falls back.
+        demo = "ai_voice"
     if status == "completed" and cycle.get("storage_key"):
         url = (sign or _sign)(str(cycle.get("bucket") or ""), str(cycle["storage_key"]))
         clip = {"state": "ready" if url else "unavailable", "url": url,
