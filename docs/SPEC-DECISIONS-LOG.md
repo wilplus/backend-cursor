@@ -2524,4 +2524,27 @@ Approved on the clickable prototype (<https://claude.ai/artifact/YCM8rQKkkwA2HKb
   the controller request; the founder proceeds without it (25 §10).
   `legal/phase1-2026.1/PUBLISH-3.6-2026-10-15.sql` is ready, dry-run on a
   disposable database; it waits for the signed PDF of 27.
+- **Published** (founder, 15 October 2026, 08:42 UTC): `PUBLISH-3.6-2026-10-15.sql`
+  run in Supabase after the founder's own 25 v2 training copies were erased
+  (the supersede refuses while a predecessor yes has copies). 3.6 and
+  training-only-v4 are in force.
 
+**N74 · Privacy 3.7: Will reads the whole talk (founder, chat, 15 October
+2026).** The founder, word for word: "approve all", on the two replacements
+in Privacy §4 "Talking to Will" and the §7 OpenAI line. Told that 3.6 was
+already published and cannot change in place, the founder: "yes, go ahead as
+3.7".
+**Counsel's review was not obtained.**
+- **Why:** Will answers "what do I say on slide 4?" and "does my talk match my
+  title?" from the whole talk, slide by slide; and since backend #1069 Will
+  reads the Lounge thread (the summary after a Take, the walk's steps, the
+  coach's word).
+- **What:** `legal/phase1-2026.1/28-privacy-3.7-will-context-APPROVED-2026-10-15.md`;
+  `copy/privacy-3.7.txt` is 3.6 with the founder's two passages verbatim and
+  the version lines. Terms 3.6, AI notice 3.2 and training-only-v4 unchanged.
+- **Publishing** is the founder's step: `legal/phase1-2026.1/PUBLISH-3.7-2026-10-15.sql`,
+  dry-run on a disposable database. Speakers then accept 3.7 in one tap (the
+  update prompt). The code that gives Will the whole talk goes live only
+  after.
+- **Risk the founder accepted:** OpenAI now receives each slide's points and
+  the full Ideal Text for chat answers, and counsel hasn't seen this.
