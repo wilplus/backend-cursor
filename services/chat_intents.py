@@ -56,6 +56,17 @@ _DAD_JOKE = re.compile(
     re.IGNORECASE,
 )
 
+# "Next" right after a joke (founder 2026-10-15: "I said next, and it
+# understood it as a separate message"). A short follow-up that only makes
+# sense as "the same again" — next, another (one), more, again, one more,
+# go on, keep going — continues the joke the thread just told.
+_MORE = re.compile(
+    r"^\W*(ok(ay)?|ha+|lol|haha+|nice|good one|yes|yeah|sure)?\W*"
+    r"(next( one)?|another( one)?|more|again|one more|go on|keep (them|em|'em) coming|"
+    r"keep going|and another|encore)\W*(please|pls)?\W*$",
+    re.IGNORECASE,
+)
+
 # Off-mission generative requests (NOT jokes — those return now — and NOT
 # whole-speech writing, which the LLM declines itself with the right nuance).
 _GENERATIVE = re.compile(
@@ -72,10 +83,31 @@ _GENERATIVE_REPLY = (
 )
 
 
-def detect_chat_intent(message: str) -> Optional[dict]:
+def _last_assistant(history) -> str:
+    for turn in reversed(history if isinstance(history, list) else []):
+        if isinstance(turn, dict) and turn.get("role") == "assistant":
+            return turn.get("content") or ""
+    return ""
+
+
+def _jokes_told(history) -> tuple:
+    from services.dad_jokes import is_dad_joke
+    return tuple(t.get("content") for t in (history if isinstance(history, list) else [])
+                 if isinstance(t, dict) and t.get("role") == "assistant"
+                 and is_dad_joke(t.get("content")))
+
+
+def _wants_another_joke(msg: str, history) -> bool:
+    """A short "next" right after the thread's last answer was a joke."""
+    from services.dad_jokes import is_dad_joke
+    return bool(_MORE.search(msg)) and is_dad_joke(_last_assistant(history))
+
+
+def detect_chat_intent(message: str, history=None) -> Optional[dict]:
     """Return a fixed intercept response for a recognised intent, else None.
 
-    Precedence: crisis (safety) → dad_joke (on-request joke) → generative. The
+    Precedence: crisis (safety) → dad_joke (on-request joke, or "next"
+    right after one, read from ``history``) → generative. The
     dict carries {intent, answer, show_record_ui, suggested_action}; the route
     forwards the flags verbatim and adds the bubble split. (No record-intent
     branch — that's the LLM's RULE I.)
@@ -86,9 +118,9 @@ def detect_chat_intent(message: str) -> Optional[dict]:
     if _CRISIS.search(msg):
         return {"intent": "crisis", "answer": _CRISIS_REPLY,
                 "show_record_ui": False, "suggested_action": None}
-    if _DAD_JOKE.search(msg):
+    if _DAD_JOKE.search(msg) or _wants_another_joke(msg, history):
         from services.dad_jokes import next_dad_joke
-        return {"intent": "dad_joke", "answer": next_dad_joke(),
+        return {"intent": "dad_joke", "answer": next_dad_joke(_jokes_told(history)),
                 "show_record_ui": False, "suggested_action": None}
     if _GENERATIVE.search(msg):
         return {"intent": "generative", "answer": _GENERATIVE_REPLY,
