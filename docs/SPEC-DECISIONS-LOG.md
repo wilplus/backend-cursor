@@ -2514,4 +2514,9 @@ Approved on the clickable prototype (<https://claude.ai/artifact/YCM8rQKkkwA2HKb
   conversational chat is all private"). Taken out of Privacy 3.6 §4a and §7
   and the Terms 3.6 §8 definition and licence; the 3.6 texts say it is never
   used for training.
+- **Will's conversation is private** (founder, same day: "not more than any
+  other LLM out there"). The marking of feedback messages and the admin
+  route `GET /v2/admin/speaker-feedback` are removed; Privacy 3.6 §4 says
+  nobody reads the conversation except for safety, the law, or the
+  speaker's own request.
 

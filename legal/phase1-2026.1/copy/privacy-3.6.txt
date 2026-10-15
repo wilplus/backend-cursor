@@ -130,17 +130,11 @@ project: its title, your slide titles, how many takes you have recorded,
 whether your coach's feedback is in, and the beginning of your Ideal Text.
 Your conversation is kept in your account so you can come back to it, and
 you can clear it at any time.
+Your conversation with Will is private. Nobody at WillpowerLab reads it,
+except when we must to keep the service safe and working, when the law
+requires it, or when you ask us to, for example for help with your account.
+It is never used for training.
 Legal basis: performance of our contract with you (Article 6(1)(b) GDPR).
-
-Reading what you tell Will about WillpowerLab. When you tell Will something
-about the app itself — what works, what doesn't, what you would like — that
-message is marked, and the person who runs WillpowerLab reads it to improve
-the app. Nothing else in your conversation is read this way.
-Legal basis: our legitimate interest in improving the service from what its
-users tell us (Article 6(1)(f) GDPR). You can object at any time by writing
-to contact@willpowerlab.com: from then on none of your messages is marked.
-This reading is not training; training happens only with your yes in
-section 4a.
 
 WhatsApp messages. If you give us your phone number, we send you a WhatsApp
 message when your coach's feedback is in, with a link to it. The message

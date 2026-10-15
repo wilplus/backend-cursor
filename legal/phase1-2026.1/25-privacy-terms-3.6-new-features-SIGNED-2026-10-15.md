@@ -47,7 +47,7 @@ given (GDPR Art 7(4)) and the bundled consent was retired for that reason.
 | version note | rewritten: the new features, the widened §4a, an earlier yes counts as off | — |
 | §2 | sign-in name and email from Google/LinkedIn; what you write to Will; phone number; lesson details; your listener answers; the AI voice and its examples; the IP-suggested time zone on the booking page, not stored | frontend `bfd45f1` `frontend-cursor/src/lib/auth/startOAuth.ts:59-65`; `services/chat_query.py`; `services/whatsapp_notify.py:81-92`; `services/booking.py:374-461`; frontend `bfd45f1` `frontend-cursor/src/app/book/[slug]/page.tsx:18` |
 | §3 | new paragraph: the AI version of your voice (up to 2.5 min of the first take, ElevenLabs, only you hear it, labelled, re-transcribed, next try measured, not for identification or training, delete and turn on again); other users also hear a take you share (§4d) | `services/ai_voice_clone.py`, `services/ai_voice_clip.py:283-442`; lock L1, L6–L11 |
-| §4 | service basis now names the AI voice and Will; new purposes: talking to Will (contract), reading messages marked as about the app (legitimate interest, objection by email), WhatsApp (consent, by adding the number), lessons (contract, plus legal obligation for paid ones), admin access and export of measurements (legitimate interest); Stripe also for lessons; "making the AI voice is not training"; the optional items named | `services/chat_app_context.py:193-272`; `services/speaker_feedback.py`; `routes/v2/admin.py:1714`; frontend `bfd45f1` `frontend-cursor/src/app/admin/users/[id]/TakesExplorer.tsx:43-89` |
+| §4 | service basis now names the AI voice and Will; new purposes: talking to Will (contract), reading messages marked as about the app (legitimate interest, objection by email; withdrawn the same day, see §9: the chat is private), WhatsApp (consent, by adding the number), lessons (contract, plus legal obligation for paid ones), admin access and export of measurements (legitimate interest); Stripe also for lessons; "making the AI voice is not training"; the optional items named | `services/chat_app_context.py:193-272`; frontend `bfd45f1` `frontend-cursor/src/app/admin/users/[id]/TakesExplorer.tsx:43-89` |
 | §4a | the switch sentence v3; new bullet "What you write to Will"; "an AI voice example helped" joins the measurements; the AI voice and its examples are excluded with coach videos; the Lounge conversation before the yes may be used; **Art 9(2)(a) removed from the basis** (counsel, N69: the training data is not special-category, the mention was "surplus, tidied at the next version"); "before version 3.6" | 26-…; `docs/SPEC-DECISIONS-LOG.md` N69 |
 | §4d | new: sharing a take with a community, per take, explicit consent, what listeners hear, their answers, stopping | `services/communities.py:48-60,273-316,385-481` |
 | §5 | OpenAI also answers Will and checks AI examples; ElevenLabs named; "OpenAI is the only AI provider…" replaced by lock line L13, extended; "we do not authorise … ElevenLabs to use your content to train" (needs E1); R2 holds examples and coach videos; Supabase does sign-in; Resend sends lesson confirmations; Meta (WhatsApp), Google, LinkedIn named; coaches' video answers and lesson details; other users for §4d | `services/elevenlabs_client.py`; `services/whatsapp_notify.py:39`; `services/coach_answer_video.py` |
@@ -154,7 +154,7 @@ publishing it. Each item is its own reviewed PR or a founder action.
 | E6 | Coach answer videos: stored behind signed URLs, not a public bucket URL (`services/coach_answer_video.py:43-46`), and the file deleted with the take (only the row is, `data_purge_registry.py:342-350`) | Privacy §7 "deleted with it" | engineering |
 | E7 | Bookings into the purge registry: deleted with the account, a paid lesson's accounting record kept and the rest cleared (`bookings` is in no registry and has no FK) | Privacy §7, §9 | engineering |
 | E8 | No lane trains on Lounge messages yet; the one that does reads the v3 yes per speaker. Also gate or delete `services/ml_finetuning_export.py` / `services/annotation_export.py` (`scripts/export_annotation_events.py`), which build fine-tuning JSONL with no consent check | Privacy §4a "only with your yes" | engineering |
-| E9 | An objection flag for D2: `/v2/admin/speaker-feedback` leaves out speakers who objected | Privacy §4 "from then on none of your messages is marked" | engineering (small) |
+| E9 | ~~An objection flag for D2~~ Done another way: the marking and the admin route are removed (D2 withdrawn, §9) | Privacy §4 "Your conversation with Will is private" | engineering, done |
 | E10 | The ninth line above the switch (26-…) on the consent screens | 26-… | engineering; locked screen → founder |
 | E11 | DPIA and ROPA addenda for the four new operations (voice clone at ElevenLabs, Lounge chat, WhatsApp, bookings) and document 03 for AI notice 3.2 | accountability (Art 30, 35) | engineering drafts, founder signs |
 | E12 | US counsel reads brief 05 for California (CCPA/CPRA, Penal Code 632, the AI voice under California law), §14 and Terms §4 and §16; a US resident's request handled within 45 days | D8 | founder |
@@ -262,4 +262,12 @@ never used for it; D6 is withdrawn. The founder reading the messages Will
 marks as about the app (D2) is unchanged and still disclosed in §4.
 sha256 now: `copy/privacy-3.6.txt` `c0dbb2727a120cd7843cf65725291f885a8ab3d10cb4f2bca16ae707530525b7`, `copy/terms-3.6.txt`
 `843fb6a273b35f2659f657fcf154d0fe81145a44c383efcf0b32a5e55c17c6fa`. Pending with v4.
+
+**Will's conversation is private** (founder, chat, 15 October 2026: "I don't
+[want] my users to feel like someone is reading their messages … not more
+than any other LLM out there"). D2 is withdrawn: the marking of messages
+about the app and the admin route that read them are removed from the code,
+and Privacy 3.6 §4 now says nobody at WillpowerLab reads the conversation
+except to keep the service safe and working, when the law requires it, or
+when the speaker asks. sha256 of `copy/privacy-3.6.txt` now `a577ae2c14a610c3fedaf9ab50375386ab6a39039f7cdc6a67b7eab70308e13a`. Pending with v4.
 
