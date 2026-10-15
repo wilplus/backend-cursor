@@ -654,6 +654,8 @@ def _bake_and_store(
         return False
     block, computed_over_ms = computed
     if not is_a_bake(block):
+        logger.info("ideal-text feedback bake empty arc=%s snapshot=%s "
+                    "computed_ms=%d", arc_id, snapshot_id, computed_over_ms)
         # AN EMPTY LANE IS NOT A BAKE (founder, 2026-09-20, on the first take
         # after this shipped: "I just recorded and none of the bookmarks
         # appeared").
@@ -684,8 +686,8 @@ def _bake_and_store(
     if stored:
         logger.info(
             "ideal-text feedback baked arc=%s snapshot=%s changes=%d "
-            "styles=%d", arc_id, snapshot_id,
+            "styles=%d computed_ms=%d", arc_id, snapshot_id,
             len(block.get("changes") or []),
-            len(block.get("style_changes") or []),
+            len(block.get("style_changes") or []), computed_over_ms,
         )
     return stored
