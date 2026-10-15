@@ -307,13 +307,59 @@ def _librarian(database, user_id, question, history, app_config,
         (debug or {}).get("intent") or "faq"
 
 
+#: Thread rows Will reads as the conversation: chat turns, the summary
+#: after a Take (cadence), the walk's steps and the coach's word
+#: (walk_step). Status cards are not conversation.
+_HISTORY_KINDS = {"text", "joke", "cadence", "walk_step"}
+_HISTORY_ROWS = 24
+
+
+def _retired(row: dict) -> bool:
+    """The rows the Lounge hides (frontend isRetiredLoungeMessage)."""
+    meta = row.get("metadata") or {}
+    return (row.get("kind") == "cadence" and meta.get("beat") == 0) or \
+        meta.get("note") in ("human_check", "coach_video_shared")
+
+
+def thread_history(database, user_id, question: str, user_client_id=None) -> list:
+    """A signed-in speaker's conversation, read from their own Lounge thread
+    (founder 2026-10-15: "it does not hold the context"): the client sends
+    only plain chat turns, so a reply to the summary after a Take, a walk
+    step or the coach's word arrived with no idea what it answered. Oldest
+    first, as {role, content}; this turn's own message (already stored by
+    the client) is left out. [] when nothing can be read."""
+    try:
+        rows = database.get_lounge_messages_page(str(user_id), limit=_HISTORY_ROWS) or []
+    except Exception as e:
+        logger.warning("chat/query: thread unread user=%s: %s", user_id, e,
+                       exc_info=True)
+        return []
+    turns = []
+    for row in reversed(rows):
+        body = (row.get("body") or "").strip()
+        if (row.get("role") not in ("user", "bot") or not body
+                or row.get("kind") not in _HISTORY_KINDS or _retired(row)
+                or (user_client_id and row.get("client_id") == user_client_id)):
+            continue
+        turns.append({"role": "user" if row["role"] == "user" else "assistant",
+                      "content": body})
+    if turns and turns[-1]["role"] == "user" and turns[-1]["content"] == question:
+        turns.pop()
+    return turns
+
+
 def answer_chat(database, *, user_id, question: str, history, context,
-                app_config, finalize: Callable[[dict, str], Any]) -> Any:
+                app_config, finalize: Callable[[dict, str], Any],
+                user_client_id=None) -> Any:
     """Answer one turn and hand it to ``finalize(response, intent)``.
 
-    An intercept is finalized inside its own guard, exactly as the route did:
-    a failure anywhere in it falls through to the next one."""
+    A signed-in speaker's history is their stored thread (``thread_history``);
+    the client's copy is the fallback. An intercept is finalized inside its
+    own guard, exactly as the route did: a failure anywhere in it falls
+    through to the next one."""
     question = question.strip()
+    if user_id:
+        history = thread_history(database, user_id, question, user_client_id) or history
     for failure, intercept in _intercepts(user_id, app_config):
         try:
             claimed = intercept(user_id, question, context, history)

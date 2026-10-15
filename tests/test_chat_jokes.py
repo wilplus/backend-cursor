@@ -21,3 +21,11 @@ def test_next_without_a_joke_before_is_left_to_will():
                {"role": "assistant", "content": "A voice coach."}]
     assert detect_chat_intent("next", history) is None
     assert detect_chat_intent("next") is None
+
+
+def test_answering_wills_question_is_not_deflected():
+    """"the story of my talk" after Will asked what the talk is about is an
+    answer, not an off-mission request for a story."""
+    asked = [{"role": "assistant", "content": "What is your talk about?"}]
+    assert detect_chat_intent("tell the story of my startup", asked) is None
+    assert detect_chat_intent("tell me a story")["intent"] == "generative"

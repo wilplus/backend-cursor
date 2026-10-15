@@ -72,6 +72,7 @@ class ChatRoutePersistsTheTurnTests(unittest.TestCase):
 
         self.fail_db = False
         self.app_action = None
+        self.thread = []
         self.debug = {"intent": "faq"}
         self.card = {"whatsapp_on": False}
         self._patches = [
@@ -91,6 +92,8 @@ class ChatRoutePersistsTheTurnTests(unittest.TestCase):
             patch("services.chat_app_context.status_card",
                   lambda database, user_id: self.card),
             patch.object(db, "get_user_settings", lambda user_id: {}),
+            patch.object(db, "get_lounge_messages_page",
+                         lambda user_id, limit, before=None: list(self.thread)),
             patch("services.token_account.charge", lambda *a, **k: None),
         ]
         for p in self._patches:
@@ -170,6 +173,23 @@ class ChatRoutePersistsTheTurnTests(unittest.TestCase):
         self.debug = {"router_intent": "product_faq"}
         self.post({"question": "what is this?", "persist": True})
         self.assertIsNone(self.rows[-1][1][0]["metadata"])
+
+    def test_will_reads_the_summary_he_wrote_after_the_take(self):
+        """Founder 2026-10-15: "it does not hold the context". A signed-in
+        speaker's reply to the summary after a Take reaches Will with that
+        summary, read from their own thread; the turn being asked is not
+        repeated."""
+        self.thread = [  # newest first, as the database returns it
+            {"client_id": "now", "role": "user", "kind": "text", "body": "great, yes!"},
+            {"client_id": "s", "role": "bot", "kind": "cadence",
+             "body": "Churn in Q3, nailed it! How did it go?", "metadata": {"summary": True}},
+            {"client_id": "c", "role": "bot", "kind": "transcript_ready", "body": "card"},
+            {"client_id": "e", "role": "user", "kind": "text", "body": "hi Will"},
+        ]
+        self.post({"question": "great, yes!", "persist": True, "client_id": "now"})
+        self.assertEqual(self.histories[-1], [
+            {"role": "user", "content": "hi Will"},
+            {"role": "assistant", "content": "Churn in Q3, nailed it! How did it go?"}])
 
 
 if __name__ == "__main__":

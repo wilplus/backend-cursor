@@ -44,6 +44,12 @@ logger = logging.getLogger(__name__)
 _MODEL = "gpt-4o-mini"
 _MAX_TOKENS = 600
 
+# How much of the conversation each step reads (founder 2026-10-15: "it
+# does not hold the context"). The sorter needs the recent turns; the
+# writer gets more, so a reply to the summary after a Take still reads it.
+_ROUTER_TURNS = 10
+_ANSWER_TURNS = 20
+
 # The app features Will may open (services.chat_app_context.FEATURES).
 from services.chat_app_context import ACTIONS as _APP_ACTIONS  # noqa: E402
 
@@ -799,7 +805,7 @@ def _classify_intent(question, history, service=None) -> tuple[Optional[str], fl
         {"role": "system", "content": _CLASSIFIER_SYSTEM},
     ]
     if isinstance(history, list):
-        for m in history[-6:]:
+        for m in history[-_ROUTER_TURNS:]:
             role = (m.get("role") or "").strip()
             content = (m.get("content") or "").strip()
             if role in ("user", "assistant") and content:
@@ -1004,7 +1010,7 @@ def _answer_via_router(
         {"role": "system", "content": system_content},
     ]
     if isinstance(history, list):
-        for m in history[-10:]:
+        for m in history[-_ANSWER_TURNS:]:
             role = (m.get("role") or "").strip()
             content = (m.get("content") or "").strip()
             if role in ("user", "assistant") and content:
@@ -1161,7 +1167,7 @@ def answer_question(
         {"role": "system", "content": system_content},
     ]
     if isinstance(history, list):
-        for m in history[-10:]:  # cap context; FAQ chats rarely go deep
+        for m in history[-_ANSWER_TURNS:]:
             role = (m.get("role") or "").strip()
             content = (m.get("content") or "").strip()
             if role in ("user", "assistant") and content:
