@@ -475,7 +475,8 @@ advertising.
 
 Some of the providers above process data in the United States. Every one of
 those transfers is made under the European Commission's Standard Contractual
-Clauses, which each provider's data processing agreement incorporates.
+Clauses or the EU-US Data Privacy Framework, as each provider's data
+processing agreement sets out.
 
 - OpenAI: Standard Contractual Clauses. Its agreement appoints OpenAI Ireland
   Limited to process data from the EEA and Switzerland. Training copies
@@ -488,8 +489,8 @@ Clauses, which each provider's data processing agreement incorporates.
 - Supabase: Standard Contractual Clauses and a UK addendum. Your data is stored
   in Ireland.
 - Railway, Resend, Vercel: Standard Contractual Clauses.
-- Meta (WhatsApp): Standard Contractual Clauses, under WhatsApp's business
-  terms.
+- Meta (WhatsApp): the EU-US Data Privacy Framework, under WhatsApp's Data
+  Transfer Addendum, which allows Standard Contractual Clauses instead.
 - Sentry: error reports are stored in the European Union.
 
 You can ask us for a copy of the safeguards in place.
