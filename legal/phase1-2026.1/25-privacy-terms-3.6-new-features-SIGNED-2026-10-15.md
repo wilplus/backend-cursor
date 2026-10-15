@@ -1,0 +1,305 @@
+# Privacy Policy 3.6, Terms of Service 3.6, AI notice 3.2: what shipped since 3.5 — SIGNED by the founder 2026-10-15
+
+**SIGNED by the founder, 15 October 2026, in chat** ("I sign the 3.6 pack of 15 October 2026 as drafted"; decisions log N72). **Counsel has not seen it**; the founder signed knowing that.
+
+    documents:           copy/privacy-3.6.txt, copy/terms-3.6.txt, copy/ai-notice-3.2.txt (the exact bytes to publish)
+    replaces:            copy/privacy-3.5.txt, copy/terms-3.5.txt, copy/ai-notice-3.1.txt
+    unchanged:           copy/agreement-3.1.txt (the agreement screen's words)
+    asked by:            Artur Willoński, founder and controller, 2026-10-14 ("update all the consents and
+                         privacy policy so that when users accept it they are free to use it and I can
+                         train on their data; just make the updates necessary after recent developments")
+    training:            stays opt-in and is widened (founder's answer in chat, 2026-10-14: "Keep opt-in, widen it")
+    scope:               AI voice, WhatsApp, Lounge chat, booking and lessons, community sharing, coach videos,
+                         admin export, Google/LinkedIn sign-in (founder's answer in chat, 2026-10-14: all four groups)
+    countries:           the 27 EU/EEA codes of 3.5, plus 'us' (founder, chat, 2026-10-15: "allow users from
+                         California United States use the app so add to the list of countries United States
+                         and add it below Poland"); the United States only for residents of California (D8)
+    the switch wording:  26-training-consent-wording-v3-SIGNED-2026-10-15.md (training-only-v3)
+    drafted by:          engineering, from the code; not a lawyer
+
+As with 3.5, the `copy/*.txt` files carry no draft mark: their exact bytes are
+what is hashed and what a user later proves they agreed to. Their effective
+date line says 15 October 2026; on another day, change it in both files
+before the publish script is written.
+
+## 1. Why 3.6
+
+Privacy 3.5 is now wrong about the product in one place and silent in
+several. The worst: it says "OpenAI is the only AI provider that receives
+your audio or your transcript", while the AI version of the voice sends up
+to 150 s of Take-1 audio to ElevenLabs for everyone
+(`services/ai_voice_clone.py:56-131`, on by default, `config.py:868-881`).
+A speaker who accepts 3.5 has not been told about ElevenLabs, WhatsApp,
+the Lounge chat, bookings or community sharing. 3.6 describes each.
+
+"Free to use it" (the founder's words) is what acceptance already gives: the
+agreement, the age tick, the country and the sensitive-information tick, as
+today. 3.6 adds no new tick. Training stays its own optional switch, for the
+reason in 26-…: a training yes bundled into accepting the Terms is not freely
+given (GDPR Art 7(4)) and the bundled consent was retired for that reason.
+
+## 2. Changelog, 3.5 → 3.6
+
+**Privacy Policy**
+
+| § | Change | Code it describes |
+|---|---|---|
+| version note | rewritten: the new features, the widened §4a, an earlier yes counts as off | — |
+| §2 | sign-in name and email from Google/LinkedIn; what you write to Will; phone number; lesson details; your listener answers; the AI voice and its examples; the IP-suggested time zone on the booking page, not stored | frontend `bfd45f1` `frontend-cursor/src/lib/auth/startOAuth.ts:59-65`; `services/chat_query.py`; `services/whatsapp_notify.py:81-92`; `services/booking.py:374-461`; frontend `bfd45f1` `frontend-cursor/src/app/book/[slug]/page.tsx:18` |
+| §3 | new paragraph: the AI version of your voice (up to 2.5 min of the first take, ElevenLabs, only you hear it, labelled, re-transcribed, next try measured, not for identification or training, delete and turn on again); other users also hear a take you share (§4d) | `services/ai_voice_clone.py`, `services/ai_voice_clip.py:283-442`; lock L1, L6–L11 |
+| §4 | service basis now names the AI voice and Will; new purposes: talking to Will (contract), reading messages marked as about the app (legitimate interest, objection by email; withdrawn the same day, see §9: the chat is private), WhatsApp (consent, by adding the number), lessons (contract, plus legal obligation for paid ones), admin access and export of measurements (legitimate interest); Stripe also for lessons; "making the AI voice is not training"; the optional items named | `services/chat_app_context.py:193-272`; frontend `bfd45f1` `frontend-cursor/src/app/admin/users/[id]/TakesExplorer.tsx:43-89` |
+| §4a | the switch sentence v3; new bullet "What you write to Will"; "an AI voice example helped" joins the measurements; the AI voice and its examples are excluded with coach videos; the Lounge conversation before the yes may be used; **Art 9(2)(a) removed from the basis** (counsel, N69: the training data is not special-category, the mention was "surplus, tidied at the next version"); "before version 3.6" | 26-…; `docs/SPEC-DECISIONS-LOG.md` N69 |
+| §4d | new: sharing a take with a community, per take, explicit consent, what listeners hear, their answers, stopping | `services/communities.py:48-60,273-316,385-481` |
+| §5 | OpenAI also answers Will and checks AI examples; ElevenLabs named; "OpenAI is the only AI provider…" replaced by lock line L13, extended; "we do not authorise … ElevenLabs to use your content to train" (needs E1); R2 holds examples and coach videos; Supabase does sign-in; Resend sends lesson confirmations; Meta (WhatsApp), Google, LinkedIn named; coaches' video answers and lesson details; other users for §4d | `services/elevenlabs_client.py`; `services/whatsapp_notify.py:39`; `services/coach_answer_video.py` |
+| §6 | ElevenLabs and Meta added under SCCs (needs E1, E2) | — |
+| §7 | rows for coach videos, the AI voice and examples, the Lounge conversation, the phone number, a lesson (paid-lesson record kept for accounting), a shared take; training copies include what you wrote to Will | — (E6, E7 make two of them true) |
+| §9 | the paid-lesson record survives as an accounting record; the AI voice is deleted at ElevenLabs first | `routes/v2/processing_authorization.py:479-483` |
+
+Plus one fix: §5 "how many reviews you receive each month depends on your
+plan" becomes "a written review that comes back to you is paid for in
+tokens" (plans no longer carry reviews, `services/token_prices.py:51-59,154`).
+
+**Terms of Service**
+
+| § | Change |
+|---|---|
+| version note | rewritten: new features, plans as sold, training widened; three choices, all off unless chosen (training, lending, community sharing) |
+| §1 | the AI voice (lock line L12, as signed for counsel 2026-10-12), Will is an AI assistant, WhatsApp, lessons; "a third-party AI provider" becomes "third-party AI providers" |
+| §2 | the plan table as sold: Free 12,000 / Starter 150,000 USD 12 / Plus 550,000 USD 39 / Pro 1,400,000 USD 89 (`token_prices.py`, frontend `bfd45f1` `frontend-cursor/src/components/tokens/copy.ts:44-48`); reviews are paid in tokens; lessons: price on the booking page, cancel or move by replying, the 14-day withdrawal (see D7) |
+| §8 | the AI voice is for you alone; the licence covers what you write to Will; a per-take permission for community sharing; a coach's video answer is not to be published |
+| §11 | reviews paid in tokens rather than counted per plan; other users hear a take you share |
+
+**California (founder, 2026-10-15)**
+
+| Where | Change |
+|---|---|
+| Privacy version note, new §14 | what California residents should know (CCPA/CPRA style): categories, sources, purposes, sensitive personal information, no sale or sharing, the rights to know, delete, correct and limit, non-discrimination, authorised agents, 45 days |
+| Terms version note, §4 | in the United States, residents of California only; choosing the United States confirms it |
+| Terms §16 | a California consumer keeps the protection of California law that cannot be waived, and may sue in California |
+| the publish script | `allowed_countries` gains `'us'` |
+| the acceptance screen | the United States is listed right below Poland (frontend, `acceptanceSteps.ts`, `SECOND_CHOICE`; the country list and its order are not locked, consent-screen lock "Not locked") |
+
+**AI notice 3.2:** two paragraphs added: Will is an AI assistant, not a
+person; the AI version of your voice is AI-made, labelled, only you hear it
+(AI Act Art 50(1) and (2): people are told they talk to an AI, and synthetic
+audio is marked; document 03 is updated with this at counsel's review).
+
+## 3. Decisions the signature takes (each drafted one way; say so if not)
+
+**D1. A training-only-v2 yes does not carry over. Drafted: it counts as off.**
+v3 names more than v2 (what you write to Will), so the v2 yes did not cover
+it, exactly as D3 of 3.5 ruled for v1. Every speaker is asked again by
+"Turn on the learning?" before their next take. *If 3.5 was never
+published* (N68 recorded publication blocked on migration 0458; this branch
+cannot see production), no v2 yes exists: then publish 3.6 in place of 3.5
+and register v3 directly, retiring v1 — the outcome for speakers is the same.
+
+**D2. The Lounge messages you read by hand. Drafted: legitimate interest, with
+objection by email.** The founder reads messages Will marked as about the app
+(`GET /v2/admin/speaker-feedback`). That is product feedback, not training,
+so it is drafted under Art 6(1)(f) like the blind check. The other way, only
+with the training yes, would mean the endpoint filters by the yes.
+
+**D3. The AI voice stays part of the service, on from the start.** Kept as
+the founder decided on 2026-10-12 (lock §4, D3a, D3b: "agreed by using the
+app"), basis contract. Engineering's note for counsel: a voice clone is
+built from biometric-like voice features; it is not used to identify anyone,
+so Art 9 is not drafted for it, but a separate opt-in would be the safer
+reading if counsel disagrees. Counsel was to review L12 and L13 before launch
+and has not.
+
+**D4. WhatsApp rests on consent, given by adding the number.** Removing it
+withdraws it. Needs E4 to be true on screen.
+
+**D5. Community sharing rests on explicit consent, per take (Art 9(2)(a)),
+like lending.** Needs E5: the share screen pre-ticks a community today, and
+a pre-ticked box is not consent.
+
+**D6. The training yes covers Will's answers too.** They are written for the
+speaker from the speaker's own words and project, so they are drafted as
+part of "what you write to Will".
+
+**D7. Lesson cancellation.** Drafted as the consumer-law default (14 days to
+withdraw, lost once a lesson you asked to be held within the 14 days has
+taken place) plus "reply to your confirmation email", because the code has
+no refund rule (`services/booking.py:16,586`). If you want a different rule
+(for example a free cancellation up to 24 hours before), say so and §2
+changes before signature.
+
+**D8. The United States, California only. Drafted: the Terms limit US
+residents to California.** A country code cannot tell states apart, so the
+receipt records `us`, and the Terms make choosing it a statement of
+California residence. Why not every state: Illinois's BIPA gives
+per-person statutory damages for voiceprints without a written release, and
+the AI version of the voice is on for everyone (D3); Texas and Washington
+have similar laws. `05-us-counsel-brief-DRAFT.md` was parked on 2026-09-17
+because there were no US users; it is live again (E12). Also for US
+counsel: California is an all-party-consent state for recording
+conversations (Penal Code 632), which Terms §6 already covers; the CCPA's
+thresholds may not reach WillpowerLab today, and §14 is written as if they
+did.
+
+## 4. What must be true before 3.6 is published (E-items)
+
+Publishing a sentence the code does not make true is worse than not
+publishing it. Each item is its own reviewed PR or a founder action.
+
+| # | What | Why | Who |
+|---|---|---|---|
+| E1 | ElevenLabs. **DPA in place** (founder supplied it 2026-10-15: "ElevenLabs Data Processing Addendum", last updated 8 April 2026, elevenlabs.io/dpa; it forms part of the self-serve Terms, so no separate signature): ElevenLabs is our processor, acting only on our documented instructions (§3.1); transfers rest on the EU-US Data Privacy Framework or the EEA SCCs, module 2, Irish law, deemed executed (§11); no selling or sharing under the CCPA (§12); 30-day notice of new subprocessors (§6.3). **Still open:** (a) the DPA's instructions are "set forth in the Agreement", so whether ElevenLabs may use our audio to improve its own models turns on the ElevenLabs Terms and our account's data-use setting, not the DPA: confirm the opt-out (or zero-retention mode) before §5's "we do not authorise … ElevenLabs" is published, or that sentence goes; (b) on self-serve plans ElevenLabs need not delete content until 180 days of inactivity and keeps backups on its own schedule (§9.2.2, §9.3), so our deletion call (`DELETE /v1/voices/{id}`) is what makes Privacy §7 true; the backup tail is for counsel | Privacy §5, §6, §7 | founder |
+| E2 | Meta (WhatsApp). **DPA in place, two things open.** The founder supplied the **WhatsApp Business Data Processing Terms** on 2026-10-15 (last updated 22 August 2025, whatsapp.com/legal/business-data-processing-terms). They are part of the WhatsApp Business terms accepted in WhatsApp Manager, with no separate signature. WhatsApp is our processor (§1, §2.a: only on our instructions in the Business Terms). Confidentiality, security, breach notice "without undue delay" and help with data-subject requests are in §2.c–h. Subprocessors in the EEA or US are by written agreement, and Meta companies are pre-authorised with advance notice (§2.i–j). For WhatsApp Ireland Limited as contracting entity, the **WhatsApp Business Data Transfer Addendum** is incorporated (§2.i). Data is deleted on termination "within the time period set forth in the Business Terms", except where WhatsApp has its own right to use it (§2.k); that matches Privacy 3.6 §5, where Meta is also a controller for its own service. **Account (founder, 2026-10-15):** Business portfolio ID `1096268846348586`, WhatsApp Business Account ID `1109192322091002`. WhatsApp Manager shows no pending-terms banner, so the Business terms are accepted. Both data-sharing switches (Cloud API message events, marketing message events) are off and stay off (Privacy 3.6 §5: no sharing for advertising). **Data Transfer Addendum filed** (last updated 16 February 2024): WhatsApp Ireland relies on the **EU-US Data Privacy Framework** for transfers to WhatsApp LLC and Meta Platforms, Inc., and may use processor-to-processor SCCs instead (§2). Privacy 3.6 §6 said SCCs for Meta, so it is corrected: see §8 below. **Open:** the portfolio's official name and full address to be completed in Business settings | Privacy §5, §6 | founder |
+| E3 | **Already true** (checked 2026-10-15): `/v2/chat/query` runs under `phase1_provider_route` (`routes/v2/processing_authorization.py:92`), which enters `protected_provider_scope`, and every chat LLM call asks for a permit through `services/llm.py:157`. The earlier note that it carries none was wrong | Privacy §5 | engineering, nothing to do |
+| E4 | **Done 2026-10-15** (fix 2): Data & consent shows the saved number with Remove and a confirm (frontend `WhatsAppCard`); the second `/v2/user/whatsapp` handler (`routes/v2/people.py`, auth metadata, no opt-in time) is removed, and the admin profile reads the one copy in `user_settings` | Privacy §4 | engineering, done |
+| E5 | **Done 2026-10-15** (fixes 1 and 3): the share screen starts with nothing ticked, and Your projects lists the shared Takes with Stop sharing (`GET /v2/user/takes/shares`) | Privacy §4d; D5 | engineering, done |
+| E6 | **Done 2026-10-15** (fix 5): a coach answer video is stored in the private coach-media bucket under the speaker's id and re-signed on every read; it stays after the Take is deleted and goes when the account is closed (`services/coach_answer_video.py`, `erase_for_user`). Videos saved before are listed by `scripts/report_public_coach_answer_videos.py` | Privacy §7 | engineering, done; founder: run the report |
+| E7 | **Done 2026-10-15** (fix 6, no migration needed): at the termination request a booking is deleted, a paid lesson wiped to date, price, currency and Stripe reference and detached (`services/booking.py`, `erase_for_user`); the purge registry deletes anything that still names the account | Privacy §7, §9 | engineering, done |
+| E8 | **Done 2026-10-15.** No lane trains on Lounge messages (they are never training data). `services/annotation_export.py` (`scripts/export_annotation_events.py`) now exports only events whose speaker holds the training yes; the unused fine-tuning exporter is deleted | Privacy §4a "only with your yes" | engineering, done |
+| E9 | ~~An objection flag for D2~~ Done another way: the marking and the admin route are removed (D2 withdrawn, §9) | Privacy §4 "Your conversation with Will is private" | engineering, done |
+| E10 | The ninth line above the switch (26-…) on the consent screens | 26-… | engineering; locked screen → founder |
+| E11 | DPIA and ROPA addenda for the four new operations (voice clone at ElevenLabs, Lounge chat, WhatsApp, bookings) and document 03 for AI notice 3.2 | accountability (Art 30, 35) | engineering drafts, founder signs |
+| E12 | US counsel reads brief 05 for California (CCPA/CPRA, Penal Code 632, the AI voice under California law), §14 and Terms §4 and §16; a US resident's request handled within 45 days | D8 | founder |
+
+## 5. After signing, in order
+
+1. Engineering records the signature here, renames 25 and 26 from `-DRAFT`
+   to `-SIGNED-<date>`, and recomputes the three copy hashes into the
+   signing record.
+2. The E-items above land, each in its own PR.
+3. Render 26 as a PDF (`scripts/render_doc_pdf.py`), sign it (PAdES), upload
+   to its `object_key`, record the signed hash in `SIGNED-ARTIFACTS.md`.
+4. Engineering writes `PUBLISH-3.6-<date>.sql` from `PUBLISH-3.5-2026-10-08.sql`
+   (policy `phase1-<date>-3.6`, the three copy files' exact bytes, `allowed_countries` with `'us'` added, v2 → v3 by
+   `supersede_mlc2_training_consent_policy_v1`), and you run it by hand in
+   the Supabase SQL editor (`docs/PHASE1-PROCESSING-RUNBOOK.md`). From then
+   every speaker is asked to accept 3.6.
+
+## 6. The sentence signed
+
+> I sign the 3.6 pack of 15 October 2026 as drafted: Privacy 3.6, Terms 3.6, AI notice 3.2 and the training switch wording v3 with its nine lines, with D1 to D8 as drafted, and the United States (California only) added to the countries, knowing counsel has not seen them.
+
+## 7. The signature (founder, chat, 15 October 2026)
+
+> I sign the 3.6 pack of 15 October 2026 as drafted: Privacy 3.6, Terms 3.6, AI notice 3.2 and the training switch wording v3 with its nine lines, with D1 to D8 as drafted, and the United States (California only) added to the countries, knowing counsel has not seen them.
+
+Word for word as offered (signing page <https://claude.ai/artifact/G5jMEWdiZtJ6ECCMvUWDv9>).
+What it covers, by file:
+`copy/privacy-3.6.txt` (sha256 `5aa2ffc447bf4543ec74412fe455b60bf439ca708c024d4fdfb0b41797d3ddd3`),
+`copy/terms-3.6.txt` (sha256 `6ce5f7d0e7f9e52764b0bdc7e4a5ca6bc257c75ff148c4254e907220212e6bfb`),
+`copy/ai-notice-3.2.txt` (sha256 `8b85806ceddc3cb07e69a8dbd5d49970be95208a410bdbbb33b6cba8bc5bde4e`),
+`26-training-consent-wording-v3-SIGNED-2026-10-15.md` (switch sentence sha256 `6a8ab6eeefb59c0ef481bbdd8e05f90fb3b1f07330a949586221d45fe4828bd9`),
+and D1 to D8 as drafted in section 3. Both files were renamed from `-DRAFT`
+and their draft line replaced by the signature line; nothing else changed.
+
+**Signing published nothing.** Section 5 continues from step 2: the E-items,
+then the PAdES signature of 26's PDF, then the publish script.
+
+## 8. Corrections after signature, confirmed by the founder (15 October 2026)
+
+The WhatsApp Business Data Transfer Addendum (16 February 2024), filed after
+the signature, says Meta's US transfers rest on the EU-US Data Privacy
+Framework, not on SCCs. Privacy 3.6 §6 said SCCs for every US transfer, and
+SCCs for Meta. Two sentences change in `copy/privacy-3.6.txt`, nothing else:
+
+- §6, first paragraph: "… made under the European Commission's Standard
+  Contractual Clauses or the EU-US Data Privacy Framework, as each
+  provider's data processing agreement sets out."
+- §6, Meta line: "Meta (WhatsApp): the EU-US Data Privacy Framework, under
+  WhatsApp's Data Transfer Addendum, which allows Standard Contractual
+  Clauses instead."
+
+sha256 of `copy/privacy-3.6.txt`: was `5aa2ffc447bf4543ec74412fe455b60bf439ca708c024d4fdfb0b41797d3ddd3` (as
+signed in §7), after this change `b69bf6434e5a939e8f64f80912e6e2fbee2300456b77ce4a0875f996a809c92b`, and after the second change below `2518d96703dfd632d409d6fc84f9729a86958278054992215972ad2417818864`. Confirmed by the founder (below).
+
+**Second change, same day (founder, chat: keep the coach videos).** The
+founder wants coach video answers kept: "keep the coach videos permanent …
+now I need them". Privacy 3.6 §7 said they are deleted with the Take. It
+now says they are kept while the account is open, including after the Take
+is deleted, and deleted on request or when the account is closed. They stay
+outside training (§4a, "Your coach's videos are not part of it either"):
+using them to train a model later needs a new policy version and the
+speaker's yes. Fix 7 keeps the private links and drops "deleted with the
+Take". sha256 of `copy/privacy-3.6.txt` after both changes: `2518d96703dfd632d409d6fc84f9729a86958278054992215972ad2417818864`.
+
+**Confirmed by the founder, chat, 15 October 2026:** "I confirm both Privacy
+3.6 corrections: the transfer lines in section 6 and the coach videos in
+section 7." The bytes to publish are `copy/privacy-3.6.txt` with sha256
+`2518d96703dfd632d409d6fc84f9729a86958278054992215972ad2417818864`.
+
+## 9. Pending with training wording v4 (founder, chat, 15 October 2026)
+
+The founder is shortening the consent screens: the training sentence becomes
+"We'd train our feedback on your practice." with a Read more link to Privacy
+§4a, and asked that "your practice" be defined in the Terms ("it should be
+defined in the terms"). Terms 3.6 §8 now opens with that definition: the
+words of the passages practised, the numbers measured from them, what the
+coach writes and answers about them, and the chats with Will; never the
+sound of the recordings. The training sentence after it says "Your practice"
+instead of listing the four. sha256 of `copy/terms-3.6.txt` after this
+change: `6a44303d69c4a943b016bcb621c4cb052a3d8f6ced4c40db8a481f96b34391c1` (as signed in §7: `04a40dcf…`, superseded). **Not in force
+until the founder approves v4 with it.** Privacy §4a's quote of the switch
+sentence changes in the same v4 commit.
+
+**The consent screens, approved on the prototype** (founder, chat, 15
+October 2026: "this looks perfect", <https://claude.ai/artifact/YCM8rQKkkwA2HKb4UYajeo>):
+the training wording becomes v4 (`27-training-consent-wording-v4-SIGNED-2026-10-15.md`);
+Privacy §4a's opening paragraph quotes the v4 screen and points to the Terms
+definition (sha256 of `copy/privacy-3.6.txt` now
+`72d50eac8ba5a4731c0d32e6f32999dcc9979b3c395d99074cb95a9a891422fb`). The
+sensitive-information tick reads "I agree that WillpowerLab may process my
+recordings." (founder's wording). Engineering's note for counsel: that tick
+is the Art 9(2)(a) explicit consent the processing gate relies on, and it no
+longer names sensitive information; "…including anything sensitive in them"
+was offered and declined. No withdrawal notice on these screens (27, risks).
+Back is removed from the confirm step. "Done reading" becomes "Continue" on
+every document window.
+
+**Will's conversation stays out of training** (founder, chat, 15 October
+2026: "do we actually train on the talk with will? … I think the
+conversational chat is all private"). No code has ever trained on Lounge
+messages. Privacy 3.6 (version note, §4a, §7) and Terms 3.6 (version note,
+§8 definition and licence) no longer put it in training, and say it is
+never used for it; D6 is withdrawn. The founder reading the messages Will
+marks as about the app (D2) is unchanged and still disclosed in §4.
+sha256 now: `copy/privacy-3.6.txt` `c0dbb2727a120cd7843cf65725291f885a8ab3d10cb4f2bca16ae707530525b7`, `copy/terms-3.6.txt`
+`843fb6a273b35f2659f657fcf154d0fe81145a44c383efcf0b32a5e55c17c6fa`. Pending with v4.
+
+**Will's conversation is private** (founder, chat, 15 October 2026: "I don't
+[want] my users to feel like someone is reading their messages … not more
+than any other LLM out there"). D2 is withdrawn: the marking of messages
+about the app and the admin route that read them are removed from the code,
+and Privacy 3.6 §4 now says nobody at WillpowerLab reads the conversation
+except to keep the service safe and working, when the law requires it, or
+when the speaker asks. sha256 of `copy/privacy-3.6.txt` now `a577ae2c14a610c3fedaf9ab50375386ab6a39039f7cdc6a67b7eab70308e13a`. Pending with v4.
+
+**Coach videos, one sentence less** (fix 5): §7 no longer says the videos
+are kept "so that you can watch them again" after the Take is deleted,
+because the request row that links them goes with the Take; they are kept,
+and deleted on request or when the account is closed. sha256 of
+`copy/privacy-3.6.txt` now `3e35aec50e44e950440c697216f94dc108b8e32cb80fe71db654195d666f3626`. Pending with v4.
+
+## 10. The 15 October changes approved (founder, chat, 15 October 2026)
+
+> I approve training wording V4 and the privacy in terms 3.6 changes of 15 October.
+
+Covers §8 and §9 above: the transfer lines and coach videos (already
+confirmed), the "your practice" definition, Will's conversation kept out of
+training and private, the coach-video sentence, and training wording v4
+(27-…). The bytes to publish are the `copy/` files as committed with this
+line, carried byte for byte by `PUBLISH-3.6-2026-10-15.sql`.
+
+**ElevenLabs (E1).** The controller request was sent on 15 October; no
+answer yet. The founder decided to proceed without it ("I guess they just
+acknowledge it … so we can just proceed"). The DPA (§3.1) already limits
+ElevenLabs to our documented instructions, which is what Privacy §5's "we
+do not authorise … ElevenLabs to use your content to train" states.
+Engineering's note: the account's own data-use setting should still be
+checked and turned off where ElevenLabs offers it; any answer is filed when
+it comes.
+
+**The publish script** `PUBLISH-3.6-2026-10-15.sql` was run end to end on a
+disposable PostgreSQL database built by `scripts/rehearsal_tier.sh` (all
+released migrations, a stand-in 3.4 policy and training-only-v1): 3.6
+active with the approved bytes and `us`, five required purposes,
+training-only-v4 in force from the same instant, the v4 sentence's hash
+registered. The dry run found and fixed one bug in STEP 5's country check.
+

@@ -12759,6 +12759,44 @@ class DatabaseService:
         }, on_conflict="take_session_id,community_id").execute())
         return (res.data or [None])[0]
 
+    def list_live_take_shares(self, owner_user_id: str) -> list[dict]:
+        """The owner's live shares, newest first, each with its community's
+        name and kind and its Take's number and project name:
+        {take_session_id, community_id, community_name, community_kind,
+        take_index, project}. A share whose Take is not the owner's is
+        left out. Raises on failure."""
+        shares = (self.client.table("take_shares")
+                  .select("take_session_id,community_id,shared_at")
+                  .eq("owner_user_id", str(owner_user_id)).is_("revoked_at", "null")
+                  .order("shared_at", desc=True).execute().data) or []
+        if not shares:
+            return []
+        community_ids = sorted({str(r["community_id"]) for r in shares})
+        take_ids = sorted({str(r["take_session_id"]) for r in shares})
+        communities = {str(c["id"]): c for c in (self.client.table("communities")
+                       .select("id,name,kind").in_("id", community_ids).execute().data or [])}
+        sessions = {str(t["id"]): t for t in (self.client.table("v2_sessions")
+                    .select("id,take_index,project_id").in_("id", take_ids)
+                    .eq("user_id", str(owner_user_id)).execute().data or [])}
+        project_ids = sorted({str(t["project_id"]) for t in sessions.values()
+                              if t.get("project_id")})
+        projects = ({str(p["id"]): p.get("display_name") or "" for p in (
+            self.client.table("projects").select("id,display_name")
+            .in_("id", project_ids).execute().data or [])} if project_ids else {})
+        out = []
+        for row in shares:
+            session = sessions.get(str(row["take_session_id"]))
+            if session is None:
+                continue
+            community = communities.get(str(row["community_id"])) or {}
+            out.append({"take_session_id": str(row["take_session_id"]),
+                        "community_id": str(row["community_id"]),
+                        "community_name": community.get("name"),
+                        "community_kind": community.get("kind"),
+                        "take_index": session.get("take_index"),
+                        "project": projects.get(str(session.get("project_id") or ""), "")})
+        return out
+
     def revoke_take_shares(self, take_session_id: str, *,
                            keep_community_ids: list[str]) -> int:
         """Withdraw the Take from every community not kept; the rows stay

@@ -544,6 +544,37 @@ def booking_for_guest(*, session_id: str = "", booking_id: str = "") -> Optional
     }
 
 
+def erase_for_user(user_id: str) -> dict:
+    """Closing an account (founder 2026-10-15, fix 6; Privacy 3.6 §7, §9):
+    a booking goes with the account, except a paid lesson's accounting
+    record, which keeps only the date, the price, the currency and the
+    Stripe reference; the name, the email, the note and the time zone are
+    wiped and the row no longer names the account. Called at the
+    termination request with the AI voice's erase. Never raises."""
+    out = {"deleted": 0, "kept_for_accounting": 0}
+    if not user_id:
+        return out
+    try:
+        rows = (db.client.table("bookings").select("id,status,price_cents,stripe_session_id")
+                .eq("user_id", str(user_id)).execute().data) or []
+        for row in rows:
+            paid = (row.get("status") == "confirmed" and bool(row.get("stripe_session_id"))
+                    and int(row.get("price_cents") or 0) > 0)
+            if paid:
+                db.client.table("bookings").update({
+                    "guest_name": "", "guest_email": "", "note": "",
+                    "guest_timezone": "UTC", "user_id": None,
+                }).eq("id", row["id"]).execute()
+                out["kept_for_accounting"] += 1
+            else:
+                db.client.table("bookings").delete().eq("id", row["id"]).execute()
+                out["deleted"] += 1
+    except Exception as error:  # noqa: BLE001 -- never blocks the deletion request
+        logger.warning("booking: erase failed user=%s: %s", user_id, type(error).__name__,
+                       exc_info=True)
+    return out
+
+
 def admin_bookings() -> list[dict]:
     since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     rows = (db.client.table("bookings")

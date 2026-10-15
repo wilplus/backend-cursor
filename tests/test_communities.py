@@ -246,3 +246,26 @@ def test_answered_self_labelled_and_settled_clips_are_not_queued():
 
 
 # ── the words the speaker saw (CM2 B, N53.2; Q-B6 A, N62; 0443) ───────────
+
+
+def test_data_and_consent_lists_each_shared_take_once_with_where():
+    """Fix 3 (founder 2026-10-15): Stop sharing lists every live share,
+    one row per Take, with the communities it is heard in."""
+    class Shares:
+        def list_live_take_shares(self, owner):
+            assert owner == "owner-1"
+            return [
+                {"take_session_id": _uuid(901), "community_id": GENERAL_ID,
+                 "community_name": None, "community_kind": "general",
+                 "take_index": 2, "project": "Pitch"},
+                {"take_session_id": _uuid(901), "community_id": _uuid(7),
+                 "community_name": "Friends", "community_kind": "private",
+                 "take_index": 2, "project": "Pitch"},
+            ]
+    status, body = cm.my_live_shares(Shares(), owner_user_id="owner-1")
+    assert status == 200
+    assert body == {"takes": [{
+        "take_session_id": _uuid(901), "take_index": 2, "project": "Pitch",
+        "communities": [{"id": GENERAL_ID, "name": None, "kind": "general"},
+                        {"id": _uuid(7), "name": "Friends", "kind": "private"}]}]}
+

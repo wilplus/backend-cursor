@@ -26,6 +26,8 @@ unsigned render is never the right value.
 | 06 v1.4 | `phase1-2026.1/legal/retention-schedule-v1.4.pdf` | 2026-10-05 | `f3a19127bd586913ebe5c0a1f2a97c5e24646c8e1fb44e3fef312346200afee6` |
 | 03 v1.1 | `phase1-2026.1/legal/article-50-assessment-v1.1.pdf` | 2026-10-05 | `97a88b6946957e5849c3fa80b3a39d6c480d35080b7b4fa792d768f85667ad6c` |
 | 23 | `phase1-2026.1/legal/training-consent-wording-v2.pdf` | 2026-10-08 | `cd62d7b11d43a1b7b0c0c928525fe4cc092162e8a29789eb3775d3e42fea3e7d` |
+| 26 | `phase1-2026.1/legal/training-consent-wording-v3.pdf` | 2026-10-15 | `f74b930f254d3fef21cb3e0b2be9e270da77f85bbbad1593a5136335d12a1204` |
+| 27 | `phase1-2026.1/legal/training-consent-wording-v4.pdf` | 2026-10-15 | `898e998dec4fb9ebcf1f8843572840b7dbf23de051b3ea4613d61804e86a382f` |
 
 `02 v1.1` and `06 v1.2` were rendered by `scripts/render_doc_pdf.py` on
 2026-10-02 (unsigned sha256 `dc175ffc…c40e8` and `cec455cb…dc85c`) and signed
@@ -242,3 +244,41 @@ Kept so that a signed file found later can be identified rather than trusted.
 A superseded artifact is **superseded, never edited** — `04` §5 says
 re-registering the same `(artifact_kind, version)` with any field changed raises
 a version conflict, and that is the behaviour we want.
+
+## Signed 2026-10-15 (closed; rendered and signed the same day)
+
+One render made on 2026-10-15 by `scripts/render_doc_pdf.py` from the
+markdown in the same commit as this table. The founder signed the content in
+chat the same day (decisions log N72). The hash of the **unsigned** render is
+recorded so that the signed file can be checked to be that render plus a
+signature and nothing else; it is never the value to register.
+
+| # | `object_key` | source | `sha256` of the UNSIGNED render |
+|---|---|---|---|
+| 26 | `phase1-2026.1/legal/training-consent-wording-v3.pdf` | `26-training-consent-wording-v3-SIGNED-2026-10-15.md` | `497c5e16b944b0874db78085897b8e61aa05ef6b07f53d693ec6755e413db032` |
+
+Signed by the founder (PAdES, `/SubFilter /ETSI.CAdES.detached`, signing
+time 2026-10-15 05:33:08) and checked the same day: the signed file's first
+66,871 bytes are the unsigned render above, byte for byte, with one
+signature appended. Its hash is in the **Current** table. The signature does
+not make the document counsel-reviewed. The signed file is still to be
+uploaded to its `object_key` by the founder.
+
+
+## Signed 2026-10-15, v4 (closed; rendered and signed the same day)
+
+| # | `object_key` | source | `sha256` of the UNSIGNED render |
+|---|---|---|---|
+| 27 | `phase1-2026.1/legal/training-consent-wording-v4.pdf` | `27-training-consent-wording-v4-SIGNED-2026-10-15.md` | `21e249c821de0ce9f1ec1b55a0659fb638b5b26e1601175a1db439ecb72104e7` |
+
+Document 26 (v3), signed earlier the same day, is superseded by 27 and is
+never registered; its row in **Current** stays as the record of that
+signature.
+
+Document 27 signed by the founder (PAdES, `/SubFilter /ETSI.CAdES.detached`,
+signing time 2026-10-15 08:18:11) and checked the same day: the signed
+file's first 66,242 bytes are the unsigned render above, byte for byte, with
+one signature appended. Its hash is in **Current** and in
+`PUBLISH-3.6-2026-10-15.sql`. Not counsel-reviewed. To be uploaded to its
+`object_key` by the founder.
+

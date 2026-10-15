@@ -2465,3 +2465,63 @@ it back on. Words L1–L13 signed. Prototypes
 <https://claude.ai/artifact/1AUfoqBtZThxVbQKz1BTih> (v2); plan
 <https://claude.ai/artifact/RYMPxAqSyHinRStymsGwFr>. Lock:
 `docs/FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`.
+
+**N72 · The 3.6 pack is signed: the new features described, training widened
+to what speakers write to Will, the United States for California residents
+(founder, chat, 15 October 2026).** The founder, word for word: "I sign the 3.6 pack of 15 October 2026 as drafted: Privacy 3.6, Terms 3.6, AI notice 3.2 and the training switch wording v3 with its nine lines, with D1 to D8 as drafted, and the United States (California only) added to the countries, knowing counsel has not seen them."
+**Counsel's review was not obtained.**
+- **Signed, as drafted:** `legal/phase1-2026.1/25-privacy-terms-3.6-new-features-SIGNED-2026-10-15.md`
+  (Privacy 3.6, Terms 3.6, AI notice 3.2; D1–D8) and
+  `26-training-consent-wording-v3-SIGNED-2026-10-15.md` (training-only-v3,
+  nine lines). Training stays opt-in (founder, 14 October: "Keep opt-in,
+  widen it"); `allowed_countries` gains `us`, California only (D8).
+- **Signing published nothing.** 3.6 is published only after E1–E12 (25, §4),
+  the PAdES signature of 26's PDF and the publish script.
+- **The consent screens, same day.** The founder approved the frontend change
+  under the consent-screen lock: "I approve the WIL-7, WIL-8 and WIL-9
+  changes to the locked consent screens as built on 15 October 2026: the
+  optional Help improve WillpowerLab tick as the third thing to confirm, Back
+  on the confirm step, and the United States listed below Poland as "United
+  States (California)"."
+- **Two corrections, confirmed the same day** (25 §8): Meta's US transfers
+  rest on the EU-US Data Privacy Framework (WhatsApp Business Data Transfer
+  Addendum, 16 February 2024), and a coach's video answers are kept while
+  the account is open, outside training. The founder: "I confirm both
+  Privacy 3.6 corrections: the transfer lines in section 6 and the coach
+  videos in section 7."
+
+**N73 · The consent screens, shortened (founder, chat, 15 October 2026).**
+Approved on the clickable prototype (<https://claude.ai/artifact/YCM8rQKkkwA2HKb4UYajeo>): "this looks perfect".
+- **Training:** "Can we make the product so much better for you?" / "We'd
+  train our feedback on your practice. Read more" / "Yes, make it so much
+  better." on every screen that asks; Read more opens Privacy §4a. Training
+  wording v4 (`legal/phase1-2026.1/27-…`) supersedes v3, never registered.
+  "Your practice" is defined in Terms 3.6 §8 (founder: "it should be defined
+  in the terms").
+- **Sensitive information:** "I agree that WillpowerLab may process my
+  recordings." Required ticks carry *, the training tick does not; no
+  "Optional" label.
+- **Removed at the founder's request:** the withdrawal line and footnote,
+  "Never your voice", Back on the confirm step (WIL-9 keeps Back on the
+  documents and the country step).
+- **Documents:** open in their own window on a computer; "Done reading"
+  becomes "Continue".
+- **Risks recorded for counsel** (27, "Risks the founder accepted"; 25 §9):
+  no withdrawal notice where consent is given (Art 7(3)); the sensitive tick
+  no longer names sensitive information (Art 9(2)(a)); scope carried by a
+  defined term.
+- **Will's conversation is not training data** (founder, same day: "the
+  conversational chat is all private"). Taken out of Privacy 3.6 §4a and §7
+  and the Terms 3.6 §8 definition and licence; the 3.6 texts say it is never
+  used for training.
+- **Will's conversation is private** (founder, same day: "not more than any
+  other LLM out there"). The marking of feedback messages and the admin
+  route `GET /v2/admin/speaker-feedback` are removed; Privacy 3.6 §4 says
+  nobody reads the conversation except for safety, the law, or the
+  speaker's own request.
+- **Approved** (founder, same day): "I approve training wording V4 and the
+  privacy in terms 3.6 changes of 15 October." ElevenLabs has not answered
+  the controller request; the founder proceeds without it (25 §10).
+  `legal/phase1-2026.1/PUBLISH-3.6-2026-10-15.sql` is ready, dry-run on a
+  disposable database; it waits for the signed PDF of 27.
+

@@ -291,16 +291,6 @@
       "module": "master_document",
       "sha256": "d4a79d63359918bf113a49426b0ea20255ca07c9514c00768eee5fef4be8d141"
     },
-    "ml_finetuning.default_system": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "f00e7782399048cebde1e8daffaa56d91828e8dbd089c0feb95ffda569521838"
-    },
-    "ml_finetuning.field_prompts": {
-      "kind": "source_ref",
-      "module": "pending",
-      "sha256": "5f289ed33c2a48487d6e53fdc382ec384abfa69c68649c397e8341bfd7e24b4a"
-    },
     "moment_suggestion.system": {
       "kind": "static",
       "module": "moment_suggestions",

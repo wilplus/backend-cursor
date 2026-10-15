@@ -162,17 +162,15 @@ class ChatRoutePersistsTheTurnTests(unittest.TestCase):
         self.assertIn("https://www.willpowerlab.com/book/artur",
                       body["bubbles"])
 
-    def test_what_a_speaker_tells_will_is_kept_in_their_thread(self):
-        """Founder 2026-10-14: feedback a speaker gives Will is saved so we
-        learn from it, in their own thread (deleted with their account)."""
+    def test_what_a_speaker_tells_will_is_not_marked_for_anyone(self):
+        """Founder 2026-10-15: the chat is as private as any other AI chat.
+        Feedback about the app is answered and kept in the thread like any
+        turn, with nothing that sets it aside for a person to read."""
         self.debug = {"router_intent": "speaker_feedback"}
         self.post({"question": "The walk was too long for me", "persist": True})
         user_row, bot_row = self.rows[-1][1]
-        self.assertEqual(user_row["metadata"], {"speaker_feedback": True})
-        self.assertEqual(bot_row["metadata"]["intent"], "speaker_feedback")
-        self.debug = {"router_intent": "product_faq"}
-        self.post({"question": "what is this?", "persist": True})
-        self.assertIsNone(self.rows[-1][1][0]["metadata"])
+        self.assertIsNone(user_row["metadata"])
+        self.assertNotEqual(bot_row["metadata"].get("intent"), "speaker_feedback")
 
     def test_will_reads_the_summary_he_wrote_after_the_take(self):
         """Founder 2026-10-15: "it does not hold the context". A signed-in
