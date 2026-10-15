@@ -88,21 +88,26 @@ def features_block(card: Optional[dict] = None) -> str:
     whatsapp_on = bool((card or {}).get("whatsapp_on"))
     lines = []
     for action, feature in FEATURES.items():
-        note = (" (already on for this speaker; the form lets them change "
-                "the number)") if (
-            action == "whatsapp" and whatsapp_on) else ""
+        note = (" (already on for this speaker with their number saved; "
+                "say so plainly. The form opens only if they want to change "
+                "it)") if action == "whatsapp" and whatsapp_on else ""
         lines.append(f"  • {action}: {feature['says']}{note}")
     return (
         "─── WHAT THE APP CAN DO (these are real; never decline them) ───\n"
         + "\n".join(lines) + "\n"
         "When the speaker asks for one of these, say yes in one or two "
         "short sentences and set app_action to its name; the app shows "
-        "the form, button or link under your answer. Never invent a "
+        "the form, button or link under your answer. You cannot save a "
+        "number or a setting yourself: a number typed to you is not saved; "
+        "the form under your answer is the only way. Never invent a "
         "feature that is not on this list. Never write a URL yourself.\n"
     )
 
 
 _NAMED = (("whatsapp", re.compile(r"whats\s*app", re.I)),)
+#: With a number saved, the form opens only to change it (founder
+#: 2026-10-15: "Is it saved?" brought the form back).
+_CHANGE = re.compile(r"\b(change|update|edit|new|different|another|replace|remove|delete)\b", re.I)
 
 
 def named_feature(question: Any) -> Optional[str]:
@@ -114,7 +119,8 @@ def named_feature(question: Any) -> Optional[str]:
 
 
 def apply_app_action(action: Any, *, signed_in: bool,
-                     context: Optional[dict]) -> dict:
+                     context: Optional[dict], card: Optional[dict] = None,
+                     question: Optional[str] = None) -> dict:
     """The response fields for the model's chosen action, or {} when it
     has none, is unknown, or makes no sense for this speaker.
 
@@ -126,6 +132,9 @@ def apply_app_action(action: Any, *, signed_in: bool,
     opens = feature["opens"]
     if opens == "offer":
         if not signed_in:
+            return {}
+        if action == "whatsapp" and (card or {}).get("whatsapp_on") \
+                and not _CHANGE.search(question or ""):
             return {}
         return {"offer": action}
     if opens == "chip":

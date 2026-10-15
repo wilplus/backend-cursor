@@ -139,18 +139,21 @@ class ChatRoutePersistsTheTurnTests(unittest.TestCase):
         self.assertEqual(third["answer"], SIGNUP_LINE)
         self.assertEqual(len(self.histories), 1)
 
-    def test_asking_for_whatsapp_always_opens_the_form(self):
-        """Founder 2026-10-14/15: Will knows the app's features. A speaker
-        who names WhatsApp gets the WhatsApp form the Lounge already draws,
-        whatever the model chose, and also when a number is already saved
-        (the form changes it)."""
+    def test_the_whatsapp_form_opens_to_add_or_change_a_number(self):
+        """Founder 2026-10-14/15: a speaker who names WhatsApp gets the form
+        the Lounge already draws, whatever the model chose. With a number
+        saved, "Is it saved?" gets an answer and no form; the form comes
+        back only to change the number."""
         self.app_action = "whatsapp"
         body = self.post({"question": "can I get alerts on my phone?",
                           "persist": True}).get_json()
         self.assertEqual(body["offer"], "whatsapp")
         self.assertEqual(self.rows[-1][1][-1]["metadata"], {"offer": "whatsapp"})
-        self.app_action, self.card = None, {"whatsapp_on": True}
-        body = self.post({"question": "show me the WhatsApp form",
+        self.card = {"whatsapp_on": True}
+        body = self.post({"question": "is my WhatsApp saved?", "persist": True}).get_json()
+        self.assertNotIn("offer", body)
+        self.app_action = None
+        body = self.post({"question": "change my WhatsApp number",
                           "persist": True}).get_json()
         self.assertEqual(body["offer"], "whatsapp")
 
