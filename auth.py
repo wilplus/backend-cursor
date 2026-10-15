@@ -44,7 +44,11 @@ def get_jwks_client():
             # - Error handling
             # - Retries
             # Simple initialization - PyJWKClient handles caching automatically
-            _jwks_client = PyJWKClient(jwks_url)
+            # Signing keys are kept for an hour and each key, once seen, is
+            # remembered (founder 2026-10-14: the 5-minute default made the
+            # request that arrived after it lapse wait for a fresh download).
+            # A token signed with a new key still triggers a fetch.
+            _jwks_client = PyJWKClient(jwks_url, cache_keys=True, lifespan=3600)
             
             logger.info("JWKS client initialized successfully")
         except Exception as e:

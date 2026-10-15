@@ -89,6 +89,27 @@ _DB_CALLS: contextvars.ContextVar[Optional[list[int]]] = contextvars.ContextVar(
     "db_calls", default=None)
 
 
+_LAPS: contextvars.ContextVar[Optional[list[str]]] = contextvars.ContextVar(
+    "laps", default=None)
+
+
+class lap:
+    """Time one named step of the current request; a slow request's log line
+    then lists its steps (``parts=read:120,clips:4100``). No-op outside one."""
+
+    def __init__(self, name: str):
+        self.name = name
+
+    def __enter__(self) -> "lap":
+        self._t0 = time.perf_counter()
+        return self
+
+    def __exit__(self, *_exc: Any) -> None:
+        laps = _LAPS.get()
+        if laps is not None:
+            laps.append(f"{self.name}:{(time.perf_counter() - self._t0) * 1000:.0f}")
+
+
 def count_db_call() -> None:
     """One database call inside the current request (no-op outside one)."""
     box = _DB_CALLS.get()
@@ -108,6 +129,7 @@ def install_request_id(app: Any) -> None:
         g.received_at = datetime.now(timezone.utc)
         g.started_perf = time.perf_counter()
         _DB_CALLS.set([0])
+        _LAPS.set([])
 
     @app.after_request
     def _echo_request_id(response: Any) -> Any:
@@ -122,9 +144,11 @@ def install_request_id(app: Any) -> None:
                 existing = response.headers.get("Server-Timing")
                 response.headers["Server-Timing"] = f"{existing}, {timing}" if existing else timing
                 if ms >= SLOW_REQUEST_MS:
+                    laps = _LAPS.get() or []
                     logging.getLogger("request_timing").info(
-                        "slow request %s %s status=%s ms=%.0f db_calls=%d",
-                        request.method, request.path, response.status_code, ms, calls)
+                        "slow request %s %s status=%s ms=%.0f db_calls=%d%s",
+                        request.method, request.path, response.status_code, ms, calls,
+                        f" parts={','.join(laps)}" if laps else "")
         except Exception:  # noqa: BLE001 -- the stopwatch never breaks a response
             logging.getLogger("request_timing").warning("timing failed", exc_info=True)
         return response
@@ -133,3 +157,4 @@ def install_request_id(app: Any) -> None:
     def _clear_request_id(_exc: Any) -> None:
         _REQUEST_ID.set(NO_REQUEST)
         _DB_CALLS.set(None)
+        _LAPS.set(None)
