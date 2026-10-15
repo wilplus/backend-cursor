@@ -1,15 +1,16 @@
-# The training switch wording, version 3 — DRAFT, for the founder's signature
+# The training switch wording, version 3 — SIGNED by the founder 2026-10-15
 
-**DRAFT, 15 October 2026. Not signed. Counsel has not seen it.**
+**SIGNED by the founder, 15 October 2026, in chat** ("I sign the 3.6 pack of 15 October 2026 as drafted"; decisions log N72). **Counsel has not seen it**; the founder signed knowing that.
 
     artifact_kind:       training_consent_wording
     version:             training-only-v3 (the consent_policy_version it registers)
     succeeds:            23-training-consent-wording-v2-SIGNED-2026-10-08.md (training-only-v2)
-    approving_authority: Artur Willoński (founder and controller), once signed
+    approving_authority: Artur Willoński (founder and controller)
+    approved_at:         2026-10-15 (in chat: "I sign the 3.6 pack of 15 October 2026 as drafted"; decisions log N72; counsel has not seen it)
     wording by:          engineering, in the style of counsel's v1 wording of 2026-10-01
     object_key:          phase1-2026.1/legal/training-consent-wording-v3.pdf
     sha256:              [[computed from the signed PDF at registration time]]
-    requires:            Privacy 3.6 and Terms 3.6 published (25-privacy-terms-3.6-new-features-DRAFT.md)
+    requires:            Privacy 3.6 and Terms 3.6 published (25-privacy-terms-3.6-new-features-SIGNED-2026-10-15.md)
 
 **What changes from v2, and why.** Asked by the founder on 2026-10-14: users
 who accept should be free to use the app and he should be able to train on

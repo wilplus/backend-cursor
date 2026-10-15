@@ -2465,3 +2465,22 @@ it back on. Words L1–L13 signed. Prototypes
 <https://claude.ai/artifact/1AUfoqBtZThxVbQKz1BTih> (v2); plan
 <https://claude.ai/artifact/RYMPxAqSyHinRStymsGwFr>. Lock:
 `docs/FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`.
+
+**N72 · The 3.6 pack is signed: the new features described, training widened
+to what speakers write to Will, the United States for California residents
+(founder, chat, 15 October 2026).** The founder, word for word: "I sign the 3.6 pack of 15 October 2026 as drafted: Privacy 3.6, Terms 3.6, AI notice 3.2 and the training switch wording v3 with its nine lines, with D1 to D8 as drafted, and the United States (California only) added to the countries, knowing counsel has not seen them."
+**Counsel's review was not obtained.**
+- **Signed, as drafted:** `legal/phase1-2026.1/25-privacy-terms-3.6-new-features-SIGNED-2026-10-15.md`
+  (Privacy 3.6, Terms 3.6, AI notice 3.2; D1–D8) and
+  `26-training-consent-wording-v3-SIGNED-2026-10-15.md` (training-only-v3,
+  nine lines). Training stays opt-in (founder, 14 October: "Keep opt-in,
+  widen it"); `allowed_countries` gains `us`, California only (D8).
+- **Signing published nothing.** 3.6 is published only after E1–E12 (25, §4),
+  the PAdES signature of 26's PDF and the publish script.
+- **The consent screens, same day.** The founder approved the frontend change
+  under the consent-screen lock: "I approve the WIL-7, WIL-8 and WIL-9
+  changes to the locked consent screens as built on 15 October 2026: the
+  optional Help improve WillpowerLab tick as the third thing to confirm, Back
+  on the confirm step, and the United States listed below Poland as "United
+  States (California)"."
+

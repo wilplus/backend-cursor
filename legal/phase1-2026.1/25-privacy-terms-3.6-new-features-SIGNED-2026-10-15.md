@@ -1,6 +1,6 @@
-# Privacy Policy 3.6, Terms of Service 3.6, AI notice 3.2: what shipped since 3.5 — DRAFT, for the founder's signature
+# Privacy Policy 3.6, Terms of Service 3.6, AI notice 3.2: what shipped since 3.5 — SIGNED by the founder 2026-10-15
 
-**DRAFT, 15 October 2026. Not signed. Counsel has not seen it.**
+**SIGNED by the founder, 15 October 2026, in chat** ("I sign the 3.6 pack of 15 October 2026 as drafted"; decisions log N72). **Counsel has not seen it**; the founder signed knowing that.
 
     documents:           copy/privacy-3.6.txt, copy/terms-3.6.txt, copy/ai-notice-3.2.txt (the exact bytes to publish)
     replaces:            copy/privacy-3.5.txt, copy/terms-3.5.txt, copy/ai-notice-3.1.txt
@@ -14,7 +14,7 @@
     countries:           the 27 EU/EEA codes of 3.5, plus 'us' (founder, chat, 2026-10-15: "allow users from
                          California United States use the app so add to the list of countries United States
                          and add it below Poland"); the United States only for residents of California (D8)
-    the switch wording:  26-training-consent-wording-v3-DRAFT.md (training-only-v3)
+    the switch wording:  26-training-consent-wording-v3-SIGNED-2026-10-15.md (training-only-v3)
     drafted by:          engineering, from the code; not a lawyer
 
 As with 3.5, the `copy/*.txt` files carry no draft mark: their exact bytes are
@@ -173,6 +173,22 @@ publishing it. Each item is its own reviewed PR or a founder action.
    the Supabase SQL editor (`docs/PHASE1-PROCESSING-RUNBOOK.md`). From then
    every speaker is asked to accept 3.6.
 
-## 6. The sentence to sign
+## 6. The sentence signed
 
 > I sign the 3.6 pack of 15 October 2026 as drafted: Privacy 3.6, Terms 3.6, AI notice 3.2 and the training switch wording v3 with its nine lines, with D1 to D8 as drafted, and the United States (California only) added to the countries, knowing counsel has not seen them.
+
+## 7. The signature (founder, chat, 15 October 2026)
+
+> I sign the 3.6 pack of 15 October 2026 as drafted: Privacy 3.6, Terms 3.6, AI notice 3.2 and the training switch wording v3 with its nine lines, with D1 to D8 as drafted, and the United States (California only) added to the countries, knowing counsel has not seen them.
+
+Word for word as offered (signing page <https://claude.ai/artifact/G5jMEWdiZtJ6ECCMvUWDv9>).
+What it covers, by file:
+`copy/privacy-3.6.txt` (sha256 `5aa2ffc447bf4543ec74412fe455b60bf439ca708c024d4fdfb0b41797d3ddd3`),
+`copy/terms-3.6.txt` (sha256 `6ce5f7d0e7f9e52764b0bdc7e4a5ca6bc257c75ff148c4254e907220212e6bfb`),
+`copy/ai-notice-3.2.txt` (sha256 `8b85806ceddc3cb07e69a8dbd5d49970be95208a410bdbbb33b6cba8bc5bde4e`),
+`26-training-consent-wording-v3-SIGNED-2026-10-15.md` (switch sentence sha256 `6a8ab6eeefb59c0ef481bbdd8e05f90fb3b1f07330a949586221d45fe4828bd9`),
+and D1 to D8 as drafted in section 3. Both files were renamed from `-DRAFT`
+and their draft line replaced by the signature line; nothing else changed.
+
+**Signing published nothing.** Section 5 continues from step 2: the E-items,
+then the PAdES signature of 26's PDF, then the publish script.
