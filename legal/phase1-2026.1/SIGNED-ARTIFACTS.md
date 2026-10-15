@@ -27,6 +27,7 @@ unsigned render is never the right value.
 | 03 v1.1 | `phase1-2026.1/legal/article-50-assessment-v1.1.pdf` | 2026-10-05 | `97a88b6946957e5849c3fa80b3a39d6c480d35080b7b4fa792d768f85667ad6c` |
 | 23 | `phase1-2026.1/legal/training-consent-wording-v2.pdf` | 2026-10-08 | `cd62d7b11d43a1b7b0c0c928525fe4cc092162e8a29789eb3775d3e42fea3e7d` |
 | 26 | `phase1-2026.1/legal/training-consent-wording-v3.pdf` | 2026-10-15 | `f74b930f254d3fef21cb3e0b2be9e270da77f85bbbad1593a5136335d12a1204` |
+| 27 | `phase1-2026.1/legal/training-consent-wording-v4.pdf` | 2026-10-15 | `898e998dec4fb9ebcf1f8843572840b7dbf23de051b3ea4613d61804e86a382f` |
 
 `02 v1.1` and `06 v1.2` were rendered by `scripts/render_doc_pdf.py` on
 2026-10-02 (unsigned sha256 `dc175ffc…c40e8` and `cec455cb…dc85c`) and signed
@@ -264,12 +265,20 @@ not make the document counsel-reviewed. The signed file is still to be
 uploaded to its `object_key` by the founder.
 
 
-## Rendered 2026-10-15, awaiting the founder's PAdES signature (v4)
+## Signed 2026-10-15, v4 (closed; rendered and signed the same day)
 
 | # | `object_key` | source | `sha256` of the UNSIGNED render |
 |---|---|---|---|
-| 27 | `phase1-2026.1/legal/training-consent-wording-v4.pdf` | `27-training-consent-wording-v4-DRAFT.md` | `21e249c821de0ce9f1ec1b55a0659fb638b5b26e1601175a1db439ecb72104e7` |
+| 27 | `phase1-2026.1/legal/training-consent-wording-v4.pdf` | `27-training-consent-wording-v4-SIGNED-2026-10-15.md` | `21e249c821de0ce9f1ec1b55a0659fb638b5b26e1601175a1db439ecb72104e7` |
 
 Document 26 (v3), signed earlier the same day, is superseded by 27 and is
 never registered; its row in **Current** stays as the record of that
 signature.
+
+Document 27 signed by the founder (PAdES, `/SubFilter /ETSI.CAdES.detached`,
+signing time 2026-10-15 08:18:11) and checked the same day: the signed
+file's first 66,242 bytes are the unsigned render above, byte for byte, with
+one signature appended. Its hash is in **Current** and in
+`PUBLISH-3.6-2026-10-15.sql`. Not counsel-reviewed. To be uploaded to its
+`object_key` by the founder.
+

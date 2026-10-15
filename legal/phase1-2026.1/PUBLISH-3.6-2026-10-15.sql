@@ -5,7 +5,7 @@
 --
 -- What you signed and approved (decisions log N72 and N73;
 -- 25-privacy-terms-3.6-new-features-SIGNED-2026-10-15.md,
--- 27-training-consent-wording-v4-DRAFT.md). This block does three things in
+-- 27-training-consent-wording-v4-SIGNED-2026-10-15.md). This block does three things in
 -- ONE transaction, so either all of it happens or none of it does:
 --
 --   1. publishes Privacy 3.6, Terms 3.6 and AI notice 3.2 as processing
@@ -26,9 +26,8 @@
 --   b. You signed the PDF of document 27 (PAdES), uploaded it to
 --      phase1-2026.1/legal/training-consent-wording-v4.pdf, and its SIGNED
 --      hash is in SIGNED-ARTIFACTS.md.
---   c. The ONE placeholder below, <SIGNED_PDF_SHA256_OF_27>, holds that
---      signed hash: 64 characters, 0-9 and a-f. Not the unsigned render's
---      (21e249c8…): the block refuses that.
+--   c. STEP 4 already holds that signed hash (898e998d…, checked by
+--      engineering on 2026-10-15). Nothing to fill in.
 --
 -- The effective date. The texts say "Effective 15 October 2026". On another
 -- day, change the date in legal/phase1-2026.1/copy/privacy-3.6.txt and
@@ -1299,12 +1298,12 @@ SELECT public.activate_phase1_policy_v1(
 
 -- ── STEP 4 · the training wording: the one in force retires, v4 starts ───
 -- now() is the same moment 3.6 was activated (one transaction). v4 asks for
--- an acceptance of 3.6 before any new yes. The ONE placeholder of this file
--- is on the next line that says <SIGNED_PDF_SHA256_OF_27>.
+-- an acceptance of 3.6 before any new yes. The signed PDF hash of document
+-- 27 is filled in below.
 
 DO $$
 DECLARE
-  signed_pdf_sha256 TEXT := lower(btrim('<SIGNED_PDF_SHA256_OF_27>'));
+  signed_pdf_sha256 TEXT := lower(btrim('898e998dec4fb9ebcf1f8843572840b7dbf23de051b3ea4613d61804e86a382f'));
   predecessor TEXT;
 BEGIN
   IF signed_pdf_sha256 !~ '^[0-9a-f]{64}$' THEN

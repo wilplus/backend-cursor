@@ -241,7 +241,7 @@ sentence changes in the same v4 commit.
 
 **The consent screens, approved on the prototype** (founder, chat, 15
 October 2026: "this looks perfect", <https://claude.ai/artifact/YCM8rQKkkwA2HKb4UYajeo>):
-the training wording becomes v4 (`27-training-consent-wording-v4-DRAFT.md`);
+the training wording becomes v4 (`27-training-consent-wording-v4-SIGNED-2026-10-15.md`);
 Privacy §4a's opening paragraph quotes the v4 screen and points to the Terms
 definition (sha256 of `copy/privacy-3.6.txt` now
 `72d50eac8ba5a4731c0d32e6f32999dcc9979b3c395d99074cb95a9a891422fb`). The

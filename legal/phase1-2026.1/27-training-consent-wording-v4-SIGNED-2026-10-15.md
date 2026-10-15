@@ -1,6 +1,6 @@
-# The training switch wording, version 4 — DRAFT, approved on screen by the founder 2026-10-15
+# The training switch wording, version 4 — SIGNED by the founder 2026-10-15
 
-**Approved by the founder in chat, 15 October 2026** ("I approve training wording V4 and the privacy in terms 3.6 changes of 15 October"; first on the clickable prototype, "this looks perfect") ("this looks perfect", consent prototype <https://claude.ai/artifact/YCM8rQKkkwA2HKb4UYajeo>). To be signed (PAdES) as a PDF before registration. **Counsel has not seen it.**
+**Approved by the founder in chat, 15 October 2026** ("I approve training wording V4 and the privacy in terms 3.6 changes of 15 October"; first on the clickable prototype, "this looks perfect") ("this looks perfect", consent prototype <https://claude.ai/artifact/YCM8rQKkkwA2HKb4UYajeo>). Signed (PAdES) as a PDF the same day, 08:18 UTC. **Counsel has not seen it.**
 
     artifact_kind:       training_consent_wording
     version:             training-only-v4 (the consent_policy_version it registers)
@@ -8,7 +8,7 @@
     approving_authority: Artur Willoński (founder and controller)
     wording by:          the founder, on the prototype, 15 October 2026
     object_key:          phase1-2026.1/legal/training-consent-wording-v4.pdf
-    sha256:              [[computed from the signed PDF at registration time]]
+    sha256:              898e998dec4fb9ebcf1f8843572840b7dbf23de051b3ea4613d61804e86a382f (the signed PDF, SIGNED-ARTIFACTS.md)
     requires:            Privacy 3.6 and Terms 3.6 published, with the §9 changes of 25-…
 
 **Why v4.** The founder shortened every screen that asks for the training
