@@ -184,7 +184,7 @@ class RunProcessingJobGuardTests(unittest.TestCase):
         ])
 
 
-    def test_failed_run_releases_and_requeues_with_backoff(self):
+    def test_failed_run_releases_and_requeues_at_once(self):
         def _boom(job):
             raise RuntimeError("whisper down")
         db, q = self._run(_FakeDb(job=_job()), runner=_boom)
@@ -193,7 +193,9 @@ class RunProcessingJobGuardTests(unittest.TestCase):
         path, args, delay = q.enqueues[-1]
         self.assertEqual(path, pj.TASK_PATH)
         self.assertEqual(args, (_JOB,))
-        self.assertEqual(delay, 60)  # attempt 1 → 60s backoff
+        # Attempt 1 → requeued at once: a delayed job waits on rq's
+        # scheduler, which ran one 6 min 53 s late in production.
+        self.assertEqual(delay, 0)
         # NOT terminal: no failed finish, session not failed.
         self.assertTrue(all(f[1] != "failed" for f in db.finishes))
         self.assertNotIn("failed", [s[1] for s in db.states])
