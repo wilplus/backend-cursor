@@ -603,7 +603,18 @@ def _fail_terminal_for_job(job: Dict[str, Any], error: Exception | str) -> None:
 
 
 def _retry_backoff_seconds(attempts: int) -> int:
-    """60s, 120s, 240s… capped at 10 min."""
+    """At once after the first failure, then 120s, 240s… capped at 10 min.
+
+    THE FIRST RETRY IS IMMEDIATE (founder 2026-10-15). A first failure is
+    usually transient (a dropped database connection), and the speaker is
+    watching the bar. A delayed retry is only as prompt as the queue's
+    scheduler: in production the 60 s retry of job affb641b ran 6 min 53 s
+    late, together with the sweep chain, while the Take sat at 59%. An
+    immediate enqueue needs no scheduler. The attempt cap still bounds a
+    failure that is not transient.
+    """
+    if attempts <= 1:
+        return 0
     return min(600, 60 * (2 ** max(0, attempts - 1)))
 
 
