@@ -1,6 +1,6 @@
 # The training switch wording, version 3 — SIGNED by the founder 2026-10-15
 
-**SIGNED by the founder, 15 October 2026, in chat** ("I sign the 3.6 pack of 15 October 2026 as drafted"; decisions log N72). **Counsel has not seen it**; the founder signed knowing that.
+**SUPERSEDED the same day by `27-training-consent-wording-v4-DRAFT.md` (never registered).** SIGNED by the founder, 15 October 2026, in chat ("I sign the 3.6 pack of 15 October 2026 as drafted"; decisions log N72). **Counsel has not seen it**; the founder signed knowing that.
 
     artifact_kind:       training_consent_wording
     version:             training-only-v3 (the consent_policy_version it registers)

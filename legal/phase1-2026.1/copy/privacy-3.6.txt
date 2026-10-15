@@ -225,10 +225,13 @@ or similarly significantly affect you.
 
 4a. HELPING TO IMPROVE WILLPOWERLAB — OPTIONAL
 
-If you turn on Help improve WillpowerLab, we use your practice text, what your
-coach writes and answers about it, what you write to Will, and measurements
-of your practice to train the models that give feedback to every
-WillpowerLab speaker. The switch says exactly that: "Use my practice text, my coach's words and answers about it, what I write to Will, and measurements of my practice to train the models that give every WillpowerLab speaker feedback."
+If you turn on Help improve WillpowerLab, we use your practice to train the
+models that give feedback to every WillpowerLab speaker. Your practice, as
+the Terms define it, is the words of the passages you practise, the numbers
+measured from them, what your coach writes and answers about them, and your
+chats with Will; never the sound of your recordings. The screen asks "Can we
+make the product so much better for you?", says "We'd train our feedback on
+your practice.", and you say yes with "Yes, make it so much better."
 
 What we use, and what for:
 

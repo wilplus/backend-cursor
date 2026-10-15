@@ -263,3 +263,13 @@ signature appended. Its hash is in the **Current** table. The signature does
 not make the document counsel-reviewed. The signed file is still to be
 uploaded to its `object_key` by the founder.
 
+
+## Rendered 2026-10-15, awaiting the founder's PAdES signature (v4)
+
+| # | `object_key` | source | `sha256` of the UNSIGNED render |
+|---|---|---|---|
+| 27 | `phase1-2026.1/legal/training-consent-wording-v4.pdf` | `27-training-consent-wording-v4-DRAFT.md` | `46a87ecf968fd896af812dce4f40f091dad3552467866eccd23a636b62aa2ee3` |
+
+Document 26 (v3), signed earlier the same day, is superseded by 27 and is
+never registered; its row in **Current** stays as the record of that
+signature.

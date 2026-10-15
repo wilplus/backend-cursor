@@ -239,3 +239,17 @@ change: `6a44303d69c4a943b016bcb621c4cb052a3d8f6ced4c40db8a481f96b34391c1` (as s
 until the founder approves v4 with it.** Privacy §4a's quote of the switch
 sentence changes in the same v4 commit.
 
+**The consent screens, approved on the prototype** (founder, chat, 15
+October 2026: "this looks perfect", <https://claude.ai/artifact/YCM8rQKkkwA2HKb4UYajeo>):
+the training wording becomes v4 (`27-training-consent-wording-v4-DRAFT.md`);
+Privacy §4a's opening paragraph quotes the v4 screen and points to the Terms
+definition (sha256 of `copy/privacy-3.6.txt` now
+`72d50eac8ba5a4731c0d32e6f32999dcc9979b3c395d99074cb95a9a891422fb`). The
+sensitive-information tick reads "I agree that WillpowerLab may process my
+recordings." (founder's wording). Engineering's note for counsel: that tick
+is the Art 9(2)(a) explicit consent the processing gate relies on, and it no
+longer names sensitive information; "…including anything sensitive in them"
+was offered and declined. No withdrawal notice on these screens (27, risks).
+Back is removed from the confirm step. "Done reading" becomes "Continue" on
+every document window.
+

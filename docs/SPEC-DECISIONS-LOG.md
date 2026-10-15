@@ -2490,3 +2490,24 @@ to what speakers write to Will, the United States for California residents
   Privacy 3.6 corrections: the transfer lines in section 6 and the coach
   videos in section 7."
 
+**N73 · The consent screens, shortened (founder, chat, 15 October 2026).**
+Approved on the clickable prototype (<https://claude.ai/artifact/YCM8rQKkkwA2HKb4UYajeo>): "this looks perfect".
+- **Training:** "Can we make the product so much better for you?" / "We'd
+  train our feedback on your practice. Read more" / "Yes, make it so much
+  better." on every screen that asks; Read more opens Privacy §4a. Training
+  wording v4 (`legal/phase1-2026.1/27-…`) supersedes v3, never registered.
+  "Your practice" is defined in Terms 3.6 §8 (founder: "it should be defined
+  in the terms").
+- **Sensitive information:** "I agree that WillpowerLab may process my
+  recordings." Required ticks carry *, the training tick does not; no
+  "Optional" label.
+- **Removed at the founder's request:** the withdrawal line and footnote,
+  "Never your voice", Back on the confirm step (WIL-9 keeps Back on the
+  documents and the country step).
+- **Documents:** open in their own window on a computer; "Done reading"
+  becomes "Continue".
+- **Risks recorded for counsel** (27, "Risks the founder accepted"; 25 §9):
+  no withdrawal notice where consent is given (Art 7(3)); the sensitive tick
+  no longer names sensitive information (Art 9(2)(a)); scope carried by a
+  defined term.
+
