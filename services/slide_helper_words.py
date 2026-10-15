@@ -112,17 +112,29 @@ def lock(rows: list[Row], *, take_id: str, part_id: str, locked: bool,
     return _renumber(out)
 
 
-# THE SIX-WORD CAP ON THE SERVER (founder lock 2026-09-30, B3; F1 Repair
-# Plan Phase 5; raised from four to six 2026-10-12). The client stops a
-# seventh tap; before the cap every save route took any length. Words saved
-# before the cap are read as they are. The frontend's HELPER_WORDS_MAX
+# THE EIGHT-WORD CAP ON THE SERVER (founder lock 2026-09-30, B3; F1 Repair
+# Plan Phase 5; six 2026-10-12; eight 2026-10-15). The client stops a ninth
+# tap; before the cap every save route took any length. Words saved before
+# the cap are read as they are. The frontend's HELPER_WORDS_MAX
 # (src/lib/willab/phraseTokens.ts) must match.
-HELPER_WORDS_MAX = 6
+HELPER_WORDS_MAX = 8
+
+# ANY WORDS OF THE PARAGRAPH (founder 2026-10-15). The words need not sit
+# next to each other: each run of neighbouring words is one piece, and the
+# pieces are joined with this, in the order they were said.
+PIECE_SEP = " · "
+
+
+def pieces(phrase: Any) -> list[str]:
+    """The runs of words one helper-words pick holds."""
+    return [p.strip() for p in str(phrase or "").split(PIECE_SEP.strip())
+            if p.strip()]
 
 
 def within_cap(phrase: Any) -> bool:
-    """One to six words."""
-    return 0 < len(str(phrase or "").split()) <= HELPER_WORDS_MAX
+    """One to eight words."""
+    count = sum(len(p.split()) for p in pieces(phrase))
+    return 0 < count <= HELPER_WORDS_MAX
 
 
 def _flat(text: Any) -> str:
@@ -132,18 +144,24 @@ def _flat(text: Any) -> str:
 
 def phrase_in_version(phrase: Any, paragraphs: Any) -> Optional[str]:
     """The helper words, when they are exact words of one Take's version of
-    the Slide (founder lock 2026-09-30, B4, D5, Q3: one Take, one phrase).
+    the Slide (founder lock 2026-09-30, B4, D5, Q3: one Take, one pick).
 
     `paragraphs` is that version's list of Paragraph texts for the Slide;
-    the phrase must sit inside ONE of them, whitespace folded, no marker
-    syntax. None otherwise."""
+    every piece must sit inside ONE of them, in the order said, whitespace
+    folded, no marker syntax. None otherwise."""
     import re
-    want = _flat(phrase)
-    if not want or re.search(r"[*_~`{}]", want):
+    parts = [_flat(p) for p in pieces(phrase)]
+    if not parts or any(re.search(r"[*_~`{}]", p) for p in parts):
         return None
     for text in paragraphs or []:
-        if want in _flat(text):
-            return want
+        hay, at = _flat(text), 0
+        for part in parts:
+            at = hay.find(part, at)
+            if at < 0:
+                break
+            at += len(part)
+        else:
+            return PIECE_SEP.join(parts)
     return None
 
 
