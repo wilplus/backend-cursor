@@ -313,6 +313,24 @@ def share_take(database: Any, *, owner_user_id: str, take_session_id: str,
                  "share_words_version": words_version}
 
 
+def my_live_shares(database: Any, *, owner_user_id: str) -> tuple[int, dict]:
+    """The speaker's Takes that are shared right now, with where (founder
+    2026-10-15, fix 3: Stop sharing in Data & consent; Privacy 3.6 §4d).
+    One row per Take: {take_session_id, take_index, project, communities:
+    [{id, name, kind}]}, newest share first. Stopping uses share_take with
+    "none"."""
+    takes: dict[str, dict] = {}
+    for row in database.list_live_take_shares(str(owner_user_id)):
+        take_id = str(row["take_session_id"])
+        take = takes.setdefault(take_id, {
+            "take_session_id": take_id, "take_index": row.get("take_index"),
+            "project": row.get("project") or "", "communities": []})
+        take["communities"].append({"id": str(row["community_id"]),
+                                    "name": row.get("community_name"),
+                                    "kind": row.get("community_kind")})
+    return 200, {"takes": list(takes.values())}
+
+
 # ── the queue ─────────────────────────────────────────────────────────────
 
 def _hearable(database: Any, listener_id: str) -> tuple[Optional[str], set[str]]:

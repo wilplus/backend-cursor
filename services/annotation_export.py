@@ -89,6 +89,41 @@ class AnnotationExportResult:
     error_text: Optional[str]
 
 
+def _event_line(ev: dict) -> dict:
+    """One exported event: hashes, the reason and who, never the texts."""
+    return {
+        "event_id": ev.get("id"),
+        "student_id": ev.get("user_id"),
+        "session_id": ev.get("session_id"),
+        "draft_id": ev.get("draft_id"),
+        "section_type": ev.get("section_type"),
+        "field_name": ev.get("field_name"),
+        "previous_value_hash": ev.get("previous_value_hash") or _to_hash(ev.get("ai_original_text")),
+        "new_value_hash": ev.get("new_value_hash") or _to_hash(ev.get("coach_final_text")),
+        "reason_chip": ev.get("reason_chip"),
+        "custom_reason": ev.get("custom_reason"),
+        "created_by": ev.get("created_by"),
+        "created_at": ev.get("created_at"),
+    }
+
+
+def _training_yes(session_id: Any, cache: dict) -> bool:
+    """Whether the speaker of this session holds the training yes now
+    (founder 2026-10-15, fix 7: an export takes only speakers who said yes,
+    like every other training path). No session, no principal, or a read
+    that cannot answer: no."""
+    key = str(session_id or "")
+    if not key:
+        return False
+    if key not in cache:
+        from services.training_corpus import _principal
+        session = db.v2_get_session_by_id(key) or {}
+        principal = _principal(db, key, str(session.get("arc_id") or ""))
+        status = db.get_mlc2_training_consent_status(principal) if principal else None
+        cache[key] = bool((status or {}).get("active") is True)
+    return cache[key]
+
+
 def run_annotation_export(
     *,
     limit: int = 5000,
@@ -126,28 +161,15 @@ def run_annotation_export(
         last_event_id = checkpoint_event_id
 
         lines: list[str] = []
+        consent_cache: dict = {}
         for ev in events:
+            last_created_at = ev.get("created_at") or last_created_at
+            last_event_id = ev.get("id") or last_event_id
+            if not _training_yes(ev.get("session_id"), consent_cache):
+                continue
             try:
-                prev_hash = ev.get("previous_value_hash") or _to_hash(ev.get("ai_original_text"))
-                new_hash = ev.get("new_value_hash") or _to_hash(ev.get("coach_final_text"))
-                line = {
-                    "event_id": ev.get("id"),
-                    "student_id": ev.get("user_id"),
-                    "session_id": ev.get("session_id"),
-                    "draft_id": ev.get("draft_id"),
-                    "section_type": ev.get("section_type"),
-                    "field_name": ev.get("field_name"),
-                    "previous_value_hash": prev_hash,
-                    "new_value_hash": new_hash,
-                    "reason_chip": ev.get("reason_chip"),
-                    "custom_reason": ev.get("custom_reason"),
-                    "created_by": ev.get("created_by"),
-                    "created_at": ev.get("created_at"),
-                }
-                lines.append(json.dumps(line, ensure_ascii=True))
+                lines.append(json.dumps(_event_line(ev), ensure_ascii=True))
                 exported += 1
-                last_created_at = ev.get("created_at") or last_created_at
-                last_event_id = ev.get("id") or last_event_id
             except Exception:
                 failed += 1
 

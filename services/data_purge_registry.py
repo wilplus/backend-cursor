@@ -273,6 +273,12 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "database_row", 60),
     PurgeDependency("settings", "user_settings", "user_id", "user", "delete",
                     "database_row", 60),
+    # Lesson bookings (founder 2026-10-15, fix 6). The termination request
+    # already wiped a paid lesson down to its accounting record and detached
+    # it (services.booking.erase_for_user); whatever still names the account
+    # is deleted here.
+    PurgeDependency("bookings", "bookings", "user_id", "user", "delete",
+                    "database_row", 60),
     PurgeDependency("student_details", "v2_student_details", "user_id", "user",
                     "delete", "database_row", 60),
     PurgeDependency("speaker_profile", "v2_speaker_profiles", "user_id", "user",

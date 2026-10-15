@@ -481,6 +481,12 @@ def v2_processing_terminate():
     # permit for the delete would be refused and the voice would stay.
     from services.ai_voice_clone import erase_on_termination
     erase_on_termination(db, getattr(request, "user_id", None), principal_id)
+    # The coach's answer videos kept for this speaker go with the account
+    # (Privacy 3.6 §7; founder 2026-10-15, fix 5).
+    from services.coach_answer_video import erase_for_user
+    erase_for_user(getattr(request, "user_id", None))
+    from services.booking import erase_for_user as erase_bookings
+    erase_bookings(getattr(request, "user_id", None))
     try:
         if trigger == "account_deletion":
             # N48.4 Q14 A: blocked now, deleted after seven days unless the

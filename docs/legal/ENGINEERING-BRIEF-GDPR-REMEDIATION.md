@@ -84,7 +84,7 @@ until founder adopts and copy v1.3 ships).
 
 2. **Filter every training/corpus/dataset read path** on the flag. Start from
    `services/training_import.py`, `services/confidence_dataset.py`,
-   `services/ml_finetuning_export.py`, `services/annotation_export.py`, and any
+   the former `ml_finetuning_export` module (deleted 2026-10-15, unused), `services/annotation_export.py`, and any
    `training_labels` reader. **A missed path is the bug that matters here** — an
    Art 21 objection has to be honourable inside Art 12(3)'s one month, and today
    it is a manual hunt.

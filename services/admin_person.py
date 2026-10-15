@@ -249,6 +249,10 @@ def request_deletion(user_id: str, admin_id: str) -> dict:
     from services.ai_voice_clone import erase_on_termination
     from services.processing_authorization import ProcessingAuthorizationService
     erase_on_termination(db, user_id, principal)
+    from services.coach_answer_video import erase_for_user
+    erase_for_user(user_id)
+    from services.booking import erase_for_user as erase_bookings
+    erase_bookings(user_id)
     row = ProcessingAuthorizationService(db).request_account_deletion(
         principal, idempotency_key=f"admin-delete:{user_id}", reason_code="ADMIN_DELETION")
     logger.info("admin %s requested account deletion user=%s", admin_id, user_id)

@@ -114,10 +114,6 @@ REGISTER = {
     # ── prompt-shaped text that never hits a live API but drives models
     #    downstream (fine-tuning export, backlog email for coding agents,
     #    schema descriptions that reach the model via response_format) ──
-    "ml_finetuning.default_system": SourceRef(
-        "services/ml_finetuning_export.py", "_DEFAULT_SYSTEM"),
-    "ml_finetuning.field_prompts": SourceRef(
-        "services/ml_finetuning_export.py", "_FIELD_SYSTEM_PROMPTS"),
     "dev_bugs.context": SourceRef("services/dev_bugs.py", "_CTX"),
     "llm_schemas.all": SourceRef("services/llm_schemas.py"),
 }
