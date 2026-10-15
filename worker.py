@@ -14,8 +14,12 @@ Boot sequence (order matters):
      queue (services/pipeline_jobs.py::run_sweep_loop — fork-isolated, so
      no db-touching threads live in this parent to share sockets with
      forked children).
-  5. Block in rq.Worker.work(with_scheduler=True) — the scheduler serves
-     the delayed retry / sweep-chain enqueues.
+  5. Block in rq.Worker.work(). The delayed retry / sweep-chain enqueues
+     are served by the scheduler keeper (services/scheduler_keeper.py):
+     one thread in the pool parent (or in the single-slot process) that
+     polls for rq's scheduler lock every few seconds and releases it the
+     moment this container drains, so a deploy never leaves delayed jobs
+     waiting on rq's ten-minute maintenance tick.
 
 Run: sh bin/railway-worker.sh (locates ffmpeg first, exactly like the
 web entrypoint). Requires REDIS_URL; exits non-zero without it so
@@ -388,14 +392,53 @@ def _traced_worker_class():
 
 
 def _run_worker_loop(conn, *, with_scheduler: bool) -> None:
-    """Block in one rq worker. Never returns until the worker stops."""
+    """Block in one rq worker. Never returns until the worker stops.
+
+    with_scheduler: serve enqueue_in (delayed retries, the sweep chain, the
+    debounced rebake) from THIS process, through the scheduler keeper, never
+    rq's own ``work(with_scheduler=True)``: that asks for the scheduler lock
+    once at boot and again ten minutes later, so a container deployed while
+    the previous one still held the lock moved no delayed job for up to ten
+    minutes (services/scheduler_keeper.py has the reading of rq's source).
+    """
     from rq import Queue
 
     q = Queue(served_queue(), connection=conn)
-    # with_scheduler: serves enqueue_in (delayed retries + the sweep chain).
-    # rq guards it with a lock, so it is safe on every slot — but only slot 0
-    # asks for it, since one scheduler is all the queue needs.
-    _traced_worker_class()([q], connection=conn).work(with_scheduler=with_scheduler)
+    worker = _traced_worker_class()([q], connection=conn)
+    keeper = None
+    if with_scheduler:
+        keeper = _start_scheduler_keeper(
+            conn,
+            # rq sets this when a warm shutdown arrives mid-job; releasing
+            # the lock then, not after the drain, hands the scheduler to the
+            # next container while this one finishes its horse.
+            draining=lambda: bool(getattr(worker, "_stop_requested", False)),
+        )
+    try:
+        worker.work(with_scheduler=False)
+    finally:
+        if keeper is not None:
+            keeper.stop()
+
+
+def _start_scheduler_keeper(conn, *, draining):
+    """The one scheduler this container runs for its queue (see
+    services/scheduler_keeper.py). Best-effort: a keeper that cannot start
+    leaves the queue as it was before, with no scheduler; the web-boot sweep
+    and POST /v2/internal/jobs/sweep remain the backstops."""
+    try:
+        from services.scheduler_keeper import SchedulerKeeper
+
+        keeper = SchedulerKeeper([served_queue()], conn, draining=draining)
+        keeper.start()
+        logger.info("scheduler keeper started for queue '%s' (pid=%s)",
+                    served_queue(), os.getpid())
+        return keeper
+    except Exception as e:
+        logger.error("scheduler keeper failed to start: %s — delayed jobs "
+                     "on '%s' will not move until a keeper runs",
+                     e, served_queue(), exc_info=True)
+        return None
 
 
 def _worker_child(slot: int) -> None:
@@ -436,7 +479,10 @@ def _worker_child(slot: int) -> None:
         logger.error("slot %d: no broker connection", slot)
         return
     logger.info("slot %d listening (pid=%s)", slot, os.getpid())
-    _run_worker_loop(conn, with_scheduler=(slot == 0))
+    # No scheduler in a slot: the pool parent keeps it (see _run_worker_pool),
+    # because it is the one process that is always awake and never blocked
+    # in a job or a dequeue, and it is the one that hears the deploy signal.
+    _run_worker_loop(conn, with_scheduler=False)
 
 
 def _run_worker_pool(slots: int) -> int:
@@ -466,6 +512,18 @@ def _run_worker_pool(slots: int) -> int:
         p.start()
         procs[slot] = p
 
+    # The queue's scheduler lives HERE, after the slots are forked: this
+    # process is never busy with a job or blocked in a dequeue, and the
+    # deploy signal lands here first, so the lock is released within one
+    # poll of SIGTERM and the next container's keeper takes it at once.
+    # The keeper dials its own Redis connection; no socket is shared with
+    # the slots.
+    from services import job_queue as _jq
+    keeper = _start_scheduler_keeper(
+        _jq.get_redis(for_worker=True),
+        draining=lambda: stopping["flag"],
+    )
+
     while not stopping["flag"]:
         for slot, p in list(procs.items()):
             p.join(timeout=1)
@@ -486,6 +544,8 @@ def _run_worker_pool(slots: int) -> int:
     # drain window before intervening.  The delayed fallback still handles a
     # platform that signals PID 1 only, without turning an ordinary rollout
     # into an immediate recording interruption.
+    if keeper is not None:
+        keeper.stop()
     for p in procs.values():
         p.join(timeout=30)
     for p in procs.values():

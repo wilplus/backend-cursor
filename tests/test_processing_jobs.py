@@ -201,6 +201,27 @@ class RunProcessingJobGuardTests(unittest.TestCase):
         self.assertNotIn("failed", [s[1] for s in db.states])
 
 
+    def test_a_failed_attempt_log_line_names_the_refusal_code_and_its_cause(self):
+        from services.processing_authorization import (
+            ProcessingAuthorizationError,
+        )
+
+        def _refused(job):
+            try:
+                raise RuntimeError("canceling statement due to statement timeout")
+            except RuntimeError as cause:
+                raise ProcessingAuthorizationError(
+                    "PROVIDER_PERMIT_UNAVAILABLE",
+                    "The processing authority could not be reached.", 503,
+                ) from cause
+        with self.assertLogs("services.pipeline_jobs", level="ERROR") as logs:
+            self._run(_FakeDb(job=_job()), runner=_refused)
+        line = next(m for m in logs.output if "attempt 1/" in m)
+        # Production said only "Provider processing is not authorized.";
+        # the line now names the code and the database's own error.
+        self.assertIn("[PROVIDER_PERMIT_UNAVAILABLE]", line)
+        self.assertIn("statement timeout", line)
+
     def test_ideal_text_timeout_is_special_terminal_and_never_requeues(self):
         from services.ideal_text_confirmation import IdealTextUnconfirmedError
 

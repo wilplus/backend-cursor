@@ -21,6 +21,11 @@ logger = logging.getLogger(__name__)
 
 _ENFORCED_VALUES = {"enforce", "enforced", "active"}
 
+# The permit RPC is sent again, with the same key, when the database gave
+# no answer: at once, then after short pauses. Three resends, ~2 s in all.
+_PERMIT_RESEND_PAUSES_S = (0.0, 0.5, 1.5)
+_sleep = time.sleep
+
 
 # The two choices a person can change after accepting (0361).
 PERSONALISED_PRACTICE = "personalised_practice"
@@ -140,6 +145,61 @@ def _connection_dropped(error: BaseException) -> bool:
     return "server disconnected" in message or "connection reset" in message
 
 
+_TRANSIENT_SQLSTATES = frozenset({
+    "PGRST001", "PGRST002", "PGRST003",  # PostgREST: no/lost/busy db pool
+    "57014",                              # statement timeout
+    "40001", "40P01",                     # serialization failure, deadlock
+    "53300", "53200",                     # too many connections, out of memory
+    "08000", "08001", "08003", "08004", "08006", "08007",  # connection
+    "57P01", "57P02", "57P03",            # admin shutdown / crash / startup
+})
+_TRANSIENT_HTTP_STATUSES = frozenset({"429", "502", "503", "504"})
+_TRANSIENT_TEXT = (
+    "statement timeout", "canceling statement", "too many connections",
+    "connection pool", "could not connect", "connection to server",
+    "server closed the connection", "terminating connection",
+    "the database system is", "bad record mac",
+    "eof occurred in violation of protocol", "timed out",
+)
+
+
+def _transient_infrastructure(error: BaseException) -> bool:
+    """The database gave no decision: the request timed out, the pooled
+    connection or the gateway failed, or Postgres cancelled the statement.
+    Every one of these is answered the same way minutes later, which is how
+    a Take's first attempt failed and its second passed (founder
+    2026-10-15). A domain refusal is never one of these."""
+    if _connection_dropped(error):
+        return True
+    try:
+        import httpx
+        if isinstance(error, (httpx.TimeoutException, httpx.NetworkError)):
+            return True
+    except ImportError:  # pragma: no cover -- httpx ships with supabase
+        pass
+    code = str(getattr(error, "code", "") or "").strip().upper()
+    if code in _TRANSIENT_SQLSTATES or code in _TRANSIENT_HTTP_STATUSES:
+        return True
+    message = str(error).lower()
+    return any(marker in message for marker in _TRANSIENT_TEXT)
+
+
+def _error_summary(error: BaseException) -> str:
+    """One bounded line naming the failure for the log: type, the database
+    code and message. No manifest, no transcript, no identifiers."""
+    parts = [type(error).__name__]
+    code = getattr(error, "code", None)
+    if code:
+        parts.append(f"code={code}")
+    message = str(getattr(error, "message", None) or error or "").strip()
+    if message:
+        parts.append(message[:200])
+    details = str(getattr(error, "details", None) or "").strip()
+    if details and details.lower() != "none":
+        parts.append(f"details={details[:120]}")
+    return " ".join(parts)
+
+
 def _domain_code(error: Exception, fallback: str) -> str:
     text = str(error or "")
     known = (
@@ -152,6 +212,8 @@ def _domain_code(error: Exception, fallback: str) -> str:
         "PROCESSING_BOUNDARY_INCOMPLETE", "CONSENT_CHOICE_INVALID",
         "PROCESSING_PRINCIPAL_UNRESOLVED",
         "PROCESSING_SOURCE_IS_CORPUS_IMPORT",
+        "PROCESSING_SOURCE_PRINCIPAL_MISMATCH",
+        "INVALID_PROVIDER_OPERATION", "INVALID_PERMIT_TTL",
     )
     for code in known:
         if code in text:
@@ -832,10 +894,24 @@ class ProcessingAuthorizationService:
             if not row:
                 raise RuntimeError("empty provider permit")
         except Exception as error:
-            code = _domain_code(error, "PROVIDER_PERMIT_DENIED")
-            raise ProcessingAuthorizationError(
-                code, "Provider processing is not authorized.", 403
-            ) from error
+            if _transient_infrastructure(error):
+                # Still no answer after the resends: the authority could
+                # not be reached. Not a refusal, and said so (503), so the
+                # job's retry runs it again instead of reading a denial.
+                code, status = "PROVIDER_PERMIT_UNAVAILABLE", 503
+                message = "The processing authority could not be reached."
+            else:
+                code, status = _domain_code(error, "PROVIDER_PERMIT_DENIED"), 403
+                message = "Provider processing is not authorized."
+            # The one line that says WHICH check failed (founder 2026-10-15:
+            # a first attempt failed on "not authorized" and the second
+            # passed, and nothing in the log said why).
+            logger.warning(
+                "provider permit refused: code=%s operation=%s provider=%s "
+                "take=%s error=%s", code, operation_kind, provider,
+                take_id or "-", _error_summary(error),
+            )
+            raise ProcessingAuthorizationError(code, message, status) from error
         if not _reissued and _permit_expired(row):
             return self.issue_provider_permit(
                 acquisition_principal_id=acquisition_principal_id,
@@ -848,26 +924,35 @@ class ProcessingAuthorizationService:
         return row
 
     def _issue_permit_rpc(self, params: Mapping[str, Any]) -> Any:
-        """The permit RPC, sent once more when the connection dropped.
+        """The permit RPC, sent again when the database gave no answer.
 
         A DROPPED CONNECTION IS NOT A REFUSAL (founder 2026-10-15: a Take sat
         at 59% for seven minutes on "Provider processing is not authorized"
-        that was really `RemoteProtocolError: Server disconnected`).
-        `db_transport` resends only reads, because a write may already have
-        landed; this RPC is idempotent on ``p_idempotency_key`` (a replayed
-        key hands back the permit it first minted), so resending it is safe.
-        Every answer the database gives, a denial included, is final.
+        that was really `RemoteProtocolError: Server disconnected`). Nor is
+        a timeout, a busy connection pool, a gateway 503 or a cancelled
+        statement (`_transient_infrastructure`): the same Take failed again
+        after that fix, two seconds of permits in a row, and passed seven
+        minutes later with nothing changed. `db_transport` resends only
+        reads, because a write may already have landed; this RPC is
+        idempotent on ``p_idempotency_key`` (a replayed key hands back the
+        permit it first minted), so resending it is safe. Bounded: at once,
+        then after short pauses, a few seconds in all. Every answer the
+        database gives, a denial included, is final.
         """
-        try:
-            return self.client.rpc(
-                "issue_phase1_provider_permit_v1", dict(params)).execute()
-        except Exception as error:
-            if not _connection_dropped(error):
-                raise
-            logger.warning("provider permit: connection dropped (%s), "
-                           "sending once more", type(error).__name__)
-            return self.client.rpc(
-                "issue_phase1_provider_permit_v1", dict(params)).execute()
+        attempt = 0
+        while True:
+            try:
+                return self.client.rpc(
+                    "issue_phase1_provider_permit_v1", dict(params)).execute()
+            except Exception as error:
+                if attempt >= len(_PERMIT_RESEND_PAUSES_S) \
+                        or not _transient_infrastructure(error):
+                    raise
+                logger.warning(
+                    "provider permit: no answer (%s), sending again (try %d)",
+                    _error_summary(error), attempt + 2)
+                _sleep(_PERMIT_RESEND_PAUSES_S[attempt])
+                attempt += 1
 
     def record_provider_event(
         self, permit_id: str | None, event_kind: str, *,
