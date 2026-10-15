@@ -35,6 +35,7 @@ untouched (L1); the Manager still arbitrates (L2); no provenance moves (L3).
 """
 from __future__ import annotations
 
+import json
 import logging
 from time import perf_counter
 from typing import Any, Mapping, TypeGuard
@@ -82,6 +83,64 @@ BAKE_TASK_PATH = "services.ideal_text_feedback_bake.run_pending_bake"
 BAKE_QUEUED_TTL_SECONDS = 90
 #: How long the "running" mark lives: past the slowest Manager run seen.
 BAKE_RUNNING_TTL_SECONDS = 180
+
+#  ONE LIVE MANAGER PER DOCUMENT, AND NO RECOMPUTE STORM (founder 2026-10-15).
+#
+#  Production, 13:47:34-13:48:05 UTC: the SAME document's Manager ran six
+#  times on the web service in thirty-one seconds. The page's settle loop
+#  asks `document_layers` up to eight times over ninety seconds, and every
+#  ask that found no stored row — an empty lane is not stored, by design
+#  (see `is_a_bake`), and a bake not in flight leaves no mark — ran the
+#  whole Manager again, beside the run the previous ask had started. The
+#  runs contend on the database: `load_document` measured 555 ms alone and
+#  6,092 ms with company.
+#
+#  Two short-lived Redis keys end that, with the same shape as the bake's
+#  marks: a TTL and nothing else, so nothing can be lost that the next read
+#  cannot recompute.
+#
+#  * THE LIVE LOCK, per (arc, actor, snapshot). The first reader takes it
+#    and computes; a reader that finds it held answers `pending`/`retryable`
+#    at once, exactly as it does for a bake in flight, and the page asks
+#    again on its own schedule. It is released when the run ends, and
+#    expires on its own if the worker dies holding it.
+#
+#  * THE LIVE BLOCK, per (arc, actor), remembering which snapshot it was
+#    computed over. The next asks are served from it instead of recomputing,
+#    INCLUDING an empty one — the case that was never stored and so was
+#    recomputed on every ask. The database rules do not move: an empty block
+#    is still never written to the table (`_backfill` is unchanged), and the
+#    stored row is still consulted first, so a bake that lands is served
+#    the moment it exists.
+#
+#  WHY AN EMPTY ANSWER MAY BE REMEMBERED AT ALL, and for how long. The
+#  snapshot id pins the words and the latest Take; a new Take, a lock or
+#  an edit publishes a new snapshot and the page is told its old one is
+#  stale (SNAPSHOT_STALE), so it asks with a new id and the remembered
+#  block no longer matches. What can still change under ONE snapshot is the
+#  mutable feedback surface — answers, opens, skips — and every one of those
+#  passes `request_rebake_after_answer`, which forgets the live block
+#  before anything else. The remaining question is evidence landing LATE for
+#  the same snapshot: the end-of-run bake computed an empty lane because
+#  `ideal_text_confirmation` ran before the feedback stages (the "AN EMPTY
+#  LANE IS NOT A BAKE" note). The live reader runs after the Take is told
+#  ready, past every stage the Manager arbitrates over, so the empty it
+#  computes is honest — and to be sure of that it is remembered only when
+#  the latest Take's analysis is `ready`, and then for a short while.
+#  A block carrying a `feedback_status` failure is never remembered: a
+#  failure may be transient and the retry is the page's.
+#
+#  WITHOUT A BROKER NOTHING CHANGES: no lock, no memory, the reader computes
+#  live, as every reader did.
+
+#: How long the live lock lives: past the slowest live run seen (20 s), well
+#: short of the bake's running mark.
+LIVE_LOCK_TTL_SECONDS = 60
+#: How long a computed block with marks is remembered.
+LIVE_BLOCK_TTL_SECONDS = 120
+#: How long an honest empty block is remembered: enough to absorb the settle
+#: loop's asks, short enough that nothing can hide for long.
+LIVE_EMPTY_BLOCK_TTL_SECONDS = 45
 
 
 def _bake_enabled() -> bool:
@@ -147,6 +206,14 @@ def _running_key(arc_id: str, actor_id: str, snapshot_id: str) -> str:
     return f"ideal-text-bake-running:{arc_id}:{actor_id}:{snapshot_id}"
 
 
+def _live_lock_key(arc_id: str, actor_id: str, snapshot_id: str) -> str:
+    return f"ideal-text-live-lock:{arc_id}:{actor_id}:{snapshot_id}"
+
+
+def _live_block_key(arc_id: str, actor_id: str) -> str:
+    return f"ideal-text-live-block:{arc_id}:{actor_id}"
+
+
 def _broker() -> Any:
     """The web side's Redis, or None when there is none. Never raises."""
     try:
@@ -191,6 +258,96 @@ def bake_in_flight(arc_id: str, actor_id: str, snapshot_id: str) -> bool:
         logger.warning("ideal-text bake in-flight read failed arc=%s: %s",
                        arc_id, error)
         return False
+
+
+def _take_live_lock(arc_id: str, actor_id: str, snapshot_id: str) -> bool:
+    """True when this reader may compute: it took the lock, or there is no
+    broker to ask (then every reader computes live, as before)."""
+    conn = _broker()
+    if conn is None:
+        return True
+    try:
+        return bool(conn.set(_live_lock_key(arc_id, actor_id, snapshot_id),
+                             "1", nx=True, ex=LIVE_LOCK_TTL_SECONDS))
+    except Exception as error:  # noqa: BLE001 -- unknown means compute
+        logger.warning("ideal-text live lock failed arc=%s: %s", arc_id, error)
+        return True
+
+
+def _cached_live_block(arc_id: str, actor_id: str,
+                       snapshot_id: str) -> dict | None:
+    """The block a reader just computed over this exact snapshot, or None."""
+    conn = _broker()
+    if conn is None:
+        return None
+    try:
+        raw = conn.get(_live_block_key(arc_id, actor_id))
+        if not raw:
+            return None
+        entry = json.loads(raw)
+        block = entry.get("block") if isinstance(entry, Mapping) else None
+        if (str(entry.get("snapshot_id") or "") != str(snapshot_id)
+                or not isinstance(block, dict)):
+            return None
+        return block
+    except Exception as error:  # noqa: BLE001 -- a miss, never a failure
+        logger.warning("ideal-text live block read failed arc=%s: %s",
+                       arc_id, error)
+        return None
+
+
+def _remember_live_block(database: Any, arc_id: str, actor_id: str,
+                         snapshot_id: str, core: Mapping[str, Any],
+                         block: Any) -> None:
+    """Keep the block this reader just computed for the page's next asks.
+    Marks: for `LIVE_BLOCK_TTL_SECONDS`. An honest empty: for
+    `LIVE_EMPTY_BLOCK_TTL_SECONDS`, and only once the latest Take is
+    `ready`. A failure: not at all."""
+    if not isinstance(block, dict) or block.get("feedback_status"):
+        return
+    if is_a_bake(block):
+        ttl = LIVE_BLOCK_TTL_SECONDS
+    elif _latest_take_ready(database, core):
+        ttl = LIVE_EMPTY_BLOCK_TTL_SECONDS
+    else:
+        return
+    conn = _broker()
+    if conn is None:
+        return
+    try:
+        conn.set(_live_block_key(arc_id, actor_id),
+                 json.dumps({"snapshot_id": str(snapshot_id), "block": block},
+                            default=str),
+                 ex=ttl)
+    except Exception as error:  # noqa: BLE001 -- the next ask recomputes
+        logger.warning("ideal-text live block not remembered arc=%s: %s",
+                       arc_id, error)
+
+
+def _latest_take_ready(database: Any, core: Mapping[str, Any]) -> bool:
+    """Is the document's latest Take past its analysis? Unknown reads as no,
+    so an empty computed mid-pipeline is never remembered."""
+    take_id = str(core.get("latest_take_session_id") or "")
+    if not take_id:
+        return False
+    try:
+        session = database.v2_get_session_by_id(take_id) or {}
+    except Exception as error:  # noqa: BLE001 -- unknown means not ready
+        logger.warning("ideal-text live block: take unreadable take=%s: %s",
+                       take_id, error)
+        return False
+    return (isinstance(session, Mapping)
+            and str(session.get("analysis_state") or "") == "ready")
+
+
+def forget_live_block(arc_id: Any, actor_id: Any) -> None:
+    """Forget the remembered live block for one document: every write to
+    the mutable feedback surface calls this, through
+    `request_rebake_after_answer`. Never raises."""
+    arc = str(arc_id or "")
+    actor = str(actor_id or "")
+    if arc and actor:
+        _unmark(_live_block_key(arc, actor))
 
 
 def changes_block_for(
@@ -249,6 +406,15 @@ def changes_block_for(
             str(arc_id), str(actor_id), str(document_snapshot_id or "")):
         logger.info("ideal-text bookmarks pending on the bake arc=%s", arc_id)
         raise SectionPending("ideal-text bake in flight")
+    # THE BLOCK A READER JUST COMPUTED over this exact snapshot is this
+    # answer too (founder 2026-10-15): the settle loop's next asks are served
+    # it rather than running the Manager again — see the live keys above.
+    cached = _cached_live_block(
+        str(arc_id), str(actor_id), str(document_snapshot_id or ""))
+    if cached is not None:
+        logger.info("ideal-text bookmarks served from the live block arc=%s "
+                    "changes=%d", arc_id, len(cached.get("changes") or []))
+        return cached
     # A MISS IS NOT A FAILURE, but it IS the four and a half seconds the
     # speaker waits, so it says which kind it is. Off means the flag; absent
     # means nothing was ever stored for this document; stale means an answer
@@ -257,18 +423,40 @@ def changes_block_for(
                 "flag_off" if not _bake_enabled()
                 else "absent_or_stale" if baked is None
                 else "stored_block_was_empty")
-    from routes.v2.explore_ideal_text import _tracked_changes_block
-    # THE CLOCK STARTS BEFORE THE MANAGER, not at the write (0351). An answer
-    # committed while this runs was not seen by it, and a row dated at the
-    # write would outlive that answer and serve a decided bookmark back.
-    _started = perf_counter()
-    block = _tracked_changes_block(
-        str(arc_id), str(core.get("text") or ""), str(actor_id),
-        str(core.get("latest_take_session_id") or ""),
-        review_version=core.get("version"))
-    _backfill(database, arc_id, actor_id, document_snapshot_id, block,
-              int((perf_counter() - _started) * 1000))
-    return block
+    return _compute_live(database, str(arc_id), str(actor_id),
+                         str(document_snapshot_id or ""), core)
+
+
+def _compute_live(database: Any, arc_id: str, actor_id: str,
+                  snapshot_id: str, core: Mapping[str, Any]) -> dict:
+    """The Manager, once per document at a time: under the live lock, with
+    the result remembered for the page's next asks and backfilled to the
+    table exactly as before."""
+    # ONE LIVE RUN AT A TIME. A reader that finds another request already
+    # computing this document answers "ask me again", as it does for a bake
+    # in flight; the next ask is served that run's block from the live
+    # memory, or the stored row it backfilled.
+    if not _take_live_lock(arc_id, actor_id, snapshot_id):
+        logger.info("ideal-text bookmarks pending on a live run arc=%s", arc_id)
+        raise SectionPending("ideal-text live run in flight")
+    try:
+        from routes.v2.explore_ideal_text import _tracked_changes_block
+        # THE CLOCK STARTS BEFORE THE MANAGER, not at the write (0351). An
+        # answer committed while this runs was not seen by it, and a row
+        # dated at the write would outlive that answer and serve a decided
+        # bookmark back.
+        _started = perf_counter()
+        block = _tracked_changes_block(
+            arc_id, str(core.get("text") or ""), actor_id,
+            str(core.get("latest_take_session_id") or ""),
+            review_version=core.get("version"))
+        _backfill(database, arc_id, actor_id, snapshot_id, block,
+                  int((perf_counter() - _started) * 1000))
+        _remember_live_block(database, arc_id, actor_id, snapshot_id, core,
+                             block)
+        return block
+    finally:
+        _unmark(_live_lock_key(arc_id, actor_id, snapshot_id))
 
 
 def _client_rows_only(block: dict) -> dict:
@@ -505,6 +693,9 @@ def request_rebake_after_answer(arc_id: Any, actor_id: Any) -> bool:
     actor = str(actor_id or "")
     if not arc or not actor:
         return False
+    # The answer retired the remembered live block too, flag or no flag:
+    # the next ask must see the answer, not the block computed before it.
+    forget_live_block(arc, actor)
     try:
         if not _bake_enabled():
             return False
