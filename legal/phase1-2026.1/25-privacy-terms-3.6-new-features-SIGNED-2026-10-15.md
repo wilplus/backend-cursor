@@ -225,3 +225,17 @@ Take". sha256 of `copy/privacy-3.6.txt` after both changes: `2518d96703dfd632d40
 section 7." The bytes to publish are `copy/privacy-3.6.txt` with sha256
 `2518d96703dfd632d409d6fc84f9729a86958278054992215972ad2417818864`.
 
+## 9. Pending with training wording v4 (founder, chat, 15 October 2026)
+
+The founder is shortening the consent screens: the training sentence becomes
+"We'd train our feedback on your practice." with a Read more link to Privacy
+§4a, and asked that "your practice" be defined in the Terms ("it should be
+defined in the terms"). Terms 3.6 §8 now opens with that definition: the
+words of the passages practised, the numbers measured from them, what the
+coach writes and answers about them, and the chats with Will; never the
+sound of the recordings. The training sentence after it says "Your practice"
+instead of listing the four. sha256 of `copy/terms-3.6.txt` after this
+change: `6a44303d69c4a943b016bcb621c4cb052a3d8f6ced4c40db8a481f96b34391c1` (as signed in §7: `04a40dcf…`, superseded). **Not in force
+until the founder approves v4 with it.** Privacy §4a's quote of the switch
+sentence changes in the same v4 commit.
+

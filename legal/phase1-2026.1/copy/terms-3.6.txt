@@ -183,12 +183,16 @@ providers named in the Privacy Policy, generate your documents and feedback,
 have a coach review them, and keep them available to you. That permission is
 limited to your own service and ends when your content is deleted.
 
+Your practice. In these terms and in the Privacy Policy, "your practice"
+means the words of the passages you practise, the numbers measured from them,
+what your coach writes and answers about them, and your chats with Will. It
+never includes the sound of your recordings.
+
 We do not use the sound of your recordings to train models, and the AI
-version of your voice is made for you alone. Your practice text, your coach's
-words and answers about it, what you write to Will, and measurements of your
-practice are used to train WillpowerLab's own models, together with other
-speakers' who said yes, only if you turn on Help improve WillpowerLab
-(Privacy Policy, section 4a), and never for anyone else.
+version of your voice is made for you alone. Your practice is used to train
+WillpowerLab's own models, together with other speakers' who said yes, only
+if you turn on Help improve WillpowerLab (Privacy Policy, section 4a), and
+never for anyone else.
 
 If you turn on Help improve WillpowerLab, you give us a licence to reproduce
 and adapt the words of the passages you practise and of what you write to
