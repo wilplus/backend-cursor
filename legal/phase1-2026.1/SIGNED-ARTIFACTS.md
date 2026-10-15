@@ -292,6 +292,7 @@ same day, 08:42 UTC.
 Will is given in the Lounge. Approved by the founder in chat ("approve all";
 "yes, go ahead as 3.7", N74), like the 3.6 texts; no PDF is rendered or
 signed for it. Terms 3.6 (`843fb6a2…`), AI notice 3.2 (`8b85806c…`) and the
-3.1 agreement are unchanged. Published only by `PUBLISH-3.7-2026-10-15.sql`.
+3.1 agreement are unchanged. Published by `PUBLISH-3.7-2026-10-15.sql`,
+run by the founder 2026-10-15 12:49 UTC.
 Not counsel-reviewed.
 
