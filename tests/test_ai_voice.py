@@ -228,7 +228,7 @@ def _run_pipeline(db, practice, voices, heard, pcm=None, objects=None):
     (0.08, "pause"),    # above it
 ])
 def test_one_problem_is_picked_only_from_the_line_up(pause_ratio, picked):
-    with _on():
+    with _on(AI_VOICE_MIN_SEVERITY=0.4):
         medians = ai_voice_severity.own_medians(TAKE)
         out = ai_voice_severity.select(_snip(150, pause_ratio=pause_ratio), medians,
                                        sentence=SENTENCE, seed="s")
