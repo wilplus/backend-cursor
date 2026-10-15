@@ -387,3 +387,78 @@ def test_a_failure_on_the_way_to_v3_serves_no_v2_rows():
     assert out["changes"] == []
     assert out["feedback_status"] == {"state": "failed",
                                       "reason": "v3_error:RuntimeError"}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  THE SAME BLOCK, READ ONCE (founder 2026-10-15, the timing lines)
+# ══════════════════════════════════════════════════════════════════════════
+#
+# The Manager's seconds were round trips: the same session, snippets and
+# arc rows read in stage after stage, and the V3 dark frame written inside
+# the speaker's wait. The refactor must change what the speaker is served
+# by nothing at all. The block below is the one `build_changes_block`
+# served on this fixture BEFORE the per-run memo existed (a frozen dump).
+
+_FROZEN_BLOCK = {
+    "changes": [{
+        "id": S2, "kind": "replace",
+        "proposed_text": "And then we launched it fast.",
+        "quote": "shipped", "snippet_id": S2, "source": "polish",
+        "span": {"end": 37, "start": 30}, "take_session_id": T1,
+        "visual": "underline", "why": "Tighter.", "why_key": "clarity",
+    }],
+}
+
+
+def test_the_block_is_the_same_block_and_no_row_is_read_twice():
+    db = _replace_sug_db()
+    assert _block(db) == _FROZEN_BLOCK
+    # Each read the run makes, it makes once: the session, the snippets
+    # and the arc's Takes used to be asked for in stage after stage.
+    assert len(db.calls) == len(set(db.calls)), db.calls
+
+
+class _ShadowDb(FakeDB):
+    """A Take in dark mode, whose frame write the test can hold back."""
+
+    def __init__(self, *, go=None, done=None, **kw):
+        super().__init__(**kw)
+        self.writes: list[str] = []
+        self.go, self.done = go, done
+
+    def v2_get_session_by_id(self, sid):
+        self._maybe_boom("v2_get_session_by_id")
+        return {"id": sid, "owner_principal_id": "owner-1", "take_index": 1,
+                "recording_id": "rec-1"}
+
+    def record_take_feedback_policy_v3_shadow(self, **kw):
+        if self.go is not None:
+            self.go.wait(5)
+        self.writes.append(kw["take_session_id"])
+        if self.done is not None:
+            self.done.set()
+        return {"outcome": "duplicate"}   # stops before the V4 draw
+
+
+def _dark(db, **kw):
+    frame = {"recording_id": "rec-1", "take_index": 1, "frame_hash": "h" * 64}
+    with patch("services.take_feedback_policy_v3.dark_enabled",
+               return_value=True), \
+            patch("services.take_feedback_policy_v3.build_shadow_frame",
+                  return_value=frame):
+        return _block(db, **kw)
+
+
+def test_the_live_read_serves_the_block_before_the_dark_frame_is_written():
+    import threading
+    inline = _ShadowDb(sugs=_replace_sug_db().sugs)
+    served_inline = _dark(inline)
+    assert inline.writes == [T1]            # the worker's path: inline
+
+    go, done = threading.Event(), threading.Event()
+    live = _ShadowDb(sugs=_replace_sug_db().sugs, go=go, done=done)
+    served_live = _dark(live, background_shadow=True)
+    assert served_live == served_inline == _FROZEN_BLOCK
+    assert live.writes == []                # served first ...
+    go.set()
+    assert done.wait(5) and live.writes == [T1]   # ... written after, once
