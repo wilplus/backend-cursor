@@ -124,6 +124,22 @@ CLAUDE.md requires. Deleting the account also deletes the AI voice.
 | L12 | Terms, "What the service does" (for counsel) | WillpowerLab makes an AI version of your voice from your recordings, to create practice examples that only you hear. ElevenLabs, a voice AI company, builds it for us. You can turn it off and delete it at any time in Data & consent. |
 | L13 | Privacy §5, replacing "OpenAI is the only AI provider…" (for counsel) | OpenAI and ElevenLabs are the AI providers that receive your audio or your transcript: OpenAI to transcribe it and write your feedback, ElevenLabs to make the AI version of your voice. |
 
+## Decided after the lock (2026-10-15)
+
+- **When it is made (founder 2026-10-15, option B: "start it the moment
+  you know it will be needed").** The clip no longer waits for the
+  Exercise screen. The first moment the backend knows which moment carries
+  the voice exercise is the end of the bake (the Manager's stored feedback
+  block). Right there the practice for that moment is opened server-side,
+  exactly as the walk would open it (its exercise when one is offered,
+  else the moment's own words), and the clip's job starts in the bake's
+  lane. The walk's own ask when the Exercise screen opens or Practise is
+  tapped stays as the fallback and finds the clip already made or on its
+  way. Everything else in section 5 stands: one clip per exercise, one
+  generation, checked before shown, the same limits and the same permits.
+- A voice still being made from Take 1 when the clip is asked for is
+  waited for (a short, bounded retry) instead of waiting for the next ask.
+
 ## 7. Order of work
 
 Build end to end, test with the founder's own voice, then counsel (L12,

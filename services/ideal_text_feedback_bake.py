@@ -916,4 +916,72 @@ def _bake_and_store(
             len(block.get("changes") or []),
             len(block.get("style_changes") or []), computed_over_ms,
         )
+        _prewarm_voice_clip(database, str(arc_id), str(actor_id),
+                            str(served[1]), block)
     return stored
+
+
+#: One prewarm per Take and moment: a rebake inside this window (an answer,
+#: a coach's share) never queues a second one. The job itself resumes the
+#: practice and finds the cycle, so a later one makes no second clip either.
+PREWARM_ONCE_TTL_SECONDS = 6 * 3600
+
+
+def _prewarm_voice_clip(database: Any, arc_id: str, actor_id: str,
+                        take_session_id: str, block: Mapping[str, Any]) -> bool:
+    """The AI version of your voice starts here (founder 2026-10-15, B).
+
+    The bake is the first moment the backend knows which moment carries the
+    voice exercise, minutes before the walk reaches its Exercise screen. So
+    the clip's job is queued now, in the bake's own lane, for the latest
+    Take's own actor only; `services.ai_voice_clip.prewarm` opens the
+    practice as the walk would and starts the clip. Never raises and never
+    changes the bake's result; the walk's own ask stays as the fallback.
+    """
+    try:
+        from services import ai_voice_clip, job_queue
+        from services.ai_voice_clone import available_to
+        if not available_to(actor_id):
+            return False
+        moment = ai_voice_clip.exercise_moment_of(block)
+        if not moment or moment["take_session_id"] != take_session_id:
+            return False
+        session = database.v2_get_session_by_id(take_session_id) or {}
+        if not isinstance(session, Mapping) \
+                or str(session.get("user_id") or "") != actor_id:
+            return False
+        key = f"ai-voice-prewarm:{take_session_id}:{moment['snippet_id']}"
+        if not _claim(key, PREWARM_ONCE_TTL_SECONDS):
+            return False
+        principal = ai_voice_clip.principal_for(database, take_session_id, actor_id)
+        lane = job_queue.bake_queue_name()
+        queued = job_queue.enqueue(
+            "services.ai_voice_clip.prewarm", actor_id, take_session_id,
+            moment["snippet_id"], principal, moment, lane,
+            rq_job_id=f"ai-voice-prewarm-{take_session_id}-{moment['snippet_id']}",
+            queue=lane)
+        if queued:
+            logger.info("ai voice: prewarm queued arc=%s take=%s kind=%s lane=%s",
+                        arc_id, take_session_id, moment["kind"], lane)
+        else:
+            _unmark(key)
+            logger.info("ai voice: prewarm not queued arc=%s take=%s (no queue); "
+                        "the walk's ask makes the clip", arc_id, take_session_id)
+        return queued
+    except Exception as error:  # noqa: BLE001 -- the bake's result stands
+        logger.warning("ai voice: prewarm not queued arc=%s: %s", arc_id, error,
+                       exc_info=True)
+        return False
+
+
+def _claim(key: str, ttl_seconds: int) -> bool:
+    """Set the mark only when it is not there; True when this call set it.
+    Without a broker the answer is yes (the job is idempotent)."""
+    conn = _broker()
+    if conn is None:
+        return True
+    try:
+        return bool(conn.set(key, "1", nx=True, ex=ttl_seconds))
+    except Exception as error:  # noqa: BLE001 -- the job is idempotent
+        logger.warning("bake mark not claimed key=%s: %s", key, error)
+        return True

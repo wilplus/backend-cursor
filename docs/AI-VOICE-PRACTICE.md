@@ -11,10 +11,24 @@ The lock (flow, words, rules) is
    once. A Take too short or too noisy makes none; the next Take tries again.
 2. The walk reaches the **voice Exercise** (the lowest sentence, the voice the
    weaker half). Praise and the Clearer version never call ElevenLabs.
-3. The walk asks for the clip (`POST …/confidence-practice/<id>/ai-voice`):
-   when the Exercise screen opens if no video fits, or when Practise is
-   tapped if one does. One clip per practice, made once (never remade when it
-   fails its check), reused for every appearance.
+3. The clip starts at the end of the bake (founder 2026-10-15, B): when the
+   Manager's feedback block is stored, `ideal_text_feedback_bake` reads the
+   voice-exercise moment from it (`ai_voice_clip.exercise_moment_of`, the
+   walk's own rule) and queues `ai_voice_clip.prewarm` in the bake's lane
+   (`BAKE_QUEUE_NAME`, else the pipeline queue), once per Take and moment.
+   The prewarm opens the moment's practice server-side through
+   `practice_start.start_practice` (the kind the walk would open: the
+   offered exercise, else `plain`; the same purpose and consent checks as
+   the routes) and runs the clip job. The walk's own ask
+   (`POST …/confidence-practice/<id>/ai-voice`, when the Exercise screen
+   opens if no video fits, or when Practise is tapped if one does) is the
+   fallback: it resumes the same practice and finds the same cycle. One clip
+   per practice, made once (never remade when it fails its check), reused
+   for every appearance. While the job is queued or waiting for the voice,
+   `demo` already says `ai_voice` with the clip `pending`, so the walk shows
+   the clip's place. A voice not ready yet (the clone from Take 1 still
+   being made) is asked for again every 30 s, at most 5 times
+   (`generation_metadata.no_voice_waits`); after that the next ask retries.
 4. The clip is shown in the video's place (no exact-fit video for the same
    problem), and after a try that isn't better yet, at most 3 times. It never
    plays by itself.
