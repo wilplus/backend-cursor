@@ -449,7 +449,10 @@ def _compute_live(database: Any, arc_id: str, actor_id: str,
         block = _tracked_changes_block(
             arc_id, str(core.get("text") or ""), actor_id,
             str(core.get("latest_take_session_id") or ""),
-            review_version=core.get("version"))
+            review_version=core.get("version"),
+            # The V3 dark frame is written after the block, off this
+            # request's wait (`ideal_text_changes._ChangesRun`).
+            background_shadow=True)
         _backfill(database, arc_id, actor_id, snapshot_id, block,
                   int((perf_counter() - _started) * 1000))
         _remember_live_block(database, arc_id, actor_id, snapshot_id, core,

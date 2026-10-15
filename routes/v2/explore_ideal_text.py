@@ -724,7 +724,8 @@ def _record_arms(result, session_id, user_id) -> None:
 
 def _tracked_changes_block(arc_id, served_text, user_id="",
                            take_session_id="", review_version=None,
-                           degradation=None) -> dict:
+                           degradation=None, *,
+                           background_shadow: bool = False) -> dict:
     """The `changes` block of the SD student GET (founder 2026-07-20) —
     {} when the Living Transcript flag is off, so the key is simply
     ABSENT and the FE keeps rendering today's star layer.
@@ -751,6 +752,7 @@ def _tracked_changes_block(arc_id, served_text, user_id="",
             record_arms=_record_arms,
         ),
         degradation=degradation,
+        background_shadow=background_shadow,
     )
 
 
