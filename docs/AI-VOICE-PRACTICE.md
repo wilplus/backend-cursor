@@ -50,6 +50,12 @@ The severity minimum (`AI_VOICE_MIN_SEVERITY`, 0.4) and every
 normalization range (`AI_VOICE_PACE_*`, `AI_VOICE_PAUSE_*`,
 `AI_VOICE_STRESS_GAP_DB`) are environment settings; see `config.py`.
 
+When nothing reaches the minimum, the clip still comes: the default is
+stress, the main point said so it stands out (founder 2026-10-15, A). The
+selection says `default: true` and `reason: no_clear_problem_default`, so
+the stored cycles never count it as a problem found. A sentence of under
+five words has no main point apart from itself and gets no clip.
+
 ## What Eleven v4 can and cannot do
 
 No SSML; no `speed` or `style` on v4 (only `stability` and

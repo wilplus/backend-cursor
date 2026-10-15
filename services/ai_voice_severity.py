@@ -19,7 +19,8 @@ pitch, voice level or speaking style is ever the target:
           there is no stress severity (no absolute loudness is a problem).
 
 The highest severity wins if it reaches ``Config.AI_VOICE_MIN_SEVERITY``
-(0.4); otherwise there is no exercise. The minimum and every normalization
+(0.4); otherwise the default, stress on the main point, marked
+``default`` (founder 2026-10-15: always a better version to copy). The minimum and every normalization
 range (``Config.AI_VOICE_PACE_*``, ``AI_VOICE_PAUSE_*``,
 ``AI_VOICE_STRESS_GAP_DB``) are configuration, read at each pick. An
 exercise that didn't help this speaker twice running is held back, and a
@@ -56,6 +57,8 @@ TARGET_CHANGE = {
     "pause": {"type": "insert_pause", "metric": "pause_before_target_s", "value": 0.5},
     "stress": {"type": "raise_contrast", "metric": "target_loudness_db", "value": 3.0},
 }
+#: Why a clip was made when no problem reached the line: the default.
+DEFAULT_REASON = "no_clear_problem_default"
 GENERATION_INTENT = {
     "pace": {"delivery": "slightly slower and deliberate"},
     "pause": {"delivery": "one natural pause before the main point"},
@@ -180,7 +183,9 @@ def target_phrase(sentence: str, max_words: int = 4) -> Optional[str]:
 
 def select(snippet: dict, medians: dict, *, sentence: str, seed: str,
            history: Iterable[dict] = ()) -> Optional[dict]:
-    """The one exercise for this clip, or None when every signal is weak."""
+    """The one exercise for this clip. With every signal weak, the default
+    (stress on the main point); None only when the sentence has no main
+    point apart from itself."""
     scores = severities(snippet, medians)
     held = _held_back(history)
     ranked = sorted(
@@ -189,7 +194,14 @@ def select(snippet: dict, medians: dict, *, sentence: str, seed: str,
     floor = float(Config.AI_VOICE_MIN_SEVERITY)
     eligible = [p for p in ranked if scores[p] >= floor]
     if not eligible:
-        return None
+        # Nothing clearly off: the main point said so it stands out, so the
+        # speaker always hears a better version (founder 2026-10-15, A).
+        # Recorded as a default, never as a problem found.
+        phrase = target_phrase(sentence)
+        if not phrase:
+            return None
+        return _selection("stress", phrase, scores, snippet, medians, held,
+                          explored=False, default=True)
     explored = len(eligible) > 1 and _explores(seed)
     problem = eligible[1] if explored else eligible[0]
     phrase = target_phrase(sentence) if problem in ("pause", "stress") else None
@@ -199,9 +211,16 @@ def select(snippet: dict, medians: dict, *, sentence: str, seed: str,
         if not rest:
             return None
         problem, phrase = rest[0], None
+    return _selection(problem, phrase, scores, snippet, medians, held,
+                      explored=explored, default=False)
+
+
+def _selection(problem: str, phrase: Optional[str], scores: dict, snippet: dict,
+               medians: dict, held: set, *, explored: bool, default: bool) -> dict:
     return {
         "exercise": problem,
-        "reason": REASONS[problem],
+        "reason": DEFAULT_REASON if default else REASONS[problem],
+        "default": default,
         "severity": scores[problem],
         "severity_scores": scores,
         "trigger_measurements": {
