@@ -69,6 +69,28 @@ WILL_TONE: str = (
 )
 
 
+#: WillpowerLab's own words (founder 2026-10-15: "the run was too long" was
+#: read as jogging). Will and the sorter read every message through them.
+GLOSSARY: tuple[tuple[str, str], ...] = (
+    ("a run, run-through, recording or Take",
+     "one recording of the speaker's talk in the app"),
+    ("the walk", "the feedback steps after a Take"),
+    ("the Ideal Text", "their own talk written out from their latest Take, "
+     "one paragraph per slide"),
+    ("helper words", "the few words they pick to remember a slide"),
+    ("the Lounge", "this chat"),
+    ("coach review", "a human coach listening to a Take"),
+    ("practice or practise", "trying one sentence again in the walk"),
+)
+
+WILL_GLOSSARY: str = (
+    "─── WILLPOWERLAB'S WORDS (read the speaker's message through these) ───\n"
+    + "\n".join(f"  • {word}: {meaning}" for word, meaning in GLOSSARY) + "\n"
+    "When a word could mean something outside the app ('the run was too "
+    "long'), take the app's meaning first.\n"
+)
+
 def with_tone(system_prompt: str) -> str:
-    """Append Will's chat tone to a Lounge chat system prompt."""
-    return f"{system_prompt.rstrip()}\n\n{WILL_TONE}"
+    """Append the app's words and Will's chat tone to a Lounge chat
+    system prompt."""
+    return f"{system_prompt.rstrip()}\n\n{WILL_GLOSSARY}\n{WILL_TONE}"
