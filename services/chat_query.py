@@ -156,7 +156,7 @@ def _reply(answer: str, *, show_record_ui=False, suggested_action=None,
     }
 
 
-def _life_panel(user_id, question, _context) -> Optional[tuple[dict, str]]:
+def _life_panel(user_id, question, _context, _history=None) -> Optional[tuple[dict, str]]:
     """N3: for a non-participating user every response is byte-identical to
     main, so this returns None (keep going) for anything it does not own."""
     from services.life_chat import handle_note
@@ -174,7 +174,7 @@ def _life_panel(user_id, question, _context) -> Optional[tuple[dict, str]]:
                                  "link": note.get("link")}), "life_panel"
 
 
-def _goal_update(user_id, question, _context) -> Optional[tuple[dict, str]]:
+def _goal_update(user_id, question, _context, _history=None) -> Optional[tuple[dict, str]]:
     """Prompt A §6 C4: "change my goal to X" updates the profile goal and
     confirms in the speaker's language; a cheap pre-gate inside."""
     from services.goal_update import handle_goal_update
@@ -185,7 +185,7 @@ def _goal_update(user_id, question, _context) -> Optional[tuple[dict, str]]:
         "intent": "goal_update", "new_goal": update.get("new_goal")}), "goal_update"
 
 
-def _audit(user_id, question, _context) -> Optional[tuple[dict, str]]:
+def _audit(user_id, question, _context, _history=None) -> Optional[tuple[dict, str]]:
     """Prompt C §5 (retired by default, AUDIT_SURFACE_ENABLED=1 restores)."""
     from services.audit_intent import handle_audit_intent
     audit = handle_audit_intent(user_id, question)
@@ -195,7 +195,7 @@ def _audit(user_id, question, _context) -> Optional[tuple[dict, str]]:
                   debug={"intent": "audit"}), "audit"
 
 
-def _presentation_change(_user_id, question, context) -> Optional[tuple[dict, str]]:
+def _presentation_change(_user_id, question, context, _history=None) -> Optional[tuple[dict, str]]:
     """Deck changes are project-boundary decisions, resolved from the
     current project's explicit state before the librarian can improvise."""
     from services.presentation_change_intent import handle_presentation_change
@@ -207,11 +207,11 @@ def _presentation_change(_user_id, question, context) -> Optional[tuple[dict, st
                   debug={"intent": change["intent"]}), change["intent"]
 
 
-def _chat_intent(_user_id, question, _context) -> Optional[tuple[dict, str]]:
+def _chat_intent(_user_id, question, _context, history=None) -> Optional[tuple[dict, str]]:
     """Lounge-bot deterministic intercepts (chat-audit 2026-06-21): crisis →
     record CTA → off-mission deflect; anonymous and signed in alike."""
     from services.chat_intents import detect_chat_intent
-    intent = detect_chat_intent(question)
+    intent = detect_chat_intent(question, history)
     if not intent:
         return None
     return _reply(intent["answer"], show_record_ui=intent["show_record_ui"],
@@ -316,7 +316,7 @@ def answer_chat(database, *, user_id, question: str, history, context,
     question = question.strip()
     for failure, intercept in _intercepts(user_id, app_config):
         try:
-            claimed = intercept(user_id, question, context)
+            claimed = intercept(user_id, question, context, history)
             if claimed:
                 return finalize(*claimed)
         except Exception as error:

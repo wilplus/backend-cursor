@@ -83,7 +83,7 @@ class ChatRoutePersistsTheTurnTests(unittest.TestCase):
             patch("services.presentation_change_intent."
                   "handle_presentation_change", _presentation),
             patch("services.chat_intents.detect_chat_intent",
-                  lambda question: (
+                  lambda question, history=None: (
                       CHIP if "trainings" in question
                       else {**CHIP, "answer": "   "} if "blank" in question
                       else None)),

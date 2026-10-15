@@ -31,12 +31,24 @@ _lock = threading.Lock()
 _last = -1
 
 
-def next_dad_joke() -> str:
+def _same(a: str, b: str) -> bool:
+    return " ".join(a.split()) == " ".join(b.split())
+
+
+def is_dad_joke(text: object) -> bool:
+    """True when ``text`` is one of the jokes (as the thread stored it)."""
+    return isinstance(text, str) and any(_same(text, j) for j in DAD_JOKES)
+
+
+def next_dad_joke(told: tuple = ()) -> str:
     """Return a RANDOMLY chosen joke each time (founder), never the same one
-    twice in a row. Thread-safe."""
+    twice in a row, and none this thread was just told (``told``) while any
+    are left. Thread-safe."""
     import random
     with _lock:
         global _last
-        choices = [i for i in range(len(DAD_JOKES)) if i != _last]
+        fresh = [i for i in range(len(DAD_JOKES)) if i != _last
+                 and not any(_same(t, DAD_JOKES[i]) for t in told)]
+        choices = fresh or [i for i in range(len(DAD_JOKES)) if i != _last]
         _last = random.choice(choices) if choices else 0
         return DAD_JOKES[_last]
