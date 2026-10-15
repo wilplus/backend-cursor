@@ -2519,4 +2519,9 @@ Approved on the clickable prototype (<https://claude.ai/artifact/YCM8rQKkkwA2HKb
   route `GET /v2/admin/speaker-feedback` are removed; Privacy 3.6 §4 says
   nobody reads the conversation except for safety, the law, or the
   speaker's own request.
+- **Approved** (founder, same day): "I approve training wording V4 and the
+  privacy in terms 3.6 changes of 15 October." ElevenLabs has not answered
+  the controller request; the founder proceeds without it (25 §10).
+  `legal/phase1-2026.1/PUBLISH-3.6-2026-10-15.sql` is ready, dry-run on a
+  disposable database; it waits for the signed PDF of 27.
 

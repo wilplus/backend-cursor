@@ -277,3 +277,29 @@ because the request row that links them goes with the Take; they are kept,
 and deleted on request or when the account is closed. sha256 of
 `copy/privacy-3.6.txt` now `3e35aec50e44e950440c697216f94dc108b8e32cb80fe71db654195d666f3626`. Pending with v4.
 
+## 10. The 15 October changes approved (founder, chat, 15 October 2026)
+
+> I approve training wording V4 and the privacy in terms 3.6 changes of 15 October.
+
+Covers §8 and §9 above: the transfer lines and coach videos (already
+confirmed), the "your practice" definition, Will's conversation kept out of
+training and private, the coach-video sentence, and training wording v4
+(27-…). The bytes to publish are the `copy/` files as committed with this
+line, carried byte for byte by `PUBLISH-3.6-2026-10-15.sql`.
+
+**ElevenLabs (E1).** The controller request was sent on 15 October; no
+answer yet. The founder decided to proceed without it ("I guess they just
+acknowledge it … so we can just proceed"). The DPA (§3.1) already limits
+ElevenLabs to our documented instructions, which is what Privacy §5's "we
+do not authorise … ElevenLabs to use your content to train" states.
+Engineering's note: the account's own data-use setting should still be
+checked and turned off where ElevenLabs offers it; any answer is filed when
+it comes.
+
+**The publish script** `PUBLISH-3.6-2026-10-15.sql` was run end to end on a
+disposable PostgreSQL database built by `scripts/rehearsal_tier.sh` (all
+released migrations, a stand-in 3.4 policy and training-only-v1): 3.6
+active with the approved bytes and `us`, five required purposes,
+training-only-v4 in force from the same instant, the v4 sentence's hash
+registered. The dry run found and fixed one bug in STEP 5's country check.
+
