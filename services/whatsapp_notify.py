@@ -89,6 +89,13 @@ def save_phone(database: Any, user_id: str, body: Any) -> dict:
         "whatsapp_opted_in_at": now,
         "updated_at": now,
     }, on_conflict="user_id").execute()
+    # The Lounge's WhatsApp ask is answered; never let its bookkeeping
+    # block the number itself.
+    try:
+        from services import person_asks
+        person_asks.answered(str(user_id), "whatsapp")
+    except Exception:  # noqa: BLE001 -- bookkeeping only
+        _log.warning("whatsapp ask bookkeeping failed user=%s", user_id, exc_info=True)
     return {"phone": phone}
 
 

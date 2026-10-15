@@ -211,7 +211,9 @@ def person(user_id: str) -> Optional[dict]:
         "native_language": settings.get("profile_native_language"),
         "domain": settings.get("profile_domain"),
         "goal": settings.get("profile_goal"),
-        "phone": meta.get("whatsapp_phone"),
+        # The one copy the messages use (user_settings, services.whatsapp_notify);
+        # removing it in Data & consent removes it here too.
+        "phone": settings.get("whatsapp_phone"),
         "home_screen_at": meta.get("home_screen_at"),
         "consents": consent_rows,
         "tokens": account and {
