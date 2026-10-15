@@ -126,6 +126,20 @@ def _permit_expired(permit: Mapping[str, Any]) -> bool:
     return expires <= datetime.now(timezone.utc)
 
 
+def _connection_dropped(error: BaseException) -> bool:
+    """The request never got an answer: the pooled connection was closed
+    under it. Not a database decision of any kind."""
+    try:
+        import httpx
+        if isinstance(error, (httpx.RemoteProtocolError, httpx.ReadError,
+                              httpx.ConnectError)):
+            return True
+    except ImportError:  # pragma: no cover -- httpx ships with supabase
+        pass
+    message = str(error).lower()
+    return "server disconnected" in message or "connection reset" in message
+
+
 def _domain_code(error: Exception, fallback: str) -> str:
     text = str(error or "")
     known = (
@@ -801,18 +815,19 @@ class ProcessingAuthorizationService:
         pseudonym = hashlib.sha256(
             f"{acquisition_principal_id}:{take_id or 'no-take'}".encode("utf-8")
         ).hexdigest()
+        params = {
+            "p_acquisition_principal_id": acquisition_principal_id,
+            "p_source_take_id": take_id or None,
+            "p_source_recording_id": recording_id or None,
+            "p_provider": provider,
+            "p_operation_kind": operation_kind,
+            "p_pseudonymous_subject_ref": pseudonym,
+            "p_minimum_data_manifest": dict(minimum_data_manifest),
+            "p_idempotency_key": idempotency_key,
+            "p_ttl_seconds": 900,
+        }
         try:
-            result = self.client.rpc("issue_phase1_provider_permit_v1", {
-                "p_acquisition_principal_id": acquisition_principal_id,
-                "p_source_take_id": take_id or None,
-                "p_source_recording_id": recording_id or None,
-                "p_provider": provider,
-                "p_operation_kind": operation_kind,
-                "p_pseudonymous_subject_ref": pseudonym,
-                "p_minimum_data_manifest": dict(minimum_data_manifest),
-                "p_idempotency_key": idempotency_key,
-                "p_ttl_seconds": 900,
-            }).execute()
+            result = self._issue_permit_rpc(params)
             row = _one(result.data)
             if not row:
                 raise RuntimeError("empty provider permit")
@@ -831,6 +846,28 @@ class ProcessingAuthorizationService:
                 _reissued=True,
             )
         return row
+
+    def _issue_permit_rpc(self, params: Mapping[str, Any]) -> Any:
+        """The permit RPC, sent once more when the connection dropped.
+
+        A DROPPED CONNECTION IS NOT A REFUSAL (founder 2026-10-15: a Take sat
+        at 59% for seven minutes on "Provider processing is not authorized"
+        that was really `RemoteProtocolError: Server disconnected`).
+        `db_transport` resends only reads, because a write may already have
+        landed; this RPC is idempotent on ``p_idempotency_key`` (a replayed
+        key hands back the permit it first minted), so resending it is safe.
+        Every answer the database gives, a denial included, is final.
+        """
+        try:
+            return self.client.rpc(
+                "issue_phase1_provider_permit_v1", dict(params)).execute()
+        except Exception as error:
+            if not _connection_dropped(error):
+                raise
+            logger.warning("provider permit: connection dropped (%s), "
+                           "sending once more", type(error).__name__)
+            return self.client.rpc(
+                "issue_phase1_provider_permit_v1", dict(params)).execute()
 
     def record_provider_event(
         self, permit_id: str | None, event_kind: str, *,
