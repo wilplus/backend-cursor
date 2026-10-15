@@ -914,8 +914,9 @@ _LANE_BODIES: dict[str, str] = {
         "The speaker asked about or for one of the app's features. Use "
         "WHAT THE APP CAN DO and THIS SPEAKER below. Say yes in one or two "
         "short, warm sentences, say what happens next, and set app_action "
-        "to that feature's name. If it is already on for them, say so and "
-        "keep app_action null. Prices come only from the MASTER DOCUMENT. "
+        "to that feature's name. If it is already on for them, say so; the "
+        "form still opens so they can change it, so still set app_action. "
+        "Prices come only from the MASTER DOCUMENT. "
         "Never invent a feature, a price, or a URL."
     ),
     "my_project": (

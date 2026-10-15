@@ -22,6 +22,7 @@ a link the chat already makes clickable.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -87,7 +88,8 @@ def features_block(card: Optional[dict] = None) -> str:
     whatsapp_on = bool((card or {}).get("whatsapp_on"))
     lines = []
     for action, feature in FEATURES.items():
-        note = " (already on for this speaker)" if (
+        note = (" (already on for this speaker; the form lets them change "
+                "the number)") if (
             action == "whatsapp" and whatsapp_on) else ""
         lines.append(f"  • {action}: {feature['says']}{note}")
     return (
@@ -98,6 +100,17 @@ def features_block(card: Optional[dict] = None) -> str:
         "the form, button or link under your answer. Never invent a "
         "feature that is not on this list. Never write a URL yourself.\n"
     )
+
+
+_NAMED = (("whatsapp", re.compile(r"whats\s*app", re.I)),)
+
+
+def named_feature(question: Any) -> Optional[str]:
+    """A feature the speaker named outright ("WhatsApp"), so its form opens
+    whatever the model chose (founder 2026-10-15: asked for the WhatsApp
+    form, it did not render). None when no feature is named."""
+    text = question if isinstance(question, str) else ""
+    return next((action for action, pattern in _NAMED if pattern.search(text)), None)
 
 
 def apply_app_action(action: Any, *, card: Optional[dict],
@@ -113,8 +126,6 @@ def apply_app_action(action: Any, *, card: Optional[dict],
     opens = feature["opens"]
     if opens == "offer":
         if not signed_in:
-            return {}
-        if action == "whatsapp" and (card or {}).get("whatsapp_on"):
             return {}
         return {"offer": action}
     if opens == "chip":

@@ -136,19 +136,20 @@ class ChatRoutePersistsTheTurnTests(unittest.TestCase):
         self.assertEqual(third["answer"], SIGNUP_LINE)
         self.assertEqual(len(self.histories), 1)
 
-    def test_asking_for_whatsapp_opens_the_form_unless_it_is_on(self):
-        """Founder 2026-10-14: Will knows the app's features. Asked for
-        WhatsApp alerts, his reply comes with the WhatsApp offer bubble the
-        Lounge already draws; a speaker who has it on gets no second form."""
+    def test_asking_for_whatsapp_always_opens_the_form(self):
+        """Founder 2026-10-14/15: Will knows the app's features. A speaker
+        who names WhatsApp gets the WhatsApp form the Lounge already draws,
+        whatever the model chose, and also when a number is already saved
+        (the form changes it)."""
         self.app_action = "whatsapp"
-        body = self.post({"question": "can I get a whatsapp?",
+        body = self.post({"question": "can I get alerts on my phone?",
                           "persist": True}).get_json()
         self.assertEqual(body["offer"], "whatsapp")
-        offer_row = self.rows[-1][1][-1]
-        self.assertEqual(offer_row["metadata"], {"offer": "whatsapp"})
-        self.card = {"whatsapp_on": True}
-        self.post({"question": "can I get a whatsapp again?", "persist": True})
-        self.assertEqual(len(self.rows[-1][1]), 2)  # user + bot, no offer
+        self.assertEqual(self.rows[-1][1][-1]["metadata"], {"offer": "whatsapp"})
+        self.app_action, self.card = None, {"whatsapp_on": True}
+        body = self.post({"question": "show me the WhatsApp form",
+                          "persist": True}).get_json()
+        self.assertEqual(body["offer"], "whatsapp")
 
     def test_a_feature_with_a_page_comes_with_its_link(self):
         self.app_action = "booking"
