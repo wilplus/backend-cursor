@@ -150,7 +150,9 @@ def signup_gate(history: Any) -> Optional[str]:
     return SIGNUP_LINE if asked >= FREE_ANSWERS else None
 
 
-_IDEAL_CHARS = 1200
+#: The whole talk, slide by slide (Privacy 3.7 section 4). A long talk's
+#: later slides are listed by title only.
+_TALK_CHARS = 7000
 _SLIDES_MAX = 20
 _REVIEW_PENDING = {"queued", "in_review"}
 
@@ -189,6 +191,44 @@ def slide_topics(contexts: list) -> list:
     return [t for t in topics if t][:_SLIDES_MAX]
 
 
+def _said_by_slide(payload: dict) -> tuple[dict, list]:
+    """The Ideal Text paragraphs by the slide each is proven to belong to,
+    and those with no slide. Pure."""
+    said: dict[int, list[str]] = {}
+    loose: list[str] = []
+    for piece in payload.get("pieces") or []:
+        if not isinstance(piece, dict) or not (piece.get("text") or "").strip():
+            continue
+        index = piece.get("slide_index")
+        if isinstance(index, int) and index >= 0:
+            said.setdefault(index, []).append(piece["text"].strip())
+        else:
+            loose.append(piece["text"].strip())
+    return said, loose
+
+
+def talk_by_slide(contexts: list, payload: dict) -> str:
+    """Each slide's title and points, with what the speaker said on it in
+    their latest Take; later slides by title only past ``_TALK_CHARS``."""
+    said, loose = _said_by_slide(payload)
+    slides = [s for s in max((c.get("slides") or [] for c in contexts),
+                             key=len, default=[]) if isinstance(s, dict)]
+    lines, used = [], 0
+    for i, slide in enumerate(slides):
+        lines.append(f"    Slide {i + 1}: {(slide.get('title') or '').strip()}")
+        points = " / ".join(p.strip(" •-") for p in
+                            (slide.get("body") or "").splitlines() if p.strip())
+        entry = [f"      on the slide: {points}",
+                 f"      they said: {' '.join(said.get(i, [])) or '(nothing yet)'}"]
+        if used + len(entry[0]) + len(entry[1]) <= _TALK_CHARS:
+            lines += entry
+            used += len(entry[0]) + len(entry[1])
+    rest = " ".join(loose) or ("" if said else (payload.get("text") or "").strip())
+    if rest and used < _TALK_CHARS:
+        lines.append("    Their words not tied to a slide: " + rest[:_TALK_CHARS - used])
+    return "\n".join(lines)
+
+
 def _coach(database, latest: dict, latest_any: dict) -> dict:
     row = latest_any if str(latest_any.get("id")) == str(latest["id"]) \
         else (database.v2_get_session_by_id(str(latest["id"])) or {})
@@ -220,11 +260,10 @@ def _project(database, uid: str) -> dict:
                ).get("payload") or {}
     project = {
         "title": talk_title(contexts, payload),
-        "slide_topics": slide_topics(contexts),
         "takes_done": len(done),
         "processing": any(s.get("analysis_state") == "processing"
                           for s in spoken),
-        "ideal_text": (payload.get("text") or "").strip()[:_IDEAL_CHARS],
+        "talk": talk_by_slide(contexts, payload),
     }
     if done:
         project.update(_coach(database, done[-1], latest_any))
@@ -256,9 +295,6 @@ def render_status(card: Optional[dict]) -> str:
     if card.get("title") or card.get("takes_done") is not None:
         if card.get("title"):
             lines.append(f"  • Their talk: \"{card['title']}\"")
-        topics = card.get("slide_topics") or []
-        if topics:
-            lines.append("  • Slides, in order: " + " | ".join(topics))
         takes = card.get("takes_done") or 0
         lines.append(f"  • Takes recorded so far: {takes}" if takes
                      else "  • No finished Take yet")
@@ -268,9 +304,9 @@ def render_status(card: Optional[dict]) -> str:
             lines.append("  • Their coach has shared a word on the latest Take")
         elif card.get("coach_pending"):
             lines.append("  • A coach review of the latest Take is on its way")
-        if card.get("ideal_text"):
-            lines.append("  • Their Ideal Text (their own words, latest "
-                         "version):\n" + card["ideal_text"])
+        if card.get("talk"):
+            lines.append("  • Their talk, slide by slide (on the slide / what "
+                         "they said in their latest Take):\n" + card["talk"])
     else:
         lines.append("  • No project yet: they have not recorded a talk")
     lines.append("  • WhatsApp alerts: " + ("on" if card.get("whatsapp_on")

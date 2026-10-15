@@ -730,8 +730,6 @@ _INTENTS = (
     "capability_request", "library_recall", "correction",
     "app_feature", "my_project", "speaker_feedback",
 )
-# Lanes that see the speaker's status card and the app's feature list.
-_APP_LANES = {"app_feature", "my_project"}
 
 
 def _router_enabled() -> bool:
@@ -972,10 +970,10 @@ def _build_lane_prompt(intent, dont_ask_block, life_context=None,
                        app_context=None) -> str:
     parts = [_LANE_BASE, _LANE_BODIES[intent],
              "\n\n" + WILL_GLOSSARY + "\n" + WILL_TONE]
-    if intent in _APP_LANES:
-        block = render_app_context(app_context)
-        if block:
-            parts.append("\n\n" + block)
+    # Every lane knows the app and the speaker (Privacy 3.7 section 4).
+    block = render_app_context(app_context)
+    if block:
+        parts.append("\n\n" + block)
     if intent in _GROUNDED_LANES:
         parts.append(
             "\n\nMASTER DOCUMENT (verbatim — your only source of truth):\n"
