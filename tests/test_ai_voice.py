@@ -223,18 +223,17 @@ def _run_pipeline(db, practice, voices, heard, pcm=None, objects=None):
 # ── which one problem: severity against the speaker's own usual ──────────
 
 @pytest.mark.parametrize("pause_ratio, picked", [
-    (0.0915, None),     # severity just below 0.4: no exercise at all
+    (0.0915, "stress"), # just below 0.4: the default, the main point stands out
     (0.09, "pause"),    # exactly 0.4: the line itself counts
     (0.08, "pause"),    # above it
 ])
-def test_one_problem_is_picked_only_from_the_line_up(pause_ratio, picked):
+def test_a_problem_from_the_line_up_else_the_default(pause_ratio, picked):
     with _on(AI_VOICE_MIN_SEVERITY=0.4):
         medians = ai_voice_severity.own_medians(TAKE)
         out = ai_voice_severity.select(_snip(150, pause_ratio=pause_ratio), medians,
                                        sentence=SENTENCE, seed="s")
-        assert (out or {}).get("exercise") == picked
-        if out:
-            assert 0.0 <= out["severity"] <= 1.0 and out["target_phrase"]
+        assert out["exercise"] == picked and out["default"] is (picked == "stress")
+        assert 0.0 <= out["severity"] <= 1.0 and out["target_phrase"]
 
 
 def test_raw_units_are_never_compared_and_the_phrase_has_a_fallback():
