@@ -27,6 +27,7 @@ remediation decision (C4). Git history keeps ``services/key_points.py``.
 from __future__ import annotations
 
 import logging
+from time import perf_counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from collections.abc import Iterable, Mapping
@@ -137,6 +138,9 @@ class _ChangesRun:
         self.deps = deps
         self.db = deps.database
         self.log = log
+        # Milliseconds per stage, logged once per run (founder 2026-10-15:
+        # find which part of the 20-40 s bake is slow).
+        self.timings: dict[str, int] = {}
         # Only a durable review identity activates the immutable Take
         # contract. The student GET always supplies it. Keeping the legacy
         # no-version mode is intentional for internal pre-review callers; it
@@ -188,14 +192,24 @@ class _ChangesRun:
         # playback attach has to run again when it does — see `execute`.
         self.v3_replaced_changes = False
 
+    def _stage(self, name: str, fn: Callable[[], Any], *,
+               degradable: bool = False) -> Any:
+        """Run one stage and add its wall time to ``self.timings``.
+        ``degradable`` stages go through the log as before."""
+        started = perf_counter()
+        try:
+            return self.log.run(name, fn) if degradable else fn()
+        finally:
+            self.timings[name] = (self.timings.get(name, 0)
+                                  + int((perf_counter() - started) * 1000))
+
     # ── stages, in order ────────────────────────────────────────────────
 
     def execute(self) -> dict:
         from services.ideal_text_block import _living_transcript_enabled
         if not _living_transcript_enabled():
             return {}
-        log = self.log
-        self._load_document()
+        self._stage("changes.load_document", self._load_document)
         if not self.doc:
             return {}
         # CANONICAL PROVENANCE FIRST (order changed 2026-09-17). It builds
@@ -204,31 +218,28 @@ class _ChangesRun:
         # produces, so the swap is free — and keeping the canonical read in
         # ONE step keeps it one optional, degradable failure point rather
         # than two.
-        log.run("changes.canonical_provenance", self._canonical_provenance)
-        self._relocate()
-        self._suggestions_and_verdicts()
-        log.run("changes.applied_map", self._applied_map)
-        log.run("changes.emphasis_key_phrases", self._emphasis_key_phrases)
-        self._build_candidates()
+        self._stage("changes.canonical_provenance", self._canonical_provenance, degradable=True)
+        self._stage("changes.relocate", self._relocate)
+        self._stage("changes.suggestions_and_verdicts", self._suggestions_and_verdicts)
+        self._stage("changes.applied_map", self._applied_map, degradable=True)
+        self._stage("changes.emphasis_key_phrases", self._emphasis_key_phrases, degradable=True)
+        self._stage("changes.build_candidates", self._build_candidates)
         if self.take_contract_on and self.review_sid:
-            log.run("changes.current_take_confident_voice",
-                    self._current_take_confident_voice)
-        log.run("changes.praise_playback", self._praise_playback)
-        log.run("changes.prior_take", self._prior_take)
-        self._feedback_set_and_fallbacks()
-        log.run("changes.v3_shadow", self._v3_shadow)
-        self._immutable_membership()
-        self._select()
-        self._evidence_coordinates()
-        early = self._span_checks()
+            self._stage("changes.current_take_confident_voice", self._current_take_confident_voice, degradable=True)
+        self._stage("changes.praise_playback", self._praise_playback, degradable=True)
+        self._stage("changes.prior_take", self._prior_take, degradable=True)
+        self._stage("changes.feedback_set_and_fallbacks", self._feedback_set_and_fallbacks)
+        self._stage("changes.v3_shadow", self._v3_shadow, degradable=True)
+        self._stage("changes.immutable_membership", self._immutable_membership)
+        self._stage("changes.select", self._select)
+        self._stage("changes.evidence_coordinates", self._evidence_coordinates)
+        early = self._stage("changes.span_checks", self._span_checks)
         if early is not None:
             return early
-        log.run("changes.first_client_feedback", self._first_client_feedback)
+        self._stage("changes.first_client_feedback", self._first_client_feedback, degradable=True)
         if self.v3_replaced_changes:
-            log.run("changes.answered_service_items",
-                    self._mark_answered_service_items)
-            log.run("changes.settled_without_answer",
-                    self._mark_settled_without_answer)
+            self._stage("changes.answered_service_items", self._mark_answered_service_items, degradable=True)
+            self._stage("changes.settled_without_answer", self._mark_settled_without_answer, degradable=True)
         # FREEZE WHAT ACTUALLY SERVED (founder 2026-09-21: "we have to make
         # the users act upon it to close the UX loop").
         #
@@ -254,7 +265,7 @@ class _ChangesRun:
         # The dual-write moves with it because it reads `self.feedback_set`,
         # and reading it before the claim would have written the canonical
         # provenance of a set that did not exist yet.
-        self._claim_visibly()
+        self._stage("changes.claim_visibly", self._claim_visibly)
         # THE PACKET BEHIND EVERY V3 CARD (founder 2026-09-29; the 29 Sep
         # report's "V3 packets" finding). V2 froze a learning presentation
         # for each of its three cards inside `_canonical_dual_write`, keyed
@@ -265,16 +276,14 @@ class _ChangesRun:
         # claim, from the bundle V3 itself served from, so a packet
         # describes only a card that is on its way to the screen.
         if self.v3_replaced_changes:
-            log.run("changes.v3_learning_presentations",
-                    self._v3_learning_presentations)
+            self._stage("changes.v3_learning_presentations", self._v3_learning_presentations, degradable=True)
         from services.take_lifecycle import (
             confidence_prior_learning_writes_enabled,
         )
         if (self.feedback_set is not None and self.take_contract_on
                 and self.arm_sid
                 and confidence_prior_learning_writes_enabled()):
-            log.run("changes.canonical_dual_write",
-                    self._canonical_dual_write)
+            self._stage("changes.canonical_dual_write", self._canonical_dual_write, degradable=True)
         # HEAR IT, ON THE ROWS THAT ACTUALLY SURFACE (founder 2026-09-20:
         # "there is no playback on the overlay so you cannot play the
         # confident moment and actually see whether it sounded confident or
@@ -302,7 +311,7 @@ class _ChangesRun:
         # the only cost is one extra batched read, and only on a Take V3
         # actually owned.
         if self.v3_replaced_changes:
-            log.run("changes.praise_playback_v3", self._praise_playback)
+            self._stage("changes.praise_playback_v3", self._praise_playback, degradable=True)
         # THE EXERCISE, ON THE ROWS THAT ACTUALLY SURFACE (founder 2026-09-26).
         #
         # This ran above `_first_client_feedback`, which replaces the rows on
@@ -311,22 +320,22 @@ class _ChangesRun:
         # Moved here, after the claim, so it annotates only a row that is
         # served, and so the 80/20 draw it freezes is never spent on a moment
         # nobody sees.
-        log.run("changes.practice_offer", self._practice_offer)
+        self._stage("changes.practice_offer", self._practice_offer, degradable=True)
         # THE WINDOW OF THREE (founder lock 2026-09-30, task 11). Last,
         # after the practise is attached: orange needs it, and the window
         # reads the tier and the practise together. Only V3 rows carry the
         # tier, so only a V3 Take is windowed.
         if self.v3_replaced_changes:
-            log.run("changes.window", self._window)
+            self._stage("changes.window", self._window, degradable=True)
             # THE CARD THE MATRIX NAMES (founder 2026-10-05, N48.1, Wave 1
             # step 1). After the window, so only a served moment pays for the
             # read, and on answered moments too, so a reopen agrees.
-            log.run("changes.open_cards", self._open_cards)
+            self._stage("changes.open_cards", self._open_cards, degradable=True)
         # THE SIGNED LINES (founder 2026-09-30, E3; build plan P1-4). Last of
         # all: a praise row that surfaces carries its catalogue line, a
         # rewrite row its move. No catalogue, no change to any row.
-        log.run("changes.catalogue", self._catalogue)
-        return self._finish()
+        self._stage("changes.catalogue", self._catalogue, degradable=True)
+        return self._stage("changes.finish", self._finish)
 
     def _load_document(self) -> None:
         from services.transcript_document import build_transcript_document
@@ -1737,6 +1746,7 @@ def build_changes_block(arc_id, served_text, user_id="", take_session_id="",
     log = degradation if degradation is not None else DegradationLog(READ_PATH)
     run = _ChangesRun(arc_id, served_text, user_id, take_session_id,
                       review_version, deps, log)
+    started = perf_counter()
     try:
         result = run.execute()
     except Exception as error:
@@ -1748,6 +1758,12 @@ def build_changes_block(arc_id, served_text, user_id="", take_session_id="",
         # Feedback nor its notice (founder live test 2026-10-05).
         result = {"feedback_status": {"state": "failed",
                                       "reason": "changes_failed"}}
+    # ONE LINE PER RUN, slowest stages first, so a Railway log search for
+    # "changes timing" shows where the bake's seconds go.
+    slowest = sorted(run.timings.items(), key=lambda kv: -kv[1])
+    logger.info("changes timing arc=%s total=%dms %s", arc_id,
+                int((perf_counter() - started) * 1000),
+                " ".join(f"{k.removeprefix('changes.')}={v}" for k, v in slowest))
     if own_log:
         result = {**result, **log.payload()}
     return result
