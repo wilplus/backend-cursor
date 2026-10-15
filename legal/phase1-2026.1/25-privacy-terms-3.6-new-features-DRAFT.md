@@ -11,6 +11,9 @@
     training:            stays opt-in and is widened (founder's answer in chat, 2026-10-14: "Keep opt-in, widen it")
     scope:               AI voice, WhatsApp, Lounge chat, booking and lessons, community sharing, coach videos,
                          admin export, Google/LinkedIn sign-in (founder's answer in chat, 2026-10-14: all four groups)
+    countries:           the 27 EU/EEA codes of 3.5, plus 'us' (founder, chat, 2026-10-15: "allow users from
+                         California United States use the app so add to the list of countries United States
+                         and add it below Poland"); the United States only for residents of California (D8)
     the switch wording:  26-training-consent-wording-v3-DRAFT.md (training-only-v3)
     drafted by:          engineering, from the code; not a lawyer
 
@@ -66,6 +69,16 @@ tokens" (plans no longer carry reviews, `services/token_prices.py:51-59,154`).
 | §8 | the AI voice is for you alone; the licence covers what you write to Will; a per-take permission for community sharing; a coach's video answer is not to be published |
 | §11 | reviews paid in tokens rather than counted per plan; other users hear a take you share |
 
+**California (founder, 2026-10-15)**
+
+| Where | Change |
+|---|---|
+| Privacy version note, new §14 | what California residents should know (CCPA/CPRA style): categories, sources, purposes, sensitive personal information, no sale or sharing, the rights to know, delete, correct and limit, non-discrimination, authorised agents, 45 days |
+| Terms version note, §4 | in the United States, residents of California only; choosing the United States confirms it |
+| Terms §16 | a California consumer keeps the protection of California law that cannot be waived, and may sue in California |
+| the publish script | `allowed_countries` gains `'us'` |
+| the acceptance screen | the United States is listed right below Poland (frontend, `acceptanceSteps.ts`, `SECOND_CHOICE`; the country list and its order are not locked, consent-screen lock "Not locked") |
+
 **AI notice 3.2:** two paragraphs added: Will is an AI assistant, not a
 person; the AI version of your voice is AI-made, labelled, only you hear it
 (AI Act Art 50(1) and (2): people are told they talk to an AI, and synthetic
@@ -113,6 +126,19 @@ no refund rule (`services/booking.py:16,586`). If you want a different rule
 (for example a free cancellation up to 24 hours before), say so and §2
 changes before signature.
 
+**D8. The United States, California only. Drafted: the Terms limit US
+residents to California.** A country code cannot tell states apart, so the
+receipt records `us`, and the Terms make choosing it a statement of
+California residence. Why not every state: Illinois's BIPA gives
+per-person statutory damages for voiceprints without a written release, and
+the AI version of the voice is on for everyone (D3); Texas and Washington
+have similar laws. `05-us-counsel-brief-DRAFT.md` was parked on 2026-09-17
+because there were no US users; it is live again (E12). Also for US
+counsel: California is an all-party-consent state for recording
+conversations (Penal Code 632), which Terms §6 already covers; the CCPA's
+thresholds may not reach WillpowerLab today, and §14 is written as if they
+did.
+
 ## 4. What must be true before 3.6 is published (E-items)
 
 Publishing a sentence the code does not make true is worse than not
@@ -120,8 +146,8 @@ publishing it. Each item is its own reviewed PR or a founder action.
 
 | # | What | Why | Who |
 |---|---|---|---|
-| E1 | A signed ElevenLabs data processing agreement with SCCs, and ElevenLabs barred from training on our audio (their DPA or account setting; no flag is sent today, `services/elevenlabs_client.py:126-139`) | Privacy §5 "we do not authorise … ElevenLabs", §6 | founder |
-| E2 | WhatsApp Business data processing terms accepted for our Meta account | Privacy §5, §6 | founder |
+| E1 | ElevenLabs. **DPA in place** (founder supplied it 2026-10-15: "ElevenLabs Data Processing Addendum", last updated 8 April 2026, elevenlabs.io/dpa; it forms part of the self-serve Terms, so no separate signature): ElevenLabs is our processor, acting only on our documented instructions (§3.1); transfers rest on the EU-US Data Privacy Framework or the EEA SCCs, module 2, Irish law, deemed executed (§11); no selling or sharing under the CCPA (§12); 30-day notice of new subprocessors (§6.3). **Still open:** (a) the DPA's instructions are "set forth in the Agreement", so whether ElevenLabs may use our audio to improve its own models turns on the ElevenLabs Terms and our account's data-use setting, not the DPA: confirm the opt-out (or zero-retention mode) before §5's "we do not authorise … ElevenLabs" is published, or that sentence goes; (b) on self-serve plans ElevenLabs need not delete content until 180 days of inactivity and keeps backups on its own schedule (§9.2.2, §9.3), so our deletion call (`DELETE /v1/voices/{id}`) is what makes Privacy §7 true; the backup tail is for counsel | Privacy §5, §6, §7 | founder |
+| E2 | Meta (WhatsApp). **Still open.** The document supplied on 2026-10-15 is Meta's "Global Data Protection Addendum" (last updated 20 March 2026, facebook.com/legal/terms/Privacy). It governs the other direction: a company processing *Meta's* data as Meta's vendor ("Meta Platforms Data", §1.4, §2.2), not Meta processing our users' phone numbers and messages. The one we need is the **WhatsApp Business Data Processing Terms** (Meta as our processor for the Cloud API), with the transfer terms they bring, accepted for our WhatsApp Business account | Privacy §5, §6 | founder |
 | E3 | Lounge chat's OpenAI calls run inside `protected_provider_scope` with a permit (today `/v2/chat/query` carries none) | Privacy §5 "each transfer is made under a short-lived internal permit"; CLAUDE.md: every provider call goes through the processing-authorization path | engineering |
 | E4 | A "Remove" for the WhatsApp number on Data & consent (the frontend proxy exists at `bfd45f1`, `frontend-cursor/src/app/api/v2/user/whatsapp/route.ts:8`, nothing calls it); and one handler for `/v2/user/whatsapp` (`routes/v2/people.py:65-81` stores the number in auth metadata with no opt-in time, shadowed by the `user_settings` one) | Privacy §4 "remove it at any time in Data & consent"; D4 | engineering; the card is a locked screen → founder |
 | E5 | The share screen starts with nothing ticked (frontend `bfd45f1` `frontend-cursor/src/components/willab/NextTakeShareScreen.tsx:68`), and a shared take can be stopped later | Privacy §4d; D5 | engineering; locked screen (moment-feedback-chat lock) → founder |
@@ -131,6 +157,7 @@ publishing it. Each item is its own reviewed PR or a founder action.
 | E9 | An objection flag for D2: `/v2/admin/speaker-feedback` leaves out speakers who objected | Privacy §4 "from then on none of your messages is marked" | engineering (small) |
 | E10 | The ninth line above the switch (26-…) on the consent screens | 26-… | engineering; locked screen → founder |
 | E11 | DPIA and ROPA addenda for the four new operations (voice clone at ElevenLabs, Lounge chat, WhatsApp, bookings) and document 03 for AI notice 3.2 | accountability (Art 30, 35) | engineering drafts, founder signs |
+| E12 | US counsel reads brief 05 for California (CCPA/CPRA, Penal Code 632, the AI voice under California law), §14 and Terms §4 and §16; a US resident's request handled within 45 days | D8 | founder |
 
 ## 5. After signing, in order
 
@@ -141,11 +168,11 @@ publishing it. Each item is its own reviewed PR or a founder action.
 3. Render 26 as a PDF (`scripts/render_doc_pdf.py`), sign it (PAdES), upload
    to its `object_key`, record the signed hash in `SIGNED-ARTIFACTS.md`.
 4. Engineering writes `PUBLISH-3.6-<date>.sql` from `PUBLISH-3.5-2026-10-08.sql`
-   (policy `phase1-<date>-3.6`, the three copy files' exact bytes, v2 → v3 by
+   (policy `phase1-<date>-3.6`, the three copy files' exact bytes, `allowed_countries` with `'us'` added, v2 → v3 by
    `supersede_mlc2_training_consent_policy_v1`), and you run it by hand in
    the Supabase SQL editor (`docs/PHASE1-PROCESSING-RUNBOOK.md`). From then
    every speaker is asked to accept 3.6.
 
 ## 6. The sentence to sign
 
-> I sign the 3.6 pack of 15 October 2026 as drafted: Privacy 3.6, Terms 3.6, AI notice 3.2 and the training switch wording v3 with its nine lines, with D1 to D7 as drafted, knowing counsel has not seen them.
+> I sign the 3.6 pack of 15 October 2026 as drafted: Privacy 3.6, Terms 3.6, AI notice 3.2 and the training switch wording v3 with its nine lines, with D1 to D8 as drafted, and the United States (California only) added to the countries, knowing counsel has not seen them.

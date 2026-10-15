@@ -8,7 +8,8 @@ your use of willpowerlab.com and the WillpowerLab application.
 Version 3.6 replaces every earlier version. It adds what the service now
 does: the AI version of your voice, Will in the Lounge, WhatsApp messages and
 one-to-one lessons (sections 1 and 2); it sets out the plans as they are sold
-today (section 2); and it widens the training choice to what you write to
+today (section 2); it opens the service to residents of California (sections
+4 and 16); and it widens the training choice to what you write to
 Will (section 8), and asks you for it again. Under these terms the sound of
 your recordings is processed to deliver your own coaching and is never used
 to train models.
@@ -108,6 +109,11 @@ under 18.
 We offer the service only in the countries listed on the acceptance screen. If
 you are not resident in one of them, you cannot accept these terms and we
 cannot provide the service to you.
+
+In the United States, we offer the service only to residents of California.
+If you live in any other state, you cannot accept these terms. When you choose
+the United States on the acceptance screen, you confirm that you live in
+California.
 
 
 5. YOUR ACCOUNT
@@ -330,7 +336,9 @@ for that record at any time.
 These terms are governed by Polish law, and the courts of Warsaw, Poland have
 jurisdiction. If you are a consumer resident in the EU, this does not deprive
 you of the protection of the mandatory rules of the country where you live, and
-you may bring proceedings there.
+you may bring proceedings there. If you are a consumer resident in California,
+this does not deprive you of any protection of California law that cannot be
+waived by agreement, and you may bring proceedings in California.
 
 You may also use the European Commission's online dispute resolution platform.
 

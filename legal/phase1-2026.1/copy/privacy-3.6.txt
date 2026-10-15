@@ -9,7 +9,9 @@ now does that earlier versions did not: the AI version of your voice, made by
 ElevenLabs (sections 3 and 5); talking to Will in the Lounge (section 4);
 WhatsApp messages when your coach's feedback is in (section 4); one-to-one
 lessons you book with a coach (section 4); signing in with Google or
-LinkedIn (section 2); and sharing a take with a community (section 4d). It
+LinkedIn (section 2); sharing a take with a community (section 4d); and
+what residents of California should know, now that the service is open to
+them (section 14). It
 also widens one choice, Help improve WillpowerLab (section 4a): with your
 yes, what you write to Will joins your practice text in training. A yes you
 gave under an earlier version does not carry over: it covered less, so it
@@ -479,7 +481,8 @@ Clauses, which each provider's data processing agreement incorporates.
   Limited to process data from the EEA and Switzerland. Training copies
   (section 4a) are transferred to OpenAI in the United States under the same
   clauses.
-- ElevenLabs: Standard Contractual Clauses.
+- ElevenLabs: the EU-US Data Privacy Framework, and Standard Contractual
+  Clauses, which its data processing agreement incorporates.
 - Cloudflare: Standard Contractual Clauses. Our storage carries an Eastern
   Europe location hint, which is a preference rather than a guarantee.
 - Supabase: Standard Contractual Clauses and a UK addendum. Your data is stored
@@ -659,3 +662,34 @@ Artur Willoński, operating under the name "WillpowerLab"
 Poland, European Union
 Contact: contact@willpowerlab.com (a postal address is provided on request to
 data subjects and to the supervisory authority)
+
+
+14. IF YOU LIVE IN CALIFORNIA
+
+This section adds to the rest of this policy for residents of California.
+Everything above applies to you too, including your rights in section 8.
+
+What we collect, and why: the categories of personal information we collect
+are those in section 2: identifiers, such as your email address, your name
+and your phone number; audio recordings of your voice, and the AI version of
+your voice made from them; what you write, such as your Ideal Text and your
+messages to Will; and internet activity, such as technical and security logs.
+We collect them from you and from your use of the service, for the purposes
+in section 4, and keep each for as long as section 7 says.
+
+Sensitive personal information: the recordings of your voice, and anything
+sensitive they happen to reveal. We use it only to provide the service you
+asked for, and, if you turn on the choice in section 4a, to train models as
+that section describes. You can turn that choice off at any time.
+
+We do not sell your personal information, and we do not share it for
+cross-context behavioral advertising. We do not knowingly collect personal
+information from anyone under 18.
+
+Your rights: to know what personal information we collect, use and disclose,
+and to get a copy of it; to have it deleted; to have it corrected; to limit
+our use of your sensitive personal information; and not to be treated
+differently for using any of these rights. To use them, write to
+contact@willpowerlab.com. Someone you authorise may also write for you. We
+confirm who you are before we act on a request, and we answer within 45
+days.
