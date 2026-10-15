@@ -13,6 +13,46 @@ from typing import Any, Callable, Optional
 logger = logging.getLogger(__name__)
 
 
+class _SessionSnippets:
+    """The database, with ``get_snippets_by_session`` served from one batch
+    read of every Take on the page (light columns only). Anything else, and
+    any session the batch could not read, goes to the database as before."""
+
+    def __init__(self, database: Any, rows_by_session: dict):
+        self._database = database
+        self._rows = rows_by_session
+
+    def get_snippets_by_session(self, session_id: str, **kwargs: Any) -> list:
+        rows = self._rows.get(str(session_id))
+        if rows is None or kwargs:
+            return self._database.get_snippets_by_session(session_id, **kwargs)
+        return rows
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._database, name)
+
+
+def with_page_snippets(messages: list, database: Any) -> Any:
+    """Read the recordings of every Take on this page in one go (founder
+    2026-10-14: the Lounge took seven seconds reading each Take's pieces
+    with their word timings, once for moment clips and again for the whole
+    Take). Falls back to the plain database when the batch read fails."""
+    sids: set = set()
+    for m in messages or []:
+        meta = m.get("metadata")
+        if not isinstance(meta, dict):
+            continue
+        if m.get("kind") == "walk_step" and meta.get("take_session_id"):
+            sids.add(str(meta["take_session_id"]))
+        elif m.get("kind") == "recording_summary" and meta.get("session_id"):
+            sids.add(str(meta["session_id"]))
+    reader = getattr(database, "get_snippet_audio_rows_by_sessions", None)
+    if not sids or not callable(reader):
+        return database
+    rows = reader(sorted(sids))
+    return _SessionSnippets(database, rows) if isinstance(rows, dict) else database
+
+
 def refresh_walk_clips(messages: list, user_id: str, database: Any,
                        resolve: Callable[[dict], Optional[str]]) -> None:
     """Re-sign `metadata.clip.src` in place on the reader's walk steps."""

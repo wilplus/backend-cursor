@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import threading
 import posixpath
 from typing import Optional, Tuple
 
@@ -134,7 +135,22 @@ def storage_provider() -> str:
     return "r2" if coach_videos_use_r2() else "supabase"
 
 
+_lab_client = None
+_lab_client_lock = threading.Lock()
+
+
 def _client():
+    """The lab bucket's boto3 client, built once per process (it was built
+    afresh on every call, ~0.1-0.3 s each; founder 2026-10-14 speed plan)."""
+    global _lab_client
+    if _lab_client is None:
+        with _lab_client_lock:
+            if _lab_client is None:
+                _lab_client = _build_client()
+    return _lab_client
+
+
+def _build_client():
     """boto3 client for the lab bucket.
 
     Same credentials as coach media — one R2 account, several buckets —

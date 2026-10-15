@@ -2334,6 +2334,39 @@ class DatabaseService:
                 raise
             return []
 
+    def get_snippet_audio_rows_by_sessions(self, session_ids) -> Optional[dict]:
+        """The columns a playable link needs, for many sessions at once
+        (founder 2026-10-14: the Lounge read every Take's pieces one Take at
+        a time, with their word timings, twice). {session_id: [rows ordered
+        by start_offset_ms]}; None when unreadable, so the caller falls back
+        to ``get_snippets_by_session``. Paged like get_snippets_by_sessions."""
+        ids = sorted({str(s) for s in (session_ids or []) if s})
+        if not ids:
+            return {}
+        cols = ("id, session_id, user_id, start_offset_ms, duration_ms, "
+                "audio_segment_path, storage_path")
+        out: dict = {sid: [] for sid in ids}
+        try:
+            for i in range(0, len(ids), 20):
+                chunk = ids[i:i + 20]
+                offset = 0
+                while True:
+                    rows = (self.client.table(SNIPPETS_TABLE).select(cols)
+                            .in_("session_id", chunk)
+                            .order("start_offset_ms", desc=False)
+                            .order("id", desc=False)
+                            .range(offset, offset + 999).execute().data) or []
+                    for r in rows:
+                        out.setdefault(str(r.get("session_id")), []).append(r)
+                    if len(rows) < 1000:
+                        break
+                    offset += 1000
+        except Exception as e:
+            logger.warning("get_snippet_audio_rows_by_sessions failed n=%d: %s",
+                           len(ids), e, exc_info=True)
+            return None
+        return out
+
     def get_snippets_by_sessions(
         self, session_ids, *, include_words: bool = False,
     ) -> dict:

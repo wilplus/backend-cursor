@@ -80,3 +80,11 @@ def post_worker_init(worker):
         worker.log.info("[warmup] librosa numba JIT warmed (pid=%s)", worker.pid)
     except Exception as e:  # never block worker boot on the warmup
         worker.log.warning("[warmup] librosa warmup skipped: %s", e)
+    # Keep the database connection and the sign-in keys warm, so the first
+    # requests after a quiet spell do not wait for them (founder 2026-10-14).
+    try:
+        from services import warm_connections
+        warm_connections.start()
+        worker.log.info("[warmup] connection keep-warm started (pid=%s)", worker.pid)
+    except Exception as e:  # never block worker boot on the keep-warm
+        worker.log.warning("[warmup] keep-warm skipped: %s", e)
