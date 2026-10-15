@@ -292,6 +292,8 @@ def _librarian(database, user_id, question, history, app_config,
     answer = payload.get("answer", "")
     action = app.named_feature(question) or payload.get("app_action")
     opened = app.apply_app_action(action, signed_in=bool(user_id),
+                                  card=card() if action == "whatsapp" else None,
+                                  question=question,
                                   context=context)
     if opened.get("suggested_action"):
         suggested = opened["suggested_action"]
