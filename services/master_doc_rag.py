@@ -975,7 +975,7 @@ def _build_lane_prompt(intent, dont_ask_block, life_context=None,
             parts.append("\n\n" + life)
     if dont_ask_block:
         parts.append("\n\n" + dont_ask_block)
-    return with_voice_rules("".join(parts))
+    return "".join(parts)
 
 
 def _answer_via_router(

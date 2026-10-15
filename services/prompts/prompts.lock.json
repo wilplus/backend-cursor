@@ -264,7 +264,7 @@
     "master_doc_rag_lane.builder": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "73319cbbe81f3341e6ce1dbc629de6f1ba0e6dd2a909c96b163a0b551672454d"
+      "sha256": "3d2c9b270999b2429e39b937f15a241502a9182bb24bd58a8b6e496a9cd8ef94"
     },
     "master_doc_rag_router.classifier": {
       "kind": "source_ref",
