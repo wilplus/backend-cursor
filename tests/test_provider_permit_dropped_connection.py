@@ -57,3 +57,62 @@ def test_a_denial_is_final():
     with pytest.raises(ProcessingAuthorizationError):
         _permit(client)
     assert len(client.sent) == 1
+
+
+# ── the database gave no answer at all (founder 2026-10-15, second report) ──
+# After the resend above shipped, the same Take failed its first attempt on
+# "Provider processing is not authorized." again and passed its second seven
+# minutes later. A timeout, a busy pool, a gateway 503 and a cancelled
+# statement are not decisions either; they are resent, bounded, and when
+# they persist the refusal says "unavailable", not "denied".
+
+import logging  # noqa: E402
+
+from postgrest.exceptions import APIError  # noqa: E402
+
+from services import processing_authorization as pa  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _no_pauses(monkeypatch):
+    monkeypatch.setattr(pa, "_sleep", lambda _s: None)
+
+
+def _statement_timeout():
+    return APIError({"message": "canceling statement due to statement timeout",
+                     "code": "57014", "hint": None, "details": None})
+
+
+def test_a_statement_timeout_is_resent_with_the_same_key_until_it_answers():
+    client = _Client(_statement_timeout(), httpx.ReadTimeout("read"), PERMIT)
+    assert _permit(client)["id"] == "permit-1"
+    assert client.sent == [("issue_phase1_provider_permit_v1", "key-1")] * 3
+
+
+def test_a_database_that_never_answers_is_unavailable_not_a_denial(caplog):
+    gateway = APIError({"message": "JSON could not be generated", "code": 503,
+                        "hint": "Refer to full message for details",
+                        "details": "b'<html>503 Service Unavailable</html>'"})
+    client = _Client(*([gateway] * 10))
+    with caplog.at_level(logging.WARNING, logger=pa.__name__):
+        with pytest.raises(ProcessingAuthorizationError) as caught:
+            _permit(client)
+    assert caught.value.code == "PROVIDER_PERMIT_UNAVAILABLE"
+    assert caught.value.status == 503
+    # Bounded: one send plus the resend pauses, never a loop.
+    assert len(client.sent) == 1 + len(pa._PERMIT_RESEND_PAUSES_S)
+
+
+def test_a_refusal_log_line_names_the_check_that_failed(caplog):
+    client = _Client(RuntimeError("PROCESSING_SOURCE_PRINCIPAL_MISMATCH"))
+    with caplog.at_level(logging.WARNING, logger=pa.__name__):
+        with pytest.raises(ProcessingAuthorizationError) as caught:
+            _permit(client)
+    assert caught.value.code == "PROCESSING_SOURCE_PRINCIPAL_MISMATCH"
+    assert caught.value.status == 403
+    assert len(client.sent) == 1
+    line = next(r.getMessage() for r in caplog.records
+                if "provider permit refused" in r.getMessage())
+    assert "code=PROCESSING_SOURCE_PRINCIPAL_MISMATCH" in line
+    assert "operation=transcribe" in line
+    assert "RuntimeError" in line

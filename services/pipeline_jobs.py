@@ -602,6 +602,25 @@ def _fail_terminal_for_job(job: Dict[str, Any], error: Exception | str) -> None:
     _fail_terminal(job, str(error)[:500])
 
 
+def failure_detail(error: BaseException) -> str:
+    """The failed attempt's log line: the error, its domain code when it
+    has one, and the cause it was raised from. "Provider processing is not
+    authorized." alone said nothing about which check failed (founder
+    2026-10-15); with the code and the database's own error it does."""
+    text = f"{type(error).__name__}"
+    code = getattr(error, "code", None)
+    if code:
+        text += f"[{code}]"
+    text += f": {str(error)[:300]}"
+    cause = error.__cause__ or error.__context__
+    if cause is not None and cause is not error:
+        cause_code = getattr(cause, "code", None)
+        text += (f" (cause: {type(cause).__name__}"
+                 f"{f'[{cause_code}]' if cause_code else ''}: "
+                 f"{str(cause)[:300]})")
+    return text
+
+
 def _retry_backoff_seconds(attempts: int) -> int:
     """At once after the first failure, then 120s, 240s… capped at 10 min.
 
@@ -1089,7 +1108,8 @@ def run_processing_job(job_id: str) -> None:
         sentry_sdk.capture_exception(err)
         used = int(claimed.get("attempts") or 1)
         logger.error("pipeline_jobs: job %s attempt %d/%d failed: %s",
-                     jid, used, max_attempts, err, exc_info=True)
+                     jid, used, max_attempts, failure_detail(err),
+                     exc_info=True)
         if used >= max_attempts:
             _fail_terminal_for_job(claimed, err)
             return
