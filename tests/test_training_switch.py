@@ -111,3 +111,16 @@ def test_a_refused_yes_with_the_identity_keeps_its_stable_code():
         tc.handle(database, "owner", "POST", _on(), "web", identity=IDENTITY)
     assert (refused.value.code, refused.value.status) == ("REACCEPT_REQUIRED", 409)
     assert database.accepted == [] and database.bound == []
+
+
+def test_a_visitor_reads_only_the_words_in_force_and_no_state():
+    """Founder 2026-10-15: a visitor sees the third thing to confirm. The
+    public read carries the sentence and its fingerprint, nothing about
+    anyone; with no wording in force there is nothing to offer."""
+    assert tc.wording(FakeDatabase()) == {
+        "available": True, "active": False,
+        "policy_version": POLICY["version"],
+        "copy": POLICY["onboarding_copy"],
+        "copy_sha256": POLICY["approved_copy_sha256"],
+    }
+    assert tc.wording(FakeDatabase(policy=None)) == {"available": False, "active": False}
