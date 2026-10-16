@@ -909,8 +909,10 @@ _LANE_BODIES: dict[str, str] = {
         "feature from WHAT THE APP CAN DO only if they asked for it. When "
         "they ask to see, show or open their latest Take or Ideal Text "
         "and a Take is done, say it is right under your answer and set "
-        "app_action to latest_take; never send them to another screen "
-        "for it."
+        "app_action to latest_take, and keep suggested_action=trainings "
+        "so the button to all their presentations stays under the "
+        "answer too (founder 2026-10-16). Never answer only with a "
+        "pointer to another screen."
     ),
     "speaker_feedback": (
         "The speaker is telling you what they think of the app, of you, or "
