@@ -1342,13 +1342,15 @@ def v2_add_confident_voice_practice_attempt(practice_id):
         practice_id, str(request.user_id))
     if not practice:
         return jsonify({"code": "NOT_FOUND", "error": "practice not found"}), 404
-    if practice.get("status") != "open":
-        return jsonify({"code": "PRACTICE_CLOSED",
-                        "error": "This practice is already closed."}), 409
     # NO ATTEMPT CAP (founder lock 2026-09-30, D2): attempt 10 works like
     # attempt 1. The loop ends on In-between or Yes, or when the speaker
-    # skips it.
+    # skips it. The machine's praise no longer ends it (founder 2026-10-16):
+    # up to three tries in all, as practice_check.takes_more_tries says.
     existing = db.list_confident_voice_practice_attempts(practice_id)
+    from services.practice_check import takes_more_tries
+    if not takes_more_tries(practice, len(existing or [])):
+        return jsonify({"code": "PRACTICE_CLOSED",
+                        "error": "This practice is already closed."}), 409
     upload = request.files.get("audio_file")
     if not upload:
         return jsonify({"code": "INVALID_INPUT",

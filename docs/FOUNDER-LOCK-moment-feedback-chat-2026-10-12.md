@@ -223,6 +223,24 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
 
 ## Decided after the lock
 
+- **The Exercise screen is one thread, and a Good job no longer ends the
+  practise** (founder, 2026-10-16; prototype
+  <https://claude.ai/artifact/8nGuDXywGDWAZje3EcFMaj>, "Build it").
+  Whenever the Exercise screen is open, live or come back to with ‹ ›, it
+  shows the whole history at once: the clip, the Exercise, every try and
+  the answer it got. Nothing waits behind Next. Under it, while fewer than
+  three tries were made, the white outlined "Practise" with the red dot
+  sits above a black "Next", after a Good job too; the "Skip" link goes,
+  Next is the skip. After the third try only the history and Next remain,
+  with the signed move-on line when the third was not praise. This
+  replaces section 2.5's "Practise again" and "Skip" under a not yet and
+  "Next" alone under a Good job. The three-try limit, every line and the
+  AI clip rules stay. On the server a practice the machine closed on a
+  praise still takes tries until three in all; a later praise is the try
+  it lands on, a later not yet leaves the earlier praise standing. The
+  finished walk played again shows the thread and Next only, as before:
+  nothing is recorded there.
+
 - **One praise moment and one practise moment per Take** (founder,
   2026-10-14). Praise goes to the strongest moment (section 6's green, now
   one instead of three). Practise goes to the second best: close enough that
