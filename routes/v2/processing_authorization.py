@@ -293,17 +293,47 @@ def v2_processing_principal():
         }), 503
 
 
+def _status_in_one_trip(service: ProcessingAuthorizationService):
+    """The status read in one round trip (0473), or None for the old path.
+
+    Founder 2026-10-16: this read runs on every app open and paid three
+    sequential round trips. The guest token is verified HERE, in Python,
+    against the stored secret before its principal id reaches the database
+    function; the function never trusts an id it was not handed by this
+    code. A guest whose token does not parse or verify gets None, and the
+    old path refuses them exactly as before.
+    """
+    user_id = _request_user_id()
+    if user_id:
+        return service.status_in_one_trip(user_id, None)
+    token = request.headers.get(GUEST_OWNER_HEADER)
+    parsed = parse_guest_owner_token(token)
+    if not parsed:
+        return None
+    principal_id, _ = parsed
+    stored = ProjectRepository(db).get_principal(principal_id)
+    if not verify_guest_owner(token, stored):
+        return None
+    return service.status_in_one_trip(None, principal_id)
+
+
 @v2_bp.route("/processing-authorization", methods=["GET", "POST"])
 @optional_auth
 def v2_processing_authorization():
-    try:
-        principal_id = _principal_id()
-    except (CreateTakeError, ProjectOwnershipError) as error:
-        return _principal_error(error)
     service = ProcessingAuthorizationService(db)
     if request.method == "GET":
         # Q19 A: a person who asked to leave is shown that, not asked to
         # accept again. Read here only: require_current stays one read.
+        fast = _status_in_one_trip(service)
+        if fast is not None:
+            principal_id, status = fast
+            return jsonify(service.status_with_deletions(
+                principal_id, status=status)), 200
+    try:
+        principal_id = _principal_id()
+    except (CreateTakeError, ProjectOwnershipError) as error:
+        return _principal_error(error)
+    if request.method == "GET":
         return jsonify(service.status_with_deletions(principal_id)), 200
     payload = request.get_json(silent=True) or {}
     if not isinstance(payload, dict):

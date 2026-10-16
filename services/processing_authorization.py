@@ -509,7 +509,65 @@ class ProcessingAuthorizationService:
             "gate_mode": "enforce" if self.enforced else "off",
         }
 
-    def status_with_deletions(self, acquisition_principal_id: str) -> dict:
+    def status_in_one_trip(
+        self, user_id: str | None, product_owner_principal_id: str | None,
+    ) -> tuple[str, dict] | None:
+        """The acquirer and their status in ONE round trip, or None.
+
+        Founder 2026-10-16: the status read on every app open paid three
+        sequential round trips (owner principal, resolver, status). 0473's
+        `read_phase1_processing_status_v1` answers all three in one call by
+        calling the same two functions `resolve_acquisition_principal` and
+        `status` call, so the status is the one they would return.
+
+        A signed-in user is read by the user id the token verification
+        produced; a guest by a principal id the CALLER has already verified
+        against the stored secret (the function never sees a token). Both
+        may be given; the user id wins.
+
+        None whenever the fast path cannot vouch for the whole answer: the
+        function is missing (migration not yet applied), raises, or answers
+        a null principal or status (no owner principal yet, the resolver
+        failed). The caller then takes exactly today's path, so this can
+        never change an answer in either gate mode -- in `enforce` the old
+        path refuses an unresolvable principal, in `off` it degrades to the
+        owner, and both decisions stay where they are made.
+        """
+        if not user_id and not product_owner_principal_id:
+            return None
+        try:
+            result = self.client.rpc(
+                "read_phase1_processing_status_v1",
+                {
+                    "p_user_id": str(user_id) if user_id else None,
+                    "p_product_owner_principal_id": (
+                        str(product_owner_principal_id)
+                        if product_owner_principal_id else None),
+                },
+            ).execute()
+            answer = _one(result.data)
+        except Exception:
+            logger.info("status_in_one_trip unavailable; reading in steps",
+                        exc_info=True)
+            return None
+        if not answer:
+            return None
+        principal = answer.get("acquisition_principal_id")
+        status = answer.get("status")
+        if not principal or not isinstance(status, dict):
+            return None
+        row = dict(status)
+        # The same keys in the same order `status` adds them: gate_mode,
+        # then the country a re-acceptance prefills.
+        country = row.pop("country_of_residence", None)
+        row["gate_mode"] = "enforce" if self.enforced else "off"
+        if country:
+            row["country_of_residence"] = country
+        return str(principal), row
+
+    def status_with_deletions(
+        self, acquisition_principal_id: str, *, status: dict | None = None,
+    ) -> dict:
         """The status read with the deletions the ended state names.
 
         ON EVERY APP OPEN, so every round trip here is paid before anything
@@ -518,8 +576,12 @@ class ProcessingAuthorizationService:
         and never reads `pending_project_deletions`, so the two deletion
         reads run only when the status says blocked, and then side by side.
         The ordinary open pays the status read alone.
+
+        ``status`` is a status already read (`status_in_one_trip`); without
+        it, `status` is read here.
         """
-        status = self.status(acquisition_principal_id)
+        if status is None:
+            status = self.status(acquisition_principal_id)
         if (status.get("authorized") is not True
                 and status.get("code") == "PROCESSING_SERVICE_BLOCKED"):
             from services.parallel import run_in_parallel

@@ -857,6 +857,15 @@ if [ "$LANE" = "released" ]; then
   hard migrations/the_coach_s_words_reach_the_doors.sql
 fi
 
+# 0473 (founder 2026-10-16): the status read on every app open is one round
+# trip. One function that calls resolve_phase1_acquisition_principal_v1
+# (0355, 0414) and get_phase1_processing_authorization_v1 (0358, 0422), both
+# applied above in both lanes; no table. After 0459, as in the manifest.
+# Twice: apply/reapply idempotency. Its cases are in
+# tests/test_phase1_processing_postgres.py (TestTheStatusReadsInOneTrip).
+hard migrations/status_read_in_one_trip.sql
+hard migrations/status_read_in_one_trip.sql
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing
