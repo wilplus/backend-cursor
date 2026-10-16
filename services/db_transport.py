@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import Any
 
 import httpx
 
@@ -37,6 +38,12 @@ def _resendable(method: str, err: Exception) -> bool:
     return "server disconnected" in msg or "connection reset by peer" in msg
 
 
+def _short_path(url: Any) -> str:
+    """``/rest/v1/user_settings`` -> ``user_settings``; never raises."""
+    path = getattr(url, "path", None) or str(url).split("?", 1)[0]
+    return str(path).rsplit("/", 1)[-1] or str(path)
+
+
 def install() -> None:
     """Idempotent; called when services.db is imported."""
     try:
@@ -48,14 +55,17 @@ def install() -> None:
         return
     original = SyncClient.request
 
-    from services.request_context import count_db_call
+    from services.request_context import count_db_call, lap
 
     def request(self, method, url, *args, **kwargs):
         count_db_call()
         attempt = 0
         while True:
             try:
-                return original(self, method, url, *args, **kwargs)
+                # One lap per call, so a slow request's log line says which
+                # call waited (``parts=db:GET user_settings:3100,...``).
+                with lap(f"db:{method} {_short_path(url)}"):
+                    return original(self, method, url, *args, **kwargs)
             except Exception as err:
                 if attempt >= len(_PAUSES_S) or not _resendable(str(method), err):
                     raise

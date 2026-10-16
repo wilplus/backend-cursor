@@ -10308,24 +10308,30 @@ class DatabaseService:
             res = (
                 self.client.table("user_settings")
                 .select("profile_domain, profile_goal, profile_goal_previous, "
-                        "profile_goal_changed_at")
+                        "profile_goal_changed_at, profile_proficient_languages")
                 .eq("user_id", user_id)
                 .limit(1)
                 .execute()
             )
             if not res.data:
                 return {"domain": None, "goal": None,
-                        "previous_goal": None, "goal_changed_at": None}
+                        "previous_goal": None, "goal_changed_at": None,
+                        "proficient_languages": None}
             row = res.data[0]
+            langs = row.get("profile_proficient_languages")
             return {
                 "domain": row.get("profile_domain"),
                 "goal": row.get("profile_goal"),
                 "previous_goal": row.get("profile_goal_previous"),
                 "goal_changed_at": row.get("profile_goal_changed_at"),
+                # Same row as get_user_proficient_languages; read once so
+                # /v2/user/profile costs one trip, not two.
+                "proficient_languages": langs if isinstance(langs, list) and langs else None,
             }
         except Exception as e:
             err_low = str(e).lower()
-            if "profile_goal_previous" in err_low or "profile_goal_changed_at" in err_low:
+            if ("profile_goal_previous" in err_low or "profile_goal_changed_at" in err_low
+                    or "profile_proficient_languages" in err_low):
                 # Change-tracking migration not yet run — fall back to the
                 # base profile so the goal still surfaces.
                 return self._get_user_profile_base(user_id)
@@ -10426,7 +10432,8 @@ class DatabaseService:
             return True
         except Exception as e:
             err_low = str(e).lower()
-            if "profile_goal_previous" in err_low or "profile_goal_changed_at" in err_low:
+            if ("profile_goal_previous" in err_low or "profile_goal_changed_at" in err_low
+                    or "profile_proficient_languages" in err_low):
                 # Change-tracking migration not yet run — still persist the
                 # goal so the update isn't lost (history just isn't tracked).
                 try:
