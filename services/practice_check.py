@@ -52,7 +52,10 @@ _log = logging.getLogger(__name__)
 RULE_VERSION = "practice-check-v3"
 #: The three outcomes. Nothing else is ever decided.
 NEXT = ("praise", "again", "moved_on")
-#: CM3a A: the loop stops after the third try that is not praise.
+#: CM3a A: the loop stops after the third try that is not praise. Since
+#: 2026-10-16 (founder, the Exercise screen as one thread) a praise no longer
+#: ends the loop either: the speaker may try until three tries in all,
+#: whatever the answers; the praise stands (see ``takes_more_tries``).
 TRY_CAP = 3
 #: The signed bank said when it does (CM3b A, N55; services/line_bank.py).
 MOVED_ON_KEY = "CM3b"
@@ -104,6 +107,17 @@ def checkable_attempt(attempts: list) -> Optional[dict]:
     return max(attempts, key=_index)
 
 
+def takes_more_tries(practice: Mapping, tries_made: int) -> bool:
+    """Whether one more try may be recorded and checked after ``tries_made``
+    (founder 2026-10-16, the Exercise screen as one thread): while the
+    practice is open, and after the machine closed it on a praise until
+    three tries in all. A practice the speaker closed, or that moved on,
+    takes none."""
+    if practice.get("status") == "open":
+        return True
+    return machine_closed(practice) and tries_made < TRY_CAP
+
+
 def check_attempt(database: Any, practice: Mapping, attempt_id: str,
                   owner_user_id: str) -> tuple[int, dict]:
     """Decide the latest try; on praise close the practice on it, on
@@ -114,14 +128,19 @@ def check_attempt(database: Any, practice: Mapping, attempt_id: str,
     third try, and "again" otherwise; ``check`` is the decision the walk
     shows. A moved-on practice keeps no ``selected_attempt_id`` and no
     answer, so ``machine_closed`` stays False (no helper words), the
-    moment settles like a Skip and its bar clears."""
+    moment settles like a Skip and its bar clears.
+
+    After a praise the speaker may still try, up to three tries in all
+    (founder 2026-10-16). A later praise is the try the practice lands on;
+    a later "not yet" or third try changes nothing stored: the earlier
+    praise stands, so the helper words tapped from it stay."""
     from services.practice_adoption import practice_words
 
-    if practice.get("status") != "open":
-        return 409, {"code": "PRACTICE_CLOSED",
-                     "error": "This practice is already closed."}
     attempts = database.list_confident_voice_practice_attempts(
         str(practice.get("id")))
+    if not takes_more_tries(practice, len(attempts) - 1):
+        return 409, {"code": "PRACTICE_CLOSED",
+                     "error": "This practice is already closed."}
     target = checkable_attempt(attempts)
     if target is None or str(target.get("id")) != str(attempt_id):
         return 409, {"code": "NOT_CHECKABLE",
@@ -131,14 +150,16 @@ def check_attempt(database: Any, practice: Mapping, attempt_id: str,
     result: dict = {"outcome": outcome,
                     "check": public_check(check), "attempt_transcript": None,
                     "practice_row": practice}
-    fields: dict = {"after_practice": check}
-    if check["next"] == "moved_on":
+    praised_before = machine_closed(practice)
+    fields: dict = {} if praised_before else {"after_practice": check}
+    if check["next"] == "moved_on" and not praised_before:
         fields.update({
             "status": "completed",
             "closed_at": datetime.now(timezone.utc).isoformat(),
         })
     if check["next"] == "praise":
         fields.update({
+            "after_practice": check,
             "status": "completed",
             "selected_attempt_id": str(attempt_id),
             # Where the speaker landed, for reading only (F7); the
@@ -147,7 +168,7 @@ def check_attempt(database: Any, practice: Mapping, attempt_id: str,
             "closed_at": datetime.now(timezone.utc).isoformat(),
         })
     updated = database.update_confident_voice_practice(
-        str(practice.get("id")), owner_user_id, fields)
+        str(practice.get("id")), owner_user_id, fields) if fields else dict(practice)
     if updated is None:
         return 500, {"code": "V2_ERROR", "error": "Could not save."}
     result["practice_row"] = updated

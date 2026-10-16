@@ -42,6 +42,51 @@ def test_a_not_yet_names_the_reading_that_went_the_wrong_way():
 # ── the loop ──────────────────────────────────────────────────────────────
 
 
+
+class _PracticeDb:
+    """One practice row and its tries, as the checker reads and writes them."""
+
+    def __init__(self, practice):
+        self.practice, self.attempts = practice, []
+
+    def list_confident_voice_practice_attempts(self, _practice_id):
+        return list(self.attempts)
+
+    def update_confident_voice_practice(self, _practice_id, _owner, fields):
+        self.practice = {**self.practice, **fields}
+        return self.practice
+
+
+def test_a_good_job_no_longer_ends_the_loop_the_speaker_may_try_until_three(monkeypatch):
+    """Founder 2026-10-16 (the Exercise screen as one thread): after a Good
+    job the speaker may still practise, up to three tries in all. A later
+    praise is the try the practice lands on; a later "not yet" leaves the
+    earlier praise standing, so the helper words tapped from it stay; a
+    fourth try is refused."""
+    from services import practice_check
+    answers = {"a1": "praise", "a2": "again", "a3": "praise"}
+    monkeypatch.setattr(practice_check, "decide", lambda _p, _a, i: {
+        "next": answers[i], "key": "effort", "lane": "none", "attempt_id": i,
+        "attempt_index": int(i[1:]), "rule_version": "t", "decided_by": "machine"})
+    db = _PracticeDb({"id": "p", "kind": "exercise", "status": "open"})
+
+    def tried(n):
+        db.attempts.append({"id": f"a{n}", "attempt_index": n, "transcript": "the window closes once"})
+        return practice_check.check_attempt(db, db.practice, f"a{n}", "owner")
+
+    status, body = tried(1)
+    assert (status, body["outcome"], db.practice["selected_attempt_id"]) == (200, "done", "a1")
+    assert practice_check.machine_closed(db.practice)
+    assert practice_check.takes_more_tries(db.practice, len(db.attempts))
+    status, body = tried(2)
+    assert (status, body["outcome"]) == (200, "again")
+    assert db.practice["selected_attempt_id"] == "a1" and practice_check.machine_closed(db.practice)
+    status, body = tried(3)
+    assert (status, body["outcome"], db.practice["selected_attempt_id"]) == (200, "done", "a3")
+    assert not practice_check.takes_more_tries(db.practice, len(db.attempts))
+    assert tried(4)[0] == 409
+
+
 # ── what a machine-closed practice means elsewhere ───────────────────────
 
 

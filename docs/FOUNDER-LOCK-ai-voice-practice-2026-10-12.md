@@ -140,6 +140,39 @@ CLAUDE.md requires. Deleting the account also deletes the AI voice.
 - A voice still being made from Take 1 when the clip is asked for is
   waited for (a short, bounded retry) instead of waiting for the next ask.
 
+## Decided after the lock (2026-10-16, WIL-82)
+
+**Not only how to say it but why.** The founder (Linear WIL-82, and the
+six answers in the Claude Code session of 2026-10-16): under the player,
+in the same grey bubble, one sentence says what the speaker's own numbers
+showed, what this version does differently and why that sounds less flat
+and more engaging to the listener. It is there every time the clip
+appears, on the Exercise screen and on every "not yet", in the walk and in
+the Lounge chat alike; no second bubble, nothing new stored in the thread.
+
+- **Four signed sentences**, filled in by the server from the stored
+  selection: the problem the picker measured against the speaker's own
+  usual delivery (pace, pause, stress), or the default when nothing reached
+  the line. No model writes them; no number is in them (AC-9).
+- **Every claim comes from the data.** "You said this faster than you
+  usually do" is only said when the picker measured it; the default clip
+  (stress on the main point, nothing measured) says "Nothing was off here"
+  instead. The sentence is only sent with a clip that passed its check, so
+  the change it names was really heard.
+- **The speaker's target words may be quoted** (L15, L16, L17): the two to
+  four words cut from their own transcript that the clip pauses before or
+  makes stand out, never the whole sentence. This amends section 3, "never
+  the words", by exactly that much.
+- The pace sentence names no words. A clip still on its way or one that
+  failed its check says nothing, as before.
+
+| # | Where | Words |
+|---|---|---|
+| L14 | under the player, pace | You said this faster than you usually do. This version is a little slower. Slower gives the listener time to take each thought in, so it is easier to follow. |
+| L15 | under the player, pause | You ran straight into “‹the phrase›”. This version stops for a moment before it. The pause makes the listener wait for what comes next, so it lands. |
+| L16 | under the player, stress | You said this flatter than you usually do. This version makes “‹the phrase›” stand out, said a little stronger. One point that stands out gives the sentence a shape, so it is less flat and keeps the listener with you. |
+| L17 | under the player, the default clip (nothing reached the line) | Nothing was off here. This version just makes “‹the phrase›” stand out a little more, so the point lands and the sentence has a shape. |
+
 ## 7. Order of work
 
 Build end to end, test with the founder's own voice, then counsel (L12,

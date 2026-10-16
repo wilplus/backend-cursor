@@ -19,7 +19,9 @@
              it. A failed check is never shown. A voice still on its way
              from Take 1 is waited for: a bounded, delayed retry.
   state      what the walk may know: video or AI clip, and the clip's state
-             and short-lived link when it passed. No id, setting, score or
+             and short-lived link when it passed, with the one signed
+             sentence on what the clip does differently and why it sounds
+             better (WIL-82, founder 2026-10-16). No id, setting, score or
              check result ever leaves.
   note_*     a play, and the next try's outcome on the one problem.
 
@@ -606,7 +608,7 @@ def state(database: Any, practice: dict, cycle: Optional[dict], *, sign=None) ->
         url = (sign or _sign)(str(cycle.get("bucket") or ""), str(cycle["storage_key"]))
         clip = {"state": "ready" if url else "unavailable", "url": url,
                 "duration_ms": cycle.get("duration_ms"),
-                "max_appearances": MAX_APPEARANCES}
+                "max_appearances": MAX_APPEARANCES, "why": why_of(cycle)}
     elif status in ("pending", "analyzing", "choosing_exercise", "generating", "validating"):
         clip = {"state": "pending", "url": None, "max_appearances": MAX_APPEARANCES}
     else:
@@ -615,6 +617,47 @@ def state(database: Any, practice: dict, cycle: Optional[dict], *, sign=None) ->
         # No clip to put in the video's place: the locked Exercise as it was.
         demo = "video" if _has_video(practice) else "none"
     return {"demo": demo, "clip": clip}
+
+
+#: What the speaker's own numbers showed, what the clip does differently
+#: and why it sounds better: one signed sentence per change (WIL-82, founder
+#: 2026-10-16, L14-L17). The opening clause is only ever said when the
+#: picker measured that change against the speaker's own usual delivery;
+#: when nothing reached the line the clip is the default (stress on the
+#: main point) and ``default`` says so instead. ``{phrase}`` is the
+#: speaker's own target words, cut from their transcript, the only words the
+#: bubble ever shows (an amendment to the lock's "never the words"). No
+#: model writes this and no number is in it (AC-9).
+WHY = {
+    "pace": ("You said this faster than you usually do. This version is a little "
+             "slower. Slower gives the listener time to take each thought in, so "
+             "it is easier to follow."),
+    "pause": ("You ran straight into \u201c{phrase}\u201d. This version stops for a "
+              "moment before it. The pause makes the listener wait for what comes "
+              "next, so it lands."),
+    "stress": ("You said this flatter than you usually do. This version makes "
+               "\u201c{phrase}\u201d stand out, said a little stronger. One point that "
+               "stands out gives the sentence a shape, so it is less flat and keeps "
+               "the listener with you."),
+    "default": ("Nothing was off here. This version just makes \u201c{phrase}\u201d stand "
+                "out a little more, so the point lands and the sentence has a shape."),
+}
+
+
+def why_of(cycle: dict) -> Optional[str]:
+    """The signed sentence for the change this clip was made with, from the
+    stored selection: the measured problem, or the default when none reached
+    the line. None when the cycle does not say (an old row) or the change
+    needs a phrase it lacks."""
+    selection = cycle.get("selection") or {}
+    exercise = str(cycle.get("exercise") or selection.get("exercise") or "")
+    line = WHY.get("default" if selection.get("default") else exercise)
+    if not line:
+        return None
+    phrase = " ".join(str(selection.get("target_phrase") or "").split())
+    if "{phrase}" in line and not phrase:
+        return None
+    return line.format(phrase=phrase)
 
 
 def _sign(bucket: str, key: str) -> Optional[str]:

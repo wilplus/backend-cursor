@@ -15,6 +15,7 @@ an in-memory table store.
 from __future__ import annotations
 
 import contextlib
+import re
 import uuid
 
 import numpy as np
@@ -191,7 +192,7 @@ def _pcm_with_pause(pause_at_s):
     return pcm
 
 
-def _heard(gap_before_target, phrase="match our price"):
+def _heard(gap_before_target, phrase="match our price", step=0.17):
     tokens, target = SENTENCE.split(), phrase.split()
     at = next(i for i in range(len(tokens)) if tokens[i:i + len(target)] == target)
     words, t = [], 0.0
@@ -199,7 +200,7 @@ def _heard(gap_before_target, phrase="match our price"):
         if i == at:
             t += gap_before_target
         words.append({"word": w, "start": t, "end": t + 0.15})
-        t += 0.17
+        t += step
     return {"transcript": SENTENCE, "words": words}
 
 
@@ -299,6 +300,49 @@ def test_a_clip_that_fails_its_check_is_never_shown():
         assert out["clip"]["state"] == "unavailable" and out["clip"]["url"] is None
         assert db.client.tables["ai_voice_cycles"][0]["failure_kind"] == "validation"
 
+
+def _pcm_louder(start_s, end_s):
+    """2.8 s of voiced tone, louder (about 8 dB) between the two times."""
+    sr = 16000
+    t = np.arange(int(2.8 * sr)) / sr
+    pcm = (0.2 * np.sin(2 * np.pi * 180 * t)).astype(np.float32)
+    pcm[int(start_s * sr):int(end_s * sr)] *= 2.5
+    return pcm
+
+
+PHRASE = "the window closes once"
+
+
+@pytest.mark.parametrize("own_numbers, heard, pcm, change, quotes", [
+    # fewer pauses than their usual: the clip pauses before the main point
+    (dict(wpm=150, pause_ratio=0.02), lambda: _heard(0.55, PHRASE), None, "pause", PHRASE),
+    # faster than their usual: the clip is slower, and no words are quoted
+    (dict(wpm=180), lambda: _heard(0.0, PHRASE, step=0.4), None, "pace", None),
+    # flatter than their usual: the main point stands out
+    (dict(wpm=150, dynamic_db=10.0), lambda: _heard(0.0, PHRASE), _pcm_louder(1.0, 1.7), "stress", PHRASE),
+    # nothing reached the line: the default clip, and the sentence says so
+    (dict(wpm=150), lambda: _heard(0.0, PHRASE), _pcm_louder(1.0, 1.7), "default", PHRASE),
+])
+def test_the_sentence_under_the_clip_comes_from_the_transcript_and_their_own_numbers(
+        own_numbers, heard, pcm, change, quotes):
+    """WIL-82 (founder 2026-10-16). A speaker's transcript and their own
+    numbers go in; the sentence under the clip names the change that was
+    measured against their usual and really heard in the clip, quotes only
+    words cut from that transcript, and says nothing was off when nothing
+    was. No number is in it."""
+    with _on():
+        db = _Db(_practice(), _snip(**own_numbers), TAKE)
+        _ready_voice(db)
+        out = _run_pipeline(db, db.practice, _Voices(), heard(), pcm=pcm)
+        cycle = db.client.tables["ai_voice_cycles"][0]
+        assert out["clip"]["state"] == "ready", cycle.get("failure_kind")
+        why = out["clip"]["why"]
+        assert why == ai_voice_clip.WHY[change].format(phrase=quotes or "")
+        assert cycle["exercise"] == ("stress" if change == "default" else change)
+        assert bool(cycle["selection"]["default"]) == (change == "default")
+        if quotes:
+            assert quotes in SENTENCE and cycle["selection"]["target_phrase"] == quotes
+        assert not re.search(r"\d", why)
 
 def test_the_daily_limit_stops_the_provider_call():
     with _on(AI_VOICE_DAILY_CLIPS_PER_SPEAKER=0):
