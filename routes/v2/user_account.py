@@ -439,11 +439,14 @@ def v2_user_get_profile():
         profile = db.get_user_profile(request.user_id) or {
             "domain": None, "goal": None,
         }
+        if "proficient_languages" in profile:
+            languages = profile["proficient_languages"]
+        else:  # an older read shape: one more trip
+            languages = db.get_user_proficient_languages(request.user_id)
         return jsonify({
             "domain": profile.get("domain"),
             "goal": profile.get("goal"),
-            "proficient_languages": db.get_user_proficient_languages(
-                request.user_id),
+            "proficient_languages": languages,
             "domain_vocabulary_default": default_domain_vocabulary(
                 profile.get("domain"),
             ),
