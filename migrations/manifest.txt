@@ -508,3 +508,4 @@
 0470	add_plan_promotions.sql
 0471	grant_coach_answer_video_write.sql
 0472	grant_coach_request_writes_service_role.sql
+0473	claim_owner_indexes.sql
