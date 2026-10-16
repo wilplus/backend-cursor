@@ -619,28 +619,39 @@ def state(database: Any, practice: dict, cycle: Optional[dict], *, sign=None) ->
     return {"demo": demo, "clip": clip}
 
 
-#: What the clip does differently and why it sounds better, one signed
-#: sentence per change (WIL-82, founder 2026-10-16, L14-L16): not only how
-#: to say it but why. ``{phrase}`` is the speaker's own target words, the
-#: only words the bubble ever shows (an amendment to the lock's "never the
-#: words"). No model writes this and no number is in it (AC-9).
+#: What the speaker's own numbers showed, what the clip does differently
+#: and why it sounds better: one signed sentence per change (WIL-82, founder
+#: 2026-10-16, L14-L17). The opening clause is only ever said when the
+#: picker measured that change against the speaker's own usual delivery;
+#: when nothing reached the line the clip is the default (stress on the
+#: main point) and ``default`` says so instead. ``{phrase}`` is the
+#: speaker's own target words, cut from their transcript, the only words the
+#: bubble ever shows (an amendment to the lock's "never the words"). No
+#: model writes this and no number is in it (AC-9).
 WHY = {
-    "pace": ("This version is a little slower. Slower gives the listener time "
-             "to take each thought in, so it is easier to follow."),
-    "pause": ("This version stops for a moment before \u201c{phrase}\u201d. The pause "
-              "makes the listener wait for what comes next, so it lands."),
-    "stress": ("This version makes \u201c{phrase}\u201d stand out, said a little "
-               "stronger. One point that stands out gives the sentence a shape, "
-               "so it is less flat and keeps the listener with you."),
+    "pace": ("You said this faster than you usually do. This version is a little "
+             "slower. Slower gives the listener time to take each thought in, so "
+             "it is easier to follow."),
+    "pause": ("You ran straight into \u201c{phrase}\u201d. This version stops for a "
+              "moment before it. The pause makes the listener wait for what comes "
+              "next, so it lands."),
+    "stress": ("You said this flatter than you usually do. This version makes "
+               "\u201c{phrase}\u201d stand out, said a little stronger. One point that "
+               "stands out gives the sentence a shape, so it is less flat and keeps "
+               "the listener with you."),
+    "default": ("Nothing was off here. This version just makes \u201c{phrase}\u201d stand "
+                "out a little more, so the point lands and the sentence has a shape."),
 }
 
 
 def why_of(cycle: dict) -> Optional[str]:
-    """The signed sentence for the change this clip was made with; None when
-    the cycle does not say (an old row) or the change needs a phrase it lacks."""
+    """The signed sentence for the change this clip was made with, from the
+    stored selection: the measured problem, or the default when none reached
+    the line. None when the cycle does not say (an old row) or the change
+    needs a phrase it lacks."""
     selection = cycle.get("selection") or {}
     exercise = str(cycle.get("exercise") or selection.get("exercise") or "")
-    line = WHY.get(exercise)
+    line = WHY.get("default" if selection.get("default") else exercise)
     if not line:
         return None
     phrase = " ".join(str(selection.get("target_phrase") or "").split())
