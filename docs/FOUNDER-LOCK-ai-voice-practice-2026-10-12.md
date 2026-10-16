@@ -140,6 +140,31 @@ CLAUDE.md requires. Deleting the account also deletes the AI voice.
 - A voice still being made from Take 1 when the clip is asked for is
   waited for (a short, bounded retry) instead of waiting for the next ask.
 
+## Decided after the lock (2026-10-16, WIL-82)
+
+**Not only how to say it but why.** The founder (Linear WIL-82, and the
+four answers in the Claude Code session of 2026-10-16): under the player,
+in the same grey bubble, one sentence says what this version does
+differently and why that sounds less flat and more engaging to the
+listener. It is there every time the clip appears, on the Exercise screen
+and on every "not yet", in the walk and in the Lounge chat alike; no second
+bubble, nothing new stored in the thread.
+
+- **Three signed sentences, one per change**, filled in by the server from
+  the change the clip was made with. No model writes them; no number is in
+  them (AC-9).
+- **The speaker's target words may be quoted** (L15, L16): the two to four
+  words the clip pauses before or makes stand out, never the whole
+  sentence. This amends section 3, "never the words", by exactly that much.
+- The pace sentence names no words. A clip still on its way or one that
+  failed its check says nothing, as before.
+
+| # | Where | Words |
+|---|---|---|
+| L14 | under the player, pace | This version is a little slower. Slower gives the listener time to take each thought in, so it is easier to follow. |
+| L15 | under the player, pause | This version stops for a moment before “‹the phrase›”. The pause makes the listener wait for what comes next, so it lands. |
+| L16 | under the player, stress (and the default clip) | This version makes “‹the phrase›” stand out, said a little stronger. One point that stands out gives the sentence a shape, so it is less flat and keeps the listener with you. |
+
 ## 7. Order of work
 
 Build end to end, test with the founder's own voice, then counsel (L12,

@@ -15,6 +15,7 @@ an in-memory table store.
 from __future__ import annotations
 
 import contextlib
+import re
 import uuid
 
 import numpy as np
@@ -298,6 +299,26 @@ def test_a_clip_that_fails_its_check_is_never_shown():
                             pcm=_pcm_with_pause(2.4))
         assert out["clip"]["state"] == "unavailable" and out["clip"]["url"] is None
         assert db.client.tables["ai_voice_cycles"][0]["failure_kind"] == "validation"
+
+
+@pytest.mark.parametrize("exercise, phrase, said", [
+    ("pause", "the window closes once", "stops for a moment before \u201cthe window closes once\u201d"),
+    ("stress", "match our price", "makes \u201cmatch our price\u201d stand out"),
+    ("pace", None, "a little slower"),
+])
+def test_a_ready_clip_says_what_changed_and_why_in_words(exercise, phrase, said):
+    """WIL-82 (founder 2026-10-16): with the clip, one signed sentence says
+    what this version does differently and why it sounds better, quoting
+    only the speaker's own target words, never a number; a clip still on
+    its way says nothing yet."""
+    practice, ready = _practice(), {
+        "status": "completed", "storage_key": "k", "bucket": "b", "exercise": exercise,
+        "selection": {"exercise": exercise, "target_phrase": phrase}}
+    out = ai_voice_clip.state(None, practice, ready, sign=lambda b, k: f"https://signed/{k}")
+    assert out["clip"]["state"] == "ready" and said in out["clip"]["why"]
+    assert not re.search(r"\d", out["clip"]["why"])
+    pending = ai_voice_clip.state(None, practice, {"status": "generating", "exercise": exercise})
+    assert pending["clip"]["state"] == "pending" and "why" not in pending["clip"]
 
 
 def test_the_daily_limit_stops_the_provider_call():

@@ -9,9 +9,11 @@
   GET/POST/DELETE /v2/user/ai-voice                      the card: state,
                                                          Turn on, Delete
 
-Responses carry codes, states and a short-lived link; the words on screen
-are the frontend's, signed by the founder. No provider id, setting, score
-or check result is returned. The logic lives in services.ai_voice_*.
+Responses carry codes, states and a short-lived link, and with a ready
+clip its one signed sentence on what changed and why (WIL-82); every other
+word on screen is the frontend's, signed by the founder. No provider id,
+setting, score or check result is returned. The logic lives in
+services.ai_voice_*.
 """
 from __future__ import annotations
 
