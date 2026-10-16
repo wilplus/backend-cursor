@@ -285,7 +285,8 @@ def _librarian(database, user_id, question, history, app_config,
         question, history=history, admin_dont_ask_notes=admin_notes,
         life_context=life_context,
         app_context=lambda: {"features": app.features_block(card()),
-                             "status": app.render_status(card())})
+                             "status": app.render_status(card())
+                             if user_id else app.VISITOR_BLOCK})
     suggested = payload.get("suggested_action")
     if suggested not in ("trainings", "audit"):
         suggested = None

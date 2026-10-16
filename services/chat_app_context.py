@@ -38,6 +38,20 @@ SIGNUP_LINE = (
 #: Answers a visitor who is not signed in gets before the sign-up line.
 FREE_ANSWERS = 2
 
+#: What Will is told while a visitor is not signed in (founder 2026-10-16:
+#: "nudge the user to sign up or click the first recording, max 3
+#: messages"). Every answer ends on one of the two doors.
+VISITOR_BLOCK = (
+    "─── THIS VISITOR IS NOT SIGNED IN ───\n"
+    "They have at most two answers from you before the chat asks them to "
+    "sign up. Answer their question briefly, then end every answer with one "
+    "of the two things they can do right now, and nothing else: record "
+    "their first Take with the recording button below the chat, or sign "
+    "up so you can remember them. Make it one warm line, not a sales "
+    "pitch; do not offer anything that needs an account (WhatsApp, "
+    "bookings, their project).\n"
+)
+
 #: The Lounge's own offer copy (frontend loungeOffers.ts OFFER_PROMPT,
 #: founder-approved), used verbatim when the chat opens an offer.
 OFFER_PROMPTS = {
