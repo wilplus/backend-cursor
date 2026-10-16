@@ -509,6 +509,30 @@ class ProcessingAuthorizationService:
             "gate_mode": "enforce" if self.enforced else "off",
         }
 
+    def status_with_deletions(self, acquisition_principal_id: str) -> dict:
+        """The status read with the deletions the ended state names.
+
+        ON EVERY APP OPEN, so every round trip here is paid before anything
+        shows (founder 2026-10-16: this read took ~600 ms). The client reads
+        `pending_deletion` only when the status is PROCESSING_SERVICE_BLOCKED
+        and never reads `pending_project_deletions`, so the two deletion
+        reads run only when the status says blocked, and then side by side.
+        The ordinary open pays the status read alone.
+        """
+        status = self.status(acquisition_principal_id)
+        if (status.get("authorized") is not True
+                and status.get("code") == "PROCESSING_SERVICE_BLOCKED"):
+            from services.parallel import run_in_parallel
+            deletion, projects = run_in_parallel(
+                lambda: self.pending_deletion(acquisition_principal_id),
+                lambda: self.pending_project_deletions(
+                    acquisition_principal_id),
+            )
+        else:
+            deletion, projects = None, []
+        return {**status, "pending_deletion": deletion,
+                "pending_project_deletions": projects}
+
     def last_country_of_residence(
         self, acquisition_principal_id: str,
     ) -> str | None:

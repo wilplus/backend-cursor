@@ -304,12 +304,7 @@ def v2_processing_authorization():
     if request.method == "GET":
         # Q19 A: a person who asked to leave is shown that, not asked to
         # accept again. Read here only: require_current stays one read.
-        return jsonify({
-            **service.status(principal_id),
-            "pending_deletion": service.pending_deletion(principal_id),
-            "pending_project_deletions": service.pending_project_deletions(
-                principal_id),
-        }), 200
+        return jsonify(service.status_with_deletions(principal_id)), 200
     payload = request.get_json(silent=True) or {}
     if not isinstance(payload, dict):
         return jsonify({"code": "INVALID_INPUT", "error": "JSON object required"}), 400
