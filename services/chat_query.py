@@ -51,6 +51,23 @@ def _offer_row(bot_client_id: str, offer: str, created_at: str) -> dict:
     }
 
 
+def _take_card_row(bot_client_id: str, take_card: dict, created_at: str) -> dict:
+    """The latest Take's Ideal Text card the chat opened (founder 2026-10-16:
+    "show me my latest take"): the same row the server posts when a text is
+    ready (``arc_notifications``), so the Lounge draws it the same and a
+    tap opens that Take's text. Its id follows the bot row, so a repeat
+    is a no-op."""
+    return {
+        "client_id": str(uuid.uuid5(uuid.NAMESPACE_URL,
+                                    f"willab-chat-take-card:{bot_client_id}")),
+        "role": "bot", "kind": "ideal_text", "body": "Your ideal text is ready.",
+        "metadata": {"arc_id": str(take_card["arc_id"]), "variant": "ready",
+                     "version": take_card.get("version"),
+                     "topic": take_card.get("topic")},
+        "client_created_at": created_at,
+    }
+
+
 def _bot_metadata(*, intent, suggested_action, suggested_actions,
                   bubbles) -> dict:
     meta: dict[str, Any] = {"intent": intent}
@@ -66,7 +83,7 @@ def _bot_metadata(*, intent, suggested_action, suggested_actions,
 def persist_chat_turn(
     database, user_id, question, answer, *, suggested_action=None,
     suggested_actions=None, bubbles=None, intent=None,
-    user_client_id=None, user_created_at=None, offer=None,
+    user_client_id=None, user_created_at=None, offer=None, take_card=None,
 ):
     """BE-owned persistence of one Lounge chat turn (founder #2 — bubbles must
     never disappear): the user message and the bot reply, in lounge_messages,
@@ -107,6 +124,8 @@ def persist_chat_turn(
     })
     if offer:
         rows.append(_offer_row(b_id, offer, now_iso))
+    if take_card:
+        rows.append(_take_card_row(b_id, take_card, now_iso))
     try:
         database.insert_lounge_messages(str(user_id), rows)
         return b_id
@@ -126,7 +145,7 @@ def finish_chat_turn(database, resp: dict, *, user_id, question,
             suggested_actions=resp.get("suggested_actions"),
             bubbles=resp.get("bubbles"), intent=intent,
             user_client_id=user_client_id, user_created_at=user_created_at,
-            offer=resp.get("offer"),
+            offer=resp.get("offer"), take_card=resp.get("take_card"),
         )
         resp["persisted"] = bool(bot_cid)
         if bot_cid:
@@ -293,14 +312,15 @@ def _librarian(database, user_id, question, history, app_config,
     answer = payload.get("answer", "")
     action = app.named_feature(question) or payload.get("app_action")
     opened = app.apply_app_action(action, signed_in=bool(user_id),
-                                  card=card() if action == "whatsapp" else None,
+                                  card=card() if action in ("whatsapp", "latest_take")
+                                  else None,
                                   question=question,
                                   context=context)
     if opened.get("suggested_action"):
         suggested = opened["suggested_action"]
     if opened.get("link") and opened["link"] not in answer:
         answer = f"{answer}\n\n{opened['link']}"
-    extra = {"offer": opened["offer"]} if opened.get("offer") else {}
+    extra = {k: opened[k] for k in ("offer", "take_card") if opened.get(k)}
     if (debug or {}).get("router_intent") == "speaker_feedback":
         # Will answers it like any other turn. Nothing marks it for a
         # person to read (founder 2026-10-15: the chat is as private as any
