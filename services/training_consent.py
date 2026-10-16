@@ -69,6 +69,24 @@ def _read(database: Any, owner_id: str) -> tuple[dict | None, dict]:
     }
 
 
+def wording(database: Any) -> dict:
+    """The training sentence in force, for anyone (founder 2026-10-15: a
+    visitor who is not signed in sees the third thing to confirm). Only the
+    words on the screen and their fingerprint: no person, no state. A yes
+    given as a visitor waits on the device and is sent, as an ordinary POST,
+    once they sign in."""
+    policy = database.get_active_training_consent_policy()
+    if not policy:
+        return {"available": False, "active": False}
+    return {
+        "available": True,
+        "active": False,
+        "policy_version": policy["version"],
+        "copy": policy["onboarding_copy"],
+        "copy_sha256": policy["approved_copy_sha256"],
+    }
+
+
 def _key(body: Any) -> str:
     key = str((body or {}).get("idempotency_key") or "").strip() \
         if isinstance(body, dict) else ""

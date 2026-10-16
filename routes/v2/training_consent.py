@@ -26,7 +26,7 @@ from routes.v2.blueprint import v2_bp
 from services.db import db
 from services.project_repository import ProjectOwnershipError, ProjectRepository
 from services.speaker_identity import identity_coordinates
-from services.training_consent import TrainingSwitchError, handle
+from services.training_consent import TrainingSwitchError, handle, wording
 
 logger = logging.getLogger(__name__)
 _repository = ProjectRepository(db)
@@ -64,3 +64,16 @@ def v2_user_training_consent():
         logger.error("training switch failed: %s", error, exc_info=True)
         sentry_sdk.capture_exception(error)
         return jsonify({"code": "TRAINING_SWITCH_FAILED"}), 500
+
+
+@v2_bp.route("/training-consent/wording", methods=["GET"])
+def v2_training_consent_wording():
+    """The training sentence in force, for a visitor who is not signed in
+    (founder 2026-10-15). Public words only, as the policy texts are."""
+    try:
+        response = jsonify(wording(db))
+    except Exception as error:  # noqa: BLE001 — the screen leaves the choice out
+        logger.warning("training wording read failed: %s", error)
+        return jsonify({"available": False, "active": False}), 200
+    response.headers["Cache-Control"] = "public, max-age=300"
+    return response, 200
