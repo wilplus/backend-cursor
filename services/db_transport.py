@@ -1,6 +1,7 @@
-"""Retry database reads that hit a dropped connection (founder 2026-10-14).
+"""The PostgREST transport: a connection pool, and retried reads (founder
+2026-10-14 and 2026-10-16).
 
-The Supabase client talks to PostgREST over one pooled HTTP/2 connection.
+Out of the box the Supabase client talks to PostgREST over one HTTP/2 connection.
 When that connection sits idle the far side closes it, and the next request
 on it fails with ``RemoteProtocolError: Server disconnected``; Sentry showed
 it on the booking page, the booking slots and ``/v2/user/asks/next`` in the
@@ -16,6 +17,7 @@ is retried for any method.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import Any
 
@@ -44,8 +46,63 @@ def _short_path(url: Any) -> str:
     return str(path).rsplit("/", 1)[-1] or str(path)
 
 
+# ── One connection per request, not one socket per process ──────────────
+#
+# postgrest builds its httpx session with ``http2=True``: one TCP socket per
+# process that every gunicorn thread multiplexes over, read under a single
+# lock. The founder's boot stopwatch (2026-10-16) showed the cost: fourteen
+# requests arriving together all took 3.5–4.7 s, including ones with three
+# database calls, while the same calls a second later took 0.5 s. A thread
+# whose answer had already arrived stayed parked until the next frame came
+# down the shared socket, and after the fast answers were drained the next
+# frame belonged to the slowest request. An HTTP/1.1 pool gives each
+# in-flight call its own connection, so nobody waits for a stranger's reply.
+# ``DB_HTTP2=1`` restores the old transport without a deploy.
+
+POOL_SIZE = max(1, int((os.getenv("DB_HTTP_POOL_SIZE") or "16").strip() or 16))
+KEEPALIVE_S = 30.0  # drop idle sockets before Supabase does (then nothing stale is reused)
+USE_HTTP2 = (os.getenv("DB_HTTP2") or "").strip().lower() in {"1", "true", "yes"}
+
+
+def _pooled_session(SyncClient: type, base_url, headers, timeout, verify: bool = True):
+    return SyncClient(
+        base_url=base_url,
+        headers=headers,
+        timeout=timeout,
+        verify=verify,
+        follow_redirects=True,
+        http2=False,
+        limits=httpx.Limits(
+            max_connections=POOL_SIZE,
+            max_keepalive_connections=POOL_SIZE,
+            keepalive_expiry=KEEPALIVE_S,
+        ),
+    )
+
+
+def _install_pool() -> None:
+    if USE_HTTP2:
+        logger.info("db_transport: DB_HTTP2 set; keeping postgrest's HTTP/2 session")
+        return
+    try:
+        from postgrest._sync.client import SyncPostgrestClient
+        from postgrest.utils import SyncClient
+    except Exception:
+        logger.warning("db_transport: postgrest client not found; default transport", exc_info=True)
+        return
+    if getattr(SyncPostgrestClient, "_willab_pooled", False):
+        return
+
+    def create_session(self, base_url, headers, timeout, verify: bool = True):
+        return _pooled_session(SyncClient, base_url, headers, timeout, verify)
+
+    setattr(SyncPostgrestClient, "create_session", create_session)
+    setattr(SyncPostgrestClient, "_willab_pooled", True)
+
+
 def install() -> None:
     """Idempotent; called when services.db is imported."""
+    _install_pool()
     try:
         from postgrest.utils import SyncClient
     except Exception:
