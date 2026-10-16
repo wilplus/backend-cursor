@@ -92,6 +92,11 @@ FEATURES: dict[str, dict[str, str]] = {
         "says": "Replace the slides (PDF) of the current project.",
         "opens": "chip",
     },
+    "latest_take": {
+        "says": "Open their latest Take: its Ideal Text card appears under "
+                "your answer, one tap away (only once a Take is done).",
+        "opens": "card",
+    },
 }
 ACTIONS = tuple(FEATURES)
 
@@ -111,14 +116,21 @@ def features_block(card: Optional[dict] = None) -> str:
         + "\n".join(lines) + "\n"
         "When the speaker asks for one of these, say yes in one or two "
         "short sentences and set app_action to its name; the app shows "
-        "the form, button or link under your answer. You cannot save a "
+        "the form, button, card or link under your answer. You cannot save a "
         "number or a setting yourself: a number typed to you is not saved; "
         "the form under your answer is the only way. Never invent a "
         "feature that is not on this list. Never write a URL yourself.\n"
     )
 
 
-_NAMED = (("whatsapp", re.compile(r"whats\s*app", re.I)),)
+_NAMED = (
+    ("whatsapp", re.compile(r"whats\s*app", re.I)),
+    # "Show me my latest take" (founder 2026-10-16): the card, not a pointer
+    # to the Trainings screen.
+    ("latest_take", re.compile(
+        r"\b(show|see|open|where|find|read|look|display)\b.*"
+        r"\b(latest|last|newest|my|the)\s+(take|ideal\s*text)\b", re.I)),
+)
 #: With a number saved, the form opens only to change it (founder
 #: 2026-10-15: "Is it saved?" brought the form back).
 _CHANGE = re.compile(r"\b(change|update|edit|new|different|another|replace|remove|delete)\b", re.I)
@@ -139,7 +151,9 @@ def apply_app_action(action: Any, *, signed_in: bool,
     has none, is unknown, or makes no sense for this speaker.
 
     ``offer`` names a Lounge offer (persisted as its own bubble);
-    ``link`` is appended to the answer; ``suggested_action`` is a chip."""
+    ``link`` is appended to the answer; ``suggested_action`` is a chip;
+    ``take_card`` is the latest Take's Ideal Text card (the bubble the
+    server posts when a text is ready), for a speaker with a Take done."""
     feature = FEATURES.get(action) if isinstance(action, str) else None
     if not feature:
         return {}
@@ -155,6 +169,14 @@ def apply_app_action(action: Any, *, signed_in: bool,
         if action == "replace_pdf" and not (context or {}).get("has_pdf"):
             return {}
         return {"suggested_action": action}
+    if opens == "card":
+        project = card or {}
+        if not signed_in or not project.get("arc_id") \
+                or not project.get("takes_done"):
+            return {}
+        return {"take_card": {"arc_id": project["arc_id"],
+                              "version": project["takes_done"],
+                              "topic": project.get("title")}}
     return {"link": opens}
 
 
@@ -282,6 +304,7 @@ def _project(database, uid: str) -> dict:
     payload = (database.get_ideal_text_document_core(arc_id, uid) or {}
                ).get("payload") or {}
     project = {
+        "arc_id": arc_id,
         "title": talk_title(contexts, payload),
         "takes_done": len(done),
         "processing": any(s.get("analysis_state") == "processing"

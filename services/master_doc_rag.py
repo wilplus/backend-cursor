@@ -906,7 +906,11 @@ _LANE_BODIES: dict[str, str] = {
         "THIS SPEAKER is missing or does not say it, say you don't see it "
         "yet and point them to the recording button below the chat. End "
         "with one short question back to them. app_action may name a "
-        "feature from WHAT THE APP CAN DO only if they asked for it."
+        "feature from WHAT THE APP CAN DO only if they asked for it. When "
+        "they ask to see, show or open their latest Take or Ideal Text "
+        "and a Take is done, say it is right under your answer and set "
+        "app_action to latest_take; never send them to another screen "
+        "for it."
     ),
     "speaker_feedback": (
         "The speaker is telling you what they think of the app, of you, or "
