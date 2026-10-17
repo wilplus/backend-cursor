@@ -155,6 +155,15 @@ def _attach_voice_confidence(
             state.user_id,
             [piece.get("metrics") for piece in analyzed],
         )
+        if not baseline:
+            # Nothing will be stamped and the picker will go by the words
+            # alone (moment_pick.read): name the reason here (2026-10-17).
+            with_metrics = sum(1 for p in analyzed if isinstance(p.get("metrics"), dict) and p.get("metrics"))
+            log.warning(
+                "process_lab_recording: voice confidence not stamped sid=%s: "
+                "no baseline (kind=%s, pieces=%d, with metrics=%d)",
+                state.session_id, baseline_kind, len(analyzed), with_metrics,
+            )
         attach_voice_confidence(
             analyzed,
             baseline=baseline,

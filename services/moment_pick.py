@@ -13,7 +13,9 @@ to 1:
 Green: on each slide the best clip, if it reaches ``FLOOR`` and has at least
 ``MIN_WORDS`` words; the Take shows the best ``GREEN_LIMIT`` of those. When
 none reaches the floor, the single best clip is shown with the softer signed
-line (``soft``).
+line (``soft``). A clip with no sound read is not dropped (founder
+2026-10-17): its S is neutral and its words order it, so a Take with two
+clips always shows its highest and its second-highest moment.
 
 The exercise (founder 2026-10-14): the strongest clip that is not green, so
 the second best of the Take (with ``MIN_WORDS`` words when one has them):
@@ -25,7 +27,7 @@ frame. What crosses to the client is a tier name and one routing word.
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from services import willfidence
 
@@ -40,16 +42,31 @@ EXERCISE_CLEARER = "clearer"
 EXERCISE_VOICE = "voice"
 
 
-def read(score: Any, text: Any, metrics: Any) -> Optional[dict]:
-    """S, W and their product for one clip; None when there is no sound read."""
+#: S when a clip has no sound read (founder 2026-10-17): the middle of the
+#: scale, so the words alone order the clips and the Take still shows its
+#: two highest moments, the most confident and the second to practise on,
+#: until the sound read is back. Never a number anyone sees.
+NEUTRAL_SOUND = 0.5
+
+
+def read(score: Any, text: Any, metrics: Any) -> dict:
+    """S, W and their product for one clip.
+
+    With no sound read (the clip was never stamped: no baseline yet, the
+    measure off, or it failed) S is ``NEUTRAL_SOUND`` and ``sound`` is
+    False (founder 2026-10-17: the highest and the second-highest
+    willfidence moments are always shown); below the floor by construction,
+    so the best clip shows with the softer line and the second best is the
+    exercise."""
     s = willfidence.stretch(score)
+    sound = s is not None
     if s is None:
-        return None
+        s = NEUTRAL_SOUND
     w = willfidence.partial_w(
         willfidence.filler(text), willfidence.hedging(text),
         willfidence.slide_fit([metrics]))
     w = 1.0 if w is None else w
-    return {"s": s, "w": w, "value": s * w}
+    return {"s": s, "w": w, "value": s * w, "sound": sound}
 
 
 def pick(reads: list[dict]) -> dict:

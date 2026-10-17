@@ -521,6 +521,13 @@ def _mark_moments(blocks: list[dict],
                 snippet.get("metrics")) if chosen else None,
         })
     picked = moment_pick.pick(reads)
+    heard = sum(1 for r in reads if (r["read"] or {}).get("sound"))
+    if reads and not heard:
+        # The words alone picked the moments: say so, so the next Take with
+        # no sound read is read from the log, not guessed at (2026-10-17).
+        logger.warning("moment_pick: no sound read on any of %d blocks; "
+                       "the words picked green=%s exercise=%s",
+                       len(reads), picked["green"], picked["exercise"])
     green = set(picked["green"])
     value_of = {r["block_id"]: (r["read"] or {}).get("value") for r in reads}
     for block in blocks:

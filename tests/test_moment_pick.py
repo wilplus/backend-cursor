@@ -29,6 +29,16 @@ def test_no_moment_above_the_floor_shows_the_single_best_softly():
     assert (picked["exercise"], picked["exercise_kind"]) == ("a", "voice")
 
 
-def test_a_clip_with_no_sound_read_is_not_read():
-    assert read(None, "we will win", {}) is None
-    assert read(1.0, None, {})["value"] == 1.0
+def test_with_no_sound_read_the_words_still_pick_a_praise_and_a_practise():
+    """Founder 2026-10-17: always a praise moment and a practise moment.
+    Clips never stamped with a sound read are ordered by their words alone:
+    the cleanest shows softly as the praise, the next is the exercise, and
+    the pick says the sound was not heard."""
+    clean = read(None, "we think the timing matters because the window closes once", {})
+    hedged = read(None, "um so I guess maybe we sort of kind of think it matters", {})
+    assert clean["sound"] is False and clean["s"] == 0.5
+    assert read(1.0, None, {})["value"] == 1.0 and read(1.0, None, {})["sound"] is True
+    picked = pick([{"block_id": "a", "slide_index": 0, "word_count": 11, "read": hedged},
+                   {"block_id": "b", "slide_index": 1, "word_count": 11, "read": clean}])
+    assert picked["green"] == ["b"] and picked["soft"] is True
+    assert picked["exercise"] == "a"
