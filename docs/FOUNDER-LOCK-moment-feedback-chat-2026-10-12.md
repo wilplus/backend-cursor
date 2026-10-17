@@ -223,6 +223,23 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
 
 ## Decided after the lock
 
+- **Always the two highest willfidence moments** (founder, 2026-10-17:
+  "guarantee the best, most confident moment based on the highest scored
+  willfidence moment and the second highest scored willfidence moment").
+  The highest is the confident moment, praised when it reaches the floor
+  and shown with the softer line when it does not; the second highest is
+  the one to practise on (clearer version or the voice Exercise with the
+  AI clip). Praise is never promised; it follows the score. A Take whose
+  clips carry no sound read (nothing stamped: no baseline yet, the measure
+  off, or it failed) is no longer a Take with no moments: the picker gives
+  such a clip the middle of the sound scale and the words order the clips
+  until the sound read is back. Processing logs why nothing was stamped, and the
+  picker logs when the words alone picked. On the app side, a review never
+  falls back to the 2026-09-30 paragraph sheets or the coach's Step 0
+  again: a served moment with nothing attached is the moment said again
+  (section 2.4), so the lens always has a step; with no moment at all the
+  text shows.
+
 - **The Exercise screen is one thread, and a Good job no longer ends the
   practise** (founder, 2026-10-16; prototype
   <https://claude.ai/artifact/8nGuDXywGDWAZje3EcFMaj>, "Build it").
