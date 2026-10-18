@@ -5955,13 +5955,25 @@ class DatabaseService:
                      key=str)
         if not ids:
             return rows
+        return self._with_revisions(rows, self._read_revisions(
+            lambda q: q.in_("report_id", ids)))
+
+    def _read_revisions(self, scope: Callable[[Any], Any]) -> Optional[list]:
+        """Judgement revisions under ``scope``, or None when unreadable."""
         try:
-            revisions = (self.client.table("take_feedback_self_report_revision")
+            return scope(self.client.table("take_feedback_self_report_revision")
                          .select("report_id,response,revision,created_at")
-                         .in_("report_id", ids).execute().data) or []
+                         ).execute().data or []
         except Exception as e:
             logger.warning("judgement revisions unreadable: %s", e, exc_info=True)
+            return None
+
+    @staticmethod
+    def _with_revisions(rows: list, revisions: Optional[list]) -> list:
+        """Each answer at its newest revision (see _latest_self_reports)."""
+        if revisions is None:
             return rows
+
         def number(rev: dict) -> int:
             # A malformed revision counts as none, so it never raises into
             # the reader (GPT-0440 nit): the first answer stands instead.
@@ -5997,14 +6009,33 @@ class DatabaseService:
             query = (self.client.table("take_feedback_self_report")
                      .select("*")
                      .eq("take_session_id", str(take_session_id)))
-            if owner_user_id:
-                query = query.eq("owner_user_id", str(owner_user_id))
-            return self._latest_self_reports(
-                query.order("created_at").execute().data or [])
+            if not owner_user_id:
+                return self._latest_self_reports(
+                    query.order("created_at").execute().data or [])
+            # One owner's answers: a revision carries its answer's Take and
+            # owner, so both reads go out at once instead of one after the
+            # other (the answered bookmark's read, 2026-10-18).
+            from services.parallel import run_in_parallel
+            query = query.eq("owner_user_id", str(owner_user_id))
+            data, revisions = run_in_parallel(
+                lambda: query.order("created_at").execute().data or [],
+                lambda: self._read_revisions(
+                    lambda q: q.eq("take_session_id", str(take_session_id))
+                    .eq("owner_user_id", str(owner_user_id))))
+            return self._with_revisions(
+                [row for row in data if isinstance(row, dict)], revisions)
         except Exception as e:
             if "take_feedback_self_report" not in str(e).lower():
                 logger.warning("take feedback self-report read failed: %s", e)
             return []
+
+    def v2_session_owner(self, session_id: str) -> Optional[dict]:
+        """Only who owns a Take (``user_id``, ``owner_principal_id``), for an
+        ownership check that does not need the whole row."""
+        result = (self.client.table("v2_sessions")
+                  .select("id,user_id,owner_principal_id")
+                  .eq("id", str(session_id)).execute())
+        return result.data[0] if result.data else None
 
     def list_take_feedback_self_reports_by_snippet(
         self, snippet_id: str,
