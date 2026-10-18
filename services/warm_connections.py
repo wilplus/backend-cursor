@@ -6,15 +6,27 @@ the worker had to reopen its pooled database connection (Supabase closes
 idle ones). A tiny read every PING_EVERY_S keeps that connection open, so
 opening the app costs nothing extra. Started once per gunicorn worker
 (gunicorn_conf.post_worker_init), never in the job worker or in tests.
+
+Founder 2026-10-18: the status read at app open still took 610 ms for one
+database call. The pool (services/db_transport, 2026-10-16) drops a
+connection idle for KEEPALIVE_S, and this pinged every 45 s -- so the
+connection it meant to keep warm was already gone each time, and the first
+request after a quiet spell opened a new TLS connection anyway. The ping
+now comes before the pool's own cut-off, and is tied to it so the two
+cannot drift apart again.
 """
 from __future__ import annotations
 
 import logging
 import threading
 
+from services.db_transport import KEEPALIVE_S
+
 logger = logging.getLogger(__name__)
 
-PING_EVERY_S = 45.0
+# Before the pool drops an idle connection (db_transport.KEEPALIVE_S), with
+# room for a slow ping; never longer than 20 s.
+PING_EVERY_S = min(20.0, KEEPALIVE_S * 2 / 3)
 _started = False
 
 
