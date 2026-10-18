@@ -1,0 +1,42 @@
+-- the_take_is_found_by_its_arc_as_text (0476)
+--
+-- The Ideal Text's core read, `read_ideal_text_document_core_v1` (0315),
+-- proves the caller owns the arc with
+--
+--     WHERE session.arc_id::text = p_arc_id
+--
+-- against v2_sessions, whose arc_id is a UUID with a plain index on it
+-- (idx_v2_sessions_arc, 0114). A btree on `arc_id` cannot serve a predicate
+-- on `arc_id::text`, so that EXISTS has no index of its own and the planner
+-- is left to read the table, or to reach it sideways through project_id.
+-- The same comparison sits in `publish_ideal_text_document_snapshot_v1`
+-- (0315), in the feedback bake's claim and answer reads (0345 and the three
+-- `the_bake_knows_*` files after it), and in `list_pending_ideal_text_
+-- document_publications_v1`.
+--
+-- The founder's browser stopwatch (2026-10-18, the enrichment request of an
+-- open Ideal Text) showed the request at 1.69 s with its six sections
+-- adding up to 0.19 s; the rest went to the reads around them, two of
+-- which are this core read.
+--
+-- ONE EXPRESSION INDEX, NO FUNCTION CHANGE. `uuid::text` is an immutable
+-- cast, so it can be indexed as written, and every function above becomes
+-- an index lookup without any of them being redefined (0315 and the bake
+-- files are applied, checksum-pinned and in the ledger). Rewriting the
+-- predicates to `arc_id = p_arc_id::uuid` instead would make a non-UUID
+-- argument raise where today it simply finds nothing.
+--
+-- Plain CREATE INDEX, not CONCURRENTLY, for 0474's reason: the runner sends
+-- a file as one transaction block, where CONCURRENTLY is refused. The build
+-- holds a SHARE lock on v2_sessions (writes wait, reads continue) for well
+-- under a second at this product's row counts.
+--
+-- To see it taken up, in the Supabase SQL editor on an owned arc:
+--   EXPLAIN (ANALYZE, BUFFERS)
+--   SELECT public.read_ideal_text_document_core_v1('<arc id>', '<user id>');
+--
+-- Idempotent + additive, per the standing constraint: safe to re-run.
+-- Nothing dropped; no env var.
+
+CREATE INDEX IF NOT EXISTS idx_v2_sessions_arc_text
+    ON public.v2_sessions ((arc_id::text));

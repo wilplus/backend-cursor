@@ -101,16 +101,30 @@ def run_sections(
     started = perf_counter()
     sections: dict[str, dict[str, Any]] = {}
     timings: dict[str, float] = {}
+
+    def timed(name: str, reader: Callable[[], Any]) -> Callable[[], Any]:
+        # A section's lap is ITS OWN wall time, measured in its thread. The
+        # collection loop below waits for the sections one after another, so
+        # a wait measured there is only the part of a section that outlived
+        # the ones collected before it (founder's stopwatch, 2026-10-18: six
+        # concurrent sections read as a staircase that summed to the whole).
+        def run() -> Any:
+            section_started = perf_counter()
+            try:
+                return reader()
+            finally:
+                timings[name] = (perf_counter() - section_started) * 1000
+        return run
+
     pool = ThreadPoolExecutor(max_workers=min(8, len(readers)),
                               thread_name_prefix="ideal-enrichment")
     try:
         # Each reader keeps the request's context (its own copy: one Context
         # cannot be entered by two threads), so the stopwatch counts the
         # sections' database calls and names their laps.
-        futures = {name: pool.submit(copy_context().run, reader)
+        futures = {name: pool.submit(copy_context().run, timed(name, reader))
                    for name, reader in readers.items()}
         for name, future in futures.items():
-            section_started = perf_counter()
             remaining = max(0.001, timeout_seconds - (perf_counter() - started))
             try:
                 data = future.result(timeout=remaining)
@@ -125,7 +139,9 @@ def run_sections(
             except Exception:
                 sections[name] = EnrichmentSection(
                     "failed", retryable=True).wire()
-            timings[name] = (perf_counter() - section_started) * 1000
+            # A section still running at the deadline has no lap of its own
+            # yet; what it cost this response is the budget it was given.
+            timings.setdefault(name, (perf_counter() - started) * 1000)
     finally:
         # A timed-out optional reader must not keep the HTTP response open.
         # Running calls cannot be killed by Python, but they are detached from

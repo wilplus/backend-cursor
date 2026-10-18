@@ -4907,6 +4907,61 @@ class DatabaseService:
                 raise IdealTextCoreReadError(str(error)) from error
             return None
 
+    def get_ideal_text_document_fence(
+        self, arc_id: str, actor_id: str,
+    ) -> Optional[dict]:
+        """The generation fence alone: ``{"id": <head snapshot id>}`` when the
+        arc's head is current, ``None`` when it is not or cannot be read.
+
+        What ``get_ideal_text_document_core`` establishes without the row:
+        the head snapshot (one primary-key row) and whether the arc's source
+        generation still matches it (one primary-key row). The enrichment
+        request re-checks this after its readers settle, having already read
+        and owner-checked the full snapshot once; reading it again cost a
+        second join over v2_sessions and a second copy of the whole payload
+        for a comparison of two ids (founder's stopwatch, 2026-10-18).
+
+        Shape-compatible with the core read for ``stale_snapshot``: ``None``
+        is "no readable head", so a read fault answers stale and retryable,
+        as a failed core read does."""
+        if not arc_id or not actor_id:
+            return None
+        try:
+            from services.parallel import run_in_parallel
+            heads, generations = run_in_parallel(
+                lambda: self._execute_with_retry(
+                    lambda: (self.client.table("ideal_text_document_heads")
+                             .select("snapshot_id, ideal_text_document_snapshots"
+                                     "!inner(source_generation)")
+                             .eq("arc_id", str(arc_id))
+                             .eq("actor_id", str(actor_id)).limit(1)),
+                    label="ideal_text_fence_head").data or [],
+                lambda: self._execute_with_retry(
+                    lambda: (self.client.table("ideal_text_document_generations")
+                             .select("generation")
+                             .eq("arc_id", str(arc_id)).limit(1)),
+                    label="ideal_text_fence_generation").data or [])
+            if not heads or not generations:
+                return None
+            head = heads[0]
+            snapshot = head.get("ideal_text_document_snapshots") or {}
+            if isinstance(snapshot, list):
+                snapshot = snapshot[0] if snapshot else {}
+            if (snapshot.get("source_generation")
+                    != generations[0].get("generation")):
+                return None
+            return {"id": str(head.get("snapshot_id"))}
+        except Exception as error:  # noqa: BLE001 observe_f1_degrade keeps the traceback; None is "no readable head", as for the core read
+            low = str(error).lower()
+            if "ideal_text_document_" in low and (
+                    "does not exist" in low or "pgrst" in low):
+                return None
+            from services.f1_observability import observe_f1_degrade
+            observe_f1_degrade(
+                "ideal_text_fence_read_failed", exc=error,
+                arc_id=arc_id, error=error)
+            return None
+
     def get_ideal_text_document_core_v2(
         self, arc_id: str, actor_id: str,
     ) -> Optional[dict]:
