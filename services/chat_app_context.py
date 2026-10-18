@@ -124,16 +124,24 @@ def features_block(card: Optional[dict] = None) -> str:
 
 
 _NAMED = (
-    ("whatsapp", re.compile(r"whats\s*app", re.I)),
+    # "Phone number" names it too (founder 2026-10-18: asked Will for the
+    # form to enter the telephone number, nothing showed). A bare "phone"
+    # does not: "add it to my phone's home screen" is the install offer.
+    ("whatsapp", re.compile(
+        r"whats\s*app|\btele?phone\b|\bphone\s*(number|no\b|nr\b|#)"
+        r"|\b(mobile|cell)\s*(phone\s*)?number", re.I)),
     # "Show me my latest take" (founder 2026-10-16): the card, not a pointer
     # to the Trainings screen.
     ("latest_take", re.compile(
         r"\b(show|see|open|where|find|read|look|display)\b.*"
         r"\b(latest|last|newest|my|the)\s+(take|ideal\s*text)\b", re.I)),
 )
-#: With a number saved, the form opens only to change it (founder
-#: 2026-10-15: "Is it saved?" brought the form back).
-_CHANGE = re.compile(r"\b(change|update|edit|new|different|another|replace|remove|delete)\b", re.I)
+#: With a number saved, the form opens only when they ask for it, to add,
+#: enter or change a number (founder 2026-10-15: "Is it saved?" brought the
+#: form back; 2026-10-18: "enter my number" brought nothing).
+_CHANGE = re.compile(
+    r"\b(change|update|edit|new|different|another|replace|remove|delete"
+    r"|add|enter|put|type|give|set|fill|form|field|show|open)\b", re.I)
 
 
 def named_feature(question: Any) -> Optional[str]:
