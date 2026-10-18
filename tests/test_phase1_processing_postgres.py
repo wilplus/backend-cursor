@@ -251,3 +251,93 @@ class TestAPermitNamesOnlyItsOwnSource:
                AND acquisition_principal_id = %s""",
             (source["recording"], p2)) == 0, (
             "a snapshot for another principal's recording was written anyway")
+
+
+class TestTheStatusReadsInOneTrip:
+    """0473. `read_phase1_processing_status_v1` answers, in one call, exactly
+    what the owner lookup, the resolver and the status function answer in
+    three — and nothing when it cannot do the whole job."""
+
+    @staticmethod
+    def _user_principal(db):
+        with db.cursor() as cur:
+            cur.execute("""
+                INSERT INTO public.owner_principals (id, user_id)
+                VALUES (gen_random_uuid(), gen_random_uuid())
+                RETURNING id::text, user_id::text""")
+            return cur.fetchone()
+
+    @staticmethod
+    def _two_steps(db, owner, user_id):
+        acquirer = _one(db, """
+            SELECT public.resolve_phase1_acquisition_principal_v1(%s, %s)::text
+            """, (owner, user_id))
+        return acquirer, _one(db, """
+            SELECT public.get_phase1_processing_authorization_v1(%s)""",
+            (acquirer,))
+
+    @staticmethod
+    def _one_trip(db, user_id=None, owner=None):
+        return _one(db, """
+            SELECT public.read_phase1_processing_status_v1(%s, %s)""",
+            (user_id, owner))
+
+    def test_an_authorized_account_reads_the_same_status(self, db, policy):
+        principal, user_id = self._user_principal(db)
+        _accept(db, policy, principal)
+
+        acquirer, status = self._two_steps(db, principal, user_id)
+        assert status["code"] == "PROCESSING_AUTHORIZED"
+        assert self._one_trip(db, user_id=user_id) == {
+            "acquisition_principal_id": acquirer, "status": status}
+
+    def test_an_unauthorized_guest_reads_the_same_status(self, db, policy):
+        guest = _principal(db, guest=True)
+
+        acquirer, status = self._two_steps(db, guest, None)
+        assert status["code"] == "PROCESSING_AUTHORIZATION_REQUIRED"
+        assert self._one_trip(db, owner=guest) == {
+            "acquisition_principal_id": acquirer, "status": status}
+
+    def test_a_claimed_guest_resolves_through_the_one_resolver(
+            self, db, policy):
+        """The guest accepted and recorded, then signed up: the resolver
+        (0355, 0414) names the GUEST as the acquirer. The one-trip read must
+        say the same, and read the guest's status, not the account's."""
+        guest = _principal(db, guest=True)
+        _accept(db, policy, guest)
+        _intake(db, guest)
+        account, user_id = self._user_principal(db)
+        _one(db, """
+            INSERT INTO public.owner_claim_events (
+                source_owner_principal_id, target_owner_principal_id,
+                claimed_user_id, claim_proof_hash, idempotency_key,
+                source_created_at)
+            VALUES (%s, %s, %s, repeat('c', 64), %s, now() - interval '1 hour')
+            RETURNING id""", (guest, account, user_id, f"claim-{uuid.uuid4()}"))
+
+        acquirer, status = self._two_steps(db, account, user_id)
+        assert acquirer == guest
+        assert status["code"] == "PROCESSING_AUTHORIZED"
+        assert self._one_trip(db, user_id=user_id) == {
+            "acquisition_principal_id": guest, "status": status}
+
+    def test_it_answers_nothing_rather_than_guess(self, db, policy):
+        """No owner principal yet (the application creates one), an account
+        id offered as a guest, or no argument at all: null, so the
+        application takes the path it takes today."""
+        nothing = {"acquisition_principal_id": None, "status": None}
+        account, _ = self._user_principal(db)
+        assert self._one_trip(db, user_id=str(uuid.uuid4())) == nothing
+        assert self._one_trip(db, owner=account) == nothing
+        assert self._one_trip(db) == nothing
+
+    def test_only_the_service_role_may_call_it(self, db):
+        signature = "public.read_phase1_processing_status_v1(uuid,uuid)"
+        with db.cursor() as cur:
+            cur.execute("""
+                SELECT has_function_privilege('service_role', %s, 'EXECUTE'),
+                       has_function_privilege('anon', %s, 'EXECUTE'),
+                       has_function_privilege('authenticated', %s, 'EXECUTE')
+                """, (signature, signature, signature))
+            assert cur.fetchone() == (True, False, False)
