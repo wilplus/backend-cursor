@@ -156,6 +156,15 @@ class ChatRoutePersistsTheTurnTests(unittest.TestCase):
         body = self.post({"question": "change my WhatsApp number",
                           "persist": True}).get_json()
         self.assertEqual(body["offer"], "whatsapp")
+        # Founder 2026-10-18: asking for the form by "phone number" opens it
+        # too, number saved or not, whatever the model chose.
+        body = self.post({"question": "where do I enter my telephone number?",
+                          "persist": True}).get_json()
+        self.assertEqual(body["offer"], "whatsapp")
+        self.card = {"whatsapp_on": False}
+        body = self.post({"question": "add my phone number",
+                          "persist": True}).get_json()
+        self.assertEqual(body["offer"], "whatsapp")
 
     def test_a_feature_with_a_page_comes_with_its_link(self):
         self.app_action = "booking"
