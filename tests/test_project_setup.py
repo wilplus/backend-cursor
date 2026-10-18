@@ -38,6 +38,36 @@ class ProjectSetupEndpointTests(unittest.TestCase):
                 return response.get_json(), status
 
 
+    def test_every_take_inherits_take_ones_presentation(self):
+        """Founder 2026-10-16: the second Take mirrors the first. A later
+        take that was somehow recorded against other slides must not carry
+        them into the next Take; the words still follow the latest take."""
+        takes = [{
+            "id": "33333333-3333-4333-8333-333333333333",
+            "take_index": 2,
+            "recording_kind": "spoken",
+            "intake_context": {
+                "topic": "t2", "audience": "a2",
+                "slides": [{"title": "Other", "body": "deck"}],
+                "presentation_ref": None,
+            },
+        }, {
+            "id": TAKE_1,
+            "take_index": 1,
+            "recording_kind": "spoken",
+            "intake_context": {
+                "topic": "t1", "audience": "a1",
+                "slides": [{"title": "One", "body": "first"}],
+                "presentation_ref": "https://example.test/deck.pdf",
+            },
+        }]
+        with patch("routes.v2.arcs.refreshed_media_url", side_effect=lambda r: r):
+            body, status = self._get(takes)
+        self.assertEqual(status, 200)
+        self.assertEqual(body["topic"], "t2")
+        self.assertEqual(body["slides"], [{"title": "One", "body": "first"}])
+        self.assertEqual(body["presentation_ref"], "https://example.test/deck.pdf")
+
     def test_setup_never_leaks_scores_or_take_data(self):
         import json
 
