@@ -431,6 +431,55 @@ def queue_for(database: Any, *, listener_id: str, rng: Any = None) -> tuple[int,
     return 200, {"clips": other_voices(database, listener_id=str(listener_id), rng=rng)}
 
 
+def my_answers(database: Any, *, listener_id: str, limit: int = 3) -> tuple[int, dict]:
+    """The listener's latest answers in the queue, newest first, each with
+    the clip it was given on: the walk reopened from the Lounge shows the
+    moments the speaker already judged, answered. Audio only (AC-9); a clip
+    whose sound is gone is left out. 200 {answers: [{clip_id, audio_ref,
+    start_offset_ms, duration_ms, community, value, answered_at}]}."""
+    me = str(listener_id)
+    names = {str(r.get("id")): r.get("name") for r in _open_private(database, me)[0]
+             if isinstance(r.get("name"), str) and r.get("name")}
+    out: list[dict] = []
+    # A few more rows than asked: one whose sound is gone takes no place.
+    for row in database.list_community_answers(me, limit=max(0, int(limit)) * 3) or []:
+        if len(out) >= limit:
+            break
+        if not isinstance(row, dict):
+            continue
+        clip = _answered_clip(database, row)
+        if clip is None:
+            continue
+        clip["community"] = names.get(str(row.get("community_id")))
+        clip["value"] = row.get("value")
+        clip["answered_at"] = row.get("created_at")
+        out.append(clip)
+    return 200, {"answers": out}
+
+
+def _answered_clip(database: Any, row: dict) -> Optional[dict]:
+    """The clip an answer was given on, as the queue served it; None when
+    its sound is gone."""
+    if row.get("snippet_id"):
+        snippet = database.get_snippet_by_id(str(row["snippet_id"]))
+        if not isinstance(snippet, dict):
+            return None
+        audio = _clip_audio(database, snippet)
+        if not audio:
+            return None
+        return {"clip_id": str(row["snippet_id"]), "source": "community", "audio_ref": audio,
+                "start_offset_ms": snippet.get("start_offset_ms"),
+                "duration_ms": snippet.get("duration_ms")}
+    if row.get("corpus_clip_id"):
+        corpus = database.get_corpus_clip(str(row["corpus_clip_id"]))
+        if not isinstance(corpus, dict) or not corpus.get("audio_url"):
+            return None
+        return {"clip_id": str(row["corpus_clip_id"]), "source": "training",
+                "audio_ref": corpus.get("audio_url"), "start_offset_ms": 0,
+                "duration_ms": corpus.get("duration_ms")}
+    return None
+
+
 # ── the answer ────────────────────────────────────────────────────────────
 
 def answer(database: Any, *, listener_id: str, body: Any) -> tuple[int, dict]:

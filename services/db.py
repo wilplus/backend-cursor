@@ -13097,6 +13097,15 @@ class DatabaseService:
                     out.append(str(row[key]))
         return out
 
+    def list_community_answers(self, listener_id: str, *, limit: int = 50) -> list[dict]:
+        """This listener's answers in the queue, newest first: the clip they
+        heard and the answer they gave, for the walk reopened from the
+        Lounge."""
+        res = (self.client.table("community_answers").select("*")
+               .eq("listener_user_id", str(listener_id))
+               .order("created_at", desc=True).limit(int(limit)).execute())
+        return list(res.data or [])
+
     def insert_community_answer(self, row: dict) -> Optional[dict]:
         """One per person per clip: a duplicate answers None."""
         try:
