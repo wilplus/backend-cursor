@@ -95,6 +95,10 @@ _LAPS: contextvars.ContextVar[Optional[list[str]]] = contextvars.ContextVar(
 # made three calls; the count alone could not say whether they were slow).
 _DB_MS: contextvars.ContextVar[Optional[list[float]]] = contextvars.ContextVar(
     "db_ms", default=None)
+# Named steps sent back in Server-Timing (founder 2026-10-18: a 5.9 s Ideal
+# Text open showed 2 s outside the route and no name for it).
+_TIMINGS: contextvars.ContextVar[Optional[list[str]]] = contextvars.ContextVar(
+    "timings", default=None)
 
 
 class lap:
@@ -112,6 +116,19 @@ class lap:
         laps = _LAPS.get()
         if laps is not None:
             laps.append(f"{self.name}:{(time.perf_counter() - self._t0) * 1000:.0f}")
+
+
+class timed(lap):
+    """A ``lap`` that is also sent back as its own Server-Timing entry, so the
+    browser's timing panel names the step. For a few coarse steps per
+    request, never per database call."""
+
+    def __exit__(self, *_exc: Any) -> None:
+        super().__exit__(*_exc)
+        timings = _TIMINGS.get()
+        if timings is not None:
+            ms = (time.perf_counter() - self._t0) * 1000
+            timings.append(f"{self.name};dur={ms:.0f}")
 
 
 def count_db_call() -> None:
@@ -143,6 +160,7 @@ def install_request_id(app: Any) -> None:
         _DB_CALLS.set([0])
         _DB_MS.set([])
         _LAPS.set([])
+        _TIMINGS.set([])
 
     @app.after_request
     def _echo_request_id(response: Any) -> Any:
@@ -154,6 +172,8 @@ def install_request_id(app: Any) -> None:
                 ms = (time.perf_counter() - started) * 1000.0
                 calls = box[0] if box else 0
                 timing = f"app;dur={ms:.0f}, db;desc=\"calls\";dur={calls}"
+                for step in _TIMINGS.get() or []:
+                    timing += f", {step}"
                 # The calls' own time: summed (parallel calls overlap, so it
                 # can pass `app`) and the slowest one.
                 waits = _DB_MS.get() or []
@@ -178,3 +198,4 @@ def install_request_id(app: Any) -> None:
         _DB_CALLS.set(None)
         _DB_MS.set(None)
         _LAPS.set(None)
+        _TIMINGS.set(None)
