@@ -1,8 +1,9 @@
 """Asks to one person (founder 2026-10-13, step 2). Table: person_asks.
 
 The admin asks one person for a missing answer from their profile; the
-person's app shows it after their next Take, one at a time, in the footer
-slot the app's own offers use.
+person's app shows it the next time they open the chat (founder 2026-10-18;
+it used to wait for their next Take), one at a time, in the footer slot the
+app's own offers use.
 
   whatsapp     the app's WhatsApp offer (answered when the number is saved)
   home_screen  the app's add-to-home-screen offer (answered when the app is
