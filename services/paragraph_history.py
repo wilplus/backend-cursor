@@ -19,10 +19,13 @@ Revisions written before 0421 carry no name and are not guessed.
 """
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 _PARA = "\n\n"
 
@@ -220,6 +223,18 @@ def _slide_answer(database: Any, session_id: str, user_id: str,
     return answer
 
 
+def _take_sessions(arc_sessions: Any) -> dict:
+    """{take_index: session_id} for the Takes whose recordings the rows play:
+    spoken Takes, not read-alouds or their paired halves."""
+    return {
+        row.get("take_index"): str(row.get("id"))
+        for row in arc_sessions or []
+        if isinstance(row, Mapping) and row.get("id")
+        and row.get("recording_kind") != "read"
+        and not row.get("paired_session_id")
+    }
+
+
 def with_earlier_take_details(database: Any, arc_id: str, user_id: str,
                               history: dict, resolve_url: Any) -> dict:
     """Each version row gains its Take's recording for this Slide and the
@@ -231,13 +246,7 @@ def with_earlier_take_details(database: Any, arc_id: str, user_id: str,
     slide = history.get("slide_index")
     if not isinstance(slide, int):
         return history
-    sessions = {
-        row.get("take_index"): str(row.get("id"))
-        for row in database.takes.get_arc_sessions(arc_id) or []
-        if isinstance(row, Mapping) and row.get("id")
-        and row.get("recording_kind") != "read"
-        and not row.get("paired_session_id")
-    }
+    sessions = _take_sessions(database.takes.get_arc_sessions(arc_id))
     for version in history.get("versions") or []:
         if version.get("kind") == ACCEPTED_CORRECTION:
             continue  # a correction is no Take: no recording, no answer
@@ -341,36 +350,70 @@ class BatchedHistoryReads:
         self._memo[_key(name, args, {})] = value
 
     def prefetch(self, part_ids: list) -> None:
-        """Read the per-Slide and per-Paragraph rows for every named
-        Paragraph in one read each. A batched read that fails seeds nothing,
-        and the per-Slide or per-Paragraph read then runs as it always has."""
+        """Read the per-Slide, per-Paragraph and per-Take rows for every named
+        Paragraph in one read each, all at the same time (2026-10-18: the
+        reads ran one after another, three or four more for every Take, and
+        each Take's pieces came with their word timings). A batched read that
+        fails seeds nothing, and the per-Slide, per-Paragraph or per-Take
+        read then runs as it always has."""
+        from services.parallel import run_in_parallel
         from services.slide_helper_words import slide_of_part
 
         core = self.core()
         slide_by_part = {part_id: slide_of_part(core, part_id)
                          for part_id in part_ids}
         slides = sorted({s for s in slide_by_part.values() if s is not None})
-        arc, user = self._arc_id, self._user_id
-        if slides:
-            for name, batched in (
-                    ("list_slide_helper_words_log",
-                     "list_slide_helper_words_log_for_slides"),
-                    ("list_practice_adoptions",
-                     "list_practice_adoptions_for_slides")):
-                rows = getattr(self._database, batched)(arc, user, slides)
-                if isinstance(rows, Mapping):
-                    for slide in slides:
-                        if slide in rows:
-                            self._seed(name, (arc, user, slide), rows[slide])
         resolved = [p for p, s in slide_by_part.items() if s is not None]
-        revisions = (self._database.list_accepted_rewrite_revisions_for_parts(
-            arc, user, resolved) if resolved else None)
+        if not resolved:
+            return
+        arc, user, db = self._arc_id, self._user_id, self._database
+        takes = sorted(set(_take_sessions(self.takes.get_arc_sessions(arc))
+                           .values()))
+
+        def read(name: str, *args: Any) -> Any:
+            def thunk() -> Any:
+                try:
+                    return getattr(db, name)(*args)
+                except Exception:
+                    # Seeds nothing: the per-value read runs instead.
+                    logger.warning("batched history read %s failed", name,
+                                   exc_info=True)
+                    return None
+            return thunk
+
+        # The self-reports read makes two calls, so it goes first.
+        (reports, versions, helper, adoptions, revisions, pieces,
+         fixes) = run_in_parallel(
+            read("list_take_feedback_self_reports_for_sessions", takes, user),
+            read("list_ideal_text_versions", arc),
+            read("list_slide_helper_words_log_for_slides", arc, user, slides),
+            read("list_practice_adoptions_for_slides", arc, user, slides),
+            read("list_accepted_rewrite_revisions_for_parts", arc, user,
+                 resolved),
+            read("get_snippet_slide_rows_by_sessions", takes),
+            read("get_snippet_slide_corrections_for_sessions", takes))
+        if isinstance(versions, list):
+            self._seed("list_ideal_text_versions", (arc,), versions)
+        for name, rows in (("list_slide_helper_words_log", helper),
+                           ("list_practice_adoptions", adoptions)):
+            if isinstance(rows, Mapping):
+                for slide in slides:
+                    if slide in rows:
+                        self._seed(name, (arc, user, slide), rows[slide])
         if isinstance(revisions, Mapping):
             for part_id in resolved:
                 rows = revisions.get(str(part_id).lower())
                 if rows is not None:
                     self._seed("list_accepted_rewrite_revisions",
                                (arc, user, part_id), rows)
+        for name, by_take, args in (
+                ("get_snippets_by_session", pieces, ()),
+                ("get_snippet_slide_corrections", fixes, ()),
+                ("list_take_feedback_self_reports", reports, (user,))):
+            if isinstance(by_take, Mapping):
+                for sid in takes:
+                    if sid in by_take:
+                        self._seed(name, (sid, *args), by_take[sid])
 
 
 def requested_part_ids(raw: Any, core: Any) -> list:

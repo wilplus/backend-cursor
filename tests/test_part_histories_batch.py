@@ -103,12 +103,32 @@ class _Db:
 
     def get_snippets_by_session(self, sid):
         self._count("snippets")
+        return self._snippets(sid)
+
+    def get_snippet_slide_rows_by_sessions(self, sids):
+        self._count("snippets_batch")
+        return {sid: self._snippets(sid) for sid in sids}
+
+    def get_snippet_slide_corrections_for_sessions(self, sids):
+        self._count("corrections_batch")
+        return {sid: {} for sid in sids}
+
+    def list_take_feedback_self_reports(self, sid, _user):
+        self._count("self_reports")
+        return self._reports(sid)
+
+    def list_take_feedback_self_reports_for_sessions(self, sids, _user):
+        self._count("self_reports_batch")
+        return {sid: self._reports(sid) for sid in sids}
+
+    @staticmethod
+    def _snippets(sid):
         return [{"id": f"{sid}-s{slide}", "start_offset_ms": 1000 * slide,
                  "duration_ms": 900, "metrics": {"piece": {"slide_index": slide}}}
                 for slide in (0, 1)]
 
-    def list_take_feedback_self_reports(self, sid, _user):
-        self._count("self_reports")
+    @staticmethod
+    def _reports(sid):
         return [{"feedback_family": "confident_voice",
                  "snippet_id": f"{sid}-s1", "response": "yes"}]
 
@@ -144,4 +164,14 @@ def test_a_failed_batched_read_falls_back_to_the_per_paragraph_read():
     assert database.calls["revisions"] == 1
 
 
-# ── the batched reads return exactly what the per-value reads return ─────
+def test_each_batched_body_is_the_single_body_and_no_read_repeats_per_take():
+    database = _Db()
+    body, status = _batch(database)
+    assert status == 200
+    for part_id in (P1, P2, P3):
+        assert body["histories"][part_id] == _single(_Db(), part_id)[0]
+    assert body["histories"][P1]["versions"][-1]["clip"]["snippet_audio_ref"]
+    singles = ("helper_log", "adoptions", "revisions", "snippets",
+               "corrections", "self_reports")
+    assert all(database.calls[name] == 0 for name in singles), database.calls
+    assert all(count == 1 for count in database.calls.values()), database.calls

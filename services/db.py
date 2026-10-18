@@ -2340,11 +2340,29 @@ class DatabaseService:
         a time, with their word timings, twice). {session_id: [rows ordered
         by start_offset_ms]}; None when unreadable, so the caller falls back
         to ``get_snippets_by_session``. Paged like get_snippets_by_sessions."""
+        return self._snippet_rows_by_sessions(
+            session_ids, "id, session_id, user_id, start_offset_ms, duration_ms, "
+            "audio_segment_path, storage_path")
+
+    def get_snippet_slide_rows_by_sessions(self, session_ids) -> Optional[dict]:
+        """The columns a Slide's clip needs, for many sessions at once (the
+        batched Paragraph histories, 2026-10-18: every Take's pieces were read
+        with their word timings and copied once per Paragraph). The playable
+        link's columns plus ``metrics.piece``, the Slide the piece was cut
+        on, as ``{"metrics": {"piece": ...}}``. None when unreadable."""
+        out = self._snippet_rows_by_sessions(
+            session_ids, "id, session_id, user_id, start_offset_ms, duration_ms, "
+            "audio_segment_path, storage_path, piece:metrics->piece")
+        for rows in (out or {}).values():
+            for row in rows:
+                piece = row.pop("piece", None)
+                row["metrics"] = {"piece": piece} if isinstance(piece, dict) else {}
+        return out
+
+    def _snippet_rows_by_sessions(self, session_ids, cols: str) -> Optional[dict]:
         ids = sorted({str(s) for s in (session_ids or []) if s})
         if not ids:
             return {}
-        cols = ("id, session_id, user_id, start_offset_ms, duration_ms, "
-                "audio_segment_path, storage_path")
         out: dict = {sid: [] for sid in ids}
         try:
             for i in range(0, len(ids), 20):
@@ -2362,7 +2380,7 @@ class DatabaseService:
                         break
                     offset += 1000
         except Exception as e:
-            logger.warning("get_snippet_audio_rows_by_sessions failed n=%d: %s",
+            logger.warning("snippet rows by sessions failed n=%d: %s",
                            len(ids), e, exc_info=True)
             return None
         return out
@@ -6029,6 +6047,34 @@ class DatabaseService:
                 logger.warning("take feedback self-report read failed: %s", e)
             return []
 
+    def list_take_feedback_self_reports_for_sessions(
+        self, take_session_ids, owner_user_id: str,
+    ) -> Optional[dict]:
+        """`list_take_feedback_self_reports` for several Takes in ONE read
+        (batched Paragraph histories): ``{take_session_id: rows}``, each list
+        exactly what the per-Take read returns. None on any failure, so the
+        caller falls back to that read."""
+        ids = sorted({str(s) for s in (take_session_ids or []) if s})
+        if not ids or not owner_user_id:
+            return None
+        try:
+            rows = self._latest_self_reports(
+                self.client.table("take_feedback_self_report")
+                .select("*")
+                .in_("take_session_id", ids)
+                .eq("owner_user_id", str(owner_user_id))
+                .order("created_at").execute().data or [])
+        except Exception as e:
+            logger.warning("take feedback self-reports failed n=%d: %s",
+                           len(ids), e, exc_info=True)
+            return None
+        out: dict = {sid: [] for sid in ids}
+        for row in rows:
+            group = out.get(str(row.get("take_session_id") or ""))
+            if group is not None:
+                group.append(row)
+        return out
+
     def v2_session_owner(self, session_id: str) -> Optional[dict]:
         """Only who owns a Take (``user_id``, ``owner_principal_id``), for an
         ownership check that does not need the whole row."""
@@ -7791,6 +7837,35 @@ class DatabaseService:
                            session_id, e)
             return {}
 
+
+    def get_snippet_slide_corrections_for_sessions(
+        self, session_ids,
+    ) -> Optional[dict]:
+        """`get_snippet_slide_corrections` for several sessions in ONE read
+        (batched Paragraph histories): ``{session_id: {snippet_id:
+        slide_index}}``, each exactly what the per-session read returns.
+        None on any failure, so the caller falls back to that read."""
+        ids = sorted({str(s) for s in (session_ids or []) if s})
+        if not ids:
+            return {}
+        try:
+            rows = (self.client.table("snippet_slide_corrections")
+                    .select("session_id,snippet_id,slide_index")
+                    .in_("session_id", ids)
+                    .order("created_at", desc=True)
+                    .order("id", desc=True)
+                    .execute().data) or []
+        except Exception as e:
+            logger.warning("snippet slide corrections failed n=%d: %s",
+                           len(ids), e, exc_info=True)
+            return None
+        out: dict = {sid: {} for sid in ids}
+        for r in rows:
+            fixes = out.get(str((r or {}).get("session_id") or ""))
+            sid = str((r or {}).get("snippet_id") or "")
+            if fixes is not None and sid and sid not in fixes:
+                fixes[sid] = (r or {}).get("slide_index")
+        return out
     def count_intervention_decisions(self, arc_id: Optional[str],
                                      take_session_id: Optional[str]) -> int:
         """Spent slots for one take. 0 pre-migration / on hiccup — the
