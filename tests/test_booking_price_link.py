@@ -1,0 +1,43 @@
+"""A price link (founder 2026-10-18): whoever books through it pays exactly
+its price, now, by card; an edited link is ignored."""
+from __future__ import annotations
+
+from unittest.mock import patch
+
+import pytest
+
+from services import booking
+
+SETTINGS = {"id": 1, "slug": "artur", "enabled": True, "title": "1-on-1 lesson", "host_name": "Artur",
+            "duration_min": 60, "price_cents": 12000, "currency": "usd", "horizon_days": 30,
+            "timezone": "Europe/Warsaw", "new_user_discount_pct": 50}
+
+
+@pytest.fixture(autouse=True)
+def _setup():
+    with patch.object(booking.config, "SUPABASE_JWT_SECRET", "test-secret", create=True), \
+            patch.object(booking, "get_settings", return_value=dict(SETTINGS)), \
+            patch.object(booking, "user_price", return_value=None):
+        yield
+
+
+def test_link_charges_its_exact_price_with_no_first_lesson_discount():
+    link = booking.make_price_link(3500)
+    assert booking.public_settings("artur", link)["new_user_price_cents"] == 3500
+    offer = booking.offer_for("artur", "u1", link)
+    assert offer["price_cents"] == 3500 and offer["price_link"] is True
+    # Without the link: the normal page and the 50% first lesson.
+    assert booking.offer_for("artur", "u1")["price_cents"] == 6000
+
+
+def test_an_edited_link_gives_the_normal_price():
+    sig = booking.make_price_link(3500).split("-")[1]
+    assert booking.offer_for("artur", "u1", f"100-{sig}")["price_cents"] == 6000
+
+
+def test_a_link_cannot_book_without_paying():
+    with pytest.raises(booking.BookingError) as e:
+        booking.start_checkout(slug="artur", user_id="u1", start_iso="2030-01-01T10:00:00Z",
+                               name="A", email="a@x.co", guest_timezone="UTC",
+                               skip_payment=True, link=booking.make_price_link(3500))
+    assert e.value.code == "PAY_NOW"

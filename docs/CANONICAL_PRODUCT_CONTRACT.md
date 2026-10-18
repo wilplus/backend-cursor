@@ -707,7 +707,7 @@ with this contract, this contract wins.
     `EXERCISE_FALLBACK_LADDER_ENABLED` until the three general exercises
     and the warm-up exist (switched on 2026-10-02 before they did, off again
     from 2026-10-03, N29). **Amended 2026-10-18 (founder, decisions log
-    N77; migration 0476):** the app picks by itself only from the speaker's
+    N77; migration 0477):** the app picks by itself only from the speaker's
     own set (their coach's videos, and library exercises a coach picked for
     one of their moments), and only on an exact fit; a trial is never served
     by itself. With nothing in their set that fits exactly there is no
@@ -752,7 +752,7 @@ with this contract, this contract wins.
     exercise is what is served. Under 24e-1 the request rises at the open
     instead, under the machine's kind, and the judgement sets its answer
     kind; the coach reads that side only after their blind rating.
-    **Amended 2026-10-18 (founder, decisions log N77; migration 0476):** an
+    **Amended 2026-10-18 (founder, decisions log N77; migration 0477):** an
     exercise a coach makes is that speaker's own and never reusable for any
     other speaker; once shared, it and any library exercise the coach picked
     join the speaker's own set (35g-1). A praise line lands in the catalogue

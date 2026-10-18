@@ -866,6 +866,15 @@ fi
 hard migrations/status_read_in_one_trip.sql
 hard migrations/status_read_in_one_trip.sql
 
+# 0477 (founder 2026-10-18, N77): a coach's video belongs to its speaker.
+# The owner on the version rows (0399) and on the catalogue's lines (0401),
+# both applied above, and the speaker's own set; the exercise library parts
+# degrade to no-ops, as this lane carries no diagnostic_exercise. The
+# account erasure's inventory reads those owner columns. Twice:
+# apply/reapply idempotency.
+hard migrations/a_coach_video_belongs_to_its_speaker.sql
+hard migrations/a_coach_video_belongs_to_its_speaker.sql
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

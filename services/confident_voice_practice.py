@@ -815,7 +815,7 @@ def build_match_trace(*, lane: str, verdict: dict, vocabulary: Any,
 
 
 def visible_to(exercise: Any, owner_user_id: Any = None) -> bool:
-    """THE OWNER WALL (founder 2026-10-18, decisions log N77; 0476).
+    """THE OWNER WALL (founder 2026-10-18, decisions log N77; 0477).
 
     A row with no owner is the founder's shared library, which every coach
     list may show. A row with an owner is a coach's video for that one
@@ -1028,7 +1028,7 @@ def offerable_exercises(database: Any, owner_user_id: Any = None) -> list[dict]:
 
 def speaker_exercises(database: Any, owner_user_id: Any) -> list[dict]:
     """THE SPEAKER'S OWN SET: the only pool the app picks from by itself
-    after a Take (founder 2026-10-18, decisions log N77; 0476).
+    after a Take (founder 2026-10-18, decisions log N77; 0477).
 
     Their own coach videos and the library exercises a coach picked for one
     of their moments, live ones only. Nobody else's video, and no library

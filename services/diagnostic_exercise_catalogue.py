@@ -370,7 +370,7 @@ def save_exercise(
 ) -> Optional[dict]:
     """Validate and write one catalogue entry, new or existing.
 
-    ``owner_user_id`` makes it one speaker's coach video (0476, N77): only
+    ``owner_user_id`` makes it one speaker's coach video (0477, N77): only
     the server sets it, never a client's body, and a save without it never
     clears an owner already there. ``video_ref`` is a private video the
     server stored for that speaker (``s3://``), which the client-facing URL
@@ -435,7 +435,7 @@ def file_coach_exercise(
     through -- including the refusal for an error code cannot detect, which is
     the one a coach is most likely to meet and most needs to read.
 
-    AMENDED 2026-10-18 (founder, decisions log N77; 0476): the coach's video
+    AMENDED 2026-10-18 (founder, decisions log N77; 0477): the coach's video
     belongs to the speaker of the practice (``owner_user_id``). It treats an
     error, as above, but only for that speaker: no other speaker is served
     it. Without an owner it is not filed at all.

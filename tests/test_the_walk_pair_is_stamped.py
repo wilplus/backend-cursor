@@ -151,7 +151,7 @@ def _upload(db, *, definition=None, exercise_id=WALK_ID, transcript="Let the fin
     status = "done" if transcript else "coach_authorization_missing"
     body = {"transcript": transcript, "language": "en"} if transcript else None
     # The walk's video belongs to the moment's speaker: stored privately
-    # under their id (N77; 0476), never in the public library bucket.
+    # under their id (N77; 0477), never in the public library bucket.
     with patch.object(cea, "_store_speaker_video",
                       lambda *_a, **_k: "s3://coach-media/coach-answers/speaker-1/x.mp4"), \
             patch("services.exercise_versions.transcribe_exercise_video",

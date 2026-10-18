@@ -1,5 +1,5 @@
 """A coach's video belongs to the speaker it was made for (founder,
-2026-10-18; decisions log N77; migration 0476).
+2026-10-18; decisions log N77; migration 0477).
 
 What the founder decided, pinned here through the public seams:
 

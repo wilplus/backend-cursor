@@ -19,7 +19,7 @@ Sharing with the speaker is a separate tick and only an exercise can be
 shared. A shared exercise then rides on that same item for the speaker.
 
 A COACH VIDEO BELONGS TO ITS SPEAKER (founder 2026-10-18, decisions log
-N77; 0476). The exercise a coach makes for a moment is that speaker's own;
+N77; 0477). The exercise a coach makes for a moment is that speaker's own;
 once shared, it and any library exercise a coach picked join the speaker's
 own set, the only pool the app picks from by itself on their later Takes.
 No other speaker is ever served it. A coach's praise line is the speaker's
@@ -283,7 +283,7 @@ def resolve_request(database: Any, request: dict, body: Any,
 def _into_speaker_set(database: Any, request: dict, resolved: dict,
                       exercise: Optional[dict], coach_id: Any) -> None:
     """A SHARED exercise joins the speaker's own set (founder 2026-10-18,
-    N77; 0476): on their later Takes the app may serve it to them by itself
+    N77; 0477): on their later Takes the app may serve it to them by itself
     when its main mistake is heard again, until a Good job rests it. Their
     own coach video, or a library one this coach picked for them. Never
     before the share: until then the coach has not given it to them.
@@ -430,7 +430,7 @@ def _file_answer(database: Any, request: dict, resolved: dict, fields: dict,
     * a praise line lands in the catalogue of signed lines as the newest
       version for the moment's pattern (35f; P2-3) unless the coach says
       ``file_in_catalogue: false``, as THIS SPEAKER's own line: it is read
-      for no one else (founder 2026-10-18, N77; 0476). A clearer version
+      for no one else (founder 2026-10-18, N77; 0477). A clearer version
       never does: it is one speaker's passage, not a move for every rewrite
       (Q-B13 A).
 

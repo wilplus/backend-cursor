@@ -264,7 +264,7 @@ def _praise_by_evidence(row: dict, lines: dict) -> Optional[str]:
 
 
 def _speaker_praise(row: dict, own: dict, shared: dict) -> Optional[str]:
-    """THE SPEAKER'S OWN LINE FIRST (founder 2026-10-18, N77; 0476): what
+    """THE SPEAKER'S OWN LINE FIRST (founder 2026-10-18, N77; 0477): what
     their coach wrote for them beats a shared line for the same evidence,
     and the evidence beats the general read, theirs or the shared one."""
     return (_praise_by_evidence(row, own) or _praise_by_evidence(row, shared)
@@ -294,7 +294,7 @@ def decorate(changes: Any, catalogue_rows: Any,
     catalogue has one. Rows are copied; nothing else on them changes. The
     signed proposed lines are the floor beneath the table's own versions.
 
-    A line with an owner is that speaker's own (a coach's answer, 0476):
+    A line with an owner is that speaker's own (a coach's answer, 0477):
     it serves ``owner_user_id`` first and is dropped for anyone else."""
     owner = str(owner_user_id or "")
     rows = [r for r in (catalogue_rows or []) if isinstance(r, dict)]

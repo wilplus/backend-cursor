@@ -226,7 +226,7 @@ def person(user_id: str) -> Optional[dict]:
         # removing it in Data & consent removes it here too.
         "phone": settings.get("whatsapp_phone"),
         "home_screen_at": meta.get("home_screen_at"),
-        "consents": consent_rows,
+        "consents": _with_chat_no(consent_rows, f_asks.result() or []),
         "tokens": account and {
             "balance": account.get("balance"), "monthly": account.get("monthly_balance"),
             "bonus": account.get("bonus_balance"), "tier": account.get("tier"),
@@ -238,6 +238,21 @@ def person(user_id: str) -> Optional[dict]:
         "practice": f_practice.result(),
         "deletion": deletion_row,
     }
+
+
+def _with_chat_no(rows: list[dict], asks: list[dict]) -> list[dict]:
+    """A consent ask answered in the chat while the consent is still not
+    given was a "no" (founder 2026-10-18): it starts the same wait before
+    asking again (services.person_asks)."""
+    for row in rows:
+        if row.get("state") == "yes":
+            continue
+        chat = [str(a["resolved_at"]) for a in asks
+                if a.get("kind") == "consent" and a.get("consent_key") == row.get("key")
+                and a.get("status") == "answered" and a.get("resolved_at")]
+        latest = max(chat + ([str(row["last_no_at"])] if row.get("last_no_at") else []), default=None)
+        row["last_no_at"] = latest
+    return rows
 
 
 def deletion(user_id: str, principal: Optional[str]) -> Optional[dict]:

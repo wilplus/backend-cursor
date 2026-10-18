@@ -2596,7 +2596,7 @@ praise lines that cannot be traced are switched off but kept (step 2, a
 script the founder approves before it runs). A coach writes and reads only
 for the speakers the founder assigns them in admin (step 4). Approving a coach
 video into the library comes later, as its own step. Step 1 (backend):
-migration 0476, the matcher, the coach save paths, praise, the Take word and
+migration 0477, the matcher, the coach save paths, praise, the Take word and
 deletion. The coach panel's library words ("Share without the library", "The
 library offers it to other speakers…") are unchanged until the founder signs
 their replacement (step 3, a locked screen). Contract 35g-1, 35g-2, 35g-4 and
