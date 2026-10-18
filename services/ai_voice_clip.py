@@ -47,7 +47,7 @@ LINK_SECONDS = 900
 #: The library's problem names a video must target to be "the same
 #: problem" (confident_voice_practice._SIGNAL_PROBLEM_TAGS). Stress has no
 #: library name yet, so stress always takes the AI clip.
-PROBLEM_TAGS = {"pace": {"rushing"}, "pause": {"rushing"}, "stress": set()}
+PROBLEM_TAGS = {"pace": {"rushing"}, "pause": {"rushing"}, "stress": set(), "fillers": set()}
 #: A voice not ready at generate time (the clone still on its way from
 #: Take 1) is asked for again after this many seconds, at most this many
 #: times; the count rides the cycle row's ``generation_metadata`` (no
@@ -333,6 +333,8 @@ def _choose(database: Any, practice: dict, cycle: dict) -> tuple[Optional[dict],
                        seed=str(practice["id"]), history=history)
     before = {k: (snippet.get("metrics") or {}).get(k)
               for k in ("wpm", "pause_ratio", "dynamic_db")}
+    from services.ai_voice_severity import fillers_per_100
+    before["fillers_per_100"] = fillers_per_100(sentence)
     return selection, {"before": before, "medians": medians,
                        "sentence": sentence, "snippet": snippet}
 
@@ -641,6 +643,10 @@ WHY = {
                "the listener with you."),
     "default": ("Nothing was off here. This version just makes \u201c{phrase}\u201d stand "
                 "out a little more, so the point lands and the sentence has a shape."),
+    # L18 (founder 2026-10-18): the fillers clip names no words and no number.
+    "fillers": ("You said this with a few ums and uhs. This version says it without "
+                "them. Without them each thought comes out whole, so it sounds sure "
+                "and is easier to follow."),
 }
 
 
@@ -685,7 +691,11 @@ def note_attempts(database: Any, practice: dict, attempts: list[dict]) -> None:
     if not cycle or not cycle.get("exercise") or not attempts:
         return
     latest = max(attempts, key=lambda row: int(row.get("attempt_index") or 0))
-    after = latest.get("acoustic_metrics") or {}
+    after = dict(latest.get("acoustic_metrics") or {})
+    # Fillers are read from the try's own transcript, the same way the
+    # practised sentence was read.
+    from services.ai_voice_severity import fillers_per_100
+    after["fillers_per_100"] = fillers_per_100(latest.get("transcript"))
     too_long = int(latest.get("duration_ms") or 0) > 1000 * int(Config.AI_VOICE_MAX_PRACTICE_SECONDS)
     from services.ai_voice_severity import outcome
     medians = {}
@@ -700,7 +710,8 @@ def note_attempts(database: Any, practice: dict, attempts: list[dict]) -> None:
         str(cycle["exercise"]), cycle.get("metrics_before") or {}, after, medians)
     store.update_cycle(database, str(cycle["id"]), {
         "retried": True, "outcome": result,
-        "metrics_after": {k: after.get(k) for k in ("wpm", "pause_ratio", "dynamic_db")}})
+        "metrics_after": {k: after.get(k)
+                          for k in ("wpm", "pause_ratio", "dynamic_db", "fillers_per_100")}})
 
 
 def erase_clips(database: Any, owner_user_id: str, *, delete_object=None) -> int:

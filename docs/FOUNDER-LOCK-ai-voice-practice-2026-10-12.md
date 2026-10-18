@@ -173,6 +173,43 @@ the Lounge chat alike; no second bubble, nothing new stored in the thread.
 | L16 | under the player, stress | You said this flatter than you usually do. This version makes “‹the phrase›” stand out, said a little stronger. One point that stands out gives the sentence a shape, so it is less flat and keeps the listener with you. |
 | L17 | under the player, the default clip (nothing reached the line) | Nothing was off here. This version just makes “‹the phrase›” stand out a little more, so the point lands and the sentence has a shape. |
 
+## Decided after the lock (2026-10-18, fillers)
+
+**A fourth problem: fillers.** The founder (Linear "Evaluate retaining
+filler words in transcripts", and the answers in the Claude Code session of
+2026-10-18): the transcript stays clean, as locked on 2026-07-20 (the
+hesitations are removed silently, the Ideal Text screen does not change).
+The speaker learns about their fillers in one place, the AI clip.
+
+- **The picker** measures fillers against the speaker's own usual delivery
+  on this Take, the same way it measures pace, pause and stress: hesitations
+  per 100 words above their own median (`AI_VOICE_FILLER_GAP_PER_100` more
+  is the line). The hesitations are exactly the closed list the transcript
+  fence removes ("um", "uh", "erm", "hmm", ...), never "like", "so" or
+  "right".
+- **The clip** says the speaker's own sentence with those tokens left out
+  and nothing else changed. This amends section 1, "same words", by exactly
+  that much: the words the clip says are the words the Ideal Text shows. The
+  check hears the clip and refuses it if one hesitation is heard.
+- **One signed sentence**, L18, under the player, every time the fillers
+  clip appears. No number, no words quoted.
+- **Measured after**: the next try on fillers only, from its own transcript
+  (hesitations per 100 words, against the same line as the pick): improved,
+  similar, worsened or inconclusive. Stored, never shown. The admin Take
+  view shows the problem practised, the outcome and, for fillers, the rate
+  before and after; that is the awareness test, read after ten speakers.
+- **Uploaded Takes** have no AI voice, so they get no clip and no sentence;
+  nothing else changes for them.
+- Section 5's problem list reads `pace, pause, stress, fillers`; migration
+  0475 widens the stored exercise accordingly.
+
+| # | Where | Words |
+|---|---|---|
+| L18 | under the player, fillers | You said this with a few ums and uhs. This version says it without them. Without them each thought comes out whole, so it sounds sure and is easier to follow. |
+
+Founder-Approved: Artur, Claude Code session 2026-10-18 ("you have my OK to
+the previous one", on the task text that carried L18).
+
 ## 7. Order of work
 
 Build end to end, test with the founder's own voice, then counsel (L12,

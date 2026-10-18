@@ -6,7 +6,10 @@ Admin only. These numbers never reach a speaker (CLAUDE.md, never #1).
 
   takes(user_id)          every Take, newest first: the Take row's own
                           measures plus averages of its pieces' acoustic
-                          blobs, and the person's current acoustic baseline
+                          blobs, its AI clip (the problem practised and the
+                          next try's outcome; for fillers, hesitations per
+                          100 words before and after), and the person's
+                          current acoustic baseline
   pieces(user_id, sid)    one Take's pieces, each with every measure stored
 """
 from __future__ import annotations
@@ -50,9 +53,29 @@ def _projects(ids: set[str]) -> dict[str, str]:
     return {str(r["id"]): r.get("display_name") or "" for r in rows}
 
 
+def _ai_clips(user_id: str) -> dict[str, dict]:
+    """Each Take's AI clip (the newest practice per Take), by Take id."""
+    from services import ai_voice_store
+    out: dict[str, dict] = {}
+    for c in ai_voice_store.owner_cycles(db, user_id, limit=1000):
+        take_id = str(c.get("take_session_id") or "")
+        if not take_id or take_id in out:
+            continue
+        before, after = c.get("metrics_before") or {}, c.get("metrics_after") or {}
+        out[take_id] = {
+            "exercise": c.get("exercise"), "status": c.get("status"),
+            "outcome": c.get("outcome"), "listened": bool(c.get("listened")),
+            "plays": int(c.get("plays") or 0),
+            "fillers_per_100_before": _num(before.get("fillers_per_100")),
+            "fillers_per_100_after": _num(after.get("fillers_per_100")),
+        }
+    return out
+
+
 def takes(user_id: str) -> dict:
     sessions = db.takes.list_sessions_for_user_admin(user_id)[:MAX_TAKES]
     pieces = db.get_snippets_by_sessions([s["id"] for s in sessions])
+    clips = _ai_clips(user_id)
     try:
         names = _projects({str(s["project_id"]) for s in sessions if s.get("project_id")})
     except Exception:
@@ -78,6 +101,7 @@ def takes(user_id: str) -> dict:
                 "kpi_score": s.get("kpi_score"),
             },
             "piece_means": _piece_means(own),
+            "ai_clip": clips.get(str(s["id"])),
         })
     baseline = None
     try:

@@ -2552,3 +2552,15 @@ already published and cannot change in place, the founder: "yes, go ahead as
   run in Supabase. `phase1-2026-10-15-3.7` is in force with the approved
   bytes and the United States; training-only-v4 stays the one wording in
   force. The code that gives Will the whole talk may now go live.
+
+**N75 · The AI clip practises fillers; the transcript stays clean (founder,
+Linear and chat, 18 October 2026).** From the Linear issue "Evaluate
+retaining filler words in transcripts" and the founder's four answers in the
+Claude Code session: the transcript keeps removing hesitations silently (the
+fence of 2026-07-20); the speaker learns about their fillers only in the
+AI clip, as a fourth exercise next to pace, pause and stress; the test that it
+improves awareness is fewer fillers in the next try, measured internally and
+read in the admin Take view, never shown; an uploaded Take has no voice and
+gets nothing. One signed sentence, L18, under the player ("you have my OK to
+the previous one"). Lock: `FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`,
+"Decided after the lock (2026-10-18, fillers)". Migration 0475.

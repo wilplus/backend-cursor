@@ -15,6 +15,7 @@ only when every check passes:
                      read from the audio's silence (Whisper's word times
                      swallow short silences)
               stress: the target phrase louder than the rest, not shouted
+              fillers: not one hesitation heard in the clip
 
 Every threshold is a named constant here, so tuning is one reviewed edit.
 Nothing in the result is ever shown to the speaker (AC-9).
@@ -181,6 +182,16 @@ def _check_stress(words: list[dict], dbs: list[float], index: int, phrase: str) 
     return {"passed": not failed, "measurements": m, "failed": failed}
 
 
+def _check_fillers(words: list[dict]) -> dict:
+    """Not one hesitation in what was heard (the English list of the
+    transcript fence: the AI lane speaks and is re-heard in English)."""
+    from services.transcript_smoothing import hesitations_for
+    fillers = set(hesitations_for("en"))
+    heard = sum(1 for w in words if w["t"] in fillers)
+    return {"passed": heard == 0, "measurements": {"fillers_heard": heard},
+            "failed": ["fillers_heard"] if heard else []}
+
+
 def check_exercise(problem: str, *, words: list[dict], dbs: list[float],
                    phrase: Optional[str], original_wpm: Optional[float]) -> dict:
     """``{"passed", "measurements", "failed"}`` for the one exercise."""
@@ -188,6 +199,8 @@ def check_exercise(problem: str, *, words: list[dict], dbs: list[float],
         return {"passed": False, "measurements": {}, "failed": ["no_timed_words"]}
     if problem == "pace":
         return _check_pace(words, original_wpm)
+    if problem == "fillers":
+        return _check_fillers(words)
     if problem not in ("pause", "stress"):
         return {"passed": False, "measurements": {}, "failed": ["unknown_exercise"]}
     index = _find_phrase(words, phrase or "")
