@@ -6,6 +6,8 @@ from config import Config
 import sentry_sdk
 import logging
 
+from services.request_context import checkpoint, lap
+
 config = Config()
 logger = logging.getLogger(__name__)
 
@@ -151,6 +153,9 @@ def require_auth(f):
     """Decorator to require valid Supabase JWT authentication"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Everything before the view's auth (the rate limiter, the gate) is
+        # one part of a slow request's log line; the token check is another.
+        checkpoint("to_auth")
         auth_header = request.headers.get("Authorization")
         
         if not auth_header:
@@ -170,7 +175,8 @@ def require_auth(f):
                 return jsonify({"code": "UNAUTHORIZED", "error": "Token is empty"}), 401
             
             # Verify token
-            payload = verify_supabase_token(token)
+            with lap("auth"):
+                payload = verify_supabase_token(token)
             
             # Extract user_id from token
             user_id = payload.get("sub")
@@ -205,6 +211,7 @@ def optional_auth(f):
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        checkpoint("to_auth")
         request.user_id = None
         request.token_payload = None
         auth_header = request.headers.get("Authorization")
@@ -212,7 +219,8 @@ def optional_auth(f):
             token = auth_header.replace("Bearer ", "").strip()
             if token:
                 try:
-                    payload = verify_supabase_token(token)
+                    with lap("auth"):
+                        payload = verify_supabase_token(token)
                     uid = payload.get("sub")
                     if uid:
                         request.user_id = uid

@@ -358,6 +358,7 @@ def init_app(app) -> None:
         app.config.setdefault("RATELIMIT_IN_MEMORY_FALLBACK_ENABLED", True)
 
         limiter.init_app(app)
+        _time_limiter_checks()
 
         @limiter.request_filter
         def _exempt_cors_preflight() -> bool:
@@ -384,6 +385,32 @@ def init_app(app) -> None:
         logger.error("rate_limits: init failed (%s) — continuing WITHOUT "
                      "rate limiting so the live loop keeps serving.", e,
                      exc_info=True)
+
+
+def _time_limiter_checks() -> None:
+    """Name the limiter's Redis round trips in a slow request's log line.
+
+    Founder 2026-10-18: the guest mint logged ``ms=1175 db_calls=1
+    parts=db:POST owner_principals:156`` and nothing accounted for the other
+    second. The limiter runs inside the stopwatch (its storage calls are the
+    one network hop the ``db`` parts cannot see), so its check is timed as the
+    part ``limiter``. ``_check_request_limit`` is flask-limiter's own entry
+    point for both the before_request pass and the decorator pass (pinned
+    3.8.0); if it is ever renamed the limiter simply goes unnamed.
+    """
+    original = getattr(limiter, "_check_request_limit", None)
+    if not callable(original):
+        return
+    from services.request_context import lap
+
+    def timed(*args, **kwargs):
+        with lap("limiter"):
+            return original(*args, **kwargs)
+
+    try:
+        limiter._check_request_limit = timed  # type: ignore[attr-defined]
+    except Exception as e:  # noqa: BLE001 -- a nameless limiter is only less legible
+        logger.info("rate_limits: limiter timing not installed (%s)", e)
 
 
 # ── tier decorators ──────────────────────────────────────────────────────

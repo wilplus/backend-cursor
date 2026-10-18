@@ -10,6 +10,7 @@ from routes.v2.blueprint import v2_bp
 from services.create_take import CreateTakeError, resolve_owner_principal
 from services.db import db
 from services.rate_limits import guest_identity_limit
+from services.request_context import lap
 from services.processing_authorization import (
     ProcessingAuthorizationError,
     ProcessingAuthorizationService,
@@ -219,6 +220,12 @@ def enforce_phase1_processing_gate():
     cache_key = _gate_cache_key(service, path)
     if gate_recently_passed(cache_key):
         return None
+    with lap("gate"):
+        return _run_gate(service, cache_key)
+
+
+def _run_gate(service: ProcessingAuthorizationService, cache_key):
+    """The gate's database work, timed as the part ``gate`` of a slow line."""
     generation = gate_cache_generation()
     try:
         # Founder 2026-10-18: this gate ran before every core read and paid

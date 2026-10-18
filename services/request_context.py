@@ -95,6 +95,11 @@ _LAPS: contextvars.ContextVar[Optional[list[str]]] = contextvars.ContextVar(
 # made three calls; the count alone could not say whether they were slow).
 _DB_MS: contextvars.ContextVar[Optional[list[float]]] = contextvars.ContextVar(
     "db_ms", default=None)
+# When the previous checkpoint was passed (founder 2026-10-18: a slow mint
+# read ``ms=1175 db_calls=1 parts=db:POST owner_principals:156`` and nothing
+# named the other second, which was spent before the view ran).
+_MARK: contextvars.ContextVar[Optional[float]] = contextvars.ContextVar(
+    "mark", default=None)
 
 
 class lap:
@@ -112,6 +117,20 @@ class lap:
         laps = _LAPS.get()
         if laps is not None:
             laps.append(f"{self.name}:{(time.perf_counter() - self._t0) * 1000:.0f}")
+
+
+def checkpoint(name: str) -> None:
+    """Record how long the request took to reach this point since the previous
+    checkpoint (or since it arrived), as a part named ``name``. Laps time a
+    block; checkpoints time the gaps between blocks, so the two together
+    account for the whole request. No-op outside one."""
+    laps = _LAPS.get()
+    last = _MARK.get()
+    if laps is None or last is None:
+        return
+    now = time.perf_counter()
+    laps.append(f"{name}:{(now - last) * 1000:.0f}")
+    _MARK.set(now)
 
 
 def count_db_call() -> None:
@@ -140,6 +159,7 @@ def install_request_id(app: Any) -> None:
         # B1.4: the practise read's server-side wait).
         g.received_at = datetime.now(timezone.utc)
         g.started_perf = time.perf_counter()
+        _MARK.set(g.started_perf)
         _DB_CALLS.set([0])
         _DB_MS.set([])
         _LAPS.set([])
@@ -178,3 +198,4 @@ def install_request_id(app: Any) -> None:
         _DB_CALLS.set(None)
         _DB_MS.set(None)
         _LAPS.set(None)
+        _MARK.set(None)
