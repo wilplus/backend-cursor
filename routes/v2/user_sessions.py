@@ -1198,6 +1198,7 @@ def _practice_exercise_shape(practice, kind: str) -> dict:
     original manager-selected exercise. A rewrite or the plain moment
     (founder lock 2026-09-30, D1) has no library exercise, so no library
     title, instruction or video."""
+    from services.coach_answer_video import exercise_video_url
     from services.confident_voice_practice import INSTRUCTION, TITLE
 
     shared_exercise = practice.get("coach_shared_exercise")
@@ -1218,7 +1219,7 @@ def _practice_exercise_shape(practice, kind: str) -> dict:
                    or practice.get("exercise_version"),
         "title": exercise.get("title") or TITLE,
         "instruction": exercise.get("instruction") or INSTRUCTION,
-        "explanation_video_ref": (
+        "explanation_video_ref": exercise_video_url(
             exercise.get("explanation_video_url")
             or exercise.get("explanation_video_ref")
         ),

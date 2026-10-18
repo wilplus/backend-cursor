@@ -62,6 +62,10 @@ class _Db:
     def get_active_diagnostic_exercise(self, exercise_id):
         return self.catalogue.get(exercise_id)
 
+    def list_speaker_exercise_ids(self, _owner):
+        # The speaker's own set (N77): the whole catalogue here.
+        return set(self.catalogue)
+
     def get_confident_voice_practice_by_take(self, _take):
         return self.existing
 

@@ -87,16 +87,21 @@ def in_voice_lane(practice: dict) -> bool:
 
 
 def _coach_picked(practice: dict) -> bool:
+    """A coach chose this video: for this moment, or for this speaker -- an
+    exercise from their own set (founder 2026-10-18, N77: "the coach video
+    always wins"). The practice-start gate stamps ``speaker_set``."""
     from services.confident_voice_practice import COACH_REQUEST_POLICY_VERSION
     assessment = practice.get("machine_assessment") or {}
-    return assessment.get("matching_policy_version") == COACH_REQUEST_POLICY_VERSION
+    return (assessment.get("matching_policy_version") == COACH_REQUEST_POLICY_VERSION
+            or assessment.get("speaker_set") is True)
 
 
 def demo_for(database: Any, practice: dict, selection: Optional[dict]) -> str:
     """``video`` · ``ai_voice`` · ``none`` for the Exercise screen.
 
-    The video stays when a coach chose it, or when it fits EXACTLY and its
-    main target is the problem picked; otherwise the AI clip takes its place.
+    The video stays when a coach chose it (for the moment, or for this
+    speaker's own set), or when it fits EXACTLY and its main target is the
+    problem picked; otherwise the AI clip takes its place.
     """
     if not in_voice_lane(practice):
         return "none"
@@ -603,6 +608,9 @@ def state(database: Any, practice: dict, cycle: Optional[dict], *, sign=None) ->
         return {"demo": "video" if _has_video(practice) else "none", "clip": None}
     status = str(cycle.get("status") or "")
     demo = cycle.get("demo") or ("video" if _has_video(practice) else "none")
+    if _has_video(practice) and _coach_picked(practice):
+        # A coach's video is never displaced, whatever an older cycle stored.
+        demo = "video"
     if not cycle.get("demo") and status in ("pending", "analyzing") \
             and not (_has_video(practice) and _coach_picked(practice)):
         # The job has not chosen yet (queued by the bake, or waiting for

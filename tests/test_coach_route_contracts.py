@@ -232,20 +232,31 @@ class SessionVideoContract(unittest.TestCase):
 class ExerciseVideoContract(unittest.TestCase):
     """POST /v2/coach/exercises/<id>/video (the same upload checks)."""
 
-    def _post(self, filename="clip.mov", form=None):
+    #: The walk's exercise for one moment, the only one a coach files (N77).
+    WALK = "coach-request-0b6a8c1e-2f3d-4a5b-8c7d-9e0f1a2b3c4d"
+
+    def _post(self, filename="clip.mov", form=None, exercise_id=WALK):
         from routes.v2 import coach_exercises
         data = {"video_file": (io.BytesIO(b"vid"), filename), **(form or {})}
-        return _call(coach_exercises.v2_coach_exercise_video, "ex-1",
+        return _call(coach_exercises.v2_coach_exercise_video, exercise_id,
                      method="POST", data=data, content_type="multipart/form-data")
 
-    def test_the_upload_reaches_the_library(self):
+    def test_the_upload_reaches_the_moment_s_exercise(self):
         with patch("services.coach_exercise_authoring.attach_video",
-                   return_value=(200, {"exercise": "ex-1"})) as attach:
+                   return_value=(200, {"exercise": self.WALK})) as attach:
             status, body = self._post(form={"exercise": '{"title": "T"}'})
-        self.assertEqual((status, body), (200, {"exercise": "ex-1"}))
+        self.assertEqual((status, body), (200, {"exercise": self.WALK}))
         attach.assert_called_once_with(
-            db, exercise_id="ex-1", coach_id=COACH, video_bytes=b"vid",
+            db, exercise_id=self.WALK, coach_id=COACH, video_bytes=b"vid",
             filename="clip.mov", content_type=ANY, definition={"title": "T"})
+
+    def test_the_shared_library_is_the_founder_s(self):
+        """A coach files no video into the shared library (founder
+        2026-10-18, N77): only the walk's exercise for one speaker."""
+        with patch("services.coach_exercise_authoring.attach_video") as attach:
+            status, body = self._post(exercise_id="ex-1")
+        self.assertEqual((status, body["code"]), (403, "FORBIDDEN"))
+        attach.assert_not_called()
 
     def test_refusals(self):
         with patch("services.coach_exercise_authoring.attach_video") as attach:

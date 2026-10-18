@@ -2575,3 +2575,30 @@ brings the AI clip of the accepted words. "ok, push to prod" on the clickable
 prototype. Locks: `FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md` ("Words
 first, then voice") and `FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`
 ("Decided after the lock (2026-10-18, words first)"). No migration.
+
+**N77 · A coach's video belongs to the speaker it was made for (founder,
+Claude Code session, 18 October 2026).** Asked who gets a coach's recorded
+message, the founder chose every recommended answer on the plain-words map
+(<https://claude.ai/artifact/QU5ENGdftkJXFppAQYFhyj>). A coach's exercise
+video belongs to one speaker and no other speaker gets it. After a Take the app
+picks by itself only from that speaker's own set (their coach videos, and
+library exercises a coach picked for one of their moments), and only on an
+exact fit: the video's main mistake heard on the sentence. Their own coach
+video always plays; the AI clip never takes its place and still follows a try
+that is not better yet. It comes back each time it fits until their practice
+on it gets a Good job, then rests for good. With no own video the AI version of
+their voice plays. The shared library holds only what the founder makes or
+approves, and reaches a speaker only when a coach picks it. Coach praise lines
+follow the same rule. The coach's word for a Take shows on that Take only
+(supersedes N48.3 Q11 A's earlier-Take fallback). Coach videos already in the
+shared library go back to their own speakers at private links, and coach
+praise lines that cannot be traced are switched off but kept (step 2, a
+script the founder approves before it runs). A coach writes and reads only
+for the speakers the founder assigns them in admin (step 4). Approving a coach
+video into the library comes later, as its own step. Step 1 (backend):
+migration 0476, the matcher, the coach save paths, praise, the Take word and
+deletion. The coach panel's library words ("Share without the library", "The
+library offers it to other speakers…") are unchanged until the founder signs
+their replacement (step 3, a locked screen). Contract 35g-1, 35g-2, 35g-4 and
+35g-6 carry dated amendments; `FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`
+"Decided after the lock (2026-10-18, the coach's video)".

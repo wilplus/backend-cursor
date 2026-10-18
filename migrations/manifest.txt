@@ -511,3 +511,4 @@
 0473	status_read_in_one_trip.sql
 0474	claim_owner_indexes.sql
 0475	the_ai_clip_can_practise_fillers.sql
+0476	a_coach_video_belongs_to_its_speaker.sql

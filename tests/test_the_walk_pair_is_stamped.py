@@ -150,8 +150,10 @@ def _upload(db, *, definition=None, exercise_id=WALK_ID, transcript="Let the fin
             coach_id="coach-1"):
     status = "done" if transcript else "coach_authorization_missing"
     body = {"transcript": transcript, "language": "en"} if transcript else None
-    with patch.object(cea, "store_exercise_video",
-                      lambda *_a: "https://cdn.example/journal/exercise/x.mp4"), \
+    # The walk's video belongs to the moment's speaker: stored privately
+    # under their id (N77; 0476), never in the public library bucket.
+    with patch.object(cea, "_store_speaker_video",
+                      lambda *_a, **_k: "s3://coach-media/coach-answers/speaker-1/x.mp4"), \
             patch("services.exercise_versions.transcribe_exercise_video",
                   lambda *_a, **_k: (status, body, "en" if transcript else None)):
         return cea.attach_video(

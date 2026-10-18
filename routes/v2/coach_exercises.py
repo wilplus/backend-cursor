@@ -22,7 +22,7 @@ import logging
 from flask import jsonify, request
 
 from config import Config
-from routes.admin import require_admin_or_coach, require_founder
+from routes.admin import is_founder_request, require_admin_or_coach, require_founder
 from routes.v2.blueprint import v2_bp
 from services.coach_video_upload import read_video_upload, video_max_mb
 from services.db import db
@@ -31,6 +31,17 @@ from services.rate_limits import heavy_limit, llm_limit
 
 logger = logging.getLogger(__name__)
 config = Config()
+
+
+def _library_write_refused(exercise_id):
+    """THE SHARED LIBRARY IS THE FOUNDER'S (2026-10-18, decisions log N77):
+    it holds only what the founder makes or approves. A coach writes only
+    the walk's exercise for one moment (``coach-request-<request id>``),
+    which belongs to that moment's speaker. None when the write may go on."""
+    from services.coach_exercise_authoring import request_id_for_exercise
+    if request_id_for_exercise(exercise_id) is not None or is_founder_request():
+        return None
+    return jsonify({"code": "FORBIDDEN", "error": "Not available"}), 403
 
 
 @v2_bp.route("/coach/exercises", methods=["GET"])
@@ -52,10 +63,14 @@ def v2_coach_save_exercise():
     200 { exercise, version } · 400 (a refusal, readable) · 500"""
     from services.coach_exercise_authoring import save_from_coach_panel
     from services.diagnostic_exercise_catalogue import CatalogueRefusal
+    body = request.get_json(silent=True) or {}
+    refused = _library_write_refused(
+        body.get("exercise_id") if isinstance(body, dict) else None)
+    if refused is not None:
+        return refused
     try:
         saved = save_from_coach_panel(
-            db, request.get_json(silent=True) or {},
-            coach_id=str(request.user_id))
+            db, body, coach_id=str(request.user_id))
     except CatalogueRefusal as refusal:
         return jsonify({"code": refusal.code, "error": refusal.message}), \
             refusal.status
@@ -75,6 +90,9 @@ def v2_coach_exercise_video(exercise_id):
     library refuses one without a video, and an edit for an existing one.
     200 { exercise, version, transcript_status } · 400 · 404 · 413 · 415 · 502"""
     from services.coach_exercise_authoring import attach_video
+    refused = _library_write_refused(exercise_id)
+    if refused is not None:
+        return refused
     definition = None
     if (request.form.get("exercise") or "").strip():
         try:

@@ -244,6 +244,12 @@ def praise_line_for(row: Any, lines: dict) -> Optional[str]:
     """The signed line behind a praise row, by its evidence."""
     if not isinstance(row, dict) or not lines:
         return None
+    return _praise_by_evidence(row, lines) or lines.get(
+        ("praise", "read", CONFIDENT_READ))
+
+
+def _praise_by_evidence(row: dict, lines: dict) -> Optional[str]:
+    """The line for this row's own device or cue; never the general read."""
     device = row.get("device")
     if isinstance(device, str) and device:
         line = lines.get(("praise", "device", device))
@@ -254,7 +260,16 @@ def praise_line_for(row: Any, lines: dict) -> Optional[str]:
             line = lines.get(("praise", "cue", cue))
             if line:
                 return line
-    return lines.get(("praise", "read", CONFIDENT_READ))
+    return None
+
+
+def _speaker_praise(row: dict, own: dict, shared: dict) -> Optional[str]:
+    """THE SPEAKER'S OWN LINE FIRST (founder 2026-10-18, N77; 0476): what
+    their coach wrote for them beats a shared line for the same evidence,
+    and the evidence beats the general read, theirs or the shared one."""
+    return (_praise_by_evidence(row, own) or _praise_by_evidence(row, shared)
+            or own.get(("praise", "read", CONFIDENT_READ))
+            or shared.get(("praise", "read", CONFIDENT_READ)))
 
 
 def rewrite_move_for(row: Any, lines: dict) -> Optional[str]:
@@ -273,18 +288,28 @@ def rewrite_move_for(row: Any, lines: dict) -> Optional[str]:
     return lines.get(("rewrite", "move", why))
 
 
-def decorate(changes: Any, catalogue_rows: Any) -> list:
+def decorate(changes: Any, catalogue_rows: Any,
+             owner_user_id: Any = None) -> list:
     """The served rows with `praise_line` / `rewrite_move` where the
     catalogue has one. Rows are copied; nothing else on them changes. The
-    signed proposed lines are the floor beneath the table's own versions."""
-    lines = newest_lines([*floor_rows(), *(catalogue_rows or [])])
+    signed proposed lines are the floor beneath the table's own versions.
+
+    A line with an owner is that speaker's own (a coach's answer, 0476):
+    it serves ``owner_user_id`` first and is dropped for anyone else."""
+    owner = str(owner_user_id or "")
+    rows = [r for r in (catalogue_rows or []) if isinstance(r, dict)]
+    shared = newest_lines([*floor_rows(),
+                           *(r for r in rows if not r.get("owner_user_id"))])
+    own = newest_lines([r for r in rows if owner
+                        and str(r.get("owner_user_id") or "") == owner])
+    lines = {**shared, **own}
     out: list = []
     for row in changes or []:
         if not isinstance(row, dict) or not lines:
             out.append(row)
             continue
         if is_praise(row):
-            line = praise_line_for(row, lines)
+            line = _speaker_praise(row, own, shared)
             out.append({**row, "praise_line": line} if line else row)
         elif is_rewrite(row):
             move = rewrite_move_for(row, lines)

@@ -4,8 +4,8 @@ One optional message and one optional video per Take, per coach. The coach
 writes it after the last moment of a Take, or not at all; sharing sends it
 to the speaker, who reads it as "Your coach" on that Take's Ideal Text
 (the sheet that exists, Final Screens L8). A word belongs to its Take
-(founder 2026-10-05, N48.3 Q11 A): the page showing Take 3 never serves the
-word left on Take 2.
+(founder 2026-10-18, decisions log N77, superseding N48.3 Q11 A's fallback):
+the page showing Take 3 never serves the word left on Take 2.
 
 It replaces the arc-level publish as the speaker's coach message: where a
 Take has a shared word, that is what the speaker reads; where it has none,
@@ -147,8 +147,8 @@ def latest_shared_word(database: Any, sessions: Any) -> Optional[dict]:
     {text, video_url, take_index, published_at, take_session_id}, or None.
     Best-effort.
 
-    THE WORD BELONGS TO ITS TAKE (founder 2026-10-05, N48.3 Q11 A; contract
-    35g-6). The speaker's read passes only the Take on screen
+    THE WORD BELONGS TO ITS TAKE (founder 2026-10-18, N77; contract 35g-6).
+    The speaker's read passes only the Take on screen
     (`coach_message_read.coach_message_for`), so another Take's word is
     never served in its place."""
     rows = [s for s in (sessions or []) if isinstance(s, dict) and s.get("id")]

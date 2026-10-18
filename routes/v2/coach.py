@@ -1296,6 +1296,7 @@ def _machine_pick(practice: dict) -> Optional[dict]:
 def _coach_practice_payload(practice: dict) -> dict:
     """Coach-only attempt bundle, intentionally separate from blind packet."""
     from services.audio_ref_resolver import resolve_playable_ref
+    from services.coach_answer_video import exercise_video_url
     from services.confident_voice_practice import ASSESSMENT_COPY, coach_exercise_order
     original_raw = db.get_active_diagnostic_exercise(
         str(practice.get("exercise_id") or "")) or \
@@ -1320,7 +1321,8 @@ def _coach_practice_payload(practice: dict) -> dict:
         "version": active.get("version"),
         "title": active.get("title"),
         "instruction": active.get("instruction"),
-        "explanation_video_ref": active.get("explanation_video_url"),
+        "explanation_video_ref": exercise_video_url(
+            active.get("explanation_video_url")),
     } for active in coach_exercise_order(practice, db)]
     attempts = db.list_confident_voice_practice_attempts(
         str(practice.get("id")))
@@ -1350,7 +1352,7 @@ def _coach_practice_payload(practice: dict) -> dict:
                        or practice.get("exercise_version"),
             "title": exercise.get("title"),
             "instruction": exercise.get("instruction"),
-            "explanation_video_ref": (
+            "explanation_video_ref": exercise_video_url(
                 practice.get("coach_explanation_video_url")
                 or exercise.get("explanation_video_url")
                 or exercise.get("explanation_video_ref")

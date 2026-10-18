@@ -516,8 +516,8 @@ REPEATED_PATTERN_MIN_TAKES = 2
 HISTORY_TAKES = 20
 
 EMPTY_HISTORY: dict = {"repeated_patterns": frozenset(),
-                       "done_before": frozenset(), "earlier_takes": 0,
-                       "available": False}
+                       "done_before": frozenset(), "rested": frozenset(),
+                       "earlier_takes": 0, "available": False}
 
 
 def speaker_history(database: Any, owner_user_id: Any,
@@ -526,7 +526,9 @@ def speaker_history(database: Any, owner_user_id: Any,
 
     * repeated_patterns — problems spotted on at least
       REPEATED_PATTERN_MIN_TAKES of their earlier Takes;
-    * done_before — exercises they already completed.
+    * done_before — exercises they already completed;
+    * rested — exercises whose practice ended on a Good job, on any Take:
+      the app never serves them to this speaker by itself again (N77).
 
     Read from the frozen records of those Takes (as of now, never the current
     one). EMPTY_HISTORY when there is no owner or the read fails: ranking
@@ -552,6 +554,8 @@ def speaker_history(database: Any, owner_user_id: Any,
             and len(set(seen)) >= REPEATED_PATTERN_MIN_TAKES),
         "done_before": frozenset(
             str(e) for e in raw.get("completed_exercises") or []),
+        "rested": frozenset(
+            str(e) for e in raw.get("rested_exercises") or []),
         "earlier_takes": int(raw.get("earlier_takes") or 0),
         "available": True,
     }
@@ -810,8 +814,23 @@ def build_match_trace(*, lane: str, verdict: dict, vocabulary: Any,
     })
 
 
-def reviewed_active_exercises(database: Any) -> list[dict]:
-    """Every catalogue row whose assets are live, in catalogue order.
+def visible_to(exercise: Any, owner_user_id: Any = None) -> bool:
+    """THE OWNER WALL (founder 2026-10-18, decisions log N77; 0476).
+
+    A row with no owner is the founder's shared library, which every coach
+    list may show. A row with an owner is a coach's video for that one
+    speaker: only that speaker's own lists may show it, and no other
+    speaker, coach list or library page ever sees it."""
+    if not isinstance(exercise, dict):
+        return False
+    owner = str(exercise.get("owner_user_id") or "")
+    return not owner or owner == str(owner_user_id or "")
+
+
+def reviewed_active_exercises(database: Any,
+                              owner_user_id: Any = None) -> list[dict]:
+    """Every catalogue row whose assets are live, in catalogue order: the
+    shared library, plus ``owner_user_id``'s own coach videos when given.
 
     `get_active_diagnostic_exercise` is the gate: the row must be `active`, and
     must carry both an explanation video and a journal post that is actually
@@ -819,12 +838,12 @@ def reviewed_active_exercises(database: Any) -> list[dict]:
     """
     batch = active_exercises_batch(database)
     if batch is not None:
-        return batch
+        return [row for row in batch if visible_to(row, owner_user_id)]
     out: list[dict] = []
     for row in database.list_diagnostic_exercises() or []:
         active = database.get_active_diagnostic_exercise(
             str(row.get("exercise_id") or ""))
-        if active:
+        if active and visible_to(active, owner_user_id):
             out.append(active)
     return out
 
@@ -921,9 +940,12 @@ def coach_exercise_order(practice: Any, database: Any) -> list[dict]:
     vanish from this list. Those follow the ranked ones, in catalogue order.
 
     Internal order only — no score, distance or overlap leaves this function.
+
+    The shared library and this speaker's own coach videos; never another
+    speaker's (N77).
     """
-    pool = reviewed_active_exercises(database)
     row = practice if isinstance(practice, dict) else {}
+    pool = reviewed_active_exercises(database, row.get("owner_user_id"))
     ranked = [item[3] for item in rank_exercises_for_clip(
         stored_practice_verdict(practice), database, exercises=pool,
         history=speaker_history(database, row.get("owner_user_id"),
@@ -982,8 +1004,9 @@ def _with_default_patterns(active: dict) -> dict:
     return active
 
 
-def offerable_exercises(database: Any) -> list[dict]:
-    """The live catalogue the speaker's offer is chosen from."""
+def offerable_exercises(database: Any, owner_user_id: Any = None) -> list[dict]:
+    """The live catalogue: the shared library, plus ``owner_user_id``'s own
+    coach videos when given (``visible_to``)."""
     exercise_rows = (
         database.list_diagnostic_exercises() or []
         if hasattr(database, "list_diagnostic_exercises")
@@ -992,14 +1015,56 @@ def offerable_exercises(database: Any) -> list[dict]:
     batch = active_exercises_batch(database) \
         if hasattr(database, "list_diagnostic_exercises") else None
     if batch is not None:
-        return [_with_default_patterns(row) for row in batch]
+        return [_with_default_patterns(row) for row in batch
+                if visible_to(row, owner_user_id)]
     exercises = []
     for row in exercise_rows:
         active = database.get_active_diagnostic_exercise(
             str(row.get("exercise_id") or ""))
-        if active:
+        if active and visible_to(active, owner_user_id):
             exercises.append(_with_default_patterns(active))
     return exercises
+
+
+def speaker_exercises(database: Any, owner_user_id: Any) -> list[dict]:
+    """THE SPEAKER'S OWN SET: the only pool the app picks from by itself
+    after a Take (founder 2026-10-18, decisions log N77; 0476).
+
+    Their own coach videos and the library exercises a coach picked for one
+    of their moments, live ones only. Nobody else's video, and no library
+    video no coach chose for them: with an empty set the moment has no
+    video and the AI version of their voice plays instead. An unreadable set
+    is an empty one -- never a guess, never the shared library.
+    """
+    reader = getattr(database, "list_speaker_exercise_ids", None)
+    if reader is None or not owner_user_id:
+        return []
+    try:
+        ids = reader(str(owner_user_id))
+    except Exception as e:  # noqa: BLE001 — never lose the feedback
+        _log.warning("speaker set read failed owner=%s: %s", owner_user_id, e)
+        return []
+    if not ids:
+        return []
+    return [row for row in offerable_exercises(database, owner_user_id)
+            if str(row.get("exercise_id") or "") in ids]
+
+
+def speaker_matches(
+    pattern: str, exercises: list[dict], *, observed_tags: Any,
+    history: Any,
+) -> tuple[Optional[str], list[tuple[tuple, dict]]]:
+    """``matched_exercises`` over a speaker's own set, by the founder's rule
+    (N77): it fits only EXACTLY -- the video's main mistake was heard on
+    this clip -- and a video whose practice already ended on a Good job
+    rests for good."""
+    rested = (history.get("rested") or frozenset()
+              if isinstance(history, dict) else frozenset())
+    pool = [row for row in exercises
+            if str(row.get("exercise_id") or "") not in rested]
+    fit, keyed = matched_exercises(
+        pattern, pool, observed_tags=observed_tags, history=history)
+    return (fit, keyed) if fit == FIT_EXACT else (None, [])
 
 
 def _blocked_by_existing(existing: Any, snippet_id: str) -> bool:
@@ -1057,6 +1122,7 @@ def choose_exercise(ranked: list[dict], *, owner_user_id: str,
 
 def _offer_payload(exercise: dict, verdict: dict, snippet: dict,
                    chosen: dict, existing: Any) -> dict:
+    from services.coach_answer_video import exercise_video_url
     intro = (exercise.get("confident_introduction_copy")
              if verdict.get("pattern") == "confident" else
              exercise.get("introduction_copy"))
@@ -1068,7 +1134,8 @@ def _offer_payload(exercise: dict, verdict: dict, snippet: dict,
         "introduction": intro or INTRO_NEAR,
         "yes_introduction": INTRO_AFTER_YES,
         "no_introduction": INTRO_AFTER_NO,
-        "explanation_video_ref": exercise.get("explanation_video_url"),
+        "explanation_video_ref": exercise_video_url(
+            exercise.get("explanation_video_url")),
         "passage": (snippet.get("transcript") or chosen.get("quote") or "").strip(),
         "practice_id": str(existing.get("id")) if existing else None,
         "resume": bool(existing and existing.get("status") == "open"),
@@ -1121,7 +1188,7 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
                   and row.get("snippet_id")]
     if not candidates or not take_session_id:
         return rows
-    exercises = offerable_exercises(database)
+    exercises = speaker_exercises(database, owner_user_id)
     if not exercises:
         return rows
     existing = database.get_confident_voice_practice_by_take(take_session_id)
@@ -1157,7 +1224,7 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
         # WHAT WENT WRONG, not just how confident it sounded. The fit leads
         # the sort key, so an exercise that treats this clip's actual
         # problems beats one that merely suits its confidence level.
-        _, matched = matched_exercises(
+        _, matched = speaker_matches(
             str(verdict.get("pattern") or ""), exercises,
             observed_tags=observed_problem_tags(
                 verdict, vocabulary=vocabulary), history=history)
@@ -1431,13 +1498,17 @@ def _attach_exercises(
     `problem_recognised` says whether a problem fired with nothing targeting
     it, so a judgement can send the bookmark to the coach. The catalogue,
     the vocabulary and the speaker's history are read once per Take.
+
+    The pool is the speaker's own set, matched exactly (``speaker_matches``,
+    N77): a coach's video for this speaker, never anyone else's, and no
+    library video no coach chose for them.
     """
     targets = [row for row in rows
                if row.get("source") == "confident_voice"
                and row.get("snippet_id")]
     if not targets:
         return rows
-    exercises = offerable_exercises(database)
+    exercises = speaker_exercises(database, owner_user_id)
     by_id = {str(r.get("id")): r for r in (
         database.get_confident_voice_practice_candidates(
             [str(row["snippet_id"]) for row in targets]) or [])}
@@ -1479,7 +1550,7 @@ def _attach_exercises(
             if history is None:
                 history = speaker_history(database, owner_user_id, take_session_id)
             moment_history = history
-        fit, keyed = matched_exercises(
+        fit, keyed = speaker_matches(
             str(verdict.get("pattern") or ""), exercises,
             observed_tags=observed, history=moment_history)
         if not keyed:
@@ -1687,14 +1758,16 @@ def coach_shared_answer(request: Any) -> Optional[dict]:
 def coach_shared_exercise(request: Any, database: Any) -> Optional[dict]:
     """The live exercise a coach resolved and shared this request with, or
     None. The version must still be the one they shared: an exercise edited
-    since is not the one they chose."""
+    since is not the one they chose. Another speaker's coach video never
+    rides this speaker's moment (N77)."""
     if not isinstance(request, dict) or not request.get("shared_at"):
         return None
     exercise_id = str(request.get("resolved_exercise_id") or "")
     if not exercise_id:
         return None
     active = database.get_active_diagnostic_exercise(exercise_id)
-    if not isinstance(active, dict):
+    if not isinstance(active, dict) or not visible_to(
+            active, request.get("owner_user_id")):
         return None
     if int(active.get("version") or 1) != int(
             request.get("resolved_exercise_version") or 0):
@@ -1726,6 +1799,10 @@ def start_exercise_check(*, snippet: dict, take_session_id: str,
             return "EXERCISE_OFFER_STALE", verdict, None
         active = database.get_active_diagnostic_exercise(str(exercise_id))
         return None, verdict, {
+            # In the speaker's own set: its video always plays (N77).
+            "speaker_set": str(exercise_id) in {
+                str(row.get("exercise_id") or "")
+                for row in speaker_exercises(database, owner_user_id)},
             "pattern_distance": confidence_pattern_distance(
                 str(verdict.get("pattern") or ""),
                 _with_default_patterns(active or {}).get(
@@ -1757,9 +1834,13 @@ def start_exercise_check(*, snippet: dict, take_session_id: str,
         return None, verdict, matching
     if not verdict.get("eligible"):
         return "NOT_ELIGIBLE", verdict, None
-    # The same history the offer ranked with, so the two agree on the best.
-    fit, matched = match_for_clip(
-        verdict, database,
+    # The same pool, rule and history the offer ranked with (the speaker's
+    # own set, exact only, N77), so the two agree on the best.
+    fit, matched = speaker_matches(
+        str(verdict.get("pattern") or ""),
+        speaker_exercises(database, owner_user_id),
+        observed_tags=observed_problem_tags(
+            verdict, vocabulary=detected_problem_vocabulary(database)),
         history=speaker_history(database, owner_user_id, take_session_id))
     if not matched:
         return "NOT_MATCHABLE", verdict, None
@@ -1770,6 +1851,7 @@ def start_exercise_check(*, snippet: dict, take_session_id: str,
         "pattern_distance": best_key[KEY_DISTANCE],
         "matching_policy_version": MATCHING_POLICY_VERSION,
         "exercise_fit": fit,
+        "speaker_set": True,
     }
 
 

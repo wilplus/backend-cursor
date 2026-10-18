@@ -32,6 +32,10 @@ class _Db:
     def get_active_diagnostic_exercise(self, exercise_id):
         return next((dict(r) for r in self._rows if r["exercise_id"] == exercise_id), None)
 
+    def list_speaker_exercise_ids(self, _owner):
+        # The speaker's own set (N77): every row these tests hand in.
+        return {r["exercise_id"] for r in self._rows}
+
     def list_speaking_errors(self):
         return [{"error_id": e, "status": "detected"}
                 for e in ("rushing", "word_compression", "ending_compression")]

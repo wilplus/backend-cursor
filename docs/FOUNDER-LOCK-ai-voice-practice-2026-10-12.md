@@ -223,6 +223,22 @@ sounds better gets the Good job and no clip. The clip is asked when the
 practise of the clearer words starts, never prewarmed at the bake: until the
 speaker accepts, the words are not chosen. Praise still never gets a clip.
 
+## Decided after the lock (2026-10-18, the coach's video)
+
+**A speaker's own coach video always plays.** The founder (Claude Code
+session, 2026-10-18; decisions log N77) amends section 2, step 1 and the
+"video or AI clip" rule of section 5: the exact-fit-and-same-problem test
+applies to a library video only. A video in the speaker's own set (a coach
+made it for them, or a coach picked it for one of their moments) is the
+locked Exercise whatever problem the severity picker chose; the AI clip
+never takes its place, and still follows a try that is not better yet, at
+most 3, as locked. A library video no coach chose for the speaker is no
+longer served by itself at all, so without an own video the AI clip plays,
+as in section 2. No new words.
+
+Founder-Approved: Artur, Claude Code session 2026-10-18 ("Coach video always
+wins", on the question "Can the AI voice clip still replace it?").
+
 ## 7. Order of work
 
 Build end to end, test with the founder's own voice, then counsel (L12,

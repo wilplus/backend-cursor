@@ -86,9 +86,11 @@ _DRAFT_SYSTEM = (
 def library_for_authoring(database: Any) -> dict:
     """Every exercise with its latest version row, and the error library.
     The latest versions come in one read; the per-exercise read is only the
-    fallback when that read fails."""
+    fallback when that read fails. The shared library only: a coach's video
+    for one speaker is in no list (N77)."""
+    from services.confident_voice_practice import visible_to
     exercises = [e for e in (database.list_diagnostic_exercises() or [])
-                 if isinstance(e, dict)]
+                 if isinstance(e, dict) and visible_to(e)]
     ids = [str(e.get("exercise_id") or "") for e in exercises]
     batch = getattr(database, "latest_exercise_versions", None)
     newest = batch(ids) if batch is not None else None
@@ -149,6 +151,35 @@ def store_exercise_video(video_bytes: bytes, filename: str,
 _URL_TO_COME = "https://video.pending.invalid/exercise"
 
 
+def speaker_for_exercise(database: Any, exercise_id: Any) -> Optional[str]:
+    """The speaker a walk exercise belongs to (0476, N77): the owner of the
+    request it was filed for. None for a library exercise. An exercise for a
+    moment whose speaker cannot be read is refused by the caller rather
+    than filed into the shared library."""
+    request_id = request_id_for_exercise(exercise_id)
+    reader = getattr(database, "get_exercise_coach_request_by_id", None)
+    if request_id is None or reader is None:
+        return None
+    request = reader(request_id)
+    owner = str((request or {}).get("owner_user_id") or "") \
+        if isinstance(request, dict) else ""
+    return owner or None
+
+
+def _store_speaker_video(video_bytes: bytes, filename: str, *, owner: str,
+                         exercise_id: str) -> str:
+    """A coach's video for one speaker, PRIVATE (0476, N77): beside the
+    answer videos under the speaker's id, so closing their account erases
+    it; an ``s3://`` ref every read signs afresh."""
+    import os
+    from services.coach_answer_video import _EXTENSIONS, store_private_video
+    ext = os.path.splitext(str(filename or ""))[1].lower()
+    return store_private_video(
+        video_bytes, speaker_id=owner,
+        request_id=str(request_id_for_exercise(exercise_id) or exercise_id),
+        ext=ext if ext in _EXTENSIONS else ".mp4")
+
+
 def _definition_for_video(database: Any, exercise_id: str,
                           definition: Any) -> tuple[Optional[dict], dict]:
     """What the video attaches to: the live row, the coach's definition, or
@@ -184,6 +215,11 @@ def attach_video(database: Any, *, exercise_id: str, coach_id: str,
     or a failed provider call is recorded on the version row and the video
     serves as it does today. It is the second final of the walk's pair,
     read from the version row when the request resolves.
+
+    THE WALK'S EXERCISE BELONGS TO ITS SPEAKER (founder 2026-10-18, N77;
+    0476). ``coach-request-<request id>`` is saved with the request's
+    speaker as its owner and its video stored privately under their id;
+    only a library exercise (the founder's, the route says) is public.
     """
     from services.diagnostic_exercise_catalogue import (
         CatalogueRefusal, save_exercise, validate_exercise,
@@ -196,13 +232,18 @@ def attach_video(database: Any, *, exercise_id: str, coach_id: str,
     base, extras = _definition_for_video(database, exercise_id, definition)
     if base is None:
         return 404, {"code": "NOT_FOUND", "error": "exercise not found"}
+    owner = speaker_for_exercise(database, exercise_id)
+    if request_id_for_exercise(exercise_id) is not None and owner is None:
+        return 404, {"code": "NOT_FOUND", "error": "request not found"}
     try:
         validate_exercise(database, {**base, "explanation_video_url": _URL_TO_COME},
                           source="coach_panel")
     except CatalogueRefusal as refusal:
         return refusal.status, {"code": refusal.code, "error": refusal.message}
     try:
-        url = store_exercise_video(video_bytes, filename, content_type)
+        url = (_store_speaker_video(video_bytes, filename, owner=owner,
+                                    exercise_id=str(exercise_id))
+               if owner else store_exercise_video(video_bytes, filename, content_type))
     except JournalMediaError as refused:
         return 503, {"code": "DISABLED", "error": str(refused)}
     except Exception as e:  # noqa: BLE001 — storage named, never raised out
@@ -211,11 +252,12 @@ def attach_video(database: Any, *, exercise_id: str, coach_id: str,
                      "error": "Failed to upload video to storage."}
     try:
         saved = save_exercise(
-            database, {**base, "explanation_video_url": url},
+            database, {**base, "explanation_video_url": _URL_TO_COME if owner else url},
             source="coach_panel", created_by=str(coach_id),
             video_sha256=video_sha256(video_bytes),
             video_bytes=len(video_bytes),
-            transcript_status=TRANSCRIPT_PENDING, **extras)
+            transcript_status=TRANSCRIPT_PENDING,
+            owner_user_id=owner, video_ref=url if owner else None, **extras)
     except CatalogueRefusal as refusal:
         return refusal.status, {"code": refusal.code, "error": refusal.message}
     if not saved:
@@ -227,16 +269,21 @@ def attach_video(database: Any, *, exercise_id: str, coach_id: str,
         filename=filename)
     settle_transcript(database, exercise_id=str(exercise_id), version=version,
                       status=status, transcript=transcript, language=language)
-    return 200, {"exercise": saved, "version": version,
-                 "transcript_status": status}
+    from services.coach_answer_video import exercise_video_url
+    return 200, {"exercise": {**saved, "explanation_video_url": exercise_video_url(
+                     saved.get("explanation_video_url"))},
+                 "version": version, "transcript_status": status}
 
 
 def _examples(database: Any, error_ids: list[str]) -> list[str]:
-    """The library's own finals for these errors: what a draft learns from."""
+    """The library's own finals for these errors: what a draft learns from.
+    The shared library only: one speaker's coach text is never sent to a
+    model for another (N77)."""
+    from services.confident_voice_practice import visible_to
     wanted = set(error_ids)
     out = []
     for exercise in database.list_diagnostic_exercises() or []:
-        if not isinstance(exercise, dict):
+        if not isinstance(exercise, dict) or not visible_to(exercise):
             continue
         tags = {str(t) for t in exercise.get("acoustic_problem_tags") or []}
         text = str(exercise.get("instruction") or "").strip()
