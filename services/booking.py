@@ -21,6 +21,8 @@ Text or feedback.
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 import html
 import logging
 import re
@@ -162,12 +164,14 @@ def save_settings(payload: dict) -> dict:
     return get_settings()
 
 
-def public_settings(slug: str) -> dict:
-    """The page's public face, or NOT_FOUND when the link is wrong or off."""
+def public_settings(slug: str, link: str = "") -> dict:
+    """The page's public face, or NOT_FOUND when the link is wrong or off.
+    With a valid price link, its price is what everyone is shown."""
     s = get_settings()
     if not s.get("enabled") or (slug or "").strip().lower() != s["slug"]:
         raise BookingError("NOT_FOUND", "No booking page at this link.", 404)
-    return {
+    link_price = price_from_link(link)
+    out = {
         "slug": s["slug"], "title": s["title"], "host_name": s["host_name"],
         "duration_min": s["duration_min"], "price_cents": s["price_cents"],
         "currency": s["currency"], "horizon_days": s["horizon_days"],
@@ -175,6 +179,58 @@ def public_settings(slug: str) -> dict:
         # What a first-time person pays, shown before sign-in.
         "new_user_price_cents": round(s["price_cents"] * (100 - int(s.get("new_user_discount_pct") or 0)) / 100),
     }
+    if link_price is not None:
+        out["new_user_price_cents"] = out["link_price_cents"] = link_price
+    return out
+
+
+# ------------------------------------------------------------ price links
+
+# A price link (founder 2026-10-18): /book/<slug>?link=<cents>-<signature>.
+# Whoever books through it pays exactly that price, now, by card (no "pay
+# after the lesson", no first-lesson %), and once paid it becomes their own
+# lesson price (booking_user_prices). The price is signed, so editing the
+# URL to a lower one gives an invalid link, which falls back to the normal page.
+_PRICE_LINK_LABEL = b"willab-booking-price-link-v1"
+PRICE_LINK_MIN_CENTS = 100  # Stripe will not charge less than about 50 cents
+
+
+def _price_link_key() -> Optional[bytes]:
+    """A key derived from the server secret, never the secret itself."""
+    secret = str(getattr(config, "SUPABASE_JWT_SECRET", "") or "").strip()
+    if not secret:
+        return None
+    return hmac.new(secret.encode("utf-8"), _PRICE_LINK_LABEL, hashlib.sha256).digest()
+
+
+def _price_link_sig(key: bytes, cents: int) -> str:
+    return hmac.new(key, str(cents).encode("utf-8"), hashlib.sha256).hexdigest()[:24]
+
+
+def make_price_link(price_cents: Any) -> str:
+    """The ?link= value for a price in cents."""
+    try:
+        cents = int(price_cents)
+    except (TypeError, ValueError):
+        raise BookingError("INVALID_INPUT", "The price must be a whole number of cents.")
+    if not PRICE_LINK_MIN_CENTS <= cents <= 10_000_000:
+        raise BookingError("INVALID_INPUT", "The price must be at least 1.")
+    key = _price_link_key()
+    if key is None:
+        raise BookingError("NOT_SET_UP", "The server secret is not set.", 503)
+    return f"{cents}-{_price_link_sig(key, cents)}"
+
+
+def price_from_link(link: Any) -> Optional[int]:
+    """The price a ?link= value carries, or None when it is missing or not ours."""
+    m = re.fullmatch(r"(\d{1,8})-([0-9a-f]{24})", str(link or "").strip())
+    key = _price_link_key() if m else None
+    if not m or key is None:
+        return None
+    cents = int(m.group(1))
+    if cents < PRICE_LINK_MIN_CENTS or not hmac.compare_digest(_price_link_sig(key, cents), m.group(2)):
+        return None
+    return cents
 
 
 # ------------------------------------------------------- per-person prices
@@ -200,11 +256,19 @@ def set_user_price(user_id: str, price_cents: Optional[int]) -> Optional[int]:
     return int(price_cents)
 
 
-def offer_for(slug: str, user_id: str) -> dict:
+def offer_for(slug: str, user_id: str, link: str = "") -> dict:
     """What this person pays. The page shows the list price crossed out when
     their price is lower. Everyone may pay now by card or book and pay later
-    (founder 2026-10-14); a lesson adds no tokens."""
-    page = public_settings(slug)
+    (founder 2026-10-14); a lesson adds no tokens. A valid price link wins
+    over everything and must be paid now."""
+    page = public_settings(slug, link)
+    if "link_price_cents" in page:
+        return {
+            "list_price_cents": page["price_cents"],
+            "price_cents": page["link_price_cents"],
+            "currency": page["currency"],
+            "price_link": True,
+        }
     own = user_price(user_id)
     price = page["price_cents"] if own is None else own
     # The % off (founder 2026-10-14: for everyone, returning people too). A
@@ -373,15 +437,18 @@ EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email: str,
                    guest_timezone: str, note: str = "", embedded: bool = False,
-                   skip_payment: bool = False) -> dict:
+                   skip_payment: bool = False, link: str = "") -> dict:
     """Hold the slot and open Stripe Checkout for a signed-in account, at that
     person's price (charged as an amount, not a Stripe product). Returns
     {"client_secret": ...} for the card form inside the booking page when
     `embedded`, else {"url": ...} for Stripe's own page; a free meeting skips
     Stripe and returns {"url": ...} to the confirmation."""
     s = get_settings()
-    offer = offer_for(slug, user_id)  # raises NOT_FOUND when off or wrong link
+    offer = offer_for(slug, user_id, link)  # raises NOT_FOUND when off or wrong link
     price = int(offer["price_cents"])
+    price_link = bool(offer.get("price_link"))
+    if price_link and skip_payment:
+        raise BookingError("PAY_NOW", "This link is paid when you book.")
     # Book and pay later: a confirmed booking at 0 that remembers what is due.
     if skip_payment:
         price = 0
@@ -430,10 +497,15 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
     import stripe
     stripe.api_key = api_key
     metadata = {"kind": BOOKING_KIND, "booking_id": booking_id}
+    back = f"{base}/book/{s['slug']}"
+    if price_link:
+        # Once paid, this price becomes the person's own (confirm_checkout).
+        metadata["price_link"] = "1"
+        back += f"?link={link.strip()}"
     done_url = f"{base}/book/{s['slug']}/done?session_id={{CHECKOUT_SESSION_ID}}"
     where: dict[str, Any] = (
         {"ui_mode": "embedded", "return_url": done_url} if embedded
-        else {"success_url": done_url, "cancel_url": f"{base}/book/{s['slug']}"})
+        else {"success_url": done_url, "cancel_url": back})
     try:
         session = stripe.checkout.Session.create(
             **where,
@@ -498,6 +570,14 @@ def confirm_checkout(session_id: str) -> Optional[dict]:
             or int(_get(session, "amount_total") or -1) != int(row["price_cents"])):
         logger.error("booking: amount mismatch session=%s booking=%s", session_id, booking_id)
         return row
+    # Paid through a price link: that price becomes theirs. Only on the first
+    # confirmation, so a reload of the success page later never undoes a
+    # price the admin has since changed.
+    if _get(md, "price_link") == "1" and row.get("user_id") and not row.get("confirmed_at"):
+        try:
+            set_user_price(str(row["user_id"]), int(row["price_cents"]))
+        except Exception as e:  # the booking stands; the admin can set it by hand
+            logger.error("booking: price link price not saved booking=%s: %s", booking_id, e, exc_info=True)
     return _confirm(booking_id, session_id=str(session_id))
 
 
