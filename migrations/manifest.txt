@@ -509,3 +509,4 @@
 0471	grant_coach_answer_video_write.sql
 0472	grant_coach_request_writes_service_role.sql
 0473	status_read_in_one_trip.sql
+0474	claim_owner_indexes.sql
