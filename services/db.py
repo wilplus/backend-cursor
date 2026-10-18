@@ -9821,7 +9821,9 @@ class DatabaseService:
 
     def get_own_state_ratings_for_session(self, session_id: str,
                                           rater_id: str) -> dict:
-        """{snippet_id: {value, unrateable}} — THIS rater's own ratings only.
+        """{snippet_id: {value, unrateable, updated_at}} — THIS rater's own
+        ratings only. ``updated_at`` orders the coach's answered Takes (most
+        recently answered first); it is never a value.
 
         SCOPED TO ONE RATER ON PURPOSE, and that scope is the whole safety
         argument. Showing a coach their OWN prior answer is just resuming
@@ -9838,7 +9840,7 @@ class DatabaseService:
             return {}
         try:
             rows = (self.client.table("confidence_labels")
-                    .select("snippet_id, value, unrateable")
+                    .select("snippet_id, value, unrateable, updated_at")
                     .eq("session_id", str(session_id))
                     .eq("rater_id", str(rater_id))
                     .execute().data) or []
@@ -9850,6 +9852,7 @@ class DatabaseService:
                 out[str(snippet_id)] = {
                     "value": r.get("value"),
                     "unrateable": bool(r.get("unrateable")),
+                    "updated_at": r.get("updated_at"),
                 }
             return out
         except Exception as e:
