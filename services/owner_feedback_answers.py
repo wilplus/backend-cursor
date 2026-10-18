@@ -21,14 +21,21 @@ def owner_answers(database: Any, take_session_id: str,
                   owner_user_id: str) -> Optional[list]:
     """The owner's latest answer per feedback item on their own Take.
 
-    None when the Take is not theirs (the route answers 404)."""
+    None when the Take is not theirs (the route answers 404). The ownership
+    check and the answers are read at once (2026-10-18): the answers read is
+    already scoped to this owner, so it shows nothing before the check."""
+    from services.parallel import run_in_parallel
     from services.project_ownership import session_actor_id
-    session = database.v2_get_session_by_id(str(take_session_id)) or {}
-    if not owner_user_id or session_actor_id(session) != str(owner_user_id):
+    if not owner_user_id:
+        return None
+    session, rows = run_in_parallel(
+        lambda: database.v2_session_owner(str(take_session_id)),
+        lambda: database.list_take_feedback_self_reports(
+            str(take_session_id), str(owner_user_id)))
+    if session_actor_id(session or {}) != str(owner_user_id):
         return None
     latest: dict = {}
-    for row in database.list_take_feedback_self_reports(
-            str(take_session_id), str(owner_user_id)) or []:
+    for row in rows or []:
         if not isinstance(row, Mapping) or not row.get("feedback_id"):
             continue
         latest[str(row["feedback_id"])] = {
