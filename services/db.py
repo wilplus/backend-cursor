@@ -8012,6 +8012,27 @@ class DatabaseService:
                            len(ids), e)
             return []
 
+    def get_snippet_playback_rows(self, snippet_ids: Any) -> list:
+        """Exactly the columns a clip player is resolved from
+        (``resolve_snippet_audio_url``), for exactly these snippets.
+
+        The stored bookmarks re-sign their clips on every serve. That used
+        to read EVERY snippet of the Take with its ``words`` JSONB (up to a
+        few hundred piece rows) to sign the handful the bookmarks show.
+        Raises on failure (``_snippet_playback_map`` turns that into no
+        player)."""
+        ids = sorted({str(x) for x in (snippet_ids or []) if x})
+        if not ids:
+            return []
+        res = self._execute_with_retry(
+            lambda: (self.client.table(SNIPPETS_TABLE)
+                     .select("id, session_id, storage_path, "
+                             "audio_segment_path, start_offset_ms, "
+                             "duration_ms")
+                     .in_("id", ids)),
+            label="snippet_playback_rows")
+        return res.data or []
+
     # ── variant pool + compositions (founder 2026-08-03) ─────────────
     # See services/ideal_text_variants.py + add_ideal_text_variant_pool
     # .sql. Append-only lanes; all best-effort; list reads return None

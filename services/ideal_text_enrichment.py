@@ -1,7 +1,8 @@
 """Bounded, independently failing Ideal Text enrichment sections."""
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, TimeoutError
+import contextvars
+from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Any, Callable, Iterable, Mapping
@@ -127,6 +128,18 @@ def run_sections(
         # this response and their result is discarded.
         pool.shutdown(wait=False, cancel_futures=True)
     return sections, timings
+
+
+def beside(read: Callable[..., Any], *args: Any) -> Future:
+    """Start one read on its own thread while the request does another;
+    ``.result()`` waits for it (and raises what it raised). It carries the
+    request's context, so its database call is counted on the stopwatch."""
+    pool = ThreadPoolExecutor(max_workers=1,
+                              thread_name_prefix="ideal-enrichment-beside")
+    try:
+        return pool.submit(contextvars.copy_context().run, read, *args)
+    finally:
+        pool.shutdown(wait=False)
 
 
 
