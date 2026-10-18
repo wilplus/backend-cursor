@@ -58,10 +58,12 @@ CREATE OR REPLACE FUNCTION public.exercise_version_takes_its_owner_v1()
 RETURNS TRIGGER LANGUAGE plpgsql SET search_path = public
 AS $$
 BEGIN
-    IF NEW.owner_user_id IS NULL THEN
-        SELECT e.owner_user_id INTO NEW.owner_user_id
-          FROM public.diagnostic_exercise e
-         WHERE e.exercise_id = NEW.exercise_id;
+    -- The library may be absent (the rehearsal database): no owner then.
+    IF NEW.owner_user_id IS NULL
+       AND to_regclass('public.diagnostic_exercise') IS NOT NULL THEN
+        EXECUTE 'SELECT owner_user_id FROM public.diagnostic_exercise '
+             || 'WHERE exercise_id = $1'
+           INTO NEW.owner_user_id USING NEW.exercise_id;
     END IF;
     RETURN NEW;
 END;
