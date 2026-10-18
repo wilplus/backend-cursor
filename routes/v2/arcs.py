@@ -1323,24 +1323,47 @@ def _moment_playback_map(session_ids) -> dict:
     for snippets in snippets_by_session.values():
         try:
             for s in (snippets or []):
-                _snip = s.get("id")
-                if _snip is None:
-                    continue
-                try:
-                    _url = _resolve_snippet_audio_url(s)
-                except Exception:
-                    # Never the raw column: an unsigned ref is a dead player.
-                    _url = None
-                if not _url:
-                    continue
-                out[str(_snip)] = {
-                    "snippet_audio_ref": _url,
-                    "start_offset_ms": s.get("start_offset_ms"),
-                    "duration_ms": s.get("duration_ms"),
-                }
+                _entry = _playback_entry(s)
+                if _entry is not None:
+                    out[str(s.get("id"))] = _entry
         except Exception:
             continue
     return out
+
+
+def _snippet_playback_map(snippet_ids) -> dict:
+    """``_moment_playback_map`` for exactly these snippets, read narrow (no
+    ``words``, no other piece of the Take). For a caller that already knows
+    which clips it shows. Best-effort, as that one is → no player."""
+    out: dict = {}
+    try:
+        rows = db.get_snippet_playback_rows(snippet_ids) or []
+    except Exception:
+        logger.warning("snippet playback unreadable", exc_info=True)
+        return out
+    for s in rows:
+        _entry = _playback_entry(s) if isinstance(s, dict) else None
+        if _entry is not None:
+            out[str(s.get("id"))] = _entry
+    return out
+
+
+def _playback_entry(s) -> dict | None:
+    """One snippet row's player, or None when it has nothing playable."""
+    if s.get("id") is None:
+        return None
+    try:
+        _url = _resolve_snippet_audio_url(s)
+    except Exception:
+        # Never the raw column: an unsigned ref is a dead player.
+        _url = None
+    if not _url:
+        return None
+    return {
+        "snippet_audio_ref": _url,
+        "start_offset_ms": s.get("start_offset_ms"),
+        "duration_ms": s.get("duration_ms"),
+    }
 
 
 def _moment_applied_map(session_ids) -> dict:

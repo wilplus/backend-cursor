@@ -514,16 +514,21 @@ def _with_fresh_playback(block: dict) -> dict:
     rows = block.get("changes")
     if not isinstance(rows, list):
         return block
+    # ONLY THE CLIPS THESE ROWS SHOW (founder 2026-10-18, "optimise the
+    # loading"): this used to read every piece of every Take named here, with
+    # its word timings, and sign them all, to refresh the few bookmarks on
+    # screen: the heaviest read in the `document_layers` lane on a stored
+    # bake.
     wanted = sorted({
-        str(row["take_session_id"]) for row in rows
-        if isinstance(row, dict) and row.get("take_session_id")
+        str(row["snippet_id"]) for row in rows
+        if isinstance(row, dict) and row.get("snippet_id")
         and any(row.get(field) for field in _PERISHABLE)
     })
     if not wanted:
         return block
     try:
-        from routes.v2.arcs import _moment_playback_map
-        playback = _moment_playback_map(wanted) or {}
+        from routes.v2.arcs import _snippet_playback_map
+        playback = _snippet_playback_map(wanted) or {}
     except Exception as error:
         logger.warning("ideal-text bake playback refresh failed: %s", error)
         return block
