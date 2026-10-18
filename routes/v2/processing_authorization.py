@@ -220,6 +220,20 @@ def enforce_phase1_processing_gate():
     if gate_recently_passed(cache_key):
         return None
     generation = gate_cache_generation()
+    # Named in Server-Timing (founder 2026-10-18: a 5.9 s Ideal Text open
+    # spent 2 s before its route started, with nothing to say where).
+    from services.request_context import timed
+    with timed("gate"):
+        refusal = _ask_the_gate(service)
+    if refusal is not None:
+        return refusal
+    remember_gate_passed(cache_key, generation)
+    return None
+
+
+def _ask_the_gate(service: ProcessingAuthorizationService):
+    """The database's decision for this caller: None for a YES, else the
+    refusal response."""
     try:
         # Founder 2026-10-18: this gate ran before every core read and paid
         # the same three round trips the status route paid before 0473
@@ -239,7 +253,6 @@ def enforce_phase1_processing_gate():
         return _principal_error(error)
     except ProcessingAuthorizationError as error:
         return jsonify({"code": error.code, "error": error.message}), error.status
-    remember_gate_passed(cache_key, generation)
     return None
 
 
