@@ -357,6 +357,27 @@ class DatabaseService:
         
         return result.data[0] if result.data else None
 
+    def get_recording_languages(self, recording_ids) -> dict:
+        """Batch read — {recording_id: {"transcription_language": ...}} for
+        many recordings in one query per 100 ids.
+
+        The coach queue resolves a Take's language from the recording when
+        the Take declares none, and used to read every recording whole, one
+        round trip per queued Take, for this one field. Raises like
+        `get_recording` does, so a failed read fails the queue rather than
+        withholding every undeclared Take as "language unknown"."""
+        ids = sorted({str(r) for r in (recording_ids or []) if r})
+        out: dict = {}
+        for i in range(0, len(ids), 100):
+            chunk = ids[i:i + 100]
+            result = self._execute_with_retry(
+                lambda chunk=chunk: self.client.table("recordings")
+                .select("id, transcription_language").in_("id", chunk),
+                label="get_recording_languages")
+            for row in (result.data or []):
+                out[str(row.get("id"))] = row
+        return out
+
     def create_signed_url(self, bucket: str, path: str, expires_in: int = 3600):
         """Create a signed URL for a file in Supabase Storage"""
         import logging
@@ -2387,6 +2408,7 @@ class DatabaseService:
 
     def get_snippets_by_sessions(
         self, session_ids, *, include_words: bool = False,
+        columns: Optional[str] = None,
     ) -> dict:
         """Batch read — ALL snippets for many sessions in ONE query per 100 ids
         (kills the N+1 on /v2/user/strengths). Returns
@@ -2395,14 +2417,15 @@ class DatabaseService:
         Excludes the heavy `words` JSONB by default — the Trainings list reads
         the precomputed slide_transcripts (#A), so per-snippet words aren't
         needed there. Pass include_words=True where the per-snippet split is
-        used. Best-effort: {} on hiccup; falls back to select(*) if the slim
-        projection trips a missing column."""
+        used, or `columns` for a narrower projection still (the coach queue
+        needs only ids and order). Best-effort: {} on hiccup; falls back to
+        select(*) if the projection trips a missing column."""
         ids = [str(s) for s in (session_ids or []) if s]
         if not ids:
             return {}
         slim = ("id, session_id, start_offset_ms, duration_ms, transcript, "
                 "audio_segment_path, metrics, snippet_type")
-        cols = "*" if include_words else slim
+        cols = columns or ("*" if include_words else slim)
         # Pieces-canonical (2026-07-14): a session can carry ~15-270 piece
         # rows (was ≤10 windows), so 100 sessions per query can exceed
         # PostgREST's server-side max-rows (default 1000) — which TRUNCATES
@@ -5210,6 +5233,32 @@ class DatabaseService:
                 "get_ideal_text_feedback_set failed arc=%s take=%s: %s",
                 arc_id, take_session_id, e)
             return None
+
+    def get_ideal_text_feedback_sets(self, take_session_ids) -> dict:
+        """Batch read — {take_session_id: [frozen selections]} for many Takes
+        in one query per 100 ids. The coach queue read the singular once per
+        queued Take; callers match the arc themselves, as the singular does
+        in its filter. {} on anything missing or failed, which every queued
+        Take then reads as the singular's None (not frozen yet)."""
+        ids = sorted({str(s) for s in (take_session_ids or []) if s})
+        out: dict = {}
+        try:
+            for i in range(0, len(ids), 100):
+                chunk = ids[i:i + 100]
+                res = (
+                    self.client.table("ideal_text_feedback_sets")
+                    .select("arc_id,take_session_id,take_index,review_version,"
+                            "selected_keys,created_at")
+                    .in_("take_session_id", chunk)
+                    .execute()
+                )
+                for row in (res.data or []):
+                    out.setdefault(str(row.get("take_session_id")), []).append(row)
+        except Exception as e:
+            logger.warning(
+                "get_ideal_text_feedback_sets failed n=%s: %s", len(ids), e, exc_info=True)
+            return {}
+        return out
 
     def claim_ideal_text_feedback_set(
         self,
@@ -9857,6 +9906,49 @@ class DatabaseService:
                 "get_own_state_ratings_for_session failed session=%s: %s",
                 session_id, e)
             return {}
+
+    def get_own_state_ratings_for_sessions(self, session_ids,
+                                           rater_id: str) -> dict:
+        """{session_id: {snippet_id: {value, unrateable}}} — the batch of
+        `get_own_state_ratings_for_session`, for the coach queue, which read
+        the singular once per queued Take. THIS rater's rows only, for the
+        same reason the singular gives. Paged, because one rater's rows on
+        a wide queue can pass PostgREST's max-rows, which truncates
+        silently. {} on anything missing, as the singular."""
+        ids = sorted({str(s) for s in (session_ids or []) if s})
+        if not ids or not rater_id:
+            return {}
+        _page = 1000
+        out: dict = {}
+        try:
+            for i in range(0, len(ids), 100):
+                chunk = ids[i:i + 100]
+                offset = 0
+                while True:
+                    rows = (self.client.table("confidence_labels")
+                            .select("session_id, snippet_id, value, unrateable")
+                            .in_("session_id", chunk)
+                            .eq("rater_id", str(rater_id))
+                            .order("snippet_id", desc=False)
+                            .range(offset, offset + _page - 1)
+                            .execute().data) or []
+                    for r in rows:
+                        if not r.get("snippet_id"):
+                            continue
+                        out.setdefault(str(r.get("session_id")), {})[
+                            str(r["snippet_id"])] = {
+                                "value": r.get("value"),
+                                "unrateable": bool(r.get("unrateable")),
+                        }
+                    if len(rows) < _page:
+                        break
+                    offset += _page
+        except Exception as e:
+            logger.warning(
+                "get_own_state_ratings_for_sessions failed n=%s: %s",
+                len(ids), e, exc_info=True)
+            return {}
+        return out
 
     def count_labelled_snippets_by_session_ids(self, session_ids: list) -> dict:
         """{session_id: how many DISTINCT snippets carry a confidence label}.

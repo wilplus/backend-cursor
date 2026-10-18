@@ -277,22 +277,26 @@ def _no_goal(_user_id: Any) -> Optional[str]:
     return None
 
 
-def speaker_goal(database: Any, owner_user_id: Any) -> Optional[str]:
-    """The speaker's goal, a courtesy on the queue. Never a name."""
-    if not owner_user_id or not hasattr(database, "get_user_profile"):
-        return None
-    try:
-        profile = database.get_user_profile(owner_user_id)
-    except Exception as e:  # noqa: BLE001 -- the goal is a courtesy
-        _log.info("speaker goal unavailable: %s", e)
-        return None
-    if not isinstance(profile, dict):
-        return None
-    goal = profile.get("goal")
+def _goal_text(profile: Any) -> Optional[str]:
+    goal = profile.get("goal") if isinstance(profile, dict) else None
     if not isinstance(goal, str):
         return None
-    stripped = goal.strip()
-    return stripped or None
+    return goal.strip() or None
+
+
+def speaker_goals(database: Any, rows: Iterable[Any]
+                  ) -> Callable[[Any], Optional[str]]:
+    """The queue's ``goal_for``: every speaker's goal, a courtesy on the
+    queue, from one batched read (one read per speaker was a round trip
+    each, founder 2026-10-18). Never a name. A failed read shows no goal."""
+    ids = sorted({str(r.get("user_id")) for r in rows or []
+                  if isinstance(r, dict) and r.get("user_id")})
+    try:
+        profiles = (database.get_user_profiles(ids) or {}) if ids else {}
+    except Exception as e:  # noqa: BLE001 -- the goal is a courtesy
+        _log.info("speaker goals unavailable: %s", e)
+        profiles = {}
+    return lambda uid: _goal_text(profiles.get(str(uid))) if uid else None
 
 
 def moments_queue(
@@ -386,22 +390,24 @@ def queue_for_coach(
     pseudonym_for: Callable[[Any], str],
 ) -> list[dict]:
     """The walk's queue for one coach, every read batched: the moments'
-    requests, the reach (N48.2 Q1 A), this coach's own ratings and the
-    panel's rows on the listed clips (routing only, K4, K5). ``rows`` are
-    the review queue's rows this coach may see (the language gate)."""
+    requests, the reach (N48.2 Q1 A), this coach's own ratings, the
+    speakers' goals and the panel's rows on the listed clips (routing only,
+    K4, K5). ``rows`` are the review queue's rows this coach may see (the
+    language gate)."""
     from services.coach_listen_again import open_asks
     ids = [str(r.get("id")) for r in rows if isinstance(r, dict)]
     requests = database.list_exercise_coach_requests_for_sessions(ids)
     once = remembered(moments_for)
     asks = open_asks(database, coach_id=rater_id, session_ids=ids)
+    ratings = database.get_own_state_ratings_for_sessions(ids, rater_id) or {}
     return moments_queue(
         rows, moments_for=once,
         reached_for=reached_for_sessions(database, ids, requests),
-        ratings_for=lambda sid: database.get_own_state_ratings_for_session(sid, rater_id),
+        ratings_for=lambda sid: ratings.get(str(sid)) or {},
         request_for=lambda sid, snip: requests.get((sid, snip)),
         pseudonym_for=pseudonym_for,
         labels_for=labels_for_snippets(
             database, [s for r in rows if isinstance(r, dict) for s in (once(r) or [])]),
         rater_id=rater_id,
-        goal_for=lambda uid: speaker_goal(database, uid),
+        goal_for=speaker_goals(database, rows),
         listen_again_for=lambda sid: asks.get(str(sid), {}))

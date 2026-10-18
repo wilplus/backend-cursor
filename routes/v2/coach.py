@@ -191,20 +191,26 @@ def _session_recording(session):
     return db.get_recording(str(recording_id)) if recording_id else None
 
 
-def _rater_language_outcome(session, snippets=None, proficient=None):
+def _rater_language_outcome(session, snippets=None, proficient=None,
+                            recordings=None):
     """Resolve queue eligibility for the current authenticated rater.
 
     Language is a routing dimension only. Unknown and mismatched clips are
     withheld; they are never converted to ``not_sure`` or ``audio_unclear``.
+
+    ``recordings`` is a queue's batch of recording languages by recording id
+    (``db.get_recording_languages``); None reads this session's recording.
     """
     from services.rater_languages import evaluate_rater_access, session_language
 
     rater_id = str(getattr(request, "user_id", "") or "")
     if proficient is None:
         proficient = db.get_user_proficient_languages(rater_id)
+    recording = (_session_recording(session) if recordings is None else
+                 recordings.get(str((session or {}).get("recording_id"))))
     language = session_language(
         session,
-        recording=_session_recording(session),
+        recording=recording,
         snippets=snippets or [],
     )
     return evaluate_rater_access(proficient, language), language
@@ -496,10 +502,11 @@ def v2_coach_moments_queue():
         proficient = db.get_user_proficient_languages(rater_id)
         if not proficient:
             return _rater_language_error("profile_required")
-        rows, snips, _states = load_review_queue(db, _coach_state_map)
+        rows, snips, _states = load_review_queue(db)
         matched = _language_matched_rows(rows, snips, proficient)
         return jsonify(queue_for_coach(
-            db, matched, rater_id=rater_id, moments_for=_queue_moments_for(snips),
+            db, matched, rater_id=rater_id,
+            moments_for=_queue_moments_for(snips, matched),
             pseudonym_for=_coach_pseudonym)), 200
     except Exception as e:
         logger.error("coach/queue/moments GET failed: %s", e, exc_info=True)
@@ -520,11 +527,11 @@ def v2_coach_speakers():
         proficient = db.get_user_proficient_languages(rater_id)
         if not proficient:
             return _rater_language_error("profile_required")
-        rows, snips, _states = load_review_queue(db, _coach_state_map)
+        rows, snips, _states = load_review_queue(db)
         matched = _language_matched_rows(rows, snips, proficient)
         return jsonify(speakers_for_coach(
             db, matched, rater_id=rater_id,
-            moments_for=_queue_moments_for(snips),
+            moments_for=_queue_moments_for(snips, matched),
             pseudonym_for=_coach_pseudonym)), 200
     except Exception as e:
         logger.error("coach/speakers GET failed: %s", e, exc_info=True)
@@ -546,12 +553,18 @@ def _language_matched_rows(rows, snips, proficient):
     """The queue rows this rater may see, and one internal log line for each
     Take withheld by language, naming the filter (founder 2026-10-01, 0a:
     a Take that leaves the queue is never silently absent). Nothing here
-    reaches a user."""
+    reaches a user.
+
+    The recordings' languages are read once for the whole queue: a read per
+    Take was the bulk of the coach panel's load time (founder 2026-10-18)."""
+    recordings = db.get_recording_languages(
+        [row.get("recording_id") for row in rows])
     matched = []
     for row in rows:
         sid = str(row.get("id"))
         outcome, language = _rater_language_outcome(
-            row, snips.get(sid) or [], proficient=proficient)
+            row, snips.get(sid) or [], proficient=proficient,
+            recordings=recordings)
         if outcome == "matched":
             matched.append(row)
         else:
@@ -560,14 +573,19 @@ def _language_matched_rows(rows, snips, proficient):
     return matched
 
 
-def _queue_moments_for(snips):
+def _queue_moments_for(snips, rows):
     """The queue's `moments_for`: a take's bookmarked snippet ids in order,
     or None while its bookmarks are not frozen yet. Not a drop: the take
     rides as "Waiting for the text" (founder 2026-10-01, A1) until the bake
-    or the first read freezes them, and the log names the filter."""
+    or the first read freezes them, and the log names the filter. The
+    frozen sets of every row in `rows` are read in one batch, not one read
+    per Take (founder 2026-10-18)."""
+    feedback_sets = db.get_ideal_text_feedback_sets(
+        [r.get("id") for r in rows if r.get("arc_id")])
+
     def moments_for(row):
         sid = str(row.get("id"))
-        marked = _bookmarked_snippet_ids(row, sid)
+        marked = _bookmarked_snippet_ids(row, sid, feedback_sets)
         if marked is None:
             logger.info("coach queue: take waiting for the text sid=%s "
                         "filter=bookmarks_not_frozen", sid)
@@ -577,7 +595,16 @@ def _queue_moments_for(snips):
     return moments_for
 
 
-def _bookmarked_snippet_ids(session, session_id):
+def _frozen_feedback_set(arc_id, session_id, feedback_sets=None):
+    """This Take's frozen selection: from a queue's batch when one is handed
+    in (``db.get_ideal_text_feedback_sets``), else one read."""
+    if feedback_sets is None:
+        return db.get_ideal_text_feedback_set(str(arc_id), str(session_id))
+    return next((row for row in feedback_sets.get(str(session_id)) or []
+                 if str(row.get("arc_id")) == str(arc_id)), None)
+
+
+def _bookmarked_snippet_ids(session, session_id, feedback_sets=None):
     """The snippets this take actually surfaced to the USER as bookmarks.
 
     FOUNDER 2026-09-24: "I want to have those that were bookmarked, green and
@@ -607,7 +634,7 @@ def _bookmarked_snippet_ids(session, session_id):
     if not arc_id or not session_id:
         return set()
     try:
-        row = db.get_ideal_text_feedback_set(str(arc_id), str(session_id))
+        row = _frozen_feedback_set(arc_id, session_id, feedback_sets)
         if not row:
             return None
         from services.take_feedback_set import (

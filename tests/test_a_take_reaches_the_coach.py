@@ -46,7 +46,7 @@ class TheMomentsQueueTests(unittest.TestCase):
         self.app = Flask(__name__)
 
     def _get(self, *, recording_language, coach_languages, feedback_set,
-             events=None, answers=None, labels=None, own=None):
+             events=None, answers=None, labels=None, own=None, profiles=None):
         opened = [{"take_session_id": SID, "snippet_id": SNIP, "event": "opened"}]
         with self.app.test_request_context():
             request.user_id = "coach1"
@@ -58,16 +58,17 @@ class TheMomentsQueueTests(unittest.TestCase):
                               return_value=answers or []), \
                  patch("routes.v2.coach.load_review_queue",
                        return_value=([_row()], {SID: [{"id": SNIP}]}, {})), \
-                 patch.object(db, "get_recording",
-                              return_value={"transcription_language": recording_language}), \
+                 patch.object(db, "get_recording_languages",
+                              return_value={"rec-1": {"transcription_language": recording_language}}), \
                  patch.object(db, "list_exercise_coach_requests_for_sessions",
                               return_value={}), \
-                 patch.object(db, "get_own_state_ratings_for_session",
-                              return_value=own or {}), \
+                 patch.object(db, "get_own_state_ratings_for_sessions",
+                              return_value={SID: own or {}}), \
+                 patch.object(db, "get_user_profiles", return_value=profiles or {}), \
                  patch.object(db, "get_confidence_labels_by_snippet_ids",
                               return_value=labels or {}), \
-                 patch.object(db, "get_ideal_text_feedback_set",
-                              return_value=feedback_set):
+                 patch.object(db, "get_ideal_text_feedback_sets",
+                              return_value={SID: [feedback_set]} if feedback_set else {}):
                 with self.assertLogs(level="INFO") as logs:
                     v2_coach.logger.info("probe")
                     out = v2_coach.v2_coach_moments_queue.__wrapped__()
@@ -76,7 +77,7 @@ class TheMomentsQueueTests(unittest.TestCase):
 
 
     def _frozen(self):
-        return {"selected_keys": [{
+        return {"arc_id": ARC, "selected_keys": [{
             "id": f"relative-confidence:{SID}:{SNIP}", "kind": "relative_confidence",
             "source": "confident_voice", "feedback_family": "confident_voice",
             "snippet_id": SNIP, "take_session_id": SID,
@@ -92,6 +93,24 @@ class TheMomentsQueueTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(body[0]["takes"][0]["moments"],
                          [{"snippet_id": SNIP, "state": "judge_it"}])
+
+    def test_the_walk_reads_the_queue_in_batches_not_once_per_take(self):
+        # Founder 2026-10-18: the walk took 8.6 s, one database round trip
+        # per Take for each of these. They must never come back.
+        with patch.object(db, "get_recording") as one_recording, \
+             patch.object(db, "get_ideal_text_feedback_set") as one_set, \
+             patch.object(db, "get_own_state_ratings_for_session") as one_rating, \
+             patch.object(db, "get_user_profile") as one_profile:
+            body, status, _ = self._get(
+                recording_language="en", coach_languages=["en"],
+                feedback_set=self._frozen(),
+                profiles={"u1": {"goal": " Trusting in what I say "}})
+        self.assertEqual(status, 200)
+        self.assertEqual(body[0]["goal"], "Trusting in what I say")
+        self.assertEqual(body[0]["takes"][0]["moments"],
+                         [{"snippet_id": SNIP, "state": "judge_it"}])
+        for one in (one_recording, one_set, one_rating, one_profile):
+            one.assert_not_called()
 
 
 if __name__ == "__main__":
