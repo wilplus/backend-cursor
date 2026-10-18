@@ -90,6 +90,16 @@ def _settings(user_id: str) -> dict:
     return rows[0] if rows else {}
 
 
+def practice(user_id: str) -> dict:
+    """Confident Voice practice progress (founder 2026-10-18): how many
+    practices the app offered this person and how many they completed.
+    Shown to the admin only; the speaker never sees a number."""
+    rows = (db.client.table("confident_voice_practice").select("status")
+            .eq("owner_user_id", user_id).execute().data) or []
+    return {"offered": len(rows),
+            "done": sum(1 for r in rows if r.get("status") == "completed")}
+
+
 NoCount = tuple[int, Optional[str]]  # (how many times they said no, when last)
 
 
@@ -180,7 +190,7 @@ def person(user_id: str) -> Optional[dict]:
     from services import booking, person_asks, plan_promotions, token_account
     # SPEED: the reads don't depend on each other, so they run side by side
     # (one round trip's wait instead of ten in a row).
-    with ThreadPoolExecutor(max_workers=8) as pool:
+    with ThreadPoolExecutor(max_workers=9) as pool:
         f_user = pool.submit(auth_user, user_id)
         f_principal = pool.submit(_safe, "principal", partial(_principal, user_id))
         f_settings = pool.submit(_safe, "settings", partial(_settings, user_id))
@@ -189,6 +199,7 @@ def person(user_id: str) -> Optional[dict]:
         f_list = pool.submit(_safe, "list price", lambda: booking.get_settings()["price_cents"])
         f_asks = pool.submit(_safe, "asks", partial(person_asks.list_for, user_id))
         f_promo = pool.submit(_safe, "promotion", partial(plan_promotions.active, user_id))
+        f_practice = pool.submit(_safe, "practice", partial(practice, user_id))
         user = f_user.result()
         if not user:
             return None
@@ -224,6 +235,7 @@ def person(user_id: str) -> Optional[dict]:
         "list_price_cents": f_list.result(),
         "asks": f_asks.result() or [],
         "promotion": f_promo.result(),
+        "practice": f_practice.result(),
         "deletion": deletion_row,
     }
 
