@@ -36,6 +36,12 @@ from services.snippet_values import resolve_all
 logger = logging.getLogger(__name__)
 config = Config()
 
+#: The v2_sessions columns GET /chat/session-state answers with.
+_SESSION_STATE_COLUMNS = (
+    "id,created_at,results_published_at,"
+    "session_kpi_narrative_ai_draft,ai_task_alignment_comment"
+)
+
 
 @v2_bp.route("/chat/session-state", methods=["GET"])
 @require_auth
@@ -96,7 +102,10 @@ def v2_chat_session_state():
     """
     try:
         user_id = request.user_id
-        session = db.takes.v2_get_latest_session_for_user(user_id)
+        # Only what the answer below carries: the row's blobs (transcripts,
+        # profiles, context) would otherwise ride along on every /chat open.
+        session = db.takes.v2_get_latest_session_for_user(
+            user_id, columns=_SESSION_STATE_COLUMNS)
 
         if not session:
             return jsonify({

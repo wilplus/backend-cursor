@@ -221,8 +221,20 @@ def enforce_phase1_processing_gate():
         return None
     generation = gate_cache_generation()
     try:
-        principal_id = _principal_id()
-        service.require_current(principal_id, operation="core_service")
+        # Founder 2026-10-18: this gate ran before every core read and paid
+        # the same three round trips the status route paid before 0473
+        # (owner principal, resolver, status), so GET /v2/chat/session-state
+        # made four database calls to answer with one row. The one-trip read
+        # answers the first three; when it cannot vouch (no owner principal
+        # yet, migration missing, a raise) the old path runs unchanged.
+        fast = _status_in_one_trip(service)
+        if fast is not None:
+            principal_id, status = fast
+            service.require_current(
+                principal_id, operation="core_service", status=status)
+        else:
+            principal_id = _principal_id()
+            service.require_current(principal_id, operation="core_service")
     except (CreateTakeError, ProjectOwnershipError) as error:
         return _principal_error(error)
     except ProcessingAuthorizationError as error:
