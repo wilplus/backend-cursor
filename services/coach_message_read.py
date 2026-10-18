@@ -120,8 +120,13 @@ def journey_payload(database: Any, actor_id: str, arc_id: str,
     steps were seen, and the coach's overall message and video for the Take
     on screen (Q1, Final Screens L8; N48.3 Q11 A)."""
     from services.journey_messages import journey_seen
+    from services.parallel import run_in_parallel
+    # Two independent reads, read together (2026-10-18: this section was the
+    # slowest one on the Ideal Text open).
+    seen, message = run_in_parallel(
+        lambda: journey_seen(database, actor_id, arc_id, take_count),
+        lambda: coach_message_for(database, sessions, take_session_id))
     return {
-        "journey_next_steps_seen": journey_seen(
-            database, actor_id, arc_id, take_count),
-        "coach_message": coach_message_for(database, sessions, take_session_id),
+        "journey_next_steps_seen": seen,
+        "coach_message": message,
     }
