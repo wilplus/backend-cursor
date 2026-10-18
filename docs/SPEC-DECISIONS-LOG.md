@@ -2564,3 +2564,14 @@ read in the admin Take view, never shown; an uploaded Take has no voice and
 gets nothing. One signed sentence, L18, under the player ("you have my OK to
 the previous one"). Lock: `FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`,
 "Decided after the lock (2026-10-18, fillers)". Migration 0475.
+
+**N76 · Words first, then voice (founder, chat, 18 October 2026).** The
+practise moment opens on the Clearer version only when its words need help
+(fillers, hedges, off the slide, a broken sentence) and a rewrite passes the
+gate (in the clip, evidence-backed, a real fix, still theirs, sayable, not
+declined); otherwise the voice Exercise with the AI clip. A clearer-version
+try is checked on its voice: better is a Good job with no clip, not yet
+brings the AI clip of the accepted words. "ok, push to prod" on the clickable
+prototype. Locks: `FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md` ("Words
+first, then voice") and `FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`
+("Decided after the lock (2026-10-18, words first)"). No migration.

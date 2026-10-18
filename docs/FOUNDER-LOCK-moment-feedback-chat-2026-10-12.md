@@ -159,6 +159,7 @@ willfidence(sentence) = S × W                 0 … 1
 green(slide)  = the best sentence on the slide, if ≥ FLOOR and ≥ 5 words
 moments       = the top 3 green, in slide order; none → the single best, softer signed line
 exercise      = the lowest sentence; W < S → Clearer version, else voice Exercise
+                (amended 2026-10-18: the rewrite gate decides; see "Words first, then voice")
 practice try  = Δ willfidence vs the original ≥ +0.05 → better
 ```
 
@@ -333,6 +334,32 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
   their self-esteem or self-worth. Still no numbers but a signed line's
   Take number, no scores, no verdicts. A speaker with no WhatsApp number
   gets the Lounge's WhatsApp offer right after it.
+
+- **Words first, then voice** (founder, 2026-10-18; prototype
+  <https://claude.ai/artifact/Ut2SqvHCoJ1hvH8dp17yQe>, the criteria page
+  <https://claude.ai/artifact/Kr97WV8e2PNZwf4FPcsKUW>, "ok, push to prod").
+  Amends section 2.4 and section 6's "W < S → Clearer version". The
+  practise moment is still the second best. It opens on the Clearer version
+  only when both gates pass (`services/rewrite_gate.py`), else on the voice
+  Exercise with the AI clip:
+  - **The words need help:** fillers at 3 or more per 100 words, hedges at
+    3 or more per 100 words, off the slide (slide fit below 0.5), or a
+    broken sentence. None of them: the wording is good, the AI clip alone.
+  - **The rewrite is good enough:** inside the moment's own clip; backed by
+    evidence, never the tentative fallback; a real fix (fillers and hedges
+    at least 0.1 better than what they said, or the broken sentence
+    mended); still theirs (at least 6 words in 10, no new number or name);
+    no longer than what they said and 5 words or more; not turned down
+    before on the same words.
+  - **After a try of the clearer words** only the voice is checked, on the
+    same lanes against the original clip as the voice Exercise. Better is
+    the Good job and no AI clip. Not yet brings the AI version of their
+    voice saying the accepted words (or their own after "Keep my words"),
+    with L4, L3 and L5 as in the Exercise. A try with no sound read is a
+    Good job: missing data never forces the AI clip. Three tries and three
+    clips at most, as locked.
+  - **An answered clearer version stays read only** in the walk and from
+    the Lounge (✓ and Next), as the "Walk first" entry says. No new words.
 
 ## Still open
 

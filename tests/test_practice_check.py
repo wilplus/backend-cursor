@@ -4,8 +4,8 @@ Feedback walk; decisions log N52.3). On; its switch was deleted 2026-10-11.
 Pins: the speaker is never asked; a try measurably better than the original
 (the targeted problem cleared, a cue moved, or the machine leg higher) is
 praise and closes the practice on that try; anything else is again, with
-the encouragement's step or effort key; a rewrite practice is praised, never
-measured against the original; the decision is never written as the
+the encouragement's step or effort key; a rewrite practice is checked on its
+voice alone; the decision is never written as the
 speaker's answer (L3); the screen sees only the outcome and the line key
 (AC-9); the moment counts as settled and its helper words can be tapped; the
 route is off until the walk's screens ship.
@@ -37,6 +37,23 @@ def test_a_not_yet_names_the_reading_that_went_the_wrong_way():
     assert public_check(check) == {"next": "again", "key": "miss:settled_pitch"}
     calm = _try({"mean_pitch": 0.1}, {"mean_pitch": 0.0})
     assert decide(practice, [calm], "a1")["key"] == "effort"
+
+
+def test_a_clearer_version_try_is_checked_on_its_voice_alone():
+    """Founder 2026-10-18, "words first, then voice": the accepted words are
+    new, so only the delivery counts, against the original clip. Better is
+    a Good job and no AI clip; flat is not yet (the AI clip comes); a try
+    with no sound read is never pushed to the AI clip."""
+    from services.practice_check import decide
+    practice = {"kind": "rewrite"}
+    better = _try({"mean_pitch": -0.6}, {"mean_pitch": 0.4})
+    assert decide(practice, [better], "a1")["next"] == "praise"
+    flat = _try({"mean_pitch": 0.1}, {"mean_pitch": 0.0})
+    assert decide(practice, [flat], "a1")["next"] == "again"
+    unheard = {"id": "a1", "attempt_index": 1, "comparison": {}}
+    assert decide(practice, [unheard], "a1")["next"] == "praise"
+    third = [_try({}, {}, 1), _try({}, {}, 2), _try({"mean_pitch": 0.1}, {"mean_pitch": 0.0}, 3)]
+    assert decide(practice, third, "a3")["next"] == "moved_on"
 
 
 # ── the loop ──────────────────────────────────────────────────────────────
