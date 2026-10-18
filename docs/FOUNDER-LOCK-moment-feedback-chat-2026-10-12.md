@@ -258,6 +258,23 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
   finished walk played again shows the thread and Next only, as before:
   nothing is recorded there.
 
+- **Practise again until the third try or a Good job, then Next**
+  (founder, 2026-10-18; prototype
+  <https://claude.ai/artifact/URLdtuBvG5rbrzFePfMcUv>, "yes but with the
+  same AI video the text feedback slightly changes"). Amends the entry
+  above. Under the Exercise thread and under a not yet, the bottom shows
+  only the white outlined "Practise" (before the first try) or "Practise
+  again" (after one), with the red dot: no Next and no Skip, until a Good
+  job or the third try. Then "Next" alone. A Good job ends the practise
+  again. A late answer offers "Practise again" while a try is left, the
+  late tries counted, so a check that never answers still ends on Next
+  after the third. The recorder keeps its Skip. In the Exercise, every not
+  yet brings back the same AI clip; above it a not-yet line that changes
+  each time (the line for the reading that went the wrong way, else the
+  general ones in turn), then L4 and L3 the first time and L5 after. No new
+  words. The server still accepts tries after a praise; the app no longer
+  offers them.
+
 - **One praise moment and one practise moment per Take** (founder,
   2026-10-14). Praise goes to the strongest moment (section 6's green, now
   one instead of three). Practise goes to the second best: close enough that
