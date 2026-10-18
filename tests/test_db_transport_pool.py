@@ -18,3 +18,30 @@ def test_every_postgrest_session_is_a_pool_of_http1_connections():
         assert pool._http2 is False
         assert pool._max_connections == db_transport.POOL_SIZE >= 8
         assert pool._keepalive_expiry == db_transport.KEEPALIVE_S
+
+
+def test_the_keep_warm_ping_comes_before_the_pool_drops_an_idle_connection():
+    """Founder 2026-10-18: a ping slower than the pool's own cut-off keeps
+    nothing warm; the first request after a quiet spell reconnects anyway."""
+    from services import warm_connections
+    assert 0 < warm_connections.PING_EVERY_S < db_transport.KEEPALIVE_S
+
+
+def test_the_keep_warm_ping_warms_one_connection_per_lane(monkeypatch):
+    """The app opens with several requests at once; one warm connection
+    serves one of them, so the ping reads once per gunicorn thread, together."""
+    import threading
+    from services import warm_connections
+    monkeypatch.setenv("GUNICORN_THREADS", "3")
+    # Every ping waits for the other two: pings sent one after another would
+    # never all arrive, and the barrier would break instead.
+    together = threading.Barrier(3, timeout=5)
+    seen: list = []
+
+    def ping():
+        together.wait()
+        seen.append(True)
+
+    monkeypatch.setattr(warm_connections, "_ping_once", ping)
+    warm_connections._ping_every_lane()
+    assert len(seen) == 3 and not together.broken
