@@ -273,6 +273,25 @@ def _routed(session_id: str, listed: list[str], ratings: dict,
     return kept
 
 
+def answered_at(moments: list[dict], ratings: dict,
+                request_for: Callable[[str, str], Optional[dict]],
+                session_id: str) -> Optional[str]:
+    """When THIS coach last answered on the Take: the latest of their own
+    ratings and the answers resolved on its listed moments, or None. Orders
+    the coach's answered Takes, most recent first; a time, never a value
+    (BLIND COACH holds: it says when, not what)."""
+    times = []
+    for m in moments:
+        sid = str(m.get("snippet_id") or "")
+        rating = ratings.get(sid)
+        if isinstance(rating, dict) and rating.get("updated_at"):
+            times.append(str(rating["updated_at"]))
+        request = request_for(session_id, sid)
+        if isinstance(request, dict) and request.get("resolved_at"):
+            times.append(str(request["resolved_at"]))
+    return max(times) if times else None
+
+
 def _no_goal(_user_id: Any) -> Optional[str]:
     return None
 
@@ -355,6 +374,7 @@ def moments_queue(
             "waiting": sum(1 for m in moments
                            if m["state"] in ("judge_it", "answer_it", "listen_again")),
             "waiting_for_text": bookmarked is None,
+            "answered_at": answered_at(moments, ratings, request_for, session_id),
         }
         speaker = speakers.get(key)
         if speaker is None:
