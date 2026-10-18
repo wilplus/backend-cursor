@@ -106,9 +106,9 @@ def _practice_allowed(user_id: str, database: Any) -> bool:
 def refresh_practice_clips(messages: list, user_id: str, database: Any,
                            resolve: Callable[[Any], Optional[str]]) -> None:
     """Re-sign a practise try's clip in place, from the reader's own
-    practice, behind the same gates as the practice page. The gates and
-    the practice reads run side by side; a clip is signed only once the
-    gates said yes."""
+    practice, behind the same gates as the practice page. The gates (three
+    reads) and the practice reads run side by side; a clip is signed only
+    once the gates said yes."""
     from services.parallel import run_in_parallel
 
     wanted: dict = {}
@@ -172,7 +172,9 @@ def attach_card_decks(messages: list, user_id: str, database: Any) -> None:
     """The Ideal Text card (a review's end, or a Take's Ideal Text bubble)
     shows its project's first slide: each card gets `metadata.deck.presentation_ref`, a fresh link to
     the reader's own project's deck (null for a deckless project, whose
-    card shows the default deck). Unowned or unreadable: no `deck`."""
+    card shows the default deck). Unowned or unreadable: no `deck`. Every
+    project on the page is read in one go (founder 2026-10-18: one read per
+    project, one after another)."""
     from services.coach_video_storage import refreshed_media_url
     from services.ideal_text_read import _deck_identity
     from services.project_ownership import session_actor_id
@@ -234,60 +236,52 @@ def attach_take_audio(messages: list, user_id: str, database: Any,
             meta["audio"] = {"src": url}
 
 
-def _guarded(name: str, fn: Callable[[], Any], default: Any = None) -> Callable[[], Any]:
-    """One enrichment step, timed, that can only ever log: a failed step
-    leaves its links as stored and never costs the page (LIVE LOOP)."""
-    from services.request_context import lap
+def enrich_page(page: dict, user_id: str, database: Any, *,
+                resolve_snippet: Callable[[dict], Optional[str]],
+                resolve_ref: Callable[[Any], Optional[str]],
+                with_flags: bool) -> None:
+    """Everything the Lounge read adds to a page of messages: fresh clip,
+    practice, deck and recording links, and (newest page only) the Ideal
+    Text bubble's "new". The reads are independent, so they run side by
+    side (founder 2026-10-18, "optimise the loading time") instead of one
+    after another; the slowest one, not their sum, sets the wait.
 
-    def run() -> Any:
-        try:
-            with lap(name):
-                return fn()
-        except Exception:
-            logger.warning("lounge page: %s failed", name, exc_info=True)
-            return default
-    return run
-
-
-def enrich_lounge_page(page: dict, user_id: str, database: Any, *,
-                       resolve_snippet: Callable[[dict], Optional[str]],
-                       resolve_ref: Callable[[Any], Optional[str]],
-                       with_flags: bool) -> None:
-    """Fresh links and the coach "new" flags for one page, in place.
-
-    Founder 2026-10-18: the page waited on about ten database reads, one
-    after another, for a second. The reads that need nothing from each
-    other now run side by side: the Takes' recordings (moment clips and
-    whole-Take audio), the practise tries, the project decks and the coach
-    flags. Each step is best-effort on its own; the thread is answered
-    whatever happens to its links.
+    Thread safety: each group writes keys no other group touches. Walk
+    clips carry a ``snippet_id`` and practise clips a ``practice_id`` (never
+    both), decks write ``deck`` on cards, recordings write ``audio`` on
+    readouts, and the flags are a return value. Clips and recordings share
+    one read of the page's Takes, so they stay in one group, in order.
     """
     from services.parallel import run_in_parallel
+    from services.request_context import lap
 
     messages = page.get("messages") or []
 
-    def takes_and_clips() -> None:
-        clips_db = with_page_snippets(messages, database)
-        refresh_walk_clips(messages, user_id, clips_db, resolve_snippet)
-        attach_take_audio(messages, user_id, clips_db, resolve_ref)
+    def recordings() -> None:
+        with lap("takes"):
+            clips_db = with_page_snippets(messages, database)
+        with lap("clips"):
+            refresh_walk_clips(messages, user_id, clips_db, resolve_snippet)
+        with lap("audio"):
+            attach_take_audio(messages, user_id, clips_db, resolve_ref)
 
     def practice() -> None:
-        refresh_practice_clips(messages, user_id, database, resolve_ref)
+        with lap("practice"):
+            refresh_practice_clips(messages, user_id, database, resolve_ref)
 
     def decks() -> None:
-        attach_card_decks(messages, user_id, database)
+        with lap("decks"):
+            attach_card_decks(messages, user_id, database)
 
-    def flags() -> dict:
-        from services.coach_feedback_signal import lounge_flags
-        return lounge_flags(database, user_id)
-
-    steps = [_guarded("takes", takes_and_clips),
-             _guarded("practice", practice),
-             _guarded("decks", decks)]
-    if with_flags:
-        steps.append(_guarded("flags", flags, {}))
-    results = run_in_parallel(*steps)
-    if with_flags:
+    def flags() -> Optional[dict]:
+        if not with_flags:
+            return None
         # The Ideal Text bubble's "new" (D-FW-5, walk lock flow 1): one
         # yes/no per project, never a count; {} when it cannot be read.
-        page["new_coach_feedback"] = results[-1] if isinstance(results[-1], dict) else {}
+        from services.coach_feedback_signal import lounge_flags
+        with lap("flags"):
+            return lounge_flags(database, user_id)
+
+    _, _, _, fresh = run_in_parallel(recordings, practice, decks, flags)
+    if fresh is not None:
+        page["new_coach_feedback"] = fresh

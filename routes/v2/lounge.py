@@ -88,18 +88,13 @@ def v2_user_lounge_messages_get():
             page = shape_lounge_page(rows_desc, limit)
         from routes.v2.common import _resolve_snippet_audio_url
         from services.audio_ref_resolver import resolve_playable_ref
-        from services.lounge_clips import enrich_lounge_page
-        # Fresh links for the page's clips, Takes, practise tries and decks,
-        # and (on the latest page only) the Ideal Text bubble's "new"
-        # (D-FW-5): one yes/no per project, never a count. The independent
-        # reads run side by side (founder 2026-10-18).
-        with lap("enrich"):
-            enrich_lounge_page(
-                page, request.user_id, db,
-                resolve_snippet=_resolve_snippet_audio_url,
-                resolve_ref=resolve_playable_ref,
-                with_flags=before is None,
-            )
+        from services.lounge_clips import enrich_page
+        # Fresh links and the Ideal Text bubble's "new", read side by side
+        # (founder 2026-10-18).
+        enrich_page(page, request.user_id, db,
+                    resolve_snippet=_resolve_snippet_audio_url,
+                    resolve_ref=resolve_playable_ref,
+                    with_flags=before is None)
         return jsonify(page), 200
 
     except Exception as e:

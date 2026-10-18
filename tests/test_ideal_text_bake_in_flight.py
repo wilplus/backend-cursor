@@ -165,3 +165,36 @@ def test_an_empty_computed_before_the_take_is_ready_is_not_remembered(world):
     bake.changes_block_for(db, ARC, ACTOR, SNAPSHOT, CORE)
     bake.changes_block_for(db, ARC, ACTOR, SNAPSHOT, CORE)
     assert runs == ["live", "live"]
+
+
+# ── A STORED BOOKMARK PLAYS (founder 2026-09-21 "audio unavailable") AND
+#    REFRESHING IT READS ONLY ITS OWN CLIPS (founder 2026-10-18, loading) ──
+
+
+def test_a_stored_bookmark_is_served_a_fresh_clip_read_for_it_alone(
+        world, monkeypatch):
+    from routes.v2 import arcs
+
+    db = _FakeDb()
+    db.stored = {"changes": [{
+        "id": "cand-1", "source": "confident_voice", "snippet_id": "snip-1",
+        "take_session_id": "take-1",
+        "snippet_audio_ref": "https://r2.example/take.webm?X-Amz-Expires=1",
+        "start_offset_ms": 1, "duration_ms": 1,
+    }], "style_changes": []}
+    asked: list[list[str]] = []
+
+    def _rows(snippet_ids):
+        asked.append(list(snippet_ids))
+        return [{"id": "snip-1", "storage_path": "willab_lab/take.webm",
+                 "start_offset_ms": 1200, "duration_ms": 3400}]
+    monkeypatch.setattr(arcs.db, "get_snippet_playback_rows", _rows)
+    monkeypatch.setattr(arcs, "_resolve_snippet_audio_url",
+                        lambda row: f"https://signed.example/{row['id']}")
+
+    block = bake.changes_block_for(db, ARC, ACTOR, SNAPSHOT, CORE)
+
+    row = block["changes"][0]
+    assert (row["snippet_audio_ref"], row["start_offset_ms"],
+            row["duration_ms"]) == ("https://signed.example/snip-1", 1200, 3400)
+    assert asked == [["snip-1"]]

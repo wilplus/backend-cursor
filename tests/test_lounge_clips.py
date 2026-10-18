@@ -67,7 +67,7 @@ def test_one_page_gets_fresh_links_decks_and_flags_from_batched_reads(monkeypatc
     card = {"kind": "ideal_text", "metadata": {"arc_id": "arc1"}}
     page = _page(clip, take, card)
     db = _PageDb()
-    lounge_clips.enrich_lounge_page(
+    lounge_clips.enrich_page(
         page, "me", db,
         resolve_snippet=lambda row: f"fresh-{row['id']}",
         resolve_ref=lambda ref: f"signed-{ref}", with_flags=True)
@@ -83,7 +83,7 @@ def test_an_older_page_carries_no_flags_and_a_failed_step_costs_only_itself(monk
     clip = _msg("s1")
     card = {"kind": "ideal_text", "metadata": {"arc_id": "arc1"}}
     page = _page(clip, card)
-    lounge_clips.enrich_lounge_page(
+    lounge_clips.enrich_page(
         page, "me", _PageDb(fail_decks=True),
         resolve_snippet=lambda row: f"fresh-{row['id']}",
         resolve_ref=lambda ref: None, with_flags=False)

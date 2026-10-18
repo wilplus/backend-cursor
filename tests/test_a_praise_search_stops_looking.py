@@ -40,7 +40,13 @@ def _search(monkeypatch, found):
 def test_a_take_with_no_device_stops_after_three_waves(monkeypatch):
     stored, seen, rows = _search(monkeypatch, lambda t: False)
     assert stored == 0 and rows == []
-    assert seen == [f"piece {i}" for i in range(9)]
+    # Three waves of three, in document order, and then the search stops.
+    # Each wave's detections run in parallel, so the order in which the three
+    # calls *start* inside one wave is the scheduler's, not ours; the waves
+    # themselves run one after another, so the wave boundaries are fixed.
+    waves = [set(seen[at:at + 3]) for at in range(0, len(seen), 3)]
+    assert waves == [{f"piece {i}" for i in range(w * 3, w * 3 + 3)}
+                     for w in range(3)]
 
 
 def test_the_first_pieces_with_devices_are_stored_as_before(monkeypatch):
