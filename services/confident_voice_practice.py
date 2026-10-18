@@ -1209,9 +1209,8 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
     # Read the library and the speaker's history ONCE for the whole take,
     # not per candidate clip.
     vocabulary = detected_problem_vocabulary(database)
+    # An unread history draws nothing (speaker_matches, N77).
     history = speaker_history(database, owner_user_id, take_session_id)
-    if history.get("rested", frozenset()) is None:
-        return rows  # unread history: nothing drawn (N77), the next read retries
     # (fit, -covered, claimed, distance, -editorial, -priority, id, index)
     ranked: list[tuple[tuple, dict, dict, dict, dict]] = []
     for index, row in enumerate(candidates):
