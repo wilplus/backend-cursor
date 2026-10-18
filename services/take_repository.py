@@ -1507,6 +1507,41 @@ class TakeRepository(TableRepository):
                 raise
             return []
 
+    def get_arc_sessions_many(self, arc_ids) -> Optional[dict]:
+        """The takes of MANY arcs in one read, each list ORDERED by take_index
+        (the Lounge's cards, founder 2026-10-18: one page carried one read
+        per project). {arc_id: [takes]} with an entry for every id asked;
+        None when the batch could not be read, so the caller falls back to
+        ``get_arc_sessions`` one arc at a time."""
+        ids = sorted({str(a) for a in (arc_ids or []) if a})
+        if not ids:
+            return {}
+        cols = ("id, user_id, owner_principal_id, project_id, arc_id, "
+                "take_index, status, created_at, intake_context, "
+                "results_published_at, recording_kind, paired_session_id, "
+                "coach_feedback_saved_at, analysis_state")
+        out: dict = {aid: [] for aid in ids}
+        try:
+            for i in range(0, len(ids), 50):
+                chunk = ids[i:i + 50]
+                res = self._execute(
+                    lambda chunk=chunk: (
+                        self.client.table("v2_sessions")
+                        .select(cols)
+                        .in_("arc_id", chunk)
+                        .order("arc_id", desc=False)
+                        .order("take_index", desc=False)
+                    ),
+                    label="get_arc_sessions_many",
+                )
+                for row in res.data or []:
+                    out.setdefault(str(row.get("arc_id")), []).append(row)
+        except Exception as e:
+            logger.warning("get_arc_sessions_many failed n=%d: %s", len(ids), e,
+                           exc_info=True)
+            return None
+        return out
+
     def list_user_arc_sessions(self, user_id: Optional[str], *,
                                strict: bool = False) -> list[dict]:
         """Every arc-linked session the user owns — the /user/trainings source
