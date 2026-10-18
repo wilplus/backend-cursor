@@ -87,31 +87,19 @@ def v2_user_lounge_messages_get():
             )
             page = shape_lounge_page(rows_desc, limit)
         from routes.v2.common import _resolve_snippet_audio_url
-        from services.lounge_clips import refresh_walk_clips, with_page_snippets
-        # One light read of every Take on the page, shared by the clips and
-        # the recordings below (founder 2026-10-14).
-        with lap("takes"):
-            clips_db = with_page_snippets(page["messages"], db)
-        with lap("clips"):
-            refresh_walk_clips(page["messages"], request.user_id, clips_db,
-                               _resolve_snippet_audio_url)
         from services.audio_ref_resolver import resolve_playable_ref
-        from services.lounge_clips import refresh_practice_clips
-        with lap("practice"):
-            refresh_practice_clips(page["messages"], request.user_id, db,
-                                   resolve_playable_ref)
-        from services.lounge_clips import attach_card_decks, attach_take_audio
-        with lap("decks"):
-            attach_card_decks(page["messages"], request.user_id, db)
-        with lap("audio"):
-            attach_take_audio(page["messages"], request.user_id, clips_db,
-                              resolve_playable_ref)
-        if before is None:
-            # The Ideal Text bubble's "new" (D-FW-5, walk lock flow 1): one
-            # yes/no per project, never a count; {} when it cannot be read.
-            from services.coach_feedback_signal import lounge_flags
-            with lap("flags"):
-                page["new_coach_feedback"] = lounge_flags(db, request.user_id)
+        from services.lounge_clips import enrich_lounge_page
+        # Fresh links for the page's clips, Takes, practise tries and decks,
+        # and (on the latest page only) the Ideal Text bubble's "new"
+        # (D-FW-5): one yes/no per project, never a count. The independent
+        # reads run side by side (founder 2026-10-18).
+        with lap("enrich"):
+            enrich_lounge_page(
+                page, request.user_id, db,
+                resolve_snippet=_resolve_snippet_audio_url,
+                resolve_ref=resolve_playable_ref,
+                with_flags=before is None,
+            )
         return jsonify(page), 200
 
     except Exception as e:

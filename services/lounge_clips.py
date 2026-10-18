@@ -106,7 +106,11 @@ def _practice_allowed(user_id: str, database: Any) -> bool:
 def refresh_practice_clips(messages: list, user_id: str, database: Any,
                            resolve: Callable[[Any], Optional[str]]) -> None:
     """Re-sign a practise try's clip in place, from the reader's own
-    practice, behind the same gates as the practice page."""
+    practice, behind the same gates as the practice page. The gates and
+    the practice reads run side by side; a clip is signed only once the
+    gates said yes."""
+    from services.parallel import run_in_parallel
+
     wanted: dict = {}
     for m in messages or []:
         meta = m.get("metadata") if m.get("kind") == "walk_step" else None
@@ -115,27 +119,53 @@ def refresh_practice_clips(messages: list, user_id: str, database: Any,
             wanted.setdefault(str(clip["practice_id"]), []).append(clip)
     if not wanted:
         return
-    try:
-        if not _practice_allowed(user_id, database):
-            return
-    except Exception:
-        logger.warning("lounge clips: practice gates unreadable", exc_info=True)
-        return
-    for pid, clips in wanted.items():
+
+    def gate() -> bool:
+        try:
+            return bool(_practice_allowed(user_id, database))
+        except Exception:
+            logger.warning("lounge clips: practice gates unreadable", exc_info=True)
+            return False
+
+    def attempts(pid: str) -> dict:
         try:
             if not database.get_confident_voice_practice(pid, str(user_id)):
-                continue
-            rows = {str(r.get("id")): r
+                return {}
+            return {str(r.get("id")): r
                     for r in database.list_confident_voice_practice_attempts(pid) or []}
         except Exception:
             logger.warning("lounge clips: practice %s unreadable", pid,
                            exc_info=True)
-            continue
+            return {}
+
+    def reads() -> dict:
+        return {pid: attempts(pid) for pid in wanted}
+
+    allowed, rows_by_practice = run_in_parallel(gate, reads)
+    if not allowed:
+        return
+    for pid, clips in wanted.items():
+        rows = rows_by_practice.get(pid) or {}
         for clip in clips:
             row = rows.get(str(clip["attempt_id"]))
             url = resolve(row.get("audio_ref")) if row else None
             if url:
                 clip["src"] = url
+
+
+def _arc_sessions_by_id(arcs: list, database: Any) -> dict:
+    """{arc_id: takes} for the page's projects: one batch read when the
+    repository offers it, else one read per project as before."""
+    reader = getattr(getattr(database, "takes", None), "get_arc_sessions_many", None)
+    if callable(reader):
+        try:
+            rows = reader(arcs)
+        except Exception:
+            logger.warning("lounge cards: batch deck read failed", exc_info=True)
+            rows = None
+        if isinstance(rows, dict):
+            return rows
+    return {arc: database.takes.get_arc_sessions(arc) or [] for arc in arcs}
 
 
 def attach_card_decks(messages: list, user_id: str, database: Any) -> None:
@@ -147,7 +177,7 @@ def attach_card_decks(messages: list, user_id: str, database: Any) -> None:
     from services.ideal_text_read import _deck_identity
     from services.project_ownership import session_actor_id
 
-    decks: dict = {}
+    cards: dict = {}
     for m in messages or []:
         # A review's card, or a Take's Ideal Text bubble drawn as the same
         # small card (founder 2026-10-14, one card per Take).
@@ -157,19 +187,28 @@ def attach_card_decks(messages: list, user_id: str, database: Any) -> None:
         if m.get("kind") == "walk_step" and meta.get("step") != "end":
             continue
         arc = str(meta.get("arc_id") or "")
-        if not arc:
+        if arc:
+            cards.setdefault(arc, []).append(meta)
+    if not cards:
+        return
+    try:
+        by_arc = _arc_sessions_by_id(sorted(cards), database)
+    except Exception:
+        logger.warning("lounge cards: decks unreadable", exc_info=True)
+        return
+    for arc, metas in cards.items():
+        try:
+            sessions = by_arc.get(arc) or []
+            owned = any(session_actor_id(s) == str(user_id) for s in sessions)
+            if not owned:
+                continue
+            ref = _deck_identity(sessions)[0]
+            deck = {"presentation_ref": refreshed_media_url(ref) if ref else None}
+        except Exception:
+            logger.warning("lounge cards: deck unreadable for %s", arc, exc_info=True)
             continue
-        if arc not in decks:
-            try:
-                sessions = database.takes.get_arc_sessions(arc) or []
-                owned = any(session_actor_id(s) == str(user_id) for s in sessions)
-                ref = _deck_identity(sessions)[0] if owned else None
-                decks[arc] = {"presentation_ref": refreshed_media_url(ref) if ref else None} if owned else None
-            except Exception:
-                logger.warning("lounge cards: deck unreadable for %s", arc, exc_info=True)
-                decks[arc] = None
-        if decks[arc] is not None:
-            meta["deck"] = decks[arc]
+        for meta in metas:
+            meta["deck"] = deck
 
 
 def attach_take_audio(messages: list, user_id: str, database: Any,
@@ -193,3 +232,62 @@ def attach_take_audio(messages: list, user_id: str, database: Any,
             url = None
         if url and isinstance(meta, dict):
             meta["audio"] = {"src": url}
+
+
+def _guarded(name: str, fn: Callable[[], Any], default: Any = None) -> Callable[[], Any]:
+    """One enrichment step, timed, that can only ever log: a failed step
+    leaves its links as stored and never costs the page (LIVE LOOP)."""
+    from services.request_context import lap
+
+    def run() -> Any:
+        try:
+            with lap(name):
+                return fn()
+        except Exception:
+            logger.warning("lounge page: %s failed", name, exc_info=True)
+            return default
+    return run
+
+
+def enrich_lounge_page(page: dict, user_id: str, database: Any, *,
+                       resolve_snippet: Callable[[dict], Optional[str]],
+                       resolve_ref: Callable[[Any], Optional[str]],
+                       with_flags: bool) -> None:
+    """Fresh links and the coach "new" flags for one page, in place.
+
+    Founder 2026-10-18: the page waited on about ten database reads, one
+    after another, for a second. The reads that need nothing from each
+    other now run side by side: the Takes' recordings (moment clips and
+    whole-Take audio), the practise tries, the project decks and the coach
+    flags. Each step is best-effort on its own; the thread is answered
+    whatever happens to its links.
+    """
+    from services.parallel import run_in_parallel
+
+    messages = page.get("messages") or []
+
+    def takes_and_clips() -> None:
+        clips_db = with_page_snippets(messages, database)
+        refresh_walk_clips(messages, user_id, clips_db, resolve_snippet)
+        attach_take_audio(messages, user_id, clips_db, resolve_ref)
+
+    def practice() -> None:
+        refresh_practice_clips(messages, user_id, database, resolve_ref)
+
+    def decks() -> None:
+        attach_card_decks(messages, user_id, database)
+
+    def flags() -> dict:
+        from services.coach_feedback_signal import lounge_flags
+        return lounge_flags(database, user_id)
+
+    steps = [_guarded("takes", takes_and_clips),
+             _guarded("practice", practice),
+             _guarded("decks", decks)]
+    if with_flags:
+        steps.append(_guarded("flags", flags, {}))
+    results = run_in_parallel(*steps)
+    if with_flags:
+        # The Ideal Text bubble's "new" (D-FW-5, walk lock flow 1): one
+        # yes/no per project, never a count; {} when it cannot be read.
+        page["new_coach_feedback"] = results[-1] if isinstance(results[-1], dict) else {}
