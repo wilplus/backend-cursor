@@ -131,8 +131,12 @@ class _Db:
         if any(a["listener_user_id"] == row["listener_user_id"]
                and (a.get("snippet_id") or a.get("corpus_clip_id")) == key for a in self.answers):
             return None
-        self.answers.append(dict(row))
+        self.answers.append({**row, "created_at": f"2026-10-18T10:00:{len(self.answers):02d}Z"})
         return self.answers[-1]
+
+    def list_community_answers(self, listener, *, limit=50):
+        mine = [a for a in self.answers if a["listener_user_id"] == listener]
+        return list(reversed(mine))[:limit]
 
     def get_snippet_by_id(self, sid):
         return self.snippets.get(sid)
@@ -237,6 +241,25 @@ def test_answered_self_labelled_and_settled_clips_are_not_queued():
     assert _uuid(11) not in {c["clip_id"] for c in _queue(db2)}
     assert cm.answer(db2, listener_id="listener", body={"clip_id": _uuid(51), "value": "no"})[0] == 200
     assert _uuid(51) not in {c["clip_id"] for c in _queue(db2)}
+
+
+def test_the_judging_reopened_shows_the_latest_answers_with_their_clips():
+    """The walk reopened from the Lounge: the moments the listener already
+    judged, newest first, each with its sound and the answer given; a clip
+    whose sound is gone is left out, and nothing of another listener's."""
+    db, _ = _world()
+    assert cm.answer(db, listener_id="listener", body={"clip_id": _uuid(21), "value": "yes"})[0] == 200
+    assert cm.answer(db, listener_id="listener", body={"clip_id": _uuid(51), "value": "no"})[0] == 200
+    assert cm.answer(db, listener_id="someone-else", body={"clip_id": _uuid(11), "value": "yes"})[0] == 200
+    status, payload = cm.my_answers(db, listener_id="listener")
+    assert status == 200
+    assert [(a["clip_id"], a["value"]) for a in payload["answers"]] == [(_uuid(51), "no"), (_uuid(21), "yes")]
+    assert payload["answers"][0]["audio_ref"] == "https://c/51.mp3"
+    assert payload["answers"][1]["audio_ref"] == f"https://a/{_uuid(21)}.webm"
+    assert payload["answers"][1]["community"] == "Friends"
+    assert all(a["answered_at"] for a in payload["answers"])
+    db.corpus[0]["audio_url"] = None
+    assert [a["clip_id"] for a in cm.my_answers(db, listener_id="listener")[1]["answers"]] == [_uuid(21)]
 
 
 # ── the answer ────────────────────────────────────────────────────────────

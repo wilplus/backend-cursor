@@ -102,6 +102,16 @@ def v2_community_queue():
         db, listener_id=str(request.user_id)))
 
 
+@v2_bp.route("/user/communities/answers", methods=["GET"])
+@require_auth
+def v2_community_answers():
+    """The listener's latest answers (at most three, newest first), each
+    with its clip: the judging reopened from the Lounge. Audio only."""
+    from services.communities import my_answers
+    return _run("community answers", lambda: my_answers(
+        db, listener_id=str(request.user_id)))
+
+
 @v2_bp.route("/user/communities/answers", methods=["POST"])
 @require_auth
 def v2_community_answer():
