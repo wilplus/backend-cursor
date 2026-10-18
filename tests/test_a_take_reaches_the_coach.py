@@ -32,6 +32,9 @@ except Exception as e:  # pragma: no cover
 SID = "11111111-1111-4111-8111-111111111111"
 SNIP = "22222222-2222-4222-8222-222222222222"
 ARC = "33333333-3333-4333-8333-333333333333"
+# The queue reads its Takes in batches, never once per Take or per speaker
+# (founder 2026-10-18: "I want the speakers to open faster").
+PER_TAKE = "the coach queue read one Take at a time"
 
 
 def _row():
@@ -62,12 +65,20 @@ class TheMomentsQueueTests(unittest.TestCase):
                               return_value={"transcription_language": recording_language}), \
                  patch.object(db, "list_exercise_coach_requests_for_sessions",
                               return_value={}), \
-                 patch.object(db, "get_own_state_ratings_for_session",
-                              return_value=own or {}), \
+                 patch.object(db, "get_own_state_ratings_for_sessions",
+                              return_value={SID: own} if own else {}), \
+                 patch.object(db, "get_user_profiles", return_value={}), \
                  patch.object(db, "get_confidence_labels_by_snippet_ids",
                               return_value=labels or {}), \
+                 patch.object(db, "get_ideal_text_feedback_sets_for_takes",
+                              return_value={SID: [{"arc_id": ARC, **feedback_set}]}
+                              if feedback_set else {}), \
+                 patch.object(db, "get_own_state_ratings_for_session",
+                              side_effect=AssertionError(PER_TAKE)), \
+                 patch.object(db, "get_user_profile",
+                              side_effect=AssertionError(PER_TAKE)), \
                  patch.object(db, "get_ideal_text_feedback_set",
-                              return_value=feedback_set):
+                              side_effect=AssertionError(PER_TAKE)):
                 with self.assertLogs(level="INFO") as logs:
                     v2_coach.logger.info("probe")
                     out = v2_coach.v2_coach_moments_queue.__wrapped__()

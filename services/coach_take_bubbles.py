@@ -41,10 +41,11 @@ def bubbles(rows: Any, *, moments_for: Callable[[dict], Any],
 
 def take_bubbles(database: Any, *, rater_id: str, state_for: Callable[..., dict],
                  matched_rows: Callable[[Any, Any, Any], list],
-                 moments_for_snips: Callable[[dict], Callable[[dict], Any]],
+                 moments_for_snips: Callable[[dict, list], Callable[[dict], Any]],
                  pseudonym_for: Callable[[Any], str]) -> tuple[int, Any]:
     """(status, payload): 428 without the coach's languages; else
     {bubbles: [...]}. The queue's own loaders and gates, handed in."""
+    from services.coach_moments_queue import own_ratings_for
     from services.coach_queue import load_review_queue
     proficient = database.get_user_proficient_languages(rater_id)
     if not proficient:
@@ -53,6 +54,7 @@ def take_bubbles(database: Any, *, rater_id: str, state_for: Callable[..., dict]
     rows, snips, _states = load_review_queue(database, state_for)
     matched = matched_rows(rows, snips, proficient)
     return 200, {"bubbles": bubbles(
-        matched, moments_for=moments_for_snips(snips),
-        ratings_for=lambda sid: database.get_own_state_ratings_for_session(sid, rater_id),
+        matched, moments_for=moments_for_snips(snips, matched),
+        ratings_for=own_ratings_for(
+            database, [str(r.get("id")) for r in matched if isinstance(r, dict)], rater_id),
         pseudonym_for=pseudonym_for)}

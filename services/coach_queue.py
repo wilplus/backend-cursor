@@ -16,7 +16,7 @@ said to move it here.
 """
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 
 def load_review_queue(
@@ -48,3 +48,15 @@ def load_review_queue(
         for i in ids
     }
     return rows, snippets, states
+
+
+def frozen_feedback_sets(database: Any, rows: list) -> Optional[dict]:
+    """{take_session_id: [frozen selection rows]} for the queue's Takes in
+    one read, or None when the batch cannot be had: each Take is then read
+    alone, exactly as before (founder 2026-10-18: "I want the speakers to
+    open faster"; one read per Take was most of the queue's wait)."""
+    reader = getattr(database, "get_ideal_text_feedback_sets_for_takes", None)
+    ids = [str(r.get("id")) for r in rows or [] if isinstance(r, dict) and r.get("id")]
+    if reader is None or not ids:
+        return None
+    return reader(ids)

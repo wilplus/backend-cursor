@@ -292,6 +292,18 @@ def answered_at(moments: list[dict], ratings: dict,
     return max(times) if times else None
 
 
+def own_ratings_for(database: Any, session_ids: list[str], rater_id: Any
+                    ) -> Callable[[str], dict]:
+    """The queue's ``ratings_for``: THIS coach's own ratings on the queue's
+    Takes from one batch read, or one read per Take when the batch cannot be
+    had (founder 2026-10-18: "I want the speakers to open faster")."""
+    reader = getattr(database, "get_own_state_ratings_for_sessions", None)
+    batch = reader(session_ids, rater_id) if reader is not None else None
+    if batch is None:
+        return lambda sid: database.get_own_state_ratings_for_session(sid, rater_id)
+    return lambda sid: batch.get(str(sid)) or {}
+
+
 def _no_goal(_user_id: Any) -> Optional[str]:
     return None
 
@@ -307,11 +319,31 @@ def speaker_goal(database: Any, owner_user_id: Any) -> Optional[str]:
         return None
     if not isinstance(profile, dict):
         return None
-    goal = profile.get("goal")
+    return _clean_goal(profile.get("goal"))
+
+
+def _clean_goal(goal: Any) -> Optional[str]:
     if not isinstance(goal, str):
         return None
     stripped = goal.strip()
     return stripped or None
+
+
+def speaker_goals(database: Any, rows: list) -> Callable[[Any], Optional[str]]:
+    """The queue's ``goal_for``: every speaker's goal from one batch read
+    (``get_user_profiles``), or one read per speaker when the database has
+    no batch. Never a name."""
+    reader = getattr(database, "get_user_profiles", None)
+    if reader is None:
+        return lambda uid: speaker_goal(database, uid)
+    ids = sorted({str(r.get("user_id")) for r in rows
+                  if isinstance(r, dict) and r.get("user_id")})
+    try:
+        profiles = (reader(ids) or {}) if ids else {}
+    except Exception as e:  # noqa: BLE001 -- the goal is a courtesy
+        _log.info("speaker goals unavailable: %s", e)
+        profiles = {}
+    return lambda uid: _clean_goal((profiles.get(str(uid)) or {}).get("goal"))
 
 
 def moments_queue(
@@ -417,11 +449,11 @@ def queue_for_coach(
     return moments_queue(
         rows, moments_for=once,
         reached_for=reached_for_sessions(database, ids, requests),
-        ratings_for=lambda sid: database.get_own_state_ratings_for_session(sid, rater_id),
+        ratings_for=own_ratings_for(database, ids, rater_id),
         request_for=lambda sid, snip: requests.get((sid, snip)),
         pseudonym_for=pseudonym_for,
         labels_for=labels_for_snippets(
             database, [s for r in rows if isinstance(r, dict) for s in (once(r) or [])]),
         rater_id=rater_id,
-        goal_for=lambda uid: speaker_goal(database, uid),
+        goal_for=speaker_goals(database, rows),
         listen_again_for=lambda sid: asks.get(str(sid), {}))

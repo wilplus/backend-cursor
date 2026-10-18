@@ -5180,6 +5180,45 @@ class DatabaseService:
             return data[0] if data and isinstance(data[0], dict) else None
         return data if isinstance(data, dict) else None
 
+    def get_ideal_text_feedback_sets_for_takes(
+        self, take_session_ids: list,
+    ) -> Optional[dict]:
+        """{take_session_id: [rows]} of the immutable Manager selections for
+        many Takes in one read (the coach queue's frozen bookmarks; founder
+        2026-10-18, the queue read them one Take at a time). Each row carries
+        its ``arc_id``, so the caller matches it as the single read does. A
+        Take with no selection yet is absent; a missing table is {} (every
+        Take then waits for its text, as the single read says). None on any
+        other failure, so the caller reads per Take."""
+        ids = [str(s) for s in (take_session_ids or []) if s]
+        if not ids:
+            return {}
+        out: dict = {}
+        try:
+            for chunk in self._chunks(ids):
+                rows = (self.client.table("ideal_text_feedback_sets")
+                        .select("arc_id,take_session_id,take_index,review_version,"
+                                "selected_keys,created_at")
+                        .in_("take_session_id", chunk)
+                        .execute().data) or []
+                for row in rows:
+                    take = row.get("take_session_id")
+                    if take:
+                        out.setdefault(str(take), []).append(row)
+        except Exception as e:
+            low = str(e).lower()
+            if "ideal_text_feedback_sets" in low and (
+                    "does not exist" in low or "pgrst" in low):
+                logger.warning(
+                    "get_ideal_text_feedback_sets_for_takes: table missing (run "
+                    "migrations/add_take_review_lifecycle.sql)")
+                return {}
+            logger.warning(
+                "get_ideal_text_feedback_sets_for_takes failed n=%s: %s",
+                len(ids), e, exc_info=True)
+            return None
+        return out
+
     def get_ideal_text_feedback_set(
         self, arc_id: Optional[str], take_session_id: Optional[str],
     ) -> Optional[dict]:
@@ -9860,6 +9899,42 @@ class DatabaseService:
                 "get_own_state_ratings_for_session failed session=%s: %s",
                 session_id, e)
             return {}
+
+    def get_own_state_ratings_for_sessions(self, session_ids: list,
+                                           rater_id: str) -> Optional[dict]:
+        """{session_id: {snippet_id: {value, unrateable, updated_at}}} for
+        many Takes in one read: ``get_own_state_ratings_for_session`` for the
+        whole coach queue (founder 2026-10-18: "I want the speakers to open
+        faster"; one read per Take was most of the queue's wait). The same
+        single-rater scope, for the same reason. A Take with no rating is
+        absent. None when the read fails, so the caller reads per Take
+        instead of drawing every moment as unanswered."""
+        ids = [str(s) for s in (session_ids or []) if s]
+        if not ids or not rater_id:
+            return {}
+        out: dict = {}
+        try:
+            for chunk in self._chunks(ids):
+                rows = (self.client.table("confidence_labels")
+                        .select("session_id, snippet_id, value, unrateable, updated_at")
+                        .in_("session_id", chunk)
+                        .eq("rater_id", str(rater_id))
+                        .execute().data) or []
+                for r in rows:
+                    sid, snippet_id = r.get("session_id"), r.get("snippet_id")
+                    if not sid or not snippet_id:
+                        continue
+                    out.setdefault(str(sid), {})[str(snippet_id)] = {
+                        "value": r.get("value"),
+                        "unrateable": bool(r.get("unrateable")),
+                        "updated_at": r.get("updated_at"),
+                    }
+        except Exception as e:
+            logger.warning(
+                "get_own_state_ratings_for_sessions failed n=%s: %s",
+                len(ids), e, exc_info=True)
+            return None
+        return out
 
     def count_labelled_snippets_by_session_ids(self, session_ids: list) -> dict:
         """{session_id: how many DISTINCT snippets carry a confidence label}.

@@ -31,7 +31,7 @@ from routes.v2.common import _is_valid_uuid
 from services.db import db
 from services.refusal import Refusal
 from services.coach_pseudonym import coach_pseudonym as _coach_pseudonym
-from services.coach_queue import load_review_queue
+from services.coach_queue import frozen_feedback_sets, load_review_queue
 from services.coach_confidence_rating import (
     admit_rater, rating_body, rating_response, record_rating,
 )
@@ -499,7 +499,7 @@ def v2_coach_moments_queue():
         rows, snips, _states = load_review_queue(db, _coach_state_map)
         matched = _language_matched_rows(rows, snips, proficient)
         return jsonify(queue_for_coach(
-            db, matched, rater_id=rater_id, moments_for=_queue_moments_for(snips),
+            db, matched, rater_id=rater_id, moments_for=_queue_moments_for(snips, matched),
             pseudonym_for=_coach_pseudonym)), 200
     except Exception as e:
         logger.error("coach/queue/moments GET failed: %s", e, exc_info=True)
@@ -524,7 +524,7 @@ def v2_coach_speakers():
         matched = _language_matched_rows(rows, snips, proficient)
         return jsonify(speakers_for_coach(
             db, matched, rater_id=rater_id,
-            moments_for=_queue_moments_for(snips),
+            moments_for=_queue_moments_for(snips, matched),
             pseudonym_for=_coach_pseudonym)), 200
     except Exception as e:
         logger.error("coach/speakers GET failed: %s", e, exc_info=True)
@@ -560,14 +560,18 @@ def _language_matched_rows(rows, snips, proficient):
     return matched
 
 
-def _queue_moments_for(snips):
+def _queue_moments_for(snips, rows=None):
     """The queue's `moments_for`: a take's bookmarked snippet ids in order,
     or None while its bookmarks are not frozen yet. Not a drop: the take
     rides as "Waiting for the text" (founder 2026-10-01, A1) until the bake
-    or the first read freezes them, and the log names the filter."""
+    or the first read freezes them, and the log names the filter. Given the
+    queue's `rows`, their frozen selections are read in one batch, not one
+    read per take (founder 2026-10-18)."""
+    frozen = frozen_feedback_sets(db, rows) if rows is not None else None
+
     def moments_for(row):
         sid = str(row.get("id"))
-        marked = _bookmarked_snippet_ids(row, sid)
+        marked = _bookmarked_snippet_ids(row, sid, frozen=frozen)
         if marked is None:
             logger.info("coach queue: take waiting for the text sid=%s "
                         "filter=bookmarks_not_frozen", sid)
@@ -577,7 +581,7 @@ def _queue_moments_for(snips):
     return moments_for
 
 
-def _bookmarked_snippet_ids(session, session_id):
+def _bookmarked_snippet_ids(session, session_id, *, frozen=None):
     """The snippets this take actually surfaced to the USER as bookmarks.
 
     FOUNDER 2026-09-24: "I want to have those that were bookmarked, green and
@@ -601,13 +605,18 @@ def _bookmarked_snippet_ids(session, session_id):
     can say "Waiting for the text" instead of silently listing nothing
     (founder 2026-10-01, A1); an empty set means frozen with no Confident
     Voice bookmark. A read miss degrades to the empty set, never to a wrong
-    mark.
+    mark. `frozen` is the queue's batch of selections by take
+    (`frozen_feedback_sets`); without it the take is read alone.
     """
     arc_id = session.get("arc_id") if isinstance(session, dict) else None
     if not arc_id or not session_id:
         return set()
     try:
-        row = db.get_ideal_text_feedback_set(str(arc_id), str(session_id))
+        if frozen is None:
+            row = db.get_ideal_text_feedback_set(str(arc_id), str(session_id))
+        else:
+            row = next((r for r in frozen.get(str(session_id)) or []
+                        if str(r.get("arc_id")) == str(arc_id)), None)
         if not row:
             return None
         from services.take_feedback_set import (
