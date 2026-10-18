@@ -38,7 +38,12 @@ def gate(monkeypatch, swap_db_client, stub_verified_user):
                         "resolve_acquisition_principal",
                         lambda self, pid, *, user_id=None, recording_id=None: pid)
 
-    def require_current(self, principal_id, *, operation):
+    # The one-trip read (0473) steps aside, so `require_current` below is
+    # the one place the authority is asked.
+    monkeypatch.setattr(ProcessingAuthorizationService, "status_in_one_trip",
+                        lambda self, user_id, principal_id: None)
+
+    def require_current(self, principal_id, *, operation, status=None):
         state["asked"] += 1
         if state["refuse"]:
             raise ProcessingAuthorizationError(

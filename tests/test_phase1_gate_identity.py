@@ -46,10 +46,17 @@ def stubbed_authority(monkeypatch):
         seen["principal_id"] = principal_id
         return principal_id
 
-    def require_current(self, acquisition_principal_id, *, operation):
+    def require_current(self, acquisition_principal_id, *, operation,
+                        status=None):
         seen["authorized"] = (acquisition_principal_id, operation)
         return {"authorized": True}
 
+    # The one-trip read (0473) steps aside, so the step-by-step identity
+    # decision below is what runs.
+    monkeypatch.setattr(
+        ProcessingAuthorizationService, "status_in_one_trip",
+        lambda self, user_id, principal_id: None,
+    )
     monkeypatch.setattr(ProjectRepository, "owner_for_user", owner_for_user)
     monkeypatch.setattr(
         ProcessingAuthorizationService, "resolve_acquisition_principal",

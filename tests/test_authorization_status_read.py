@@ -215,3 +215,67 @@ def test_a_guest_is_verified_in_python_before_the_one_trip_read(
     assert response.status_code == 403
     assert response.get_json()["code"] == "INVALID_GUEST_OWNER"
     assert asked == []
+
+
+# ── The gate before every core read (2026-10-18) ───────────────────────────
+#
+# `enforce_phase1_processing_gate` runs before every core read and paid the
+# same three round trips; GET /v2/chat/session-state made four database
+# calls to answer with one row. The gate now asks in one trip and decides
+# from that status; when the one-trip read cannot vouch, the old path runs.
+
+@pytest.fixture
+def enforced(monkeypatch):
+    monkeypatch.setenv("PLF1_PROCESSING_AUTHORIZATION_MODE", "enforce")
+
+
+def test_a_core_read_is_gated_in_one_trip(
+        app_client, stub_verified_user, monkeypatch, enforced, old_path):
+    stub_verified_user(USER)
+    decided: list = []
+    monkeypatch.setattr(
+        ProcessingAuthorizationService, "status_in_one_trip",
+        lambda self, user_id, principal_id: (
+            ACQUIRER, {"authorized": True, "code": "PROCESSING_AUTHORIZED",
+                       "pooled_learning_eligible": False,
+                       "gate_mode": "enforce"}))
+    real = ProcessingAuthorizationService.require_current
+
+    def require_current(self, principal_id, *, operation, status=None):
+        decided.append((principal_id, operation, status is not None))
+        return real(self, principal_id, operation=operation, status=status)
+
+    monkeypatch.setattr(ProcessingAuthorizationService, "require_current",
+                        require_current)
+    response = app_client.get("/v2/chat/session-state",
+                              headers={"Authorization": "Bearer t"})
+    assert response.status_code != 403
+    assert decided == [(ACQUIRER, "core_service", True)]
+    assert old_path == []
+
+
+def test_a_core_read_the_one_trip_read_cannot_answer_is_gated_in_steps(
+        app_client, stub_verified_user, monkeypatch, enforced, old_path):
+    stub_verified_user(USER)
+    monkeypatch.setattr(ProcessingAuthorizationService, "status_in_one_trip",
+                        lambda self, user_id, principal_id: None)
+    response = app_client.get("/v2/chat/session-state",
+                              headers={"Authorization": "Bearer t"})
+    assert response.status_code != 403
+    assert old_path == ["owner", "resolve", "status"]
+
+
+def test_the_one_trip_status_refuses_like_the_old_path(
+        app_client, stub_verified_user, monkeypatch, enforced, old_path):
+    stub_verified_user(USER)
+    monkeypatch.setattr(
+        ProcessingAuthorizationService, "status_in_one_trip",
+        lambda self, user_id, principal_id: (
+            ACQUIRER, {"authorized": False,
+                       "code": "PROCESSING_AUTHORIZATION_REQUIRED",
+                       "gate_mode": "enforce"}))
+    response = app_client.get("/v2/chat/session-state",
+                              headers={"Authorization": "Bearer t"})
+    assert response.status_code == 403
+    assert response.get_json()["code"] == "PROCESSING_AUTHORIZATION_REQUIRED"
+    assert old_path == []

@@ -633,8 +633,15 @@ class ProcessingAuthorizationService:
         return country or None
 
     def require_current(
-        self, acquisition_principal_id: str, *, operation: str
+        self, acquisition_principal_id: str, *, operation: str,
+        status: dict | None = None,
     ) -> ProcessingAuthority:
+        """The authority this principal holds now, or the refusal.
+
+        ``status`` is a status already read (`status_in_one_trip`, so the
+        gate on a core read pays one round trip, not three); without it,
+        `status` is read here. The decision below is the same either way.
+        """
         if operation == "recording" and not self.choice_permitted(
                 acquisition_principal_id, SENSITIVE_INFORMATION):
             # E5-A (founder 2026-09-25). Withdrawing the sensitive-information
@@ -651,7 +658,8 @@ class ProcessingAuthorizationService:
                 str(acquisition_principal_id), None, None, None,
                 "PROCESSING_GATE_INACTIVE", False,
             )
-        status = self.status(acquisition_principal_id)
+        if status is None:
+            status = self.status(acquisition_principal_id)
         if not status.get("authorized"):
             code = str(status.get("code") or "PROCESSING_AUTHORIZATION_REQUIRED")
             raise ProcessingAuthorizationError(
@@ -1339,7 +1347,8 @@ class CorpusImportAuthorization(ProcessingAuthorizationService):
     """
 
     def require_current(
-        self, acquisition_principal_id: str, *, operation: str
+        self, acquisition_principal_id: str, *, operation: str,
+        status: dict | None = None,
     ) -> ProcessingAuthority:
         raise ProcessingAuthorizationError(
             "CORPUS_IMPORT_HAS_NO_PRINCIPAL",

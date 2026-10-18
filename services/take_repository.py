@@ -179,15 +179,21 @@ class TakeRepository(TableRepository):
             logger.warning("v2_get_latest_published_session_for_user failed: %s", e)
             return None
 
-    def v2_get_latest_session_for_user(self, user_id: str) -> Optional[dict]:
+    def v2_get_latest_session_for_user(
+        self, user_id: str, columns: str = "*",
+    ) -> Optional[dict]:
         """Return the most recent session for a user (any status, including
         unfinished / unpublished). Used by /v2/user/sessions/current to expose
         the full state machine to the frontend so it can route correctly.
+
+        ``columns`` narrows the read (a PostgREST select list) for a caller
+        that answers with a few fields: a Take row carries transcripts,
+        profiles and context blobs that the /chat boot read never shows.
         """
         try:
             result = (
                 self.client.table("v2_sessions")
-                .select("*")
+                .select(columns)
                 .eq("user_id", user_id)
                 .order("created_at", desc=True)
                 .limit(1)
