@@ -132,7 +132,7 @@ def v2_explore_get_ideal_text_core(arc_id):
         from services.ideal_text_core_snapshot import read_core_or_publish
         core_read = read_core_or_publish(
             db, arc_id, str(request.user_id),
-            is_owner=lambda: _arc_owned_by_caller(arc_id)[0])
+            owner_read=lambda: _arc_owned_by_caller(arc_id))
     except IdealTextCoreReadError:
         # A FAILED read is not "no document yet" (founder 2026-09-26: a
         # dropped connection showed an existing Ideal Text as missing). 503

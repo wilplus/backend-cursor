@@ -112,6 +112,22 @@ class TheMomentsQueueTests(unittest.TestCase):
         for one in (one_recording, one_set, one_rating, one_profile):
             one.assert_not_called()
 
+    def test_a_take_carries_when_this_coach_last_answered_on_it(self):
+        """The speaker screen lists answered Takes most recently answered
+        first: a time, never the answer."""
+        body, _, _ = self._get(
+            recording_language="en", coach_languages=["en"],
+            feedback_set=self._frozen())
+        self.assertIsNone(body[0]["takes"][0]["answered_at"])
+        body, _, _ = self._get(
+            recording_language="en", coach_languages=["en"],
+            feedback_set=self._frozen(),
+            own={SNIP: {"value": "yes", "unrateable": False,
+                        "updated_at": "2026-10-18T17:00:00+00:00"}})
+        take = body[0]["takes"][0]
+        self.assertEqual(take["answered_at"], "2026-10-18T17:00:00+00:00")
+        self.assertEqual(take["waiting"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
