@@ -492,8 +492,36 @@ def willfidence_level_key(value) -> str | None:
     return "W1"
 
 
-def _mark_moments(blocks: list[dict],
-                  snippet_map: dict) -> tuple[list[dict], list[dict]]:
+def _gate_clearer(block: dict, snippet_map: dict, ranked: list[dict],
+                  rows_by_id: dict) -> list[dict]:
+    """The exercise block's rewrite that passes the gate (founder
+    2026-10-18, `services.rewrite_gate`), as a one-row ranking, best first;
+    [] when none does, and the block goes to the voice exercise. The
+    refusals are counted in the log, never served."""
+    from services import moment_pick
+    from services.rewrite_gate import rewrite_refusal
+    chosen = _selected_candidate(block) or {}
+    clip_span = chosen.get("document_span")
+    clip_text = (snippet_map.get(str(chosen.get("snippet_id")), {}) or {}).get("transcript")
+    refused: dict[str, int] = {}
+    for item in ranked:
+        row = rows_by_id.get(str(item.get("candidate_id") or ""))
+        if row is None:
+            continue
+        reason = rewrite_refusal(row, item, clip_span, clip_text)
+        if reason is None:
+            return [item]
+        refused[reason] = refused.get(reason, 0) + 1
+    block["exercise_kind"] = moment_pick.EXERCISE_VOICE
+    logger.info("rewrite gate: no rewrite passed block=%s refused=%s",
+                block.get("block_id"), refused or "none")
+    return []
+
+
+def _mark_moments(blocks: list[dict], snippet_map: dict,
+                  rewrite_ranked: Optional[list[dict]] = None,
+                  rewrite_rows: Optional[list] = None,
+                  ) -> tuple[list[dict], list[dict], list[dict]]:
     """Green moments and the one exercise, by willfidence (founder lock
     2026-10-12, section 6; `services.moment_pick`).
 
@@ -502,9 +530,10 @@ def _mark_moments(blocks: list[dict],
     the single best shows with the softer line), and `practice_prompt` /
     `carries_exercise` / `exercise_kind` on the exercise block alone.
 
-    Returns the green blocks (praise anchors there) and the blocks a
-    rewrite may anchor to (the exercise block, when its words are the lower
-    half), both in document order.
+    Returns the green blocks (praise anchors there), the blocks a rewrite
+    may anchor to (the exercise block, when its words need help and a
+    rewrite passes the gate, founder 2026-10-18), both in document order,
+    and the rewrite ranking to anchor from (only the one that passed).
     """
     from services import moment_pick
 
@@ -540,12 +569,35 @@ def _mark_moments(blocks: list[dict],
         block["practice_prompt"] = is_exercise
         block["carries_exercise"] = is_exercise
         block["exercise_kind"] = picked["exercise_kind"] if is_exercise else None
+    pool = _gate_exercise(blocks, snippet_map, rewrite_ranked, rewrite_rows)
     rewrite_blocks = [
         block for block in blocks
         if block["carries_exercise"]
         and block["exercise_kind"] == moment_pick.EXERCISE_CLEARER
     ]
-    return [b for b in blocks if b["most_confident"]], rewrite_blocks
+    return [b for b in blocks if b["most_confident"]], rewrite_blocks, pool
+
+
+def _gate_exercise(blocks: list[dict], snippet_map: dict,
+                   rewrite_ranked: Optional[list[dict]],
+                   rewrite_rows: Optional[list]) -> list[dict]:
+    """The exercise block whose words need help keeps the clearer version
+    only with a rewrite that passes the gate; the ranking to anchor from."""
+    from services import moment_pick
+    rows_by_id = {str(r.get("id")): r for r in rewrite_rows or [] if isinstance(r, dict)}
+    for block in blocks:
+        if block["carries_exercise"] and block["exercise_kind"] == moment_pick.EXERCISE_CLEARER:
+            return _gate_clearer(block, snippet_map, [
+                item for item in rewrite_ranked or []
+                if _inside(item.get("document_span"), block)], rows_by_id)
+    return []
+
+
+def _inside(span: Any, block: dict) -> bool:
+    return (isinstance(span, dict) and isinstance(span.get("start"), int)
+            and isinstance(span.get("end"), int)
+            and isinstance(block.get("start"), int) and isinstance(block.get("end"), int)
+            and block["start"] <= span["start"] and span["end"] <= block["end"])
 
 
 def _anchored_notes(ranked: list[dict], blocks: list[dict]) -> list[dict]:
@@ -1331,8 +1383,9 @@ def build_shadow_frame(
     # and the rewrite to every block read weak, each only where a defensible
     # candidate sits inside the block. The green mark stays on the top two
     # (24g); it no longer decides where praise goes.
-    green_blocks, weak_blocks = _mark_moments(blocks, snippet_map)
-    rewrite_anchors = _anchored_notes(rewrite_ranked, weak_blocks)
+    green_blocks, weak_blocks, rewrite_pool = _mark_moments(
+        blocks, snippet_map, rewrite_ranked, feedback_rows)
+    rewrite_anchors = _anchored_notes(rewrite_pool, weak_blocks)
     praise_anchors = _anchored_notes(praise_ranked, green_blocks)
     rewrite_selected_ids = [row["candidate_id"] for row in rewrite_anchors]
     praise_selected_ids = [row["candidate_id"] for row in praise_anchors]

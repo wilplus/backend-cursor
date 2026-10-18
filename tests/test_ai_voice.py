@@ -282,13 +282,21 @@ def test_no_clip_is_longer_than_the_limit():
 
 # ── the lane, once, the limits ────────────────────────────────────────────
 
-def test_a_rewrite_practice_never_calls_the_provider():
+def test_a_clearer_version_practice_gets_a_clip_of_the_accepted_words():
+    """Founder 2026-10-18, "words first, then voice": after a clearer-version
+    try that is not yet, the AI voice says the words the speaker accepted,
+    never the ones they said."""
     with _on():
-        db = _Db(_practice(kind="rewrite"), _snip(190), TAKE)
+        snippet = {**_snip(150, pause_ratio=0.02),
+                   "transcript": "So um we think, uh, the timing kind of matters to us"}
+        db = _Db(_practice(kind="rewrite"), snippet, TAKE)
+        _ready_voice(db)
         voices = _Voices()
-        out = ai_voice_clip.ensure(db, db.practice, user_id=OWNER, principal_id="",
-                                   run=lambda *a: pytest.fail("generated in the rewrite lane"))
-        assert out == {"demo": "none", "clip": None} and voices.spoken == 0
+        out = _run_pipeline(db, db.practice, voices, _heard(0.55, "the window closes once"))
+        assert out["clip"]["state"] == "ready" and voices.spoken == 1
+        cycle = db.client.tables["ai_voice_cycles"][0]
+        assert "incumbents match our price" in cycle["prepared_text"]
+        assert "kind of" not in cycle["prepared_text"]
 
 
 def test_a_clip_that_fails_its_check_is_never_shown():

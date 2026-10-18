@@ -210,6 +210,19 @@ The speaker learns about their fillers in one place, the AI clip.
 Founder-Approved: Artur, Claude Code session 2026-10-18 ("you have my OK to
 the previous one", on the task text that carried L18).
 
+## Decided after the lock (2026-10-18, words first)
+
+**The clearer version's voice.** The founder (Claude Code session,
+2026-10-18, "ok, push to prod" on
+<https://claude.ai/artifact/Ut2SqvHCoJ1hvH8dp17yQe>) amends section 1's
+"Only the voice Exercise. Never ... with the Clearer version": after a
+clearer-version try that is not yet better, the AI clip says the words the
+speaker accepted (or their own after "Keep my words"), the same bubble, the
+same lines L1 to L5 and L14 to L18, at most three per exercise. A try that
+sounds better gets the Good job and no clip. The clip is asked when the
+practise of the clearer words starts, never prewarmed at the bake: until the
+speaker accepts, the words are not chosen. Praise still never gets a clip.
+
 ## 7. Order of work
 
 Build end to end, test with the founder's own voice, then counsel (L12,

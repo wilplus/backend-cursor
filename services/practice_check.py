@@ -21,10 +21,13 @@ targeted problem cleared, a delivery cue moved toward confident by at least
 ``CUE_GAIN_MIN`` within-speaker z, or the machine leg reads higher. Lane 4
 ("nothing") is ``again``.
 
-A REWRITE PRACTICE (29b) says new words, so the original clip is never its
-yardstick (founder 2026-10-01). Saying the accepted words is the practise:
-its first try is ``praise``. A later try is ``praise`` too, named by the
-cue that moved since the previous try when one did.
+A REWRITE PRACTICE (29b) says new words, so only the VOICE is checked
+(founder 2026-10-18, "words first, then voice"; this replaces 2026-10-01's
+"saying the accepted words is the practise"): the same lanes 1 to 3 against
+the original clip, which read delivery and never the words. Better is
+``praise`` and no AI clip; not yet is ``again``, and the AI version of the
+speaker's voice then says the accepted words. A try with no sound read on
+either side is ``praise``: missing data never forces the AI clip.
 
 A "NOT YET" NAMES WHAT WENT THE WRONG WAY (founder 2026-10-13, option A):
 the cue that moved furthest away from confident against the original clip,
@@ -49,7 +52,7 @@ from typing import Any, Iterable, Optional
 
 _log = logging.getLogger(__name__)
 
-RULE_VERSION = "practice-check-v3"
+RULE_VERSION = "practice-check-v4"
 #: The three outcomes. Nothing else is ever decided.
 NEXT = ("praise", "again", "moved_on")
 #: CM3a A: the loop stops after the third try that is not praise. Since
@@ -74,9 +77,7 @@ def decide(practice: Any, attempts: Iterable[Any], attempt_id: Any) -> dict:
     "decided_by"}; ``key`` names the praise line on ``praise``, the reading
     that went the wrong way on ``again`` (``miss:<cue key>``, else
     ``effort``), and the signed CM3b line on ``moved_on``."""
-    from services.after_practice import (
-        _original_praise, _reads, _rewrite_praise, cue_drops,
-    )
+    from services.after_practice import _original_praise, _reads, cue_drops
     rows = [r for r in attempts if isinstance(r, Mapping)]
     tried = next((r for r in rows if str(r.get("id")) == str(attempt_id)), None)
     base = {"rule_version": RULE_VERSION, "decided_by": "machine",
@@ -84,12 +85,11 @@ def decide(practice: Any, attempts: Iterable[Any], attempt_id: Any) -> dict:
             "attempt_index": _index(tried) if tried else None}
     if tried is None:
         return {**base, "next": "again", "key": "effort", "lane": "none"}
-    if str((practice or {}).get("kind") or "exercise") == "rewrite":
-        said = _rewrite_praise(rows, dict(tried), "yes", {})
-        return {**base, "next": "praise", "key": said["key"], "lane": said["lane"]}
     said = _original_praise(practice, dict(tried), "yes", {})
     if said.get("lane") in _BETTER_LANES:
         return {**base, "next": "praise", "key": said["key"], "lane": said["lane"]}
+    if str((practice or {}).get("kind") or "exercise") == "rewrite" and _unheard(practice, tried):
+        return {**base, "next": "praise", "key": said["key"], "lane": "unheard"}
     upto = [r for r in rows if _index(r) <= _index(tried)]
     if len(upto) >= TRY_CAP:
         return {**base, "next": "moved_on", "key": MOVED_ON_KEY, "lane": "none"}
@@ -98,6 +98,18 @@ def decide(practice: Any, attempts: Iterable[Any], attempt_id: Any) -> dict:
     drops = cue_drops(_reads(tried, "original"), _reads(tried, "attempt"))
     key = f"miss:{drops[0][0]}" if drops else "effort"
     return {**base, "next": "again", "key": key, "lane": "none"}
+
+
+def _unheard(practice: Any, tried: Mapping) -> bool:
+    """Neither the cue reads nor the stamped confidence can compare this try
+    with the original clip (no baseline, the measure off or failed)."""
+    from services.after_practice import _confidence, _reads
+    from services.practice_more_confident import machine_leg
+    evidence = (practice or {}).get("acoustic_evidence")
+    original = evidence.get("snapshot") if isinstance(evidence, Mapping) else None
+    cues = _reads(tried, "original") and _reads(tried, "attempt")
+    leg = machine_leg(_confidence(original), _confidence(tried.get("acoustic_metrics")))
+    return not cues and leg == "unmeasurable"
 
 
 def checkable_attempt(attempts: list) -> Optional[dict]:

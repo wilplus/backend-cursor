@@ -27,9 +27,9 @@ WHAT "MEASURABLY CHANGED" MEANS, per lane, in this order:
   3. the machine leg: the attempt's stamped confidence is higher than the
      original's (``practice_more_confident.machine_leg``);
   4. nothing: "Good job".
-A rewrite practice (29b) compares only attempts of the same accepted text,
-never the original, and only the delivery (lanes 2 and 4); with a single
-attempt it is "Good job" (founder 2026-10-01, Phase 3 addition).
+A rewrite practice (29b) is checked on the same lanes against the original
+clip, which read delivery and never the words (founder 2026-10-18, "words
+first, then voice"; services/practice_check.py).
 
 ENCOURAGEMENT (path 3, a practice that did not land): a real measurable
 step between the first and the last attempt (lane 2 between attempts), else
@@ -208,18 +208,6 @@ def _reads(attempt: Any, side: str) -> Any:
 
 def _confidence(snapshot: Any) -> Any:
     return snapshot.get("confidence") if isinstance(snapshot, dict) else None
-
-
-def _rewrite_praise(rows: list, landed: dict, variant: str, base: dict) -> dict:
-    """The accepted text, never the original (Phase 3 addition): the
-    previous attempt of the same words, or nothing to compare."""
-    index = int(landed.get("attempt_index") or 0)
-    earlier = [r for r in rows if int(r.get("attempt_index") or 0) < index]
-    previous = max(earlier, key=lambda r: int(r.get("attempt_index") or 0), default=None)
-    gains = cue_gains(_reads(previous, "attempt"), _reads(landed, "attempt")) if previous else []
-    if gains:
-        return _say(f"cue:{gains[0][0]}", variant, "cue", base, cue=gains[0][0])
-    return _say("good_job", variant, "none", base)
 
 
 def _original_praise(practice: Any, landed: dict, variant: str, base: dict) -> dict:

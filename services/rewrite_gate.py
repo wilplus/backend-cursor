@@ -1,0 +1,154 @@
+"""When the practise moment opens on the Clearer version (founder
+2026-10-18, "words first, then voice"; prototype
+https://claude.ai/artifact/Ut2SqvHCoJ1hvH8dp17yQe, "ok, push to prod").
+
+The practise moment is still the Take's second best (moment_pick). What it
+opens on is decided here, in two gates, and the voice Exercise is what
+every failed check falls back to:
+
+  1. THE WORDS NEED HELP. At least one of: fillers at 3 or more per 100
+     words, hedges at 3 or more per 100 words, the clip misses its slide
+     (slide fit below 0.5), a broken sentence. None of them: the wording is
+     good and the moment goes to the voice Exercise with the AI clip.
+  2. THE NEW WORDS ARE GOOD ENOUGH. A rewrite row that is all of:
+       - inside this moment's own clip (its span inside the clip's span);
+       - backed by evidence: never the tentative fallback;
+       - a real fix: fillers and hedges, read on the new words, at least
+         ``MIN_LIFT`` better than on what the speaker said (the clip's own
+         transcript, which keeps the hesitations the Ideal Text smooths
+         away, or the replaced words when worse), or the broken sentence
+         mended;
+       - still the speaker's: at least ``MIN_KEPT`` of its words are theirs,
+         and no number or name they did not say;
+       - sayable in one go: not longer than what they said, ``MIN_WORDS``
+         words or more.
+     Turned down before on the same Paragraph words, and every lineage
+     check, stay where they are (the V3 inventory's exclusions).
+
+Starting values, to calibrate on the golden evaluation set. Internal only
+(AC-9): no signal or verdict here reaches a payload. Pure.
+"""
+from __future__ import annotations
+
+import re
+from typing import Any, Optional
+
+from services import willfidence
+
+GATE_VERSION = "rewrite-gate-v1"
+#: Gate 1: a filler or hedge signal below this is "too many" (willfidence's
+#: scale: 3 per 100 words gives 0.7).
+WORD_SIGNAL_FLOOR = 0.7
+#: Gate 1: a slide fit below this misses the slide (0.5 is "partly").
+SLIDE_FIT_FLOOR = 0.5
+#: Gate 2.
+MIN_LIFT = 0.1
+MIN_KEPT = 0.6
+MIN_WORDS = 5
+
+_WORD = re.compile(r"[^\W_]+(?:[’'-][^\W_]+)*", re.UNICODE)
+_SENTENCE_START = re.compile(r"(?:^|[.!?]\s+)([^\W\d_][\w’'-]*)", re.UNICODE)
+
+
+def _below(value: Optional[float], floor: float) -> bool:
+    return isinstance(value, (int, float)) and float(value) < floor
+
+
+def words_need_help(text: Any, slide_fit: Optional[float]) -> Optional[str]:
+    """The first reason the moment's words need help, or None when the
+    wording is good. ``slide_fit`` is the clip's own (None: not checked)."""
+    from services.take_feedback_manager import has_broken_boundary
+    if _below(willfidence.filler(text), WORD_SIGNAL_FLOOR):
+        return "fillers"
+    if _below(willfidence.hedging(text), WORD_SIGNAL_FLOOR):
+        return "hedges"
+    if _below(slide_fit, SLIDE_FIT_FLOOR):
+        return "off_slide"
+    if has_broken_boundary(text):
+        return "broken_sentence"
+    return None
+
+
+def _words(text: Any) -> list[str]:
+    return _WORD.findall(str(text or ""))
+
+
+def _word_signal(text: Any) -> Optional[float]:
+    return willfidence.partial_w(willfidence.filler(text), willfidence.hedging(text))
+
+
+def _sentence_starts(text: str) -> set[str]:
+    return {m.group(1).lower() for m in _SENTENCE_START.finditer(text)}
+
+
+def _invents(quote: str, proposed: str) -> bool:
+    """A number, or a capitalised word inside a sentence (a name), that the
+    speaker did not say."""
+    said = {w.lower() for w in _words(quote)}
+    starts = _sentence_starts(proposed)
+    for word in _words(proposed):
+        low = word.lower()
+        if low in said:
+            continue
+        if any(ch.isdigit() for ch in word):
+            return True
+        if word[0].isupper() and low not in starts and low != "i":
+            return True
+    return False
+
+
+def _kept_share(quote: str, proposed: str) -> float:
+    said: dict[str, int] = {}
+    for word in _words(quote):
+        said[word.lower()] = said.get(word.lower(), 0) + 1
+    new = _words(proposed)
+    kept = 0
+    for word in new:
+        low = word.lower()
+        if said.get(low):
+            said[low] -= 1
+            kept += 1
+    return kept / len(new) if new else 0.0
+
+
+def _in_clip(span: Any, clip_span: Any) -> bool:
+    return (isinstance(clip_span, dict) and isinstance(span, dict)
+            and isinstance(span.get("start"), int) and isinstance(span.get("end"), int)
+            and clip_span.get("start", 0) <= span["start"]
+            and span["end"] <= clip_span.get("end", -1))
+
+
+def _words_refusal(quote: str, proposed: str, clip_text: Any) -> Optional[str]:
+    """The checks on the words alone: a real fix, still theirs, sayable."""
+    from services.take_feedback_manager import has_broken_boundary
+    said = [v for v in (_word_signal(quote), _word_signal(clip_text)) if v is not None]
+    before, after = (min(said) if said else None), _word_signal(proposed)
+    lifted = before is not None and after is not None and after - before >= MIN_LIFT
+    mended = has_broken_boundary(quote) and not has_broken_boundary(proposed)
+    if not (lifted or mended):
+        return "no_real_fix"
+    if _kept_share(quote, proposed) < MIN_KEPT or _invents(quote, proposed):
+        return "not_their_words"
+    count = len(_words(proposed))
+    if count < MIN_WORDS or count > len(_words(quote)):
+        return "hard_to_say"
+    return None
+
+
+def rewrite_refusal(row: Any, item: Any, clip_span: Optional[dict],
+                    clip_text: Any = None) -> Optional[str]:
+    """Why this rewrite cannot open the moment, or None when it can.
+
+    ``row`` is the rewrite candidate as the Manager made it (quote,
+    proposed_text, tentative); ``item`` its V3 inventory row (document_span,
+    evidence); ``clip_span`` the moment's own clip in the same document and
+    ``clip_text`` its transcript."""
+    row = row if isinstance(row, dict) else {}
+    item = item if isinstance(item, dict) else {}
+    if not _in_clip(item.get("document_span"), clip_span):
+        return "outside_the_clip"
+    if row.get("tentative") or item.get("tentative") \
+            or (item.get("evidence") or {}).get("fallback"):
+        return "fallback"
+    return _words_refusal(str(row.get("quote") or ""),
+                          str(row.get("proposed_text") or ""), clip_text)

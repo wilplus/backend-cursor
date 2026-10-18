@@ -246,3 +246,52 @@ def test_a_whole_take_is_partitioned_read_marked_noted_and_covered():
 # "There are no green bookmarks... none of that actually landed." It had not:
 # the ladder was computed on the frame and dropped before the row was built, so
 # the browser received no tier and every bookmark could only be one colour.
+
+
+# ── words first, then voice (founder 2026-10-18, services/rewrite_gate) ──
+
+_UMS = " ".join(["um we think it matters"] * 3 + ["w"] * 60)
+
+
+def _practise_frame(rewrite):
+    """Three slides: the best is praised; the second best's own words carry
+    fillers, so it may open on a clearer version when the rewrite passes."""
+    pieces, snippets, at = [], [], 0
+    for index, score in enumerate((0.9, 0.6, 0.2)):
+        text = " ".join(f"w{index}x{n}" for n in range(75))
+        pieces.append({"snippet_id": f"s{index}", "take_session_id": "take-2",
+                       "slide_index": index, "start": at, "end": at + len(text),
+                       "text": text, "recording_id": "recording-1",
+                       "start_offset_ms": index * 5000, "duration_ms": 5000})
+        at += len(text) + 1
+        snippets.append({"id": f"s{index}", "session_id": "take-2", "recording_id": "recording-1",
+                         "start_offset_ms": index * 5000, "duration_ms": 5000,
+                         "transcript": _UMS if index == 1 else None,
+                         "metrics": {"voice_confidence": {
+                             "version": "voice-confidence-universal-v3", "score": score}}})
+    start = pieces[1]["start"] + 10
+    note = {"id": "r-clip", "feedback_family": "rewrite_clarity", "snippet_id": "s1",
+            "take_session_id": "take-2", "span": {"start": start, "end": start + 40},
+            "kind": "replace", "quote": "So um we think, uh, it matters a lot to us here",
+            "proposed_text": "We think it matters a lot to us here.",
+            "model_version": "rewrite-model-v1",
+            "_manager_evidence": {"specificity": 5, "fallback": False}, **rewrite}
+    text = " ".join(piece["text"] for piece in pieces)
+    return build_shadow_frame(
+        take_document={"take_session_id": "take-2", "text": text, "pieces": pieces},
+        snippets=snippets, suggestions={}, feedback_candidates=[note],
+        take_index=2, expected_recording_id="recording-1", served_text=text)
+
+
+def test_weak_words_open_on_the_rewrite_only_when_it_passes_the_gate():
+    frame = _practise_frame({})
+    routed = [(b["slide_index"], b["exercise_kind"]) for b in frame["blocks"] if b["carries_exercise"]]
+    assert routed == [(1, "clearer")]
+    assert frame["verbal_lanes"]["rewrite_clarity"]["selected_candidate_ids"] == ["r-clip"]
+
+    # The tentative fallback never opens it: the same moment, the voice Exercise.
+    fallback = _practise_frame({"tentative": True,
+                                "_manager_evidence": {"specificity": 5, "fallback": True}})
+    routed = [(b["slide_index"], b["exercise_kind"]) for b in fallback["blocks"] if b["carries_exercise"]]
+    assert routed == [(1, "voice")]
+    assert fallback["verbal_lanes"]["rewrite_clarity"]["selected_candidate_ids"] == []

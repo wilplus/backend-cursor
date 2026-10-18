@@ -495,6 +495,19 @@ def _actionable_rewrite(quote: str) -> Optional[str]:
     return proposed if proposed != quote else None
 
 
+def has_broken_boundary(text: Any) -> bool:
+    """A sentence stopped in the wrong place: the stranded negated
+    predicate the structural rewrite repairs ("I don't want. A script ...").
+    The same two patterns, read without making a row (rewrite gate,
+    founder 2026-10-18)."""
+    sentences = _sentences(text if isinstance(text, str) else "")
+    for (_, _, first), (_, _, second) in zip(sentences, sentences[1:]):
+        if (_STRANDED_NEGATED_PREDICATE_RE.search(first.rstrip().rstrip(".!?").rstrip())
+                and _OBJECT_PHRASE_START_RE.match(second.lstrip())):
+            return True
+    return False
+
+
 def evidence_backed_rewrite_candidates(
     served_text: Any,
     *,
