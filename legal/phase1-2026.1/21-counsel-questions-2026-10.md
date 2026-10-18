@@ -443,3 +443,16 @@ With thanks,
 
 Artur Willoński
 WillpowerLab · contact@willpowerlab.com
+
+## Added 2026-10-18: training on anonymised practice text under the Terms
+
+The founder wants training on words from a speaker's practice to be part of
+the service, stated on the acceptance screen (agreement 3.2, third
+paragraph) and not asked for. Privacy 3.6 section 4a makes it a consent
+(Art 6(1)(a)), never a condition of the service. Question for counsel: what
+anonymisation of the practice text, the coach's words and the Will chat
+takes the training copies outside personal data, so that section 4a can be
+rewritten as a notice and the Help improve WillpowerLab switch retired; and
+whether the AI-notice exposure row written when the notice's window is
+opened (rather than when a forced notice screen rendered) still satisfies
+Art 50(1)/(5).
