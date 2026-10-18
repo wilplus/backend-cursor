@@ -165,10 +165,11 @@ def _on(**extra):
 
 class _Voices:
     def __init__(self, fail=None):
-        self.spoken, self.deleted, self.fail = 0, [], fail
+        self.spoken, self.deleted, self.fail, self.bodies = 0, [], fail, []
 
-    def speak(self, **_k):
+    def speak(self, **k):
         self.spoken += 1
+        self.bodies.append(k.get("body") or {})
         if self.fail:
             raise self.fail
         return Speech(b"mp3", "audio/mpeg", "req", 90)
@@ -403,6 +404,58 @@ def test_one_recording_makes_one_checked_clip_then_measures_the_next_try(monkeyp
         ai_voice_clip.note_attempts(db, db.practice, [
             {"attempt_index": 2, "duration_ms": 3000, "acoustic_metrics": {}}])
         assert cycle["outcome"] == "inconclusive"
+
+
+# ── fillers: the sentence said without its ums (founder 2026-10-18) ──────
+
+FILLERS = ("We think, um, the timing matters because, uh, the window closes "
+           "once incumbents match our price")
+
+
+def test_a_sentence_with_fillers_is_said_without_them_and_the_next_try_is_measured_on_them():
+    """Founder 2026-10-18 (Linear "Evaluate retaining filler words in
+    transcripts"): the transcript stays clean; the speaker hears their own
+    sentence without its hesitations, with L18 under the player, and the
+    next try is measured on fillers only, from its own transcript, never
+    shown."""
+    with _on():
+        practice = _practice()
+        practice["exact_passage"] = FILLERS
+        db = _Db(practice, {**_snip(150), "transcript": FILLERS}, TAKE)
+        _ready_voice(db)
+        voices = _Voices()
+        out = _run_pipeline(db, practice, voices, _heard(0.0, PHRASE))
+        cycle = db.client.tables["ai_voice_cycles"][0]
+        assert out["clip"]["state"] == "ready", cycle.get("failure_kind")
+        assert cycle["exercise"] == "fillers" and not cycle["selection"]["default"]
+        # The provider is asked for the speaker's own words, the hesitations out.
+        said = re.sub(r"[^a-z ]", "", voices.bodies[0]["text"].lower()).split()
+        assert said == SENTENCE.lower().split()
+        why = out["clip"]["why"]
+        assert why == ai_voice_clip.WHY["fillers"] and not re.search(r"\d", why)
+        assert cycle["metrics_before"]["fillers_per_100"] > 0
+        # The next try: clean is improved; the same again is similar.
+        ai_voice_clip.note_attempts(db, practice, [
+            {"attempt_index": 1, "duration_ms": 3000, "acoustic_metrics": {},
+             "transcript": SENTENCE}])
+        assert cycle["outcome"] == "improved"
+        assert cycle["metrics_after"]["fillers_per_100"] == 0
+        ai_voice_clip.note_attempts(db, practice, [
+            {"attempt_index": 2, "duration_ms": 3000, "acoustic_metrics": {},
+             "transcript": FILLERS}])
+        assert cycle["outcome"] == "similar"
+
+
+def test_a_clean_sentence_never_gets_the_fillers_clip():
+    """No hesitation in the sentence: fillers is never picked, and a request
+    for it is refused before anything is sent."""
+    with _on():
+        out = ai_voice_severity.select(_snip(150), ai_voice_severity.own_medians(TAKE),
+                                       sentence=SENTENCE, seed="s")
+        assert out["exercise"] != "fillers" and out["severity_scores"]["fillers"] == 0.0
+    with pytest.raises(ai_voice_prompt.PromptRejected):
+        ai_voice_prompt.build(sentence=SENTENCE, exercise={"exercise": "fillers"},
+                              practice_id="p")
 
 
 # ── the voice, and deleting it ────────────────────────────────────────────

@@ -105,6 +105,23 @@ def strip_fillers(text: Any, language: Optional[str] = None) -> str:
     return out
 
 
+def count_fillers(text: Any, language: Optional[str] = None) -> int:
+    """How many standalone hesitation tokens the text holds (the same
+    closed, language-aware list ``strip_fillers`` removes; repeats are not
+    counted). Pure."""
+    if not isinstance(text, str) or not text:
+        return 0
+    return len(_filler_re(hesitations_for(language)).findall(text))
+
+
+def without_fillers(text: Any, language: Optional[str] = None) -> str:
+    """The text with only its hesitation tokens taken out (never a repeat,
+    never any other word), tidied as a piece. Pure."""
+    if not isinstance(text, str) or not text:
+        return ""
+    return tidy_piece(_filler_re(hesitations_for(language)).sub(" ", text))
+
+
 def tidy_piece(text: Any) -> str:
     """PER-PIECE tidy: whitespace and punctuation left orphaned by a
     removal. NEVER casing, NEVER a terminal mark — a piece is frequently

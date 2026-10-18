@@ -3,7 +3,10 @@
 
 No model writes the request and no free text reaches the provider: the text
 sent is the speaker's own sentence, with only punctuation, line breaks and
-two whitelisted audio tags added. The words are never changed.
+two whitelisted audio tags added. The words are never changed. The one
+exception is the fillers exercise (founder 2026-10-18): the sentence is sent
+without its hesitations ("um", "uh"), exactly the tokens the transcript
+fence removes silently, and nothing else.
 
 WHAT ELEVEN V4 CAN AND CANNOT DO (official SDK 2.71 and docs, 2026-10):
 
@@ -103,10 +106,24 @@ def check_text(prepared: str, original: str) -> None:
         raise PromptRejected("WORDS_CHANGED")
 
 
+def _without_fillers(text: str) -> str:
+    """The sentence with its hesitations out; refused when there were none
+    (then there is nothing to hear differently)."""
+    from services.ai_voice_severity import LANE_LANGUAGE
+    from services.transcript_smoothing import without_fillers
+    cleaned = _SPACE.sub(" ", without_fillers(text, LANE_LANGUAGE)).strip()
+    if not cleaned or _words(cleaned) == _words(text):
+        raise PromptRejected("NO_FILLERS_TO_REMOVE")
+    return cleaned
+
+
 def build(*, sentence: str, exercise: dict, practice_id: str) -> dict:
     """One request for ``ElevenLabsClient.speak``, plus what to validate."""
     problem = str((exercise or {}).get("exercise") or "")
     text = _clean(sentence)
+    if problem == "fillers":
+        # The words the clip must say are the sentence without its fillers.
+        text = _without_fillers(text)
     if not text or len(_words(text)) < 3:
         raise PromptRejected("SENTENCE_TOO_SHORT")
     if len(text) > int(Config.AI_VOICE_MAX_SENTENCE_CHARACTERS):
@@ -121,6 +138,8 @@ def build(*, sentence: str, exercise: dict, practice_id: str) -> dict:
         prepared = _pause(text, str(phrase))
     elif problem == "stress" and phrase:
         prepared = _stress(text, str(phrase))
+    elif problem == "fillers":
+        prepared = text
     else:
         raise PromptRejected("UNSUPPORTED_EXERCISE")
     check_text(prepared, text)

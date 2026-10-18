@@ -32,7 +32,9 @@ The lock (flow, words, rules) is
 4. The clip is shown in the video's place (no exact-fit video for the same
    problem), and after a try that isn't better yet, at most 3 times. It never
    plays by itself.
-5. The next try is measured on the one problem practised and stored.
+5. The next try is measured on the one problem practised and stored. For
+   fillers (founder 2026-10-18) the measure is hesitations per 100 words of
+   the try's own transcript, against the same line as the pick.
 6. Data & consent: Delete removes the voice at ElevenLabs and here, with every
    clip; Turn on makes it again from the next Take.
 
@@ -40,15 +42,16 @@ The lock (flow, words, rules) is
 
 | Module | Job |
 |---|---|
-| `services/ai_voice_severity.py` | severity 0–1 per problem against the speaker's own usual; picks one or none; the target phrase; the next try's outcome |
-| `services/ai_voice_prompt.py` | the structured exercise → one Eleven v4 request, words unchanged, whitelisted tags only |
+| `services/ai_voice_severity.py` | severity 0–1 per problem (pace, pause, stress, fillers) against the speaker's own usual; picks one or none; the target phrase; the next try's outcome |
+| `services/ai_voice_prompt.py` | the structured exercise → one Eleven v4 request, words unchanged (the fillers clip leaves the hesitations out, nothing else), whitelisted tags only |
 | `services/elevenlabs_client.py` | the five HTTP calls; errors by kind |
 | `services/authorized_voice_provider.py` | every ElevenLabs call behind a processing permit |
 | `services/ai_voice_validator.py` | decodes, clipping, silence, duration, words kept, the change really there |
 | `services/ai_voice_clone.py` | the speaker's one voice: make, reuse, delete, turn on |
 | `services/ai_voice_clip.py` | the lane, the video rule, the job, what the walk may know |
 | `services/ai_voice_limits.py` | daily and monthly limits, fail closed |
-| `services/ai_voice_store.py` | the two tables (migration 0462) |
+| `services/ai_voice_store.py` | the two tables (migration 0462; 0475 admits the fillers exercise) |
+| `services/admin_takes.py` | the admin Take view: each Take's clip, its outcome and the fillers rate before and after |
 | `routes/v2/ai_voice.py` | the walk's routes and the card's routes |
 
 Job states (`ai_voice_cycles.status`): `pending → analyzing →
@@ -62,7 +65,17 @@ Provider retries are counted in `generation_metadata.provider_retries`.
 
 The severity minimum (`AI_VOICE_MIN_SEVERITY`, 0.2; 0.4 is the line itself) and every
 normalization range (`AI_VOICE_PACE_*`, `AI_VOICE_PAUSE_*`,
-`AI_VOICE_STRESS_GAP_DB`) are environment settings; see `config.py`.
+`AI_VOICE_STRESS_GAP_DB`, `AI_VOICE_FILLER_GAP_PER_100`) are environment
+settings; see `config.py`.
+
+**Fillers** (founder 2026-10-18, lock section "Decided after the lock,
+fillers"): the hesitations counted are the closed list the transcript fence
+removes (`services/transcript_smoothing.py`, the English list: the lane
+speaks and is re-heard in English). The sentence sent is the speaker's own
+with those tokens left out (`ai_voice_prompt._without_fillers`); the
+validator refuses the clip if one is heard (`fillers_heard`). The sentence
+under the player is L18. The library has no fillers exercise, so fillers
+always takes the AI clip.
 
 When nothing reaches the minimum, the clip still comes: the default is
 stress, the main point said so it stands out (founder 2026-10-15, A). The
@@ -74,8 +87,8 @@ five words has no main point apart from itself and gets no clip.
 
 No SSML; no `speed` or `style` on v4 (only `stability` and
 `similarity_boost`). So pace is asked for with `[slowly]` and clause breaks,
-the pause with `[pause]`, and stress with capitals (the one documented way;
-there is no emphasis tag). Tags guide delivery and are not guaranteed, so
+the pause with `[pause]`, stress with capitals (the one documented way;
+there is no emphasis tag), and fillers by sending the sentence without them. Tags guide delivery and are not guaranteed, so
 **the validator decides**: a clip that didn't apply the change is never shown.
 Stress is the least reliable of the three; measure it in the smoke test.
 
