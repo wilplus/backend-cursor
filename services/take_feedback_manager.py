@@ -395,6 +395,10 @@ CLIENT_READ_ROW_FIELDS = frozenset({
     "visual", "pending_better_version", "pending_copy", "cue_keys",
     "praise_line", "rewrite_move", "snippet_audio_ref", "start_offset_ms",
     "duration_ms", "practice_exercise", "learning_exposures", "level_key",
+    # Why a green moment landed, `{paragraphs, quote}`, written by GPT from
+    # the clip's own evidence (services/praise_reason, 2026-10-18). Words
+    # only: no number.
+    "praise_reason",
     # The coach's shared answer in words, `{kind, text, video_url?}`
     # (`confident_voice_practice.coach_shared_answer`), read by the walk
     # since 2026-10-14. No number, no draft.

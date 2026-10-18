@@ -175,9 +175,10 @@ def write_summary(anchor: str, facts: list[str], *, practice: Optional[str],
     return _clean(getattr(result, "text", None) if result else None, signed, names)
 
 
-def _under_authority(database: Any, take: str, write) -> Optional[str]:
+def _under_authority(database: Any, take: str, write, label: str = "take-summary") -> Any:
     """Run ``write`` inside the Take's protected provider scope when the
-    processing-authorization mode enforces (``services.willfidence``)."""
+    processing-authorization mode enforces (``services.willfidence``).
+    ``label`` names the surface in the permit's idempotency key."""
     from services.processing_authorization import ProcessingAuthorizationService
     authorization = ProcessingAuthorizationService(database)
     if not authorization.enforced:
@@ -192,7 +193,7 @@ def _under_authority(database: Any, take: str, write) -> Optional[str]:
         return None
     adapter = AuthorizedProviderAdapter(
         database, ProviderCoordinates(principal, take, None), authorization=authorization)
-    with protected_provider_scope(adapter, idempotency_prefix=f"take-summary:{take}:{uuid.uuid4()}"):
+    with protected_provider_scope(adapter, idempotency_prefix=f"{label}:{take}:{uuid.uuid4()}"):
         return write()
 
 

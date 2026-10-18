@@ -9731,6 +9731,35 @@ class DatabaseService:
                .eq("read_version", "willfidence-v1-machine").execute())
         return list(res.data or [])
 
+    def list_green_moment_reasons(self, snippet_ids: list,
+                                  reason_version: str) -> dict[str, dict]:
+        """{snippet_id: {paragraphs, quote}} for the clips that have a
+        stored reason (0476). Raises on failure: callers degrade."""
+        ids = [str(s) for s in snippet_ids or [] if s]
+        if not ids:
+            return {}
+        res = (self.client.table("green_moment_reasons")
+               .select("snippet_id,paragraphs,quote")
+               .in_("snippet_id", ids)
+               .eq("reason_version", str(reason_version)).execute())
+        return {str(row["snippet_id"]): {"paragraphs": row.get("paragraphs") or [],
+                                         "quote": row.get("quote")}
+                for row in res.data or [] if isinstance(row, dict)}
+
+    def save_green_moment_reason(self, *, snippet_id: str, take_session_id: str,
+                                 reason_version: str, paragraphs: list,
+                                 quote: Optional[str]) -> None:
+        """Keep one clip's reason (0476). The first one written stands.
+        Raises on failure: the job logs it."""
+        (self.client.table("green_moment_reasons").upsert({
+            "snippet_id": str(snippet_id),
+            "take_session_id": str(take_session_id),
+            "reason_version": str(reason_version),
+            "paragraphs": list(paragraphs),
+            "quote": quote,
+        }, on_conflict="snippet_id,reason_version",
+            ignore_duplicates=True).execute())
+
     def record_v4_picks(self, take_session_id: str, rows: list) -> Optional[dict]:
         """V4's dark picks for one Take (migration 0452, V4 B1.6). Raises on
         failure: the caller (services.v4_picker.run) logs it."""
