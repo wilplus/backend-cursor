@@ -25,3 +25,15 @@ def test_the_keep_warm_ping_comes_before_the_pool_drops_an_idle_connection():
     nothing warm; the first request after a quiet spell reconnects anyway."""
     from services import warm_connections
     assert 0 < warm_connections.PING_EVERY_S < db_transport.KEEPALIVE_S
+
+
+def test_the_keep_warm_ping_warms_one_connection_per_lane(monkeypatch):
+    """The app opens with several requests at once; one warm connection
+    serves one of them, so the ping reads once per gunicorn thread, together."""
+    from services import warm_connections
+    monkeypatch.setenv("GUNICORN_THREADS", "3")
+    seen: list = []
+    monkeypatch.setattr(warm_connections, "_ping_once",
+                        lambda: seen.append(__import__("threading").get_ident()))
+    warm_connections._ping_every_lane()
+    assert len(seen) == 3 and len(set(seen)) == 3
