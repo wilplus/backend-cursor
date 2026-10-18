@@ -20,7 +20,10 @@ SYSTEM and never about a person:
     (founder: "remove the learning doors"); the key stays, empty, only
     until the frontend's pace panel stops reading it;
   * what last happened, where a table records it: the newest pair
-    release, fine-tune run and promotion (``last``).
+    release, fine-tune run and promotion (``last``);
+  * ``held_next_take``: per exercise, how many practices held into the
+    speaker's next Take, came back, or could not be read
+    (services.exercise_held, founder 2026-10-18).
 
 A source that cannot be read is NAMED in `unavailable` rather than read as
 zero. Nothing here promotes, trains, exports or flips anything. Founder
@@ -185,6 +188,11 @@ def ledger(database: Any, *, config: Any = None) -> dict:
     # test of every detector version (6b-6d), the block pick (8) and the
     # share of coach-word drafts sent unchanged (7). Empty while dark.
     panel = _coach_panel_rows(database, unavailable)
+    # Did a practised exercise hold into the speaker's next Take of the same
+    # project (founder 2026-10-18, WIL-29; exercise-held-next-take-v1)?
+    # Counts per exercise; None when unreadable (named), never a zero.
+    from services.exercise_held import held_counts
+    held = _read("held_next_take", lambda: held_counts(database), unavailable)
     return {
         "ledger_version": LEDGER_VERSION,
         "pairs": pairs,
@@ -198,6 +206,7 @@ def ledger(database: Any, *, config: Any = None) -> dict:
         "after_practice": after,
         "peer_lane": peer,
         "delayed_measure": delayed,
+        "held_next_take": held,
         **panel,
         "unavailable": unavailable,
     }

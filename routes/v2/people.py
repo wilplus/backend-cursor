@@ -18,6 +18,10 @@ Prices for one person (step 3, services/plan_promotions.py):
   DELETE /v2/admin/people/<user_id>/promotion   end it now
   GET    /v2/user/offers                        {"promotion", "lesson"} for the pricing screen
 
+One person's exercises, as facts (services/practice_effects.py, FOUNDER only,
+founder 2026-10-18, WIL-29):
+  GET    /v2/admin/people/<user_id>/practice-effects
+
 Takes and acoustic data (services/admin_takes.py, admin only):
   GET    /v2/admin/people/<user_id>/takes                  every Take with its measures
   GET    /v2/admin/people/<user_id>/takes/<session_id>     one Take's pieces, every measure
@@ -28,15 +32,17 @@ Deleting an account (the person's own deletion road, seven-day window):
 """
 from __future__ import annotations
 
+import logging
 from functools import partial
 
 from flask import Blueprint, jsonify, request
 
 from auth import require_auth
-from routes.admin import require_admin
-from services import admin_person, person_asks, plan_promotions
+from routes.admin import require_admin, require_founder
+from services import admin_person, person_asks, plan_promotions, practice_effects
 
 people_bp = Blueprint("people", __name__)
+logger = logging.getLogger(__name__)
 
 
 
@@ -57,6 +63,19 @@ def get_person(user_id: str):
     if not profile:
         return _reply({"code": "NOT_FOUND", "error": "No account with this id"}, 404)
     return _reply(profile)
+
+
+@people_bp.route("/v2/admin/people/<user_id>/practice-effects", methods=["GET"])
+@require_founder
+def get_practice_effects(user_id: str):
+    """Founder only (founder 2026-10-18): counts in words per exercise, never
+    a rate, never a speaker's or a coach's screen (AC-9)."""
+    from services.db import db
+    try:
+        return _reply(practice_effects.for_person(db, user_id))
+    except Exception:
+        logger.warning("practice effects read failed user=%s", user_id, exc_info=True)
+        return _reply({"code": "V2_ERROR", "error": "Could not read practice"}, 500)
 
 
 @people_bp.route("/v2/user/home-screen", methods=["PUT"])
