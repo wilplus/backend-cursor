@@ -91,6 +91,10 @@ _DB_CALLS: contextvars.ContextVar[Optional[list[int]]] = contextvars.ContextVar(
 
 _LAPS: contextvars.ContextVar[Optional[list[str]]] = contextvars.ContextVar(
     "laps", default=None)
+# How long each database call waited, in ms (founder 2026-10-18: a 4 s read
+# made three calls; the count alone could not say whether they were slow).
+_DB_MS: contextvars.ContextVar[Optional[list[float]]] = contextvars.ContextVar(
+    "db_ms", default=None)
 
 
 class lap:
@@ -117,6 +121,14 @@ def count_db_call() -> None:
         box[0] += 1
 
 
+def add_db_time(ms: float) -> None:
+    """How long one database call took, retries included (no-op outside a
+    request)."""
+    box = _DB_MS.get()
+    if box is not None:
+        box.append(ms)
+
+
 def install_request_id(app: Any) -> None:
     """Bind the incoming id for each Flask request and echo it back."""
     from flask import g, request
@@ -129,6 +141,7 @@ def install_request_id(app: Any) -> None:
         g.received_at = datetime.now(timezone.utc)
         g.started_perf = time.perf_counter()
         _DB_CALLS.set([0])
+        _DB_MS.set([])
         _LAPS.set([])
 
     @app.after_request
@@ -141,6 +154,12 @@ def install_request_id(app: Any) -> None:
                 ms = (time.perf_counter() - started) * 1000.0
                 calls = box[0] if box else 0
                 timing = f"app;dur={ms:.0f}, db;desc=\"calls\";dur={calls}"
+                # The calls' own time: summed (parallel calls overlap, so it
+                # can pass `app`) and the slowest one.
+                waits = _DB_MS.get() or []
+                if waits:
+                    timing += (f", db_wait;desc=\"db time, summed\";dur={sum(waits):.0f}"
+                               f", db_slowest;desc=\"slowest db call\";dur={max(waits):.0f}")
                 existing = response.headers.get("Server-Timing")
                 response.headers["Server-Timing"] = f"{existing}, {timing}" if existing else timing
                 if ms >= SLOW_REQUEST_MS:
@@ -157,4 +176,5 @@ def install_request_id(app: Any) -> None:
     def _clear_request_id(_exc: Any) -> None:
         _REQUEST_ID.set(NO_REQUEST)
         _DB_CALLS.set(None)
+        _DB_MS.set(None)
         _LAPS.set(None)
