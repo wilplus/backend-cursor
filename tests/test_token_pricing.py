@@ -345,6 +345,19 @@ class PeriodResetTests(unittest.TestCase):
         self.env.stop()
 
 
+    def test_balance_read_is_one_database_call(self):
+        """The recording-band and balance reads took 2.3 s as three reads of
+        one row (founder 2026-10-18). The whole account, bonus and coach
+        credits included, now comes back in one."""
+        row = account_row("free", balance=1000, bonus=500)
+        row["coach_review_credits"] = 2
+        db = FakeDB(row)
+        acct = self.ta.get_account("u1", database=db)
+        self.assertEqual(db.client.table.call_count, 1)
+        self.assertEqual(acct["balance"], 1500)
+        self.assertEqual(acct["coach_reviews"]["allowed"],
+                         self.ta.coach_reviews_for("free") + 2)
+
     def test_concurrent_reset_grants_once(self):
         start = datetime.now(UTC) - timedelta(days=40)
         db = FakeDB(account_row("starter", balance=10, start=start))
