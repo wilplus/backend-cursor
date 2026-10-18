@@ -391,10 +391,13 @@ def save_exercise(
     reader = getattr(database, "get_diagnostic_exercise", None)
     before = reader(row["exercise_id"]) if reader is not None else None
     if owner_user_id:
-        owner = str((before or {}).get("owner_user_id") or "")
-        if owner and owner != str(owner_user_id):
-            raise CatalogueRefusal("This exercise belongs to another speaker.",
-                                   code="EXERCISE_UNAVAILABLE")
+        # Only a new exercise takes an owner, or one already theirs. A row
+        # filed before 0477 is the shared library's until the founder's
+        # clean-up (step 2) moves it: other speakers' practices may name it.
+        if isinstance(before, dict) and str(
+                before.get("owner_user_id") or "") != str(owner_user_id):
+            raise CatalogueRefusal("This exercise is not available.",
+                                   code="EXERCISE_UNAVAILABLE", status=409)
         row["owner_user_id"] = str(owner_user_id)
     if video_ref:
         row["explanation_video_url"] = video_ref

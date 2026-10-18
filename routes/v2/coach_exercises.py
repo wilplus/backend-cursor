@@ -63,11 +63,11 @@ def v2_coach_save_exercise():
     200 { exercise, version } · 400 (a refusal, readable) · 500"""
     from services.coach_exercise_authoring import save_from_coach_panel
     from services.diagnostic_exercise_catalogue import CatalogueRefusal
+    # The founder's Library door only (N77): the walk files a moment's
+    # exercise through the video door, which knows its speaker.
+    if not is_founder_request():
+        return jsonify({"code": "FORBIDDEN", "error": "Not available"}), 403
     body = request.get_json(silent=True) or {}
-    refused = _library_write_refused(
-        body.get("exercise_id") if isinstance(body, dict) else None)
-    if refused is not None:
-        return refused
     try:
         saved = save_from_coach_panel(
             db, body, coach_id=str(request.user_id))

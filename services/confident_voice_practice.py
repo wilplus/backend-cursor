@@ -543,7 +543,9 @@ def speaker_history(database: Any, owner_user_id: Any,
     except Exception as e:  # noqa: BLE001 — history never costs the offer
         _log.warning("speaker history failed owner=%s take=%s: %s",
                      owner_user_id, take_session_id, e)
-        return dict(EMPTY_HISTORY)
+        # Unknown, not empty: which videos rest cannot be guessed, so
+        # ``speaker_matches`` draws nothing on this read (N77).
+        return {**EMPTY_HISTORY, "rested": None}
     raw = raw if isinstance(raw, dict) else {}
     takes = raw.get("pattern_takes")
     takes = takes if isinstance(takes, dict) else {}
@@ -1057,7 +1059,9 @@ def speaker_matches(
     """``matched_exercises`` over a speaker's own set, by the founder's rule
     (N77): it fits only EXACTLY -- the video's main mistake was heard on
     this clip -- and a video whose practice already ended on a Good job
-    rests for good."""
+    rests for good. A history that could not be read draws nothing."""
+    if isinstance(history, dict) and history.get("rested", frozenset()) is None:
+        return None, []
     rested = (history.get("rested") or frozenset()
               if isinstance(history, dict) else frozenset())
     pool = [row for row in exercises
@@ -1206,6 +1210,8 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
     # not per candidate clip.
     vocabulary = detected_problem_vocabulary(database)
     history = speaker_history(database, owner_user_id, take_session_id)
+    if history.get("rested", frozenset()) is None:
+        return rows  # unread history: nothing drawn (N77), the next read retries
     # (fit, -covered, claimed, distance, -editorial, -priority, id, index)
     ranked: list[tuple[tuple, dict, dict, dict, dict]] = []
     for index, row in enumerate(candidates):
@@ -1363,6 +1369,16 @@ def _by_moment_for_take(database: Any, reader_name: str,
         if isinstance(row, dict) and row.get("snippet_id"):
             out.setdefault(str(row["snippet_id"]), row)
     return out
+
+
+def _rested_on_take(practices: Optional[dict]) -> frozenset[str]:
+    """Exercises whose practice on THIS Take ended on a Good job, from the
+    practices already read for it: they rest on its other moments too."""
+    from services.practice_check import machine_closed
+    return frozenset(
+        str(row.get("exercise_id")) for row in (practices or {}).values()
+        if isinstance(row, dict) and row.get("exercise_id")
+        and machine_closed(row))
 
 
 def _moment_closed(existing: Any) -> bool:
@@ -1545,11 +1561,15 @@ def _attach_exercises(
                  else getter(take_session_id, snippet_id)
                  if getter is not None else None)
         if isinstance(drawn, dict):
-            moment_history: dict = dict(EMPTY_HISTORY)
+            # Frozen; but a Good job on this Take rests its video here too.
+            moment_history: dict = {**EMPTY_HISTORY,
+                                    "rested": _rested_on_take(practices)}
         else:
             if history is None:
                 history = speaker_history(database, owner_user_id, take_session_id)
             moment_history = history
+            if history.get("rested", frozenset()) is None:
+                continue  # unread history: nothing drawn, the next read retries
         fit, keyed = speaker_matches(
             str(verdict.get("pattern") or ""), exercises,
             observed_tags=observed, history=moment_history)
@@ -1573,6 +1593,10 @@ def _attach_exercises(
                 history=moment_history,
                 take_session_id=take_session_id, snippet_id=snippet_id))
         if exercise is None:
+            # The frozen draw names a video this speaker no longer gets (a
+            # draw from before N77, or one rested since): nothing targets
+            # it for them now, as above.
+            target["problem_recognised"] = bool(observed)
             continue
         target["evidence"] = evidence
         target["practice_exercise"] = _offer_payload(
@@ -1792,12 +1816,21 @@ def start_exercise_check(*, snippet: dict, take_session_id: str,
     getter = getattr(database, "get_confident_voice_exercise_assignment", None)
     assignment = (getter(take_session_id, snippet_id)
                   if getter is not None else None)
-    if isinstance(assignment, dict):
+    shared = _shared_request_for(database, take_session_id, snippet_id)
+    coach_shared = shared is not None and str(
+        shared.get("resolved_exercise_id")) == str(exercise_id)
+    # A draw made before N77 may name a video this speaker no longer gets;
+    # the coach's share for the moment is what the row serves then.
+    if isinstance(assignment, dict) and (
+            not coach_shared
+            or str(assignment.get("selected_exercise_id")) == str(exercise_id)):
         if not clip_can_carry_exercise(verdict):
             return "NOT_ELIGIBLE", verdict, None
         if str(assignment.get("selected_exercise_id")) != str(exercise_id):
             return "EXERCISE_OFFER_STALE", verdict, None
         active = database.get_active_diagnostic_exercise(str(exercise_id))
+        if isinstance(active, dict) and not visible_to(active, owner_user_id):
+            return "EXERCISE_OFFER_STALE", verdict, None
         return None, verdict, {
             # In the speaker's own set: its video always plays (N77).
             "speaker_set": str(exercise_id) in {
@@ -1815,9 +1848,7 @@ def start_exercise_check(*, snippet: dict, take_session_id: str,
             "exercise_fit": fit_from_policy(
                 assignment.get("matching_policy_version")),
         }
-    shared = _shared_request_for(database, take_session_id, snippet_id)
-    if shared is not None and str(
-            shared.get("resolved_exercise_id")) == str(exercise_id):
+    if coach_shared and shared is not None:
         if not clip_can_carry_exercise(verdict):
             return "NOT_ELIGIBLE", verdict, None
         matching = {

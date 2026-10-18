@@ -1199,17 +1199,23 @@ def _practice_exercise_shape(practice, kind: str) -> dict:
     (founder lock 2026-09-30, D1) has no library exercise, so no library
     title, instruction or video."""
     from services.coach_answer_video import exercise_video_url
-    from services.confident_voice_practice import INSTRUCTION, TITLE
+    from services.confident_voice_practice import INSTRUCTION, TITLE, visible_to
 
     shared_exercise = practice.get("coach_shared_exercise")
+    hidden = False
     if practice.get("coach_shared_at") and isinstance(shared_exercise, dict):
         exercise = shared_exercise
     elif kind != "exercise":
         return {"exercise_id": kind, "version": 0, "title": "",
                 "instruction": "", "explanation_video_ref": None}
     else:
-        exercise = db.get_active_diagnostic_exercise(
-            str(practice.get("exercise_id") or "")) or \
+        live = db.get_active_diagnostic_exercise(
+            str(practice.get("exercise_id") or ""))
+        # Another speaker's coach video now (N77): the words this practice
+        # froze, never that speaker's live row or their video.
+        hidden = isinstance(live, dict) and not visible_to(
+            live, practice.get("owner_user_id"))
+        exercise = (None if hidden else live) or \
             (practice.get("exercise_snapshot")
              if isinstance(practice.get("exercise_snapshot"), dict) else {})
     return {
@@ -1219,7 +1225,7 @@ def _practice_exercise_shape(practice, kind: str) -> dict:
                    or practice.get("exercise_version"),
         "title": exercise.get("title") or TITLE,
         "instruction": exercise.get("instruction") or INSTRUCTION,
-        "explanation_video_ref": exercise_video_url(
+        "explanation_video_ref": None if hidden else exercise_video_url(
             exercise.get("explanation_video_url")
             or exercise.get("explanation_video_ref")
         ),

@@ -207,7 +207,9 @@ def save_coach_decision(database, practice: dict, body: dict,
         raise Refusal("V2_ERROR", "Could not save the coach decision.", 500)
     if attempt_id:
         _reconcile_album(database, practice, updated)
-    if share and custom_exercise is None:  # "Attach = both" (founder 09-25)
+    # "Attach = both" (founder 09-25): the shared library learns; a coach
+    # video for one speaker is no one else's to teach with (N77).
+    if share and custom_exercise is None and not exercise.get("owner_user_id"):
         teach_on_attach(database, practice, exercise_id, coach_id)
     if share:
         _into_speaker_set(database, practice, exercise_id,

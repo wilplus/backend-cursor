@@ -235,6 +235,14 @@ def attach_video(database: Any, *, exercise_id: str, coach_id: str,
     owner = speaker_for_exercise(database, exercise_id)
     if request_id_for_exercise(exercise_id) is not None and owner is None:
         return 404, {"code": "NOT_FOUND", "error": "request not found"}
+    if owner:
+        # Refused before anything is stored: a row filed before 0477 waits
+        # for the founder's clean-up (save_exercise says the same).
+        existing = database.get_diagnostic_exercise(str(exercise_id))
+        if isinstance(existing, dict) and str(
+                existing.get("owner_user_id") or "") != owner:
+            return 409, {"code": "EXERCISE_UNAVAILABLE",
+                         "error": "This exercise is not available."}
     try:
         validate_exercise(database, {**base, "explanation_video_url": _URL_TO_COME},
                           source="coach_panel")

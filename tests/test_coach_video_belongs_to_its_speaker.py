@@ -16,6 +16,7 @@ What the founder decided, pinned here through the public seams:
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from services import ai_voice_clip
 from services import confident_voice_practice as cvp
@@ -83,6 +84,60 @@ class TheAppPicksOnlyFromTheSpeakersOwnSet(unittest.TestCase):
         db = _Db([mine], {"owner-1": {"coach-request-a"}},
                  rested=["coach-request-a"])
         self.assertIsNone(self._offer(db, RUSHING))
+
+
+class ACoachsVideoIsMadeForOneSpeaker(unittest.TestCase):
+
+    def test_a_share_opens_on_a_moment_drawn_before(self):
+        """A draw from before N77 names a library video the speaker no
+        longer gets; the coach's own video shared for the moment opens."""
+        mine = {**V3ExerciseFitTests._row(
+            None, "coach-request-a", ["rushing"], primary="rushing"),
+            "owner_user_id": "owner-1"}
+
+        class Db(_Db):
+            def get_confident_voice_exercise_assignment(self, *_a):
+                return {"id": "asg-old", "selected_exercise_id": "library-x",
+                        "matching_policy_version": cvp.MATCHING_POLICY_VERSION}
+
+            def get_exercise_coach_request(self, *_a):
+                return {"id": "req-1", "owner_user_id": "owner-1",
+                        "shared_at": "now", "resolved_exercise_id": "coach-request-a",
+                        "resolved_exercise_version": 1}
+
+        weak = {"eligible": True, "pattern": "low_confidence_rushing_dominant",
+                "signals": RUSHING}
+        with patch.object(cvp, "exercise_eligibility", lambda *_a, **_k: weak):
+            refused, _verdict, matching = cvp.start_exercise_check(
+                snippet={"id": "snippet-a"}, take_session_id="take-1",
+                snippet_id="snippet-a", exercise_id="coach-request-a",
+                session_median_wpm=None, database=Db([mine], {}),
+                owner_user_id="owner-1")
+        self.assertIsNone(refused)
+        self.assertEqual(matching["matching_policy_version"],
+                         cvp.COACH_REQUEST_POLICY_VERSION)
+
+    def test_a_row_filed_before_is_not_claimed(self):
+        """A coach video for this speaker never takes over a row that was in
+        the shared library: other speakers may practise on it."""
+        from services.diagnostic_exercise_catalogue import (
+            CatalogueRefusal, save_exercise,
+        )
+
+        class Db:
+            def get_diagnostic_exercise(self, _id):
+                return {"exercise_id": "coach-request-a", "owner_user_id": None}
+
+            def list_speaking_errors(self, *_a, **_k):
+                return [{"error_id": "rushing", "status": "detected"}]
+
+        body = {**V3ExerciseFitTests._row(
+            None, "coach-request-a", ["rushing"], primary="rushing"),
+            "active": True}
+        with self.assertRaises(CatalogueRefusal) as refused:
+            save_exercise(Db(), body, source="coach_request",
+                          owner_user_id="owner-1")
+        self.assertEqual(refused.exception.code, "EXERCISE_UNAVAILABLE")
 
 
 class TheSpeakersOwnVideoAlwaysPlays(unittest.TestCase):
