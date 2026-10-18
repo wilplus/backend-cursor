@@ -1537,7 +1537,8 @@ class TakeRepository(TableRepository):
                 for row in res.data or []:
                     out.setdefault(str(row.get("arc_id")), []).append(row)
         except Exception as e:
-            logger.warning("get_arc_sessions_many failed n=%d: %s", len(ids), e)
+            logger.warning("get_arc_sessions_many failed n=%d: %s", len(ids), e,
+                           exc_info=True)
             return None
         return out
 
