@@ -340,6 +340,11 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("verbal_cue_shadow_observations",
                     "verbal_cue_shadow_observations", "take_session_id",
                     "take", "delete", "derived_feedback", 59),
+    # Why a green moment landed, in words, migration 0476. It quotes the
+    # speaker's own Take, so it goes with the Take.
+    PurgeDependency("green_moment_reasons",
+                    "green_moment_reasons", "take_session_id",
+                    "take", "delete", "derived_feedback", 59),
     # The coach request for a moment no exercise fitted, and the coach's
     # resolution of it, migration 0385. About one speaker's Take: it goes
     # with it.

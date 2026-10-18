@@ -446,6 +446,10 @@ class _ChangesRun:
         # all: a praise row that surfaces carries its catalogue line, a
         # rewrite row its move. No catalogue, no change to any row.
         self._stage("changes.catalogue", self._catalogue, degradable=True)
+        # WHY THE GREEN MOMENT LANDED (founder 2026-10-18). After the signed
+        # lines, on the rows that surface: a green row carries its stored
+        # reason, and one without has it queued, off this path.
+        self._stage("changes.praise_reason", self._praise_reason, degradable=True)
         return self._stage("changes.finish", self._finish)
 
     def _load_document(self) -> None:
@@ -1687,6 +1691,13 @@ class _ChangesRun:
             rows = []
         if rows or floor_rows():
             self.changes = decorate(self.changes, rows)
+
+    def _praise_reason(self) -> None:
+        """The green rows' reasons in words (services/praise_reason): one
+        read of what is stored; a missing one is queued, never written
+        here, so this stage never waits on a provider."""
+        from services.praise_reason import attach
+        self.changes = attach(self.db, self.changes)
 
     def _window(self) -> None:
         """At most three open moments reach the page (contract 24b/24c as

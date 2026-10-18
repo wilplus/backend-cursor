@@ -361,6 +361,29 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
   - **An answered clearer version stays read only** in the walk and from
     the Lounge (✓ and Next), as the "Walk first" entry says. No new words.
 
+- **A green moment says why it landed** (founder, 2026-10-18, in a Claude
+  Code session: "on that screen we need to explain why it was a good take;
+  not only it was a good take ... every confident moment should have smth
+  like this ... use gpt to write it"; prototype
+  <https://claude.ai/artifact/Wdaznuffm9SJEkkjPEuSaR> version 4, approved
+  "ok; dev it"). Amends section 2.2.
+  - **The screen:** the clip, then the bubble with the level line and
+    "It was your confident moment.", then a second bubble with the reason:
+    two or three short paragraphs, each at most three lines on a phone.
+    The speaker's own quoted words are orange, regular weight (no bold in
+    any bubble). Then "Next", as before.
+  - **The words** are written by GPT-4o, once per green clip, off the
+    request path (`services/praise_reason.py`), from that clip's evidence
+    only: what the speaker said, the slide, the voice cues against their
+    own usual, and the clean word signals. Code checks every reply: a real
+    quote, no number, score or measurement word, no comparison with other
+    people, nothing about the voice without a voice fact. A reply that
+    fails twice is kept empty.
+  - **No reason yet:** while it is being written the praise line stands
+    alone; if none comes, the cue lines follow it as before. In the Lounge
+    the praise step carries the reason when it was known as the step was
+    shown.
+
 ## Still open
 
 - **Self-judgement of your own practice try is off for launch** (founder,

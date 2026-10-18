@@ -435,6 +435,30 @@ def v2_explore_arc_review_summary(arc_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to save the summary"}), 500
 
 
+@v2_bp.route("/explore/arc/<arc_id>/praise-reasons", methods=["GET"])
+@require_auth
+def v2_explore_arc_praise_reasons(arc_id):
+    """Why each green moment landed, for the walk while one is still being
+    written (founder 2026-10-18; services/praise_reason). Read only: the
+    serve path queues the writing. Query: take_session_id, snippet_ids
+    (comma-separated). 200 {reasons, pending} · 404 · 500"""
+    try:
+        owned, sessions = _arc_owned_by_caller(arc_id)
+        if not owned:
+            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
+        take = str(request.args.get("take_session_id") or "")
+        if not take or not any(str(s.get("id")) == take for s in sessions):
+            return jsonify({"code": "NOT_FOUND", "error": "take not found"}), 404
+        ids = [s.strip() for s in (request.args.get("snippet_ids") or "").split(",")
+               if s.strip()]
+        from services.praise_reason import reasons_for
+        return jsonify(reasons_for(db, take, ids)), 200
+    except Exception as e:
+        logger.error("praise reasons failed arc=%s: %s", arc_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to read the reasons"}), 500
+
+
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/notes", methods=["PUT"])
 @require_auth
 def v2_explore_put_ideal_notes(arc_id):

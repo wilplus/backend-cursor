@@ -344,6 +344,18 @@ replace kind). Suggestion overlay ONLY — approved replacements write the
 student's own copy at serve time, never the canonical ideal text (L1)."""
 
 
+SPEC_GREEN_MOMENT_REASON = LLMSpec(
+    model=STRONG_MODEL,
+    temperature=0.5,
+    max_tokens=300,
+    response_format={"type": "json_object"},
+    timeout_seconds=20.0,
+)
+"""Why a green moment landed (founder 2026-10-18): up to three short
+paragraphs from one clip's own evidence, written off the request path.
+``services.praise_reason``."""
+
+
 """FIX.1 — Contextual follow-up question for the interview funnel.
 Replaces the legacy alternation prompt that produced bicycle →
 boardroom non-sequiturs (tester feedback)."""
