@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from contextvars import copy_context
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Any, Callable, Iterable, Mapping
@@ -103,7 +104,11 @@ def run_sections(
     pool = ThreadPoolExecutor(max_workers=min(8, len(readers)),
                               thread_name_prefix="ideal-enrichment")
     try:
-        futures = {name: pool.submit(reader) for name, reader in readers.items()}
+        # Each reader keeps the request's context (its own copy: one Context
+        # cannot be entered by two threads), so the stopwatch counts the
+        # sections' database calls and names their laps.
+        futures = {name: pool.submit(copy_context().run, reader)
+                   for name, reader in readers.items()}
         for name, future in futures.items():
             section_started = perf_counter()
             remaining = max(0.001, timeout_seconds - (perf_counter() - started))
