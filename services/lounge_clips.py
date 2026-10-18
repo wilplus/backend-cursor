@@ -193,3 +193,54 @@ def attach_take_audio(messages: list, user_id: str, database: Any,
             url = None
         if url and isinstance(meta, dict):
             meta["audio"] = {"src": url}
+
+
+def enrich_page(page: dict, user_id: str, database: Any, *,
+                resolve_snippet: Callable[[dict], Optional[str]],
+                resolve_ref: Callable[[Any], Optional[str]],
+                with_flags: bool) -> None:
+    """Everything the Lounge read adds to a page of messages: fresh clip,
+    practice, deck and recording links, and (newest page only) the Ideal
+    Text bubble's "new". The reads are independent, so they run side by
+    side (founder 2026-10-18, "optimise the loading time") instead of one
+    after another; the slowest one, not their sum, sets the wait.
+
+    Thread safety: each group writes keys no other group touches. Walk
+    clips carry a ``snippet_id`` and practise clips a ``practice_id`` (never
+    both), decks write ``deck`` on cards, recordings write ``audio`` on
+    readouts, and the flags are a return value. Clips and recordings share
+    one read of the page's Takes, so they stay in one group, in order.
+    """
+    from services.parallel import run_in_parallel
+    from services.request_context import lap
+
+    messages = page.get("messages") or []
+
+    def recordings() -> None:
+        with lap("takes"):
+            clips_db = with_page_snippets(messages, database)
+        with lap("clips"):
+            refresh_walk_clips(messages, user_id, clips_db, resolve_snippet)
+        with lap("audio"):
+            attach_take_audio(messages, user_id, clips_db, resolve_ref)
+
+    def practice() -> None:
+        with lap("practice"):
+            refresh_practice_clips(messages, user_id, database, resolve_ref)
+
+    def decks() -> None:
+        with lap("decks"):
+            attach_card_decks(messages, user_id, database)
+
+    def flags() -> Optional[dict]:
+        if not with_flags:
+            return None
+        # The Ideal Text bubble's "new" (D-FW-5, walk lock flow 1): one
+        # yes/no per project, never a count; {} when it cannot be read.
+        from services.coach_feedback_signal import lounge_flags
+        with lap("flags"):
+            return lounge_flags(database, user_id)
+
+    _, _, _, fresh = run_in_parallel(recordings, practice, decks, flags)
+    if fresh is not None:
+        page["new_coach_feedback"] = fresh
