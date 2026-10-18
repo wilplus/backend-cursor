@@ -484,5 +484,46 @@ class ChargeAtomicityTests(unittest.TestCase):
         self.assertGreater(first.charged, 0)
 
 
+class BalanceReadTests(unittest.TestCase):
+    """The balance read is ONE round trip on a migrated database (founder
+    2026-10-18: /v2/tokens/balance at 950 ms was three sequential selects of
+    the same row). A database without the later columns still answers,
+    through the narrow read plus the two reads that always existed."""
+
+    def test_one_read_when_the_row_carries_every_column(self):
+        row = account_row(balance=1000, bonus=500)
+        row["coach_review_credits"] = 2
+        db = FakeDB(row=row)
+        import services.token_account as ta
+        acct = ta.get_account("u1", database=db)
+        self.assertEqual(acct["balance"], 1500)
+        self.assertEqual(acct["bonus_balance"], 500)
+        self.assertEqual(acct["coach_reviews"]["allowed"], 2)
+        self.assertEqual(db.client.table.call_count, 1)
+
+    def test_the_narrow_read_still_answers_without_the_later_columns(self):
+        """The wide select is refused (a column the database lacks); the read
+        falls back and the balance is what it always was."""
+        db = FakeDB(row=account_row(balance=1000))
+        real_table = db.client.table.side_effect
+
+        class _Refusing(AccountTable):
+            def select(self, columns, *a, **k):
+                if "bonus_balance" in columns:
+                    raise RuntimeError("column bonus_balance does not exist")
+                return super().select(columns, *a, **k)
+
+        def table(name):
+            t = real_table(name)
+            return _Refusing(db.store, db.ledger) if isinstance(t, AccountTable) and not isinstance(t, LedgerTable) else t
+
+        db.client.table.side_effect = table
+        import services.token_account as ta
+        acct = ta.get_account("u1", database=db)
+        self.assertEqual(acct["balance"], 1000)
+        self.assertEqual(acct["bonus_balance"], 0)
+        self.assertEqual(acct["coach_reviews"]["allowed"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

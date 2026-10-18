@@ -176,6 +176,63 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+#: The account row as every read needs it.
+_ACCOUNT_COLUMNS = "user_id, tier, token_balance, period_start, coach_reviews_used"
+#: The two later columns (add_legacy_credit_conversion.sql, 0420), read in
+#: the same round trip when the database has them.
+_ACCOUNT_EXTRA_COLUMNS = "bonus_balance, coach_review_credits"
+
+
+def _read_account_rows(user_id: str, db) -> Optional[list]:
+    """The account row(s), in ONE round trip where the database allows it.
+
+    FOUNDER 2026-10-18 (the network tab: /v2/tokens/balance at 950 ms, three
+    database calls). The balance read was three sequential selects of the
+    SAME row — the account, then its bonus balance, then its coach credits —
+    each a round trip from Railway to Supabase, because the two later columns
+    were read on their own so that a database without the migration kept
+    answering. That reason still holds, so the one wide select is TRIED
+    first and the narrow one is the fallback: a database that lacks a column
+    refuses the wide select, and the read continues exactly as before, the
+    two extras then read on their own by `get_account`. ``None`` means the
+    row could not be read at all."""
+    try:
+        res = (
+            db.client.table(_ACCOUNT_TABLE)
+            .select(f"{_ACCOUNT_COLUMNS}, {_ACCOUNT_EXTRA_COLUMNS}")
+            .eq("user_id", str(user_id))
+            .execute()
+        )
+        return res.data or []
+    except Exception as e:
+        logger.info("token_account: wide read declined user=%s (%s); "
+                    "reading the base columns", user_id, type(e).__name__,
+                    exc_info=True)
+    try:
+        res = (
+            db.client.table(_ACCOUNT_TABLE)
+            .select(_ACCOUNT_COLUMNS)
+            .eq("user_id", str(user_id))
+            .execute()
+        )
+        return res.data or []
+    except Exception as e:
+        logger.warning("token_account: read failed user=%s err=%s", user_id, e)
+        return None
+
+
+def _column_int(row: dict, column: str) -> Optional[int]:
+    """The column's value when the row CARRIES it (the wide read landed), or
+    None when it has to be read on its own. A NULL in a carried column is 0:
+    the never-granted bonus the CAS below also treats as none."""
+    if column not in row:
+        return None
+    try:
+        return max(0, int(row.get(column) or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 def ensure_period_current(user_id: str, *, database=None) -> Optional[dict]:
     """Load the account, rolling the monthly period forward if it has elapsed.
 
@@ -186,17 +243,8 @@ def ensure_period_current(user_id: str, *, database=None) -> Optional[dict]:
     if not user_id:
         return None
     db = database or _db()
-    try:
-        res = (
-            db.client.table(_ACCOUNT_TABLE)
-            .select("user_id, tier, token_balance, period_start, "
-                    "coach_reviews_used")
-            .eq("user_id", str(user_id))
-            .execute()
-        )
-        rows = res.data or []
-    except Exception as e:
-        logger.warning("token_account: read failed user=%s err=%s", user_id, e)
+    rows = _read_account_rows(user_id, db)
+    if rows is None:
         return None
 
     now = _now()
@@ -355,9 +403,16 @@ def get_account(user_id: str, *, database=None) -> Optional[dict]:
     tier = normalize_tier(row.get("tier"))
     start = _parse_ts(row.get("period_start")) or _now()
     used = int(row.get("coach_reviews_used") or 0)
-    allowed = coach_allowance(user_id, tier, database=database)
+    # Carried by the one wide read when the database has the columns; read
+    # on their own, as before, when it does not (`_read_account_rows`).
+    credits = _column_int(row, "coach_review_credits")
+    allowed = coach_reviews_for(tier) + (
+        credits if credits is not None
+        else _read_coach_review_credits(user_id, database=database))
     monthly = int(row.get("token_balance") or 0)
-    bonus = _read_bonus_balance(user_id, database=database)
+    bonus = _column_int(row, "bonus_balance")
+    if bonus is None:
+        bonus = _read_bonus_balance(user_id, database=database)
     return {
         # TOTAL spendable. `balance` keeps meaning "what you can spend right
         # now", so nothing that already reads it needs to change.
