@@ -42,7 +42,7 @@ import logging
 import os
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from services.token_prices import (
     COACH_ACTIONS,
@@ -176,6 +176,59 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+# The account row's core columns, and the two that later migrations added
+# (add_legacy_credit_conversion.sql, 0420). The balance read used to fetch the
+# two in their own queries so a database without them could still answer; it
+# now asks for everything in ONE call and falls back to the core columns only
+# when the database says a column is missing (founder 2026-10-18: the balance
+# read was three round trips to the same row, ~220 ms, on every page open).
+_CORE_COLUMNS = "user_id, tier, token_balance, period_start, coach_reviews_used"
+_OPTIONAL_COLUMNS = ("bonus_balance", "coach_review_credits")
+_ALL_COLUMNS = ", ".join((_CORE_COLUMNS, *_OPTIONAL_COLUMNS))
+# Flipped off for the life of the process the first time the wide read is
+# refused, so an unmigrated database pays the fallback once, not per request.
+_wide_read_ok = True
+
+
+def _column_missing(err: Exception) -> bool:
+    low = str(err).lower()
+    return (any(c in low for c in _OPTIONAL_COLUMNS)
+            and "does not exist" in low) or \
+        any(s in low for s in ("42703", "pgrst204"))
+
+
+def _select_account(db, user_id: str) -> list:
+    """The account row (a one-item list, or []) in one round trip. Raises when
+    the read fails for any reason other than the optional columns missing."""
+    global _wide_read_ok
+    table = db.client.table(_ACCOUNT_TABLE)
+    if _wide_read_ok:
+        try:
+            res = table.select(_ALL_COLUMNS).eq("user_id", str(user_id)).execute()
+            return res.data or []
+        except Exception as e:
+            if not _column_missing(e):
+                raise
+            logger.info("token_account: optional columns missing, reading "
+                        "the core columns only (%s)", type(e).__name__)
+            _wide_read_ok = False
+            table = db.client.table(_ACCOUNT_TABLE)
+    res = table.select(_CORE_COLUMNS).eq("user_id", str(user_id)).execute()
+    return res.data or []
+
+
+def _optional_int(row: dict, column: str,
+                  read_separately: Callable[[], int]) -> int:
+    """A column the wide read carried, or — on a row that lacks it (a core-only
+    read, a freshly seeded row) — the old separate read. Never raises."""
+    if column in row:
+        try:
+            return max(0, int(row.get(column) or 0))
+        except (TypeError, ValueError):
+            return 0
+    return read_separately()
+
+
 def ensure_period_current(user_id: str, *, database=None) -> Optional[dict]:
     """Load the account, rolling the monthly period forward if it has elapsed.
 
@@ -187,14 +240,7 @@ def ensure_period_current(user_id: str, *, database=None) -> Optional[dict]:
         return None
     db = database or _db()
     try:
-        res = (
-            db.client.table(_ACCOUNT_TABLE)
-            .select("user_id, tier, token_balance, period_start, "
-                    "coach_reviews_used")
-            .eq("user_id", str(user_id))
-            .execute()
-        )
-        rows = res.data or []
+        rows = _select_account(db, user_id)
     except Exception as e:
         logger.warning("token_account: read failed user=%s err=%s", user_id, e)
         return None
@@ -240,14 +286,9 @@ def ensure_period_current(user_id: str, *, database=None) -> Optional[dict]:
     if not won:
         # Another request rolled it first. Not an error — re-read and use theirs.
         try:
-            res2 = (
-                db.client.table(_ACCOUNT_TABLE)
-                .select("user_id, tier, token_balance, period_start, "
-                        "coach_reviews_used")
-                .eq("user_id", str(user_id)).execute()
-            )
-            if res2.data:
-                out = res2.data[0]
+            rows2 = _select_account(db, user_id)
+            if rows2:
+                out = rows2[0]
                 out["tier"] = normalize_tier(out.get("tier"))
                 return out
         except Exception:
@@ -294,11 +335,11 @@ def _seed(user_id: str, now: datetime, *, tier: str = DEFAULT_TIER,
 def _read_bonus_balance(user_id: str, *, database=None) -> int:
     """Non-expiring tokens, or 0 if unreadable/unmigrated. Never raises.
 
-    Its own query, deliberately — folding `bonus_balance` into the main account
-    select would make the whole balance read fail on a database where
-    add_legacy_credit_conversion.sql has not been run yet, and that read is the
-    one thing this module works hardest to keep alive. 0 is the correct
-    degraded answer: it is exactly today's behaviour."""
+    The FALLBACK read. The balance read carries `bonus_balance` with the row
+    (`_select_account`); this separate query is for a row that lacks the
+    column — a database where add_legacy_credit_conversion.sql has not run,
+    or a row just seeded — so that read, the one thing this module works
+    hardest to keep alive, still answers. 0 is the correct degraded answer."""
     if not user_id:
         return 0
     db = database or _db()
@@ -318,7 +359,7 @@ def _read_bonus_balance(user_id: str, *, database=None) -> int:
 
 def _read_coach_review_credits(user_id: str, *, database=None) -> int:
     """Coach reviews bought in packages (0420), or 0 if unreadable or not
-    migrated. Its own query, for the reason ``_read_bonus_balance`` gives."""
+    migrated. The fallback read, for the reason ``_read_bonus_balance`` gives."""
     if not user_id:
         return 0
     db = database or _db()
@@ -336,12 +377,17 @@ def _read_coach_review_credits(user_id: str, *, database=None) -> int:
         return 0
 
 
-def coach_allowance(user_id: str, tier: Optional[str], *, database=None) -> int:
+def coach_allowance(user_id: str, tier: Optional[str], *, database=None,
+                    credits: Optional[int] = None) -> int:
     """The coach reviews a user may have in all: the tier's own (the free
     tier's is 0) plus every review bought in a package. Spent against
-    ``coach_reviews_used``, which no longer resets (contract §8)."""
-    return coach_reviews_for(tier) + _read_coach_review_credits(
-        user_id, database=database)
+    ``coach_reviews_used``, which no longer resets (contract §8).
+
+    ``credits`` is the bought count when the caller already holds the row
+    (the balance read); otherwise it is read here."""
+    if credits is None:
+        credits = _read_coach_review_credits(user_id, database=database)
+    return coach_reviews_for(tier) + credits
 
 
 def get_account(user_id: str, *, database=None) -> Optional[dict]:
@@ -355,9 +401,16 @@ def get_account(user_id: str, *, database=None) -> Optional[dict]:
     tier = normalize_tier(row.get("tier"))
     start = _parse_ts(row.get("period_start")) or _now()
     used = int(row.get("coach_reviews_used") or 0)
-    allowed = coach_allowance(user_id, tier, database=database)
+    # Both come with the row now (one round trip); the separate reads remain
+    # for a row that lacks them.
+    credits = _optional_int(
+        row, "coach_review_credits",
+        lambda: _read_coach_review_credits(user_id, database=database))
+    allowed = coach_allowance(user_id, tier, database=database, credits=credits)
     monthly = int(row.get("token_balance") or 0)
-    bonus = _read_bonus_balance(user_id, database=database)
+    bonus = _optional_int(
+        row, "bonus_balance",
+        lambda: _read_bonus_balance(user_id, database=database))
     return {
         # TOTAL spendable. `balance` keeps meaning "what you can spend right
         # now", so nothing that already reads it needs to change.

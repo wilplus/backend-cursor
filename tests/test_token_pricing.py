@@ -354,6 +354,57 @@ class PeriodResetTests(unittest.TestCase):
         self.assertEqual(a["token_balance"], b["token_balance"])
 
 
+class BalanceReadTests(unittest.TestCase):
+    """GET /v2/tokens/balance is on every page open (the header's chip), so
+    its cost is the loop's cost: one round trip to the account row, and an
+    answer even on a database that has not had the newer columns added."""
+
+    def setUp(self):
+        import services.token_account as ta
+        self.ta = ta
+        self.env = patch.dict("os.environ", {"TOKEN_PRICING_ENABLED": "1"})
+        self.env.start()
+        self.wide = patch.object(ta, "_wide_read_ok", True)
+        self.wide.start()
+
+    def tearDown(self):
+        self.wide.stop()
+        self.env.stop()
+
+    def test_balance_is_one_database_call(self):
+        row = account_row(balance=12_000, bonus=500)
+        row["coach_review_credits"] = 2
+        db = FakeDB(row)
+        acct = self.ta.get_account("u1", database=db)
+        self.assertEqual(db.client.table.call_count, 1,
+                         "the balance read went back to the row more than once")
+        self.assertEqual(acct["balance"], 12_500)
+        self.assertEqual(acct["bonus_balance"], 500)
+        self.assertEqual(acct["coach_reviews"]["allowed"], 2)
+
+    def test_balance_still_answers_without_the_newer_columns(self):
+        class OldAccountTable(AccountTable):
+            def select(self, cols="", **_k):
+                if "bonus_balance" in cols:
+                    raise Exception(
+                        "column v2_student_details.bonus_balance does not exist")
+                return super().select(cols)
+
+        class OldDB(FakeDB):
+            def _table(self, name):
+                if name == "token_ledger":
+                    return LedgerTable(self.store, self.ledger)
+                return OldAccountTable(self.store, self.ledger)
+
+        db = OldDB(account_row(balance=12_000))
+        acct = self.ta.get_account("u1", database=db)
+        self.assertIsNotNone(acct, "an unmigrated database must not hide the balance")
+        self.assertEqual(acct["balance"], 12_000)
+        self.assertEqual(acct["bonus_balance"], 0)
+        # Remembered: the next read does not try the wide columns again.
+        self.assertFalse(self.ta._wide_read_ok)
+
+
 class ChargeTests(unittest.TestCase):
     def setUp(self):
         import services.token_account as ta
