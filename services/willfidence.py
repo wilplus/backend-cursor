@@ -7,14 +7,22 @@ words). Every value is 0 to 1 and never reaches a screen (AC-9).
 
   S          the machine's sound read: the mean of the moment's clips'
              universal-v3 reads (-1..+1), stretched evenly to 0..1 (V4 A).
-  Filler     how free the moment is of filler words (S-B1 A): the share of
-             its words that are unambiguous fillers (``FILLER_TERMS``), on
-             the stricter scale (V5 B): none gives 1, ``CEILING_PER_100`` or
-             more per 100 words gives 0, a straight line between. "So",
-             "like" and "right" never count.
+  Filler     how free the moment is of filler words (S-B1 A; WIL-28,
+             founder 2026-10-18). Every filler counts: an unambiguous one
+             ("um", "uh", "basically"; ``FILLER_TERMS``) counts 1, an
+             ambiguous one ("so", "like", "right", "you know";
+             ``AMBIGUOUS_FILLER_TERMS``) counts ``AMBIGUOUS_FILLER_WEIGHT``,
+             because each of those also has an honest use. The weighted
+             count per 100 words goes through a smooth curve instead of the
+             old straight line to zero: none gives 1,
+             ``FILLER_MIDPOINT_PER_100`` per 100 words gives 0.5, twice that
+             gives a third, and every extra filler always costs a little
+             (``curve``). Nothing is flattened to 0.
   Hedging    how directly the speaker commits (S-B1 A): the share of its
-             words that are unambiguous hedges (``HEDGE_TERMS``), the same
-             scale. Modal words like "might" or "could" never count.
+             words that are unambiguous hedges (``HEDGE_TERMS``), on the
+             stricter scale (V5 B): none gives 1, ``CEILING_PER_100`` or
+             more per 100 words gives 0, a straight line between. Modal
+             words like "might" or "could" never count.
   Slide fit  whether the moment says what its slide is about (S-B1 A): 1 if
              it fully makes at least one of the slide's points, 0.5 if it
              partly does, 0 if none, by the point-by-point check the app
@@ -51,9 +59,16 @@ READ_VERSION = "willfidence-v1-machine"
 SOUND_VERSION = "voice-confidence-universal-v3"
 TASK_PATH = "services.willfidence.run_read"
 
-#: V5 B: this many per 100 words or more gives 0. "A starting value you can
-#: change later" — a change is a new read version.
+#: V5 B (hedging): this many per 100 words or more gives 0. "A starting
+#: value you can change later" — a change is a new read version.
 CEILING_PER_100 = 10
+
+#: WIL-28 (filler): this many weighted fillers per 100 words reads 0.5.
+FILLER_MIDPOINT_PER_100 = 5
+
+#: WIL-28: what one ambiguous filler ("so", "like", "right") counts against
+#: one unambiguous filler ("um").
+AMBIGUOUS_FILLER_WEIGHT = 0.5
 
 #: The unambiguous entries of the lexicons (verbal_markers, SPEC D21): the
 #: ones with no common non-marker use. Every ambiguous term ("so", "like",
@@ -61,6 +76,9 @@ CEILING_PER_100 = 10
 FILLER_TERMS = tuple(sorted(
     term for term, ambiguous in verbal_markers.lexicon(verbal_markers.TIC).items()
     if not ambiguous))
+AMBIGUOUS_FILLER_TERMS = tuple(sorted(
+    term for term, ambiguous in verbal_markers.lexicon(verbal_markers.TIC).items()
+    if ambiguous))
 HEDGE_TERMS = tuple(sorted(
     term for term, ambiguous in verbal_markers.lexicon(verbal_markers.HEDGE).items()
     if not ambiguous))
@@ -91,9 +109,19 @@ def scale(marks: int, words: int) -> Optional[float]:
     return max(0.0, 1.0 - per_100 / CEILING_PER_100)
 
 
+def curve(marks: float, words: int) -> Optional[float]:
+    """WIL-28: 1 at no marks, 0.5 at FILLER_MIDPOINT_PER_100 per 100 words,
+    then ever closer to 0 without reaching it: 1 / (1 + rate / midpoint)."""
+    if words <= 0:
+        return None
+    per_100 = 100.0 * marks / words
+    return 1.0 / (1.0 + per_100 / FILLER_MIDPOINT_PER_100)
+
+
 def filler(text: Any) -> Optional[float]:
-    counted = verbal_markers.count(text)
-    return scale(counted[verbal_markers.TIC]["strict"], counted["n_words"])
+    tics = verbal_markers.count(text)[verbal_markers.TIC]
+    weighted = tics["strict"] + AMBIGUOUS_FILLER_WEIGHT * tics["ambiguous"]
+    return curve(weighted, verbal_markers.word_count(text))
 
 
 def hedging(text: Any) -> Optional[float]:
