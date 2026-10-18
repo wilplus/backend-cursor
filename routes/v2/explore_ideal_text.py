@@ -213,28 +213,30 @@ def v2_explore_get_ideal_text_enrichment(arc_id):
     """Optional sections bound to one immutable document snapshot."""
     from time import perf_counter
     from services.ideal_text_enrichment import (
-        FENCED_SECTIONS, EnrichmentDeps, beside as _beside, budget_for,
+        FENCED_SECTIONS, EnrichmentDeps, budget_for,
         requested_sections as requested_sections_of,
         run_sections, section_readers, stale_snapshot)
+    from services.parallel import run_in_parallel
     started = perf_counter()
     snapshot_id = (request.args.get("document_snapshot_id") or "").strip()
+    # The ownership read and the core read go out together (2026-10-18: one
+    # round trip, not two, before any section starts). The core read is
+    # owner-checked itself, and a caller who does not own the arc gets the
+    # 404 below whatever it returned.
+    #
     # The generation-fenced core read treats a head invalidated by a source
     # mutation as stale immediately.  Reading the mutable head directly here
     # would let enrichment attach to an old document during republishing.
-    #
-    # It runs BESIDE the ownership read, not after it (founder 2026-10-18,
-    # "optimise the loading"): one round trip instead of two. It is keyed on
-    # the caller as actor, so it can only ever read the caller's own
-    # document, and a non-owner's answer is dropped unread below.
-    current_read = _beside(db.get_ideal_text_document_core,
-                           arc_id, str(request.user_id)) if snapshot_id else None
-    owned, sessions = _arc_owned_by_caller(arc_id)
+    actor_id = str(request.user_id)
+    (owned, sessions), current = run_in_parallel(
+        lambda: _arc_owned_by_caller(arc_id),
+        lambda: (db.get_ideal_text_document_core(arc_id, actor_id)
+                 if snapshot_id else None))
     if not owned:
         return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-    if current_read is None:
+    if not snapshot_id:
         return jsonify({"code": "SNAPSHOT_REQUIRED",
                         "error": "document_snapshot_id is required"}), 400
-    current = current_read.result()
     # The core read returns the whole snapshot row, so when it IS the asked-for
     # snapshot there is nothing more to read. Only a mismatch needs the
     # by-id read, to tell "stale" (409) from "never existed" (404).

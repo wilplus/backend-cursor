@@ -1,8 +1,8 @@
 """Bounded, independently failing Ideal Text enrichment sections."""
 from __future__ import annotations
 
-import contextvars
-from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from contextvars import copy_context
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Any, Callable, Iterable, Mapping
@@ -104,7 +104,11 @@ def run_sections(
     pool = ThreadPoolExecutor(max_workers=min(8, len(readers)),
                               thread_name_prefix="ideal-enrichment")
     try:
-        futures = {name: pool.submit(reader) for name, reader in readers.items()}
+        # Each reader keeps the request's context (its own copy: one Context
+        # cannot be entered by two threads), so the stopwatch counts the
+        # sections' database calls and names their laps.
+        futures = {name: pool.submit(copy_context().run, reader)
+                   for name, reader in readers.items()}
         for name, future in futures.items():
             section_started = perf_counter()
             remaining = max(0.001, timeout_seconds - (perf_counter() - started))
@@ -128,18 +132,6 @@ def run_sections(
         # this response and their result is discarded.
         pool.shutdown(wait=False, cancel_futures=True)
     return sections, timings
-
-
-def beside(read: Callable[..., Any], *args: Any) -> Future:
-    """Start one read on its own thread while the request does another;
-    ``.result()`` waits for it (and raises what it raised). It carries the
-    request's context, so its database call is counted on the stopwatch."""
-    pool = ThreadPoolExecutor(max_workers=1,
-                              thread_name_prefix="ideal-enrichment-beside")
-    try:
-        return pool.submit(contextvars.copy_context().run, read, *args)
-    finally:
-        pool.shutdown(wait=False)
 
 
 
