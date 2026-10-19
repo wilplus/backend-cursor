@@ -29,7 +29,11 @@ class TakeWordRefusal(Exception):
         self.message, self.code, self.status = message, code, status
 
 
-def _clean(body: Any) -> tuple[Optional[str], Optional[str], bool]:
+def _clean(body: Any) -> tuple[Optional[str], Optional[str], bool, bool]:
+    """(text, video_ref, keep_video, share). A body that names no video_ref
+    keeps the word's saved video (founder 2026-10-19: a coach who edits only
+    the words no longer loses their video); an explicit null or empty
+    video_ref removes it."""
     fields = body if isinstance(body, dict) else {}
     text = " ".join(str(fields.get("text") or "").split()) or None
     if text and len(text) > MAX_TEXT:
@@ -37,7 +41,7 @@ def _clean(body: Any) -> tuple[Optional[str], Optional[str], bool]:
     video_ref = str(fields.get("video_ref") or "").strip() or None
     if not text and not video_ref:
         raise TakeWordRefusal("Write a message or add a video.")
-    return text, video_ref, fields.get("share") is True
+    return text, video_ref, "video_ref" not in fields, fields.get("share") is True
 
 
 def _stored_ref(video_ref: Optional[str], take_session_id: str) -> Optional[str]:
@@ -58,25 +62,27 @@ def save_take_word(database: Any, *, take_session_id: str, coach_id: str,
     """PUT: the coach's one word for this Take, replaced on each save;
     `share: true` sends it. Raises TakeWordRefusal for anything the coach
     can fix. Returns the payload the coach reads back."""
-    text, video_ref, share = _clean(body)
+    text, video_ref, keep_video, share = _clean(body)
     video_ref = _stored_ref(video_ref, str(take_session_id))
     row = database.upsert_coach_take_word(
         take_session_id=str(take_session_id), coach_id=str(coach_id),
-        text=text, video_ref=video_ref, share=share)
+        text=text, video_ref=video_ref, share=share, keep_video=keep_video)
     if not isinstance(row, dict):
         raise TakeWordRefusal("Could not save the word.", "V2_ERROR", 500)
     if share:
-        _tell_the_speaker(database, str(take_session_id), text=text, video_ref=video_ref,
+        _tell_the_speaker(database, str(take_session_id), text=text,
+                          video_ref=row.get("video_ref") or None,
                           first_share=_first_share(row))
         # The Take's closing summary is rewritten with the word, in place
         # (founder lock 2026-10-12, section 3). Behind the save.
         from services.take_summary import coach_update
         coach_update(database, str(take_session_id), text)
-    _the_pair(database, row, coach_id=str(coach_id), text=text)
+    _the_pair(database, row, coach_id=str(coach_id), text=text, new_video=not keep_video)
     return take_word_payload(row) or {}
 
 
-def _the_pair(database: Any, row: dict, *, coach_id: str, text: Optional[str]) -> None:
+def _the_pair(database: Any, row: dict, *, coach_id: str, text: Optional[str],
+              new_video: bool = True) -> None:
     """7 (C5-a, 0411): when a draft was shown and the coach's words differ,
     the (draft, final) pair; a video's transcript is a second final. Both
     best-effort; the word is saved either way."""
@@ -85,7 +91,10 @@ def _the_pair(database: Any, row: dict, *, coach_id: str, text: Optional[str]) -
             record_take_word_pair, transcribe_take_word_video_in_background,
         )
         record_take_word_pair(database, word_row=row, coach_id=coach_id, final_text=text)
-        if row.get("video_ref") and not row.get("transcript"):
+        # Only a save that brings a video sends it to the transcriber: a
+        # word-only edit never sends the kept video again (one still being
+        # transcribed, or one with no speech in it).
+        if new_video and row.get("video_ref") and not row.get("transcript"):
             transcribe_take_word_video_in_background(database, word_row=row,
                                                      coach_id=coach_id)
     except Exception as e:  # noqa: BLE001 -- the word is saved either way
