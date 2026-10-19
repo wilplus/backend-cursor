@@ -1,84 +1,30 @@
-"""Where a Paragraph is born: identity for a document nobody edited.
-
-PRODUCTION, 2026-09-19. The founder asked the right question -- "investigate
-why it can't put the paragraph in the right place, maybe none is put in the
-right place and that is why nothing displays" -- and the log line shipped in
-#567 answered it in one number:
-
-    services.ideal_text_parts: piece->part binding skipped
-    parts=0 pieces=3 take=34e2c19c-e1d6-4efa-b2df-0a5fff6cb48d
-
-``parts=0``. The binder was not mis-placing anything. It had NOTHING to place
-against, so #564's gate fix and #567's per-row exclusion both bought exactly
-nothing: three healthy pieces, zero Paragraphs, every row rejected with
-``piece_has_no_part_id``.
-
-THE CAUSE IS A GAP IN THE LIFECYCLE, NOT A BUG IN A FUNCTION. Every writer of
-``ideal_text_part`` needs identity to already exist -- the edit PUT stores the
-client's list, seed-on-lock adopts the client's list, and ``compose_locked``
-refreshes a list that has stored locks. Nothing mints. So a document acquires
-Paragraph identity only when the student EDITS or LOCKS a paragraph, and a
-student who has done neither has none. That is the normal state of a fresh
-project, which is why V3 has produced nothing for anyone.
-
-TWO SURFACES WERE DARK FOR THE ONE REASON, and this is what makes it worth
-fixing at the source rather than in the binder:
-
-  1. V3's last gate, above.
-  2. The deck's slide join. ``_exact_pieces`` reads ``part.get("id")`` from
-     the same empty list, so it publishes ``part_id: None`` on every piece;
-     the FE's ``partsFromCorePieces`` then declines the whole set (it refuses
-     a partial adoption, correctly) and re-mints ids the server has never
-     seen. That is #411's regression, still live for any never-edited
-     document.
-
-MINTED AT THE PUBLISH BOUNDARY, ONCE. ``build_snapshot`` already persists a
-composed list and already documents why it may: it "runs only while
-publishing; the GET path never calls it". Nothing else changes -- the words
-are untouched (L1), and a document with any identity of its own is never
-written to.
+"""
+STORY    As a speaker who never edited my Ideal Text, I want my document to get
+         paragraph identity when it is published, so that feedback and slides
+         attach to my paragraphs and the screen is not empty.
+OUTCOME
+  O1  Publishing a never-edited document writes one part per paragraph, each
+      with its own id, and the words are unchanged.
+  O2  A second publish of the same document writes nothing; the ids stay.
+  O3  A document that already has its own parts is never rewritten.
+  O4  A document whose paragraphs cannot be proven gets no parts; the words
+      are still published unchanged.
+PROVES   O1 -> test_a_never_edited_document_gets_one_part_per_paragraph
+         O2 -> test_a_second_publish_writes_nothing
+         O3 -> test_a_document_with_its_own_parts_is_never_rewritten
+         O4 -> test_an_unprovable_split_writes_no_parts
+WHY      Production 2026-09-19: `parts=0 pieces=3` -- nothing ever minted
+         identity, so V3 feedback and the slide join were dark.
 """
 from __future__ import annotations
 
 import unittest
+import uuid
 from unittest.mock import patch
-
-from services.ideal_text_parts import (
-    mint_machine_parts,
-)
 
 FIRST = "The opening paragraph of the talk."
 SECOND = "A second paragraph, on the very same slide."
 SERVED = f"{FIRST}\n\n{SECOND}"
-
-
-class ItRefusesRatherThanApproximating(unittest.TestCase):
-    """None means "behave exactly as today", and it is always the safe answer."""
-
-    def test_an_empty_document_mints_nothing(self):
-        for empty in ("", "   \n\n  ", None, 42, []):
-            self.assertIsNone(mint_machine_parts(empty))
-
-
-    def test_an_unpaired_moment_bracket_is_refused(self):
-        self.assertIsNone(mint_machine_parts("Says [[moment:a|b]]\n\nmore]]"))
-
-    def test_more_parts_than_a_person_arranges_is_refused(self):
-        from services.ideal_text_parts import MAX_PARTS
-        self.assertIsNone(
-            mint_machine_parts("\n\n".join(["Line."] * (MAX_PARTS + 1))))
-
-    def test_a_document_past_the_stored_ceiling_is_refused(self):
-        from services.ideal_text_parts import MAX_DOCUMENT_CHARS
-        self.assertIsNone(mint_machine_parts("x" * (MAX_DOCUMENT_CHARS + 1)))
-
-    def test_whitespace_that_does_not_round_trip_is_refused(self):
-        # Three blank lines split the same way but join back as two, so the
-        # offsets would be wrong from the first paragraph onward. The list is
-        # checked against its own source before anything is written.
-        with patch("services.ideal_text_parts.agrees_with_text",
-                   return_value=False):
-            self.assertIsNone(mint_machine_parts(SERVED))
 
 
 class _Database:
@@ -130,13 +76,72 @@ def _snapshot(database, text=SERVED):
     return payload
 
 
-class ThePublishBoundaryMintsWhatNobodyElseWill(unittest.TestCase):
+def _ids(parts):
+    return [str(p["id"]) for p in parts]
 
 
-    def test_the_words_are_not_touched(self):
-        # L1. Identity is added where there was none; the canonical document
-        # is the same string it was before the publish.
-        self.assertEqual(_snapshot(_Database(rows=[]))["text"], SERVED)
+class ThePublishBoundaryMintsParagraphIdentity(unittest.TestCase):
+
+    def test_a_never_edited_document_gets_one_part_per_paragraph(self):
+        database = _Database(rows=[])
+        payload = _snapshot(database)
+
+        self.assertEqual(len(database.writes), 1)
+        written = database.writes[0]
+        self.assertEqual([p["text"] for p in written], [FIRST, SECOND])
+        ids = _ids(written)
+        self.assertEqual(len(set(ids)), 2)
+        for part_id in ids:
+            uuid.UUID(part_id)
+        # The words are untouched, and the published parts carry the ids
+        # that were stored, so feedback and slides can attach to them.
+        self.assertEqual(payload["text"], SERVED)
+        self.assertEqual(_ids(payload["parts"]), ids)
+
+    def test_a_second_publish_writes_nothing(self):
+        database = _Database(rows=[])
+        first = _snapshot(database)
+        second = _snapshot(database)
+
+        self.assertEqual(len(database.writes), 1)
+        self.assertEqual(_ids(second["parts"]), _ids(first["parts"]))
+        self.assertEqual(second["text"], SERVED)
+
+    def test_a_document_with_its_own_parts_is_never_rewritten(self):
+        own = [
+            {"id": str(uuid.uuid4()), "ord": 0, "text": FIRST,
+             "locked_at": None, "iteration": 2},
+            {"id": str(uuid.uuid4()), "ord": 1, "text": SECOND,
+             "locked_at": None, "iteration": 2},
+        ]
+        database = _Database(rows=own)
+        payload = _snapshot(database)
+
+        self.assertEqual(database.writes, [])
+        self.assertEqual(database.rows, own)
+        self.assertEqual(payload["text"], SERVED)
+
+    def test_an_unprovable_split_writes_no_parts(self):
+        # Refused, never approximated: a wrong identity map would anchor
+        # every later lock to the wrong words. Each case is one reason the
+        # split cannot be proven to be the inverse of the join.
+        from services.ideal_text_parts import MAX_DOCUMENT_CHARS, MAX_PARTS
+        cases = {
+            "an empty document": "   ",
+            "a marker cut in half": "Says [[moment:a|b]]\n\nmore]]",
+            "whitespace that does not join back": f"{FIRST}\n\n\n{SECOND}",
+            "more paragraphs than a person arranges":
+                "\n\n".join(["Line."] * (MAX_PARTS + 1)),
+            "a document past the stored ceiling":
+                "x" * (MAX_DOCUMENT_CHARS + 1),
+        }
+        for name, text in cases.items():
+            with self.subTest(name):
+                database = _Database(rows=[])
+                payload = _snapshot(database, text=text)
+                self.assertEqual(database.writes, [])
+                if text.strip():
+                    self.assertEqual(payload["text"], text)
 
 
 if __name__ == "__main__":  # pragma: no cover
