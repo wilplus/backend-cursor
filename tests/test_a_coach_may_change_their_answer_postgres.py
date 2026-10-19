@@ -183,7 +183,19 @@ def test_a_take_word_keeps_every_earlier_version(db):
     assert _versions(db, take) == []  # filled in, or the same again: nothing lost
     _save_word(db, take, text="Pause at the number.", video="s3://b/coach-feedback/t/a.webm")
     _set(db, take, draft_text="Breathe first.")
-    _save_word(db, take, text="Pause at the number.", video="s3://b/coach-feedback/t/b.webm")
+    # The app's own role writes the word; only the trigger can write the history.
+    with db.cursor() as cur:  # as Supabase has it: the app's role bypasses RLS
+        cur.execute("ALTER ROLE service_role BYPASSRLS")
+        cur.execute("GRANT SELECT, INSERT, UPDATE ON public.coach_take_words TO service_role")
+    db.autocommit = False
+    try:
+        with db.cursor() as cur:
+            cur.execute("SET LOCAL ROLE service_role")
+        _save_word(db, take, text="Pause at the number.", video="s3://b/coach-feedback/t/b.webm")
+        db.commit()
+    finally:
+        db.rollback()
+        db.autocommit = True
     kept = _versions(db, take)
     assert [(v["version"], v["replaced"]) for v in kept] == [
         (1, "word"), (2, "draft"), (3, "word")]
@@ -198,6 +210,10 @@ def test_a_take_word_keeps_every_earlier_version(db):
                 (WORDS,))["rls"] is True
     assert _row(db, "SELECT has_table_privilege('service_role', %s, 'INSERT') AS can",
                 (WORDS,))["can"] is False
+    # The purge reads and deletes it with the Take.
+    for right in ("SELECT", "DELETE"):
+        assert _row(db, "SELECT has_table_privilege('service_role', %s, %s) AS can",
+                    (WORDS, right))["can"] is True
     for role in ("anon", "authenticated"):
         if _row(db, "SELECT count(*) AS n FROM pg_roles WHERE rolname = %s", (role,))["n"]:
             assert _row(db, "SELECT has_table_privilege(%s, %s, 'SELECT') AS can",

@@ -27,7 +27,17 @@
 --
 -- Deploy with services/data_purge_registry.py's coach_take_word_versions
 -- entry in the same PR: an unregistered table with take_session_id stops a
--- purge for review. Merge when no deletion is mid-run.
+-- purge for review. The migration runs before the new code serves, and a
+-- purge whose inventory was frozen before the merge cannot resume (the
+-- catalog and dependency hashes change). So merge only when
+-- GET /v2/admin/deletions shows no purge in progress and none due within
+-- the hour (or PHASE1_PURGE_EXECUTION_ENABLED is off, when runs are dry).
+--
+-- Known limits, kept on purpose: a video replaced before its transcription
+-- finished keeps no words in its version (the transcript lands only on the
+-- row that still holds that video); shared_at is kept in each version but
+-- is not itself versioned; a delete of a word row cascades to its history
+-- (only the Take's purge deletes word rows).
 -- Released rehearsal lane only: it copies coach_take_words.draft_prompt (0459).
 
 BEGIN;
