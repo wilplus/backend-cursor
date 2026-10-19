@@ -1,18 +1,20 @@
-"""services/analysis_worker.py — the extracted full pipeline (async-queue
-work 2026-08-03).
-
-The extraction moved routes/v2_routes.py's `_run_analysis_pipeline`
-closure verbatim into run_full_analysis so sync / daemon / queue-worker
-modes share ONE implementation. These tests pin the seams that must not
-drift:
-
-  * process_lab_recording receives EXACTLY the closure's arguments
-    (names + values), and the readout round-trips untouched.
-  * The guest path (user_id None) never fires cadence / auto-send / arc
-    cards, and reports sent_to_coach=False — the closure's behaviour.
-  * A broken progress callback can never break the pipeline (live loop).
-
-Run: python3 -m unittest tests.test_analysis_worker
+"""
+STORY    As a speaker, I want to hear "ready" as soon as my Take's core
+         analysis is done, and have a missing Ideal Text created even on a
+         later Take, so that record -> process -> Ideal Text -> next Take
+         never stalls (Never-3).
+OUTCOME
+  O1  on_ready fires before the trailing work (shadow logs, cards), and
+      the readout is returned untouched.
+  O2  A trailing failure is logged as degraded and never reaches me.
+  O3  Take 2 builds the Ideal Text when the Project has none ...
+  O4  ... and never rebuilds one that exists (no overwrite of my words).
+PROVES   O1 -> test_ready_comes_first_and_the_cards_are_waited_for
+         O2 -> test_trailing_work_failing_never_reaches_the_speaker
+         O3 -> test_a_later_take_DOES_create_a_document_that_is_missing
+         O4 -> test_a_later_take_does_not_rebuild_an_existing_document
+WHY      Founder 2026-09-22 (Option A): one Project sat in "processing" for
+         eleven days; founder 2026-10-14: "ready" before the trailing work.
 """
 from __future__ import annotations
 
@@ -43,8 +45,8 @@ _REC = "88888888-8888-4888-8888-888888888888"
 
 
 @unittest.skipIf(aw is None, f"import failed: {_IMPORT_ERR}")
-class RunFullAnalysisGuestPathTests(unittest.TestCase):
-    """Guest upload (user_id None, no arc): only the core engine runs."""
+class LaterTakeCreatesAMissingIdealTextTests(unittest.TestCase):
+    """A later Take creates the Ideal Text only when the Project has none."""
 
     def _fake_lab_module(self, captured, readout=None):
         mod = types.ModuleType("services.lab_recording")
@@ -55,7 +57,6 @@ class RunFullAnalysisGuestPathTests(unittest.TestCase):
 
         mod.process_lab_recording = process_lab_recording
         return mod
-
 
     def _later_take_with_document(self, existing):
         """Run one Take 2 and report whether it called the document builder.
@@ -90,7 +91,6 @@ class RunFullAnalysisGuestPathTests(unittest.TestCase):
                 )
         return build
 
-
     def test_a_later_take_DOES_create_a_document_that_is_missing(self):
         """The case that was impossible before, and left one real Project
         showing "processing" for eleven days: Take 1 never confirmed an
@@ -98,6 +98,11 @@ class RunFullAnalysisGuestPathTests(unittest.TestCase):
         build = self._later_take_with_document(None)
         build.assert_called_once()
         self.assertEqual(build.call_args.kwargs["source_session_id"], _SID)
+
+    def test_a_later_take_does_not_rebuild_an_existing_document(self):
+        """L1: a Project with a document keeps it; Take 2 never rebuilds."""
+        build = self._later_take_with_document({"text": "My words."})
+        build.assert_not_called()
 
 
 @unittest.skipIf(aw is None, f"import failed: {_IMPORT_ERR}")

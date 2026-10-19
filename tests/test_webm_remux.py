@@ -1,17 +1,21 @@
-"""Lossless WebM remux on upload (founder 2026-10-08: playback everywhere).
-
-MediaRecorder WebM has no Cues and no Duration, so Safari cannot seek a clip
-inside its parent Take. services/webm_remux.py rewrites the container with
-`-c copy -copyts` before storage and analysis. These tests prove the three
-things that make that safe:
-
-* timestamps are preserved: start_time and the end of the last packet equal
-  within 20 ms (in fact exactly), every packet identical, and the decoded
-  PCM identical, so no analysis offset can move;
-* any failure keeps the original bytes and never raises (LIVE LOOP);
-* the sha256 read-after-write check runs on the bytes actually stored.
-
-Run: python3 -m pytest tests/test_webm_remux.py
+"""
+STORY    As a speaker, I want my recording made seekable without changing its
+         timing, and kept as-is if that fails, so that playback works
+         everywhere and my Take is never lost. (Critical path: record.)
+OUTCOME
+  O1  The remuxed file carries a seek index and exactly the same packets and
+      timestamps as the recording (even one not starting at zero), so no
+      stored offset moves.
+  O2  Any remux failure (ffmpeg error or timeout) keeps the original bytes
+      and never raises, so the Take still goes on (Never-3: the loop is never
+      broken).
+  O3  The bytes stored are the remuxed bytes, and the read-after-write
+      checksum is taken on what is actually stored.
+PROVES   O1 -> test_timestamps_and_packets_are_preserved
+         O2 -> test_any_remux_failure_keeps_the_original_bytes
+         O3 -> test_intake_remuxes_and_the_read_after_write_sha_matches
+WHY      Founder 2026-10-08: Safari could not seek a clip inside its Take
+         (MediaRecorder WebM has no Cues and no Duration).
 """
 from __future__ import annotations
 
@@ -24,11 +28,15 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from services import webm_remux
+
 try:
     from services.ffmpeg_audio_extract import resolve_ffmpeg_executable
     _FFMPEG = resolve_ffmpeg_executable()
 except Exception:  # pragma: no cover
     _FFMPEG = None
+
+_CUES = bytes.fromhex("1C53BB6B")
 
 
 def _make_mediarecorder_like_webm(*, offset_s: float = 0.0) -> bytes | None:
@@ -56,6 +64,46 @@ _NEEDS_FIXTURE = unittest.skipIf(
     _FIXTURE is None, "needs ffmpeg with libopus to build the WebM fixture")
 
 
+class TheRemuxNeverLosesATake(unittest.TestCase):
+
+    @_NEEDS_FIXTURE
+    def test_timestamps_and_packets_are_preserved(self):
+        original = _make_mediarecorder_like_webm(offset_s=1.5)
+        self.assertIsNotNone(original)
+        remuxed = webm_remux.remux_webm_for_seeking(original)
+        self.assertNotEqual(remuxed, original)
+        self.assertIn(_CUES, remuxed)
+        self.assertNotIn(_CUES, original)
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = []
+            for name, data in (("a.webm", original), ("b.webm", remuxed)):
+                paths.append(os.path.join(tmp, name))
+                with open(paths[-1], "wb") as fh:
+                    fh.write(data)
+            before = webm_remux.packet_lines(_FFMPEG, paths[0], 30)
+            after = webm_remux.packet_lines(_FFMPEG, paths[1], 30)
+        self.assertTrue(before)
+        self.assertEqual(before, after)
+
+    def test_any_remux_failure_keeps_the_original_bytes(self):
+        original = _FIXTURE or (b"\x1a\x45\xdf\xa3\x9f\x42\x82\x84webm" + b"\x00" * 512)
+        failed = SimpleNamespace(returncode=1, stdout=b"", stderr=b"broken")
+        timed_out = subprocess.TimeoutExpired("ffmpeg", 8)
+        for name, run in (("ffmpeg error", lambda *a, **k: failed),
+                          ("timeout", _raise(timed_out)),
+                          ("crash", _raise(OSError("no such file")))):
+            with self.subTest(name), \
+                    patch.object(webm_remux, "_ffmpeg", lambda: "ffmpeg"), \
+                    patch.object(webm_remux.subprocess, "run", run):
+                self.assertIs(webm_remux.remux_webm_for_seeking(original), original)
+
+
+def _raise(error):
+    def run(*_a, **_k):
+        raise error
+    return run
+
+
 @_NEEDS_FIXTURE
 class TheStoredBytesAreTheRemuxedBytes(unittest.TestCase):
     """The upload reads, remuxes, then stores and verifies the SAME bytes, so
@@ -72,7 +120,7 @@ class TheStoredBytesAreTheRemuxedBytes(unittest.TestCase):
                                     max_audio_mb=50, context_max_mb=1,
                                     video_extensions=set())
         self.assertNotEqual(got.audio_bytes, _FIXTURE)
-        self.assertIn(bytes.fromhex("1C53BB6B"), got.audio_bytes)
+        self.assertIn(_CUES, got.audio_bytes)
 
         store: dict = {}
 

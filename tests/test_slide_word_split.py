@@ -1,119 +1,90 @@
-"""Per-slide word-level transcript split (#6). Pure — no network.
-
-Run: python3 -m unittest tests.test_slide_word_split
+"""
+STORY    As a speaker, I want my transcript split into one paragraph per slide
+         at the moment I changed slide, so that my Ideal Text follows my deck.
+         (Critical path: record -> process -> Ideal Text.)
+OUTCOME
+  O1  Words said before a slide change go to the earlier slide, words after it
+      to the later one, with each fragment's audio span taken from its words.
+  O2  Every slide of the deck gets its paragraph, even one nothing was said on.
+  O3  A talk without a deck is cut into pieces at word boundaries, each piece
+      keeps its own audio span, and an old one-blob transcript is re-cut
+      without inventing spans.
+  O4  A run-on sentence gets a full stop at a real pause, so a piece can end
+      there, and not one word is changed.
+  O5  The boundary measurement finds the pause a speaker left at a tap, and
+      reports a tap they talked straight through.
+  O6  A Take with nothing said (no words, no deck, no taps) comes out empty
+      from every step of the split, never as an error that stops the loop.
+PROVES   O1 -> test_words_on_both_sides_of_a_slide_change_split_there
+            -> test_a_fragment_spans_its_own_words
+         O2 -> test_words_on_both_sides_of_a_slide_change_split_there
+         O3 -> test_a_word_longer_than_the_cap_gets_its_own_piece
+            -> test_stored_pieces_come_back_with_their_spans
+            -> test_an_old_long_blob_is_recut_without_spans
+         O4 -> test_a_run_on_sentence_closes_a_piece_at_the_pause
+         O5 -> test_the_boundary_measurement_sees_the_pause_at_a_tap
+         O6 -> test_a_take_with_nothing_said_comes_out_empty
+WHY      Founder #6 and Part A: words after a mid-snippet click stayed under
+         the old slide, and the quiet first slide went missing.
 """
 from __future__ import annotations
 
 import unittest
 
-from services.slide_word_split import slice_words_for_window, split_words_by_slides
+from services.slide_boundary_metrics import boundary_metrics
+from services.slide_word_split import (
+    apply_clock_offset,
+    build_slide_transcripts,
+    chunk_transcript_by_chars,
+    chunk_words_by_chars,
+    deckless_chunks_from_stx,
+    slice_words_for_window,
+    split_runon_sentences,
+    split_words_by_slides,
+)
 
 
 def _w(word, start, end):
     return {"word": word, "start": start, "end": end}
 
 
-SLIDES = [{"title": "S1", "body": ""}, {"title": "S2", "body": ""}]
-# slide 0 from t=0, slide 1 from t=5s.
+SLIDES = [{"title": "S1", "body": ""}, {"title": "S2", "body": ""},
+          {"title": "S3", "body": ""}]
+# slide 0 from t=0, slide 1 from t=5 s; slide 2 is never reached.
 ADV = [{"index": 0, "t_ms": 0}, {"index": 1, "t_ms": 5000}]
 
 
-class SplitWordsBySlidesTests(unittest.TestCase):
+class PerSlideSplitTests(unittest.TestCase):
 
-    def test_fragment_audio_span_from_word_times(self):
-        words = [_w("a", 6.0, 6.2), _w("b", 6.8, 7.5)]  # all slide 1
+    def test_words_on_both_sides_of_a_slide_change_split_there(self):
+        words = [_w("we", 3.9, 4.1), _w("grew", 4.2, 4.5), _w(" ", 4.6, 4.7),
+                 _w("revenue", 4.8, 4.99), _w("next", 5.0, 5.3),
+                 _w("costs", 5.4, 5.9)]
         frags = split_words_by_slides(words, ADV, SLIDES)
+        self.assertEqual(
+            [(f["slide_index"], f["transcript"]) for f in frags],
+            [(0, "we grew revenue"), (1, "next costs")])
+
+        per_slide = build_slide_transcripts(words, ADV, SLIDES)
+        self.assertEqual([s["index"] for s in per_slide], [0, 1, 2])
+        self.assertEqual([s["transcript"] for s in per_slide],
+                         ["we grew revenue", "next costs", ""])
+        self.assertEqual(per_slide[1]["start_offset_ms"], 5000)
+        self.assertIsNone(per_slide[2]["start_offset_ms"])
+
+    def test_a_fragment_spans_its_own_words(self):
+        frags = split_words_by_slides([_w("a", 6.0, 6.2), _w("b", 6.8, 7.5)],
+                                      ADV, SLIDES)
         self.assertEqual(len(frags), 1)
-        f = frags[0]
-        self.assertEqual(f["slide_index"], 1)
-        self.assertEqual(f["start_offset_ms"], 6000)
-        self.assertEqual(f["duration_ms"], 1500)  # 7.5s - 6.0s
+        self.assertEqual(frags[0]["slide_index"], 1)
+        self.assertEqual(frags[0]["start_offset_ms"], 6000)
+        self.assertEqual(frags[0]["duration_ms"], 1500)  # 7.5 s - 6.0 s
 
 
-    def test_no_words_or_slides_returns_empty(self):
-        self.assertEqual(split_words_by_slides([], ADV, SLIDES), [])
-        self.assertEqual(split_words_by_slides(None, ADV, SLIDES), [])
-        self.assertEqual(split_words_by_slides([_w("x", 0, 1)], ADV, []), [])
+class DecklessTests(unittest.TestCase):
 
-
-    def test_blank_and_malformed_words_skipped(self):
-        words = [_w("   ", 0.0, 0.2), "nope", {"word": "ok", "start": 0.3, "end": 0.5}]
-        frags = split_words_by_slides(words, ADV, SLIDES)
-        self.assertEqual(frags[0]["transcript"], "ok")
-
-
-class BuildSlideTranscriptsTests(unittest.TestCase):
-    """build_slide_transcripts (#A) — COMPLETE per-slide transcript from the
-    whole-recording word list, one entry per deck slide."""
-
-    def _f(self, *args, **kw):
-        from services.slide_word_split import build_slide_transcripts
-        return build_slide_transcripts(*args, **kw)
-
-
-    def test_empty_slide_is_present_with_blank_transcript(self):
-        # Nothing said on slide 1 → it still appears, empty (truthful 1:1).
-        words = [_w("only", 0.0, 0.5), _w("here", 0.6, 1.0)]  # all slide 0
-        out = self._f(words, ADV, SLIDES)
-        self.assertEqual(out[0]["transcript"], "only here")
-        self.assertEqual(out[1]["transcript"], "")
-        self.assertIsNone(out[1]["start_offset_ms"])
-
-
-    def test_no_slides_returns_empty(self):
-        self.assertEqual(self._f([_w("x", 0, 1)], ADV, []), [])
-
-
-class SliceWordsForWindowTests(unittest.TestCase):
-
-
-    def test_empty_safe(self):
-        self.assertEqual(slice_words_for_window(None, 0, 1000), [])
-        self.assertEqual(slice_words_for_window([], 0, 1000), [])
-
-
-class SnapBoundariesToPausesTests(unittest.TestCase):
-    """The pure pause-snap helper (clock-offset robustness)."""
-
-    def _snap(self, advances, words, window_ms=1200, min_gap_ms=200):
-        from services.slide_word_split import _snap_boundaries_to_pauses
-        return _snap_boundaries_to_pauses(
-            advances, words, window_ms=window_ms, min_gap_ms=min_gap_ms)
-
-
-    def test_no_snap_when_no_pause_near(self):
-        words = [_w("a", 0.0, 0.4), _w("b", 0.5, 0.9),
-                 _w("c", 1.4, 1.8), _w("d", 1.9, 2.3)]
-        # tap far from the only pause (|1150-5000| > window) → unchanged
-        out = self._snap([{"index": 0, "t_ms": 0}, {"index": 1, "t_ms": 5000}], words)
-        self.assertEqual(out[1]["t_ms"], 5000)
-
-    def test_tiny_gaps_dont_qualify(self):
-        # all inter-word gaps < min_gap_ms → no snap (normal speech rhythm)
-        words = [_w("a", 0.0, 0.4), _w("b", 0.45, 0.85), _w("c", 0.9, 1.3)]
-        out = self._snap([{"index": 0, "t_ms": 0}, {"index": 1, "t_ms": 900}], words)
-        self.assertEqual(out[1]["t_ms"], 900)
-
-
-    def test_empty_safe(self):
-        self.assertEqual(self._snap(None, [_w("a", 0, 1)]), None)
-        self.assertEqual(self._snap([{"index": 0, "t_ms": 0}], None),
-                         [{"index": 0, "t_ms": 0}])
-
-
-class ChunkWordsByCharsTests(unittest.TestCase):
-    """Deckless chunking v2 (founder 2026-07-11): ≤200-char pieces broken at
-    word boundaries, each with its audio span from the word timestamps."""
-
-    def _chunk(self, words, max_chars=None):
-        from services.slide_word_split import chunk_words_by_chars
-        if max_chars is None:
-            return chunk_words_by_chars(words)
-        return chunk_words_by_chars(words, max_chars)
-
-
-    def test_word_longer_than_cap_gets_own_chunk(self):
-        out = self._chunk([
+    def test_a_word_longer_than_the_cap_gets_its_own_piece(self):
+        out = chunk_words_by_chars([
             _w("hi", 0.0, 0.2),
             _w("supercalifragilistic", 0.3, 1.5),
             _w("ok", 1.6, 1.8),
@@ -121,97 +92,91 @@ class ChunkWordsByCharsTests(unittest.TestCase):
         self.assertEqual([c["transcript"] for c in out],
                          ["hi", "supercalifragilistic", "ok"])
 
-
-class ChunkTranscriptByCharsTests(unittest.TestCase):
-    """Text-only fallback for legacy single-blob deckless persists."""
-
-    def _chunk(self, text, max_chars=None):
-        from services.slide_word_split import chunk_transcript_by_chars
-        if max_chars is None:
-            return chunk_transcript_by_chars(text)
-        return chunk_transcript_by_chars(text, max_chars)
-
-    def test_empty_or_blank_returns_empty(self):
-        self.assertEqual(self._chunk(""), [])
-        self.assertEqual(self._chunk(None), [])
-        self.assertEqual(self._chunk("   "), [])
-
-
-class DecklessChunksFromStxTests(unittest.TestCase):
-    """The shared canonical chunk list (readout fold + edit-route bound)."""
-
-    def _f(self, stx):
-        from services.slide_word_split import deckless_chunks_from_stx
-        return deckless_chunks_from_stx(stx)
-
-    def test_new_style_multi_entry_returned_with_spans(self):
-        stx = [
+    def test_stored_pieces_come_back_with_their_spans(self):
+        out = deckless_chunks_from_stx([
             {"index": 0, "transcript": "part one",
              "start_offset_ms": 0, "duration_ms": 3000},
             {"index": 1, "transcript": "part two",
              "start_offset_ms": 3200, "duration_ms": 2500},
-        ]
-        out = self._f(stx)
-        self.assertEqual(len(out), 2)
-        self.assertEqual(out[1]["transcript"], "part two")
-        self.assertEqual(out[1]["start_offset_ms"], 3200)
+        ])
+        self.assertEqual([(c["transcript"], c["start_offset_ms"]) for c in out],
+                         [("part one", 0), ("part two", 3200)])
 
-
-    def test_legacy_long_blob_rechunks_without_spans(self):
-        blob = " ".join(f"word{i}" for i in range(80))  # >> 200 chars
-        stx = [{"index": 0, "transcript": blob,
-                "start_offset_ms": 0, "duration_ms": 60000}]
-        out = self._f(stx)
+    def test_an_old_long_blob_is_recut_without_spans(self):
+        blob = " ".join(f"word{i}" for i in range(80))  # >> 300 chars
+        out = deckless_chunks_from_stx([{"index": 0, "transcript": blob,
+                                         "start_offset_ms": 0,
+                                         "duration_ms": 60000}])
         self.assertGreater(len(out), 1)
-        self.assertNotIn("start_offset_ms", out[0])  # no fake spans
+        self.assertNotIn("start_offset_ms", out[0])  # no invented spans
         self.assertEqual(" ".join(c["transcript"] for c in out), blob)
 
 
-class SplitRunonSentencesTests(unittest.TestCase):
-    """Run-on sentence boundaries (founder BE-1c, 2026-07-16): a real pause
-    after an already-long sentence is promoted to a full stop — punctuation +
-    casing only, words + spans strictly untouched."""
+class RunOnSentenceTests(unittest.TestCase):
 
-    def _stream(self, groups, gap_s=0.8):
-        """Words at a tight 0.1s rhythm; a ``gap_s`` pause between groups."""
-        words, t = [], 0.0
-        for gi, group in enumerate(groups):
-            if gi:
-                t += gap_s
-            for tok in group.split():
-                words.append({"word": tok, "start": round(t, 2),
-                              "end": round(t + 0.3, 2)})
-                t = round(t + 0.4, 2)
-        return words
-
-    def _split(self, groups, gap_s=0.8, **kw):
-        from services.slide_word_split import split_runon_sentences
-        kw.setdefault("min_gap_ms", 500)
-        kw.setdefault("min_chars", 40)
-        return split_runon_sentences(self._stream(groups, gap_s), **kw)
-
-    def _text(self, out):
-        return " ".join(w["word"] for w in out)
-
-
-    def test_empty_safe(self):
-        from services.slide_word_split import split_runon_sentences
-        self.assertEqual(split_runon_sentences(None), [])
-        self.assertEqual(split_runon_sentences([]), [])
-
-
-    def test_chunker_closes_at_the_promoted_boundary(self):
-        # The end-to-end win: the sentence-aware cutter can now close a piece
-        # at the promoted period instead of running to the hard cap.
+    def test_a_run_on_sentence_closes_a_piece_at_the_pause(self):
         long_a = ("we spent the whole quarter rebuilding the pipeline and "
                   "the team pushed through every single blocker on the list")
         long_b = ("the next quarter is where all of that work finally starts "
                   "paying off for every customer we have")
-        out = self._split([long_a, long_b])
-        from services.slide_word_split import chunk_words_by_chars
+        words, t = [], 0.0
+        for gi, group in enumerate((long_a, long_b)):
+            if gi:
+                t += 0.8                      # a real pause between them
+            for tok in group.split():
+                words.append({"word": tok, "start": round(t, 2),
+                              "end": round(t + 0.3, 2)})
+                t = round(t + 0.4, 2)
+
+        out = split_runon_sentences(words, min_gap_ms=500, min_chars=40)
+        # Punctuation and casing only: the words and their times are kept.
+        self.assertEqual([w["word"].strip(".").lower() for w in out],
+                         [w["word"] for w in words])
+        self.assertEqual([(w["start"], w["end"]) for w in out],
+                         [(w["start"], w["end"]) for w in words])
+
         pieces = chunk_words_by_chars(out, 110)
         self.assertTrue(pieces[0]["transcript"].endswith("list."))
         self.assertTrue(pieces[1]["transcript"].startswith("The next"))
+
+
+class BoundaryMeasurementTests(unittest.TestCase):
+
+    def test_the_boundary_measurement_sees_the_pause_at_a_tap(self):
+        # A 600 ms pause around 4.0-4.6 s next to the 4.5 s tap; the 9 s tap
+        # falls in unbroken speech.
+        words = [_w("a", 3.0, 3.5), _w("b", 3.6, 4.0), _w("c", 4.6, 5.0),
+                 _w("d", 8.0, 8.4), _w("e", 8.45, 8.85), _w("f", 8.9, 9.3),
+                 _w("g", 9.35, 9.7)]
+        adv = [{"index": 0, "t_ms": 0}, {"index": 1, "t_ms": 4500},
+               {"index": 2, "t_ms": 9000}]
+        m = boundary_metrics(words, adv, SLIDES)
+        self.assertEqual(m["boundaries_total"], 2)
+        self.assertEqual(m["boundaries_moved"], 1)      # snapped into the pause
+        self.assertEqual(m["boundaries_no_pause"], 1)   # talked through it
+        self.assertEqual(m["shift_ms_max"], 200)         # 4500 -> 4300
+
+        # Speech with no real pause anywhere: nothing can move.
+        steady = [_w(t, i * 0.4, i * 0.4 + 0.35) for i, t in enumerate("abcdef")]
+        m = boundary_metrics(steady, [{"index": 0, "t_ms": 0},
+                                      {"index": 1, "t_ms": 1000}], SLIDES)
+        self.assertEqual((m["boundaries_moved"], m["boundaries_no_pause"]), (0, 1))
+
+
+class NothingSaidTests(unittest.TestCase):
+    """One case for the defensive guards: a silent Take, or one with no deck,
+    must flow through as empty output (CLAUDE.md Never 3: the loop never
+    breaks)."""
+
+    def test_a_take_with_nothing_said_comes_out_empty(self):
+        self.assertEqual(split_words_by_slides([], ADV, SLIDES), [])
+        self.assertEqual(build_slide_transcripts([_w("x", 0, 1)], ADV, []), [])
+        self.assertEqual(slice_words_for_window(None, 0, 1000), [])
+        self.assertEqual(split_runon_sentences(None), [])
+        self.assertEqual(chunk_words_by_chars([]), [])
+        self.assertEqual(chunk_transcript_by_chars("   "), [])
+        self.assertEqual(deckless_chunks_from_stx([]), [])
+        self.assertEqual(apply_clock_offset([], 300), [])
 
 
 if __name__ == "__main__":

@@ -1,21 +1,23 @@
-"""The status can tell a first-timer from someone whose Terms moved.
+"""
+STORY    As a returning speaker whose Terms changed, I want to be told the
+         Terms moved instead of being shown a first-time screen, so that I
+         re-accept knowing what changed (consent).
+OUTCOME
+  O1  Someone holding a receipt for an older policy only is flagged
+      reacceptance_required, with the version they last agreed to.
+  O2  A first-timer (no receipt at all) is not flagged and has no version:
+      the two people are now told apart.
+  O3  Someone who accepted the policy in force is authorised and not
+      flagged.
+  O4  `authorized` and `code` are what they were before the signal: the
+      flag adds information and moves no decision (checked in O1-O3).
+PROVES   O1 -> test_someone_whose_terms_moved_is_flagged
+         O2 -> test_a_first_timer_is_not_flagged
+         O3 -> test_someone_on_the_current_terms_is_not_flagged
+WHY      P10 (decisions P10.1-P10.4, 2026-09-23): before
+         status_knows_a_reacceptance both people got the same answer.
 
-P10, decisions P10.1-P10.4 locked 2026-09-23.
-
-`get_phase1_processing_authorization_v1` looks up the receipt for the ACTIVE
-policy. A receipt against an older policy does not match, so it answers
-PROCESSING_AUTHORIZATION_REQUIRED — the same answer it gives someone who has
-never accepted anything. The acceptance gate therefore could only ever show
-the first-time screen, to both.
-
-That bites the moment counsel returns revised Terms: every existing speaker
-goes stale at once, and every one of them meets a screen written for a
-stranger.
-
-These cases build the second policy and check the answer for each kind of
-person. The `authorized` and `code` fields are asserted unchanged throughout,
-because the whole claim of this migration is that it adds a signal without
-moving a decision.
+Runs get_phase1_processing_authorization_v1 on the released rehearsal lane.
 """
 from __future__ import annotations
 
@@ -162,10 +164,7 @@ def _status(db, principal):
 
 class TestTheTwoPeopleAreNowDistinguishable:
 
-
     def test_someone_whose_terms_moved_is_flagged(self, db, policies, principal):
-        """The named regression test for P10. Before this, indistinguishable
-        from the case above."""
         _receipt(db, principal, policies["old"])
 
         status = _status(db, principal)
@@ -174,6 +173,24 @@ class TestTheTwoPeopleAreNowDistinguishable:
         assert status["accepted_policy_version"] == OLD, (
             "the screen cannot say WHICH document moved"
         )
-        # The decision itself is unchanged — that is the whole claim.
         assert status["authorized"] is False
         assert status["code"] == "PROCESSING_AUTHORIZATION_REQUIRED"
+
+    def test_a_first_timer_is_not_flagged(self, db, policies, principal):
+        status = _status(db, principal)
+
+        assert status["reacceptance_required"] is False
+        assert status["accepted_policy_version"] is None
+        assert status["authorized"] is False
+        assert status["code"] == "PROCESSING_AUTHORIZATION_REQUIRED"
+
+    def test_someone_on_the_current_terms_is_not_flagged(
+            self, db, policies, principal):
+        _receipt(db, principal, policies["old"])
+        _receipt(db, principal, policies["new"])
+
+        status = _status(db, principal)
+
+        assert status["reacceptance_required"] is False
+        assert status["authorized"] is True
+        assert status["code"] == "PROCESSING_AUTHORIZED"
