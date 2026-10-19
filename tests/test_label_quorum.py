@@ -1,26 +1,26 @@
-"""The label ledger's four rules, enforced instead of documented
-(services/label_quorum.py — founder 2026-08-11).
-
-Each rule exists because a specific way of poisoning the ground-truth corpus
-is easy to reach by accident. What each test class defends:
-
-  RULE 1  A machine prediction that counts as a vote makes every later
-          agreement number CIRCULAR — the model grading its own homework and
-          reporting the result as human consensus. Unrecoverable after the
-          fact, because nothing on the row says which votes were really the
-          model's.
-  RULE 2  A self-report counted as a peer means "two people agreed" can be
-          one person agreeing with themselves. The speaker knows what they
-          intended; that is the one judgment not independent of the thing
-          judged.
-  RULE 3  A singleton in the gold set is one opinion presented as truth; a
-          singleton in the EVAL set is worse — the score is then measured
-          against a coin flip and looks like a finding.
-  RULE 4  "Not sure" is retained as rater uncertainty and routes a third
-          person, but can never settle confidence ground truth. Audio unclear
-          is a technical non-response and no confidence vote at all.
-
-Pure, no DB. Run: python3 -m unittest tests.test_label_quorum
+"""
+STORY    As the founder, I want ground-truth labels settled only by
+         independent blind humans, so that our confidence data is never
+         circular.
+OUTCOME
+  O1  A machine prediction never counts as a vote: a machine-lane row, or a
+      machine value beside a human answer, adds nothing.
+  O2  Never-2 (coach judgements stay blind): a rating made after the rater
+      saw the clip's non-blind side is not a vote.
+  O3  A self-report (the speaker's own answer) is never one of the votes.
+  O4  One rating never settles; only two matching blind humans do, and a
+      blind coach and a blind peer share one quorum.
+  O5  Not sure and Audio unclear never settle a label.
+  O6  Once settled, no further vote is accepted.
+PROVES   O1 -> test_a_machine_prediction_is_never_a_vote
+         O2 -> test_a_rating_that_was_not_blind_is_not_a_vote
+         O3 -> test_a_self_report_is_never_a_vote
+         O4 -> test_a_singleton_never_settles,
+               test_blind_coach_and_blind_peer_share_one_human_quorum
+         O5 -> test_not_sure_and_audio_unclear_never_settle
+         O6 -> test_fresh_rater_cannot_add_a_vote_after_resolution
+WHY      Founder 2026-08-11: a model grading its own homework, or one person
+         agreeing with themselves, poisons the gold set beyond repair.
 """
 from __future__ import annotations
 
@@ -37,9 +37,59 @@ def _row(value=None, *, lane="game_peer", unrateable=False,
     }
 
 
-class TestRule2OwnerIsNotAPeer(unittest.TestCase):
-    """A self-report is calibration signal, never one of the two votes."""
+class TestWhoseVoteCounts(unittest.TestCase):
 
+    def test_a_machine_prediction_is_never_a_vote(self):
+        res = lq.resolve([
+            {**_row("yes", rater="human-a"), "machine_value": "yes"},
+            _row("yes", lane="machine", rater="model-v3"),
+        ])
+        self.assertEqual(res["status"], lq.SINGLETON)
+        self.assertIsNone(res["value"])
+        self.assertEqual(res["machine_votes"], 0)
+        self.assertEqual(res["n_lane_excluded"], 1)
+
+    def test_a_rating_that_was_not_blind_is_not_a_vote(self):
+        res = lq.resolve([
+            _row("no", lane="coach", rater="coach-a"),
+            {**_row("no", lane="coach", rater="coach-b"), "blind": False},
+        ])
+        self.assertEqual(res["status"], lq.SINGLETON)
+        self.assertFalse(res["settled"])
+        # Blind, the same two answers settle.
+        self.assertEqual(lq.resolve([
+            _row("no", lane="coach", rater="coach-a"),
+            {**_row("no", lane="coach", rater="coach-b"), "blind": True},
+        ])["value"], "no")
+
+    def test_a_self_report_is_never_a_vote(self):
+        for own in (_row("yes", self_report=True, lane="coach", rater="o"),
+                    # a row written before the flag existed: the lane says it
+                    {k: v for k, v in _row("yes", lane="game_owner",
+                                           rater="o").items()
+                     if k != "self_report"}):
+            with self.subTest(own=own["lane"]):
+                res = lq.resolve([own, _row("yes", rater="peer-b")])
+                self.assertEqual(res["status"], lq.SINGLETON)
+                self.assertEqual(res["n_self_report"], 1)
+
+    def test_a_singleton_never_settles(self):
+        res = lq.resolve([_row("yes", lane="coach", rater="coach-a")])
+        self.assertEqual(res["status"], lq.SINGLETON)
+        self.assertFalse(res["gold_eligible"] or res["eval_eligible"])
+        self.assertIsNone(res["value"])
+
+    def test_not_sure_and_audio_unclear_never_settle(self):
+        for rows in ([_row("not_sure", rater="a"), _row("not_sure", rater="b")],
+                     [_row("yes", rater="a"), _row("not_sure", rater="b")],
+                     [_row("audio_unclear", rater="a"),
+                      _row("audio_unclear", rater="b")],
+                     [_row(None, unrateable=True, rater="a"),
+                      _row("yes", rater="b")]):
+            with self.subTest(rows=[r["value"] for r in rows]):
+                res = lq.resolve(rows)
+                self.assertFalse(res["settled"], res["status"])
+                self.assertIsNone(res["value"])
 
     def test_blind_coach_and_blind_peer_share_one_human_quorum(self):
         # Provenance remains distinct on the rows, but both are independent

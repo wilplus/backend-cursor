@@ -1,95 +1,92 @@
-"""willab — the voice-confidence composite (founder spec 2026-07-27, Jiang &
-Pell 2017) and its entry into the L2 ranking blend.
-
-services/voice_confidence.py: the 7-cue speaker-relative confident↔doubtful
-read; services/power_phrase_ranking.py: the new w_v term.
-
-WHAT THIS PINS DOWN:
-  * every cue's DIRECTION, one at a time — the whole spec is directions, so a
-    silently inverted sign is the failure mode that matters. Cue 6
-    (f0_mid_end_delta) is tested explicitly because our field is
-    ``mid - end``, which inverts the spec sheet's wording;
-  * the NEUTRAL DEAD ZONE — a middling clip must read 0.0, not be forced to a
-    pole;
-  * partial-blob RENORMALIZATION — a piece missing cues must not drift toward
-    neutral just because features were absent;
-  * SILENCE over invention — no baseline / too few cues → None, never 0.0;
-  * the ranking is a strict NO-OP until the flag is on (byte-for-byte), and
-    the authority ordering (coach > breakthrough > delivery) survives the new
-    term;
-  * AC-9 — the score/band never reach a user OR coach payload.
-
-Run: python3 -m unittest tests.test_voice_confidence
+"""
+STORY    As the founder, I want each moment's confidence read to stay on the
+         server, stay neutral when a clip is middling and stay silent when it
+         cannot read, so that the moments we praise are right.
+OUTCOME
+  O1  Every measurable piece is stamped with the current read: a score in
+      [-1, 1], an internal band and the version.
+  O2  A middling clip reads exactly 0.0 (neutral), never forced to a pole.
+  O3  No baseline, or too few measurable cues, stamps nothing: silence,
+      never an invented 0.0.
+  O4  NEVER-1: the stamped read never reaches what a speaker is served
+      (here the "practise new" queue built from the same pieces).
+PROVES   O1 -> test_attach_stamps_every_measurable_piece
+         O2 -> test_a_middling_clip_reads_neutral
+         O3 -> test_no_baseline_or_too_few_cues_stamps_nothing
+         O4 -> test_the_read_never_reaches_a_speaker_payload
+WHY      Founder spec 2026-07-27 (Jiang & Pell 2017); AC-9. Cue DIRECTIONS
+         are ML behaviour and belong in the golden evaluation set, not here.
 """
 from __future__ import annotations
 
-import sys
-import types
-import unittest
-from unittest.mock import MagicMock
+import json
 
-_ORIG_SERVICES_DB = None
+from services.voice_album_practice_queue import build_practice_queue
+from services.voice_confidence import BAND_NEUTRAL, BANDS, VERSION, attach_voice_confidence
 
-
-def setUpModule():
-    global _ORIG_SERVICES_DB
-    _ORIG_SERVICES_DB = sys.modules.get("services.db")
-    stub = types.ModuleType("services.db")
-    stub.db = MagicMock()
-    sys.modules["services.db"] = stub
+# Every feature has mean 0.0 and sd 1.0, so a raw metric value IS its z-score.
+_UNIT_BASELINE = {f: (0.0, 1.0) for f in (
+    "f0_sd", "dynamic_db", "f0_mean", "wpm", "pause_ratio", "pause_ms",
+    "f0_mid_end_delta", "intensity_envelope")}
+_FLAT = {f: 0.0 for f in _UNIT_BASELINE}
 
 
-def tearDownModule():
-    if _ORIG_SERVICES_DB is not None:
-        sys.modules["services.db"] = _ORIG_SERVICES_DB
-    else:
-        sys.modules.pop("services.db", None)
+def _pieces(n=6):
+    return [{"id": f"s{i}", "metrics": {**_FLAT, "f0_sd": float(i)}} for i in range(n)]
 
 
-# A baseline where every feature has mean 0.0 and sd 1.0, so a raw metric value
-# IS its z-score — the cue directions become readable by eye.
-_UNIT_BASELINE = {
-    "f0_sd": (0.0, 1.0),
-    "dynamic_db": (0.0, 1.0),
-    "f0_mean": (0.0, 1.0),
-    "wpm": (0.0, 1.0),
-    "pause_ratio": (0.0, 1.0),
-    "pause_ms": (0.0, 1.0),
-    "f0_mid_end_delta": (0.0, 1.0),
-    "intensity_envelope": (0.0, 1.0),
-}
-
-# Neutral on every cue — the base each single-cue test perturbs.
-_FLAT = {k: 0.0 for k in _UNIT_BASELINE}
+def test_attach_stamps_every_measurable_piece():
+    pieces = _pieces()
+    attach_voice_confidence(pieces, baseline=_UNIT_BASELINE, baseline_kind="user")
+    for piece in pieces:
+        read = piece["metrics"]["voice_confidence"]
+        assert read["version"] == VERSION and read["baseline"] == "user"
+        assert read["band"] in BANDS
+        assert -1.0 <= read["score"] <= 1.0
+        assert "sex" not in read and "sex_source" not in read
 
 
-def _with(**over) -> dict:
-    m = dict(_FLAT)
-    m.update(over)
-    return m
+def test_a_middling_clip_reads_neutral():
+    # A small lean on one cue stays inside the dead zone.
+    pieces = [{"metrics": {**_FLAT, "dynamic_db": 0.5}}]
+    attach_voice_confidence(pieces, baseline=_UNIT_BASELINE)
+    read = pieces[0]["metrics"]["voice_confidence"]
+    assert (read["score"], read["band"]) == (0.0, BAND_NEUTRAL)
 
 
-class TestAttach(unittest.TestCase):
-
-    def _pieces(self, n=6):
-        return [{"metrics": _with(f0_sd=float(i))} for i in range(n)]
-
-    def test_attach_stamps_every_measurable_piece(self):
-        from services.voice_confidence import attach_voice_confidence
-        pieces = self._pieces()
-        attach_voice_confidence(pieces, baseline=_UNIT_BASELINE,
-                                baseline_kind="user")
-        for p in pieces:
-            read = p["metrics"]["voice_confidence"]
-            self.assertEqual(read["version"], "voice-confidence-universal-v3")
-            self.assertEqual(read["baseline"], "user")
-            self.assertNotIn("sex", read)
-            self.assertNotIn("sex_source", read)
-            from services.voice_confidence import BANDS
-            self.assertIn(read["band"], BANDS)
-            self.assertGreaterEqual(read["score"], -1.0)
-            self.assertLessEqual(read["score"], 1.0)
+def test_no_baseline_or_too_few_cues_stamps_nothing():
+    unread = _pieces(1)
+    attach_voice_confidence(unread, baseline=None)
+    assert "voice_confidence" not in unread[0]["metrics"]
+    sparse = [{"metrics": {"f0_sd": 2.0, "wpm": 2.0}}]
+    attach_voice_confidence(sparse, baseline=_UNIT_BASELINE)
+    assert "voice_confidence" not in sparse[0]["metrics"]
 
 
-if __name__ == "__main__":
-    unittest.main()
+class _Db:
+    def __init__(self, snippets):
+        self.snippets = snippets
+
+    def get_moment_suggestions_by_arc(self, _arc):
+        return {s["id"]: {"kind": "emphasize", "trigger": "confident"} for s in self.snippets}
+
+    def list_confident_voice_self_reports(self, _arc):
+        return []
+
+    def list_owner_voice_album_routes(self, _arc):
+        return []
+
+    def get_snippets_by_session(self, _sid):
+        return self.snippets
+
+
+def test_the_read_never_reaches_a_speaker_payload():
+    pieces = _pieces()
+    attach_voice_confidence(pieces, baseline=_UNIT_BASELINE)
+    assert all("voice_confidence" in p["metrics"] for p in pieces)
+    queue = build_practice_queue(
+        sessions_by_arc={"arc-1": [{"id": "t1", "take_index": 1}]}, database=_Db(pieces))
+    assert [row["snippet_id"] for row in queue] == [p["id"] for p in pieces]
+    flat = json.dumps(queue)
+    for banned in ("voice_confidence", "score", "band", "delivery_signal", VERSION, "metrics"):
+        assert banned not in flat, banned
