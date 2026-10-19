@@ -733,6 +733,12 @@ class _ChangesRun:
                 take_session_id=self.arm_sid,
                 snippet_id=_rewrite_sid,
             ))
+            # Pet phrase (WIL-26): the AI alternative stored by the
+            # analysis job competes in the same rewrite slot. Off unless
+            # PET_PHRASE_ENABLED.
+            _pet = self._pet_phrase_row(_rewrite_sid)
+            if _pet is not None:
+                self.changes.append(_pet)
             self.changes = ensure_required_families(
                 self.served_text,
                 self.changes,
@@ -744,6 +750,21 @@ class _ChangesRun:
             self.feedback_exposure = exposure_snapshot(self.changes)
         else:
             self.feedback_exposure = []
+
+    def _pet_phrase_row(self, snippet_id):
+        """This Take's pet-phrase rewrite, or None. Any failure: None."""
+        from services import pet_phrase
+        if not pet_phrase.enabled():
+            return None
+        try:
+            session = self.db.v2_get_session_by_id(self.arm_sid) or {}
+            return pet_phrase.rewrite_row(
+                self.served_text, session.get("pet_phrase"),
+                take_session_id=self.arm_sid, snippet_id=snippet_id)
+        except Exception as error:  # noqa: BLE001 -- logged; the lane goes without it
+            logger.warning("pet_phrase: row failed sid=%s: %s", self.arm_sid, error,
+                           exc_info=True)
+            return None
 
     def _take_document_map(self):
         """The served-to-Take map the fallback decision reads (N48.1, Wave

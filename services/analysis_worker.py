@@ -360,6 +360,13 @@ def _run_full_analysis_impl(
                         generate_for_session(
                             session_id, arc_id)
                     _deg.run("moment_suggestions", _moment_suggestions)
+                # Pet phrase (WIL-26): one AI alternative for a phrase used
+                # 3+ times, inside this job's provider scope. Off unless
+                # PET_PHRASE_ENABLED; the service checks the flag itself.
+                def _pet_phrase() -> None:
+                    from services.pet_phrase import generate_for_session
+                    generate_for_session(session_id, arc_id)
+                _deg.run("pet_phrase", _pet_phrase)
                 _praise_detectors_alone(session_id, arc_id, _deg)
                 _emit(progress, "speaking_anchors", 90,
                       "Preparing your speaking anchors…")
