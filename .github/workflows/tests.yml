@@ -252,21 +252,58 @@ jobs:
             echo "touched=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Set up Python 3.12
+      # THE THIRD GATE (founder 2026-10-19, before the key goes back in):
+      # the gate above reads the PR's whole diff, so once a PR touched the
+      # AI every later push paid again, even a push that changed no AI
+      # file (PR 1127: seven pushes, one prompt change). A pass is now
+      # remembered under a fingerprint of the same files; a push whose AI
+      # files match a pass on this PR skips the probes. Only a pass is
+      # remembered: a failure runs again on the next push. The manual
+      # trigger never skips.
+      - name: Fingerprint the AI files
+        id: fp
         if: steps.ai.outputs.touched == 'true'
+        env:
+          FP: ${{ hashFiles('services/prompts/**', 'services/master_doc_rag.py', 'services/will_voice.py', 'services/llm.py', 'services/llm_config.py', 'services/openai_service.py', 'services/utils.py', 'tests/evals/**', 'requirements.txt', '.github/workflows/tests.yml') }}
+        run: echo "key=evals-passed-$FP" >> "$GITHUB_OUTPUT"
+
+      - name: Did these AI files already pass?
+        id: passed
+        if: steps.ai.outputs.touched == 'true' && github.event_name == 'pull_request'
+        uses: actions/cache/restore@v4
+        with:
+          path: .evals-passed
+          key: ${{ steps.fp.outputs.key }}
+          lookup-only: true
+
+      - name: Run the probes?
+        id: go
+        if: steps.ai.outputs.touched == 'true'
+        env:
+          HIT: ${{ steps.passed.outputs.cache-hit }}
+        run: |
+          if [ "$HIT" = "true" ]; then
+            echo "These AI files already passed on an earlier push of this PR: the probes are skipped."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Python 3.12
+        if: steps.go.outputs.run == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12.1"
           cache: pip
 
       - name: Install dependencies
-        if: steps.ai.outputs.touched == 'true'
+        if: steps.go.outputs.run == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: Master-doc probe
-        if: steps.ai.outputs.touched == 'true'
+        if: steps.go.outputs.run == 'true'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           # Placeholders so import-time config guards don't crash; the
@@ -288,7 +325,7 @@ jobs:
         run: python tests/evals/master_doc_probe.py
 
       - name: Golden evals for changed prompts
-        if: steps.ai.outputs.touched == 'true'
+        if: steps.go.outputs.run == 'true'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           # Same placeholder env as the probe above (see there for why
@@ -318,12 +355,25 @@ jobs:
             python tests/evals/run_prompt_evals.py --changed-against /tmp/base-lock.json
           fi
 
+      # Both blocking gates passed (a step without a status check runs only
+      # after success): remember it for this PR's later pushes.
+      - name: Mark the pass
+        if: steps.go.outputs.run == 'true' && github.event_name == 'pull_request'
+        run: mkdir -p .evals-passed && echo "${{ github.sha }}" > .evals-passed/sha
+
+      - name: Remember the pass
+        if: steps.go.outputs.run == 'true' && github.event_name == 'pull_request'
+        uses: actions/cache/save@v4
+        with:
+          path: .evals-passed
+          key: ${{ steps.fp.outputs.key }}
+
       # LAST and non-blocking: a parked flag-OFF path may not fail a merge.
       # `continue-on-error` on the step keeps exactly the semantics the
       # separate job had, and running it last means its failure can never
       # shadow a gate that does block.
       - name: Router parity probe (non-blocking)
-        if: steps.ai.outputs.touched == 'true'
+        if: steps.go.outputs.run == 'true'
         continue-on-error: true
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
