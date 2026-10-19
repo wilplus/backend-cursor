@@ -2583,8 +2583,10 @@ answers, each the recommended option:
 - **The doors close to direct messages.** `coach_take_word` and
   `coach_moment_line` leave doors 2, 3 and 4 until names and specifics are
   scrubbed, the one privacy update is published and the versioned coach
-  agreement exists. They are still recorded under the speaker's training
-  yes. ("Close them for now.")
+  agreement exists. They are still recorded for every speaker; only a
+  training yes would make one releasable. ("Close them for now.") Nothing
+  had left by then: every Take-word pair was refused by 0402's one_home
+  CHECK, and nothing in the app calls the moment-line drafter.
 - **The latest version teaches.** When a coach edits a Take word, every
   version is kept in its history and training reads the newest one.
 - **Coach videos are transcribed only for speakers with the training yes.**
