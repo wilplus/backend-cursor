@@ -178,6 +178,13 @@ class TheFounderReviewsACoachsExerciseVideo(unittest.TestCase):
             self.versions.append(payload)
             return payload
 
+        def get_exercise_version_transcript(self, _id, version):
+            # What the coach's version holds: the words said in the video.
+            return {"version": version, "transcript_status": "done",
+                    "transcript": {"text": "Pause before the number."},
+                    "transcript_language": "en",
+                    "ai_draft_text": "Slow down.", "ai_draft_model_version": "m1"}
+
     ROW = {"exercise_id": "coach-request-a", "owner_user_id": "owner-1",
            "version": 1,
            "explanation_video_url": "s3://coach-media/coach-answers/owner-1/r/v.mp4"}
@@ -196,10 +203,13 @@ class TheFounderReviewsACoachsExerciseVideo(unittest.TestCase):
         self.assertEqual(db.row["explanation_video_url"],
                          "https://library.example/exercise/v.mp4")
         self.assertTrue(cvp.shared_for_everyone(db.row))
-        # Kept as its own version, so the speaker's earlier ones can go.
-        self.assertEqual([(v["version"], v["explanation_video_url"])
+        # Kept as its own version, with the coach's words from the video, so
+        # the speaker's earlier versions can go.
+        self.assertEqual([(v["version"], v["explanation_video_url"],
+                           v["transcript"]["text"], v["ai_draft_text"])
                           for v in db.versions],
-                         [(2, "https://library.example/exercise/v.mp4")])
+                         [(2, "https://library.example/exercise/v.mp4",
+                           "Pause before the number.", "Slow down.")])
 
     def test_only_the_version_the_founder_watched_is_approved(self):
         db = self.Db({**self.ROW, "version": 2})

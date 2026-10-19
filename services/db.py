@@ -11978,13 +11978,17 @@ class DatabaseService:
         self, exercise_id: str, version: int,
     ) -> Optional[dict]:
         """One version row's transcript state (0399): {transcript_status,
-        transcript}. The walk's pair reads the video's transcript here as
-        the second final. None when absent or unreadable."""
+        transcript, transcript_language}, and the AI draft the coach worked
+        from. The walk's pair reads the video's transcript here as the
+        second final; the founder's approval carries all of it onto the
+        approved version (N78). None when absent or unreadable."""
         if not exercise_id:
             return None
         try:
             res = (self.client.table("diagnostic_exercise_version")
-                   .select("exercise_id,version,transcript_status,transcript")
+                   .select("exercise_id,version,transcript_status,transcript,"
+                           "transcript_language,ai_draft_text,"
+                           "ai_draft_model_version")
                    .eq("exercise_id", str(exercise_id))
                    .eq("version", int(version)).limit(1).execute())
             return (res.data or [None])[0]

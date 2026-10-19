@@ -80,8 +80,11 @@ def record_version(
     ai_draft_model_version: Optional[str] = None,
     video_sha256_hex: Optional[str] = None, video_bytes: Optional[int] = None,
     transcript_status: str = TRANSCRIPT_NOT_REQUESTED,
+    transcript: Optional[dict] = None, transcript_language: Optional[str] = None,
 ) -> Optional[dict]:
     """Write the version row for a saved live row, insert-once (0399).
+    ``transcript``: a transcript already made of this same video, carried
+    over (the founder's approval, N78); otherwise it arrives later.
 
     Best effort and never in the save's way: a version that cannot be
     written is logged, the live row stands, and the next save tries again.
@@ -100,6 +103,8 @@ def record_version(
         "video_sha256": video_sha256_hex or None,
         "video_bytes": video_bytes,
         "transcript_status": transcript_status,
+        **({"transcript": transcript, "transcript_language": transcript_language}
+           if isinstance(transcript, dict) else {}),
         "source": source,
         "created_by": str(created_by or ""),
     }

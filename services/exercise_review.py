@@ -117,18 +117,35 @@ def review(database: Any, exercise_id: str, body: Any,
         return 409, {"code": "VERSION_CHANGED",
                      "error": "This video changed since it was opened."}
     if decision == "approved":
-        _record_approved_version(database, saved, exercise_id, founder_id)
+        _record_approved_version(database, saved, exercise_id, founder_id,
+                                 watched=version)
     return 200, {"exercise": _view(saved), "decision": decision}
 
 
 def _record_approved_version(database: Any, saved: dict, exercise_id: str,
-                             founder_id: str) -> None:
+                             founder_id: str, watched: int) -> None:
     """The approved row as its own version (0399): the library's copy of the
-    video, with no owner, so it outlives the speaker's earlier versions."""
-    from services.exercise_versions import record_version
+    video, with no owner, so it outlives the speaker's earlier versions. It
+    carries what the coach's version ``watched`` held for that same video:
+    its hash, its transcript and the AI draft the coach worked from, which
+    go with the speaker's account otherwise."""
+    from services.exercise_versions import (
+        TRANSCRIPT_DONE, TRANSCRIPT_NOT_REQUESTED, record_version,
+    )
     lister = getattr(database, "list_exercise_versions", None)
     latest = ((lister(str(exercise_id)) or [None])[0]
               if lister is not None else None) or {}
+    reader = getattr(database, "get_exercise_version_transcript", None)
+    held = (reader(str(exercise_id), int(watched))
+            if reader is not None else None) or {}
+    words = (held.get("transcript")
+             if held.get("transcript_status") == TRANSCRIPT_DONE else None)
     record_version(database, saved, source="cms", created_by=str(founder_id),
+                   ai_draft_text=held.get("ai_draft_text"),
+                   ai_draft_model_version=held.get("ai_draft_model_version"),
                    video_sha256_hex=latest.get("video_sha256"),
-                   video_bytes=latest.get("video_bytes"))
+                   video_bytes=latest.get("video_bytes"),
+                   transcript_status=(TRANSCRIPT_DONE if isinstance(words, dict)
+                                      else TRANSCRIPT_NOT_REQUESTED),
+                   transcript=words,
+                   transcript_language=held.get("transcript_language"))
