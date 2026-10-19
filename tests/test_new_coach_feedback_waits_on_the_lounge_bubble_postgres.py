@@ -1,13 +1,20 @@
-"""New coach feedback waits on the Lounge bubble until the walk shows it,
-on a disposable database (0439, D-FW-5; the Feedback walk lock, flow 1).
-
-Runs services.coach_feedback_signal against the real functions. Pins:
-publish -> true, the walk shows it -> false, a later coach word -> true;
-a coach answer on a moment the same way; machine-only feedback (a request
-not shared) never lights it; one boolean per project, false for a project
-with nothing from the coach; another speaker's Take is refused and their
-flag untouched; closed to the browser roles; applying the file again keeps
-every row."""
+"""
+STORY    As a speaker, I want the Lounge to show a dot when my coach has said
+         something new and clear it once the Feedback walk shows it, so that
+         I never miss coach feedback.
+OUTCOME
+  O1  Publish lights it, the walk showing it clears it, a later or edited
+      coach word lights it again; a project with nothing is false.
+  O2  A coach word that is not shared never lights it.
+  O3  Another speaker's Take is refused (404) and their flag is untouched.
+  O4  The browser roles cannot call the two functions.
+PROVES   O1 -> test_publish_open_and_a_later_word
+         O2 -> test_an_unshared_word_never_lights_it
+         O3 -> test_another_speakers_take_is_refused_and_untouched
+         O4 -> test_the_browser_roles_cannot_call_the_functions
+WHY      0439, D-FW-5; the Feedback walk lock, flow 1. Runs
+         services.coach_feedback_signal against the real functions.
+"""
 from __future__ import annotations
 
 import os
@@ -102,3 +109,48 @@ def test_publish_open_and_a_later_word(db):
     with db.cursor() as cur:
         _word(cur, take_two, shared=True, at="clock_timestamp()")
     assert signal.lounge_flags(database, user) == {arc: True}
+
+
+def test_an_unshared_word_never_lights_it(db):
+    database = _Database(db)
+    user, arc = _speaker()
+    with db.cursor() as cur:
+        take = _take(cur, user, arc, 1)
+        _word(cur, take, shared=False)
+    assert signal.lounge_flags(database, user) == {arc: False}
+    # The same word, once shared, does light it: the false above is the
+    # missing share, not a broken read.
+    with db.cursor() as cur:
+        _word(cur, take, shared=True, at="clock_timestamp()")
+    assert signal.lounge_flags(database, user) == {arc: True}
+
+
+def test_another_speakers_take_is_refused_and_untouched(db):
+    database = _Database(db)
+    owner, arc = _speaker()
+    stranger, _ = _speaker()
+    with db.cursor() as cur:
+        take = _take(cur, owner, arc, 1)
+        _word(cur, take, shared=True)
+    assert signal.mark_seen(database, stranger, {"take_session_id": take}) == (
+        404, {"code": "NOT_FOUND", "error": "take not found"})
+    assert signal.lounge_flags(database, owner) == {arc: True}
+
+
+def test_the_browser_roles_cannot_call_the_functions(db):
+    with db.cursor() as cur:
+        cur.execute(
+            "SELECT r.rolname, p.proname, "
+            "has_function_privilege(r.rolname, p.oid, 'EXECUTE') "
+            "FROM pg_proc p CROSS JOIN pg_roles r "
+            "WHERE p.proname IN ('new_coach_feedback_by_project_v1', "
+            "'mark_coach_feedback_seen_v1') "
+            "AND r.rolname IN ('anon', 'authenticated', 'service_role')")
+        grants = {(role, name): ok for role, name, ok in cur.fetchall()}
+    assert len(grants) == 6
+    assert {k: v for k, v in grants.items() if k[0] != "service_role"} == {
+        (role, name): False
+        for role in ("anon", "authenticated")
+        for name in ("new_coach_feedback_by_project_v1",
+                     "mark_coach_feedback_seen_v1")}
+    assert grants[("service_role", "mark_coach_feedback_seen_v1")] is True

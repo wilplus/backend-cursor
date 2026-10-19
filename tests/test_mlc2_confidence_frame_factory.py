@@ -1,13 +1,21 @@
-"""The foundation confidence frame (G-6, audit 2026-09-22).
-
-What is pinned: the frame the factory builds passes the contract's own
-validator; the clips are the Take's snippets on the Take's own audio object
-with exact spans; the foundation prediction agrees with the detector's bands;
-the deterministic pick is the clip nearest a class boundary and the 20%
-exploration draw is recorded; exactly one clip is selected; the frame is a
-pure function of the event and the snippets (a replay is byte-identical);
-nothing in it carries transcript text; and the worker boot line starts
-nothing while the mode is dark.
+"""
+STORY    As the founder, I want the confidence frame built from a Take's
+         snippets to be exact, deterministic, free of transcript text and
+         off unless the mode is open, so that blind labels are reproducible
+         and nothing runs before I switch it on.
+OUTCOME
+  O1  The frame passes the contract's validator: every clip is on the Take's
+      own audio object with its exact span, and exactly one clip is selected.
+  O2  A replay (rows in any order) is byte-identical.
+  O3  Nothing in the frame carries transcript text.
+  O4  While the mode is dark, the worker boot line starts nothing.
+  O5  Under founder_canary the sweep owner claims, finalizes and re-arms.
+PROVES   O1 -> test_the_frame_is_valid_exact_and_selects_one_clip
+         O2 -> test_a_replay_is_byte_identical
+         O3 -> test_no_transcript_text_reaches_the_frame
+         O4 -> test_the_boot_line_starts_nothing_while_dark
+         O5 -> test_the_owner_claims_finalizes_and_rearms
+WHY      G-6, audit 2026-09-22.
 """
 from __future__ import annotations
 
@@ -15,8 +23,13 @@ import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
+import json
+
+from services.mlc2_confidence_cutover import DARK, resolve_confidence_cutover
 from services.mlc2_confidence_frame_factory import (
     MIN_CLIP_MS,
+    foundation_frame_factory,
+    start_confidence_producer_chain,
     sweep_confidence_outbox,
 )
 from services.mlc2_confidence_producer import (
@@ -92,6 +105,55 @@ SNIPPETS = [
 ]
 
 
+def _frame(snippets=None):
+    rows = SNIPPETS if snippets is None else snippets
+    database = SimpleNamespace(get_snippets_by_session=lambda take_id: rows)
+    return foundation_frame_factory(database)(_event()).as_dict()
+
+
+def _bytes(frame) -> str:
+    return json.dumps(frame, sort_keys=True, default=str)
+
+
+class TestTheFrame:
+    def test_the_frame_is_valid_exact_and_selects_one_clip(self):
+        # as_dict() runs the contract's validator and raises on a bad frame.
+        candidates = _frame()["candidate_set"]["candidates"]
+        # The five rows with an interval are clips; the one without is not.
+        assert len(candidates) == 5
+        for c in candidates:
+            assert c["evidence"]["object"]["object_key"] == "takes/one.webm"
+        spans = {c["clip_id"]: c["evidence"]["coordinates"] for c in candidates}
+        assert spans[_id(101)] == {"start_ms": 5000, "end_ms": 9000}
+        assert [c["clip_id"] for c in candidates if c["selected"]] == [_id(102)]
+        assert [c["clip_id"] for c in candidates if not c["eligible"]] == [
+            _id(104), _id(105)]
+
+    def test_a_replay_is_byte_identical(self):
+        assert _bytes(_frame()) == _bytes(_frame(list(reversed(SNIPPETS))))
+
+    def test_no_transcript_text_reaches_the_frame(self):
+        frame = _bytes(_frame())
+        assert "takes/one.webm" in frame
+        assert "spoken words" not in frame
+        assert "transcript" not in frame
+
+
+def test_the_boot_line_starts_nothing_while_dark(monkeypatch):
+    import services.job_queue as job_queue
+    import services.mlc2_confidence_frame_factory as factory
+
+    def _must_not_run(*a, **k):
+        raise AssertionError("dark mode touched the broker")
+
+    monkeypatch.setattr(factory, "_mode",
+                        lambda: resolve_confidence_cutover(DARK))
+    monkeypatch.setattr(job_queue, "get_redis", _must_not_run)
+    monkeypatch.setattr(job_queue, "enqueue", _must_not_run)
+    line = start_confidence_producer_chain()
+    assert line.startswith("dark: not started")
+
+
 class _Rpc:
     def __init__(self, calls, name, payload):
         self.calls, self.name, self.payload = calls, name, payload
@@ -129,9 +191,8 @@ class _FakeRedis:
 
 
 class TestTheSweepUnderFounderCanary:
-    """The chain's ownership rule, with the mode monkeypatched open: the
-    real constant stays dark (asserted above), so this is the only place the
-    founder_canary branch runs before the founder's own change."""
+    """The chain's ownership rule, with the mode monkeypatched to
+    founder_canary and the broker, queue and database faked."""
 
     def _open(self, monkeypatch, redis, client):
         import services.job_queue as job_queue
