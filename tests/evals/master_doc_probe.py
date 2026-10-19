@@ -117,6 +117,14 @@ class Case:
     # of cases is how that run is performed — the dial is
     # master_doc_rag._LIFE_MAX_* . The injection yields; the probe never does.
     life_context: Optional[dict] = None
+    # The app's features block (services.chat_app_context), as a signed-in
+    # Lounge turn sends it. None keeps the prompt as it was.
+    app_features: bool = False
+
+
+def _app_context() -> dict:
+    from services.chat_app_context import features_block
+    return {"features": features_block(), "status": ""}
 
 
 CASES: list[Case] = [
@@ -395,6 +403,30 @@ CASES: list[Case] = [
             "report_only_max_answer_chars": 155,  # bridge-not-dump one-liner
         },
     ),
+    # Founder 2026-10-18 (screenshot): Will said "tap the button below" over
+    # the booking link, then "I can't create clickable links ... copy and
+    # paste this URL". The link under the answer is a link, and it works.
+    Case(
+        id="MDR-16",
+        category="A feature that opens a link is called a link, not a button",
+        user_message="Can I book a lesson?",
+        app_features=True,
+        rubric={"must_not_mention_substrings": ["button", "copy"]},
+    ),
+    Case(
+        id="MDR-17",
+        category="Will never says it cannot make a link",
+        user_message="Can you make it a link?",
+        history=[
+            {"role": "user", "content": "Can I book a lesson?"},
+            {"role": "assistant", "content": "Yes, you can book a 60-minute "
+             "1-on-1 lesson with Artur.\n\nhttps://www.willpowerlab.com/book/artur"},
+        ],
+        app_features=True,
+        rubric={"must_not_mention_substrings": [
+            "can't create", "cannot create", "can't make", "cannot make",
+            "copy and paste", "copy it"]},
+    ),
 ]
 
 
@@ -620,6 +652,7 @@ def grade(case: Case) -> Verdict:
             case.user_message,
             history=case.history or None,
             life_context=case.life_context,
+            app_context=_app_context if case.app_features else None,
         )
     except Exception as e:
         return Verdict(
