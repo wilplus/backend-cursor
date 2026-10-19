@@ -286,13 +286,17 @@ class Config:
     # each by a reviewed change carrying the founder's sentence ("open door 2
     # for surface S"). Opened 2026-10-01 for exercise_script (N16),
     # praise_line and clearer_version (C4, N18); the coach-word surfaces of
-    # Phase 7 (coach_moment_line, coach_take_word) are named here and in
+    # Phase 7 (coach_moment_line, coach_take_word) were named here and in
     # doors 3 and 4 from 2026-10-08 (founder: "turn it all ON"), under
-    # Privacy/Terms 3.5 signed 2026-10-08 (N68) and published that evening;
-    # the speaker's training yes governs them like the answer surfaces (#972).
+    # Privacy/Terms 3.5 signed 2026-10-08 (N68) and published that evening.
+    # CLOSED AGAIN 2026-10-19 (founder, chat: "Close them for now"; N79):
+    # they are a coach's direct messages to one speaker, and they train only
+    # once names and specifics are scrubbed. Until the scrub step, the one
+    # privacy update and the versioned coach agreement exist, both surfaces
+    # are still recorded but leave by no door. Reopening them is a reviewed
+    # change carrying the founder's sentence, here and in doors 3 and 4.
     PAIR_RELEASE_SURFACES: frozenset = frozenset({
         "exercise_script", "praise_line", "clearer_version",
-        "coach_moment_line", "coach_take_word",
     })
     # Where a release goes and what signs its manifest (ML-9). Unset, the
     # exporter refuses and says why; nothing leaves.
@@ -305,14 +309,14 @@ class Config:
     # writes runtime_config, and a promoted model is served, only when the
     # surface is named here ("open door 4 for surface S"). Both were empty
     # until 2026-10-08; both are reviewed changes.
-    # Named 2026-10-08 (founder: "turn it all ON"): the three answer surfaces.
+    # Named 2026-10-08 (founder: "turn it all ON"): the three answer
+    # surfaces. The two coach-word surfaces were named the same day and
+    # closed again 2026-10-19 with door 2 (N79, above).
     TRAINING_SURFACES: frozenset = frozenset({
         "exercise_script", "praise_line", "clearer_version",
-        "coach_moment_line", "coach_take_word",
     })
     PROMOTION_SURFACES: frozenset = frozenset({
         "exercise_script", "praise_line", "clearer_version",
-        "coach_moment_line", "coach_take_word",
     })
     # The base model a run fine-tunes (ML-11). An environment choice, not a
     # door: changing it opens nothing.

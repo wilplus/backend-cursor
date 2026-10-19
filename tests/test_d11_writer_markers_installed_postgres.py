@@ -29,7 +29,7 @@ import os
 import psycopg2
 import pytest
 
-from tests.test_d11_writer_markers_survive_the_manifest import (
+from tests.d11_manifest_walk import (
     UNRESOLVED,
     registered_writers,
 )
