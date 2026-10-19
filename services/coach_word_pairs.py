@@ -35,6 +35,7 @@ pairs. The ledger reports, per surface, the share of drafts sent unchanged.
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any, Optional
 
 _log = logging.getLogger(__name__)
@@ -306,8 +307,10 @@ def transcribe_take_word_video(database: Any, *, word_row: Any, coach_id: str) -
         text = (tr.get("text") or "").strip() if isinstance(tr, dict) else ""
         if not text:
             return None
-        database.set_coach_take_word_transcript(take_session_id=take,
-                                                coach_id=str(coach_id), transcript=text)
+        if not database.set_coach_take_word_transcript(
+                take_session_id=take, coach_id=str(coach_id), transcript=text,
+                video_ref=str(word_row["video_ref"])):
+            return None  # the video was replaced meanwhile; its own run follows
         record_take_word_pair(database, word_row=word_row, coach_id=coach_id,
                               final_text=text, final_kind="transcript")
         return text
@@ -318,6 +321,18 @@ def transcribe_take_word_video(database: Any, *, word_row: Any, coach_id: str) -
     except Exception as e:  # noqa: BLE001 — the word is saved either way
         _log.warning("take word transcript failed take=%s: %s", take, e, exc_info=True)
         return None
+
+
+def transcribe_take_word_video_in_background(database: Any, *, word_row: Any,
+                                             coach_id: str) -> None:
+    """The same, off the coach's request: reading the video, ffmpeg and
+    Whisper never hold the save (coaches never slow the loop)."""
+    if not isinstance(word_row, dict) or not word_row.get("video_ref"):
+        return
+    threading.Thread(
+        target=transcribe_take_word_video, args=(database,),
+        kwargs={"word_row": dict(word_row), "coach_id": str(coach_id)},
+        name="take-word-transcript", daemon=True).start()
 
 
 def unchanged_share(rows: Any) -> dict:

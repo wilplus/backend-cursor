@@ -96,12 +96,23 @@ class _Db:
 
     def set_coach_take_word_transcript(self, **kwargs):
         self.transcripts.append(kwargs)
+        return {"transcript": kwargs["transcript"]}
 
     def upsert_coach_take_word(self, *, take_session_id, coach_id, text, video_ref, share):
         row = {"id": "word-1", "take_session_id": take_session_id, "coach_id": coach_id,
                "text": text, "video_ref": video_ref, "updated_at": "t2"}
         self.words[(take_session_id, coach_id)] = row
         return row
+
+
+class _Now:
+    """The background thread, run in place so the test sees its result."""
+
+    def __init__(self, target, args=(), kwargs=None, **_ignored):
+        self._run = lambda: target(*args, **(kwargs or {}))
+
+    def start(self):
+        self._run()
 
 
 def _provider(calls: list, order: list):
@@ -124,6 +135,7 @@ class TranscribeTakeWordVideoTests(unittest.TestCase):
                        return_value=training_yes),
             mock.patch("services.coach_video_storage.refreshed_media_url",
                        return_value="https://media/take.webm"),
+            mock.patch("services.coach_word_pairs.threading.Thread", _Now),
             mock.patch("services.processing_authorization.ProcessingAuthorizationService",
                        return_value=auth),
             mock.patch("services.openai_service.OpenAIService", _provider(calls, auth.order)),

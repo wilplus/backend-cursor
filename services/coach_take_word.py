@@ -82,11 +82,12 @@ def _the_pair(database: Any, row: dict, *, coach_id: str, text: Optional[str]) -
     best-effort; the word is saved either way."""
     try:
         from services.coach_word_pairs import (
-            record_take_word_pair, transcribe_take_word_video,
+            record_take_word_pair, transcribe_take_word_video_in_background,
         )
         record_take_word_pair(database, word_row=row, coach_id=coach_id, final_text=text)
         if row.get("video_ref") and not row.get("transcript"):
-            transcribe_take_word_video(database, word_row=row, coach_id=coach_id)
+            transcribe_take_word_video_in_background(database, word_row=row,
+                                                     coach_id=coach_id)
     except Exception as e:  # noqa: BLE001 -- the word is saved either way
         _log.info("take word pair skipped take=%s: %s", row.get("take_session_id"), e)
 
