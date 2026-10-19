@@ -1733,6 +1733,11 @@ class _ChangesRun:
             snippet_ids=[str(row["snippet_id"]) for row in moments])
         for row in moments:
             card = cards.get(str(row["snippet_id"]))
+            if card == "exercise" and not row.get("practice_exercise"):
+                # A frozen draw this speaker no longer gets (N77, N78): the
+                # moment carries no exercise, so it opens as unmatched.
+                from services.confident_voice_practice import coach_on_panel
+                card = "coach_request" if coach_on_panel(self.db) else None
             if card:
                 row["open_card"] = card
 

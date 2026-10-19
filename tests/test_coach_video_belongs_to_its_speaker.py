@@ -78,10 +78,13 @@ class WhichVideoTheAppPicks(unittest.TestCase):
                          "coach-request-old")
 
     def test_the_speakers_own_video_comes_before_the_library(self):
-        library = self._row("library-rushing", ["rushing"], primary="rushing")
+        # Named to sort first: only the tiers keep it out of the draw.
+        library = self._row("aaa-library-rushing", ["rushing"], primary="rushing")
         mine = self._coach_video_for("owner-1")
         db = _Db([library, mine], {"owner-1": {"coach-request-a"}})
         self.assertEqual(self._offer(db, RUSHING)["exercise_id"], "coach-request-a")
+        self.assertEqual([c["exercise_id"] for c in db.assigned[0]["candidates"]],
+                         ["coach-request-a"])
 
     def test_it_fits_only_exactly(self):
         side = {**self._row("coach-request-b", ["word_compression", "rushing"],
@@ -156,38 +159,57 @@ class TheFounderReviewsACoachsExerciseVideo(unittest.TestCase):
     class Db:
         def __init__(self, row):
             self.row = dict(row)
+            self.versions = []
 
         def get_diagnostic_exercise(self, _id):
             return dict(self.row)
 
         def review_diagnostic_exercise(self, *, exercise_id, decision,
-                                       reviewed_by, video_url=None):
+                                       reviewed_by, version, video_url=None):
+            if self.row["version"] != version:
+                return None
             self.row.update(review_decision=decision, reviewed_by=reviewed_by)
             if decision == "approved":
-                self.row.update(owner_user_id=None, explanation_video_url=video_url)
+                self.row.update(owner_user_id=None, explanation_video_url=video_url,
+                                version=version + 1)
             return dict(self.row)
 
+        def record_exercise_version(self, payload):
+            self.versions.append(payload)
+            return payload
+
     ROW = {"exercise_id": "coach-request-a", "owner_user_id": "owner-1",
+           "version": 1,
            "explanation_video_url": "s3://coach-media/coach-answers/owner-1/r/v.mp4"}
 
-    def test_approving_shares_it_from_the_library_s_own_copy(self):
+    def _review(self, db, body):
         from services import exercise_review
-        db = self.Db(self.ROW)
         with patch.object(exercise_review, "_library_copy",
                           lambda ref: "https://library.example/exercise/v.mp4"):
-            status, _ = exercise_review.review(
-                db, "coach-request-a", {"decision": "approved"}, "founder")
+            return exercise_review.review(db, "coach-request-a", body, "founder")
+
+    def test_approving_shares_it_from_the_library_s_own_copy(self):
+        db = self.Db(self.ROW)
+        status, _ = self._review(db, {"decision": "approved", "version": 1})
         self.assertEqual(status, 200)
         self.assertIsNone(db.row["owner_user_id"])
         self.assertEqual(db.row["explanation_video_url"],
                          "https://library.example/exercise/v.mp4")
         self.assertTrue(cvp.shared_for_everyone(db.row))
+        # Kept as its own version, so the speaker's earlier ones can go.
+        self.assertEqual([(v["version"], v["explanation_video_url"])
+                          for v in db.versions],
+                         [(2, "https://library.example/exercise/v.mp4")])
+
+    def test_only_the_version_the_founder_watched_is_approved(self):
+        db = self.Db({**self.ROW, "version": 2})
+        status, payload = self._review(db, {"decision": "approved", "version": 1})
+        self.assertEqual((status, payload["code"]), (409, "VERSION_CHANGED"))
+        self.assertEqual(db.row["owner_user_id"], "owner-1")
 
     def test_keeping_it_leaves_it_with_its_speaker(self):
-        from services import exercise_review
         db = self.Db(self.ROW)
-        status, _ = exercise_review.review(
-            db, "coach-request-a", {"decision": "kept"}, "founder")
+        status, _ = self._review(db, {"decision": "kept", "version": 1})
         self.assertEqual((status, db.row["owner_user_id"]), (200, "owner-1"))
         self.assertFalse(cvp.shared_for_everyone(db.row))
 

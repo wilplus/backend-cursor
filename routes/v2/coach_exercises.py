@@ -141,7 +141,7 @@ def v2_admin_exercises_waiting():
 @require_founder
 def v2_admin_exercise_review(exercise_id):
     """The founder's review of one coach exercise video (N78). Body
-    {decision: "approved" | "kept"}. Founder only.
+    {decision: "approved" | "kept", version: the one watched}. Founder only.
     200 {exercise, decision} · 400 · 403 · 404 · 409 · 500 · 502"""
     from services.exercise_review import review
     status, payload = review(db, str(exercise_id),

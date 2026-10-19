@@ -11709,22 +11709,26 @@ class DatabaseService:
 
     def review_diagnostic_exercise(
         self, *, exercise_id: str, decision: str, reviewed_by: str,
-        video_url: Optional[str] = None,
+        version: int, video_url: Optional[str] = None,
     ) -> Optional[dict]:
-        """The founder's review of a coach's exercise video (0477, N78).
-        'approved' clears the owner in the same write, so the row is the
-        shared library's, and puts the library copy of its video on it;
-        'kept' leaves it with its speaker. None on failure."""
+        """The founder's review of a coach's exercise video (0477, N78), of
+        exactly ``version``: a row saved since matches nothing, and None
+        comes back. 'approved' clears the owner in the same write, so the
+        row is the shared library's, puts the library copy of its video on
+        it and bumps the version; 'kept' leaves it with its speaker. None
+        on failure."""
         patch: dict = {"review_decision": decision,
                        "reviewed_at": datetime.now(timezone.utc).isoformat(),
                        "reviewed_by": str(reviewed_by or "")}
         if decision == "approved":
             patch["owner_user_id"] = None
+            patch["version"] = int(version) + 1
             if video_url:
                 patch["explanation_video_url"] = video_url
         try:
             res = (self.client.table("diagnostic_exercise").update(patch)
-                   .eq("exercise_id", str(exercise_id)).execute())
+                   .eq("exercise_id", str(exercise_id))
+                   .eq("version", int(version)).execute())
             return (res.data or [None])[0]
         except Exception as e:
             logger.warning("review_diagnostic_exercise failed id=%s: %s",

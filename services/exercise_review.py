@@ -81,7 +81,8 @@ def _library_copy(ref: Any) -> str:
 
 def review(database: Any, exercise_id: str, body: Any,
            founder_id: str) -> tuple[int, dict]:
-    """PUT /admin/exercises/<id>/review {decision}: (status, payload)."""
+    """PUT /admin/exercises/<id>/review {decision, version}: (status,
+    payload). ``version`` is the one the founder watched."""
     decision = (body or {}).get("decision") if isinstance(body, dict) else None
     if decision not in DECISIONS:
         return 400, {"code": "INVALID_INPUT",
@@ -95,6 +96,12 @@ def review(database: Any, exercise_id: str, body: Any,
     if exercise.get("review_decision") == "approved":
         return 409, {"code": "ALREADY_APPROVED",
                      "error": "Already shared; retire it to take it back."}
+    # The version the founder watched: a video saved since is not approved
+    # unseen.
+    version = int(exercise.get("version") or 1)
+    if str((body or {}).get("version")) != str(version):
+        return 409, {"code": "VERSION_CHANGED",
+                     "error": "This video changed since it was opened."}
     video_url = None
     if decision == "approved":
         try:
@@ -105,7 +112,23 @@ def review(database: Any, exercise_id: str, body: Any,
                          "error": "Failed to copy the video to the library."}
     saved = database.review_diagnostic_exercise(
         exercise_id=str(exercise_id), decision=decision,
-        reviewed_by=str(founder_id), video_url=video_url)
+        reviewed_by=str(founder_id), version=version, video_url=video_url)
     if not isinstance(saved, dict):
-        return 500, {"code": "V2_ERROR", "error": "The review could not be saved."}
+        return 409, {"code": "VERSION_CHANGED",
+                     "error": "This video changed since it was opened."}
+    if decision == "approved":
+        _record_approved_version(database, saved, exercise_id, founder_id)
     return 200, {"exercise": _view(saved), "decision": decision}
+
+
+def _record_approved_version(database: Any, saved: dict, exercise_id: str,
+                             founder_id: str) -> None:
+    """The approved row as its own version (0399): the library's copy of the
+    video, with no owner, so it outlives the speaker's earlier versions."""
+    from services.exercise_versions import record_version
+    lister = getattr(database, "list_exercise_versions", None)
+    latest = ((lister(str(exercise_id)) or [None])[0]
+              if lister is not None else None) or {}
+    record_version(database, saved, source="cms", created_by=str(founder_id),
+                   video_sha256_hex=latest.get("video_sha256"),
+                   video_bytes=latest.get("video_bytes"))
