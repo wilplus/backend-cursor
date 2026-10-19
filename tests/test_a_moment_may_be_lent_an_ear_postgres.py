@@ -1,6 +1,18 @@
-"""A moment may be lent an ear, on a disposable database (0410, F3, F4,
-the delayed measure). Pins: the six tables and the view exist with their
-keys and checks; the migration is idempotent (applied twice)."""
+"""
+STORY    As a speaker, I want a clip I shared for listening to vanish from the
+         shared list as soon as I withdraw it, so that I control who hears me.
+OUTCOME
+  O1  A share with revoked_at set leaves shared_clips_live at once.
+PROVES   O1 -> test_a_withdrawn_share_leaves_the_live_view
+WHY      Migration 0410 (F3). The Voice Album share switch is RETIRED
+         (services/lend_your_ear.py docstring): the app no longer writes
+         voice_album_shares, so the revocation is written here by hand, and
+         the view's one reader (delayed_measure.clips_for_listener) has no
+         caller. The live sharing path is pinned in
+         test_a_take_may_be_shared_with_a_community_postgres.py. Candidate
+         for deletion together with its lane entry in
+         scripts/rehearsal_tier.sh.
+"""
 from __future__ import annotations
 
 import os
