@@ -1,27 +1,18 @@
 """
-STORY    As a speaker, I want to give or change my mic, share and email
-         choices and accept the terms once, so that the app records exactly
-         what I agreed to (consent on the critical path).
+STORY    As the founder, I want the retired /v2/user/consent route to refuse
+         every call without touching anyone's consent, and to tell me if
+         anything still calls it, so that consent is recorded only where it
+         is meant to be (consent on the critical path).
 OUTCOME
-  O1  Before I answer, GET shows every choice unset and no terms accepted.
-  O2  PUT stores the choices I send (only those), stamps when, and accepting
-      the terms appends one ledger row at the current version.
-  O3  Accepting again writes no second row; null clears a choice and its
-      time; terms "false" is refused and nothing is written.
-  O4  The retired bundled route (/v2/user/mlc2-consent) records no grant
+  O1  GET and PUT /v2/user/consent answer 410 GONE and read or write
+      nothing (founder 2026-10-19), and each call logs retired_route_called.
+  O2  The retired bundled route (/v2/user/mlc2-consent) records no grant
       (410) and still lets a holder withdraw.
-PROVES   O1 -> test_get_before_any_answer_shows_nothing_set
-         O2 -> test_put_all_three_plus_terms_records_ledger
-               test_put_only_mic_leaves_the_others_unset
-         O3 -> test_accepting_twice_and_clearing
-               test_put_terms_consent_false_is_rejected
-         O4 -> test_post_records_nothing_and_answers_410_with_a_code_only
+PROVES   O1 -> test_get_and_put_answer_410_write_nothing_and_warn
+         O2 -> test_post_records_nothing_and_answers_410_with_a_code_only
                test_delete_withdraws_a_held_grant_and_never_erases_it
-WHY      The real services.db consent methods run over an in-memory
-         user_settings / user_consents store, so the echoed state is the
-         app's own read-back, not a fake's. No frontend caller of
-         /v2/user/consent was found on 2026-10-19 (founder to confirm it is
-         still live).
+WHY      No frontend caller of /v2/user/consent was found on 2026-10-19.
+         Terms acceptance at sign-up is routes/auth.py and is not affected.
 """
 import unittest
 
@@ -37,144 +28,34 @@ except Exception as import_err:  # pragma: no cover - env/bootstrap guard
     _IMPORT_ERROR = import_err
 
 
-_TERMS_VERSION = "test-1.0"
-
-
-class _Result:
-    def __init__(self, data):
-        self.data = data
-
-
-class _Query:
-    """user_settings (one row per user) and user_consents (one row per user
-    and terms version) as the two tables the consent methods use."""
-
-    def __init__(self, store, name):
-        self.store, self.name = store, name
-        self.filters, self.write, self.ignore = {}, None, False
-
-    def select(self, *_a, **_k):
-        return self
-
-    def limit(self, *_a, **_k):
-        return self
-
-    def eq(self, column, value):
-        self.filters[column] = value
-        return self
-
-    def upsert(self, row, on_conflict=None, ignore_duplicates=False):
-        self.write, self.ignore = dict(row), ignore_duplicates
-        return self
-
-    def execute(self):
-        rows = self.store.setdefault(self.name, [])
-        if self.write is None:
-            return _Result([dict(r) for r in rows
-                            if all(r.get(k) == v for k, v in self.filters.items())])
-        keys = ("user_id",) if self.name == "user_settings" else ("user_id", "terms_version")
-        match = next((r for r in rows if all(r.get(k) == self.write[k] for k in keys)), None)
-        if match is None:
-            rows.append(self.write)
-            return _Result([dict(self.write)])
-        if self.ignore:
-            return _Result([])
-        match.update(self.write)
-        return _Result([dict(match)])
-
-
-class _Store:
-    def __init__(self):
-        self.rows = {}
-
-    def table(self, name):
-        return _Query(self.rows, name)
+class _NoDatabase:
+    def __getattr__(self, name):
+        raise AssertionError(f"a retired route touched the database: {name}")
 
 
 @unittest.skipIf(
     _IMPORT_ERROR is not None,
     f"consent tests require full app deps: {_IMPORT_ERROR}",
 )
-class ConsentEndpointTests(unittest.TestCase):
-    def setUp(self):
-        self.app = Flask(__name__)
-        self.user_id = "user-consent-1"
-        self.store = _Store()
-        swap = swap_attr(db, "client", self.store)
-        swap.__enter__()
-        self.addCleanup(swap.__exit__, None, None, None)
-        terms = swap_attr(v2_user_account.config, "CURRENT_TERMS_VERSION", _TERMS_VERSION)
-        terms.__enter__()
-        self.addCleanup(terms.__exit__, None, None, None)
+class RetiredConsentEndpointTests(unittest.TestCase):
 
-    @property
-    def ledger(self):
-        return self.store.rows.get("user_consents", [])
-
-    def _invoke(self, method, json_body=None):
-        with self.app.test_request_context(
-            "/v2/user/consent", method=method, json=json_body,
-        ):
-            request.user_id = self.user_id
-            response, status = v2_user_account.v2_user_consent.__wrapped__()
-            return status, response.get_json()
-
-    def test_get_before_any_answer_shows_nothing_set(self):
-        status, payload = self._invoke("GET")
-        self.assertEqual(status, 200)
-        self.assertFalse(payload["has_answered"])
-        self.assertEqual(
-            (payload["mic_consent"], payload["share_consent"], payload["email_consent"]),
-            (None, None, None))
-        self.assertFalse(payload["terms_consent"])
-        self.assertEqual(payload["terms_version_current"], _TERMS_VERSION)
-
-    def test_put_all_three_plus_terms_records_ledger(self):
-        """Full first-time submission: three prefs land + a ledger
-        row is appended at the current terms_version."""
-        status, payload = self._invoke("PUT", {
-            "mic_consent": True,
-            "share_consent": False,
-            "email_consent": True,
-            "terms_consent": True,
-        })
-        self.assertEqual(status, 200)
-        self.assertTrue(payload["has_answered"])
-        self.assertTrue(payload["mic_consent"])
-        self.assertFalse(payload["share_consent"])
-        self.assertTrue(payload["email_consent"])
-        self.assertIsNotNone(payload["share_consent_set_at"])
-        self.assertTrue(payload["terms_consent"])
-        self.assertEqual(payload["terms_version_accepted"], _TERMS_VERSION)
-        self.assertEqual([(r["user_id"], r["terms_version"]) for r in self.ledger],
-                         [(self.user_id, _TERMS_VERSION)])
-
-    def test_put_only_mic_leaves_the_others_unset(self):
-        status, payload = self._invoke("PUT", {"mic_consent": True})
-        self.assertEqual(status, 200)
-        self.assertTrue(payload["has_answered"])
-        self.assertTrue(payload["mic_consent"])
-        self.assertIsNotNone(payload["mic_consent_set_at"])
-        self.assertEqual((payload["share_consent"], payload["email_consent"]), (None, None))
-        self.assertFalse(payload["terms_consent"])
-        self.assertEqual(self.ledger, [])
-
-    def test_accepting_twice_and_clearing(self):
-        _, first = self._invoke("PUT", {"mic_consent": True, "terms_consent": True})
-        status, again = self._invoke("PUT", {"mic_consent": None, "terms_consent": True})
-        self.assertEqual(status, 200)
-        self.assertEqual(len(self.ledger), 1)
-        self.assertEqual(again["terms_accepted_at"], first["terms_accepted_at"])
-        self.assertEqual((again["mic_consent"], again["mic_consent_set_at"]), (None, None))
-        self.assertTrue(again["has_answered"])  # the terms still count
-
-    def test_put_terms_consent_false_is_rejected(self):
-        """Terms ledger is append-only: false is not a valid value."""
-        status, payload = self._invoke("PUT", {"terms_consent": False, "mic_consent": True})
-        self.assertEqual(status, 400)
-        self.assertEqual(payload["code"], "INVALID_INPUT")
-        self.assertEqual(self.ledger, [])
-        self.assertEqual(self.store.rows.get("user_settings", []), [])
+    def test_get_and_put_answer_410_write_nothing_and_warn(self):
+        app = Flask(__name__)
+        for method, body in (("GET", None),
+                             ("PUT", {"mic_consent": True, "terms_consent": True})):
+            with self.subTest(method=method), \
+                    swap_attr(db, "client", _NoDatabase()), \
+                    self.assertLogs("routes.v2.common", "WARNING") as logs, \
+                    app.test_request_context(
+                        "/v2/user/consent", method=method, json=body):
+                request.user_id = "user-consent-1"
+                response, status = v2_user_account.v2_user_consent.__wrapped__()
+                self.assertEqual(status, 410)
+                self.assertEqual(response.get_json()["code"], "GONE")
+                [line] = logs.output
+                for part in ("retired_route_called", "route=/v2/user/consent",
+                             f"method={method}", "user=user-consent-1"):
+                    self.assertIn(part, line)
 
 
 # ── merged from tests/test_mlc2_consent_endpoint.py (audit Q-T9) ──
