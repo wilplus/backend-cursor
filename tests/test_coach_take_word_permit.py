@@ -1,4 +1,5 @@
-"""The coach's Take-word video reaches Whisper only through the speaker's permit.
+"""A coach's video about a speaker's Take reaches Whisper only through the
+speaker's permit: the Take word's, and a moment's answer video (0480, N79).
 
 PLF1 (founder 2026-10-05, N48.1; Wave 1 step 6). ``transcribe_take_word_video``
 called ``openai_service.transcribe_audio`` directly: no permit, no provider
@@ -15,7 +16,13 @@ WHAT THIS PINS DOWN:
     transcript, a warning logged with exc_info, and the coach's word and
     video are still saved;
   * mode off: one code path, no principal lookup, no permit, the call runs;
-  * the module no longer names the bare ``openai_service`` client.
+  * the module no longer names the bare ``openai_service`` client;
+  * an answer video (a first video, or a new video on a given answer) is
+    written down after its upload, under the speaker's permit, and kept by
+    its own ref; without the training yes, on the coach's own Take, or with
+    the permit refused, nothing reaches the provider, and the upload
+    succeeds either way (only a refusal is kept, as
+    ``speaker_authorization_missing``, for a later retry).
 
 Run: python3 -m unittest tests.test_coach_take_word_permit
 """
@@ -24,6 +31,7 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
+from services import coach_answer_video as cav
 from services import coach_take_word as ctw
 from services import coach_word_pairs as cwp
 from services.coach_video_storage import default_media_bucket
@@ -122,7 +130,7 @@ def _provider(calls: list, order: list):
         def transcribe_audio(self, audio, filename, **kwargs):
             order.append("provider")
             calls.append((audio.read(), filename, kwargs))
-            return {"text": "  Slow down on the second slide.  "}
+            return {"text": "  Slow down on the second slide.  ", "language": "en"}
     return _OpenAI
 
 
@@ -212,6 +220,104 @@ class ATakeWordVideoIsTurnedIntoWords(unittest.TestCase):
         db, calls = self._save(training_yes=False)
         self.assertEqual(db.words[(TAKE, COACH)]["video_ref"], ROW["video_ref"])
         self.assertEqual((calls, db.transcripts), ([], []))
+
+
+REQUEST = {"id": "request-1", "take_session_id": TAKE, "snippet_id": "snippet-1",
+           "owner_user_id": "speaker-user"}
+
+
+class _Upload:
+    filename = "answer.mp4"
+
+    def read(self):
+        return b"video-bytes"
+
+
+class _AnswerDb(_Db):
+    def __init__(self):
+        super().__init__()
+        self.row_video: list[str] = []
+        self.resolved: list[dict] = []
+        self.kept: list[dict] = []
+
+    def set_exercise_coach_request_video(self, *, request_id, video_ref):
+        self.row_video.append(video_ref)
+        return {"id": request_id, "answer_video_ref": video_ref}
+
+    def resolve_exercise_coach_request(self, **kwargs):
+        self.resolved.append(kwargs)
+        return {**REQUEST, "answer_video_ref": kwargs["video_ref"]}
+
+    def record_coach_answer_video_transcript(self, **kwargs):
+        self.kept.append(kwargs)
+        return kwargs
+
+
+class AnAnswerVideoIsKeptInWords(unittest.TestCase):
+    """0480 (founder 2026-10-19, N79): what a coach says in a moment's answer
+    video is written down by the video's own ref, under the speaker's
+    permit, after the upload has returned."""
+
+    def _upload(self, auth, *, request_row=None, coach_id=COACH, training_yes=True):
+        db = _AnswerDb()
+        calls: list = []
+        patches = [
+            mock.patch("services.pair_consent.take_holds_training_yes",
+                       return_value=training_yes),
+            mock.patch("services.coach_video_storage.put_coach_object_bytes"),
+            mock.patch("services.coach_video_storage.refreshed_media_url",
+                       return_value="https://media/answer.mp4"),
+            mock.patch("services.coach_answer_video.threading.Thread", _Now),
+            mock.patch("services.processing_authorization.ProcessingAuthorizationService",
+                       return_value=auth),
+            mock.patch("services.openai_service.OpenAIService", _provider(calls, auth.order)),
+            mock.patch("services.ffmpeg_audio_extract.extract_audio_mp3_for_whisper",
+                       return_value=b"audio-bytes"),
+        ]
+        for p in patches:
+            p.start()
+        self.addCleanup(mock.patch.stopall)
+        status, payload = cav.store_answer_video(
+            db, request_row=dict(request_row or REQUEST), video_file=_Upload(), max_mb=100,
+            coach_id=coach_id)
+        self.assertEqual((status, payload), (200, {"video_url": "https://media/answer.mp4"}))
+        return db, calls
+
+    def test_the_words_are_kept_by_the_video_s_ref_under_the_speaker_s_permit(self):
+        given = {**REQUEST, "resolution": "line_written", "resolved_by": COACH,
+                 "answer_text": "Well said.", "answer_video_ref": "s3://b/old.mp4"}
+        for name, row in (("before the answer", REQUEST), ("a new video on the answer", given)):
+            with self.subTest(name):
+                auth = _Auth()
+                db, calls = self._upload(auth, request_row=row)
+                ref = (db.resolved[0]["video_ref"] if db.resolved else db.row_video[0])
+                self.assertTrue(ref.startswith(f"s3://{BUCKET}/coach-answers/speaker-user/"))
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(len(auth.permits), 1)
+                permit = auth.permits[0]
+                self.assertEqual(
+                    (permit["acquisition_principal_id"], permit["take_id"],
+                     permit["recording_id"], permit["provider"], permit["operation_kind"]),
+                    ("principal-speaker", TAKE, None, "openai", "transcription"))
+                self.assertEqual(auth.order, ["permit", "started", "provider", "completed"])
+                self.assertEqual(db.kept, [{
+                    "request_id": "request-1", "video_ref": ref, "coach_id": COACH,
+                    "status": "done", "transcript": "Slow down on the second slide.",
+                    "language": "en"}])
+
+    def test_nothing_reaches_the_provider_without_the_yes_on_the_coach_s_own_take_or_a_permit(self):
+        cases = (
+            ("no training yes", _Auth(), {"training_yes": False}, []),
+            ("the coach's own Take", _Auth(), {"coach_id": "speaker-user"}, []),
+            ("the permit refused", _Auth(refuse_permit=True), {},
+             ["speaker_authorization_missing"]),
+        )
+        for name, auth, options, kept in cases:
+            with self.subTest(name):
+                db, calls = self._upload(auth, **options)
+                self.assertEqual(calls, [], "the provider was reached")
+                self.assertEqual([k["status"] for k in db.kept], kept)
+                self.assertTrue(all(k["transcript"] is None for k in db.kept))
 
 
 if __name__ == "__main__":

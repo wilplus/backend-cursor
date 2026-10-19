@@ -12854,6 +12854,23 @@ class DatabaseService:
                .eq("id", str(request_id)).execute())
         return (res.data or [None])[0]
 
+    def record_coach_answer_video_transcript(
+        self, *, request_id: str, video_ref: str, coach_id: Optional[str], status: str,
+        transcript: Optional[str] = None, language: Optional[str] = None,
+    ) -> Optional[dict]:
+        """The words of a coach's answer video, by its ref (0480), through
+        record_coach_answer_video_transcript_v1: only for a video on the
+        request row or in its answer history, and done words are never
+        written over (the kept row comes back). Raises on failure, or with
+        COACH_ANSWER_TRANSCRIPT_NOT_THIS_REQUESTS_VIDEO for a video replaced
+        before the answer; the service logs it."""
+        result = self.client.rpc("record_coach_answer_video_transcript_v1", {
+            "p_request_id": str(request_id), "p_video_ref": str(video_ref),
+            "p_coach_id": coach_id, "p_status": str(status),
+            "p_transcript": transcript, "p_language": language,
+        }).execute()
+        return self._rpc_row(result.data)
+
     def set_exercise_coach_request_answer_kind(
         self, *, take_session_id: str, snippet_id: str, answer_kind: str,
         only_if_unset: bool = False,

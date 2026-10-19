@@ -1560,11 +1560,17 @@ def v2_coach_practice_judgement(session_id, snippet_id):
 def v2_coach_exercise_request_video(session_id, snippet_id):
     """The video a coach adds to a written answer (founder 2026-09-30, A5;
     0403): a praise line, a clearer version or a note may carry one. Stored
-    like an exercise video (public journal media), kept on the request row,
-    and it rides `coach_answer` once the answer is shared. Behind the blind
-    gate; a resolved request takes no new video.
+    privately in the coach-media bucket under the speaker's id (founder
+    2026-10-15, fix 5), kept on the request row as an ``s3://`` ref that
+    every read re-signs, and it rides `coach_answer` once the answer is
+    shared. Behind the blind gate. The coach who gave a resolved answer may
+    give it a new video: that is an answer change (0446), so the history
+    keeps the old one; another coach's resolved request is closed (409).
+    Its words are written down after the response, off this request, under
+    the speaker's permit and only for a speaker with the training yes (0480,
+    N79), so no provider call runs here.
 
-    multipart/form-data: video_file. 200 {video_url} · 400/404/409/413/415/502
+    multipart/form-data: video_file. 200 {video_url} · 400/404/409/413/415/500/502
     """
     error, owner_sid = _moment_gate(session_id, snippet_id)
     if error:
