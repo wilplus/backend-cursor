@@ -891,7 +891,11 @@ with this contract, this contract wins.
     (`coach_moment_line`, `coach_take_word`), never mixed with the three
     answer surfaces; a video's transcript is a second final. Pairs are text
     only. Door 2 stays shut for both surfaces until a qualified lawyer's
-    written answer and the founder's sentence.
+    written answer and the founder's sentence. *Amended 2026-10-19 (N79):
+    after their opening on 2026-10-08 (N68), doors 2, 3 and 4 are closed
+    again for both surfaces. They are direct messages and leave by no door
+    until names and specifics are scrubbed, under the one privacy update
+    and the versioned coach agreement.*
 35g-9. **The blind error audit and the detector that can learn** (founder
     2026-10-01, F6; Phase 6; migration 0411; `ERROR_PRESENCE_AUDIT_ENABLED`,
     `DETECTOR_TRAINING_AUTHORISED`, the latter off again from 2026-10-03

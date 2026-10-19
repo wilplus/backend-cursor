@@ -13223,7 +13223,9 @@ class DatabaseService:
         video_ref: Optional[str], share: bool,
     ) -> Optional[dict]:
         """One word per (Take, coach) (0403), replaced on each save; sharing
-        stamps shared_at once and a later save keeps it. Raises on failure."""
+        stamps shared_at once and a later save keeps it. A transcript
+        belongs to its video: a new or removed video clears it, so the new
+        one is transcribed (N79). Raises on failure."""
         now = datetime.now(timezone.utc).isoformat()
         existing = self.get_coach_take_word(take_session_id, coach_id) or {}
         payload: dict[str, Any] = {
@@ -13235,6 +13237,9 @@ class DatabaseService:
         }
         if share and not existing.get("shared_at"):
             payload["shared_at"] = now
+        if existing and (existing.get("video_ref") or None) != (video_ref or None):
+            payload["transcript"] = None
+            payload["transcribed_at"] = None
         res = (self.client.table("coach_take_words")
                .upsert(payload, on_conflict="take_session_id,coach_id")
                .execute())
@@ -14640,12 +14645,19 @@ class DatabaseService:
 
     def set_coach_take_word_transcript(
         self, *, take_session_id: str, coach_id: str, transcript: str,
+        video_ref: Optional[str] = None,
     ) -> Optional[dict]:
-        res = (self.client.table("coach_take_words")
-               .update({"transcript": str(transcript),
-                        "transcribed_at": datetime.now(timezone.utc).isoformat()})
-               .eq("take_session_id", str(take_session_id))
-               .eq("coach_id", str(coach_id)).execute())
+        """The words of the word's video. With ``video_ref``, they land only
+        while the row still holds that video, so a video replaced while it
+        was being transcribed never gets the old one's words."""
+        query = (self.client.table("coach_take_words")
+                 .update({"transcript": str(transcript),
+                          "transcribed_at": datetime.now(timezone.utc).isoformat()})
+                 .eq("take_session_id", str(take_session_id))
+                 .eq("coach_id", str(coach_id)))
+        if video_ref:
+            query = query.eq("video_ref", str(video_ref))
+        res = query.execute()
         return (res.data or [None])[0]
 
     def list_coach_word_drafts(self, limit: int = 5000) -> list[dict]:
