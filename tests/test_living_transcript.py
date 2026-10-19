@@ -1,20 +1,35 @@
-"""willab — the Living Transcript (founder decisions 2026-07-20).
-
-The ideal text stops being a stitched selection of best-ranked moments
-("very much shorter than what I really said") and becomes the speaker's
-FULL transcript with Google-Docs-style tracked changes.
-
-Pinned here, decision by decision:
-  #1 the document IS the full transcript of the latest SPOKEN take, in
-     speech order, with every piece's character span intact;
-  #2 minimum smoothing = fillers + immediate repeats + punctuation ONLY.
-     No word is ever silently changed, no false start silently dropped —
-     the L1 fence of the whole re-shape;
-  #3 changes are span-anchored (strike/propose, bold — possibly HALF a
-     sentence — advice), each anchored on an exact substring or dropped;
-  flag OFF = byte-for-byte today's behavior.
-
-Run: python3 -m unittest tests.test_living_transcript
+"""
+STORY    As a speaker, I want my Ideal Text to be my full latest Take with
+         only fillers, repeats and punctuation smoothed, and feedback
+         anchored on exact words, so that the text is what I said.
+OUTCOME
+  O1  The document is the full transcript of the LATEST spoken Take, in
+      speech order, each piece's span slicing exactly its words; the flag
+      no longer swaps in a shorter best-of text (Never-5).
+  O2  Only hesitations, immediate repeats and punctuation/casing change
+      silently; false starts, expressive repeats and real words stay
+      (Never-5: no word silently changed).
+  O3  Every change is anchored on an exact substring of the served text
+      or dropped; a bold that cannot narrow is dropped, not widened.
+  O4  A piece is never lost when its words change after a bake or a lock:
+      it keeps its order and falls back to its paragraph.
+  O5  What reaches the speaker carries no internal vocabulary, no score
+      and no cue key the screen has no signed words for (Never-1, Never-4).
+PROVES   O1 -> test_document_is_the_full_latest_take_in_speech_order,
+               test_flag_on_and_off_persist_the_same_full_transcript
+         O2 -> test_only_fillers_repeats_and_punctuation_change_silently
+         O3 -> test_key_phrases_from_say_it_stronger_extraction,
+               test_delivery_and_structural_are_advice_with_device,
+               test_the_confident_voice_card_obeys_the_same_rule,
+               test_coarse_relocation_does_not_invent_feedback_or_exact_styling,
+               test_flag_on_serves_anchored_changes,
+               test_a_piece_whose_slide_is_not_in_this_document_is_DROPPED
+         O4 -> test_a_run_of_changed_pieces_keeps_every_one_in_order,
+               test_a_locked_paragraph_keeps_every_new_piece,
+               test_located_pieces_keep_word_grain_beside_a_coarse_neighbour
+         O5 -> test_ac9_no_internal_vocabulary_or_scores,
+               test_an_UNKNOWN_key_never_reaches_a_user_payload
+WHY      Founder decisions 2026-07-20 #1-#3 (the Living Transcript re-shape).
 """
 from __future__ import annotations
 
@@ -27,6 +42,7 @@ from services.tracked_changes import (
     key_phrases_from_say_it_stronger,
 )
 from services.transcript_document import (
+    build_transcript_document,
     relocate_pieces,
     verify_spans,
 )
@@ -76,6 +92,30 @@ class DocumentBuildTests(unittest.TestCase):
              "transcript": "um we started small"},
         ]
 
+    def test_document_is_the_full_latest_take_in_speech_order(self):
+        older = "99999999-9999-4999-8999-999999999999"
+        db = self._Db(self._snips(), sessions=[
+            {"id": T1, "take_index": 2, "recording_kind": "spoken"},
+            {"id": older, "take_index": 1, "recording_kind": "spoken"}])
+        doc = build_transcript_document(ARC, database=db)
+        self.assertEqual(doc["take_session_id"], T1)
+        self.assertEqual(doc["text"],
+                         "We started small and then we shipped it.")
+        self.assertEqual([p["snippet_id"] for p in doc["pieces"]], [S1, S2])
+        for p in doc["pieces"]:
+            self.assertEqual(doc["text"][p["start"]:p["end"]], p["text"])
+
+    def test_only_fillers_repeats_and_punctuation_change_silently(self):
+        said = ("um so we we started smal- small, no, no, no, "
+                "like uh basically from scratch")
+        db = self._Db([{"id": S1, "start_offset_ms": 0, "language": "en",
+                        "transcript": said}])
+        doc = build_transcript_document(ARC, database=db)
+        self.assertEqual(
+            doc["text"],
+            "So we started smal- small, no, no, no, like basically "
+            "from scratch.")
+
 
 class TrackedChangeTests(unittest.TestCase):
     """Decision #3 — span-anchored strike/propose/bold/advice."""
@@ -111,12 +151,15 @@ class TrackedChangeTests(unittest.TestCase):
             self.assertIsNone(c["why"])
 
 
-    def test_ac9_no_internal_vocabulary_or_numbers(self):
+    def test_ac9_no_internal_vocabulary_or_scores(self):
         import json
         sugs = {S1: {"kind": "replace", "trigger": "threat",
                      "replacement_text": "steadier words",
                      "why": "It reads calmer."}}
-        raw = json.dumps(self._changes(sugs))
+        changes = self._changes(sugs)
+        self.assertEqual(changes[0]["proposed_text"], "steadier words")
+        self.assertEqual(changes[0]["why"], "It reads calmer.")
+        raw = json.dumps(changes)
         for banned in ("threat", "charisma", "potentiometer", "power_score",
                        "z_score", "stickiness"):
             self.assertNotIn(banned, raw)
@@ -208,11 +251,10 @@ class AssemblyFlagTests(unittest.TestCase):
                                           require_target=False)
         return db.persisted
 
-    def test_flag_on_persists_the_full_transcript(self):
-        out = self._assemble(True)[0]
-        self.assertIn("We started small", out)
-        self.assertIn("we kept going", out)
-        self.assertNotIn("[[moment:", out)            # no anchors on the doc
+    def test_flag_on_and_off_persist_the_same_full_transcript(self):
+        on, off = self._assemble(True), self._assemble(False)
+        self.assertEqual(on, ["We started small and we kept going."])
+        self.assertEqual(off, on)
 
 
 class RelocateAfterBakeTests(unittest.TestCase):
@@ -323,6 +365,13 @@ class ParagraphGrainFallbackTests(unittest.TestCase):
                    "text": "That is basically the whole story."}]
         return doc, pieces
 
+    def test_a_locked_paragraph_keeps_every_new_piece(self):
+        doc, pieces = self._locked_case()
+        out = relocate_pieces(doc, pieces, paragraph_fallback=True)
+        self.assertEqual([p["snippet_id"] for p in out], ["a", "b", "c"])
+        self.assertEqual([p["anchor_grain"] for p in out], ["paragraph"] * 3)
+        self.assertEqual([doc[p["start"]:p["end"]] for p in out],
+                         doc.split("\n\n"))
 
     def test_located_pieces_keep_word_grain_beside_a_coarse_neighbour(self):
         # Only the locked paragraph is coarse. The precision tag is
@@ -395,9 +444,6 @@ class ServeChangesTests(unittest.TestCase):
                          c["quote"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class SameSlideRoutingTests(unittest.TestCase):
     """Feedback survives the Ideal Text being a REWRITE of what was said.
@@ -444,3 +490,7 @@ class SameSlideRoutingTests(unittest.TestCase):
         out = relocate_pieces(self.DOC, pieces, paragraph_fallback=True,
                               slide_regions=self._regions())
         self.assertEqual([p["snippet_id"] for p in out], ["a"])
+
+
+if __name__ == "__main__":
+    unittest.main()

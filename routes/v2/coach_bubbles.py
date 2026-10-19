@@ -23,15 +23,13 @@ logger = logging.getLogger(__name__)
 def v2_coach_take_bubbles():
     """{bubbles: [{session_id, take_index, sent_at, pseudonym, name?,
     waiting_for_text, first_snippet_id}]}, newest sent first."""
-    from routes.v2.coach import (
-        _coach_state_map, _language_matched_rows, _queue_moments_for,
-    )
+    from routes.v2.coach import _language_matched_rows, _queue_moments_for
     from services.coach_pseudonym import coach_pseudonym
     from services.coach_take_bubbles import take_bubbles
     try:
         status, payload = take_bubbles(
             db, rater_id=str(getattr(request, "user_id", "") or ""),
-            state_for=_coach_state_map, matched_rows=_language_matched_rows,
+            matched_rows=_language_matched_rows,
             moments_for_snips=_queue_moments_for, pseudonym_for=coach_pseudonym)
     except Exception as e:
         logger.error("coach/take-bubbles GET failed: %s", e, exc_info=True)
