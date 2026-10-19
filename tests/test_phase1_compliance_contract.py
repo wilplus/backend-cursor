@@ -1,0 +1,125 @@
+"""Executable fences for the ED-PLF-1.3 Phase-1 boundary."""
+from __future__ import annotations
+
+import ast
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+MIGRATION = (ROOT / "migrations" / "add_phase1_processing_boundary.sql").read_text()
+REHEARSAL = (
+    ROOT / "tests" / "integration" / "phase1_processing_rehearsal.sql"
+).read_text()
+
+
+def _function_args(path: str, function_name: str) -> set[str]:
+    tree = ast.parse((ROOT / path).read_text())
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) \
+                and node.name == function_name:
+            return {argument.arg for argument in (
+                node.args.posonlyargs + node.args.args + node.args.kwonlyargs
+            )}
+    raise AssertionError(f"{function_name} not found")
+
+
+def test_power_score_has_no_retired_direction_inputs():
+    args = _function_args("services/power_phrase_ranking.py", "power_score")
+    assert "direction" not in args
+    assert "breakthrough" not in args
+    source = (ROOT / "services" / "power_phrase_ranking.py").read_text()
+    assert "_DIRECTION_TERM" not in source
+    assert "_W_D" not in source
+    assert "_W_B" not in source
+
+
+def test_active_coaching_document_has_no_retired_construct_copy():
+    from services.master_doc_rag import MASTER_DOCUMENT
+
+    active_copy = MASTER_DOCUMENT.lower()
+    assert "threat" not in active_copy
+    assert "breakthrough" not in active_copy
+
+
+def test_universal_voice_confidence_has_no_demographic_runtime_contract():
+    source = (ROOT / "services" / "voice_confidence.py").read_text()
+    tree = ast.parse(source)
+    identifiers = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+    identifiers |= {
+        node.arg for node in ast.walk(tree) if isinstance(node, ast.arg)
+    }
+    for retired in (
+        "sex", "gender", "profile_sex", "sex_source",
+        "male", "female", "speaker_sex",
+    ):
+        assert retired not in identifiers
+    assert 'VERSION = "voice-confidence-universal-v3"' in source
+
+
+def test_protected_user_data_modules_do_not_import_provider_client():
+    protected = (
+        "services/analysis_worker.py",
+        "services/recording_transcription.py",
+        "services/recording_piece_analysis.py",
+        "services/slide_selection.py",
+        "services/coach_comment_drafter.py",
+        "services/master_doc_rag.py",
+        "services/moment_suggestions.py",
+        "routes/v2/lab_recording.py",
+        "routes/v2/projects.py",
+        "routes/v2/coach.py",
+    )
+    for relative in protected:
+        source = (ROOT / relative).read_text()
+        assert "services.openai_service" not in source, relative
+        assert "from openai" not in source, relative
+        assert "import openai" not in source, relative
+
+
+def test_exercise_surface_is_registry_only_and_fail_closed():
+    user_routes = (ROOT / "routes" / "v2" / "user_sessions.py").read_text()
+    coach_routes = (ROOT / "routes" / "v2" / "coach.py").read_text()
+    marker = '@operational_purpose_disabled("personalized_exercise_recommendation")'
+    # Six since 2026-09-25: the per-attempt judgement and the practice
+    # helper-words routes (contract 29a) carry the same gate.
+    # Seven since 2026-09-28: the exercise-rendered confirmation (0387).
+    # Eight since 2026-10-06: the machine's check of a practise try (N52.3).
+    # Nine since 2026-10-08: the phone's timing of a practise try (V4 B1.4).
+    assert user_routes.count(marker) == 9
+    # Two since 2026-09-28: the coach's exercise request carries it too.
+    # + the coach's answer draft behind the same gate (2026-09-30)
+    # + the coach's practice judgement (2026-10-05, Q6; N45)
+    assert coach_routes.count(marker) == 4
+    # The purpose was born phase2 here and was moved to phase1 by 0335, once
+    # its deletion and retention controls actually existed. Both halves are
+    # asserted so the history stays legible: this file's INSERT is not a
+    # statement about what is true today.
+    assert "personalized_exercise_recommendation', 'phase2'" in MIGRATION
+    assert "PHASE2_PURPOSE_FORBIDDEN" in MIGRATION
+    reclassification = (
+        ROOT / "migrations" / "enable_practice_phase1_purpose.sql"
+    ).read_text()
+    assert "phase = 'phase1'" in reclassification
+    assert "WHERE id = 'personalized_exercise_recommendation';" in reclassification
+    # Pooled learning is what must NOT have moved.
+    assert "POOLED_LEARNING_MUST_REMAIN_PHASE2" in reclassification
+
+
+def test_retired_learning_tables_are_write_blocked_but_not_dropped():
+    for table in (
+        "training_labels", "shadow_predictions", "model_versions",
+        "reflection_clips", "stress_snippets",
+    ):
+        assert f"'{table}'" in MIGRATION
+    assert "RETIRED_DIRECTION_PIPELINE_WRITE_FORBIDDEN" in MIGRATION
+    assert "DROP TABLE" not in MIGRATION.upper()
+
+
+def test_phase1_evidence_and_release_fences_are_explicit():
+    assert MIGRATION.count("CHECK (NOT pooled_learning_eligible)") >= 2
+    assert "POLICY_COPY_HASH_MISMATCH" in MIGRATION
+    assert "ORPHAN_CLEANUP_IN_PROGRESS" in MIGRATION
+    assert "claim_phase1_orphan_audio_v1" in MIGRATION
+    assert "has_table_privilege('service_role'" in REHEARSAL
+    assert "passive authorization check created acceptance" in REHEARSAL
+    assert "recording boundary replay duplicated canonical rows" in REHEARSAL
+    assert REHEARSAL.rstrip().endswith("ROLLBACK;")
