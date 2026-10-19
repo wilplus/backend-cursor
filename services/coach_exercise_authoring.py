@@ -88,9 +88,9 @@ def library_for_authoring(database: Any) -> dict:
     The latest versions come in one read; the per-exercise read is only the
     fallback when that read fails. The shared library only: a coach's video
     for one speaker is in no list (N77)."""
-    from services.confident_voice_practice import visible_to
+    from services.confident_voice_practice import pickable
     exercises = [e for e in (database.list_diagnostic_exercises() or [])
-                 if isinstance(e, dict) and visible_to(e)]
+                 if isinstance(e, dict) and pickable(e)]
     ids = [str(e.get("exercise_id") or "") for e in exercises]
     batch = getattr(database, "latest_exercise_versions", None)
     newest = batch(ids) if batch is not None else None
@@ -287,11 +287,11 @@ def _examples(database: Any, error_ids: list[str]) -> list[str]:
     """The library's own finals for these errors: what a draft learns from.
     The shared library only: one speaker's coach text is never sent to a
     model for another (N77)."""
-    from services.confident_voice_practice import visible_to
+    from services.confident_voice_practice import pickable
     wanted = set(error_ids)
     out = []
     for exercise in database.list_diagnostic_exercises() or []:
-        if not isinstance(exercise, dict) or not visible_to(exercise):
+        if not isinstance(exercise, dict) or not pickable(exercise):
             continue
         tags = {str(t) for t in exercise.get("acoustic_problem_tags") or []}
         text = str(exercise.get("instruction") or "").strip()

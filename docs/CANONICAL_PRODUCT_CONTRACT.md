@@ -711,7 +711,11 @@ with this contract, this contract wins.
     own set (their coach's videos, and library exercises a coach picked for
     one of their moments), and only on an exact fit; a trial is never served
     by itself. With nothing in their set that fits exactly there is no
-    exercise video, and the AI version of their voice plays.
+    exercise video, and the AI version of their voice plays. **Amended
+    2026-10-19 (founder, decisions log N78):** when nothing of their own
+    fits, the shared library is tried next: the founder's exercises and the
+    coach videos the founder approved for everyone, on an exact fit, 80/20
+    among them; only then the AI clip.
 35g-2. **The coach hears when nothing fits** (founder 2026-09-28; extended
     2026-09-29). When the Take's exercise item gets no exercise under 35g-1,
     one coach request is recorded for that exact moment with why (nothing
@@ -758,6 +762,10 @@ with this contract, this contract wins.
     join the speaker's own set (35g-1). A praise line lands in the catalogue
     as that speaker's own line, read for them first and for no one else. The
     shared library holds only what the founder makes or approves.
+    **Amended 2026-10-19 (founder, decisions log N78):** once the founder
+    approves a coach's exercise video it is shared with every speaker whose
+    recording fits it exactly; a direct message (an answer on a moment, the
+    word for a Take) is never shared.
 35g-2a. **The draft and the pair** (founder 2026-09-30, C2, C5; build plan
     P2-1, P2-2). On an error, praise or rewrite request the coach may ask
     for one model draft by the request's kind (an exercise script, a praise

@@ -232,9 +232,9 @@ applies to a library video only. A video in the speaker's own set (a coach
 made it for them, or a coach picked it for one of their moments) is the
 locked Exercise whatever problem the severity picker chose; the AI clip
 never takes its place, and still follows a try that is not better yet, at
-most 3, as locked. A library video no coach chose for the speaker is no
-longer served by itself at all, so without an own video the AI clip plays,
-as in section 2. No new words.
+most 3, as locked. A shared library video (the founder's, or a coach's the
+founder approved for everyone, N78) still follows section 5's rule: exact
+fit and the same problem, otherwise the AI clip. No new words.
 
 Founder-Approved: Artur, Claude Code session 2026-10-18 ("Coach video always
 wins", on the question "Can the AI voice clip still replace it?").

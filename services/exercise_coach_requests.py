@@ -18,12 +18,14 @@ Three resolutions, each recorded once:
 Sharing with the speaker is a separate tick and only an exercise can be
 shared. A shared exercise then rides on that same item for the speaker.
 
-A COACH VIDEO BELONGS TO ITS SPEAKER (founder 2026-10-18, decisions log
-N77; 0477). The exercise a coach makes for a moment is that speaker's own;
-once shared, it and any library exercise a coach picked join the speaker's
-own set, the only pool the app picks from by itself on their later Takes.
-No other speaker is ever served it. A coach's praise line is the speaker's
-own line too.
+TWO KINDS OF COACH VIDEO (founder 2026-10-18 and 19, decisions log N77,
+N78; 0477). The exercise a coach makes for a moment is made for that
+speaker; once shared, it and any library exercise a coach picked join the
+speaker's own set, the pool the app tries first on their later Takes. Other
+speakers get it only once the founder approves it (services.exercise_review).
+An answer in words, with or without a video, is a direct message: that
+speaker's alone, on that moment alone. A coach's praise line is the
+speaker's own line too.
 """
 from __future__ import annotations
 
@@ -177,12 +179,15 @@ def _require_main_target(fields: dict) -> Optional[tuple]:
 def _exercise_for(database: Any, request: dict, body: dict, resolution: str,
                   coach_id: str = "") -> tuple[Optional[dict], Optional[tuple]]:
     """(exercise, None) or (None, error) for an exercise resolution."""
-    from services.confident_voice_practice import visible_to
+    from services.confident_voice_practice import pickable
+    from services.coach_exercise_authoring import exercise_id_for_request
     if resolution == "exercise_chosen":
         exercise = database.get_active_diagnostic_exercise(
             str(body.get("exercise_id") or ""))
-        if not isinstance(exercise, dict) or not visible_to(
-                exercise, request.get("owner_user_id")):
+        own_moment = isinstance(exercise, dict) and str(
+            exercise.get("exercise_id")) == exercise_id_for_request(request.get("id"))
+        if not isinstance(exercise, dict) or not (own_moment or pickable(
+                exercise, request.get("owner_user_id"))):
             return None, _error(409, "EXERCISE_UNAVAILABLE",
                                 "Select an active reviewed exercise.")
         return exercise, None

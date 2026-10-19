@@ -127,6 +127,29 @@ def v2_coach_exercise_script_draft():
     return jsonify(payload), status
 
 
+@v2_bp.route("/admin/exercises/review", methods=["GET"])
+@require_founder
+def v2_admin_exercises_waiting():
+    """The coach exercise videos waiting for the founder's review (N78):
+    approved, a video is shared with every speaker whose recording fits it.
+    Founder only. 200 {exercises}"""
+    from services.exercise_review import waiting
+    return jsonify({"exercises": waiting(db)}), 200
+
+
+@v2_bp.route("/admin/exercises/<exercise_id>/review", methods=["PUT"])
+@require_founder
+def v2_admin_exercise_review(exercise_id):
+    """The founder's review of one coach exercise video (N78). Body
+    {decision: "approved" | "kept"}. Founder only.
+    200 {exercise, decision} · 400 · 403 · 404 · 409 · 500 · 502"""
+    from services.exercise_review import review
+    status, payload = review(db, str(exercise_id),
+                             request.get_json(silent=True),
+                             founder_id=str(request.user_id))
+    return jsonify(payload), status
+
+
 @v2_bp.route("/admin/exercises/<exercise_id>/active", methods=["PUT"])
 @require_founder
 def v2_admin_exercise_active(exercise_id):

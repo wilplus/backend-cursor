@@ -2602,3 +2602,32 @@ library offers it to other speakers…") are unchanged until the founder signs
 their replacement (step 3, a locked screen). Contract 35g-1, 35g-2, 35g-4 and
 35g-6 carry dated amendments; `FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`
 "Decided after the lock (2026-10-18, the coach's video)".
+
+**N78 · Two kinds of coach video: shared exercise videos, private direct
+messages (founder, Claude Code session, 19 October 2026).** Revises N77. "We
+don't want random videos shared with everyone, only the most fitting ones;
+there is a difference between the direct video message and the video
+recorded for the exercise, that can be shared if the pattern fits." An
+EXERCISE VIDEO a coach records for one speaker's moment reaches that speaker
+at once and joins their own set; every other speaker gets it only after the
+founder approves it, and only when their own recording shows its mistake
+exactly. Approval copies the video into the library and clears the owner, so
+it stays when that speaker leaves. A DIRECT MESSAGE (the answer on a moment,
+the word for a Take) is only ever that speaker's, only on that moment or
+Take, and never comes back. On a moment: a coach video made or picked for
+the speaker first (the AI clip never replaces it), else an approved shared
+exercise video, 80/20 among exact fits, else the AI clip; a video rests for a
+speaker after their Good job. The coach's exercise-script draft never quotes
+the speaker's passage. Coach videos filed into the shared library before
+0477 reach nobody new until the founder reviews them (`GET/PUT
+/v2/admin/exercises/review`); the founder's review screen comes with a
+signed prototype. The same session set the longer aim, a coach avatar: its
+footage only ever comes from separate scripted recordings the coach owns,
+under a written face-and-voice consent; the coach's diagnosis becomes a
+training input under the speaker's training yes; direct messages may train
+the text model with that yes, scrubbed of names and specifics; every
+training use for the next year goes into one privacy update; a written,
+versioned coach agreement comes before more coaches; a short list of
+exercise formats is drafted for the founder's approval; a second coach
+diagnoses a blind sample once there is one. The map:
+<https://claude.ai/artifact/QU5ENGdftkJXFppAQYFhyj>. Migration 0477.

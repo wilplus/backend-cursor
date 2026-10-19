@@ -139,7 +139,7 @@
     "exercise_script.system": {
       "kind": "static",
       "module": "coach_answer_drafts",
-      "sha256": "47d96a7bcfeb3080eb4095d241309dd168d6148244127438871e9f0ec91d8c23"
+      "sha256": "568fd5e22275ea6edce26149c9661a30a66d350fd97681aa1122fa0b2125868b"
     },
     "exercise_script.user": {
       "kind": "builder",

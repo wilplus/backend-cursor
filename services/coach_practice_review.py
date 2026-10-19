@@ -117,11 +117,12 @@ def _chosen_exercise(database, practice: dict,
     if custom_body is not None:
         exercise = _file_custom_exercise(database, practice, custom_body)
         return exercise, exercise, str(exercise.get("exercise_id") or "")
-    from services.confident_voice_practice import visible_to
+    from services.confident_voice_practice import pickable
     exercise_id = str(body.get("exercise_id") or practice.get("exercise_id"))
     exercise = database.get_active_diagnostic_exercise(exercise_id)
-    # Another speaker's coach video is not this speaker's to get (N77).
-    if not exercise or not visible_to(exercise, practice.get("owner_user_id")):
+    # Another speaker's coach video, or one the founder has not approved for
+    # everyone, is not this speaker's to get (N77, N78).
+    if not exercise or not pickable(exercise, practice.get("owner_user_id")):
         raise Refusal("EXERCISE_UNAVAILABLE",
                       "Select an active reviewed exercise.", 409)
     return exercise, None, exercise_id

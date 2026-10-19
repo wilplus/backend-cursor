@@ -10,10 +10,18 @@
 -- set; the shared library holds only what the founder makes or approves;
 -- coach praise lines follow the same rule.
 --
+-- Revised 19 October (decisions log N78): two kinds of coach video. An
+-- exercise video goes to the speaker it was made for at once, and to every
+-- speaker whose recording fits it once the founder approves it. A direct
+-- message (an answer on a moment, the word for a Take) is never shared.
+--
 -- WHAT.
---   1. diagnostic_exercise.owner_user_id. NULL is the founder's shared
---      library, as every row is today; set, the row belongs to that one
---      speaker and no other speaker, coach list or library page sees it.
+--   1. diagnostic_exercise.owner_user_id. NULL is the shared library; set,
+--      the row is a coach video for that one speaker and no other speaker,
+--      coach list or library page sees it. review_decision / reviewed_at /
+--      reviewed_by: the founder's review of a coach's exercise video,
+--      'approved' for everyone (the owner is cleared in the same write) or
+--      'kept' for its speaker.
 --   2. diagnostic_exercise_version.owner_user_id, copied from the live row
 --      when the version is written (the live row is upserted first), so a
 --      speaker's versions go with their account. The immutability guard
@@ -31,10 +39,20 @@
 -- the founder approves before it runs. The rehearsal database has no
 -- diagnostic_exercise, so parts 1 and 2 run only where the tables exist.
 
--- 1 · the owner on the live exercise -------------------------------------
+-- 1 · the owner on the live exercise, and the founder's approval ----------
+-- 19 October (N78): an exercise video a coach made for one speaker is
+-- shared with every speaker whose recording fits it once the founder
+-- approves it. The founder's review is recorded here: 'approved' (the
+-- owner is cleared in the same write, so the row is the library's and
+-- stays when that speaker leaves) or 'kept' (it stays with its speaker and
+-- leaves the review list); who, and when.
 ALTER TABLE IF EXISTS public.diagnostic_exercise
     ADD COLUMN IF NOT EXISTS owner_user_id TEXT NULL
-        CHECK (owner_user_id IS NULL OR length(owner_user_id) > 0);
+        CHECK (owner_user_id IS NULL OR length(owner_user_id) > 0),
+    ADD COLUMN IF NOT EXISTS review_decision TEXT NULL
+        CHECK (review_decision IS NULL OR review_decision IN ('approved', 'kept')),
+    ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ NULL,
+    ADD COLUMN IF NOT EXISTS reviewed_by TEXT NULL;
 
 DO $$
 BEGIN

@@ -1,17 +1,18 @@
-"""A coach's video belongs to the speaker it was made for (founder,
-2026-10-18; decisions log N77; migration 0477).
+"""Two kinds of coach video (founder, 2026-10-18 and 19; decisions log
+N77, N78; migration 0477).
 
 What the founder decided, pinned here through the public seams:
 
-  * the app picks a video by itself only from the speaker's OWN set, never
-    another speaker's coach video and never a library one no coach chose
-    for them;
+  * an EXERCISE VIDEO a coach makes for one speaker reaches that speaker at
+    once; another speaker gets it only once the founder approves it, and
+    only on an exact fit; another speaker's unapproved video never;
+  * on a moment the speaker's own set comes first, then the shared library;
   * it fits only exactly (the video's main mistake heard on this clip), and
     a video whose practice ended on a Good job rests for good;
   * the speaker's own coach video always plays; the AI clip never takes its
     place;
   * a coach's praise line is read for its own speaker only, first;
-  * the coach's word for a Take shows on that Take only.
+  * a DIRECT MESSAGE, the coach's word for a Take, shows on that Take only.
 """
 from __future__ import annotations
 
@@ -43,7 +44,7 @@ class _Db(V3ExerciseFitTests._Db):
                 "rested_exercises": self._rested, "earlier_takes": 1}
 
 
-class TheAppPicksOnlyFromTheSpeakersOwnSet(unittest.TestCase):
+class WhichVideoTheAppPicks(unittest.TestCase):
 
     _row = V3ExerciseFitTests._row
     _offer = V3ExerciseFitTests._offer  # always for "owner-1"
@@ -64,13 +65,23 @@ class TheAppPicksOnlyFromTheSpeakersOwnSet(unittest.TestCase):
         db = _Db([mine], {"owner-1": {"coach-request-a"}})
         self.assertEqual(self._offer(db, RUSHING)["exercise_id"], "coach-request-a")
 
-    def test_a_library_video_no_coach_chose_is_not_served(self):
+    def test_the_shared_library_serves_when_it_fits(self):
         library = self._row("library-rushing", ["rushing"], primary="rushing")
         db = _Db([library], {})
-        self.assertIsNone(self._offer(db, RUSHING))
-        # Once a coach picked it for this speaker, it is theirs to get.
-        db = _Db([library], {"owner-1": {"library-rushing"}})
         self.assertEqual(self._offer(db, RUSHING)["exercise_id"], "library-rushing")
+
+    def test_a_coach_video_reaches_others_only_once_approved(self):
+        filed = self._row("coach-request-old", ["rushing"], primary="rushing")
+        self.assertIsNone(self._offer(_Db([filed], {}), RUSHING))
+        approved = {**filed, "review_decision": "approved"}
+        self.assertEqual(self._offer(_Db([approved], {}), RUSHING)["exercise_id"],
+                         "coach-request-old")
+
+    def test_the_speakers_own_video_comes_before_the_library(self):
+        library = self._row("library-rushing", ["rushing"], primary="rushing")
+        mine = self._coach_video_for("owner-1")
+        db = _Db([library, mine], {"owner-1": {"coach-request-a"}})
+        self.assertEqual(self._offer(db, RUSHING)["exercise_id"], "coach-request-a")
 
     def test_it_fits_only_exactly(self):
         side = {**self._row("coach-request-b", ["word_compression", "rushing"],
@@ -138,6 +149,47 @@ class ACoachsVideoIsMadeForOneSpeaker(unittest.TestCase):
             save_exercise(Db(), body, source="coach_request",
                           owner_user_id="owner-1")
         self.assertEqual(refused.exception.code, "EXERCISE_UNAVAILABLE")
+
+
+class TheFounderReviewsACoachsExerciseVideo(unittest.TestCase):
+
+    class Db:
+        def __init__(self, row):
+            self.row = dict(row)
+
+        def get_diagnostic_exercise(self, _id):
+            return dict(self.row)
+
+        def review_diagnostic_exercise(self, *, exercise_id, decision,
+                                       reviewed_by, video_url=None):
+            self.row.update(review_decision=decision, reviewed_by=reviewed_by)
+            if decision == "approved":
+                self.row.update(owner_user_id=None, explanation_video_url=video_url)
+            return dict(self.row)
+
+    ROW = {"exercise_id": "coach-request-a", "owner_user_id": "owner-1",
+           "explanation_video_url": "s3://coach-media/coach-answers/owner-1/r/v.mp4"}
+
+    def test_approving_shares_it_from_the_library_s_own_copy(self):
+        from services import exercise_review
+        db = self.Db(self.ROW)
+        with patch.object(exercise_review, "_library_copy",
+                          lambda ref: "https://library.example/exercise/v.mp4"):
+            status, _ = exercise_review.review(
+                db, "coach-request-a", {"decision": "approved"}, "founder")
+        self.assertEqual(status, 200)
+        self.assertIsNone(db.row["owner_user_id"])
+        self.assertEqual(db.row["explanation_video_url"],
+                         "https://library.example/exercise/v.mp4")
+        self.assertTrue(cvp.shared_for_everyone(db.row))
+
+    def test_keeping_it_leaves_it_with_its_speaker(self):
+        from services import exercise_review
+        db = self.Db(self.ROW)
+        status, _ = exercise_review.review(
+            db, "coach-request-a", {"decision": "kept"}, "founder")
+        self.assertEqual((status, db.row["owner_user_id"]), (200, "owner-1"))
+        self.assertFalse(cvp.shared_for_everyone(db.row))
 
 
 class TheSpeakersOwnVideoAlwaysPlays(unittest.TestCase):

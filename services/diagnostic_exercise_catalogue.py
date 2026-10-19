@@ -438,10 +438,12 @@ def file_coach_exercise(
     through -- including the refusal for an error code cannot detect, which is
     the one a coach is most likely to meet and most needs to read.
 
-    AMENDED 2026-10-18 (founder, decisions log N77; 0477): the coach's video
-    belongs to the speaker of the practice (``owner_user_id``). It treats an
-    error, as above, but only for that speaker: no other speaker is served
-    it. Without an owner it is not filed at all.
+    AMENDED 2026-10-18 and 19 (founder, decisions log N77, N78; 0477): the
+    coach's video is made for the speaker of the practice
+    (``owner_user_id``). It treats an error, as above, for that speaker, and
+    for every other speaker whose recording fits it only once the founder
+    approves it (services.exercise_review). Without an owner it is not
+    filed at all.
     """
     payload: dict = fields if isinstance(fields, dict) else {}
     practice = str(practice_id or "").strip()
