@@ -40,12 +40,26 @@ def _clean(body: Any) -> tuple[Optional[str], Optional[str], bool]:
     return text, video_ref, fields.get("share") is True
 
 
+def _stored_ref(video_ref: Optional[str], take_session_id: str) -> Optional[str]:
+    """The ref the row keeps for the coach's video (N79, 2026-10-19).
+
+    The upload hands the coach a signed link (``store_session_video``), and
+    the panel sends that link back on save. Kept as it was, it expired and
+    was never transcribed, so no Take-word video was ever turned into words.
+    This Take's own upload is kept as the ``s3://bucket/key`` marker the
+    upload wrote (reads sign it fresh); anything else is kept as sent."""
+    from services.coach_word_pairs import take_video_object
+    found = take_video_object(video_ref, take_session_id)
+    return f"s3://{found[0]}/{found[1]}" if found else video_ref
+
+
 def save_take_word(database: Any, *, take_session_id: str, coach_id: str,
                    body: Any) -> dict:
     """PUT: the coach's one word for this Take, replaced on each save;
     `share: true` sends it. Raises TakeWordRefusal for anything the coach
     can fix. Returns the payload the coach reads back."""
     text, video_ref, share = _clean(body)
+    video_ref = _stored_ref(video_ref, str(take_session_id))
     row = database.upsert_coach_take_word(
         take_session_id=str(take_session_id), coach_id=str(coach_id),
         text=text, video_ref=video_ref, share=share)

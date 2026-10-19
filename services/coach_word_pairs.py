@@ -245,13 +245,44 @@ def _speaker_permit_adapter(database: Any, take_session_id: str) -> Any:
         authorization=authorization)
 
 
+def take_video_object(ref: Any, take_session_id: str) -> Optional[tuple[str, str]]:
+    """(bucket, key) of the coach's upload for this Take, whichever shape
+    its ref comes back in: the signed link the upload returned, or the
+    ``s3://`` marker it wrote. Only this Take's own upload prefix
+    (``coach-feedback/<take>/``) in the bucket uploads land in counts; None
+    for anything else, which is never read or transcribed."""
+    from services.coach_video_storage import (
+        default_media_bucket, media_key_from_ref, media_ref_bucket,
+    )
+    key = media_key_from_ref(ref)
+    if not key or not take_session_id or not key.startswith(
+            f"coach-feedback/{take_session_id}/"):
+        return None
+    bucket = media_ref_bucket(ref) or default_media_bucket()
+    return (bucket, key) if bucket == default_media_bucket() else None
+
+
+def _worth_transcribing(database: Any, take: str, coach_id: str) -> bool:
+    """A coach's video about a speaker's Take is sent to the transcriber only
+    for a speaker who holds the training yes (founder 2026-10-19, N79: its
+    words have no use but training), and never on the coach's own Take (an
+    owner's answer is never a pair, L3). A doubt reads as no."""
+    from services.pair_consent import take_holds_training_yes
+    session = database.v2_get_session_by_id(take) or {}
+    if str(session.get("user_id") or "").strip() == str(coach_id or "").strip():
+        return False
+    return take_holds_training_yes(database, take)
+
+
 def transcribe_take_word_video(database: Any, *, word_row: Any, coach_id: str) -> Optional[str]:
     """The word's video, transcribed (the coach video pipeline's own path:
     audio extracted, Whisper through the speaker's permit), saved as the
-    second final. Best-effort, never raises; None when there is no video,
-    it could not be read, or enforce mode refused the permit. A refusal
-    costs only the transcript draft: the word and its video are already
-    saved, and the coach types the words."""
+    second final. Only this Take's own upload is read, and only for a
+    speaker with the training yes (N79). Best-effort, never raises; None
+    when there is no video, it could not be read, there is no yes, or
+    enforce mode refused the permit. A refusal costs only the transcript
+    draft: the word and its video are already saved, and the coach types
+    the words."""
     if not isinstance(word_row, dict) or not word_row.get("video_ref"):
         return None
     from services.processing_authorization import ProcessingAuthorizationError
@@ -259,11 +290,13 @@ def transcribe_take_word_video(database: Any, *, word_row: Any, coach_id: str) -
     try:
         from services.coach_video_storage import get_coach_object_bytes
         from services.ffmpeg_audio_extract import extract_audio_mp3_for_whisper
-        ref = str(word_row["video_ref"])
-        if not ref.startswith("s3://"):
+        found = take_video_object(word_row["video_ref"], take)
+        if found is None:
+            return None
+        bucket, key = found
+        if not _worth_transcribing(database, take, coach_id):
             return None
         adapter = _speaker_permit_adapter(database, take)
-        bucket, _, key = ref[len("s3://"):].partition("/")
         audio = extract_audio_mp3_for_whisper(get_coach_object_bytes(bucket, key), max_seconds=600)
         # usage_surface stays "whisper_take", the ledger label this call
         # always carried (the transcriber's default); relabelling is a
