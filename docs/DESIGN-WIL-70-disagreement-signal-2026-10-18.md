@@ -45,47 +45,37 @@ The ticket calls it `ranking_priority`; in the code it is
   machine parameter and no owner parameter, `machine_votes` stays 0, and a
   self-report still never counts toward quorum, gold or evaluation.
 
-## 3. The recording mix in each judgement round
+## 3. The recording mix in the judgement round
 
-**Round one is the speaker's own voice: the walk's own judgements.** The
-current Take's moments are served as they are today. Up to **two** earlier
-clips from the same project are mixed in with them:
+**A speaker never judges their own clips** (founder 2026-10-19). The judgement
+round is the walk's `others` step (`WalkOthers`), and it serves only other
+people's clips. In this note a "star" and a "disagreement" are always **another
+speaker's** clip, compared against the answers that speaker and their coach
+gave.
 
-- **1 star recording:** the speaker's latest answer is `yes` and the coach's
-  latest professional answer (`professional_confidence.latest_professional_value`)
-  is `yes`.
-- **1 disagreement recording:** the speaker and the coach disagree, as defined
-  in section 1.
-- How to pick each one: start with the newest Take. Skip any clip the speaker
-  has already answered since their previous Take. If one kind has no clip,
-  leave its place empty. Never fill it with the other kind, so a speaker
-  with no disagreements is not served two stars as if nothing had happened.
-- Shuffle them in among the current moments. The screen is the same judgement
-  screen with the speaker's voice only. It never says why a clip is there,
-  never says that anyone agreed or disagreed, and never shows the coach's
-  answer (Never 1, AC-9).
-- The answer is a judgement revision through `revise_take_feedback_response_v1`
-  (0440). The latest answer wins and the first one stays. The Voice Album
-  mirror and the routing in section 2 both see it at once.
-- Why both kinds: the star shows the speaker what their confident voice
-  sounds like. The disagreement is the clip where their ear and the coach's
-  differ, so it is the most useful clip to hear again.
+It is a mix of **3 clips** every walk (founder 2026-10-19), filled in this
+order:
 
-**Round two is other voices: the walk's `others` step (`WalkOthers`).** It is
-a mix of 3 clips every walk (founder 2026-10-19):
+1. **Peer** (community) clips come first, **at most 2**. Inside the peer
+   clips the order is:
+   1. **Disagreement recordings:** the clip's speaker and their coach
+      disagree (section 1). One more blind ear settles the clip.
+   2. **Star recordings:** the clip's speaker and their coach both said
+      `yes`. These show the listener what a confident voice sounds like.
+   3. Any other peer clip that hasn't been settled.
+2. **Licensed** corpus clips, picked by stratum, fill the places left, so
+   there is **always at least 1**.
 
-- **Peer** (community) clips are served first, **at most 2**. Among them, a
-  clip in disagreement is served sooner. This is how a disagreement reaches a
-  second blind human.
-- **Licensed** corpus clips, picked by stratum, fill the places left, so
-  there is always **at least 1**.
-- If there aren't enough clips, serve fewer and never top up from anywhere
-  else. With no peer clips, serve 3 licensed clips. With no licensed clips,
-  serve at most 2 peers. With none at all, the walk goes on (lock 2026-10-12,
-  section 2.6).
+If there aren't enough clips, serve fewer and never top up from anywhere
+else, own clips included. With no peer clips, serve 3 licensed clips. With
+no licensed clips, serve at most 2 peers. With none at all, the walk goes on
+(lock 2026-10-12, section 2.6).
 
-Neither round adds a screen, a step, a word or a number. The order of the
-steps does not change. Only the clips that fill the existing screens change.
+The screen is the existing judgement screen. It never says why a clip is
+there, that anyone agreed or disagreed, or what the coach answered (Never 1,
+AC-9). The listener's answer is a peer label (`lend_your_ear._peer_label`,
+lane `game_peer`), exactly as today. The set adds no screen, step, word or
+number.
 
 ## 4. Code touchpoints
 
@@ -108,9 +98,12 @@ steps does not change. Only the clips that fill the existing screens change.
    - `_queue_priority` is already removed before the row is sent (line 2511),
      so the coach never sees the speaker's answer. Blind coach holds.
 3. **`services/communities.py` `order_community_clips`**
-   - Change the sort key from `(rank, index)` to `(rank, -priority, index)`,
-     where `priority` = `routing_priority(resolve(rows_for), machine_value,
-     owner_value)` for the clip's owner.
+   - Change the sort key from `(rank, index)` to `(rank, kind, index)`, where
+     `kind` is 0 for a disagreement, 1 for a star and 2 for the rest.
+   - Work out `kind` from the clip owner's latest answer
+     (`list_confident_voice_self_reports` on the clip's project, read once
+     per project, not once per clip) and the coach's latest professional
+     answer (`latest_professional_value` on `rows_for`).
 4. **`services/lend_your_ear.py` `other_voices`**
    - Add `PEERS_MAX = 2` next to `OTHER_VOICES_MAX = 3`.
    - Call `community_clips(..., limit=min(limit, PEERS_MAX))`. Training
@@ -118,24 +111,12 @@ steps does not change. Only the clips that fill the existing screens change.
      list.
    - Update the docstring and the Q-B11 A comment to "at most 2 peers, at
      least 1 training clip".
-5. **Round one picker:** add `own_replays(database, owner_id, arc_id)` in
-   `services/lend_your_ear.py`, the walk's clip engine. It returns at most one
-   star and one disagreement, as in section 3. The route that serves the own
-   judgements adds them to the current Take's moments. Audio only.
-6. **Tests**
+5. **Tests**
    - Add rows to `tests/test_label_quorum.py`: singleton coach `yes` +
      speaker `no` → 100; + speaker `yes` → 40; + speaker `not_sure` → 40;
      quorum + speaker disagrees → 0.
-   - One contract check that `own_replays` never returns two clips of the
-     same kind.
+   - One contract check that `other_voices` never serves the listener's own
+     clip.
    - One contract check on `other_voices`: with 5 peer clips and 5 training
      clips, it returns 2 peers then 1 training clip.
    - No new test file.
-
-## 5. Open, for the founder
-
-The 2026-10-06 lock says "community first, then the speaker's own mixed with
-training clips". This note keeps the built walk's order (own judgements,
-then `others`) and changes no screen. If "round two" is meant to move
-community clips in front of the speaker's own, that is a locked-screen change
-and needs a `Founder-Approved:` line.
