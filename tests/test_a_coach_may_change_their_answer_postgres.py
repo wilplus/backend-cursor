@@ -138,7 +138,8 @@ WORDS = "public.coach_take_word_versions"
 
 
 def _save_word(db, take, *, text, video=None):
-    """As upsert_coach_take_word writes it: only the payload columns."""
+    """As upsert_coach_take_word writes a save that names its video: only the
+    payload columns. (A word-only edit leaves video_ref out of the write.)"""
     with db.cursor() as cur:
         cur.execute(
             "INSERT INTO public.coach_take_words (take_session_id, coach_id, text, video_ref, "
