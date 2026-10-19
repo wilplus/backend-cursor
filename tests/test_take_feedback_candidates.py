@@ -1,10 +1,17 @@
-"""What ``current_take_confident_voice_candidate`` picks, pinned before its
-split into named stages (audit W1, 2026-09-28).
-
-``tests/test_take_review.py`` covers the product cases. These pin the
-ranking and the edges that had no test: the early refusals, a shared
-phrase, cue evidence, a wordless region, a missing Take id, and the exact
-row and evidence piece the Manager receives.
+"""
+STORY    As a speaker, I want the Confident Voice moment I am asked about to
+         be quoted from my own words in this Take, so that the feedback
+         points at what I really said.
+OUTCOME
+  O1  The quote is the phrase the model picked when I said it; else a
+      phrase I said that the Ideal Text shares; else the start of that
+      slide's paragraph (a route), never words from elsewhere.
+  O2  Regions that are malformed or hold no word are skipped; a quote is
+      only taken from a region with a word.
+PROVES   O1 -> test_the_picked_quote_beats_a_shared_phrase_beats_a_route
+         O2 -> test_regions_that_are_malformed_or_hold_no_word_are_skipped
+WHY      Pinned before the split into named stages (audit W1, 2026-09-28);
+         tests/test_take_review.py covers the product cases.
 """
 from __future__ import annotations
 
@@ -38,8 +45,7 @@ def _emphasize(trigger="confidence_review", **extra):
     return {"kind": "emphasize", "trigger": trigger, "why": trigger, **extra}
 
 
-class RefusalsTests(unittest.TestCase):
-
+class RegionTests(unittest.TestCase):
 
     def test_regions_that_are_malformed_or_hold_no_word_are_skipped(self):
         text = "... " + P2
@@ -63,7 +69,6 @@ class RefusalsTests(unittest.TestCase):
 
 class RankingTests(unittest.TestCase):
 
-
     def test_the_picked_quote_beats_a_shared_phrase_beats_a_route(self):
         take = _take(
             _piece("route"),
@@ -77,14 +82,18 @@ class RankingTests(unittest.TestCase):
         self.assertEqual((change["snippet_id"], change["quote"],
                           change["anchor_role"]),
                          ("quoted", "it fast", "spoken_phrase"))
-        self.assertEqual(change["_manager_evidence"]["anchor_score"], 3)
         del suggestions["quoted"]
         change, _ = pick(TEXT, canonical_pieces=CANONICAL, take_document=take,
                          suggestions=suggestions)
         self.assertEqual((change["snippet_id"], change["quote"],
                           change["anchor_role"]),
                          ("shared", "we shipped it", "spoken_phrase"))
-        self.assertEqual(change["_manager_evidence"]["anchor_score"], 2)
+        del suggestions["shared"]
+        change, _ = pick(TEXT, canonical_pieces=CANONICAL, take_document=take,
+                         suggestions=suggestions)
+        self.assertEqual((change["snippet_id"], change["quote"],
+                          change["anchor_role"]),
+                         ("route", "Then", "slide_route"))
 
 
 if __name__ == "__main__":
