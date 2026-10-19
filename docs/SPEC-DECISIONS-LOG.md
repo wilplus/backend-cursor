@@ -2564,3 +2564,40 @@ read in the admin Take view, never shown; an uploaded Take has no voice and
 gets nothing. One signed sentence, L18, under the player ("you have my OK to
 the previous one"). Lock: `FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`,
 "Decided after the lock (2026-10-18, fillers)". Migration 0475.
+
+**N76 · Words first, then voice (founder, chat, 18 October 2026).** The
+practise moment opens on the Clearer version only when its words need help
+(fillers, hedges, off the slide, a broken sentence) and a rewrite passes the
+gate (in the clip, evidence-backed, a real fix, still theirs, sayable, not
+declined); otherwise the voice Exercise with the AI clip. A clearer-version
+try is checked on its voice: better is a Good job with no clip, not yet
+brings the AI clip of the accepted words. "ok, push to prod" on the clickable
+prototype. Locks: `FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md` ("Words
+first, then voice") and `FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`
+("Decided after the lock (2026-10-18, words first)"). No migration.
+
+**N79 · What we keep of what a coach says, and what may leave (founder, chat,
+19 October 2026).** The goal is a coach "text brain" trained on what coaches
+say, the situation and the error type; first we fix what is captured. Four
+answers, each the recommended option:
+- **The doors close to direct messages.** `coach_take_word` and
+  `coach_moment_line` leave doors 2, 3 and 4 until names and specifics are
+  scrubbed, the one privacy update is published and the versioned coach
+  agreement exists. They are still recorded for every speaker; only a
+  training yes would make one releasable. ("Close them for now.") Nothing
+  had left by then: every Take-word pair was refused by 0402's one_home
+  CHECK, and nothing in the app calls the moment-line drafter.
+- **The latest version teaches.** When a coach edits a Take word, every
+  version is kept in its history and training reads the newest one.
+- **Coach videos are transcribed only for speakers with the training yes.**
+  The words have no use but training; a catch-up picks up anyone who says yes
+  later. Copies kept inside the database (the situation, the drafts) are kept
+  for everyone and deleted with the Take.
+- **A coach's words stay with the speaker.** When a coach leaves, their
+  words, transcripts and the error type they picked on each answer stay with
+  the speaker's Take and go when it goes; the error type is copied onto each
+  answer so it survives. The coach agreement says so.
+Built as one small pull request per fix, each branched from main: the door
+hold, the Take-word video ref, the Take-word pair's home, Take-word history,
+every draft with its exact prompt, exercise transcription from the audio,
+answer-video transcripts, and the situation frozen on each answer.

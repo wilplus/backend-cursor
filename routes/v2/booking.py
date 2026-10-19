@@ -1,18 +1,20 @@
 """Booking page v1 (founder 2026-10-13). Logic in services/booking.py.
 
 Public (no login):
-  GET  /v2/booking/<slug>                    the page: title, length, price
+  GET  /v2/booking/<slug>[?link=]            the page: title, length, price
   GET  /v2/booking/<slug>/slots?from=&to=    open start times, UTC ISO
   GET  /v2/booking/confirmation?session_id=  what the success page shows
 
 Signed in (booking needs a WillpowerLab account):
-  GET  /v2/booking/<slug>/offer[?as=]        my price (admins may preview anyone)
+  GET  /v2/booking/<slug>/offer[?as=&link=] my price (admins may preview anyone)
   POST /v2/booking/<slug>/checkout           hold the slot, open Stripe at my price
 
 Admin:
   GET  /v2/admin/booking                     settings + upcoming bookings
   PUT  /v2/admin/booking/settings            save settings
   GET/PUT /v2/admin/booking/user-price       one person's lesson price
+  GET  /v2/admin/booking/price-link?price_cents=  a link that charges that price
+                                             and makes it the booker's own
 
 The Stripe webhook (routes/internal_webhooks.py) confirms on
 checkout.session.completed with metadata.kind == "booking".
@@ -46,7 +48,7 @@ def _refused(e: booking.BookingError):
 
 @booking_bp.route("/v2/booking/<slug>", methods=["GET"])
 def booking_page(slug: str):
-    return _reply(booking.public_settings(slug))
+    return _reply(booking.public_settings(slug, request.args.get("link", "")))
 
 
 @booking_bp.route("/v2/booking/<slug>/slots", methods=["GET"])
@@ -71,13 +73,14 @@ def booking_offer(slug: str):
     to see someone else's page as they will."""
     user_id = str(getattr(request, "user_id", ""))
     preview = (request.args.get("as") or "").strip()
+    link = request.args.get("link", "")
     if preview and preview != user_id:
         if not is_admin(user_id):
             return _reply({"code": "FORBIDDEN", "error": "Admin access required"}, 403)
-        return _reply({**booking.offer_for(slug, preview), "preview": True})
+        return _reply({**booking.offer_for(slug, preview, link), "preview": True})
     payload = getattr(request, "token_payload", None) or {}
     meta = payload.get("user_metadata") or {}
-    return _reply({**booking.offer_for(slug, user_id), "preview": False,
+    return _reply({**booking.offer_for(slug, user_id, link), "preview": False,
                    "email": payload.get("email") or "",
                    "name": meta.get("full_name") or meta.get("name") or ""})
 
@@ -97,6 +100,7 @@ def booking_checkout(slug: str):
         note=str(body.get("note") or ""),
         embedded=body.get("embedded") is True,
         skip_payment=body.get("skip_payment") is True,
+        link=str(body.get("link") or ""),
     ))
 
 
@@ -145,3 +149,15 @@ def admin_booking_user_price():
     except (TypeError, ValueError):
         return _reply({"code": "INVALID_INPUT", "error": "price_cents must be a whole number"}, 400)
     return _reply({"user_id": user_id, "price_cents": booking.set_user_price(user_id, price)})
+
+
+@booking_bp.route("/v2/admin/booking/price-link", methods=["GET"])
+@require_admin
+def admin_booking_price_link():
+    """The booking page link for one price (founder 2026-10-18). Whoever pays
+    through it gets that price as their own lesson price."""
+    settings = booking.get_settings()
+    link = booking.make_price_link(request.args.get("price_cents"))
+    base = (booking.config.FRONTEND_URL or "https://www.willpowerlab.com").rstrip("/")
+    return _reply({"url": f"{base}/book/{settings['slug']}?link={link}", "link": link,
+                   "price_cents": booking.price_from_link(link), "currency": settings["currency"]})

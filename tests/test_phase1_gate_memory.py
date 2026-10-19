@@ -60,3 +60,31 @@ def test_a_write_always_asks(app_client, gate):
     app_client.post(WRITE, headers=BEARER, json={})
     app_client.post(WRITE, headers=BEARER, json={})
     assert gate["asked"] == 3
+
+
+@pytest.mark.parametrize("refused", [False, True])
+def test_the_app_open_status_read_answers_the_next_core_read(
+        app_client, gate, monkeypatch, refused):
+    """Founder 2026-10-18: the app opens with the status read, and the core
+    reads right behind it ran the gate, which asked the database the same
+    question again. The status read's YES is the gate's YES for the next
+    few seconds; a refusal is still asked again, and refused again."""
+    reads: list = []
+
+    def one_trip(self, user_id, principal_id):
+        reads.append(user_id)
+        return "owner-1", {"authorized": True, "code": "PROCESSING_AUTHORIZED",
+                           "gate_mode": "enforce"}
+
+    monkeypatch.setattr(ProcessingAuthorizationService, "status_in_one_trip",
+                        one_trip)
+    gate["refuse"] = refused
+    assert app_client.get("/v2/processing-authorization",
+                          headers=BEARER).status_code == 200
+    response = app_client.get(READ, headers=BEARER)
+    if refused:
+        assert response.status_code == 403
+        assert len(reads) == 2
+    else:
+        assert response.status_code != 403
+        assert len(reads) == 1

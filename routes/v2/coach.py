@@ -19,7 +19,7 @@ import sentry_sdk
 from flask import jsonify, request
 
 from config import Config
-from routes.admin import is_admin, require_admin_or_coach
+from routes.admin import is_admin, require_admin_or_coach, require_founder
 from routes.phase2_guard import operational_purpose_disabled
 from routes.v2.blueprint import v2_bp
 from routes.v2.processing_authorization import speaker_provider_route
@@ -191,20 +191,26 @@ def _session_recording(session):
     return db.get_recording(str(recording_id)) if recording_id else None
 
 
-def _rater_language_outcome(session, snippets=None, proficient=None):
+def _rater_language_outcome(session, snippets=None, proficient=None,
+                            recordings=None):
     """Resolve queue eligibility for the current authenticated rater.
 
     Language is a routing dimension only. Unknown and mismatched clips are
     withheld; they are never converted to ``not_sure`` or ``audio_unclear``.
+
+    ``recordings`` is a queue's batch of recording languages by recording id
+    (``db.get_recording_languages``); None reads this session's recording.
     """
     from services.rater_languages import evaluate_rater_access, session_language
 
     rater_id = str(getattr(request, "user_id", "") or "")
     if proficient is None:
         proficient = db.get_user_proficient_languages(rater_id)
+    recording = (_session_recording(session) if recordings is None else
+                 recordings.get(str((session or {}).get("recording_id"))))
     language = session_language(
         session,
-        recording=_session_recording(session),
+        recording=recording,
         snippets=snippets or [],
     )
     return evaluate_rater_access(proficient, language), language
@@ -496,10 +502,11 @@ def v2_coach_moments_queue():
         proficient = db.get_user_proficient_languages(rater_id)
         if not proficient:
             return _rater_language_error("profile_required")
-        rows, snips, _states = load_review_queue(db, _coach_state_map)
+        rows, snips, _states = load_review_queue(db)
         matched = _language_matched_rows(rows, snips, proficient)
         return jsonify(queue_for_coach(
-            db, matched, rater_id=rater_id, moments_for=_queue_moments_for(snips),
+            db, matched, rater_id=rater_id,
+            moments_for=_queue_moments_for(snips, matched),
             pseudonym_for=_coach_pseudonym)), 200
     except Exception as e:
         logger.error("coach/queue/moments GET failed: %s", e, exc_info=True)
@@ -520,11 +527,11 @@ def v2_coach_speakers():
         proficient = db.get_user_proficient_languages(rater_id)
         if not proficient:
             return _rater_language_error("profile_required")
-        rows, snips, _states = load_review_queue(db, _coach_state_map)
+        rows, snips, _states = load_review_queue(db)
         matched = _language_matched_rows(rows, snips, proficient)
         return jsonify(speakers_for_coach(
             db, matched, rater_id=rater_id,
-            moments_for=_queue_moments_for(snips),
+            moments_for=_queue_moments_for(snips, matched),
             pseudonym_for=_coach_pseudonym)), 200
     except Exception as e:
         logger.error("coach/speakers GET failed: %s", e, exc_info=True)
@@ -546,12 +553,18 @@ def _language_matched_rows(rows, snips, proficient):
     """The queue rows this rater may see, and one internal log line for each
     Take withheld by language, naming the filter (founder 2026-10-01, 0a:
     a Take that leaves the queue is never silently absent). Nothing here
-    reaches a user."""
+    reaches a user.
+
+    The recordings' languages are read once for the whole queue: a read per
+    Take was the bulk of the coach panel's load time (founder 2026-10-18)."""
+    recordings = db.get_recording_languages(
+        [row.get("recording_id") for row in rows])
     matched = []
     for row in rows:
         sid = str(row.get("id"))
         outcome, language = _rater_language_outcome(
-            row, snips.get(sid) or [], proficient=proficient)
+            row, snips.get(sid) or [], proficient=proficient,
+            recordings=recordings)
         if outcome == "matched":
             matched.append(row)
         else:
@@ -560,14 +573,19 @@ def _language_matched_rows(rows, snips, proficient):
     return matched
 
 
-def _queue_moments_for(snips):
+def _queue_moments_for(snips, rows):
     """The queue's `moments_for`: a take's bookmarked snippet ids in order,
     or None while its bookmarks are not frozen yet. Not a drop: the take
     rides as "Waiting for the text" (founder 2026-10-01, A1) until the bake
-    or the first read freezes them, and the log names the filter."""
+    or the first read freezes them, and the log names the filter. The
+    frozen sets of every row in `rows` are read in one batch, not one read
+    per Take (founder 2026-10-18)."""
+    feedback_sets = db.get_ideal_text_feedback_sets(
+        [r.get("id") for r in rows if r.get("arc_id")])
+
     def moments_for(row):
         sid = str(row.get("id"))
-        marked = _bookmarked_snippet_ids(row, sid)
+        marked = _bookmarked_snippet_ids(row, sid, feedback_sets)
         if marked is None:
             logger.info("coach queue: take waiting for the text sid=%s "
                         "filter=bookmarks_not_frozen", sid)
@@ -577,7 +595,16 @@ def _queue_moments_for(snips):
     return moments_for
 
 
-def _bookmarked_snippet_ids(session, session_id):
+def _frozen_feedback_set(arc_id, session_id, feedback_sets=None):
+    """This Take's frozen selection: from a queue's batch when one is handed
+    in (``db.get_ideal_text_feedback_sets``), else one read."""
+    if feedback_sets is None:
+        return db.get_ideal_text_feedback_set(str(arc_id), str(session_id))
+    return next((row for row in feedback_sets.get(str(session_id)) or []
+                 if str(row.get("arc_id")) == str(arc_id)), None)
+
+
+def _bookmarked_snippet_ids(session, session_id, feedback_sets=None):
     """The snippets this take actually surfaced to the USER as bookmarks.
 
     FOUNDER 2026-09-24: "I want to have those that were bookmarked, green and
@@ -607,7 +634,7 @@ def _bookmarked_snippet_ids(session, session_id):
     if not arc_id or not session_id:
         return set()
     try:
-        row = db.get_ideal_text_feedback_set(str(arc_id), str(session_id))
+        row = _frozen_feedback_set(arc_id, session_id, feedback_sets)
         if not row:
             return None
         from services.take_feedback_set import (
@@ -1569,7 +1596,9 @@ def v2_coach_take_word(session_id):
     message and video per Take, per coach. GET this coach's own; PUT {text,
     video_ref, share} saves it and, on share, sends it to the speaker, who
     reads it as "Your coach". The video comes from the session video upload
-    (POST .../video), which returns the ref. Nothing here gates a per-moment
+    (POST .../video), which returns the ref; a PUT that names no video_ref
+    keeps the saved video, and an explicit null removes it (founder
+    2026-10-19). Nothing here gates a per-moment
     share."""
     if not _is_valid_uuid(session_id):
         return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a UUID"}), 400
@@ -2003,6 +2032,34 @@ def v2_coach_archive_training_import(session_id):
                        session_id, e)
         return jsonify({"code": "SERVER_ERROR",
                         "error": "could not archive the import"}), 500
+
+
+@v2_bp.route("/coach/training-imports/<session_id>/erase", methods=["POST"])
+@require_founder
+def v2_coach_erase_training_import(session_id):
+    """ERASE a training import for good: the founder only (2026-10-19).
+
+    Unlike the archive above, nothing comes back: the audio, the moments,
+    the transcript and every judgement go (services/training_import_erase).
+    For audio we hold no rights to.
+
+    200 {erased: true, session_id, deleted} · 403 · 404 · 409 · 500
+    """
+    from services.training_import_erase import (
+        EraseRefused, erase_training_import,
+    )
+    if not _is_valid_uuid(str(session_id)):
+        return jsonify({"code": "NOT_FOUND", "error": "import not found"}), 404
+    try:
+        return jsonify(erase_training_import(db, str(session_id))), 200
+    except EraseRefused as refusal:
+        return jsonify({"code": refusal.code,
+                        "error": "could not erase the import"}), refusal.status
+    except Exception as e:
+        logger.error("erase training import failed sid=%s: %s",
+                     session_id, e, exc_info=True)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not erase the import"}), 500
 
 
 @v2_bp.route("/coach/training-imports/<session_id>/restore",

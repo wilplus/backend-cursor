@@ -112,10 +112,17 @@ def install() -> None:
         return
     original = SyncClient.request
 
-    from services.request_context import count_db_call, lap
+    from services.request_context import add_db_time, count_db_call, lap
 
     def request(self, method, url, *args, **kwargs):
         count_db_call()
+        started = time.perf_counter()
+        try:
+            return _send(self, method, url, *args, **kwargs)
+        finally:
+            add_db_time((time.perf_counter() - started) * 1000)
+
+    def _send(self, method, url, *args, **kwargs):
         attempt = 0
         while True:
             try:

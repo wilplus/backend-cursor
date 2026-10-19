@@ -9,8 +9,10 @@
              already there.
   ensure     the walk asks for the clip when it enters the lane: when the
              Exercise screen opens (no video fits) or when Practise is
-             tapped (a video fits). The rewrite lane and praise never get
-             here; a rewrite practice is refused before anything is read.
+             tapped (a video fits), or when a clearer version is
+             practised (founder 2026-10-18: the clip says the accepted
+             words, shown only after a try that is not yet). Praise never
+             gets here.
              One cycle row per practice (UNIQUE), so a repeated request never
              makes a second clip. Since the prewarm this is the fallback.
   generate   the background job: choose the exercise, build the request,
@@ -77,10 +79,11 @@ def principal_for(database: Any, take_id: Any, user_id: Any) -> str:
 # ── the lane and the video rule ──────────────────────────────────────────
 
 def in_voice_lane(practice: dict) -> bool:
-    """Only the voice Exercise: a library exercise or the moment's own words
-    (stored as ``plain``), never the Clearer version (a rewrite). A row
-    without a kind is an exercise, as practice_adoption reads it."""
-    return str((practice or {}).get("kind") or "exercise") in ("exercise", "plain")
+    """A practice the AI clip may follow: a library exercise, the moment's
+    own words (stored as ``plain``), or the Clearer version (a ``rewrite``,
+    founder 2026-10-18: its words first, then the voice). A row without a
+    kind is an exercise, as practice_adoption reads it."""
+    return str((practice or {}).get("kind") or "exercise") in ("exercise", "plain", "rewrite")
 
 
 def _coach_picked(practice: dict) -> bool:
@@ -173,8 +176,9 @@ def exercise_moment_of(block: Any) -> Optional[dict]:
     """The voice-exercise moment in a stored feedback block, read exactly as
     the walk reads it (frontend `lockedMoments` and `practiseOpening`, lock
     2026-10-12): the moment that is not green and carries `practice_prompt`
-    is practised as a clearer version when a rewrite rides it (never a
-    clip), else on its exercise, else said again. The stored rows are the
+    is practised as a clearer version when a rewrite rides it (its clip is
+    asked when the speaker accepts it, never prewarmed: until then the
+    words are not chosen), else on its exercise, else said again. The stored rows are the
     client's rows (`strip_internal_evidence`), so this reads the same keys.
 
     Returns ``{snippet_id, take_session_id, kind, exercise_id, evidence,

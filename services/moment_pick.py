@@ -19,8 +19,11 @@ clips always shows its highest and its second-highest moment.
 
 The exercise (founder 2026-10-14): the strongest clip that is not green, so
 the second best of the Take (with ``MIN_WORDS`` words when one has them):
-close enough that one practise improves it. Its kind follows the lower
-half: words (W < S) gives the clearer version, otherwise the voice exercise.
+close enough that one practise improves it. Its kind (founder 2026-10-18,
+"words first, then voice"; ``services.rewrite_gate``): the clearer version
+when its words need help (fillers, hedges, off the slide, a broken
+sentence), otherwise the voice exercise. The V3 policy then keeps the
+clearer version only when a rewrite passes the gate's second half.
 
 Internal only (AC-9): the numbers order the moments and never leave the
 frame. What crosses to the client is a tier name and one routing word.
@@ -62,11 +65,12 @@ def read(score: Any, text: Any, metrics: Any) -> dict:
     sound = s is not None
     if s is None:
         s = NEUTRAL_SOUND
-    w = willfidence.partial_w(
-        willfidence.filler(text), willfidence.hedging(text),
-        willfidence.slide_fit([metrics]))
+    from services.rewrite_gate import words_need_help
+    fit = willfidence.slide_fit([metrics])
+    w = willfidence.partial_w(willfidence.filler(text), willfidence.hedging(text), fit)
     w = 1.0 if w is None else w
-    return {"s": s, "w": w, "value": s * w, "sound": sound}
+    return {"s": s, "w": w, "value": s * w, "sound": sound,
+            "words_help": words_need_help(text, fit)}
 
 
 def pick(reads: list[dict]) -> dict:
@@ -95,8 +99,7 @@ def pick(reads: list[dict]) -> dict:
     practise = max(worded, key=lambda r: r["read"]["value"]) if worded else None
     kind = None
     if practise is not None:
-        kind = (EXERCISE_CLEARER if practise["read"]["w"] < practise["read"]["s"]
-                else EXERCISE_VOICE)
+        kind = EXERCISE_CLEARER if practise["read"].get("words_help") else EXERCISE_VOICE
     return {
         "green": green_ids,
         "soft": soft,

@@ -12,7 +12,7 @@ from services.mlc3_first_client_feedback import (
     V3Unavailable,
     prepare_first_client_feedback,
 )
-from tests.test_mlc3_first_client_feedback import (
+from tests.first_client_fakes import (
     USER,
     _Database,
     _source,

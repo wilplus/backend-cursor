@@ -626,6 +626,15 @@ def _shadow_stages(session_id: str, deg: Any) -> None:
                     session_id, added)
     deg.run("detector_rollout_shadow", _detector_rollout_shadow)
 
+    def _exercise_held_next_take() -> None:
+        # Founder 2026-10-18 (WIL-29): did an exercise practised on the Take
+        # before this one hold here? Founder pages only; never a speaker's.
+        from services.exercise_held import record_take as record_held
+        offered = record_held(db, session_id)
+        logger.info("lab: exercise held next take sid=%s offered=%s",
+                    session_id, offered)
+    deg.run("exercise_held_next_take", _exercise_held_next_take)
+
 
 def _after_ready(*, session_id: str, user_id: Optional[str],
                  send_result: Dict[str, Any], deg: Any) -> None:
