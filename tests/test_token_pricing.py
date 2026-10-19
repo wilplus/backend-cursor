@@ -8,6 +8,10 @@ OUTCOME
   O2  The charge never stops the action: an unreadable account, a charge
       function that fails, or nonsense input all let it through, and nothing
       raises.
+  O6  A charge that let the action through unpaid is never silent: the
+      founder gets one ERROR line named token_charge_failed (user, action,
+      reference, reason) and one Sentry event. A charge that worked raises
+      no alert.
   O3  The price modules never read the cost ledger (a cost-derived price
       would vary with how I performed).
   O4  An operator top-up with the same reference credits once.
@@ -20,6 +24,9 @@ PROVES   O1 -> test_an_action_is_charged_its_flat_price
          O3 -> test_pricing_never_imports_the_cost_ledger
          O4 -> test_the_same_top_up_never_credits_twice
          O5 -> test_the_balance_is_read_in_one_call
+         O6 -> test_an_unreadable_account_lets_the_action_through
+            -> test_a_failing_charge_lets_the_action_through
+            -> test_a_charge_that_works_raises_no_alert
 WHY      Fence section 6.1 (fail open on the F1 loop) and 6.2 (flat prices).
 
 This file covers the Python caller only. What the database does with a
@@ -133,6 +140,15 @@ class _Base(unittest.TestCase):
 
 class FlatPriceTests(_Base):
 
+    def test_a_charge_that_works_raises_no_alert(self):
+        db = FakeDB(answer={"ok": True, "charged": 1_000, "balance": 11_000,
+                            "reason": ""})
+        with patch("sentry_sdk.capture_message") as sentry, \
+                self.assertNoLogs("services.token_account", "ERROR"):
+            r = ta.charge("u1", "take_short", ref_id="r1", database=db)
+        self.assertEqual((r.ok, r.charged), (True, 1_000))
+        sentry.assert_not_called()
+
     def test_an_action_is_charged_its_flat_price(self):
         for tier, action, ref in (("free", "take_short", "rec1"),
                                   ("intensive", "take_short", "rec2"),
@@ -164,18 +180,35 @@ class FlatPriceTests(_Base):
 class FailOpenTests(_Base):
     """This sits in front of the F1 record loop."""
 
+    def _charge_and_capture_alert(self, db):
+        with patch("sentry_sdk.capture_message") as sentry, \
+                self.assertLogs("services.token_account", "ERROR") as logs:
+            r = ta.charge("u1", "take_short", ref_id="r1", database=db)
+        [line] = [m for m in logs.output if "token_charge_failed" in m]
+        sentry.assert_called_once()
+        self.assertEqual(sentry.call_args.kwargs.get("level"), "error")
+        return r, line, sentry.call_args.args[0]
+
     def test_an_unreadable_account_lets_the_action_through(self):
         db = FakeDB()
         db.client.table.side_effect = RuntimeError("database is on fire")
-        r = ta.charge("u1", "take_short", ref_id="r1", database=db)
+        r, line, event = self._charge_and_capture_alert(db)
         self.assertTrue(r.ok, "a database outage must not block a recording")
         self.assertEqual(r.reason, "account_unavailable")
         self.assertEqual(db.rpc_calls, [])
+        for part in ("user=u1", "action=take_short", "ref=r1",
+                     "reason=account_unavailable"):
+            self.assertIn(part, line)
+        self.assertEqual(event, "token_charge_failed:account_unavailable")
 
     def test_a_failing_charge_lets_the_action_through(self):
         db = FakeDB(answer=RuntimeError("could not serialize access"))
-        r = ta.charge("u1", "take_short", ref_id="r1", database=db)
+        r, line, event = self._charge_and_capture_alert(db)
         self.assertEqual((r.ok, r.charged, r.reason), (True, 0, "write_failed"))
+        for part in ("user=u1", "action=take_short", "ref=r1",
+                     "reason=write_failed", "could not serialize access"):
+            self.assertIn(part, line)
+        self.assertEqual(event, "token_charge_failed:write_failed")
         # No second attempt through the old four-call path: a lost response
         # after a commit looks the same as a rollback from here.
         self.assertEqual(len(db.rpc_calls), 1)

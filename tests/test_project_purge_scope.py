@@ -10,12 +10,16 @@ OUTCOME
       graph fills.
   O2  A re-pointed table counts only this project's rows; an account table
       nobody placed, where the account has rows, stops the purge for review.
+  O4  A speaker with lesson bookings can delete a project: bookings belong
+      to the account, so the project purge neither targets them nor stops
+      for review over them.
   O3  The project orchestrator refuses an account request and the account
       orchestrator refuses a project request; each request is routed to its
       own orchestrator.
 PROVES   O1 -> test_every_placement_names_an_account_keyed_entry_once
          O2 -> test_a_project_purge_counts_its_project_and_stops_on_the_unplaced
          O3 -> test_neither_orchestrator_runs_the_others_request
+         O4 -> test_bookings_never_stop_or_join_a_project_purge
 WHY      P1-B, decisions log N8/N12: the project graph lists no principal or
          user, so an unplaced account-keyed table would reach no row at all.
 
@@ -72,6 +76,20 @@ def test_a_project_purge_counts_its_project_and_stops_on_the_unplaced():
     unplaced = targets["dependency:feedback_revision_subjects"]
     assert unplaced.target_kind == "unknown"
     assert unplaced.metadata["reason_code"] == "PROJECT_SCOPE_UNRESOLVED"
+
+
+def test_bookings_never_stop_or_join_a_project_purge():
+    database = PurgeDb({
+        "bookings": [{"id": "booking-1", "user_id": "user-1"}],
+    }, kind="project_deletion")
+
+    targets = inventory(database, scope.ProjectPurgeOrchestrator)
+
+    assert [ref for ref, t in targets.items()
+            if t.metadata.get("reason_code") == "PROJECT_SCOPE_UNRESOLVED"] == []
+    bookings = targets.get("dependency:bookings")
+    assert bookings is None or (bookings.initial_match_count,
+                                bookings.metadata.get("locator_values")) == (0, [])
 
 
 @pytest.mark.parametrize("kind,wrong,right", [
