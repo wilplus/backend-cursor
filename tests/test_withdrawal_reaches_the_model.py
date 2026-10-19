@@ -23,7 +23,7 @@ from unittest import mock
 
 from services import golden_set as gs
 from services import model_training as mt
-from tests.test_doors_three_and_four import (
+from tests.doors_fakes import (
     NOW,
     _judged_db,
     _open3,

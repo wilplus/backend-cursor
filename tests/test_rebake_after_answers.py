@@ -12,7 +12,7 @@ import pytest
 
 from services import ideal_text_feedback_bake as bake
 from services import job_queue
-from tests import test_a_speaker_may_change_a_judgement as judgement
+from tests import judgement_route_fakes as judgement
 
 
 class _FakeRedis:
