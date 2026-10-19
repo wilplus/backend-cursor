@@ -13220,24 +13220,32 @@ class DatabaseService:
 
     def upsert_coach_take_word(
         self, *, take_session_id: str, coach_id: str, text: Optional[str],
-        video_ref: Optional[str], share: bool,
+        video_ref: Optional[str], share: bool, keep_video: bool = False,
     ) -> Optional[dict]:
         """One word per (Take, coach) (0403), replaced on each save; sharing
-        stamps shared_at once and a later save keeps it. A transcript
-        belongs to its video: a new or removed video clears it, so the new
-        one is transcribed (N79). Raises on failure."""
+        stamps shared_at once and a later save keeps it. ``keep_video``: the
+        save names no video, so the saved one stays. A transcript belongs to
+        its video: a new or removed video clears it, so the new one is
+        transcribed (N79). Raises on failure, the read of the row before it
+        included: a failed read must not pass for "no row yet", or a share
+        would be stamped again and the speaker told twice."""
         now = datetime.now(timezone.utc).isoformat()
-        existing = self.get_coach_take_word(take_session_id, coach_id) or {}
+        res = (self.client.table("coach_take_words").select("*")
+               .eq("take_session_id", str(take_session_id))
+               .eq("coach_id", str(coach_id)).limit(1).execute())
+        existing = (res.data or [None])[0] or {}
         payload: dict[str, Any] = {
             "take_session_id": str(take_session_id),
             "coach_id": str(coach_id),
             "text": text,
-            "video_ref": video_ref,
             "updated_at": now,
         }
+        if not keep_video:
+            payload["video_ref"] = video_ref
         if share and not existing.get("shared_at"):
             payload["shared_at"] = now
-        if existing and (existing.get("video_ref") or None) != (video_ref or None):
+        if (not keep_video and existing
+                and (existing.get("video_ref") or None) != (video_ref or None)):
             payload["transcript"] = None
             payload["transcribed_at"] = None
         res = (self.client.table("coach_take_words")

@@ -101,6 +101,13 @@ FEATURES: dict[str, dict[str, str]] = {
 ACTIONS = tuple(FEATURES)
 
 
+#: What the speaker sees under Will's answer for each way a feature opens
+#: (founder 2026-10-18: Will said "tap the button below" over a link, then
+#: "I can't create clickable links").
+_SHOWS = {"whatsapp": "a form", "install": "a button", "chip": "a button",
+          "card": "a card"}
+
+
 def features_block(card: Optional[dict] = None) -> str:
     """The prompt block listing what the app can do, and the action name
     that opens each. A feature the speaker already has on is marked so."""
@@ -110,13 +117,17 @@ def features_block(card: Optional[dict] = None) -> str:
         note = (" (already on for this speaker with their number saved; "
                 "say so plainly. The form opens only if they want to change "
                 "it)") if action == "whatsapp" and whatsapp_on else ""
-        lines.append(f"  • {action}: {feature['says']}{note}")
+        shows = _SHOWS.get(action) or _SHOWS.get(feature["opens"], "a link")
+        lines.append(f"  • {action}: {feature['says']} (under your answer: {shows}){note}")
     return (
         "─── WHAT THE APP CAN DO (these are real; never decline them) ───\n"
         + "\n".join(lines) + "\n"
         "When the speaker asks for one of these, say yes in one or two "
         "short sentences and set app_action to its name; the app shows "
-        "the form, button, card or link under your answer. You cannot save a "
+        "what is in brackets under your answer, so name that: a link is a "
+        "link to tap, never a button. Every link in the chat can be tapped: "
+        "never say you cannot make a link, and never ask them to copy a "
+        "URL. You cannot save a "
         "number or a setting yourself: a number typed to you is not saved; "
         "the form under your answer is the only way. Never invent a "
         "feature that is not on this list. Never write a URL yourself.\n"
