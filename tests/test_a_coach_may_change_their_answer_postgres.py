@@ -21,7 +21,12 @@ Pins:
     resolver's, in its own transaction;
   * a changed answer that goes from shared to unshared leaves shared_at NULL
     (a withdrawn share), and from words to an exercise respects the row's
-    shape checks.
+    shape checks;
+  * a coach's Take word keeps every earlier version too (0478, N79): a new
+    word, a re-draft or a new video moves the one before into
+    coach_take_word_versions; a NULL being filled in, or the same text
+    again, keeps none; a new video clears the old video's words on the row;
+    only the trigger writes the history.
 """
 from __future__ import annotations
 
@@ -127,3 +132,64 @@ def test_the_same_coach_changes_the_answer_and_every_earlier_one_stays(db):
     assert (fourth["resolved_exercise_id"], fourth["resolved_exercise_version"]) == ("ex-1", 2)
     assert fourth["shared_at"] is not None and fourth["answer_text"] is None
     assert [h["version"] for h in _history(db, request["id"])] == [1, 2, 3]
+
+
+WORDS = "public.coach_take_word_versions"
+
+
+def _save_word(db, take, *, text, video=None):
+    """As upsert_coach_take_word writes it: only the payload columns."""
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO public.coach_take_words (take_session_id, coach_id, text, video_ref, "
+            "updated_at) VALUES (%s, 'coach-1', %s, %s, now()) "
+            "ON CONFLICT (take_session_id, coach_id) DO UPDATE SET text = EXCLUDED.text, "
+            "video_ref = EXCLUDED.video_ref, updated_at = EXCLUDED.updated_at",
+            (take, text, video))
+
+
+def _set(db, take, **columns):
+    with db.cursor() as cur:
+        assignments = ", ".join(f"{name} = %s" for name in columns)
+        cur.execute(f"UPDATE public.coach_take_words SET {assignments} "
+                    "WHERE take_session_id = %s AND coach_id = 'coach-1'",
+                    (*columns.values(), take))
+
+
+def _versions(db, take):
+    with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(f"SELECT version, replaced, text, video_ref, draft_text, transcript "
+                    f"FROM {WORDS} WHERE take_session_id = %s ORDER BY version", (take,))
+        return [dict(r) for r in cur.fetchall()]
+
+
+def test_a_take_word_keeps_every_earlier_version(db):
+    take = str(uuid.uuid4())
+    _save_word(db, take, text="Slow down.", video="s3://b/coach-feedback/t/a.webm")
+    _set(db, take, draft_text="Pause.", draft_prompt=psycopg2.extras.Json({"passage_text": "p"}),
+         drafted_at="now")
+    _set(db, take, transcript="Slow down there.", transcribed_at="now")
+    _save_word(db, take, text="Slow down.", video="s3://b/coach-feedback/t/a.webm")
+    assert _versions(db, take) == []  # filled in, or the same again: nothing lost
+    _save_word(db, take, text="Pause at the number.", video="s3://b/coach-feedback/t/a.webm")
+    _set(db, take, draft_text="Breathe first.")
+    _save_word(db, take, text="Pause at the number.", video="s3://b/coach-feedback/t/b.webm")
+    kept = _versions(db, take)
+    assert [(v["version"], v["replaced"]) for v in kept] == [
+        (1, "word"), (2, "draft"), (3, "word")]
+    assert (kept[0]["text"], kept[0]["transcript"]) == ("Slow down.", "Slow down there.")
+    assert kept[1]["draft_text"] == "Pause."
+    assert kept[2]["video_ref"].endswith("/a.webm")
+    live = _row(db, "SELECT transcript, video_ref FROM public.coach_take_words "
+                    "WHERE take_session_id = %s", (take,))
+    assert live == {"transcript": None, "video_ref": "s3://b/coach-feedback/t/b.webm"}
+    # Only the trigger writes the history.
+    assert _row(db, "SELECT relrowsecurity AS rls FROM pg_class WHERE oid = %s::regclass",
+                (WORDS,))["rls"] is True
+    assert _row(db, "SELECT has_table_privilege('service_role', %s, 'INSERT') AS can",
+                (WORDS,))["can"] is False
+    for role in ("anon", "authenticated"):
+        if _row(db, "SELECT count(*) AS n FROM pg_roles WHERE rolname = %s", (role,))["n"]:
+            assert _row(db, "SELECT has_table_privilege(%s, %s, 'SELECT') AS can",
+                        (role, WORDS))["can"] is False
+
