@@ -1,14 +1,22 @@
-"""An admin's AI call about a speaker takes the SPEAKER's permit (founder
-2026-10-05, N48.1 step 6: "every AI call carries its permission slip").
-
-Two admin tools sent a speaker's own words to the provider with no permit,
-no snapshot and no provider record even in enforce mode: the directive
-suggestions (``POST /v2/admin/users/<id>/directives-queue/suggest``) and the
-next-session icebreaker regenerate (``POST /v2/admin/sessions/<id>/
-next-session-icebreaker/regenerate``). ``services.speaker_authority``
-resolves the speaker, requires their current authority and runs the call in
-the protected scope ``services.llm.chat_complete`` reads its permit from.
-Refused → no model call, the house refusal, a warning with exc_info.
+"""
+STORY    As a speaker, I want any AI call an admin makes about me to run under
+         my own processing permit, and be refused when I have none, so that
+         my words never reach a provider without my authority (processing
+         authorization on the critical path).
+OUTCOME
+  O1  Directive suggestions: with my authority the model call runs inside
+      the protected scope bound to MY principal; a refused permit answers
+      403 before any provider client exists.
+  O2  Icebreaker regenerate: with my authority it runs inside my scope;
+      without it the route answers 403 and the model is never called.
+  O3  No principal is minted for me: the fake database has no create method.
+PROVES   O1 -> test_directives_run_under_the_speakers_scope
+               test_directives_reach_the_permit_through_the_real_llm_wrapper
+         O2 -> test_the_icebreaker_runs_under_the_speakers_scope
+               test_the_icebreaker_is_refused_without_the_speakers_authority
+         O3 -> every test (_FakeDB)
+WHY      Founder 2026-10-05, N48.1 step 6: "every AI call carries its
+         permission slip"; the two admin tools called the provider with none.
 """
 from __future__ import annotations
 
@@ -78,9 +86,6 @@ def enforce(monkeypatch):
 
 def _scope_now():
     return authorized_provider._protected_call_scope.get()
-
-
-# ── call_as_speaker ─────────────────────────────────────────────────────
 
 
 # ── The two admin routes ────────────────────────────────────────────────
@@ -153,3 +158,42 @@ def icebreaker(monkeypatch):
     monkeypatch.setattr(admin_routes, "_build_icebreaker_response",
                         lambda sid, row: {"session_id": sid})
     return calls
+
+
+def test_directives_run_under_the_speakers_scope(app_client, enforce, authority,
+                                                 directives):
+    body, status = _call_view(app_client, admin_routes.v2_admin_suggest_directives_queue,
+                              user_id=USER)
+    assert status == 200
+    assert body["rows"] == [{"intent_tag": "warm-up", "question": "How did it go?"}]
+    assert authority["required"] == ("account-p", "admin_draft")
+    assert len(directives) == 1 and directives[0] is not None
+    assert directives[0].adapter.coordinates.acquisition_principal_id == "account-p"
+
+
+def test_the_icebreaker_runs_under_the_speakers_scope(app_client, enforce, authority,
+                                                      icebreaker):
+    body, status = _call_view(
+        app_client, admin_routes.v2_admin_regenerate_next_session_icebreaker,
+        session_id=TAKE)
+    assert (status, body) == (200, {"session_id": TAKE})
+    assert authority["required"] == ("speaker-p", "admin_draft")
+    assert len(icebreaker) == 1
+    scope, overwrite = icebreaker[0]
+    assert overwrite is True and scope is not None
+    assert scope.adapter.coordinates.acquisition_principal_id == "speaker-p"
+    assert scope.adapter.coordinates.take_id == TAKE
+
+
+def test_the_icebreaker_is_refused_without_the_speakers_authority(
+        app_client, enforce, authority, icebreaker, caplog):
+    authority["refuse"] = True
+    with caplog.at_level("WARNING", logger="services.speaker_authority"):
+        body, status = _call_view(
+            app_client, admin_routes.v2_admin_regenerate_next_session_icebreaker,
+            session_id=TAKE)
+    assert (status, body["code"]) == (403, "PROCESSING_AUTHORIZATION_REQUIRED")
+    assert authority["required"] == ("speaker-p", "admin_draft")
+    assert icebreaker == []
+    assert any("refused before the model" in r.getMessage() and r.exc_info
+               for r in caplog.records)

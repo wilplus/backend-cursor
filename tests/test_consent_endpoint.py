@@ -1,24 +1,27 @@
-"""Tests for GET/PUT /v2/user/consent.
-
-The unified consent endpoint that surfaces four prompted moments
-(mic / share / email / terms). Three are runtime preferences on
-user_settings; the fourth reads the immutable user_consents
-ledger against Config.CURRENT_TERMS_VERSION.
-
-Test surface:
-  * GET when nothing has been set — all flags null,
-    has_answered=False, terms_consent=False
-  * PUT partial (only mic) — share/email stay null, the
-    set_at column is stamped
-  * PUT all three runtime flags + accepting terms — full
-    round-trip echo, has_answered=True, terms ledger row
-    inserted
-  * Terms validation — only `true` is accepted; false/null
-    are rejected with 400 because the ledger is append-only
-  * Idempotency — accepting terms when a row already exists
-    for the current version does not write a duplicate
-  * Clear semantics — null on a runtime flag wipes the
-    column and the corresponding set_at
+"""
+STORY    As a speaker, I want to give or change my mic, share and email
+         choices and accept the terms once, so that the app records exactly
+         what I agreed to (consent on the critical path).
+OUTCOME
+  O1  Before I answer, GET shows every choice unset and no terms accepted.
+  O2  PUT stores the choices I send (only those), stamps when, and accepting
+      the terms appends one ledger row at the current version.
+  O3  Accepting again writes no second row; null clears a choice and its
+      time; terms "false" is refused and nothing is written.
+  O4  The retired bundled route (/v2/user/mlc2-consent) records no grant
+      (410) and still lets a holder withdraw.
+PROVES   O1 -> test_get_before_any_answer_shows_nothing_set
+         O2 -> test_put_all_three_plus_terms_records_ledger
+               test_put_only_mic_leaves_the_others_unset
+         O3 -> test_accepting_twice_and_clearing
+               test_put_terms_consent_false_is_rejected
+         O4 -> test_post_records_nothing_and_answers_410_with_a_code_only
+               test_delete_withdraws_a_held_grant_and_never_erases_it
+WHY      The real services.db consent methods run over an in-memory
+         user_settings / user_consents store, so the echoed state is the
+         app's own read-back, not a fake's. No frontend caller of
+         /v2/user/consent was found on 2026-10-19 (founder to confirm it is
+         still live).
 """
 import unittest
 
@@ -27,6 +30,7 @@ try:
 
     from routes.v2 import user_account as v2_user_account
     from services.db import db
+    from tests.fakes import swap_attr
     _IMPORT_ERROR = None
 except Exception as import_err:  # pragma: no cover - env/bootstrap guard
     Flask = None
@@ -34,6 +38,57 @@ except Exception as import_err:  # pragma: no cover - env/bootstrap guard
 
 
 _TERMS_VERSION = "test-1.0"
+
+
+class _Result:
+    def __init__(self, data):
+        self.data = data
+
+
+class _Query:
+    """user_settings (one row per user) and user_consents (one row per user
+    and terms version) as the two tables the consent methods use."""
+
+    def __init__(self, store, name):
+        self.store, self.name = store, name
+        self.filters, self.write, self.ignore = {}, None, False
+
+    def select(self, *_a, **_k):
+        return self
+
+    def limit(self, *_a, **_k):
+        return self
+
+    def eq(self, column, value):
+        self.filters[column] = value
+        return self
+
+    def upsert(self, row, on_conflict=None, ignore_duplicates=False):
+        self.write, self.ignore = dict(row), ignore_duplicates
+        return self
+
+    def execute(self):
+        rows = self.store.setdefault(self.name, [])
+        if self.write is None:
+            return _Result([dict(r) for r in rows
+                            if all(r.get(k) == v for k, v in self.filters.items())])
+        keys = ("user_id",) if self.name == "user_settings" else ("user_id", "terms_version")
+        match = next((r for r in rows if all(r.get(k) == self.write[k] for k in keys)), None)
+        if match is None:
+            rows.append(self.write)
+            return _Result([dict(self.write)])
+        if self.ignore:
+            return _Result([])
+        match.update(self.write)
+        return _Result([dict(match)])
+
+
+class _Store:
+    def __init__(self):
+        self.rows = {}
+
+    def table(self, name):
+        return _Query(self.rows, name)
 
 
 @unittest.skipIf(
@@ -44,168 +99,35 @@ class ConsentEndpointTests(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
         self.user_id = "user-consent-1"
+        self.store = _Store()
+        swap = swap_attr(db, "client", self.store)
+        swap.__enter__()
+        self.addCleanup(swap.__exit__, None, None, None)
+        terms = swap_attr(v2_user_account.config, "CURRENT_TERMS_VERSION", _TERMS_VERSION)
+        terms.__enter__()
+        self.addCleanup(terms.__exit__, None, None, None)
 
-        # In-memory user_settings row stand-in. The endpoint reads
-        # this through get_user_consent_state's call to
-        # get_user_settings, and writes through
-        # set_user_consent_preferences.
-        self.user_settings: dict = {}
-        # In-memory user_consents ledger keyed by version.
-        # record_user_consent appends; we treat dupes as no-ops.
-        self.ledger: list[dict] = []
-
-        self.originals = {}
-        self._patch_config("CURRENT_TERMS_VERSION", _TERMS_VERSION)
-        self._patch_db("get_user_settings", self._fake_get_user_settings)
-        self._patch_db(
-            "set_user_consent_preferences",
-            self._fake_set_user_consent_preferences,
-        )
-        self._patch_db(
-            "get_user_consent_state",
-            self._fake_get_user_consent_state,
-        )
-        self._patch_db("record_user_consent", self._fake_record_user_consent)
-
-    def tearDown(self):
-        for target, attr, original in reversed(self.originals.values()):
-            setattr(target, attr, original)
-
-    # ── patching plumbing (mirrors test_admin_coach_approval style) ──
-
-    def _patch_db(self, attr, replacement):
-        key = f"db:{attr}"
-        self.originals[key] = (db, attr, getattr(db, attr))
-        setattr(db, attr, replacement)
-
-    def _patch_config(self, attr, replacement):
-        # /v2/user/consent lives in routes.v2.user_account (god-file split),
-        # which holds its own Config instance — setattr on v2.config would
-        # not reach it.
-        from routes.v2 import user_account as ua
-        key = f"config:{attr}"
-        self.originals[key] = (ua.config, attr, getattr(ua.config, attr, None))
-        setattr(ua.config, attr, replacement)
-
-    # ── in-memory fakes ──────────────────────────────────────────────
-
-    def _fake_get_user_settings(self, user_id):
-        if user_id != self.user_id:
-            return None
-        return dict(self.user_settings) if self.user_settings else None
-
-    def _fake_set_user_consent_preferences(
-        self,
-        user_id,
-        *,
-        mic=None,
-        share=None,
-        email=None,
-        update_mic=False,
-        update_share=False,
-        update_email=False,
-    ):
-        if user_id != self.user_id:
-            return False
-        if not (update_mic or update_share or update_email):
-            return True
-        # Simulate the real upsert: stamp set_at iff value is non-None.
-        now = "2026-05-19T12:00:00+00:00"
-        if update_mic:
-            self.user_settings["mic_consent_preference"] = mic
-            self.user_settings["mic_consent_set_at"] = (
-                now if mic is not None else None
-            )
-        if update_share:
-            self.user_settings["share_consent_preference"] = share
-            self.user_settings["share_consent_set_at"] = (
-                now if share is not None else None
-            )
-        if update_email:
-            self.user_settings["email_consent_preference"] = email
-            self.user_settings["email_consent_set_at"] = (
-                now if email is not None else None
-            )
-        return True
-
-    def _fake_record_user_consent(
-        self,
-        user_id,
-        terms_version="1.0",
-        ip_address=None,
-        user_agent=None,
-    ):
-        # Idempotent like the real upsert with on_conflict.
-        existing = [
-            r for r in self.ledger
-            if r["user_id"] == user_id and r["terms_version"] == terms_version
-        ]
-        if existing:
-            return existing[0]
-        row = {
-            "user_id": user_id,
-            "terms_version": terms_version,
-            "terms_accepted_at": "2026-05-19T12:00:00+00:00",
-            "ip_address": ip_address,
-            "user_agent": user_agent,
-        }
-        self.ledger.append(row)
-        return row
-
-    def _fake_get_user_consent_state(self, user_id, *, current_terms_version):
-        """Mirrors the real DB helper's shape so we exercise the
-        route's serialisation path against realistic data."""
-        settings = self.user_settings or {}
-        terms_row = next(
-            (
-                r for r in self.ledger
-                if r["user_id"] == user_id
-                and r["terms_version"] == current_terms_version
-            ),
-            None,
-        )
-        mic = settings.get("mic_consent_preference")
-        share = settings.get("share_consent_preference")
-        email = settings.get("email_consent_preference")
-        terms_consent = bool(terms_row)
-        return {
-            "has_answered": (
-                mic is not None
-                or share is not None
-                or email is not None
-                or terms_consent
-            ),
-            "mic_consent": mic,
-            "mic_consent_set_at": settings.get("mic_consent_set_at"),
-            "share_consent": share,
-            "share_consent_set_at": settings.get("share_consent_set_at"),
-            "email_consent": email,
-            "email_consent_set_at": settings.get("email_consent_set_at"),
-            "terms_consent": terms_consent,
-            "terms_version_current": current_terms_version,
-            "terms_version_accepted": (
-                terms_row.get("terms_version") if terms_row else None
-            ),
-            "terms_accepted_at": (
-                terms_row.get("terms_accepted_at") if terms_row else None
-            ),
-        }
-
-    # ── route invocation helpers (auth-decorator-aware) ──────────────
+    @property
+    def ledger(self):
+        return self.store.rows.get("user_consents", [])
 
     def _invoke(self, method, json_body=None):
-        ctx = self.app.test_request_context(
-            "/v2/user/consent",
-            method=method,
-            json=json_body,
-        )
-        with ctx:
+        with self.app.test_request_context(
+            "/v2/user/consent", method=method, json=json_body,
+        ):
             request.user_id = self.user_id
             response, status = v2_user_account.v2_user_consent.__wrapped__()
             return status, response.get_json()
 
-    # ── tests ────────────────────────────────────────────────────────
-
+    def test_get_before_any_answer_shows_nothing_set(self):
+        status, payload = self._invoke("GET")
+        self.assertEqual(status, 200)
+        self.assertFalse(payload["has_answered"])
+        self.assertEqual(
+            (payload["mic_consent"], payload["share_consent"], payload["email_consent"]),
+            (None, None, None))
+        self.assertFalse(payload["terms_consent"])
+        self.assertEqual(payload["terms_version_current"], _TERMS_VERSION)
 
     def test_put_all_three_plus_terms_records_ledger(self):
         """Full first-time submission: three prefs land + a ledger
@@ -221,18 +143,38 @@ class ConsentEndpointTests(unittest.TestCase):
         self.assertTrue(payload["mic_consent"])
         self.assertFalse(payload["share_consent"])
         self.assertTrue(payload["email_consent"])
+        self.assertIsNotNone(payload["share_consent_set_at"])
         self.assertTrue(payload["terms_consent"])
         self.assertEqual(payload["terms_version_accepted"], _TERMS_VERSION)
-        # Exactly one ledger row was written.
+        self.assertEqual([(r["user_id"], r["terms_version"]) for r in self.ledger],
+                         [(self.user_id, _TERMS_VERSION)])
+
+    def test_put_only_mic_leaves_the_others_unset(self):
+        status, payload = self._invoke("PUT", {"mic_consent": True})
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["has_answered"])
+        self.assertTrue(payload["mic_consent"])
+        self.assertIsNotNone(payload["mic_consent_set_at"])
+        self.assertEqual((payload["share_consent"], payload["email_consent"]), (None, None))
+        self.assertFalse(payload["terms_consent"])
+        self.assertEqual(self.ledger, [])
+
+    def test_accepting_twice_and_clearing(self):
+        _, first = self._invoke("PUT", {"mic_consent": True, "terms_consent": True})
+        status, again = self._invoke("PUT", {"mic_consent": None, "terms_consent": True})
+        self.assertEqual(status, 200)
         self.assertEqual(len(self.ledger), 1)
-        self.assertEqual(self.ledger[0]["terms_version"], _TERMS_VERSION)
+        self.assertEqual(again["terms_accepted_at"], first["terms_accepted_at"])
+        self.assertEqual((again["mic_consent"], again["mic_consent_set_at"]), (None, None))
+        self.assertTrue(again["has_answered"])  # the terms still count
 
     def test_put_terms_consent_false_is_rejected(self):
         """Terms ledger is append-only: false is not a valid value."""
-        status, payload = self._invoke("PUT", {"terms_consent": False})
+        status, payload = self._invoke("PUT", {"terms_consent": False, "mic_consent": True})
         self.assertEqual(status, 400)
         self.assertEqual(payload["code"], "INVALID_INPUT")
-        self.assertEqual(len(self.ledger), 0)
+        self.assertEqual(self.ledger, [])
+        self.assertEqual(self.store.rows.get("user_settings", []), [])
 
 
 # ── merged from tests/test_mlc2_consent_endpoint.py (audit Q-T9) ──
@@ -327,7 +269,6 @@ class Mlc2ConsentEndpointTests(unittest.TestCase):
         })
         self.assertEqual(status, 410)
         self.assertEqual(payload, {"code": "BUNDLED_CONSENT_RETIRED"})
-
 
     def test_delete_withdraws_a_held_grant_and_never_erases_it(self):
         self._holding()
