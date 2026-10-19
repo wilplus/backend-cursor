@@ -2,8 +2,7 @@
 
 Status: **design only, not built.** Written 2026-10-18 for Linear WIL-32
 ("Define disagreement-signal integration"). Nothing in this file changes code
-or a screen. The founder's answers to the open questions at the end decide
-what gets built.
+or a screen. The founder accepted every proposal on 2026-10-19 (§6).
 
 The issue says `ranking_priority`. The function in
 `services/label_quorum.py` is `routing_priority`, and this file uses that name.
@@ -198,15 +197,20 @@ Not built now. When it is:
   output", plus one check that the coach queue response carries no owner
   answer or priority. No new test file.
 
-## 6. Open questions for the founder
+## 6. Founder's answers (2026-10-19)
 
-1. **Coach vs speaker at 90** (above two-human disagreement at 80), or below
-   it? Proposal: 90.
-2. **A speaker disagreeing with a settled label**: never reopen (proposal), or
-   send it to a third human?
-3. **In-between**: should speaker In-between vs coach Yes/No count as
-   disagreement? Proposal: no, only Yes vs No, as for the machine.
-4. **Unrated speaker-vs-machine at 30**: worth having, or leave unrated clips
-   in plain order?
-5. **Peer queue**: should Lend your ear's community clips also be ordered by
-   `routing_priority`? Proposal: not now.
+Answered in the WIL-32 question form
+(<https://claude.ai/artifact/BGGxn8xu79Gt1591WNe5D3>, saved
+2026-10-19 15:13 UTC). Every proposal was accepted, with no notes.
+
+1. **Coach vs speaker ranks at 90**, just after coach vs machine (100) and
+   ahead of two people who disagree (80).
+2. **A settled label never reopens** on the speaker's word. The case is kept
+   for calibration only.
+3. **Only Yes against No counts.** In-between is not a disagreement.
+4. **Unheard clips where the speaker contradicts the machine move up to 30**,
+   slightly ahead of other unheard clips (20).
+5. **The peer queue is not changed.** Only the coach queue reads
+   `routing_priority`.
+
+Still design only: building it is a separate task.
