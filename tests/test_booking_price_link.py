@@ -41,3 +41,10 @@ def test_a_link_cannot_book_without_paying():
                                name="A", email="a@x.co", guest_timezone="UTC",
                                skip_payment=True, link=booking.make_price_link(3500))
     assert e.value.code == "PAY_NOW"
+
+
+def test_a_link_at_zero_shows_no_price_and_charges_nothing():
+    link = booking.make_price_link(0)
+    assert booking.public_settings("artur", link)["hide_price"] is True
+    offer = booking.offer_for("artur", "u1", link)
+    assert offer["price_cents"] == 0 and offer["list_price_cents"] == 0 and offer["hide_price"] is True
