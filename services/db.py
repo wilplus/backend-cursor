@@ -12925,13 +12925,18 @@ class DatabaseService:
                           else labels.get(("named", str(r.get("named_error_id")))))
         return rows
 
-    def get_take_ideal_text_snapshot(self, take_session_id: str) -> Optional[dict]:
-        """The newest Ideal Text snapshot made from this Take (0315,
-        ``source_take_session_id``) as {id, version, created_at}; None when
-        the Take has none. Never the speaker's current head, which may be a
-        later Take's. Narrow: no payload. Raises on failure."""
+    def get_take_ideal_text_snapshot(self, take_session_id: str, *,
+                                     arc_id: str) -> Optional[dict]:
+        """The newest Ideal Text snapshot made from this spoken Take (0315,
+        ``source_take_session_id``) in its arc, as {id, version,
+        created_at}; None when the Take has none. Never the speaker's
+        current head, which may be a later Take's. The arc filter lets
+        ideal_text_document_snapshot_lookup (arc_id, actor_id, created_at)
+        serve it instead of a scan of every arc's snapshots. Narrow: no
+        payload. Raises on failure."""
         rows = (self.client.table("ideal_text_document_snapshots")
                 .select("id, version, created_at")
+                .eq("arc_id", str(arc_id))
                 .eq("source_take_session_id", str(take_session_id))
                 .order("created_at", desc=True).order("version", desc=True)
                 .limit(1).execute().data) or []

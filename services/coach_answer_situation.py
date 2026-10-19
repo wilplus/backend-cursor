@@ -8,23 +8,33 @@ this module freezes the situation they answered in, once per answer, in
 
   * the answer's own time: the resolver's ``resolved_at``, passed through
     untouched, so a replaced answer finds its history row (0446); for a
-    Take word, the word row's ``updated_at``;
+    Take word, the word row's ``updated_at`` (one row per save; the words
+    it describes are the live row's, or the lowest-numbered
+    coach_take_word_versions row of that word whose ``updated_at`` is at or
+    after it, 0478: a re-draft bumps ``updated_at`` too, so it is no
+    equality key);
   * the moment's kind (``answer_kind``, else ``kind``) and the pattern the
     coach named on the Home screen, when they named one;
-  * the passage: the clip's transcript, uncut, and its slide; for a Take
-    word, every clip of the Take joined in order;
+  * the passage: the clip's transcript, uncut, and its slide (the coach's
+    slide correction first, as the document reads it, else the cutter's);
+    for a Take word, every clip of the Take and of its mid-take re-reads,
+    in the order the coach's packet folds them, joined;
   * the coach's current diagnosis (0445), by id and copied (the error id or
     the coach-named error, and the label the coach picked), so the error
     type stays with the answer when the coach's account goes (N79); for a
-    Take word, every moment of the Take this coach diagnosed;
+    Take word, every moment of the Take and its re-reads this coach
+    diagnosed;
   * the Ideal Text pinned to the answered Take: the newest snapshot made
-    from it, never the speaker's current head, which may already be a
-    later Take's (CLAUDE.md rule 5).
+    from it (for a moment from a re-read, from the spoken Take it is folded
+    into, the only Take a snapshot is ever made from), never the speaker's
+    current head, which may already be a later Take's (CLAUDE.md rule 5).
 
 Never for a coach answering their own Take (L3). It copies what the
-database already holds and calls no provider. Best effort and never in the
-coach's way: a read that fails leaves its field empty, a write that fails
-is logged, and the answer stands either way.
+database already holds and calls no provider. It runs off the coach's
+request in a daemon thread, so its reads never hold the save or the
+speaker's message. Best effort and never in the coach's way: a read that
+fails leaves its field empty, a write that fails is logged, and the answer
+stands either way.
 
 CAPTURE ONLY. No training, release, golden or promotion reader reads the
 table, and it is in no speaker or coach payload. A diagnosis is still
@@ -35,6 +45,7 @@ uses. Every row is purged with its Take (services/data_purge_registry.py).
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any, Optional
 
 _log = logging.getLogger(__name__)
@@ -42,6 +53,35 @@ _log = logging.getLogger(__name__)
 #: A row frozen when the answer was given (a reviewed catch-up of past
 #: answers would write 'reconstructed'; nothing here does).
 AT_ANSWER = "at_answer"
+
+#: The thread a situation is frozen on, off the coach's request.
+THREAD_NAME = "coach-answer-situation"
+
+
+def freeze_answer_in_background(database: Any, *, request: Any, resolved: Any,
+                                coach_id: Any, chosen_pattern_key: Any = None) -> None:
+    """``freeze_answer``, off the coach's request: its reads never hold the
+    save or the speaker's message. The rows are copied first, so nothing the
+    save does next changes what is kept. Never raises."""
+    _in_background(freeze_answer, database,
+                   request=dict(request) if isinstance(request, dict) else request,
+                   resolved=dict(resolved) if isinstance(resolved, dict) else resolved,
+                   coach_id=coach_id, chosen_pattern_key=chosen_pattern_key)
+
+
+def freeze_take_word_in_background(database: Any, *, word_row: Any, coach_id: Any) -> None:
+    """``freeze_take_word``, off the coach's request. Never raises."""
+    _in_background(freeze_take_word, database,
+                   word_row=dict(word_row) if isinstance(word_row, dict) else word_row,
+                   coach_id=coach_id)
+
+
+def _in_background(target: Any, database: Any, **kwargs: Any) -> None:
+    try:
+        threading.Thread(target=target, args=(database,), kwargs=kwargs,
+                         name=THREAD_NAME, daemon=True).start()
+    except Exception as e:  # noqa: BLE001 -- the answer stands
+        _log.warning("answer situation not started: %s", e, exc_info=True)
 
 
 def freeze_answer(database: Any, *, request: Any, resolved: Any, coach_id: Any,
@@ -62,9 +102,10 @@ def freeze_answer(database: Any, *, request: Any, resolved: Any, coach_id: Any,
 
 
 def freeze_take_word(database: Any, *, word_row: Any, coach_id: Any) -> Optional[dict]:
-    """The situation of one Take-word save: every clip of the Take, the
-    coach's diagnoses on its moments and the Take's Ideal Text. No row on
-    the coach's own Take. The written row, or None. Never raises."""
+    """The situation of one Take-word save: every clip of the Take and its
+    re-reads, the coach's diagnoses on their moments and the Take's Ideal
+    Text. No row on the coach's own Take. The written row, or None. Never
+    raises."""
     try:
         row = _take_word_row(database, word_row, coach_id)
         return _write(database, row) if row else None
@@ -102,9 +143,10 @@ def _answer_row(database: Any, request: Any, resolved: Any, coach_id: Any,
         "answered_at": answered_at,
         "kind": str(row.get("answer_kind") or row.get("kind") or "") or None,
         "pattern_key": _named(chosen),
-        "passage_text": clip.get("passage"), "slide_index": clip.get("slide_index"),
+        "passage_text": clip.get("passage"),
+        "slide_index": _slide(database, take, snippet, clip.get("slide_index")),
         **_diagnosis_fields(_diagnoses(database, take, coach, snippet), clips),
-        **_ideal_text(database, take),
+        **_ideal_text(database, take, _session(database, take)),
         "captured": AT_ANSWER,
     }
 
@@ -119,18 +161,23 @@ def _take_word_row(database: Any, word_row: Any, coach_id: Any) -> Optional[dict
     answered_at = word_row.get("updated_at")
     if not take or not coach or not answered_at:
         return None
+    # Unguarded: when the owner cannot be read, nothing is kept (L3).
     session = database.v2_get_session_by_id(take) or {}
     if coach == str(session.get("user_id") or "").strip():
         return None  # an owner's word on their own Take is never kept (L3)
-    clips = _clips(database, take)
+    # The coach's packet is the Take with its re-reads folded in (founder
+    # 2026-07-16), so the word is about all of it, in that order.
+    takes = [take] + _re_reads(database, take, session)
+    clips = [c for sid in takes for c in _clips(database, sid)]
     passage = " ".join(c["passage"] for c in clips if c.get("passage"))
+    diagnoses = [d for sid in takes for d in _diagnoses(database, sid, coach)]
     return {
         "take_session_id": take, "snippet_id": None, "request_id": None,
         "take_word_id": str(word_row["id"]), "answered_at": answered_at,
         "kind": None, "pattern_key": None,
         "passage_text": passage or None, "slide_index": None,
-        **_diagnosis_fields(_diagnoses(database, take, coach), clips),
-        **_ideal_text(database, take),
+        **_diagnosis_fields(diagnoses, clips),
+        **_ideal_text(database, take, session),
         "captured": AT_ANSWER,
     }
 
@@ -143,6 +190,56 @@ def _named(chosen: Any) -> Optional[str]:
     if isinstance(chosen, str) and chosen.strip() and not any(c.isspace() for c in chosen.strip()):
         return chosen.strip()
     return None
+
+
+def _session(database: Any, take: str) -> dict:
+    """The answered session's row; {} when unreadable (its Ideal Text then
+    stays empty)."""
+    reader = getattr(database, "v2_get_session_by_id", None)
+    if reader is None:
+        return {}
+    try:
+        session = reader(take)
+    except Exception as e:  # noqa: BLE001 -- the Ideal Text stays empty
+        _log.info("situation session unread take=%s: %s", take, e)
+        return {}
+    return session if isinstance(session, dict) else {}
+
+
+def _is_re_read(session: dict) -> bool:
+    return session.get("recording_kind") == "read" or bool(session.get("paired_session_id"))
+
+
+def _re_reads(database: Any, take: str, session: dict) -> list[str]:
+    """A spoken Take's mid-take re-reads, oldest first (the fold order of
+    the coach's packet); [] for a re-read itself or when unreadable."""
+    reader = getattr(getattr(database, "takes", None), "get_read_sessions_for", None)
+    if reader is None or _is_re_read(session):
+        return []
+    try:
+        rows = reader(take)
+    except Exception as e:  # noqa: BLE001 -- the Take alone is kept
+        _log.info("situation re-reads unread take=%s: %s", take, e)
+        return []
+    return [str(r["id"]) for r in rows if isinstance(r, dict) and r.get("id")] \
+        if isinstance(rows, list) else []
+
+
+def _slide(database: Any, take: str, snippet: str, cut: Any) -> Optional[int]:
+    """The clip's slide as the document reads it (transcript_document.
+    _slide_of): the coach's latest correction when it is a slide, else (none,
+    or one withdrawn as None) the cutter's own."""
+    reader = getattr(database, "get_snippet_slide_corrections", None)
+    fixes: Any = {}
+    if reader is not None:
+        try:
+            fixes = reader(take)
+        except Exception as e:  # noqa: BLE001 -- the cutter's slide stands
+            _log.info("situation slide corrections unread take=%s: %s", take, e)
+    fix = fixes.get(snippet) if isinstance(fixes, dict) else None
+    if isinstance(fix, int) and not isinstance(fix, bool):
+        return fix
+    return cut if isinstance(cut, int) and not isinstance(cut, bool) else None
 
 
 def _clips(database: Any, take: str, snippet: Optional[str] = None) -> list[dict]:
@@ -198,15 +295,25 @@ def _diagnosis_fields(rows: list[dict], clips: list[dict]) -> dict:
     return {"diagnosis_ids": [c["diagnosis_id"] for c in copies], "diagnoses": copies}
 
 
-def _ideal_text(database: Any, take: str) -> dict:
+def _ideal_text(database: Any, take: str, session: dict) -> dict:
     """The Ideal Text snapshot made from the answered Take, by id and
-    version; both None when it has none or it is unreadable."""
+    version. A re-read is never a snapshot's source (ideal_text_core_snapshot.
+    _completed_spoken), so a moment from one is pinned to the spoken Take it
+    is folded into. Looked up within the Take's arc, which the snapshot
+    table's index serves. Both None when there is none or it is unreadable."""
     empty = {"ideal_text_snapshot_id": None, "ideal_text_version": None}
     reader = getattr(database, "get_take_ideal_text_snapshot", None)
     if reader is None:
         return empty
+    spoken, arc = take, session.get("arc_id")
+    if _is_re_read(session):
+        spoken = str(session.get("paired_session_id") or "")
+        if spoken and not arc:
+            arc = _session(database, spoken).get("arc_id")
+    if not spoken or not arc:
+        return empty
     try:
-        snapshot = reader(take)
+        snapshot = reader(spoken, arc_id=str(arc))
     except Exception as e:  # noqa: BLE001 -- the Ideal Text stays empty
         _log.info("situation ideal text unread take=%s: %s", take, e)
         return empty

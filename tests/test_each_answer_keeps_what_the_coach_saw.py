@@ -9,33 +9,59 @@ services.coach_answer_video.store_answer_video,
 services.coach_take_word.save_take_word):
 
   * a moment's first answer keeps one situation: the resolver's own time,
-    the clip's words uncut, its slide, the kind the coach acted on, the
-    pattern they named, their current diagnosis by id and copied with its
-    label, and the Ideal Text made from the answered Take (not a later
-    Take's head);
+    the clip's words uncut, its slide (the coach's correction first), the
+    kind the coach acted on, the pattern they named, their current
+    diagnosis by id and copied with its label, and the Ideal Text the
+    service asks for: the answered Take's own, in its arc. (That the
+    database read returns the snapshot made from that Take, and not the
+    speaker's head, is db.get_take_ideal_text_snapshot's filter, which this
+    fake cannot pin.);
   * the same answer again (only the share added) keeps nothing new; a
     changed answer and a new video on a given answer each keep their own,
     and the first stays as it was;
-  * each Take-word save keeps the whole Take's words in order, uncut, the
-    coach's diagnoses on its moments and the Take's Ideal Text;
+  * each Take-word save keeps the whole Take's words in order, its
+    re-read's after them, uncut, the coach's diagnoses on their moments and
+    the Take's Ideal Text;
+  * a moment from a mid-take re-read asks for the spoken Take's Ideal Text,
+    the only Take a snapshot is made from;
   * a coach answering their own Take keeps nothing (L3).
+
+The situation is kept off the coach's request, so each check waits for
+that thread first.
 """
 from __future__ import annotations
 
+import threading
 import unittest
 from unittest.mock import patch
 
+from services import coach_answer_situation as cas
 from services import coach_answer_video as cav
 from services import coach_take_word as ctw
 from services import exercise_coach_requests as ecr
 
 REQUEST_ID = "7a2b3c4d-5e6f-4a70-8b9c-0d1e2f3a4b5c"
-TAKE, LATER_TAKE = "take-2", "take-3"
-CLIPS = [
-    {"id": "snip-1", "transcript": "Good   morning.", "slide_index": 0},
-    {"id": "snip-2", "transcript": "and that   is why the number " + "matters " * 200,
-     "slide_index": 1},
-]
+ARC = "arc-1"
+TAKE, LATER_TAKE, RE_READ = "take-2", "take-3", "read-2"
+CLIPS = {
+    TAKE: [{"id": "snip-1", "transcript": "Good   morning.", "slide_index": 0},
+           {"id": "snip-2", "transcript": "and that   is why the number " + "matters " * 200,
+            "slide_index": 1}],
+    RE_READ: [{"id": "snip-r1", "transcript": "And that is why  the number matters.",
+               "slide_index": 1}],
+}
+
+
+def _settled():
+    """Wait for the situations kept off the coach's request."""
+    for thread in threading.enumerate():
+        if thread.name == cas.THREAD_NAME:
+            thread.join(timeout=5)
+
+
+class _Takes:
+    def get_read_sessions_for(self, sid):
+        return [{"id": RE_READ}] if sid == TAKE else []
 
 
 class _Db:
@@ -50,11 +76,17 @@ class _Db:
         self.owner = owner
         self.word: dict = {}
         self.ticks = 0
+        self.takes = _Takes()
         self.diagnoses = {"snip-1": {"id": "diag-1", "snippet_id": "snip-1", "kind": "no_error",
                                      "error_id": None, "named_error_id": None, "label": None},
                           "snip-2": {"id": "diag-2", "snippet_id": "snip-2", "kind": "error",
                                      "error_id": "rushing", "named_error_id": None,
-                                     "label": "Rushing"}}
+                                     "label": "Rushing"},
+                          "snip-r1": {"id": "diag-r1", "snippet_id": "snip-r1",
+                                      "kind": "error", "error_id": "rushing",
+                                      "named_error_id": None, "label": "Rushing"}}
+        # The coach moved snip-2 to slide 4; snip-1's correction was withdrawn.
+        self.slide_fixes = {TAKE: {"snip-2": 4, "snip-1": None}}
         # The speaker's head is already the later Take's.
         self.snapshots = {TAKE: {"id": "snap-2", "version": 2},
                           LATER_TAKE: {"id": "snap-3", "version": 3}}
@@ -66,18 +98,24 @@ class _Db:
 
     # what a situation is made of
     def get_snippet_passages(self, take, snippet_id=None):
-        return [dict(c) for c in CLIPS if take == TAKE and snippet_id in (None, c["id"])]
+        return [dict(c) for c in CLIPS.get(take, []) if snippet_id in (None, c["id"])]
+
+    def get_snippet_slide_corrections(self, take):
+        return dict(self.slide_fixes.get(take, {}))
 
     def list_current_coach_moment_diagnoses(self, *, take_session_id, coach_id, snippet_id=None):
+        clips = {c["id"] for c in CLIPS.get(take_session_id, [])}
         return [dict(d) for s, d in reversed(list(self.diagnoses.items()))
-                if take_session_id == TAKE and coach_id == "coach-1"
-                and snippet_id in (None, s)]
+                if s in clips and coach_id == "coach-1" and snippet_id in (None, s)]
 
-    def get_take_ideal_text_snapshot(self, take):
-        return self.snapshots.get(take)
+    def get_take_ideal_text_snapshot(self, take, *, arc_id):
+        return self.snapshots.get(take) if arc_id == ARC else None
 
     def v2_get_session_by_id(self, sid):
-        return {"id": sid, "user_id": self.owner}
+        if sid == RE_READ:
+            return {"id": sid, "user_id": self.owner, "arc_id": ARC,
+                    "recording_kind": "read", "paired_session_id": TAKE}
+        return {"id": sid, "user_id": self.owner, "arc_id": ARC}
 
     def insert_coach_answer_situation(self, **row):
         key = ("take_word_id", "answered_at") if row["take_word_id"] else ("request_id",
@@ -125,6 +163,12 @@ def _answer(db, coach="coach-1", **body):
         "resolution": "line_written", "answer_text": "The pause landed.",
         "file_in_catalogue": False, **body}, coach)
     assert status == 200
+    _settled()
+
+
+def _save_word(db, text):
+    ctw.save_take_word(db, take_session_id=TAKE, coach_id="coach-1", body={"text": text})
+    _settled()
 
 
 class EachAnswerKeepsWhatTheCoachSawTests(unittest.TestCase):
@@ -137,7 +181,8 @@ class EachAnswerKeepsWhatTheCoachSawTests(unittest.TestCase):
             "take_session_id": TAKE, "snippet_id": "snip-2", "request_id": REQUEST_ID,
             "take_word_id": None, "answered_at": db.request["resolved_at"],
             "kind": "ambiguity", "pattern_key": "pause_before_number",
-            "passage_text": " ".join(CLIPS[1]["transcript"].split()), "slide_index": 1,
+            "passage_text": " ".join(CLIPS[TAKE][1]["transcript"].split()),
+            "slide_index": 4,  # the coach's correction, not the cutter's 1
             "diagnosis_ids": ["diag-2"],
             "diagnoses": [{"diagnosis_id": "diag-2", "snippet_id": "snip-2", "kind": "error",
                            "error_id": "rushing", "named_error_id": None, "label": "Rushing"}],
@@ -164,6 +209,7 @@ class EachAnswerKeepsWhatTheCoachSawTests(unittest.TestCase):
                 db, request_row=dict(db.request), video_file=_Upload(), max_mb=100,
                 coach_id="coach-1")
         self.assertEqual(status, 200)
+        _settled()
 
         self.assertEqual(len(db.situations), 3)
         self.assertEqual(db.situations[0], first)
@@ -178,8 +224,7 @@ class EachAnswerKeepsWhatTheCoachSawTests(unittest.TestCase):
     def test_each_take_word_save_keeps_the_whole_take(self):
         db = _Db()
         for text in ("Slow down at the number.", "Pause before the number."):
-            ctw.save_take_word(db, take_session_id=TAKE, coach_id="coach-1",
-                               body={"text": text})
+            _save_word(db, text)
         self.assertEqual(len(db.situations), 2)
         first, second = db.situations
         self.assertEqual(second["answered_at"], db.word["updated_at"])
@@ -191,18 +236,29 @@ class EachAnswerKeepsWhatTheCoachSawTests(unittest.TestCase):
                                    "captured")},
             {"take_session_id": TAKE, "snippet_id": None, "request_id": None,
              "take_word_id": "word-1", "kind": None, "slide_index": None,
-             # in the Take's clip order
-             "diagnosis_ids": ["diag-1", "diag-2"],
+             # in the order the coach's packet folds the Take and its re-read
+             "diagnosis_ids": ["diag-1", "diag-2", "diag-r1"],
              "ideal_text_snapshot_id": "snap-2", "ideal_text_version": 2,
              "captured": "at_answer"})
         self.assertEqual(first["passage_text"], " ".join(
-            " ".join(c["transcript"].split()) for c in CLIPS))
+            " ".join(c["transcript"].split()) for c in CLIPS[TAKE] + CLIPS[RE_READ]))
+
+    def test_a_moment_from_a_re_read_keeps_the_spoken_takes_ideal_text(self):
+        db = _Db()
+        db.request.update(take_session_id=RE_READ, snippet_id="snip-r1")
+        _answer(db)
+        [kept] = db.situations
+        self.assertEqual(
+            {k: kept[k] for k in ("take_session_id", "snippet_id", "passage_text",
+                                  "diagnosis_ids", "ideal_text_snapshot_id")},
+            {"take_session_id": RE_READ, "snippet_id": "snip-r1",
+             "passage_text": "And that is why the number matters.",
+             "diagnosis_ids": ["diag-r1"], "ideal_text_snapshot_id": "snap-2"})
 
     def test_a_coach_answering_their_own_take_keeps_nothing(self):
         db = _Db(owner="coach-1")
         _answer(db)
-        ctw.save_take_word(db, take_session_id=TAKE, coach_id="coach-1",
-                           body={"text": "Note to self."})
+        _save_word(db, "Note to self.")
         self.assertEqual(db.situations, [])
 
 
