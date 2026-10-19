@@ -872,7 +872,7 @@ hard migrations/status_read_in_one_trip.sql
 # coach_take_words. Released lane only: the recovery reads
 # coach_take_words.draft_prompt (0459, released lane). After 0473, as in the
 # manifest. Twice: apply/reapply idempotency. Its cases are in
-# tests/test_a_coach_keeps_swaps_and_hears_blind_postgres.py.
+# tests/test_coach_answers_in_words_postgres.py.
 if [ "$LANE" = "released" ]; then
   hard migrations/a_take_word_pair_has_a_home.sql
   hard migrations/a_take_word_pair_has_a_home.sql

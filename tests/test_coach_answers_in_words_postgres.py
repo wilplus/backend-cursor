@@ -8,8 +8,9 @@ Founder 2026-09-30, C2 to C5. Pins:
     per (surface, request), and reaches no browser role;
   * coach_moment_error_event takes a naming keyed by the moment alone;
   * a Take word is a pair's home (0477, N79): one current pair per word and
-    kind, the latest version supersedes the older, the same words again
-    change nothing, and the migration recovers each word's pair once.
+    kind, the latest version supersedes the older (a version that is no
+    pair retires it), the same words again write nothing, and the migration
+    recovers each word's pair once.
 """
 from __future__ import annotations
 
@@ -105,8 +106,8 @@ def test_a_take_word_pair_is_kept_and_the_latest_teaches(db):
     word = str(uuid.uuid4())
     first = _word_pair(db, word, "Slow down at the number.")
     assert first["take_word_id"] == word and first["superseded_at"] is None
-    # The same words saved again change nothing.
-    assert _word_pair(db, word, "Slow  down at the number. ")["id"] == first["id"]
+    # The same words saved again write nothing new.
+    assert _word_pair(db, word, "Slow  down at the number. ")["id"] is None
     assert _current(db, word) == {"current": 1, "kept": 1}
     # An edit supersedes; nothing is deleted.
     latest = _word_pair(db, word, "Pause before the number.")
@@ -117,6 +118,10 @@ def test_a_take_word_pair_is_kept_and_the_latest_teaches(db):
     # The video's transcript is its own current pair.
     _word_pair(db, word, "Pause, then the number.", kind="transcript")
     assert _current(db, word) == {"current": 2, "kept": 3}
+    # A latest version that is no pair (the draft kept as it was) retires the
+    # older pair: an outdated version never keeps teaching.
+    assert _word_pair(db, word, "Slow down.")["id"] is None
+    assert _current(db, word) == {"current": 1, "kept": 3}
     # Only the Take-word surface takes a Take word as its home, and never none.
     _refused(db, "TAKE_WORD_PAIR_INPUT_INVALID", _word_pair, word, "x", surface="praise_line")
     with pytest.raises(psycopg2.errors.CheckViolation):

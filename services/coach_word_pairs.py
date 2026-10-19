@@ -172,13 +172,17 @@ def record_take_word_pair(database: Any, *, word_row: Any, coach_id: str,
     transcript of the word's video is a second final (final_kind
     "transcript"). One current pair per word and kind (0477): a newer
     version supersedes the older, so the latest teaches (founder
-    2026-10-19, N79). Never in the save's way."""
+    2026-10-19, N79), and a version that is no pair (no final, or the draft
+    kept as it was) retires the older one. Never in the save's way."""
     if not isinstance(word_row, dict):
         return None
     draft = word_row.get("draft_text")
-    if not draft or not final_text:
+    if not draft:
+        return None  # no draft was ever shown: no pair to keep or retire
+    from services.feedback_pairs import differs, record_pair
+    if not final_text or not differs(draft, final_text):
+        _retire_take_word_pair(database, word_row, final_kind)
         return None
-    from services.feedback_pairs import record_pair
     take = str(word_row.get("take_session_id") or "")
     session = database.v2_get_session_by_id(take) or {}
     return record_pair(database, surface="coach_take_word", draft=draft, final=final_text,
@@ -186,6 +190,21 @@ def record_take_word_pair(database: Any, *, word_row: Any, coach_id: str,
                        owner_user_id=session.get("user_id"), take_session_id=take,
                        take_word_id=str(word_row.get("id") or ""), final_kind=final_kind,
                        prompt_snapshot=word_row.get("draft_prompt"))
+
+
+def _retire_take_word_pair(database: Any, word_row: dict, final_kind: str) -> None:
+    """The word's latest version is no pair, so its older pair of this kind
+    stops teaching (0477; the database writes nothing new)."""
+    writer = getattr(database, "record_take_word_pair", None)
+    if writer is None or not word_row.get("id"):
+        return
+    try:
+        writer(surface="coach_take_word", take_word_id=str(word_row["id"]),
+               final_kind=final_kind, draft_text=str(word_row.get("draft_text") or ""),
+               final_text="")
+    except Exception as e:  # noqa: BLE001 -- the word is saved either way
+        _log.warning("take word pair not retired word=%s: %s", word_row.get("id"), e,
+                     exc_info=True)
 
 
 def record_moment_line_pair(database: Any, *, request_row: Any, coach_id: str,

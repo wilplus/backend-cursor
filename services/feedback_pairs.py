@@ -134,7 +134,10 @@ def record_pair(
                      exc_info=True)
         return None
     if isinstance(row, dict):
-        _mirror(database, row, coach)
+        if surface not in COACH_WORD_SURFACES:
+            # A coach's direct message is never copied into the annotation
+            # ledger, which a Take's erasure does not reach (N79).
+            _mirror(database, row, coach)
         return row
     return None
 

@@ -13675,12 +13675,14 @@ class DatabaseService:
         return (res.data or [None])[0]
 
     def record_take_word_pair(self, **fields: Any) -> Optional[dict]:
-        """A Take word's pair (0477): in one transaction the newer version
-        supersedes the word's current pair of the same final kind and is
-        inserted; the same draft and final leave the current one as it is.
-        Raises on failure; the service logs it and the word stands."""
+        """A Take word's version (0477): in one transaction it supersedes the
+        word's current pair of the same final kind and, when it is a pair,
+        is inserted. None when nothing new was written (the same words
+        again, or a version that is no pair). Raises on failure; the service
+        logs it and the word stands."""
         result = self.client.rpc("record_take_word_pair_v1", {"p_row": fields}).execute()
-        return self._rpc_row(result.data)
+        row = self._rpc_row(result.data)
+        return row if isinstance(row, dict) and row.get("id") else None
 
     def count_feedback_pairs(self) -> dict[str, dict[str, int]]:
         """{surface: {total, unexported, releasable}} for the ledger, for

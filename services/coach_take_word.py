@@ -85,6 +85,11 @@ def _the_pair(database: Any, row: dict, *, coach_id: str, text: Optional[str]) -
             record_take_word_pair, transcribe_take_word_video_in_background,
         )
         record_take_word_pair(database, word_row=row, coach_id=coach_id, final_text=text)
+        if not row.get("transcript"):
+            # No video, or a new one not yet transcribed (the save cleared
+            # the old words): the old video's words stop teaching (0477).
+            record_take_word_pair(database, word_row=row, coach_id=coach_id,
+                                  final_text=None, final_kind="transcript")
         if row.get("video_ref") and not row.get("transcript"):
             transcribe_take_word_video_in_background(database, word_row=row,
                                                      coach_id=coach_id)

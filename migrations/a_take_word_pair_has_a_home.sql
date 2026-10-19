@@ -15,9 +15,14 @@
 --   2. THE LATEST VERSION TEACHES (founder, 2026-10-19): when a coach edits
 --      a Take word, the newer pair replaces the older one for training.
 --      Nothing is deleted or rewritten: the older pair gets superseded_at,
---      and every reader of pairs (release, training, the golden pool, the
---      counts) reads only pairs with superseded_at NULL. For the other four
---      surfaces superseded_at stays NULL, so nothing changes for them.
+--      and the app's readers of pairs (services/db.py: release, training,
+--      the golden pool, the counts) read only pairs with superseded_at NULL.
+--      A version that is no pair retires the older one too. For the other
+--      four surfaces superseded_at stays NULL, so nothing changes for them.
+--      KNOWN GAP, closed before coach_take_word is reopened: the SQL mark
+--      functions (mark_feedback_pairs_released_v1, _trained_v1) and the
+--      refresh's releasable_waiting count do not yet look at superseded_at.
+--      Harmless while the surface leaves by no door (#1130).
 --   3. One current pair per Take word and final kind ('final', 'transcript'),
 --      kept by a partial unique index, and written by one SECURITY DEFINER
 --      function that supersedes and inserts in the same transaction. The
@@ -38,10 +43,17 @@
 -- swap), ADD COLUMN / CREATE INDEX IF NOT EXISTS, CREATE OR REPLACE, and the
 -- recovery is ON CONFLICT DO NOTHING on the current-pair index. It drops no
 -- table, column or row and needs no env var. Every existing row passes the
--- wider CHECK. Locks: feedback_pairs takes ACCESS EXCLUSIVE once, briefly,
--- for the swap, its validating scan and the index build; pair writes are
--- best-effort and only wait, and the speaker's record, process, Ideal Text
--- loop never touches feedback_pairs.
+-- wider CHECK. Locks: feedback_pairs takes ACCESS EXCLUSIVE from the swap
+-- until COMMIT: its validating scan, the index build and the recovery
+-- INSERT, whose join reads v2_sessions in full (the ids are compared as
+-- text, so no index is used; coach_take_words is small). Pair writes,
+-- deletion requests and consent stops that touch feedback_pairs wait for
+-- it; the speaker's record, process, Ideal Text loop never touches it.
+-- Merge away from the Monday 06:00 UTC weekly job, whose consent refresh
+-- updates feedback_pairs. Deploy window: until the new web code serves,
+-- the old code inserts Take-word pairs plainly; one that meets a recovered
+-- current pair is refused by the index and logged, and the next save under
+-- the new code writes it.
 --
 -- Before merging: the outside review (GPT or Grok); on production,
 --   SELECT count(*) FROM feedback_pairs WHERE take_word_id IS NOT NULL;
@@ -74,11 +86,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS feedback_pairs_one_current_per_take_word
     ON public.feedback_pairs (take_word_id, final_kind)
     WHERE take_word_id IS NOT NULL AND superseded_at IS NULL;
 
--- The writer: supersede the current pair and insert the new one, in one
--- transaction, so there is never a moment with two current pairs or none.
--- The same draft and final as the current pair leave it as it is. The
--- columns are the ones services.feedback_pairs.record_pair writes; the
--- consent columns default as the table does when absent.
+-- The writer, called for every saved version of a Take word: it supersedes
+-- the current pair and inserts the new one in one transaction, so there are
+-- never two current pairs. The same draft and final as the current pair
+-- return NULL (nothing new). A version that is no pair (the draft kept as
+-- it was, or no final) returns NULL after retiring the older pair, so an
+-- outdated version never keeps teaching. The columns are the ones
+-- services.feedback_pairs.record_pair writes; the consent columns default
+-- as the table does when absent.
 CREATE OR REPLACE FUNCTION public.record_take_word_pair_v1(p_row jsonb)
 RETURNS public.feedback_pairs
 LANGUAGE plpgsql
@@ -86,12 +101,15 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 DECLARE
-    v_word  text := btrim(COALESCE(p_row->>'take_word_id', ''));
-    v_kind  text := COALESCE(p_row->>'final_kind', 'final');
+    v_word    text := btrim(COALESCE(p_row->>'take_word_id', ''));
+    v_kind    text := COALESCE(p_row->>'final_kind', 'final');
+    v_draft   text := btrim(regexp_replace(COALESCE(p_row->>'draft_text', ''), '\s+', ' ', 'g'));
+    v_final   text := btrim(regexp_replace(COALESCE(p_row->>'final_text', ''), '\s+', ' ', 'g'));
     v_current public.feedback_pairs;
-    stored  public.feedback_pairs;
+    stored    public.feedback_pairs;
 BEGIN
-    IF COALESCE(p_row->>'surface', '') <> 'coach_take_word' OR v_word = '' THEN
+    IF COALESCE(p_row->>'surface', '') <> 'coach_take_word' OR v_word = ''
+       OR v_kind NOT IN ('final', 'transcript') THEN
         RAISE EXCEPTION 'TAKE_WORD_PAIR_INPUT_INVALID';
     END IF;
     -- One writer per word and kind at a time.
@@ -99,15 +117,20 @@ BEGIN
     SELECT * INTO v_current FROM public.feedback_pairs
      WHERE take_word_id = v_word AND final_kind = v_kind AND superseded_at IS NULL
      FOR UPDATE;
+    -- The same words again: nothing new (NULL), the current pair stands.
     IF FOUND
-       AND btrim(regexp_replace(v_current.draft_text, '\s+', ' ', 'g'))
-           = btrim(regexp_replace(COALESCE(p_row->>'draft_text', ''), '\s+', ' ', 'g'))
-       AND btrim(regexp_replace(v_current.final_text, '\s+', ' ', 'g'))
-           = btrim(regexp_replace(COALESCE(p_row->>'final_text', ''), '\s+', ' ', 'g')) THEN
-        RETURN v_current;
+       AND btrim(regexp_replace(v_current.draft_text, '\s+', ' ', 'g')) = v_draft
+       AND btrim(regexp_replace(v_current.final_text, '\s+', ' ', 'g')) = v_final THEN
+        RETURN NULL;
     END IF;
+    -- A newer version: the older pair stops teaching.
     IF FOUND THEN
         UPDATE public.feedback_pairs SET superseded_at = now() WHERE id = v_current.id;
+    END IF;
+    -- A version that is no pair (no draft, no final, or the draft kept as it
+    -- was, the C5 rule) only retires the older one.
+    IF v_draft = '' OR v_final = '' OR v_draft = v_final THEN
+        RETURN NULL;
     END IF;
     INSERT INTO public.feedback_pairs (
         surface, final_kind, draft_text, final_text, draft_model_version,
@@ -115,7 +138,7 @@ BEGIN
         take_word_id, owner_principal_id, consent_state,
         consent_grant_event_id, consent_policy_version, releasable,
         passage_text, prompt_context)
-    SELECT 'coach_take_word', v_kind, r.draft_text, r.final_text,
+    SELECT 'coach_take_word', v_kind, btrim(r.draft_text), btrim(r.final_text),
            r.draft_model_version, r.pattern_key, r.coach_id, r.owner_user_id,
            r.take_session_id, r.snippet_id, v_word, r.owner_principal_id,
            COALESCE(r.consent_state, 'unknown'), r.consent_grant_event_id,
