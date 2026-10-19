@@ -112,6 +112,23 @@ def record_version(
     return stored if isinstance(stored, dict) else None
 
 
+def _audio_for_whisper(video_bytes: bytes, filename: str) -> tuple[bytes, str]:
+    """The video's audio track, as the Take-word path sends it (founder
+    2026-10-19, N79): the whole video, up to the 100 MB upload limit, went
+    to Whisper, whose limit is 25 MB, so a longer video's transcript failed
+    for good. ffmpeg off or unable to read it: the bytes as they are, as
+    before."""
+    from services.ffmpeg_audio_extract import (
+        FfmpegAudioExtractError, extract_audio_mp3_for_whisper,
+    )
+    try:
+        return extract_audio_mp3_for_whisper(video_bytes, max_seconds=600), "exercise.mp3"
+    except FfmpegAudioExtractError as e:
+        _log.info("exercise video audio not extracted; sending the video: %s", e,
+                  exc_info=True)
+        return video_bytes, filename
+
+
 def transcribe_exercise_video(
     database: Any, *, coach_user_id: str, video_bytes: bytes, filename: str,
 ) -> tuple[str, Optional[dict], Optional[str]]:
@@ -138,8 +155,9 @@ def transcribe_exercise_video(
         database, ProviderCoordinates(principal_id, None, None),
         authorization=authorization,
     )
+    audio, audio_name = _audio_for_whisper(video_bytes, filename)
     try:
-        result = adapter.transcribe_snippet(video_bytes, filename)
+        result = adapter.transcribe_snippet(audio, audio_name)
     except ProcessingAuthorizationError:
         return TRANSCRIPT_NO_AUTHORIZATION, None, None
     except Exception as e:  # noqa: BLE001 — named, never raised into the upload
