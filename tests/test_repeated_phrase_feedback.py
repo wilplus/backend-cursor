@@ -4,8 +4,9 @@
 The speaker's outcome: when they say the same words again ("we need to we
 need to", or a sentence that stops and starts over), the rewrite lane offers
 the sentence with the words said once, adds no word of its own, and wins
-the lane over the tentative fallback. Emphasis ("Thank you, thank you.") is
-left alone.
+the lane over the tentative fallback. Emphasis ("Thank you, thank you.") and
+a complete sentence said again on purpose are left alone (founder
+2026-10-19).
 """
 from __future__ import annotations
 
@@ -42,6 +43,7 @@ def test_a_sentence_that_starts_over_becomes_the_finished_one():
 def test_emphasis_is_not_a_repeat_to_fix():
     assert _rewrites("Thank you, thank you.") == []
     assert _rewrites("No, no, no, that is the wrong plan for us.") == []
+    assert _rewrites("We grew fast. We grew fast because people told friends.") == []
 
 
 def test_the_repeat_wins_the_rewrite_lane_over_the_fallback():

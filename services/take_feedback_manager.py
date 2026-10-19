@@ -587,6 +587,51 @@ def evidence_backed_rewrite_candidates(
     return rows
 
 
+#: Words a sentence cannot end on: a sentence that stops on one stopped
+#: mid-thought: articles, conjunctions, prepositions that need an object,
+#: possessives and subject pronouns, in the languages we transcribe. Closed,
+#: like the hesitation lists; a word that can end a sentence ("it", "so",
+#: "will") is not here.
+_UNFINISHED_ENDINGS = frozenset("""
+a an the to of and or but because if than with for from my your our their
+we i they
+der die das den dem des ein eine einen und oder aber zu mit für dass wir ich
+w z na do że ale lub
+os as um uma ou mas com para que
+el los las un una pero con para que
+le les une et mais du des avec pour que
+il lo gli una ma di con per che
+""".split())
+
+
+def _is_restart(body: str, following: str) -> bool:
+    """A sentence that stopped mid-thought and was started over: it ends on
+    a word no sentence ends on, and the next sentence opens with the same
+    words and goes on. A complete sentence said again ("We grew fast. We
+    grew fast because ...") may be on purpose and is not one (WIL-26)."""
+    said = _WORD_RE.findall(body)
+    again = _WORD_RE.findall(following)
+    return (2 <= len(said) < len(again)
+            and said[-1].lower() in _UNFINISHED_ENDINGS
+            and [w.lower() for w in again[:len(said)]]
+            == [w.lower() for w in said])
+
+
+def repeat_count(text: Any) -> int:
+    """How many times the speaker said words again straight away: phrases
+    repeated inside a sentence plus sentences started over. Pure; a count
+    for internal gates only, never shown (AC-9)."""
+    sentences = _sentences(text if isinstance(text, str) else "")
+    count = 0
+    for index, (_, _, sentence) in enumerate(sentences):
+        count += sum(1 for _ in _REPEATED_PHRASE_RE.finditer(sentence))
+        if index + 1 < len(sentences) and _is_restart(
+                sentence.rstrip().rstrip(".!?").rstrip(),
+                sentences[index + 1][2]):
+            count += 1
+    return count
+
+
 def _collapse_repeats(sentence: str) -> str:
     """The sentence with every phrase said again straight away kept once."""
     return _REPEATED_PHRASE_RE.sub(lambda m: m.group(1), sentence)
@@ -601,8 +646,8 @@ def _repeated_phrase_rewrites(text: str, sentences: list, *, take: str,
 
       * a phrase said again straight away inside one sentence: "we need to
         we need to fix it" -> "we need to fix it";
-      * a sentence that stopped and started over: "We need to. We need to
-        fix it." -> "We need to fix it."
+      * a sentence that stopped mid-thought and started over: "We need to.
+        We need to fix it." -> "We need to fix it." (`_is_restart`).
 
     A sentence that is nothing but the repeat ("Thank you, thank you.") is
     left alone: that is emphasis, not a restart.
@@ -616,11 +661,7 @@ def _repeated_phrase_rewrites(text: str, sentences: list, *, take: str,
         restart = None
         if index + 1 < len(sentences):
             next_start, next_end, following = sentences[index + 1]
-            said = _WORD_RE.findall(body)
-            again = _WORD_RE.findall(following)
-            if (2 <= len(said) < len(again)
-                    and [w.lower() for w in again[:len(said)]]
-                    == [w.lower() for w in said]):
+            if _is_restart(body, following):
                 restart = (next_start, next_end, following)
         if restart is not None:
             span_end = restart[1]
