@@ -1,19 +1,30 @@
-"""The training yes is its own act (0373, SPEC-training-corpus §3, P2).
+"""
+STORY    As a speaker, I want training use of my recordings to depend only on
+         my own training switch, so that an old bundled sign-up yes never
+         counts and withdrawing is clean. (Critical path: consent.)
+OUTCOME
+  O1  Nobody is on by default.
+  O2  Turning the training switch on (with my processing receipt) makes my
+      training yes active, with exactly one purpose row.
+  O3  A bundled-era yes never counts as a training yes.
+  O4  A yes not given on the training switch itself is refused.
+  O5  Without a processing receipt the yes is refused and nothing is active.
+  O6  Withdrawing training ends the yes and leaves the bundled grant alone;
+      the bundled grant cannot be withdrawn through the training path.
+  O7  Browser roles cannot call the grant, the withdrawal or the reader.
+PROVES   O1 -> test_nobody_has_a_training_yes_by_default
+         O2 -> test_the_training_switch_turns_the_yes_on
+         O3 -> test_a_bundled_era_yes_is_never_a_training_yes
+         O4 -> test_a_yes_from_anywhere_but_the_switch_is_refused
+         O5 -> test_no_receipt_no_yes
+         O6 -> test_withdrawing_training_leaves_the_bundled_grant_alone
+         O7 -> test_browser_roles_call_nothing
+WHY      0373 (SPEC-training-corpus section 3, P2); founder N2, N10.6.
 
-Run on the released rehearsal lane. Pins the design's invariants that P2 owns
-(SPEC §10):
-
-  1. a grant under a bundled_v1 policy never makes the reader say yes;
-  2. the grant writes exactly one purpose row and refuses a bundled or
-     non-training policy;
-  3. withdrawing training leaves the bundled grant (and its coaching
-     purpose) untouched;
-  8. a Phase-1 receipt can never be pooled-learning eligible;
-  9. the grant refuses a person with no receipt for the policy version that
-     introduced training.
-
-Plus: the yes must be the training toggle's own act, the reader answers "no"
-for everyone until a training policy exists, and browser roles call nothing.
+Runs on the released rehearsal lane against the real functions, after the
+suites that seed a processing policy. It registers the test training policy
+that tests/test_training_corpus_postgres.py and
+tests/test_training_corpus_purge_postgres.py then use.
 """
 from __future__ import annotations
 
@@ -78,6 +89,11 @@ def processing_version(db):
 @pytest.fixture(scope="module")
 def training_policy(db, processing_version):
     assert processing_version, "the released lane carries a processing policy"
+    # Registered once; a second registration with a new start is refused, so
+    # a re-run against a kept cluster reuses it.
+    if _one(db, "SELECT version FROM public.ml_consent_policies WHERE version = %s",
+            (TRAINING_POLICY,)):
+        return TRAINING_POLICY
     return _one(db, """
         SELECT public.configure_mlc2_training_consent_policy_v1(
             'training-approval-test', %s, %s, %s, 'terms-t', 'privacy-t',
@@ -139,6 +155,32 @@ def consented(db, training_policy, processing_version):
 
 def test_nobody_has_a_training_yes_by_default(db):
     assert _status(db, _principal(db)) == {"active": False}
+
+
+def test_the_training_switch_turns_the_yes_on(db, consented):
+    grant = _grant(db, consented)
+
+    status = _status(db, consented)
+    assert status["active"] is True
+    assert status["grant_event_id"] == str(grant["id"])
+    assert _all(db, """
+        SELECT purpose FROM public.ml_consent_event_purposes
+         WHERE consent_event_id = %s""", (grant["id"],)) == [
+        ("pooled_model_improvement",)]
+
+
+def test_a_yes_from_anywhere_but_the_switch_is_refused(db, consented):
+    with pytest.raises(psycopg2.Error, match="TRAINING_CONSENT_NOT_ITS_OWN_ACT"):
+        _grant(db, consented, action=_action(control="signup"))
+    assert _status(db, consented) == {"active": False}
+
+
+def test_no_receipt_no_yes(db, training_policy):
+    principal = _principal(db)
+    with pytest.raises(psycopg2.Error,
+                       match="TRAINING_CONSENT_NEEDS_POLICY_RECEIPT"):
+        _grant(db, principal)
+    assert _status(db, principal) == {"active": False}
 
 
 def _bundled_policy(db):
@@ -211,7 +253,17 @@ def _all(db, sql, args=()):
         return cur.fetchall()
 
 
-# ── 0412: a receipt for a later version counts, an earlier one does not ────
-
-
-# ── 0436: the acceptance the account is processed under ────────────────────
+def test_browser_roles_call_nothing(db):
+    functions = [
+        "public.record_mlc2_training_consent_grant_v2(uuid, text, text, text, "
+        "text, text, text, jsonb, timestamptz, text)",
+        "public.record_mlc2_consent_withdrawal_v2(uuid, uuid, text, text, "
+        "text, jsonb, timestamptz, text)",
+        "public.get_mlc2_training_consent_status_v2(uuid)",
+    ]
+    for fn in functions:
+        for role in ("anon", "authenticated"):
+            assert _one(db, "SELECT has_function_privilege(%s, %s, 'EXECUTE')",
+                        (role, fn)) is False, (role, fn)
+        assert _one(db, "SELECT has_function_privilege('service_role', %s, "
+                        "'EXECUTE')", (fn,)) is True, fn
