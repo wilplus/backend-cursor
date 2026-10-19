@@ -79,8 +79,9 @@ def promoted_keys() -> frozenset:
     the promotion gate is read.
 
     On 2026-10-08 the founder opened door 4 for ``PROMOTION_SURFACES`` (the
-    coach-answer and coach-word surfaces), not for every key above. Without
-    this a row for the Ideal Text or a chat model would be served.
+    coach-answer surfaces; the coach-word surfaces were named that day and
+    closed again on 2026-10-19, N79), not for every key above. Without this
+    a row for the Ideal Text or a chat model would be served.
     """
     from config import Config
 
