@@ -71,12 +71,18 @@ clips from the same project are mixed in with them:
   sounds like. The disagreement is the clip where their ear and the coach's
   differ, so it is the most useful clip to hear again.
 
-**Round two is other voices: the walk's `others` step (`WalkOthers`).** This
-is still `lend_your_ear.other_voices`, at most 3 (Q-B11 A). **Peer**
-(community) clips come first. **Licensed** corpus clips, picked by stratum,
-fill the places left. One addition: inside the community clips, a clip in
-disagreement is served sooner. This is how a disagreement reaches a second
-blind human.
+**Round two is other voices: the walk's `others` step (`WalkOthers`).** It is
+a mix of 3 clips every walk (founder 2026-10-19):
+
+- **Peer** (community) clips are served first, **at most 2**. Among them, a
+  clip in disagreement is served sooner. This is how a disagreement reaches a
+  second blind human.
+- **Licensed** corpus clips, picked by stratum, fill the places left, so
+  there is always **at least 1**.
+- If there aren't enough clips, serve fewer and never top up from anywhere
+  else. With no peer clips, serve 3 licensed clips. With no licensed clips,
+  serve at most 2 peers. With none at all, the walk goes on (lock 2026-10-12,
+  section 2.6).
 
 Neither round adds a screen, a step, a word or a number. The order of the
 steps does not change. Only the clips that fill the existing screens change.
@@ -105,16 +111,25 @@ steps does not change. Only the clips that fill the existing screens change.
    - Change the sort key from `(rank, index)` to `(rank, -priority, index)`,
      where `priority` = `routing_priority(resolve(rows_for), machine_value,
      owner_value)` for the clip's owner.
-4. **Round one picker:** add `own_replays(database, owner_id, arc_id)` in
+4. **`services/lend_your_ear.py` `other_voices`**
+   - Add `PEERS_MAX = 2` next to `OTHER_VOICES_MAX = 3`.
+   - Call `community_clips(..., limit=min(limit, PEERS_MAX))`. Training
+     clips fill `limit - len(clips)` as they do now. Peers stay first in the
+     list.
+   - Update the docstring and the Q-B11 A comment to "at most 2 peers, at
+     least 1 training clip".
+5. **Round one picker:** add `own_replays(database, owner_id, arc_id)` in
    `services/lend_your_ear.py`, the walk's clip engine. It returns at most one
    star and one disagreement, as in section 3. The route that serves the own
    judgements adds them to the current Take's moments. Audio only.
-5. **Tests**
+6. **Tests**
    - Add rows to `tests/test_label_quorum.py`: singleton coach `yes` +
      speaker `no` → 100; + speaker `yes` → 40; + speaker `not_sure` → 40;
      quorum + speaker disagrees → 0.
    - One contract check that `own_replays` never returns two clips of the
      same kind.
+   - One contract check on `other_voices`: with 5 peer clips and 5 training
+     clips, it returns 2 peers then 1 training clip.
    - No new test file.
 
 ## 5. Open, for the founder
