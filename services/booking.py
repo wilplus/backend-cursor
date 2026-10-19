@@ -181,6 +181,9 @@ def public_settings(slug: str, link: str = "") -> dict:
     }
     if link_price is not None:
         out["new_user_price_cents"] = out["link_price_cents"] = link_price
+        # A link at 0 (founder 2026-10-19): the meeting with no price shown
+        # anywhere and nothing to pay.
+        out["hide_price"] = link_price == 0
     return out
 
 
@@ -191,6 +194,8 @@ def public_settings(slug: str, link: str = "") -> dict:
 # after the lesson", no first-lesson %), and once paid it becomes their own
 # lesson price (booking_user_prices). The price is signed, so editing the
 # URL to a lower one gives an invalid link, which falls back to the normal page.
+# A link at 0 is the meeting without a price: none shown, nothing paid, and
+# the person's own price is left as it was.
 _PRICE_LINK_LABEL = b"willab-booking-price-link-v1"
 PRICE_LINK_MIN_CENTS = 100  # Stripe will not charge less than about 50 cents
 
@@ -213,8 +218,8 @@ def make_price_link(price_cents: Any) -> str:
         cents = int(price_cents)
     except (TypeError, ValueError):
         raise BookingError("INVALID_INPUT", "The price must be a whole number of cents.")
-    if not PRICE_LINK_MIN_CENTS <= cents <= 10_000_000:
-        raise BookingError("INVALID_INPUT", "The price must be at least 1.")
+    if not (cents == 0 or PRICE_LINK_MIN_CENTS <= cents <= 10_000_000):
+        raise BookingError("INVALID_INPUT", "The price must be 0 (no price) or at least 1.")
     key = _price_link_key()
     if key is None:
         raise BookingError("NOT_SET_UP", "The server secret is not set.", 503)
@@ -228,7 +233,7 @@ def price_from_link(link: Any) -> Optional[int]:
     if not m or key is None:
         return None
     cents = int(m.group(1))
-    if cents < PRICE_LINK_MIN_CENTS or not hmac.compare_digest(_price_link_sig(key, cents), m.group(2)):
+    if 0 < cents < PRICE_LINK_MIN_CENTS or not hmac.compare_digest(_price_link_sig(key, cents), m.group(2)):
         return None
     return cents
 
@@ -264,10 +269,11 @@ def offer_for(slug: str, user_id: str, link: str = "") -> dict:
     page = public_settings(slug, link)
     if "link_price_cents" in page:
         return {
-            "list_price_cents": page["price_cents"],
+            "list_price_cents": 0 if page["hide_price"] else page["price_cents"],
             "price_cents": page["link_price_cents"],
             "currency": page["currency"],
             "price_link": True,
+            "hide_price": page["hide_price"],
         }
     own = user_price(user_id)
     price = page["price_cents"] if own is None else own
@@ -447,7 +453,7 @@ def start_checkout(*, slug: str, user_id: str, start_iso: str, name: str, email:
     offer = offer_for(slug, user_id, link)  # raises NOT_FOUND when off or wrong link
     price = int(offer["price_cents"])
     price_link = bool(offer.get("price_link"))
-    if price_link and skip_payment:
+    if price_link and price and skip_payment:
         raise BookingError("PAY_NOW", "This link is paid when you book.")
     # Book and pay later: a confirmed booking at 0 that remembers what is due.
     if skip_payment:
@@ -761,6 +767,7 @@ def send_confirmation_emails(row: dict) -> None:
     }]
     due = int(row.get("due_cents") or 0)
     paid = (f"To be paid {money(due, row['currency'])}." if due and not int(row["price_cents"])
+            else "No price (link without a price)." if row.get("list_price_cents") == 0
             else f"Paid {money(int(row['price_cents']), row['currency'])}.")
     start, end = _dt(row["start_at"]), _dt(row["end_at"])
     e = html.escape
