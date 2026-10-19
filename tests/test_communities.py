@@ -1,20 +1,29 @@
-"""Communities (founder 2026-10-06, decisions log N52.4; migration 0432),
-on (their switch was deleted 2026-10-11), sharing gated on
-COMMUNITY_SHARE_POLICY_VERSION (CM2).
-
-Pins: pass codes are normalised, at least six
-characters and kept only as a keyed digest (no secret, 503); joining is by
-pass code alone; "None" stands alone and revokes every share; a speaker
-shares only with communities they belong to (general is open) and each share
-carries the consent version; a revocation leaves the queue; the listener's
-own clips, answered or self-labelled clips and settled clips are never
-queued; private communities' clips come first, then the general one's, then
-training clips; the payload is audio only; a community answer is a peer
-label (lane game_peer) under the quorum's access rule, a training answer
-takes no label; the listener's own clip is refused.
+"""
+STORY    As a speaker, I want to share a Take only with communities I belong
+         to, revocably, with listeners hearing audio only, so that sharing is
+         my choice and listeners judge blind.
+OUTCOME
+  O1  Clips the listener answered or labelled, and clips the quorum
+      settled, are not queued again.
+  O2  The listener's answers list shows each answer with its clip's sound,
+      newest first, only their own.
+  O3  Stop sharing (Data & consent) lists each shared Take once, with where.
+  O4  "None" withdraws a Take from every community at once, and its clips
+      leave the queue; "None" with a community is refused.
+  O5  A listener hears audio only (no words, no speaker, no Take), never
+      their own clip, and answering their own clip is refused.
+PROVES   O1 -> test_answered_self_labelled_and_settled_clips_are_not_queued
+         O2 -> test_the_judging_reopened_shows_the_latest_answers_with_their_clips
+         O3 -> test_data_and_consent_lists_each_shared_take_once_with_where
+         O4 -> test_none_withdraws_a_take_from_every_community
+         O5 -> test_a_listener_hears_audio_only_and_never_their_own_clip
+WHY      Founder 2026-10-06 (N52.4, migration 0432; CM2). The consent and
+         words versions on a share are pinned on the database in
+         test_a_share_records_the_words_the_speaker_saw_postgres.py.
 """
 from __future__ import annotations
 
+import json
 import random
 from unittest.mock import patch
 
@@ -188,13 +197,7 @@ def _share(db, take, owner="owner-1", **body):
         return cm.share_take(db, owner_user_id=owner, take_session_id=take, body=body)
 
 
-# ── the switches ──────────────────────────────────────────────────────────
 
-
-# ── the pass code ─────────────────────────────────────────────────────────
-
-
-# ── the share ─────────────────────────────────────────────────────────────
 
 
 # ── the queue ─────────────────────────────────────────────────────────────
@@ -262,13 +265,33 @@ def test_the_judging_reopened_shows_the_latest_answers_with_their_clips():
     assert [a["clip_id"] for a in cm.my_answers(db, listener_id="listener")[1]["answers"]] == [_uuid(21)]
 
 
-# ── the answer ────────────────────────────────────────────────────────────
 
 
-# ── provenance and fences ─────────────────────────────────────────────────
+
+def test_none_withdraws_a_take_from_every_community():
+    db, _ = _world()
+    assert _uuid(21) in {c["clip_id"] for c in _queue(db)}
+    status, _ = _share(db, _uuid(901), none=True, general=True)
+    assert status == 400
+    status, body = _share(db, _uuid(902), owner="owner-2", none=True)
+    assert (status, body["community_ids"]) == (200, [])
+    assert all(s["revoked_at"] for s in db.shares if s["take_session_id"] == _uuid(902))
+    queued = {c["clip_id"] for c in _queue(db)}
+    assert _uuid(21) not in queued and _uuid(11) in queued
 
 
-# ── the words the speaker saw (CM2 B, N53.2; Q-B6 A, N62; 0443) ───────────
+def test_a_listener_hears_audio_only_and_never_their_own_clip():
+    db, _ = _world()
+    clips = _queue(db)
+    community = [c for c in clips if c["clip_id"] in (_uuid(11), _uuid(21))]
+    assert len(community) == 2
+    assert all(c["audio_ref"] == f"https://a/{c['clip_id']}.webm" for c in community)
+    served = json.dumps(clips)
+    for private in ("the words they said", "owner-1", "owner-2", _uuid(901), _uuid(902)):
+        assert private not in served
+    assert _uuid(31) not in {c["clip_id"] for c in clips}
+    assert cm.answer(db, listener_id="listener",
+                     body={"clip_id": _uuid(31), "value": "yes"}) == (403, {"code": "OWN_CLIP"})
 
 
 def test_data_and_consent_lists_each_shared_take_once_with_where():

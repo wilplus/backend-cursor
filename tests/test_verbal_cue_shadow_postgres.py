@@ -1,14 +1,16 @@
-"""The shadow stage and its silent log, executed on a disposable database (0386).
-
-Founder 2026-09-28, D2 + D3. Pins:
-
-  * the library accepts `shadow`, and a shadow entry must name its detector;
-  * the three spoken-word cues are seeded in the shadow stage;
-  * verdicts are insert-once per (clip, cue, version) and never change;
-  * only a cue the library measures (shadow or detected) can be logged;
-  * a verdict can never be marked as serving a user or a dataset;
-  * browser roles reach nothing; the server writes through the function and
-    may read and erase.
+"""
+STORY    As a speaker, I want the silent spoken-word cue log never to reach me
+         or a dataset, so that untested detectors do not affect my feedback.
+OUTCOME
+  O1  A known cue's verdict is logged once per (clip, cue, version); a retry
+      writes nothing new.
+  O2  A logged verdict can never be changed, and no verdict can be marked as
+      serving a user.
+  O3  A cue the library does not measure is never logged.
+PROVES   O1 -> test_a_known_cue_is_logged_once
+         O2 -> test_a_verdict_never_changes_and_never_serves
+         O3 -> test_an_unknown_cue_is_refused
+WHY      Founder 2026-09-28, D2 + D3 (migration 0386, the shadow stage).
 """
 from __future__ import annotations
 
@@ -16,6 +18,7 @@ import os
 import uuid
 
 import psycopg2
+import psycopg2.errors
 import psycopg2.extras
 import pytest
 
@@ -57,17 +60,33 @@ def _record(db, rows):
                    (psycopg2.extras.Json(rows),))
 
 
+def test_a_known_cue_is_logged_once(db):
+    row = _row(str(uuid.uuid4()), str(uuid.uuid4()))
+    assert _record(db, [row]) == 1
+    assert _record(db, [row]) == 0
+    assert _scalar(db, "SELECT count(*) FROM public.verbal_cue_shadow_observations "
+                       "WHERE snippet_id = %s", (row["snippet_id"],)) == 1
+
+
 def test_a_verdict_never_changes_and_never_serves(db):
     snippet = str(uuid.uuid4())
-    _record(db, [_row(str(uuid.uuid4()), snippet)])
+    assert _record(db, [_row(str(uuid.uuid4()), snippet)]) == 1
     for assignment in ("fired = false", "serves_user = true"):
-        with pytest.raises(psycopg2.Error):
+        with pytest.raises(psycopg2.Error, match="VERBAL_CUE_SHADOW_IMMUTABLE"):
             with db.cursor() as cur:
                 cur.execute(f"UPDATE public.verbal_cue_shadow_observations "
                             f"SET {assignment} WHERE snippet_id = %s", (snippet,))
-    with pytest.raises(psycopg2.Error, match="serves_user"):
+    with pytest.raises(psycopg2.errors.CheckViolation, match="serves_user"):
         with db.cursor() as cur:
             cur.execute("INSERT INTO public.verbal_cue_shadow_observations "
                         "(take_session_id, snippet_id, error_id, detector_version, "
                         "language, fired, measurements, serves_user) VALUES "
                         "('t','s','hedging','v','en',true,'{}'::jsonb,true)")
+
+
+def test_an_unknown_cue_is_refused(db):
+    snippet = str(uuid.uuid4())
+    with pytest.raises(psycopg2.Error, match="VERBAL_CUE_SHADOW_CUE_NOT_MEASURED"):
+        _record(db, [_row(str(uuid.uuid4()), snippet, cue="not_a_library_cue")])
+    assert _scalar(db, "SELECT count(*) FROM public.verbal_cue_shadow_observations "
+                       "WHERE snippet_id = %s", (snippet,)) == 0
