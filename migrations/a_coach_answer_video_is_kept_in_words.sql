@@ -13,14 +13,26 @@
 -- old ref, and the words are found by that ref. Columns: the ref, the
 -- request, its Take and moment, the coach who uploaded it, a status
 -- ('done' with the words; 'failed' or 'speaker_authorization_missing'
--- without), the language Whisper heard, and the number of attempts.
+-- without), the language the transcriber heard, and the number of attempts.
 --
 -- record_coach_answer_video_transcript_v1 is the only writer (SECURITY
--- DEFINER). It takes words only for a video that is this request's: the
--- one on the row or one its history keeps (a video replaced before the
--- answer was given never reached the speaker and is refused). 'done' words
--- are never written over; a 'failed' or 'speaker_authorization_missing'
--- row is retried in place and counts the attempt.
+-- DEFINER). It takes words only for a video that is this request's when it
+-- writes: the one on the row or one its history keeps. 'done' words are
+-- never written over; a 'failed' or 'speaker_authorization_missing' row is
+-- retried in place and counts the attempt.
+--
+-- READERS, MIND THIS. Before the answer is given, a new video overwrites
+-- the request row directly and the history keeps nothing (0403; 0446 keeps
+-- only a given answer's video). So a video the coach replaced before
+-- answering keeps its row here, under the same request_id, when its words
+-- were kept before the replacement landed (the usual case: the words take
+-- seconds), although it never reached the speaker. Only a replacement that
+-- lands first makes the recorder refuse it
+-- (COACH_ANSWER_TRANSCRIPT_NOT_THIS_REQUESTS_VIDEO). Nothing in the row
+-- tells the two apart, and the row is kept. Every reader (a catch-up, a
+-- training export) keeps only rows whose video_ref is the request's
+-- answer_video_ref or an exercise_coach_request_answer_versions
+-- answer_video_ref of the same request.
 --
 -- The app writes a row only for a speaker who holds the training yes, and
 -- never for a coach answering their own Take (services/coach_answer_video.py);
@@ -85,7 +97,11 @@ COMMENT ON TABLE public.coach_answer_video_transcripts IS
     'Written only by record_coach_answer_video_transcript_v1; done words are '
     'never written over. Only for speakers with the training yes, never on the '
     'coach''s own Take. Capture only: read by no training, release, golden or '
-    'promotion reader, in no payload. Purged with the Take.';
+    'promotion reader, in no payload. Purged with the Take. A row may name a '
+    'video replaced before the answer was given, whose words were kept before '
+    'the replacement landed; it never reached the speaker. Readers keep only '
+    'rows whose video_ref is the request''s answer_video_ref or an '
+    'answer_video_ref of its exercise_coach_request_answer_versions.';
 
 CREATE OR REPLACE FUNCTION public.record_coach_answer_video_transcript_v1(
     p_request_id uuid,

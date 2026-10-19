@@ -1,5 +1,5 @@
-"""A coach's video about a speaker's Take reaches Whisper only through the
-speaker's permit: the Take word's, and a moment's answer video (0480, N79).
+"""A coach's video about a speaker's Take reaches the transcriber only through
+the speaker's permit: the Take word's, and a moment's answer video (0480, N79).
 
 PLF1 (founder 2026-10-05, N48.1; Wave 1 step 6). ``transcribe_take_word_video``
 called ``openai_service.transcribe_audio`` directly: no permit, no provider

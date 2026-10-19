@@ -11,7 +11,7 @@ the blind gate before this runs.
 What the coach says in it is written down (0480; founder 2026-10-19, N79)
 in coach_answer_video_transcripts, by the video's ref, so a changed
 answer's old video keeps its own words: after the upload has returned, off
-the coach's request, audio extracted and Whisper through the SPEAKER's
+the coach's request, audio extracted and transcribed through the SPEAKER's
 permit, as the Take word's video. Only for a speaker who holds the training
 yes, never on the coach's own Take. No pair is recorded."""
 from __future__ import annotations
@@ -133,14 +133,15 @@ def _replace_resolved_video(database: Any, request_row: dict, url: str,
 def transcribe_answer_video(database: Any, *, request_row: Any, video_ref: str,
                             coach_id: Any, video_bytes: bytes) -> Optional[str]:
     """The answer video's words, kept by its ref (0480, N79): audio
-    extracted, Whisper through the speaker's permit
+    extracted and transcribed through the speaker's permit
     (``coach_word_pairs.speaker_permit_adapter``, as the Take word's video).
     Only for a speaker who holds the training yes and never on the coach's
     own Take (``coach_word_pairs.worth_transcribing``): otherwise nothing is
-    sent and no row is written; a doubt reads as no. A refused permit is
-    kept as ``speaker_authorization_missing``, any other failure as
-    ``failed``, so a later run can retry them. Best effort, never raises:
-    the video is already saved. The words, or None."""
+    sent and no row is written; a doubt reads as no. A refusal of the
+    speaker's authority is kept as ``speaker_authorization_missing``; an
+    outage (a 5xx refusal: the provider or the authority unreachable) and
+    any other failure as ``failed``, so a later run can retry them. Best
+    effort, never raises: the video is already saved. The words, or None."""
     if not isinstance(request_row, dict) or not request_row.get("id") or not video_ref:
         return None
     from services.coach_word_pairs import speaker_permit_adapter, worth_transcribing
@@ -160,14 +161,15 @@ def transcribe_answer_video(database: Any, *, request_row: Any, video_ref: str,
         adapter = speaker_permit_adapter(database, take)
         audio = extract_audio_mp3_for_whisper(video_bytes, max_seconds=600)
         tr = adapter.transcribe_audio(audio, "answer-video.mp3",
-                                      usage_surface="whisper_coach_answer_video",
+                                      usage_surface="coach_answer_video_transcription",
                                       usage_user_id=None, usage_session_id=take)
         if isinstance(tr, dict):
             words = str(tr.get("text") or "").strip() or None
             language = str(tr.get("language") or "").strip() or None
         status = "done" if words else "failed"
     except ProcessingAuthorizationError as refused:
-        status = "speaker_authorization_missing"
+        # An outage is not a missing authority: it is kept as failed.
+        status = "failed" if refused.status >= 500 else "speaker_authorization_missing"
         _log.warning("answer video words refused request=%s code=%s; the video is saved",
                      request_row["id"], refused.code, exc_info=True)
     except Exception as e:  # noqa: BLE001 -- the video is saved either way
@@ -179,7 +181,9 @@ def transcribe_answer_video(database: Any, *, request_row: Any, video_ref: str,
             status=status, transcript=words, language=language)
     except Exception as e:  # noqa: BLE001 -- the video is saved either way
         if "COACH_ANSWER_TRANSCRIPT_NOT_THIS_REQUESTS_VIDEO" in str(e):
-            # Replaced before the answer was given: it never reached the speaker.
+            # Replaced before the answer was given, and before its words were
+            # kept: it never reached the speaker. A replacement that lands
+            # after the words leaves the row (0480 header: readers filter).
             _log.info("answer video words not kept request=%s: the video was replaced",
                       request_row["id"])
         else:
@@ -191,8 +195,8 @@ def transcribe_answer_video(database: Any, *, request_row: Any, video_ref: str,
 
 def transcribe_answer_video_in_background(database: Any, *, request_row: Any, video_ref: str,
                                           coach_id: Any, video_bytes: bytes) -> None:
-    """The same, off the coach's request: ffmpeg and Whisper never hold the
-    upload (coaches never slow the loop), and never the pipeline queue."""
+    """The same, off the coach's request: ffmpeg and the transcriber never
+    hold the upload (coaches never slow the loop), nor the pipeline queue."""
     if not isinstance(request_row, dict) or not video_ref:
         return
     try:
