@@ -306,6 +306,16 @@
       "module": "pending",
       "sha256": "fd4fcb8730380fb34b05e4d36aa40ddc2d6e6ebe016eb02c34fa7e1a6360333b"
     },
+    "pet_phrase.system": {
+      "kind": "static",
+      "module": "pet_phrase",
+      "sha256": "c7e8aad8ca6c83e2b45324667ebd4f5c778c88073e8d1c7da4793e916bfc57ac"
+    },
+    "pet_phrase.user": {
+      "kind": "builder",
+      "module": "pet_phrase",
+      "sha256": "aefc4d0a13217adcf17d708f245343be9560453b97c14243ec9cb9c6198e5626"
+    },
     "praise_line.system": {
       "kind": "static",
       "module": "coach_answer_drafts",

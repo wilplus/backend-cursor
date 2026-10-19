@@ -307,6 +307,18 @@ SPEC_V4_TAKE_TAGS = LLMSpec(
 reads whether its sentences hold together (S-B1 A). Internal only (AC-9)."""
 
 
+SPEC_PET_PHRASE = LLMSpec(
+    model=CHEAP_MODEL,
+    # A few real alternatives across Takes, but stable enough to grade.
+    temperature=0.4,
+    # One short phrase in a one-key JSON object.
+    max_tokens=120,
+    response_format=None,  # strict json_schema via override (services/pet_phrase.py)
+)
+"""Pet phrase (WIL-26): one alternative for a phrase used 3+ times in a
+Take. Called only when a pet phrase is found; behind PET_PHRASE_ENABLED."""
+
+
 SPEC_SAY_IT_STRONGER = LLMSpec(
     model=CHEAP_MODEL,
     # Founder spec 2026-07-07: deterministic enough to be consistent,

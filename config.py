@@ -151,6 +151,11 @@ class Config:
     # DEFAULT ON IN CODE, so a service that never got the variable (web,
     # worker or cron) still reads it on (CONFIG-FIRST); "0" switches it off.
     PRAISE_DETECTORS_ENABLED = _env_flag("PRAISE_DETECTORS_ENABLED", "1")
+    # Pet phrase (founder 2026-10-19, WIL-26): a phrase used 3+ times in one
+    # Take gets one AI-written alternative in the shared wording slot. OFF
+    # until the founder has read the golden examples; set "1" on every
+    # Railway service (worker generates, web serves) to switch it on.
+    PET_PHRASE_ENABLED = _env_flag("PET_PHRASE_ENABLED", "0")
     POLISH_AS_SUGGESTIONS_ENABLED = _env_flag("POLISH_AS_SUGGESTIONS_ENABLED", "0")
     LIVING_TRANSCRIPT_ENABLED = _env_flag("LIVING_TRANSCRIPT_ENABLED", "0")
     # ON since #595, on evidence rather than on hope this time.

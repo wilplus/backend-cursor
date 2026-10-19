@@ -103,6 +103,12 @@ def _coach_answer(surface: str) -> Callable[[dict], Any]:
     return adapter
 
 
+def _pet_phrase(inp: dict) -> Any:
+    from services.pet_phrase import generate_alternative
+    worded = generate_alternative(inp.get("phrase") or "", inp.get("sentence") or "")
+    return None if worded is None else worded["alternative"]
+
+
 ADAPTERS: dict[str, Callable[[dict], Any]] = {
     "praise_line": _coach_answer("praise_line"),
     "clearer_version": _coach_answer("clearer_version"),
@@ -115,4 +121,5 @@ ADAPTERS: dict[str, Callable[[dict], Any]] = {
     "moment_suggestion": _moment_suggestion,
     "structural_star": _structural_star,
     "emphasis_phrase": _emphasis_phrase,
+    "pet_phrase": _pet_phrase,
 }

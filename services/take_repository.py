@@ -2000,6 +2000,24 @@ class TakeRepository(TableRepository):
             )
             return None
 
+    def update_session_pet_phrase(self, session_id: str,
+                                  payload: Optional[dict]) -> bool:
+        """Store this Take's pet phrase and its AI alternative (WIL-26,
+        migration add_pet_phrase_to_v2_sessions). Best-effort: False on any
+        failure, and the Take simply has no pet-phrase suggestion. A
+        speaker's erasure empties it with every other nullable column
+        (a_take_keeps_an_empty_receipt keep-list)."""
+        try:
+            self.client.table("v2_sessions").update(
+                {"pet_phrase": payload}).eq("id", session_id).execute()
+            return True
+        except Exception as e:
+            logger.warning(
+                "update_session_pet_phrase failed session=%s err=%s",
+                session_id, e, exc_info=True,
+            )
+            return False
+
     def get_session_intake_context(
         self,
         session_id: str,

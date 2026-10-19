@@ -512,3 +512,4 @@
 0474	claim_owner_indexes.sql
 0475	the_ai_clip_can_practise_fillers.sql
 0476	a_practice_is_heard_in_the_next_take.sql
+0477	add_pet_phrase_to_v2_sessions.sql
