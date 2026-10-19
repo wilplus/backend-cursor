@@ -1,38 +1,24 @@
-"""The practice attempt's provider call goes through ONE door.
-
-Founder authorized lifting the Phase-2 purpose gate on the Confident Voice
-practice routes (2026-09-16). That gate was the only thing standing between a
-speaker's practice recording and a direct `openai_service.client` call — no
-permit, no recorded provider event, no regard for the kill switch. So the call
-had to move behind the authorization boundary FIRST; lifting the gate over a
-direct provider client is exactly what the standing constraint forbids, and it
-fails silently — it works perfectly, right up until someone asks what was sent
-where.
-
-THE GATE IS STILL ON. Moving the call was the prerequisite, not the
-authorization. `migrations/add_phase1_processing_boundary.sql` registers
-`personalized_exercise_recommendation` as `phase2` and raises
-PHASE2_PURPOSE_FORBIDDEN for any policy carrying it, so no permit for this
-purpose can be issued at all. Lifting the route gate before that changes would
-make the practice routes live only because enforcement happens to be off.
-Moving the purpose to phase1 is a consent decision — a new policy version and
-its acceptance — not a code change.
-
-WHAT THIS PINS DOWN:
-  * the route no longer names the unpermitted transcription function, while
-    the five routes DO still carry the purpose gate;
-  * a permit is issued BEFORE the provider is reached, and the terminal event
-    is recorded on success AND on failure;
-  * the snippet contract survives the move. `transcribe_audio` on the same
-    adapter drops each word's recognition `confidence`; the practice
-    comparison reads that field, so routing through the wrong method would
-    keep the permit and silently lose an input;
-  * `recording_id` is None rather than the original snippet — a practice
-    attempt is new audio, and naming the original would assert it was sent to
-    the provider when it was not;
-  * mode=off is the same code path, not a bypass.
-
-Run: python3 -m unittest tests.test_practice_transcription
+"""
+STORY    As a speaker, I want my Confident Voice practice recording sent to
+         the transcription provider only under a permit, so that nothing I
+         say leaves the app without a record.
+OUTCOME
+  O1  A permit for this Take (recording_id None: a practice try is new
+      audio) is taken BEFORE the provider is called, and the call is logged
+      started then completed (Never-3: every provider call goes through the
+      processing-authorization path).
+  O2  On a provider failure the call is logged started then failed and the
+      error propagates.
+  O3  Each word's recognition ``confidence`` reaches the result unchanged
+      (the practice comparison reads it).
+  O4  With authorization not enforced it is the same code path: the provider
+      is called once and the result is the same, with no permit.
+PROVES   O1 -> test_a_permit_is_taken_before_the_provider_is_reached
+         O2 -> test_the_outcome_is_recorded_on_failure_and_the_error_propagates
+         O3 -> test_a_permit_is_taken_before_the_provider_is_reached
+         O4 -> test_mode_off_is_the_same_path_without_a_permit
+WHY      Founder 2026-09-16: the practice call moved behind the authorization
+         boundary before the Phase-2 gate could be lifted.
 """
 from __future__ import annotations
 
@@ -60,10 +46,11 @@ TRANSCRIPTION = {
 
 
 class _Auth:
-    """Stands in for ProcessingAuthorizationService."""
+    """Stands in for ProcessingAuthorizationService; writes to a shared trail."""
 
-    def __init__(self, enforced: bool = True):
+    def __init__(self, trail: list, enforced: bool = True):
         self.enforced = enforced
+        self.trail = trail
         self.permits: list[dict] = []
         self.events: list[tuple] = []
 
@@ -75,72 +62,74 @@ class _Auth:
         if not self.enforced:
             return None
         self.permits.append(kwargs)
+        self.trail.append("permit")
         return {"permit_id": "permit-1"}
 
     def record_provider_event(self, permit_id, event_kind, **kwargs):
         if not self.enforced or not permit_id:
             return
         self.events.append((permit_id, event_kind, kwargs.get("error_code")))
+        self.trail.append(event_kind)
 
 
 class _Db:
     def __init__(self):
         self.client = object()
-        self.sessions_read: list[str] = []
 
     def v2_get_session_by_id(self, session_id):
-        self.sessions_read.append(session_id)
         return {"id": session_id, "owner_principal_id": "owner-principal"}
 
 
 class PracticeTranscriptionTests(unittest.TestCase):
-    def _run(self, auth, *, transcriber=None, boom=False):
-        calls: list[tuple] = []
+    def _run(self, *, enforced=True, boom=False):
+        trail: list = []
+        auth = _Auth(trail, enforced=enforced)
 
         def fake_transcribe(audio, filename, *, language_hint=None):
-            calls.append((audio, filename, language_hint))
+            trail.append("provider")
             if boom:
                 raise RuntimeError("provider exploded")
             return TRANSCRIPTION
 
-        db = _Db()
         with patch(
             "services.processing_authorization.ProcessingAuthorizationService",
             return_value=auth,
         ), patch(
             "services.snippet_transcription.transcribe_snippet_bytes",
-            transcriber or fake_transcribe,
+            fake_transcribe,
         ):
-            result = pt.transcribe_practice_attempt(
-                db, PRACTICE, b"audio-bytes", hint_filename="practice.webm")
-        return result, db, calls
-
-    # ── the contract survives the move ───────────────────────────────────
-
-
-    # ── the permit ───────────────────────────────────────────────────────
+            try:
+                result = pt.transcribe_practice_attempt(
+                    _Db(), PRACTICE, b"audio-bytes", hint_filename="practice.webm")
+            except RuntimeError as error:
+                result = error
+        return result, auth, trail
 
     def test_a_permit_is_taken_before_the_provider_is_reached(self):
-        auth = _Auth()
-        self._run(auth)
-        self.assertEqual(len(auth.permits), 1)
+        result, auth, trail = self._run()
+        self.assertEqual(trail, ["permit", "started", "provider", "completed"])
         permit = auth.permits[0]
         self.assertEqual(permit["provider"], "openai")
         self.assertEqual(permit["operation_kind"], "transcription")
         self.assertEqual(permit["acquisition_principal_id"], "principal-1")
         self.assertEqual(permit["take_id"], PRACTICE["take_session_id"])
-
+        self.assertIsNone(permit["recording_id"])
+        self.assertEqual([w["confidence"] for w in result["words"]], [0.91, 0.88])
+        self.assertEqual(result["transcript"], TRANSCRIPTION["transcript"])
 
     def test_the_outcome_is_recorded_on_failure_and_the_error_propagates(self):
         # A provider call that vanishes from the ledger when it fails is the
         # half of the record that matters most.
-        auth = _Auth()
-        with self.assertRaises(RuntimeError):
-            self._run(auth, boom=True)
-        self.assertEqual([e[1] for e in auth.events], ["started", "failed"])
+        result, auth, trail = self._run(boom=True)
+        self.assertIsInstance(result, RuntimeError)
+        self.assertEqual(trail, ["permit", "started", "provider", "failed"])
         self.assertEqual(auth.events[-1][2], "RuntimeError")
 
-    # ── mode off ─────────────────────────────────────────────────────────
+    def test_mode_off_is_the_same_path_without_a_permit(self):
+        result, auth, trail = self._run(enforced=False)
+        self.assertEqual(trail, ["provider"])
+        self.assertEqual(auth.permits, [])
+        self.assertEqual(result, TRANSCRIPTION)
 
 
 if __name__ == "__main__":  # pragma: no cover

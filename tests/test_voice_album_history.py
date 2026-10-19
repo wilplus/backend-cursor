@@ -1,122 +1,129 @@
-"""THE HISTORY BEHIND ONE VOICE ALBUM MOMENT (founder 2026-09-18).
-
-"I want the whole history so I can see from where it came from and the short
-note at the end." These pins hold the shape of that account: which lanes may
-speak, what they may never say, and that a missing lane goes quiet instead of
-guessing.
-
-Run: python3 -m unittest tests.test_voice_album_history
+"""
+STORY    As a speaker, I want the history behind an album moment told in
+         words from the lanes that spoke, so that I see where it came from,
+         with no scores.
+OUTCOME
+  O1  The history tells, in order, my answer, my coach's agreement (as
+      "Your coach"), the exercise with my attempts, and my note.
+  O2  A lane with no record stays quiet: it is simply absent, never a
+      placeholder or a guess.
+  O3  NEVER-1: no lane carries a score, ratio, confidence value or
+      classifier output, and the machine's read is never an event.
+  O4  NEVER-2: the story behind any moment outside the Album never tells
+      the coach lane, so its silence cannot reveal a coach's verdict.
+PROVES   O1 -> test_the_history_tells_each_lane_that_spoke_in_order
+         O2 -> test_a_missing_lane_stays_quiet
+         O3 -> test_the_history_tells_each_lane_that_spoke_in_order
+         O4 -> test_the_story_behind_any_moment_never_tells_the_coach_lane
+WHY      Founder 2026-09-18 ("the whole history so I can see from where it
+         came from") and 2026-09-25 ("not any moments"); AC-9.
 """
 from __future__ import annotations
 
-import unittest
+import json
 
 from services.voice_album_history import (
+    COACH_DISPLAY,
     build_moment_history,
+    build_snippet_history,
 )
 
-ARC = "arc-1"
-SNIP = "snip-1"
-
-
-def _coach(value):
-    return [{"rater_id": "coach1", "lane": "coach", "value": value,
+ARC, SNIP, OWNER = "arc-1", "snip-1", "user-1"
+REPORT = {"snippet_id": SNIP, "feedback_family": "confident_voice",
+          "response": "yes", "created_at": "2026-08-14T10:00:00Z",
+          "machine_confidence": 0.91}
+COACH_YES = {"rater_id": "coach1", "lane": "coach", "value": "yes",
              "state_id": "confidence", "self_report": False,
-             "created_at": "2026-08-15T09:00:00Z"}]
+             "created_at": "2026-08-15T09:00:00Z", "score": 0.8}
+PRACTICE = {
+    "id": "prac-1", "snippet_id": SNIP, "slide_index": 2,
+    "created_at": "2026-08-16T10:00:00Z", "selected_attempt_id": "att-2",
+    "exercise_id": "hear-every-word-v1", "exercise_version": 1,
+    "exercise_snapshot": {
+        "title": "Hear every word",
+        "instruction": "Read the same text again, slightly more slowly.",
+        "explanation_video_url": "https://video/hear-every-word-v1",
+    },
+}
+ATTEMPTS = [
+    {"id": "att-1", "attempt_index": 1, "audio_ref": "a1", "duration_ms": 5400,
+     "power_score": 0.4},
+    {"id": "att-2", "attempt_index": 2, "audio_ref": "a2", "duration_ms": 6000,
+     "power_score": 0.7},
+]
+NOTE = {"id": "n1", "moment_key": SNIP, "owner_user_id": OWNER,
+        "body": "Slower worked.", "created_at": "2026-08-17T10:00:00Z"}
+BANNED = ("power_score", "machine_confidence", "probability", "score",
+          "confidence_value", "percentile", "0.91", "0.8", "0.4", "0.7")
 
 
 class _Db:
-    def __init__(self, *, reports=None, labels=None, practice=None,
-                 attempts=None, notes=None, attempt_rows=None):
-        self.reports = reports or []
-        self.labels = labels or {}
-        self.practice = practice
-        self.attempts = attempts or []
-        self.notes = notes or []
-        self.attempt_rows = attempt_rows or {}
-        self.inserted = []
+    """The records each lane reads; any lane can be left empty."""
+
+    def __init__(self, *, reports=(), labels=(), practice=None, attempts=(), notes=()):
+        self.reports, self.labels = list(reports), list(labels)
+        self.practice, self.attempts, self.notes = practice, list(attempts), list(notes)
 
     def list_take_feedback_self_reports_by_snippet(self, snippet_id):
-        return [r for r in self.reports if r.get("snippet_id") == snippet_id]
+        return [r for r in self.reports if r["snippet_id"] == snippet_id]
 
     def get_confidence_labels_by_snippet_ids(self, ids):
-        return {i: self.labels.get(i, []) for i in ids}
+        return {i: list(self.labels) for i in ids}
 
-    def get_confident_voice_practice_by_take(self, sid, owner=None):
+    def get_confident_voice_practice_by_moment(self, _sid, _snippet_id, _owner=None):
         return self.practice
 
-    def get_confident_voice_practice_by_moment(self, sid, snippet_id, owner=None):
-        return self.practice
-
-    def get_confident_voice_practice(self, practice_id, owner=None):
-        return self.practice
-
-    def get_confident_voice_practice_attempt(self, attempt_id, practice_id=None):
-        return self.attempt_rows.get(attempt_id)
-
-    def list_confident_voice_practice_attempts(self, practice_id):
-        return self.attempts
+    def list_confident_voice_practice_attempts(self, _practice_id):
+        return list(self.attempts)
 
     def list_voice_album_notes(self, *, arc_id, moment_key, owner_user_id):
         return [n for n in self.notes
-                if n.get("moment_key") == moment_key
-                and n.get("owner_user_id") == owner_user_id]
+                if n["moment_key"] == moment_key and n["owner_user_id"] == owner_user_id]
 
 
-def _build(db, *, moment=SNIP, entry=None, take_index=2, owner="user-1"):
+def _album_history(db):
     return build_moment_history(
-        arc_id=ARC, moment_key=moment, owner_user_id=owner,
-        entry=entry if entry is not None else {
-            "snippet_id": SNIP, "take_session_id": "sess-1", "slide_index": 2,
-            "entered_at": "2026-08-15T10:00:00Z",
-        },
-        take_index=take_index, database=db,
-        resolve_audio=lambda ref: ("https://cdn/" + str(ref)) if ref else None,
-    )
+        arc_id=ARC, moment_key=SNIP, owner_user_id=OWNER,
+        entry={"snippet_id": SNIP, "take_session_id": "sess-1", "slide_index": 2,
+               "entered_at": "2026-08-15T10:00:00Z"},
+        take_index=2, database=db,
+        resolve_audio=lambda ref: f"https://cdn/{ref}" if ref else None)
 
 
-class ExerciseTests(unittest.TestCase):
-    PRACTICE = {
-        "id": "prac-1", "snippet_id": SNIP, "slide_index": 2,
-        "created_at": "2026-08-16T10:00:00Z", "selected_attempt_id": "att-2",
-        "exercise_id": "hear-every-word-v1", "exercise_version": 1,
-        "exercise_snapshot": {
-            "title": "Hear every word",
-            "instruction": "Read the same text again, slightly more slowly.",
-            "explanation_video_url": "https://video/hear-every-word-v1",
-        },
-    }
-    ATTEMPTS = [
-        {"id": "att-1", "attempt_index": 1, "audio_ref": "a1",
-         "duration_ms": 5400},
-        {"id": "att-2", "attempt_index": 2, "audio_ref": "a2",
-         "duration_ms": 6000},
-    ]
+def _everything():
+    return _Db(reports=[REPORT], labels=[COACH_YES], practice=PRACTICE,
+               attempts=ATTEMPTS, notes=[NOTE])
 
 
-class NeverSurfacedTests(unittest.TestCase):
-    def test_no_lane_carries_a_score_ratio_or_classifier_output(self):
-        db = _Db(
-            reports=[{"snippet_id": SNIP, "feedback_family": "confident_voice",
-                      "response": "yes", "created_at": "2026-08-14T10:00:00Z"}],
-            labels={SNIP: _coach("yes")},
-            practice=ExerciseTests.PRACTICE, attempts=ExerciseTests.ATTEMPTS,
-        )
-        blob = str(_build(db))
-        for banned in ("power_score", "machine_confidence", "probability",
-                       "score", "confidence_value", "percentile"):
-            self.assertNotIn(banned, blob)
+def test_the_history_tells_each_lane_that_spoke_in_order():
+    history = _album_history(_everything())
+    assert history["origin"] == {"take_index": 2, "slide_index": 2,
+                                 "at": "2026-08-15T10:00:00Z", "source": "snippet"}
+    events = history["events"]
+    assert [e["kind"] for e in events] == ["owner_answer", "coach_agreed", "exercise", "note"]
+    owner, coach, exercise, note = events
+    assert (owner["who"], owner["response"]) == ("You", "yes")
+    assert coach["who"] == COACH_DISPLAY and "coach1" not in json.dumps(history)
+    assert exercise["title"] == "Hear every word"
+    assert [(a["attempt_id"], a["kept"]) for a in exercise["attempts"]] == [
+        ("att-1", False), ("att-2", True)]
+    assert note["body"] == "Slower worked."
+    flat = json.dumps(history)
+    for banned in BANNED:
+        assert banned not in flat, banned
+    assert "machine" not in {e["kind"] for e in events}
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_a_missing_lane_stays_quiet():
+    history = _album_history(_Db(reports=[REPORT]))
+    assert [e["kind"] for e in history["events"]] == ["owner_answer"]
+    assert _album_history(_Db())["events"] == []
 
 
-# ---------------------------------------------------------------------------
-# THE STORY BEHIND ANY MOMENT (founder 2026-09-25).
-#
-# "the album shows your confident moments, not any moments." The Album is a
-# trophy case — three separate yeses to get in — so the history above it can
-# only ever be told about a moment that went well. The ones worth learning
-# from are the others.
-# ---------------------------------------------------------------------------
+def test_the_story_behind_any_moment_never_tells_the_coach_lane():
+    history = build_snippet_history(
+        arc_id=ARC, snippet_id=SNIP, owner_user_id=OWNER, take_session_id="sess-1",
+        take_index=2, database=_everything())
+    kinds = [e["kind"] for e in history["events"]]
+    assert kinds == ["owner_answer", "exercise", "note"]
+    assert COACH_DISPLAY not in json.dumps(history)

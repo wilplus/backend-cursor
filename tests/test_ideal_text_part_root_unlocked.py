@@ -1,15 +1,16 @@
-"""The rooting phrase saves on the step that chose it, lock or no lock.
-
-Regression cover for a live break. `#442` moved the emphasis save onto the
-emphasis step, where the paragraph has not been locked yet — and on "No", "Not
-sure" and "Audio unclear" the Lock step is not built at all. The route still
-required a lock, so every first-pass emphasis save answered 409 and put an
-error on the sheet. Founder 2026-09-24: "Just save the rooting phrases orange,
-but do not let them lock that text."
-
-Nothing here asserts that an unlocked root is *eligible*. It is recorded, and
-`test_recording_roots.py` holds the other half: reads still yield locked roots
-only.
+"""
+STORY    As a speaker, I want to save helper words on a paragraph I have not
+         locked, without it locking, so that the first pass works without an
+         error.
+OUTCOME
+  O1  PUT root on an unlocked paragraph answers 200 saved with my words, and
+      writes exactly those words and their span.
+  O2  Never-5 (the speaker's words are theirs to commit): saving helper words
+      never locks the paragraph -- no lock is written.
+PROVES   O1 -> test_unlocked_paragraph_saves_helper_words_without_locking
+         O2 -> test_unlocked_paragraph_saves_helper_words_without_locking
+WHY      #442 put the save before the Lock step; every first-pass save got a
+         409 PART_NOT_LOCKED (founder 2026-09-24: save them, do not lock).
 """
 from __future__ import annotations
 
@@ -53,10 +54,8 @@ def _client(monkeypatch, *, locked: bool, saved: bool = True):
     return app.test_client(), database
 
 
-def test_an_unlocked_paragraph_is_never_answered_with_part_not_locked(
-        monkeypatch):
-    """The exact failure the speaker saw: 409 on the ordinary first pass."""
-    client, _ = _client(monkeypatch, locked=False)
+def test_unlocked_paragraph_saves_helper_words_without_locking(monkeypatch):
+    client, database = _client(monkeypatch, locked=False)
 
     response = client.put(
         "/test/arc-1/part-1",
@@ -64,5 +63,13 @@ def test_an_unlocked_paragraph_is_never_answered_with_part_not_locked(
               "start": START, "end": END},
     )
 
-    assert response.status_code != 409
-    assert (response.get_json() or {}).get("code") != "PART_NOT_LOCKED"
+    assert response.status_code == 200, response.get_json()
+    body = response.get_json()
+    assert body["saved"] is True
+    assert (body["root_phrase"], body["root_start"], body["root_end"]) == (
+        PHRASE, START, END)
+    database.set_ideal_text_part_root.assert_called_once_with(
+        arc_id="arc-1", user_id="actor-1", part_id="part-1",
+        phrase=PHRASE, start=START, end=END)
+    database.set_ideal_text_part_lock.assert_not_called()
+    database.replace_ideal_text_parts.assert_not_called()

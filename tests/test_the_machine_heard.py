@@ -1,48 +1,127 @@
-"""The machine heard (D-CP-3; the coach panel lock, flow 5 "What happened":
-You · the speaker · The machine heard).
-
-Pins: the moment read's `heard` lists, in words, what the machine heard
-for every kind: the error labels on an error moment, the confident cues
-behind the praise, the clearer version's reason, everything on a note
-(ambiguity), and an explicit "nothing"; never a number; the read is still
-behind the blind gate (409 before this coach's own rating, and nothing is
-read about the moment before it)."""
+"""
+STORY    As a coach, I want to see what the machine heard only after I give
+         my own answer, so that my judgement stays blind.
+OUTCOME
+  O1  Never-2: before this coach's own rating (or after "Audio unclear"),
+      the moment read answers 409 BLIND_RATING_REQUIRED and reads nothing
+      about the moment.
+  O2  After the rating, the read opens and "heard" says in words what the
+      machine heard - never a number.
+  O3  For each kind, "heard" names the right thing: the error labels, the
+      confident cues behind praise, the clearer version's reason, all of it
+      on an ambiguity, and an explicit "nothing" when it heard nothing.
+PROVES   O1 -> test_the_read_is_still_behind_the_blind_gate
+         O2 -> test_after_my_rating_the_read_says_what_was_heard_in_words
+         O3 -> test_heard_names_what_the_machine_heard_for_each_kind
+WHY      D-CP-3; coach panel lock flow 5 ("What happened").
+"""
 from __future__ import annotations
 
+import json
+import re
 import uuid
 from unittest.mock import patch
 
 from flask import Flask, request
 
+from services.coach_moment_read import machine_heard
 
-def test_the_read_is_still_behind_the_blind_gate():
+SESSION, SNIPPET = str(uuid.uuid4()), str(uuid.uuid4())
+COACH = "coach-1"
+
+
+class _Db:
+    """The reads the moment route makes; `rating` is this coach's own."""
+
+    def __init__(self, rating=None, suggestion=None, request_row=None):
+        self.rating = rating
+        self.suggestion = suggestion
+        self.request_row = request_row
+        self.reads: list = []
+
+    class takes:  # noqa: N801 -- the attribute the route reads
+        @staticmethod
+        def get_read_sessions_for(_sid):
+            return []
+
+    def v2_get_session_by_id(self, _sid):
+        return {"id": SESSION, "user_id": "owner-1"}
+
+    def get_snippets_by_session(self, _sid):
+        return [{"id": SNIPPET, "transcript": "We grew in every region.",
+                 "slide_index": 2}]
+
+    def get_coach_snippet_drafts(self, _sid):
+        return []
+
+    def get_own_state_ratings_for_session(self, _sid, rater):
+        return {SNIPPET: self.rating} if self.rating and rater == COACH else {}
+
+    def get_exercise_coach_request(self, *_a):
+        self.reads.append("request")
+        return self.request_row
+
+    def get_moment_suggestion(self, _snip):
+        self.reads.append("suggestion")
+        return self.suggestion
+
+    def list_speaking_errors(self):
+        return [{"error_id": "rushing", "label": "Rushing"}]
+
+
+def _read(db):
     from routes.v2 import coach as route
 
-    session_id, snippet_id = str(uuid.uuid4()), str(uuid.uuid4())
-
-    class _GateDb:
-        def v2_get_session_by_id(self, _sid):
-            return {"id": session_id, "user_id": "owner-1"}
-
     app = Flask(__name__)
-    with patch.object(route, "db", _GateDb()), \
-            patch.object(route, "_snippet_owner_map",
-                         lambda _sid: {snippet_id: session_id}), \
-            patch.object(route, "_coach_state_map", lambda *_a, **_k: {}), \
-            patch("services.coach_moment_read.moment_read") as read:
+    with patch.object(route, "db", db):
         with app.test_request_context("/v2/x"):
-            request.user_id = "coach-1"
+            request.user_id = COACH
             response, status = route.v2_coach_moment_read.__wrapped__(
-                session_id, snippet_id)
+                SESSION, SNIPPET)
+    return status, response.get_json()
+
+
+def test_the_read_is_still_behind_the_blind_gate():
+    for rating in (None, {"value": None, "unrateable": True}):
+        db = _Db(rating=rating,
+                 suggestion={"kind": "replace", "trigger": "stickiness"})
+        status, body = _read(db)
         assert status == 409
-        assert response.get_json()["code"] == "BLIND_RATING_REQUIRED"
-        read.assert_not_called()
-        # Audio unclear is an abstention: the door stays shut.
-        with patch.object(route, "_coach_state_map", lambda *_a, **_k: {
-                snippet_id: {"rating_value": None, "rating_unrateable": True}}):
-            with app.test_request_context("/v2/x"):
-                request.user_id = "coach-1"
-                response, status = route.v2_coach_moment_read.__wrapped__(
-                    session_id, snippet_id)
-        assert status == 409
-        read.assert_not_called()
+        assert body["code"] == "BLIND_RATING_REQUIRED"
+        assert "heard" not in body
+        assert db.reads == []  # nothing about the moment was read
+
+
+def test_after_my_rating_the_read_says_what_was_heard_in_words():
+    db = _Db(rating={"value": "in_between"},
+             suggestion={"kind": "replace", "trigger": "stickiness",
+                         "stickiness_pct": 12})
+    status, body = _read(db)
+    assert status == 200
+    assert body["coach_answer"] == "in_between"
+    assert body["heard"] == [{"kind": "reason", "key": "weak_slide_fit_read"}]
+    assert not re.search(r"\d", json.dumps(body["heard"]))
+
+
+def test_heard_names_what_the_machine_heard_for_each_kind():
+    db = _Db()
+    error = {"answer_kind": "error", "observed_tags": ["rushing"]}
+    assert machine_heard(db, error, SNIPPET) == [
+        {"kind": "error", "key": "rushing", "label": "Rushing"}]
+
+    db.suggestion = {"kind": "emphasize", "cue_keys": ["wide_range", "z=1.7"]}
+    assert machine_heard(db, {"answer_kind": "praise"}, SNIPPET) == [
+        {"kind": "cue", "key": "wide_range"}]
+
+    db.suggestion = {"kind": "replace", "trigger": "unconfident"}
+    assert machine_heard(db, {"answer_kind": "rewrite"}, SNIPPET) == [
+        {"kind": "reason", "key": "weak_delivery_read"}]
+
+    db.suggestion = {"kind": "delivery", "cue_keys": ["kept_moving"]}
+    ambiguity = {"answer_kind": "ambiguity", "observed_tags": ["rushing"]}
+    assert machine_heard(db, ambiguity, SNIPPET) == [
+        {"kind": "error", "key": "rushing", "label": "Rushing"},
+        {"kind": "cue", "key": "kept_moving"}]
+
+    db.suggestion = None
+    assert machine_heard(db, None, SNIPPET) == [{"kind": "nothing", "key": "nothing"}]

@@ -1,38 +1,26 @@
-"""The blind-label chain, end to end, on a disposable database (G-6 part 2).
-
-What is rehearsed, in one rolled-back transaction on the released lane: a
-Take promoted through the atomic producer RPC lands on the confidence outbox;
-the worker claims it, the foundation frame factory builds the frame from the
-Take's snippet rows, and ``finalize_mlc2_confidence_frame_v1`` accepts it —
-one candidate set, one evidence span per snippet with the snippet's exact
-offsets on the Take's own R2 object, one machine prediction per eligible
-clip, exactly one selected candidate; a replay changes nothing; a blind
-packet built from the selected candidate carries no transcript, prediction,
-score, rank or selection hint; and the slice-4 health function reports a
-safe state throughout.
-
-What is NOT rehearsed here, and why: the D5 coach batch joins the stored
-span to an exercise audio lineage through ``exercise_evidence_matches_audio_v1``,
-whose lineage row needs a Phase-1 authorization snapshot (policy, receipt,
-purpose), a learning profile and an exercise-service authority check. That
-join is not executed. What is asserted is narrower: the stored span's
-coordinates equal the snippet's offsets, and the stored object's store,
-bucket, key, sha256 and byte size equal the source manifest. The join
-additionally requires those to equal the Phase-1 registered
-``processing_audio_objects`` row and the lineage's own hash, which this
-suite does not seed. Rehearsing the join is a follow-up that seeds the
-Phase-1 chain.
-
-Since 0430 (founder 2026-10-05, N48.5 Q27 A) the owner enters the chain by
-the training yes alone: the fixture records it through the one training
-writer, and an owner holding only a bundled-era grant is refused (N2,
-N10.6). The coach card's judgement is read back through
-``get_mlc2_blind_coach_ratings_v1``, the training-corpus copy job's source.
-
-Nothing here changes any application flag: the RPCs are invoked directly,
-exactly as ``tests/integration/mlc2_confidence_slice4_rehearsal.sql`` does,
-and everything rolls back. The database name must start with
-``willab_confident_moment_``.
+"""
+STORY    As the founder, I want a Take promoted with a training yes to flow to
+         one finalized confidence frame with exact spans, one selected
+         candidate, a replay that changes nothing and a blind packet with no
+         hints, so that the training corpus is consented, exact and blind.
+OUTCOME
+  O1  One Take, one producer receipt and one outbox event per promotion.
+  O2  The worker's frame is accepted: one candidate per snippet, each span
+      the snippet's exact offsets on the Take's own audio object, one
+      prediction per eligible clip, exactly one selected candidate.
+  O3  A replay of the same event changes nothing and the health check
+      reports no processed event without its frame.
+  O4  The coach's blind packet carries the clip and the five answers and no
+      transcript, prediction, score, rank or selection hint (Never-2: no
+      coach sees the machine's guess before answering).
+  O5  An owner without a training yes is refused and the promotion rolls back.
+PROVES   O1 -> test_the_take_and_its_receipt_and_event_exist_once
+         O2 -> test_the_frame_holds_every_snippet_at_its_exact_span
+         O3 -> test_a_replay_changes_nothing_and_health_is_safe
+         O4 -> test_the_coach_packet_is_the_clip_and_the_answers_only
+         O5 -> test_an_owner_without_a_grant_is_refused_and_the_take_promotion_rolls_back
+WHY      G-6 part 2; runs in one rolled-back transaction on a database whose
+         name starts with ``willab_confident_moment_`` (rehearsal tier only).
 """
 from __future__ import annotations
 
@@ -278,11 +266,9 @@ def chain(conn):
     }
 
 
-class TestThePromotionFreezesTheConsentSnapshot:
-    """0392 (Q1), read through 0430: a second attempt of the same owner
-    promotes with no pre-made snapshot, and the promotion takes one from the
-    training yes; an owner with no training yes is still refused, and the
-    refusal rolls the Take promotion back."""
+class TestThePromotionNeedsATrainingYes:
+    """0430: an owner with no training yes is refused, and the refusal rolls
+    the Take promotion back."""
 
     def _attempt(self, chain, owner, project, label):
         cur = chain["cur"]
@@ -335,3 +321,76 @@ class TestThePromotionReachesTheOutbox:
                       (chain["attempt"],)) == 1
         assert _count(cur, "SELECT count(*) FROM public.ml_outbox_events WHERE aggregate_id = %s",
                       (chain["attempt"],)) == 1
+
+
+def _frame(cur, candidate_set_id):
+    cur.execute(
+        "SELECT c.clip_id::text AS clip_id, c.eligible, c.selected, c.exclusion_reason_code, "
+        "c.machine_prediction_id, c.id::text AS candidate_id, e.coordinates, "
+        "o.bucket, o.object_key, o.sha256, o.byte_size "
+        "FROM public.ml_candidates c "
+        "JOIN public.ml_evidence_spans e ON e.id = c.evidence_span_id "
+        "JOIN public.ml_object_artifacts o ON o.id = e.object_artifact_id "
+        "WHERE c.candidate_set_id = %s ORDER BY (e.coordinates ->> 'start_ms')::int",
+        (candidate_set_id,))
+    return [dict(r) for r in cur.fetchall()]
+
+
+class TestTheWorkerFinalizesOneFrame:
+    def test_the_frame_holds_every_snippet_at_its_exact_span(self, chain):
+        result = chain["result"]
+        assert result["idempotent_replay"] is False
+        assert (result["pool_size"], result["eligible_count"],
+                result["excluded_count"], result["selected_count"]) == (5, 3, 2, 1)
+        rows = _frame(chain["cur"], chain["candidate_set_id"])
+        assert [r["clip_id"] for r in rows] == [s[0] for s in chain["snippets"]]
+        for row, (_sid, start, duration, _m) in zip(rows, chain["snippets"]):
+            assert row["coordinates"] == {"start_ms": start, "end_ms": start + duration}
+            assert (row["bucket"], row["object_key"], row["sha256"], row["byte_size"]) == (
+                BUCKET, OBJECT_KEY, OBJECT_SHA, OBJECT_BYTES)
+        assert [r["exclusion_reason_code"] for r in rows] == [
+            None, None, None, "audio_too_short", "no_confidence_read"]
+        assert [r["machine_prediction_id"] is not None for r in rows] == [
+            True, True, True, False, False]
+        assert sum(r["selected"] for r in rows) == 1
+        assert all(r["eligible"] for r in rows if r["selected"])
+
+    def test_a_replay_changes_nothing_and_health_is_safe(self, chain):
+        cur = chain["cur"]
+        before = _count(cur, "SELECT count(*) FROM public.ml_candidates WHERE candidate_set_id = %s",
+                        (chain["candidate_set_id"],))
+        replay = chain["worker"].process_claimed(chain["claimed"], worker_id=chain["worker_id"])
+        assert replay["idempotent_replay"] is True
+        assert str(replay["candidate_set_id"]) == str(chain["candidate_set_id"])
+        assert replay["immutable_pool_sha256"] == chain["result"]["immutable_pool_sha256"]
+        assert _count(cur, "SELECT count(*) FROM public.ml_candidates WHERE candidate_set_id = %s",
+                      (chain["candidate_set_id"],)) == before == 5
+        health = _Client(cur).rpc("get_mlc2_confidence_slice4_health_v1", {}).execute().data
+        assert health["processed_without_frame_count"] == 0
+        assert health["receipt_without_outbox_count"] == 0
+
+
+class TestTheCoachPacketIsBlind:
+    def test_the_coach_packet_is_the_clip_and_the_answers_only(self, chain):
+        cur = chain["cur"]
+        selected = next(r for r in _frame(cur, chain["candidate_set_id"]) if r["selected"])
+        out = _one(cur, "SELECT public.create_mlc2_confidence_blind_packet_v1(%s, %s, 'coach', "
+                        "'conf-q-v2', 'blind-confidence-v1', 'canary', %s) AS out",
+                   (selected["candidate_id"], chain["reviewer"], f"g6-packet-{chain['tag']}"))["out"]
+        packet = out["visible_packet"]
+        # What the coach gets: the exact clip and the five answers.
+        assert packet["clip"]["clip_id"] == selected["clip_id"]
+        assert (packet["clip"]["start_ms"], packet["clip"]["end_ms"]) == (
+            selected["coordinates"]["start_ms"], selected["coordinates"]["end_ms"])
+        assert packet["taxonomy"]["choices"] == [
+            "rating_yes", "rating_in_between", "rating_no",
+            "rating_not_sure", "rating_audio_unclear"]
+        # What the coach must not get: the machine's guess or any hint of it.
+        flat = json.dumps(packet)
+        for hint in ("transcript", "text", "prediction", "predicted", "score", "rank",
+                     "selected", "selection", "sampling", "rng", "probability",
+                     "confident", "label", "judgment"):
+            assert hint not in flat, hint
+        assert set(packet) == {"packet_version", "clip", "taxonomy"}
+        assert set(packet["clip"]) == {"clip_id", "audio_object_id", "audio_sha256",
+                                       "start_ms", "end_ms"}
