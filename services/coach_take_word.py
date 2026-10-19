@@ -101,10 +101,11 @@ def _the_pair(database: Any, row: dict, *, coach_id: str, text: Optional[str],
         )
         settle(database, row, final=text)
         record_take_word_pair(database, word_row=row, coach_id=coach_id, final_text=text)
-        if not row.get("transcript"):
-            # No video, a new one not yet transcribed (the save cleared the
-            # old words), or a kept one with no words yet: no video's words
-            # teach (0477).
+        if not row.get("transcript") and (new_video or not row.get("video_ref")):
+            # No video, or a new one not yet transcribed (the save cleared the
+            # old words): no video's words teach (0477). A kept video is left
+            # alone: its words may be landing right now, and no one sends it
+            # to the transcriber again.
             record_take_word_pair(database, word_row=row, coach_id=coach_id,
                                   final_text=None, final_kind="transcript")
         # Only a save that brings a video sends it to the transcriber: a
