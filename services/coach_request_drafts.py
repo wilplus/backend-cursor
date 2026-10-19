@@ -7,6 +7,9 @@ clearer version of the passage for a rewrite. An ambiguity has no draft:
 there the coach's own judgement is the whole answer. The draft is shown to
 the coach only, stored on the request row so the final can be paired with
 it (services.feedback_pairs), and never reaches the speaker as drafted.
+Every draft is also kept, with what its prompt was given and the hash of
+the exact text sent, in coach_draft_history (0479, N79;
+services.coach_draft_history), and the row's ``draft_prompt`` names it.
 
 The draft never blocks anything: a provider that does not answer returns
 503 and the coach writes by hand, and the answer still resolves the request.
@@ -35,6 +38,9 @@ _SYSTEM = {
     "clearer_version": CLEARER_VERSION_SYSTEM,
 }
 _MAX_PASSAGE = 1200
+#: The prompt family an answer draft's kept snapshot names
+#: (services.prompts.coach_answer_drafts).
+PROMPT_FAMILY = "coach_answer_drafts"
 
 
 def surface_for(request: Any) -> Optional[str]:
@@ -46,22 +52,25 @@ def compose_draft(*, surface: str, passage: str, spotted: list[str],
                   kind: str, notes: Optional[str] = None,
                   user_id: Optional[str] = None) -> Optional[dict]:
     """The one model call, pure of any database: ``{"text", "model_version"}``
-    or None when the provider gave nothing. The golden evals call this."""
+    and the exact ``system``, ``user`` and ``passage`` it sent, or None when
+    the provider gave nothing. The golden evals call this and read the
+    text."""
     from services.llm import chat_complete
     from services.llm_config import SPEC_COACH_ANSWER_DRAFT
     system = _SYSTEM.get(surface)
     passage = " ".join(str(passage or "").split())[:_MAX_PASSAGE]
     if system is None or not passage:
         return None
+    sent = user(surface=surface, passage=passage, spotted=list(spotted or []),
+                kind=kind, notes=notes)
     result = chat_complete(
-        spec=SPEC_COACH_ANSWER_DRAFT, system=system,
-        user=user(surface=surface, passage=passage, spotted=list(spotted or []),
-                  kind=kind, notes=notes),
+        spec=SPEC_COACH_ANSWER_DRAFT, system=system, user=sent,
         surface=surface, user_id=user_id)
     text = str(getattr(result, "text", "") or "").strip()
     if not text:
         return None
-    return {"text": text, "model_version": str(getattr(result, "model", "") or "")}
+    return {"text": text, "model_version": str(getattr(result, "model", "") or ""),
+            "system": system, "user": sent, "passage": passage}
 
 
 def _passage(database: Any, request: dict) -> str:
@@ -92,7 +101,9 @@ def changed_by_another_coach(request: Any, coach_id: Any) -> bool:
 def draft_for_request(database: Any, request: dict, body: Any, *,
                       coach_id: str) -> tuple[int, dict]:
     """POST .../exercise-request/draft: write the draft, keep it on the row,
-    return it to the coach. A second call re-drafts and replaces it."""
+    return it to the coach. A second call re-drafts and replaces it on the
+    row; every draft stays in coach_draft_history with what its prompt was
+    given (0479)."""
     if not isinstance(request, dict) or not request.get("id"):
         return 404, {"code": "NOT_FOUND", "error": "No request for this moment."}
     if changed_by_another_coach(request, coach_id):
@@ -107,25 +118,48 @@ def draft_for_request(database: Any, request: dict, body: Any, *,
     if not passage:
         return 409, {"code": "NO_PASSAGE",
                      "error": "This moment has no transcript to draft from."}
-    draft = compose_draft(
-        surface=surface, passage=passage, spotted=_spotted(database, request),
-        kind=str(request.get("kind") or "error"),
-        notes=str(fields.get("notes") or "").strip() or None, user_id=coach_id)
+    spotted = _spotted(database, request)
+    kind = str(request.get("kind") or "error")
+    notes = str(fields.get("notes") or "").strip() or None
+    draft = compose_draft(surface=surface, passage=passage, spotted=spotted,
+                          kind=kind, notes=notes, user_id=coach_id)
     if draft is None:
         return 503, {"code": "DRAFT_UNAVAILABLE",
                      "error": "A draft could not be written right now."}
+    from services.coach_draft_history import keep, new_draft_id
+    draft_id = new_draft_id()
+    inputs = {"passage_text": draft["passage"], "kind": kind, "spotted": spotted,
+              "spotted_tags": [str(t) for t in request.get("observed_tags") or []],
+              "notes": notes}
     keeper = getattr(database, "set_exercise_coach_request_draft", None)
     stored = None
     if keeper is not None:
         try:
             stored = keeper(request_id=str(request["id"]), surface=surface,
-                            text=draft["text"], model_version=draft["model_version"])
+                            text=draft["text"], model_version=draft["model_version"],
+                            prompt=prompt_snapshot(inputs, draft_id=draft_id))
         except Exception as e:  # noqa: BLE001 -- the draft still shows
             _log.warning("coach request draft not kept id=%s: %s", request["id"], e,
                          exc_info=True)
+    keep(database, draft_id=draft_id, surface=surface, prompt_family=PROMPT_FAMILY,
+         coach_id=coach_id, draft=draft, inputs=inputs,
+         take_session_id=request.get("take_session_id"),
+         owner_user_id=request.get("owner_user_id"),
+         snippet_id=request.get("snippet_id"), request_id=request["id"])
     return 200, {"draft": {"surface": surface, "text": draft["text"],
                            "model_version": draft["model_version"],
                            "kept": isinstance(stored, dict)}}
+
+
+def prompt_snapshot(inputs: dict, *, draft_id: str) -> dict:
+    """What an answer draft's prompt was given, kept on the request row
+    (``draft_prompt``): {passage_text, prompt_context, draft_id}. Capture
+    only: the answer surfaces' pairs still take their passage from the clip
+    (services.feedback_pairs), and no reader rebuilds a prompt from it yet."""
+    context = {key: inputs.get(key) for key in ("kind", "spotted", "spotted_tags", "notes")}
+    return {"passage_text": inputs.get("passage_text"),
+            "prompt_context": {"prompt": PROMPT_FAMILY, **context},
+            "draft_id": str(draft_id)}
 
 
 def draft_on(request: Any) -> Optional[dict]:

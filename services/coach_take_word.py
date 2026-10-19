@@ -79,12 +79,16 @@ def save_take_word(database: Any, *, take_session_id: str, coach_id: str,
 
 def _the_pair(database: Any, row: dict, *, coach_id: str, text: Optional[str]) -> None:
     """7 (C5-a, 0411): when a draft was shown and the coach's words differ,
-    the (draft, final) pair; a video's transcript is a second final. Both
-    best-effort; the word is saved either way."""
+    the (draft, final) pair; a video's transcript is a second final. The
+    draft the row carries is settled in coach_draft_history (0479): whether
+    the saved words are that draft as written. All best-effort; the word is
+    saved either way."""
     try:
+        from services.coach_draft_history import settle
         from services.coach_word_pairs import (
             record_take_word_pair, transcribe_take_word_video_in_background,
         )
+        settle(database, row, final=text)
         record_take_word_pair(database, word_row=row, coach_id=coach_id, final_text=text)
         if not row.get("transcript"):
             # No video, or a new one not yet transcribed (the save cleared

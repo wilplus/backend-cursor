@@ -349,13 +349,19 @@ def _record_pairs(database: Any, request: dict, resolved: dict, fields: dict,
         snippet_id=request.get("snippet_id"),
         exercise_id=(exercise or {}).get("exercise_id") if exercise else None,
         exercise_version=(int(exercise.get("version") or 1) if exercise else None))
-    final = (resolved.get("answer_text") if resolution in WORD_RESOLUTIONS
-             else (exercise or {}).get("instruction"))
+    final = _final_of(resolved, resolution, exercise)
     record_pair(database, final=final, request_id=str(request.get("id")), **common)
     if authored:
         transcript = _version_transcript(database, exercise)
         if transcript:
             record_pair(database, final=transcript, final_kind="transcript", **common)
+
+
+def _final_of(resolved: dict, resolution: str, exercise: Optional[dict]) -> Any:
+    """The coach's final words for this answer: what they wrote, or the
+    instruction of the exercise it resolved to."""
+    return (resolved.get("answer_text") if resolution in WORD_RESOLUTIONS
+            else (exercise or {}).get("instruction"))
 
 
 def answer_unchanged(previous: Any, resolved: Any) -> bool:
@@ -389,15 +395,20 @@ def _file_answer(database: Any, request: dict, resolved: dict, fields: dict,
     * a praise line lands in the catalogue of signed lines as the newest
       version for the moment's pattern (35f; P2-3) unless the coach says
       ``file_in_catalogue: false``. A clearer version never does: it is one
-      speaker's passage, not a move for every rewrite (Q-B13 A).
+      speaker's passage, not a move for every rewrite (Q-B13 A);
+    * the draft the row carries is settled in coach_draft_history (0479):
+      whether this answer is that draft as written. Every save settles it,
+      a repeated one too, so a re-draft answered the same way is recorded.
 
     ``previous`` is the request row as it was before this answer (0446): an
-    answer that repeats it files nothing again (no duplicate praise), a
+    answer that repeats it files nothing else again (no duplicate praise), a
     changed praise line files its new words as the next version.
     """
+    resolution = str(resolved.get("resolution") or "")
+    from services.coach_draft_history import settle
+    settle(database, request, final=_final_of(resolved, resolution, exercise))
     if answer_unchanged(previous, resolved):
         return
-    resolution = str(resolved.get("resolution") or "")
     if resolution == "note_written":
         # 7 (C5-a, 0411): the personal line is a pair surface of its own.
         from services.coach_word_pairs import record_moment_line_pair
