@@ -1,26 +1,34 @@
-"""The pipeline and the assembler name their fallbacks (audit Q-C1, Phase 5).
-
-Three writers used to swallow their best-effort stages into log lines:
-the full-analysis worker, the eager assembler and the job runner that
-serves the job row. Each now runs those stages through one
-``DegradationLog``; a healthy run is byte-identical to before, and a run
-that fell back says which stage did, by name and exception class only.
+"""
+STORY    As a speaker, I want my Take to open as soon as it is ready, and any
+         skipped step to be named, so that I am never stuck and problems are
+         visible. (Record -> process -> Ideal Text.)
+OUTCOME
+  O1  The job flips the session to 'ready' before the job itself finishes.
+  O2  A healthy job keeps its result shape (no 'degraded' key); a job whose
+      run fell back carries the stage names, never messages.
+  O3  The Ideal Text assembler saves the text even when a trailing stage
+      fails, and names that stage; a healthy assembly names nothing.
+  O4  When the whole assembly fails it returns False, saves nothing, and
+      says so by name.
+PROVES   O1 -> test_the_job_tells_the_speaker_ready_before_it_finishes
+         O2 -> test_a_healthy_job_result_is_the_old_shape
+               test_a_job_that_fell_back_names_the_stage
+         O3 -> test_a_failed_trailing_stage_still_saves_the_ideal_text
+         O4 -> test_the_whole_assembly_failing_is_false_and_named
+WHY      Audit Q-C1: best-effort stages were swallowed into log lines. The
+         analysis worker's own stages are pinned in tests/test_analysis_worker.py.
 """
 from __future__ import annotations
 
 from unittest.mock import patch
+
+import pytest
 
 from services.degradation import DegradationLog
 
 SID = "77777777-7777-4777-8777-777777777777"
 REC = "88888888-8888-4888-8888-888888888888"
 ARC = "arc-1"
-
-
-# ── the worker ────────────────────────────────────────────────────────────
-
-
-# ── the confirmation builder ──────────────────────────────────────────────
 
 
 # ── the assembler ─────────────────────────────────────────────────────────
@@ -80,6 +88,19 @@ def _assemble(db, *, auto=None, degradation=None):
                       return_value=auto):
         return mod.maybe_assemble_ideal_text(
             ARC, database=db, require_target=False, degradation=degradation)
+
+
+@pytest.mark.parametrize("boom, named", [
+    ((), []),
+    (("upsert_ideal_text_version",),
+     [{"stage": "ideal_text.assembly.version_snapshot", "kind": "RuntimeError"}]),
+])
+def test_a_failed_trailing_stage_still_saves_the_ideal_text(boom, named):
+    log = DegradationLog("ideal_text")
+    db = _AssemblerDb(boom=boom)
+    assert _assemble(db, degradation=log) is True
+    assert db.persisted == "assembled block"
+    assert [d.as_payload() for d in log.items] == named
 
 
 def test_the_whole_assembly_failing_is_false_and_named():
@@ -161,7 +182,17 @@ def test_a_healthy_job_result_is_the_old_shape():
 
     assert _run_job(fake_run) == {"snippet_count": 2, "sent_to_coach": True}
     assert isinstance(seen["degradation"], DegradationLog)
-    assert seen["degradation"].path == "take_analysis"
+
+
+def test_a_job_that_fell_back_names_the_stage():
+    def fake_run(**kwargs):
+        kwargs["degradation"].record("cadence", ValueError("secret provider text"))
+        return {"snippets": [1]}, True
+
+    result = _run_job(fake_run)
+    assert result["snippet_count"] == 1
+    assert result["degraded"] == [{"stage": "take_analysis.cadence", "kind": "ValueError"}]
+    assert "secret provider text" not in str(result)
 
 
 def test_the_job_tells_the_speaker_ready_before_it_finishes():

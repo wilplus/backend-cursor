@@ -12,7 +12,9 @@ promotion bar flips nothing; the learned detector refuses to train.
 """
 from __future__ import annotations
 
+import json
 import random
+import re
 import unittest
 from unittest.mock import patch
 
@@ -185,6 +187,28 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(epa.answer(db, coach_id="c", audit_id=audit_id, body={"answer": "no"})[0], 409)
         self.assertEqual(epa.answer(db, coach_id="c", audit_id=audit_id, body={"answer": "maybe"})[0], 400)
 
+
+# Incident: a Take has one frame per policy version sharing block ids, and an
+# insert refused by coach_block_pick_once (a 500) emptied the coach's queue.
+@patch("services.pair_consent.take_may_reach_a_coach_sheet", lambda db, take: True)
+def test_a_refused_block_pick_is_skipped_and_the_rest_are_written():
+    from services import coach_block_pick as bp
+    db = _Db()
+    frames = [f for f in _Db().list_recent_v3_frames(200) if f["take_session_id"] == "take-2"]
+    other = json.loads(re.sub(r'"s(\d)"', r'"t\1"', json.dumps(frames))
+                       .replace("take-2", "take-3").replace('"b1"', '"b3"'))
+    db.list_recent_v3_frames = lambda limit=200: frames + [
+        {**f, "policy_version": "v3-older"} for f in frames] + other
+    plain = db.insert_coach_block_pick
+
+    def once(row):
+        if row["take_session_id"] == "take-2":  # another writer got there first
+            raise RuntimeError("duplicate key value violates coach_block_pick_once")
+        return plain(row)
+
+    db.insert_coach_block_pick = once
+    written = bp.sample_for_coach(db, coach_id="coach-1", week="w", rng=random.Random(2))
+    assert [(w["take_session_id"], w["block_id"]) for w in written] == [("take-3", "b3")]
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

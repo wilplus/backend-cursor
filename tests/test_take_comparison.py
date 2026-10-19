@@ -1,11 +1,21 @@
-"""Paid Audits — take-1-vs-take-2 comparison (BE chunk A6). Pure (fake db).
-
-Run: python3 -m unittest tests.test_take_comparison
+"""
+STORY    As a speaker who bought a paid audit, I want the Take 1 vs Take 2
+         comparison to describe what changed in words only, so that I never
+         see a score or verdict.
+OUTCOME
+  O1  The comparison names the real difference (a wider pitch range reads
+      "widened") and no verdict word ("better", "improved", "score" ...).
+  O2  Never-1: the comparison carries no measurement numbers.
+PROVES   O1 -> test_names_what_changed_without_a_verdict
+         O2 -> test_no_measurement_numbers_reach_the_speaker (KNOWN BREACH,
+               strict xfail: turns red once fixed)
 """
 from __future__ import annotations
 
 import json
 import unittest
+
+import pytest
 
 from services.take_comparison import build_take_comparison
 
@@ -55,12 +65,34 @@ class TakeComparisonTests(unittest.TestCase):
         return _FakeDB(sessions, snips)
 
 
-    def test_no_verdict_vocabulary_serialized(self):
-        # The whole point of D8: the teaser must never leak a score/verdict word.
+    def test_names_what_changed_without_a_verdict(self):
         out = build_take_comparison("arc1", database=self._two_takes())
+        self.assertEqual(out["comparison"]["f0_range"], "widened")
         blob = json.dumps(out).lower()
         for word in _VERDICT_DENYLIST:
             self.assertNotIn(word, blob, f"leaked verdict word: {word}")
+
+    @pytest.mark.xfail(strict=True, reason=(
+        "KNOWN BREACH Never-1: GET /v2/explore/arc/<id>/take-comparison "
+        "(routes/v2/arcs.py v2_explore_arc_take_comparison) serves raw Hz, "
+        "wpm, pause-ms values and their deltas from "
+        "services/take_comparison.py build_take_comparison to the speaker"))
+    def test_no_measurement_numbers_reach_the_speaker(self):
+        out = build_take_comparison("arc1", database=self._two_takes())
+        self.assertEqual(out["comparison"]["f0_range"], "widened")
+
+        def numbers(node, key=None):
+            if isinstance(node, dict):
+                for k, v in node.items():
+                    yield from numbers(v, k)
+            elif isinstance(node, list):
+                for v in node:
+                    yield from numbers(v, key)
+            elif (isinstance(node, (int, float)) and not isinstance(node, bool)
+                  and key != "take_index"):
+                yield key, node
+
+        self.assertEqual(list(numbers(out)), [])
 
 
 if __name__ == "__main__":

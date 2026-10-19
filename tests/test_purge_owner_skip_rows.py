@@ -1,85 +1,41 @@
-"""A speaker's skip rows are kept as an empty receipt (N12).
+"""
+STORY    As a speaker deleting my account, I want my "skip" answers emptied
+         but kept as a receipt, so that my erasure finishes instead of
+         stalling (deletion).
+OUTCOME
+  O1  An account erasure finds my skip rows by my user id (not my
+      principal) and files them as a tombstone under the deletion-evidence
+      rule; someone else's skips and coaches' rows are not counted.
+  O2  A coach's own rows in the same table still stop that coach's account
+      erasure for review.
+  O3  A project erasure leaves my skip rows to the wipe of the project's
+      evidence spans: it neither counts them nor stops on them.
+PROVES   O1 -> test_an_account_erasure_keeps_my_skips_as_a_receipt
+         O2 -> test_a_coachs_rows_still_stop_the_coachs_erasure
+         O3 -> test_a_project_erasure_leaves_my_skips_to_the_parent_wipe
+WHY      Rehearsed 2026-10-08: the erasure stalled on these rows after
+         deleting everything else (founder Q1-Q4, "empty receipt", 0448).
 
-record_root_phrase_skip_v1 writes feedback_revisions rows with
-rater_role='owner', rater_id = the speaker's USER id and
-acquisition_principal_id NULL. The two older entries address that table by
-principal, and an owner principal's id is its own random UUID, never the
-user's, so an account purge counted none of these rows. The lineage wipe
-then raised on them (the table's guard refuses every UPDATE since 0327) and
-the erasure stalled after deleting everything else (rehearsed 2026-10-08).
-
-Founder 2026-10-08 (decision tree Q1/Q2) first made such a row stop the
-deletion for review; Q3/Q4 (YES, "empty receipt") then had 0448 give the
-table a guard that lets the wipe empty an owner row's payload. Pins:
-  * `feedback_revision_owner_raters` reaches the rows by the `user` locator
-    and is a tombstone under the deletion-evidence rule, wiped by the
-    lineage function (feedback_revisions is a lineage tombstone);
-  * an account purge whose principal id is not its user id counts them as a
-    tombstone target, not an unknown one, and does not count a coach's rows,
-    which name a principal (those still stop the inventory);
-  * a project purge leaves them to the wipe of the project's evidence spans
-    (WIPED_WITH_PARENT), not to the account-wide stop.
-tests/test_a_skip_keeps_an_empty_receipt_postgres.py proves the wipe on the
-real schema.
+Python orchestrator only (build_inventory), over the in-memory `PurgeDb` of
+tests/test_purge_user_locators.py. The wipe itself is proved on the real
+schema by tests/test_a_skip_keeps_an_empty_receipt_postgres.py.
 """
 from __future__ import annotations
 
-from types import SimpleNamespace
-
-from services.data_purge import DataPurgeOrchestrator, SubjectGraph
+from services.data_purge import SubjectGraph
 from services.data_purge_project_scope import ProjectPurgeOrchestrator
-from services.data_purge_registry import dependency_by_code
+from tests.test_purge_user_locators import PurgeDb, inventory
 
-CODE = "feedback_revision_owner_raters"
-
-#: A real account: its owner principal's id is not its user id.
-ACCOUNT = SubjectGraph(principal_ids=("principal-1",), user_ids=("user-1",))
-
-
-class _Query:
-    """One PostgREST read on an in-memory table, filtered by eq/in_."""
-
-    def __init__(self, rows: list[dict]) -> None:
-        self._rows = rows
-        self._filters: list[tuple[str, set[str]]] = []
-
-    def select(self, _columns):
-        return self
-
-    def eq(self, column, value):
-        self._filters.append((column, {str(value)}))
-        return self
-
-    def in_(self, column, values):
-        self._filters.append((column, {str(value) for value in values}))
-        return self
-
-    def range(self, _start, _end):
-        return self
-
-    def execute(self):
-        return SimpleNamespace(data=[
-            row for row in self._rows
-            if all(str(row.get(column)) in wanted
-                   for column, wanted in self._filters)])
+SKIPS = "dependency:feedback_revision_owner_raters"
+COACH_ROWS = "dependency:feedback_revision_reviewers"
+RULES = [{"id": "rule-1", "rule_code": "deletion-evidence",
+          "evidence_category": "deletion_evidence", "active": True}]
 
 
-class _Client:
-    def __init__(self, rows: list[dict]) -> None:
-        self.rows = rows
-
-    def table(self, name):
-        if name == "data_retention_rules":
-            return _Query([{"id": "rule-1", "rule_code": "deletion-evidence",
-                            "evidence_category": "deletion_evidence",
-                            "active": True}])
-        assert name == "feedback_revisions", name
-        return _Query(self.rows)
-
-
-def _rows():
-    return [
-        # The speaker's skips: their user id, no acquisition principal.
+def _tables():
+    return {"data_retention_rules": RULES, "feedback_revisions": [
+        # The speaker's skips: their user id, no acquisition principal
+        # (record_root_phrase_skip_v1).
         {"id": "skip-1", "rater_role": "owner", "rater_id": "user-1",
          "acquisition_principal_id": None},
         {"id": "skip-2", "rater_role": "owner", "rater_id": "user-1",
@@ -90,29 +46,38 @@ def _rows():
         # Someone else's skip.
         {"id": "skip-x", "rater_role": "owner", "rater_id": "user-2",
          "acquisition_principal_id": None},
-    ]
+    ]}
 
 
-def _target(cls, graph, code=CODE):
-    orchestrator = cls(SimpleNamespace(client=_Client(_rows())))
-    if cls is ProjectPurgeOrchestrator:
-        orchestrator._principal_id = "principal-1"
-        orchestrator._account_graph = ACCOUNT
-    dependency = dependency_by_code(code)
-    assert dependency is not None
-    return orchestrator._dependency_target(
-        dependency, graph,
-        frozenset({"feedback_revisions", "data_retention_rules"}))
+def test_an_account_erasure_keeps_my_skips_as_a_receipt():
+    targets = inventory(PurgeDb(_tables()))
+
+    skips = targets[SKIPS]
+    assert skips.initial_match_count == 2
+    assert skips.metadata["disposition"] == "tombstone"
+    assert skips.metadata["retention_rule_id"] == "rule-1"
+    assert skips.metadata["locator_values"] == ["user-1"]
+    assert "reason_code" not in skips.metadata
+    # Nothing of this table stops the erasure.
+    assert targets[COACH_ROWS].initial_match_count == 0
+    assert not [t for t in targets.values() if t.target_kind == "unknown"]
 
 
-def test_an_account_purge_keeps_them_as_a_receipt():
-    target = _target(DataPurgeOrchestrator, ACCOUNT)
+def test_a_coachs_rows_still_stop_the_coachs_erasure():
+    coach = SubjectGraph(principal_ids=("principal-9",), user_ids=("user-9",))
 
-    assert target is not None
-    assert target.target_kind == "derived_feedback"
-    assert target.target_ref == f"dependency:{CODE}"
-    assert target.initial_match_count == 2
-    assert target.metadata["disposition"] == "tombstone"
-    assert target.metadata["retention_rule_id"] == "rule-1"
-    assert target.metadata["locator_values"] == ["user-1"]
-    assert "reason_code" not in target.metadata
+    targets = inventory(PurgeDb(_tables(), account=coach))
+
+    assert targets[COACH_ROWS].target_kind == "unknown"
+    assert targets[COACH_ROWS].metadata["reason_code"] == "EXPLICIT_RESOLVER_REQUIRED"
+    assert targets[SKIPS].initial_match_count == 0
+
+
+def test_a_project_erasure_leaves_my_skips_to_the_parent_wipe():
+    targets = inventory(PurgeDb(_tables(), kind="project_deletion"),
+                        ProjectPurgeOrchestrator)
+
+    skips = targets[SKIPS]
+    assert skips.initial_match_count == 0
+    assert "reason_code" not in skips.metadata
+    assert not [t for t in targets.values() if t.target_kind == "unknown"]

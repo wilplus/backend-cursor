@@ -106,8 +106,10 @@ was not practical").
 New with this lock (locked with the screens): **Take N · Slide n of m** in
 the top bar. Signed 2026-10-12 (N70): **Back** and **Next slide**; **Finish
 take** keeps its word. **Scroll down to start** and **Click down to start**
-are retired with the learning screen. Every other word on these screens is
-today's, unchanged.
+are retired with the learning screen. Signed 2026-10-18: **Same
+presentation as Take 1** and **Same stand-in presentation as Take 1**, the
+line under **Getting your mic ready** before a later Take. Every other word
+on these screens is today's, unchanged.
 
 The prototype's three slides are its own stand-in deck ("Introduce your
 subject", "Make your main points", "Sum it up", navy, orange and dark
@@ -140,3 +142,14 @@ green); the app shows the speaker's own slides, unchanged.
 - **2026-10-12 · the arrow keys (N70.1).** ← → change the slide; keys never
   end a Take; a focused button keeps Space and Enter. Prototype
   <https://claude.ai/artifact/LU1XgQyqY2nPSvDAmsRJFo> (version 2).
+- **2026-10-18 · which presentation a later Take uses.** Founder's Linear
+  issue "Second take falls back to the first take's presentation"
+  (2026-10-16): every Take is said against Take 1's presentation (the
+  uploaded file, or the stand-in deck Take 1 used), and the speaker sees
+  which one before recording. Before every Take after the first, one line
+  in the same small grey sits directly under **Getting your mic ready**:
+  **Same presentation as Take 1** when Take 1 had the speaker's file,
+  **Same stand-in presentation as Take 1** when it used the stand-in deck.
+  Nothing on Take 1, nothing else on the screen moves. Words and placement
+  chosen by the founder in chat, 2026-10-18, from the decision page
+  <https://claude.ai/artifact/JUwW4FfFzyUhgCpPrMAKjG>.

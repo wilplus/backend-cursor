@@ -23,16 +23,17 @@ from services import ai_voice_clip
 from services import confident_voice_practice as cvp
 from services.coach_message_read import coach_message_for
 from services.feedback_catalogue import decorate
-from tests.test_confident_voice_practice import V3ExerciseFitTests
+from tests.test_confident_voice_practice import MatchTraceTests
+from tests.test_confident_voice_practice import _Db as _LibraryDb
 
 RUSHING = {"insufficient_pauses": True}
 
 
-class _Db(V3ExerciseFitTests._Db):
+class _Db(_LibraryDb):
     """The catalogue, each speaker's own set and their Good jobs."""
 
     def __init__(self, rows, sets, rested=()):
-        super().__init__(rows, {})
+        super().__init__(rows)
         self._sets = sets
         self._rested = list(rested)
 
@@ -46,8 +47,8 @@ class _Db(V3ExerciseFitTests._Db):
 
 class WhichVideoTheAppPicks(unittest.TestCase):
 
-    _row = V3ExerciseFitTests._row
-    _offer = V3ExerciseFitTests._offer  # always for "owner-1"
+    _row = MatchTraceTests._row
+    _offer = MatchTraceTests._offer  # always for "owner-1"
 
     def _coach_video_for(self, owner, exercise_id="coach-request-a"):
         return {**self._row(exercise_id, ["rushing"], primary="rushing"),
@@ -105,7 +106,7 @@ class ACoachsVideoIsMadeForOneSpeaker(unittest.TestCase):
     def test_a_share_opens_on_a_moment_drawn_before(self):
         """A draw from before N77 names a library video the speaker no
         longer gets; the coach's own video shared for the moment opens."""
-        mine = {**V3ExerciseFitTests._row(
+        mine = {**MatchTraceTests._row(
             None, "coach-request-a", ["rushing"], primary="rushing"),
             "owner_user_id": "owner-1"}
 
@@ -145,7 +146,7 @@ class ACoachsVideoIsMadeForOneSpeaker(unittest.TestCase):
             def list_speaking_errors(self, *_a, **_k):
                 return [{"error_id": "rushing", "status": "detected"}]
 
-        body = {**V3ExerciseFitTests._row(
+        body = {**MatchTraceTests._row(
             None, "coach-request-a", ["rushing"], primary="rushing"),
             "active": True}
         with self.assertRaises(CatalogueRefusal) as refused:

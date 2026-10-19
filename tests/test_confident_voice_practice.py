@@ -1,4 +1,19 @@
-"""Confident Voice micro-practice: narrow eligibility and isolation fences."""
+"""
+STORY    As a speaker practising confident voice, I want my attempts and the
+         exercise offer to carry no scores, metrics or internal match trace,
+         and to be offered practice only on a clearly rushed moment, so that
+         practice feedback is in words only and fits what I did.
+OUTCOME
+  O1  Never-1: my attempt comes back with its audio and the assessment in
+      words, and no metrics, comparison or score.
+  O2  Never-1: the exercise offer names the exercise and carries no match
+      trace, candidates or detector signals.
+  O3  A rushed, compressed moment is eligible; the same passage at my usual
+      pace is not.
+PROVES   O1 -> test_user_attempt_shape_never_exposes_scores_or_metrics
+         O2 -> test_the_trace_never_reaches_the_speaker
+         O3 -> test_only_a_clearly_rushed_moment_is_eligible
+"""
 from __future__ import annotations
 
 import unittest
@@ -42,6 +57,13 @@ def _snippet(**over) -> dict:
 
 class PassageAndAssessmentTests(unittest.TestCase):
 
+    def test_only_a_clearly_rushed_moment_is_eligible(self):
+        rushed = cvp.exercise_eligibility(_snippet(), session_median_wpm=150.0)
+        self.assertTrue(rushed["eligible"])
+        calm = _snippet(words=_words(compressed=False))
+        calm["metrics"] = {**calm["metrics"], "wpm": 150.0}
+        steady = cvp.exercise_eligibility(calm, session_median_wpm=150.0)
+        self.assertFalse(steady["eligible"])
 
     def test_user_attempt_shape_never_exposes_scores_or_metrics(self):
         public = cvp.public_attempt({
@@ -50,84 +72,55 @@ class PassageAndAssessmentTests(unittest.TestCase):
             "acoustic_metrics": {"wpm": 999},
             "comparison": {"internal_strength": 999},
         })
+        self.assertEqual(public["audio_ref"], "a.webm")
+        self.assertEqual(public["assessment"],
+                         cvp.ASSESSMENT_COPY["clearer_less_rushed"])
         self.assertNotIn("acoustic_metrics", public)
         self.assertNotIn("comparison", public)
         self.assertNotIn("score", repr(public).casefold())
 
 
 class _Db:
-    def __init__(self, existing=None, supported_patterns=None):
-        self.existing = existing
-        self.supported_patterns = supported_patterns
-        self.snippets = {
-            "snippet-a": _snippet(id="snippet-a"),
-            "snippet-b": _snippet(id="snippet-b"),
-        }
+    """The exercise library and the assignment writer, in memory."""
 
-    def get_active_diagnostic_exercise(self, _exercise_id):
-        row = {
-            "exercise_id": cvp.EXERCISE_ID,
-            "version": 1,
-            "title": cvp.TITLE,
-            "instruction": cvp.INSTRUCTION,
-            "introduction_copy": cvp.INTRO_NEAR,
-            "confident_introduction_copy": cvp.INTRO_CONFIDENT,
-            "explanation_video_url": "https://example.com/coach.mp4",
-            # The seed row's claim (add_confident_voice_practice.sql). Without
-            # tags an exercise is never offered (D1, 2026-09-28).
-            "acoustic_problem_tags": [
-                "rushing", "word_compression", "ending_compression"],
-        }
-        if self.supported_patterns is not None:
-            row["supported_confidence_patterns"] = self.supported_patterns
-        return row
+    def __init__(self, rows):
+        self._rows = rows
+        self.assigned = []
+
+    def list_diagnostic_exercises(self):
+        return [{"exercise_id": r["exercise_id"]} for r in self._rows]
+
+    def get_active_diagnostic_exercise(self, exercise_id):
+        return next((dict(r) for r in self._rows
+                     if r["exercise_id"] == exercise_id), None)
+
+    def list_speaker_exercise_ids(self, _owner):
+        # The speaker's own set (N77): every row these tests hand in.
+        return {r["exercise_id"] for r in self._rows}
+
+    def list_speaking_errors(self):
+        return [{"error_id": e, "status": "detected"} for e in
+                ("rushing", "word_compression", "ending_compression")]
 
     def get_confident_voice_practice_by_take(self, _take):
-        return self.existing
+        return None
 
     def get_confident_voice_practice_candidates(self, ids):
-        return [self.snippets[i] for i in ids]
+        return [_snippet(id=i) for i in ids]
 
     def get_snippets_by_session(self, _take):
         return [{"metrics": {"wpm": 150.0}}]
 
+    def assign_confident_voice_exercise(self, **kwargs):
+        self.assigned.append(kwargs)
+        return {"selected_exercise_id": kwargs["candidates"][0]["exercise_id"]}
 
-if __name__ == "__main__":
-    unittest.main()
+    def completed_exercise_before(self, *_args):
+        return False
 
 
-class V3ExerciseFitTests(unittest.TestCase):
-    """The V3 lane under D1/D5/D6, end to end through the 80/20 call."""
-
-    class _Db(_Db):
-        def __init__(self, rows, signals):
-            super().__init__()
-            self._rows = rows
-            self.snippets["snippet-a"] = _snippet(id="snippet-a")
-            self._signals = signals
-            self.assigned = []
-
-        def list_diagnostic_exercises(self):
-            return [{"exercise_id": r["exercise_id"]} for r in self._rows]
-
-        def get_active_diagnostic_exercise(self, exercise_id):
-            return next((dict(r) for r in self._rows
-                         if r["exercise_id"] == exercise_id), None)
-
-        def list_speaker_exercise_ids(self, _owner):
-            # The speaker's own set (N77): every row these tests hand in.
-            return {r["exercise_id"] for r in self._rows}
-
-        def list_speaking_errors(self):
-            return [{"error_id": e, "status": "detected"} for e in
-                    ("rushing", "word_compression", "ending_compression")]
-
-        def assign_confident_voice_exercise(self, **kwargs):
-            self.assigned.append(kwargs)
-            return {"selected_exercise_id": kwargs["candidates"][0]["exercise_id"]}
-
-        def completed_exercise_before(self, *_args):
-            return False
+class MatchTraceTests(unittest.TestCase):
+    """Why an exercise was chosen is frozen with the draw, never shown."""
 
     def _row(self, exercise_id, tags, primary=None):
         criteria = {} if primary is None else {"primary_problem_tag": primary}
@@ -156,14 +149,6 @@ class V3ExerciseFitTests(unittest.TestCase):
             cvp.exercise_eligibility = original
         return rows[0].get("practice_exercise")
 
-
-class MatchTraceTests(unittest.TestCase):
-    """Why an exercise was chosen, frozen with the draw (step 2, 2026-09-28)."""
-
-    _Db = V3ExerciseFitTests._Db
-    _row = V3ExerciseFitTests._row
-    _offer = V3ExerciseFitTests._offer
-
     def _catalogue(self):
         return [
             self._row("exact", ["rushing"], primary="rushing"),
@@ -172,14 +157,16 @@ class MatchTraceTests(unittest.TestCase):
             self._row("elsewhere", ["ending_compression"]),
         ]
 
-    def _trace(self):
-        db = self._Db(self._catalogue(), {})
-        offer = self._offer(db, {"insufficient_pauses": True})
-        return offer, db.assigned[0]
-
-
     def test_the_trace_never_reaches_the_speaker(self):
-        offer, _ = self._trace()
+        db = _Db(self._catalogue())
+        offer = self._offer(db, {"insufficient_pauses": True})
+        # The trace was frozen with the draw; the offer names the exercise.
+        self.assertTrue(db.assigned)
+        self.assertEqual(offer["exercise_id"], "exact")
         text = repr(offer)
         for internal in ("trace", "candidates", "observed_tags", "signals"):
             self.assertNotIn(internal, text)
+
+
+if __name__ == "__main__":
+    unittest.main()

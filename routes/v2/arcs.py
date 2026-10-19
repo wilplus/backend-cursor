@@ -1500,6 +1500,17 @@ def v2_explore_arc_feedback(arc_id):
         }), 500
 
 
+def first_take_deck(spoken):
+    """The deck of the project's first spoken take that carried one (its
+    slides and/or served PDF), as a dict, or None when no take did. Pure;
+    ``spoken`` is sorted by take_index ascending by the caller."""
+    for s in spoken:
+        c = s.get("intake_context") if isinstance(s, dict) else None
+        if isinstance(c, dict) and (c.get("slides") or c.get("presentation_ref")):
+            return c
+    return None
+
+
 @v2_bp.route("/explore/arc/<arc_id>/setup", methods=["GET"])
 @require_owner_or_guest
 def v2_explore_arc_setup(arc_id):
@@ -1507,7 +1518,11 @@ def v2_explore_arc_setup(arc_id):
     student (founder 2026-07-22, context-aware recording).
 
     Deliberately MINIMAL — only what the setup screen would otherwise
-    ask for, read from the arc's latest SPOKEN take's intake_context:
+    ask for, read from the arc's SPOKEN takes' intake_context: the words
+    (topic, audience, strategic context, length) from the latest take,
+    the deck (slides, presentation_ref) from the FIRST take that carried
+    one, so every later Take is said against Take 1's presentation
+    (founder 2026-10-16):
 
       200 { arc_id, topic, audience, strategic_context,
             target_length_seconds, slides, presentation_ref }
@@ -1539,7 +1554,7 @@ def v2_explore_arc_setup(arc_id):
         spoken.sort(key=lambda s: (s.get("take_index") or 0,
                                    s.get("created_at") or ""))
         # The LATEST take's context is the live setup (a later take may
-        # have added the deck or changed the audience).
+        # have changed the audience or the length).
         ctx = {}
         for s in reversed(spoken):
             _c = s.get("intake_context")
@@ -1549,15 +1564,22 @@ def v2_explore_arc_setup(arc_id):
         if not ctx:
             _last = spoken[-1].get("intake_context")
             ctx = _last if isinstance(_last, dict) else {}
+        # THE PRESENTATION IS TAKE ONE'S (founder 2026-10-16, "Second take
+        # falls back to the first take's presentation"). Every Take of a
+        # project is said against the same slides: the file the speaker
+        # uploaded for Take 1, or the stand-in deck Take 1 used. The deck
+        # read here used to follow the latest take, so one Take recorded
+        # against a different deck carried that deck into every Take after it.
+        deck = first_take_deck(spoken) or ctx
         return jsonify({
             "arc_id": arc_id,
             "topic": ctx.get("topic"),
             "audience": ctx.get("audience"),
             "strategic_context": ctx.get("strategic_context"),
             "target_length_seconds": ctx.get("target_length_seconds"),
-            "slides": ctx.get("slides") or [],
+            "slides": deck.get("slides") or [],
             "presentation_ref": refreshed_media_url(
-                ctx.get("presentation_ref")),
+                deck.get("presentation_ref")),
         }), 200
     except Exception as e:
         logger.error("arc setup failed arc=%s: %s", arc_id, e,

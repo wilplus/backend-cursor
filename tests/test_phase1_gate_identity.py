@@ -1,16 +1,19 @@
-"""The Phase-1 gate must see the signed-in user (founder's evening, 2026-09-21).
-
-`enforce_phase1_processing_gate` is a `before_request` hook. `request.user_id`
-is set by the view's `@optional_auth` / `@require_auth` decorator, and a view's
-decorators run AFTER `before_request`. So the gate saw every caller as
-anonymous, and with PLF1_PROCESSING_AUTHORIZATION_MODE=enforce every core route
-answered 401 "A verified owner is required." to a signed-in founder — the 401
-storm that #422/#425/#427 chased through the frontend's token renewal.
-
-These run the REAL app through routing, so the ordering that caused the defect
-is the ordering under test. Token verification is stubbed the way every other
-route test stubs it; the ownership and authority lookups are stubbed so the
-gate's identity decision is the only thing on trial.
+"""
+STORY    As a signed-in speaker, I want the consent gate to recognise me, and
+         as a new guest to get an identity it accepts, so that I am not met
+         with "A verified owner is required." on every screen. (Consent gate
+         in front of record: nothing reaches processing without it.)
+OUTCOME
+  O1  A bearer user passes the enforced gate as themselves (the gate
+      resolves that user's principal, and authorizes core service for it).
+  O2  A fresh guest is refused, mints a guest token, and then passes as
+      that new principal.
+PROVES   O1 -> test_a_signed_in_speaker_passes_the_gate_as_themselves
+         O2 -> test_a_first_time_guest_mints_an_identity_the_gate_then_accepts
+WHY      2026-09-21 401 storm: the before_request gate ran before the view's
+         auth decorator and saw every caller as anonymous (#422/#425/#427).
+         The REAL app runs through routing; only token verification and the
+         ownership/authority reads are stubbed.
 """
 from __future__ import annotations
 
@@ -66,6 +69,17 @@ def stubbed_authority(monkeypatch):
         ProcessingAuthorizationService, "require_current", require_current,
     )
     return seen
+
+
+def test_a_signed_in_speaker_passes_the_gate_as_themselves(
+    app_client, enforced, stubbed_authority, stub_verified_user,
+):
+    stub_verified_user("user-1")
+    passed = app_client.get("/v2/chat/session-state",
+                            headers={"Authorization": "Bearer signed-in"})
+    assert (passed.get_json() or {}).get("error") != OWNER_REQUIRED
+    assert stubbed_authority.get("user_id") == "user-1"
+    assert stubbed_authority.get("authorized") == ("owner-1", "core_service")
 
 
 def test_a_first_time_guest_mints_an_identity_the_gate_then_accepts(
