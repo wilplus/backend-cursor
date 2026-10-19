@@ -92,7 +92,10 @@ def record_pair(
         return None
     if not request_id and not exercise_id and not take_word_id:
         return None
-    writer = getattr(database, "insert_feedback_pair", None)
+    # A Take word's pair supersedes the word's earlier one (0477; founder
+    # 2026-10-19, the latest version teaches); every other pair is inserted.
+    writer = getattr(database, "record_take_word_pair" if take_word_id
+                     else "insert_feedback_pair", None)
     if writer is None:
         return None
     # The pair remembers the yes (0405): its owner's principal and the

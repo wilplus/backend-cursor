@@ -169,7 +169,9 @@ def record_take_word_pair(database: Any, *, word_row: Any, coach_id: str,
     """When a draft was shown and the coach's final differs, the pair under
     the C5 rule (feedback_pairs.record_pair; surface coach_take_word). A
     transcript of the word's video is a second final (final_kind
-    "transcript"). Never in the save's way."""
+    "transcript"). One current pair per word and kind (0477): a newer
+    version supersedes the older, so the latest teaches (founder
+    2026-10-19, N79). Never in the save's way."""
     if not isinstance(word_row, dict):
         return None
     draft = word_row.get("draft_text")
