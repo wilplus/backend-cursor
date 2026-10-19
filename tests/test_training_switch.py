@@ -1,16 +1,27 @@
-"""The training switch and its two sweeps (P5 packet §4, items 6-8). DARK.
+"""
+STORY    As a speaker, I want my training switch to record exactly what I agreed
+         to or withdrew, so that my choice is honoured and erasure follows.
+         (Critical path: consent.)
+OUTCOME
+  O1  Turning on records my own act (the training toggle, not preselected)
+      on the wording and policy the database holds now, binds my speaker
+      identity with it, and records nothing more when already on.
+  O2  A yes on stale wording is refused before the database: nothing recorded.
+  O3  The database's refusals reach me as stable codes, nothing recorded.
+  O4  Turning off records the withdrawal of my grant and queues the erasure.
+  O5  A visitor reads only the wording in force, with no state about anyone;
+      with no wording in force there is nothing to offer.
+PROVES   O1 -> test_turning_on_records_the_toggle_on_the_wording_in_force
+         O2 -> test_a_yes_on_stale_wording_is_refused_before_the_database
+         O3 -> test_a_refused_yes_with_the_identity_keeps_its_stable_code
+         O4 -> test_turning_off_withdraws_and_queues_the_erasure
+         O5 -> test_a_visitor_reads_only_the_words_in_force_and_no_state
+WHY      The switch is OPEN (door 1, founder 2026-10-01; code switch removed
+         2026-10-12), so the route always answers: there is no dark state left.
 
-  * the route answers 410 while the code constant is False, and it is False;
-  * turning on records exactly the training toggle's own act, on the wording
-    and policy version the database holds, and nothing when already on;
-  * a stale wording or policy version is refused before the database;
-  * the database's refusals reach the client as stable codes;
-  * turning off records the withdrawal and always queues the erasure;
-  * the due-copy sweep erases for every person with due copies;
-  * the late coach-label sweep is dark, and once on copies a label only for
-    a copied moment that has none yet, under the grant it was copied under.
-
-Run: python3 -m pytest tests/test_training_switch.py
+Covers the Python caller only (services/training_consent.py over a fake
+database). The SQL refusals O3 maps (0373/0430) are not proven here, and no
+rehearsal-tier test asserts the database's own refusal of other wording.
 """
 from __future__ import annotations
 
@@ -28,6 +39,7 @@ POLICY = {
     "terms_version": "terms-3.2",
     "privacy_policy_version": "privacy-3.2",
 }
+IDENTITY = ("i" * 64, "p" * 64)
 
 
 class FakeDatabase:
@@ -35,7 +47,8 @@ class FakeDatabase:
         self.policy = policy
         self.active = active
         self.refuse = refuse
-        self.grants: list[dict] = []
+        self.accepted: list[dict] = []
+        self.bound: list[dict] = []
         self.withdrawals: list[dict] = []
 
     def get_active_training_consent_policy(self):
@@ -46,12 +59,16 @@ class FakeDatabase:
             return {"active": True, "grant_event_id": "grant-1"}
         return {"active": False}
 
-    def record_mlc2_training_consent_grant(self, **kwargs):
+    def accept_mlc2_training_consent(self, **kwargs):
         if self.refuse:
             raise RuntimeError(self.refuse)
-        self.grants.append(kwargs)
+        self.accepted.append(kwargs)
         self.active = True
-        return {"id": "grant-1"}
+        return {"consent_event_id": "grant-1", "speaker_bound": True}
+
+    def bind_mlc2_training_speaker(self, **kwargs):
+        self.bound.append(kwargs)
+        return {"id": "binding-1"}
 
     def record_mlc2_training_consent_withdrawal(self, **kwargs):
         self.withdrawals.append(kwargs)
@@ -67,6 +84,41 @@ def _on(**over):
     return body
 
 
+def test_turning_on_records_the_toggle_on_the_wording_in_force():
+    database = FakeDatabase()
+    state = tc.handle(database, "owner", "POST", _on(), "web", identity=IDENTITY)
+    assert state["active"] is True
+    (grant,) = database.accepted
+    assert grant["acquisition_principal_id"] == "owner"
+    assert grant["consent_policy_version"] == POLICY["version"]
+    assert grant["affirmative_action"] == {
+        "accepted": True, "control": "training_toggle",
+        "copy_sha256": POLICY["approved_copy_sha256"], "preselected": False,
+    }
+    assert (grant["identity_hash"], grant["binding_proof_hash"]) == IDENTITY
+    # Already on: no second yes is recorded.
+    tc.handle(database, "owner", "POST", _on(idempotency_key="k-2"), "web",
+              identity=IDENTITY)
+    assert len(database.accepted) == 1
+
+
+def test_a_yes_on_stale_wording_is_refused_before_the_database():
+    database = FakeDatabase()
+    with pytest.raises(tc.TrainingSwitchError) as refused:
+        tc.handle(database, "owner", "POST", _on(copy_sha256="d" * 64), "web",
+                  identity=IDENTITY)
+    assert (refused.value.code, refused.value.status) == ("TRAINING_COPY_CHANGED", 409)
+    assert database.accepted == [] and database.active is False
+
+
+def test_a_refused_yes_with_the_identity_keeps_its_stable_code():
+    database = FakeDatabase(refuse="TRAINING_CONSENT_NEEDS_POLICY_RECEIPT")
+    with pytest.raises(tc.TrainingSwitchError) as refused:
+        tc.handle(database, "owner", "POST", _on(), "web", identity=IDENTITY)
+    assert (refused.value.code, refused.value.status) == ("REACCEPT_REQUIRED", 409)
+    assert database.accepted == [] and database.bound == []
+
+
 def test_turning_off_withdraws_and_queues_the_erasure():
     database = FakeDatabase(active=True)
     with mock.patch.object(corpus, "enqueue_corpus_purge") as purge:
@@ -79,44 +131,8 @@ def test_turning_off_withdraws_and_queues_the_erasure():
     purge.assert_called_once_with("owner")
 
 
-# ── The one consent authority binds the speaker (N48.5 Q27 A; 0430; F-3) ───
-
-IDENTITY = ("i" * 64, "p" * 64)
-
-
-class BindingDatabase(FakeDatabase):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.accepted: list[dict] = []
-        self.bound: list[dict] = []
-        self.bind_raises = False
-
-    def accept_mlc2_training_consent(self, **kwargs):
-        if self.refuse:
-            raise RuntimeError(self.refuse)
-        self.accepted.append(kwargs)
-        self.active = True
-        return {"consent_event_id": "grant-1", "speaker_bound": True}
-
-    def bind_mlc2_training_speaker(self, **kwargs):
-        if self.bind_raises:
-            raise RuntimeError("database down")
-        self.bound.append(kwargs)
-        return {"id": "binding-1"}
-
-
-def test_a_refused_yes_with_the_identity_keeps_its_stable_code():
-    database = BindingDatabase(refuse="TRAINING_CONSENT_NEEDS_POLICY_RECEIPT")
-    with pytest.raises(tc.TrainingSwitchError) as refused:
-        tc.handle(database, "owner", "POST", _on(), "web", identity=IDENTITY)
-    assert (refused.value.code, refused.value.status) == ("REACCEPT_REQUIRED", 409)
-    assert database.accepted == [] and database.bound == []
-
-
 def test_a_visitor_reads_only_the_words_in_force_and_no_state():
-    """Founder 2026-10-15: a visitor sees the third thing to confirm. The
-    public read carries the sentence and its fingerprint, nothing about
-    anyone; with no wording in force there is nothing to offer."""
+    """Founder 2026-10-15: a visitor sees the third thing to confirm."""
     assert tc.wording(FakeDatabase()) == {
         "available": True, "active": False,
         "policy_version": POLICY["version"],

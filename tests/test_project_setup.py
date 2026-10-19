@@ -1,4 +1,20 @@
-"""Canonical project setup read contract."""
+"""
+STORY    As a speaker recording Take 2, I want the recording screen set up from
+         my project: the words from my latest spoken Take and the presentation
+         from my first Take that had a deck, so that every Take is said against
+         the same slides. (Critical path: next Take.)
+OUTCOME
+  O1  The slides and presentation come from the first spoken Take that
+      carried a deck; the words (topic, audience) from the latest spoken
+      Take; a read-aloud Take never counts.
+  O2  The setup is only the setup fields: no score, count, Take number or
+      session id reaches the speaker (Never-1), and the setup itself is there.
+  O3  Someone else's project answers 404 and shows nothing of it.
+PROVES   O1 -> test_take_ones_deck_and_the_latest_words_set_up_the_next_take
+         O2 -> test_the_setup_is_only_the_setup_fields
+         O3 -> test_someone_elses_project_is_not_found
+WHY      #1144 (founder 2026-10-16): Take 1's presentation serves every Take.
+"""
 from __future__ import annotations
 
 import unittest
@@ -8,6 +24,7 @@ try:
     from flask import Flask, request
 
     from routes.v2 import arcs as v2_arcs
+    from services.db import db
     _IMPORT_ERROR = None
 except Exception as error:  # pragma: no cover
     Flask = None
@@ -16,72 +33,57 @@ except Exception as error:  # pragma: no cover
 
 PROJECT = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa"
 USER = "11111111-1111-4111-8111-111111111111"
-TAKE_1 = "22222222-2222-4222-8222-222222222222"
+STRANGER = "99999999-9999-4999-8999-999999999999"
+DECK_A = [{"title": "One", "body": "first"}]
+DECK_B = [{"title": "Other", "body": "deck"}]
+
+
+def _take(index, ctx, kind="spoken"):
+    return {"id": f"take-{index}", "user_id": USER, "take_index": index,
+            "recording_kind": kind, "intake_context": ctx}
+
+
+TAKES = [
+    _take(1, {"topic": "t1", "audience": "a1"}),                        # no deck
+    _take(2, {"topic": "t2", "audience": "a2", "slides": DECK_A,
+              "presentation_ref": "https://example.test/a.pdf"}),
+    _take(3, {"topic": "t3", "audience": "a3", "slides": DECK_B,
+              "presentation_ref": "https://example.test/b.pdf"}),
+    _take(4, {"topic": "read", "audience": "read", "slides": DECK_B}, kind="read"),
+]
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class ProjectSetupEndpointTests(unittest.TestCase):
-    """Setup is minimal, latest-spoken-take, and owner-only."""
 
-    def setUp(self):
-        self.app = Flask(__name__)
+    def _get(self, takes, *, user_id=USER):
+        with Flask(__name__).test_request_context(), \
+                patch.object(db.takes, "get_arc_sessions", lambda arc_id: list(takes)), \
+                patch("routes.v2.arcs.refreshed_media_url", side_effect=lambda r: r):
+            request.user_id = user_id
+            out = v2_arcs.v2_explore_arc_setup.__wrapped__(PROJECT)
+            response, status = out if isinstance(out, tuple) else (out, 200)
+            return response.get_json(), status
 
-    def _get(self, takes, *, owned=True):
-        with self.app.test_request_context():
-            request.user_id = USER
-            with patch(
-                "routes.v2.arcs._arc_owned_by_caller",
-                return_value=(owned, takes),
-            ):
-                out = v2_arcs.v2_explore_arc_setup.__wrapped__(PROJECT)
-                response, status = out if isinstance(out, tuple) else (out, 200)
-                return response.get_json(), status
-
-
-    def test_every_take_inherits_take_ones_presentation(self):
-        """Founder 2026-10-16: the second Take mirrors the first. A later
-        take that was somehow recorded against other slides must not carry
-        them into the next Take; the words still follow the latest take."""
-        takes = [{
-            "id": "33333333-3333-4333-8333-333333333333",
-            "take_index": 2,
-            "recording_kind": "spoken",
-            "intake_context": {
-                "topic": "t2", "audience": "a2",
-                "slides": [{"title": "Other", "body": "deck"}],
-                "presentation_ref": None,
-            },
-        }, {
-            "id": TAKE_1,
-            "take_index": 1,
-            "recording_kind": "spoken",
-            "intake_context": {
-                "topic": "t1", "audience": "a1",
-                "slides": [{"title": "One", "body": "first"}],
-                "presentation_ref": "https://example.test/deck.pdf",
-            },
-        }]
-        with patch("routes.v2.arcs.refreshed_media_url", side_effect=lambda r: r):
-            body, status = self._get(takes)
+    def test_take_ones_deck_and_the_latest_words_set_up_the_next_take(self):
+        body, status = self._get(TAKES)
         self.assertEqual(status, 200)
-        self.assertEqual(body["topic"], "t2")
-        self.assertEqual(body["slides"], [{"title": "One", "body": "first"}])
-        self.assertEqual(body["presentation_ref"], "https://example.test/deck.pdf")
+        self.assertEqual((body["topic"], body["audience"]), ("t3", "a3"))
+        self.assertEqual(body["slides"], DECK_A)
+        self.assertEqual(body["presentation_ref"], "https://example.test/a.pdf")
 
-    def test_setup_never_leaks_scores_or_take_data(self):
-        import json
+    def test_the_setup_is_only_the_setup_fields(self):
+        body, _ = self._get(TAKES)
+        self.assertEqual(set(body), {
+            "arc_id", "topic", "audience", "strategic_context",
+            "target_length_seconds", "slides", "presentation_ref"})
+        self.assertEqual(body["topic"], "t3")
 
-        takes = [{
-            "id": TAKE_1,
-            "take_index": 1,
-            "recording_kind": "spoken",
-            "intake_context": {"topic": "t", "audience": "a"},
-        }]
-        body, _ = self._get(takes)
-        raw = json.dumps(body)
-        for banned in ("take_count", "overall_score", "power_score",
-                       "take_index", "session_id", "charisma"):
-            self.assertNotIn(banned, raw)
+    def test_someone_elses_project_is_not_found(self):
+        body, status = self._get(TAKES, user_id=STRANGER)
+        self.assertEqual(status, 404)
+        self.assertEqual(body["code"], "NOT_FOUND")
+        self.assertNotIn("topic", body)
 
 
 if __name__ == "__main__":
