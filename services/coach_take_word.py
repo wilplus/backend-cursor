@@ -29,7 +29,11 @@ class TakeWordRefusal(Exception):
         self.message, self.code, self.status = message, code, status
 
 
-def _clean(body: Any) -> tuple[Optional[str], Optional[str], bool]:
+def _clean(body: Any) -> tuple[Optional[str], Optional[str], bool, bool]:
+    """(text, video_ref, keep_video, share). A body that names no video_ref
+    keeps the word's saved video (founder 2026-10-19: a coach who edits only
+    the words no longer loses their video); an explicit null or empty
+    video_ref removes it."""
     fields = body if isinstance(body, dict) else {}
     text = " ".join(str(fields.get("text") or "").split()) or None
     if text and len(text) > MAX_TEXT:
@@ -37,7 +41,7 @@ def _clean(body: Any) -> tuple[Optional[str], Optional[str], bool]:
     video_ref = str(fields.get("video_ref") or "").strip() or None
     if not text and not video_ref:
         raise TakeWordRefusal("Write a message or add a video.")
-    return text, video_ref, fields.get("share") is True
+    return text, video_ref, "video_ref" not in fields, fields.get("share") is True
 
 
 def _stored_ref(video_ref: Optional[str], take_session_id: str) -> Optional[str]:
@@ -58,15 +62,16 @@ def save_take_word(database: Any, *, take_session_id: str, coach_id: str,
     """PUT: the coach's one word for this Take, replaced on each save;
     `share: true` sends it. Raises TakeWordRefusal for anything the coach
     can fix. Returns the payload the coach reads back."""
-    text, video_ref, share = _clean(body)
+    text, video_ref, keep_video, share = _clean(body)
     video_ref = _stored_ref(video_ref, str(take_session_id))
     row = database.upsert_coach_take_word(
         take_session_id=str(take_session_id), coach_id=str(coach_id),
-        text=text, video_ref=video_ref, share=share)
+        text=text, video_ref=video_ref, share=share, keep_video=keep_video)
     if not isinstance(row, dict):
         raise TakeWordRefusal("Could not save the word.", "V2_ERROR", 500)
     if share:
-        _tell_the_speaker(database, str(take_session_id), text=text, video_ref=video_ref,
+        _tell_the_speaker(database, str(take_session_id), text=text,
+                          video_ref=row.get("video_ref") or None,
                           first_share=_first_share(row))
         # The Take's closing summary is rewritten with the word, in place
         # (founder lock 2026-10-12, section 3). Behind the save.

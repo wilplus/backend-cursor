@@ -98,7 +98,10 @@ class _Db:
         self.transcripts.append(kwargs)
         return {"transcript": kwargs["transcript"]}
 
-    def upsert_coach_take_word(self, *, take_session_id, coach_id, text, video_ref, share):
+    def upsert_coach_take_word(self, *, take_session_id, coach_id, text, video_ref, share,
+                               keep_video=False):
+        if keep_video:  # the saved video stays, as the payload leaves it out
+            video_ref = (self.words.get((take_session_id, coach_id)) or {}).get("video_ref")
         row = {"id": "word-1", "take_session_id": take_session_id, "coach_id": coach_id,
                "text": text, "video_ref": video_ref, "updated_at": "t2"}
         self.words[(take_session_id, coach_id)] = row
@@ -212,6 +215,33 @@ class ATakeWordVideoIsTurnedIntoWords(unittest.TestCase):
         db, calls = self._save(training_yes=False)
         self.assertEqual(db.words[(TAKE, COACH)]["video_ref"], ROW["video_ref"])
         self.assertEqual((calls, db.transcripts), ([], []))
+
+
+
+class ATakeWordKeepsItsVideo(unittest.TestCase):
+    """Founder 2026-10-19: a coach who edits only the words keeps their video."""
+
+    _run = TranscribeTakeWordVideoTests._run
+
+    def _saves(self, *bodies):
+        db = _Db()
+
+        def go():
+            for body in bodies:
+                ctw.save_take_word(db, take_session_id=TAKE, coach_id=COACH, body=body)
+        self._run(_Auth(enforced=False), db=db, call=go)
+        return db.words[(TAKE, COACH)]
+
+    def test_editing_only_the_words_keeps_the_video(self):
+        word = self._saves({"text": "Well done.", "video_ref": SIGNED_LINK},
+                           {"text": "Well done, and slow the opening."})
+        self.assertEqual((word["text"], word["video_ref"]),
+                         ("Well done, and slow the opening.", ROW["video_ref"]))
+
+    def test_a_null_video_removes_it(self):
+        word = self._saves({"text": "Well done.", "video_ref": SIGNED_LINK},
+                           {"text": "Well done.", "video_ref": None})
+        self.assertIsNone(word["video_ref"])
 
 
 if __name__ == "__main__":
