@@ -77,11 +77,12 @@ def save_take_word(database: Any, *, take_session_id: str, coach_id: str,
         # (founder lock 2026-10-12, section 3). Behind the save.
         from services.take_summary import coach_update
         coach_update(database, str(take_session_id), text)
-    _the_pair(database, row, coach_id=str(coach_id), text=text)
+    _the_pair(database, row, coach_id=str(coach_id), text=text, new_video=not keep_video)
     return take_word_payload(row) or {}
 
 
-def _the_pair(database: Any, row: dict, *, coach_id: str, text: Optional[str]) -> None:
+def _the_pair(database: Any, row: dict, *, coach_id: str, text: Optional[str],
+              new_video: bool = True) -> None:
     """7 (C5-a, 0411): when a draft was shown and the coach's words differ,
     the (draft, final) pair; a video's transcript is a second final. Both
     best-effort; the word is saved either way."""
@@ -90,7 +91,10 @@ def _the_pair(database: Any, row: dict, *, coach_id: str, text: Optional[str]) -
             record_take_word_pair, transcribe_take_word_video_in_background,
         )
         record_take_word_pair(database, word_row=row, coach_id=coach_id, final_text=text)
-        if row.get("video_ref") and not row.get("transcript"):
+        # Only a save that brings a video sends it to the transcriber: a
+        # word-only edit never sends the kept video again (one still being
+        # transcribed, or one with no speech in it).
+        if new_video and row.get("video_ref") and not row.get("transcript"):
             transcribe_take_word_video_in_background(database, word_row=row,
                                                      coach_id=coach_id)
     except Exception as e:  # noqa: BLE001 -- the word is saved either way

@@ -238,10 +238,53 @@ class ATakeWordKeepsItsVideo(unittest.TestCase):
         self.assertEqual((word["text"], word["video_ref"]),
                          ("Well done, and slow the opening.", ROW["video_ref"]))
 
+    def test_editing_only_the_words_never_sends_the_video_again(self):
+        db = _Db()
+        _, db, calls = self._run(_Auth(enforced=False), db=db, call=lambda: [
+            ctw.save_take_word(db, take_session_id=TAKE, coach_id=COACH, body=body)
+            for body in ({"text": "Well done.", "video_ref": SIGNED_LINK},
+                         {"text": "Well done, and slow the opening."})])
+        self.assertEqual(len(calls), 1)
+
     def test_a_null_video_removes_it(self):
         word = self._saves({"text": "Well done.", "video_ref": SIGNED_LINK},
                            {"text": "Well done.", "video_ref": None})
         self.assertIsNone(word["video_ref"])
+
+
+
+class TheDatabaseKeepsTheVideoAndTheShare(unittest.TestCase):
+    """The write itself (services.db): a word-only edit leaves the video and
+    its words untouched, and a failed read never passes for "no word yet"
+    (which would stamp the share again and tell the speaker twice)."""
+
+    def _upsert(self, rows, client=None, **kwargs):
+        from services.db import db as real
+        from tests.fakes import FakeSupabaseClient, swap_attr
+        client = client or FakeSupabaseClient({"coach_take_words": rows})
+        with swap_attr(real, "client", client):
+            real.upsert_coach_take_word(take_session_id=TAKE, coach_id=COACH,
+                                        text="Edited.", share=True, **kwargs)
+        return client.tables["coach_take_words"]
+
+    def test_a_word_only_edit_leaves_the_video_out_of_the_write(self):
+        saved = [{"video_ref": ROW["video_ref"], "transcript": "Slow down.",
+                  "shared_at": "t0"}]
+        query = self._upsert(saved, video_ref=None, keep_video=True)
+        self.assertEqual(sorted(query.payload),
+                         ["coach_id", "take_session_id", "text", "updated_at"])
+
+    def test_a_failed_read_stops_the_save(self):
+        from tests.fakes import FakeSupabaseClient
+
+        def rows(query):  # only the read fails; a write would succeed
+            if query.calls[-1][0] == "upsert":
+                return [query.payload]
+            raise ConnectionError("read failed")
+        client = FakeSupabaseClient({"coach_take_words": rows})
+        with self.assertRaises(ConnectionError):
+            self._upsert(None, client=client, video_ref=None, keep_video=True)
+        self.assertNotIn("upsert", [c[0] for c in client.tables["coach_take_words"].calls])
 
 
 if __name__ == "__main__":
