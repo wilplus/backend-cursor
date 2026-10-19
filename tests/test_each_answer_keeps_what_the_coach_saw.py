@@ -139,9 +139,12 @@ class _Db:
             self.request["shared_at"] = self._now()
         return dict(self.request)
 
-    def upsert_coach_take_word(self, *, take_session_id, coach_id, text, video_ref, share):
+    def upsert_coach_take_word(self, *, take_session_id, coach_id, text, video_ref, share,
+                               keep_video=False):
         self.word.update(id="word-1", take_session_id=take_session_id, coach_id=coach_id,
-                         text=text, video_ref=video_ref, updated_at=self._now())
+                         text=text, updated_at=self._now())
+        if not keep_video:  # a save that names no video keeps the saved one
+            self.word["video_ref"] = video_ref
         return dict(self.word)
 
     def list_speaking_errors(self, active_only=True):

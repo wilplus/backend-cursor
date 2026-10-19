@@ -93,9 +93,12 @@ class _Db:
                 "answer_text": kwargs.get("answer_text"), "resolved_by": kwargs["coach_id"],
                 "shared_at": None}
 
-    def upsert_coach_take_word(self, *, take_session_id, coach_id, text, video_ref, share):
+    def upsert_coach_take_word(self, *, take_session_id, coach_id, text, video_ref, share,
+                               keep_video=False):
         self.word.update(take_session_id=take_session_id, coach_id=coach_id, text=text,
-                         video_ref=video_ref, updated_at="now")
+                         updated_at="now")
+        if not keep_video:  # a save that names no video keeps the saved one
+            self.word["video_ref"] = video_ref
         return dict(self.word)
 
     def list_diagnostic_exercises(self):

@@ -1602,7 +1602,9 @@ def v2_coach_take_word(session_id):
     message and video per Take, per coach. GET this coach's own; PUT {text,
     video_ref, share} saves it and, on share, sends it to the speaker, who
     reads it as "Your coach". The video comes from the session video upload
-    (POST .../video), which returns the ref. Nothing here gates a per-moment
+    (POST .../video), which returns the ref; a PUT that names no video_ref
+    keeps the saved video, and an explicit null removes it (founder
+    2026-10-19). Nothing here gates a per-moment
     share."""
     if not _is_valid_uuid(session_id):
         return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a UUID"}), 400
