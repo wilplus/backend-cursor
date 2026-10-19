@@ -256,6 +256,11 @@ def resolve_request(database: Any, request: dict, body: Any,
         raise
     if not isinstance(resolved, dict):
         return _error(500, "V2_ERROR", "Could not save your answer.")
+    # What the coach saw when they gave it (0481, N79): once per new answer,
+    # never on their own Take; capture only, never in the answer's way.
+    from services.coach_answer_situation import freeze_answer
+    freeze_answer(database, request=request, resolved=resolved, coach_id=coach_id,
+                  chosen_pattern_key=fields.get("pattern_key"))
     _file_answer(database, request, resolved, fields, exercise, coach_id,
                  previous=request)
     if resolved.get("shared_at") and not request.get("shared_at"):

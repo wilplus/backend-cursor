@@ -125,6 +125,9 @@ def _replace_resolved_video(database: Any, request_row: dict, url: str,
         return 500, {"code": "V2_ERROR", "error": "Could not keep the video."}
     if not isinstance(resolved, dict):
         return 500, {"code": "V2_ERROR", "error": "Could not keep the video."}
+    # A new video is a new answer: it keeps what the coach saw (0481, N79).
+    from services.coach_answer_situation import freeze_answer
+    freeze_answer(database, request=request_row, resolved=resolved, coach_id=coach_id)
     transcribe_answer_video_in_background(database, request_row=request_row, video_ref=url,
                                           coach_id=coach_id, video_bytes=video_bytes)
     return 200, {"video_url": playable(url)}

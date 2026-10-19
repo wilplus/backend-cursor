@@ -12871,6 +12871,84 @@ class DatabaseService:
         }).execute()
         return self._rpc_row(result.data)
 
+    # ── What the coach saw when they answered (0481) ───────────────────────
+
+    def get_snippet_passages(self, take_session_id: str,
+                             snippet_id: Optional[str] = None) -> list[dict]:
+        """The words of a Take's clips as they stand, in start order, or of
+        one clip with ``snippet_id``: [{id, transcript, slide_index}].
+        Narrow: no word timings. Raises on failure."""
+        query = (self.client.table(SNIPPETS_TABLE)
+                 .select("id, transcript, start_offset_ms, piece:metrics->piece")
+                 .eq("session_id", str(take_session_id)))
+        if snippet_id:
+            query = query.eq("id", str(snippet_id))
+        rows = (query.order("start_offset_ms", desc=False).order("id", desc=False)
+                .execute().data) or []
+        out: list[dict] = []
+        for row in rows:
+            piece = row.get("piece") if isinstance(row, dict) else None
+            slide = piece.get("slide_index") if isinstance(piece, dict) else None
+            out.append({"id": row.get("id"), "transcript": row.get("transcript"),
+                        "slide_index": slide if isinstance(slide, int)
+                        and not isinstance(slide, bool) else None})
+        return out
+
+    def list_current_coach_moment_diagnoses(
+        self, *, take_session_id: str, coach_id: str, snippet_id: Optional[str] = None,
+    ) -> list[dict]:
+        """This coach's current diagnoses on a Take's moments, or on one
+        moment (0445), each with the label the coach picked: the library
+        error's, or the coach-named error's words (none for "I don't hear an
+        error"). Raises on failure."""
+        query = (self.client.table("coach_moment_diagnoses")
+                 .select("id, snippet_id, kind, error_id, named_error_id")
+                 .eq("take_session_id", str(take_session_id))
+                 .eq("coach_id", str(coach_id)).is_("superseded_at", "null"))
+        if snippet_id:
+            query = query.eq("snippet_id", str(snippet_id))
+        rows = [dict(r) for r in (query.execute().data or []) if isinstance(r, dict)]
+        error_ids = sorted({str(r["error_id"]) for r in rows if r.get("error_id")})
+        named_ids = sorted({str(r["named_error_id"]) for r in rows if r.get("named_error_id")})
+        labels: dict = {}
+        if error_ids:
+            for e in (self.client.table("speaking_error").select("error_id, label")
+                      .in_("error_id", error_ids).execute().data or []):
+                labels[("error", str(e.get("error_id")))] = e.get("label")
+        if named_ids:
+            for n in (self.client.table("coach_named_errors").select("id, name")
+                      .in_("id", named_ids).execute().data or []):
+                labels[("named", str(n.get("id")))] = n.get("name")
+        for r in rows:
+            r["label"] = (labels.get(("error", str(r.get("error_id"))))
+                          if r.get("error_id")
+                          else labels.get(("named", str(r.get("named_error_id")))))
+        return rows
+
+    def get_take_ideal_text_snapshot(self, take_session_id: str) -> Optional[dict]:
+        """The newest Ideal Text snapshot made from this Take (0315,
+        ``source_take_session_id``) as {id, version, created_at}; None when
+        the Take has none. Never the speaker's current head, which may be a
+        later Take's. Narrow: no payload. Raises on failure."""
+        rows = (self.client.table("ideal_text_document_snapshots")
+                .select("id, version, created_at")
+                .eq("source_take_session_id", str(take_session_id))
+                .order("created_at", desc=True).order("version", desc=True)
+                .limit(1).execute().data) or []
+        return rows[0] if rows else None
+
+    def insert_coach_answer_situation(self, **row: Any) -> Optional[dict]:
+        """What the coach saw when they gave an answer (0481), written once
+        per answer: the same answer written again is ignored (its UNIQUE
+        key), and no row is ever updated. None when ignored. Raises on
+        failure: services.coach_answer_situation logs it and the answer
+        stands."""
+        key = ("take_word_id,answered_at" if row.get("take_word_id")
+               else "request_id,answered_at")
+        res = (self.client.table("coach_answer_situations")
+               .upsert(row, on_conflict=key, ignore_duplicates=True).execute())
+        return (res.data or [None])[0]
+
     def set_exercise_coach_request_answer_kind(
         self, *, take_session_id: str, snippet_id: str, answer_kind: str,
         only_if_unset: bool = False,
