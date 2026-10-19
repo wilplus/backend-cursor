@@ -16,6 +16,7 @@ from typing import Any, Iterable, Optional
 POLICY_VERSION = "take-feedback-manager-v2"
 EVIDENCE_SCHEMA_VERSION = "take-feedback-manager-evidence-v1"
 STRUCTURAL_REWRITE_RULE_VERSION = "structural-rewrite-v1"
+REPEATED_PHRASE_RULE_VERSION = "repeated-phrase-v1"
 FALLBACK_GENERATOR_RULE_VERSION = "take-feedback-fallback-generator-v1"
 FAMILIES = (
     "confident_voice",
@@ -37,6 +38,15 @@ _STRANDED_NEGATED_PREDICATE_RE = re.compile(
 _OBJECT_PHRASE_START_RE = re.compile(
     r"^(?:a|an|the|my|your|our|their|his|her|its)\b",
     re.IGNORECASE,
+)
+# A run of two to six words said again straight away, inside one sentence
+# ("we need to we need to fix it", "it's the, it's the plan"). One word said
+# twice is smoothing's job (transcript_smoothing), never a suggestion.
+_PHRASE_WORD = r"[^\W_]+(?:[’'-][^\W_]+)*"
+_REPEATED_PHRASE_RE = re.compile(
+    rf"(?<![\w’'-])({_PHRASE_WORD}(?:\s+{_PHRASE_WORD}){{1,5}})"
+    rf"((?:,?\s+\1)+)(?![\w’'-])",
+    re.IGNORECASE | re.UNICODE,
 )
 
 
@@ -526,12 +536,15 @@ def evidence_backed_rewrite_candidates(
     predicate is stranded at a full stop and its object phrase starts the next
     sentence ("I don't want. A script ..."). It emits every match; the Manager
     ranks the complete rewrite family instead of accepting the first fit.
+
+    The second rule keeps a phrase the speaker said twice in a row once
+    (`_repeated_phrase_rewrites`).
     """
     text = served_text if isinstance(served_text, str) else ""
     take = str(take_session_id or "")
     sid = str(snippet_id or "")
     sentences = _sentences(text)
-    if not text or not take or not sid or len(sentences) < 2:
+    if not text or not take or not sid or not sentences:
         return []
 
     rows: list[dict] = []
@@ -567,6 +580,84 @@ def evidence_backed_rewrite_candidates(
                 "detector": "stranded_negated_object_boundary",
                 "detector_rank": 5,
                 "specificity": 5,
+                "lexical_words_invented": 0,
+            },
+        })
+    rows.extend(_repeated_phrase_rewrites(text, sentences, take=take, sid=sid))
+    return rows
+
+
+def _collapse_repeats(sentence: str) -> str:
+    """The sentence with every phrase said again straight away kept once."""
+    return _REPEATED_PHRASE_RE.sub(lambda m: m.group(1), sentence)
+
+
+def _repeated_phrase_rewrites(text: str, sentences: list, *, take: str,
+                              sid: str) -> list[dict]:
+    """A rewrite for each place the speaker said the same words twice.
+
+    Two shapes, both fixed by keeping the speaker's words once and adding
+    none (WIL-26):
+
+      * a phrase said again straight away inside one sentence: "we need to
+        we need to fix it" -> "we need to fix it";
+      * a sentence that stopped and started over: "We need to. We need to
+        fix it." -> "We need to fix it."
+
+    A sentence that is nothing but the repeat ("Thank you, thank you.") is
+    left alone: that is emphasis, not a restart.
+    """
+    rows: list[dict] = []
+    consumed_until = -1
+    for index, (start, end, sentence) in enumerate(sentences):
+        if start < consumed_until:
+            continue
+        body = sentence.rstrip().rstrip(".!?").rstrip()
+        restart = None
+        if index + 1 < len(sentences):
+            next_start, next_end, following = sentences[index + 1]
+            said = _WORD_RE.findall(body)
+            again = _WORD_RE.findall(following)
+            if (2 <= len(said) < len(again)
+                    and [w.lower() for w in again[:len(said)]]
+                    == [w.lower() for w in said]):
+                restart = (next_start, next_end, following)
+        if restart is not None:
+            span_end = restart[1]
+            quote = text[start:span_end]
+            proposed = _collapse_repeats(restart[2])
+            consumed_until = span_end
+        else:
+            collapsed = _collapse_repeats(sentence)
+            if collapsed == sentence:
+                continue
+            kept = _WORD_RE.findall(collapsed)
+            phrase_words = max(
+                len(_WORD_RE.findall(m.group(1)))
+                for m in _REPEATED_PHRASE_RE.finditer(sentence))
+            if len(kept) <= phrase_words:
+                continue
+            span_end, quote, proposed = end, sentence, collapsed
+        if not quote or not proposed or proposed == quote:
+            continue
+        rows.append({
+            "id": _stable_id("repeated-phrase-rewrite", take, quote),
+            "snippet_id": sid,
+            "take_session_id": take,
+            "kind": "replace",
+            "source": "wording",
+            "span": {"start": start, "end": span_end},
+            "quote": quote,
+            "proposed_text": proposed,
+            "why_key": "clarity",
+            "feedback_family": "rewrite_clarity",
+            "tentative": False,
+            "rule_version": REPEATED_PHRASE_RULE_VERSION,
+            "_manager_evidence": {
+                "fallback": False,
+                "detector": "repeated_phrase",
+                "detector_rank": 4,
+                "specificity": 4,
                 "lexical_words_invented": 0,
             },
         })
