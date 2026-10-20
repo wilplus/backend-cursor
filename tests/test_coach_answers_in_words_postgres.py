@@ -1,7 +1,9 @@
 """
 STORY    As a coach, I want to answer a speaker's request with a written line
-         or clearer version, recorded once and shared, so that the speaker
-         gets words from me.
+         or clearer version, recorded once and shared, and the changes I make
+         to a drafted Take word kept with that word, only my latest version
+         teaching, so that the speaker gets words from me and the drafts
+         learn from what I say now.
 OUTCOME
   O1  A line is recorded once, trimmed, and shared; the same answer again is
       a no-op; a different answer is refused (ALREADY_RESOLVED).
@@ -10,15 +12,19 @@ OUTCOME
   O3  feedback_pairs keeps a (draft, final) only when they differ, and one
       per (surface, request).
   O4  A Take word is a pair's home: one current pair per word and kind, the
-      latest version supersedes the older (a version that is no pair
-      retires it), the same words again write nothing, only the Take-word
-      surface takes a word as its home, and no browser role may write one.
-  O5  The migration recovers each word's pair once, only where the draft
-      came before the final, with consent left closed.
+      latest version supersedes the older without deleting it (a version
+      that is no pair retires it), the same words again write nothing, the
+      video's transcript is its own current pair, only the Take-word
+      surface takes a word as its home, a pair with no home is refused, and
+      no browser role may write one.
+  O5  The migration, run twice, recovers each word's pair once, with its
+      owner and the words spoken, only where the draft came before the
+      final, with consent left closed.
   O6  Every draft keeps its prompt: the app keeps each draft in
       coach_draft_history and may only settle it afterwards, never rewrite
-      what was drafted or sent; an answer draft hangs on its request; no
-      browser role reaches the table.
+      what was drafted or sent; an answer draft hangs on its request and a
+      Take word's draft on its Take, never on a request; no browser role
+      reaches the table.
 PROVES   O1 -> test_a_line_is_answered_once_and_shared
          O2 -> test_words_and_an_exercise_never_mix
          O3 -> test_a_pair_is_kept_only_when_the_coach_changed_the_draft
@@ -26,8 +32,8 @@ PROVES   O1 -> test_a_line_is_answered_once_and_shared
          O5 -> test_the_migration_recovers_each_word_s_pair_once
          O6 -> test_every_draft_is_kept_as_it_was_sent_and_only_settled
 WHY      Migration 0402 (founder 2026-09-30, C2 to C5); O4 and O5 migration
-         0478 (founder 2026-10-19, N79). Runs only on a disposable database
-         whose name starts with willab_confident_moment_. O6 migration 0480
+         0479 (founder 2026-10-19, N79). Runs only on a disposable database
+         whose name starts with willab_confident_moment_. O6 migration 0481
          (founder 2026-10-19, N79).
 """
 from __future__ import annotations

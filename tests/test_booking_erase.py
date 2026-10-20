@@ -1,6 +1,16 @@
-"""Closing an account: a booking goes with it, except a paid lesson's
-accounting record, wiped to date, price and Stripe reference (founder
-2026-10-15, fix 6; Privacy 3.6 §7 and §9)."""
+"""
+STORY    As a speaker who closes my account, I want my lesson bookings
+         deleted, with a paid lesson kept only as a bare accounting record,
+         so that nothing personal about me stays.
+OUTCOME
+  O1  Unpaid bookings are deleted.
+  O2  A paid booking keeps only its date, price and Stripe reference; my
+      name, email, note and account link are removed.
+  O3  Other people's bookings stay as they were.
+PROVES   O1, O2, O3 ->
+             test_closing_an_account_deletes_bookings_and_keeps_paid_lessons_bare
+WHY      Founder 2026-10-15, fix 6; Privacy 3.6 sections 7 and 9.
+"""
 from __future__ import annotations
 
 from unittest.mock import patch

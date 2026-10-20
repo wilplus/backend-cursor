@@ -1,4 +1,4 @@
--- a_take_word_pair_has_a_home (0478; founder 2026-10-19, decisions log N79)
+-- a_take_word_pair_has_a_home (0479; founder 2026-10-19, decisions log N79)
 --
 -- WHY. A coach's Take word becomes a (draft, final) training pair when the
 -- coach changes the model's draft (C5-a, 0411). 0411 added
@@ -78,7 +78,7 @@ ALTER TABLE public.feedback_pairs
     ADD COLUMN IF NOT EXISTS superseded_at timestamptz NULL;
 COMMENT ON COLUMN public.feedback_pairs.superseded_at IS
     'Set when a newer pair for the same Take word and final kind replaced this '
-    'one (0478; founder 2026-10-19, the latest version teaches). Readers of '
+    'one (0479; founder 2026-10-19, the latest version teaches). Readers of '
     'pairs read only rows where it is NULL. Never set on the other surfaces.';
 
 -- 3. One current pair per Take word and final kind.
@@ -196,7 +196,7 @@ ON CONFLICT (take_word_id, final_kind)
 
 COMMENT ON COLUMN public.feedback_pairs.take_word_id IS
     'The coach_take_words row a coach_take_word pair hangs on (0411; a home '
-    'since 0478). One current pair per word and final kind: a newer version '
+    'since 0479). One current pair per word and final kind: a newer version '
     'supersedes the older (superseded_at), the latest teaches.';
 
 COMMIT;

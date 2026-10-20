@@ -1,14 +1,17 @@
-"""A signed line is never said twice in a row, on a disposable database
-(0438, D-FW-3; docs/SIGNED-line-bank-2026-10-06.md "Rotation").
-
-Runs services.line_rotation.pick against the real pick_line_bank_line_v1
-across two Takes of one speaker. Pins: Take 1 rotates through ordinary
-lines and never offers a later line; Take 2 says the later line, naming
-Take 1, only when the cue was measurably weaker then, and never twice in a
-row; the rotation continues past it; two speakers and two banks keep
-separate memories; concurrent picks never return the same index; the
-table and the function are closed to the browser roles; applying the file
-again keeps every row."""
+"""
+STORY    As a speaker, I want encouragement lines to rotate, and "Your voice
+         moved more here than on Take 1." said only when it is measurably
+         true and never twice in a row, so that feedback feels earned and
+         fresh.
+OUTCOME
+  O1  On Take 1 the ordinary lines rotate, one after another.
+  O2  On Take 2 the "more than on Take 1" line appears only when that cue
+      was weaker on Take 1.
+  O3  That line is never said twice in a row; the rotation carries on
+      after it.
+PROVES   O1, O2, O3 -> test_two_takes_rotate_and_say_the_later_line_only_when_true
+WHY      D-FW-3; signed line bank, "Rotation" (migration 0438).
+"""
 from __future__ import annotations
 
 import os

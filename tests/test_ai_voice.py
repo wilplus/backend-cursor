@@ -1,16 +1,43 @@
-"""The AI version of your voice (founder lock 2026-10-12, N71): the
-contracts a speaker and the founder care about.
-
-  * one problem is picked, by severity against the speaker's own usual,
-    or none when every signal is weak;
-  * the provider is only called in the voice Exercise lane, once per
-    practice, within the limits;
-  * a clip that fails its check is never shown;
-  * the request keeps the speaker's words;
-  * deleting removes the voice at the provider and every clip, safely twice.
-
-No real audio and no real provider: synthetic numbers, a fake provider and
-an in-memory table store.
+"""
+STORY    As a speaker practising, I want an AI clip of my own voice saying my
+         own words with one improvement, never shown if it fails its check,
+         and fully deleted when I ask, so that I hear a believable better
+         version and keep control of my voice.
+OUTCOME
+  O1  One problem is picked against my own usual (or the default), and the
+      sentence under the clip names it in words, with no numbers.
+  O2  The clip says my own words (or the clearer version I accepted, with
+      the ums taken out), in at most 17 seconds.
+  O3  A clip that fails its check is never shown; a real pause heard in
+      the audio passes.
+  O4  One clip per practice, started early once the exercise is known,
+      within the daily limit; a voice still being made is waited for a
+      few times only; my next try is measured on that one problem.
+  O5  Delete removes my voice at the provider and every clip, old links
+      stop working, and deleting twice is safe; closing my account
+      removes the voice first.
+PROVES   O1 -> test_a_problem_from_the_line_up_else_the_default,
+               test_raw_units_are_never_compared_and_the_phrase_has_a_fallback,
+               test_the_sentence_under_the_clip_comes_from_the_transcript_and_their_own_numbers,
+               test_a_clean_sentence_never_gets_the_fillers_clip
+         O2 -> test_the_request_says_the_speakers_own_words,
+               test_no_clip_is_longer_than_the_limit,
+               test_a_clearer_version_practice_gets_a_clip_of_the_accepted_words,
+               test_a_sentence_with_fillers_is_said_without_them_and_the_next_try_is_measured_on_them
+         O3 -> test_a_clip_that_fails_its_check_is_never_shown,
+               test_a_pause_heard_in_the_audio_passes_when_the_words_hide_it
+         O4 -> test_the_daily_limit_stops_the_provider_call,
+               test_one_recording_makes_one_checked_clip_then_measures_the_next_try,
+               test_a_stored_bake_with_a_voice_exercise_queues_one_prewarm_once,
+               test_the_bake_queues_the_offered_exercise_and_never_a_rewrite_or_praise,
+               test_prewarm_opens_the_practice_and_the_clip_and_skips_without_a_voice,
+               test_a_voice_still_being_made_is_waited_for_a_bounded_number_of_times
+         O5 -> test_after_delete_an_old_link_no_longer_serves_the_clip,
+               test_a_voice_already_gone_at_elevenlabs_counts_as_deleted,
+               test_account_deletion_removes_the_voice_before_the_account_is_blocked,
+               test_delete_removes_the_voice_and_clips_and_is_safe_twice
+WHY      Founder lock 2026-10-12 (N71); Never-rule 1 for the sentence under
+         the clip.
 """
 from __future__ import annotations
 

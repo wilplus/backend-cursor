@@ -1,37 +1,40 @@
-"""willab — the migration manifest + runner are enforceable, not aspirational.
-
-What this suite defends, in order of how badly it hurts when it breaks:
-
-  1. APPEND-ONLY. Versions 0001-0239 are recorded in every environment's
-     schema_migrations by version number. Renumbering or reordering one of
-     them silently desynchronises prod from the repo, and nothing else would
-     notice. A frozen hash makes that a red build.
-
-  2. MANIFEST <-> DISK 1:1. A .sql added without a manifest line never runs
-     anywhere — the exact failure the old flat directory had, just quieter.
-
-  3. DESTRUCTIVE DETECTION. The runner refuses DROP TABLE / DROP COLUMN /
-     TRUNCATE / DELETE FROM without an explicit flag (CLAUDE.md: never
-     auto-drop tables/columns/migrations). 30 of the 239 files carry
-     commented-out rollback hints like
-         -- Rollback: ALTER TABLE x DROP COLUMN IF EXISTS y;
-     If the scanner ever stops stripping comments, those 30 get blocked, the
-     gate becomes noise, and someone adds --allow-destructive to the deploy
-     script to make it shut up. Both directions are tested.
-
-  4. DEPENDENCY ORDER. The manifest's whole claim is that a file lands after
-     everything it depends on. Appending a migration that ALTERs a table
-     created later breaks a from-scratch rebuild.
-
-No database required — every test here reads files or uses a fake connection.
-
-STDLIB ONLY. The `migrations` CI job installs no dependencies, so nothing
-here may depend on psycopg2 (or any other optional package) being importable.
-A test that asserts on post-connect behaviour will pass locally and fail in
-CI — that is exactly how the pooler-warning test broke on its first run.
-Assert on what holds in both environments, or fake the connection.
-
-Run: python3 -m unittest tests.test_migrations
+"""
+STORY    As the founder, I want the list of database migrations to be complete,
+         append-only, in dependency order, safe to run and free of surprise
+         drops, so that merging a migration (which runs it in production) cannot
+         corrupt or desynchronise the database.
+OUTCOME
+  O1  The list matches the files on disk one to one, with no gaps, duplicates
+      or reordering, and the first 239 (already recorded in production) can
+      never change; "verify" passes on the real tree and fails on a file
+      missing from the list.
+  O2  Only the known, deliberate migrations drop or delete anything.
+  O3  Every migration runs in order after what it depends on, has balanced
+      brackets and quotes, and can run inside one transaction.
+  O4  A migration and its ledger row are saved together; a failed one leaves
+      no ledger row, and the ledger and baseline scripts are safe to re-run.
+  O5  A connection on the wrong (transaction) pooler port is warned about,
+      without ever printing the database address or password.
+PROVES   O1 -> ManifestIntegrityTests::test_manifest_is_not_vacuous,
+               ManifestIntegrityTests::test_versions_are_contiguous_and_ascending,
+               ManifestIntegrityTests::test_every_manifest_entry_exists_on_disk,
+               ManifestIntegrityTests::test_every_sql_file_is_in_the_manifest,
+               ManifestIntegrityTests::test_no_duplicate_versions_or_filenames,
+               ManifestIntegrityTests::test_baseline_block_is_frozen,
+               CliTests::test_verify_passes_on_the_real_tree,
+               CliTests::test_verify_fails_on_an_untracked_sql_file
+         O2 -> DestructiveDetectionTests::test_real_repo_files_flagged_are_the_known_set
+         O3 -> DependencyOrderTests::test_altered_tables_are_created_earlier_or_not_at_all,
+               DelimiterDamageTests::test_every_migration_on_disk_is_balanced,
+               DelimiterDamageTests::test_verify_refuses_a_damaged_file,
+               SqlHelperTests::test_every_current_migration_is_transaction_safe
+         O4 -> ApplyAtomicityTests::test_success_commits_ddl_and_ledger_together,
+               ApplyAtomicityTests::test_failure_rolls_back_and_writes_no_ledger_row,
+               LedgerSqlTests::test_is_idempotent,
+               BaselineSqlTests::test_is_idempotent_and_cannot_clobber_a_real_apply
+         O5 -> TransactionPoolerWarningTests::test_warns_on_transaction_pooler,
+               TransactionPoolerWarningTests::test_never_echoes_the_url
+WHY      CLAUDE.md: merging a migration runs it in production (stdlib only: CI installs nothing).
 """
 from __future__ import annotations
 

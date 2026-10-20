@@ -1,20 +1,13 @@
-"""The database itself refuses an ungated model promotion.
-
-LEGACY-1 (blocker) and R-13, audit 2026-09-22. The Python gate in
-`services/runtime_model_gate.py` is the boundary a request crosses. This is
-the boundary a PSQL SESSION crosses — an operator, a script, or anything else
-holding the Supabase service-role key, which is the population the finding is
-actually about: `runtime_config` had no RLS, no trigger and `GRANT ALL` to
-`service_role`, so one INSERT changed which model composes a speaker's Take-1
-Ideal Text within the sixty-second cache.
-
-Asserting the trigger by reading the migration text proves only that somebody
-typed it. These cases execute it.
-
-The target must be a disposable local database whose name starts with
-``willab_model_gate_``. Nothing here activates anything: every case below
-expects a REFUSAL, and the one success path writes a fake model id into a
-throwaway table.
+"""
+STORY    As the founder, I want the database itself to refuse an unapproved
+         model setting, so that even someone with the service key cannot
+         change the model behind a speaker's Ideal Text.
+OUTCOME
+  O1  Writing any of the gated model settings straight into the database
+      is refused with "model promotion not permitted".
+PROVES   O1 -> TestTheDirectWriteIsRefused::test_a_direct_insert_of_a_model_key_raises
+WHY      Audit 2026-09-22 (LEGACY-1, R-13): one INSERT could change the Ideal
+         Text model within a minute.
 """
 from __future__ import annotations
 

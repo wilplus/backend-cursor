@@ -1,5 +1,14 @@
-"""The admin's person page shows Confident Voice practice progress: how many
-practices were offered and how many were completed (founder 2026-10-18)."""
+"""
+STORY    As the founder, I want each person's admin page to show how many
+         practices were offered and how many were completed, so that I can
+         see who is practising.
+OUTCOME
+  O1  Five offered with three completed reads "offered 5, done 3".
+  O2  A person with no practice yet reads 0 and 0.
+PROVES   O1 -> test_counts_completed_out_of_offered
+         O2 -> test_no_practice_yet
+WHY      Founder 2026-10-18. Admin only: never shown to a speaker.
+"""
 from services import admin_person
 
 

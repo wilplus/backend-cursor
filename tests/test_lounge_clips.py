@@ -1,4 +1,23 @@
-"""A Lounge clip gets a fresh link only from the reader's own recording."""
+"""
+STORY    As a speaker, I want the clips, recordings and slide decks in my Lounge
+         to get fresh links from my own recordings only, a coach's video to play
+         only while it is their word's current one, and each page to load
+         quickly, so that my media plays and I never see another user's.
+OUTCOME
+  O1  My own clip gets a fresh link; a clip pointing at another user's
+      recording is left untouched.
+  O2  One page gets fresh clip, recording and deck links and the "new coach
+      feedback" flags from one batched read per kind, not one per Take.
+  O3  An older page carries no flags, and a failing step (such as decks)
+      costs only that step; my clips still refresh.
+  O4  A coach's video plays only while it is their word's current one; a
+      video they replaced or removed never plays, an older "Later · from your
+      coach" bubble is left out, and each bubble says whether it is new.
+PROVES   O1 -> test_own_clip_is_resigned_and_another_users_is_not
+         O2 -> test_one_page_gets_fresh_links_decks_and_flags_from_batched_reads
+         O3 -> test_an_older_page_carries_no_flags_and_a_failed_step_costs_only_itself
+         O4 -> test_a_coach_video_plays_only_while_it_is_the_word_s_current_one
+"""
 from services.lounge_clips import refresh_walk_clips
 
 
@@ -76,6 +95,90 @@ def test_one_page_gets_fresh_links_decks_and_flags_from_batched_reads(monkeypatc
     assert card["metadata"]["deck"] == {"presentation_ref": "deck-s3://b/deck.pdf"}
     assert page["new_coach_feedback"] == {"arc1": True, "arc2": False}
     assert db.calls == [("snippets", ("t1",))]
+
+
+MINE = "11111111-1111-4111-8111-111111111111"
+LATER = "33333333-3333-4333-8333-333333333333"
+THEIRS = "22222222-2222-4222-8222-222222222222"
+K1 = f"coach-feedback/{MINE}/k1.webm"
+K2 = f"coach-feedback/{MINE}/k2.webm"
+
+
+def _signed(key):
+    return f"https://acct.r2.example/coach-videos/{key}?X-Amz-Signature=old"
+
+
+class _CoachDb:
+    """The coach's word for my Take: words W2 with video K2, shared at 10:00
+    and last changed at 12:00. My later Take has no word of its own; another
+    speaker's Take has one."""
+
+    def __init__(self, seen_at=None):
+        self.seen_at = seen_at
+
+    def list_owned_take_ids(self, user_id, takes):
+        return {MINE, LATER} & set(takes)
+
+    def list_shared_coach_take_words(self, takes):
+        words = [{"take_session_id": MINE, "text": "Breathe before the price.",
+                  "video_ref": f"s3://coach-videos/{K2}",
+                  "shared_at": "2026-10-19T10:00:00+00:00",
+                  "updated_at": "2026-10-19T12:00:00+00:00"},
+                 {"take_session_id": THEIRS, "text": "Another speaker's word.",
+                  "video_ref": f"s3://coach-videos/coach-feedback/{THEIRS}/k9.webm",
+                  "shared_at": "2026-10-19T10:00:00+00:00",
+                  "updated_at": "2026-10-19T10:00:00+00:00"}]
+        return [w for w in words if w["take_session_id"] in takes]
+
+    def list_coach_take_word_seen(self, user_id, takes):
+        return {MINE: self.seen_at} if self.seen_at else {}
+
+
+def _coach(client_id, take, words, video, *, update=True):
+    meta = {"step": "coachnote", "author": "coach", "take_session_id": take,
+            "video": video}
+    if update:
+        meta.update(coach_update=True, heading="Later · from your coach")
+    return {"client_id": client_id, "kind": "walk_step",
+            "body": f"Your coach\n{words}", "metadata": meta}
+
+
+def test_a_coach_video_plays_only_while_it_is_the_word_s_current_one(monkeypatch):
+    """N80 (founder 2026-10-19): one "Later · from your coach" bubble per
+    word, a removed or replaced coach video never plays again in the chat,
+    and the bubble is "new" until the word is watched. The walk's copy
+    stored on a later Take (the walk showed this Take's word there) is
+    judged by this Take's word."""
+    from services import lounge_clips
+    signed = []
+    monkeypatch.setattr("services.coach_video_storage.r2_bucket_name", lambda: "coach-videos")
+    monkeypatch.setattr("services.coach_video_storage.refreshed_media_url",
+                        lambda ref: signed.append(ref) or f"fresh-{ref}")
+
+    def read(db):
+        page = _page(
+            _coach("older", MINE, "Slow the opening.", _signed(K1)),
+            _coach("walk", MINE, "Slow the opening.", _signed(K1), update=False),
+            _coach("later-walk", LATER, "Slow the opening.", _signed(K1), update=False),
+            _coach("current", MINE, "Breathe before the price.", _signed(K2)),
+            _coach("theirs", THEIRS, "Not yours.", "https://elsewhere/v.webm"))
+        lounge_clips.enrich_page(page, "me", db, resolve_snippet=lambda row: None,
+                                 resolve_ref=lambda ref: None, with_flags=False)
+        return {m["client_id"]: m["metadata"] for m in page["messages"]}
+
+    shown = read(_CoachDb())
+    assert list(shown) == ["walk", "later-walk", "current", "theirs"]
+    assert shown["current"]["video"] == f"fresh-s3://coach-videos/{K2}"
+    assert shown["current"]["unseen"] is True
+    assert shown["walk"]["video"] is None and shown["walk"]["unseen"] is True
+    assert shown["later-walk"]["video"] is None and shown["later-walk"]["unseen"] is True
+    assert shown["theirs"]["video"] == "https://elsewhere/v.webm"
+    assert "unseen" not in shown["theirs"]
+    assert signed == [f"s3://coach-videos/{K2}"]
+
+    watched = read(_CoachDb(seen_at="2026-10-19T13:00:00+00:00"))
+    assert watched["current"]["unseen"] is False and watched["walk"]["unseen"] is False
+    assert watched["later-walk"]["unseen"] is False
 
 
 def test_an_older_page_carries_no_flags_and_a_failed_step_costs_only_itself(monkeypatch):

@@ -1,14 +1,33 @@
-"""Route-level contracts for the last routes over complexity 20 moved into
-services (founder 2026-10-12: "move logic out of the backend routes and cut
-glue"): the Lounge chat, the transcript edit, the feedback answer, the admin
-session read, the journal cover and community generators, the Life Panel day
-card and the intake profile.
-
-Characterization tests, written against the unmodified routes first: each
-pins a route's main success path (status, body, the writes and their order)
-and its main refusal. Decorators are peeled with ``inspect.unwrap``; the move
-leaves them untouched. Any database call a test does not stub raises, as it
-would in CI.
+"""
+STORY    As a developer moving logic out of routes, I want each route's main
+         success and main refusal pinned, so that the move never changes what
+         speakers and admins see.
+OUTCOME
+  O1  Chat answers, saves the turn and charges it; the help answer covers
+      the rest; a blank question is refused.
+  O2  A transcript edit lands on the right snippet or chunk; bad edits are
+      refused.
+  O3  A first feedback answer writes in the right order; bad answers are
+      refused.
+  O4  The admin session read flattens turns and highlights; an unknown
+      session is refused.
+  O5  Journal generators, the day card and the profile keep their success
+      and refusal answers.
+PROVES   O1 -> test_a_chat_turn_answers_persists_and_charges,
+               test_the_librarian_answers_the_rest_and_a_blank_question_is_refused
+         O2 -> test_a_transcript_edit_lands_on_its_snippet_or_chunk,
+               test_transcript_edit_refusals
+         O3 -> test_a_first_feedback_answer_writes_in_order,
+               test_feedback_answer_refusals
+         O4 -> test_the_admin_session_read_flattens_turns_and_highlights,
+               test_the_admin_session_read_refuses_an_unknown_session
+         O5 -> test_a_single_format_reroll_inherits_the_siblings_framing,
+               test_community_generate_refusals, test_cover_generation_refusals,
+               test_a_one_thing_edit_records_the_accepted_draft,
+               test_day_update_refusals,
+               test_the_profile_saves_what_was_sent_and_reads_back_the_rest,
+               test_profile_refusals
+WHY      Founder 2026-10-12: "move logic out of the backend routes and cut glue".
 """
 from __future__ import annotations
 

@@ -4930,6 +4930,61 @@ class DatabaseService:
                 raise IdealTextCoreReadError(str(error)) from error
             return None
 
+    def get_ideal_text_document_fence(
+        self, arc_id: str, actor_id: str,
+    ) -> Optional[dict]:
+        """The generation fence alone: ``{"id": <head snapshot id>}`` when the
+        arc's head is current, ``None`` when it is not or cannot be read.
+
+        What ``get_ideal_text_document_core`` establishes without the row:
+        the head snapshot (one primary-key row) and whether the arc's source
+        generation still matches it (one primary-key row). The enrichment
+        request re-checks this after its readers settle, having already read
+        and owner-checked the full snapshot once; reading it again cost a
+        second join over v2_sessions and a second copy of the whole payload
+        for a comparison of two ids (founder's stopwatch, 2026-10-18).
+
+        Shape-compatible with the core read for ``stale_snapshot``: ``None``
+        is "no readable head", so a read fault answers stale and retryable,
+        as a failed core read does."""
+        if not arc_id or not actor_id:
+            return None
+        try:
+            from services.parallel import run_in_parallel
+            heads, generations = run_in_parallel(
+                lambda: self._execute_with_retry(
+                    lambda: (self.client.table("ideal_text_document_heads")
+                             .select("snapshot_id, ideal_text_document_snapshots"
+                                     "!inner(source_generation)")
+                             .eq("arc_id", str(arc_id))
+                             .eq("actor_id", str(actor_id)).limit(1)),
+                    label="ideal_text_fence_head").data or [],
+                lambda: self._execute_with_retry(
+                    lambda: (self.client.table("ideal_text_document_generations")
+                             .select("generation")
+                             .eq("arc_id", str(arc_id)).limit(1)),
+                    label="ideal_text_fence_generation").data or [])
+            if not heads or not generations:
+                return None
+            head = heads[0]
+            snapshot = head.get("ideal_text_document_snapshots") or {}
+            if isinstance(snapshot, list):
+                snapshot = snapshot[0] if snapshot else {}
+            if (snapshot.get("source_generation")
+                    != generations[0].get("generation")):
+                return None
+            return {"id": str(head.get("snapshot_id"))}
+        except Exception as error:  # noqa: BLE001 observe_f1_degrade keeps the traceback; None is "no readable head", as for the core read
+            low = str(error).lower()
+            if "ideal_text_document_" in low and (
+                    "does not exist" in low or "pgrst" in low):
+                return None
+            from services.f1_observability import observe_f1_degrade
+            observe_f1_degrade(
+                "ideal_text_fence_read_failed", exc=error,
+                arc_id=arc_id, error=error)
+            return None
+
     def get_ideal_text_document_core_v2(
         self, arc_id: str, actor_id: str,
     ) -> Optional[dict]:
@@ -12813,7 +12868,7 @@ class DatabaseService:
     ) -> Optional[dict]:
         """Keep the model's draft on the request row (0402), coach-only; a
         re-draft replaces it, and with it what the draft's prompt was given
-        (``draft_prompt``, 0459; every drafter's snapshot since 0480, naming
+        (``draft_prompt``, 0459; every drafter's snapshot since 0481, naming
         the draft's coach_draft_history row, which keeps every draft).
         Raises on failure: the caller logs and the draft still shows."""
         res = (self.client.table("exercise_coach_requests")
@@ -13359,6 +13414,54 @@ class DatabaseService:
                .not_.is_("shared_at", "null").execute())
         return list(res.data or [])
 
+    def list_owned_take_ids(self, user_id: str, take_session_ids: list[str]) -> set[str]:
+        """Which of these Takes belong to this speaker (v2_sessions). Ids
+        that are not UUID-shaped own nothing and are never sent. Raises on
+        failure."""
+        import uuid as _uuid
+
+        def shaped(value: Any) -> Optional[str]:
+            try:
+                return str(_uuid.UUID(str(value)))
+            except (TypeError, ValueError, AttributeError):
+                return None
+
+        ids = sorted({s for s in (shaped(i) for i in take_session_ids or []) if s})
+        if not user_id or not ids:
+            return set()
+        res = (self.client.table("v2_sessions").select("id")
+               .eq("user_id", str(user_id)).in_("id", ids).execute())
+        return {str(row["id"]) for row in res.data or []
+                if isinstance(row, dict) and row.get("id")}
+
+    def list_coach_take_word_seen(self, user_id: str,
+                                  take_session_ids: list[str]) -> dict[str, str]:
+        """{take: seen_at} for this speaker's last watch of each Take's coach
+        word (coach_feedback_seen, item 'take_word', 0439). A Take never
+        watched is absent. Raises on failure (N80)."""
+        ids = sorted({str(i) for i in take_session_ids or [] if i})
+        if not user_id or not ids:
+            return {}
+        res = (self.client.table("coach_feedback_seen")
+               .select("take_session_id,seen_at")
+               .eq("owner_user_id", str(user_id)).eq("item", "take_word")
+               .in_("take_session_id", ids).execute())
+        return {str(row["take_session_id"]): row.get("seen_at")
+                for row in res.data or []
+                if isinstance(row, dict) and row.get("take_session_id")}
+
+    def read_coach_take_word(self, take_session_id: str, coach_id: str) -> Optional[dict]:
+        """This coach's word for the Take, or None when there is none. The
+        same read as ``get_coach_take_word``, but it RAISES on failure, so a
+        failed read never passes for "no word yet" (N80: the panel would
+        draft over the saved words)."""
+        if not take_session_id or not coach_id:
+            return None
+        res = (self.client.table("coach_take_words").select("*")
+               .eq("take_session_id", str(take_session_id))
+               .eq("coach_id", str(coach_id)).limit(1).execute())
+        return (res.data or [None])[0]
+
     # ── The ledger's weeks, the research role, the golden set (0404) ────
 
     def get_mlc2_foundation_health(self) -> dict:
@@ -13765,7 +13868,7 @@ class DatabaseService:
         return (res.data or [None])[0]
 
     def record_take_word_pair(self, **fields: Any) -> Optional[dict]:
-        """A Take word's version (0478): in one transaction it supersedes the
+        """A Take word's version (0479): in one transaction it supersedes the
         word's current pair of the same final kind and, when it is a pair,
         is inserted. None when nothing new was written (the same words
         again, or a version that is no pair). Raises on failure; the service
@@ -13785,7 +13888,7 @@ class DatabaseService:
         out: dict[str, dict[str, int]] = {}
         for surface in SURFACES:
             # A pair a newer version of its Take word replaced is not
-            # counted (0478, the latest teaches).
+            # counted (0479, the latest teaches).
             total = (self.client.table("feedback_pairs")
                      .select("id", count="exact").eq("surface", surface)
                      .is_("superseded_at", "null").limit(1).execute())
@@ -14726,13 +14829,16 @@ class DatabaseService:
         """The model's draft of the Take word (7, 0411), on the coach's row,
         created draft-only when the word is not written yet, with what its
         prompt was given (``draft_prompt``, 0459; it names the draft's
-        coach_draft_history row since 0480). Raises on failure."""
+        coach_draft_history row since 0481). Raises on failure."""
         now = datetime.now(timezone.utc).isoformat()
         res = (self.client.table("coach_take_words")
                .upsert({"take_session_id": str(take_session_id), "coach_id": str(coach_id),
                         "draft_text": str(text), "draft_model_version": model_version or None,
                         "draft_prompt": prompt if isinstance(prompt, dict) else None,
-                        "drafted_at": now, "updated_at": now},
+                        # No updated_at (the column default covers a new row):
+                        # a draft is nothing the speaker sees, so it never
+                        # makes a shared word "new" again (N80, D3).
+                        "drafted_at": now},
                        on_conflict="take_session_id,coach_id").execute())
         return (res.data or [None])[0]
 
@@ -14755,7 +14861,7 @@ class DatabaseService:
 
     def insert_coach_draft(self, **fields: Any) -> Optional[dict]:
         """One draft as it was shown to a coach, with what its prompt was
-        given and the hashes of the prompt sent (0480). Written once.
+        given and the hashes of the prompt sent (0481). Written once.
         Raises on failure: services.coach_draft_history logs it and the
         draft still shows."""
         res = self.client.table("coach_draft_history").insert(fields).execute()
@@ -14763,7 +14869,7 @@ class DatabaseService:
 
     def settle_coach_draft(self, *, draft_id: str, final_unchanged: bool,
                            settled_at: str) -> Optional[dict]:
-        """The coach saved an answer on this draft (0480): whether it is the
+        """The coach saved an answer on this draft (0481): whether it is the
         draft as written. The only columns the app may set on a kept draft.
         None when no such draft is kept. Raises on failure."""
         res = (self.client.table("coach_draft_history")

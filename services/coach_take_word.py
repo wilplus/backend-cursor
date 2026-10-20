@@ -60,7 +60,7 @@ def _stored_ref(video_ref: Optional[str], take_session_id: str) -> Optional[str]
 def save_take_word(database: Any, *, take_session_id: str, coach_id: str,
                    body: Any) -> dict:
     """PUT: the coach's one word for this Take, replaced on its row on each
-    save (the database keeps every earlier version, 0479); `share: true`
+    save (the database keeps every earlier version, 0480); `share: true`
     sends it. Raises TakeWordRefusal for anything the coach can fix.
     Returns the payload the coach reads back."""
     text, video_ref, keep_video, share = _clean(body)
@@ -86,7 +86,7 @@ def _the_pair(database: Any, row: dict, *, coach_id: str, text: Optional[str],
               new_video: bool = True) -> None:
     """7 (C5-a, 0411): when a draft was shown and the coach's words differ,
     the (draft, final) pair; a video's transcript is a second final. The
-    draft the row carries is settled in coach_draft_history (0480): whether
+    draft the row carries is settled in coach_draft_history (0481): whether
     the saved words are that draft as written. All best-effort; the word is
     saved either way."""
     try:
@@ -98,7 +98,7 @@ def _the_pair(database: Any, row: dict, *, coach_id: str, text: Optional[str],
         record_take_word_pair(database, word_row=row, coach_id=coach_id, final_text=text)
         if not row.get("transcript") and (new_video or not row.get("video_ref")):
             # No video, or a new one not yet transcribed (the save cleared the
-            # old words): no video's words teach (0478). A kept video is left
+            # old words): no video's words teach (0479). A kept video is left
             # alone: its words may be landing right now, and no one sends it
             # to the transcriber again.
             record_take_word_pair(database, word_row=row, coach_id=coach_id,
@@ -171,17 +171,18 @@ def take_word_payload(row: Any) -> Optional[dict]:
 
 
 def take_word_for(database: Any, *, take_session_id: str, coach_id: str) -> Optional[dict]:
-    """GET: this coach's own word for the Take, or None."""
-    reader = getattr(database, "get_coach_take_word", None)
-    if reader is None:
-        return None
-    return take_word_payload(reader(str(take_session_id), str(coach_id)))
+    """GET: this coach's own word for the Take, or None when there is none.
+    A failed read RAISES (N80): answered as "no word", the panel would
+    draft over the saved words."""
+    return take_word_payload(database.read_coach_take_word(str(take_session_id), str(coach_id)))
 
 
 def latest_shared_word(database: Any, sessions: Any) -> Optional[dict]:
     """The most recently shared word across these spoken takes, as
-    {text, video_url, take_index, published_at, take_session_id}, or None.
-    Best-effort.
+    {text, video_url, take_index, published_at, take_session_id,
+    changed_at}, or None. Best-effort. ``changed_at`` (when that Take's
+    shared words last changed, N80) is for the "new" check only: the
+    journey takes it out before the payload leaves.
 
     THE WORD BELONGS TO ITS TAKE (founder 2026-10-05, N48.3 Q11 A; contract
     35g-6). The speaker's read passes only the Take on screen
@@ -206,10 +207,14 @@ def latest_shared_word(database: Any, sessions: Any) -> Optional[dict]:
     payload = take_word_payload(latest) or {}
     if not payload.get("text") and not payload.get("video_url"):
         return None
+    from services.coach_feedback_signal import word_changed_at
+    served = str(latest.get("take_session_id"))
     return {
         "text": payload.get("text"),
         "video_url": payload.get("video_url"),
         "take_index": take.get("take_index"),
         "published_at": latest.get("shared_at"),
         "take_session_id": str(take.get("id") or "") or None,
+        "changed_at": word_changed_at(
+            w for w in shared if str(w.get("take_session_id")) == served),
     }

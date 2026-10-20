@@ -1,30 +1,18 @@
-"""An erasure voids the released copies, executed (0456; door 2, the erasure
-promise of N48.4 Q14 A and Q17 A; PLF-T2, PLF-T3, L3).
-
-Run on the released rehearsal lane through the thin SQL client of
-tests/test_account_deletion_starts_postgres.py, as service_role, so the
-production Python (the two deletion services, the completion run, the
-release sweep, the export's release-time decision) meets the real
-functions. Stand-ins, each named: Supabase's default table grants to
-service_role on the pair tables, the Takes and the projects (production has
-them; this schema has no Supabase), the take-purge suite's retention rules
-and production columns, a pair stamped releasable at write as
-services/pair_consent.stamp does, and object storage faked. Pins:
-
-  * a project deletion REQUEST voids a release holding one of the project's
-    pairs before any purge exists, with 'project_erasure_requested': every
-    pair the release held goes back to waiting, a release holding none of
-    them is untouched, and the export's decision lets the other owners'
-    pairs leave again but never the project's;
-  * an account deletion REQUEST does the same for the person's pairs, with
-    'owner_erasure_requested', and finds a release by its owner list even
-    when no pair points at it;
-  * the void holds until a cancel, and stays a void after it;
-  * a pair released after the request is voided when the purge request is
-    made, by the system's start and by the operator's confirm;
-  * the completion run voids before its purge deletes the pairs, and its
-    sweep deletes the objects: nothing waits for the weekly job;
-  * requests made before 0456 get what their request would have done.
+"""
+STORY    As a speaker who asks to delete my account or a project, I want any
+         training release holding my pairs voided at once and its files
+         deleted when the erasure completes, so that my data stops leaving
+         the moment I ask.
+OUTCOME
+  O1  An account deletion request voids, before anything is erased, every
+      release holding my pairs, even one found only by its owner list.
+  O2  Other speakers' pairs from those releases may leave again; mine
+      never do; releases without my pairs are untouched.
+  O3  When a project deletion completes, the run voids the release before
+      deleting my pairs and deletes the release's files from storage.
+PROVES   O1, O2 -> test_an_account_deletion_request_voids_a_release_holding_one_of_its_pairs
+         O3 -> test_the_completion_run_voids_before_its_purge_and_sweeps_the_copies
+WHY      Door 2; erasure promise N48.4 Q14 A, Q17 A (migration 0456).
 """
 from __future__ import annotations
 

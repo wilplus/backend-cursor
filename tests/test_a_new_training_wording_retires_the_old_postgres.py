@@ -1,35 +1,16 @@
-"""A new training wording retires the old one, in one call (0458; founder
-D3, decisions log N68; legal/phase1-2026.1/23-…-v2-SIGNED-2026-10-08.md).
-
-Run on the released rehearsal lane. Every case runs in one transaction that
-is rolled back, so the policies it registers and retires never reach another
-module. Each case first retires, inside that transaction only, whatever
-training policy the shared lane already holds (the precedent is
-tests/test_the_chain_hears_the_training_yes_postgres.py), then registers its
-own "v1" through configure_mlc2_training_consent_policy_v1 (0373).
-
-Pins:
-  * one call retires v1 at the switch instant and registers v2 active from
-    the same instant; exactly one training policy is in force afterwards;
-  * a yes given under v1 reads as off once v1 is retired: the status reader,
-    the pair view (door 2), the corpus copy and a new v1 yes all say so; the
-    v1 consent events are all still there;
-  * a new yes under v2 is recorded and reads as on;
-  * the same call again changes nothing and answers replayed; any other
-    call once v2 exists, or naming a predecessor that is not in force, or a
-    switch instant in the past, is refused;
-  * while a training copy made under a v1 yes is not yet purged (active or
-    purge_pending), the call is refused and nothing changes; a purged one
-    does not stop it;
-  * the call holds training_corpus_items in SHARE ROW EXCLUSIVE mode until
-    its transaction ends: another session's corpus write waits, its reads
-    do not;
-  * browser roles, PUBLIC and service_role cannot execute it, nor the guard;
-  * a runtime role that can UPDATE the table and sets the door itself is
-    still refused: the door opens only for the supersede function's owner;
-  * the trigger keeps its name and still refuses every other UPDATE and
-    every DELETE, the door's setting included; the door is closed again when
-    the call returns.
+"""
+STORY    As a speaker, I want my training "yes" to count only for the wording
+         I actually agreed to, so that a new consent sentence needs my new
+         yes.
+OUTCOME
+  O1  One call retires the old wording and starts the new one at the same
+      instant; exactly one wording is in force, with the signed sentence.
+  O2  A yes given under the old wording now reads as off: no new yes to
+      the old wording, and no training copy made on it.
+  O3  The old yes stays on record as it was and can still be withdrawn.
+PROVES   O1 -> test_one_call_retires_v1_and_registers_v2_at_the_same_instant
+         O2, O3 -> test_a_v1_yes_reads_as_off_everywhere_and_stays_on_record
+WHY      Founder D3, N68 (migration 0458).
 """
 from __future__ import annotations
 

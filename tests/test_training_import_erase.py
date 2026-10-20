@@ -1,6 +1,15 @@
-"""The founder's erase of a training import (2026-10-19): the import's audio
-and every row it or its review wrote go; nothing of any other session does,
-and a session that is not an import is refused with nothing deleted."""
+"""
+STORY    As the founder, I want to erase a training import completely, so
+         that its audio and everything made from it are gone and no
+         speaker's session is touched.
+OUTCOME
+  O1  Erasing an import deletes its audio and every row it or its review
+      wrote; another session's rows stay.
+  O2  A session that is not an import is refused, with nothing deleted.
+PROVES   O1 -> EraseTrainingImport::test_the_import_goes_and_nothing_else_does
+         O2 -> EraseTrainingImport::test_a_speakers_session_is_refused_untouched
+WHY      Founder 2026-10-19.
+"""
 from __future__ import annotations
 
 import unittest

@@ -1,19 +1,22 @@
-"""Every draft keeps its prompt (0480; founder 2026-10-19, decisions log N79).
-
-A model draft shown to a coach used to live only on the row it was shown
-from, and a re-draft replaced it; the answer surfaces kept nothing of what
-their prompt was sent. Pins, on the public services the routes call:
-
-  * every answer draft (services.coach_request_drafts.draft_for_request) is
-    kept, a re-draft beside the first, with the sha256 of exactly the
-    system and user text the model was sent, what the prompt was given
-    (the passage as sent, the kind, the spotted labels and tag ids, the
-    coach's notes) and the surface's prompt lock; the request row's
-    ``draft_prompt`` is written and names the latest draft;
-  * the coach's save settles the draft the row carries: kept as written or
-    not; an earlier, replaced draft stays unsettled;
-  * a Take-word draft is kept on its Take and word the same way, and the
-    word's save settles it.
+"""
+STORY    As the founder, I want every draft the machine shows a coach kept
+         with exactly what its prompt was sent, a re-draft beside the first,
+         and settled by the coach's save, so that we can learn from what the
+         coach kept or changed and never lose a draft to a re-draft.
+OUTCOME
+  O1  Every answer draft is kept, a re-draft beside the first, with the
+      sha256 of exactly the system and user text sent, what the prompt was
+      given (the passage as sent, the kind, the spotted labels and tag ids,
+      the coach's notes) and the surface's prompt lock; the request's
+      draft_prompt names the latest draft.
+  O2  The coach's save settles the draft the request carries, kept as
+      written or not; the earlier, replaced draft stays unsettled.
+  O3  A Take-word draft is kept on its Take and word the same way, and the
+      word's save settles it as changed.
+PROVES   O1, O2 -> test_every_answer_draft_is_kept_with_what_it_was_sent_and_the_save_settles_it
+         O3 -> test_a_take_word_draft_is_kept_on_its_take_and_the_word_s_save_settles_it
+WHY      Migration 0481, every draft keeps its prompt (founder 2026-10-19,
+         decisions log N79).
 """
 from __future__ import annotations
 
@@ -118,7 +121,7 @@ class _Db:
 
 
 def _sha(system, user):
-    """The documented formula (migration 0480): sha256 of the UTF-8 JSON
+    """The documented formula (migration 0481): sha256 of the UTF-8 JSON
     array [system, user], no spaces, no ASCII escaping."""
     sent = json.dumps([system, user], ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(sent.encode("utf-8")).hexdigest()

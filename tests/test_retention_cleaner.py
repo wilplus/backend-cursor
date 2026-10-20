@@ -1,11 +1,24 @@
-"""The scheduled clean-up (founder 2026-10-05, decisions log N48.4 Q16 A and
-N50; services/retention_cleaner.py, migrations 0423 and 0426).
-
-Without a database: the two keys a real run needs, the order a live run
-works in (measurements, then the object, then its event), what it does when
-a step fails, that it deletes only from the relations its reviewed lists and
-the migration both name, and the cron route. The same paths against a real
-schema: tests/test_retention_cleaner_postgres.py.
+"""
+STORY    As the founder, I want old data cleaned on schedule only when I turn
+         the live key on, in a safe order, so that nothing is deleted early
+         or out of order.
+OUTCOME
+  O1  A dry run only counts what is due and deletes nothing.
+  O2  A live run is refused while the live key is off.
+  O3  A live run deletes in order: old guest accounts, then the
+      measurements, then the recording, then its event, then old logs,
+      then old financial rows.
+  O4  If the code's list of tables disagrees with the database, nothing is
+      deleted; the cleaner only touches tables reviewed for deletion.
+  O5  The scheduled-run route does nothing without its secret.
+PROVES   O1 -> test_a_dry_run_counts_records_and_deletes_nothing
+         O2 -> test_a_live_request_is_refused_while_the_key_is_off
+         O3 -> test_a_live_run_works_through_the_four_rules_in_order,
+               test_the_measurements_go_before_the_recording
+         O4 -> test_a_registry_that_disagrees_with_the_database_deletes_nothing,
+               test_every_relation_the_cleaner_writes_is_classified_and_none_is_retained
+         O5 -> RouteTests::test_the_route_is_dead_without_its_secret
+WHY      Founder 2026-10-05, decisions log N48.4 Q16 A and N50.
 """
 from __future__ import annotations
 

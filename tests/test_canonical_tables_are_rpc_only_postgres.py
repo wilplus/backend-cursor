@@ -1,27 +1,16 @@
-"""The canonical learning-evidence tables refuse a direct write from the
-service key (0389).
-
-R-1 (audit 2026-09-22, major). 0296 and 0299 ended with `GRANT ALL ON TABLE
-... TO service_role` on twenty-eight tables. service_role bypasses row level
-security, so any process holding the service key could INSERT into
-candidate_sets, evidence_spans or dataset_release_items directly and skip the
-SECURITY DEFINER RPCs that carry the contract's checks; the append-only
-triggers refuse UPDATE and DELETE, never an INSERT.
-
-These cases execute the boundary on the released lane: as service_role, each
-of the four write privileges is refused on every one of those tables, SELECT
-still works where it worked before (and stays refused on the one table the
-coaching bundle locked entirely), and the catalog shows why the revoke is
-safe — every function that writes one of the tables is a definer, except the
-one owner-claim trigger this test pins by name.
-
-Every write attempt below matches zero rows (`WHERE false`, or a TRUNCATE in
-a transaction that is always rolled back), so a database that still grants
-the privilege — origin/main before 0389 — lets it through and the assertion
-fails; nothing is ever written.
-
-The target must be a disposable local database whose name starts with
-``willab_confident_moment_``.
+"""
+STORY    As the founder, I want the learning-evidence tables written only
+         through the checked database functions, so that no process holding
+         the service key can slip unchecked data into training.
+OUTCOME
+  O1  With the service key, a direct insert is refused on every listed
+      table.
+  O2  The two checked functions every Take's feedback is written through
+      stay callable.
+PROVES   O1 -> TestServiceRoleCannotWrite::test_service_role_cannot_insert_into_canonical_tables
+         O2 -> TestWhyTheRevokeIsSafe::test_the_served_v3_writers_stay_executable
+WHY      R-1, audit 2026-09-22: the service key could write 28 tables
+         directly (migration 0389).
 """
 from __future__ import annotations
 
