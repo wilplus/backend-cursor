@@ -186,7 +186,8 @@ def _warm_analysis_stack() -> None:
 
         y = np.zeros(16000, dtype="float32")
         librosa.feature.mfcc(y=y, sr=16000, n_mfcc=13)
-        librosa.feature.chroma_stft(y=y, sr=16000)
+        # tuning=0.0, as services/audio_metrics.py (see gunicorn_conf.py).
+        librosa.feature.chroma_stft(y=y, sr=16000, tuning=0.0)
         logger.info("librosa numba JIT warmed (pid=%s)", os.getpid())
     except Exception as e:
         logger.warning("librosa warmup skipped: %s", e)

@@ -133,9 +133,15 @@ def install() -> None:
             except Exception as err:
                 if attempt >= len(_PAUSES_S) or not _resendable(str(method), err):
                     raise
+                # One line, no traceback (founder 2026-10-20): a dropped
+                # connection fails every request in flight at once, and their
+                # tracebacks hit Railway's 500 lines/s cap and dropped the
+                # rest of the log. A read that still fails after the last try
+                # raises, so the caller and Sentry keep its full trace.
                 logger.warning(
-                    "db_transport: %s %s dropped (%s), resending (try %d)",
-                    method, url, type(err).__name__, attempt + 2, exc_info=True,
+                    "db_transport: %s %s dropped (%s: %s), resending (try %d)",
+                    method, url, type(err).__name__, " ".join(str(err).split())[:200],
+                    attempt + 2,
                 )
                 time.sleep(_PAUSES_S[attempt])
                 attempt += 1
