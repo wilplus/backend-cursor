@@ -202,6 +202,8 @@ def sample_for_coach(database: Any, *, coach_id: str, now: Optional[datetime] = 
     from services.coach_exposure import record_exposure, unexposed
     rng = rng or random.Random()
     week = week_key(now)
+    if database.blind_line_cleared("error_audit", str(coach_id), week):
+        return []  # the founder cleared the line: new ones come next week
     spent = int(database.count_coach_blind_answers(str(coach_id), week) or 0)
     room = WEEKLY_CAP - spent
     pending = database.list_error_presence_audit_pending(str(coach_id)) or []

@@ -22,7 +22,7 @@ from time import monotonic
 import sentry_sdk
 from flask import jsonify, request
 
-from routes.admin import require_admin_or_coach
+from routes.admin import require_admin_or_coach, require_founder
 from routes.v2.blueprint import v2_bp
 from services.db import db
 
@@ -107,6 +107,22 @@ def v2_coach_block_pick_answer(pick_id):
     return _run("block pick answer", lambda: answer(
         db, coach_id=_coach_id(), pick_id=str(pick_id),
         body=request.get_json(silent=True)))
+
+
+# ── The founder's ⋯ on a line (2026-10-20; migration 0482) ─────────────────
+
+@v2_bp.route("/coach/blind/<line>/clear", methods=["POST"])
+@require_founder
+def v2_coach_clear_blind_line(line):
+    """"Clear what's waiting": every item waiting on the founder's own line
+    is cleared for the week (never shown again, never an answer); answers
+    already given stay, and the line refills next week. ``line`` is one of
+    error_audit, block_pick, v4_moment_pick, v4_surer. 200 {cleared: n} · 404."""
+    from services.error_presence_audit import week_key
+    if line not in db.BLIND_LINES:
+        return jsonify({"code": "NOT_FOUND", "error": "No such line."}), 404
+    return _run("clear blind line", lambda: (
+        200, {"cleared": db.clear_blind_line(line, _coach_id(), week_key())}))
 
 
 # ── V4's two blind sheets (B1.8, B1.9; S-B8 A; migration 0453) ────────────
