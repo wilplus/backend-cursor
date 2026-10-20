@@ -23,12 +23,39 @@ public functions:
 | `record(db, user_id, kind, payload, take)` | `feedback_check._save` (every answer), `take_summary.summary_message` (every Take) | keeps the event, rewrites the note in the background |
 | `note_for(db, user_id)` | `chat_query._librarian`, `take_summary.memory_facts` | the current note, `''` when none |
 | `prompt_block(note)` | `chat_query._librarian` (as `app_context["memory"]`) | the note as Will's private prompt block |
+| `history_for(db, user_id, question)` | `chat_query._librarian` (added to `app_context["memory"]`) | the pieces of the speaker's own history that match the question, as Will's private block (see Lookup) |
 | `set_note(db, user_id, note)` | `GET/PUT /v2/admin/people/<id>/speaker-memory` (founder only) | the founder's correction |
 | `rebuild(db, user_id, take)` | by hand, after a model change | the note from every stored event |
 
 A new source of learning (for example what speakers ask Will about) is a new
 `kind` in `KINDS`, the migration's CHECK, and one line in `_event_line`.
 Nothing else changes.
+
+## Lookup (step 1, founder 2026-10-20)
+
+Before Will answers in the chat he looks up the speaker's own history:
+`services/speaker_lookup.py`, reached through `history_for`. A simple
+lookup, no vector search, no embeddings, no AI call, no migration.
+
+| Source | Where | Ownership | Bound |
+|---|---|---|---|
+| Their Takes' transcripts | `v2_sessions.slide_transcripts`, one piece per slide | `user_id` = the speaker; finished spoken Takes only; erased or archived projects left out | newest 6 Takes |
+| What their coach sent | `coach_take_words` with `shared_at` (`text`, and the video's `transcript`); `exercise_coach_requests` with `shared_at` and a written answer (`answer_text`) | only on the Takes above; moment answers also `owner_user_id` = the speaker. Never `draft_text` | 12 of each |
+| What they told Will | `lounge_messages`, role `user`, kind `text` | `user_id` = the speaker. Never Will's replies, never an answer to "Did this help?", not the newest 24 rows (Will already reads them) | 120 rows |
+
+Each piece is ranked by the words it shares with the question (lowercased,
+stopwords out, light stemming), times a small weight (coach 1.2, Take 1.0,
+chat 0.9); ties go to the newest. The top 5 reach Will, each cut to about
+200 characters, with a plain label ("Take 2 transcript, slide 3", "your
+coach's word on Take 2", "you asked earlier"). The block tells Will it is
+private, to steer by, and that he may quote at most a few of the speaker's
+own words, never their answers to "Did this help?", never a number, score
+or verdict. Its wording is drift-locked (`speaker_memory.lookup_block`).
+
+The reads run side by side (`services.parallel`): Takes and chat first,
+then the project check and the coach's words; the note is read alongside.
+Any failed read leaves its source out; nothing raises, and with no block
+Will answers as before. Guarded by `tests/test_will_looks_up_history.py`.
 
 ## Storage (migration 0480)
 

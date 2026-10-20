@@ -13509,6 +13509,38 @@ class DatabaseService:
                .not_.is_("shared_at", "null").execute())
         return list(res.data or [])
 
+    def list_sent_coach_take_words(self, take_session_ids: list[str], *,
+                                   limit: int) -> list[dict]:
+        """What coaches SENT on these Takes, newest first: the shared word's
+        text and its video's transcript (Will's lookup, services.
+        speaker_lookup). Never the draft. The caller passes only the
+        speaker's own Takes. Bounded. Raises on failure."""
+        ids = [str(i) for i in take_session_ids if i]
+        if not ids:
+            return []
+        res = (self.client.table("coach_take_words")
+               .select("take_session_id,text,video_ref,transcript,shared_at")
+               .in_("take_session_id", ids)
+               .not_.is_("shared_at", "null")
+               .order("shared_at", desc=True).limit(int(limit)).execute())
+        return list(res.data or [])
+
+    def list_shared_moment_answers(self, user_id: str, take_session_ids: list[str], *,
+                                   limit: int) -> list[dict]:
+        """The moment answers a coach shared with this speaker on these
+        Takes, newest first (Will's lookup). Only rows the speaker owns
+        (``owner_user_id``); never the draft. Bounded. Raises on failure."""
+        ids = [str(i) for i in take_session_ids if i]
+        if not user_id or not ids:
+            return []
+        res = (self.client.table("exercise_coach_requests")
+               .select("owner_user_id,take_session_id,resolution,answer_text,shared_at")
+               .eq("owner_user_id", str(user_id))
+               .in_("take_session_id", ids)
+               .not_.is_("shared_at", "null")
+               .order("shared_at", desc=True).limit(int(limit)).execute())
+        return list(res.data or [])
+
     def list_owned_take_ids(self, user_id: str, take_session_ids: list[str]) -> set[str]:
         """Which of these Takes belong to this speaker (v2_sessions). Ids
         that are not UUID-shaped own nothing and are never sent. Raises on

@@ -354,6 +354,13 @@ def _librarian(database, user_id, question, history, app_config,
     # The status card costs several reads: it is read on first use, once.
     card = functools.cache(
         lambda: app.status_card(database, user_id) if user_id else None)
+    # The speaker's private note and the pieces of their own history that
+    # match the question (services.speaker_memory), read side by side, once,
+    # on first use. Signed-in speakers only.
+    from services.parallel import run_in_parallel
+    memory = functools.cache(lambda: "".join(run_in_parallel(
+        lambda: speaker_memory.prompt_block(speaker_memory.note_for(database, user_id)),
+        lambda: speaker_memory.history_for(database, user_id, question))) if user_id else "")
     from services.master_doc_rag import answer_question
     payload, debug = answer_question(
         question, history=history, admin_dont_ask_notes=admin_notes,
@@ -362,9 +369,7 @@ def _librarian(database, user_id, question, history, app_config,
                              "status": app.render_status(card())
                              if user_id else app.VISITOR_BLOCK,
                              "principles": feedback_facts if user_id else "",
-                             "memory": speaker_memory.prompt_block(
-                                 speaker_memory.note_for(database, user_id))
-                             if user_id else ""})
+                             "memory": memory()})
     suggested = payload.get("suggested_action")
     if suggested not in ("trainings", "audit"):
         suggested = None

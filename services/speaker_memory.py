@@ -19,6 +19,11 @@ Public API, the only way in or out (keep it that way):
       The current note, '' when there is none. Never raises.
   prompt_block(note) -> str
       The note as a private block for Will's prompts, '' when empty.
+  history_for(database, user_id, question) -> str
+      The few pieces of the speaker's own history (their Takes' transcripts,
+      what their coach sent them, their own earlier messages) that share the
+      most words with the question, as a private block; '' when none. A
+      simple lookup in services/speaker_lookup.py. Never raises.
   set_note(database, user_id, note)
       The founder corrects it by hand (admin). The AI keeps building on it.
   rebuild(database, user_id, take_session_id)
@@ -214,6 +219,21 @@ def prompt_block(note: str) -> str:
     return ("─── WHAT HELPS THIS SPEAKER (your private note; never quote it, never "
             "repeat their answers back, never mention that you keep it) ───\n"
             + note + "\nLet it shape what you ask and what you focus on.\n")
+
+
+def history_for(database: Any, user_id: Any, question: str) -> str:
+    """The speaker's own history most relevant to ``question``, as Will's
+    private block (services.speaker_lookup); '' when nothing matches or a
+    read fails. Never raises."""
+    if not user_id:
+        return ""
+    try:
+        from services.speaker_lookup import lookup, lookup_block
+        return lookup_block(lookup(database, user_id, question))
+    except Exception as error:  # noqa: BLE001 -- no block: Will answers as before
+        logger.warning("speaker memory: history unread user=%s: %s", user_id, error,
+                       exc_info=True)
+        return ""
 
 
 def set_note(database: Any, user_id: str, note: str) -> Optional[str]:
