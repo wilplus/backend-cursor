@@ -77,8 +77,10 @@ from services.mlc2_confidence import (
     SELECTION_EXECUTION_KIND,
     ConfidenceSamplingFrame,
 )
-from services.mlc2_confidence_producer import ConfidenceProducerEvent
-from services.mlc2_foundation import Mlc2ContractError
+from services.mlc2_confidence_producer import (
+    ConfidenceProducerEvent,
+    TerminalConfidenceFailure,
+)
 from services.voice_confidence import VERSION as DETECTOR_VERSION
 from services.moment_confidence import resolve_moment_confidence
 from services.voice_confidence import band, stamped_score
@@ -111,8 +113,11 @@ PERCEPTUAL_CLASSES = ("yes", "in_between", "no")
 _NAMESPACE = uuid.UUID("7f0f1b8e-3a2d-4c5e-9b6a-1d2e3f4a5b6c")
 
 
-class NoEligibleConfidenceClip(Mlc2ContractError):
-    """The Take has no clip a blind rater could be asked about."""
+class NoEligibleConfidenceClip(TerminalConfidenceFailure):
+    """The Take has no clip a blind rater could be asked about. Its rows are
+    fixed before promotion, so the event is given up (0486)."""
+
+    reason_code = "no_eligible_clip"
 
 
 # ── deterministic identity ──────────────────────────────────────────────────

@@ -12,16 +12,17 @@ OUTCOME
   O5  Under founder_canary the sweep owner claims, finalizes and re-arms.
   O6  A Take with no clip a rater could judge is promoted plainly and opens
       no outbox event, because its frame could never be finalized.
-  O7  A failed event is not offered again in 30 seconds: a contract failure
-      waits a week, any other failure waits longer after each attempt
-      (founder's pg_stat_statements, 2026-10-20: 976 failures, 540 claims).
+  O7  A failed event is not offered again in 30 seconds: one whose Take has
+      no clip is given up (0486), any other failure waits longer after each
+      attempt (founder's pg_stat_statements, 2026-10-20: 976 failures, 540
+      claims).
 PROVES   O1 -> test_the_frame_is_valid_exact_and_selects_one_clip
          O2 -> test_a_replay_is_byte_identical
          O3 -> test_no_transcript_text_reaches_the_frame
          O4 -> test_the_boot_line_starts_nothing_while_dark
          O5 -> test_the_owner_claims_finalizes_and_rearms
          O6 -> test_a_take_without_a_clip_opens_no_outbox_event
-         O7 -> test_a_failure_is_not_offered_again_in_thirty_seconds
+         O7 -> test_a_failure_is_given_up_or_waits
 WHY      G-6, audit 2026-09-22.
 """
 from __future__ import annotations
@@ -259,11 +260,8 @@ def test_a_take_without_a_clip_opens_no_outbox_event(monkeypatch):
     assert promoted_through(SNIPPETS) == ["canonical"]
 
 
-def test_a_failure_is_not_offered_again_in_thirty_seconds(monkeypatch):
-    from services.mlc2_confidence_producer import (
-        CONTRACT_RETRY_SECONDS,
-        RETRY_BASE_SECONDS,
-    )
+def test_a_failure_is_given_up_or_waits(monkeypatch):
+    from services.mlc2_confidence_producer import RETRY_BASE_SECONDS
 
     class _FailingClient(_Client):
         def rpc(self, name, payload):
@@ -273,7 +271,7 @@ def test_a_failure_is_not_offered_again_in_thirty_seconds(monkeypatch):
                 ]))
             return super().rpc(name, payload)
 
-    def waits_after(read):
+    def returned_with(read):
         client = _FailingClient()
         TestTheSweepUnderFounderCanary()._open(monkeypatch, _FakeRedis(), client)
         import services.db as db_module
@@ -281,13 +279,17 @@ def test_a_failure_is_not_offered_again_in_thirty_seconds(monkeypatch):
         result = sweep_confidence_outbox("chain-a")
         assert result["failed"] == 1
         [(name, payload)] = client.calls
-        assert name == "fail_mlc2_outbox_event_v1"
-        return payload["p_error_code"], payload["p_retry_after_seconds"]
+        return name, payload
 
     def unreadable(take_id, **_):
         raise ConnectionError("database hiccup")
 
-    assert waits_after(lambda take_id, **_: [_snippet(1, None)]) == (
-        "NoEligibleConfidenceClip:confidence_frame_failed", CONTRACT_RETRY_SECONDS)
-    assert waits_after(unreadable) == (
-        "ConnectionError:confidence_frame_failed", RETRY_BASE_SECONDS * 4)
+    name, payload = returned_with(lambda take_id, **_: [_snippet(1, None)])
+    assert name == "abandon_mlc2_confidence_outbox_event_v1"
+    assert payload["p_reason_code"] == "no_eligible_clip"
+    assert payload["p_error_code"] == "NoEligibleConfidenceClip:confidence_frame_failed"
+
+    name, payload = returned_with(unreadable)
+    assert name == "fail_mlc2_outbox_event_v1"
+    assert payload["p_error_code"] == "ConnectionError:confidence_frame_failed"
+    assert payload["p_retry_after_seconds"] == RETRY_BASE_SECONDS * 4

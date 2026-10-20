@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 import hashlib
+import logging
 import mimetypes
 from pathlib import PurePath
 from typing import Any, Callable, Mapping
@@ -25,6 +26,7 @@ from services.mlc2_confidence import (
 )
 from services.mlc2_foundation import CanonicalEnvelope, Mlc2ContractError
 
+logger = logging.getLogger(__name__)
 
 PRODUCER_CONTRACT_VERSION = "confidence-producer-v1"
 SOURCE_SCHEMA_VERSION = "confidence-source-audio-v1"
@@ -40,6 +42,14 @@ RETRY_CAP_SECONDS = 6 * 3600
 #: seconds (founder's pg_stat_statements, 2026-10-20: 976 failures over 540
 #: claims). It waits a week instead, so a fix in code still reaches it.
 CONTRACT_RETRY_SECONDS = 7 * 24 * 3600
+
+
+class TerminalConfidenceFailure(Mlc2ContractError):
+    """A failure no attempt can ever pass: the event is given up (0486).
+
+    ``reason_code`` must be on ``ml_outbox_abandon_check``'s allow-list."""
+
+    reason_code = ""
 
 
 def retry_after_seconds(error: BaseException, *, attempt_count: Any) -> int:
@@ -215,6 +225,19 @@ class Mlc2ConfidenceProducerStore:
             "p_retry_after_seconds": max(1, int(retry_after_seconds)),
         }).execute())
 
+    def abandon(
+        self, *, outbox_event_id: UUID | str, worker_id: str,
+        error_code: str, reason_code: str,
+    ) -> dict[str, Any]:
+        """Give the event up: it is never claimed again (0486)."""
+        return self._one(self.client.rpc(
+            "abandon_mlc2_confidence_outbox_event_v1", {
+                "p_outbox_event_id": _uuid(outbox_event_id, "outbox_event_id"),
+                "p_worker_id": _text(worker_id, "worker_id"),
+                "p_error_code": _text(error_code, "error_code")[:120],
+                "p_reason_code": _text(reason_code, "reason_code"),
+            }).execute())
+
     def health(self) -> dict[str, Any]:
         return self._one(
             self.client.rpc("get_mlc2_confidence_slice4_health_v1", {}).execute()
@@ -226,7 +249,8 @@ class DarkConfidenceWorker:
 
     A future activation supplies a reviewed ``frame_factory``.  Exceptions are
     returned to the outbox with a retry code and a wait from
-    ``retry_after_seconds``; product state is never reversed.
+    ``retry_after_seconds``, or given up when no attempt can ever pass
+    (``TerminalConfidenceFailure``); product state is never reversed.
     """
 
     def __init__(
@@ -258,11 +282,30 @@ class DarkConfidenceWorker:
                 frame=frame,
             )
         except Exception as error:
-            self.producer_store.fail(
-                outbox_event_id=event.outbox_event_id,
-                worker_id=worker_id,
-                error_code=f"{type(error).__name__}:confidence_frame_failed",
-                retry_after_seconds=retry_after_seconds(
-                    error, attempt_count=row.get("attempt_count")),
-            )
+            self._return_to_outbox(event.outbox_event_id, worker_id, error,
+                                   attempt_count=row.get("attempt_count"))
             raise
+
+    def _return_to_outbox(
+        self, outbox_event_id: UUID | str, worker_id: str,
+        error: Exception, *, attempt_count: Any,
+    ) -> None:
+        error_code = f"{type(error).__name__}:confidence_frame_failed"
+        if isinstance(error, TerminalConfidenceFailure):
+            try:
+                self.producer_store.abandon(
+                    outbox_event_id=outbox_event_id, worker_id=worker_id,
+                    error_code=error_code, reason_code=error.reason_code,
+                )
+                return
+            except Exception:
+                # 0486 not applied yet: the week's wait below still holds.
+                logger.warning("confidence event %s not given up; parked",
+                               outbox_event_id, exc_info=True)
+        self.producer_store.fail(
+            outbox_event_id=outbox_event_id,
+            worker_id=worker_id,
+            error_code=error_code,
+            retry_after_seconds=retry_after_seconds(
+                error, attempt_count=attempt_count),
+        )

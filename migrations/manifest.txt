@@ -521,3 +521,4 @@
 0483	a_moment_is_found_by_its_id_as_text.sql
 0484	a_voice_notebook_keeps_the_founders_notes.sql
 0485	a_legacy_take_takes_its_owner_from_its_account.sql
+0486	a_confidence_event_without_a_clip_is_given_up.sql

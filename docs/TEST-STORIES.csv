@@ -39,6 +39,14 @@ O2  Its match trace is stored once, with outcome coach_chosen.
 O3  Showing the card is receipted once against that frozen pick; a card
 for another exercise is refused by name.","O1, O2 -> test_a_coach_pick_is_frozen_once_with_its_trace
 O3     -> test_showing_the_coach_pick_is_receipted_once","Migration 0398 (founder 2026-09-29, decision 3). Runs only on a disposable database whose name starts with willab_confident_moment_."
+tests/test_a_confidence_event_without_a_clip_is_given_up_postgres.py,Story,"As the founder, I want a confidence event whose Take has no clip a rater could judge to be given up for good, so that the outbox stops claiming and failing it every 30 seconds (two events, 30,903 attempts since 2026-10-08) and keeps the record of why.","O1  An event the worker gives up is never claimed again, keeps its error
+code, and cannot be locked by anything afterwards.
+O2  Only the worker holding the lease can give an event up, and only for
+a reason on the allow-list.
+O3  The migration gives up the events already stuck on
+NoEligibleConfidenceClip and leaves every other event as it was.","O1 -> test_a_given_up_event_is_never_claimed_again
+O2 -> test_only_the_lease_holder_gives_up_and_only_for_no_clip
+O3 -> test_the_migration_gives_up_only_the_stuck_events","0486, founder 2026-10-20; runs in one rolled-back transaction on a database whose name starts with ``willab_confident_moment_`` (rehearsal tier only)."
 tests/test_a_corpus_import_is_processed_under_the_founders_basis_postgres.py,Story,"As the founder, I want a coach-imported recording processed only under my written corpus basis (N58) and never under a speaker's own permit, so that every provider call on the critical path (record -> process) has a lawful basis and a speaker's Take is never processed without their own acceptance.","O1  The basis is one N58 row with the founder's note, never pooled; it can
 only be retired, never edited.
 O2  A registered import gets a permit naming N58 and its session; its
@@ -1339,15 +1347,16 @@ O4  While the mode is dark, the worker boot line starts nothing.
 O5  Under founder_canary the sweep owner claims, finalizes and re-arms.
 O6  A Take with no clip a rater could judge is promoted plainly and opens
 no outbox event, because its frame could never be finalized.
-O7  A failed event is not offered again in 30 seconds: a contract failure
-waits a week, any other failure waits longer after each attempt
-(founder's pg_stat_statements, 2026-10-20: 976 failures, 540 claims).","O1 -> test_the_frame_is_valid_exact_and_selects_one_clip
+O7  A failed event is not offered again in 30 seconds: one whose Take has
+no clip is given up (0486), any other failure waits longer after each
+attempt (founder's pg_stat_statements, 2026-10-20: 976 failures, 540
+claims).","O1 -> test_the_frame_is_valid_exact_and_selects_one_clip
 O2 -> test_a_replay_is_byte_identical
 O3 -> test_no_transcript_text_reaches_the_frame
 O4 -> test_the_boot_line_starts_nothing_while_dark
 O5 -> test_the_owner_claims_finalizes_and_rearms
 O6 -> test_a_take_without_a_clip_opens_no_outbox_event
-O7 -> test_a_failure_is_not_offered_again_in_thirty_seconds","G-6, audit 2026-09-22."
+O7 -> test_a_failure_is_given_up_or_waits","G-6, audit 2026-09-22."
 tests/test_mlc2_legacy_isolation.py,Guard,"The new learning code (MLC-2) never names a legacy learning table: no mlc2_*.py module, and none of the door modules that build, release, evaluate, train on or promote learning data.","A read or write of a retired, unconsented label store (for example
 confidence_labels, star_verdicts) from canonical training code.
 Method names count (get_confidence_labels_by_snippet_ids), and so
