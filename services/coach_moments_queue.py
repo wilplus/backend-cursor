@@ -65,6 +65,7 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Iterable, Optional
 
 _log = logging.getLogger(__name__)
@@ -240,6 +241,40 @@ def labels_for_snippets(database: Any, snippet_ids: Iterable[Any]
     return lambda sid: list(found.get(str(sid)) or [])
 
 
+#: The newest Takes with moments the alarm looks at, and how long their
+#: speakers get to open their feedback first.
+REACH_ALARM_TAKES = 3
+REACH_ALARM_AFTER = timedelta(hours=6)
+_alarmed_on: Optional[str] = None
+
+
+def reach_alarm(takes: list[tuple[str, bool]], now: Optional[datetime] = None) -> bool:
+    """THE ALARM (founder 2026-10-20). ``takes`` is (sent_at, any moment
+    reached) for every Take with moments. When the newest few, all sent long
+    enough ago, have no moment that reached their speaker, something stopped
+    recording the reach (the walk did, 2026-10-12, and no coach heard a new
+    speaker): one Sentry warning a day. True when it fired."""
+    global _alarmed_on
+    now = now or datetime.now(timezone.utc)
+    cutoff = (now - REACH_ALARM_AFTER).isoformat()
+    newest = sorted((t for t in takes if t[0] and t[0] <= cutoff), reverse=True)[:REACH_ALARM_TAKES]
+    if len(newest) < REACH_ALARM_TAKES or any(reached for _, reached in newest):
+        return False
+    today = now.date().isoformat()
+    if _alarmed_on == today:
+        return False
+    _alarmed_on = today
+    message = (f"coach queue: the {REACH_ALARM_TAKES} newest Takes have no moment "
+               "that reached their speaker; no coach can hear them")
+    _log.warning(message)
+    try:
+        import sentry_sdk
+        sentry_sdk.capture_message(message, level="warning")
+    except Exception:  # noqa: BLE001 — the alarm never costs the queue
+        _log.debug("coach queue: alarm not sent", exc_info=True)
+    return True
+
+
 def _listed(session_id: str, bookmarked: Optional[list],
             reached: set[str]) -> list[str]:
     """The bookmarks that reached the speaker, in the take's order."""
@@ -350,6 +385,7 @@ def moments_queue(
     waiting (BLIND COACH)."""
     speakers: dict[str, dict] = {}
     order: list[str] = []
+    reach: list[tuple[str, bool]] = []
     for row in rows or []:
         if not isinstance(row, dict) or not row.get("id"):
             continue
@@ -360,6 +396,8 @@ def moments_queue(
         bookmarked = moments_for(row)
         moments = []
         listed = _listed(session_id, bookmarked, reached_for(session_id))
+        if bookmarked:
+            reach.append((sent_at, bool(listed)))
         asks = listen_again_for(session_id) or {}
         for sid in _routed(session_id, listed, ratings, labels_for, rater_id):
             if sid in asks:
@@ -390,6 +428,7 @@ def moments_queue(
         speaker["takes"].append(take)
         if sent_at and (not speaker["first_sent_at"] or sent_at < speaker["first_sent_at"]):
             speaker["first_sent_at"] = sent_at
+    reach_alarm(reach)
     out = []
     for key in sorted(order, key=lambda k: speakers[k]["first_sent_at"]):
         speaker = speakers[key]

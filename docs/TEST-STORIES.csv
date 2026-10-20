@@ -440,6 +440,10 @@ is skipped and the rest are still written.","O1 -> test_an_audit_item_takes_one_
 O2 -> test_the_coach_sheets_are_blind
 O3 -> test_no_training_yes_writes_no_block_pick
 O4 -> test_a_refused_block_pick_is_skipped_and_the_rest_are_written","Founder 2026-10-01 (F6, C5-b). O4: a Take has one frame per policy version sharing block ids, and an insert refused by coach_block_pick_once (a 500) emptied the coach's queue."
+tests/test_coach_reach_alarm.py,Story,"As the founder, I want an alarm when new speakers' moments stop reaching the coaches, so that I hear of it from Sentry, not from an empty queue.","O1  The 3 newest Takes with moments, sent over 6 hours ago, none of them
+reached: one warning, once a day.
+O2  One of them reached, or a Take is too fresh to judge: no warning.","O1 -> ReachAlarmTests::test_fires_once_a_day_when_nothing_new_reached
+O2 -> ReachAlarmTests::test_quiet_while_reach_works_or_takes_are_fresh",Founder 2026-10-20: the walk (lock 2026-10-12) stopped recording the reach and no coach heard the newest tester (frontend #866).
 tests/test_coach_route_contracts.py,Story,"As a developer moving coach routes into services, I want each route's success answer and main refusals pinned, so that the move changes nothing a coach sees.","O1  Student detail returns the same drill-down, and refuses a bad or
 unknown student.
 O2  Practice review refuses before the coach's blind answer, and a
