@@ -65,9 +65,12 @@ THE FOUNDER'S DELETE (2026-10-20). The ⋯ on a speaker's row of the queue
 closes that speaker's waiting moments: ``close_moments`` keeps them on the
 Take as ``intake_context.coach_closed_moments`` ({snippet_id: closed_at}; no
 migration, as the corpus archive), and a closed moment leaves every coach's
-queue (``closed_by_founder``, logged like the other filters). The reach is
-counted before it, so the reach alarm still hears the Take; the Take, its
-request and its Ideal Text are untouched.
+queue (``closed_by_founder``, logged like the other filters). A Take still
+waiting for its text has no moment yet, so it closes whole
+(``intake_context.coach_closed_take``): it leaves every coach's queue, and so
+do the moments it gets later. The reach is counted before either, so the
+reach alarm still hears the Take; the Take, its request and its Ideal Text
+are untouched.
 """
 from __future__ import annotations
 
@@ -90,6 +93,8 @@ NOT_LISTED_CLOSED_BY_FOUNDER = "closed_by_founder"
 
 #: Where the Take keeps the moments the founder closed: {snippet_id: closed_at}.
 CLOSED_KEY = "coach_closed_moments"
+#: Where a Take closed whole keeps when (a Take still waiting for its text).
+CLOSED_TAKE_KEY = "coach_closed_take"
 #: One close is one speaker's row; this bounds a malformed body.
 MAX_CLOSE_TAKES = 50
 
@@ -309,6 +314,12 @@ def closed_moments(row: Any) -> set[str]:
     return {str(s) for s in closed} if isinstance(closed, dict) else set()
 
 
+def take_closed(row: Any) -> bool:
+    """True when the founder closed this Take whole (``close_moments``)."""
+    ctx = row.get("intake_context") if isinstance(row, dict) else None
+    return isinstance(ctx, dict) and bool(ctx.get(CLOSED_TAKE_KEY))
+
+
 def _open(session_id: str, listed: list[str], closed: set[str]) -> list[str]:
     """The listed moments the founder has not closed; logged, never silent."""
     kept = [s for s in listed if s not in closed]
@@ -335,12 +346,22 @@ def waiting_moments(queue: list[dict]) -> dict[str, list[str]]:
     return out
 
 
+def waiting_for_text(queue: list[dict]) -> set[str]:
+    """The session ids of a coach's queue still waiting for their text: no
+    moment yet, so the founder's Delete closes them whole. Pure."""
+    return {str(t["session_id"]) for speaker in queue or []
+            for t in speaker.get("takes") or [] if t.get("waiting_for_text")}
+
+
 def close_moments(database: Any, rows: list, waiting: dict[str, list[str]], *,
+                  whole: Iterable[str] = (),
                   now: Optional[datetime] = None) -> int:
     """The founder's Delete on a speaker's row: keep ``waiting`` closed on the
     Takes' review-queue ``rows`` (which carry ``intake_context``), merged into
-    what each Take already holds. How many moments were newly closed; raises
-    RuntimeError when a write fails."""
+    what each Take already holds, and close the Takes in ``whole`` entirely.
+    How many moments and Takes were newly closed; raises RuntimeError when a
+    write fails."""
+    whole = {str(w) for w in whole}
     stamp = (now or datetime.now(timezone.utc)).isoformat()
     closed = 0
     for row in rows or []:
@@ -350,13 +371,17 @@ def close_moments(database: Any, rows: list, waiting: dict[str, list[str]], *,
         held = ctx.get(CLOSED_KEY)
         before: dict = held if isinstance(held, dict) else {}
         added = {s: stamp for s in waiting.get(sid) or [] if s not in before}
-        if not added:
+        closes_take = sid in whole and not ctx.get(CLOSED_TAKE_KEY)
+        if not added and not closes_take:
             continue
-        ctx[CLOSED_KEY] = {**before, **added}
+        if added:
+            ctx[CLOSED_KEY] = {**before, **added}
+        if closes_take:
+            ctx[CLOSED_TAKE_KEY] = stamp
         if not database.takes.set_session_intake_context(sid, ctx):
             raise RuntimeError(f"could not close moments on {sid}")
-        closed += len(added)
-    _log.info("coach queue: founder closed %d moment(s)", closed)
+        closed += len(added) + int(closes_take)
+    _log.info("coach queue: founder closed %d moment(s) or Take(s)", closed)
     return closed
 
 
@@ -471,6 +496,10 @@ def moments_queue(
         listed = _listed(session_id, bookmarked, reached_for(session_id))
         if bookmarked:
             reach.append((sent_at, bool(listed)))
+        if take_closed(row):
+            _log.info("coach queue: take withheld sid=%s filter=%s",
+                      session_id, NOT_LISTED_CLOSED_BY_FOUNDER)
+            continue
         asks = listen_again_for(session_id) or {}
         open_listed = _open(session_id, listed, closed_moments(row))
         for sid in _routed(session_id, open_listed, ratings, labels_for, rater_id):
