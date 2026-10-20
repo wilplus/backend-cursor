@@ -866,7 +866,7 @@ fi
 hard migrations/status_read_in_one_trip.sql
 hard migrations/status_read_in_one_trip.sql
 
-# 0478 (founder 2026-10-19, N79): a Take word is a pair's home, the latest
+# 0479 (founder 2026-10-19, N79): a Take word is a pair's home, the latest
 # version teaches. Widens 0402's one_home CHECK, adds superseded_at, the
 # current-pair index and record_take_word_pair_v1, and recovers pairs from
 # coach_take_words. Released lane only: the recovery reads

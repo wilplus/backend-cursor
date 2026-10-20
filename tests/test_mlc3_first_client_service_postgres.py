@@ -1,8 +1,16 @@
-"""Database-bound checks for the disabled First-Client Service D2 slice.
-
-The target must be a disposable local database whose name starts with
-``willab_service_``. These tests never activate the service contract or write
-real media.
+"""
+STORY    As a speaker, I want a practice recording I delete to be impossible to
+         send for transcription, even if the deletion lands mid-dispatch, and my
+         practice records never to become training data, so that deletion
+         really stops processing.
+OUTCOME
+  O1  A deletion that commits while dispatch is waiting makes the dispatch
+      fail, and no transcript is stored.
+  O2  The tables of practice actually served to speakers can never be marked
+      as training data (a database rule forbids it).
+PROVES   O1 -> test_deletion_winning_before_dispatch_rejects_provider_permit
+         O2 -> test_served_records_remain_dataset_ineligible_by_constraint
+WHY      Rehearsal database only; the service contract stays disabled.
 """
 
 from __future__ import annotations

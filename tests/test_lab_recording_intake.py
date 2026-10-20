@@ -1,4 +1,12 @@
-"""Unit tests for pure Lab recording multipart-field parsing."""
+"""
+STORY    As a speaker, I want the topic, target length, special words, slides and
+         slide timings I send with my recording read correctly, so that my
+         transcript can be split by slide.
+OUTCOME
+  O1  The flat form fields sent with a recording become the recording's
+      context, with numbers, lists and slide data in their proper types.
+PROVES   O1 -> SessionContextParsingTests::test_flat_multipart_fields_become_the_canonical_context
+"""
 from __future__ import annotations
 
 import unittest

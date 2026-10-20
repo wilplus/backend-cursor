@@ -1,11 +1,12 @@
-"""The retired Phase-2 learning routes stay closed (ML-1; audit 2026-09-22
-I-1 / LEGACY-4).
-
-The annotation export and the copilot-video retrain answered 410 on every
-request until 2026-10-12, when the founder had both removed. A retired path is
-now closed by absence: the server has no such route and answers 404. This is
-the evidence behind the counsel claim that every Phase-2 learning route is
-fail-closed.
+"""
+STORY    As the founder, I want the retired learning-export routes to be
+         gone, so that counsel's claim that every Phase-2 learning route is
+         closed stays true.
+OUTCOME
+  O1  Both retired paths answer "not found" (404).
+PROVES   O1 -> RetiredPhase2RoutesAreAbsent::test_each_retired_path_is_a_404
+WHY      ML-1; audit 2026-09-22 I-1 / LEGACY-4; removed by the founder
+         2026-10-12.
 """
 from __future__ import annotations
 

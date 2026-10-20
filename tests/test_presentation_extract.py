@@ -1,13 +1,15 @@
-"""POST /v2/lab/presentation/extract — the deck-upload validation contract.
-
-Focus: the early validation branches the FE's "too big" popup + type guard
-read. These run before any parse/storage, so no DB/R2 mocks are needed.
-
-The FILE_TOO_LARGE response is a CONTRACT the FE popup keys on: a stable
-`code`, a human message, and `limit_mb` as a number (single source of truth
-so the FE doesn't re-hardcode the cap).
-
-Run: python3 -m unittest tests.test_presentation_extract
+"""
+STORY    As a speaker uploading a deck, I want a clear "too big" or "wrong
+         type" answer before anything is stored, so that I know to export a
+         lighter PDF.
+OUTCOME
+  O1  A file that is not a PDF is refused as an unsupported type.
+  O2  An empty PDF is refused as invalid input.
+  O3  A PDF over the size cap is refused as too large, with the limit in MB
+      as a number and named in the message, so the screen can say it.
+PROVES   O1 -> PresentationExtractValidationTests::test_non_pdf_415
+         O2 -> PresentationExtractValidationTests::test_empty_pdf_400
+         O3 -> PresentationExtractValidationTests::test_oversize_pdf_413_contract
 """
 from __future__ import annotations
 

@@ -1,10 +1,13 @@
-"""Delayed jobs move within seconds, even right after a deploy.
-
-rq 1.16.2 asks for its scheduler lock once at boot and again only on its
-ten-minute maintenance tick, so a container deployed while the previous one
-still held the lock moved no delayed job for 6 min 53 s (2026-10-15). The
-keeper polls for the lock every few seconds and releases it when the
-container drains, so the next one takes over at once.
+"""
+STORY    As a speaker, I want delayed jobs to keep moving right after a
+         deploy, so that my Take does not stall for minutes.
+OUTCOME
+  O1  A new server takes over the scheduler as soon as the old one shuts
+      down, and then moves due jobs on every check.
+  O2  After a broken connection, the scheduler reconnects on the next check.
+PROVES   O1 -> test_the_new_container_takes_the_lock_as_soon_as_the_old_one_drains
+         O2 -> test_a_broken_connection_is_dialled_again_on_the_next_poll
+WHY      2026-10-15: no delayed job moved for 6 min 53 s after a deploy.
 """
 from __future__ import annotations
 

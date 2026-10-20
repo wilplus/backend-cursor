@@ -49,9 +49,15 @@ def moments_line(moments: int) -> str:
 
 def render(*, project: Optional[str], moments: int, open_url: str,
            unsubscribe_url: Optional[str]) -> dict[str, str]:
-    """``{html, text}`` for one email. Pure."""
+    """``{html, text}`` for one email. Pure. The Take's word (no moment)
+    leaves out ``INVITE``: its link opens a walk with no moment to hear or
+    judge (founder 2026-10-19, N80). Nothing replaces it."""
     from services.email_wordmark import wordmark_html
     esc = html.escape
+    invite = INVITE if int(moments or 0) > 0 else ""
+    invite_html = (
+        '<p style="margin:12px 0 0 0;font-size:16px;line-height:26px;color:#1F1A14;">'
+        f"{esc(invite)}</p>" if invite else "")
     page = "https://www.willpowerlab.com"
     eyebrow = (
         '<p style="margin:0;font-size:12px;letter-spacing:0.08em;'
@@ -72,7 +78,7 @@ def render(*, project: Optional[str], moments: int, open_url: str,
       {eyebrow}
       <h1 style="margin:8px 0 0 0;font-weight:600;font-size:28px;line-height:34px;color:#1F1A14;">{esc(HEADLINE)}</h1>
       <p style="margin:20px 0 0 0;font-size:16px;line-height:26px;color:#1F1A14;">{esc(moments_line(moments))}</p>
-      <p style="margin:12px 0 0 0;font-size:16px;line-height:26px;color:#1F1A14;">{esc(INVITE)}</p>
+      {invite_html}
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin-top:32px;"><tr><td align="center">
         <a href="{esc(open_url, quote=True)}" style="display:inline-block;background-color:#F97316;color:#FFFFFF;text-decoration:none;font-weight:600;font-size:15px;line-height:20px;padding:14px 28px;border-radius:9999px;">{esc(BUTTON)}</a>
       </td></tr></table>
@@ -86,7 +92,7 @@ def render(*, project: Optional[str], moments: int, open_url: str,
     lines = ["WillpowerLab", ""]
     if project:
         lines += [project.upper(), ""]
-    lines += [HEADLINE, "", moments_line(moments), INVITE, "",
+    lines += [HEADLINE, "", moments_line(moments), *([invite] if invite else []), "",
               f"{BUTTON}: {open_url}"]
     if unsubscribe_url:
         lines += ["", f"Unsubscribe: {unsubscribe_url}"]

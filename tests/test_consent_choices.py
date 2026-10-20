@@ -1,19 +1,25 @@
-"""A person can change their mind, and every processing decision listens.
-
-FOUNDER 2026-09-25, locked E1, E3, E5-A. The PostgreSQL behaviour of 0361 is
-pinned in tests/test_consent_choices_postgres.py; this pins the application:
-
-  * choice_permitted: an explicit "no" is refused in every mode; with nothing
-    to read, an enforcing gate refuses and a gate that is off keeps the
-    established path;
-  * recording stops when the sensitive-information consent is withdrawn, in
-    either mode, and nothing else stops with it (E5-A);
-  * the practice routes ask about the CALLER, the Feedback Manager's offer
-    asks about the Take's owner, and the coach's review asks about the
-    SPEAKER, never the coach (E1, E3);
-  * the choices route reads and changes a choice.
-
-Run: python3 -m unittest tests.test_consent_choices
+"""
+STORY    As a speaker, I want to change my consent choices at any time and have
+         every processing decision obey them, so that turning practice off or
+         withdrawing my sensitive-information consent really takes effect.
+OUTCOME
+  O1  An explicit "no" to personalised practice is refused, whether the gate
+      is enforcing or off.
+  O2  After I withdraw sensitive-information consent, new recording is refused
+      (403 PROCESSING_RECORDING_WITHDRAWN).
+  O3  A practice route I said "no" to answers 403 CONSENT_CHOICE_OFF before it
+      runs.
+  O4  A coach's practice review checks the speaker's choice (after the blind
+      rating gate), never the coach's.
+  O5  Turning practice off erases my practice: each recording first, then its
+      rows.
+PROVES   O1 -> ChoicePermittedTests::test_an_explicit_no_is_refused_in_every_mode
+         O2 -> RecordingWithdrawalTests::test_recording_is_refused_after_a_withdrawal_in_either_mode
+         O3 -> GuardTests::test_a_no_is_refused_before_the_handler
+         O4 -> CoachTests::test_it_runs_after_the_blind_gate_and_before_the_practice
+         O5 -> ErasureTests::test_everything_goes_recording_first_then_rows,
+               ChangeChoiceTests::test_turning_practice_off_erases_it
+WHY      Founder 2026-09-25, locked E1, E3, E5-A.
 """
 from __future__ import annotations
 

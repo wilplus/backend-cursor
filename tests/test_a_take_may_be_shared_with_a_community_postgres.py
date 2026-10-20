@@ -1,11 +1,14 @@
-"""A Take may be shared with a community, on a disposable database (0432,
-N52.4). Pins: the four tables and the view exist; exactly one general
-community, seeded once even when the file is applied twice; a private
-community needs a name, a digest and its creator, the general one has none;
-a pass-code digest opens one community; one membership, one share per Take
-and community, one answer per person per clip; a training answer never
-carries a snippet or a label; the view reads with the caller's rights; a
-revoked share and a closed community leave the live view."""
+"""
+STORY    As a speaker, I want a Take I shared to leave the community the
+         moment I revoke it or the community closes, so that I stay in
+         control of who hears me.
+OUTCOME
+  O1  A shared Take shows in the community's live list.
+  O2  Revoking the share removes it.
+  O3  Closing the community removes it.
+PROVES   O1, O2, O3 -> test_a_revoked_share_and_a_closed_community_leave_the_live_view
+WHY      N52.4 (migration 0432).
+"""
 from __future__ import annotations
 
 import os

@@ -1,6 +1,26 @@
-"""The closing summary after a Take's review (founder lock 2026-10-12,
-section 3): one bubble per Take, no number or verdict, and the signed
-journey copy when the written one breaks the rules or cannot be written."""
+"""
+STORY    As a speaker, I want one short summary of my Take in words, about my
+         own talk, so that I know what went well without a number or verdict.
+OUTCOME
+  O1  Each Take gets one stored summary, written from its real progress and
+      about my talk (its title, slides, my most confident moment).
+  O2  A summary with a number, or praise that drifts from the approved
+      lines, is replaced by the approved fallback copy.
+  O3  A coach note rewrites the summary in place, keeping the first one
+      however many notes follow, once per note; a note shared after the
+      review is its own bubble, stored once.
+  O4  A speaker without a WhatsApp number is offered WhatsApp once, right
+      after the summary.
+PROVES   O1 -> test_a_take_gets_one_summary_from_its_real_progress,
+               test_the_summary_knows_the_talk_and_asks_for_whatsapp_once
+         O2 -> test_a_reply_with_a_number_falls_back_to_the_signed_copy,
+               test_a_reply_that_drifts_from_the_signed_lines_is_the_signed_copy
+         O3 -> test_a_coach_update_rewrites_the_summary_in_place_and_keeps_the_first,
+               test_a_shared_coach_word_rewrites_a_reviewed_take_once_per_word,
+               test_a_coach_word_shared_after_the_review_is_its_own_bubble
+         O4 -> test_the_summary_knows_the_talk_and_asks_for_whatsapp_once
+WHY      Never-rule 1; founder lock 2026-10-12 (section 3) and 2026-10-14.
+"""
 from services import take_summary
 from services.journey_messages import _COPY
 
@@ -76,12 +96,16 @@ def test_a_reply_with_a_number_falls_back_to_the_signed_copy(monkeypatch):
     assert msg["metadata"]["written"] is False
 
 
-def test_a_coach_update_rewrites_the_summary_in_place_and_keeps_the_earlier(monkeypatch):
+def test_a_coach_update_rewrites_the_summary_in_place_and_keeps_the_first(monkeypatch):
+    """N80 (founder 2026-10-19): "see the earlier version" is the summary
+    from before any coach note, however many notes follow."""
     db = _Db()
     first = "Your voice sounded surer than last time. Keep the endings you found."
     _run(db, monkeypatch, first)
-    later = "Your coach wants the opening slower. Your voice is already surer, so take your time."
-    msg, _ = _run(db, monkeypatch, later, {"coach_note": "Slow the opening."})
+    _run(db, monkeypatch, "Your coach wants the opening slower. Take your time.",
+         {"coach_note": "Slow the opening."})
+    later = "Your coach wants a breath before the price. Your voice is already surer."
+    msg, _ = _run(db, monkeypatch, later, {"coach_note": "Breathe before the price."})
     assert msg["body"] == later
     assert msg["metadata"]["earlier"] == first and msg["metadata"]["coach_update"] is True
     assert len(db.rows) == 1

@@ -218,6 +218,21 @@ def v2_explore_get_ideal_text_enrichment(arc_id):
         run_sections, section_readers, stale_snapshot)
     from services.parallel import run_in_parallel
     started = perf_counter()
+    laps: dict[str, float] = {}
+
+    def lap(name, read):
+        """``read``, with its wall time kept for the Server-Timing header:
+        the sections already name their laps, and the reads around them
+        were the unnamed remainder of the request (founder's stopwatch,
+        2026-10-18)."""
+        def timed():
+            lap_started = perf_counter()
+            try:
+                return read()
+            finally:
+                laps[name] = (perf_counter() - lap_started) * 1000
+        return timed
+
     snapshot_id = (request.args.get("document_snapshot_id") or "").strip()
     # The ownership read and the core read go out together (2026-10-18: one
     # round trip, not two, before any section starts). The core read is
@@ -229,9 +244,10 @@ def v2_explore_get_ideal_text_enrichment(arc_id):
     # would let enrichment attach to an old document during republishing.
     actor_id = str(request.user_id)
     (owned, sessions), current = run_in_parallel(
-        lambda: _arc_owned_by_caller(arc_id),
-        lambda: (db.get_ideal_text_document_core(arc_id, actor_id)
-                 if snapshot_id else None))
+        lap("owner_read", lambda: _arc_owned_by_caller(arc_id)),
+        lap("core_read", lambda: (
+            db.get_ideal_text_document_core(arc_id, actor_id)
+            if snapshot_id else None)))
     if not owned:
         return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
     if not snapshot_id:
@@ -242,8 +258,8 @@ def v2_explore_get_ideal_text_enrichment(arc_id):
     # by-id read, to tell "stale" (409) from "never existed" (404).
     selected = (
         current if current and str(current.get("id")) == snapshot_id
-        else db.get_ideal_text_document_snapshot(
-            arc_id, str(request.user_id), snapshot_id))
+        else lap("snapshot_read", lambda: db.get_ideal_text_document_snapshot(
+            arc_id, str(request.user_id), snapshot_id))())
     if not selected:
         return jsonify({"code": "SNAPSHOT_NOT_FOUND"}), 404
     if (stale := stale_snapshot(current, selected)) is not None:
@@ -273,7 +289,7 @@ def v2_explore_get_ideal_text_enrichment(arc_id):
         if name in requested_sections
     }, timeout_seconds=enrichment_timeout)
     # Optional readers run concurrently and can outlive the snapshot check at
-    # the top of this request.  Re-read the generation-fenced core after every
+    # the top of this request.  Re-check the generation fence after every
     # reader has settled.  A source mutation during enrichment must return a
     # retryable stale response and, crucially, must never deliver a stale
     # presentation acknowledgement token to the browser.
@@ -282,10 +298,14 @@ def v2_explore_get_ideal_text_enrichment(arc_id):
     # on the way), and only when they answer. Every other answer is a plain
     # read bound to the snapshot already checked above, so a pending marks
     # retry or a read-only lane skips this second round trip.
+    #
+    # The fence read is the head id and the arc's generation, not the whole
+    # snapshot again: the row was read and owner-checked above, and only two
+    # ids are compared here (founder's stopwatch, 2026-10-18).
     if any(sections.get(name, {}).get("status") == "ready"
            for name in FENCED_SECTIONS):
-        final_current = db.get_ideal_text_document_core(
-            arc_id, str(request.user_id))
+        final_current = lap("fence_read", lambda: (
+            db.get_ideal_text_document_fence(arc_id, str(request.user_id))))()
         if (stale := stale_snapshot(final_current, selected)) is not None:
             return jsonify(stale), 409
     elapsed = (perf_counter() - started) * 1000
@@ -294,6 +314,8 @@ def v2_explore_get_ideal_text_enrichment(arc_id):
         "sections": sections,
     })
     timing_parts = [f"ideal_enrichment;dur={elapsed:.1f}"]
+    timing_parts.extend(
+        f"{name};dur={duration:.1f}" for name, duration in laps.items())
     timing_parts.extend(
         f"section_{name};dur={duration:.1f}"
         for name, duration in sorted(timings.items()))

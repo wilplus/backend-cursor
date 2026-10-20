@@ -1,10 +1,23 @@
-"""Project deletion requests (P1-A, founder 2026-09-25, decisions log N8).
-
-The picker's Delete is a REQUEST: an operator confirms it within 7 days, the
-project is locked until then, and its owner may cancel. These tests pin the
-application side; tests/test_project_deletion_postgres.py runs the SQL.
-
-Flask-route classes skip locally without app deps and run in CI.
+"""
+STORY    As a speaker, I want Delete on a project to be a request I can cancel
+         within 7 days, with no new Takes added meanwhile, so that I can
+         change my mind and nothing new lands in a project about to go.
+OUTCOME
+  O1  Asking to delete my project creates a pending request; someone
+      else's project answers "not found".
+  O2  A project waiting to be deleted refuses a new Take, but if the lock
+      cannot be read, recording still goes ahead.
+  O3  Cancelling after the operator confirmed is refused.
+  O4  The operator's confirm returns the id of the erasure it starts.
+  O5  What the speaker is shown about the request never names the owner.
+PROVES   O1 -> RouteTests::test_request_is_created,
+               RouteTests::test_not_the_owners_project_is_404
+         O2 -> CreateTakeLockTests::test_pending_project_refuses_a_new_take,
+               CreateTakeLockTests::test_an_unreadable_lock_never_stops_recording
+         O3 -> RouteTests::test_cancel_after_confirmation_is_409
+         O4 -> ConfirmRouteTests::test_confirm_returns_the_purge_request
+         O5 -> ServiceTests::test_public_view_never_carries_the_owner
+WHY      Founder 2026-09-25, decisions log N8.
 """
 from __future__ import annotations
 

@@ -1,3 +1,23 @@
+"""
+STORY    As a speaker, I want one whole Take turned into one praise moment,
+         one practice moment and honest coverage of my slides, so that the
+         feedback is fair and evidence-backed.
+OUTCOME
+  O1  The Take is cut into blocks of the right size; a block that cannot be
+      cut well stays whole and says why.
+  O2  Exactly one block is the most confident (praised) and exactly one
+      gets the practice prompt; praise is anchored inside that block.
+  O3  Coverage is counted per slide, a slide without a clip says why, and
+      the bar is higher from Take 3.
+  O4  The practice moment opens on a Clearer version only when the rewrite
+      passes the gate; a weak fallback opens the voice exercise instead.
+PROVES   O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
+         O2 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
+         O3 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
+         O4 -> test_weak_words_open_on_the_rewrite_only_when_it_passes_the_gate
+WHY      Founder 2026-10-14 (one praise moment per Take), 2026-10-18 ("words
+         first, then voice").
+"""
 from pathlib import Path
 
 from services.take_feedback_policy_v3 import (
