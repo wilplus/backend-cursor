@@ -93,8 +93,33 @@ def clean_note(text: Optional[str]) -> Optional[str]:
     return note
 
 
+#: What each of Will's questions after a Take asked (``will_question``), for
+#: the note's events.
+_ASKED = {
+    "pause": "whether they needed a breather",
+    "not_used": "whether leaving out the line they practised was on purpose",
+    "audience_check": "whether the talk is for who it sounded like",
+    "audience": "who the talk is for",
+    "goal": "what they want the audience to do or feel",
+    "vision": "whether the talk takes them where they want to go",
+    "most_you": "which part of the talk is most them",
+    "why_matters": "why the talk matters to them",
+    "changes": "what changes for them if the talk goes perfectly",
+}
+
+
+def _question_line(p: dict) -> str:
+    asked = _ASKED.get(str(p.get("question")), "a question")
+    if p.get("skipped"):
+        return f"- Asked {asked}: they skipped it."
+    said = str(p.get("said") or "")[:300]
+    return f"- Asked {asked}: they said \"{said}\"." if said else ""
+
+
 def _event_line(event: dict) -> str:
     p = event.get("payload") or {}
+    if event.get("kind") == "answer" and p.get("question"):
+        return _question_line(p)
     if event.get("kind") == "answer":
         if p.get("skipped"):
             return "- Asked if the feedback helped: they skipped the follow-up."

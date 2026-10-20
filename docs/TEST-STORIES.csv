@@ -208,18 +208,19 @@ test_directives_reach_the_permit_through_the_real_llm_wrapper
 O2 -> test_the_icebreaker_runs_under_the_speakers_scope
 test_the_icebreaker_is_refused_without_the_speakers_authority
 O3 -> every test (_FakeDB)","Founder 2026-10-05, N48.1 step 6: ""every AI call carries its permission slip""; the two admin tools called the provider with none."
-tests/test_after_take.py,Story,"As a speaker, after a Take I want one thing to do at a time: the Take's card, at most one ask, then the message with ""Record Take N"", so that a question never competes with recording again.","O1  After Take 1 the only ask is ""Did this help?"", and only when the Take
-looks off: never WhatsApp, never an ask from the CEO panel, even
-without a number.
+tests/test_after_take.py,Story,"As a speaker, after a Take I want one thing to do at a time: the Take's card, at most one ask, then the message with ""Record Take N"", so that a question never competes with recording again.","O1  After Take 1 the one ask is ""Did this help?"" when the Take looks off,
+else Will's question when it has one: never WhatsApp, never an ask
+from the CEO panel, even without a number.
 O2  From Take 2 the one ask is the CEO panel's when there is one, else
 WhatsApp (at most twice), else the home screen (once, where the phone
-can add it), else the question; nothing asked, nothing waits.
+can add it), else Will's question, else ""Did this help?""; nothing
+asked, nothing waits.
 O3  The message waits for the ask and comes under whatever closed it: a
 typed turn, under Will's reply; ""Yes"", tapped or typed, glad, as the
 reply; a reply that opens a form keeps it waiting.
 O4  A message still waiting when a newer Take is written shows where it
-stands.","O1 -> test_after_take_one_only_the_question_and_only_when_it_looks_off
-O2 -> test_from_take_two_the_ceo_ask_then_whatsapp_then_home_screen_then_the_question
+stands.","O1 -> test_after_take_one_the_question_when_it_looks_off_else_will
+O2 -> test_from_take_two_the_ceo_ask_then_whatsapp_then_home_screen_then_will_then_the_question
 O3 -> test_the_message_comes_under_what_closed_the_ask
 O4 -> test_an_older_waiting_message_shows_where_it_stands","Founder 2026-10-20: ""one action at a time""; details chosen on the decisions page the same day."
 tests/test_ai_voice.py,Story,"As a speaker practising, I want an AI clip of my own voice saying my own words with one improvement, never shown if it fails its check, and fully deleted when I ask, so that I hear a believable better version and keep control of my voice.","O1  One problem is picked against my own usual (or the default), and the
@@ -2770,6 +2771,35 @@ O3 -> test_the_most_relevant_piece_comes_first
 O4 -> test_a_failing_read_gives_no_block_and_no_error
 O5 -> test_will_reads_the_lookup_in_the_chat
 O6 -> test_a_take_whose_authorization_is_gone_never_reaches_will","Will's answers should build on what this speaker already said and heard, without anything private to someone else, or to the coach, leaking in."
+tests/test_will_question.py,Story,"As a speaker, after a Take I want Will to ask me at most one short question, only when something is off or missing, that I answer with a tap or in my own words, so that the next feedback knows my talk without a form in front of my next Take.","O1  Will asks only when something is off or missing, the first that
+holds: a breather when the practice missed or the voice dipped two
+Takes in a row; ""On purpose?"" when the clearer line I practised last
+Take did not come back; who the talk is for; what I want them to do;
+from Take 3, with both known, one deeper question. Nothing missing, no
+question; each of these once per talk, a breather never twice in a row.
+O2  The tap answers come from what Will heard: a Take that names its
+audience twice is checked (""Right?""); named once, those words come
+first, then what I said for an earlier talk, then the signed answers
+for my field. From the AI's read only words my Take says, word for
+word, short and without a number, are kept.
+O3  A tap is kept for Will and fills the talk's setup, so the next Take
+carries who it is for; then ""Got it, thanks 🙏"" and the message after
+the Take. ""Someone else"" opens one follow-up and the message waits;
+my typed words under it are the answer, or Skip. Skip lets the
+message go; a repeat tap writes nothing.
+O4  Typed words under the question are the answer: what I want them to
+do lands as the talk's call to action, my own note on the talk kept.
+O5  After a Take that needs it, the summary's batch holds the message
+under Will's question, and the summary hears the line I practised
+last Take when this Take said it.","O1 -> test_will_asks_the_first_that_holds_and_nothing_when_nothing_is_missing
+O2 -> test_the_taps_come_from_what_will_heard,
+test_only_words_the_take_says_are_kept_from_the_read
+O3 -> test_a_tap_is_kept_fills_the_setup_and_lets_the_message_go,
+test_someone_else_opens_one_follow_up_answered_in_own_words,
+test_skip_lets_the_message_go_and_a_repeat_tap_writes_nothing
+O4 -> test_typed_words_are_the_answer_and_fill_the_call_to_action
+O5 -> test_the_summary_holds_its_message_under_wills_question,
+test_the_summary_hears_the_practised_line_when_it_came_back","Founder 2026-10-20 (N82): ""ask me a lot of questions … a natural flow in the walk and in the lounge""; the bank signed the same day."
 tests/test_withdrawal_erases_sheets.py,Story,"As a speaker, I want the coach sheets about my Takes deleted when I turn training off, so that my withdrawal is real.","O1  Turning training off deletes my Takes' rows from all three coach
 sheet tables, and only mine.
 O2  If my Takes cannot be read, the switch still turns off, and the

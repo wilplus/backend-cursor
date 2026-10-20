@@ -103,6 +103,14 @@ def _coach_answer(surface: str) -> Callable[[dict], Any]:
     return adapter
 
 
+def _will_question(inp: dict) -> Any:
+    """Will's heard call (N82): who the talk is for and what it asks, kept
+    only where the Take says it word for word (``read_heard``)."""
+    from services.will_question import heard
+    return heard(inp.get("title") or "", inp.get("transcript") or "",
+                 user_id=None, take=None, arc_id=None)
+
+
 ADAPTERS: dict[str, Callable[[dict], Any]] = {
     "praise_line": _coach_answer("praise_line"),
     "clearer_version": _coach_answer("clearer_version"),
@@ -115,4 +123,5 @@ ADAPTERS: dict[str, Callable[[dict], Any]] = {
     "moment_suggestion": _moment_suggestion,
     "structural_star": _structural_star,
     "emphasis_phrase": _emphasis_phrase,
+    "will_question": _will_question,
 }
