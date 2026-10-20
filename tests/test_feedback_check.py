@@ -8,7 +8,7 @@ OUTCOME
       already there (one ask at a time).
   O2  "Yes" is kept and answered once with the signed words; a second tap
       changes nothing.
-  O3  "Not really" asks what was missing; my next typed message is kept as
+  O3  "No" asks what would help; my next typed message is kept as
       that answer (even if it sounds like a goal change), then the chat is
       ordinary again.
   O4  "Skip" ends it with no answer kept; typing a button's words counts as
@@ -156,7 +156,7 @@ def test_typing_a_button_counts_as_tapping_it_and_anything_else_goes_to_will(mon
     _summary_batch(db, whatsapp=False)
     resp, intent = _turn(db, monkeypatch, "How do I sound calmer?")
     assert intent == "faq"
-    resp, intent = _turn(db, monkeypatch, "Not really.")
+    resp, intent = _turn(db, monkeypatch, "No.")
     assert intent == "feedback_check" and resp["answer"] == COPY["missing"]
     assert db.checks[("u", TAKE)]["helped"] is False
 
