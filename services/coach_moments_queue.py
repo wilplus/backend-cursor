@@ -15,8 +15,8 @@ coach has rated (BLIND COACH): before the rating the row says only that a
 judgement is waiting. It is the speaker's side of the request once they
 judged (`answer_kind`, 0408; Phase 2, F1), else the kind it rose under. Nothing here is a count of quality (AC-9); the
 pseudonym is the queue's own, never a name (L3, §B.4). Pure apart from
-`reached_for_sessions`, which makes the two reach reads; every other read
-is handed in by the route.
+`reached_for_sessions`, which makes the two reach reads, and `close_moments`,
+the founder's Delete; every other read is handed in by the route.
 
 ONLY MOMENTS THAT REACHED THE SPEAKER (founder 2026-10-05, N48.2, Q1 A;
 audit D9). The Take's frozen set is chosen BEFORE the window of three
@@ -60,6 +60,14 @@ THIS coach's ear, read from every rater's rows and used for routing alone
 
 Neither audio report is a label. The owner never counts and the machine
 never votes (label_quorum, K6); with the peer lane off, the panel is coaches.
+
+THE FOUNDER'S DELETE (2026-10-20). The ⋯ on a speaker's row of the queue
+closes that speaker's waiting moments: ``close_moments`` keeps them on the
+Take as ``intake_context.coach_closed_moments`` ({snippet_id: closed_at}; no
+migration, as the corpus archive), and a closed moment leaves every coach's
+queue (``closed_by_founder``, logged like the other filters). The reach is
+counted before it, so the reach alarm still hears the Take; the Take, its
+request and its Ideal Text are untouched.
 """
 from __future__ import annotations
 
@@ -78,6 +86,12 @@ _RATED = ("yes", "in_between", "no", "not_sure")
 NOT_LISTED_AUDIO_RETRY = "audio_unclear_reported"
 NOT_LISTED_QUARANTINED = "audio_quarantined"
 NOT_LISTED_CLOSED = "rating_closed"
+NOT_LISTED_CLOSED_BY_FOUNDER = "closed_by_founder"
+
+#: Where the Take keeps the moments the founder closed: {snippet_id: closed_at}.
+CLOSED_KEY = "coach_closed_moments"
+#: One close is one speaker's row; this bounds a malformed body.
+MAX_CLOSE_TAKES = 50
 
 #: K9 (decisions log K9; W6 2026-10-05): what put a clip in front of the
 #: coach, stamped on the coach's rating server-side and never shown before
@@ -288,6 +302,64 @@ def _listed(session_id: str, bookmarked: Optional[list],
     return shown
 
 
+def closed_moments(row: Any) -> set[str]:
+    """The snippet ids the founder closed on this Take (``close_moments``)."""
+    ctx = row.get("intake_context") if isinstance(row, dict) else None
+    closed = ctx.get(CLOSED_KEY) if isinstance(ctx, dict) else None
+    return {str(s) for s in closed} if isinstance(closed, dict) else set()
+
+
+def _open(session_id: str, listed: list[str], closed: set[str]) -> list[str]:
+    """The listed moments the founder has not closed; logged, never silent."""
+    kept = [s for s in listed if s not in closed]
+    if len(kept) < len(listed):
+        _log.info("coach queue: moments withheld sid=%s filter=%s withheld=%d",
+                  session_id, NOT_LISTED_CLOSED_BY_FOUNDER, len(listed) - len(kept))
+    return kept
+
+
+#: The states a speaker's row counts as waiting (``moments_queue``).
+WAITING_STATES = ("judge_it", "answer_it", "listen_again")
+
+
+def waiting_moments(queue: list[dict]) -> dict[str, list[str]]:
+    """{session_id: [snippet_id]} of the moments a coach's queue counts as
+    waiting, exactly as its ``waiting`` numbers count them. Pure."""
+    out: dict[str, list[str]] = {}
+    for speaker in queue or []:
+        for take in speaker.get("takes") or []:
+            ids = [str(m["snippet_id"]) for m in take.get("moments") or []
+                   if m.get("state") in WAITING_STATES and m.get("snippet_id")]
+            if ids:
+                out[str(take["session_id"])] = ids
+    return out
+
+
+def close_moments(database: Any, rows: list, waiting: dict[str, list[str]], *,
+                  now: Optional[datetime] = None) -> int:
+    """The founder's Delete on a speaker's row: keep ``waiting`` closed on the
+    Takes' review-queue ``rows`` (which carry ``intake_context``), merged into
+    what each Take already holds. How many moments were newly closed; raises
+    RuntimeError when a write fails."""
+    stamp = (now or datetime.now(timezone.utc)).isoformat()
+    closed = 0
+    for row in rows or []:
+        sid = str(row.get("id") or "") if isinstance(row, dict) else ""
+        ctx = dict(row.get("intake_context") or {}) if isinstance(
+            row.get("intake_context"), dict) else {}
+        held = ctx.get(CLOSED_KEY)
+        before: dict = held if isinstance(held, dict) else {}
+        added = {s: stamp for s in waiting.get(sid) or [] if s not in before}
+        if not added:
+            continue
+        ctx[CLOSED_KEY] = {**before, **added}
+        if not database.takes.set_session_intake_context(sid, ctx):
+            raise RuntimeError(f"could not close moments on {sid}")
+        closed += len(added)
+    _log.info("coach queue: founder closed %d moment(s)", closed)
+    return closed
+
+
 def _routed(session_id: str, listed: list[str], ratings: dict,
             labels_for: Optional[Callable[[str], Optional[list]]],
             rater_id: Any) -> list[str]:
@@ -364,6 +436,7 @@ def moments_queue(
     rater_id: Any = None,
     goal_for: Callable[[Any], Optional[str]] = _no_goal,
     listen_again_for: Callable[[str], dict[str, str]] = lambda _sid: {},
+    alarm: bool = True,
 ) -> list[dict]:
     """Speakers oldest first (by the earliest take waiting), takes oldest
     first under each, moments in the order the take lists them.
@@ -399,7 +472,8 @@ def moments_queue(
         if bookmarked:
             reach.append((sent_at, bool(listed)))
         asks = listen_again_for(session_id) or {}
-        for sid in _routed(session_id, listed, ratings, labels_for, rater_id):
+        open_listed = _open(session_id, listed, closed_moments(row))
+        for sid in _routed(session_id, open_listed, ratings, labels_for, rater_id):
             if sid in asks:
                 from services.coach_listen_again import queue_row
                 moments.append(queue_row(sid, asks[sid]))
@@ -428,7 +502,8 @@ def moments_queue(
         speaker["takes"].append(take)
         if sent_at and (not speaker["first_sent_at"] or sent_at < speaker["first_sent_at"]):
             speaker["first_sent_at"] = sent_at
-    reach_alarm(reach)
+    if alarm:  # off for a part of the queue (the founder's Delete)
+        reach_alarm(reach)
     out = []
     for key in sorted(order, key=lambda k: speakers[k]["first_sent_at"]):
         speaker = speakers[key]
@@ -447,6 +522,7 @@ def queue_for_coach(
     database: Any, rows: list, *, rater_id: Any,
     moments_for: Callable[[dict], Optional[list[str]]],
     pseudonym_for: Callable[[Any], str],
+    alarm: bool = True,
 ) -> list[dict]:
     """The walk's queue for one coach, every read batched: the moments'
     requests, the reach (N48.2 Q1 A), this coach's own ratings, the
@@ -469,4 +545,5 @@ def queue_for_coach(
             database, [s for r in rows if isinstance(r, dict) for s in (once(r) or [])]),
         rater_id=rater_id,
         goal_for=speaker_goals(database, rows),
-        listen_again_for=lambda sid: asks.get(str(sid), {}))
+        listen_again_for=lambda sid: asks.get(str(sid), {}),
+        alarm=alarm)
