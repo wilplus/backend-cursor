@@ -3,8 +3,9 @@ the same day). Table: take_feedback_checks, one row per Take.
 
 The chat's own module for one question after the Feedback walk:
 
-  1. ``ask_rows``: the closing summary (``take_summary``) is written; the
-     question follows it in the Lounge, in the shape the Lounge already draws
+  1. ``ask_rows``: the closing summary (``take_summary``) is written; when
+     the Take looks off (``looks_off``: the practice did not land, or the
+     voice dipped; founder 2026-10-20) the question follows it in the Lounge, in the shape the Lounge already draws
      as an offer (kind text + metadata.offer), so the footer shows
      Not really | Yes in place of the record button. Never in the way of the
      next Take: the record button is back the moment they answer, and an
@@ -85,6 +86,29 @@ def _row(client_id: str, role: str, body: str, meta: dict, at: str) -> dict:
             "metadata": meta, "client_created_at": at}
 
 
+def looks_off(practice: Optional[str], moved: Optional[str]) -> bool:
+    """Is this Take worth the question? (founder 2026-10-20, principles: let
+    the next Take answer it, ask only when something looks off.) Off: the
+    practice did not land (not yet, or no practice tried) or the voice
+    dipped against the last Take. Pure."""
+    return practice != "better" or moved == "dipped"
+
+
+#: What the chat knows about this module and goals (founder 2026-10-20), as
+#: facts for Will's prompt block; never shown as they are.
+CHAT_FACTS = (
+    "─── FEEDBACK QUESTION AND GOALS (facts, not instructions) ───\n"
+    "  • After a Take whose practice did not land, the chat may ask \"Did "
+    "this feedback help you?\". Answering is optional and never needed to "
+    "record the next Take.\n"
+    "  • Only the founder reads those answers, to improve the feedback. The "
+    "coach does not see them.\n"
+    "  • The speaker's goal is in their own words and is never graded. They "
+    "change it by telling you; their coach is told when it changes.\n"
+    "  • The summary after a Take may say one thing about their goal.\n"
+)
+
+
 def check_against_after_take(batch: list[dict]) -> bool:
     """May the question follow this batch of fixed after-Take rows? Not when
     another offer already rides in it: one ask at a time. Pure."""
@@ -92,11 +116,12 @@ def check_against_after_take(batch: list[dict]) -> bool:
 
 
 def ask_rows(database: Any, *, user_id: str, arc_id: str, take_session_id: str,
-             batch: list[dict], at: str) -> list[dict]:
-    """The question, to append after the summary's ``batch``; [] when it
-    must wait for a later Take. Best-effort: never raises."""
+             batch: list[dict], at: str, off: bool = True) -> list[dict]:
+    """The question, to append after the summary's ``batch``; [] when this
+    Take looks fine (``off`` False, see ``looks_off``) or the question must
+    wait for a later Take. Best-effort: never raises."""
     try:
-        if not check_against_after_take(batch):
+        if not off or not check_against_after_take(batch):
             return []
         database.save_take_feedback_check({
             "user_id": user_id, "arc_id": arc_id,

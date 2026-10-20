@@ -10852,6 +10852,44 @@ class DatabaseService:
         ids = (self.v2_find_user_id_by_email(e) for e in emails if e)
         return [str(i) for i in ids if i]
 
+    def active_admin_user_ids(self) -> list[str]:
+        """The user ids of the active admins (admin_users holds emails).
+        [] on any failure."""
+        try:
+            emails = [r.get("email") for r in (
+                self.client.table("admin_users").select("email")
+                .eq("is_active", True).execute().data) or []]
+        except Exception as e:
+            logger.warning("active_admin_user_ids failed: %s", e, exc_info=True)
+            return []
+        ids = (self.v2_find_user_id_by_email(e) for e in emails if e)
+        return [str(i) for i in ids if i]
+
+    def list_take_summaries_since(self, since_iso: str, limit: int = 2000) -> list[dict]:
+        """The closing summaries' metadata written since ``since_iso``, for
+        the founder's weekly note. [] on any failure."""
+        try:
+            rows = (self.client.table("lounge_messages").select("metadata")
+                    .eq("kind", "cadence").eq("metadata->>summary", "true")
+                    .gte("client_created_at", since_iso)
+                    .limit(limit).execute().data) or []
+            return [r.get("metadata") or {} for r in rows]
+        except Exception as e:
+            logger.warning("list_take_summaries_since failed: %s", e, exc_info=True)
+            return []
+
+    def list_feedback_checks_since(self, since_iso: str, limit: int = 2000) -> list[dict]:
+        """The answers given since ``since_iso``, newest first. [] on any
+        failure."""
+        try:
+            return (self.client.table("take_feedback_checks")
+                    .select("helped, missing, skipped, answered_at")
+                    .gte("answered_at", since_iso).order("answered_at", desc=True)
+                    .limit(limit).execute().data) or []
+        except Exception as e:
+            logger.warning("list_feedback_checks_since failed: %s", e, exc_info=True)
+            return []
+
     def get_take_feedback_check(self, user_id: str,
                                 take_session_id: str) -> Optional[dict]:
         try:

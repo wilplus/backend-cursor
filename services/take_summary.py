@@ -262,6 +262,20 @@ def talk_names(takes: list[dict]) -> tuple:
     return (talk_title(contexts), *slide_topics(contexts))
 
 
+def goal_facts(database: Any, user_id: str) -> list[str]:
+    """The speaker's goal, in their own words (founder 2026-10-20: every
+    summary says one thing about it, never a grade). [] without one."""
+    try:
+        goal = ((database.get_user_profile(user_id) or {}).get("goal") or "").strip()
+    except Exception as error:  # noqa: BLE001 -- no goal: nothing to say about it
+        logger.warning("take summary goal unread user=%s: %s", user_id, error, exc_info=True)
+        return []
+    if not goal:
+        return []
+    return [f"Their own goal, in their words: \"{goal[:200]}\". Say one thing about "
+            "how this take moved toward it, in words, never a grade."]
+
+
 def talk_facts(takes: list[dict]) -> list[str]:
     """The talk's title and slide topics as facts. Pure."""
     from services.chat_app_context import slide_topics, talk_title
@@ -356,14 +370,16 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
     anchor = _COPY.get(take_index) or _COPY[3]
     now, before = _reads(database, ids, take_index)
     facts = (talk_facts(takes) + said_facts(_moments(database, take), now)
-             + progress_facts(now, before))
+             + progress_facts(now, before) + goal_facts(database, str(user_id)))
+    moved = _move(_mean(now, "s"), _mean(before, "s")) if before is not None else None
     text = _written(database, take, anchor, facts, practice, words,
                     note, str(arc_id), str(user_id),
                     signed=signed_lines(now, before, take_index),
                     names=talk_names(takes))
     meta = {"summary": True, "arc_id": str(arc_id), "take_index": take_index,
             "take_session_id": take, "written": bool(text), "coach_noted": note is not None,
-            "coach_note_key": _note_key(note), "practice": practice, "helper_words": words}
+            "coach_note_key": _note_key(note), "practice": practice, "helper_words": words,
+            "moved": moved}
     if held:
         if not text:
             return held  # the coach's update could not be written: keep it
@@ -383,10 +399,13 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
     }] + _whatsapp_offer(database, str(user_id), client_id, at)
     # WIL-74: "Did this feedback help you?" closes the batch, unless another
     # offer already rides in it (feedback_check decides).
-    from services.feedback_check import ask_rows
+    from services.feedback_check import ask_rows, looks_off
     batch += ask_rows(database, user_id=str(user_id), arc_id=str(arc_id),
-                      take_session_id=take, batch=batch, at=at)
+                      take_session_id=take, batch=batch, at=at,
+                      off=looks_off(practice, moved))
     persisted = database.insert_lounge_messages(str(user_id), batch)
+    from services.feedback_digest import post_later
+    post_later(database)
     return persisted[0] if persisted else None
 
 

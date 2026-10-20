@@ -175,3 +175,30 @@ def test_a_new_goal_is_kept_and_every_coach_but_the_speaker_gets_one_card_a_day(
     assert cards[0]["about_user_id"] == "u"  # deleted with the speaker
 
     assert not goal_history.record(db, "u", "Same", "Same", "chat")  # no change, no card
+
+
+def test_a_take_that_went_fine_is_not_asked():
+    """Founder 2026-10-20: let the next Take answer it; ask only when the
+    practice did not land or the voice dipped."""
+    db = _Db()
+    batch = [{"client_id": "s", "role": "bot", "kind": "cadence", "body": "Summary.",
+              "metadata": {"summary": True}, "client_created_at": "t"}]
+    fine = feedback_check.looks_off("better", "rose")
+    assert feedback_check.ask_rows(db, user_id="u", arc_id=ARC, take_session_id=TAKE,
+                                   batch=batch, at="t", off=fine) == []
+    assert feedback_check.looks_off("not_yet", "rose")
+    assert feedback_check.looks_off("better", "dipped")
+
+
+def test_the_weekly_note_says_what_was_missing_in_their_words():
+    from services.feedback_digest import note
+    words = note([{"moved": "rose"}, {"moved": "held"}, {"moved": None}],
+                 [{"helped": False, "missing": "Why my close felt rushed"},
+                  {"helped": True}, {"helped": None, "skipped": False}])
+    assert words.splitlines() == [
+        "Feedback, the last 7 days",
+        "The voice rose since the last Take in 1 of 2 Takes",
+        "Asked \"Did this feedback help you?\": 2 · it helped: 1",
+        "What was missing:",
+        "“Why my close felt rushed”",
+    ]
