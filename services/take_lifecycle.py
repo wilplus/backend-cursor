@@ -61,6 +61,33 @@ def confidence_canonical_writes_enabled_for(database: Any, attempt_id: str) -> b
         rings.CONFIDENCE_LEARNING_WRITES, owner, database=database))
 
 
+def confidence_take_has_clip(database: Any, attempt_id: str) -> bool:
+    """Whether this Take has a clip a blind rater could be asked about, the
+    same rule the confidence frame applies (``has_eligible_clip``).
+
+    A Take without one opened an outbox event that could never be finalized
+    and was retried every 30 seconds (2026-10-20). Its snippet rows are
+    written before promotion, so the answer here is the worker's answer.
+    An unreadable read is "yes": the canonical promotion runs as before.
+    """
+    reader = getattr(database, "get_snippets_by_session", None)
+    if not callable(reader):
+        return True
+    try:
+        rows = reader(str(attempt_id), strict=True) or []
+    except Exception:
+        logger.warning("confidence clip read failed attempt=%s", attempt_id,
+                       exc_info=True)
+        return True
+    from services.mlc2_confidence_frame_factory import has_eligible_clip
+
+    if has_eligible_clip(rows):
+        return True
+    logger.info("no confidence clip attempt=%s pieces=%d; promoting plainly, "
+                "this Take carries no learning write", attempt_id, len(rows))
+    return False
+
+
 def confidence_prior_learning_writes_enabled() -> bool:
     """Whether the pre-cutover supervision write may still run.
 
@@ -189,7 +216,8 @@ def promote_attempt(
         ),
     }
     row: Any = None
-    if confidence_canonical_writes_enabled_for(database, attempt_id):
+    if confidence_canonical_writes_enabled_for(database, attempt_id) \
+            and confidence_take_has_clip(database, attempt_id):
         if not isinstance(confidence_producer_manifest, dict):
             raise TakeLifecycleError(
                 "confidence cutover requires an immutable source manifest"

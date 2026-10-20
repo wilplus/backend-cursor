@@ -4,7 +4,7 @@ STORY    As a speaker deleting my account, I want my older Takes, saved before
          account" does not stop on them (deletion).
 OUTCOME
   O1  Before an erasure freezes, my older Takes take my account's owner
-      (0484), and the frozen inventory holds no unresolved legacy Take.
+      (0485), and the frozen inventory holds no unresolved legacy Take.
   O2  When they cannot be settled, the erasure still stops for review on
       them, exactly as before (fail-closed).
 PROVES   O1 -> test_older_takes_take_the_accounts_owner_before_the_freeze
@@ -14,7 +14,7 @@ WHY      Founder 2026-10-20 (option 1): three test accounts' Takes, and most
          2026-09-16), stopped every erasure with
          LEGACY_TAKE_OWNER_PRINCIPAL_UNRESOLVED.
 
-The SQL of 0484 is proved on the released lane by
+The SQL of 0485 is proved on the released lane by
 tests/test_phase1_deletion_completion_postgres.py (TestALegacyTakeTakesItsOwner);
 this covers the Python orchestrator, with test_purge_user_locators.PurgeDb.
 """

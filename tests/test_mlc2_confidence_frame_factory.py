@@ -10,11 +10,18 @@ OUTCOME
   O3  Nothing in the frame carries transcript text.
   O4  While the mode is dark, the worker boot line starts nothing.
   O5  Under founder_canary the sweep owner claims, finalizes and re-arms.
+  O6  A Take with no clip a rater could judge is promoted plainly and opens
+      no outbox event, because its frame could never be finalized.
+  O7  A failed event is not offered again in 30 seconds: a contract failure
+      waits a week, any other failure waits longer after each attempt
+      (founder's pg_stat_statements, 2026-10-20: 976 failures, 540 claims).
 PROVES   O1 -> test_the_frame_is_valid_exact_and_selects_one_clip
          O2 -> test_a_replay_is_byte_identical
          O3 -> test_no_transcript_text_reaches_the_frame
          O4 -> test_the_boot_line_starts_nothing_while_dark
          O5 -> test_the_owner_claims_finalizes_and_rearms
+         O6 -> test_a_take_without_a_clip_opens_no_outbox_event
+         O7 -> test_a_failure_is_not_offered_again_in_thirty_seconds
 WHY      G-6, audit 2026-09-22.
 """
 from __future__ import annotations
@@ -107,7 +114,7 @@ SNIPPETS = [
 
 def _frame(snippets=None):
     rows = SNIPPETS if snippets is None else snippets
-    database = SimpleNamespace(get_snippets_by_session=lambda take_id: rows)
+    database = SimpleNamespace(get_snippets_by_session=lambda take_id, **_: rows)
     return foundation_frame_factory(database)(_event()).as_dict()
 
 
@@ -206,7 +213,7 @@ class TestTheSweepUnderFounderCanary:
                             lambda path, *args, **kw: enqueued.append((path, args, kw)) or True)
         import services.db as db_module
         monkeypatch.setattr(db_module, "db", SimpleNamespace(
-            client=client, get_snippets_by_session=lambda take_id: SNIPPETS))
+            client=client, get_snippets_by_session=lambda take_id, **_: SNIPPETS))
         return enqueued
 
     def test_the_owner_claims_finalizes_and_rearms(self, monkeypatch):
@@ -225,3 +232,62 @@ class TestTheSweepUnderFounderCanary:
         assert [n for n, _ in client.calls] == [
             "claim_mlc2_confidence_outbox_v1", "finalize_mlc2_confidence_frame_v1"]
         assert enqueued and enqueued[0][1] == ("chain-a",)
+
+
+def test_a_take_without_a_clip_opens_no_outbox_event(monkeypatch):
+    import services.take_lifecycle as lifecycle
+
+    monkeypatch.setattr(lifecycle, "confidence_canonical_writes_enabled_for",
+                        lambda database, attempt_id: True)
+
+    def promoted_through(rows):
+        calls = []
+        database = SimpleNamespace(
+            get_snippets_by_session=lambda sid, **_: rows,
+            promote_recording_attempt_with_confidence_outbox=(
+                lambda **kw: calls.append("canonical") or {"take_id": _id(6)}),
+            promote_recording_attempt_to_take=(
+                lambda **kw: calls.append("plain") or {"take_id": _id(6)}),
+        )
+        lifecycle.promote_attempt(
+            database=database, attempt_id=_id(6), result={"snippet_count": 1},
+            confidence_producer_manifest={"source_schema_version": "x"})
+        return calls
+
+    unjudgeable = [_snippet(1, None), _snippet(2, 0.8, duration=MIN_CLIP_MS - 1)]
+    assert promoted_through(unjudgeable) == ["plain"]
+    assert promoted_through(SNIPPETS) == ["canonical"]
+
+
+def test_a_failure_is_not_offered_again_in_thirty_seconds(monkeypatch):
+    from services.mlc2_confidence_producer import (
+        CONTRACT_RETRY_SECONDS,
+        RETRY_BASE_SECONDS,
+    )
+
+    class _FailingClient(_Client):
+        def rpc(self, name, payload):
+            if name == "claim_mlc2_confidence_outbox_v1":
+                return SimpleNamespace(execute=lambda: SimpleNamespace(data=[
+                    {"id": _id(7), "attempt_count": 3, "payload": _event().payload},
+                ]))
+            return super().rpc(name, payload)
+
+    def waits_after(read):
+        client = _FailingClient()
+        TestTheSweepUnderFounderCanary()._open(monkeypatch, _FakeRedis(), client)
+        import services.db as db_module
+        db_module.db.get_snippets_by_session = read
+        result = sweep_confidence_outbox("chain-a")
+        assert result["failed"] == 1
+        [(name, payload)] = client.calls
+        assert name == "fail_mlc2_outbox_event_v1"
+        return payload["p_error_code"], payload["p_retry_after_seconds"]
+
+    def unreadable(take_id, **_):
+        raise ConnectionError("database hiccup")
+
+    assert waits_after(lambda take_id, **_: [_snippet(1, None)]) == (
+        "NoEligibleConfidenceClip:confidence_frame_failed", CONTRACT_RETRY_SECONDS)
+    assert waits_after(unreadable) == (
+        "ConnectionError:confidence_frame_failed", RETRY_BASE_SECONDS * 4)

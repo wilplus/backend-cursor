@@ -70,6 +70,15 @@ def protected_provider_scope(
         _protected_call_scope.reset(token)
 
 
+def scoped_adapter() -> "AuthorizedProviderAdapter | None":
+    """The adapter the current request's authority bound
+    (``protected_provider_scope``), or None outside one. For a route under
+    ``phase1_provider_route`` whose own provider call (a voice note's
+    transcription) needs the same principal's permit."""
+    scope = _protected_call_scope.get()
+    return scope.adapter if scope is not None else None
+
+
 def authorize_protected_generation(surface: str) -> tuple[
     ProcessingAuthorizationService | None, str | None,
 ]:

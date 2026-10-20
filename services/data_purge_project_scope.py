@@ -158,6 +158,10 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     # about that goal, and Will's private note belong to the account, never
     # to a project; the account purge deletes them.
     "goal_history", "lounge_about", "speaker_memory",
+    # The founder's voice notebook (Will learning plan, step 1, 2026-10-20):
+    # notes, their recordings and the answer to "Keep a voice notebook?"
+    # belong to the person, never to a project.
+    "voice_notebook_audio", "voice_notebook_notes", "voice_notebook_consent",
     # Retention schedule v1.4: product records and job evidence that name
     # only the person, never a project. Deleted with the account (or kept
     # 12 months as job evidence); a project purge leaves them. Placed only

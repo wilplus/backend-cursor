@@ -10,7 +10,7 @@ OUTCOME
   O3  Every target kind the orchestrator sends (FREEZE_TARGET_KINDS) is one
       the real freeze accepts; any other kind is filed unknown.
   O4  An older Take linked to my account only by my user id takes my owner
-      principal (0484), so my erasure no longer stops on it; asking twice
+      principal (0485), so my erasure no longer stops on it; asking twice
       changes nothing.
   O5  A Take that names another owner principal stays unresolved, and my
       erasure still stops for review on it.
@@ -22,7 +22,7 @@ PROVES   O1 -> test_the_freeze_accepts_my_practice_object_and_the_mark_stamps_it
 WHY      B-4 (audit 2026-09-22, 0354): the freeze and the mark raised
          SOURCE_INVALID for processing_practice_objects, so such a request sat
          at 'requested' forever with nothing erased. O4, O5: founder
-         2026-10-20 (0484), three test accounts' older Takes stopped every
+         2026-10-20 (0485), three test accounts' older Takes stopped every
          erasure with LEGACY_TAKE_OWNER_PRINCIPAL_UNRESOLVED. These cases
          EXECUTE the real functions on a disposable database (rehearsal tier,
          released lane).

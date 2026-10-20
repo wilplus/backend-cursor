@@ -876,9 +876,10 @@ hard migrations/status_read_in_one_trip.sql
 hard migrations/the_status_read_carries_the_policy_text_only_when_it_is_shown.sql
 hard migrations/the_status_read_carries_the_policy_text_only_when_it_is_shown.sql
 
-# 0484 (founder 2026-10-20): a legacy Take takes its owner from its account.
+# 0485 (founder 2026-10-20): a legacy Take takes its owner from its account.
 # One function over 0362's resolve_phase1_purge_subject_graph_v3 (applied
-# above in both lanes); no table. Both lanes, after 0479, as in the manifest.
+# above in both lanes); no table. Both lanes, after 0479, as in the manifest
+# (0484, the voice notebook, is not in this lane).
 # Twice: apply/reapply idempotency. Its cases are in
 # tests/test_phase1_deletion_completion_postgres.py (TestALegacyTakeTakesItsOwner).
 hard migrations/a_legacy_take_takes_its_owner_from_its_account.sql

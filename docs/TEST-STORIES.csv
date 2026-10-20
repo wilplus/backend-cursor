@@ -1335,11 +1335,18 @@ own audio object with its exact span, and exactly one clip is selected.
 O2  A replay (rows in any order) is byte-identical.
 O3  Nothing in the frame carries transcript text.
 O4  While the mode is dark, the worker boot line starts nothing.
-O5  Under founder_canary the sweep owner claims, finalizes and re-arms.","O1 -> test_the_frame_is_valid_exact_and_selects_one_clip
+O5  Under founder_canary the sweep owner claims, finalizes and re-arms.
+O6  A Take with no clip a rater could judge is promoted plainly and opens
+no outbox event, because its frame could never be finalized.
+O7  A failed event is not offered again in 30 seconds: a contract failure
+waits a week, any other failure waits longer after each attempt
+(founder's pg_stat_statements, 2026-10-20: 976 failures, 540 claims).","O1 -> test_the_frame_is_valid_exact_and_selects_one_clip
 O2 -> test_a_replay_is_byte_identical
 O3 -> test_no_transcript_text_reaches_the_frame
 O4 -> test_the_boot_line_starts_nothing_while_dark
-O5 -> test_the_owner_claims_finalizes_and_rearms","G-6, audit 2026-09-22."
+O5 -> test_the_owner_claims_finalizes_and_rearms
+O6 -> test_a_take_without_a_clip_opens_no_outbox_event
+O7 -> test_a_failure_is_not_offered_again_in_thirty_seconds","G-6, audit 2026-09-22."
 tests/test_mlc2_legacy_isolation.py,Guard,"The new learning code (MLC-2) never names a legacy learning table: no mlc2_*.py module, and none of the door modules that build, release, evaluate, train on or promote learning data.","A read or write of a retired, unconsented label store (for example
 confidence_labels, star_verdicts) from canonical training code.
 Method names count (get_confidence_labels_by_snippet_ids), and so
@@ -1514,14 +1521,14 @@ O2  Someone else's request cannot freeze my object.
 O3  Every target kind the orchestrator sends (FREEZE_TARGET_KINDS) is one
 the real freeze accepts; any other kind is filed unknown.
 O4  An older Take linked to my account only by my user id takes my owner
-principal (0484), so my erasure no longer stops on it; asking twice
+principal (0485), so my erasure no longer stops on it; asking twice
 changes nothing.
 O5  A Take that names another owner principal stays unresolved, and my
 erasure still stops for review on it.","O1 -> test_the_freeze_accepts_my_practice_object_and_the_mark_stamps_it
 O2 -> test_the_freeze_still_refuses_an_object_that_is_not_the_subjects
 O3 -> test_every_kind_the_orchestrator_sends_is_one_the_freeze_accepts
 O4 -> test_a_take_linked_only_by_my_user_id_takes_my_owner
-O5 -> test_a_take_naming_another_owner_stays_unresolved","B-4 (audit 2026-09-22, 0354): the freeze and the mark raised SOURCE_INVALID for processing_practice_objects, so such a request sat at 'requested' forever with nothing erased. O4, O5: founder 2026-10-20 (0484), three test accounts' older Takes stopped every erasure with LEGACY_TAKE_OWNER_PRINCIPAL_UNRESOLVED. These cases EXECUTE the real functions on a disposable database (rehearsal tier, released lane)."
+O5 -> test_a_take_naming_another_owner_stays_unresolved","B-4 (audit 2026-09-22, 0354): the freeze and the mark raised SOURCE_INVALID for processing_practice_objects, so such a request sat at 'requested' forever with nothing erased. O4, O5: founder 2026-10-20 (0485), three test accounts' older Takes stopped every erasure with LEGACY_TAKE_OWNER_PRINCIPAL_UNRESOLVED. These cases EXECUTE the real functions on a disposable database (rehearsal tier, released lane)."
 tests/test_phase1_gate_identity.py,Story,"As a signed-in speaker, I want the consent gate to recognise me, and as a new guest to get an identity it accepts, so that I am not met with ""A verified owner is required."" on every screen. (Consent gate in front of record: nothing reaches processing without it.)","O1  A bearer user passes the enforced gate as themselves (the gate
 resolves that user's principal, and authorizes core service for it).
 O2  A fresh guest is refused, mints a guest token, and then passes as
@@ -1905,10 +1912,10 @@ O2  All nineteen functions are installed and each carries the narrowed
 predicate exactly once, and none keeps the old account-wide one.","O1 -> test_a_project_id_only_belongs_to_a_project_deletion
 O2 -> test_every_lock_check_counts_only_account_wide_purges",0378 (a_project_deletion_pauses_only_its_project.sql). Runs on the released rehearsal lane; every write is rolled back.
 tests/test_purge_settles_legacy_take_owners.py,Story,"As a speaker deleting my account, I want my older Takes, saved before a Take carried its owner, erased with the rest, so that ""delete my account"" does not stop on them (deletion).","O1  Before an erasure freezes, my older Takes take my account's owner
-(0484), and the frozen inventory holds no unresolved legacy Take.
+(0485), and the frozen inventory holds no unresolved legacy Take.
 O2  When they cannot be settled, the erasure still stops for review on
 them, exactly as before (fail-closed).","O1 -> test_older_takes_take_the_accounts_owner_before_the_freeze
-O2 -> test_an_erasure_that_cannot_settle_them_still_stops_for_review","Founder 2026-10-20 (option 1): three test accounts' Takes, and most real speakers' older Takes (348 of 367 had no owner copy on 2026-09-16), stopped every erasure with LEGACY_TAKE_OWNER_PRINCIPAL_UNRESOLVED. The SQL of 0484 is proved on the released lane by tests/test_phase1_deletion_completion_postgres.py (TestALegacyTakeTakesItsOwner); this covers the Python orchestrator, with test_purge_user_locators.PurgeDb."
+O2 -> test_an_erasure_that_cannot_settle_them_still_stops_for_review","Founder 2026-10-20 (option 1): three test accounts' Takes, and most real speakers' older Takes (348 of 367 had no owner copy on 2026-09-16), stopped every erasure with LEGACY_TAKE_OWNER_PRINCIPAL_UNRESOLVED. The SQL of 0485 is proved on the released lane by tests/test_phase1_deletion_completion_postgres.py (TestALegacyTakeTakesItsOwner); this covers the Python orchestrator, with test_purge_user_locators.PurgeDb."
 tests/test_purge_user_locators.py,Story,"As a speaker deleting my account, I want rows saved under my user id (coach readings, listener answers, votes) deleted too, so that nothing outlives my account (deletion).","O1  An account erasure whose principal id is not its user id deletes
 exactly my rows in each user-keyed table and leaves everyone else's.
 O2  A project erasure leaves those rows: they belong to the account.
@@ -2717,6 +2724,24 @@ O4  NEVER-1: the stamped read never reaches what a speaker is served
 O2 -> test_a_middling_clip_reads_neutral
 O3 -> test_no_baseline_or_too_few_cues_stamps_nothing
 O4 -> test_the_read_never_reaches_a_speaker_payload","Founder spec 2026-07-27 (Jiang & Pell 2017); AC-9. Cue DIRECTIONS are ML behaviour and belong in the golden evaluation set, not here."
+tests/test_voice_notebook.py,Story,"As the founder, I want to say or type a note into a private notebook in the Lounge, so that Will learns from what I think between Takes and nobody else reads it.","O1  Someone without the notebook types ""#..."" and the chat goes on as
+before, and the app is told the notebook is off (no mic).
+O2  The first note asks the signed question; Yes keeps the waiting note and
+answers ""Noted.""; Not now keeps nothing.
+O3  A voice note is transcribed under the caller's authorization, the
+hesitations taken out and every other word kept, the recording kept,
+and the thread shows ""# "" + the words, then ""Noted."".
+O4  A note that sounds like a crisis is kept and answered at once with the
+chat's safety reply; before the question is answered it is never asked
+instead of that reply.
+O5  Will reads the notes, only once the person said Yes.
+O6  A tag the Life Panel owns is kept as a note, then left to the Life
+Panel to answer.","O1 -> test_without_the_notebook_the_chat_is_unchanged
+O2 -> test_the_first_note_asks_and_yes_keeps_it
+O3 -> test_a_voice_note_is_cleaned_kept_and_shown_with_a_hash
+O4 -> test_a_crisis_note_gets_the_safety_reply
+O5 -> test_will_reads_the_notes_only_after_yes
+O6 -> test_a_life_panel_tag_is_kept_and_left_to_the_life_panel","Will learning plan, step 1 (founder 2026-10-20, ""approved, start step 1""; words signed the same day)."
 tests/test_webm_remux.py,Story,"As a speaker, I want my recording made seekable without changing its timing, and kept as-is if that fails, so that playback works everywhere and my Take is never lost. (Critical path: record.)","O1  The remuxed file carries a seek index and exactly the same packets and
 timestamps as the recording (even one not starting at zero), so no
 stored offset moves.

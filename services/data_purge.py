@@ -699,11 +699,11 @@ class DataPurgeOrchestrator:
 
     def _resolve_legacy_take_owners(self, purge_request_id: str) -> None:
         """Before the first freeze: an older Take linked to this account only
-        by its user id takes the account's own owner principal (0484), so the
+        by its user id takes the account's own owner principal (0485), so the
         graph holds it as resolved instead of stopping the erasure for review
         (LEGACY_TAKE_OWNER_PRINCIPAL_UNRESOLVED). A Take it cannot settle
         stays unresolved and still stops it: fail-closed. A database without
-        0484, or any failure here, settles nothing and the run goes on as
+        0485, or any failure here, settles nothing and the run goes on as
         before. Runs only on a run's freeze, never in a preview."""
         try:
             request = self._request(purge_request_id)

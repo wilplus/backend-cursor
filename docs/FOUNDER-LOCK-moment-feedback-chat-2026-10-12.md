@@ -224,6 +224,36 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
 
 ## Decided after the lock
 
+- **The lens, the Ideal Text and the Lounge** (founder, Claude Code chat,
+  2026-10-20: "make it full width chat; but slightly bigger (cause it is
+  the lense view) … lock in only the bubble 3 dots as waiting … the
+  bubbles in the lenses should not disappear but be brought to the top";
+  prototype <https://claude.ai/artifact/MpiAtrUz4DNBKm3EvhA6fm>, "yes build
+  it, typing dots in the lounge too"; each open choice as drawn). Amends
+  "The lens is one chat" below ("after every tap the thread scrolls to the
+  bottom") and the walk's desktop column (Q-WALK-DESK A); section 1's "the
+  app's breathing mark" while a Take processes:
+  - **Three views, one column.** On a computer the lens is as wide as the
+    Lounge's chat column (max-w-3xl), no longer a phone-width strip, with
+    the lens's own sizes (18.5px, 22px corners); the Ideal Text's Record
+    Take and Close sit in the same column. The Lounge stays the main view.
+  - **No scrollbar in the lens.** The thread scrolls by wheel, trackpad or
+    finger.
+  - **The typing dots are the only wait,** in the lens and in the Lounge:
+    while a bubble is written, a try is checked, other speakers' moments
+    or the summary load, the Lounge's thread loads, and in the "Processing
+    your recording" bubble. No breathing mark in either.
+  - **The newest step comes to the top.** Its name moves to the top of the
+    thread and its bubbles land under it; the steps before it stay above.
+    A step taller than the thread follows down to its newest bubble.
+  - **Nothing leaves the thread while the lens is open.** A new opening
+    while it stays open (Next from a step played again to the step that
+    waits) keeps what was shown above it.
+  - **Scrolled back to an answered step, the buttons read Next,** which
+    brings the newest step back; the recorder never gives way. A paragraph
+    without the black line still opens with no buttons (the entry below).
+  - **No new words.**
+
 - **A paragraph's walk** (founder, Claude Code chat, 2026-10-20: "if there
   is still something not answered, it should first display and you answer
   … and then you close it … when you click the walk that has no things to
