@@ -11,8 +11,9 @@ this module freezes the situation they answered in, once per answer, in
     Take word, the word row's ``updated_at`` (one row per save; the words
     it describes are the live row's, or the lowest-numbered
     coach_take_word_versions row of that word whose ``updated_at`` is at or
-    after it, 0480: a re-draft bumps ``updated_at`` too, so it is no
-    equality key);
+    after it, 0480: a re-draft or a video's words keep the save's
+    ``updated_at`` on their history rows (a draft never writes it, N80), so
+    several rows can share it and it is no equality key);
   * the moment's kind (``answer_kind``, else ``kind``) and the pattern the
     coach named on the Home screen, when they named one;
   * the passage: the clip's transcript, uncut, and its slide (the coach's

@@ -18,7 +18,9 @@
 --     (request_id, resolved_at);
 --   * or take_word_id and answered_at = the word row's updated_at, one row
 --     per save of a Take word. This is NOT an equality key into the 0480
---     history: a re-draft bumps updated_at too. The words a save describes
+--     history: a re-draft or a video's words leave the save's updated_at on
+--     their history rows (a draft never writes updated_at, N80), so several
+--     rows can share it. The words a save describes
 --     are on the lowest-numbered coach_take_word_versions row of that word
 --     whose updated_at >= answered_at, or, when there is none, on the live
 --     coach_take_words row;
@@ -124,7 +126,8 @@ COMMENT ON COLUMN public.coach_answer_situations.answered_at IS
     'The answer''s own time: the resolver''s resolved_at for a moment''s answer '
     '(not exercise_coach_requests.answered_at, the speaker''s judgement), or '
     'coach_take_words.updated_at for a Take-word save. For a Take word it is no '
-    'equality key (a re-draft bumps updated_at too): the words saved are on the '
+    'equality key (a re-draft or a video''s words keep the save''s updated_at on '
+    'their history rows, so several can share it): the words saved are on the '
     'lowest-numbered coach_take_word_versions row of take_word_id with updated_at '
     '>= answered_at, else on the live coach_take_words row.';
 COMMENT ON COLUMN public.coach_answer_situations.diagnoses IS
