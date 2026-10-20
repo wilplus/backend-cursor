@@ -1,5 +1,5 @@
 """Two kinds of coach video (founder, 2026-10-18 and 19; decisions log
-N77, N78; migration 0477).
+N77, N78; migration 0478).
 
 What the founder decided, pinned here through the public seams:
 

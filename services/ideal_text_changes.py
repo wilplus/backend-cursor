@@ -1679,7 +1679,7 @@ class _ChangesRun:
         Q29 A) join as the floor only once signed; until then an empty
         table changes nothing, as before."""
         from services.feedback_catalogue import decorate, floor_rows
-        # The shared lines and this speaker's own (a coach's, 0477, N77).
+        # The shared lines and this speaker's own (a coach's, 0478, N77).
         owner = str(self.user_id or "") or None
         try:
             reader = getattr(self.db, "list_feedback_catalogue", None)

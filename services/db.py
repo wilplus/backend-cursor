@@ -11776,7 +11776,7 @@ class DatabaseService:
         self, *, exercise_id: str, decision: str, reviewed_by: str,
         version: int, video_url: Optional[str] = None,
     ) -> Optional[dict]:
-        """The founder's review of a coach's exercise video (0477, N78), of
+        """The founder's review of a coach's exercise video (0478, N78), of
         exactly ``version``: a row saved since matches nothing, and None
         comes back. 'approved' clears the owner in the same write, so the
         row is the shared library's, puts the library copy of its video on
@@ -11801,7 +11801,7 @@ class DatabaseService:
             return None
 
     def list_speaker_exercise_ids(self, owner_user_id: str) -> Optional[set[str]]:
-        """The exercises in one speaker's own set (0477, N77): their coach
+        """The exercises in one speaker's own set (0478, N77): their coach
         videos and the library ones a coach picked for them. None when
         unreadable: the caller serves no video rather than a guess."""
         if not owner_user_id:
@@ -11858,7 +11858,7 @@ class DatabaseService:
         served rows keep their constants and the honest fallback.
 
         The shared lines only (owner NULL), plus ``owner_user_id``'s own when
-        given: a coach's line for one speaker is read for no one else (0477,
+        given: a coach's line for one speaker is read for no one else (0478,
         N77)."""
         try:
             query = self.client.table("feedback_catalogue").select("*")
@@ -11885,7 +11885,7 @@ class DatabaseService:
     ) -> Optional[dict]:
         """A new VERSION of the line for one pattern (rows are never
         edited). None on failure. ``owner_user_id`` makes it one speaker's
-        line (a coach's answer, 0477); versions count across every owner."""
+        line (a coach's answer, 0478); versions count across every owner."""
         try:
             prior = (self.client.table("feedback_catalogue")
                      .select("version").eq("lane", lane)

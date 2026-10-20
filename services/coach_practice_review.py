@@ -222,7 +222,7 @@ def save_coach_decision(database, practice: dict, body: dict,
 def _into_speaker_set(database, practice: dict, exercise_id: str, *,
                       custom: bool, coach_id: str) -> None:
     """The shared exercise joins the speaker's own set (founder 2026-10-18,
-    N77; 0477), as the moment's answer does (exercise_coach_requests).
+    N77; 0478), as the moment's answer does (exercise_coach_requests).
     Best-effort: the share is saved either way."""
     adder = getattr(database, "add_speaker_exercise", None)
     owner = str(practice.get("owner_user_id") or "")

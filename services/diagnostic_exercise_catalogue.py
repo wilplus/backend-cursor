@@ -370,7 +370,7 @@ def save_exercise(
 ) -> Optional[dict]:
     """Validate and write one catalogue entry, new or existing.
 
-    ``owner_user_id`` makes it one speaker's coach video (0477, N77): only
+    ``owner_user_id`` makes it one speaker's coach video (0478, N77): only
     the server sets it, never a client's body, and a save without it never
     clears an owner already there. ``video_ref`` is a private video the
     server stored for that speaker (``s3://``), which the client-facing URL
@@ -392,7 +392,7 @@ def save_exercise(
     before = reader(row["exercise_id"]) if reader is not None else None
     if owner_user_id:
         # Only a new exercise takes an owner, or one already theirs. A row
-        # filed before 0477 is the shared library's until the founder's
+        # filed before 0478 is the shared library's until the founder's
         # clean-up (step 2) moves it: other speakers' practices may name it.
         if isinstance(before, dict) and str(
                 before.get("owner_user_id") or "") != str(owner_user_id):
@@ -438,7 +438,7 @@ def file_coach_exercise(
     through -- including the refusal for an error code cannot detect, which is
     the one a coach is most likely to meet and most needs to read.
 
-    AMENDED 2026-10-18 and 19 (founder, decisions log N77, N78; 0477): the
+    AMENDED 2026-10-18 and 19 (founder, decisions log N77, N78; 0478): the
     coach's video is made for the speaker of the practice
     (``owner_user_id``). It treats an error, as above, for that speaker, and
     for every other speaker whose recording fits it only once the founder
