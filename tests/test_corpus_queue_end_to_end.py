@@ -416,6 +416,7 @@ def _through_whisper(fake: FakeDB):
             recording_kind="spoken", paired_session_id=None,
             run_analytics=False))
         assert state.words_all, "the transcript came back"
+        assert state.language == "en", "the language Whisper heard is kept"
         return pieces(**kwargs)
     return impl
 
