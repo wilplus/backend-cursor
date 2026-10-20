@@ -258,10 +258,50 @@ class DatabaseService:
         transport tweak, so we drop the dead code and let the default
         transport do its thing.
         """
-        return create_client(
+        client = create_client(
             config.SUPABASE_URL,
             config.SUPABASE_SERVICE_ROLE_KEY,
         )
+        self._keep_postgrest_connection_warm(client)
+        return client
+
+    @staticmethod
+    def _keep_postgrest_connection_warm(client: Client) -> None:
+        """Give the PostgREST session a connection pool that keeps an idle
+        connection for ``SUPABASE_HTTP_KEEPALIVE_SECONDS``, not httpx's five.
+
+        Every read in a request shares one HTTP/2 connection to Supabase.
+        With the default pool, a worker that has been idle for five seconds
+        opens a new TCP + TLS connection on its next request, and every read
+        at the top of that request waits for the handshake (founder's
+        stopwatch, 2026-10-20: `core_read` and `owner_read` at 250 ms each
+        while the sections behind them took 40-70 ms). supabase-py 2.6 has no
+        way to pass pool limits in, so the session is rebuilt here with the
+        same base URL, headers and timeout and a longer keep-alive. Best
+        effort: if anything about the client's shape is not what this
+        expects, the default session stays and the warning says so."""
+        try:
+            import httpx
+            from postgrest.utils import SyncClient
+            cold = client.postgrest.session
+            warm = SyncClient(
+                base_url=cold.base_url,
+                headers=cold.headers,
+                timeout=cold.timeout,
+                follow_redirects=True,
+                http2=True,
+                limits=httpx.Limits(
+                    max_connections=100,
+                    max_keepalive_connections=20,
+                    keepalive_expiry=float(
+                        config.SUPABASE_HTTP_KEEPALIVE_SECONDS)),
+            )
+            client.postgrest.session = warm
+            cold.close()
+        except Exception as error:
+            logger.warning(
+                "supabase session keep-alive not applied; default pool kept: %s",
+                error, exc_info=True)
 
     def _is_transient_postgrest_disconnect(self, err: Exception) -> bool:
         msg = str(err).lower()

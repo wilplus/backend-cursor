@@ -217,6 +217,15 @@ class Config:
     SENTENCE_SPLIT_MIN_GAP_MS = _env_int("SENTENCE_SPLIT_MIN_GAP_MS", 600)
     SENTENCE_SPLIT_MIN_CHARS = _env_int("SENTENCE_SPLIT_MIN_CHARS", 60)
     PIPELINE_JOB_STALE_MINUTES = _env_int("PIPELINE_JOB_STALE_MINUTES", 5)
+    # How long an idle HTTP/2 connection to Supabase is kept for reuse.
+    # httpx's default is five seconds, so almost every page open after a
+    # pause paid a fresh TCP + TLS handshake before its first query (the
+    # founder's stopwatch, 2026-10-20: 250 ms on each of the two reads that
+    # open the Ideal Text enrichment, 40-70 ms on every read after them).
+    # Cloudflare, in front of the Supabase API, keeps an idle connection for
+    # about 400 s; a connection the far side has closed is detected by the
+    # pool and replaced, and a close mid-flight is already retried.
+    SUPABASE_HTTP_KEEPALIVE_SECONDS = _env_int("SUPABASE_HTTP_KEEPALIVE_SECONDS", 300)
     PIPELINE_JOB_HEARTBEAT_SECONDS = _env_int("PIPELINE_JOB_HEARTBEAT_SECONDS", 60)
     PIPELINE_JOB_MAX_ATTEMPTS = _env_int("PIPELINE_JOB_MAX_ATTEMPTS", 3)
     # The wall clock on ONE attempt. The heartbeat proves the PROCESS is
