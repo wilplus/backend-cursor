@@ -1,0 +1,81 @@
+# Will's learning plan (founder, 2026-10-20)
+
+Will learns about each person from what they say and do, without retraining a
+model: plain-text notes and kept events that any model can read. This page
+holds the founder's decisions from the two question pages (the learning plan
+and the voice notebook) and the order they are built in.
+
+Built before this plan: the speaker memory (`docs/SPEAKER-MEMORY.md`): every
+answer to "Did this help?" and every Take's outcome is kept, and Will reads a
+short private note before it chats and before the summary after a Take.
+
+## Step 1: the voice notebook (built 2026-10-20)
+
+- **Who:** the founder only (ring row `voice_notebook`, ring 6).
+- **How:** WhatsApp-like. `+` left of the message box, the mic right of it
+  while the box is empty. Tap: it records (trash, the running time, send).
+  Up to five minutes; it sends itself at the limit.
+- **Typed notes:** a message starting with `#` is a note too. A voice note
+  shows in the chat as `#` + its words, so both look the same.
+- **Words:** transcribed by the same provider as Takes, under the
+  processing-authorization path. Only hesitations and repeated words are
+  taken out (`transcript_smoothing.strip_fillers`); every other word is kept.
+- **Audio:** kept (a later feature reads how sure the voice sounded, and how
+  consistent the founder is with themselves over time). Stored in the
+  database next to the note, so account deletion removes it with the notes.
+- **Private:** only the person and Will read notes. Never a coach, never the
+  Ideal Text. Will reads the newest notes in the chat.
+- **Consent:** before the first note: "Your notes are private. Only you and
+  Will read them. Keep a voice notebook?" **Yes** / **Not now**. After each
+  note: "Noted."
+- **Safety:** a note that sounds like a crisis gets the chat's existing
+  safety reply at once.
+- **Life Panel:** a `#principle`, `#mistake` (and the Life Panel's other tags)
+  is kept as a note and still answered by the Life Panel when it is on.
+
+Code: `services/voice_notebook.py`, `routes/v2/voice_notebook.py`, migration
+`a_voice_notebook_keeps_the_founders_notes.sql`, test
+`tests/test_voice_notebook.py`; frontend `useVoiceNote.ts` and the Lounge
+composer.
+
+## Step 2: the Sunday note (next)
+
+Sunday 6 pm local, and whenever asked, in the chat only. In the founder's
+Dalio case form:
+
+```
+CASE AT HAND
+WHAT ONE OF THOSE WAS IT?
+👾 Too much pleasure  👾 Blind spots  👾 Hubris  👾 Wishful thinking
+PRINCIPLES I APPLIED AND HOW I WEIGHED THEM
+REFLECTIONS
+NEW PRINCIPLE ⚜️
+ADD PRINCIPLE
+```
+
+Each pattern has a button: a bug you already knew (old) or a new one. It reads
+the week's notes, Takes and chat, and links helpful and harmful patterns to the
+talk goal, the life goals and the principles. Will suggests principles; one is
+added only when the founder approves it, and goes to the Life Panel's
+principles. Never on the recording screens.
+
+## Step 3: life goals, the Dalio way
+
+Seven questions: What do you truly want most? What fits your nature and
+strengths? What will you give up for it? Is it a real goal or a desire? What
+will actually fulfil you? Is it ambitious enough? What path feels right?
+
+Up to three spaces, each can hold a goal: personal life, career, the greater
+good. The goal ladder: life goal → talk goal (the setup answer "What do you
+want your audience to do?") → this week's focus (the moment being practised).
+
+## Step 4: later
+
+- Speaking-only thinking patterns: six signed patterns, consent first
+  (sensitive information), the person can see and delete them, at most one
+  gentle question per conversation, strengths too. "I'm worthless" and the
+  like: Will steps out and the founder is quietly flagged.
+- A look-back bubble after Take 3, then every few Takes.
+- The notebook in four parts (speaking, goals, thinking, what to ask next),
+  older lines fading.
+- The bridge to life goals, once steps 1 to 3 work.

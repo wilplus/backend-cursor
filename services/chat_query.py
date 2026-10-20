@@ -256,6 +256,20 @@ def _whatsapp_number(user_id, question, _context, _history=None) -> Optional[tup
                   debug={"intent": "whatsapp_number"}, **extra), "whatsapp_number"
 
 
+def _voice_notebook(user_id, question, _context, _history=None,
+                    *, life_on: bool = False) -> Optional[tuple[dict, str]]:
+    """A typed "#" note in the founder's voice notebook (Will learning plan,
+    step 1): kept and answered "Noted.", or the question before the first
+    note. Not a notebook user, or not a note: None, the chat as before."""
+    from services.db import db
+    from services.voice_notebook import chat_turn
+    turn = chat_turn(db, user_id, question, life_on=life_on)
+    if not turn:
+        return None
+    return _reply(turn["answer"], row_metadata=turn["row_metadata"],
+                  debug={"intent": "voice_notebook"}), "voice_notebook"
+
+
 def _goal_update(user_id, question, _context, _history=None) -> Optional[tuple[dict, str]]:
     """Prompt A §6 C4: "change my goal to X" updates the profile goal and
     confirms in the speaker's language; a cheap pre-gate inside."""
@@ -308,6 +322,8 @@ def _intercepts(user_id, app_config) -> list[tuple[str, Callable]]:
     if user_id:
         chain.append(("feedback-check intercept failed user=%s: %s", _feedback_check))
         chain.append(("whatsapp-number intercept failed user=%s: %s", _whatsapp_number))
+        chain.append(("voice-notebook intercept failed user=%s: %s",
+                      functools.partial(_voice_notebook, life_on=life_on)))
     if life_on:
         chain.append(("life-panel intercept failed user=%s: %s", _life_panel))
     if user_id:
@@ -358,6 +374,7 @@ def _librarian(database, user_id, question, history, app_config,
     it opens becomes a chip, an offer bubble or a link."""
     from services import chat_app_context as app
     from services import speaker_memory
+    from services import voice_notebook as notebook
     from services.feedback_check import CHAT_FACTS as feedback_facts
     if not user_id:
         gate = app.signup_gate(history)
@@ -374,7 +391,8 @@ def _librarian(database, user_id, question, history, app_config,
     from services.parallel import run_in_parallel
     memory = functools.cache(lambda: "".join(run_in_parallel(
         lambda: speaker_memory.prompt_block(speaker_memory.note_for(database, user_id)),
-        lambda: speaker_memory.history_for(database, user_id, question))) if user_id else "")
+        lambda: speaker_memory.history_for(database, user_id, question),
+        lambda: notebook.prompt_block(database, user_id))) if user_id else "")
     from services.master_doc_rag import answer_question
     payload, debug = answer_question(
         question, history=history, admin_dont_ask_notes=admin_notes,

@@ -2712,6 +2712,24 @@ O4  NEVER-1: the stamped read never reaches what a speaker is served
 O2 -> test_a_middling_clip_reads_neutral
 O3 -> test_no_baseline_or_too_few_cues_stamps_nothing
 O4 -> test_the_read_never_reaches_a_speaker_payload","Founder spec 2026-07-27 (Jiang & Pell 2017); AC-9. Cue DIRECTIONS are ML behaviour and belong in the golden evaluation set, not here."
+tests/test_voice_notebook.py,Story,"As the founder, I want to say or type a note into a private notebook in the Lounge, so that Will learns from what I think between Takes and nobody else reads it.","O1  Someone without the notebook types ""#..."" and the chat goes on as
+before, and the app is told the notebook is off (no mic).
+O2  The first note asks the signed question; Yes keeps the waiting note and
+answers ""Noted.""; Not now keeps nothing.
+O3  A voice note is transcribed under the caller's authorization, the
+hesitations taken out and every other word kept, the recording kept,
+and the thread shows ""# "" + the words, then ""Noted."".
+O4  A note that sounds like a crisis is kept and answered at once with the
+chat's safety reply; before the question is answered it is never asked
+instead of that reply.
+O5  Will reads the notes, only once the person said Yes.
+O6  A tag the Life Panel owns is kept as a note, then left to the Life
+Panel to answer.","O1 -> test_without_the_notebook_the_chat_is_unchanged
+O2 -> test_the_first_note_asks_and_yes_keeps_it
+O3 -> test_a_voice_note_is_cleaned_kept_and_shown_with_a_hash
+O4 -> test_a_crisis_note_gets_the_safety_reply
+O5 -> test_will_reads_the_notes_only_after_yes
+O6 -> test_a_life_panel_tag_is_kept_and_left_to_the_life_panel","Will learning plan, step 1 (founder 2026-10-20, ""approved, start step 1""; words signed the same day)."
 tests/test_webm_remux.py,Story,"As a speaker, I want my recording made seekable without changing its timing, and kept as-is if that fails, so that playback works everywhere and my Take is never lost. (Critical path: record.)","O1  The remuxed file carries a seek index and exactly the same packets and
 timestamps as the recording (even one not starting at zero), so no
 stored offset moves.
