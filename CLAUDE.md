@@ -41,6 +41,19 @@ version of this page is `docs/history/CLAUDE-2026-10-11.md`.
 **Does this make the transcript, the Ideal Text or the feedback better, or
 does a task in progress need it?** If not, say so and ask before building it.
 
+## Replacing a feature
+
+Before replacing or redesigning anything, list everything the old one does,
+including every backend call and side effect, and keep each one in the new
+version. "One in, one out" moves the old tests' promises into the new tests
+before the old tests go. Before merging, say what stops happening.
+
+Promises that must never break:
+
+- Every moment a speaker meets reaches a coach (alarm:
+  `coach_moments_queue.reach_alarm`, backend).
+- The coach's link opens the coach's feedback, whatever else is processing.
+
 ## How to test (founder, 2026-10-12)
 
 Test business behaviour and contracts, not lines of code. Before writing a
