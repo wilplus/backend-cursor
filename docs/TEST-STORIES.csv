@@ -1066,8 +1066,11 @@ O4  The recovery sweep runs only with the internal secret.","O1 -> test_poll_sho
 O2 -> test_unknown_and_foreign_jobs_look_identical
 O3 -> test_no_score_or_verdict_anywhere_in_the_body
 O4 -> test_sweep_needs_the_internal_secret","AC-9 split sink: results live on the readout GETs, never on the poll."
-tests/test_journey_messages.py,Story,"As the founder, I want the message after a speaker's first Take to say exactly the words I signed off, with its two actions, so that no unapproved words reach a speaker.","O1  The Take 1 message's text and its two actions (prepare Take 2, keep
-practising) equal the locked copy.",O1 -> JourneyMessageTests::test_take_one_copy_and_action_are_locked,Never-rule 4: no new words on screen without the founder's OK.
+tests/test_journey_messages.py,Story,"As the founder, I want the messages after a speaker's first and second Takes to say exactly the words I signed off, with their two actions, so that no unapproved words reach a speaker.","O1  The Take 1 message's text and its two actions (prepare Take 2, keep
+practising) equal the locked copy.
+O2  The Take 2 message's text and its two actions (prepare Take 3, keep
+practising) equal the locked copy.","O1 -> JourneyMessageTests::test_take_one_copy_and_action_are_locked
+O2 -> JourneyMessageTests::test_take_two_copy_and_action_are_locked","Never-rule 4: no new words on screen without the founder's OK. Both simplified by the founder in chat, 2026-10-20."
 tests/test_judgement_after_feedback.py,Story,"As a speaker, I want to judge myself after the feedback and not before, with my answer shown to the coach only after their blind rating, so that the machine leads and the coach stays blind.","O1  Opening a moment raises one coach request, under the machine's kind,
 once; it never asks me for a judgement first.
 O2  My later answer sets the request's answer_kind from the matrix.
