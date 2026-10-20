@@ -192,24 +192,56 @@ def _int_or_none(value: Any) -> Optional[int]:
     return value
 
 
-def _candidate_for_snippet(
-    snippet: Mapping[str, Any], *, key: str, object_metadata: Mapping[str, Any],
-    audio_sha256: Any,
-) -> Optional[dict[str, Any]]:
-    """One candidate, or None when the snippet has no exact span at all."""
+def _exact_span(snippet: Mapping[str, Any]) -> Optional[tuple[str, int, int]]:
+    """(snippet id, start, duration), or None when there is no exact span."""
     snippet_id = str(snippet.get("id") or "")
     start = _int_or_none(snippet.get("start_offset_ms"))
     duration = _int_or_none(snippet.get("duration_ms"))
     if not snippet_id or start is None or duration is None \
             or start < 0 or duration <= 0:
         return None
+    return snippet_id, start, duration
+
+
+def _exclusion(duration: int, score: Optional[float]) -> Optional[str]:
+    if duration < MIN_CLIP_MS:
+        return "audio_too_short"
+    if score is None:
+        return "no_confidence_read"
+    return None
+
+
+def has_eligible_clip(snippets: Sequence[Mapping[str, Any]]) -> bool:
+    """Whether a frame can be built from these rows: at least one clip with
+    an exact span, at least ``MIN_CLIP_MS`` long, with a stamped score.
+
+    The producer asks this before it opens an outbox event (2026-10-20). A
+    Take without such a clip (no baseline to stamp against, every piece too
+    short) can never be finalized, because a candidate set must select one
+    clip, and its rows are written before the Take is promoted, so every
+    retry raised ``NoEligibleConfidenceClip`` again, every 30 seconds."""
+    for snippet in snippets:
+        if not isinstance(snippet, Mapping):
+            continue
+        span = _exact_span(snippet)
+        if span is not None and _exclusion(
+                span[2], stamped_score(snippet.get("metrics"))) is None:
+            return True
+    return False
+
+
+def _candidate_for_snippet(
+    snippet: Mapping[str, Any], *, key: str, object_metadata: Mapping[str, Any],
+    audio_sha256: Any,
+) -> Optional[dict[str, Any]]:
+    """One candidate, or None when the snippet has no exact span at all."""
+    span = _exact_span(snippet)
+    if span is None:
+        return None
+    snippet_id, start, duration = span
     end = start + duration
     score = stamped_score(snippet.get("metrics"))
-    exclusion: Optional[str] = None
-    if duration < MIN_CLIP_MS:
-        exclusion = "audio_too_short"
-    elif score is None:
-        exclusion = "no_confidence_read"
+    exclusion = _exclusion(duration, score)
     candidate: dict[str, Any] = {
         "id": _stable_id(FRAME_VERSION, key, "candidate", snippet_id),
         "clip_id": snippet_id,
@@ -403,11 +435,14 @@ def foundation_frame_factory(
     database: Any,
 ) -> Callable[[ConfidenceProducerEvent], ConfidenceSamplingFrame]:
     """The reviewed ``frame_factory`` for ``DarkConfidenceWorker``: reads the
-    Take's snippet rows (offsets and stamped metrics) and builds the frame."""
+    Take's snippet rows (offsets and stamped metrics) and builds the frame.
+
+    The read is strict: a failed read raises and is retried soon, instead of
+    reading as "no clips", which is a contract failure the worker parks."""
 
     def factory(event: ConfidenceProducerEvent) -> ConfidenceSamplingFrame:
         take_id = str(event.envelope().take_id)
-        rows = database.get_snippets_by_session(take_id) or []
+        rows = database.get_snippets_by_session(take_id, strict=True) or []
         return build_foundation_frame(event, snippets=rows)
 
     return factory

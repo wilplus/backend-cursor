@@ -239,7 +239,7 @@ def chain(conn):
             (sid, attempt, recording, start, duration,
              psycopg2.extras.Json(metrics) if metrics is not None else None))
 
-    def get_snippets_by_session(take_id):
+    def get_snippets_by_session(take_id, *, strict=False):
         cur.execute("SELECT id, session_id, recording_id, start_offset_ms, duration_ms, metrics "
                     "FROM public.snippets WHERE session_id = %s ORDER BY start_offset_ms", (take_id,))
         return [dict(r) for r in cur.fetchall()]
