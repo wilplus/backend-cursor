@@ -19,6 +19,7 @@ from auth import require_auth
 from routes.v2.blueprint import v2_bp
 from routes.v2.processing_authorization import phase1_provider_route
 from services.db import db
+from services.rate_limits import llm_limit
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,7 @@ def _adapter(user_id: str):
 
 @v2_bp.route("/notebook/notes", methods=["POST"])
 @phase1_provider_route
+@llm_limit
 @require_auth
 def v2_notebook_note():
     from services.voice_notebook import NotebookError, add_voice_note, enabled

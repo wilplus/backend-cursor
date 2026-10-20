@@ -11,7 +11,8 @@ OUTCOME
       hesitations taken out and every other word kept, the recording kept,
       and the thread shows "# " + the words, then "Noted.".
   O4  A note that sounds like a crisis is kept and answered at once with the
-      chat's safety reply.
+      chat's safety reply; before the question is answered it is never asked
+      instead of that reply.
   O5  Will reads the notes, only once the person said Yes.
   O6  A tag the Life Panel owns is kept as a note, then left to the Life
       Panel to answer.
@@ -142,6 +143,10 @@ def test_a_crisis_note_gets_the_safety_reply(founder):
     turn = _type(db, "#I want to die before this talk")
     assert turn["answer"] != "Noted." and "emergency" in turn["answer"]
     assert db.notes  # kept, it is theirs
+
+    before = _Db()  # not yet asked: the safety reply, never the question
+    turn = nb.chat_turn(before, "u", "#I can't go on")
+    assert "emergency" in turn["answer"] and not before.notes
 
 
 def test_will_reads_the_notes_only_after_yes(founder):

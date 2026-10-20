@@ -202,6 +202,9 @@ def chat_turn(database: Any, user_id: str, question: str,
     if not enabled(database, user_id):
         return None
     if not consented(database, user_id):
+        safety = _crisis(text)
+        if safety:  # the chat's safety reply comes first, never the question
+            return {"answer": safety, "row_metadata": {}}
         return {"answer": COPY["ask"],
                 "row_metadata": {"offer": OFFER, "held_note": text}}
     note = _save(database, user_id, "typed", text)
@@ -214,7 +217,9 @@ def prompt_block(database: Any, user_id: Any, limit: int = 10) -> str:
     """The newest notes, for Will's chat prompt; "" when there are none or
     the person has no notebook. Facts, not instructions."""
     try:
-        if not user_id or not enabled(database, user_id) or not consented(database, user_id):
+        # Consent first: one read for everyone without a notebook (no row),
+        # the ring check only for whoever said Yes.
+        if not user_id or not consented(database, user_id) or not enabled(database, user_id):
             return ""
         notes = database.list_voice_notes(str(user_id), limit=limit)
     except Exception as error:  # noqa: BLE001 -- the chat answers either way

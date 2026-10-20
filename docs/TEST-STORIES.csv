@@ -2672,7 +2672,8 @@ O3  A voice note is transcribed under the caller's authorization, the
 hesitations taken out and every other word kept, the recording kept,
 and the thread shows ""# "" + the words, then ""Noted."".
 O4  A note that sounds like a crisis is kept and answered at once with the
-chat's safety reply.
+chat's safety reply; before the question is answered it is never asked
+instead of that reply.
 O5  Will reads the notes, only once the person said Yes.
 O6  A tag the Life Panel owns is kept as a note, then left to the Life
 Panel to answer.","O1 -> test_without_the_notebook_the_chat_is_unchanged

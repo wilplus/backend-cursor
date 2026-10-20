@@ -71,3 +71,14 @@ VALUES ('voice_notebook', 6,
         'the Lounge (mic right of the message box, "#" notes).',
         'migration:a_voice_notebook_keeps_the_founders_notes')
 ON CONFLICT (feature) DO NOTHING;
+
+-- The ring row's first entry in its audit trail, as 0394 wrote for its seeds.
+INSERT INTO public.feature_ring_changes
+    (feature, min_ring, attribute_rule, consent_purpose, killed, one_way, note,
+     changed_by, changed_at)
+SELECT f.feature, f.min_ring, f.attribute_rule, f.consent_purpose, f.killed,
+       f.one_way, f.note, f.changed_by, f.changed_at
+  FROM public.feature_rings f
+ WHERE f.feature = 'voice_notebook'
+   AND NOT EXISTS (SELECT 1 FROM public.feature_ring_changes c
+                    WHERE c.feature = f.feature);
