@@ -55,8 +55,8 @@ VISITOR_BLOCK = (
 #: The Lounge's own offer copy (frontend loungeOffers.ts OFFER_PROMPT,
 #: founder-approved), used verbatim when the chat opens an offer.
 OFFER_PROMPTS = {
-    "whatsapp": "Want a WhatsApp message when your coach's feedback is in? "
-                "Add your phone number.",
+    # Simplified by the founder in chat, 2026-10-20.
+    "whatsapp": "Want a WhatsApp when your coach replies? Add your number.",
     "install": "Keep WillpowerLab one tap away. Add it to your home screen "
                "so your coach's insights are always with you.",
 }
