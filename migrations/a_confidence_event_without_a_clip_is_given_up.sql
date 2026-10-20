@@ -1,4 +1,4 @@
--- a_confidence_event_without_a_clip_is_given_up (0486)
+-- a_confidence_event_without_a_clip_is_given_up (0487)
 --
 -- A confidence outbox event whose Take has no clip a blind rater could judge
 -- can never be finalized: a candidate set must select one clip

@@ -276,6 +276,22 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
     brings the newest step back; the recorder never gives way. A paragraph
     without the black line still opens with no buttons (the entry below).
   - **No new words.**
+  - **After the first build** (founder, the same chat, from the phone):
+    - **"Your coach:"** opens the coach's bubble, with the colon (signed
+      2026-10-20); the bar and the step's name stay "Your coach".
+    - **The text never shows before the walk.** After a Take the lens
+      waits, with the typing dots, until the walk's first step is there;
+      the text shows only once the page knows there is nothing to walk.
+      The eight-second last resort counts only once the page has loaded,
+      its marks are in and its deck is up.
+    - **The walk shows only this Take's coach word** ("change it!"). An
+      earlier Take's word, served in its place (N48.3 Q11 A), no longer
+      opens Step 0 of a new Take's review and no longer keeps "Continue
+      review" up; it stays in the Lounge as the coach's bubble. The coach's
+      own door (the WhatsApp link, the dot card, the bubble) still opens it.
+    - **The typing dots' beat is the Lounge's, 350 ms** per grey bubble, in
+      place of the prototype's 520 ("there is a lag between the steps",
+      "do so").
 
 - **A paragraph's walk** (founder, Claude Code chat, 2026-10-20: "if there
   is still something not answered, it should first display and you answer
@@ -294,10 +310,17 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
     the Ideal Text. It does not walk on to other paragraphs, other speakers
     or the summary; those stay behind "Continue review".
   - **A paragraph without the line opens the whole finished walk** as one
-    chat to scroll through, at that paragraph's part, with no buttons: only
-    ‹ › and ✕ in the bar. Other speakers and the summary are not in it.
-  - **Orange helper words still open their helper-words step,** to pick new
-    ones (rule 5).
+    chat to scroll through, with no buttons: only ‹ › and ✕ in the bar.
+    Other speakers and the summary are not in it. It opens scrolled to the
+    step that paragraph answered (the helper words picked, its clearer
+    version, its Exercise), its green moment just above (founder, same
+    chat: "brought to the moment where the action from that clicked
+    paragraph was performed and the scroll should open there").
+  - **Its orange helper words open the same walk,** not the picker: "if the
+    helper words are already chosen, why would you want to open it again?"
+    Helper words still change from the Lounge's helper-words bubble and in
+    the next Take's walk (rule 5). Orange words on a paragraph with no
+    moment in this Take still open their helper words.
   - **From the Lounge nothing changes:** a bubble opens its step with
     "✓ …" and Next.
   - **No new words.**

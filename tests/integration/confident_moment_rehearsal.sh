@@ -885,10 +885,11 @@ hard migrations/the_status_read_carries_the_policy_text_only_when_it_is_shown.sq
 hard migrations/a_legacy_take_takes_its_owner_from_its_account.sql
 hard migrations/a_legacy_take_takes_its_owner_from_its_account.sql
 
-# 0486 (founder 2026-10-20): a confidence event without a clip is given up.
+# 0487 (founder 2026-10-20): a confidence event without a clip is given up.
 # Two nullable columns and a CHECK on 0302's ml_outbox_events, one function,
 # and the once-only give-up of events stuck on NoEligibleConfidenceClip; all
-# applied above in both lanes. After 0485, as in the manifest.
+# applied above in both lanes. After 0485, as in the manifest (0486, the
+# Sunday case, is not in this lane).
 # Twice: apply/reapply idempotency. Its cases are in
 # tests/test_a_confidence_event_without_a_clip_is_given_up_postgres.py.
 hard migrations/a_confidence_event_without_a_clip_is_given_up.sql

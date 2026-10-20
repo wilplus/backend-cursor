@@ -13,7 +13,7 @@ OUTCOME
   O6  A Take with no clip a rater could judge is promoted plainly and opens
       no outbox event, because its frame could never be finalized.
   O7  A failed event is not offered again in 30 seconds: one whose Take has
-      no clip is given up (0486), any other failure waits longer after each
+      no clip is given up (0487), any other failure waits longer after each
       attempt (founder's pg_stat_statements, 2026-10-20: 976 failures, 540
       claims).
 PROVES   O1 -> test_the_frame_is_valid_exact_and_selects_one_clip

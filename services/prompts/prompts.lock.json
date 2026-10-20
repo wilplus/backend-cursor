@@ -371,6 +371,11 @@
       "module": "moment_suggestions",
       "sha256": "afddc06242feeacdf42217b9db5b6a81c3bef5168d99b20d9a9516c87bae4fe0"
     },
+    "sunday_note.system": {
+      "kind": "source_ref",
+      "module": "pending",
+      "sha256": "83b9cb6e47bac1539ad715ac434aa63f671dfb2616895949048e375b4ca88c0c"
+    },
     "swap_continuity.system": {
       "kind": "builder",
       "module": "swap_continuity",

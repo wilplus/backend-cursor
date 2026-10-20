@@ -13,7 +13,7 @@ OUTCOME
 PROVES   O1 -> test_a_given_up_event_is_never_claimed_again
          O2 -> test_only_the_lease_holder_gives_up_and_only_for_no_clip
          O3 -> test_the_migration_gives_up_only_the_stuck_events
-WHY      0486, founder 2026-10-20; runs in one rolled-back transaction on a
+WHY      0487, founder 2026-10-20; runs in one rolled-back transaction on a
          database whose name starts with ``willab_confident_moment_``
          (rehearsal tier only).
 """

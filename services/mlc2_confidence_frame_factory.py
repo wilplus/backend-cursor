@@ -115,7 +115,7 @@ _NAMESPACE = uuid.UUID("7f0f1b8e-3a2d-4c5e-9b6a-1d2e3f4a5b6c")
 
 class NoEligibleConfidenceClip(TerminalConfidenceFailure):
     """The Take has no clip a blind rater could be asked about. Its rows are
-    fixed before promotion, so the event is given up (0486)."""
+    fixed before promotion, so the event is given up (0487)."""
 
     reason_code = "no_eligible_clip"
 

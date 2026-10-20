@@ -45,7 +45,7 @@ CONTRACT_RETRY_SECONDS = 7 * 24 * 3600
 
 
 class TerminalConfidenceFailure(Mlc2ContractError):
-    """A failure no attempt can ever pass: the event is given up (0486).
+    """A failure no attempt can ever pass: the event is given up (0487).
 
     ``reason_code`` must be on ``ml_outbox_abandon_check``'s allow-list."""
 
@@ -229,7 +229,7 @@ class Mlc2ConfidenceProducerStore:
         self, *, outbox_event_id: UUID | str, worker_id: str,
         error_code: str, reason_code: str,
     ) -> dict[str, Any]:
-        """Give the event up: it is never claimed again (0486)."""
+        """Give the event up: it is never claimed again (0487)."""
         return self._one(self.client.rpc(
             "abandon_mlc2_confidence_outbox_event_v1", {
                 "p_outbox_event_id": _uuid(outbox_event_id, "outbox_event_id"),
@@ -299,7 +299,7 @@ class DarkConfidenceWorker:
                 )
                 return
             except Exception:
-                # 0486 not applied yet: the week's wait below still holds.
+                # 0487 not applied yet: the week's wait below still holds.
                 logger.warning("confidence event %s not given up; parked",
                                outbox_event_id, exc_info=True)
         self.producer_store.fail(

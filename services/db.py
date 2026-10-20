@@ -10962,6 +10962,78 @@ class DatabaseService:
                            user_id, e, exc_info=True)
             return False
 
+    def list_voice_notebook_consents(self) -> list[dict]:
+        """Everyone who said Yes to the notebook, with their time zone (the
+        Sunday note's sweep). A few rows. [] on any failure."""
+        try:
+            return (self.client.table("voice_notebook_consent")
+                    .select("user_id, time_zone").eq("decision", "yes")
+                    .limit(1000).execute().data) or []
+        except Exception as e:
+            logger.warning("list_voice_notebook_consents failed: %s", e, exc_info=True)
+            return []
+
+    def set_voice_notebook_time_zone(self, user_id: str, time_zone: str) -> bool:
+        try:
+            (self.client.table("voice_notebook_consent")
+             .update({"time_zone": time_zone}).eq("user_id", user_id).execute())
+            return True
+        except Exception as e:
+            logger.warning("set_voice_notebook_time_zone failed user=%s: %s",
+                           user_id, e, exc_info=True)
+            return False
+
+    # ── the Sunday note (migration 0486, services/sunday_note.py) ──
+
+    def insert_sunday_note(self, row: dict) -> Optional[dict]:
+        """The claim on a note; None when the week's Sunday note is already
+        claimed (the unique index) or on any failure."""
+        try:
+            data = self.client.table("sunday_notes").insert(row).execute().data
+            return data[0] if data else None
+        except Exception as e:
+            logger.info("insert_sunday_note refused user=%s: %s", row.get("user_id"), e,
+                        exc_info=True)
+            return None
+
+    def update_sunday_note(self, note_id: str, fields: dict) -> bool:
+        try:
+            self.client.table("sunday_notes").update(fields).eq("id", note_id).execute()
+            return True
+        except Exception as e:
+            logger.warning("update_sunday_note failed id=%s: %s", note_id, e, exc_info=True)
+            return False
+
+    def get_sunday_note(self, user_id: str, note_id: str) -> Optional[dict]:
+        try:
+            rows = (self.client.table("sunday_notes").select("*")
+                    .eq("id", note_id).eq("user_id", user_id).limit(1).execute().data)
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning("get_sunday_note failed user=%s: %s", user_id, e, exc_info=True)
+            return None
+
+    def get_sunday_note_for_week(self, user_id: str, week_start: str) -> Optional[dict]:
+        try:
+            rows = (self.client.table("sunday_notes").select("id, status")
+                    .eq("user_id", user_id).eq("week_start", week_start)
+                    .eq("source", "sunday").limit(1).execute().data)
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning("get_sunday_note_for_week failed user=%s: %s", user_id, e,
+                           exc_info=True)
+            return {"id": None}  # unread: treat as claimed, ask again next minute
+
+    def latest_sunday_note(self, user_id: str) -> Optional[dict]:
+        try:
+            rows = (self.client.table("sunday_notes").select("*")
+                    .eq("user_id", user_id).eq("status", "written")
+                    .order("created_at", desc=True).limit(1).execute().data)
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning("latest_sunday_note failed user=%s: %s", user_id, e, exc_info=True)
+            return None
+
     def get_take_feedback_check(self, user_id: str,
                                 take_session_id: str) -> Optional[dict]:
         try:

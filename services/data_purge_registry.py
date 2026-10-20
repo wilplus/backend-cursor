@@ -293,6 +293,9 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "user", "delete", "database_row", 60),
     PurgeDependency("voice_notebook_consent", "voice_notebook_consent", "user_id",
                     "user", "delete", "database_row", 60),
+    # The Sunday note (Will learning plan, step 2, migration 0485).
+    PurgeDependency("sunday_notes", "sunday_notes", "user_id", "user", "delete",
+                    "database_row", 60),
     PurgeDependency("settings", "user_settings", "user_id", "user", "delete",
                     "database_row", 60),
     # Lesson bookings (founder 2026-10-15, fix 6). The termination request
