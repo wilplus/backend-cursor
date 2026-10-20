@@ -36,12 +36,14 @@ IMPORT_SOURCE = "training_import"
 
 #: Append-only tables a plain delete cannot touch. An import never writes
 #: them unless its ideal-text stage ran and was served; then it is refused
-#: before anything is deleted.
+#: before anything is deleted. The detector reconciliation is evidence the
+#: service role may only read (0311): even a delete of no rows is refused.
 APPEND_ONLY = frozenset({
     "take_feedback_exposure",
     "take_feedback_self_report",
     "take_feedback_self_report_revision",
     "ideal_text_part_revision",
+    "take_feedback_detector_reconciliation",
 })
 
 _LOCATORS = ("take", "snippet", "recording", "project")
@@ -156,6 +158,8 @@ def erase_training_import(database: Any, session_id: str) -> dict:
     for relation, column, locator in (
             ("take_feedback_exposure", "take_session_id", "take"),
             ("take_feedback_self_report", "take_session_id", "take"),
+            ("take_feedback_detector_reconciliation", "take_session_id",
+             "take"),
             ("ideal_text_part_revision", "arc_id", "project")):
         if not values[locator]:
             continue
