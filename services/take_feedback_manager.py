@@ -415,6 +415,10 @@ CLIENT_READ_ROW_FIELDS = frozenset({
     # Why a rule rewrite was written ("undermining", N85), read by the
     # walk's clearer version since 2026-10-20. A word, never a score.
     "rewrite_reason",
+    # The Take's highest moment (founder 2026-10-20, N86): the walk opens its
+    # bubble with "This was your most confident moment." A flag, never the
+    # score.
+    "highest_moment",
 })
 UNRENDERED_ROW_FIELDS: frozenset[str] = frozenset()
 CLIENT_ROW_FIELDS = CLIENT_READ_ROW_FIELDS | UNRENDERED_ROW_FIELDS

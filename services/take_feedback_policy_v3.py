@@ -35,9 +35,11 @@ config = Config()
 logger = logging.getLogger(__name__)
 
 
-POLICY_VERSION = "take-feedback-policy-v3-universal-dark-v3"
+#: v4 (founder 2026-10-20): each shown moment is praised or corrected by its
+#: own willfidence; `green_soft` is gone and `highest_moment` is new.
+POLICY_VERSION = "take-feedback-policy-v3-universal-dark-v4"
 SERVICE_POLICY_VERSION = "take-feedback-policy-v3-serving-v1"
-FRAME_SCHEMA_VERSION = "take-feedback-policy-v3-frame-v6"
+FRAME_SCHEMA_VERSION = "take-feedback-policy-v3-frame-v7"
 #: V4 Phase 1, B1.1 (pick logging). The frame carries every candidate with its
 #: chance of being picked, the Take's seed and the policy version, so V4 can be
 #: evaluated against what V3 would have done. Internal only (AC-9).
@@ -522,18 +524,20 @@ def _mark_moments(blocks: list[dict], snippet_map: dict,
                   rewrite_ranked: Optional[list[dict]] = None,
                   rewrite_rows: Optional[list] = None,
                   ) -> tuple[list[dict], list[dict], list[dict]]:
-    """Green moments and the one exercise, by willfidence (founder lock
-    2026-10-12, section 6; `services.moment_pick`).
+    """The Take's two shown moments, each praised or corrected by its own
+    willfidence (founder 2026-10-20, flow page C2 and C4;
+    `services.moment_pick`).
 
     Every block is written, so a re-run cannot leave a stale mark:
-    `most_confident` (green), `green_soft` (no block reached the floor, so
-    the single best shows with the softer line), and `practice_prompt` /
-    `carries_exercise` / `exercise_kind` on the exercise block alone.
+    `most_confident` (praised), `highest_moment` (the Take's highest, praised
+    or not), `level_key` (the praised moment's opening line), and
+    `practice_prompt` / `carries_exercise` / `exercise_kind` on each
+    corrected block.
 
-    Returns the green blocks (praise anchors there), the blocks a rewrite
-    may anchor to (the exercise block, when its words need help and a
+    Returns the praised blocks (praise anchors there), the blocks a rewrite
+    may anchor to (each corrected block whose words need help and whose
     rewrite passes the gate, founder 2026-10-18), both in document order,
-    and the rewrite ranking to anchor from (only the one that passed).
+    and the rewrite ranking to anchor from (only those that passed).
     """
     from services import moment_pick
 
@@ -555,20 +559,12 @@ def _mark_moments(blocks: list[dict], snippet_map: dict,
         # The words alone picked the moments: say so, so the next Take with
         # no sound read is read from the log, not guessed at (2026-10-17).
         logger.warning("moment_pick: no sound read on any of %d blocks; "
-                       "the words picked green=%s exercise=%s",
-                       len(reads), picked["green"], picked["exercise"])
-    green = set(picked["green"])
+                       "the words picked shown=%s",
+                       len(reads), [s["block_id"] for s in picked["shown"]])
     value_of = {r["block_id"]: (r["read"] or {}).get("value") for r in reads}
     for block in blocks:
-        is_exercise = block["block_id"] == picked["exercise"]
-        block["most_confident"] = block["block_id"] in green
-        # The opening line's level (founder 2026-10-14): a key, never a number.
-        block["level_key"] = (willfidence_level_key(value_of.get(block["block_id"]))
-                              if block["most_confident"] else None)
-        block["green_soft"] = picked["soft"] and block["most_confident"]
-        block["practice_prompt"] = is_exercise
-        block["carries_exercise"] = is_exercise
-        block["exercise_kind"] = picked["exercise_kind"] if is_exercise else None
+        _mark_shown(block, {s["block_id"]: s for s in picked["shown"]}.get(block["block_id"]),
+                    value_of.get(block["block_id"]))
     pool = _gate_exercise(blocks, snippet_map, rewrite_ranked, rewrite_rows)
     rewrite_blocks = [
         block for block in blocks
@@ -578,19 +574,36 @@ def _mark_moments(blocks: list[dict], snippet_map: dict,
     return [b for b in blocks if b["most_confident"]], rewrite_blocks, pool
 
 
+def _mark_shown(block: dict, moment: Optional[dict], value: Any) -> None:
+    """One block's marks from its place in the pick: praised, corrected, or
+    neither (every key written, so a re-run leaves no stale mark)."""
+    praised = bool(moment and moment["praise"])
+    corrected = bool(moment and not moment["praise"])
+    block["most_confident"] = praised
+    block["highest_moment"] = bool(moment and moment["highest"])
+    # The opening line's level (founder 2026-10-14): a key, never a number.
+    block["level_key"] = willfidence_level_key(value) if praised else None
+    block["practice_prompt"] = corrected
+    block["carries_exercise"] = corrected
+    block["exercise_kind"] = moment["kind"] if moment and corrected else None
+
+
 def _gate_exercise(blocks: list[dict], snippet_map: dict,
                    rewrite_ranked: Optional[list[dict]],
                    rewrite_rows: Optional[list]) -> list[dict]:
-    """The exercise block whose words need help keeps the clearer version
-    only with a rewrite that passes the gate; the ranking to anchor from."""
+    """Each corrected block whose words need help keeps the clearer version
+    only with a rewrite that passes the gate; the ranking to anchor from,
+    one rewrite per such block (founder 2026-10-20: two corrections when
+    both shown moments are weak)."""
     from services import moment_pick
     rows_by_id = {str(r.get("id")): r for r in rewrite_rows or [] if isinstance(r, dict)}
+    pool: list[dict] = []
     for block in blocks:
         if block["carries_exercise"] and block["exercise_kind"] == moment_pick.EXERCISE_CLEARER:
-            return _gate_clearer(block, snippet_map, [
+            pool.extend(_gate_clearer(block, snippet_map, [
                 item for item in rewrite_ranked or []
-                if _inside(item.get("document_span"), block)], rows_by_id)
-    return []
+                if _inside(item.get("document_span"), block)], rows_by_id))
+    return pool
 
 
 def _inside(span: Any, block: dict) -> bool:
@@ -1437,10 +1450,10 @@ def build_shadow_frame(
         "practice_policy": {
             "threshold": "below_neutral_delivery_band",
             "prompt_bands": list(PRACTICE_BANDS),
-            # Founder lock 2026-10-12, section 6: one exercise per Take, on
-            # the lowest moment by willfidence (services.moment_pick).
-            "exercise_budget": "one_per_take",
-            "exercise_target": "lowest_willfidence_moment",
+            # Founder 2026-10-20 (flow page C2, C4): each of the two shown
+            # moments below the floor is corrected (services.moment_pick).
+            "exercise_budget": "one_per_corrected_moment",
+            "exercise_target": "each_shown_moment_below_the_floor",
         },
         "confidence_definition": {
             "scope": "relative_within_block",
@@ -1454,8 +1467,8 @@ def build_shadow_frame(
         "verbal_lanes": {
             "enabled": True,
             "rewrite_clarity": {
-                "selection_scope": "anchored_to_the_exercise_moment",
-                "budget": "one_per_take",
+                "selection_scope": "anchored_to_each_corrected_moment",
+                "budget": "one_per_corrected_moment",
                 "anchors": rewrite_anchors,
                 "candidates": rewrite_candidates,
                 "selected_candidate_ids": rewrite_selected_ids,

@@ -172,25 +172,35 @@ def _start(args: tuple, *, cycle_id: str, queue: Optional[str] = None,
 
 # ── the prewarm: the clip starts when the exercise moment is known ───────
 
-def exercise_moment_of(block: Any) -> Optional[dict]:
-    """The voice-exercise moment in a stored feedback block, read exactly as
-    the walk reads it (frontend `lockedMoments` and `practiseOpening`, lock
-    2026-10-12): the moment that is not green and carries `practice_prompt`
+def exercise_moments_of(block: Any) -> list[dict]:
+    """The voice-exercise moments in a stored feedback block, read exactly as
+    the walk reads them (frontend `lockedMoments` and `practiseOpening`, lock
+    2026-10-12): a moment that is not praised and carries `practice_prompt`
     is practised as a clearer version when a rewrite rides it (its clip is
     asked when the speaker accepts it, never prewarmed: until then the
-    words are not chosen), else on its exercise, else said again. The stored rows are the
-    client's rows (`strip_internal_evidence`), so this reads the same keys.
+    words are not chosen), else on its exercise, else said again. One or
+    two per Take (founder 2026-10-20: both shown moments are corrected when
+    both are weak). The stored rows are the client's rows
+    (`strip_internal_evidence`), so this reads the same keys.
 
-    Returns ``{snippet_id, take_session_id, kind, exercise_id, evidence,
-    feedback_id}`` or None when the Take has no voice exercise.
+    Each is ``{snippet_id, take_session_id, kind, exercise_id, evidence,
+    feedback_id}``; [] when the Take has no voice exercise.
     """
+    found: list[dict] = []
     for group in _moment_groups(block):
         green = any(r.get("bookmark_tier") == "confident" for r in group)
         marked = any(r.get("practice_prompt") is True for r in group)
         if green or not marked:
             continue
-        return _practise_of(group)
-    return None
+        moment = _practise_of(group)
+        if moment:
+            found.append(moment)
+    return found
+
+
+def exercise_moment_of(block: Any) -> Optional[dict]:
+    """The first of :func:`exercise_moments_of`, or None."""
+    return next(iter(exercise_moments_of(block)), None)
 
 
 def _moment_groups(block: Any) -> list[list[dict]]:

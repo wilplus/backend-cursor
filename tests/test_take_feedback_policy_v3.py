@@ -1,22 +1,23 @@
 """
-STORY    As a speaker, I want one whole Take turned into one praise moment,
-         one practice moment and honest coverage of my slides, so that the
-         feedback is fair and evidence-backed.
+STORY    As a speaker, I want one whole Take turned into my two best moments,
+         each praised or corrected by how it sounded, and honest coverage of
+         my slides, so that the feedback is fair and evidence-backed.
 OUTCOME
   O1  The Take is cut into blocks of the right size; a block that cannot be
       cut well stays whole and says why.
-  O2  Exactly one block is the most confident (praised) and exactly one
-      gets the practice prompt; praise is anchored inside that block.
+  O2  The two highest blocks are shown and the score decides each: one at
+      or above the floor is praised (the highest is marked), one below it
+      gets the practice prompt; praise is anchored inside a praised block.
   O3  Coverage is counted per slide, a slide without a clip says why, and
       the bar is higher from Take 3.
-  O4  The practice moment opens on a Clearer version only when the rewrite
+  O4  A corrected moment opens on a Clearer version only when the rewrite
       passes the gate; a weak fallback opens the voice exercise instead.
 PROVES   O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O2 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O3 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O4 -> test_weak_words_open_on_the_rewrite_only_when_it_passes_the_gate
-WHY      Founder 2026-10-14 (one praise moment per Take), 2026-10-18 ("words
-         first, then voice").
+WHY      Founder 2026-10-20 ("the score decides each", flow page C2, C4),
+         2026-10-18 ("words first, then voice").
 """
 from pathlib import Path
 
@@ -220,21 +221,20 @@ def test_a_whole_take_is_partitioned_read_marked_noted_and_covered():
         (8, 75, None),
     ]
 
-    # One praise moment per Take (founder 2026-10-14): the best, slide 0;
-    # every other block is written False.
+    # The two highest moments are shown (slides 0 and 1) and the score
+    # decides each (founder 2026-10-20): both reach the floor, so both are
+    # praised and nothing is corrected; the highest is marked. Every other
+    # block is written False.
     assert [b["most_confident"] for b in blocks] == [
+        True, True, False, False, False, False, False, False, False, False]
+    assert [b["highest_moment"] for b in blocks] == [
         True, False, False, False, False, False, False, False, False, False]
-    assert not any(b["green_soft"] for b in blocks)
+    assert not any(b["carries_exercise"] for b in blocks)
+    assert sum(b["practice_prompt"] for b in blocks) == 0
 
-    # One practise moment per Take, the second best (slide 1); its sound is
-    # the weaker half here (no transcript), so it is the voice exercise.
-    routed = [(b["slide_index"], b["practice_prompt"], b["carries_exercise"],
-               b["exercise_kind"]) for b in blocks if b["carries_exercise"]]
-    assert routed == [(1, True, True, "voice")]
-    assert sum(b["practice_prompt"] for b in blocks) == 1
-
-    # Praise anchors only on green moments, from inside the block; a voice
-    # exercise carries no rewrite.
+    # Praise anchors only on praised moments, from inside the block; the
+    # praised slide 1 has no note inside it, and says so (the walk's line
+    # bank covers it). Nothing is corrected, so no rewrite anchors.
     lanes = frame["verbal_lanes"]
     rewrite, praise = lanes["rewrite_clarity"], lanes["great_formulation"]
     assert rewrite["selected_candidate_ids"] == []
@@ -242,7 +242,8 @@ def test_a_whole_take_is_partitioned_read_marked_noted_and_covered():
     assert praise["selected_candidate_ids"] == ["p-best"]
     assert praise["anchors"] == [
         {"block_id": by_slide[0][0]["block_id"], "candidate_id": "p-best"}]
-    assert praise["blocks_without_note"] == []
+    assert praise["blocks_without_note"] == [
+        {"block_id": by_slide[1][0]["block_id"], "reason": "no_defensible_candidate"}]
 
     # 24c: the denominator is Slides with a block. Slide 7 is covered by its
     # one selected block; slide 8 formed a block but has no clip, and says so.
@@ -274,10 +275,11 @@ _UMS = " ".join(["um we think it matters"] * 3 + ["w"] * 60)
 
 
 def _practise_frame(rewrite):
-    """Three slides: the best is praised; the second best's own words carry
-    fillers, so it may open on a clearer version when the rewrite passes."""
+    """Three slides: the best is praised; the second best is below the floor
+    and its own words carry fillers, so it is corrected and may open on a
+    clearer version when the rewrite passes (founder 2026-10-20)."""
     pieces, snippets, at = [], [], 0
-    for index, score in enumerate((0.9, 0.6, 0.2)):
+    for index, score in enumerate((0.9, -0.2, -0.6)):
         text = " ".join(f"w{index}x{n}" for n in range(75))
         pieces.append({"snippet_id": f"s{index}", "take_session_id": "take-2",
                        "slide_index": index, "start": at, "end": at + len(text),
