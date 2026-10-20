@@ -286,6 +286,8 @@ class PersistedLabTake:
     coordinates: TakeCoordinates
     canonical_attempt_registered: bool
     phase1_boundary_registered: bool
+    storage_provider: str | None = None
+    acquisition_principal_id: str | None = None
 
 
 def _is_data_foundation_canary_owner(
@@ -511,6 +513,8 @@ def _persist_lab_take(
         coordinates=coordinates,
         canonical_attempt_registered=canonical_attempt_registered,
         phase1_boundary_registered=phase1_boundary_registered,
+        storage_provider=stored.storage_provider,
+        acquisition_principal_id=acquisition_principal_id,
     )
 
 
@@ -646,6 +650,23 @@ def _log_outcome(status, session_id, code, **extra) -> None:
     )
 
 
+def _start_ai_voice(upload: Any, persisted: Any, user_id: Any) -> None:
+    """The AI version of the speaker's voice (N71) starts as the Take is
+    stored, beside its processing, so its clip can be ready by the walk
+    (founder 2026-10-20, N84: "start the voice copy at upload"). Same gates
+    as the pipeline's own ask at its end, which stays: a voice already on
+    its way is not asked twice. After dispatch, so the Take's processing
+    job exists for the permit. Never raises."""
+    principal = getattr(persisted, "acquisition_principal_id", None)
+    if not user_id or not principal or getattr(upload, "recording_kind", None) != "spoken":
+        return
+    from services.ai_voice_clone import after_take
+    after_take(db, user_id=str(user_id), principal_id=str(principal),
+               take_id=persisted.session_id, recording_id=persisted.recording_id,
+               storage={"storage_provider": persisted.storage_provider,
+                        "bucket": persisted.bucket, "storage_key": persisted.storage_key})
+
+
 @v2_bp.route("/lab/recordings", methods=["POST"])
 @whisper_limit
 @optional_auth
@@ -676,6 +697,8 @@ def v2_lab_create_recording():
         persisted = _persist_lab_take(upload, user_id)
         session_id = persisted.session_id
         payload, status = _analysis_response(upload, persisted, user_id)
+        if status < 300:
+            _start_ai_voice(upload, persisted, user_id)
         _log_outcome(status, session_id, payload.get("state") or "accepted",
                      job=payload.get("job_id"))
         return jsonify(payload), status

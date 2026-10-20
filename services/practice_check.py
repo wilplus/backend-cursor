@@ -18,8 +18,10 @@ of three things, never a number (AC-9):
 WHAT "MEASURABLY BETTER" MEANS is after_practice's rule, unchanged, read
 on the try just made (its lanes 1 to 3 against the original clip): the
 targeted problem cleared, a delivery cue moved toward confident by at least
-``CUE_GAIN_MIN`` within-speaker z, or the machine leg reads higher. Lane 4
-("nothing") is ``again``.
+``CUE_GAIN_MIN`` within-speaker z, or the voice-confidence composite rose by
+the lock's margin, ``GOOD_JOB_MARGIN`` (founder 2026-10-20, N84: a Good job
+only when clearly better; a smaller rise is noise). Lane 4 ("nothing") is
+``again``.
 
 A REWRITE PRACTICE (29b) says new words, so only the VOICE is checked
 (founder 2026-10-18, "words first, then voice"; this replaces 2026-10-01's

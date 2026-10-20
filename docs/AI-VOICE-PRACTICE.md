@@ -6,9 +6,12 @@ The lock (flow, words, rules) is
 
 ## The user flow
 
-1. A speaker records a Take. When it finishes processing, one background job
-   makes their AI voice (an ElevenLabs Instant Voice Clone) from the Take,
-   once. A Take too short or too noisy makes none; the next Take tries again.
+1. A speaker records a Take. As it is stored, beside its processing (founder
+   2026-10-20, N84; before that, only when processing finished), one
+   background job makes their AI voice (an ElevenLabs Instant Voice Clone)
+   from the Take, once. A Take too short or too noisy makes none; the next
+   Take tries again. The pipeline still asks at its end, and a voice already
+   on its way is not asked twice.
 2. The walk reaches the **voice Exercise** (the lowest sentence, the voice the
    weaker half). Praise and the Clearer version never call ElevenLabs.
 3. The clip starts at the end of the bake (founder 2026-10-15, B): when the
