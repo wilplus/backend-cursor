@@ -186,6 +186,9 @@ class TheWalkPairTests(unittest.TestCase):
         self.assertEqual(final["final_text"], "Let the final word land before you breathe.")
         self.assertIsNone(transcript["request_id"])
         self.assertEqual(transcript["final_text"], "Let the final word land.")
+        # The walk's video is the speaker's: kept privately under their id.
+        self.assertEqual(db.exercises[WALK_ID]["explanation_video_url"],
+                         "s3://coach-media/coach-answers/speaker-1/x.mp4")
 
     def test_without_the_owner_s_yes_it_is_recorded_but_not_releasable(self):
         db = _WalkDb(request=_request(), consent=False)
@@ -199,6 +202,9 @@ class TheWalkPairTests(unittest.TestCase):
         db = _WalkDb(request=_request(), consent=True)
         _upload(db, exercise_id="lib-ex", definition=_definition(exercise_id="lib-ex"))
         self.assertEqual(db.pairs, [])
+        # Only a Library save goes to the public library store.
+        self.assertEqual(db.exercises["lib-ex"]["explanation_video_url"],
+                         "https://cdn.example/journal/exercise/x.mp4")
         status, _body = _resolve(db, exercise_id="lib-ex")
         self.assertEqual(status, 200)
         self.assertEqual(db.resolved[-1]["exercise_id"], "lib-ex")
