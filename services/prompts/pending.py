@@ -81,6 +81,7 @@ REGISTER = {
     "session_cadence.render_beat": SourceRef("services/session_cadence.py", "_render_beat"),
     "session_cadence.beats": SourceRef("services/session_cadence.py", "BEATS"),
     "goal_update.builder": SourceRef("services/goal_update.py", "_classify_goal_update"),
+    "speaker_memory.system": SourceRef("services/speaker_memory.py", "_SYSTEM"),
     "audit_pointer.builder": SourceRef("services/audit_intent.py", "_render_pointer"),
     "next_session_icebreaker.builder": SourceRef(
         "services/next_session_icebreaker.py", "_llm_generate_question"),

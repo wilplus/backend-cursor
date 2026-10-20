@@ -236,6 +236,18 @@ explicit "change my goal to X", extracts the new goal, and renders an
 in-language confirmation. Runs BEFORE master_doc_rag (never a rule edit)."""
 
 
+SPEC_SPEAKER_MEMORY = LLMSpec(
+    model=CHEAP_MODEL,
+    # Low temperature: the note must stay close to what the events show.
+    temperature=0.2,
+    max_tokens=220,
+    response_format=None,
+)
+"""Speaker memory (WIL-74, founder 2026-10-20) — rewrites one speaker's
+private note (at most five lines) from the old note and the new events.
+Never shown to anyone but the founder; read by Will (services.speaker_memory)."""
+
+
 SPEC_AUDIT_POINTER = LLMSpec(
     model=CHEAP_MODEL,
     # Low temp — one short, in-language line pointing the user to their audit

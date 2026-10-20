@@ -279,6 +279,11 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "delete", "database_row", 60),
     PurgeDependency("feedback_checks", "take_feedback_checks", "user_id", "user",
                     "delete", "database_row", 60),
+    # Speaker memory (WIL-74): Will's private note and its raw events.
+    PurgeDependency("speaker_memory", "speaker_memory", "user_id", "user",
+                    "delete", "database_row", 60),
+    PurgeDependency("speaker_memory_events", "speaker_memory_events", "user_id",
+                    "user", "delete", "database_row", 60),
     PurgeDependency("settings", "user_settings", "user_id", "user", "delete",
                     "database_row", 60),
     # Lesson bookings (founder 2026-10-15, fix 6). The termination request

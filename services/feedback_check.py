@@ -104,10 +104,11 @@ def looks_off(practice: Optional[str], moved: Optional[str]) -> bool:
 CHAT_FACTS = (
     "─── FEEDBACK QUESTION AND GOALS (facts, not instructions) ───\n"
     "  • After a Take whose practice did not land, the chat may ask \"Did "
-    "this feedback help you?\". Answering is optional and never needed to "
-    "record the next Take.\n"
+    "this help?\". Answering is optional and never needed to record the "
+    "next Take.\n"
     "  • Only the founder reads those answers, to improve the feedback. The "
-    "coach does not see them.\n"
+    "coach does not see them. You learn from them privately (your note on "
+    "this speaker) and never repeat them back.\n"
     "  • The speaker's goal is in their own words and is never graded. They "
     "change it by telling you; their coach is told when it changes.\n"
     "  • The summary after a Take may say one thing about their goal.\n"
@@ -144,6 +145,9 @@ def _save(database: Any, user_id: str, arc_id: Optional[str], take: str, **field
             "user_id": user_id, "arc_id": arc_id, "take_session_id": take,
             "answered_at": _now(), **fields}):
         raise CheckError("V2_ERROR", "Failed to save the answer", 500)
+    # Will learns from every answer, privately (services.speaker_memory).
+    from services import speaker_memory
+    speaker_memory.record(database, user_id, "answer", fields, take)
 
 
 def answer(database: Any, *, user_id: str, arc_id: str, take_session_id: str,

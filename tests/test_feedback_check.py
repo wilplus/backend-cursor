@@ -15,12 +15,18 @@ OUTCOME
       tapping it, and any other message goes to the chat as usual.
   O5  A new goal is kept in the history and every coach except the speaker
       gets one card a day showing before and now; no change, no card.
+  O6  A Take that went fine is not asked; one whose practice did not land,
+      or whose voice dipped, is (founder 2026-10-20).
+  O7  The founder's weekly note says how often the voice rose, how many
+      answered, and what would help, in the speakers' own words.
 PROVES   O1 -> test_the_question_closes_the_summary_but_waits_when_another_offer_is_there
          O2 -> test_yes_is_kept_and_answered_with_the_signed_words_once
          O3 -> test_not_really_asks_what_was_missing_and_the_chat_keeps_the_answer
          O4 -> test_skip_ends_it_without_an_answer,
                test_typing_a_button_counts_as_tapping_it_and_anything_else_goes_to_will
          O5 -> test_a_new_goal_is_kept_and_every_coach_but_the_speaker_gets_one_card_a_day
+         O6 -> test_a_take_that_went_fine_is_not_asked
+         O7 -> test_the_weekly_note_says_what_was_missing_in_their_words
 WHY      WIL-74, founder 2026-10-19 (words signed the same day; the question
          and the thank-you simplified by the founder, 2026-10-20).
 """
@@ -199,7 +205,7 @@ def test_the_weekly_note_says_what_was_missing_in_their_words():
     assert words.splitlines() == [
         "Feedback, the last 7 days",
         "The voice rose since the last Take in 1 of 2 Takes",
-        "Asked \"Did this feedback help you?\": 2 · it helped: 1",
-        "What was missing:",
+        "Asked \"Did this help?\": 2 · it helped: 1",
+        "What would help:",
         "“Why my close felt rushed”",
     ]

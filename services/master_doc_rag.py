@@ -945,7 +945,8 @@ def render_app_context(app_context) -> str:
         app_context = app_context()
     if not isinstance(app_context, dict):
         return ""
-    parts = [app_context.get(k) or "" for k in ("features", "status", "principles")]
+    parts = [app_context.get(k) or ""
+             for k in ("features", "status", "principles", "memory")]
     return "\n".join(p for p in parts if p)
 
 

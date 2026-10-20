@@ -810,12 +810,18 @@ ordinary again.
 O4  ""Skip"" ends it with no answer kept; typing a button's words counts as
 tapping it, and any other message goes to the chat as usual.
 O5  A new goal is kept in the history and every coach except the speaker
-gets one card a day showing before and now; no change, no card.","O1 -> test_the_question_closes_the_summary_but_waits_when_another_offer_is_there
+gets one card a day showing before and now; no change, no card.
+O6  A Take that went fine is not asked; one whose practice did not land,
+or whose voice dipped, is (founder 2026-10-20).
+O7  The founder's weekly note says how often the voice rose, how many
+answered, and what would help, in the speakers' own words.","O1 -> test_the_question_closes_the_summary_but_waits_when_another_offer_is_there
 O2 -> test_yes_is_kept_and_answered_with_the_signed_words_once
 O3 -> test_not_really_asks_what_was_missing_and_the_chat_keeps_the_answer
 O4 -> test_skip_ends_it_without_an_answer,
 test_typing_a_button_counts_as_tapping_it_and_anything_else_goes_to_will
-O5 -> test_a_new_goal_is_kept_and_every_coach_but_the_speaker_gets_one_card_a_day","WIL-74, founder 2026-10-19 (words signed the same day; the question and the thank-you simplified by the founder, 2026-10-20)."
+O5 -> test_a_new_goal_is_kept_and_every_coach_but_the_speaker_gets_one_card_a_day
+O6 -> test_a_take_that_went_fine_is_not_asked
+O7 -> test_the_weekly_note_says_what_was_missing_in_their_words","WIL-74, founder 2026-10-19 (words signed the same day; the question and the thank-you simplified by the founder, 2026-10-20)."
 tests/test_feedback_contract_evidence.py,Story,"As a speaker, I want feedback offered only where it points at exact words I said (and, for Confident Voice, a clip I can play), so that every piece of feedback is evidence-backed.","O1  A candidate whose words are found in the Take is served with evidence
 that quotes those exact words, their paragraph and slide, and (for
 Confident Voice) the playable clip window; a rewrite carries its
@@ -2127,6 +2133,15 @@ sent; no language is forced without a hint.
 O2  The returned text is trimmed, malformed word times are dropped, the
 duration is in ms, and the clip's seconds are recorded as usage.","O1 -> test_the_filename_is_fixed_up_to_its_lowercase_extension
 O2 -> test_the_result_is_cleaned_and_its_usage_recorded",tests/test_snippet_transcription.py covers a missing client.
+tests/test_speaker_memory.py,Guard,"Will learns about each speaker: every answer to ""Did this help?"" and every Take's outcome is kept, a private note is rewritten from them, and Will reads that note in the chat and in the summary after a Take.","C1  an answer that is no longer kept as an event, or no longer rewrites the note
+C2  the chat no longer handing the note to Will
+C3  the summary after a Take no longer hearing the note
+C4  a note carrying a number reaching Will, or the founder unable to correct it
+C5  the note or its events surviving the speaker's account deletion","C1 -> test_an_answer_is_kept_and_rewrites_the_note
+C2 -> test_will_reads_the_note_in_the_chat
+C3 -> test_the_summary_after_a_take_hears_the_note
+C4 -> test_a_note_with_a_number_is_refused_and_the_founder_can_correct_it
+C5 -> test_the_note_and_its_events_go_with_the_account","If removed: Will stops learning about each speaker without anyone noticing (founder 2026-10-20: ""a permanent part of our application"")."
 tests/test_state_ratings.py,Story,"As a coach, I want my rating stored exactly as I gave it, blind by default, so that the training data holds only real, independent human judgements.","O1  Never-2: a rating is stored as given and marked blind unless the route
 says the rater saw the machine's read.
 O2  A wrong-typed value (a truthy string, a bool) is refused, never coerced.

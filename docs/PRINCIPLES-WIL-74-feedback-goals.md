@@ -7,7 +7,7 @@ of them: the simplest thing that works, nothing to set up or test by hand.
 1. **The next Take answers whether the feedback helped.** Every summary
    stores whether the voice rose, held or dipped against the last Take
    (`moved` in its metadata). The one-tap question is the backup.
-2. **"Did this feedback help you?" is asked only when something looks off:**
+2. **"Did this help?" is asked only when something looks off:**
    the practice did not land (not yet, or none tried) or the voice dipped
    (`feedback_check.looks_off`). It is never asked when another offer comes
    in the same step, and it never stands in front of the next Take.
@@ -28,3 +28,8 @@ of them: the simplest thing that works, nothing to set up or test by hand.
 The chat knows these as facts (`feedback_check.CHAT_FACTS`, passed to the
 librarian with the feature list and the speaker's status card), so it can
 answer "who reads my answer?" or "how do I change my goal?".
+
+**Will learns about each speaker** (founder, 2026-10-20). Their answers and
+each Take's outcome feed a private note Will reads before it chats and before
+it writes the summary. The speaker never sees their answers played back. See
+`docs/SPEAKER-MEMORY.md`.

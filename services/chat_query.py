@@ -312,6 +312,7 @@ def _librarian(database, user_id, question, history, app_config,
     speaker, their status card (``services.chat_app_context``); the feature
     it opens becomes a chip, an offer bubble or a link."""
     from services import chat_app_context as app
+    from services import speaker_memory
     from services.feedback_check import CHAT_FACTS as feedback_facts
     if not user_id:
         gate = app.signup_gate(history)
@@ -329,7 +330,10 @@ def _librarian(database, user_id, question, history, app_config,
         app_context=lambda: {"features": app.features_block(card()),
                              "status": app.render_status(card())
                              if user_id else app.VISITOR_BLOCK,
-                             "principles": feedback_facts if user_id else ""})
+                             "principles": feedback_facts if user_id else "",
+                             "memory": speaker_memory.prompt_block(
+                                 speaker_memory.note_for(database, user_id))
+                             if user_id else ""})
     suggested = payload.get("suggested_action")
     if suggested not in ("trainings", "audit"):
         suggested = None

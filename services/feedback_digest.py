@@ -8,8 +8,8 @@ after the first closing summary of the week (``take_summary`` calls
 
     Feedback, the last 7 days
     The voice rose since the last Take in X of Y Takes
-    Asked "Did this feedback help you?": N · it helped: M
-    What was missing:
+    Asked "Did this help?": N · it helped: M
+    What would help:
     “…” (up to three, newest first)
 
 For the founder only; no speaker ever sees a number (CLAUDE.md, Never 1).
@@ -42,9 +42,9 @@ def note(summaries: list[dict], checks: list[dict]) -> str:
     missing = [c["missing"].strip() for c in checks if (c.get("missing") or "").strip()]
     lines = ["Feedback, the last 7 days",
              f"The voice rose since the last Take in {rose} of {len(moved)} Takes",
-             f"Asked \"Did this feedback help you?\": {len(answered)} · it helped: {helped}"]
+             f"Asked \"Did this help?\": {len(answered)} · it helped: {helped}"]
     if missing:
-        lines.append("What was missing:")
+        lines.append("What would help:")
         lines += [f"“{m[:200]}”" for m in missing[:_QUOTES]]
     return "\n".join(lines)
 

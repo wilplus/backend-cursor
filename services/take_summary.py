@@ -262,6 +262,18 @@ def talk_names(takes: list[dict]) -> tuple:
     return (talk_title(contexts), *slide_topics(contexts))
 
 
+def memory_facts(database: Any, user_id: str) -> list[str]:
+    """What helps this speaker, from Will's private note
+    (services.speaker_memory). Guidance only: never quoted. [] without one."""
+    from services import speaker_memory
+    note = speaker_memory.note_for(database, user_id)
+    if not note:
+        return []
+    return ["What helps this speaker (a private note; let it shape what you focus "
+            "on and ask, never quote it or repeat their answers): "
+            + note.replace("\n", " ")]
+
+
 def goal_facts(database: Any, user_id: str) -> list[str]:
     """The speaker's goal, in their own words (founder 2026-10-20: every
     summary says one thing about it, never a grade). [] without one."""
@@ -370,7 +382,8 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
     anchor = _COPY.get(take_index) or _COPY[3]
     now, before = _reads(database, ids, take_index)
     facts = (talk_facts(takes) + said_facts(_moments(database, take), now)
-             + progress_facts(now, before) + goal_facts(database, str(user_id)))
+             + progress_facts(now, before) + goal_facts(database, str(user_id))
+             + memory_facts(database, str(user_id)))
     moved = _move(_mean(now, "s"), _mean(before, "s")) if before is not None else None
     text = _written(database, take, anchor, facts, practice, words,
                     note, str(arc_id), str(user_id),
@@ -404,6 +417,9 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
                       take_session_id=take, batch=batch, at=at,
                       off=looks_off(practice, moved))
     persisted = database.insert_lounge_messages(str(user_id), batch)
+    from services import speaker_memory
+    speaker_memory.record(database, user_id, "take",
+                          {"practice": practice, "moved": moved, "helper_words": words}, take)
     from services.feedback_digest import post_later
     post_later(database)
     return persisted[0] if persisted else None
