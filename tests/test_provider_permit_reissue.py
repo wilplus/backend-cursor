@@ -1,13 +1,12 @@
-"""An expired permit handed back by a replayed key is minted again.
-
-THE BUG (founder's Take of 2026-10-02, job 060abbc9…): the attempt died in
-the database incident; the sweeper re-ran it the next morning; the permit
-RPC, idempotent on its key, returned the permit the first run had minted 15
-hours earlier, and ``record_provider_event('started')`` raised
-PROVIDER_PERMIT_INVALID on every retry until the attempts ran out. The
-record → process loop must survive a retry (LIVE LOOP).
-
-Run: python3 -m unittest tests.test_provider_permit_reissue
+"""
+STORY    As a speaker whose Take is retried later, I want an expired permit
+         replaced, so that a retry the next morning still processes my Take.
+OUTCOME
+  O1  An expired permit handed back for a repeated request is issued again
+      under a new key derived from the old one, and the original record is
+      kept.
+PROVES   O1 -> ReissueTests::test_an_expired_replay_is_minted_again_under_a_derived_key
+WHY      Founder's Take of 2026-10-02 failed every retry on a 15-hour-old permit.
 """
 from __future__ import annotations
 

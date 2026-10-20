@@ -1,12 +1,18 @@
-"""A phrase said twice gets a clearer version in the speaker's own words
-(WIL-26).
-
-The speaker's outcome: when they say the same words again ("we need to we
-need to", or a sentence that stops and starts over), the rewrite lane offers
-the sentence with the words said once, adds no word of its own, and wins
-the lane over the tentative fallback. Emphasis ("Thank you, thank you.") and
-a complete sentence said again on purpose are left alone (founder
-2026-10-19).
+"""
+STORY    As a speaker who repeats a phrase by accident, I want a clearer
+         version offered in my own words, so that I see the sentence said
+         once without anything added.
+OUTCOME
+  O1  Words said twice in a row, or a sentence that stops and starts over,
+      are offered back said once, using only my words.
+  O2  Emphasis ("Thank you, thank you.") and a sentence repeated on purpose
+      are left alone.
+  O3  The repeat fix wins the rewrite lane over the weaker fallback.
+PROVES   O1 -> test_a_phrase_said_again_is_offered_once_in_the_speakers_words,
+               test_a_sentence_that_starts_over_becomes_the_finished_one
+         O2 -> test_emphasis_is_not_a_repeat_to_fix
+         O3 -> test_the_repeat_wins_the_rewrite_lane_over_the_fallback
+WHY      WIL-26; founder 2026-10-19.
 """
 from __future__ import annotations
 

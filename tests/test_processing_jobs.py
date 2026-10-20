@@ -1,19 +1,29 @@
-"""processing_jobs — durable job state for the async recording pipeline.
-
-Covers the three layers that keep a session out of "processing forever"
-(async-queue work 2026-08-03):
-
-  1. DatabaseService helpers — exact write shapes (the PGRST204
-     phantom-column lesson) + the attempts-CAS claim filter.
-  2. services.pipeline_jobs.run_processing_job — at-least-once guards:
-     duplicate delivery of a finished job is a no-op, a live worker is
-     never doubled, the attempts cap goes terminal AND flips
-     v2_sessions.analysis_state to 'failed', a failed run releases +
-     re-enqueues with backoff.
-  3. sweep_stale_jobs — orphaned 'processing' rows (redeploy killed the
-     worker) are released + requeued; exhausted ones go terminal.
-
-Run: python3 -m unittest tests.test_processing_jobs
+"""
+STORY    As a speaker, I want my recording processed even if a worker dies or
+         a job is delivered twice, so that a Take never sits on "processing"
+         forever.
+OUTCOME
+  O1  A job that already finished is not run again when delivered twice; a
+      job from before the last fix still reaches processing and finishes.
+  O2  A failed run is released and re-queued at once (not marked failed),
+      and the log line names the refusal code and its real cause.
+  O3  An Ideal Text that cannot be confirmed fails for good without
+      re-queueing, and the Take is marked so.
+  O4  Sending the same recording twice reuses the job already running, and a
+      new job carries the current take contract.
+  O5  An abandoned job that used up its tries is marked failed, and so is
+      its Take; a manual retry re-queues the same job with its audio kept.
+PROVES   O1 -> RunProcessingJobGuardTests::test_completed_job_redelivery_is_noop,
+               RunProcessingJobGuardTests::test_pre_hotfix_noncanary_job_reaches_the_runner
+         O2 -> RunProcessingJobGuardTests::test_failed_run_releases_and_requeues_at_once,
+               RunProcessingJobGuardTests::test_a_failed_attempt_log_line_names_the_refusal_code_and_its_cause
+         O3 -> RunProcessingJobGuardTests::test_ideal_text_timeout_is_special_terminal_and_never_requeues,
+               RunProcessingJobGuardTests::test_ideal_text_retry_unexpected_failure_stays_in_special_boundary
+         O4 -> EnqueueSessionRecordingJobTests::test_dedup_conflict_collapses_onto_active_twin,
+               EnqueueSessionRecordingJobTests::test_registered_job_declares_the_canonical_attempt_contract
+         O5 -> SweeperTests::test_exhausted_orphan_goes_terminal,
+               ManualProcessingRetryTests::test_requeues_the_existing_failed_job_and_preserves_its_payload
+WHY      Never-rule 3: a delayed re-queue waited 6 min 53 s in production.
 """
 from __future__ import annotations
 

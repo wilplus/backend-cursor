@@ -1,8 +1,15 @@
-"""Several Paragraphs' histories in one request (F5, founder 2026-10-08).
-
-``GET /v2/explore/arc/<arc_id>/part-histories`` answers every named
-Paragraph with exactly the single history endpoint's body, reading what the
-Paragraphs share once instead of once per Paragraph.
+"""
+STORY    As a speaker, I want the histories of my paragraphs (every old version)
+         to load fast and exactly as the single-paragraph view shows them, so
+         that my history is complete and the app stays quick.
+OUTCOME
+  O1  Each paragraph's history in the batch is exactly the single view's, and
+      what the paragraphs share is read once, not once per paragraph.
+  O2  If a batched read fails, that paragraph falls back to its own read and
+      its history is still complete.
+PROVES   O1 -> test_each_batched_body_is_the_single_body_and_no_read_repeats_per_take
+         O2 -> test_a_failed_batched_read_falls_back_to_the_per_paragraph_read
+WHY      F5, founder 2026-10-08; Never-rule 5 (every old version stays).
 """
 from __future__ import annotations
 

@@ -866,7 +866,7 @@ fi
 hard migrations/status_read_in_one_trip.sql
 hard migrations/status_read_in_one_trip.sql
 
-# 0478 (founder 2026-10-19, N79): a Take word is a pair's home, the latest
+# 0479 (founder 2026-10-19, N79): a Take word is a pair's home, the latest
 # version teaches. Widens 0402's one_home CHECK, adds superseded_at, the
 # current-pair index and record_take_word_pair_v1, and recovers pairs from
 # coach_take_words. Released lane only: the recovery reads
@@ -878,10 +878,10 @@ if [ "$LANE" = "released" ]; then
   hard migrations/a_take_word_pair_has_a_home.sql
 fi
 
-# 0479 (founder 2026-10-19, N79): a Take word keeps every version. One
+# 0480 (founder 2026-10-19, N79): a Take word keeps every version. One
 # history table and the BEFORE UPDATE trigger on coach_take_words (0403)
 # that writes it. Released lane only: it copies draft_prompt (0459). After
-# 0478, as in the manifest. Twice: apply/reapply idempotency. Its case is in
+# 0479, as in the manifest. Twice: apply/reapply idempotency. Its case is in
 # tests/test_a_coach_may_change_their_answer_postgres.py.
 if [ "$LANE" = "released" ]; then
   hard migrations/a_take_word_keeps_every_version.sql

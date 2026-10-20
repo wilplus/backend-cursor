@@ -1,7 +1,15 @@
-"""A coach is asked to listen again, blind (QG12a A, P26b A, P26c; D-CP-10;
-migration 0444): the words, the flag, the queue row, the masked state and
-the doors it shuts. The database half is
-tests/test_a_coach_is_asked_to_listen_again_postgres.py."""
+"""
+STORY    As a coach asked to listen to a moment again, I want it shown with
+         only its line key and nothing of the speaker's side, so that my
+         second listen stays blind.
+OUTCOME
+  O1  That moment's row carries only its id, its state and the line key,
+      with no sign of what the speaker asked.
+  O2  It still counts in the "waiting" totals.
+PROVES   O1, O2 ->
+             QueueTests::test_a_moment_with_an_open_ask_rides_blind_with_only_the_line_key
+WHY      Never-rule 2; QG12a A, P26b A, P26c; D-CP-10 (migration 0444).
+"""
 from __future__ import annotations
 
 import unittest

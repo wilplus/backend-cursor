@@ -7,7 +7,7 @@ OUTCOME
       as user content or deliberately not.
   O2  A user-content key gets no public URL; a non-user key still does.
 PROVES   O1 -> test_every_written_prefix_is_classified,
-               test_known_unclassified_prefixes (strict xfail, see below)
+               test_the_voice_and_coach_answer_prefixes_sign
          O2 -> test_the_audio_bucket_no_longer_hands_it_a_public_url
 WHY      P1 / DPIA RISK-11: casual_voice/ sat outside the list and got
          permanent public URLs. O1 reads SOURCE TEXT: it finds key prefixes
@@ -28,12 +28,6 @@ _PREFIX_CONSTANT = re.compile(
     r"""^\s*(?:[A-Z_]*KEY_PREFIX|[a-z_]*storage_prefix)\s*(?::[^=\n]*)?="""
     r"""\s*["']([a-z0-9][a-z0-9_\-]*?)/?["']""", re.M)
 
-#: Written today and classified neither way. Each is a strict xfail below,
-#: so it turns red the day it is classified and must then leave this set.
-#:   ai-voice/       services/ai_voice_clip.py (_keep): practice clips in
-#:                   the speaker's cloned voice.
-#:   coach-answers/  services/coach_answer_video.py: a coach's video answer.
-KNOWN_UNCLASSIFIED = {"ai-voice/", "coach-answers/"}
 
 
 def _written_prefixes() -> dict[str, set[str]]:
@@ -57,18 +51,17 @@ def test_every_written_prefix_is_classified():
     unclassified = {
         prefix: sorted(paths) for prefix, paths in found.items()
         if not prefix.startswith(CLASSIFIED_PREFIXES)
-        and prefix not in KNOWN_UNCLASSIFIED
     }
     assert unclassified == {}, (
         "classify these in services/user_content_keys.py")
 
 
-@pytest.mark.parametrize("prefix", sorted(KNOWN_UNCLASSIFIED))
-@pytest.mark.xfail(strict=True, reason="KNOWN GAP RISK-11: prefix written "
-                   "but not in services/user_content_keys.py")
-def test_known_unclassified_prefixes(prefix):
+@pytest.mark.parametrize("prefix", ["ai-voice/", "coach-answers/"])
+def test_the_voice_and_coach_answer_prefixes_sign(prefix):
+    # Classified 2026-10-20 (founder): the speaker's cloned voice and a
+    # coach's answer filed under the speaker are user content, so signed.
     assert prefix in _written_prefixes()
-    assert prefix.startswith(CLASSIFIED_PREFIXES)
+    assert prefix.startswith(USER_CONTENT_PREFIXES)
 
 
 class TestRetainedUserVoiceSigns:

@@ -1,19 +1,18 @@
-"""An account whose take has its permanent record can be erased (founder N12).
-
-tests/test_take_purge_postgres.py proved an erasure reaches `done` for an
-account with one recorded take, but its take never wrote the permanent record
-every real upload writes: the recording attempt (`recording_attempts`), the
-take (`takes`), the processing transitions, and the canonical transcript and
-evidence built on it. Those tables refuse any UPDATE or DELETE, and they point
-at the take session and the project ON DELETE RESTRICT. So in production no
-deletion could finish for anyone who had recorded.
-
-Founder decision N12 (2026-09-26), "keep an empty receipt": the record stays
-as identifiers and timestamps; every word, every piece of feedback and all
-audio is erased. This case writes that record the way the live writers do and
-runs the real orchestrator (as tests/test_take_purge_postgres.py does, with
-the same two named stand-ins: every retention rule seeded active, and object
-storage faked).
+"""
+STORY    As a speaker who recorded Takes, I want my account deletion to finish
+         and leave only an empty receipt, so that every word and recording is
+         gone.
+OUTCOME
+  O1  Erasing an account whose Take has its permanent record still
+      finishes, with nothing left for manual review.
+  O2  No words remain in the transcript, the slides or the recording
+      attempt.
+  O3  The Take and its transcript rows remain only as ids and times.
+PROVES   O1 -> TestAnAccountWithAPermanentTakeRecordCanBeErased::test_the_erasure_reaches_done_and_keeps_only_an_empty_receipt
+         O2 -> TestAnAccountWithAPermanentTakeRecordCanBeErased::test_the_erasure_reaches_done_and_keeps_only_an_empty_receipt
+         O3 -> TestAnAccountWithAPermanentTakeRecordCanBeErased::test_the_erasure_reaches_done_and_keeps_only_an_empty_receipt
+WHY      Founder N12 (2026-09-26), "keep an empty receipt": no deletion could
+         finish for anyone who had recorded.
 """
 from __future__ import annotations
 

@@ -1,26 +1,11 @@
-"""Country of residence is asked once and prefilled after.
-
-FOUNDER 2026-10-05, decisions log N48.4 Q21 A: "country is asked once and
-prefilled; location reassessment is dropped unless counsel wants it."
-
-The fact was already stored: every Phase-1 receipt keeps the country it was
-accepted under (``processing_authorization_receipts.country_of_residence``,
-written lower-cased by the acceptance RPC). So nothing new is stored and no
-migration is needed; the status read hands the newest one back when, and
-only when, the person is being asked to re-accept. The acceptance screen
-shows it already chosen; the person may still change it, and the acceptance
-RPC still checks it against the policy in force (COUNTRY_NOT_ALLOWED).
-
-Pinned here:
-
-  * a re-acceptance carries the newest receipt's country, lower-cased, read
-    for this principal only and newest first;
-  * every other status (first-time, authorized, blocked, inactive) reads
-    nothing extra and carries no country: the ordinary path does no work;
-  * a failed or empty read leaves the status exactly as it was -- a prefill
-    can never turn a readable status into PROCESSING_POLICY_INACTIVE.
-
-Run: python3 -m unittest tests.test_country_asked_once
+"""
+STORY    As a speaker re-accepting new terms, I want my country already filled
+         in, so that I am not asked for it again.
+OUTCOME
+  O1  When I am asked to re-accept, the status carries my newest receipt's
+      country, lower-cased, and everything else in the status is unchanged.
+PROVES   O1 -> AReAcceptanceIsPrefilledTests::test_the_newest_receipts_country_comes_back_lower_cased
+WHY      Founder 2026-10-05, decisions log N48.4 Q21 A: country is asked once.
 """
 from __future__ import annotations
 

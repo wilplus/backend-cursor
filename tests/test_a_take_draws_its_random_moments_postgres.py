@@ -1,20 +1,14 @@
-"""0447: a Take draws its random moments (V4 B1.2, build plan D-ML-7;
-founder V2 A, V3 A), on the disposable rehearsal database.
-
-The Take, the frame and the frame writer are the 0431/0441 suite's own, so
-the draw is tested on the frame the code really builds and stores.
-
-Pins:
-  * the database draws ceil(n/5) of the frame's blocks, exactly the ones
-    services.v4_random_moments.draw_moments draws for the same seed;
-  * a second call draws nothing new and returns the stored draw; the same
-    Take drawn again from scratch draws the same moments;
-  * the draw is stored apart from the frame: the frame (and its pick log)
-    is unchanged, and the draw table holds no pick;
-  * a Take with no frame gets 'no_frame'; nothing is stored;
-  * the table's own checks refuse a wrong count, rank or version;
-  * browser roles hold nothing; service_role may read and delete (the purge)
-    and call the writer, never insert or update; the file applied twice changes nothing.
+"""
+STORY    As the founder, I want each Take's random evaluation moments drawn
+         by the database exactly as the code draws them, so that the
+         evaluation sample is reproducible and unbiased.
+OUTCOME
+  O1  The database picks the same moments, in the same order and number,
+      as the code does for the Take's seed.
+  O2  Each stored moment records its rank, seed, frame, slide and draw
+      version.
+PROVES   O1, O2 -> test_the_database_draws_what_the_code_draws
+WHY      V4 B1.2, D-ML-7; founder V2 A, V3 A (migration 0447).
 """
 from __future__ import annotations
 

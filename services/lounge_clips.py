@@ -4,10 +4,21 @@ signed link, which dies after six hours. On every read the link is
 signed again from the moment's own recording, but only for a recording
 that belongs to the reader. Best-effort: anything unreadable keeps the
 stored link, and the player shows its existing "unavailable".
+
+The coach's word for a Take, in the same read (founder 2026-10-19, N80):
+a coach bubble plays a video only while it is the word's current one,
+from a fresh link; a removed or replaced video is never served again (the
+file stays stored). One "Later · from your coach" bubble per word: a
+bubble left by an older version is left out of the page (it stays in the
+table). Each coach bubble carries ``unseen``, the server's "new" for that
+word. This part fails closed: when the word cannot be read, coach videos
+are hidden for that read and the words still show.
 """
 from __future__ import annotations
 
 import logging
+import re
+import uuid
 from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
@@ -236,21 +247,161 @@ def attach_take_audio(messages: list, user_id: str, database: Any,
             meta["audio"] = {"src": url}
 
 
+def _take_id(value: Any) -> Optional[str]:
+    try:
+        return str(uuid.UUID(str(value)))
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+def _upload_take(key: Optional[str]) -> Optional[str]:
+    """The Take a coach's upload was made on, from its key
+    (``coach-feedback/<Take>/…``, store_session_video); None otherwise."""
+    head, _, rest = str(key or "").partition("/")
+    return _take_id(rest.partition("/")[0]) if head == "coach-feedback" else None
+
+
+def _coach_bubbles(messages: list) -> list[tuple[dict, dict, tuple]]:
+    """(message, metadata, the Takes its word may be of, surest first) for
+    every coach bubble on the page: the "Later · from your coach" bubbles
+    and the walk's copies of the coach's word, on a UUID-shaped Take.
+
+    A "Later" bubble names its word's Take (the server writes it). A walk
+    copy names the Take the walk reviewed, which is a later one when the
+    walk showed an earlier Take's word (N48.3 Q11 A). So a copy's word is
+    looked for first on the Take it names as ``coach_take_session_id``,
+    then on the Take its video was uploaded on, then on its own Take."""
+    out = []
+    for m in messages or []:
+        meta = m.get("metadata") if m.get("kind") == "walk_step" else None
+        if not (isinstance(meta, dict) and meta.get("step") == "coachnote"
+                and meta.get("author") == "coach"):
+            continue
+        take = _take_id(meta.get("take_session_id"))
+        if not take:
+            continue
+        takes = [take] if meta.get("coach_update") else [
+            _take_id(meta.get("coach_take_session_id")),
+            _upload_take(_video_key(meta.get("video"))), take]
+        out.append((m, meta, tuple(dict.fromkeys(t for t in takes if t))))
+    return out
+
+
+_SUPABASE_OBJECT = re.compile(r"^/storage/v1/object/(?:sign|public|authenticated)/[^/]+/(.+)$")
+
+
+def _video_key(ref: Any) -> Optional[str]:
+    """The stored object behind a video link, whatever shape it was written
+    in (an s3:// ref, a bare key, a signed link, a Supabase storage link
+    where R2 is not set up); None for no video."""
+    if not isinstance(ref, str) or not ref.strip():
+        return None
+    from urllib.parse import unquote, urlsplit
+    from services.coach_video_storage import media_key_from_ref
+    try:
+        key = media_key_from_ref(ref)
+        found = None if key else _SUPABASE_OBJECT.match(urlsplit(ref.strip()).path or "")
+    except Exception:  # noqa: BLE001 -- an unreadable ref is compared as written
+        key, found = None, None
+    return key or (unquote(found.group(1)) if found else ref.strip().split("?", 1)[0])
+
+
+def _words(text: Any) -> Optional[str]:
+    return " ".join(str(text or "").split()) or None
+
+
+def _bubble_words(body: Any) -> Optional[str]:
+    """The coach's words in a bubble: what follows its "Your coach" line."""
+    return _words(str(body or "").partition("\n")[2])
+
+
+def _coach_word_reads(user_id: str, takes: list, database: Any) -> tuple[dict, dict]:
+    """({Take: its shared words}, {Take: seen_at}) for the reader's own
+    Takes among these. Raises when a read fails."""
+    from services.parallel import run_in_parallel
+    owned = sorted(database.list_owned_take_ids(str(user_id), takes) or [])
+    if not owned:
+        return {}, {}
+    words, seen = run_in_parallel(
+        lambda: database.list_shared_coach_take_words(owned) or [],
+        lambda: database.list_coach_take_word_seen(str(user_id), owned) or {})
+    by_take: dict = {take: [] for take in owned}
+    for word in words:
+        take = _take_id(word.get("take_session_id")) if isinstance(word, dict) else None
+        if take in by_take and word.get("shared_at"):
+            by_take[take].append(word)
+    return ({t: w for t, w in by_take.items() if w},
+            {_take_id(t) or str(t): at for t, at in dict(seen).items()})
+
+
+def refresh_coach_words(messages: list, user_id: str, database: Any) -> set:
+    """The coach bubbles' videos, current-ness and "new" (N80). Returns the
+    client ids of the bubbles to leave out of the page; the caller filters,
+    after every group of the read is done.
+
+    On a Take of the reader's that has a shared word: a bubble whose video
+    is one of the word's current videos gets a freshly signed link; any
+    other coach video is None (D2). Every coach bubble gets ``unseen``
+    (D4, D7). A "Later · from your coach" bubble whose words or video no
+    longer match a shared word is left out (D1). The walk's own copies are
+    never left out. Each bubble is judged by its own word's Take (see
+    ``_coach_bubbles``). A Take the reader does not own is left untouched.
+    Fails closed: when a read fails, every coach video goes and nothing
+    is left out or marked."""
+    from services.coach_feedback_signal import newer_than_seen, word_changed_at
+    from services.coach_video_storage import refreshed_media_url
+
+    bubbles = _coach_bubbles(messages)
+    if not bubbles:
+        return set()
+    try:
+        words, seen = _coach_word_reads(
+            user_id, sorted({t for _, _, takes in bubbles for t in takes}), database)
+    except Exception:
+        logger.warning("lounge coach words unreadable: coach videos hidden", exc_info=True)
+        for _, meta, _ in bubbles:
+            if meta.get("video"):
+                meta["video"] = None
+        return set()
+    hidden: set = set()
+    for message, meta, takes in bubbles:
+        take = next((t for t in takes if t in words), None)
+        if take is None:
+            continue  # no shared word (an older publish's note): as stored
+        shared = words[take]
+        videos = {_video_key(w.get("video_ref")): w.get("video_ref") for w in shared}
+        key = _video_key(meta.get("video"))
+        versions = {(_words(w.get("text")), _video_key(w.get("video_ref"))) for w in shared}
+        older = (meta.get("coach_update")
+                 and (_bubble_words(message.get("body")), key) not in versions)
+        if older and message.get("client_id"):
+            hidden.add(str(message["client_id"]))
+            continue
+        if key is not None:
+            meta["video"] = refreshed_media_url(videos[key]) if videos.get(key) else None
+        meta["unseen"] = newer_than_seen(word_changed_at(shared), seen.get(take))
+    return hidden
+
+
 def enrich_page(page: dict, user_id: str, database: Any, *,
                 resolve_snippet: Callable[[dict], Optional[str]],
                 resolve_ref: Callable[[Any], Optional[str]],
                 with_flags: bool) -> None:
     """Everything the Lounge read adds to a page of messages: fresh clip,
-    practice, deck and recording links, and (newest page only) the Ideal
-    Text bubble's "new". The reads are independent, so they run side by
-    side (founder 2026-10-18, "optimise the loading time") instead of one
-    after another; the slowest one, not their sum, sets the wait.
+    practice, deck and recording links, the coach's word (N80), and (newest
+    page only) the Ideal Text bubble's "new". The reads are independent, so
+    they run side by side (founder 2026-10-18, "optimise the loading time")
+    instead of one after another; the slowest one, not their sum, sets the
+    wait.
 
     Thread safety: each group writes keys no other group touches. Walk
     clips carry a ``snippet_id`` and practise clips a ``practice_id`` (never
     both), decks write ``deck`` on cards, recordings write ``audio`` on
-    readouts, and the flags are a return value. Clips and recordings share
-    one read of the page's Takes, so they stay in one group, in order.
+    readouts, the coach's word writes ``video`` and ``unseen`` on coach
+    bubbles, and the flags are a return value. Clips and recordings share
+    one read of the page's Takes, so they stay in one group, in order. The
+    bubbles an older version of a word left are taken out of the page only
+    after every group is done, since the others walk the same list.
     """
     from services.parallel import run_in_parallel
     from services.request_context import lap
@@ -282,6 +433,14 @@ def enrich_page(page: dict, user_id: str, database: Any, *,
         with lap("flags"):
             return lounge_flags(database, user_id)
 
-    _, _, _, fresh = run_in_parallel(recordings, practice, decks, flags)
+    def coach_words() -> set:
+        with lap("coach_words"):
+            return refresh_coach_words(messages, user_id, database)
+
+    _, _, _, fresh, older = run_in_parallel(recordings, practice, decks, flags,
+                                            coach_words)
+    if older:
+        page["messages"] = [m for m in messages
+                            if str(m.get("client_id") or "") not in older]
     if fresh is not None:
         page["new_coach_feedback"] = fresh

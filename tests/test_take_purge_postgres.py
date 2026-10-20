@@ -1,26 +1,16 @@
-"""Can the governed purge erase an account that recorded a real Take?
-
-FOUNDER 2026-09-25 ("prove it first", before P1-B builds project scope on the
-same engine). #658 proved an account erasure runs to the end for a speaker
-whose only data is practice. No case had proved it for the product's own
-data: a canonical Project with one recorded Take — its accepted recording
-attempt, its stored audio, the take row itself.
-
-The case runs `DataPurgeOrchestrator.run` — the Python production runs —
-through the SQL client from tests/test_account_deletion_starts_postgres.py,
-as service_role, against the disposable schema. Two stand-ins, both named:
-
-  * every retention rule the registry can ask for is seeded active, as the
-    signed retention schedule will seed them (production has none yet, so
-    there a run stops at `review_required` before any of this matters);
-  * the object-storage delete is faked to succeed, because this lane has no
-    R2. Everything after it — marking the object purged, the dependency
-    deletes, finalize — is the real code on the real schema.
-
-WHAT IT FOUND. The purge deleted the Take and then failed on the project row:
-retained recording-attempt evidence points at it ON DELETE RESTRICT. Founder
-decision N9: the project row is kept as a tombstone with its content wiped
-(migration 0368).
+"""
+STORY    As a speaker who deletes my account, I want everything I recorded
+         erased, so that my Take, audio and project content are gone.
+OUTCOME
+  O1  The erasure finishes, with nothing left for manual review, and the
+      stored audio is deleted.
+  O2  The Take stays only as an empty receipt (ids, times, state), and the
+      project as a wiped tombstone with no name, setup or deck.
+  O3  Someone else's project is never touched.
+PROVES   O1 -> TestAnAccountWithARealTakeCanBeErased::test_the_erasure_reaches_done_and_the_take_is_gone
+         O2 -> TestAnAccountWithARealTakeCanBeErased::test_the_erasure_reaches_done_and_the_take_is_gone
+         O3 -> TestAnAccountWithARealTakeCanBeErased::test_the_wipe_never_reaches_another_persons_project
+WHY      Founder 2026-09-25 "prove it first"; decisions N9 and N12.
 """
 from __future__ import annotations
 
