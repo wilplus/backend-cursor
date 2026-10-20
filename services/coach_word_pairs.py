@@ -31,6 +31,10 @@ drafter keeps what its prompt was given (``draft_prompt`` on the row,
 rebuilds this module's prompt from it verbatim; a pair without it is never
 released, judged or trained on. Door 3 needs the sealed golden set and 200
 pairs. The ledger reports, per surface, the share of drafts sent unchanged.
+Every draft is also kept as it was shown, with the hash of the exact text
+sent, in coach_draft_history (0481, N79; services.coach_draft_history);
+the row's snapshot names it by ``draft_id``, beside ``prompt_context``,
+which the pair copies unchanged.
 """
 from __future__ import annotations
 
@@ -68,12 +72,18 @@ def passage_for(transcript: Any) -> str:
     return " ".join(str(transcript or "").split())[:_MAX_PASSAGE].rstrip()
 
 
-def prompt_snapshot(*, transcript: Any, coach_text: Optional[str]) -> dict:
+def prompt_snapshot(*, transcript: Any, coach_text: Optional[str],
+                    draft_id: Optional[str] = None) -> dict:
     """What the draft's prompt was given, kept on the draft's row and then
-    on its pair: {passage_text, prompt_context}."""
-    return {"passage_text": passage_for(transcript),
-            "prompt_context": {"prompt": PROMPT_FAMILY,
-                               "coach_text": str(coach_text).strip() if coach_text else None}}
+    on its pair: {passage_text, prompt_context}. ``draft_id`` names the
+    draft's coach_draft_history row (0481); the pair never copies it."""
+    snapshot: dict = {"passage_text": passage_for(transcript),
+                      "prompt_context": {"prompt": PROMPT_FAMILY,
+                                         "coach_text": str(coach_text).strip()
+                                         if coach_text else None}}
+    if draft_id:
+        snapshot["draft_id"] = str(draft_id)
+    return snapshot
 
 
 def prompt_from(surface: str, passage: Any, context: Any) -> Optional[tuple[str, str]]:
@@ -95,7 +105,8 @@ def prompt_from(surface: str, passage: Any, context: Any) -> Optional[tuple[str,
 def compose(*, surface: str, transcript: str, coach_text: Optional[str],
             user_id: Optional[str] = None) -> Optional[dict]:
     """The one model call, text only: the transcript and the coach's own
-    words. {"text", "model_version"} or None."""
+    words. {"text", "model_version"} and the exact ``system``, ``user`` and
+    ``passage`` it sent, or None."""
     from services.llm import chat_complete
     from services.llm_config import SPEC_COACH_ANSWER_DRAFT
     from services.prompts.coach_word_drafts import SYSTEM, user
@@ -103,13 +114,32 @@ def compose(*, surface: str, transcript: str, coach_text: Optional[str],
     passage = passage_for(transcript)
     if system is None or not passage:
         return None
-    result = chat_complete(spec=SPEC_COACH_ANSWER_DRAFT, system=system,
-                           user=user(surface=surface, transcript=passage, coach_text=coach_text),
+    sent = user(surface=surface, transcript=passage, coach_text=coach_text)
+    result = chat_complete(spec=SPEC_COACH_ANSWER_DRAFT, system=system, user=sent,
                            surface=surface, user_id=user_id)
     text = str(getattr(result, "text", "") or "").strip()
     if not text:
         return None
-    return {"text": text, "model_version": str(getattr(result, "model", "") or "")}
+    return {"text": text, "model_version": str(getattr(result, "model", "") or ""),
+            "system": system, "user": sent, "passage": passage}
+
+
+def _keep(database: Any, draft: dict, draft_id: str, *, surface: str, coach_id: str,
+          notes: Optional[str], **home: Any) -> None:
+    """The draft as it was shown, in coach_draft_history (0481). Best effort."""
+    from services.coach_draft_history import keep
+    keep(database, draft_id=draft_id, surface=surface, prompt_family=PROMPT_FAMILY,
+         coach_id=coach_id, draft=draft,
+         inputs={"passage_text": draft.get("passage"), "coach_text": notes}, **home)
+
+
+def _owner_of(database: Any, take_session_id: str) -> Optional[str]:
+    """The speaker whose Take it is, for the kept draft; None on a doubt."""
+    try:
+        return (database.v2_get_session_by_id(str(take_session_id)) or {}).get("user_id")
+    except Exception as e:  # noqa: BLE001 -- the draft still shows
+        _log.info("take owner unread take=%s: %s", take_session_id, e)
+        return None
 
 
 def draft_take_word(database: Any, *, take_session_id: str, coach_id: str,
@@ -128,9 +158,16 @@ def draft_take_word(database: Any, *, take_session_id: str, coach_id: str,
                     coach_text=notes, user_id=coach_id)
     if draft is None:
         return 503, {"code": "DRAFT_UNAVAILABLE", "error": "A draft could not be written right now."}
-    database.set_coach_take_word_draft(take_session_id=str(take_session_id), coach_id=str(coach_id),
-                                       text=draft["text"], model_version=draft["model_version"],
-                                       prompt=prompt_snapshot(transcript=transcript, coach_text=notes))
+    from services.coach_draft_history import new_draft_id
+    draft_id = new_draft_id()
+    row = database.set_coach_take_word_draft(
+        take_session_id=str(take_session_id), coach_id=str(coach_id),
+        text=draft["text"], model_version=draft["model_version"],
+        prompt=prompt_snapshot(transcript=transcript, coach_text=notes, draft_id=draft_id))
+    _keep(database, draft, draft_id, surface="coach_take_word", coach_id=str(coach_id),
+          notes=notes, take_session_id=str(take_session_id),
+          owner_user_id=_owner_of(database, str(take_session_id)),
+          take_word_id=row.get("id") if isinstance(row, dict) else None)
     return 200, {"draft": {"surface": "coach_take_word", "text": draft["text"],
                            "model_version": draft["model_version"], "label": LABEL}}
 
@@ -154,11 +191,16 @@ def draft_moment_line(database: Any, *, request_row: Any, coach_id: str,
                     coach_text=notes, user_id=coach_id)
     if draft is None:
         return 503, {"code": "DRAFT_UNAVAILABLE", "error": "A draft could not be written right now."}
-    database.set_exercise_coach_request_draft(request_id=str(request_row["id"]),
-                                              surface="coach_moment_line", text=draft["text"],
-                                              model_version=draft["model_version"],
-                                              prompt=prompt_snapshot(transcript=transcript,
-                                                                     coach_text=notes))
+    from services.coach_draft_history import new_draft_id
+    draft_id = new_draft_id()
+    database.set_exercise_coach_request_draft(
+        request_id=str(request_row["id"]), surface="coach_moment_line", text=draft["text"],
+        model_version=draft["model_version"],
+        prompt=prompt_snapshot(transcript=transcript, coach_text=notes, draft_id=draft_id))
+    _keep(database, draft, draft_id, surface="coach_moment_line", coach_id=str(coach_id),
+          notes=notes, take_session_id=request_row.get("take_session_id"),
+          owner_user_id=request_row.get("owner_user_id"),
+          snippet_id=request_row.get("snippet_id"), request_id=request_row["id"])
     return 200, {"draft": {"surface": "coach_moment_line", "text": draft["text"],
                            "model_version": draft["model_version"], "label": LABEL}}
 

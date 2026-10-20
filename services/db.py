@@ -12868,9 +12868,9 @@ class DatabaseService:
     ) -> Optional[dict]:
         """Keep the model's draft on the request row (0402), coach-only; a
         re-draft replaces it, and with it what the draft's prompt was given
-        (``draft_prompt``, 0459: the coach-word drafter's snapshot, cleared
-        by any other surface's draft). Raises on failure: the caller logs
-        and the draft still shows."""
+        (``draft_prompt``, 0459; every drafter's snapshot since 0481, naming
+        the draft's coach_draft_history row, which keeps every draft).
+        Raises on failure: the caller logs and the draft still shows."""
         res = (self.client.table("exercise_coach_requests")
                .update({"draft_surface": str(surface), "draft_text": str(text),
                         "draft_model_version": model_version or None,
@@ -14811,7 +14811,8 @@ class DatabaseService:
     ) -> Optional[dict]:
         """The model's draft of the Take word (7, 0411), on the coach's row,
         created draft-only when the word is not written yet, with what its
-        prompt was given (``draft_prompt``, 0459). Raises on failure."""
+        prompt was given (``draft_prompt``, 0459; it names the draft's
+        coach_draft_history row since 0481). Raises on failure."""
         now = datetime.now(timezone.utc).isoformat()
         res = (self.client.table("coach_take_words")
                .upsert({"take_session_id": str(take_session_id), "coach_id": str(coach_id),
@@ -14839,6 +14840,25 @@ class DatabaseService:
         if video_ref:
             query = query.eq("video_ref", str(video_ref))
         res = query.execute()
+        return (res.data or [None])[0]
+
+    def insert_coach_draft(self, **fields: Any) -> Optional[dict]:
+        """One draft as it was shown to a coach, with what its prompt was
+        given and the hashes of the prompt sent (0481). Written once.
+        Raises on failure: services.coach_draft_history logs it and the
+        draft still shows."""
+        res = self.client.table("coach_draft_history").insert(fields).execute()
+        return (res.data or [None])[0]
+
+    def settle_coach_draft(self, *, draft_id: str, final_unchanged: bool,
+                           settled_at: str) -> Optional[dict]:
+        """The coach saved an answer on this draft (0481): whether it is the
+        draft as written. The only columns the app may set on a kept draft.
+        None when no such draft is kept. Raises on failure."""
+        res = (self.client.table("coach_draft_history")
+               .update({"settled_at": str(settled_at),
+                        "final_unchanged": bool(final_unchanged)})
+               .eq("id", str(draft_id)).execute())
         return (res.data or [None])[0]
 
     def list_coach_word_drafts(self, limit: int = 5000) -> list[dict]:

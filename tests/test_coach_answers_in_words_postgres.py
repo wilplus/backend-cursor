@@ -20,14 +20,21 @@ OUTCOME
   O5  The migration, run twice, recovers each word's pair once, with its
       owner and the words spoken, only where the draft came before the
       final, with consent left closed.
+  O6  Every draft keeps its prompt: the app keeps each draft in
+      coach_draft_history and may only settle it afterwards, never rewrite
+      what was drafted or sent; an answer draft hangs on its request and a
+      Take word's draft on its Take, never on a request; no browser role
+      reaches the table.
 PROVES   O1 -> test_a_line_is_answered_once_and_shared
          O2 -> test_words_and_an_exercise_never_mix
          O3 -> test_a_pair_is_kept_only_when_the_coach_changed_the_draft
          O4 -> test_a_take_word_pair_is_kept_and_the_latest_teaches
          O5 -> test_the_migration_recovers_each_word_s_pair_once
+         O6 -> test_every_draft_is_kept_as_it_was_sent_and_only_settled
 WHY      Migration 0402 (founder 2026-09-30, C2 to C5); O4 and O5 migration
          0479 (founder 2026-10-19, N79). Runs only on a disposable database
-         whose name starts with willab_confident_moment_.
+         whose name starts with willab_confident_moment_. O6 migration 0481
+         (founder 2026-10-19, N79).
 """
 from __future__ import annotations
 
@@ -218,3 +225,61 @@ def test_the_migration_recovers_each_word_s_pair_once(db):
     assert rows == [{"coach_id": "coach-a", "final_kind": "final",
                      "owner_principal_id": principal, "consent_state": "unknown",
                      "releasable": False, "passage_text": "the words spoken here"}]
+
+
+DRAFTS = "public.coach_draft_history"
+
+
+def _keep_draft(cur, request_id, take, **over):
+    """As services.db.insert_coach_draft writes it, as service_role."""
+    row = {"surface": "praise_line", "prompt_family": "coach_answer_drafts",
+           "coach_id": "coach-1", "owner_user_id": "speaker-1", "take_session_id": take,
+           "request_id": request_id, "draft_text": "You let the number land.",
+           "prompt_sha256": "a" * 64,
+           "prompt_inputs": psycopg2.extras.Json({"passage_text": "and that is why",
+                                                  "kind": "praise", "spotted": ["Rushing"],
+                                                  "spotted_tags": ["rushing"], "notes": None}),
+           **over}
+    cur.execute(f"INSERT INTO {DRAFTS} ({', '.join(row)}) "
+                f"VALUES ({', '.join(['%s'] * len(row))}) RETURNING id", tuple(row.values()))
+    return cur.fetchone()[0]
+
+
+def test_every_draft_is_kept_as_it_was_sent_and_only_settled(db):
+    req = _request(db)
+    take = req["take_session_id"]
+    with db.cursor() as cur:
+        cur.execute("SET ROLE service_role")
+        try:
+            first = _keep_draft(cur, req["id"], take)
+            second = _keep_draft(cur, req["id"], take, draft_text="The pause worked.")
+            # The coach saved the second as written: the one later write.
+            cur.execute(f"UPDATE {DRAFTS} SET settled_at = now(), final_unchanged = true "
+                        "WHERE id = %s", (second,))
+            for column, value in (("draft_text", "rewritten"), ("prompt_sha256", "b" * 64),
+                                  ("prompt_inputs", psycopg2.extras.Json({}))):
+                with pytest.raises(psycopg2.errors.InsufficientPrivilege):
+                    cur.execute(f"UPDATE {DRAFTS} SET {column} = %s WHERE id = %s",
+                                (value, first))
+            # An answer draft hangs on its request; a Take word's on the Take.
+            with pytest.raises(psycopg2.errors.CheckViolation):
+                _keep_draft(cur, None, take)
+            with pytest.raises(psycopg2.errors.CheckViolation):
+                _keep_draft(cur, req["id"], take, surface="coach_take_word",
+                            prompt_family="coach_word_drafts")
+        finally:
+            cur.execute("RESET ROLE")
+    kept = []
+    with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(f"SELECT id, draft_text, final_unchanged, settled_at IS NOT NULL AS settled "
+                    f"FROM {DRAFTS} WHERE request_id = %s ORDER BY drafted_at, draft_text DESC",
+                    (req["id"],))
+        kept = [dict(r) for r in cur.fetchall()]
+    assert [(k["draft_text"], k["settled"], k["final_unchanged"]) for k in kept] == [
+        ("You let the number land.", False, None), ("The pause worked.", True, True)]
+    assert _row(db, "SELECT relrowsecurity AS rls FROM pg_class WHERE oid = %s::regclass",
+                (DRAFTS,))["rls"] is True
+    for role in ("anon", "authenticated"):
+        if _row(db, "SELECT 1 AS yes FROM pg_roles WHERE rolname = %s", (role,)):
+            assert _row(db, "SELECT has_table_privilege(%s, %s, 'SELECT') AS can",
+                        (role, DRAFTS))["can"] is False
