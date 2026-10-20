@@ -111,12 +111,12 @@ def journey_payload(database: Any, actor_id: str, arc_id: str,
     """The Ideal Text enrichment's `journey` section, for the project OWNER
     (the route refuses anyone else before it runs): whether the guided next
     steps were seen, and the coach's overall message and video for the Take
-    on screen (Q1, Final Screens L8; N48.3 Q11 A).
+    on screen only (Q1, Final Screens L8; N77).
 
     The message carries ``unseen`` (founder 2026-10-19, N80): its word
     changed after the speaker last watched it, from any door (the WhatsApp
     or email link, the dot card, the bubble), the dot's own rule. It is
-    read for the message's OWN Take, which may be an earlier one. When the
+    read for the message's own Take, the Take on screen (N77). When the
     watch cannot be read, the word counts as unseen: one more tap at most,
     never a hidden coach word."""
     from services.coach_feedback_signal import newer_than_seen
