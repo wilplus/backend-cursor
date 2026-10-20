@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -26,6 +27,8 @@ from services.lab_audio_storage import (
     verify_lab_audio_object_absent,
 )
 from services.provider_deletion import resolve_provider_operation
+
+logger = logging.getLogger(__name__)
 
 RESOLVER_VERSION = "phase1-purge-resolver-v4"
 #: The target kinds `freeze_phase1_purge_inventory_v4` accepts; it files any
@@ -677,6 +680,7 @@ class DataPurgeOrchestrator:
             self._assert_frozen_contract(existing, purge_request_id)
             return {"purge_request_id": purge_request_id, "state": "frozen",
                     "inventory_sha256": existing.get("target_manifest_sha256")}
+        self._resolve_legacy_take_owners(purge_request_id)
         inventory = self.build_inventory(purge_request_id)
         graph_payload = inventory["graph"].payload()
         target_payload = [item.payload() for item in inventory["targets"]]
@@ -692,6 +696,30 @@ class DataPurgeOrchestrator:
             ),
         }).execute()
         return _one(result.data) or {}
+
+    def _resolve_legacy_take_owners(self, purge_request_id: str) -> None:
+        """Before the first freeze: an older Take linked to this account only
+        by its user id takes the account's own owner principal (0485), so the
+        graph holds it as resolved instead of stopping the erasure for review
+        (LEGACY_TAKE_OWNER_PRINCIPAL_UNRESOLVED). A Take it cannot settle
+        stays unresolved and still stops it: fail-closed. A database without
+        0485, or any failure here, settles nothing and the run goes on as
+        before. Runs only on a run's freeze, never in a preview."""
+        try:
+            request = self._request(purge_request_id)
+            principal = str(request.get("acquisition_principal_id") or "")
+            if not principal:
+                return
+            result = self.client.rpc("resolve_legacy_take_owners_v1", {
+                "p_acquisition_principal_id": principal,
+            }).execute()
+            settled = (_one(result.data) or {}).get("resolved_take_ids") or []
+            if settled:
+                logger.info("purge %s: %d older Take(s) took their account's owner",
+                            purge_request_id, len(settled))
+        except Exception as error:  # noqa: BLE001 -- the graph still fails closed
+            logger.warning("purge %s: older Takes' owners not settled: %s",
+                           purge_request_id, error, exc_info=True)
 
     def _manifest(self, purge_request_id: str) -> dict:
         manifest = _one(
