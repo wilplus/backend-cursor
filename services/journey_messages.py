@@ -23,18 +23,15 @@ from typing import Any, Optional
 _NAMESPACE = uuid.UUID("c0af92c8-758e-4c31-9c6e-f6d36bd52395")
 
 _COPY = {
-    # Simplified by the founder, 2026-10-20 (chosen in chat over two other
-    # versions): what happened, then what to do next.
+    # Takes 1 and 2 simplified by the founder, 2026-10-20 (each chosen in
+    # chat over two other versions): what happened, then what to do next.
     1: (
         "Your first take is in 🎉\n\n"
         "Now record take 2 with your helper words ⬇️"
     ),
     2: (
-        "Your presentation is stronger now.\n\n"
-        "We’ve seen your message become clearer. Now let’s focus on making the "
-        "delivery feel natural and confident.\n\n"
-        "Use the orange-marked text as your anchors - not a script - and try "
-        "to speak as to a friend."
+        "Your second take is in 🎉\n\n"
+        "Now record take 3. Use your helper words as anchors, not a script ⬇️"
     ),
     3: (
         "Your presentation is ready.\n\n"
