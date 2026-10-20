@@ -8,8 +8,11 @@ every failed check falls back to:
 
   1. THE WORDS NEED HELP. At least one of: fillers at 3 or more per 100
      words, hedges at 3 or more per 100 words, the clip misses its slide
-     (slide fit below 0.5), a broken sentence. None of them: the wording is
-     good and the moment goes to the voice Exercise with the AI clip.
+     (slide fit below 0.5), a broken sentence, words said again straight
+     away, two or more and ``REPEATS_PER_100`` or more per 100 words
+     (founder 2026-10-19, WIL-26: often, not one slip). None of them: the
+     wording is good and the moment goes to the voice Exercise with the AI
+     clip.
   2. THE NEW WORDS ARE GOOD ENOUGH. A rewrite row that is all of:
        - inside this moment's own clip (its span inside the clip's span);
        - backed by evidence: never the tentative fallback;
@@ -17,7 +20,7 @@ every failed check falls back to:
          ``MIN_LIFT`` better than on what the speaker said (the clip's own
          transcript, which keeps the hesitations the Ideal Text smooths
          away, or the replaced words when worse), or the broken sentence
-         mended;
+         mended, or a repeat said once;
        - still the speaker's: at least ``MIN_KEPT`` of its words are theirs,
          and no number or name they did not say;
        - sayable in one go: not longer than what they said, ``MIN_WORDS``
@@ -41,6 +44,10 @@ GATE_VERSION = "rewrite-gate-v1"
 WORD_SIGNAL_FLOOR = 0.7
 #: Gate 1: a slide fit below this misses the slide (0.5 is "partly").
 SLIDE_FIT_FLOOR = 0.5
+#: Gate 1: repeats are "often" at this many per 100 words AND at least
+#: ``MIN_REPEATS`` of them, so one slip in a short clip is never enough.
+REPEATS_PER_100 = 2.0
+MIN_REPEATS = 2
 #: Gate 2.
 MIN_LIFT = 0.1
 MIN_KEPT = 0.6
@@ -66,7 +73,16 @@ def words_need_help(text: Any, slide_fit: Optional[float]) -> Optional[str]:
         return "off_slide"
     if has_broken_boundary(text):
         return "broken_sentence"
+    if _repeats_often(text):
+        return "repeats"
     return None
+
+
+def _repeats_often(text: Any) -> bool:
+    from services.take_feedback_manager import repeat_count
+    words, repeats = len(_words(text)), repeat_count(text)
+    return (words > 0 and repeats >= MIN_REPEATS
+            and repeats * 100 / words >= REPEATS_PER_100)
 
 
 def _words(text: Any) -> list[str]:
@@ -120,11 +136,12 @@ def _in_clip(span: Any, clip_span: Any) -> bool:
 
 def _words_refusal(quote: str, proposed: str, clip_text: Any) -> Optional[str]:
     """The checks on the words alone: a real fix, still theirs, sayable."""
-    from services.take_feedback_manager import has_broken_boundary
+    from services.take_feedback_manager import has_broken_boundary, repeat_count
     said = [v for v in (_word_signal(quote), _word_signal(clip_text)) if v is not None]
     before, after = (min(said) if said else None), _word_signal(proposed)
     lifted = before is not None and after is not None and after - before >= MIN_LIFT
-    mended = has_broken_boundary(quote) and not has_broken_boundary(proposed)
+    mended = ((has_broken_boundary(quote) and not has_broken_boundary(proposed))
+              or repeat_count(proposed) < repeat_count(quote))
     if not (lifted or mended):
         return "no_real_fix"
     if _kept_share(quote, proposed) < MIN_KEPT or _invents(quote, proposed):

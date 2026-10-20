@@ -1,26 +1,19 @@
-"""The walk's exercise pair carries its request, moment, owner and model
-version (founder 2026-10-05, W6: C2, C5, P2-1, FL-L3; W7 L5, L6 depend on it).
-
-The walk answers an error moment through the exercise upload seam: the
-coach's exercise is saved as ``coach-request-<request id>``, then the
-request resolves to it as ``exercise_chosen``. Until now its pair was
-written at the upload, with no request, moment, owner or model version, so
-no consent could reach it (no owner), no golden set could judge it (no
-passage) and the export contract could never release it.
-
-Pins:
-  * the pair rides the resolution, behind the blind gate: the saved
-    instruction against the model's draft KEPT ON THE REQUEST, stamped with
-    the request, the moment, the owner, the model version, the pattern (the
-    exercise's main target) and the exercise version, and its passage;
-  * the video's transcript is the second final, stamped the same but for
-    the request (one pair per request and surface is the table's key);
-  * a stamped pair takes the owner's training yes, so it is releasable;
-  * the draft is the server's: a client's text is never recorded as the
-    model's draft, and the Library (no request) records no pair at all;
-  * choosing another library exercise is no pair; a coach answering a
-    moment of their own Take is the owner answering, never a pair;
-  * a pair is recorded only when a draft was shown and the final differs.
+"""
+STORY    As a speaker, I want a coach exercise made about my moment to be used
+         for training only with my training yes, so that my consent decides.
+OUTCOME
+  O1  The walk's pair is stamped with the request, the moment, the owner and
+      the model version; the draft is the server's (never the client's
+      text); the video's transcript is a second pair without the request.
+      With the owner's training yes it is releasable.
+  O2  Without the owner's yes the pair is stored but not releasable.
+  O3  A Library save and a pick of another library exercise make no pair,
+      while the request still resolves.
+PROVES   O1 -> test_the_pair_is_stamped_and_releasable_with_the_owner_s_yes
+         O2 -> test_without_the_owner_s_yes_it_is_recorded_but_not_releasable
+         O3 -> test_a_library_save_and_a_library_pick_make_no_pair
+WHY      Founder 2026-10-05 (W6): an unstamped pair had no owner, so no consent
+         could ever reach it.
 """
 from __future__ import annotations
 
@@ -168,6 +161,26 @@ def _resolve(db, *, exercise_id=WALK_ID, coach_id="coach-1", share=True):
 
 class TheWalkPairTests(unittest.TestCase):
 
+    def test_the_pair_is_stamped_and_releasable_with_the_owner_s_yes(self):
+        db = _WalkDb(request=_request(), consent=True)
+        _upload(db)
+        _resolve(db)
+        by_kind = {p["final_kind"]: p for p in db.pairs}
+        self.assertEqual(set(by_kind), {"final", "transcript"})
+        final, transcript = by_kind["final"], by_kind["transcript"]
+        for pair in (final, transcript):
+            self.assertEqual(pair["take_session_id"], "take-1")
+            self.assertEqual(pair["snippet_id"], "snip-1")
+            self.assertEqual(pair["owner_user_id"], "speaker-1")
+            self.assertEqual(pair["draft_model_version"], "gpt-test-1")
+            # The server's draft, kept on the request; never the client's text.
+            self.assertEqual(pair["draft_text"], "Say the last word fully, then stop.")
+            self.assertEqual(pair["consent_state"], "yes")
+            self.assertTrue(pair["releasable"])
+        self.assertEqual(final["request_id"], REQUEST_ID)
+        self.assertEqual(final["final_text"], "Let the final word land before you breathe.")
+        self.assertIsNone(transcript["request_id"])
+        self.assertEqual(transcript["final_text"], "Let the final word land.")
 
     def test_without_the_owner_s_yes_it_is_recorded_but_not_releasable(self):
         db = _WalkDb(request=_request(), consent=False)
@@ -176,6 +189,15 @@ class TheWalkPairTests(unittest.TestCase):
         self.assertTrue(db.pairs)
         self.assertTrue(all(p["consent_state"] == "no" and not p["releasable"]
                             for p in db.pairs))
+
+    def test_a_library_save_and_a_library_pick_make_no_pair(self):
+        db = _WalkDb(request=_request(), consent=True)
+        _upload(db, exercise_id="lib-ex", definition=_definition(exercise_id="lib-ex"))
+        self.assertEqual(db.pairs, [])
+        status, _body = _resolve(db, exercise_id="lib-ex")
+        self.assertEqual(status, 200)
+        self.assertEqual(db.resolved[-1]["exercise_id"], "lib-ex")
+        self.assertEqual(db.pairs, [])
 
 
 if __name__ == "__main__":  # pragma: no cover

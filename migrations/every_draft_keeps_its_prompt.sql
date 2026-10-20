@@ -1,4 +1,4 @@
--- every_draft_keeps_its_prompt (0479; founder 2026-10-19, decisions log N79)
+-- every_draft_keeps_its_prompt (0480; founder 2026-10-19, decisions log N79)
 --
 -- WHY. A model draft shown to a coach lived only on the row it was shown
 -- from: draft_text on the moment's request (0402) or on the coach's Take
@@ -107,7 +107,7 @@ CREATE INDEX IF NOT EXISTS coach_draft_history_take_word_idx
 ALTER TABLE public.coach_draft_history ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.coach_draft_history IS
     'Every model draft shown to a coach on the answer and coach-word surfaces '
-    '(0479; founder 2026-10-19, N79), with what its prompt was given, the sha256 '
+    '(0480; founder 2026-10-19, N79), with what its prompt was given, the sha256 '
     'of the exact system and user text sent and the surface''s prompt lock hash. '
     'Written once; only settled_at and final_unchanged are set later, when the '
     'coach saves an answer. Capture only: read by no training, release, golden or '
@@ -122,12 +122,12 @@ GRANT UPDATE (settled_at, final_unchanged) ON TABLE public.coach_draft_history T
 
 COMMENT ON COLUMN public.exercise_coach_requests.draft_prompt IS
     'What the current draft''s prompt was given ({passage_text, prompt_context}, '
-    'and since 0479 draft_id, its coach_draft_history row), coach-only. A coach-word '
+    'and since 0480 draft_id, its coach_draft_history row), coach-only. A coach-word '
     'draft''s is copied onto the coach_moment_line pair without draft_id (0459); an '
-    'answer draft''s (prompt coach_answer_drafts, 0479) is capture only.';
+    'answer draft''s (prompt coach_answer_drafts, 0480) is capture only.';
 COMMENT ON COLUMN public.coach_take_words.draft_prompt IS
     'What the coach-word drafter''s prompt was given ({passage_text, prompt_context}, '
-    'and since 0479 draft_id, its coach_draft_history row), coach-only; copied onto '
+    'and since 0480 draft_id, its coach_draft_history row), coach-only; copied onto '
     'the coach_take_word pair without draft_id (0459).';
 
 COMMIT;

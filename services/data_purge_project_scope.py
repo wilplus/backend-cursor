@@ -145,6 +145,9 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     # shared library content; cleared with the coach's account, never with
     # a project.
     "coach_named_errors_named_by",
+    # Lesson bookings (founder 2026-10-19): keyed by the account, never by a
+    # project, so a project purge leaves them and no longer stops for review.
+    "bookings",
     # Retention schedule v1.4: product records and job evidence that name
     # only the person, never a project. Deleted with the account (or kept
     # 12 months as job evidence); a project purge leaves them. Placed only

@@ -32,7 +32,7 @@ rebuilds this module's prompt from it verbatim; a pair without it is never
 released, judged or trained on. Door 3 needs the sealed golden set and 200
 pairs. The ledger reports, per surface, the share of drafts sent unchanged.
 Every draft is also kept as it was shown, with the hash of the exact text
-sent, in coach_draft_history (0479, N79; services.coach_draft_history);
+sent, in coach_draft_history (0480, N79; services.coach_draft_history);
 the row's snapshot names it by ``draft_id``, beside ``prompt_context``,
 which the pair copies unchanged.
 """
@@ -76,7 +76,7 @@ def prompt_snapshot(*, transcript: Any, coach_text: Optional[str],
                     draft_id: Optional[str] = None) -> dict:
     """What the draft's prompt was given, kept on the draft's row and then
     on its pair: {passage_text, prompt_context}. ``draft_id`` names the
-    draft's coach_draft_history row (0479); the pair never copies it."""
+    draft's coach_draft_history row (0480); the pair never copies it."""
     snapshot: dict = {"passage_text": passage_for(transcript),
                       "prompt_context": {"prompt": PROMPT_FAMILY,
                                          "coach_text": str(coach_text).strip()
@@ -126,7 +126,7 @@ def compose(*, surface: str, transcript: str, coach_text: Optional[str],
 
 def _keep(database: Any, draft: dict, draft_id: str, *, surface: str, coach_id: str,
           notes: Optional[str], **home: Any) -> None:
-    """The draft as it was shown, in coach_draft_history (0479). Best effort."""
+    """The draft as it was shown, in coach_draft_history (0480). Best effort."""
     from services.coach_draft_history import keep
     keep(database, draft_id=draft_id, surface=surface, prompt_family=PROMPT_FAMILY,
          coach_id=coach_id, draft=draft,
@@ -212,7 +212,7 @@ def record_take_word_pair(database: Any, *, word_row: Any, coach_id: str,
     """When a draft was shown and the coach's final differs, the pair under
     the C5 rule (feedback_pairs.record_pair; surface coach_take_word). A
     transcript of the word's video is a second final (final_kind
-    "transcript"). One current pair per word and kind (0477): a newer
+    "transcript"). One current pair per word and kind (0478): a newer
     version supersedes the older, so the latest teaches (founder
     2026-10-19, N79), and a version that is no pair (no final, or the draft
     kept as it was) retires the older one. Never in the save's way."""
@@ -236,7 +236,7 @@ def record_take_word_pair(database: Any, *, word_row: Any, coach_id: str,
 
 def _retire_take_word_pair(database: Any, word_row: dict, final_kind: str) -> None:
     """The word's latest version is no pair, so its older pair of this kind
-    stops teaching (0477; the database writes nothing new)."""
+    stops teaching (0478; the database writes nothing new)."""
     writer = getattr(database, "record_take_word_pair", None)
     if writer is None or not word_row.get("id"):
         return
@@ -272,7 +272,7 @@ def record_moment_line_pair(database: Any, *, request_row: Any, coach_id: str,
 def speaker_permit_adapter(database: Any, take_session_id: str) -> Any:
     """The provider door for a coach's video about a speaker's Take: the
     Take word's (PLF1, founder 2026-10-05, N48.1) and a moment's answer
-    video (0480, N79; services.coach_answer_video).
+    video (0481, N79; services.coach_answer_video).
 
     The video is the coach's, but it is about the speaker's Take and its
     transcript lands beside the speaker's words, so the permit is the

@@ -1,22 +1,21 @@
-"""The deploy-time RLS assertion — scripts/rls_guard.py.
-
-docs/RLS-AUDIT.md · bin/railway-web.sh
-
-WHAT THIS PINS DOWN
-  * the guard CANNOT fail a boot — every degraded path exits 0 or 2, never
-    raises, and --strict (the only way to get exit 1) is never on the boot
-    path;
-  * an unreachable database reports SKIPPED, never "OK". A security check that
-    reports success when it did not run is worse than no check, because it
-    ends the investigation;
-  * extension-owned routines are excluded from both queries — revoking
-    pgcrypto's gen_random_uuid() would break DEFAULTs that call it;
-  * the queries stay the ones docs/RLS-AUDIT.md calls authoritative.
-
-The queries are exercised against a real PostgreSQL 16 in development (see the
-PR); CI has no Postgres, so everything here runs against a fake connection.
-
-Run: python3 -m unittest tests.test_rls_guard
+"""
+STORY    As an operator, I want the deploy-time row-security check to report
+         exposures without ever crashing a boot, and to say SKIPPED when it
+         could not run, so that the site stays up and nobody reads a false
+         "OK".
+OUTCOME
+  O1  Findings exit 0 without --strict (the boot path never passes it).
+  O2  An unreachable database says skipped, never "OK", and exits 2.
+  O3  Extension-owned routines and tables are excluded from both queries
+      (reads the SQL text: CI has no Postgres).
+  O4  The by-design allowlist is exactly the pinned set (it may only
+      shrink); anything not on it is still a finding.
+PROVES   O1 -> test_findings_alone_never_produce_a_nonzero_exit
+         O2 -> test_an_unreachable_database_says_skipped_never_ok
+         O3 -> test_extension_routines_are_excluded_from_both_queries
+         O4 -> test_the_allowlist_is_exactly_the_pinned_set,
+               test_anything_not_on_the_list_is_still_a_finding
+WHY      scripts/rls_guard.py runs in bin/railway-web.sh; docs/RLS-AUDIT.md.
 """
 from __future__ import annotations
 
@@ -98,6 +97,23 @@ class CannotFailABootTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("EXPOSURE FOUND", out)
 
+    def test_an_unreachable_database_says_skipped_never_ok(self):
+        import rls_guard
+        code, out = run_main([], exc=rls_guard.CannotRun("no DATABASE_URL"))
+        self.assertEqual(code, rls_guard.EXIT_CANNOT_RUN)
+        self.assertIn("skipped", out)
+        self.assertNotIn("OK", out)
+        code, out = run_main([], FakeConn())
+        self.assertEqual(code, 0)
+        self.assertIn("OK", out)
+
+    def test_extension_routines_are_excluded_from_both_queries(self):
+        import rls_guard
+        for query in (rls_guard.SQL_TABLES_WITHOUT_RLS,
+                      rls_guard.SQL_FUNCTIONS_ANON_CAN_EXECUTE):
+            self.assertIn("d.deptype = 'e'", query)
+            self.assertIn("NOT EXISTS (SELECT 1 FROM pg_depend d", query)
+
 
 class AnonExecutableByDesignTests(unittest.TestCase):
     """The allowlist, and the reasons it cannot become a place to hide things.
@@ -115,6 +131,12 @@ class AnonExecutableByDesignTests(unittest.TestCase):
 
     HOOK = "willab_pre_request()"
 
+    def test_the_allowlist_is_exactly_the_pinned_set(self):
+        import rls_guard
+        self.assertEqual(set(rls_guard.ANON_EXECUTABLE_BY_DESIGN), {self.HOOK})
+        code, out = run_main(["--strict"], conn=FakeConn(functions=[self.HOOK]))
+        self.assertEqual(code, 0)
+        self.assertIn("1 anon-callable by design", out)
 
     def test_anything_not_on_the_list_is_still_a_finding(self):
         code, out = run_main(

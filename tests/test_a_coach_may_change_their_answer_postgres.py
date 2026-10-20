@@ -22,12 +22,12 @@ Pins:
   * a changed answer that goes from shared to unshared leaves shared_at NULL
     (a withdrawn share), and from words to an exercise respects the row's
     shape checks;
-  * a coach's Take word keeps every earlier version too (0478, N79): a new
+  * a coach's Take word keeps every earlier version too (0479, N79): a new
     word, a re-draft or a new video moves the one before into
     coach_take_word_versions; a NULL being filled in, or the same text
     again, keeps none; a new video clears the old video's words on the row;
     only the trigger writes the history;
-  * a coach's answer video keeps its own words, by its ref (0480, N79): the
+  * a coach's answer video keeps its own words, by its ref (0481, N79): the
     recorder takes words for the video on the row or one the history keeps,
     and for no other; a failed try is retried in place and counted; done
     words are never written over; after a new video, the old one keeps its

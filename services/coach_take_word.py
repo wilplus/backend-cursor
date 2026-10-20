@@ -60,7 +60,7 @@ def _stored_ref(video_ref: Optional[str], take_session_id: str) -> Optional[str]
 def save_take_word(database: Any, *, take_session_id: str, coach_id: str,
                    body: Any) -> dict:
     """PUT: the coach's one word for this Take, replaced on its row on each
-    save (the database keeps every earlier version, 0478); `share: true`
+    save (the database keeps every earlier version, 0479); `share: true`
     sends it. Raises TakeWordRefusal for anything the coach can fix.
     Returns the payload the coach reads back."""
     text, video_ref, keep_video, share = _clean(body)
@@ -91,7 +91,7 @@ def _the_pair(database: Any, row: dict, *, coach_id: str, text: Optional[str],
               new_video: bool = True) -> None:
     """7 (C5-a, 0411): when a draft was shown and the coach's words differ,
     the (draft, final) pair; a video's transcript is a second final. The
-    draft the row carries is settled in coach_draft_history (0479): whether
+    draft the row carries is settled in coach_draft_history (0480): whether
     the saved words are that draft as written. All best-effort; the word is
     saved either way."""
     try:
@@ -103,7 +103,7 @@ def _the_pair(database: Any, row: dict, *, coach_id: str, text: Optional[str],
         record_take_word_pair(database, word_row=row, coach_id=coach_id, final_text=text)
         if not row.get("transcript") and (new_video or not row.get("video_ref")):
             # No video, or a new one not yet transcribed (the save cleared the
-            # old words): no video's words teach (0477). A kept video is left
+            # old words): no video's words teach (0478). A kept video is left
             # alone: its words may be landing right now, and no one sends it
             # to the transcriber again.
             record_take_word_pair(database, word_row=row, coach_id=coach_id,

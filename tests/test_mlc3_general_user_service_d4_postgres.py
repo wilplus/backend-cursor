@@ -1,27 +1,29 @@
-"""Adversarial PostgreSQL checks for numbered, disabled D4 migration 0326.
-
-The target must be a disposable local database cloned from the complete
-release schema with the pending D4 migration applied. No provider call, real
-media, production mutation, exposure, dataset or learning operation occurs.
 """
-
+STORY    As the founder, I want the general-user service tables locked to
+         browser roles and the candidate-set write repaired on the body
+         production runs, so that rollout cannot leak data or crash.
+OUTCOME
+  O1  Every D4 table forces RLS, authenticated has no write, and no rollout
+      revision is dataset-eligible.
+  O2  On the D4-rewritten candidate-set writer, the 0344 lock repair and the
+      0348 variable-conflict pragma both apply, keep D4's access guard, and
+      re-apply as a no-op.
+PROVES   O1 -> test_permissions_rls_and_learning_boundaries_are_closed
+         O2 -> test_the_candidate_set_writer_repairs_land_on_the_d4_body
+WHY      Production 42702, 2026-09-21: the writer had never been called.
+         O2 reads the function definition from the catalog; it does not call
+         the writer with a bundle (that needs the full V3 inventory harness).
+"""
 from __future__ import annotations
 
-import hashlib
 import os
+from pathlib import Path
 from uuid import uuid4
 
 import psycopg2
 import pytest
 from psycopg2 import sql
-from psycopg2.extras import Json, RealDictCursor
-
-from tests import test_mlc3_first_client_service_postgres as d2
-from tests.test_mlc3_dark_assignments_postgres import (
-    assign,
-    make_context,
-)
-from tests.test_mlc3_n1_source_pattern_postgres import profile, source_pattern
+from psycopg2.extras import RealDictCursor
 
 DSN = os.environ.get("MLC3_GENERAL_USER_REHEARSAL_DSN", "")
 pytestmark = pytest.mark.skipif(not DSN, reason="disposable D4 rehearsal only")
@@ -103,18 +105,6 @@ def one(db, statement: str, parameters=()):
     result = rows(db, statement, parameters)
     assert len(result) == 1
     return result[0]
-
-
-def rejected(db, statement: str, parameters=(), match: str | None = None):
-    with db.cursor() as cursor:
-        cursor.execute("SAVEPOINT expected_rejection")
-        try:
-            with pytest.raises(psycopg2.Error, match=match):
-                cursor.execute(statement, parameters)
-        finally:
-            cursor.execute("ROLLBACK TO SAVEPOINT expected_rejection")
-            cursor.execute("RESET ROLE")
-            cursor.execute("RELEASE SAVEPOINT expected_rejection")
 
 
 def service_rpc(db, name: str, *arguments):
@@ -206,119 +196,6 @@ def _enable_coach_review_for_fixture(db, context):
     )
 
 
-def _activate_ga(db, context):
-    _activate_contract(db)
-    _enable_coach_review_for_fixture(db, context)
-    user_id = one(
-        db,
-        "SELECT user_id FROM owner_principals WHERE id=%s",
-        (context["owner"],),
-    )["user_id"]
-    capacity_hash = one(
-        db,
-        "SELECT exercise_json_sha256_v1(%s::jsonb) AS value",
-        (Json(CAPACITY),),
-    )["value"]
-    risk = one(
-        db,
-        "SELECT * FROM register_mlc3_activation_risk_decision_v1("
-        "%s,%s,%s,%s,%s,%s,clock_timestamp()-interval '1 second',%s,%s)",
-        (
-            "4ee8cc5f1dda8cf5e727fefdaef12a1a96a85d9fcd01c74e8953564026bf1085",
-            "a" * 40,
-            "b" * 40,
-            "Founder explicitly accepted a GA-first zero-user rollout.",
-            capacity_hash,
-            user_id,
-            "founder-signed-test",
-            hashlib.sha256(f"ga-risk:{user_id}".encode()).hexdigest(),
-        ),
-    )
-    rollout = one(
-        db,
-        "SELECT * FROM register_mlc3_general_rollout_v2("
-        "%s,%s,%s::jsonb,%s::jsonb,%s,clock_timestamp(),%s)",
-        (
-            context["policy"],
-            risk["id"],
-            Json(CAPACITY),
-            Json({"language": "en-v1", "safety": "safety-v1"}),
-            user_id,
-            "d" * 64,
-        ),
-    )
-    return user_id, rollout
-
-
-def _general_offer_context(db):
-    context = make_context(db)
-    source = source_pattern(db, context, "confident")
-    for version in context["versions"]:
-        profile(db, version["id"], ["confident"])
-    # The dark-assignment foundation deliberately rejects source rows whose
-    # creating transaction has not committed yet.
-    db.commit()
-    assignment = assign(db, context)
-    service_rpc(
-        db, "freeze_exercise_n1_pattern_snapshot_v1",
-        assignment["id"], source["id"], str(uuid4()),
-    )
-    user_id, rollout = _activate_ga(db, context)
-    rows(
-        db,
-        "UPDATE processing_authorization_snapshots "
-        "SET source_recording_id=%s WHERE id=%s",
-        (context["recording"], context["snapshot"]),
-    )
-    rows(
-        db,
-        "UPDATE processing_recording_attempts "
-        "SET authorization_snapshot_id=%s WHERE id=%s",
-        (context["snapshot"], context["take"]),
-    )
-    rows(
-        db,
-        "UPDATE processing_audio_objects SET verified_at=clock_timestamp() "
-        "WHERE id=%s",
-        (context["object"],),
-    )
-    rows(
-        db,
-        "UPDATE snippets SET transcript=%s WHERE id=%s",
-        (
-            "We finish this phrase with steady deliberate pacing.",
-            context["snippet"],
-        ),
-    )
-    service_rpc(
-        db, "ensure_mlc3_service_enrollment_v2",
-        context["owner"], user_id, "general-flow-entry",
-    )
-    feedback = d2._service_membership(db, context)
-    render = service_rpc(
-        db, "ack_feedback_v3_service_render_v1",
-        context["owner"], feedback["owner_user"],
-        feedback["membership"]["id"], feedback["candidate_id"],
-        feedback["exposure_id"], str(uuid4()),
-        feedback["membership"]["content_identity_sha256"],
-        one(db, "SELECT clock_timestamp() AS value")["value"],
-        "d4-postgres", str(uuid4()),
-    )
-    response = service_rpc(
-        db, "record_feedback_v3_service_response_v1",
-        context["project"], context["take"], context["owner"],
-        feedback["owner_user"], feedback["membership"]["id"],
-        feedback["candidate_id"], feedback["exposure_id"], render["id"],
-        "confident_yes", str(uuid4()),
-    )
-    prepared = service_json_rpc(
-        db, "prepare_feedback_v3_service_context_v1",
-        feedback["membership"]["id"], feedback["candidate_id"],
-        context["owner"], str(uuid4()),
-    )
-    return context, user_id, rollout, feedback, response, prepared
-
-
 def test_permissions_rls_and_learning_boundaries_are_closed(db):
     tables = rows(
         db,
@@ -343,18 +220,34 @@ def test_permissions_rls_and_learning_boundaries_are_closed(db):
     )["n"] == 0
 
 
-# ---------------------------------------------------------------------------
-#  THE CANDIDATE-SET WRITE, CALLED FOR REAL (0348).
-#
-#  PRODUCTION, 2026-09-21: with 0344's parenthesis in place the write got
-#  past its lock for the first time and then raised 42702 on the first
-#  `WHERE row.candidate_set_id = candidate_set_id` — a bare name that is both
-#  the PL/pgSQL variable and a column of `row`. No test had ever CALLED this
-#  function: the D2 module writes candidate_sets rows by hand, and its only
-#  other mention is the privilege check. It lives here, not in D2, because
-#  this clone carries the lineage tables and the D4-rewritten body that
-#  production runs.
-# ---------------------------------------------------------------------------
+MIGRATIONS = Path(__file__).resolve().parents[1] / "migrations"
+WRITER = "public.record_feedback_v3_service_candidate_set_v1(uuid,uuid,uuid,jsonb)"
 
-MIGRATIONS = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "migrations")
+
+def _writer_definition(db) -> str:
+    return one(db, "SELECT pg_get_functiondef(to_regprocedure(%s)) AS value",
+               (WRITER,))["value"]
+
+
+def _apply(db, name: str) -> None:
+    with db.cursor() as cursor:
+        cursor.execute((MIGRATIONS / name).read_text())
+
+
+def test_the_candidate_set_writer_repairs_land_on_the_d4_body(db):
+    # The template is cut at 0326, before both repairs: the body production
+    # ran when 22P02 (0344) and then 42702 (0348) fired.
+    before = _writer_definition(db)
+    assert "#variable_conflict use_variable" not in before
+    for name in ("fix_candidate_set_advisory_lock_precedence.sql",
+                 "the_candidate_set_writer_resolves_its_own_variable.sql"):
+        _apply(db, name)
+    repaired = _writer_definition(db)
+    assert "#variable_conflict use_variable" in repaired
+    assert "(p_bundle->>'idempotency_key'), 0" in repaired
+    # The in-place repair kept D4's guard rather than reviving D2's text.
+    assert "require_mlc3_service_access_v2" in repaired
+    for name in ("fix_candidate_set_advisory_lock_precedence.sql",
+                 "the_candidate_set_writer_resolves_its_own_variable.sql"):
+        _apply(db, name)
+    assert _writer_definition(db) == repaired

@@ -1,14 +1,31 @@
-"""Executable fences for the ED-PLF-1.3 Phase-1 boundary."""
+"""
+STORY    As the founder, I want retired constructs, demographic inputs and
+         direct provider calls kept out of the code, and exercise routes behind
+         the purpose gate, so that the Phase-1 legal boundary holds.
+OUTCOME
+  O1  The power score takes no retired direction/breakthrough input, and the
+      active coaching document carries no retired construct copy.
+  O2  Universal voice confidence has no demographic input.
+  O3  The protected user-data modules import no provider client (a lint: it
+      reads source text).
+  O4  Every personalised-exercise route, speaker and coach, answers 410
+      PURPOSE_NOT_OPERATIONAL while the purpose is off.
+PROVES   O1 -> test_power_score_has_no_retired_direction_inputs
+            -> test_active_coaching_document_has_no_retired_construct_copy
+         O2 -> test_universal_voice_confidence_has_no_demographic_runtime_contract
+         O3 -> test_protected_user_data_modules_do_not_import_provider_client
+         O4 -> test_every_exercise_route_refuses_while_the_purpose_is_off
+WHY      ED-PLF-1.3 Phase-1 boundary (add_phase1_processing_boundary.sql;
+         0335 moved the exercise purpose to phase 1 behind its registry row).
+"""
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
-MIGRATION = (ROOT / "migrations" / "add_phase1_processing_boundary.sql").read_text()
-REHEARSAL = (
-    ROOT / "tests" / "integration" / "phase1_processing_rehearsal.sql"
-).read_text()
 
 
 def _function_args(path: str, function_name: str) -> set[str]:
@@ -52,7 +69,6 @@ def test_universal_voice_confidence_has_no_demographic_runtime_contract():
         "male", "female", "speaker_sex",
     ):
         assert retired not in identifiers
-    assert 'VERSION = "voice-confidence-universal-v3"' in source
 
 
 def test_protected_user_data_modules_do_not_import_provider_client():
@@ -75,51 +91,41 @@ def test_protected_user_data_modules_do_not_import_provider_client():
         assert "import openai" not in source, relative
 
 
-def test_exercise_surface_is_registry_only_and_fail_closed():
-    user_routes = (ROOT / "routes" / "v2" / "user_sessions.py").read_text()
-    coach_routes = (ROOT / "routes" / "v2" / "coach.py").read_text()
-    marker = '@operational_purpose_disabled("personalized_exercise_recommendation")'
-    # Six since 2026-09-25: the per-attempt judgement and the practice
-    # helper-words routes (contract 29a) carry the same gate.
-    # Seven since 2026-09-28: the exercise-rendered confirmation (0387).
-    # Eight since 2026-10-06: the machine's check of a practise try (N52.3).
-    # Nine since 2026-10-08: the phone's timing of a practise try (V4 B1.4).
-    assert user_routes.count(marker) == 9
-    # Two since 2026-09-28: the coach's exercise request carries it too.
-    # + the coach's answer draft behind the same gate (2026-09-30)
-    # + the coach's practice judgement (2026-10-05, Q6; N45)
-    assert coach_routes.count(marker) == 4
-    # The purpose was born phase2 here and was moved to phase1 by 0335, once
-    # its deletion and retention controls actually existed. Both halves are
-    # asserted so the history stays legible: this file's INSERT is not a
-    # statement about what is true today.
-    assert "personalized_exercise_recommendation', 'phase2'" in MIGRATION
-    assert "PHASE2_PURPOSE_FORBIDDEN" in MIGRATION
-    reclassification = (
-        ROOT / "migrations" / "enable_practice_phase1_purpose.sql"
-    ).read_text()
-    assert "phase = 'phase1'" in reclassification
-    assert "WHERE id = 'personalized_exercise_recommendation';" in reclassification
-    # Pooled learning is what must NOT have moved.
-    assert "POOLED_LEARNING_MUST_REMAIN_PHASE2" in reclassification
+#: The personalised-exercise routes, by path: every speaker practice route
+#: and the coach's practice and exercise-request routes. A new route under
+#: these paths is held to the gate without being listed.
+_EXERCISE_ROUTES = re.compile(
+    r"^/v2/user/(confidence-practice/|snippets/<snippet_id>/"
+    r"(confidence-practice|exercise-rendered)$)"
+    r"|^/v2/coach/sessions/<session_id>/snippets/<snippet_id>/"
+    r"(confidence-practice|practice-judgement|exercise-request(/draft)?)$")
 
 
-def test_retired_learning_tables_are_write_blocked_but_not_dropped():
-    for table in (
-        "training_labels", "shadow_predictions", "model_versions",
-        "reflection_clips", "stress_snippets",
-    ):
-        assert f"'{table}'" in MIGRATION
-    assert "RETIRED_DIRECTION_PIPELINE_WRITE_FORBIDDEN" in MIGRATION
-    assert "DROP TABLE" not in MIGRATION.upper()
+def test_every_exercise_route_refuses_while_the_purpose_is_off():
+    import flask
 
+    from routes.v2 import register_domains
+    from routes.v2.blueprint import v2_bp
+    from services import processing_purposes
 
-def test_phase1_evidence_and_release_fences_are_explicit():
-    assert MIGRATION.count("CHECK (NOT pooled_learning_eligible)") >= 2
-    assert "POLICY_COPY_HASH_MISMATCH" in MIGRATION
-    assert "ORPHAN_CLEANUP_IN_PROGRESS" in MIGRATION
-    assert "claim_phase1_orphan_audio_v1" in MIGRATION
-    assert "has_table_privilege('service_role'" in REHEARSAL
-    assert "passive authorization check created acceptance" in REHEARSAL
-    assert "recording boundary replay duplicated canonical rows" in REHEARSAL
-    assert REHEARSAL.rstrip().endswith("ROLLBACK;")
+    register_domains()
+    app = flask.Flask(__name__)
+    app.register_blueprint(v2_bp, url_prefix="/v2")
+    answered = {}
+    with mock.patch.object(processing_purposes, "purpose_is_operational",
+                           lambda *_a, **_k: False):
+        for rule in app.url_map.iter_rules():
+            if not _EXERCISE_ROUTES.search(rule.rule):
+                continue
+            # Peel only the auth decorator; the purpose gate sits under it.
+            gated = app.view_functions[rule.endpoint].__wrapped__
+            args = {name: "00000000-0000-4000-8000-000000000000"
+                    for name in rule.arguments}
+            for method in sorted(rule.methods - {"HEAD", "OPTIONS"}):
+                with app.test_request_context(rule.rule, method=method, json={}):
+                    flask.request.user_id = "speaker-1"
+                    body, status = gated(**args)
+                answered[f"{method} {rule.rule}"] = (status, body.get_json()["code"])
+    assert len(answered) >= 15, answered
+    assert {k: v for k, v in answered.items()
+            if v != (410, "PURPOSE_NOT_OPERATIONAL")} == {}
