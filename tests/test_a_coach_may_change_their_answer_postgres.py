@@ -13,11 +13,18 @@ OUTCOME
       empty, or the same word again, keeps nothing; a new video clears the
       old video's words; only the database writes the history, and the
       purge can read and delete it.
+  O6  A coach's answer video keeps its own words, by its ref: a failed try
+      is retried in place and counted; done words are never written over;
+      after a new video the old one, now in the history, keeps its words
+      and the new one gets its own; a video that is not this request's
+      takes no words; only the database writes them.
 PROVES   O1, O2, O3, O4 ->
              test_the_same_coach_changes_the_answer_and_every_earlier_one_stays
          O5 -> test_a_take_word_keeps_every_earlier_version
+         O6 -> test_an_answer_video_keeps_its_own_words
 WHY      Coach panel lock flows 7 and 12; Q-B12 A (migration 0446); a Take
-         word keeps every version, N79 (migration 0480).
+         word keeps every version, N79 (migration 0480); a coach's answer
+         video is kept in words, N79 (migration 0482).
 """
 from __future__ import annotations
 
@@ -201,3 +208,55 @@ def test_a_take_word_keeps_every_earlier_version(db):
             assert _row(db, "SELECT has_table_privilege(%s, %s, 'SELECT') AS can",
                         (role, WORDS))["can"] is False
 
+
+TRANSCRIPTS = "public.coach_answer_video_transcripts"
+RECORDER = "public.record_coach_answer_video_transcript_v1(uuid, text, text, text, text, text)"
+
+
+def _keep_words(db, request_id, ref, status, words=None):
+    return _row(db, f"SELECT * FROM {RECORDER.split('(')[0]}(%s, %s, 'coach-1', %s, %s, 'en')",
+                (request_id, ref, status, words))
+
+
+def test_an_answer_video_keeps_its_own_words(db):
+    request = _request(db)
+    old, new = "s3://b/coach-answers/u/r/1.mp4", "s3://b/coach-answers/u/r/2.mp4"
+    with db.cursor() as cur:
+        cur.execute("UPDATE public.exercise_coach_requests SET answer_video_ref = %s "
+                    "WHERE id = %s", (old, request["id"]))
+    failed = _keep_words(db, request["id"], old, "failed")
+    assert (failed["status"], failed["transcript"], failed["attempts"]) == ("failed", None, 1)
+    # The answer, then a new video: the old video goes into the history.
+    _resolve(db, request["id"], "coach-1", "line_written", text="Well said.")
+    _resolve(db, request["id"], "coach-1", "line_written", text="Well said.", video=new)
+    assert [h["answer_video_ref"] for h in _history(db, request["id"])] == [old]
+    # The old video, now only in the history, is retried in place.
+    done = _keep_words(db, request["id"], old, "done", "  Pause before the number.  ")
+    assert (done["id"], done["status"], done["transcript"], done["attempts"]) == (
+        failed["id"], "done", "Pause before the number.", 2)
+    assert done["transcribed_at"] is not None and done["language"] == "en"
+    assert (done["take_session_id"], done["snippet_id"]) == (request["take_session_id"],
+                                                             request["snippet_id"])
+    # Done words are never written over.
+    for status, words in (("done", "Something else."), ("failed", None)):
+        kept = _keep_words(db, request["id"], old, status, words)
+        assert (kept["status"], kept["transcript"], kept["attempts"]) == (
+            "done", "Pause before the number.", 2)
+    _keep_words(db, request["id"], new, "done", "Breathe, then the number.")
+    with db.cursor() as cur:
+        cur.execute(f"SELECT video_ref, transcript FROM {TRANSCRIPTS} WHERE request_id = %s",
+                    (request["id"],))
+        assert dict(cur.fetchall()) == {old: "Pause before the number.",
+                                        new: "Breathe, then the number."}
+    # A video that is not this request's takes no words: a stray ref, or
+    # another request's video.
+    other = _request(db)
+    for request_id, ref in ((request["id"], "s3://b/coach-answers/u/r/3.mp4"),
+                            (other["id"], old)):
+        with pytest.raises(psycopg2.Error, match="COACH_ANSWER_TRANSCRIPT_NOT_THIS_REQUESTS_VIDEO"):
+            _keep_words(db, request_id, ref, "done", "Words.")
+    # Only the recorder writes.
+    assert _row(db, "SELECT has_table_privilege('service_role', %s, 'INSERT') AS can",
+                (TRANSCRIPTS,))["can"] is False
+    assert _row(db, "SELECT has_function_privilege('service_role', %s, 'EXECUTE') AS can",
+                (RECORDER,))["can"] is True

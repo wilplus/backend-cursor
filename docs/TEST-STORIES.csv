@@ -36,9 +36,15 @@ O5  A coach's word on a Take keeps every earlier version: a new word, a
 new draft or a new video keeps the one before; filling in what was
 empty, or the same word again, keeps nothing; a new video clears the
 old video's words; only the database writes the history, and the
-purge can read and delete it.","O1, O2, O3, O4 ->
+purge can read and delete it.
+O6  A coach's answer video keeps its own words, by its ref: a failed try
+is retried in place and counted; done words are never written over;
+after a new video the old one, now in the history, keeps its words
+and the new one gets its own; a video that is not this request's
+takes no words; only the database writes them.","O1, O2, O3, O4 ->
 test_the_same_coach_changes_the_answer_and_every_earlier_one_stays
-O5 -> test_a_take_word_keeps_every_earlier_version","Coach panel lock flows 7 and 12; Q-B12 A (migration 0446); a Take word keeps every version, N79 (migration 0480)."
+O5 -> test_a_take_word_keeps_every_earlier_version
+O6 -> test_an_answer_video_keeps_its_own_words","Coach panel lock flows 7 and 12; Q-B12 A (migration 0446); a Take word keeps every version, N79 (migration 0480); a coach's answer video is kept in words, N79 (migration 0482)."
 tests/test_a_coach_pick_counts_postgres.py,Story,"As the founder, I want a coach's chosen exercise frozen once, with the reason it was chosen, and its showing receipted, so that what the speaker practises is traceable and never silently swapped.","O1  A coach pick is frozen once (a replay naming another exercise returns
 the first row) under the coach policy, with no seed and no draw.
 O2  Its match trace is stored once, with outcome coach_chosen.
@@ -498,7 +504,7 @@ O3  The Students screens' walk-take read stays off: 404 for a valid id,
 400 for a bad one.","O1 -> test_the_roster_shows_a_pseudonym_and_no_name_or_email
 O2 -> test_the_roster_carries_no_user_id
 O3 -> test_the_walk_take_read_stays_off","Founder 2026-10-01 (Phase 0b), N48.5 Q26 A. The profile drill-down (GET /v2/coach/students/<id>) is pinned whole in test_coach_route_contracts.py (StudentDetailContract)."
-tests/test_coach_take_word_permit.py,Story,"As a speaker, I want my coach's Take-word video transcribed only under my processing permit, and only when I said yes to training, so that my coach's recording about my talk is processed with my consent and never slows the coach's save.","O1  Enforce + my authority: my principal, the Take and recording None are
+tests/test_coach_take_word_permit.py,Story,"As a speaker, I want my coach's Take-word video, and a moment's answer video, transcribed only under my processing permit, and only when I said yes to training, so that my coach's recording about my talk is processed with my consent and never slows the coach's save.","O1  Enforce + my authority: my principal, the Take and recording None are
 on the permit (openai, transcription); the permit comes before the
 provider and the terminal event after it; the transcript is saved.
 O2  Enforce + refusal: no provider call, no transcript, a warning logged
@@ -506,7 +512,13 @@ with exc_info; the coach's word and video are still saved.
 O3  Mode off: no principal lookup, no permit, the call runs plainly.
 O4  Without my training yes nothing reaches the transcriber (N79).
 O5  A coach who edits only the words keeps the video, and it is not sent
-again; a null video removes it; a failed read stops the save.","O1 -> test_enforced_with_authority_permit_precedes_provider_and_saves
+again; a null video removes it; a failed read stops the save.
+O6  A moment's answer video (a first video, or a new video on a given
+answer) is written down after its upload, under my permit, and kept
+by its own ref (0482, N79); without my training yes, on the coach's
+own Take, or with the permit refused, nothing reaches the provider,
+and the upload succeeds either way (only a refusal is kept, as
+speaker_authorization_missing, for a later retry).","O1 -> test_enforced_with_authority_permit_precedes_provider_and_saves
 O2 -> test_enforced_permit_refused_no_transcript_and_logged
 test_refusal_still_saves_the_coach_s_word_and_video
 O3 -> test_mode_off_runs_plainly
@@ -516,7 +528,9 @@ O5 -> test_editing_only_the_words_keeps_the_video
 test_editing_only_the_words_never_sends_the_video_again
 test_a_null_video_removes_it
 test_a_word_only_edit_leaves_the_video_out_of_the_write
-test_a_failed_read_stops_the_save","PLF1 (founder 2026-10-05, N48.1): the video went to Whisper with no permit; N79 (founder 2026-10-19): only for the training yes."
+test_a_failed_read_stops_the_save
+O6 -> test_the_words_are_kept_by_the_video_s_ref_under_the_speaker_s_permit
+test_nothing_reaches_the_provider_without_the_yes_on_the_coach_s_own_take_or_a_permit","PLF1 (founder 2026-10-05, N48.1): the video went to Whisper with no permit; N79 (founder 2026-10-19): only for the training yes."
 tests/test_communities.py,Story,"As a speaker, I want to share a Take only with communities I belong to, revocably, with listeners hearing audio only, so that sharing is my choice and listeners judge blind.","O1  Clips the listener answered or labelled, and clips the quorum
 settled, are not queued again.
 O2  The listener's answers list shows each answer with its clip's sound,

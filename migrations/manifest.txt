@@ -517,3 +517,4 @@
 0479	a_take_word_pair_has_a_home.sql
 0480	a_take_word_keeps_every_version.sql
 0481	every_draft_keeps_its_prompt.sql
+0482	a_coach_answer_video_is_kept_in_words.sql

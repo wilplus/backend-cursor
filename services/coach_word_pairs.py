@@ -269,9 +269,10 @@ def record_moment_line_pair(database: Any, *, request_row: Any, coach_id: str,
                        prompt_snapshot=request_row.get("draft_prompt"))
 
 
-def _speaker_permit_adapter(database: Any, take_session_id: str) -> Any:
-    """The provider door for the coach's Take-word video (PLF1, founder
-    2026-10-05, N48.1).
+def speaker_permit_adapter(database: Any, take_session_id: str) -> Any:
+    """The provider door for a coach's video about a speaker's Take: the
+    Take word's (PLF1, founder 2026-10-05, N48.1) and a moment's answer
+    video (0482, N79; services.coach_answer_video).
 
     The video is the coach's, but it is about the speaker's Take and its
     transcript lands beside the speaker's words, so the permit is the
@@ -326,7 +327,7 @@ def take_video_object(ref: Any, take_session_id: str) -> Optional[tuple[str, str
     return (bucket, key) if bucket == default_media_bucket() else None
 
 
-def _worth_transcribing(database: Any, take: str, coach_id: str) -> bool:
+def worth_transcribing(database: Any, take: str, coach_id: str) -> bool:
     """A coach's video about a speaker's Take is sent to the transcriber only
     for a speaker who holds the training yes (founder 2026-10-19, N79: its
     words have no use but training), and never on the coach's own Take (an
@@ -358,9 +359,9 @@ def transcribe_take_word_video(database: Any, *, word_row: Any, coach_id: str) -
         if found is None:
             return None
         bucket, key = found
-        if not _worth_transcribing(database, take, coach_id):
+        if not worth_transcribing(database, take, coach_id):
             return None
-        adapter = _speaker_permit_adapter(database, take)
+        adapter = speaker_permit_adapter(database, take)
         audio = extract_audio_mp3_for_whisper(get_coach_object_bytes(bucket, key), max_seconds=600)
         # usage_surface stays "whisper_take", the ledger label this call
         # always carried (the transcriber's default); relabelling is a

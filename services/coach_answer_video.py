@@ -6,13 +6,21 @@ every read re-signs (``exercise_coach_requests.answer_video_url``); it rides `co
 answer is shared. Before the answer is given it is written to the row
 directly; once given, a new video is an answer change and goes through the
 resolver (0446), so the history keeps the old video. The route enforces
-the blind gate before this runs."""
+the blind gate before this runs.
+
+What the coach says in it is written down (0482; founder 2026-10-19, N79)
+in coach_answer_video_transcripts, by the video's ref, so a changed
+answer's old video keeps its own words: after the upload has returned, off
+the coach's request, audio extracted and transcribed through the SPEAKER's
+permit, as the Take word's video. Only for a speaker who holds the training
+yes, never on the coach's own Take. No pair is recorded."""
 from __future__ import annotations
 
 import logging
 import os
+import threading
 import uuid
-from typing import Any
+from typing import Any, Optional
 
 from werkzeug.utils import secure_filename
 
@@ -80,17 +88,20 @@ def store_answer_video(database: Any, *, request_row: Any, video_file: Any,
         return 502, {"code": "UPLOAD_FAILED", "error": "Failed to upload video to storage."}
     answered = bool(request_row.get("resolution"))
     if answered:
-        return _replace_resolved_video(database, request_row, url, coach_id)
+        return _replace_resolved_video(database, request_row, url, coach_id,
+                                       video_bytes=video_bytes)
     try:
         database.set_exercise_coach_request_video(request_id=str(request_row["id"]), video_ref=url)
     except Exception as e:  # noqa: BLE001 -- the file is stored; the row is not
         _log.error("answer video not kept request=%s: %s", request_row["id"], e, exc_info=True)
         return 500, {"code": "V2_ERROR", "error": "Could not keep the video."}
+    transcribe_answer_video_in_background(database, request_row=request_row, video_ref=url,
+                                          coach_id=coach_id, video_bytes=video_bytes)
     return 200, {"video_url": playable(url)}
 
 
 def _replace_resolved_video(database: Any, request_row: dict, url: str,
-                            coach_id: Any) -> tuple[int, dict]:
+                            coach_id: Any, *, video_bytes: bytes) -> tuple[int, dict]:
     """A new video on an answer already given (0446, Q-B12 A) is a change
     of that answer: it goes through the resolver with the answer as it
     stands, so the old answer and its video move into the history and the
@@ -114,7 +125,89 @@ def _replace_resolved_video(database: Any, request_row: dict, url: str,
         return 500, {"code": "V2_ERROR", "error": "Could not keep the video."}
     if not isinstance(resolved, dict):
         return 500, {"code": "V2_ERROR", "error": "Could not keep the video."}
+    transcribe_answer_video_in_background(database, request_row=request_row, video_ref=url,
+                                          coach_id=coach_id, video_bytes=video_bytes)
     return 200, {"video_url": playable(url)}
+
+
+def transcribe_answer_video(database: Any, *, request_row: Any, video_ref: str,
+                            coach_id: Any, video_bytes: bytes) -> Optional[str]:
+    """The answer video's words, kept by its ref (0482, N79): audio
+    extracted and transcribed through the speaker's permit
+    (``coach_word_pairs.speaker_permit_adapter``, as the Take word's video).
+    Only for a speaker who holds the training yes and never on the coach's
+    own Take (``coach_word_pairs.worth_transcribing``): otherwise nothing is
+    sent and no row is written; a doubt reads as no. A refusal of the
+    speaker's authority is kept as ``speaker_authorization_missing``; an
+    outage (a 5xx refusal: the provider or the authority unreachable) and
+    any other failure as ``failed``, so a later run can retry them. Best
+    effort, never raises: the video is already saved. The words, or None."""
+    if not isinstance(request_row, dict) or not request_row.get("id") or not video_ref:
+        return None
+    from services.coach_word_pairs import speaker_permit_adapter, worth_transcribing
+    from services.processing_authorization import ProcessingAuthorizationError
+    take = str(request_row.get("take_session_id") or "")
+    coach = str(coach_id or "").strip()
+    try:
+        if not take or not coach or not worth_transcribing(database, take, coach):
+            return None
+    except Exception as e:  # noqa: BLE001 -- a doubt about the yes reads as no
+        _log.warning("answer video words skipped request=%s: %s", request_row["id"], e,
+                     exc_info=True)
+        return None
+    status, words, language = "failed", None, None
+    try:
+        from services.ffmpeg_audio_extract import extract_audio_mp3_for_whisper
+        adapter = speaker_permit_adapter(database, take)
+        audio = extract_audio_mp3_for_whisper(video_bytes, max_seconds=600)
+        tr = adapter.transcribe_audio(audio, "answer-video.mp3",
+                                      usage_surface="coach_answer_video_transcription",
+                                      usage_user_id=None, usage_session_id=take)
+        if isinstance(tr, dict):
+            words = str(tr.get("text") or "").strip() or None
+            language = str(tr.get("language") or "").strip() or None
+        status = "done" if words else "failed"
+    except ProcessingAuthorizationError as refused:
+        # An outage is not a missing authority: it is kept as failed.
+        status = "failed" if refused.status >= 500 else "speaker_authorization_missing"
+        _log.warning("answer video words refused request=%s code=%s; the video is saved",
+                     request_row["id"], refused.code, exc_info=True)
+    except Exception as e:  # noqa: BLE001 -- the video is saved either way
+        _log.warning("answer video words failed request=%s: %s", request_row["id"], e,
+                     exc_info=True)
+    try:
+        database.record_coach_answer_video_transcript(
+            request_id=str(request_row["id"]), video_ref=str(video_ref), coach_id=coach,
+            status=status, transcript=words, language=language)
+    except Exception as e:  # noqa: BLE001 -- the video is saved either way
+        if "COACH_ANSWER_TRANSCRIPT_NOT_THIS_REQUESTS_VIDEO" in str(e):
+            # Replaced before the answer was given, and before its words were
+            # kept: it never reached the speaker. A replacement that lands
+            # after the words leaves the row (0482 header: readers filter).
+            _log.info("answer video words not kept request=%s: the video was replaced",
+                      request_row["id"])
+        else:
+            _log.warning("answer video words not kept request=%s: %s", request_row["id"], e,
+                         exc_info=True)
+        return None
+    return words
+
+
+def transcribe_answer_video_in_background(database: Any, *, request_row: Any, video_ref: str,
+                                          coach_id: Any, video_bytes: bytes) -> None:
+    """The same, off the coach's request: ffmpeg and the transcriber never
+    hold the upload (coaches never slow the loop), nor the pipeline queue."""
+    if not isinstance(request_row, dict) or not video_ref:
+        return
+    try:
+        threading.Thread(
+            target=transcribe_answer_video, args=(database,),
+            kwargs={"request_row": dict(request_row), "video_ref": str(video_ref),
+                    "coach_id": coach_id, "video_bytes": video_bytes},
+            name="coach-answer-transcript", daemon=True).start()
+    except Exception as e:  # noqa: BLE001 -- the video is saved; its words wait for a retry
+        _log.warning("answer video words not started request=%s: %s", request_row.get("id"),
+                     e, exc_info=True)
 
 
 def erase_for_user(user_id: Any) -> int:
