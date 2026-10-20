@@ -2633,56 +2633,17 @@ rules and the new words: `FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`
 ("Decided after the lock (2026-10-20, Will's questions, N83)"); flow page E5.
 
 **N84 · A Good job only when clearly better, and the AI voice on time
-(founder, chat, 20 October 2026).** Two of N82's open items, decided with
-it: "Good job means clearly better, as locked" and "start the voice copy
-at upload and show the clip whenever it lands":
-- **A Good job only when clearly better.** The practise check said "better"
-  on any rise of the voice-confidence composite, however small. It now
-  needs the lock's margin, +0.05 (`after_practice.GOOD_JOB_MARGIN`; section
-  6 of the moment-and-feedback lock), for a Good job on the voice alone. A
-  cleared problem or a cue moved by at least half a within-speaker
-  deviation still counts as before, and a clearer version's try with no
-  sound read is still a Good job. A smaller rise is a not yet, so the AI
-  version of their voice gets its turn. The coach's outcome rule
-  (`practice_more_confident`, "any increase", in the database) is not this
-  check and is unchanged.
-- **The voice copy starts at upload.** It used to start only at the very end
-  of the Take's processing, after the bake that warms the clip had already
-  skipped for want of a voice. It now starts as the spoken Take is stored,
-  beside its processing, with the same gates, permits and daily cap; the
-  pipeline's own ask at its end stays (a voice on its way is not asked
-  twice). The walk keeps asking for the clip after its first minute and
-  shows it whenever it lands (frontend).
-- **What stops happening:** a voice that is only a hair surer no longer
-  gets a Good job; nothing else.
+(founder, chat, 20 October 2026).** A Good job on the voice alone needs the
+lock's +0.05 margin (`after_practice.GOOD_JOB_MARGIN`); the voice copy starts
+as the spoken Take is stored, beside its processing, and the walk shows the
+clip whenever it lands. Two of N82's open items. The rules: flow page C7 and
+H2. No migration.
 
 **N85 · The walk spots words that undermine the speaker (founder, chat, 20
-October 2026).** The ask: the walk "spots my negative thinking patterns";
-"undermining or poorly formulated words" get the clearer version ("try it
-and see if it gives you confidence"). The patterns the founder chose:
-hedging and self-doubt, playing the product or the idea down, apologising
-and asking permission. The signed prototype
-<https://claude.ai/artifact/HSRfvDZLDRQizmGJDxMUJz> shows the clearer
-version naming it with B10's "Say what you mean. Don't dance around it,
-just say it straight." and B13's "Try saying it like this:":
-- **The words check** (`rewrite_gate.words_need_help`) now also needs help
-  for words that undermine the speaker: one is enough ("sorry", "if that's
-  okay", "does that make sense", "just a small thing", "it's not much",
-  "I'm not sure", "I might be wrong" and their kind; closed English lists
-  in `services/undermining.py`, ambiguous words like "just" or "hope"
-  left out). Hedges keep their rate of 3 per 100 words.
-- **A rule writes the clearer version** (`take_feedback_manager.
-  _undermining_rewrites`): the same sentence with its apologies, asks for
-  permission, self-doubt and softening hedges left out, never a word
-  added ("Sorry, I think we could maybe match their price, if that's
-  okay." → "We could match their price."). A playing-down phrase that
-  would have to be rewritten makes no rule rewrite, and the moment keeps
-  the voice exercise.
-- **The gate** counts fewer undermining words as a real fix; every other
-  check (in the clip, still theirs, sayable) is unchanged.
-- **The walk names it:** the row carries `rewrite_reason: "undermining"`,
-  and the clearer version shows B10's first line and "Try saying it like
-  this:" in place of the rotating opener (signed lines, a new place).
-- **What stops happening:** a moment whose only problem is undermining
-  words no longer goes to the voice exercise when a clean version exists.
-
+October 2026).** One undermining word (apologising, asking permission,
+self-doubt, playing the idea down; closed lists in `services/undermining.py`)
+makes the words need help; a rule writes the clearer version with them left
+out, never a word added; it opens with B10's first line and B13's "Try saying
+it like this:" (the signed prototype
+<https://claude.ai/artifact/HSRfvDZLDRQizmGJDxMUJz>). The rules and the
+words: flow page C5, H3, K. No migration.
