@@ -878,6 +878,16 @@ if [ "$LANE" = "released" ]; then
   hard migrations/a_take_word_pair_has_a_home.sql
 fi
 
+# 0480 (founder 2026-10-19, N79): a Take word keeps every version. One
+# history table and the BEFORE UPDATE trigger on coach_take_words (0403)
+# that writes it. Released lane only: it copies draft_prompt (0459). After
+# 0479, as in the manifest. Twice: apply/reapply idempotency. Its case is in
+# tests/test_a_coach_may_change_their_answer_postgres.py.
+if [ "$LANE" = "released" ]; then
+  hard migrations/a_take_word_keeps_every_version.sql
+  hard migrations/a_take_word_keeps_every_version.sql
+fi
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

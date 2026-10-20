@@ -27,12 +27,18 @@ O3  Never-2: the ask carries no reason, answer or machine read, by the
 table's shape (only take, moment, coach, line key and two times).","O1 -> test_the_flag_asks_every_coach_of_record_once_and_only_them
 O2 -> test_an_answer_closes_the_ask_and_the_next_flag_rotates_the_line
 O3 -> test_an_answer_closes_the_ask_and_the_next_flag_rotates_the_line","0444 (QG12a A, P26c): the coach's second answer must stay blind."
-tests/test_a_coach_may_change_their_answer_postgres.py,Story,"As a coach, I want to change my answer to a speaker's request and have every earlier answer kept, so that I can correct myself without losing the record.","O1  Giving the same answer again changes nothing.
+tests/test_a_coach_may_change_their_answer_postgres.py,Story,"As a coach, I want to change my answer to a speaker's request, or my word on a Take, and have every earlier one kept, so that I can correct myself without losing the record.","O1  Giving the same answer again changes nothing.
 O2  A different answer replaces what the speaker sees; the old one, with
 its words, video and share, is kept as version 1, 2, 3.
 O3  A new answer that is not shared withdraws the earlier share.
-O4  Changing from words to an exercise keeps the answer well-formed.","O1, O2, O3, O4 ->
-test_the_same_coach_changes_the_answer_and_every_earlier_one_stays",Coach panel lock flows 7 and 12; Q-B12 A (migration 0446).
+O4  Changing from words to an exercise keeps the answer well-formed.
+O5  A coach's word on a Take keeps every earlier version: a new word, a
+new draft or a new video keeps the one before; filling in what was
+empty, or the same word again, keeps nothing; a new video clears the
+old video's words; only the database writes the history, and the
+purge can read and delete it.","O1, O2, O3, O4 ->
+test_the_same_coach_changes_the_answer_and_every_earlier_one_stays
+O5 -> test_a_take_word_keeps_every_earlier_version","Coach panel lock flows 7 and 12; Q-B12 A (migration 0446); a Take word keeps every version, N79 (migration 0480)."
 tests/test_a_coach_pick_counts_postgres.py,Story,"As the founder, I want a coach's chosen exercise frozen once, with the reason it was chosen, and its showing receipted, so that what the speaker practises is traceable and never silently swapped.","O1  A coach pick is frozen once (a replay naming another exercise returns
 the first row) under the coach policy, with no seed and no draw.
 O2  Its match trace is stored once, with outcome coach_chosen.

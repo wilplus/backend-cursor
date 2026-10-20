@@ -59,9 +59,10 @@ def _stored_ref(video_ref: Optional[str], take_session_id: str) -> Optional[str]
 
 def save_take_word(database: Any, *, take_session_id: str, coach_id: str,
                    body: Any) -> dict:
-    """PUT: the coach's one word for this Take, replaced on each save;
-    `share: true` sends it. Raises TakeWordRefusal for anything the coach
-    can fix. Returns the payload the coach reads back."""
+    """PUT: the coach's one word for this Take, replaced on its row on each
+    save (the database keeps every earlier version, 0480); `share: true`
+    sends it. Raises TakeWordRefusal for anything the coach can fix.
+    Returns the payload the coach reads back."""
     text, video_ref, keep_video, share = _clean(body)
     video_ref = _stored_ref(video_ref, str(take_session_id))
     row = database.upsert_coach_take_word(
