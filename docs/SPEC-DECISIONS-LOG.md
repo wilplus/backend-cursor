@@ -2672,3 +2672,57 @@ lock (2026-10-19, the saved video, N80)") and
 speaker's read side first (backend), the coach panel's saved video and the
 speaker's coach bubble (frontend), the same word again (backend, after the
 speaker's side is live) and #1127's training-yes gate. No new migration.
+
+**N81 · The lens is one chat (founder, chat, 20 October 2026; WIL-89).** The
+ask: "make the lens view a chat, not the screen changing, so it syncs the
+Lounge", with the moment, the rewrite and the practice as one continuous
+conversation, moved on only by taps ("you can just click, but it appears as
+bubbles … you can scroll through the walk"). The founder approved the
+clickable prototype <https://claude.ai/artifact/P5fHFguyCgjhMGPsmH7UaD>
+("that is absolutely insanely great … can you build it that way?") and
+added one rule: "always after the click scroll to the bottom so I can see
+your newest answer". Amends sections 1 and 2 of the moment-and-feedback-chat
+lock:
+- **One thread, nothing swaps.** Every step of the walk reached lands under
+  the one before in the lens; the earlier steps stay above to scroll back
+  to. The lens keeps its sizes (18.5px, 22px corners) and its ‹ › and ✕;
+  there is still no message box.
+- **The step's buttons are a dock under the thread.** A choice (the helper
+  words, Accept and practise, Keep my words, Skip, 👍 Yes) lands as the
+  speaker's own orange bubble, the same words the Lounge stores, then the
+  next step's bubbles land one after the other.
+- **After every tap the thread scrolls to the bottom**, so the newest
+  bubble is in view; it keeps following new bubbles until the speaker
+  scrolls up by hand.
+- **Every practise is one thread**, the clearer version's too: the words to
+  say, then the recorder in the dock (the strip, Skip and the red Stop),
+  the try as "Practise N", the breathing mark while it is checked, then the
+  answer. The separate "Practise · Slide N" recorder screen and the check
+  and answer screens are gone. Tries, lines, AI clips and the three-try
+  rule are unchanged.
+- **Other speakers** land one by one, each with its name ("Other speakers ·
+  2 of 3") and the speaker's answer as their bubble; the three cards and
+  "Audio unclear" are the dock.
+- **Each step opens with its name** as a small line in the thread ("Slide
+  2", "Slide 2 · helper words", "Take 2"); the bar shows the step in view,
+  and ‹ › scroll to the step before or after. They no longer jump to a
+  step outside this opening of the walk; the Lounge holds every step.
+- **The Lounge says the same words.** It stores the practise answer's line
+  as the lens showed it (it used to work the line out again, so from the
+  second try on it could differ); Practise and Practise again no longer
+  write a bubble of their own (the try is the speaker's bubble); the label
+  above a moment is its slide ("Slide 2"), no longer "Slide 2 · moment 1 of
+  2".
+- **The open questions take the prototype's defaults, as approved:** the
+  bubbles of a step land one after another; Next and Continue post nothing;
+  the recorder sits under the thread; the helper-word picker is a big
+  bubble in the thread; each step opens with its name.
+- **No new words.** Everything on screen is signed already.
+- **The approval**, the last line of every commit that changes a locked file
+  for this: "Founder-Approved: Artur in the Claude Code chat, 20 October
+  2026: approved the prototype
+  https://claude.ai/artifact/P5fHFguyCgjhMGPsmH7UaD (WIL-89, the lens as
+  one chat), and after every tap the thread scrolls to the newest bubble".
+Lock: `FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md` ("Decided after the
+lock", "The lens is one chat"). Frontend only; no backend change, no
+migration.
