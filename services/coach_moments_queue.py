@@ -428,6 +428,21 @@ def _no_goal(_user_id: Any) -> Optional[str]:
     return None
 
 
+def talk_setup(row: Any) -> tuple[Optional[str], Optional[str]]:
+    """Who the Take's talk is for and what the speaker wants the audience to
+    do, in the speaker's own words: the setup's ``audience`` and its
+    "Desired call to action:" line, filled by Will's questions (N82).
+    Founder 2026-10-20 (N87): the coach sees both under the speaker's goal,
+    from the newest Take that has them. Never a name; None when the speaker
+    has not said. Pure."""
+    ctx = row.get("intake_context") if isinstance(row, dict) else None
+    ctx = ctx if isinstance(ctx, dict) else {}
+    from services.will_question import call_to_action
+    audience = str(ctx.get("audience") or "").strip() or None
+    ask = call_to_action(ctx.get("strategic_context")) or None
+    return audience, ask
+
+
 def _goal_text(profile: Any) -> Optional[str]:
     goal = profile.get("goal") if isinstance(profile, dict) else None
     if not isinstance(goal, str):
@@ -521,6 +536,7 @@ def moments_queue(
             "waiting_for_text": bookmarked is None,
             "answered_at": answered_at(moments, ratings, request_for, session_id),
         }
+        take["audience"], take["call_to_action"] = talk_setup(row)
         speaker = speakers.get(key)
         if speaker is None:
             speaker = {"pseudonym": pseudonym_for(row.get("user_id")),

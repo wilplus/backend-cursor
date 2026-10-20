@@ -35,6 +35,10 @@ def speakers_summary(queue: list[dict]) -> list[dict]:
                 "waiting_for_text": waiting_for_text,
                 "answered": (not waiting_for_text) and waiting == 0,
                 "answered_at": take.get("answered_at"),
+                # Who the talk is for and what they should do, the speaker's
+                # own words (founder 2026-10-20, N87); None when not said.
+                "audience": take.get("audience"),
+                "call_to_action": take.get("call_to_action"),
             })
         out.append({
             "pseudonym": speaker.get("pseudonym"),

@@ -486,6 +486,12 @@ is skipped and the rest are still written.","O1 -> test_an_audit_item_takes_one_
 O2 -> test_the_coach_sheets_are_blind
 O3 -> test_no_training_yes_writes_no_block_pick
 O4 -> test_a_refused_block_pick_is_skipped_and_the_rest_are_written","Founder 2026-10-01 (F6, C5-b). O4: a Take has one frame per policy version sharing block ids, and an insert refused by coach_block_pick_once (a 500) emptied the coach's queue."
+tests/test_coach_queue_talk_setup.py,Story,"As a coach, I want to see who a speaker's talk is for and what they want the audience to do, in the speaker's own words, next to their goal, so that I judge and answer knowing what the talk is trying to do.","O1  The queue carries, per Take, the setup's audience and its call to
+action as the speaker said them (filled by Will's questions), None
+when they have not said; never a name, never a score.
+O2  The Speakers list passes both through for every Take and still
+carries no moment.","O1 -> test_the_queue_carries_who_the_talk_is_for_and_what_they_should_do
+O2 -> test_the_speakers_list_passes_both_through","Founder 2026-10-20 (N87; flow page coach-panel, C3), on the prototype https://claude.ai/artifact/UiZzNZs5623NkforaeR4PM."
 tests/test_coach_reach_alarm.py,Story,"As the founder, I want an alarm when new speakers' moments stop reaching the coaches, so that I hear of it from Sentry, not from an empty queue.","O1  The 3 newest Takes with moments, sent over 6 hours ago, none of them
 reached: one warning, once a day.
 O2  One of them reached, or a Take is too fresh to judge: no warning.","O1 -> ReachAlarmTests::test_fires_once_a_day_when_nothing_new_reached
