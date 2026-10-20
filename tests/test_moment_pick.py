@@ -1,4 +1,20 @@
-"""Which moments a Take shows (founder lock 2026-10-12, section 6)."""
+"""
+STORY    As a speaker, I want each Take to show one moment to be proud of and the
+         next-best one to practise, so that feedback always gives me praise and
+         a next step.
+OUTCOME
+  O1  The best moment is the praise and the second best (long enough to
+      count) is the exercise; if its words need help, it opens on a clearer
+      version.
+  O2  When no moment is strong enough, the single best is shown softly as the
+      praise and the next one is a voice exercise.
+  O3  When no sound was read, the words alone still pick a soft praise moment
+      and an exercise.
+PROVES   O1 -> test_one_praise_moment_and_the_second_best_to_practise
+         O2 -> test_no_moment_above_the_floor_shows_the_single_best_softly
+         O3 -> test_with_no_sound_read_the_words_still_pick_a_praise_and_a_practise
+WHY      Founder lock 2026-10-12 section 6; founder 2026-10-17 and 2026-10-18.
+"""
 from services.moment_pick import pick, read
 
 

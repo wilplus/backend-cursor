@@ -1,5 +1,13 @@
-"""Closing an account deletes every coach answer video kept for that
-speaker (founder 2026-10-15, fix 5; Privacy 3.6 §7), and only theirs."""
+"""
+STORY    As a speaker who closes my account, I want every coach answer video
+         made for me deleted, and no one else's, so that my data really
+         goes.
+OUTCOME
+  O1  All of my coach answer videos are deleted and counted.
+  O2  Another speaker's videos stay.
+PROVES   O1, O2 -> test_closing_an_account_deletes_that_speakers_answer_videos_only
+WHY      Founder 2026-10-15, fix 5; Privacy 3.6 section 7.
+"""
 from __future__ import annotations
 
 from unittest.mock import patch

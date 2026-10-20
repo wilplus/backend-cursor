@@ -1,4 +1,11 @@
-"""Speaker-disjoint split contract for the Confident Voice corpus."""
+"""
+STORY    As the founder, I want each speaker's clips kept in one split, so
+         that the confidence model is never tested on voices it trained on.
+OUTCOME
+  O1  All of one speaker's clips fall in one partition.
+  O2  The split check reports no leakage.
+PROVES   O1, O2 -> ManifestTests::test_every_clip_from_one_speaker_stays_together
+"""
 from __future__ import annotations
 
 import unittest

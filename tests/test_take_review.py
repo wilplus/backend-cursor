@@ -1,4 +1,18 @@
-"""Later-Take Ideal Text review finalization and immutable feedback sets."""
+"""
+STORY    As a speaker, I want Take 2 to rewrite only the slides I spoke and
+         keep the others and my helper words, so that my Ideal Text is what I
+         said last and nothing is lost.
+OUTCOME
+  O1  The slide I spoke in Take 2 is rebuilt from what I said; the slide I
+      did not speak keeps its words.
+  O2  My earlier edit is not carried over; it stays at its own version.
+  O3  Each Paragraph keeps its id, and my locked helper words move to their
+      slide.
+PROVES   O1 -> EveryTakeRewritesTheSlidesItSpoke::test_the_spoken_slide_is_rebuilt_and_the_other_is_kept
+         O2 -> EveryTakeRewritesTheSlidesItSpoke::test_the_spoken_slide_is_rebuilt_and_the_other_is_kept
+         O3 -> EveryTakeRewritesTheSlidesItSpoke::test_the_spoken_slide_is_rebuilt_and_the_other_is_kept
+WHY      Never-rule 5; founder 2026-09-25 (contracts 8-9).
+"""
 from __future__ import annotations
 
 import unittest

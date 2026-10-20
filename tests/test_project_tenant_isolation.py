@@ -1,4 +1,12 @@
-"""Adversarial query-shape tests for Project/Take tenant isolation."""
+"""
+STORY    As a speaker, I want my Take found only when the Take, the project
+         and the owner all match, so that no one can read my Take by guessing
+         ids.
+OUTCOME
+  O1  Looking up my Take with the right project but someone else as owner
+      returns nothing, because all three ids are checked together.
+PROVES   O1 -> test_take_lookup_requires_take_project_and_owner_coordinates_together
+"""
 from __future__ import annotations
 
 from types import SimpleNamespace

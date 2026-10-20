@@ -1,11 +1,24 @@
-"""One Manager per document (founder 2026-10-14, the blank lens screen).
-
-The bake is enqueued the moment a Take flips ready and the speaker's screen
-asks for the marks within the same second. The reader used to run the whole
-Manager live beside the bake worker's identical run. These pin the contract:
-a reader that finds a bake in flight answers "ask me again" at once, never
-computes a second copy and never holds the request while it waits; the next
-read is served the bake's row.
+"""
+STORY    As a speaker, I want my feedback marks to appear quickly and the same
+         every time, without the server working them out twice, so that the
+         page never goes blank or slow.
+OUTCOME
+  O1  If the marks are already being prepared (by the background job or by
+      another request), I am told at once to ask again, nothing is worked out
+      a second time, and my next ask gets the finished marks.
+  O2  With nothing in progress, the marks are worked out right away, as
+      before, and stored.
+  O3  Repeated asks that find no marks are answered from memory, not
+      recomputed, until I answer an item or it is a new version; an empty
+      answer before the Take is ready is not remembered.
+  O4  A stored mark gets a fresh audio link, read for its own clip only.
+PROVES   O1 -> test_a_reader_finding_a_bake_in_flight_asks_again_and_never_recomputes,
+               test_a_second_reader_during_a_live_run_asks_again_and_never_recomputes
+         O2 -> test_without_a_bake_in_flight_the_reader_computes_live_as_before
+         O3 -> test_the_settle_loops_repeat_asks_are_served_the_remembered_empty,
+               test_an_empty_computed_before_the_take_is_ready_is_not_remembered
+         O4 -> test_a_stored_bookmark_is_served_a_fresh_clip_read_for_it_alone
+WHY      Founder 2026-10-14 (blank lens screen) and 2026-10-15 (six runs in 31 s).
 """
 from __future__ import annotations
 

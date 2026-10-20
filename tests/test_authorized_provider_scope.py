@@ -1,25 +1,13 @@
-"""A fire-and-forget thread keeps the Take's provider authority.
-
-B-6 (major), ML provenance audit 2026-09-22.
-
-`threading.Thread` does not copy contextvars — a raw daemon thread starts with
-an EMPTY context. Four fire-and-forget dispatches started one from inside
-`protected_provider_scope`, so in the child thread
-`authorize_protected_generation` found no scope, returned `(None, None)`, and
-`llm.chat_complete` went to the provider with the speaker's transcript and no
-permit. Nothing raised and nothing was logged: no
-`processing_provider_permits` row and no `processing_provider_operations` row,
-so the purge subject graph never learns the transcript left the building and
-the provider-deletion contract has nothing to act on.
-
-`services.parallel.run_parallel` already had this right. The defect was that
-the rule lived at that one call site rather than in a named function, so the
-next four people who needed a thread wrote `threading.Thread(...)`.
-
-These cases assert the PROPERTY (the scope survives the thread boundary) and
-then the four call sites that had lost it, by source — a source assertion is
-weak evidence on its own, which is why the property case above it drives the
-real helper across a real thread.
+"""
+STORY    As the founder, I want every outside AI call made from a background
+         thread to carry the speaker's permit, so that no transcript leaves
+         our servers without a record we can later delete.
+OUTCOME
+  O1  Work started with start_scoped_thread inside a protected scope gets
+      a permit, issued by the same authority.
+PROVES   O1 -> TestTheScopeSurvivesAThread::test_fanout_threads_inherit_protected_scope
+WHY      B-6, ML provenance audit 2026-09-22: four background threads called
+         the provider with no permit and nothing was recorded.
 """
 from __future__ import annotations
 

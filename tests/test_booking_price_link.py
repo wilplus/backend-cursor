@@ -1,5 +1,19 @@
-"""A price link (founder 2026-10-18): whoever books through it pays exactly
-its price, now, by card; an edited link is ignored."""
+"""
+STORY    As the founder, I want to send a price link that charges exactly its
+         price, by card, now, so that special prices can't be tampered with
+         or used without paying.
+OUTCOME
+  O1  A link charges exactly its price, with no first-lesson discount;
+      without the link the normal price and discount apply.
+  O2  An edited link gives the normal price.
+  O3  A link cannot be used to book without paying now (PAY_NOW).
+  O4  A link set to zero shows no price and charges nothing.
+PROVES   O1 -> test_link_charges_its_exact_price_with_no_first_lesson_discount
+         O2 -> test_an_edited_link_gives_the_normal_price
+         O3 -> test_a_link_cannot_book_without_paying
+         O4 -> test_a_link_at_zero_shows_no_price_and_charges_nothing
+WHY      Founder 2026-10-18.
+"""
 from __future__ import annotations
 
 from unittest.mock import patch

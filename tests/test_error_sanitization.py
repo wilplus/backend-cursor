@@ -1,12 +1,17 @@
-"""P0 audit 2026-08-03 — nothing leaks to the client.
-
-Covers the three findings in one place:
-  * ``utils.errors.scrub`` actually removes the secret/path shapes it
-    claims to;
-  * the global handler answers JSON with generic copy and no exception
-    text in a production-shaped environment;
-  * ``safe_error`` keeps the ``{code, error}`` envelope the FE already
-    parses, so this is a sanitization change and not a contract change.
+"""
+STORY    As a speaker, I want any error to show me only generic text, with no
+         internal paths or secrets, even if a deploy setting is wrong, so that
+         nothing private leaks to my browser.
+OUTCOME
+  O1  An unexpected error answers 500 with a generic JSON code and none of the
+      error's text, file paths or keys.
+  O2  A deployed app with debug switched on still leaks no key, path or
+      traceback.
+  O3  No route file hands raw exception text back to the browser.
+PROVES   O1 -> GlobalHandlerTests::test_uncaught_exception_returns_generic_json
+         O2 -> DeployedNeverReRaisesTests::test_a_deployed_app_with_debug_on_leaks_nothing
+         O3 -> RouteSweepTests::test_no_route_returns_raw_exception_text
+WHY      P0 audit 2026-08-03: nothing leaks to the client.
 """
 from __future__ import annotations
 

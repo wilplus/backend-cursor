@@ -1,4 +1,12 @@
-"""Disposable PostgreSQL tests for the disabled N1 pattern foundation."""
+"""
+STORY    As a speaker who asks for deletion, I want every practice-pattern row
+         about me found under my identity, so that erasure misses nothing.
+OUTCOME
+  O1  The deletion list finds every row of each practice-pattern table (N1)
+      under my identity, in the expected numbers.
+PROVES   O1 -> test_deletion_inventory_attributes_every_n1_row_to_acquisition_principal
+WHY      Rehearsal database only; the N1 pattern feature is disabled.
+"""
 from uuid import uuid4
 
 import pytest

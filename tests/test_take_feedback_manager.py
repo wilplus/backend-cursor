@@ -1,3 +1,12 @@
+"""
+STORY    As a speaker, I want every required kind of feedback (Confident
+         Voice, a Clearer version, praise) to reach me, so that an old focus
+         rule cannot silently drop one.
+OUTCOME
+  O1  With the current feedback contract, all three required kinds are
+      kept even when an older focus rule points at one Paragraph.
+PROVES   O1 -> test_mvp_contract_does_not_let_old_focus_gate_drop_a_required_lane
+"""
 
 from services.intervention_candidates import select
 
