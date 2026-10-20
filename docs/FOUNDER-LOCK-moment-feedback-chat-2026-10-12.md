@@ -224,6 +224,31 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
 
 ## Decided after the lock
 
+- **A paragraph's walk** (founder, Claude Code chat, 2026-10-20: "if there
+  is still something not answered, it should first display and you answer
+  … and then you close it … when you click the walk that has no things to
+  be answered … it should open the whole walk that you can scroll through,
+  but no buttons"; each choice the recommended one). Amends "Walk first"
+  below ("Next walks on from there to the end"; the black line "on every
+  paragraph that opens a step"):
+  - **The black line means something still waits.** Only a paragraph with
+    a step still to answer wears it. Once answered, the line goes.
+  - **A paragraph with the black line opens on what it asks:** its helper
+    words, with its green moment just above them in the chat; the clearer
+    version or the Exercise when that is what waits. The green moment still
+    reaches the chat and the coach's queue.
+  - **Once that paragraph has nothing left, the walk closes by itself** onto
+    the Ideal Text. It does not walk on to other paragraphs, other speakers
+    or the summary; those stay behind "Continue review".
+  - **A paragraph without the line opens the whole finished walk** as one
+    chat to scroll through, at that paragraph's part, with no buttons: only
+    ‹ › and ✕ in the bar. Other speakers and the summary are not in it.
+  - **Orange helper words still open their helper-words step,** to pick new
+    ones (rule 5).
+  - **From the Lounge nothing changes:** a bubble opens its step with
+    "✓ …" and Next.
+  - **No new words.**
+
 - **The lens is one chat** (founder, chat, 2026-10-20, N81, WIL-89;
   prototype <https://claude.ai/artifact/P5fHFguyCgjhMGPsmH7UaD>, "can you
   build it that way?"). Amends section 1 ("Lens on, the walk … one step at

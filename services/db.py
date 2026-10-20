@@ -14740,6 +14740,7 @@ class DatabaseService:
     def list_error_presence_audit_pending(self, coach_id: str) -> list[dict]:
         res = (self.client.table("error_presence_audit").select("*")
                .eq("coach_id", str(coach_id)).is_("answer", "null")
+               .is_("cleared_week", "null")
                .order("created_at").execute())
         return list(res.data or [])
 
@@ -14827,8 +14828,35 @@ class DatabaseService:
     def list_coach_block_picks_pending(self, coach_id: str) -> list[dict]:
         res = (self.client.table("coach_block_pick").select("*")
                .eq("coach_id", str(coach_id)).is_("answered_at", "null")
+               .is_("cleared_week", "null")
                .order("created_at").execute())
         return list(res.data or [])
+
+    #: The blind lines the founder may clear (2026-10-20; 0482): the table,
+    #: its owner column, and the column that is null while an item waits.
+    BLIND_LINES = {
+        "error_audit": ("error_presence_audit", "coach_id", "answer"),
+        "block_pick": ("coach_block_pick", "coach_id", "answered_at"),
+        "v4_moment_pick": ("v4_moment_pick_sheets", "rater_id", "answered_at"),
+        "v4_surer": ("v4_surer_sheets", "rater_id", "answered_at"),
+    }
+
+    def clear_blind_line(self, line: str, owner_id: str, week: str) -> int:
+        """Stamp every item waiting on this coach's line with ``week``
+        (cleared_week, 0482): never shown again, never an answer. How many."""
+        table, owner, waiting = self.BLIND_LINES[line]
+        res = (self.client.table(table).update({"cleared_week": str(week)})
+               .eq(owner, str(owner_id)).is_(waiting, "null")
+               .is_("cleared_week", "null").execute())
+        return len(res.data or [])
+
+    def blind_line_cleared(self, line: str, owner_id: str, week: str) -> bool:
+        """True when this coach's line was cleared in ``week``: it does not
+        refill until the next one."""
+        table, owner, _waiting = self.BLIND_LINES[line]
+        res = (self.client.table(table).select("id").eq(owner, str(owner_id))
+               .eq("cleared_week", str(week)).limit(1).execute())
+        return bool(res.data)
 
     def list_coach_block_picks_by_coach(self, coach_id: str) -> list[dict]:
         res = (self.client.table("coach_block_pick").select("id,block_id,answered_at,week")

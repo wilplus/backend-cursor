@@ -376,6 +376,11 @@
       "module": "swap_continuity",
       "sha256": "66724ce7050e82476950b4c81760caf3a8eaa092563e97bcfc4e83b17daed12e"
     },
+    "take_summary.earlier_facts": {
+      "kind": "source_ref",
+      "module": "pending",
+      "sha256": "822d400f6df1fe551a0d712bc6ad8ae4b90384c5a2f741264bf69023d716d028"
+    },
     "v4_take_tags.system": {
       "kind": "static",
       "module": "v4_take_tags",

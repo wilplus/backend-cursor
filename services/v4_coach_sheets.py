@@ -157,6 +157,10 @@ def _due_repick(rows: Iterable[dict], now: datetime) -> Optional[dict]:
 
 
 def _week_room(rows: list[dict], week: str) -> int:
+    """What is left of the week's cap; nothing once the founder cleared the
+    line this week (cleared_week, 0482): new ones come next week."""
+    if any(r.get("cleared_week") == week for r in rows):
+        return 0
     return WEEKLY_CAP - sum(1 for r in rows if r.get("week") == week)
 
 
@@ -400,7 +404,7 @@ def pick_queue(database: Any, *, rater_id: str) -> tuple[int, dict]:
     from services.snippet_audio_url import snippet_clip_playback
     memo: dict = {}
     rows = [r for r in database.list_v4_pick_sheets(rater_id) or []
-            if isinstance(r, dict) and not r.get("answered_at")
+            if isinstance(r, dict) and not r.get("answered_at") and not r.get("cleared_week")
             and _admitted(database, r.get("take_session_id"), memo)]
     items = []
     for n, row in enumerate(rows, start=1):
@@ -441,7 +445,7 @@ def surer_queue(database: Any, *, rater_id: str) -> tuple[int, dict]:
     """Pending pairs: the two texts, in a fixed order. No slice, no level."""
     memo: dict = {}
     rows = [r for r in database.list_v4_surer_sheets(rater_id) or []
-            if isinstance(r, dict) and not r.get("answered_at")
+            if isinstance(r, dict) and not r.get("answered_at") and not r.get("cleared_week")
             and _admitted(database, r.get("take_session_id"), memo)]
     items = [{"sheet_id": str(r.get("id")), "said": str(r.get("said_text") or ""),
               "new": str(r.get("new_text") or ""), "n": n, "of": len(rows)}

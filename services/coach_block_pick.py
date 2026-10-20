@@ -115,16 +115,25 @@ def sheet_clips(block: dict, *, rng: Any = None) -> list[str]:
     return chosen
 
 
+def _room(database: Any, coach_id: str, week: str) -> int:
+    """What is left of the shared weekly cap for this coach's picks; nothing
+    once the founder cleared the line this week (0482): new ones come next
+    week."""
+    from services.error_presence_audit import WEEKLY_CAP
+    if database.blind_line_cleared("block_pick", coach_id, week):
+        return 0
+    spent = int(database.count_coach_blind_answers(coach_id, week) or 0)
+    pending = database.list_coach_block_picks_pending(coach_id) or []
+    return WEEKLY_CAP - spent - len(pending)
+
+
 def sample_for_coach(database: Any, *, coach_id: str, week: str,
                      rng: Any = None) -> list[dict]:
     """Fill this coach's week up to the shared cap with blocks they may
     judge blind. [] off or when the cap is spent."""
     from services.coach_exposure import exposed_clip_ids, record_exposure
-    from services.error_presence_audit import WEEKLY_CAP
     rng = rng or random.Random()
-    spent = int(database.count_coach_blind_answers(str(coach_id), week) or 0)
-    pending = database.list_coach_block_picks_pending(str(coach_id)) or []
-    room = WEEKLY_CAP - spent - len(pending)
+    room = _room(database, str(coach_id), week)
     if room <= 0:
         return []
     done = {str(r.get("block_id")) for r in (database.list_coach_block_picks_by_coach(str(coach_id)) or [])

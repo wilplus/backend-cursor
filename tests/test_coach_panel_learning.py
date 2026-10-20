@@ -66,6 +66,9 @@ class _Db:
     def count_coach_blind_answers(self, coach_id, week):
         return 0
 
+    def blind_line_cleared(self, line, owner_id, week):
+        return False
+
     def get_snippet_by_id(self, sid):
         return {"id": sid, "audio_segment_path": f"s/{sid}.webm", "transcript": WORDS}
 
