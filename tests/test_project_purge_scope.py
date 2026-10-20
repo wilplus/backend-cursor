@@ -10,18 +10,24 @@ OUTCOME
       graph fills.
   O2  A re-pointed table counts only this project's rows; an account table
       nobody placed, where the account has rows, stops the purge for review.
-  O4  A speaker with lesson bookings can delete a project: bookings belong
-      to the account, so the project purge neither targets them nor stops
-      for review over them.
+  O4  A speaker with lesson bookings, goal history, a coach's card about
+      their goal, Will's private note, feedback answers and memory events
+      can delete a project without it stopping for review: the project's
+      Takes' answers and events go with it, the account's rows stay, and the
+      account purge still deletes every one of them.
   O3  The project orchestrator refuses an account request and the account
       orchestrator refuses a project request; each request is routed to its
       own orchestrator.
 PROVES   O1 -> test_every_placement_names_an_account_keyed_entry_once
          O2 -> test_a_project_purge_counts_its_project_and_stops_on_the_unplaced
          O3 -> test_neither_orchestrator_runs_the_others_request
-         O4 -> test_bookings_never_stop_or_join_a_project_purge
+         O4 -> test_a_project_purge_finishes_for_a_speaker_will_knows
 WHY      P1-B, decisions log N8/N12: the project graph lists no principal or
          user, so an unplaced account-keyed table would reach no row at all.
+         O4: found 2026-10-20, the WIL-74 tables (speaker_memory and its
+         events, feedback checks, goal history, the coach's goal card) were
+         never placed, so a project purge for any speaker with a note
+         stopped for review with PROJECT_SCOPE_UNRESOLVED.
 
 Python orchestrator only, over the in-memory `PurgeDb` of
 tests/test_purge_user_locators.py; the real project purge runs on the
@@ -38,7 +44,7 @@ import pytest
 from services import data_purge_project_scope as scope
 from services.data_purge import DataPurgeOrchestrator
 from services.data_purge_registry import dependency_by_code
-from tests.test_purge_user_locators import PurgeDb, inventory
+from tests.test_purge_user_locators import PurgeDb, erase, inventory
 
 #: The locators resolve_phase1_purge_project_graph_v1 fills.
 PROJECT_GRAPH_LOCATORS = {"project", "take", "job", "snippet",
@@ -78,18 +84,43 @@ def test_a_project_purge_counts_its_project_and_stops_on_the_unplaced():
     assert unplaced.metadata["reason_code"] == "PROJECT_SCOPE_UNRESOLVED"
 
 
-def test_bookings_never_stop_or_join_a_project_purge():
-    database = PurgeDb({
-        "bookings": [{"id": "booking-1", "user_id": "user-1"}],
-    }, kind="project_deletion")
+#: An account with one Take in the project being deleted (take-1) and one
+#: in another project (take-2): relation -> rows.
+_A_SPEAKER_WILL_KNOWS = {
+    "bookings": [{"id": "booking-1", "user_id": "user-1"}],
+    "user_goal_history": [{"id": "goal-1", "user_id": "user-1"}],
+    "lounge_messages": [{"id": "card-1", "user_id": "coach-1",
+                         "about_user_id": "user-1"}],
+    "speaker_memory": [{"id": "note-1", "user_id": "user-1"}],
+    "take_feedback_checks": [
+        {"id": "check-1", "user_id": "user-1", "take_session_id": "take-1"},
+        {"id": "check-2", "user_id": "user-1", "take_session_id": "take-2"}],
+    "speaker_memory_events": [
+        {"id": "event-1", "user_id": "user-1", "take_session_id": "take-1"},
+        {"id": "event-2", "user_id": "user-1", "take_session_id": "take-2"}],
+}
 
-    targets = inventory(database, scope.ProjectPurgeOrchestrator)
 
+def test_a_project_purge_finishes_for_a_speaker_will_knows():
+    project = PurgeDb(_A_SPEAKER_WILL_KNOWS, kind="project_deletion")
+
+    targets = inventory(project, scope.ProjectPurgeOrchestrator)
     assert [ref for ref, t in targets.items()
             if t.metadata.get("reason_code") == "PROJECT_SCOPE_UNRESOLVED"] == []
-    bookings = targets.get("dependency:bookings")
-    assert bookings is None or (bookings.initial_match_count,
-                                bookings.metadata.get("locator_values")) == (0, [])
+    erase(project, scope.ProjectPurgeOrchestrator)
+    left = {name: [row["id"] for row in project.tables[name]]
+            for name in _A_SPEAKER_WILL_KNOWS}
+    assert left == {
+        "bookings": ["booking-1"], "user_goal_history": ["goal-1"],
+        "lounge_messages": ["card-1"], "speaker_memory": ["note-1"],
+        "take_feedback_checks": ["check-2"],
+        "speaker_memory_events": ["event-2"],
+    }
+
+    account = PurgeDb(_A_SPEAKER_WILL_KNOWS)
+    erase(account)
+    assert {name: rows for name in _A_SPEAKER_WILL_KNOWS
+            if (rows := account.tables[name])} == {}
 
 
 @pytest.mark.parametrize("kind,wrong,right", [

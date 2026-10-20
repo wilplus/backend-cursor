@@ -37,7 +37,9 @@ Rules:
     rewrite carrying a digit is refused and the old note stays.
   - Every AI call goes through the processing-authorization path, in the
     protected scope of the Take the event came from.
-  - Both tables are purged with the account (data_purge_registry).
+  - Both tables are purged with the account (data_purge_registry); a
+    project purge takes the events on its Takes and leaves the note
+    (data_purge_project_scope).
 
 This is a permanent part of the app: tests/test_speaker_memory.py guards
 that the events are recorded and that Will reads the note.

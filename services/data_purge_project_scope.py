@@ -91,6 +91,12 @@ PROJECT_SELECTORS: Mapping[str, tuple[str, str]] = {
     "take_shares_by_owner": ("take_session_id", "take"),
     # What the walk showed of this project's Takes (0439).
     "coach_feedback_seen_by_owner": ("take_session_id", "take"),
+    # WIL-74: the speaker's answer to "Did this help?" on this project's
+    # Takes, and what Will recorded from them (each row names its Take).
+    # PR #1186 moves speaker_memory_events to ACCOUNT_LEVEL when it adds its
+    # own Take- and project-keyed registry codes (chat events have no Take).
+    "feedback_checks": ("take_session_id", "take"),
+    "speaker_memory_events": ("take_session_id", "take"),
 }
 
 #: Account-keyed dependencies that belong to the person, not to a project:
@@ -148,6 +154,10 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     # Lesson bookings (founder 2026-10-19): keyed by the account, never by a
     # project, so a project purge leaves them and no longer stops for review.
     "bookings",
+    # WIL-74 (founder 2026-10-20): the speaker's goal history, a coach's card
+    # about that goal, and Will's private note belong to the account, never
+    # to a project; the account purge deletes them.
+    "goal_history", "lounge_about", "speaker_memory",
     # Retention schedule v1.4: product records and job evidence that name
     # only the person, never a project. Deleted with the account (or kept
     # 12 months as job evidence); a project purge leaves them. Placed only
