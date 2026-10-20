@@ -1,3 +1,14 @@
+"""
+STORY    As the founder, I want the message after a speaker's first Take to say
+         exactly the words I signed off, with its two actions, so that no
+         unapproved words reach a speaker.
+OUTCOME
+  O1  The Take 1 message's text and its two actions (prepare Take 2, keep
+      practising) equal the locked copy.
+PROVES   O1 -> JourneyMessageTests::test_take_one_copy_and_action_are_locked
+WHY      Never-rule 4: no new words on screen without the founder's OK.
+"""
+
 from __future__ import annotations
 
 import unittest

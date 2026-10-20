@@ -1,13 +1,13 @@
-"""A refusal raised inside a ``@contextmanager`` reaches its caller as itself.
-
-`ProcessingAuthorizationError` was a frozen dataclass. When it was raised
-inside `protected_provider_scope` (or `ProcessingStageRecorder.stage`, the
-worker's download step), contextlib re-raised it and set `__traceback__` on
-the way out, the frozen instance refused that write, and the caller got
-`dataclasses.FrozenInstanceError` in its place. Nothing was sent, so it
-failed closed, but every `except ProcessingAuthorizationError` around these
-scopes was skipped: the upload route answered a generic 500 instead of the
-refusal's own code.
+"""
+STORY    As a developer, I want a processing refusal raised inside a
+         processing stage to reach callers as itself, so that the upload
+         route answers with the refusal's own code, not a generic 500.
+OUTCOME
+  O1  A refusal raised inside a processing stage comes out as the same
+      refusal, with its code intact.
+PROVES   O1 -> test_a_refusal_inside_a_processing_stage_keeps_its_code
+WHY      The refusal was a frozen object; the stage wrapper turned it into an
+         unrelated error, and the upload route answered a generic 500.
 """
 from __future__ import annotations
 

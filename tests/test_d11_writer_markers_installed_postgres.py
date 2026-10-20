@@ -1,26 +1,16 @@
-"""Every D11 writer's INSTALLED body carries 0327's preamble, in place.
-
-The companion of tests/test_d11_writer_markers_survive_the_manifest.py, run
-against a database instead of the files.  The existing marker test
-(tests/test_confident_moment_coaching_bundle_postgres.py) re-executes 0327
-before it looks, so it can only ever see 0327's own result.  This one
-re-executes nothing: it reads the definitions as the lane left them.  Since
-2026-09-25 the lane re-applies 0335 and 0354 after 0327, as the manifest
-does, so the bodies here match production's.
-
-For each writer 0327 injects into, the preamble must sit directly after the
-body's ``BEGIN`` line and be byte-identical to 0327's entry.  That covers
-placement and lock order in one comparison.  The two legacy root writers are
-rewritten by 0327 differently, so for them the marker alone is checked, as
-0327's own verifier does.  A writer in UNRESOLVED must be ABSENT here, which
-pins production's state.  When a founder-approved fix lands, this fails until
-the entry is removed from UNRESOLVED.
-
-``accept_phase1_processing_authorization_v2`` (0357) is checked too.  0327
-never named it; 0366 gives it v1's preamble, and ``registered_writers`` lists
-it next to 0327's registry.
-
-Rehearsal tier only (the released confident-moment lane).
+"""
+GUARD     Every installed D11 writer function (the database functions that write
+          the feedback inventory) still starts with its lock preamble, in place,
+          as the database actually holds it after all migrations.
+CATCHES   A later migration that rewrites a writer and drops, moves or doubles
+          its lock preamble, so concurrent writes stop being serialised; and a
+          writer listed as unresolved that has quietly been repaired.
+IF REMOVED  Only the file copy (or 0327's own re-run) is checked, so a writer
+          broken by a later migration reaches production unnoticed.
+PROVES    test_the_installed_writer_carries_its_d11_marker (one case per
+          registered writer: marker once, right after BEGIN; unresolved
+          writers have no marker)
+WHY       Migration 0327 (D11 lock order); rehearsal database only.
 """
 from __future__ import annotations
 

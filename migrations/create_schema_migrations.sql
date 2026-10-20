@@ -75,7 +75,21 @@ CREATE INDEX IF NOT EXISTS schema_migrations_applied_at_idx
 -- PostgreSQL 16.13. Same shape as the 2026-07-25 sweep: enable it, add no
 -- policies. `schema_migrations` postdates that sweep, so nothing else covers
 -- it.
-ALTER TABLE public.schema_migrations ENABLE ROW LEVEL SECURITY;
+--
+-- Only when it is off. The runner executes this file on every invocation (the
+-- Railway pre-deploy step and every web boot), and an ALTER TABLE counts as a
+-- schema change even when RLS is already on: Supabase's DDL watch then sends
+-- PostgREST `reload schema`, a full schema-cache rebuild that took ~2 s on
+-- this database while every API read waited behind it (pg_stat_statements,
+-- 2026-10-20: ~3,350 rebuilds, ~1.7 s each). A skipped statement is no change.
+DO $$
+BEGIN
+    IF NOT (SELECT relrowsecurity FROM pg_class
+            WHERE oid = 'public.schema_migrations'::regclass) THEN
+        ALTER TABLE public.schema_migrations ENABLE ROW LEVEL SECURITY;
+    END IF;
+END
+$$;
 
 --
 -- Guarded because `service_role` is a Supabase role, not a Postgres one: a
@@ -85,7 +99,17 @@ ALTER TABLE public.schema_migrations ENABLE ROW LEVEL SECURITY;
 -- anywhere but Supabase.
 DO $$
 BEGIN
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+    -- And only when a privilege is missing, for the same reason as above.
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role')
+       AND NOT (
+           has_table_privilege('service_role', 'public.schema_migrations', 'SELECT')
+           AND has_table_privilege('service_role', 'public.schema_migrations', 'INSERT')
+           AND has_table_privilege('service_role', 'public.schema_migrations', 'UPDATE')
+           AND has_table_privilege('service_role', 'public.schema_migrations', 'DELETE')
+           AND has_table_privilege('service_role', 'public.schema_migrations', 'TRUNCATE')
+           AND has_table_privilege('service_role', 'public.schema_migrations', 'REFERENCES')
+           AND has_table_privilege('service_role', 'public.schema_migrations', 'TRIGGER')
+       ) THEN
         GRANT ALL ON public.schema_migrations TO service_role;
     END IF;
 END

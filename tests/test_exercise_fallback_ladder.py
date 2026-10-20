@@ -1,10 +1,15 @@
-"""The exercise fallback ladder (founder 2026-10-01, F2) stayed off (Q30 A)
-and its switch and rungs were deleted 2026-10-11.
-
-Pins: a "general" exercise or the warm-up is an ordinary catalogue
-exercise, no offer or trace names a rung, and the readiness counter still
-leaves a stored fallback out, so no label, fair test or evaluation ever
-learns from one.
+"""
+STORY    As the founder, I want the retired exercise fallback ladder to stay gone
+         and any fallback rows already stored kept out of learning, so that no
+         evaluation learns from a rung we switched off.
+OUTCOME
+  O1  A "general" exercise or the warm-up is offered as an ordinary exercise:
+      no offer or stored trace names a fallback rung.
+  O2  The learning-readiness counter excludes a stored fallback and counts it
+      as excluded.
+PROVES   O1 -> NoLadderTests::test_no_rung_is_ever_served
+         O2 -> NeverLearnedFromTests::test_the_counter_leaves_a_fallback_out
+WHY      Founder 2026-10-01 F2, ladder kept off (Q30 A), deleted 2026-10-11.
 """
 from __future__ import annotations
 

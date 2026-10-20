@@ -116,6 +116,28 @@ def v2_create_project():
                         "error": "Failed to create project"}), 500
 
 
+def _already_claimed(principal: dict | None) -> bool:
+    """A guest principal some account has already claimed.
+
+    A REPEATED CLAIM IS ANSWERED, NOT REFUSED (founder 2026-10-20: "after I
+    sign up ... it shows me a button like my take was not registered;
+    particularly the new users"). A brand-new account's claim turns the guest
+    principal into the account's own and erases its secret, so the guest
+    check above refuses every later claim. The browser clears its guest token
+    only when the claim's answer arrives; the email sign-up reloads the page
+    at once, and a claim the server finished but the browser never heard back
+    from left the token on the device. Every later claim was then a 403, and
+    the hand-off that copies the guest's chat and sends the Take stopped at
+    it on every load: an empty chat, as if the Take had never been made.
+
+    Such a claim goes to the claim function, which answers it from its own
+    record only for the same account presenting the same guest secret, and
+    refuses anything else exactly as before. Nothing moves twice."""
+    if not principal:
+        return False
+    return bool(principal.get("user_id") or principal.get("claimed_by_owner_principal_id"))
+
+
 @v2_bp.route("/projects/claim", methods=["POST"])
 @require_auth
 def v2_claim_guest_project_owner():
@@ -127,7 +149,8 @@ def v2_claim_guest_project_owner():
                         "error": "A valid guest owner token is required"}), 400
     principal_id, supplied_hash = parsed
     principal = repository.get_principal(principal_id)
-    if not verify_guest_owner(_request_guest_token(), principal):
+    if not verify_guest_owner(_request_guest_token(), principal) \
+            and not _already_claimed(principal):
         return jsonify({"code": "INVALID_GUEST_OWNER",
                         "error": "Guest owner token was rejected"}), 403
     try:

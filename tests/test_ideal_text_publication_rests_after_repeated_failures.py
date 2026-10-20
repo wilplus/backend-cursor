@@ -1,7 +1,13 @@
-"""A generation whose publication keeps failing rests instead of being
-re-enqueued every minute (production, 2026-10-03: two arcs with no project
-owner failed LINEAGE_REQUIRED once a minute, each with a traceback, from the
-moment the worker booted)."""
+"""
+STORY    As a developer on call, I want an Ideal Text whose publication keeps
+         failing to stop being retried every minute, so that the logs and the
+         job queue stay usable.
+OUTCOME
+  O1  After three failed publications the sweep leaves that version alone for
+      the failure window instead of queueing it again.
+PROVES   O1 -> test_three_failed_deliveries_put_the_generation_to_rest
+WHY      Production 2026-10-03: two documents failed LINEAGE_REQUIRED every minute.
+"""
 from __future__ import annotations
 
 from unittest.mock import Mock

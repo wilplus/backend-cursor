@@ -1,13 +1,32 @@
-"""Route-level contracts for the speaker's Ideal Text routes moved out of
-``routes/v2/explore_ideal_text.py`` into services (founder 2026-10-12:
-"move logic out of the backend routes and cut glue").
-
-The live loop's read and write surface, so these are characterization
-tests written against the unmodified routes first: each pins a route's
-main success path (the whole JSON body, headers, and the writes with their
-arguments and order) and its main refusals, so the move is provably
-behaviour-preserving. Any database call a test does not stub raises
-(``_Unstubbed``), as it would in CI, so a test cannot pass on a live read.
+"""
+STORY    As a speaker, I want the Ideal Text routes (read, extras, earlier-Take
+         decision, paragraph lock, helper words and my own edits) to answer
+         exactly as they did before the code was moved into services, so that
+         the loop never breaks.
+OUTCOME
+  O1  Reading my Ideal Text returns the same full answer and records, in
+      order, what I was shown; someone else's project is "not found".
+  O2  The extras (notes, history, entitlement) are served for the current
+      version only, with no caching; a missing, unknown, outdated or wrong
+      request gets its exact refusal.
+  O3  Accepting an earlier Take's text, locking a paragraph and picking or
+      skipping helper words each write their records in the same order; every
+      refusal returns its exact code and writes nothing.
+  O4  My own edit is saved through the one safe writer and published; a bad,
+      outdated or failed edit returns its exact code (a database refusal is a
+      409) and publishes nothing.
+PROVES   O1 -> test_the_notebook_read_composes_locks_and_prepares_the_exposure,
+               test_the_notebook_read_refuses_a_project_not_owned
+         O2 -> test_enrichment_serves_the_asked_sections_for_the_current_snapshot,
+               test_enrichment_refusals
+         O3 -> test_an_accepted_prior_take_writes_in_order, test_prior_take_refusals,
+               test_a_lock_writes_the_lock_its_record_and_the_canonical_decision,
+               test_lock_refusals, test_a_root_pick_and_a_skip_write_their_records,
+               test_root_refusals
+         O4 -> test_a_current_edit_is_saved_through_the_one_cas_writer,
+               test_user_edit_refusals,
+               test_a_typed_ideal_text_refusal_from_the_database_is_a_409
+WHY      Founder 2026-10-12: move logic out of the routes; Never-rule 3.
 """
 from __future__ import annotations
 

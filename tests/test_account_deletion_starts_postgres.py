@@ -1,19 +1,18 @@
-"""An account deletion can start: the orchestrator's own freeze, on the real schema.
-
-FOUNDER 2026-09-25, decision 6 ("fix it now"). Migration 0362.
-
-`DataPurgeOrchestrator.build_subject_graph` added `delivery_job_ids` to the
-graph it sends (2026-09-19). `freeze_phase1_purge_inventory_v4` recomputes the
-graph in SQL and requires the two to be identical, and its graph had no such
-key. So every freeze raised PURGE_SUBJECT_GRAPH_MISMATCH and every account
-deletion sat at `requested` with nothing erased.
-
-The existing rehearsal cases could not see it: they hand the freeze the graph
-SQL itself resolves. These cases run `DataPurgeOrchestrator.freeze_inventory`
-— the Python that production runs — through a thin client that turns its
-PostgREST calls into SQL, as service_role, against the disposable schema. The
-two halves are compared by the only thing that decides: the freeze accepting
-what the orchestrator sends.
+"""
+STORY    As a speaker who asks to delete my account, I want the erasure to
+         actually start and run to the end, so that a request never sits at
+         "requested" with nothing erased.
+OUTCOME
+  O1  A list of my data that is not really mine (forged or stale) is
+      refused.
+  O2  With the retention rules in place, the erasure runs to "done" and my
+      practice rows are gone.
+  O3  Without the deletion-evidence retention rule, the run stops for
+      review and names only that missing rule.
+PROVES   O1 -> TestAnAccountDeletionStarts::test_a_graph_that_is_not_the_subjects_is_still_refused
+         O2, O3 -> TestAnAccountDeletionStarts::test_the_erasure_runs_to_the_end_once_the_retention_rules_exist
+WHY      Founder 2026-09-25, decision 6: every deletion sat at "requested"
+         (migration 0362).
 """
 from __future__ import annotations
 

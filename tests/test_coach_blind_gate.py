@@ -1,3 +1,20 @@
+"""
+STORY    As a coach, I want the speaker's words and the machine's
+         measurements hidden until I commit my answer, so that I judge the
+         voice blind.
+OUTCOME
+  O1  The speaker's words appear only after I commit my answer; before
+      that I still get the audio.
+  O2  The machine's measurements appear only after I commit my answer.
+  O3  The machine's rank, score, stickiness and measurements are always
+      removed from the list of moments.
+PROVES   O1 -> test_transcript_is_released_only_after_a_committed_answer,
+               test_redaction_withholds_unanswered_transcript_from_the_payload
+         O2 -> test_acoustic_features_are_released_only_after_a_committed_answer
+         O3 -> test_the_allowlist_still_drops_everything_that_judges_the_speaker
+WHY      Never-rule 2 (N1): no coach sees the machine's guess before
+         answering.
+"""
 from services.coach_blind_gate import (
     redact_contextual_snippets,
     reveal_acoustic_features_after_commit,

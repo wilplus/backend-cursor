@@ -1,18 +1,17 @@
-"""A person can change their mind after accepting (0361).
-
-FOUNDER 2026-09-25, locked E1-E5. The acceptance screen promises that the
-optional "Personalised practice" tick can be turned off at any time, and that
-the sensitive-information consent can be withdrawn, ending recording. These
-cases run the real functions in the released lane against a policy with one
-optional purpose, and pin what the application relies on:
-
-  * the receipt decides the starting point, and only a later change overrides
-    it — never an edit of the receipt;
-  * a change is recorded only when it changes something, and a replayed
-    request writes nothing;
-  * the two choices are independent;
-  * a new receipt starts from its own ticks;
-  * the record is append-only evidence, and browser roles cannot call it.
+"""
+STORY    As a speaker, I want each change of my mind recorded once, as permanent
+         evidence that no browser can touch, so that my consent history can be
+         trusted.
+OUTCOME
+  O1  Turning practice off and back on is recorded once each; repeating the
+      same choice records nothing.
+  O2  The record cannot be edited or deleted.
+  O3  Browser roles (anon, authenticated) cannot call the read or change
+      functions.
+PROVES   O1 -> test_turning_off_and_on_is_recorded_once_each
+         O2 -> test_the_record_is_append_only
+         O3 -> test_browser_roles_cannot_call_either_function
+WHY      Founder 2026-09-25, locked E1-E5 (migration 0361).
 """
 from __future__ import annotations
 

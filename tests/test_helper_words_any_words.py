@@ -1,5 +1,17 @@
-"""Helper words: up to eight, any words of the paragraph, read in the order
-said (founder 2026-10-15)."""
+"""
+STORY    As a speaker, I want to pick up to eight helper words from my paragraph,
+         in the order I said them, so that my cues match my talk.
+OUTCOME
+  O1  Words picked apart from each other are saved (without a position).
+  O2  Words out of order, or words I never said, are refused.
+  O3  Eight words are accepted; a ninth is refused.
+  O4  Words picked apart are also accepted against an earlier Take's text.
+PROVES   O1 -> test_words_picked_apart_save_without_a_span
+         O2 -> test_words_out_of_order_or_not_said_are_refused
+         O3 -> test_eight_words_is_the_cap
+         O4 -> test_an_earlier_take_takes_words_picked_apart
+WHY      Founder 2026-10-15.
+"""
 from services.rooting_phrase import validate_rooting_phrase
 from services.slide_helper_words import phrase_in_version
 
