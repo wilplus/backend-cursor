@@ -2236,6 +2236,11 @@ test_a_reworded_open_paragraph_keeps_its_id_through_the_snapshot_publish
 O4 -> test_take_two_rewrites_the_edited_slide_and_keeps_the_rest,
 test_an_edit_on_a_slide_take_two_did_not_speak_is_its_last_version,
 test_a_reworded_open_paragraph_keeps_its_id_through_the_snapshot_publish","Never-rule 5; contracts 8, 9, 14, 16 (N29, N48.1 Wave 1)."
+tests/test_tests_never_touch_a_real_database.py,Guard,The test suite refuses to start against a real Supabase project.,"C1  a `pytest` run in an environment that carries a production SUPABASE_URL
+(founder 2026-10-20: fixture values ""arc-9"", ""owner-1"" reached the live
+database this way) -- it stops before any test module imports.
+C2  the deliberate way through: WILLAB_TESTS_REAL_DB=1 lets a run against a
+disposable project proceed.","C1, C2 -> test_a_real_supabase_url_stops_the_suite_unless_asked_for","If removed: the next session that runs pytest plainly with production keys in its environment reads from, and can write to, production."
 tests/test_the_chain_hears_the_training_yes_postgres.py,Story,"As a speaker, I want my recordings used for training only after my own training yes, so that an old bundled yes or a withdrawal is respected. (Critical path: consent.)","O1  The ring's consent door says yes only for an active training yes with
 a bound speaker.
 O2  It says no before the speaker is bound, after a withdrawal, and for an
