@@ -202,12 +202,14 @@ def _parse_chat_request(req) -> dict:
         "persist_thread": False,
         "user_client_id": None,
         "user_created_at": None,
+        "screen": False,
     }
     if not is_multipart:
         body = req.get_json(silent=True) or {}
         parsed["question"] = body.get("question")
         history = body.get("history")
         parsed["history"] = history if isinstance(history, list) else None
+        parsed["screen"] = body.get("history_source") == "screen"
         parsed["persist_thread"] = bool(body.get("persist"))
         client_id = body.get("client_id")
         parsed["user_client_id"] = client_id \
@@ -269,6 +271,10 @@ def v2_chat_query():
             { "role": "user",      "content": "..." },
             { "role": "assistant", "content": "..." }
           ],
+          // "screen": history is every bubble the Lounge draws, in its
+          // order, cards and asks included (founder 2026-10-20); Will reads
+          // it instead of the stored thread. Optional.
+          "history_source": "screen",
           // #2 — BE-owned thread persistence (signed-in only). Opt-in: when
           // persist=true, the user + bot turns are written to lounge_messages
           // server-side so they survive reload + relogin (no race-prone FE
@@ -342,7 +348,8 @@ def v2_chat_query():
         return answer_chat(
             db, user_id=request.user_id, question=question, history=history,
             context=presentation_context, app_config=config,
-            finalize=_finalize, user_client_id=user_client_id)
+            finalize=_finalize, user_client_id=user_client_id,
+            screen=transport["screen"])
 
     except Exception as e:
         logger.error("chat/query failed: %s", e, exc_info=True)

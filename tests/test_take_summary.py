@@ -11,6 +11,8 @@ OUTCOME
       stored once.
   O4  A speaker without a WhatsApp number is offered WhatsApp once, right
       after the summary.
+  O5  The summary and the ask after it sort under the walk's last step,
+      even when my browser's clock runs ahead of the server's.
 PROVES   O1 -> test_a_take_gets_one_summary_from_its_real_progress,
                test_the_summary_knows_the_talk_and_asks_for_whatsapp_once
          O2 -> test_a_reply_with_a_number_falls_back_to_the_signed_copy,
@@ -19,7 +21,9 @@ PROVES   O1 -> test_a_take_gets_one_summary_from_its_real_progress,
                test_a_shared_coach_word_rewrites_a_reviewed_take_once_per_word,
                test_a_coach_word_shared_after_the_review_is_its_own_bubble
          O4 -> test_the_summary_knows_the_talk_and_asks_for_whatsapp_once
-WHY      Never-rule 1; founder lock 2026-10-12 (section 3) and 2026-10-14.
+         O5 -> test_the_summary_and_its_ask_sort_under_the_walk
+WHY      Never-rule 1; founder lock 2026-10-12 (section 3) and 2026-10-14;
+         founder 2026-10-20 (the chat keeps the order it shows).
 """
 from services import take_summary
 from services.journey_messages import _COPY
@@ -151,6 +155,19 @@ def test_the_summary_knows_the_talk_and_asks_for_whatsapp_once(monkeypatch):
     assert seen["signed"] and all(line in take_summary.line_bank_lines() for line in seen["signed"][:4])
     offers = [r for r in db.rows.values() if (r.get("metadata") or {}).get("offer") == "whatsapp"]
     assert msg["metadata"]["summary"] is True and len(offers) == 1
+
+
+def test_the_summary_and_its_ask_sort_under_the_walk(monkeypatch):
+    """The walk's steps carry the browser's time; an hour ahead here."""
+    from datetime import datetime, timedelta, timezone
+    ahead = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    db = _Db(phone=None)
+    db.get_lounge_messages_page = lambda user_id, limit, before=None: [
+        {"client_id": "step", "kind": "walk_step", "client_created_at": ahead}]
+    msg, _ = _run(db, monkeypatch, "Churn in Q3, nailed it! Another Take?")
+    ask = next(r for r in db.rows.values() if (r.get("metadata") or {}).get("offer"))
+    at = datetime.fromisoformat
+    assert at(ahead) < at(msg["client_created_at"]) < at(ask["client_created_at"])
 
 
 def test_a_reply_that_drifts_from_the_signed_lines_is_the_signed_copy():

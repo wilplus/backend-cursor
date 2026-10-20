@@ -12,7 +12,9 @@ OUTCOME
       that answer (even if it sounds like a goal change), then the chat is
       ordinary again.
   O4  "Skip" ends it with no answer kept; typing a button's words counts as
-      tapping it, and any other message goes to the chat as usual.
+      tapping it (also once the Take's card, drawn above the summary, is
+      stored after the question), and any other message goes to the chat
+      as usual.
   O5  A new goal is kept in the history and every coach except the speaker
       gets one card a day showing before and now; no change, no card.
 PROVES   O1 -> test_the_question_closes_the_summary_but_waits_when_another_offer_is_there
@@ -153,6 +155,10 @@ def test_skip_ends_it_without_an_answer():
 def test_typing_a_button_counts_as_tapping_it_and_anything_else_goes_to_will(monkeypatch):
     db = _Db()
     _summary_batch(db, whatsapp=False)
+    # Leaving the summary stores the review's card; the chat draws it above.
+    db.insert_lounge_messages("u", [{"client_id": "end", "role": "bot", "kind": "walk_step",
+                                     "body": "", "metadata": {"step": "end"},
+                                     "client_created_at": "t"}])
     resp, intent = _turn(db, monkeypatch, "How do I sound calmer?")
     assert intent == "faq"
     resp, intent = _turn(db, monkeypatch, "Not really.")

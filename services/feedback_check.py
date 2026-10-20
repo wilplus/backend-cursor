@@ -125,7 +125,9 @@ def answer(database: Any, *, user_id: str, arc_id: str, take_session_id: str,
         raise CheckError("INVALID_CHOICE", "Unknown answer.")
     take = str(take_session_id)
     held = database.get_take_feedback_check(user_id, take) or {}
-    at = _now()
+    # Under the question it answers, whatever the browser's clock said.
+    from services.lounge_messages import thread_stamp
+    at = thread_stamp(database, user_id)
     meta = {"feedback_check": choice, "arc_id": arc_id, "take_session_id": take}
     if choice == "skip":
         if held.get("helped") is not False or held.get("missing") or held.get("skipped"):
@@ -148,12 +150,19 @@ def answer(database: Any, *, user_id: str, arc_id: str, take_session_id: str,
     return database.insert_lounge_messages(user_id, [mine, reply]) or []
 
 
+def _review_card(row: dict) -> bool:
+    return row.get("kind") == "walk_step" and (row.get("metadata") or {}).get("step") == "end"
+
+
 def _open_question(database: Any, user_id: str) -> Optional[dict]:
     """The newest bot row in the thread when it is this module's question
     ("ask" or "missing") and is still open; None otherwise. The speaker's
-    own rows are skipped (the client stores the turn before asking)."""
+    own rows are skipped (the client stores the turn before asking), and so
+    is the review's Ideal Text card: it is stored when the speaker leaves
+    the summary, after the question, but the chat draws it above the
+    summary (founder 2026-10-20: the chat reads what it shows, in order)."""
     rows = database.get_lounge_messages_page(str(user_id), limit=_LOOKBACK) or []
-    bot = next((r for r in rows if r.get("role") == "bot"), None)
+    bot = next((r for r in rows if r.get("role") == "bot" and not _review_card(r)), None)
     meta = (bot or {}).get("metadata") or {}
     step = "ask" if meta.get("offer") == OFFER else meta.get("feedback_check")
     take = meta.get("take_session_id")

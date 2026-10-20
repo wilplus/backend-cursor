@@ -11002,19 +11002,26 @@ class DatabaseService:
     ) -> list[dict]:
         """Idempotent batch append/merge of Lounge messages.
 
-        Upserts on the (user_id, client_id) unique key — re-sending a
+        Inserts on the (user_id, client_id) unique key — re-sending a
         stored client_id is a no-op, not a duplicate (covers append
         retry, double-tap, and double-merge-on-resignup). The same
         path serves both per-turn appends and the merge-on-signup
         replay (BE contract §3.5/§3.15, §7.8 — no separate /merge
         alias).
 
+        A no-op keeps the stored row as it is, its time included
+        (founder 2026-10-20: the chat must keep the order it shows). It
+        used to overwrite it, so a walk step shown again or an Ideal Text
+        card fired again for the same version jumped to the bottom of the
+        thread. A change to a stored row is ``rewrite_lounge_message``.
+
         ``messages`` are pre-validated rows from
         services.lounge_messages.validate_lounge_batch (each carries
         client_id, role, kind, body, metadata, client_created_at).
         BE stamps user_id here — the FE never sets it.
 
-        Returns the persisted rows (with server id) or [] on failure.
+        Returns the stored rows (with server id), new and already there,
+        or [] on failure.
         """
         if not user_id or not messages:
             return []
@@ -11038,10 +11045,26 @@ class DatabaseService:
         try:
             res = (
                 self.client.table("lounge_messages")
-                .upsert(rows, on_conflict="user_id,client_id")
+                .upsert(rows, on_conflict="user_id,client_id",
+                        ignore_duplicates=True)
                 .execute()
             )
-            return res.data or []
+            inserted = res.data or []
+            new_ids = {r.get("client_id") for r in inserted}
+            held = list(dict.fromkeys(
+                r["client_id"] for r in rows if r["client_id"] not in new_ids))
+            if not held:
+                return inserted
+            # Already stored: their rows as they are, so a caller still
+            # reads a repeat as written.
+            stored = (
+                self.client.table("lounge_messages")
+                .select("id,client_id,role,kind,body,metadata,client_created_at")
+                .eq("user_id", user_id)
+                .in_("client_id", held)
+                .execute()
+            )
+            return inserted + (stored.data or [])
         except Exception as e:
             err_low = str(e).lower()
             if (

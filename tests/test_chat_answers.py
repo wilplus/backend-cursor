@@ -15,19 +15,31 @@ OUTCOME
       for a person to read.
   O6  A reply to the summary after a Take reaches Will with that summary,
       read from the speaker's own thread.
+  O7  When the app sends what is on my screen, Will reads my bubbles in
+      the order I see them, cards included, not the stored thread.
+  O8  A number I type under the WhatsApp ask is saved as the form saves it
+      and answered with the signed line; one without its country code gets
+      the form's own words and the form, and the ask is not asked twice.
 PROVES   O1 -> test_both_transports_carry_the_same_turn_to_the_answer
          O2 -> test_a_visitor_gets_two_answers_then_the_signup_line
          O3 -> test_the_whatsapp_form_opens_to_add_or_change_a_number
          O4 -> test_a_feature_with_a_page_comes_with_its_link
          O5 -> test_what_a_speaker_tells_will_is_not_marked_for_anyone
          O6 -> test_will_reads_the_summary_he_wrote_after_the_take
-WHY      Founder 2026-10-14 to 2026-10-18 (cost, WhatsApp, privacy, context).
+         O7 -> test_will_reads_the_screen_in_the_order_it_is_drawn
+         O8 -> test_a_number_typed_under_the_whatsapp_ask_answers_it
+WHY      Founder 2026-10-14 to 2026-10-18 (cost, WhatsApp, privacy, context);
+         2026-10-20 ("the chat should be aware of the order of bubbles it
+         displays").
          Split out of test_chat_persist.py; the harness is
          tests/chat_route_fakes.py.
 """
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from tests.chat_route_fakes import ChatRouteHarness
+from tests.fakes import FakeSupabaseClient
 
 BOOKING = "https://www.willpowerlab.com/book/artur"
 
@@ -109,3 +121,44 @@ class ChatAnswersTests(ChatRouteHarness):
         self.assertEqual(self.histories[-1], [
             {"role": "user", "content": "hi Will"},
             {"role": "assistant", "content": "Churn in Q3, nailed it! How did it go?"}])
+
+    def test_will_reads_the_screen_in_the_order_it_is_drawn(self):
+        self.thread = [{"client_id": "x", "role": "bot", "kind": "text",
+                        "body": "stored, not shown"}]
+        screen = [
+            {"role": "assistant", "content": "[Ideal Text card: \"ted\", 1.0]"},
+            {"role": "assistant", "content": "We have successfully registered your first take"},
+            {"role": "assistant", "content": "Want a WhatsApp message when your coach's "
+                                             "feedback is in? Add your phone number."},
+            {"role": "system", "content": "dropped"},
+        ]
+        self.post({"question": "what now?", "persist": True, "history": screen,
+                   "history_source": "screen"})
+        self.assertEqual(self.histories[-1], screen[:3])
+
+    def test_a_number_typed_under_the_whatsapp_ask_answers_it(self):
+        from services.chat_app_context import OFFER_PROMPTS
+        from services.db import db
+        from services.whatsapp_notify import SAVED
+        supabase = FakeSupabaseClient()
+        p = patch.object(db, "client", supabase)
+        p.start()
+        self.addCleanup(p.stop)
+        self.thread = [  # newest first: the walk went on under the ask
+            {"client_id": "h", "role": "bot", "kind": "walk_step",
+             "body": "Choose your helper words", "metadata": {"step": "helpers"}},
+            {"client_id": "w", "role": "bot", "kind": "text",
+             "body": OFFER_PROMPTS["whatsapp"], "metadata": {"offer": "whatsapp"}},
+        ]
+        bare = self.post({"question": "07700 900461", "persist": True}).get_json()
+        self.assertEqual(bare["answer"],
+                         "Enter the number with its country code, for example +44 7700 900123.")
+        self.assertEqual(bare["offer"], "whatsapp")  # the form opens
+        self.assertEqual([r["role"] for r in self.rows[-1][1]], ["user", "bot"])
+        self.assertNotIn("user_settings", supabase.tables)
+        saved = self.post({"question": "+44 7700 900123", "persist": True}).get_json()
+        self.assertEqual(saved["answer"], SAVED.format(phone="+447700900123"))
+        self.assertNotIn("offer", saved)
+        self.assertEqual(supabase.tables["user_settings"].payload["whatsapp_phone"],
+                         "+447700900123")
+        self.assertEqual(self.histories, [])  # no model call for either
