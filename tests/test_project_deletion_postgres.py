@@ -11,6 +11,8 @@ OUTCOME
   O5  Cancelling works while pending and keeps the row as `cancelled`; a
       confirmed request cannot be cancelled.
   O6  Browser roles can neither call the functions nor read the table.
+  O7  With arc_id a UUID, as in production, my request is still pending and
+      my project's erasure graph still holds the Take found by its arc.
 PROVES   O1 -> test_owner_request_is_pending_and_due_in_seven_days
          O2 -> test_someone_elses_project_is_not_found
          O3 -> test_a_double_tap_is_one_request
@@ -18,8 +20,11 @@ PROVES   O1 -> test_owner_request_is_pending_and_due_in_seven_days
          O5 -> test_cancelling_keeps_the_row
                test_a_confirmed_request_cannot_be_cancelled
          O6 -> test_browser_roles_are_refused
+         O7 -> TestProductionArcIsAUuid::test_my_request_and_my_projects_graph_work
 WHY      Founder 2026-09-25, decisions log N8 (0364): Delete is a request an
-         operator confirms within 7 days.
+         operator confirms within 7 days. O7: founder 2026-10-20 (0488), both
+         raised "operator does not exist: uuid = text" in production, whose
+         arc_id is a UUID; this lane's narrow copy declares it TEXT.
 
 Runs request_/cancel_project_deletion_v1 on the released rehearsal lane.
 """
@@ -146,3 +151,39 @@ def test_browser_roles_are_refused(db, principal, project):
                         cur.execute(statement, args)
                 finally:
                     cur.execute("RESET ROLE")
+
+
+UUID_PATTERN = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+
+
+@pytest.fixture
+def uuid_arc(db):
+    """v2_sessions.arc_id as production declares it (UUID), and the
+    recordings.session_id the graph reads, which this lane's narrow copy
+    lacks, inside a transaction the test rolls back, so no other test sees
+    either."""
+    db.autocommit = False
+    with db.cursor() as cur:
+        cur.execute("ALTER TABLE public.recordings ADD COLUMN IF NOT EXISTS session_id uuid")
+        cur.execute(f"""
+            ALTER TABLE public.v2_sessions ALTER COLUMN arc_id TYPE uuid
+            USING CASE WHEN arc_id ~* '{UUID_PATTERN}' THEN arc_id::uuid
+                       ELSE md5(arc_id)::uuid END""")
+    try:
+        yield db
+    finally:
+        db.rollback()
+
+
+class TestProductionArcIsAUuid:
+
+    def test_my_request_and_my_projects_graph_work(self, db, principal, project, uuid_arc):
+        take = _one(db, """
+            INSERT INTO public.v2_sessions (
+                id, arc_id, user_id, take_index, owner_principal_id)
+            VALUES (gen_random_uuid(), %s, gen_random_uuid(), 1, %s)
+            RETURNING id::text""", (project, principal))
+        assert _request(db, principal, project)[1] == "pending"
+        graph = _one(db, "SELECT public.resolve_phase1_purge_project_graph_v1(%s, %s)",
+                     (principal, project))
+        assert take in graph["take_ids"]
