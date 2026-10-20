@@ -1,20 +1,31 @@
-"""The machine checks each practise try (founder lock 2026-10-06, the
-Feedback walk; decisions log N52.3). On; its switch was deleted 2026-10-11.
-
-Pins: the speaker is never asked; a try measurably better than the original
-(the targeted problem cleared, a cue moved, or the machine leg higher) is
-praise and closes the practice on that try; anything else is again, with
-the encouragement's step or effort key; a rewrite practice is checked on its
-voice alone; the decision is never written as the
-speaker's answer (L3); the screen sees only the outcome and the line key
-(AC-9); the moment counts as settled and its helper words can be tapped; the
-route is off until the walk's screens ship.
+"""
+STORY    As a speaker, I want each practice try judged by the machine as Good
+         job or try again with a word of encouragement, up to three tries,
+         without numbers, so that practice moves me forward.
+OUTCOME
+  O1  decide returns praise, again or moved_on with a line key; a "not yet"
+      names the cue that went the wrong way; a rewrite is judged on its
+      voice alone.
+  O2  The loop takes up to three tries, a later praise moves the landing
+      try, a fourth try is refused (409).
+  O3  The check route answers the speaker with the outcome and the line key
+      only: no lane, cue value or measured index (Never-1: no scores,
+      numbers or verdicts shown to speakers).
+  O4  The machine's decision is never written as the speaker's own answer
+      (L3).
+PROVES   O1 -> test_a_not_yet_names_the_reading_that_went_the_wrong_way,
+               test_a_clearer_version_try_is_checked_on_its_voice_alone
+         O2 -> test_a_good_job_no_longer_ends_the_loop_the_speaker_may_try_until_three
+         O3 -> test_the_route_answers_in_a_key_never_a_measure
+         O4 -> test_the_route_answers_in_a_key_never_a_measure
+WHY      Founder lock 2026-10-06 (the Feedback walk; decisions log N52.3).
 """
 from __future__ import annotations
 
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
+import inspect
+import json
+import re
+from unittest.mock import patch
 
 
 # ── the decision ──────────────────────────────────────────────────────────
@@ -57,7 +68,6 @@ def test_a_clearer_version_try_is_checked_on_its_voice_alone():
 
 
 # ── the loop ──────────────────────────────────────────────────────────────
-
 
 
 class _PracticeDb:
@@ -104,22 +114,51 @@ def test_a_good_job_no_longer_ends_the_loop_the_speaker_may_try_until_three(monk
     assert tried(4)[0] == 409
 
 
-# ── what a machine-closed practice means elsewhere ───────────────────────
+# ── the route ─────────────────────────────────────────────────────────────
 
+def test_the_route_answers_in_a_key_never_a_measure():
+    from flask import Flask, request
 
-# ── the route ──────────────────────────────────────────────
+    from routes.v2 import user_sessions
+    pid, aid = "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"
+    db = _PracticeDb({"id": pid, "kind": "exercise", "status": "open"})
+    db.attempts.append({
+        **_try({"mean_pitch": -0.6, "speech_rate": -0.5},
+               {"mean_pitch": 0.6, "speech_rate": 0.4}),
+        "id": aid, "transcript": "the window closes once",
+    })
+    written = []
 
-def test_the_route_is_fenced_and_hides_the_measure():
-    source = (ROOT / "routes/v2/user_sessions.py").read_text()
-    start = source.index("def v2_check_confident_voice_practice_attempt")
-    route = source[start:source.index("@v2_bp.route", start)]
-    assert "machine_practice_check_enabled" not in route
-    head = source[source.rindex("@v2_bp.route", 0, start):start]
-    assert '"<attempt_id>/check", methods=["POST"]' in head
-    for fence in ("@require_auth", 'operational_purpose_disabled("personalized_exercise_recommendation")',
-                  'consent_choice_required("personalised_practice")'):
-        assert fence in head
-    assert '"after_practice": _after_practice_public(' in source
+    def update(practice_id, owner, fields):
+        written.append(fields)
+        return _PracticeDb.update_confident_voice_practice(db, practice_id, owner, fields)
 
+    route = inspect.unwrap(user_sessions.v2_check_confident_voice_practice_attempt)
+    with Flask(__name__).test_request_context(method="POST"), \
+            patch.object(user_sessions.db, "get_confident_voice_practice",
+                         side_effect=lambda *_: db.practice), \
+            patch.object(user_sessions.db, "list_confident_voice_practice_attempts",
+                         side_effect=db.list_confident_voice_practice_attempts), \
+            patch.object(user_sessions.db, "update_confident_voice_practice",
+                         side_effect=update):
+        request.user_id = "owner"
+        resp, status = route(pid, aid)
+        body = resp.get_json()
 
-# ── the third try that is not praise (CM3a A, CM3b A; decisions log N55) ──
+    assert status == 200
+    # What the speaker gets: the outcome, the line key and their own words.
+    assert body["outcome"] == "done"
+    assert set(body["check"]) == {"next", "key"} and body["check"]["next"] == "praise"
+    assert body["check"]["key"]
+    assert body["practice"]["after_practice"] == body["check"]
+    assert body["attempt_transcript"] == "the window closes once"
+    # What it must not get: the lane, the rule, the cues or any measure.
+    raw = json.dumps({"check": body["check"], "after": body["practice"]["after_practice"]})
+    assert re.search(r"\d", raw) is None
+    for hidden in ("lane", "rule_version", "decided_by", "mean_pitch", "comparison"):
+        assert hidden not in json.dumps(body)
+    # L3: the machine's praise is stored as its own decision, never as an answer.
+    assert written and written[-1]["after_practice"]["decided_by"] == "machine"
+    for fields in written:
+        assert not {"user_answer", "final_user_answer"} & set(fields)
+    assert body["practice"]["final_user_answer"] is None

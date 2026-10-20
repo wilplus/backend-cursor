@@ -1,3 +1,27 @@
+"""
+STORY    As the founder, I want served feedback recorded as product evidence
+         only (never training data), blind coach packets that carry no
+         ratings, and the speaker's paragraph and helper-word decisions stored
+         idempotently, so that data use honours consent and records replay
+         safely.
+OUTCOME
+  O1  A V3 bundle records its candidates as service evidence only:
+      training_eligible is false on every row; a V3 selection without its
+      Confident Voice item records nothing at all.
+  O2  Never-2 (coach judgements stay blind): the blind packet a coach's
+      judgement is sealed against holds only evidence (span, audio, window,
+      codec); the owner's, machine's and peers' answers are not in it.
+  O3  Paragraph and helper-word decisions repeat identically; a reversed
+      span is refused.
+  O4  A candidate's id belongs to its set: the same inventory gives the same
+      ids (replay is idempotent), a changed inventory gives ids of its own.
+PROVES   O1 -> test_v3_service_bundle_allows_variable_budget_but_never_dataset_use
+         O2 -> test_blind_packet_carries_evidence_never_answers
+         O3 -> test_paragraph_and_root_decisions_are_exact_and_idempotent
+         O4 -> test_candidate_ids_are_sealed_to_their_set
+WHY      2026-09-21: 23505 on feedback_candidates_pkey when a second candidate
+         set for a Take reused the first set's ids.
+"""
 import uuid
 
 from services.feedback_data_contract import (
@@ -6,6 +30,7 @@ from services.feedback_data_contract import (
     canonical_paragraph_decision,
     canonical_root_phrase,
     canonical_root_phrase_skip,
+    content_hash,
 )
 
 OWNER_ID = "10000000-0000-0000-0000-000000000001"
@@ -123,6 +148,8 @@ def test_v3_service_bundle_allows_variable_budget_but_never_dataset_use():
     assert {
         row["ineligibility_reason"] for row in bundle["candidates"]
     } == {"service_product_evidence_only"}
+    # V3 always serves a Confident Voice item; a selection without one is
+    # not a V3 serving, so nothing is recorded for it.
     assert build_feedback_exposure_bundle(
         session=session,
         transcript_document=document,
@@ -134,7 +161,7 @@ def test_v3_service_bundle_allows_variable_budget_but_never_dataset_use():
     ) is None
 
 
-def test_blind_packet_hash_ignores_forbidden_ratings_and_predictions():
+def test_blind_packet_carries_evidence_never_answers():
     allowed = {
         "evidence_span_id": "evidence-1",
         "audio_ref": "signed-audio",
@@ -142,12 +169,19 @@ def test_blind_packet_hash_ignores_forbidden_ratings_and_predictions():
         "end_ms": 20,
         "technical_metadata": {"codec": "opus"},
     }
-    assert blind_packet_hash(allowed) == blind_packet_hash({
+    with_answers = {
         **allowed,
         "owner_value": "yes",
         "machine_value": "no",
+        "machine_prediction": {"classification": "yes", "score": 0.81},
         "peer_values": ["in_between"],
-    })
+    }
+    # The sealed packet is exactly the evidence: nothing else is hashed.
+    assert blind_packet_hash(with_answers) == content_hash(allowed)
+    assert blind_packet_hash(with_answers) == blind_packet_hash(allowed)
+    # The evidence itself is in it: a different clip seals a different packet.
+    assert blind_packet_hash({**allowed, "start_ms": 11}) != \
+        blind_packet_hash(allowed)
 
 
 def test_paragraph_and_root_decisions_are_exact_and_idempotent():
@@ -202,13 +236,30 @@ def test_paragraph_and_root_decisions_are_exact_and_idempotent():
     assert skipped["idempotency_key"].startswith("root-phrase-skip:")
 
 
-# ---------------------------------------------------------------------------
-#  A CANDIDATE'S ID BELONGS TO ITS SET (2026-09-21).
-#
-#  Minutes after the lineage write first succeeded, the next open logged
-#  23505 on feedback_candidates_pkey: the speaker's edits changed the
-#  inventory, a second candidate set was recorded for the Take, and it carried
-#  the same candidate ids as the first. Ids are now sealed to the inventory:
-#  same content → same ids (replay stays idempotent), changed content → ids
-#  of its own.
-# ---------------------------------------------------------------------------
+def _v3_bundle(rows):
+    session, document, text, _rows, _keys = _fixture()
+    return build_feedback_exposure_bundle(
+        session=session,
+        transcript_document=document,
+        served_text=text,
+        candidates=rows,
+        selected_keys=[
+            {"id": "confidence-1", "feedback_family": "confident_voice"},
+            {"id": "praise-1", "feedback_family": "great_formulation"},
+        ],
+        manager_rules_version="take-feedback-policy-v3-serving-v1",
+        commit="abc123",
+    )
+
+
+def test_candidate_ids_are_sealed_to_their_set():
+    rows = _fixture()[3]
+    first = _v3_bundle(rows)
+    replay = _v3_bundle(rows)
+    ids = [row["id"] for row in first["candidates"]]
+    assert ids and ids == [row["id"] for row in replay["candidates"]]
+    edited = [dict(row) for row in rows]
+    edited[1]["proposed_text"] = "We shipped it on Friday."
+    changed = _v3_bundle(edited)
+    assert changed["candidate_set_id"] != first["candidate_set_id"]
+    assert not set(ids) & {row["id"] for row in changed["candidates"]}

@@ -1,9 +1,57 @@
+"""
+STORY    As a speaker, I want opening my Ideal Text never to show it as missing
+         when the read failed, and never to serve an out-of-date snapshot, so
+         that the loop never breaks quietly.
+OUTCOME
+  O1  A failed cold-open read answers 503 IDEAL_TEXT_READ_FAILED, retryable,
+      never the "pending" 404 that would show an existing Ideal Text as
+      missing.
+  O2  A snapshot that turns stale while the enrichment readers run answers
+      409 SNAPSHOT_STALE with the current snapshot id, and the server-side
+      acknowledgement token never leaves.
+PROVES   O1 -> test_a_failed_cold_open_read_says_retry_not_pending
+         O2 -> test_enrichment_rejects_snapshot_that_turns_stale_during_readers
+WHY      Founder 2026-09-26: a dropped connection showed an existing Ideal Text
+         as missing. (The old v1 fallback and its "degraded read is counted"
+         tests are gone: a failed read is now a visible 503.)
+NOTE     Stale-at-first-check refusals live in
+         tests/test_ideal_text_route_contracts.py::test_enrichment_refusals;
+         this file pins the stale-DURING-readers case only.
+"""
 from __future__ import annotations
 
 import inspect
 from unittest.mock import Mock
 
 from flask import Flask, request
+
+
+def _get(view, path):
+    app = Flask(__name__)
+
+    @app.before_request
+    def actor():
+        request.user_id = "actor-1"
+
+    app.add_url_rule("/test/<arc_id>", view_func=inspect.unwrap(view))
+    return app.test_client().get(path)
+
+
+def test_a_failed_cold_open_read_says_retry_not_pending(monkeypatch):
+    import routes.v2.explore_ideal_text as route
+    from services.db import IdealTextCoreReadError
+
+    database = Mock()
+    database.get_ideal_text_document_core_v2.side_effect = IdealTextCoreReadError(
+        "Server disconnected")
+    monkeypatch.setattr(route, "db", database)
+
+    response = _get(route.v2_explore_get_ideal_text_core, "/test/arc-1")
+
+    assert response.status_code == 503
+    assert response.get_json() == {
+        "code": "IDEAL_TEXT_READ_FAILED", "retryable": True}
+    assert response.headers["Retry-After"] == "2"
 
 
 def test_enrichment_rejects_snapshot_that_turns_stale_during_readers(
@@ -45,17 +93,8 @@ def test_enrichment_rejects_snapshot_that_turns_stale_during_readers(
     monkeypatch.setattr(
         exposures, "prepare_ideal_text_presentation", prepared)
 
-    app = Flask(__name__)
-
-    @app.before_request
-    def actor():
-        request.user_id = "actor-1"
-
-    app.add_url_rule(
-        "/test/<arc_id>",
-        view_func=inspect.unwrap(route.v2_explore_get_ideal_text_enrichment),
-    )
-    response = app.test_client().get(
+    response = _get(
+        route.v2_explore_get_ideal_text_enrichment,
         "/test/arc-1?document_snapshot_id=snapshot-old&sections=learning")
 
     assert response.status_code == 409
@@ -66,20 +105,3 @@ def test_enrichment_rejects_snapshot_that_turns_stale_during_readers(
     assert b"must-not-leave-server" not in response.data
     assert database.get_ideal_text_document_core.call_count == 2
     prepared.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
-#  A DEGRADED read must not be a SILENT one (2026-09-15)
-#
-#  The cold-open read is built to never 500: when the v2 RPC or its validator
-#  fails, the arc is served the pre-#490 v1 document, and when that is missing
-#  too the route answers `404 IDEAL_TEXT_DOCUMENT_PENDING, state=pending`.
-#  Both are the right wire behaviour — a read fault must not take the recording
-#  loop down with it.
-#
-#  What was missing is the other half. The fallbacks were recorded with
-#  `logger.warning` into a stream nobody watches, so on 2026-09-15 every core
-#  read in production degraded and the only signal that reached a human was the
-#  founder opening the app. These tests pin the fallbacks as COUNTABLE, and pin
-#  the two expected quiet paths as quiet, so the signal keeps meaning something.
-# ---------------------------------------------------------------------------

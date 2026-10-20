@@ -1,57 +1,35 @@
-"""Payment config and the published Terms must not contradict each other.
-
-WHY THIS EXISTS. Three config-versus-copy contradictions were found in two
-days, all by a person looking rather than by anything automatic:
-
-  2026-09-16  OpenAI data-sharing was enabled while the Privacy Policy said we
-              do not share content. Ran for an unknown period.
-  2026-09-17  CURRENT_TERMS_VERSION said 1.2 while every acceptance in the
-              database said 1.0, and no surface asked anyone to re-accept.
-  2026-09-17  STRIPE_SECRET_KEY was present in production — so checkout was
-              live — while the Terms said "there is no paid plan and we do not
-              take payment".
-
-Each one is a setting quietly disagreeing with a published document. Nothing in
-the codebase linked the two, so nothing could notice.
-
-THE ORDER MATTERS, AND IT IS THE POINT. Enabling payment is a COPY decision
-before it is a CONFIG decision: re-version the Terms first, then set the key.
-Doing it the other way round means the product takes money while its own Terms
-say it does not — which is the state production was actually in.
-
-MATCHED ON THE SENTENCE, NOT A FLAG. A boolean "payments_enabled" constant
-would drift from the published text exactly as CURRENT_TERMS_VERSION drifted
-from the published pages. The copy IS the record, so the copy is what gets
-read.
-
-WHAT THIS CAN AND CANNOT CATCH. It bites wherever the key is set — a dev box,
-a CI job, a readiness script run against production config. It cannot see
-production from CI, where the key is absent and this passes trivially. The
-durable version of this check is one that runs at boot on the service that
-holds the key; that is a live-loop change (a raising check would take
-production down the moment someone set the key) and is deliberately not made
-here.
-
-Run: python3 -m pytest tests/test_payment_copy_contract.py
+"""
+STORY    As a speaker, I want never to be charged while the Terms I agreed to
+         say the service takes no payment, so that what I agreed to matches
+         what happens. (Payments.)
+OUTCOME
+  O1  The check fails when a Stripe key is set and the Terms in force claim
+      that no payment is taken.
+  O2  Every Terms copy we ship describes the paid plans and makes no such
+      claim, so a Stripe key may be set (the copy decision came first).
+  O3  This process's own config does not contradict the Terms in force.
+PROVES   O1 -> test_the_contradiction_is_detected_when_it_exists
+         O2 -> test_every_shipped_terms_describes_payment
+         O3 -> test_this_environment_does_not_contradict_the_terms_in_force
+WHY      2026-09-17: STRIPE_SECRET_KEY was live in production while the Terms
+         said "there is no paid plan and we do not take payment".
+LIMITS   The check lives in this test file only; production has no boot or
+         readiness check for it yet. O3 passes trivially wherever the key is
+         absent (CI); it bites on a box that holds the key.
 """
 from __future__ import annotations
 
 import re
-import unittest
 from pathlib import Path
 from typing import Any, Optional
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
+COPY = ROOT / "legal" / "phase1-2026.1" / "copy"
 
-#: The Terms as they will ship, used when no policy is registered yet. The
-#: draft is the record until register_phase1_policy_v1 has run; after that the
-#: served policy wins, because that is what users are shown.
-_DRAFT_TERMS = ROOT / "legal" / "phase1-2026.1" / "copy" / "terms-2.0.txt"
-
-#: Claims that the product does not take money. Written as they appear in the
-#: copy, matched against whitespace-normalised text because the .txt files are
-#: hard-wrapped and every one of these phrases straddles a line break
-#: somewhere.
+#: Claims that the product does not take money, as they appear in copy,
+#: matched on whitespace-normalised text (the .txt files are hard-wrapped).
 _NO_PAYMENT_CLAIMS = (
     "we do not take payment",
     "we take no payment",
@@ -63,118 +41,72 @@ _NO_PAYMENT_CLAIMS = (
 )
 
 
+def _version(path: Path) -> tuple[int, ...]:
+    return tuple(int(n) for n in path.stem.removeprefix("terms-").split("."))
+
+
+SHIPPED_TERMS = sorted(COPY.glob("terms-*.txt"), key=_version)
+
+
 def normalised(text: Any) -> str:
-    """Lowercased, whitespace-collapsed. Hard-wrapped copy is the reason: a
-    claim split across two source lines is the same claim to a reader."""
-    if not isinstance(text, str):
-        return ""
-    return re.sub(r"\s+", " ", text).strip().lower()
+    return re.sub(r"\s+", " ", text).strip().lower() if isinstance(text, str) else ""
 
 
 def claims_no_payment_is_taken(text: Any) -> bool:
-    """Does this copy tell the reader we do not take money?"""
     body = normalised(text)
     return any(claim in body for claim in _NO_PAYMENT_CLAIMS)
 
 
 def stripe_payment_configured(app_config: Any) -> bool:
-    """Is a Stripe key present, i.e. can a user be charged?
-
-    Presence, never the value. STRIPE_SECRET_KEY is what every payment surface
-    gates on — credits checkout, tier checkout, arc checkout and the webhook
-    all return 503 DISABLED without it — so its presence is the same statement
-    as "the till is on".
-    """
+    """Presence, never the value: every payment surface (checkout, webhook)
+    answers 503 DISABLED without STRIPE_SECRET_KEY."""
     return bool((getattr(app_config, "STRIPE_SECRET_KEY", None) or "").strip())
 
 
 def active_policy_terms_copy(database: Any = None) -> Optional[str]:
-    """The Terms text users are actually being shown, or ``None`` when no
-    policy is registered.
-
-    ``processing_policy_versions.terms_copy`` is the served text. Any failure
-    to reach it returns ``None`` rather than raising: this is a check, and a
-    check that explodes when the database is unreachable teaches people to
-    delete it.
-    """
+    """The served Terms (processing_policy_versions.terms_copy), or None when
+    no policy is registered or the database cannot be reached."""
     try:
         if database is None:
             from services.db import db as database
         policy = database.get_active_processing_policy()
     except Exception:
         return None
-    if isinstance(policy, dict):
-        copy = policy.get("terms_copy")
-        if isinstance(copy, str) and copy.strip():
-            return copy
-    return None
+    copy = policy.get("terms_copy") if isinstance(policy, dict) else None
+    return copy if isinstance(copy, str) and copy.strip() else None
 
 
 def terms_text_in_force(database: Any = None) -> str:
-    """The served policy when there is one, the draft otherwise."""
-    served = active_policy_terms_copy(database)
-    if served:
-        return served
-    return _DRAFT_TERMS.read_text(encoding="utf-8")
+    """The served policy when there is one, the newest shipped copy otherwise."""
+    return active_policy_terms_copy(database) or SHIPPED_TERMS[-1].read_text(encoding="utf-8")
 
 
-class TheGate(unittest.TestCase):
-    """The contradiction itself."""
-
-    def _assert_consistent(self, *, stripe_on: bool, terms: str, where: str):
-        if stripe_on and claims_no_payment_is_taken(terms):
-            self.fail(
-                f"{where}: Stripe payment config is present, so a user can be "
-                "charged, but the Terms in force still tell them we do not "
-                "take payment.\n\n"
-                "Enabling payment is a COPY decision before it is a CONFIG "
-                "decision. Re-version the Terms to describe payment, get "
-                "founder sign-off, register the policy — THEN set "
-                "STRIPE_SECRET_KEY. Doing it the other way round is the state "
-                "production was in on 2026-09-17."
-            )
-
-    def test_the_contradiction_is_detected_when_it_exists(self):
-        """The gate must be capable of failing. A gate only ever exercised in
-        the passing direction is decoration."""
-        with self.assertRaises(AssertionError):
-            self._assert_consistent(
-                stripe_on=True,
-                terms="The service is free and we do not take payment.",
-                where="synthetic",
-            )
+def contradiction(*, stripe_on: bool, terms: str) -> Optional[str]:
+    if stripe_on and claims_no_payment_is_taken(terms):
+        return ("Stripe payment config is present, so a user can be charged, but "
+                "the Terms in force still say we do not take payment. Re-version "
+                "the Terms first, get founder sign-off, register the policy, THEN "
+                "set STRIPE_SECRET_KEY.")
+    return None
 
 
-    def test_this_environment_does_not_contradict_the_terms_in_force(self):
-        """THE LIVE ONE. Reads the served policy when a policy is registered,
-        the shipped draft otherwise, and this process's own config.
-
-        In CI the key is absent and this passes without proving much. Where
-        the key IS set — a dev box, or a readiness script run against
-        production config — it fails, which is the whole point.
-        """
-        from config import Config
-
-        self._assert_consistent(
-            stripe_on=stripe_payment_configured(Config),
-            terms=terms_text_in_force(),
-            where="this environment",
-        )
+def test_the_contradiction_is_detected_when_it_exists():
+    free = "The service is free and we do not take\n payment."
+    assert contradiction(stripe_on=True, terms=free)
+    assert contradiction(stripe_on=False, terms=free) is None
+    assert contradiction(stripe_on=True, terms=SHIPPED_TERMS[-1].read_text()) is None
 
 
-class TheDraftIsWhereWeThinkItIs(unittest.TestCase):
-    """If the draft moves or is renamed, the gate above silently starts
-    reading nothing. Fail loudly instead."""
+@pytest.mark.parametrize("terms", SHIPPED_TERMS, ids=lambda p: p.name)
+def test_every_shipped_terms_describes_payment(terms):
+    body = normalised(terms.read_text(encoding="utf-8"))
+    assert "paid plan" in body and "payment" in body
+    assert not claims_no_payment_is_taken(body)
 
 
-    def test_the_draft_still_contains_a_payment_sentence_to_match_on(self):
-        """Guards the matcher, not the copy. If a future edit drops every
-        phrase in _NO_PAYMENT_CLAIMS, the gate would pass because it found
-        nothing to object to — indistinguishable from copy that correctly
-        describes payment. This test makes that rewrite a conscious act."""
-        body = normalised(_DRAFT_TERMS.read_text(encoding="utf-8"))
-        self.assertIn("payment", body)
+def test_this_environment_does_not_contradict_the_terms_in_force():
+    from config import Config
 
-
-if __name__ == "__main__":
-    unittest.main()
+    problem = contradiction(stripe_on=stripe_payment_configured(Config),
+                            terms=terms_text_in_force())
+    assert problem is None, problem

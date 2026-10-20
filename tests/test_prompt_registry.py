@@ -1,13 +1,14 @@
-"""Prompt-registry drift gate (unit tier — no credentials, no LLM).
-
-THE deterministic half of the eval-harness plan (founder 2026-08-03):
-every LLM prompt lives in services/prompts/ and is hashed into
-prompts.lock.json. These tests make an un-reviewed prompt edit
-impossible — touch a prompt without regenerating the lockfile and the
-suite goes red with the exact prompt ids that drifted.
-
-The behavioral half (golden evals against the changed prompts) runs in
-the prompt-evals CI job — see tests/evals/run_prompt_evals.py.
+"""
+GUARD      Every LLM prompt in services/prompts/ is hashed into
+           prompts.lock.json, and the code matches the lockfile.
+CATCHES    A prompt (or its builder logic) edited without regenerating the
+           lockfile; the failure names the prompt ids that were added,
+           removed or changed.
+IF REMOVED A prompt can change without review and the speaker's feedback
+           shifts silently. (The behavioural half, golden evals against the
+           changed prompts, runs in the prompt-evals CI job.)
+PROVES     test_lockfile_matches_code
+WHY        Eval-harness plan, founder 2026-08-03.
 """
 import unittest
 
@@ -15,21 +16,10 @@ from services.prompts import registry
 
 
 class TestPromptRegistry(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        # Discovery + hashing walks and imports every prompt module; do it
-        # once per class instead of once per test (audit Q-T11).
-        cls.manifest = registry.manifest()
-
 
     def test_lockfile_matches_code(self):
-        """prompts.lock.json is in sync with the prompt modules.
-
-        Failing here means a prompt (or its builder logic) changed
-        without the lockfile being regenerated. If the change is
-        intentional:  python -m services.prompts.registry update
-        then commit the lockfile diff alongside the prompt edit.
-        """
+        """If the change is intentional: python -m services.prompts.registry
+        update, then commit the lockfile diff alongside the prompt edit."""
         ok, delta = registry.check()
         self.assertTrue(
             ok,
@@ -41,5 +31,5 @@ class TestPromptRegistry(unittest.TestCase):
         )
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     unittest.main()

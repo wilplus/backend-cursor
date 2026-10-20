@@ -1,10 +1,13 @@
-"""UX Wave 4 — slide-deck capture (BE Phase 1).
-
-Most of this runs locally: intake_context + deck_parser + the whisper-prime
-merge are dependency-light (heavy parsers lazy-imported). The extract route
-test mirrors the coach harness (skip without flask, run in CI).
-
-Run: python3 -m unittest tests.test_wave4_slides
+"""
+STORY    As a speaker, I want my uploaded deck's slides captured into my
+         take, so that the transcript splits into one paragraph per slide.
+OUTCOME
+  O1  The deck extract route answers 400 INVALID_INPUT when no file is
+      sent, instead of failing the upload with a server error.
+PROVES   O1 -> test_missing_file_400
+WHY      UX Wave 4 slide-deck capture. The other extract outcomes (415, empty
+         400, 413) live in tests/test_presentation_extract.py; this case
+         belongs there too (not folded: outside this batch's files).
 """
 from __future__ import annotations
 

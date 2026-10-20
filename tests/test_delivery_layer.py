@@ -1,15 +1,23 @@
-"""willab — the delivery layer (founder 2026-07-15).
-
-Route-level tests (test_arc_unlock.py harness): the per-take FEEDBACK page,
-the one-block IDEAL TEXT (coach review/approve + student notebook), the coach
-Save/Publish flow with the 4-bubble delivery, and the async-analysis state
-fold on the readout GETs.
-
-FENCES verified: feedback carries NO scores / potentiometer / acoustic_read;
-a locked take leaks NO content; the student never sees an unapproved ideal
-text; the user's notebook save never touches the coach canonical (L1).
-
-Run: python3 -m unittest tests.test_delivery_layer
+"""
+STORY    As a speaker, I want my feedback page to show the moments my coach
+         surfaced, with playback and the coach's words, never verdicts or
+         scores, and my readout to show processing or failed states honestly,
+         so that feedback is in words and the next Take is never blocked.
+OUTCOME
+  O1  Never-1: a surfaced moment comes back with its words, exact playback and
+      the coach's note, exactly those fields, and no score, confidence,
+      quorum or acoustic read anywhere in the page.
+  O2  Only a coach's judgement surfaces a moment; peers agreeing does not.
+  O3  Never-3: while processing, or after the Ideal Text failed, the readout
+      says so by name and carries no stale readout.
+  O4  Never-3: retrying a failed Ideal Text enqueues exactly one job for that
+      Take and answers "processing".
+PROVES   O1 -> test_the_verdict_is_never_serialized
+         O2 -> test_peer_answers_alone_surface_nothing
+         O3 -> test_processing_state_served_without_readout
+         O3 -> test_ideal_text_unconfirmed_state_is_preserved_exactly
+         O4 -> test_enqueues_identity_only_take_one_job
+WHY      Founder 2026-07-15, the delivery layer; AC-9 (no number to a speaker).
 """
 from __future__ import annotations
 
@@ -137,29 +145,33 @@ class _FeedbackHarness(unittest.TestCase):
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class KeyMomentContractTests(_FeedbackHarness):
-    """A surfaced moment carries exact playback and a written coach note.
-
-    Per-item coach video was retired; a general Take-level video is the only
-    coach-video surface that may reach the user.
-    """
-
+    """A surfaced moment carries exact playback and a written coach note."""
 
     def test_the_verdict_is_never_serialized(self):
         # The coach verdict selects the moment but never ships: no internal
-        # confidence value or research vocabulary reaches the user payload.
-        for value in ("yes",):
-            body, _ = self._call(entitled=True, confidence=value,
-                                 surfaced=True)
-            raw = json.dumps(body)
-            for banned in ("threat", "challenge", "confidence", "quorum"):
-                self.assertNotIn(banned, raw)
-            takes = {t["take_index"]: t for t in body["takes"]}
-            for m in takes[1]["key_moments"]:
-                self.assertEqual(set(m.keys()), {
-                    "snippet_id", "take_session_id", "slide_index",
-                    "recording_kind", "transcript", "audio_ref",
-                    "start_offset_ms", "duration_ms", "comment_text",
-                })
+        # confidence value, score or research vocabulary reaches the page.
+        body, status = self._call(entitled=True, confidence="yes", surfaced=True)
+        self.assertEqual(status, 200)
+        takes = {t["take_index"]: t for t in body["takes"]}
+        moment = next(m for m in takes[1]["key_moments"]
+                      if m["take_session_id"] == T1)
+        self.assertEqual(moment, {
+            "snippet_id": "s1-p0", "take_session_id": T1, "slide_index": 0,
+            "recording_kind": "spoken", "transcript": "corrected s1",
+            "audio_ref": "https://x/p.webm", "start_offset_ms": 0,
+            "duration_ms": 4000, "comment_text": "This is the turn.",
+        })
+        raw = json.dumps(body)
+        for banned in ("threat", "challenge", "confidence", "quorum", "score",
+                       "potentiometer", "acoustic_read"):
+            self.assertNotIn(banned, raw)
+
+    def test_peer_answers_alone_surface_nothing(self):
+        body, status = self._call(entitled=True, confidence="yes",
+                                  surfaced=True, peer_only=True)
+        self.assertEqual(status, 200)
+        self.assertEqual(len(body["takes"]), 3)
+        self.assertEqual([t["key_moments"] for t in body["takes"]], [[], [], []])
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
@@ -202,7 +214,6 @@ class AsyncReadoutStateTests(unittest.TestCase):
         self.assertEqual(body["state"], "processing")
         self.assertEqual(body["analysis_state"], "processing")
         self.assertIsNone(body["readout"])
-
 
     def test_ideal_text_unconfirmed_state_is_preserved_exactly(self):
         body, status = self._guest({

@@ -1,16 +1,23 @@
-"""The release decides every pair afresh (PLF-1.1 "Dataset eligibility";
-audit PLF-P5).
-
-The weekly flag only nominates a pair. At the moment of release each
-candidate is decided again from the sources: the training yes in force
-NOW, the owner's service not ending, the project not leaving and the Take
-still there, the texts still a pair. The texts are fingerprinted, the
-decision's counts are signed inside the manifest, and a source that cannot
-be read stops the surface for the week: nothing leaves on a guess.
+"""
+STORY    As a speaker who withdraws, I want my pairs kept out of the next
+         release even if last week's flag said yes, so that my withdrawal
+         takes effect now.
+OUTCOME
+  O1  At release, a pair is out when there is no yes in force now; nobody
+      without a yes is even asked about their service.
+  O2  A pair is also out when the owner's service is ending, its Take is
+      gone, its project is leaving, or its texts are no longer a pair; each
+      is counted under its reason.
+  O3  A source that cannot be read stops the surface: nothing is written.
+PROVES   O1 -> test_a_withdrawal_since_the_refresh_keeps_the_pair_out
+         O2 -> test_every_other_reason_keeps_its_pair_out
+         O3 -> test_an_unreadable_source_stops_the_week
+WHY      PLF-1.1 "Dataset eligibility"; audit PLF-P5.
 """
 from __future__ import annotations
 
 import unittest
+import uuid
 from datetime import date, datetime, timezone
 from unittest import mock
 
@@ -128,6 +135,30 @@ class ReleaseDecisionTests(unittest.TestCase):
         self.assertNotIn("pair-2", body)
         # Nobody without a yes is even asked about their service.
         self.assertEqual(db.asked_stopped, ["p-1"])
+
+
+    def test_every_other_reason_keeps_its_pair_out(self):
+        kept, gone, leaving = (str(uuid.UUID(int=i)) for i in (1, 2, 3))
+        db = _Db([_pair(1, "p-1", take=kept),
+                  _pair(2, "p-stop"),
+                  _pair(3, "p-1", take=gone),
+                  _pair(4, "p-1", take=leaving),
+                  _pair(5, "p-1", draft="same words", final="same  words")],
+                 grants={"p-1": "v1", "p-stop": "v1"}, stopped={"p-stop"},
+                 takes={kept: "project-a", leaving: "project-b"})
+        out, _ = self._export(db, leaving={"project-b"})
+        self.assertEqual(db.marked, [("rel-1", ["pair-1"])])
+        self.assertEqual(out["eligibility"]["excluded"], {
+            "texts_not_a_pair": 1, "service_ending": 1,
+            "take_gone": 1, "project_leaving": 1})
+
+    def test_an_unreadable_source_stops_the_week(self):
+        for broken in ("grants", "stopped"):
+            with self.subTest(source=broken):
+                db = _Db([_pair(1, "p-1")], grants={"p-1": "v1"}, fail={broken})
+                with self.assertRaises(RuntimeError):
+                    self._export(db)
+                self.assertEqual((db.releases, db.marked), ([], []))
 
 
 if __name__ == "__main__":

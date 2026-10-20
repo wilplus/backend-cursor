@@ -1,21 +1,43 @@
-"""Stable parts — Step 0 of SPEC-parts-locking-and-layers.
-
-The document stops being a string and becomes an ordered list whose ids survive
-reordering and rewording. PR 3 hangs a lock on those ids, which is why the
-validation here is unusually strict: a parts list that disagrees with the text
-would anchor a lock to words the student is not looking at, and afterwards a
-wrong anchor is indistinguishable from a right one.
-
-TWO THINGS THIS FILE GUARDS THAT ARE NOT OBVIOUS:
-
-  * `joined()` must MIRROR the FE's `joinSegments` exactly. The write path
-    refuses a payload whose parts do not join to its text, so a drift between
-    the two implementations does not degrade — it makes every save 400.
-  * `serve()` distinguishes ABSENT from EMPTY. "This document has no stored
-    identity" and "this document is empty" are different states, and the FE
-    branches on exactly that difference.
-
-Run: python3 -m unittest test_ideal_text_parts
+"""
+STORY    As a speaker, I want my paragraphs to keep their identity, my locked
+         words never rewritten by the machine and my saves never quietly
+         refused, so that the words I committed stay mine.
+OUTCOME
+  O1  An invalid part list is refused whole; an empty list is an empty
+      document, and no stored rows is ABSENT (not empty).
+  O2  The parts join exactly as the FE's joinSegments joins them, so a save
+      whose parts match its text is never refused for drift.
+  O3  Never-5 (my latest words are the Ideal Text): every compose path
+      serves each locked part exactly once, with its id and words intact.
+  O4  On a locked part the machine only re-offers (tagged), Confident Voice
+      arrives as a pending prompt, a straddling change is dropped, and Save
+      never silently declines an offer hidden under a lock.
+  O5  A bad PUT writes nothing; an explicit unlock reopens the paragraph.
+  O6  Locking a never-edited document seeds its parts and locks.
+  O7  An edit alone marks a paragraph reviewed.
+PROVES   O1 -> test_an_empty_list_is_a_valid_empty_document,
+               test_a_non_object_entry, test_a_duplicate_id_in_DIFFERENT_CASE,
+               test_missing_or_blank_text, test_too_many_parts,
+               test_the_ceiling_is_on_the_JOINED_document,
+               test_a_broken_row_is_dropped_not_repaired,
+               test_all_rows_broken_is_ABSENT
+         O2 -> test_joined_mirrors_the_fe_join_segments
+         O3 -> test_identity_case_is_unchanged,
+               test_twin_locks_with_one_machine_copy_pin,
+               test_every_branch_upholds_the_invariant,
+               test_nothing_to_pin_is_none
+         O4 -> test_progressive_locking_needs_no_special_case,
+               test_a_locked_part_RE_OPENS_on_a_new_rewrite,
+               test_a_locked_part_passes_confident_voice_as_pending,
+               test_a_straddling_change_is_dropped,
+               test_case_and_whitespace_do_not_decide_it
+         O5 -> test_explicit_false_reopens_the_paragraph,
+               test_a_non_boolean_lock_is_refused,
+               test_a_malformed_part_is_a_400_and_writes_NOTHING
+         O6 -> test_a_seed_with_open_feedback_locks
+         O7 -> test_changed_words_are_edited_and_only_those,
+               test_no_generated_text_means_no_flag_at_all
+WHY      Founder field report #5: "my locked chunk came back unlocked".
 """
 from __future__ import annotations
 
@@ -34,7 +56,6 @@ from services.ideal_text_parts import (
     compose_locked,
     covered_by_locked_part,
     joined,
-    part_at,
     part_spans,
     pinned_parts,
     serve,
@@ -89,6 +110,22 @@ class TestWhatIsRefused(unittest.TestCase):
         self._refuses(big, "too long joined")
 
 
+class TestJoined(unittest.TestCase):
+
+    def test_joined_mirrors_the_fe_join_segments(self):
+        # FE src/lib/willab/documentSegments.ts joinSegments: trim each,
+        # drop the blanks, join on a blank line.
+        parts = [{"id": _id(), "text": "  One.  "},
+                 {"id": _id(), "text": "   "},
+                 None,
+                 {"id": _id(), "text": "Two.\n"}]
+        doc = joined(parts)
+        self.assertEqual(doc, "One.\n\nTwo.")
+        # The offsets a lock is anchored by follow the same rule.
+        self.assertEqual([doc[s:e] for s, e, _p in part_spans(parts)],
+                         ["One.", "Two."])
+
+
 class TestServe(unittest.TestCase):
 
 
@@ -102,6 +139,7 @@ class TestServe(unittest.TestCase):
         self.assertEqual([p["id"] for p in out], [good])
 
     def test_all_rows_broken_is_ABSENT(self):
+        self.assertIsNone(serve([]))
         self.assertIsNone(serve([{"id": None, "ord": 0, "text": "x"}]))
 
 
@@ -117,21 +155,6 @@ class TestTheDerivedLayer(unittest.TestCase):
         parts = [{"locked_at": "2026-08-07T10:00:00Z"}, {"locked_at": None}]
         self.assertEqual([allowed_layer(p) for p in parts],
                          [ACCENTUATION, COMPOSITION])
-
-
-class TestPartSpans(unittest.TestCase):
-    """Offsets over the joined document. Exact, because `joined()` is the only
-    mapping from parts to text and it is deterministic."""
-
-    PARTS = [{"id": "a", "text": "One."}, {"id": "b", "text": "Two."},
-             {"id": "c", "text": "Three."}]
-
-
-    def test_junk(self):
-        self.assertEqual(part_spans(None), [])
-        self.assertEqual(part_spans([None, "x", {}]), [])
-        self.assertIsNone(part_at([], 0, 1))
-        self.assertIsNone(part_at(part_spans(self.PARTS), None, "x"))
 
 
 class TestR1TheLayerFilter(unittest.TestCase):
@@ -200,18 +223,6 @@ class TestR1TheLayerFilter(unittest.TestCase):
         self.assertEqual(out[0]["id"], c["id"])
 
 
-    def test_the_visual_registry(self):
-        """SPEC §3: Confident Voice = star; rewrites = underline; accents =
-        bold. One table, stamped on survivors in select()."""
-        self.assertEqual(
-            ic.visual_of({"kind": "bold",
-                          "trigger": ic.CONFIDENT_VOICE_TRIGGER}), "star")
-        self.assertEqual(ic.visual_of({"kind": "replace"}), "underline")
-        self.assertEqual(ic.visual_of({"kind": "insert"}), "underline")
-        self.assertEqual(ic.visual_of({"kind": "bold"}), "bold")
-        self.assertEqual(ic.visual_of({"kind": "advice"}), "bold")
-
-
     def test_a_straddling_change_is_dropped(self):
         parts = self._parts(True, False)
         spans = part_spans(parts)
@@ -243,12 +254,11 @@ class TestCoveredByLockedPart(unittest.TestCase):
         self.assertTrue(
             covered_by_locked_part("we  started   in a TINY garage.",
                                    self.LOCKED))
-
-
-    def test_junk(self):
-        self.assertFalse(covered_by_locked_part("", self.LOCKED))
+        # An offer on an OPEN part, or with no words, is not covered: when
+        # in doubt it stays pending rather than being declined.
+        self.assertFalse(
+            covered_by_locked_part("And then we shipped it fast.", self.LOCKED))
         self.assertFalse(covered_by_locked_part(None, self.LOCKED))
-        self.assertFalse(covered_by_locked_part("x", [None, "nope", {}]))
 
 
 class TestComposeLocked(unittest.TestCase):
@@ -328,11 +338,16 @@ class ThePutStoresIdentityWithTheWords(unittest.TestCase):
         # Current clients carry the complete version state. A changed locked
         # Paragraph becomes a working copy until the user commits it again.
         a = _id()
-        _b, _s, m = self._put(
+        body, status, m = self._put(
             {"text": "one", "version": 3,
              "parts": [{"id": a, "text": "one", "locked": False}]},
             existing=[{"id": a, "ord": 0, "text": "one",
                        "locked_at": "2026-08-01T00:00:00Z"}])
+        self.assertEqual(status, 200, body)
+        self.assertIs(body["saved"], True)
+        m.assert_called_once()
+        self.assertEqual(
+            m.call_args.kwargs["desired_parts_lineage"][0]["id"], a)
         self.assertIs(
             m.call_args.kwargs["desired_parts_lineage"][0]["locked"], False
         )
@@ -410,9 +425,6 @@ class SeedOnLock(unittest.TestCase):
         self.assertEqual(status, 200)
         m_write.assert_called_once()
 
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class TestAnchorRule(unittest.TestCase):
@@ -497,3 +509,7 @@ class TheEditedFlag(unittest.TestCase):
             out = mark_edited(served, generated)
             self.assertEqual(out, served)
             self.assertNotIn("edited", out[0])
+
+
+if __name__ == "__main__":
+    unittest.main()

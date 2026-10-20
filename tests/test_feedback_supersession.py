@@ -1,4 +1,15 @@
-"""Machine-immediate → coach-superseded feedback invariants."""
+"""
+STORY    As a speaker, I want the machine's feedback straight away and the
+         coach's revision only once the coach publishes, so that I never see
+         an unreleased verdict.
+OUTCOME
+  O1  A coach verdict on an unpublished Take is hidden; on a published Take
+      it is released, each judged against its own Take.
+  O2  A released verdict becomes a coach_revision change against the words
+      the speaker accepted, with the exact span, text and note.
+PROVES   O1 -> test_only_verdicts_on_published_takes_are_released
+         O2 -> test_the_exact_change_and_the_order
+"""
 from __future__ import annotations
 
 import unittest
@@ -10,35 +21,27 @@ from services.tracked_changes import build_coach_revision_changes
 
 SID = "11111111-2222-3333-4444-555555555555"
 TAKE = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-
-
-def _accepted(**over):
-    row = {
-        "decision": "approved",
-        "source": "user_star",
-        "kind": "replace",
-        "snippet_id": SID,
-        "target_phrase": "original words",
-        "display_phrase": "Original words",
-        "replacement_text": "Machine accepted words",
-        "version": 1,
-    }
-    row.update(over)
-    return row
+PUBLISHED_SID = "66666666-7777-8888-9999-000000000000"
+PUBLISHED_TAKE = "ffffffff-bbbb-cccc-dddd-eeeeeeeeeeee"
 
 
 class CoachReleaseBoundaryTests(unittest.TestCase):
-    def test_unpublished_coach_verdict_stays_private(self):
-        verdicts = {SID: {"verdict": "should_not_fire"}}
-        pieces = [{"snippet_id": SID, "take_session_id": TAKE}]
-        sessions = [{"id": TAKE, "results_published_at": None}]
-        self.assertEqual(released_user_verdicts(verdicts, pieces, sessions), {})
+    def test_only_verdicts_on_published_takes_are_released(self):
+        verdicts = {SID: {"verdict": "should_not_fire"},
+                    PUBLISHED_SID: {"verdict": "wrong_kind", "note": "Yours was right."}}
+        pieces = [{"snippet_id": SID, "take_session_id": TAKE},
+                  {"snippet_id": PUBLISHED_SID, "take_session_id": PUBLISHED_TAKE}]
+        sessions = [{"id": TAKE, "results_published_at": None},
+                    {"id": PUBLISHED_TAKE,
+                     "results_published_at": "2026-09-01T00:00:00Z"}]
+        self.assertEqual(released_user_verdicts(verdicts, pieces, sessions), {
+            PUBLISHED_SID: {"verdict": "wrong_kind", "note": "Yours was right."},
+        })
 
 
 class CoachRevisionPinTests(unittest.TestCase):
     """build_coach_revision_changes, pinned before its split into named
-    stages (audit W1, 2026-09-28): the exact change, which accepted row
-    wins, and every way a revision is not offered."""
+    stages (audit W1, 2026-09-28): the exact change and its order."""
 
     DOC = "Alpha words here. Beta words here."
 

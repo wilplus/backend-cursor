@@ -1,47 +1,21 @@
-"""The whole V3 chain, with the shape production actually has.
-
-WHY THIS FILE EXISTS (founder, 2026-09-19: "it's been like a 10th or
-something iteration that you are saying it's the last step... at this stage
-we are very slow").
-
-He was right, and the reason was not the code. V3's back half had never once
-executed in production -- ``piece_has_no_part_id`` stood it down before the
-first write until #568 -- so every gate past that point was a FIRST
-execution, and each one was being discovered through a fifteen-minute
-deploy-record-read-the-log cycle.
-
-Meanwhile ``tests/test_mlc3_first_client_feedback.py`` was green. It still is.
-That is the part worth understanding, because a passing test suite over a
-path that cannot run in production is worse than no test at all: it says the
-path is fine.
-
-TWO FIXTURE CHEATS HID EVERYTHING. In ``_source()`` there:
-
-  1. ``served_text=document["text"]`` -- the Ideal Text IS the transcript.
-     A V3 Confident Voice candidate carries ``document_span`` =
-     ``{piece["start"], piece["end"]}``, which are character offsets into the
-     TRANSCRIPT; ``_exact_transcript_evidence`` slices ``served_text`` with
-     them. Make the two documents the same string and that is trivially
-     correct. In production they are different documents of different
-     lengths and the slice is meaningless or out of range.
-  2. The bundle is built with no ``document_snapshot_id`` and no
-     ``document_surface_sha256``, so ``snapshot_bound`` is False and the
-     branch requiring ``target_text is not None`` is never entered.
-     Production always passes both, so production is always snapshot-bound.
-
-So the tests exercise the non-snapshot-bound path across one degenerate
-document, and production runs the snapshot-bound path across two real ones.
-
-THIS HARNESS IS THE OTHER SHAPE. The transcript carries exactly the fields
-``build_transcript_document`` writes (no ``part_id`` -- #568 adds that
-afterwards via ``bind_pieces_to_parts``, which is applied here too, the same
-way the live path applies it). The Ideal Text is a DIFFERENT, shorter
-document. The snapshot RPC returns the Ideal Text as its surface, because
-that is what the live one returns. Nothing is hand-fitted to pass.
-
-It is a harness before it is a regression test: it runs the chain end to end
-in milliseconds so the remaining gates can be found together instead of one
-per take recorded at midnight.
+"""
+STORY    As a speaker, I want my answer to Confident Voice feedback recorded
+         as a valid decision on real production-shaped data, so that the
+         feedback loop works outside tests.
+OUTCOME
+  O1  On production-shaped data (a transcript and a DIFFERENT, shorter Ideal
+      Text, snapshot-bound), the chain runs end to end and serves a Confident
+      Voice row that quotes the Ideal Text and is backed by the spoken words.
+  O2  The speaker's answer to that row becomes a canonical decision carrying
+      the row's own candidate, membership and exposure ids.
+  O3  A candidate-set write that returns nothing usable (or another set's id)
+      is logged, not silent; the feedback is still served, but without
+      lineage, so no answer can attach to it.
+PROVES   O1 -> test_the_chain_serves_feedback_on_two_real_documents
+         O2 -> test_the_answer_is_a_canonical_decision_on_the_served_row
+         O3 -> test_a_write_that_returns_nothing_is_logged_not_silent
+WHY      Founder 2026-09-19: V3's back half had never run in production, and
+         `candidate_set_write_failed` arrived with no line saying why.
 """
 from __future__ import annotations
 
@@ -226,8 +200,8 @@ class _Database:
     def _candidate_set_rpc_result(self, bundle):
         """What PostgreSQL hands back on the happy path.
 
-        Overridden by the subclasses below to model the answers that are
-        NOT exceptions -- the two the caller refuses in silence.
+        Overridden by `_WriteReturns` below to model the answers that are
+        not exceptions: no usable row, or another set's id.
         """
         return {
             "candidate_set_id": bundle["candidate_set_id"],
@@ -273,16 +247,29 @@ def run_chain(database=None, document=None):
     )
 
 
-class TheWriteThatSucceedsAndSaysNothing(unittest.TestCase):
-    """PRODUCTION, 2026-09-19, 23:59 — `candidate_set_write_failed` with no
-    `shape=[` line beside it.
+class _WriteReturns(_Database):
+    """The RPC runs cleanly and hands back something that is not our set."""
 
-    That combination is itself the diagnosis: `shape=[` is logged only when
-    the RPC RAISES, so its absence means PostgreSQL ran the function and
-    returned cleanly. The write then failed on what came back -- and both of
-    the ways that can happen returned None with no log at all, so the log
-    could say only that something went wrong somewhere.
-    """
+    def __init__(self, answer) -> None:
+        super().__init__()
+        self._answer = answer
+
+    def _candidate_set_rpc_result(self, bundle):
+        return self._answer
+
+
+def _decision(row: dict) -> dict | None:
+    from services.feedback_data_contract import canonical_feedback_decision
+    return canonical_feedback_decision(
+        take_id=TAKE, rater_id=USER, feedback_id=str(row["id"]),
+        feedback_family="confident_voice", response="yes",
+        candidate_id=row.get("candidate_id"),
+        feedback_membership_id=row.get("feedback_membership_id"),
+        feedback_exposure_id=row.get("feedback_exposure_id"),
+    )
+
+
+class TheConfidentVoiceAnswerOnProductionShape(unittest.TestCase):
 
     def setUp(self) -> None:
         from config import Config
@@ -290,22 +277,72 @@ class TheWriteThatSucceedsAndSaysNothing(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
+    def _served_row(self, database) -> dict:
+        rows = run_chain(database)
+        self.assertIsInstance(rows, list)
+        voice = [row for row in rows
+                 if row["feedback_family"] == "confident_voice"]
+        self.assertEqual(len(voice), 1)
+        return voice[0]
 
-    def test_the_same_answer_IS_canonical_once_the_lineage_exists(self):
-        # The mirror, so the test above cannot pass for the wrong reason.
-        from services.feedback_data_contract import (
-            canonical_feedback_decision,
+    def test_the_chain_serves_feedback_on_two_real_documents(self):
+        database = _Database()
+        row = self._served_row(database)
+        # The row is drawn on the Ideal Text the speaker sees...
+        span = row["span"]
+        self.assertEqual(row["quote"], IDEAL[span["start"]:span["end"]])
+        # ...and its evidence is the words they actually said.
+        [candidate] = [c for c in database.bundle["candidates"]
+                       if c["id"] == row["candidate_id"]]
+        evidence = candidate["evidence"]
+        self.assertEqual(evidence["exact_text"], SPOKEN)
+        self.assertEqual(evidence["target_locator"]["exact_text"],
+                         row["quote"])
+        self.assertEqual(evidence["document_snapshot_id"], SNAPSHOT)
+        self.assertEqual((evidence["start_ms"], evidence["end_ms"]),
+                         (120, 120 + 9400))
+        self.assertEqual(database.context_calls, [])
+
+    def test_the_answer_is_a_canonical_decision_on_the_served_row(self):
+        database = _Database()
+        row = self._served_row(database)
+        [candidate] = [c for c in database.bundle["candidates"]
+                       if c["feedback_family"] == "confident_voice"]
+        decision = _decision(row)
+        self.assertIsNotNone(decision)
+        self.assertEqual(
+            {key: decision[key] for key in (
+                "take_id", "rater_id", "feedback_id", "feedback_family",
+                "value", "candidate_id", "feedback_membership_id",
+                "feedback_exposure_id")},
+            {"take_id": TAKE, "rater_id": USER, "feedback_id": row["id"],
+             "feedback_family": "confident_voice", "value": "yes",
+             "candidate_id": candidate["id"],
+             "feedback_membership_id": MEMBERSHIP,
+             "feedback_exposure_id": candidate["exposure_id"]},
         )
-        rows = run_chain()
-        assert rows is not None
-        row = rows[0]
-        self.assertIsNotNone(canonical_feedback_decision(
-            take_id=TAKE, rater_id=USER, feedback_id=str(row["id"]),
-            feedback_family="confident_voice", response="yes",
-            candidate_id=row.get("candidate_id"),
-            feedback_membership_id=row.get("feedback_membership_id"),
-            feedback_exposure_id=row.get("feedback_exposure_id"),
-        ))
+        self.assertTrue(
+            decision["idempotency_key"].startswith("feedback-decision:"))
+        # The same answer again is the same decision, not a second one.
+        self.assertEqual(decision, _decision(self._served_row(_Database())))
+
+    def test_a_write_that_returns_nothing_is_logged_not_silent(self):
+        for name, answer, logged in (
+            ("no row", [], "returned no usable row kind=list"),
+            ("null", None, "returned no usable row kind=NoneType"),
+            ("another set", {"candidate_set_id":
+                             "00000000-0000-4000-8000-000000000000"},
+             "id mismatch"),
+        ):
+            with self.subTest(name):
+                with self.assertLogs("services.first_client_repository",
+                                     "WARNING") as logs:
+                    row = self._served_row(_WriteReturns(answer))
+                self.assertIn(logged, "\n".join(logs.output))
+                self.assertIn(TAKE, "\n".join(logs.output))
+                # Served without lineage, so no answer can attach to it.
+                self.assertIsNone(row.get("feedback_membership_id"))
+                self.assertIsNone(_decision(row))
 
 
 if __name__ == "__main__":  # pragma: no cover

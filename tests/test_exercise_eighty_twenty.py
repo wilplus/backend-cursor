@@ -1,25 +1,54 @@
-"""The exercise reaches V3 Takes, chosen 80/20 (founder 2026-09-26).
-
-Two decisions, pinned here:
-
-  * "please do the 80/20 try smth new": a moment with two or more eligible
-    exercises gets the best match 4 times in 5 and another eligible one
-    otherwise, frozen once per moment (migration 0372; the draw itself is
-    pinned in tests/test_exercise_assignment_postgres.py);
-  * "Follow V3": the one Confident Voice item V3 marks `bookmark_tier =
-    "exercise"` (contract 24f) carries the exercise. The rush gate no longer
-    decides the moment there; the safety half of the gate still does.
-
-And the defect that made both necessary: the offer was attached above
-`_first_client_feedback`, which replaces the rows on every V3 Take, so no V3
-Take ever carried an exercise.
+"""
+STORY    As a speaker, I want a moment I can improve to carry one exercise,
+         usually the best match and sometimes another, so that I get a fitting
+         practice and the product keeps learning.
+OUTCOME
+  O1  A Confident Voice moment read weak carries the exercise the 80/20 draw
+      chose; a moment read confident is praise and carries none.
+  O2  Never-1: no draw number, rank or probability reaches the speaker's offer.
+  O3  The older, non-V3 lane offers what the same draw chose.
+PROVES   O1 -> test_a_weak_moment_carries_the_drawn_exercise_and_praise_none
+         O2 -> test_a_weak_moment_carries_the_drawn_exercise_and_praise_none
+         O3 -> test_the_legacy_lane_draws_too
+WHY      Founder 2026-09-26 "please do the 80/20 try smth new"; 2026-09-29
+         every bookmark may carry an exercise, a confident read is praise.
+         The draw itself is pinned in tests/test_exercise_assignment_postgres.py.
 """
 from __future__ import annotations
 
 import unittest
 
 from services import confident_voice_practice as cvp
-from tests.test_confident_voice_practice import _snippet, _words
+
+
+def _words(*, compressed: bool) -> list[dict]:
+    out, at = [], 0.0
+    for index, token in enumerate(
+        "read the same exact passage and give every single word enough space now".split()
+    ):
+        duration = 0.12 if compressed and index >= 8 else 0.24
+        out.append({"word": token, "start": at, "end": at + duration})
+        at += duration + (0.025 if compressed else 0.12)
+    return out
+
+
+def _snippet(**over) -> dict:
+    """A rushed, compressed reading of a clean passage."""
+    row = {
+        "id": "snippet-a",
+        "transcript": "Read the same exact passage and give every single word enough space now.",
+        "duration_ms": 5000,
+        "audio_segment_path": "snippets/a.webm",
+        "words": _words(compressed=True),
+        "metrics": {
+            "wpm": 210.0, "pause_ratio": 0.03, "voiced_ratio": 0.78,
+            "audio_quality": {"reliable": True, "noise_dominant": False},
+            "voice_confidence": {"version": "voice-confidence-universal-v3",
+                                 "score": 0.25},
+        },
+    }
+    row.update(over)
+    return row
 
 
 def _calm_snippet(**over):
@@ -35,6 +64,14 @@ def _calm_snippet(**over):
     return row
 
 
+def _confident_snippet(**over):
+    """A clip the machine reads confident: praise, never a library video."""
+    row = _calm_snippet(**over)
+    row["metrics"]["voice_confidence"] = {
+        **row["metrics"]["voice_confidence"], "score": 0.8}
+    return row
+
+
 def _exercise(exercise_id, editorial=0):
     return {
         "exercise_id": exercise_id, "version": 1, "title": exercise_id,
@@ -47,8 +84,9 @@ def _exercise(exercise_id, editorial=0):
 
 class _Db:
     def __init__(self, *, snippet=None, existing=None, assign=None,
-                 exercises=("best", "second", "third")):
+                 exercises=("best", "second", "third"), confident_ids=()):
         self.snippet = snippet if snippet is not None else _calm_snippet(id="snip-v3")
+        self.confident_ids = set(confident_ids)
         self.existing = existing
         self.catalogue = {
             eid: _exercise(eid, editorial=10 - i) for i, eid in enumerate(exercises)}
@@ -66,7 +104,8 @@ class _Db:
         return self.existing
 
     def get_confident_voice_practice_candidates(self, ids):
-        return [dict(self.snippet, id=i) for i in ids]
+        return [_confident_snippet(id=i) if i in self.confident_ids
+                else dict(self.snippet, id=i) for i in ids]
 
     def get_snippets_by_session(self, _take):
         return [{"metrics": {"wpm": 150.0}}]
@@ -127,9 +166,11 @@ class EightyTwentyTests(unittest.TestCase):
         self.assertEqual(_offers(rows), {"x": "second"})
         self.assertEqual(db.assign_calls[0]["lane"], "legacy_offer")
 
-
-    def test_no_number_about_the_draw_reaches_the_payload(self):
-        rows = _attach_v3(_Db(assign=_pick(2)))
+    def test_a_weak_moment_carries_the_drawn_exercise_and_praise_none(self):
+        rows = _attach_v3(_Db(assign=_pick(2), confident_ids={"snip-other"}))
+        # The draw chose the second-best match ("something new"); the moment
+        # read confident ("b") is praise and carries no exercise.
+        self.assertEqual(_offers(rows), {"a": "second"})
         offer = next(r["practice_exercise"] for r in rows if r["id"] == "a")
         for leaked in ("draw", "probability", "selected_rank", "selection_mode",
                        "candidates", "rank"):

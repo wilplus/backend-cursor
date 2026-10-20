@@ -1,53 +1,52 @@
-"""Take deletes never claim a delete that did not happen (2026-09-25).
+"""
+STORY    As a speaker, I want deleting a Take to either really delete it or
+         tell me it cannot, so that the app never claims a delete that did not
+         happen. (Critical path: deletion.)
+OUTCOME
+  O1  Deleting my own Take answers 200 and the row is gone.
+  O2  A Take the database refuses to delete (its lineage still points at it)
+      answers 409 TAKE_HAS_LINEAGE, and the row is left exactly as it was,
+      its recording and report links included.
+  O3  A presentation's Takes delete all together or not at all: one refused
+      Take means 409 and every Take of it is still there.
+  O4  A delete the database did not apply is never answered as a success.
+  O5  Only my own Takes can be deleted: a stranger gets 404 and the delete
+      statement itself is scoped to the owner.
+  O6  The hourly cleanup skips a Take with lineage without counting it as
+      deleted or paging anyone.
+PROVES   O1 -> test_the_owner_deletes_a_take
+         O2 -> test_a_take_with_lineage_answers_409_and_is_unchanged
+         O3 -> test_a_presentation_deletes_all_or_none
+         O4 -> test_a_delete_that_did_not_happen_is_not_a_success
+         O5 -> test_a_stranger_cannot_delete_my_take
+         O6 -> test_cleanup_keeps_a_take_with_lineage_quietly
+WHY      2026-09-25: links were nulled before a refused DELETE and the route
+         answered 200 (the same defect reverted the project delete, #647).
 
-The bug: ``v2_delete_session`` committed an UPDATE nulling
-``v2_sessions.recording_1_id`` / ``report_id``, then DELETEd the row. A
-canonical Take is referenced ON DELETE RESTRICT (recording attempts, feedback
-candidates, Ideal Text core snapshots, Confident Moment bundles, Voice Album —
-manifest 0296/0297/0315/0327), so the DELETE was refused *after* the links
-were cut. The route helper swallowed the refusal and answered 200. The same
-defect got the project delete reverted (#647 → #649).
-
-Now: the DELETE runs first and alone — PostgreSQL refuses it without changing
-anything — the refusal is ``TakeHasLineageError``, and every user delete route
-answers 409 ``TAKE_HAS_LINEAGE``. A presentation's takes go in ONE statement,
-so they all delete or none do. Success is what the table says afterwards.
-
-The repository classes need no Flask; the route classes skip locally without
-it and run in CI (the known gotcha).
-
-Run: python3 -m unittest tests.test_take_delete_lineage
+Covers the Python routes and repository only, against a table double that
+refuses a DELETE the way PostgreSQL does (one statement, all or nothing); the
+database's own RESTRICT keys are not exercised here.
 """
 from __future__ import annotations
 
 import unittest
 from unittest.mock import patch
 
-from services.take_repository import (
-    TakeRepository,
-)
+from flask import Flask, request
 
-try:
-    from flask import Flask, request
+from routes.v2 import user_sessions as routes
+from services.db import db
+from services.take_repository import TakeRepository
 
-    from services.db import db
-    _IMPORT_ERROR = None
-except Exception as e:  # pragma: no cover
-    Flask = None
-    request = None
-    _IMPORT_ERROR = e
+T1 = "11111111-1111-4111-8111-111111111111"
+T2 = "22222222-2222-4222-8222-222222222222"
+DECK = {"slides": [{"title": "Q3 results"}], "topic": "Q3"}
 
 
 class _FkViolation(Exception):
     """Shaped like postgrest's APIError for SQLSTATE 23503."""
 
     code = "23503"
-
-    def __init__(self):
-        super().__init__(
-            'update or delete on table "v2_sessions" violates foreign key '
-            'constraint "recording_attempts_take_id_fkey" on table '
-            '"recording_attempts"')
 
 
 class _Result:
@@ -56,82 +55,65 @@ class _Result:
 
 
 class _Query:
-    def __init__(self, client, table, op, payload=None):
-        self.client, self.table, self.op, self.payload = client, table, op, payload
-        self.filters = []
+    def __init__(self, table, op, payload=None):
+        self.table, self.op, self.payload, self.filters = table, op, payload, []
 
     def eq(self, col, val):
-        self.filters.append(("eq", col, val))
+        self.filters.append((col, [val]))
         return self
 
     def in_(self, col, vals):
-        self.filters.append(("in", col, list(vals)))
+        self.filters.append((col, list(vals)))
         return self
 
     def execute(self):
-        self.client.calls.append((self.table, self.op, self.payload, self.filters))
-        return self.client.respond(self)
+        return self.table.run(self)
 
 
-class _Table:
-    def __init__(self, client, name):
-        self.client, self.name = client, name
+class _V2Sessions:
+    """v2_sessions as PostgreSQL treats a DELETE: one statement is all or
+    nothing, and a row with a RESTRICT dependent refuses the whole statement
+    without changing anything."""
 
-    def select(self, cols="*"):
-        return _Query(self.client, self.name, "select", cols)
-
-    def update(self, data):
-        return _Query(self.client, self.name, "update", data)
-
-    def delete(self):
-        return _Query(self.client, self.name, "delete")
-
-
-class _FakeV2Sessions:
-    """A v2_sessions table that behaves like PostgreSQL does for a DELETE:
-    one statement is all-or-nothing, and a row with a RESTRICT dependent
-    refuses the whole statement without changing anything."""
-
-    def __init__(self, rows, restricted=(), silently_ignore_delete=False):
+    def __init__(self, rows, restricted=(), ignore_delete=False):
         self.rows = {r["id"]: dict(r) for r in rows}
         self.restricted = set(restricted)
-        self.silently_ignore_delete = silently_ignore_delete
-        self.calls = []
+        self.ignore_delete = ignore_delete
+        self.writes = []
 
+    # supabase client surface
     def table(self, name):
-        return _Table(self, name)
+        assert name == "v2_sessions", name
+        return self
 
-    def _match(self, q):
-        out = []
-        for row in self.rows.values():
-            ok = True
-            for kind, col, val in q.filters:
-                if kind == "eq" and str(row.get(col)) != str(val):
-                    ok = False
-                if kind == "in" and str(row.get(col)) not in [str(v) for v in val]:
-                    ok = False
-            if ok:
-                out.append(row)
-        return out
+    def select(self, _cols="*"):
+        return _Query(self, "select")
 
-    def respond(self, q):
-        assert q.table == "v2_sessions", q.table
-        hits = self._match(q)
+    def update(self, payload):
+        return _Query(self, "update", payload)
+
+    def delete(self):
+        return _Query(self, "delete")
+
+    def run(self, q):
+        hits = [r for r in self.rows.values()
+                if all(str(r.get(c)) in [str(v) for v in vals]
+                       for c, vals in q.filters)]
         if q.op == "select":
             return _Result([dict(r) for r in hits])
+        self.writes.append((q.op, q.filters))
         if q.op == "update":
             for r in hits:
                 r.update(q.payload)
             return _Result([dict(r) for r in hits])
-        if q.op == "delete":
-            if any(r["id"] in self.restricted for r in hits):
-                raise _FkViolation()
-            if self.silently_ignore_delete:
-                return _Result([])
-            for r in hits:
-                del self.rows[r["id"]]
-            return _Result([dict(r) for r in hits])
-        raise AssertionError(q.op)
+        if any(r["id"] in self.restricted for r in hits):
+            raise _FkViolation("update or delete on table \"v2_sessions\" "
+                               "violates foreign key constraint")
+        if self.ignore_delete:
+            return _Result([])
+        for r in hits:
+            del self.rows[r["id"]]
+        return _Result([dict(r) for r in hits])
 
 
 class _Db:
@@ -139,32 +121,87 @@ class _Db:
         self.client = client
 
 
-def _row(sid, user="u1"):
-    return {"id": sid, "user_id": user, "recording_id": f"rec-{sid}",
-            "report_id": f"rep-{sid}"}
+def _row(sid, user="u1", created="2026-09-01"):
+    return {"id": sid, "user_id": user, "recording_1_id": f"rec-{sid}",
+            "report_id": f"rep-{sid}", "created_at": created,
+            "intake_context": DECK}
 
 
-class RepositoryDeleteTests(unittest.TestCase):
+class DeleteRouteTests(unittest.TestCase):
 
-    def _repo(self, client):
-        return TakeRepository(_Db(client))
+    def _world(self, rows, **kw):
+        self.table = _V2Sessions(rows, **kw)
+        repo = TakeRepository(_Db(self.table))
+        for p in (
+            patch.object(db.takes, "v2_delete_sessions", repo.v2_delete_sessions),
+            patch.object(db, "v2_get_session_by_id",
+                         lambda sid: self.table.rows.get(sid)),
+            patch.object(db.takes, "v2_list_user_lab_sessions",
+                         lambda uid: [r for r in self.table.rows.values()
+                                      if r["user_id"] == uid]),
+            patch("routes.v2.user_sessions.sentry_sdk.capture_exception"),
+        ):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def _call(self, view, *args, user="u1"):
+        with Flask(__name__).test_request_context():
+            request.user_id = user
+            resp, status = view.__wrapped__(*args)
+            return resp.get_json(), status
+
+    def _delete_take(self, sid=T1, user="u1"):
+        return self._call(routes.v2_user_delete_session, sid, user=user)
+
+    def test_the_owner_deletes_a_take(self):
+        self._world([_row(T1)])
+        body, status = self._delete_take()
+        self.assertEqual((status, body["deleted_session"]), (200, T1))
+        self.assertNotIn(T1, self.table.rows)
+
+    def test_a_take_with_lineage_answers_409_and_is_unchanged(self):
+        self._world([_row(T1)], restricted={T1})
+        body, status = self._delete_take()
+        self.assertEqual((status, body["code"]), (409, "TAKE_HAS_LINEAGE"))
+        self.assertEqual(self.table.rows[T1], _row(T1))
+        # The DELETE runs first and alone: no link is cut before it.
+        self.assertEqual([op for op, _ in self.table.writes], ["delete"])
+
+    def test_a_presentation_deletes_all_or_none(self):
+        self._world([_row(T1, created="2026-09-01"),
+                     _row(T2, created="2026-09-02")], restricted={T2})
+        pid = routes._presentation_group_key(DECK)
+        body, status = self._call(routes.v2_user_delete_presentation, pid)
+        self.assertEqual((status, body["code"]), (409, "TAKE_HAS_LINEAGE"))
+        self.assertEqual(self.table.rows, {T1: _row(T1, created="2026-09-01"),
+                                           T2: _row(T2, created="2026-09-02")})
+
+        self.table.restricted.clear()
+        body, status = self._call(routes.v2_user_delete_presentation, pid)
+        self.assertEqual((status, body["deleted_sessions"]), (200, 2))
+        self.assertEqual(self.table.rows, {})
+
+    def test_a_delete_that_did_not_happen_is_not_a_success(self):
+        self._world([_row(T1)], ignore_delete=True)
+        body, status = self._delete_take()
+        self.assertEqual(status, 500)
+        self.assertNotEqual(body.get("status"), "ok")
+        self.assertIn(T1, self.table.rows)
+
+    def test_a_stranger_cannot_delete_my_take(self):
+        self._world([_row(T1, user="owner")])
+        body, status = self._delete_take(user="stranger")
+        self.assertEqual((status, body["code"]), (404, "SESSION_NOT_FOUND"))
+        self.assertEqual(self.table.rows[T1], _row(T1, user="owner"))
+        # Even past the route's ownership check, the statement is owner-scoped.
+        db.takes.v2_delete_sessions([T1], "stranger")
+        self.assertIn(T1, self.table.rows)
 
 
-    def test_the_delete_stays_owner_scoped(self):
-        # The routes resolve ownership first; this proves the statement
-        # itself can never reach another user's Take.
-        client = _FakeV2Sessions([_row("t1", user="someone-else")])
-        self._repo(client).v2_delete_sessions(["t1"], "u1")
-        self.assertEqual(client.rows["t1"], _row("t1", user="someone-else"))
-        delete = next(c for c in client.calls if c[1] == "delete")
-        self.assertIn(("eq", "user_id", "u1"), delete[3])
+class CleanupTests(unittest.TestCase):
 
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class CleanupKeepsCanonicalTakesQuietlyTests(unittest.TestCase):
-
-    def test_lineage_refusal_is_not_counted_and_not_reported(self):
-        table = _FakeV2Sessions([_row("a"), _row("b")], restricted={"b"})
+    def test_cleanup_keeps_a_take_with_lineage_quietly(self):
+        table = _V2Sessions([_row("a"), _row("b")], restricted={"b"})
         repo = TakeRepository(_Db(table))
         with patch.object(db.takes, "v2_get_incomplete_sessions_older_than",
                           lambda h: [{"id": "a", "user_id": "u1"},
@@ -173,7 +210,7 @@ class CleanupKeepsCanonicalTakesQuietlyTests(unittest.TestCase):
              patch("services.db.sentry_sdk.capture_exception") as capture:
             n, ids = db.v2_cleanup_incomplete_sessions(hours=1)
         self.assertEqual((n, ids), (1, ["a"]))
-        self.assertEqual(table.rows["b"], _row("b"))
+        self.assertEqual(table.rows, {"b": _row("b")})
         capture.assert_not_called()
 
 

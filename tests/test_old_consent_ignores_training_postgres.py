@@ -1,24 +1,22 @@
-"""The old consent code ignores the training yes (0377, P5 packet §4 items 1-2).
-
-Run on the released rehearsal lane. Every case runs in one transaction that is
-rolled back, so the policies it registers, and the registry row it relaxes,
-never reach another module.
-
-The first five cases fail without 0377. With a training policy active beside a
-bundled one:
-
-  * the bundled status reader raised "count must equal one";
-  * a bundled policy could not be registered;
-  * the canary readiness counted two policies;
-  * the bundled grant writer recorded a two-purpose yes on the training policy;
-  * the bundled withdrawal turned training off without making copies due.
-
-The last case is the second wall for the day the training purpose is allowed
-into a processing policy: the receipt writer still refuses it as a tick, and
-keeps 0366's D11 preamble.
+"""
+STORY    As a speaker, I want my training yes or no kept separate from my
+         processing consent, so that saying yes to one never ticks, blocks
+         or undoes the other.
+OUTCOME
+  O1  With a training policy active beside a bundled one, the bundled status
+      reader still answers, on the bundled policy.
+  O2  The bundled grant writer refuses the training policy.
+  O3  The processing receipt refuses training as a tick; other ticks record.
+PROVES   O1 -> test_the_bundled_status_reader_ignores_the_training_policy
+         O2 -> test_the_bundled_grant_writer_refuses_the_training_policy
+         O3 -> test_the_receipt_never_records_training_as_a_tick
+WHY      0377 (P5 packet section 4, items 1-2). Runs on the released
+         rehearsal lane; every case is one rolled-back transaction.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import uuid
 
@@ -31,6 +29,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 REQUIRED = ("recording_voice_processing", "transcription_feedback")
+TOGGLE_COPY = "Use my practice text and my coach's notes on it to train the models."
+TOGGLE_SHA = hashlib.sha256(TOGGLE_COPY.encode()).hexdigest()
 
 
 @pytest.fixture
@@ -160,3 +160,88 @@ def test_the_receipt_never_records_training_as_a_tick(cur):
     # Every other tick is still recorded exactly as before.
     accepted = _accept(cur, version, ["coach_review"])
     assert accepted["optional_purposes_recorded"] == ["coach_review"]
+
+
+_ACTIVE = ("active_from <= now() AND (retired_at IS NULL OR retired_at > now())")
+
+
+def _training_policy_version(cur):
+    """The active training-only policy (the lane allows one at a time)."""
+    live = _one(cur, "SELECT version FROM public.ml_consent_policies "
+                     f"WHERE grant_scope = 'training_only' AND {_ACTIVE} "
+                     "ORDER BY active_from DESC LIMIT 1")
+    if live:
+        return live
+    processing = _one(cur, "SELECT version FROM public.processing_policy_versions "
+                           "ORDER BY created_at LIMIT 1")
+    if not processing:
+        processing = f"phase1-0377-{uuid.uuid4()}"
+        digest = hashlib.sha256(b"rehearsal").hexdigest()
+        cur.execute("""
+            INSERT INTO public.processing_policy_versions (
+                version, status, terms_version, terms_copy, terms_copy_sha256,
+                privacy_version, privacy_copy, privacy_copy_sha256,
+                ai_notice_version, ai_notice_copy, ai_notice_copy_sha256,
+                agreement_copy, agreement_copy_sha256, allowed_countries,
+                created_by)
+            VALUES (%s, 'draft', 't', 'terms', %s, 'p', 'privacy', %s, 'a',
+                    'notice', %s, 'agree', %s, ARRAY['pl'], 'rehearsal-0377')""",
+            (processing, digest, digest, digest, digest))
+    _one(cur, """
+        SELECT public.configure_mlc2_training_consent_policy_v1(
+            'training-approval-0377', %s, %s, 'training-only-0377-v1',
+            'terms-t', 'privacy-t', 'founder+counsel', now(), ARRAY['PL'],
+            'evidence/training.pdf', %s, %s, now() - interval '1 minute')""",
+        (TOGGLE_SHA, TOGGLE_COPY, "e" * 64, processing))
+    return "training-only-0377-v1"
+
+
+def _bundled_policy_version(cur):
+    """Exactly one active bundled policy, inserted directly (the v1 configure
+    refuses while a training policy is active). Earlier suites in the lane
+    leave bundled policies behind; they are retired inside this rolled-back
+    transaction, past the append-only guard, so the reader sees one."""
+    cur.execute("SET LOCAL session_replication_role = replica")
+    cur.execute("UPDATE public.ml_consent_policies "
+                "SET retired_at = now() - interval '1 second' "
+                f"WHERE grant_scope = 'bundled_v1' AND {_ACTIVE}")
+    cur.execute("SET LOCAL session_replication_role = origin")
+    version = f"bundled-0377-{uuid.uuid4()}"
+    approval = _one(cur, """
+        INSERT INTO public.ml_product_legal_approvals (
+            approval_reference, approved_copy_sha256, onboarding_copy,
+            consent_policy_version, terms_version, privacy_policy_version,
+            approving_authority, approved_at, jurisdictions, article_6_basis,
+            article_9_treatment, evidence_object_key, evidence_sha256)
+        VALUES (%s, %s, 'bundled copy', %s, 'terms-b', 'privacy-b', 'x',
+                now() - interval '2 days', ARRAY['PL'], '6(1)(a)',
+                'not_applicable', 'k', %s)
+        RETURNING id""", (f"appr-{version}", "b" * 64, version, "c" * 64))
+    cur.execute("""
+        INSERT INTO public.ml_consent_policies (
+            version, product_legal_approval_id, required_for_service,
+            bundled_ui, active_from)
+        VALUES (%s, %s, true, true, now() - interval '2 days')""",
+        (version, approval))
+    return version
+
+
+def test_the_bundled_status_reader_ignores_the_training_policy(cur):
+    _training_policy_version(cur)
+    bundled = _bundled_policy_version(cur)
+    status = _one(cur, "SELECT public.get_mlc2_principal_consent_status_v1(%s)",
+                  (_principal(cur),))
+    assert status["configured"] is True
+    assert status["consent_policy_version"] == bundled
+    assert status["granted"] is False
+
+
+def test_the_bundled_grant_writer_refuses_the_training_policy(cur):
+    training = _training_policy_version(cur)
+    _raises(cur, "TRAINING_POLICY_NEEDS_THE_TRAINING_WRITER", """
+        SELECT * FROM public.record_mlc2_consent_grant_v1(
+            %s, %s, 'PL', 'terms-t', 'privacy-t', '/v2/user/mlc2-consent',
+            'test', %s::jsonb, now() - interval '1 second', false, %s)""",
+        (_principal(cur), training,
+         json.dumps({"accepted": True, "copy_sha256": TOGGLE_SHA}),
+         f"bundled-{uuid.uuid4()}"))

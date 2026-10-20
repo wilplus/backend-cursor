@@ -1,47 +1,60 @@
-"""D-ML-3: the rewrite lane fills.
-
-Contract 24f, 25, 27, 29b; ledger A059a / A066. The model's own clearer
-versions (`moment_suggestions`, the replace kind) reached the Manager with no
-`_manager_evidence` and no generator version, so V3 excluded every one
-(`missing_evidence_metadata`) and the rewrite lane was one structural rule
-plus a tentative fallback. Each clearer version now carries the weak read
-that made the generator write it, named by a reason from a fixed, versioned
-list, and the generator version this reader vouches for.
-
-What does NOT change: V3 still anchors at most one rewrite per block read
-weak, only where its words are this Take's (L2); a lane with nothing
-defensible stays an honest `no_defensible_candidate` (contract 25); the
-evidence never leaves the server (AC-9); and no user-facing word is added.
+"""
+STORY    As a speaker, I want the model's clearer rewrites to reach my
+         feedback with their evidence, so that I get a rewrite where my
+         wording was weak.
+OUTCOME
+  O1  A clearer version written because a read was weak (unconfident,
+      stickiness, profanity) carries the Manager evidence naming that weak
+      read, and the generator version; any other trigger carries none (and
+      so stays excluded).
+  O2  The evidence and the version never leave the server: the payload the
+      speaker gets (strip_internal_evidence) keeps the rewrite and drops
+      them (AC-9; Never rule 1, no numbers or verdicts shown to speakers).
+PROVES   O1 -> test_a_clearer_version_carries_the_weak_read_behind_it
+         O2 -> test_the_served_rewrite_carries_no_evidence
+WHY      D-ML-3 (contract 24f, 25, 27, 29b; ledger A059a/A066): the model's
+         clearer versions reached the Manager with no evidence, so V3
+         excluded every one. V3's one-rewrite-per-weak-block selection is
+         not pinned here.
 """
 from __future__ import annotations
 
-from services.intervention_candidates import feedback_family_of
-from services.tracked_changes import (
-    CLEARER_VERSION_REASONS,
-)
-from tests.test_verbal_lanes_take_document_n48_1 import (
-    _tracked,
-)
+from services.take_feedback_manager import strip_internal_evidence
+from services.tracked_changes import build_tracked_changes
 
+SAID = "We give every learner a task that is short and daily."
+DOC = "Hello all. " + SAID + " Thanks."
 CLEARER = "We give every learner one short daily task."
 
 
-def _clearer(trigger: str = "unconfident", sid: str = "s1b",
-             replacement: str = CLEARER) -> dict:
-    """The served row for one model clearer version, as the read path
-    builds it (`build_tracked_changes`, then the family)."""
-    [row] = _tracked({"kind": "replace", "trigger": trigger,
-                      "replacement_text": replacement,
-                      "why": "model prose the client never renders"}, sid)
-    row["feedback_family"] = feedback_family_of(row)
-    return row
+def _clearer(trigger: str) -> list[dict]:
+    """The tracked change the read path builds for one model clearer
+    version on the piece the speaker said."""
+    start = DOC.index(SAID)
+    pieces = [{"snippet_id": "s1", "text": SAID, "start": start, "end": start + len(SAID)}]
+    return build_tracked_changes(DOC, pieces, {"s1": {
+        "kind": "replace", "trigger": trigger, "replacement_text": CLEARER,
+        "why": "model prose the client never renders"}})
 
 
-class TestAClearerVersionCarriesItsEvidence:
+def test_a_clearer_version_carries_the_weak_read_behind_it():
+    for trigger, basis in (("unconfident", "weak_delivery_read"),
+                           ("stickiness", "weak_slide_fit_read"),
+                           ("profanity", "profanity_read")):
+        [row] = _clearer(trigger)
+        assert row["proposed_text"] == CLEARER
+        assert row["_manager_evidence"]["basis"] == basis
+        assert row["_manager_evidence"]["read"] == "weak"
+        assert row["suggestion_version"] == "moment-suggestion-clearer-v1"
+    # The retired polish lane, or no trigger, earns no evidence.
+    for trigger in ("polish", ""):
+        rows = _clearer(trigger)
+        assert all("_manager_evidence" not in row for row in rows)
 
-    def test_every_reason_comes_from_the_fixed_list(self):
-        for trigger, reason in CLEARER_VERSION_REASONS.items():
-            row = _clearer(trigger)
-            assert row["_manager_evidence"]["basis"] == reason
-        assert set(CLEARER_VERSION_REASONS) == {
-            "unconfident", "stickiness", "profanity"}
+
+def test_the_served_rewrite_carries_no_evidence():
+    [served] = strip_internal_evidence(_clearer("unconfident"))
+    assert served["proposed_text"] == CLEARER
+    assert "_manager_evidence" not in served
+    assert "suggestion_version" not in served
+    assert "weak" not in repr(served)

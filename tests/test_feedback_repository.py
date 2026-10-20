@@ -1,3 +1,16 @@
+"""
+STORY    As a speaker, I want my published readout to show evidence-backed
+         items and the coach's note only, so that I see what was said with its
+         proof.
+OUTCOME
+  O1  A great_formulation item carries its exact text span, without audio.
+  O2  A published readout whose coach drafts are not surfaced shows no items,
+      and its coach review is the written note only: no coach video, no
+      insights payload.
+PROVES   O1 -> test_great_formulation_needs_text_span_but_not_audio
+         O2 -> test_published_readout_shows_only_surfaced_items_and_the_coachs_note
+WHY      The coach's Take video was retired (founder 2026-09-25).
+"""
 from unittest.mock import patch
 
 from services.feedback_repository import (
@@ -69,7 +82,7 @@ def test_great_formulation_needs_text_span_but_not_audio():
     assert payload["evidence"]["evidence_span"]["text"] == "Clear words."
 
 
-def test_published_readout_exposes_empty_result_and_separate_coach_review():
+def test_published_readout_shows_only_surfaced_items_and_the_coachs_note():
     from services import lab_recording
     from services.db import db
 
@@ -80,19 +93,26 @@ def test_published_readout_exposes_empty_result_and_separate_coach_review():
         "coach_overall_message": "No changes needed.",
         "coach_video_ref": "https://cdn.example/coach.mp4",
     }
-    with patch.object(db, "get_snippets_by_session", return_value=[]), \
-         patch.object(db, "v2_get_session_by_id", return_value=session), \
-         patch.object(db, "get_coach_snippet_drafts", return_value=[]), \
+    unsurfaced_draft = {
+        "snippet_id": "snippet-1", "surfaced": False,
+        "feedback_family": "rewrite_clarity", "review_state": "reviewed",
+        "note": "A coach draft the coach did not surface.",
+        "transcript_corrected": "Draft words.",
+    }
+    with patch.object(db, "v2_get_session_by_id", return_value=session), \
+         patch.object(db, "get_coach_snippet_drafts",
+                      return_value=[unsurfaced_draft]), \
          patch(
              "services.lab_recording.prepare_readout_snippets",
              return_value=([], {}),
          ), \
          patch("services.lab_recording.attach_readout_context"):
-        readout = lab_recording.build_readout_from_session("take-1")
+        readout = lab_recording.build_readout_from_session(
+            "take-1", snippet_rows=[])
 
     assert readout["feedback_items"] == []
-    # The coach's Take video is gone (founder 2026-09-25): only the note.
     assert readout["coach_review"] == {
         "overall_message": "No changes needed.",
     }
+    assert "coach.mp4" not in repr(readout)
     assert "insights_payload" not in readout

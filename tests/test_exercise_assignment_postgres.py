@@ -1,22 +1,30 @@
-"""The 80/20 exercise choice, executed on a disposable database (0372).
-
-Founder 2026-09-26: "please do the 80/20 try smth new". Pins what makes the
-draw trustworthy as a comparison later and harmless to the speaker now:
-
-  * one moment is drawn once: every later call returns the first row;
-  * two or more exercises: the best match has probability 4/5, each other one
-    1/(5(n-1)), the probabilities sum to one and are all stored;
-  * one exercise is a deterministic singleton, with no seed and no draw;
-  * the draw is reproducible from the stored seed, and the commitment is its
-    hash;
-  * over many moments the split is close to 80/20;
-  * the row cannot be updated, browser roles reach nothing, and the server
-    reaches only the function (to write) and the table (to read and erase).
+"""
+STORY    As the founder, I want each moment's exercise drawn 80/20 once,
+         reproducibly and immutably, so that the comparison is trustworthy
+         later and harmless to the speaker now.
+OUTCOME
+  O1  One draw per moment: a later call, even with another pool, returns the
+      first row.
+  O2  Two or more exercises: every probability is stored (4/5 for the best
+      match, the rest shared) and they sum to one.
+  O3  One exercise is a deterministic singleton: no seed, no draw.
+  O4  Every draw is reproducible from its stored seed, its commitment is the
+      seed's hash, the mode and rank follow from the draw, and over many
+      moments the split is close to 80/20 (both branches are exercised).
+  O5  The row cannot be updated; browser roles reach neither the table nor
+      the function, and the server cannot write the table directly.
+PROVES   O1 -> test_a_moment_is_drawn_once
+         O2 -> test_every_probability_is_stored_and_they_sum_to_one
+         O3 -> test_one_exercise_is_a_singleton_without_a_draw
+         O4 -> test_draws_are_reproducible_and_split_close_to_80_20
+         O5 -> test_the_row_is_immutable_and_browser_roles_reach_nothing
+WHY      Founder 2026-09-26: "please do the 80/20 try smth new" (0372).
 """
 from __future__ import annotations
 
 import os
 import uuid
+from fractions import Fraction
 
 import psycopg2
 import psycopg2.extras
@@ -63,22 +71,78 @@ def _one(db, sql, args=()):
         return row[0] if row else None
 
 
-def test_the_draw_decides_top_or_exploration_and_is_reproducible(db):
-    row = _assign(db, _pool(3))
-    draw = float(row["draw"])
-    if draw < 0.8:
-        assert (row["selection_mode"], row["selected_rank"]) == ("top", 1)
-    else:
-        assert row["selection_mode"] == "exploration"
-        assert row["selected_rank"] == 2 + int((draw - 0.8) * 5 * 2)
-    assert row["selected_exercise_id"] == f"ex-{row['selected_rank']}"
-    recomputed = _one(db, """
+def _recomputed_draw(db, row):
+    return _one(db, """
         SELECT ('x' || substr(encode(extensions.digest(
                    %s::bytea || convert_to(%s || ':' || %s || ':exercise-80-20-v1', 'UTF8'),
                    'sha256'), 'hex'), 1, 13))::bit(52)::bigint::numeric
                / 4503599627370496::numeric""",
         (bytes(row["protected_seed"]), row["take_session_id"], row["snippet_id"]))
-    assert recomputed == row["draw"]
-    assert row["seed_commitment_sha256"] == _one(
-        db, "SELECT encode(extensions.digest(%s::bytea, 'sha256'), 'hex')",
-        (bytes(row["protected_seed"]),))
+
+
+def test_a_moment_is_drawn_once(db):
+    take, snippet = str(uuid.uuid4()), str(uuid.uuid4())
+    first = _assign(db, _pool(3), take=take, snippet=snippet)
+    again = _assign(db, _pool(5), take=take, snippet=snippet)
+    assert again == first
+    assert _one(db, "SELECT count(*) FROM public.confident_voice_exercise_assignments "
+                    "WHERE take_session_id = %s AND snippet_id = %s",
+                (take, snippet)) == 1
+
+
+def test_every_probability_is_stored_and_they_sum_to_one(db):
+    row = _assign(db, _pool(3))
+    odds = [Fraction(c["probability_numerator"], c["probability_denominator"])
+            for c in row["candidates"]]
+    assert odds == [Fraction(4, 5), Fraction(1, 10), Fraction(1, 10)]
+    assert sum(odds) == 1
+    assert [c["rank"] for c in row["candidates"]] == [1, 2, 3]
+
+
+def test_one_exercise_is_a_singleton_without_a_draw(db):
+    row = _assign(db, _pool(1))
+    assert row["selection_mode"] == "deterministic_singleton"
+    assert row["selected_exercise_id"] == "ex-1"
+    assert (row["protected_seed"], row["seed_commitment_sha256"], row["draw"]) == (
+        None, None, None)
+    assert [(c["probability_numerator"], c["probability_denominator"])
+            for c in row["candidates"]] == [(1, 1)]
+
+
+def test_draws_are_reproducible_and_split_close_to_80_20(db):
+    rows = [_assign(db, _pool(3)) for _ in range(300)]
+    for row in rows:
+        draw = float(row["draw"])
+        if draw < 0.8:
+            assert (row["selection_mode"], row["selected_rank"]) == ("top", 1)
+        else:
+            assert row["selection_mode"] == "exploration"
+            assert row["selected_rank"] == 2 + int((draw - 0.8) * 5 * 2)
+        assert row["selected_exercise_id"] == f"ex-{row['selected_rank']}"
+        assert _recomputed_draw(db, row) == row["draw"]
+        assert row["seed_commitment_sha256"] == _one(
+            db, "SELECT encode(extensions.digest(%s::bytea, 'sha256'), 'hex')",
+            (bytes(row["protected_seed"]),))
+    modes = [row["selection_mode"] for row in rows]
+    assert {"top", "exploration"} <= set(modes)
+    assert 0.70 <= modes.count("top") / len(modes) <= 0.90
+
+
+def test_the_row_is_immutable_and_browser_roles_reach_nothing(db):
+    row = _assign(db, _pool(2))
+    with db.cursor() as cur:
+        with pytest.raises(psycopg2.Error, match="CV_EXERCISE_ASSIGNMENT_IMMUTABLE"):
+            cur.execute("UPDATE public.confident_voice_exercise_assignments "
+                        "SET selected_rank = 2 WHERE id = %s", (row["id"],))
+    table = "public.confident_voice_exercise_assignments"
+    function = ("public.assign_confident_voice_exercise_v1("
+                "text, text, text, text, text, jsonb)")
+    for role in ("anon", "authenticated"):
+        for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE"):
+            assert _one(db, "SELECT has_table_privilege(%s, %s, %s)",
+                        (role, table, privilege)) is False, (role, privilege)
+        assert _one(db, "SELECT has_function_privilege(%s, %s, 'EXECUTE')",
+                    (role, function)) is False, role
+    for privilege in ("INSERT", "UPDATE"):
+        assert _one(db, "SELECT has_table_privilege('service_role', %s, %s)",
+                    (table, privilege)) is False, privilege
