@@ -1,5 +1,5 @@
 """
-STORY    As the founder, I want the messages after a speaker's first and second
+STORY    As the founder, I want the messages after a speaker's first three
          Takes to say exactly the words I signed off, with their two actions,
          so that no unapproved words reach a speaker.
 OUTCOME
@@ -7,10 +7,13 @@ OUTCOME
       practising) equal the locked copy.
   O2  The Take 2 message's text and its two actions (prepare Take 3, keep
       practising) equal the locked copy.
+  O3  The Take 3 message's text and its two actions (export, keep
+      practising) equal the locked copy.
 PROVES   O1 -> JourneyMessageTests::test_take_one_copy_and_action_are_locked
          O2 -> JourneyMessageTests::test_take_two_copy_and_action_are_locked
-WHY      Never-rule 4: no new words on screen without the founder's OK. Both
-         simplified by the founder in chat, 2026-10-20.
+         O3 -> JourneyMessageTests::test_take_three_copy_and_action_are_locked
+WHY      Never-rule 4: no new words on screen without the founder's OK. All
+         three simplified by the founder in chat, 2026-10-20.
 """
 
 from __future__ import annotations
@@ -40,6 +43,15 @@ class JourneyMessageTests(unittest.TestCase):
         ])
         self.assertEqual(row["metadata"]["actions"],
                          ["prepare_take_3", "keep_practising"])
+
+    def test_take_three_copy_and_action_are_locked(self):
+        row = journey_message("u1", "a1", 3)
+        self.assertEqual(row["body"].split("\n\n"), [
+            "Your third take is in 🎉",
+            "Your presentation is ready. Export your notes or keep practising ⬇️",
+        ])
+        self.assertEqual(row["metadata"]["actions"],
+                         ["export", "keep_practising"])
 
 
 if __name__ == "__main__":
