@@ -1,30 +1,35 @@
 """
 STORY    As a speaker, after a Take I want one thing to do at a time: the
-         Take's card, at most one ask, then the message with "Record Take N",
-         so that a question never competes with recording again.
+         Take's card and its summary, then each ask on its own with Will's
+         words leading into it, and only then "practice makes perfect" with
+         "Record Take N", so that nothing competes with the walk or with
+         recording again (founder 2026-10-20, N89).
 OUTCOME
-  O1  After Take 1 the one ask is "Did this help?" when the Take looks off,
-      else Will's question when it has one: never WhatsApp, never an ask
-      from the CEO panel, even without a number.
-  O2  From Take 2 the one ask is the CEO panel's when there is one, else
-      WhatsApp (at most twice), else the home screen (once, where the phone
-      can add it), else Will's question, else "Did this help?"; nothing
-      asked, nothing waits.
-  O3  The message waits for the ask and comes under whatever closed it: a
-      typed turn, under Will's reply; "Yes", tapped or typed, glad, as the
-      reply; a reply that opens a form keeps it waiting.
+  O1  After Take 1 the chain holds Will's question when he has one and "Did
+      this help?" when the Take looks off: never WhatsApp, never an ask from
+      the CEO panel, even without a number.
+  O2  From Take 2 the chain runs: the CEO panel's ask, WhatsApp (at most
+      twice), the home screen (once, where the phone can add it), Will's
+      question, "Did this help?"; nothing waits when nothing applies.
+  O3  The asks come one at a time, each under whatever closed the one
+      before: a typed turn, under Will's reply; "Yes", tapped or typed,
+      under "We're glad it helped you."; a reply that opens a form keeps the
+      ask open. An ask that no longer applies is skipped. After the last,
+      the closing message comes, with its words.
   O4  A message still waiting when a newer Take is written shows where it
       stands.
-PROVES   O1 -> test_after_take_one_the_question_when_it_looks_off_else_will
-         O2 -> test_from_take_two_the_ceo_ask_then_whatsapp_then_home_screen_then_will_then_the_question
-         O3 -> test_the_message_comes_under_what_closed_the_ask
+PROVES   O1 -> test_after_take_one_wills_question_and_the_question_when_it_looks_off
+         O2 -> test_from_take_two_the_chain_runs_ceo_ask_whatsapp_home_screen_will_the_question
+         O3 -> test_each_ask_comes_under_what_closed_the_one_before_then_the_closing_message
          O4 -> test_an_older_waiting_message_shows_where_it_stands
-WHY      Founder 2026-10-20: "one action at a time"; details chosen on the
-         decisions page the same day.
+WHY      Founder 2026-10-20: "one action at a time", then, after checking the
+         app: the summary without the CTA, Will's liaison before each ask,
+         "Look, practice makes perfect…" and the CTA last.
 """
 from services import after_take, chat_query, feedback_check
 
-SUMMARY = "Your first take is in 🎉\n\nNow record take 2 with your helper words ⬇️"
+SUMMARY = "Your first take is in 🎉"
+AT = "2026-10-20T10:00:00+00:00"
 
 
 class _Db:
@@ -60,20 +65,29 @@ class _Db:
     def bodies(self):
         return [r["body"] for r in self.thread.values()]
 
+    def drawn(self):
+        """The thread as the Lounge draws it: the held closing message left out."""
+        return [r["body"] for r in self.thread.values()
+                if not (r.get("metadata") or {}).get("held_for")]
+
 
 def _world(monkeypatch, *, phone=None, admin=None):
     monkeypatch.setattr("services.whatsapp_notify.whatsapp_state", lambda _db, _u: {"phone": phone})
     monkeypatch.setattr("services.person_asks.next_for", lambda _u: admin)
 
 
-def _waiting(db, take="take-1", ask="feedback_check"):
-    """The summary's batch as take_summary writes it: the held message, then its ask."""
+def _waiting(db, take="take-1", asks=("feedback_check",), lead_ins=None):
+    """The summary's batch as take_summary writes it: the summary, the closing
+    message held behind the chain, then the first ask."""
+    closing = after_take.closing_row(user_id="u", arc_id="arc", take_index=1, take=take,
+                                     at="2026-10-20T10:00:00.001000+00:00", asks=list(asks),
+                                     lead_ins=lead_ins or {})
     db.insert_lounge_messages("u", [{
         "client_id": f"summary-{take}", "role": "bot", "kind": "cadence", "body": SUMMARY,
-        "metadata": {"summary": True, "held_for": ask, "take_session_id": take},
-        "client_created_at": "2026-10-20T10:00:00+00:00"}]
-        + after_take.ask_rows(db, ask, user_id="u", arc_id="arc", take=take,
-                              at="2026-10-20T10:00:00.001000+00:00"))
+        "metadata": {"summary": True, "take_session_id": take}, "client_created_at": AT},
+        closing] + after_take.rows_for(db, "u", closing["metadata"], asks[0],
+                                       "2026-10-20T10:00:00.002000+00:00"))
+    return closing
 
 
 def _typed(db, monkeypatch, question, answer="Slow the first slide down."):
@@ -88,61 +102,88 @@ def _typed(db, monkeypatch, question, answer="Slow the first slide down."):
             user_client_id=None, user_created_at=None, intent=intent))
 
 
-def test_after_take_one_the_question_when_it_looks_off_else_will(monkeypatch):
+def test_after_take_one_wills_question_and_the_question_when_it_looks_off(monkeypatch):
     _world(monkeypatch, phone=None, admin={"id": "a1", "kind": "promo"})
     db = _Db()
-    assert after_take.choose(db, "u", take_index=1, off=True, can_install=True, will=True) == "feedback_check"
-    assert after_take.choose(db, "u", take_index=1, off=False, can_install=True, will=True) == "will_question"
-    assert after_take.choose(db, "u", take_index=1, off=False, can_install=True) is None
+    assert after_take.chain(db, "u", take_index=1, off=True, can_install=True, will=True) == [
+        "will_question", "feedback_check"]
+    assert after_take.chain(db, "u", take_index=1, off=False, can_install=True, will=True) == ["will_question"]
+    assert after_take.chain(db, "u", take_index=1, off=False, can_install=True) == []
 
 
-def test_from_take_two_the_ceo_ask_then_whatsapp_then_home_screen_then_will_then_the_question(monkeypatch):
+def test_from_take_two_the_chain_runs_ceo_ask_whatsapp_home_screen_will_the_question(monkeypatch):
     db = _Db()
     _world(monkeypatch, phone=None, admin={"id": "a1", "kind": "promo"})
-    assert after_take.choose(db, "u", take_index=2, off=True) == "admin"
+    assert after_take.chain(db, "u", take_index=2, off=True, can_install=True, will=True) == [
+        "admin", "whatsapp", "install", "will_question", "feedback_check"]
 
     _world(monkeypatch, phone=None, admin=None)
-    assert after_take.choose(db, "u", take_index=2, off=True) == "whatsapp"
-    _waiting(db, "take-2", "whatsapp")
-    _waiting(db, "take-3", "whatsapp")
-    assert after_take.choose(db, "u", take_index=4, off=True, can_install=True) == "install"
-    _waiting(db, "take-4", "install")
-    assert after_take.choose(db, "u", take_index=5, off=True, can_install=True, will=True) == "will_question"
-    assert after_take.choose(db, "u", take_index=5, off=True, can_install=True) == "feedback_check"
+    _waiting(db, "take-2", ["whatsapp"])
+    _waiting(db, "take-3", ["whatsapp"])
+    # Asked twice: WhatsApp no longer comes; the home screen once.
+    assert after_take.chain(db, "u", take_index=4, off=False, can_install=True) == ["install"]
+    _waiting(db, "take-4", ["install"])
+    assert after_take.chain(db, "u", take_index=5, off=True, can_install=True) == ["feedback_check"]
 
     _world(monkeypatch, phone="+447700900461", admin=None)
-    assert after_take.choose(_Db(), "u", take_index=2, off=False) is None
+    assert after_take.chain(_Db(), "u", take_index=2, off=False) == []
 
 
-def test_the_message_comes_under_what_closed_the_ask(monkeypatch):
+def test_each_ask_comes_under_what_closed_the_one_before_then_the_closing_message(monkeypatch):
+    _world(monkeypatch, phone=None, admin=None)
     db = _Db()
-    _waiting(db)
-    _typed(db, monkeypatch, "How do I sound calmer?")
-    assert db.bodies()[-2:] == ["Slow the first slide down.", SUMMARY]
+    # Take 2: WhatsApp with Will's lead-in, then "Did this help?", then the
+    # closing message. The summary is drawn at once, without the CTA.
+    lead = "You kept every ending this time. Want a WhatsApp when your coach replies? Add your number."
+    _waiting(db, "take-2", ["whatsapp", "feedback_check"], lead_ins={"whatsapp": lead})
+    assert db.drawn() == [SUMMARY, lead]
+    assert after_take.held(db, "u")["metadata"]["chain"] == ["feedback_check"]
+
+    # The WhatsApp form closes (the Lounge's POST): the question comes, the
+    # closing message still waits.
+    rows = after_take.release(db, "u")
+    assert [r["body"] for r in rows] == [feedback_check.COPY["ask"]]
+    assert db.drawn() == [SUMMARY, lead, feedback_check.COPY["ask"]]
+    assert after_take.held(db, "u")["metadata"]["held_for"] == "feedback_check"
+
+    # "Yes": the founder's sentence, then nothing is left and the closing
+    # message comes, with its words, under it.
+    rows = feedback_check.answer(db, user_id="u", arc_id="arc", take_session_id="take-2", choice="yes")
+    assert [r["body"] for r in rows] == ["Yes", after_take.GLAD, after_take.NEXT_TAKE]
+    assert db.drawn()[-3:] == ["Yes", after_take.GLAD, after_take.NEXT_TAKE]
     assert after_take.held(db, "u") is None
 
+    # A typed turn that passes the ask advances the chain under Will's reply.
+    typed = _Db()
+    _waiting(typed, "take-1", ["feedback_check"])
+    _typed(typed, monkeypatch, "How do I sound calmer?")
+    assert typed.drawn()[-2:] == ["Slow the first slide down.", after_take.NEXT_TAKE]
+    assert after_take.held(typed, "u") is None
+
+    # A typed "yes" is answered with the founder's sentence, the chain under it.
     glad = _Db()
-    _waiting(glad)
+    _waiting(glad, "take-1", ["feedback_check"])
     resp = _typed(glad, monkeypatch, "yes")
-    said = "Your first take is in 🎉\n\nWe're glad it helped you. Now record take 2 with your helper words ⬇️"
-    assert resp["answer"] == said and glad.bodies()[-2:] == ["yes", said]  # no other reply
+    assert resp["answer"] == after_take.GLAD and resp.get("after_take") is True
+    assert glad.drawn()[-3:] == ["yes", after_take.GLAD, after_take.NEXT_TAKE]
 
-    tap = _Db()
-    _waiting(tap)
-    rows = feedback_check.answer(tap, user_id="u", arc_id="arc", take_session_id="take-1",
-                                 choice="yes")
-    assert [r["body"] for r in rows] == ["Yes", said] and tap.bodies()[-1] == said
-
+    # A reply that opens a form keeps the ask open.
     form = _Db()
-    _world(monkeypatch, phone=None)
-    _waiting(form, "take-2", "whatsapp")
+    _waiting(form, "take-2", ["whatsapp"])
     resp = _typed(form, monkeypatch, "07700 900461")  # no country code: the form opens
     assert resp.get("offer") == "whatsapp" and after_take.held(form, "u") is not None
+
+    # An ask that no longer applies when its turn comes is skipped.
+    skipped = _Db()
+    _waiting(skipped, "take-2", ["install", "whatsapp"])
+    _world(monkeypatch, phone="+447700900461", admin=None)
+    rows = after_take.release(skipped, "u")
+    assert [r["body"] for r in rows] == [after_take.NEXT_TAKE]
 
 
 def test_an_older_waiting_message_shows_where_it_stands():
     db = _Db()
     _waiting(db)
     after_take.release_older(db, "u")
-    assert db.bodies()[0] == SUMMARY and after_take.held(db, "u") is None
-    assert feedback_check.COPY["ask"] in db.bodies()
+    assert db.drawn()[0] == SUMMARY and after_take.held(db, "u") is None
+    assert after_take.NEXT_TAKE in db.bodies() and feedback_check.COPY["ask"] in db.bodies()

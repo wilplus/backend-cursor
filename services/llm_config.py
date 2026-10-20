@@ -274,6 +274,19 @@ N86) — the signed question in slightly different words; code keeps it only
 when it still means the signed one and keeps the speaker's own words in it
 (services.will_question.read_varied), else Will says the signed words."""
 
+SPEC_WILL_LEAD_IN = LLMSpec(
+    model=CHEAP_MODEL,
+    # Warm enough to tie the ask to the Take, never to invent: the words
+    # are checked (no number, the ask still said) before Will says them.
+    temperature=0.7,
+    max_tokens=120,
+    timeout_seconds=8.0,
+)
+"""Will's lead-in to an ask after a Take (founder 2026-10-20, N89): one or
+two sentences tied to the Take, then the ask's signed words with a light
+touch; code keeps it only when services.will_question.read_lead_in does,
+else the ask is said as written."""
+
 
 SPEC_AUDIT_POINTER = LLMSpec(
     model=CHEAP_MODEL,

@@ -116,7 +116,7 @@ def test_a_take_gets_one_summary_from_its_real_progress(monkeypatch):
 
 def test_a_reply_with_a_number_falls_back_to_the_signed_copy(monkeypatch):
     msg, _ = _run(_Db(), monkeypatch, "You improved 20 percent. Great work.")
-    assert msg["body"] == _COPY[2]
+    assert msg["body"] == _COPY[2].split("\n\n")[0]  # what happened; the next step is Will's (N89)
     assert msg["metadata"]["written"] is False
 
 
@@ -132,7 +132,7 @@ def test_a_coach_update_rewrites_the_summary_in_place_and_keeps_the_first(monkey
     msg, _ = _run(db, monkeypatch, later, {"coach_note": "Breathe before the price."})
     assert msg["body"] == later
     assert msg["metadata"]["earlier"] == first and msg["metadata"]["coach_update"] is True
-    assert len(db.rows) == 1
+    assert len(db.rows) == 2  # the summary and the closing message (N89), stored once
 
 
 def test_a_shared_coach_word_rewrites_a_reviewed_take_once_per_word(monkeypatch):
@@ -163,7 +163,7 @@ def test_a_coach_word_shared_after_the_review_is_its_own_bubble(monkeypatch):
     assert msg["body"] == "Your coach\nBreathe before the price."
     assert msg["metadata"]["heading"] == "Later · from your coach" and msg["metadata"]["coach_update"] is True
     take_summary.coach_update_message(db, **word)
-    assert len(db.rows) == 2  # the summary and one update, stored once
+    assert len(db.rows) == 3  # the summary, the closing message and one update, stored once
 
 
 def test_the_summary_knows_the_talk_and_asks_for_whatsapp_once(monkeypatch):
@@ -179,7 +179,11 @@ def test_the_summary_knows_the_talk_and_asks_for_whatsapp_once(monkeypatch):
     assert seen["signed"] and all(line in take_summary.line_bank_lines() for line in seen["signed"][:4])
     offers = [r for r in db.rows.values() if (r.get("metadata") or {}).get("offer") == "whatsapp"]
     assert msg["metadata"]["summary"] is True and len(offers) == 1
-    assert msg["metadata"]["held_for"] == "whatsapp"  # it waits under the ask
+    # The summary is drawn at once; the closing message waits under the ask
+    # (founder 2026-10-20, N89).
+    assert "held_for" not in msg["metadata"]
+    closing = next(r for r in db.rows.values() if (r.get("metadata") or {}).get("next_take"))
+    assert closing["metadata"]["held_for"] == "whatsapp" and closing["metadata"]["chain"] == []
 
 
 def test_the_summary_and_its_ask_sort_under_the_walk(monkeypatch):
@@ -191,8 +195,9 @@ def test_the_summary_and_its_ask_sort_under_the_walk(monkeypatch):
         {"client_id": "step", "kind": "walk_step", "client_created_at": ahead}]
     msg, _ = _run(db, monkeypatch, "Churn in Q3, nailed it! Now record take three.")
     ask = next(r for r in db.rows.values() if (r.get("metadata") or {}).get("offer"))
+    closing = next(r for r in db.rows.values() if (r.get("metadata") or {}).get("next_take"))
     at = datetime.fromisoformat
-    assert at(ahead) < at(msg["client_created_at"]) < at(ask["client_created_at"])
+    assert at(ahead) < at(msg["client_created_at"]) < at(closing["client_created_at"]) < at(ask["client_created_at"])
 
 
 def test_a_reply_that_drifts_from_the_signed_lines_is_the_signed_copy():
@@ -201,15 +206,20 @@ def test_a_reply_that_drifts_from_the_signed_lines_is_the_signed_copy():
     assert take_summary._clean(near, signed, ("Churn in Q3",)) == near
     assert take_summary._clean("Churn in Q3 was the talk. You're a natural genius. Go again.",
                                signed, ("Churn in Q3",)) is None
+    # The next step is Will's, after the chain (N89): a summary that sends
+    # them to record is the signed copy instead.
     assert take_summary._clean("Fewer stops here than on Take 1. Lovely! Record the next one ⬇️",
+                               ["Fewer stops here than on Take 1."]) is None
+    assert take_summary._clean("Fewer stops here than on Take 1. Lovely!",
                                ["Fewer stops here than on Take 1."]) is not None
 
 
 def test_a_reply_that_ends_on_a_question_is_the_signed_copy(monkeypatch):
-    """Founder 2026-10-20: the Record button is under it, so a question
-    would be a second thing to do."""
+    """Founder 2026-10-20: one action at a time, so a question would be a
+    second thing to do; the signed copy is its first line only, what
+    happened, since the chain brings the next step (N89)."""
     msg, _ = _run(_Db(), monkeypatch, "Your voice sounded surer. Another Take? 🎉")
-    assert msg["body"] == _COPY[2] and msg["metadata"]["written"] is False
+    assert msg["body"] == _COPY[2].split("\n\n")[0] and msg["metadata"]["written"] is False
 
 
 
@@ -275,7 +285,7 @@ def test_a_take_not_in_force_never_reaches_the_summary(monkeypatch):
 def test_a_failing_or_slow_lookup_leaves_the_summary_as_today(monkeypatch):
     import time
     from services import speaker_lookup
-    reply = "Your churn talk, nailed it! Now record the next take."
+    reply = "Your churn talk, nailed it! The endings landed."
     _, today = _run(_Db(), monkeypatch, reply, takes=ARC)
     broken = _Db()
     broken.takes = _History(None)
@@ -298,4 +308,4 @@ def test_an_earlier_take_with_a_number_still_falls_back_to_the_signed_copy(monke
     msg, seen = _run(db, monkeypatch, "In Take 1 churn fell from 30 to 10. Record the next one.",
                      takes=ARC)
     assert "from 30 to 10" in _earlier(seen)
-    assert msg["body"] == _COPY[2] and msg["metadata"]["written"] is False
+    assert msg["body"] == _COPY[2].split("\n\n")[0] and msg["metadata"]["written"] is False

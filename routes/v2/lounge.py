@@ -175,17 +175,20 @@ def v2_user_lounge_messages_post():
 @require_auth
 def v2_user_lounge_after_take_post():
     """The Take's ask closed in the Lounge (its form: Save, Not now, See
-    prices...): the message after the Take, held back until then, is let go
-    under the newest row (founder 2026-10-20: one action at a time;
+    prices...): the chain after the Take advances under the newest row, to
+    its next ask or, with none left, to the closing message with "Record
+    Take N" (founder 2026-10-20: one action at a time, N89;
     services/after_take.py). No body.
 
     Responses:
-      200 { "message": the row let go, or null when nothing was held }
+      200 { "message": the last row written, or null when nothing was held;
+            "rows": every row written }
       500 V2_ERROR
     """
     try:
         from services.after_take import release
-        return jsonify({"message": release(db, str(request.user_id))}), 200
+        rows = release(db, str(request.user_id))
+        return jsonify({"message": rows[-1] if rows else None, "rows": rows}), 200
     except Exception as e:
         logger.error("user/lounge/after-take failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)

@@ -22,7 +22,7 @@ The chat's own module for one question after the Feedback walk:
      signed words, before any other voice can claim it. Typing "Yes" or
      "No" (or the old "Not really") under the question counts as tapping it.
 
-Which ask follows a Take is ``after_take.choose`` (one ask per Take; from
+Which asks follow a Take, in what order, is ``after_take.chain`` (from
 Take 2 the CEO panel's ask, WhatsApp and the home screen come first). The
 question still refuses a batch that carries another offer
 (``check_against_after_take``). A coach update that rewrites the summary does
@@ -126,17 +126,19 @@ def check_against_after_take(batch: list[dict]) -> bool:
 
 
 def ask_rows(database: Any, *, user_id: str, arc_id: str, take_session_id: str,
-             batch: list[dict], at: str, off: bool = True) -> list[dict]:
+             batch: list[dict], at: str, off: bool = True,
+             text: Optional[str] = None) -> list[dict]:
     """The question, to append after the summary's ``batch``; [] when this
     Take looks fine (``off`` False, see ``looks_off``) or the question must
-    wait for a later Take. Best-effort: never raises."""
+    wait for a later Take. ``text``: Will's lead-in with the question in it
+    (N89), else the signed words. Best-effort: never raises."""
     try:
         if not off or not check_against_after_take(batch):
             return []
         database.save_take_feedback_check({
             "user_id": user_id, "arc_id": arc_id,
             "take_session_id": take_session_id, "asked_at": at})
-        return [_row(_cid(user_id, take_session_id, "ask"), "bot", COPY["ask"],
+        return [_row(_cid(user_id, take_session_id, "ask"), "bot", text or COPY["ask"],
                      {"offer": OFFER, "arc_id": arc_id,
                       "take_session_id": take_session_id}, _after(at, 5))]
     except Exception as error:  # noqa: BLE001 -- the summary is written either way
@@ -181,9 +183,10 @@ def answer(database: Any, *, user_id: str, arc_id: str, take_session_id: str,
             return []
         _save(database, user_id, arc_id, take, helped=choice == "yes")
         if choice == "yes":
-            # The message after the Take answers a Yes itself, glad.
-            reply = None if waiting else _row(
-                _cid(user_id, take, "thanks"), "bot", COPY["thanks"], meta, _after(at, 1))
+            # In the chain after a Take, a Yes is answered with the
+            # founder's own sentence, then the chain goes on (N89).
+            reply = _row(_cid(user_id, take, "thanks"), "bot",
+                         after_take.GLAD if waiting else COPY["thanks"], meta, _after(at, 1))
         else:
             reply = _row(_cid(user_id, take, "missing"), "bot", COPY["missing"],
                          {**meta, "feedback_check": "missing",
@@ -191,8 +194,7 @@ def answer(database: Any, *, user_id: str, arc_id: str, take_session_id: str,
     mine = _row(_cid(user_id, take, choice), "user", COPY[choice], meta, at)
     rows = database.insert_lounge_messages(user_id, [mine] + ([reply] if reply else [])) or []
     if waiting and choice != "not_really":
-        let_go = after_take.release(database, user_id, take=take, glad=choice == "yes")
-        rows += [let_go] if let_go else []
+        rows += after_take.release(database, user_id, take=take)
     return rows
 
 
@@ -264,14 +266,10 @@ def chat_turn(database: Any, user_id: str, question: str) -> Optional[dict]:
     _save(database, str(user_id), arc_id, take, helped=choice == "yes")
     if choice == "yes":
         from services import after_take
-        waiting = after_take.held(database, str(user_id), take)
-        if waiting:
-            # The message after the Take is the reply, glad (finish_chat_turn
-            # lets it go under the typed "yes", with no other reply row).
-            return {"answer": after_take.glad_body(waiting.get("body") or ""),
-                    "row_metadata": {**meta, "feedback_check": "yes"},
-                    "after_take": "glad"}
-        return {"answer": COPY["thanks"],
+        # In the chain, the founder's own sentence; finish_chat_turn then
+        # advances the chain under it (N89).
+        waiting = after_take.held(database, str(user_id), take) is not None
+        return {"answer": after_take.GLAD if waiting else COPY["thanks"],
                 "row_metadata": {**meta, "feedback_check": "yes"}}
     return {"answer": COPY["missing"],
             "row_metadata": {**meta, "feedback_check": "missing",

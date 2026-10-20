@@ -183,10 +183,13 @@ def _asked(db, key="audience", chips=("The board", "My team", "A buyer"), take="
     """The summary's batch as take_summary writes it: the held message, then
     Will's question."""
     found = _plan(key)
+    from services import after_take
     db.insert_lounge_messages("u", [{
         "client_id": f"summary-{take}", "role": "bot", "kind": "cadence", "body": SUMMARY,
-        "metadata": {"summary": True, "held_for": "will_question", "take_session_id": take},
-        "client_created_at": "2026-10-20T10:00:00+00:00"}])
+        "metadata": {"summary": True, "take_session_id": take},
+        "client_created_at": "2026-10-20T10:00:00+00:00"},
+        after_take.closing_row(user_id="u", arc_id="arc", take_index=1, take=take,
+                               at="2026-10-20T10:00:00.000500+00:00", asks=["will_question"])])
     row = will_question.ask_rows(found, user_id="u", at="2026-10-20T10:00:00.001000+00:00")[0]
     row["metadata"].update(chips=list(chips), **rest)
     row["metadata"]["will_question"] = key
@@ -204,7 +207,7 @@ def test_a_tap_is_kept_fills_the_setup_and_lets_the_message_go(monkeypatch):
     db.takes.ctx["t1"] = {"topic": "Q3 Board pitch", "flow_tags": ["kept"]}
     _asked(db, "audience_check", chips=CHIPS["audience_check"], heard="the board")
     rows = _tap(db, "Yes")
-    assert [r["body"] for r in rows] == ["Yes", THANKS, SUMMARY]
+    assert [r["body"] for r in rows] == ["Yes", THANKS, after_take.NEXT_TAKE]
     assert db.takes.ctx["t1"] == {"topic": "Q3 Board pitch", "flow_tags": ["kept"], "audience": "the board"}
     assert db.events[-1]["payload"]["audience"] == "the board"
     assert after_take.held(db, "u") is None
@@ -235,12 +238,12 @@ def test_someone_else_opens_one_follow_up_answered_in_own_words(monkeypatch):
     resp = _typed(db, monkeypatch, "The investors. The board only signs off.")
     assert resp["answer"] == THANKS
     assert db.takes.ctx["t1"]["audience"] == "The investors. The board only signs off."
-    assert db.bodies()[-1] == SUMMARY and after_take.held(db, "u") is None
+    assert db.bodies()[-1] == after_take.NEXT_TAKE and after_take.held(db, "u") is None
 
     skipped = _Db()  # Skip under the follow-up lets the message go too
     _asked(skipped, "pause", chips=CHIPS["pause"])
     assert [r["body"] for r in _tap(skipped, "Something's missing")][-1] == FOLLOW_AT["pause"][1]
-    assert [r["body"] for r in _tap(skipped, will_question.SKIP)] == ["Skip", SUMMARY]
+    assert [r["body"] for r in _tap(skipped, will_question.SKIP)] == ["Skip", after_take.NEXT_TAKE]
     assert will_question.open_question(skipped, "u") is None
 
 
@@ -248,7 +251,7 @@ def test_skip_lets_the_message_go_and_a_repeat_tap_writes_nothing(monkeypatch):
     _quiet(monkeypatch)
     db = _Db()
     _asked(db)
-    assert [r["body"] for r in _tap(db, will_question.SKIP)] == ["Skip", SUMMARY]
+    assert [r["body"] for r in _tap(db, will_question.SKIP)] == ["Skip", after_take.NEXT_TAKE]
     assert db.events[-1]["payload"] == {"question": "audience", "skipped": True}
     assert _tap(db, "The board") == [] and "t1" not in db.takes.ctx
 
@@ -268,7 +271,7 @@ def test_typed_words_are_the_answer_and_fill_the_call_to_action(monkeypatch):
     db.takes.ctx["t1"] = {"strategic_context": "Additional context: they cut budgets last year."}
     _asked(db, "goal", chips=["Say yes", "Trust me", "Get it"])
     resp = _typed(db, monkeypatch, "Approve two hires by March")
-    assert resp["answer"] == THANKS and db.bodies()[-1] == SUMMARY
+    assert resp["answer"] == THANKS and db.bodies()[-1] == after_take.NEXT_TAKE
     assert db.takes.ctx["t1"]["strategic_context"] == (
         "Desired call to action: Approve two hires by March\n"
         "Additional context: they cut budgets last year.")
@@ -312,7 +315,9 @@ def test_the_summary_holds_its_message_under_wills_question(monkeypatch):
     db = _SummaryDb()
     msg, _ = _summary(db, monkeypatch, heard={"audience": "the board", "audience_times": 2})
     asked = [r for r in db.thread.values() if (r.get("metadata") or {}).get("offer") == "will_question"]
-    assert msg["metadata"]["held_for"] == "will_question" and len(asked) == 1
+    closing = next(r for r in db.thread.values() if (r.get("metadata") or {}).get("next_take"))
+    assert closing["metadata"]["held_for"] == "will_question" and len(asked) == 1
+    assert "held_for" not in msg["metadata"]
     assert asked[0]["body"] == QUESTIONS["audience_check"].format(heard="the board")
     assert asked[0]["client_created_at"] > msg["client_created_at"]
 

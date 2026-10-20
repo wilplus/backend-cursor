@@ -104,12 +104,21 @@ def _coach_answer(surface: str) -> Callable[[dict], Any]:
 
 
 def _will_question(inp: dict) -> Any:
-    """Will's calls. A row with a ``key`` and a ``question`` is the light
+    """Will's calls. A row with an ``ask`` and its ``signed`` words is his
+    lead-in (N89): ``lead_in`` ties the ask to the Take's ``facts`` and says
+    the ask with a light touch, or the ask as written when it fails
+    ``read_lead_in``. A row with a ``key`` and a ``question`` is the light
     touch (N86): ``vary`` says the signed question in slightly different
     words, or the signed words when the variation fails ``read_varied``.
     Every other row is the heard call (N82): who the talk is for and what it
     asks, kept only where the Take says it word for word (``read_heard``)."""
-    from services.will_question import heard, vary
+    from services.will_question import heard, lead_in, vary
+    if inp.get("ask") and inp.get("signed"):
+        # Will's lead-in to an ask after the Take (N89): his words around the
+        # signed ask, or the ask as written when the lead-in fails its checks.
+        said = lead_in(str(inp["ask"]), str(inp["signed"]), list(inp.get("facts") or []),
+                       user_id=None, take=None, arc_id=None)
+        return {"message": said or str(inp["signed"]), "led": said is not None}
     if inp.get("key") and inp.get("question"):
         said = vary(str(inp["key"]), str(inp["question"]), user_id=None, take=None, arc_id=None)
         return {"question": said or str(inp["question"]), "varied": said is not None}
