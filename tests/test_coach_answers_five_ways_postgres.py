@@ -1,5 +1,15 @@
-"""0390 on a disposable database: the coach's answer on a practice recording
-takes the speaker's five values and nothing else."""
+"""
+STORY    As a coach, I want my answer on a practice recording limited to the
+         speaker's five values, so that coach and speaker answers can be
+         compared.
+OUTCOME
+  O1  yes, in_between, no, not_sure and audio_unclear are stored.
+  O2  Any other value (e.g. "maybe") is refused and the stored answer stays.
+PROVES   O1 -> test_the_five_answers_are_accepted
+         O2 -> test_any_other_answer_is_refused
+WHY      Migration 0390. Runs only on a disposable database whose name starts
+         with willab_confident_moment_.
+"""
 from __future__ import annotations
 
 import os
@@ -49,3 +59,16 @@ def test_the_five_answers_are_accepted(db, answer):
         cur.execute("SELECT coach_confidence_decision FROM "
                     "public.confident_voice_practice_attempt WHERE id = %s", (attempt,))
         assert cur.fetchone()[0] == answer
+
+
+def test_any_other_answer_is_refused(db):
+    attempt = _attempt(db)
+    with db.cursor() as cur:
+        cur.execute("UPDATE public.confident_voice_practice_attempt "
+                    "SET coach_confidence_decision = 'yes' WHERE id = %s", (attempt,))
+        with pytest.raises(psycopg2.errors.CheckViolation):
+            cur.execute("UPDATE public.confident_voice_practice_attempt "
+                        "SET coach_confidence_decision = 'maybe' WHERE id = %s", (attempt,))
+        cur.execute("SELECT coach_confidence_decision FROM "
+                    "public.confident_voice_practice_attempt WHERE id = %s", (attempt,))
+        assert cur.fetchone()[0] == "yes"

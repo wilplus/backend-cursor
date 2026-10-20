@@ -10721,6 +10721,66 @@ class DatabaseService:
             )
             return False
 
+    # ── WIL-74: goal history and "did this help?" (migration 0477) ──
+
+    def insert_goal_history(self, row: dict) -> bool:
+        """One more goal in the speaker's history. False on any failure."""
+        try:
+            self.client.table("user_goal_history").insert(row).execute()
+            return True
+        except Exception as e:
+            logger.warning("insert_goal_history failed user=%s: %s",
+                           row.get("user_id"), e, exc_info=True)
+            return False
+
+    def list_goal_history(self, user_id: str, limit: int = 20) -> list[dict]:
+        """The speaker's goals, newest first. [] on any failure."""
+        try:
+            return (self.client.table("user_goal_history")
+                    .select("goal, previous_goal, source, changed_at")
+                    .eq("user_id", user_id).order("changed_at", desc=True)
+                    .limit(limit).execute().data) or []
+        except Exception as e:
+            logger.warning("list_goal_history failed user=%s: %s", user_id, e, exc_info=True)
+            return []
+
+    def active_coach_user_ids(self) -> list[str]:
+        """The user ids of the active coaches (coach_users holds emails).
+        [] on any failure."""
+        try:
+            emails = [r.get("email") for r in (
+                self.client.table("coach_users").select("email")
+                .eq("is_active", True).execute().data) or []]
+        except Exception as e:
+            logger.warning("active_coach_user_ids failed: %s", e, exc_info=True)
+            return []
+        ids = (self.v2_find_user_id_by_email(e) for e in emails if e)
+        return [str(i) for i in ids if i]
+
+    def get_take_feedback_check(self, user_id: str,
+                                take_session_id: str) -> Optional[dict]:
+        try:
+            rows = (self.client.table("take_feedback_checks").select("*")
+                    .eq("user_id", user_id)
+                    .eq("take_session_id", take_session_id)
+                    .limit(1).execute().data)
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning("get_take_feedback_check failed user=%s: %s",
+                           user_id, e, exc_info=True)
+            return None
+
+    def save_take_feedback_check(self, row: dict) -> bool:
+        """Upsert one Take's answer (one row per Take). False on failure."""
+        try:
+            (self.client.table("take_feedback_checks")
+             .upsert(row, on_conflict="user_id,take_session_id").execute())
+            return True
+        except Exception as e:
+            logger.warning("save_take_feedback_check failed user=%s: %s",
+                           row.get("user_id"), e, exc_info=True)
+            return False
+
     # ── blind-rater language eligibility ───────────────────────────
 
     def get_user_proficient_languages(self, user_id: str) -> Optional[list]:
@@ -10915,6 +10975,11 @@ class DatabaseService:
             }
             for m in messages
         ]
+        if any(m.get("about_user_id") for m in messages):
+            # A row about another person (a coach's goal card, WIL-74): the
+            # account purge deletes it with that person (migration 0477).
+            for row, m in zip(rows, messages):
+                row["about_user_id"] = m.get("about_user_id")
         try:
             res = (
                 self.client.table("lounge_messages")
@@ -12748,7 +12813,7 @@ class DatabaseService:
     ) -> Optional[dict]:
         """Keep the model's draft on the request row (0402), coach-only; a
         re-draft replaces it, and with it what the draft's prompt was given
-        (``draft_prompt``, 0459; every drafter's snapshot since 0479, naming
+        (``draft_prompt``, 0459; every drafter's snapshot since 0480, naming
         the draft's coach_draft_history row, which keeps every draft).
         Raises on failure: the caller logs and the draft still shows."""
         res = (self.client.table("exercise_coach_requests")
@@ -13700,7 +13765,7 @@ class DatabaseService:
         return (res.data or [None])[0]
 
     def record_take_word_pair(self, **fields: Any) -> Optional[dict]:
-        """A Take word's version (0477): in one transaction it supersedes the
+        """A Take word's version (0478): in one transaction it supersedes the
         word's current pair of the same final kind and, when it is a pair,
         is inserted. None when nothing new was written (the same words
         again, or a version that is no pair). Raises on failure; the service
@@ -13720,7 +13785,7 @@ class DatabaseService:
         out: dict[str, dict[str, int]] = {}
         for surface in SURFACES:
             # A pair a newer version of its Take word replaced is not
-            # counted (0477, the latest teaches).
+            # counted (0478, the latest teaches).
             total = (self.client.table("feedback_pairs")
                      .select("id", count="exact").eq("surface", surface)
                      .is_("superseded_at", "null").limit(1).execute())
@@ -14661,7 +14726,7 @@ class DatabaseService:
         """The model's draft of the Take word (7, 0411), on the coach's row,
         created draft-only when the word is not written yet, with what its
         prompt was given (``draft_prompt``, 0459; it names the draft's
-        coach_draft_history row since 0479). Raises on failure."""
+        coach_draft_history row since 0480). Raises on failure."""
         now = datetime.now(timezone.utc).isoformat()
         res = (self.client.table("coach_take_words")
                .upsert({"take_session_id": str(take_session_id), "coach_id": str(coach_id),
@@ -14690,7 +14755,7 @@ class DatabaseService:
 
     def insert_coach_draft(self, **fields: Any) -> Optional[dict]:
         """One draft as it was shown to a coach, with what its prompt was
-        given and the hashes of the prompt sent (0479). Written once.
+        given and the hashes of the prompt sent (0480). Written once.
         Raises on failure: services.coach_draft_history logs it and the
         draft still shows."""
         res = self.client.table("coach_draft_history").insert(fields).execute()
@@ -14698,7 +14763,7 @@ class DatabaseService:
 
     def settle_coach_draft(self, *, draft_id: str, final_unchanged: bool,
                            settled_at: str) -> Optional[dict]:
-        """The coach saved an answer on this draft (0479): whether it is the
+        """The coach saved an answer on this draft (0480): whether it is the
         draft as written. The only columns the app may set on a kept draft.
         None when no such draft is kept. Raises on failure."""
         res = (self.client.table("coach_draft_history")

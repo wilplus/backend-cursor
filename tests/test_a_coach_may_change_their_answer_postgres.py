@@ -22,7 +22,7 @@ Pins:
   * a changed answer that goes from shared to unshared leaves shared_at NULL
     (a withdrawn share), and from words to an exercise respects the row's
     shape checks;
-  * a coach's Take word keeps every earlier version too (0478, N79): a new
+  * a coach's Take word keeps every earlier version too (0479, N79): a new
     word, a re-draft or a new video moves the one before into
     coach_take_word_versions; a NULL being filled in, or the same text
     again, keeps none; a new video clears the old video's words on the row;

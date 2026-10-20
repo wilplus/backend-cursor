@@ -1,4 +1,4 @@
-"""Every draft keeps its prompt (0479; founder 2026-10-19, decisions log N79).
+"""Every draft keeps its prompt (0480; founder 2026-10-19, decisions log N79).
 
 A model draft shown to a coach used to live only on the row it was shown
 from, and a re-draft replaced it; the answer surfaces kept nothing of what
@@ -118,7 +118,7 @@ class _Db:
 
 
 def _sha(system, user):
-    """The documented formula (migration 0479): sha256 of the UTF-8 JSON
+    """The documented formula (migration 0480): sha256 of the UTF-8 JSON
     array [system, user], no spaces, no ASCII escaping."""
     sent = json.dumps([system, user], ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(sent.encode("utf-8")).hexdigest()

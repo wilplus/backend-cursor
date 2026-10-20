@@ -1,25 +1,23 @@
-"""0430 on the released lane: the confidence chain hears the training yes.
+"""
+STORY    As a speaker, I want my recordings used for training only after my
+         own training yes, so that an old bundled yes or a withdrawal is
+         respected. (Critical path: consent.)
+OUTCOME
+  O1  The ring's consent door says yes only for an active training yes with
+      a bound speaker.
+  O2  It says no before the speaker is bound, after a withdrawal, and for an
+      owner who only ever gave a bundled-era yes.
+  O3  No training snapshot is frozen for an owner without a training yes.
+PROVES   O1 -> test_a_training_yes_with_a_bound_speaker_is_current
+         O2 -> test_a_yes_without_a_bound_speaker_is_not_current
+            -> test_a_withdrawn_yes_is_not_current
+            -> test_a_bundled_grant_is_never_current
+         O3 -> test_no_yes_no_snapshot
+WHY      0430; founder 2026-10-05 (N48.5 Q27 A): one consent authority, the
+         training yes; bundled-era yeses count for nothing (N2, N10.6).
 
-Founder 2026-10-05 (decisions log N48.5 Q27 A): one consent authority, the
-training yes; bundled-era yeses count for nothing (N2, N10.6). Executed
-against the real functions:
-
-  * the ring row's consent door says yes only for an active training yes
-    with a bound speaker, never for a bundled grant, never after a
-    withdrawal; the personalised-practice branch is 0394's text;
-  * the canonical promotion freezes a TRAINING snapshot and refuses a
-    bundled-only owner, rolling the Take promotion back with it (the
-    application then promotes plainly: take_lifecycle);
-  * the training switch's yes binds the speaker in the same transaction, a
-    refused yes binds nobody, and a principal is never rebound;
-  * readiness counts the training yes, and browser roles call nothing new;
-  * F-8: a check of a chain object or of a door 2 release appends one
-    verification row, the database decides whether it verified, and the
-    rows are never rewritten.
-
-Every write happens inside a transaction that is rolled back. The target
-must be a disposable local database whose name starts with
-``willab_confident_moment_``.
+Executed on the released rehearsal lane against the real functions. Every
+write happens inside a transaction that is rolled back.
 """
 from __future__ import annotations
 
@@ -51,20 +49,6 @@ MANIFEST = {
         "content_type": "audio/webm",
     },
 }
-NEW_FUNCTIONS = (
-    "create_mlc2_training_consent_snapshot_v1(uuid,uuid,uuid,uuid)",
-    "bind_mlc2_training_speaker_v1(uuid,text,text,text,text)",
-    "accept_mlc2_training_consent_v1(uuid,text,text,text,text,text,text,"
-    "jsonb,timestamptz,text,text,text,text,text)",
-    "get_mlc2_blind_coach_ratings_v1(uuid,uuid[])",
-    # F-3
-    "get_mlc2_speaker_splits_v1(uuid[],text)",
-    # F-8
-    "record_mlc2_object_verification_v1(text,text,text,bigint,text,text)",
-    "list_mlc2_objects_due_verification_v1(integer)",
-    "record_pair_release_verification_v1(uuid,text,text,bigint,boolean,text,"
-    "text)",
-)
 
 
 @pytest.fixture(scope="module")
@@ -274,6 +258,19 @@ class TestOneConsentAuthority:
         assert _current(cur, principal) is True
 
 
+    def test_a_yes_without_a_bound_speaker_is_not_current(self, cur):
+        principal = _principal(cur)
+        _yes(cur, principal, _training_policy(cur))
+        assert _current(cur, principal) is False
+
+    def test_a_bundled_grant_is_never_current(self, cur):
+        principal = _principal(cur)
+        _bundled_grant(cur, principal)
+        _bind(cur, principal)
+        assert _current(cur, principal) is False
+        _yes(cur, principal, _training_policy(cur))
+        assert _current(cur, principal) is True
+
     def test_a_withdrawn_yes_is_not_current(self, cur):
         principal = _principal(cur)
         grant = _yes(cur, principal, _training_policy(cur))
@@ -314,18 +311,3 @@ class TestTheSnapshotComesFromTheTrainingYes:
         _raises(cur, "no active training yes",
                 "SELECT public.create_mlc2_training_consent_snapshot_v1(%s, %s, NULL, %s)",
                 (owner, attempt, project))
-
-
-# ── The canonical promotion reads only the training snapshot ──────────────
-
-
-# ── The speaker is bound through the training yes (F-3) ───────────────────
-
-
-# ── Readiness counts the training yes ─────────────────────────────────────
-
-
-# ── Grants ────────────────────────────────────────────────────────────────
-
-
-# ── F-8: every download or release check appends a verification ───────────

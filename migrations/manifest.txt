@@ -512,7 +512,8 @@
 0474	claim_owner_indexes.sql
 0475	the_ai_clip_can_practise_fillers.sql
 0476	a_practice_is_heard_in_the_next_take.sql
-0477	a_take_word_pair_has_a_home.sql
-0478	a_take_word_keeps_every_version.sql
-0479	every_draft_keeps_its_prompt.sql
-0480	a_coach_answer_video_is_kept_in_words.sql
+0477	speakers_tell_us_if_feedback_helped_and_goals_keep_history.sql
+0478	a_take_word_pair_has_a_home.sql
+0479	a_take_word_keeps_every_version.sql
+0480	every_draft_keeps_its_prompt.sql
+0481	a_coach_answer_video_is_kept_in_words.sql

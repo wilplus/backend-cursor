@@ -1,18 +1,21 @@
-"""Founder fix-pack BE-5 (2026-07-16) — slide stickiness REVIVED in pieces
-mode (F1-CORE: restores the text↔slide input to the L2 ranking blend).
-
-Covers services/slide_alignment.compute_piece_slide_scores (two-tier: lexical
-for EVERY piece, claim-decomposition + entailment upgrade for the LLM-budget
-subset, LLM-failure fallback, slide_index edge cases), the ranking seam
-(metrics.slide_stickiness.composite → power_score via _rank_inputs), the
-AC-9 user-readout string-absence fence, and the process_lab_recording wiring
-(stamping + overall/rank blend + the raw candidate-window capture staying
-slide_stickiness-free).
-
-Run: python3 -m unittest tests.test_pieces_slide_stickiness
+"""
+STORY    As a speaker, I want slide-fit scores, overall scores and ranks never
+         to appear in my readout, while my coach can see them, so that I see
+         words, not numbers (Never rule 1).
+OUTCOME
+  O1  The speaker readout JSON contains none of slide_stickiness,
+      overall_score or rank.
+  O2  The coach packet carries all three.
+  O3  With the LLM down, a take still persists every piece, each with a
+      lexical (degraded) slide-fit score, so the coach still gets one.
+PROVES   O1 -> test_speaker_readout_carries_no_slide_scores
+         O2 -> test_coach_packet_carries_all_three
+         O3 -> test_llm_outage_still_persists_every_piece_with_lexical_slide_fit
+WHY      AC-9 fence (founder fix-pack BE-5, 2026-07-16).
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 import types
@@ -91,7 +94,7 @@ class UserReadoutFenceTests(unittest.TestCase):
             },
         }
 
-    def _build(self, rows, include_slide_scores):
+    def _build(self, rows, **kwargs):
         from services import lab_recording as mod
         from services.db import db
         with patch.object(db, "get_snippets_by_session", return_value=rows), \
@@ -102,15 +105,22 @@ class UserReadoutFenceTests(unittest.TestCase):
              patch.object(db, "get_user_transcript_edits", return_value=[]), \
              patch.object(db, "get_suggestion_feedback_by_session",
                           return_value=[]):
-            return mod.build_readout_from_session(
-                "sess1", include_insights=False,
-                include_slide_scores=include_slide_scores,
-            )
+            return mod.build_readout_from_session("sess1", **kwargs)
 
+    def test_speaker_readout_carries_no_slide_scores(self):
+        # Called exactly as the speaker routes call it (user_sessions,
+        # guest readout, completed-recording response).
+        out = self._build([self._piece_row("a", 0), self._piece_row("b", 1)],
+                          include_upgrade_cards=False)
+        self.assertEqual([s["id"] for s in out["snippets"]], ["a", "b"])
+        wire = json.dumps(out)
+        for key in ("slide_stickiness", "overall_score", '"rank"'):
+            self.assertNotIn(key, wire)
 
     def test_coach_packet_carries_all_three(self):
         rows = [self._piece_row("a", 0)]
-        out = self._build(rows, include_slide_scores=True)
+        out = self._build(rows, include_insights=False,
+                          include_slide_scores=True)
         snip = out["snippets"][0]
         self.assertEqual(snip["slide_stickiness"]["composite"], 0.62)
         self.assertTrue(snip["slide_stickiness"]["degraded"])
@@ -141,32 +151,19 @@ def _words_and_advances(text_per_slide, word_dur=0.4, tap_gap_s=1.0):
     f"{_AUDIO_METRICS_IMPORT_ERROR}",
 )
 class PipelineWiringTests(unittest.TestCase):
-    """process_lab_recording in pieces mode (audio/Whisper/LLM/db mocked):
-    every piece gets slide_stickiness stamped (lexical, degraded), the budget
-    piece gets the entailment upgrade + the restored overall/rank BLEND, and
-    the raw candidate-window capture never sees any of it."""
+    """process_lab_recording with the LLM down: only audio decoding, Whisper
+    and the LLM itself are faked; slide alignment, scoring and persistence
+    run for real against the stubbed database."""
 
-    TWO_SLIDES = SLIDES[:2]
-
-    def _run(self, entail_ok=True):
+    def test_llm_outage_still_persists_every_piece_with_lexical_slide_fit(self):
         from services import slide_alignment as sa
-        sa._claims_cache.clear()
-        captured = {}
-
-        def _capture_rows(rows):
-            captured["rows"] = rows
-            return len(rows)
-
         from services.db import db
+        sa._claims_cache.clear()
         db.reset_mock()
-        db.create_charisma_snippets_bulk.side_effect = \
-            lambda rows: [f"sn{i}" for i in range(len(rows))]
-        db.insert_candidate_windows.side_effect = _capture_rows
-
-        bulk_rows = {}
+        persisted = {}
 
         def _bulk(rows):
-            bulk_rows["rows"] = rows
+            persisted["rows"] = rows
             return [f"sn{i}" for i in range(len(rows))]
 
         db.create_charisma_snippets_bulk.side_effect = _bulk
@@ -174,68 +171,35 @@ class PipelineWiringTests(unittest.TestCase):
         words, advances = _words_and_advances(
             [ON_SLIDE_TEXT, "customers leave us in week one because "
                             "setup is painful today"])
-        ctx = {"slides": self.TWO_SLIDES, "slide_advances": advances}
+        whisper = MagicMock(client=True)
+        whisper.transcribe_audio.return_value = {"segments": [],
+                                                 "words": words}
+        # services.openai_service imports the openai package — stub the
+        # MODULE for this test only (patch.dict restores it).
+        ois_mod = types.ModuleType("services.openai_service")
+        ois_mod.OpenAIService = MagicMock(return_value=whisper)
 
-        ois = MagicMock()
-        ois.client = True
-        ois.transcribe_audio.return_value = {"segments": [], "words": words}
+        with patch.dict(sys.modules,
+                        {"services.openai_service": ois_mod}), \
+             patch.dict(os.environ, {"WILLAB_PIECE_LLM_BUDGET": "1"}), \
+             patch("services.audio_metrics.decode_audio_to_pcm",
+                   return_value=[0.0] * 16000), \
+             patch("services.audio_metrics.analyze_pcm_window",
+                   return_value={"f0_mean": 150.0, "speech_rate": 130.0,
+                                 "loudness_range": 10.0,
+                                 "voiced_ratio": 0.7}), \
+             patch("services.llm.chat_complete", return_value=None):
+            # chat_complete's contract: None on any provider failure.
+            from services.lab_recording import process_lab_recording
+            process_lab_recording(
+                session_id="sess1", user_id="u1", recording_id="rec1",
+                audio_bytes=b"x" * 64, filename="lab.webm",
+                session_context={"slides": SLIDES[:2],
+                                 "slide_advances": advances},
+                parent_audio_url="https://x/parent.webm",
+            )
 
-        # services.openai_service imports the openai package (not in the local
-        # test image) — stub the MODULE, saved-and-restored (never bare pop).
-        _orig_ois_mod = sys.modules.get("services.openai_service")
-        _ois_stub = types.ModuleType("services.openai_service")
-        _ois_stub.OpenAIService = MagicMock(return_value=ois)
-        sys.modules["services.openai_service"] = _ois_stub
-
-        entail = (
-            (lambda work: {str(w["ref"]): ["partial"] for w in work})
-            if entail_ok else (lambda work: None)
-        )
-
-        try:
-            # The retired flag must not be able to reactivate a second
-            # segmentation algorithm, even if a stale deployment still sets
-            # it to false.
-            with patch.dict(os.environ, {
-                     "WILLAB_PIECE_LLM_BUDGET": "1",
-                     "PIECES_CANONICAL_ENABLED": "0",
-                 }), \
-                 patch("services.audio_metrics.decode_audio_to_pcm",
-                       return_value=[0.0] * 16000), \
-                 patch("services.audio_metrics.analyze_pcm_window",
-                       side_effect=lambda *a, **k: {
-                           "f0_mean": 150.0, "speech_rate": 130.0,
-                           "loudness_range": 10.0, "voiced_ratio": 0.7}), \
-                 patch("services.snippet_salience.rank_candidates_by_salience",
-                       side_effect=lambda cands, top_n: cands[:top_n]), \
-                 patch("services.snippet_stickiness.score_snippets_stickiness",
-                       side_effect=lambda items: [
-                           {"composite": 0.5, "comment": "held"}
-                           for _ in items]), \
-                 patch("services.slide_alignment._llm_decompose",
-                       return_value={0: ["onboarding time dropped"],
-                                     1: ["customers churn early"]}), \
-                 patch("services.slide_alignment._entail_batch",
-                       side_effect=entail), \
-                 patch("services.say_it_stronger.dispatch_say_it_stronger",
-                       return_value=None):
-                from services.lab_recording import process_lab_recording
-                payload = process_lab_recording(
-                    session_id="sess1", user_id="u1", recording_id="rec1",
-                    audio_bytes=b"x" * 64, filename="lab.webm",
-                    session_context=ctx,
-                    parent_audio_url="https://x/parent.webm",
-                )
-        finally:
-            if _orig_ois_mod is not None:
-                sys.modules["services.openai_service"] = _orig_ois_mod
-            else:
-                sys.modules.pop("services.openai_service", None)
-        return payload, bulk_rows.get("rows") or [], captured.get("rows") or []
-
-
-    def test_entailment_down_pipeline_keeps_lexical_and_never_crashes(self):
-        payload, rows, _ = self._run(entail_ok=False)
+        rows = persisted.get("rows") or []
         self.assertEqual(len(rows), 2)          # live loop intact
         for r in rows:
             ss = r["metrics"]["slide_stickiness"]

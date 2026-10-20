@@ -1,10 +1,19 @@
-"""The database transport is a connection pool, not one shared socket.
-
-Founder 2026-10-16: fourteen boot requests arriving together all took the
-time of the slowest one, because every thread multiplexed on one HTTP/2
-socket. A local load test (one 4 s call + seven 50 ms calls on 8 threads)
-showed the fast calls taking 4.00 s on that socket and 0.07 s on the pool.
-This pins the pool so a library upgrade cannot quietly bring the socket back.
+"""
+GUARD      The database transport is a pool of HTTP/1 connections, kept warm
+           once per gunicorn thread, so the app opens fast.
+CATCHES    A supabase/httpx upgrade or a config edit that brings back the one
+           shared HTTP/2 socket, shrinks the pool, or pings slower than the
+           pool drops idle connections.
+IF REMOVED Boot requests queue behind the slowest one again (founder
+           2026-10-16: fast calls took 4.00 s on the socket, 0.07 s on the
+           pool) and nobody notices until speakers do.
+PROVES     test_every_postgrest_session_is_a_pool_of_http1_connections
+             reads private httpx pool attributes ON PURPOSE as an upgrade
+             tripwire; expect it to break on a library upgrade
+           test_the_keep_warm_ping_comes_before_the_pool_drops_an_idle_connection
+             a constant comparison (ping interval < keepalive expiry)
+           test_the_keep_warm_ping_warms_one_connection_per_lane
+             one ping per gunicorn thread, sent in parallel
 """
 from services import db_transport
 

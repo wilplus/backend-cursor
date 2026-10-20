@@ -2,14 +2,16 @@
 
 Moved out of ``routes.v2.explore_ideal_text`` unchanged (founder 2026-10-12:
 "move logic out of the backend routes"). The route keeps the ownership gate
-and the 500 boundary; ``build_notebook`` is the read itself, stage by stage,
-in the order it always ran:
+and the 500 boundary; ``build_notebook`` is the read itself:
 
-    source → historical view → live text → displayed text (stars folded,
-    markers sanitized, anchors extracted) → locked-part compose → moment
-    decorations → project fields → learning exposure → pieces, parts,
-    tracked changes → payload, with every optional stage that fell back
+    source → historical view → [live text → displayed text (stars folded,
+    markers sanitized, anchors extracted) → locked-part compose | project
+    fields] → [moment decorations | learning exposure | pieces, parts |
+    tracked changes] → payload, with every optional stage that fell back
     named in `degraded` (audit Q-C1).
+
+A bracket runs its branches at the same time (2026-10-18); `degraded` keeps
+the order the stages ran in before that.
 
 The route's own helpers (the moment maps, the pieces, the parts block, the
 tracked-changes block) reach it through ``NotebookDeps``, bound by the route
@@ -320,21 +322,23 @@ def _project_fields(database, arc_id, user_id, sessions, deps, optional):
     }
 
 
-def _payload(database, *, arc_id, version, live, row, project, extra, text, exposure,
-             composed, key_moments, explanations, user_id, deps,
-             degradation) -> dict:
-    """The notebook as served. The blocks are evaluated in the order they
-    always were: pieces, then (without a composition) the parts block, then
-    the tracked changes, then the `degraded` list last."""
-    spoken_rows = project.spoken_rows
-    presentation_ref = refreshed_media_url(project.presentation_ref or None)
+def _pieces_and_parts(database, arc_id, text, project, composed, user_id,
+                      deps, degradation) -> tuple[list, dict]:
+    """(pieces, parts block): the pieces, then, without a composition, the
+    parts block."""
     pieces = ideal_text_pieces(database, arc_id, text, project.presentation_ref,
                                str(user_id), degradation=degradation)
     parts = ({"parts": composed["parts"]} if composed is not None
              else deps.parts_block(arc_id, user_id, text))
-    changes = deps.tracked_changes_block(
-        arc_id, text, user_id or "", project.latest_take_session_id or "",
-        review_version=version, degradation=degradation)
+    return pieces, parts
+
+
+def _payload(*, arc_id, version, live, row, project, extra, text, exposure,
+             composed, key_moments, explanations, pieces, parts, changes,
+             degradation) -> dict:
+    """The notebook as served, with the `degraded` list last."""
+    spoken_rows = project.spoken_rows
+    presentation_ref = refreshed_media_url(project.presentation_ref or None)
     notes = extra["notes"]
     return {
         "arc_id": arc_id,
@@ -390,10 +394,7 @@ def build_notebook(database, *, arc_id: str, user_id: Any, sessions: list,
     """(payload, status) for the owner's notebook. Free in both states —
     never a 402 (single deliverable, founder 2026-07-17)."""
     from services.degradation import DegradationLog
-    degradation = DegradationLog("ideal_text")
-
-    def optional(label, default, reader):
-        return optional_read(label, default, reader, degradation)
+    from services.parallel import run_in_parallel
 
     row = database.ideal_text.get_coach_arc_ideal_text(arc_id)
     source = resolve_ideal_text_source(row)
@@ -402,25 +403,64 @@ def build_notebook(database, *, arc_id: str, user_id: Any, sessions: list,
         arc_id, requested_version, source.version, database=database)
     if historical is not None:
         return historical.payload, historical.status
-    # The student's in-place edit WINS display while it was made against the
-    # CURRENT version (BE-2); `prior_edit` re-offers a superseded one.
-    live = resolve_live_text(arc_id, user_id, source, database=database)
-    stars_on, text, moments = _displayed_text(
-        database, arc_id, live.text, live.user_edited, deps, optional)
-    text, composed = _compose_locked(
-        database, arc_id, str(user_id), text, degradation)
-    key_moments, explanations = _key_moments(
-        database, arc_id, moments, stars_on, deps, optional)
-    project, extra = _project_fields(
-        database, arc_id, user_id, sessions, deps, optional)
-    exposure = _learning_exposure(
-        database, arc_id=arc_id, user_id=user_id,
-        spoken_rows=project.spoken_rows,
-        latest_take_sid=project.latest_take_session_id, text=text,
-        version=source.version, title=project.title, composed=composed,
-        degradation=degradation)
+
+    # INDEPENDENT STAGES RUN TOGETHER (2026-10-18: this read took 4.7 s, 49
+    # database calls one after another). Two waves: the document and the
+    # project fields, then everything that needs the composed text. Each
+    # stage keeps its own log, merged in the order the stages used to run,
+    # so `degraded` reads exactly as it did.
+    def stage_log():
+        log = DegradationLog("ideal_text")
+        return log, lambda label, default, reader: optional_read(
+            label, default, reader, log)
+
+    document_log, document_optional = stage_log()
+    project_log, project_optional = stage_log()
+
+    def document():
+        # The student's in-place edit WINS display while it was made against
+        # the CURRENT version (BE-2); `prior_edit` re-offers a superseded one.
+        live = resolve_live_text(arc_id, user_id, source, database=database)
+        stars_on, text, moments = _displayed_text(
+            database, arc_id, live.text, live.user_edited, deps,
+            document_optional)
+        text, composed = _compose_locked(
+            database, arc_id, str(user_id), text, document_log)
+        return live, stars_on, text, moments, composed
+
+    (live, stars_on, text, moments, composed), (project, extra) = run_in_parallel(
+        document,
+        lambda: _project_fields(
+            database, arc_id, user_id, sessions, deps, project_optional))
+
+    moments_log, moments_optional = stage_log()
+    exposure_log, pieces_log, changes_log = (
+        DegradationLog("ideal_text") for _ in range(3))
+    (key_moments, explanations), exposure, (pieces, parts), changes = (
+        run_in_parallel(
+            lambda: _key_moments(
+                database, arc_id, moments, stars_on, deps, moments_optional),
+            lambda: _learning_exposure(
+                database, arc_id=arc_id, user_id=user_id,
+                spoken_rows=project.spoken_rows,
+                latest_take_sid=project.latest_take_session_id, text=text,
+                version=source.version, title=project.title,
+                composed=composed, degradation=exposure_log),
+            lambda: _pieces_and_parts(
+                database, arc_id, text, project, composed, user_id, deps,
+                pieces_log),
+            lambda: deps.tracked_changes_block(
+                arc_id, text, user_id or "",
+                project.latest_take_session_id or "",
+                review_version=source.version, degradation=changes_log)))
+
+    degradation = DegradationLog("ideal_text")
+    for log in (document_log, moments_log, project_log, exposure_log,
+                pieces_log, changes_log):
+        degradation.items.extend(log.items)
     return _payload(
-        database, arc_id=arc_id, version=source.version, live=live, row=source.row,
+        arc_id=arc_id, version=source.version, live=live, row=source.row,
         project=project, extra=extra, text=text, exposure=exposure,
         composed=composed, key_moments=key_moments, explanations=explanations,
-        user_id=user_id, deps=deps, degradation=degradation), 200
+        pieces=pieces, parts=parts, changes=changes,
+        degradation=degradation), 200

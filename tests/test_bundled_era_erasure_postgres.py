@@ -1,21 +1,25 @@
-"""F4: the bundled-era erasure, executed on a disposable database.
-
-migrations/pending/erase_bundled_era_corpus.sql is never in the manifest; it
-is applied by hand once the founder authorises it and counsel has reviewed
-the prepared list. These cases apply it to the rehearsal database, against
-stand-in corpus tables carrying the same retired-write guard production has,
-and pin what makes it safe to run once:
-
-  * preview counts, and the consent records are named as kept;
-  * prepare snapshots exact rows by primary key and every stored-object
-    reference, under a hash;
-  * apply refuses: a wrong hash, no founder reference, no counsel reference,
-    no record of external copies, any listed object without an outcome, and
-    a snapshot whose rows changed since it was prepared;
-  * apply deletes exactly the snapshot past the guard — and the guard is on
-    again afterwards;
-  * browser roles call nothing; service_role reaches only the preview and the
-    storage script's two doors.
+"""
+STORY    As the founder, I want the one-time erasure of the old corpus to run
+         only with my sign-off, counsel's sign-off and an exact snapshot, so
+         that we delete exactly what was approved and keep consent records.
+OUTCOME
+  O1  Apply refuses, deleting nothing, on a wrong hash or a missing founder,
+      counsel or external-copies record.
+  O2  Apply refuses, deleting nothing, while any listed stored object has
+      no recorded outcome (files are settled first).
+  O3  Apply refuses, deleting nothing, when a snapshot row changed after
+      prepare.
+  O4  Apply deletes exactly the snapshot's rows (a later row stays), keeps
+      the consent records, puts the write guard back on, stores both
+      sign-offs, and refuses a second apply.
+PROVES   O1 -> test_apply_refuses_without_each_approval
+         O2 -> test_apply_refuses_while_an_object_has_no_outcome
+         O3 -> test_apply_refuses_when_snapshot_rows_changed_since_prepare
+         O4 -> test_apply_deletes_exactly_the_snapshot_and_the_guard_is_back
+WHY      F4. migrations/pending/erase_bundled_era_corpus.sql is applied by
+         hand, never by the manifest; here it runs twice (idempotent) on the
+         rehearsal database against stand-in corpus tables carrying the
+         retired-write guard production has.
 """
 from __future__ import annotations
 
@@ -129,6 +133,32 @@ def test_apply_refuses_without_each_approval(corpus, override, code):
     with pytest.raises(psycopg2.Error, match=code):
         _apply(corpus, prepared["snapshot_id"], sha, **args)
     assert _one(corpus, "SELECT count(*) FROM public.training_labels") == 3
+
+
+def test_apply_refuses_while_an_object_has_no_outcome(corpus):
+    prepared = _prepare(corpus)
+    refs = _one(corpus, "SELECT public.bundled_era_erasure_storage_refs_v1(%s)",
+                (prepared["snapshot_id"],))
+    assert len(refs) >= 2
+    _one(corpus, "SELECT public.record_bundled_era_object_v1(%s, %s, 'deleted', 'test')",
+         (prepared["snapshot_id"], refs[0]))
+    with pytest.raises(psycopg2.Error, match="BUNDLED_ERA_OBJECTS_NOT_RESOLVED"):
+        _apply(corpus, prepared["snapshot_id"], prepared["sha256"])
+    assert _one(corpus, "SELECT count(*) FROM public.training_labels") == 3
+    assert _one(corpus, "SELECT count(*) FROM public.model_versions") == 1
+
+
+def test_apply_refuses_when_snapshot_rows_changed_since_prepare(corpus):
+    prepared = _prepare(corpus)
+    _record_all(corpus, prepared["snapshot_id"])
+    with corpus.cursor() as cur:  # one snapshotted row goes another way
+        cur.execute("ALTER TABLE public.training_labels DISABLE TRIGGER training_labels_retired_write_guard")
+        cur.execute("DELETE FROM public.training_labels WHERE label_key = 'lbl'")
+        cur.execute("ALTER TABLE public.training_labels ENABLE TRIGGER training_labels_retired_write_guard")
+    with pytest.raises(psycopg2.Error, match="BUNDLED_ERA_ROWS_CHANGED_SINCE_PREPARE"):
+        _apply(corpus, prepared["snapshot_id"], prepared["sha256"])
+    assert _one(corpus, "SELECT count(*) FROM public.training_labels") == 2
+    assert _one(corpus, "SELECT count(*) FROM public.model_versions") == 1
 
 
 def test_apply_deletes_exactly_the_snapshot_and_the_guard_is_back(corpus):

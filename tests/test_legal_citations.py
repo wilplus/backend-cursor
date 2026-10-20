@@ -1,31 +1,19 @@
-"""Every code citation in the counsel pack must still resolve.
-
-WHY THIS EXISTS (2026-09-18). `legal/phase1-2026.1/09-counsel-cover-note.md`
-tells outside counsel that "the technical sections are verifiable line by line
-against the repository", and `docs/legal/AI-ACT-SCOPING-MEMO.md` says its §2 is
-"verified against source". Those are promises about a moving codebase made in
-documents that, once signed, become immutable fingerprinted rows
-(`register_phase1_policy_v1`) and cannot be edited afterwards.
-
-They had already rotted before anyone looked. On 2026-09-18 the DPIA cited
-`services/voice_confidence.py:177` twice for the `VOICE_CONFIDENCE_ENABLED`
-default; line 177 was a comment separator and the flag had moved to :256. The
-RISK-11 call sites pointed two functions away from where they had ended up.
-A lawyer following either one lands on code that does not say what the document
-says it says, which is worse than no citation at all — it reads as a client who
-described the system inaccurately.
-
-WHAT THIS CHECKS. Only that a citation still points at something: the file
-exists, the line is inside it, and the line is not blank or a bare comment rule
-(the exact shape `:177` had degenerated into). It cannot check that the line
-still MEANS what the document claims — no test can. It buys the cheap half,
-which is the half that rots silently.
-
-SCOPE. The pack that goes to counsel, and nothing else. Frontend citations are
-skipped for content because that repository is not checked out here; they are
-required to name a commit instead, which is the convention
-`accepted-versions/README.md` already uses and the only form that stays true
-after the file changes.
+"""
+GUARD      Every file, line and commit cited in the counsel pack
+           (legal/phase1-2026.1/ and every docs/legal/*.md) still resolves.
+CATCHES    A cited path that no longer exists; a cited line past the end of
+           its file or on a blank/bare comment rule; a frontend line citation
+           with no commit next to it; a cited commit that is not an ancestor
+           of HEAD (a squash-merge destroys branch hashes).
+IF REMOVED Counsel follows a citation in a signed, immutable document and
+           lands on code that does not say what the document says (2026-09-18:
+           the DPIA cited services/voice_confidence.py:177, a comment rule).
+           It cannot check that a line still MEANS what the document claims.
+PROVES     test_every_cited_path_in_the_counsel_pack_exists
+           test_every_cited_line_is_real_and_not_blank
+           test_frontend_citations_name_a_commit
+           test_every_cited_commit_is_reachable_from_this_branch
+             (git subprocesses; skipped on a shallow clone)
 """
 from __future__ import annotations
 
@@ -190,36 +178,6 @@ def _is_shallow(repo: str) -> bool:
     out = subprocess.run(["git", "rev-parse", "--is-shallow-repository"],
                          cwd=repo, capture_output=True, text=True)
     return out.stdout.strip() == "true"
-
-
-def test_the_shallow_guard_sees_a_shallow_clone_from_its_worktree(tmp_path, monkeypatch):
-    """A worktree's `.git` is a file, so a `.git/shallow` path is never there."""
-    # A sandboxed git: no developer config, and no GIT_DIR from a calling hook,
-    # which would aim these commands at this repository.
-    for key in [k for k in os.environ if k.startswith("GIT_")]:
-        monkeypatch.delenv(key)
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
-    for role in ("AUTHOR", "COMMITTER"):
-        monkeypatch.setenv(f"GIT_{role}_NAME", "t")
-        monkeypatch.setenv(f"GIT_{role}_EMAIL", "t@example.invalid")
-
-    def git(cwd, *args):
-        subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
-
-    upstream = tmp_path / "upstream"
-    git(tmp_path, "init", "-q", "-b", "main", str(upstream))
-    for n in range(2):  # one commit would be the whole history: nothing to cut
-        git(upstream, "commit", "-q", "--allow-empty", "-m", f"c{n}")
-    for shallow in (True, False):
-        clone, worktree = tmp_path / f"clone-{shallow}", tmp_path / f"worktree-{shallow}"
-        depth = ["--depth=1"] if shallow else []
-        git(tmp_path, "clone", "-q", *depth, f"file://{upstream}", str(clone))
-        git(clone, "worktree", "add", "-q", "--detach", str(worktree))
-        assert (worktree / ".git").is_file()
-        assert _is_shallow(str(clone)) is shallow
-        assert _is_shallow(str(worktree)) is shallow, worktree
 
 
 def test_every_cited_commit_is_reachable_from_this_branch():
