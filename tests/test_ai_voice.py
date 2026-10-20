@@ -29,6 +29,7 @@ PROVES   O1 -> test_a_problem_from_the_line_up_else_the_default,
          O3 -> test_a_clip_that_fails_its_check_is_never_shown,
                test_a_pause_heard_in_the_audio_passes_when_the_words_hide_it
          O4 -> test_the_daily_limit_stops_the_provider_call,
+               test_two_corrected_moments_queue_two_prewarms,
                test_one_recording_makes_one_checked_clip_then_measures_the_next_try,
                test_a_stored_bake_with_a_voice_exercise_queues_one_prewarm_once,
                test_the_bake_queues_the_offered_exercise_and_never_a_rewrite_or_praise,
@@ -822,3 +823,22 @@ def test_a_spoken_takes_upload_starts_the_voice_and_a_read_take_or_guest_does_no
     upload("read", "u-1").assert_not_called()
     upload("spoken", None).assert_not_called()
 
+
+def test_two_corrected_moments_queue_two_prewarms(baked):
+    """Founder 2026-10-20: both shown moments below the floor are corrected,
+    so a Take can carry two voice exercises; the bake queues a clip for each,
+    once, and a rebake queues no more."""
+    run, queued = baked
+    second = _item(block_id="b2", id="cand-2", snippet_id="snip-2",
+                   span={"start": 30, "end": 50}, quote=SENTENCE[30:50],
+                   evidence={"project_id": ARC, "take_session_id": TAKE_ID,
+                             "slide_index": 1, "paragraph_index": 1,
+                             "span": {"start": 30, "end": 50}})
+    with _on():
+        stored, _db = run({"changes": [_item(), second], "style_changes": []})
+        assert stored and len(queued) == 2
+        assert sorted(q[1][2] for q in queued) == sorted([SNIP_ID, "snip-2"])
+        assert {q[2]["rq_job_id"] for q in queued} == {
+            f"ai-voice-prewarm-{TAKE_ID}-{SNIP_ID}", f"ai-voice-prewarm-{TAKE_ID}-snip-2"}
+        run({"changes": [_item(), second], "style_changes": []})
+        assert len(queued) == 2

@@ -64,18 +64,21 @@ def _block_presentation(block: dict, block_id: str) -> dict:
     """What the client may know about how to DRAW this block (founder lock
     2026-10-12, section 6).
 
-    Only green is a tier: `confident` for a green moment, `standard` for
-    every other block. The exercise moment is never labelled weak; it says
+    Only praise is a tier: `confident` for a praised moment, `standard` for
+    every other block. A corrected moment is never labelled weak; it says
     only that practice is offered and which kind (`exercise_kind`, a routing
-    word: "clearer" or "voice"). No score, band or rank crosses (AC-9).
+    word: "clearer" or "voice"). `highest_moment` marks the Take's highest
+    moment, praised or corrected (founder 2026-10-20): the walk opens its
+    bubble with "This was your most confident moment." No score, band or
+    rank crosses (AC-9).
     """
     presentation = {
         "block_id": block_id,
         "bookmark_tier": "confident" if block.get("most_confident") else "standard",
         "practice_prompt": bool(block.get("practice_prompt")),
     }
-    if block.get("green_soft"):
-        presentation["green_soft"] = True
+    if block.get("highest_moment"):
+        presentation["highest_moment"] = True
     if block.get("level_key"):
         # Which signed opening line the praise uses (founder 2026-10-14). A
         # copy key like `why_key`; the willfidence itself never crosses.

@@ -2,10 +2,11 @@
 ``docs/FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md``; replaces the window
 of three of 2026-09-30).
 
-The Manager already chose them (`services.moment_pick`): up to three green
-moments, at most one per slide, and one exercise. Every open Confident Voice
-moment that is green (`bookmark_tier == "confident"`) or is the exercise
-(`practice_prompt`) shows; other open moments do not. On a Take where the
+The Manager already chose them (`services.moment_pick`): the Take's two
+highest moments, at most one per slide, each praised or corrected by its
+own willfidence (founder 2026-10-20). Every open Confident Voice moment that
+is praised (`bookmark_tier == "confident"`) or corrected (`practice_prompt`)
+shows; other open moments do not. On a Take where the
 machine could read nothing, at most two open moments show, in text order,
 so the speaker still has something to open.
 
