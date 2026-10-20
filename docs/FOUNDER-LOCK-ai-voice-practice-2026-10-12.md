@@ -228,3 +228,6 @@ speaker accepts, the words are not chosen. Praise still never gets a clip.
 Build end to end, test with the founder's own voice, then counsel (L12,
 L13, the data processing agreement with ElevenLabs, the AI Act Article 50
 assessment), then launch.
+
+Counsel approved L12 and L13 (founder, 2026-10-20, on the flow page's
+first review).
