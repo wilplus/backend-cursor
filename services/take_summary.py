@@ -298,6 +298,92 @@ def goal_facts(database: Any, user_id: str) -> list[str]:
             "how this take moved toward it, in words, never a grade."]
 
 
+#: How long the summary waits for the earlier Takes, at most (seconds).
+_EARLIER_BUDGET = 1.0
+
+
+def _query(moments: list[dict], words: list[str], takes: list[dict]) -> str:
+    """The lookup's query (a summary has no question): the helper words,
+    the talk's title and slides, then what they said this Take. Pure."""
+    said = " ".join(str(m.get("text") or "") for m in moments)
+    return " ".join([*words, *(n for n in talk_names(takes) if n), said])
+
+
+def _when(take: dict) -> Optional[Any]:
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(str(take.get("created_at") or "").replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _older(takes: list[dict], take_index: int):
+    """Which of the speaker's Takes are older than this one: the arc's Takes
+    before it, and another project's Take recorded before it. Never this
+    Take, never one after it. Pure."""
+    ids = [str(t.get("id")) for t in takes]
+    before, after = set(ids[:take_index - 1]), set(ids[take_index - 1:])
+    at = _when(takes[take_index - 1])
+
+    def older(take: dict) -> bool:
+        tid = str(take.get("id"))
+        if tid in before or tid in after:
+            return tid in before
+        then = _when(take)
+        try:
+            return bool(at and then and then < at)
+        except TypeError:  # one carries a zone, the other not: leave it out
+            return False
+    return older
+
+
+def _take_name(label: str) -> str:
+    """The "Take 2" of "Take 2 transcript, slide 3": a slide number would
+    trip the no-number rule, a Take number does not. Pure."""
+    found = _TAKE_NUMBER.match(label or "")
+    return found.group(0) if found else "an earlier Take"
+
+
+def earlier_facts(snippets: list) -> list[str]:
+    """What they said in older Takes (``speaker_lookup.earlier_takes``), as
+    one private fact: guidance only. [] without any. The wording is
+    drift-locked (services/prompts/pending.py)."""
+    if not snippets:
+        return []
+    said = "; ".join(f'{_take_name(s.label)}: "{s.text}"' for s in snippets)
+    return ["What they said in earlier Takes (private, to steer by; you may point "
+            "back to one moment in a few of their own words, never more): " + said]
+
+
+def earlier_lookup(database: Any, *, user_id: str, arc_id: str, takes: list[dict],
+                   take_index: int, query: str):
+    """Starts the lookup of the speaker's older Takes off the request and
+    returns the call that collects it as facts, waiting at most
+    ``_EARLIER_BUDGET``. Past that, or on any failure, the call gives []
+    and the summary is written as before. Never raises."""
+    try:
+        from concurrent.futures import ThreadPoolExecutor
+        from contextvars import copy_context
+        from services.speaker_lookup import earlier_takes, key_terms
+        older, wanted = _older(takes, take_index), key_terms(query)
+        pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="take-summary-earlier")
+        future = pool.submit(copy_context().run, lambda: earlier_takes(
+            database, user_id, wanted, older=older,
+            first=lambda take: str(take.get("arc_id") or "") == arc_id))
+        pool.shutdown(wait=False)
+    except Exception as error:  # noqa: BLE001 -- the summary is written as before
+        logger.warning("take summary earlier takes not started user=%s: %s", user_id, error)
+        return lambda: []
+
+    def collect() -> list[str]:
+        try:
+            return earlier_facts(future.result(timeout=_EARLIER_BUDGET))
+        except Exception as error:  # noqa: BLE001 -- too slow or failed: as before
+            logger.warning("take summary earlier takes unread user=%s: %r", user_id, error)
+            return []
+    return collect
+
+
 def talk_facts(takes: list[dict]) -> list[str]:
     """The talk's title and slide topics as facts. Pure."""
     from services.chat_app_context import slide_topics, talk_title
@@ -378,10 +464,13 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
         practice = practice or (first.get("practice") if first.get("practice") in ("better", "not_yet") else None)
         words = words or [w for w in (first.get("helper_words") or []) if isinstance(w, str)][:2]
     anchor = _COPY.get(take_index) or _COPY[3]
+    moments = _moments(database, take)
+    earlier = earlier_lookup(database, user_id=str(user_id), arc_id=str(arc_id), takes=takes,
+                             take_index=take_index, query=_query(moments, words, takes))
     now, before = _reads(database, ids, take_index)
-    facts = (talk_facts(takes) + said_facts(_moments(database, take), now)
-             + progress_facts(now, before) + goal_facts(database, str(user_id))
-             + memory_facts(database, str(user_id)))
+    rest = (progress_facts(now, before) + goal_facts(database, str(user_id))
+            + memory_facts(database, str(user_id)))
+    facts = talk_facts(takes) + said_facts(moments, now) + earlier() + rest
     moved = _move(_mean(now, "s"), _mean(before, "s")) if before is not None else None
     text = _written(database, take, anchor, facts, practice, words,
                     note, str(arc_id), str(user_id),
