@@ -202,3 +202,14 @@ def test_the_weekly_note_says_what_was_missing_in_their_words():
         "What was missing:",
         "“Why my close felt rushed”",
     ]
+
+
+def test_what_was_missing_reaches_the_next_takes_summary():
+    """Founder 2026-10-20: the feedback learns from the answer, once."""
+    from services.take_summary import missing_facts
+    db = _Db()
+    db.save_take_feedback_check({"user_id": "u", "take_session_id": "t1",
+                                 "helped": False, "missing": "Why my close felt rushed"})
+    facts = missing_facts(db, "u", ["t1", "t2", "t3"], take_index=2)
+    assert len(facts) == 1 and "Why my close felt rushed" in facts[0]
+    assert missing_facts(db, "u", ["t1", "t2", "t3"], take_index=3) == []  # heard once

@@ -106,6 +106,8 @@ CHAT_FACTS = (
     "  • The speaker's goal is in their own words and is never graded. They "
     "change it by telling you; their coach is told when it changes.\n"
     "  • The summary after a Take may say one thing about their goal.\n"
+    "  • What they say was missing is heard by the summary after their next "
+    "Take, which speaks to it.\n"
 )
 
 

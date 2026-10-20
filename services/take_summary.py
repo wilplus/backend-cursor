@@ -276,6 +276,26 @@ def goal_facts(database: Any, user_id: str) -> list[str]:
             "how this take moved toward it, in words, never a grade."]
 
 
+def missing_facts(database: Any, user_id: str, ids: list[str], take_index: int) -> list[str]:
+    """What the speaker said was missing after their last Take, in their own
+    words (founder 2026-10-20: the feedback learns from the answer). Only
+    the Take just before this one, so each answer is heard once. []
+    otherwise."""
+    if take_index < 2:
+        return []
+    try:
+        held = database.get_take_feedback_check(user_id, ids[take_index - 2]) or {}
+    except Exception as error:  # noqa: BLE001 -- no answer: nothing to speak to
+        logger.warning("take summary missing unread user=%s: %s", user_id, error, exc_info=True)
+        return []
+    missing = (held.get("missing") or "").strip()
+    if not missing:
+        return []
+    return [f"After their last take they said this was missing from the feedback: "
+            f"\"{missing[:200]}\". Speak to it in one sentence, in words, from what "
+            "this take showed."]
+
+
 def talk_facts(takes: list[dict]) -> list[str]:
     """The talk's title and slide topics as facts. Pure."""
     from services.chat_app_context import slide_topics, talk_title
@@ -370,7 +390,8 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
     anchor = _COPY.get(take_index) or _COPY[3]
     now, before = _reads(database, ids, take_index)
     facts = (talk_facts(takes) + said_facts(_moments(database, take), now)
-             + progress_facts(now, before) + goal_facts(database, str(user_id)))
+             + progress_facts(now, before) + goal_facts(database, str(user_id))
+             + missing_facts(database, str(user_id), ids, take_index))
     moved = _move(_mean(now, "s"), _mean(before, "s")) if before is not None else None
     text = _written(database, take, anchor, facts, practice, words,
                     note, str(arc_id), str(user_id),
