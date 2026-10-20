@@ -519,3 +519,4 @@
 0481	a_shared_take_finds_its_moments_by_their_take_as_text.sql
 0482	a_blind_list_can_be_cleared_for_the_week.sql
 0483	a_moment_is_found_by_its_id_as_text.sql
+0484	a_legacy_take_takes_its_owner_from_its_account.sql

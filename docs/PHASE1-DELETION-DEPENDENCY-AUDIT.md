@@ -59,7 +59,12 @@ not override it.
    principal, is included in the frozen graph and blocks with
    `LEGACY_TAKE_OWNER_PRINCIPAL_UNRESOLVED`; it is never silently omitted.
    A generic resolver cannot change an `unknown` target; a future resolution
-   requires its own reviewed, typed RPC.
+   requires its own reviewed, typed RPC. That RPC is 0484
+   (`resolve_legacy_take_owners_v1`, founder 2026-10-20): before a run's
+   first freeze, a legacy Take whose user id is the user id of one of the
+   account's own graph principals, and whose owner copy is empty, takes that
+   principal. A Take naming another principal, or with no such principal,
+   stays unresolved and still blocks.
 4. A target cannot be recorded as deleted/not-found while its verified
    remaining count is non-zero.
 5. Provider contracts and their activation/retirement facts are immutable and

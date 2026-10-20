@@ -9,19 +9,31 @@ OUTCOME
   O2  Someone else's request cannot freeze my object.
   O3  Every target kind the orchestrator sends (FREEZE_TARGET_KINDS) is one
       the real freeze accepts; any other kind is filed unknown.
+  O4  An older Take linked to my account only by my user id takes my owner
+      principal (0484), so my erasure no longer stops on it; asking twice
+      changes nothing.
+  O5  A Take that names another owner principal stays unresolved, and my
+      erasure still stops for review on it.
 PROVES   O1 -> test_the_freeze_accepts_my_practice_object_and_the_mark_stamps_it
          O2 -> test_the_freeze_still_refuses_an_object_that_is_not_the_subjects
          O3 -> test_every_kind_the_orchestrator_sends_is_one_the_freeze_accepts
+         O4 -> test_a_take_linked_only_by_my_user_id_takes_my_owner
+         O5 -> test_a_take_naming_another_owner_stays_unresolved
 WHY      B-4 (audit 2026-09-22, 0354): the freeze and the mark raised
          SOURCE_INVALID for processing_practice_objects, so such a request sat
-         at 'requested' forever with nothing erased. These cases EXECUTE the
-         real functions on a disposable database (rehearsal tier, released lane).
+         at 'requested' forever with nothing erased. O4, O5: founder
+         2026-10-20 (0484), three test accounts' older Takes stopped every
+         erasure with LEGACY_TAKE_OWNER_PRINCIPAL_UNRESOLVED. These cases
+         EXECUTE the real functions on a disposable database (rehearsal tier,
+         released lane).
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 import uuid
+from pathlib import Path
 
 import psycopg2
 import pytest
@@ -176,3 +188,79 @@ class TestThePurgeReachesAPracticeRecording:
             (subject["principal"], str(uuid.uuid4())))
         odd = _freeze(db, second, graph, [target("a_kind_sql_never_heard_of")])
         assert (odd["state"], odd["unknown_target_count"]) == ("review_required", 1)
+
+
+# 0312's own account graph. The released lane lays it down, then
+# mlc3_exercise_foundation_prerequisites.sql replaces it with a narrower
+# stand-in that finds Takes only by owner principal and never lists a legacy
+# Take, so O4 and O5 could not happen there.
+REAL_GRAPH = re.search(
+    r"CREATE OR REPLACE FUNCTION public\.resolve_phase1_purge_subject_graph_v1\(.*?\n\$\$;",
+    (Path(__file__).resolve().parents[1]
+     / "migrations" / "add_phase1_deletion_completion.sql").read_text(),
+    re.S,
+).group(0)
+
+
+@pytest.fixture
+def real_graph(db):
+    """0312's graph, inside a transaction the test rolls back, so no other
+    test sees it. The lane's narrow recordings copy lacks the session_id
+    column production has and the graph reads."""
+    db.autocommit = False
+    with db.cursor() as cur:
+        cur.execute("ALTER TABLE public.recordings ADD COLUMN IF NOT EXISTS session_id uuid")
+        cur.execute(REAL_GRAPH)
+    try:
+        yield db
+    finally:
+        db.rollback()
+
+
+@pytest.fixture
+def legacy(real_graph):
+    """My principal and two Takes the graph finds by my user id: one with no
+    owner copy (legacy), one naming another principal (a real conflict)."""
+    db = real_graph
+    user = str(uuid.uuid4())
+    principal = _one(db, """
+        INSERT INTO public.owner_principals (id, user_id)
+        VALUES (gen_random_uuid(), %s) RETURNING id::text""", (user,))
+    other = _one(db, """
+        INSERT INTO public.owner_principals (id, user_id)
+        VALUES (gen_random_uuid(), gen_random_uuid()) RETURNING id::text""")
+    takes = []
+    for index, owner in ((1, None), (2, other)):
+        takes.append(_one(db, """
+            INSERT INTO public.v2_sessions (
+                id, arc_id, user_id, take_index, owner_principal_id)
+            VALUES (gen_random_uuid(), gen_random_uuid()::text, %s, %s, %s)
+            RETURNING id::text""", (user, index, owner)))
+    return {"principal": principal, "other": other,
+            "legacy": takes[0], "conflict": takes[1]}
+
+
+def _resolve(db, principal):
+    return _one(db, "SELECT public.resolve_legacy_take_owners_v1(%s)", (principal,))
+
+
+class TestALegacyTakeTakesItsOwner:
+
+    def test_a_take_linked_only_by_my_user_id_takes_my_owner(self, real_graph, legacy):
+        db = real_graph
+        assert legacy["legacy"] in _graph(db, legacy["principal"])["unresolved_legacy_take_ids"]
+        result = _resolve(db, legacy["principal"])
+        assert result["resolved_take_ids"] == [legacy["legacy"]]
+        assert legacy["legacy"] not in result["unresolved_take_ids"]
+        assert _one(db, "SELECT owner_principal_id::text FROM public.v2_sessions WHERE id = %s",
+                    (legacy["legacy"],)) == legacy["principal"]
+        assert legacy["legacy"] not in _graph(db, legacy["principal"])["unresolved_legacy_take_ids"]
+        assert _resolve(db, legacy["principal"])["resolved_take_ids"] == []
+
+    def test_a_take_naming_another_owner_stays_unresolved(self, real_graph, legacy):
+        db = real_graph
+        result = _resolve(db, legacy["principal"])
+        assert legacy["conflict"] not in result["resolved_take_ids"]
+        assert legacy["conflict"] in result["unresolved_take_ids"]
+        assert _one(db, "SELECT owner_principal_id::text FROM public.v2_sessions WHERE id = %s",
+                    (legacy["conflict"],)) == legacy["other"]
