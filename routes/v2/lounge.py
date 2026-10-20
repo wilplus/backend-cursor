@@ -1,6 +1,7 @@
 """The Lounge thread persistence routes (BE contract 3.15).
 
   GET/POST/DELETE /v2/user/lounge/messages
+  POST            /v2/user/lounge/after-take
   GET             /v2/user/product-discoveries
 
 Moved verbatim out of ``routes/v2_routes.py`` (god-file split, phase 3);
@@ -168,6 +169,27 @@ def v2_user_lounge_messages_post():
             "code": "V2_ERROR",
             "error": "Failed to append lounge messages",
         }), 500
+
+
+@v2_bp.route("/user/lounge/after-take", methods=["POST"])
+@require_auth
+def v2_user_lounge_after_take_post():
+    """The Take's ask closed in the Lounge (its form: Save, Not now, See
+    prices...): the message after the Take, held back until then, is let go
+    under the newest row (founder 2026-10-20: one action at a time;
+    services/after_take.py). No body.
+
+    Responses:
+      200 { "message": the row let go, or null when nothing was held }
+      500 V2_ERROR
+    """
+    try:
+        from services.after_take import release
+        return jsonify({"message": release(db, str(request.user_id))}), 200
+    except Exception as e:
+        logger.error("user/lounge/after-take failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to show the message"}), 500
 
 
 @v2_bp.route("/user/lounge/messages", methods=["DELETE"])

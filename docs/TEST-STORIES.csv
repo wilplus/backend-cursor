@@ -208,6 +208,20 @@ test_directives_reach_the_permit_through_the_real_llm_wrapper
 O2 -> test_the_icebreaker_runs_under_the_speakers_scope
 test_the_icebreaker_is_refused_without_the_speakers_authority
 O3 -> every test (_FakeDB)","Founder 2026-10-05, N48.1 step 6: ""every AI call carries its permission slip""; the two admin tools called the provider with none."
+tests/test_after_take.py,Story,"As a speaker, after a Take I want one thing to do at a time: the Take's card, at most one ask, then the message with ""Record Take N"", so that a question never competes with recording again.","O1  After Take 1 the only ask is ""Did this help?"", and only when the Take
+looks off: never WhatsApp, never an ask from the CEO panel, even
+without a number.
+O2  From Take 2 the one ask is the CEO panel's when there is one, else
+WhatsApp (at most twice), else the home screen (once, where the phone
+can add it), else the question; nothing asked, nothing waits.
+O3  The message waits for the ask and comes under whatever closed it: a
+typed turn, under Will's reply; ""Yes"", tapped or typed, glad, as the
+reply; a reply that opens a form keeps it waiting.
+O4  A message still waiting when a newer Take is written shows where it
+stands.","O1 -> test_after_take_one_only_the_question_and_only_when_it_looks_off
+O2 -> test_from_take_two_the_ceo_ask_then_whatsapp_then_home_screen_then_the_question
+O3 -> test_the_message_comes_under_what_closed_the_ask
+O4 -> test_an_older_waiting_message_shows_where_it_stands","Founder 2026-10-20: ""one action at a time""; details chosen on the decisions page the same day."
 tests/test_ai_voice.py,Story,"As a speaker practising, I want an AI clip of my own voice saying my own words with one improvement, never shown if it fails its check, and fully deleted when I ask, so that I hear a believable better version and keep control of my voice.","O1  One problem is picked against my own usual (or the default), and the
 sentence under the clip names it in words, with no numbers.
 O2  The clip says my own words (or the clearer version I accepted, with
@@ -2256,23 +2270,27 @@ O2 -> EveryTakeRewritesTheSlidesItSpoke::test_the_spoken_slide_is_rebuilt_and_th
 O3 -> EveryTakeRewritesTheSlidesItSpoke::test_the_spoken_slide_is_rebuilt_and_the_other_is_kept",Never-rule 5; founder 2026-09-25 (contracts 8-9).
 tests/test_take_summary.py,Story,"As a speaker, I want one short summary of my Take in words, about my own talk, so that I know what went well without a number or verdict.","O1  Each Take gets one stored summary, written from its real progress and
 about my talk (its title, slides, my most confident moment).
-O2  A summary with a number, or praise that drifts from the approved
-lines, is replaced by the approved fallback copy.
+O2  A summary with a number, praise that drifts from the approved lines,
+or a closing question (one action at a time: the next step is the last
+thing said, founder 2026-10-20) is replaced by the approved fallback
+copy.
 O3  A coach note rewrites the summary in place, keeping the first one
 however many notes follow, once per note; a note shared after the
 review is its own bubble, stored once.
-O4  A speaker without a WhatsApp number is offered WhatsApp once, right
-after the summary.
+O4  From Take 2, a speaker without a WhatsApp number is asked for it
+after the Take's card, and the summary waits under the ask
+(services/after_take.py).
 O5  The summary and the ask after it sort under the walk's last step,
 even when my browser's clock runs ahead of the server's.","O1 -> test_a_take_gets_one_summary_from_its_real_progress,
 test_the_summary_knows_the_talk_and_asks_for_whatsapp_once
 O2 -> test_a_reply_with_a_number_falls_back_to_the_signed_copy,
-test_a_reply_that_drifts_from_the_signed_lines_is_the_signed_copy
+test_a_reply_that_drifts_from_the_signed_lines_is_the_signed_copy,
+test_a_reply_that_ends_on_a_question_is_the_signed_copy
 O3 -> test_a_coach_update_rewrites_the_summary_in_place_and_keeps_the_first,
 test_a_shared_coach_word_rewrites_a_reviewed_take_once_per_word,
 test_a_coach_word_shared_after_the_review_is_its_own_bubble
 O4 -> test_the_summary_knows_the_talk_and_asks_for_whatsapp_once
-O5 -> test_the_summary_and_its_ask_sort_under_the_walk",Never-rule 1; founder lock 2026-10-12 (section 3) and 2026-10-14; founder 2026-10-20 (the chat keeps the order it shows).
+O5 -> test_the_summary_and_its_ask_sort_under_the_walk",Never-rule 1; founder lock 2026-10-12 (section 3) and 2026-10-14; founder 2026-10-20 (the chat keeps the order it shows; one action at a time).
 tests/test_take_two_rewrites_an_edited_slide_postgres.py,Story,"As a speaker who edited a Paragraph, I want Take 2 to replace the slides I spoke with what I said, keep the rest and my helper words, and keep my edit in history, so that the Ideal Text is my latest words and nothing is lost.","O1  On a real database, a slide I spoke in Take 2 shows exactly what I
 said, even if I had edited it, on the same Paragraph.
 O2  A slide I did not speak keeps its last version, including my own

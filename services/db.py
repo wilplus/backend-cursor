@@ -11294,16 +11294,22 @@ class DatabaseService:
 
     def rewrite_lounge_message(
         self, user_id: str, client_id: str, body: str, metadata: dict,
+        at: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """Rewrite one owner-scoped Lounge message in place (the closing
         summary after a coach update, lock 2026-10-12 section 3). Its place
-        in the thread stays. None on any failure."""
+        in the thread stays, unless ``at`` moves it: the message after a
+        Take, held back until its ask closes, is let go under what closed
+        it (services/after_take.py). None on any failure."""
         if not user_id or not client_id:
             return None
+        fields: Dict[str, Any] = {"body": body, "metadata": metadata}
+        if at:
+            fields["client_created_at"] = at
         try:
             res = (
                 self.client.table("lounge_messages")
-                .update({"body": body, "metadata": metadata})
+                .update(fields)
                 .eq("user_id", user_id)
                 .eq("client_id", client_id)
                 .execute()
