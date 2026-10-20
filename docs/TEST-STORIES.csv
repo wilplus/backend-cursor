@@ -431,6 +431,11 @@ tests/test_coach_listen_again.py,Story,"As a coach asked to listen to a moment a
 with no sign of what the speaker asked.
 O2  It still counts in the ""waiting"" totals.","O1, O2 ->
 QueueTests::test_a_moment_with_an_open_ask_rides_blind_with_only_the_line_key","Never-rule 2; QG12a A, P26b A, P26c; D-CP-10 (migration 0444)."
+tests/test_coach_message_read.py,Story,"As a speaker, I want my coach's word for a Take to count as new until I have watched it, from whichever door I came in, and to be new again when the coach changes it, so that I never miss it and am never asked twice.","O1  The word is new before I ever watched it.
+O2  Once I watched it (the WhatsApp or email link, the dot card, the
+bubble), it is no longer new.
+O3  A new or removed video with the same words makes it new again.
+O4  The journey adds one yes/no to the message, nothing else.","O1, O2, O3, O4 -> test_the_coach_s_word_is_new_until_watched_and_again_after_a_new_video","Founder 2026-10-19, N80 (D4, D7), approved two-phone prototype https://claude.ai/artifact/APk56PLZt6o6Cx9qUMKkuk."
 tests/test_coach_panel_learning.py,Story,"As the founder, I want the coach panel's blind learning lanes (the error audit and the block pick) to stay blind, answered once, and only about speakers who said yes, so that learning never leaks into what coaches see or reaches a speaker who did not agree.","O1  An audit item takes one answer, once: a second answer is 409, a value
 outside yes/no/cant_tell is 400.
 O2  The coach's sheets are blind (Never rule 2: no coach sees the
@@ -1078,8 +1083,14 @@ O4  The recovery sweep runs only with the internal secret.","O1 -> test_poll_sho
 O2 -> test_unknown_and_foreign_jobs_look_identical
 O3 -> test_no_score_or_verdict_anywhere_in_the_body
 O4 -> test_sweep_needs_the_internal_secret","AC-9 split sink: results live on the readout GETs, never on the poll."
-tests/test_journey_messages.py,Story,"As the founder, I want the message after a speaker's first Take to say exactly the words I signed off, with its two actions, so that no unapproved words reach a speaker.","O1  The Take 1 message's text and its two actions (prepare Take 2, keep
-practising) equal the locked copy.",O1 -> JourneyMessageTests::test_take_one_copy_and_action_are_locked,Never-rule 4: no new words on screen without the founder's OK.
+tests/test_journey_messages.py,Story,"As the founder, I want the messages after a speaker's first three Takes to say exactly the words I signed off, with their two actions, so that no unapproved words reach a speaker.","O1  The Take 1 message's text and its two actions (prepare Take 2, keep
+practising) equal the locked copy.
+O2  The Take 2 message's text and its two actions (prepare Take 3, keep
+practising) equal the locked copy.
+O3  The Take 3 message's text and its two actions (export, keep
+practising) equal the locked copy.","O1 -> JourneyMessageTests::test_take_one_copy_and_action_are_locked
+O2 -> JourneyMessageTests::test_take_two_copy_and_action_are_locked
+O3 -> JourneyMessageTests::test_take_three_copy_and_action_are_locked","Never-rule 4: no new words on screen without the founder's OK. All three simplified by the founder in chat, 2026-10-20."
 tests/test_judgement_after_feedback.py,Story,"As a speaker, I want to judge myself after the feedback and not before, with my answer shown to the coach only after their blind rating, so that the machine leads and the coach stays blind.","O1  Opening a moment raises one coach request, under the machine's kind,
 once; it never asks me for a judgement first.
 O2  My later answer sets the request's answer_kind from the matrix.
@@ -1187,14 +1198,18 @@ through it).","test_the_openai_client_is_constructed_in_exactly_one_module
 test_direct_chat_calls_can_only_go_down
 the ratchet: counts must equal CHAT_CALLS_ALLOWED; migrating a
 site to chat_complete lowers its number here in the same change","If removed: A provider call can be added anywhere without authorization or usage accounting, and nothing goes red."
-tests/test_lounge_clips.py,Story,"As a speaker, I want the clips, recordings and slide decks in my Lounge to get fresh links from my own recordings only, and each page to load quickly, so that my media plays and I never see another user's.","O1  My own clip gets a fresh link; a clip pointing at another user's
+tests/test_lounge_clips.py,Story,"As a speaker, I want the clips, recordings and slide decks in my Lounge to get fresh links from my own recordings only, a coach's video to play only while it is their word's current one, and each page to load quickly, so that my media plays and I never see another user's.","O1  My own clip gets a fresh link; a clip pointing at another user's
 recording is left untouched.
 O2  One page gets fresh clip, recording and deck links and the ""new coach
 feedback"" flags from one batched read per kind, not one per Take.
 O3  An older page carries no flags, and a failing step (such as decks)
-costs only that step; my clips still refresh.","O1 -> test_own_clip_is_resigned_and_another_users_is_not
+costs only that step; my clips still refresh.
+O4  A coach's video plays only while it is their word's current one; a
+video they replaced or removed never plays, an older ""Later · from your
+coach"" bubble is left out, and each bubble says whether it is new.","O1 -> test_own_clip_is_resigned_and_another_users_is_not
 O2 -> test_one_page_gets_fresh_links_decks_and_flags_from_batched_reads
-O3 -> test_an_older_page_carries_no_flags_and_a_failed_step_costs_only_itself",
+O3 -> test_an_older_page_carries_no_flags_and_a_failed_step_costs_only_itself
+O4 -> test_a_coach_video_plays_only_while_it_is_the_word_s_current_one",
 tests/test_manager_engine.py,Story,"As the founder, I want the feedback arbitration's experiment honest (protected Confident Voice slot, per-slide exploration, withheld notes recorded as having won), so that we can later learn what feedback helps.","O1  A protected note never gives up its slot to exploration or withholding.
 O2  Exploration trades only inside the swapped note's own slide.
 O3  Every withheld note is logged as would_have_surfaced, not surfaced.
@@ -2140,6 +2155,9 @@ answers 200 {saved: true} and records the decision with the right kind
 O2  A guest without a signed Guest ID (a bare session UUID) is refused
 404 and nothing is recorded.","O1 -> test_document_replace_and_bold_are_saved_with_their_kind
 O2 -> test_a_guest_without_a_signed_id_is_refused","Founder bug 2026-07-22: the document targets were rejected 400 by the allowlist, so every Accept/Keep on the document failed. The other targets live in tests/test_user_sessions_route_contracts.py."
+tests/test_supabase_connection_keepalive.py,Story,"As a speaker, I want my Ideal Text to open as fast on the first visit after a pause as on the one right after it, so that the loop never feels slower for having waited.","O1  The connection the backend holds to Supabase stays open for the
+configured keep-alive, not httpx's five seconds, so a request after a
+pause does not pay a new TCP + TLS handshake before its first read.",O1 -> test_the_supabase_connection_outlives_a_pause_between_requests,"Founder's stopwatch, 2026-10-20: the two reads that open the Ideal Text enrichment took 250 ms each while every read behind them took 40-70 ms; the difference was the handshake."
 tests/test_take_comparison.py,Story,"As a speaker, I never want to see my pitch, pace or pauses as numbers, so that feedback stays in words (Never rule 1).","O1  The retired take comparison (GET /v2/explore/arc/<id>/take-comparison,
 founder 2026-10-19) answers 410 GONE, reads nothing, sends no
 measurement number, and logs retired_route_called so any caller left
@@ -2220,9 +2238,9 @@ tests/test_take_summary.py,Story,"As a speaker, I want one short summary of my T
 about my talk (its title, slides, my most confident moment).
 O2  A summary with a number, or praise that drifts from the approved
 lines, is replaced by the approved fallback copy.
-O3  A coach note rewrites the summary in place, keeping the earlier one,
-once per note; a note shared after the review is its own bubble,
-stored once.
+O3  A coach note rewrites the summary in place, keeping the first one
+however many notes follow, once per note; a note shared after the
+review is its own bubble, stored once.
 O4  A speaker without a WhatsApp number is offered WhatsApp once, right
 after the summary.
 O5  The summary and the ask after it sort under the walk's last step,
@@ -2230,7 +2248,7 @@ even when my browser's clock runs ahead of the server's.","O1 -> test_a_take_get
 test_the_summary_knows_the_talk_and_asks_for_whatsapp_once
 O2 -> test_a_reply_with_a_number_falls_back_to_the_signed_copy,
 test_a_reply_that_drifts_from_the_signed_lines_is_the_signed_copy
-O3 -> test_a_coach_update_rewrites_the_summary_in_place_and_keeps_the_earlier,
+O3 -> test_a_coach_update_rewrites_the_summary_in_place_and_keeps_the_first,
 test_a_shared_coach_word_rewrites_a_reviewed_take_once_per_word,
 test_a_coach_word_shared_after_the_review_is_its_own_bubble
 O4 -> test_the_summary_knows_the_talk_and_asks_for_whatsapp_once
@@ -2248,6 +2266,11 @@ test_a_reworded_open_paragraph_keeps_its_id_through_the_snapshot_publish
 O4 -> test_take_two_rewrites_the_edited_slide_and_keeps_the_rest,
 test_an_edit_on_a_slide_take_two_did_not_speak_is_its_last_version,
 test_a_reworded_open_paragraph_keeps_its_id_through_the_snapshot_publish","Never-rule 5; contracts 8, 9, 14, 16 (N29, N48.1 Wave 1)."
+tests/test_tests_never_touch_a_real_database.py,Guard,The test suite refuses to start against a real Supabase project.,"C1  a `pytest` run in an environment that carries a production SUPABASE_URL
+(founder 2026-10-20: fixture values ""arc-9"", ""owner-1"" reached the live
+database this way) -- it stops before any test module imports.
+C2  the deliberate way through: WILLAB_TESTS_REAL_DB=1 lets a run against a
+disposable project proceed.","C1, C2 -> test_a_real_supabase_url_stops_the_suite_unless_asked_for","If removed: the next session that runs pytest plainly with production keys in its environment reads from, and can write to, production."
 tests/test_the_chain_hears_the_training_yes_postgres.py,Story,"As a speaker, I want my recordings used for training only after my own training yes, so that an old bundled yes or a withdrawal is respected. (Critical path: consent.)","O1  The ring's consent door says yes only for an active training yes with
 a bound speaker.
 O2  It says no before the speaker is bound, after a withdrawal, and for an

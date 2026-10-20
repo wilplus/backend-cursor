@@ -258,10 +258,50 @@ class DatabaseService:
         transport tweak, so we drop the dead code and let the default
         transport do its thing.
         """
-        return create_client(
+        client = create_client(
             config.SUPABASE_URL,
             config.SUPABASE_SERVICE_ROLE_KEY,
         )
+        self._keep_postgrest_connection_warm(client)
+        return client
+
+    @staticmethod
+    def _keep_postgrest_connection_warm(client: Client) -> None:
+        """Give the PostgREST session a connection pool that keeps an idle
+        connection for ``SUPABASE_HTTP_KEEPALIVE_SECONDS``, not httpx's five.
+
+        Every read in a request shares one HTTP/2 connection to Supabase.
+        With the default pool, a worker that has been idle for five seconds
+        opens a new TCP + TLS connection on its next request, and every read
+        at the top of that request waits for the handshake (founder's
+        stopwatch, 2026-10-20: `core_read` and `owner_read` at 250 ms each
+        while the sections behind them took 40-70 ms). supabase-py 2.6 has no
+        way to pass pool limits in, so the session is rebuilt here with the
+        same base URL, headers and timeout and a longer keep-alive. Best
+        effort: if anything about the client's shape is not what this
+        expects, the default session stays and the warning says so."""
+        try:
+            import httpx
+            from postgrest.utils import SyncClient
+            cold = client.postgrest.session
+            warm = SyncClient(
+                base_url=cold.base_url,
+                headers=cold.headers,
+                timeout=cold.timeout,
+                follow_redirects=True,
+                http2=True,
+                limits=httpx.Limits(
+                    max_connections=100,
+                    max_keepalive_connections=20,
+                    keepalive_expiry=float(
+                        config.SUPABASE_HTTP_KEEPALIVE_SECONDS)),
+            )
+            client.postgrest.session = warm
+            cold.close()
+        except Exception as error:
+            logger.warning(
+                "supabase session keep-alive not applied; default pool kept: %s",
+                error, exc_info=True)
 
     def _is_transient_postgrest_disconnect(self, err: Exception) -> bool:
         msg = str(err).lower()
@@ -13420,6 +13460,54 @@ class DatabaseService:
                .not_.is_("shared_at", "null").execute())
         return list(res.data or [])
 
+    def list_owned_take_ids(self, user_id: str, take_session_ids: list[str]) -> set[str]:
+        """Which of these Takes belong to this speaker (v2_sessions). Ids
+        that are not UUID-shaped own nothing and are never sent. Raises on
+        failure."""
+        import uuid as _uuid
+
+        def shaped(value: Any) -> Optional[str]:
+            try:
+                return str(_uuid.UUID(str(value)))
+            except (TypeError, ValueError, AttributeError):
+                return None
+
+        ids = sorted({s for s in (shaped(i) for i in take_session_ids or []) if s})
+        if not user_id or not ids:
+            return set()
+        res = (self.client.table("v2_sessions").select("id")
+               .eq("user_id", str(user_id)).in_("id", ids).execute())
+        return {str(row["id"]) for row in res.data or []
+                if isinstance(row, dict) and row.get("id")}
+
+    def list_coach_take_word_seen(self, user_id: str,
+                                  take_session_ids: list[str]) -> dict[str, str]:
+        """{take: seen_at} for this speaker's last watch of each Take's coach
+        word (coach_feedback_seen, item 'take_word', 0439). A Take never
+        watched is absent. Raises on failure (N80)."""
+        ids = sorted({str(i) for i in take_session_ids or [] if i})
+        if not user_id or not ids:
+            return {}
+        res = (self.client.table("coach_feedback_seen")
+               .select("take_session_id,seen_at")
+               .eq("owner_user_id", str(user_id)).eq("item", "take_word")
+               .in_("take_session_id", ids).execute())
+        return {str(row["take_session_id"]): row.get("seen_at")
+                for row in res.data or []
+                if isinstance(row, dict) and row.get("take_session_id")}
+
+    def read_coach_take_word(self, take_session_id: str, coach_id: str) -> Optional[dict]:
+        """This coach's word for the Take, or None when there is none. The
+        same read as ``get_coach_take_word``, but it RAISES on failure, so a
+        failed read never passes for "no word yet" (N80: the panel would
+        draft over the saved words)."""
+        if not take_session_id or not coach_id:
+            return None
+        res = (self.client.table("coach_take_words").select("*")
+               .eq("take_session_id", str(take_session_id))
+               .eq("coach_id", str(coach_id)).limit(1).execute())
+        return (res.data or [None])[0]
+
     # ── The ledger's weeks, the research role, the golden set (0404) ────
 
     def get_mlc2_foundation_health(self) -> dict:
@@ -14774,7 +14862,10 @@ class DatabaseService:
                .upsert({"take_session_id": str(take_session_id), "coach_id": str(coach_id),
                         "draft_text": str(text), "draft_model_version": model_version or None,
                         "draft_prompt": prompt if isinstance(prompt, dict) else None,
-                        "drafted_at": now, "updated_at": now},
+                        # No updated_at (the column default covers a new row):
+                        # a draft is nothing the speaker sees, so it never
+                        # makes a shared word "new" again (N80, D3).
+                        "drafted_at": now},
                        on_conflict="take_session_id,coach_id").execute())
         return (res.data or [None])[0]
 

@@ -55,6 +55,30 @@ os.environ.setdefault(
     "MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU",
 )
 
+# ── Never a real database (founder 2026-10-20) ──────────────────────────────
+#
+# The Supabase Postgres log showed test-fixture values ("arc-9", "owner-1",
+# "u1") arriving at PRODUCTION: a session whose environment carried the
+# production SUPABASE_URL and service-role key ran `pytest` plainly, and the
+# setdefault above let those values win. The fakes keep most tests off the
+# network, but any test that reaches services.db with a real URL reads, and
+# could write, the live project.
+#
+# So the test process refuses any Supabase URL that is not the CI placeholder,
+# before a single test module imports. A deliberate run against a disposable
+# project says so with WILLAB_TESTS_REAL_DB=1. The PostgreSQL rehearsal tier
+# is untouched: it talks to its own throwaway cluster through psycopg2 DSNs,
+# never through SUPABASE_URL.
+_PLACEHOLDER_SUPABASE_URL = "https://ci-placeholder.invalid"
+if (os.environ.get("SUPABASE_URL") != _PLACEHOLDER_SUPABASE_URL
+        and os.environ.get("WILLAB_TESTS_REAL_DB") != "1"):
+    raise SystemExit(
+        "pytest refuses to run: SUPABASE_URL points at a real Supabase project, "
+        "and the suite would read from and write to it. Unset SUPABASE_URL and "
+        "SUPABASE_SERVICE_ROLE_KEY (scripts/local_ci.sh does), or set "
+        "WILLAB_TESTS_REAL_DB=1 on purpose for a disposable project."
+    )
+
 import importlib
 
 # Claim the real optional heavyweights BEFORE any test module imports.

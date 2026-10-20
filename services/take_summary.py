@@ -31,9 +31,11 @@ A coach update: when a coach shares a word on a Take whose summary is
 already stored (``coach_update``, called from the coach's share), or the
 walk's summary step brings a coach note the stored summary was not written
 with, the summary is written again with it and rewrites the bubble in place;
-the earlier words stay in its metadata (``earlier``), one tap away in the
-Lounge. The practice result and helper words it was first written with are
-kept in its metadata, so a rewrite hears them too.
+the summary as first written stays in its metadata (``earlier``), one tap
+away in the Lounge, however many coach notes follow (founder 2026-10-19,
+N80). The practice result and helper words it was first written with are
+kept in its metadata, so a rewrite hears them too. A new or removed video
+with the same words rewrites nothing: the rewrite is keyed on the note.
 """
 from __future__ import annotations
 
@@ -331,8 +333,10 @@ def _whatsapp_offer(database: Any, user_id: str, client_id: str, at: str) -> lis
 def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dict],
                     take_session_id: str, body: dict) -> Optional[dict]:
     """The summary bubble for one Take of the arc (``takes``: its spoken
-    Takes in order), stored once; rewritten once by a coach update. None
-    when the Take is not the arc's."""
+    Takes in order), stored once; rewritten in place by each new coach
+    note. ``earlier`` is the summary as first written, kept through every
+    rewrite (N80: when the first one already heard the coach, it is that
+    one). None when the Take is not the arc's."""
     from services.journey_messages import _COPY
     ids = [str(t.get("id")) for t in takes]
     take = str(take_session_id)
@@ -362,7 +366,10 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
     if held:
         if not text:
             return held  # the coach's update could not be written: keep it
-        meta.update({"coach_update": True, "earlier": held.get("body")})
+        first = held.get("metadata") or {}
+        earlier = (first["earlier"] if first.get("coach_update") and first.get("earlier")
+                   else held.get("body"))
+        meta.update({"coach_update": True, "earlier": earlier})
         return database.rewrite_lounge_message(str(user_id), client_id, text, meta) or held
     # Under the walk it closes: the walk's steps carry the browser's time.
     from services.lounge_messages import stamp_after, thread_stamp

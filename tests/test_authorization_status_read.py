@@ -120,8 +120,10 @@ def test_the_fast_path_answers_the_status_with_gate_mode_in_one_call():
                               "code": "PROCESSING_AUTHORIZED",
                               "gate_mode": "enforce"})
     assert service.database.client.calls == [(
-        "read_phase1_processing_status_v1",
-        {"p_user_id": USER, "p_product_owner_principal_id": None})]
+        "read_phase1_processing_status_v2",
+        {"p_user_id": USER, "p_product_owner_principal_id": None,
+         # 0479: the policy text rides along only when a screen shows it.
+         "p_always_with_copy": False})]
 
 
 def test_a_reacceptance_keeps_its_country_after_gate_mode():
@@ -137,7 +139,7 @@ def test_a_reacceptance_keeps_its_country_after_gate_mode():
 
 
 @pytest.mark.parametrize("answer", [
-    RuntimeError("function read_phase1_processing_status_v1 does not exist"),
+    RuntimeError("function read_phase1_processing_status_v2 does not exist"),
     {"acquisition_principal_id": None, "status": None},
     None,
     [],

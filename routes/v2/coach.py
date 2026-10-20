@@ -1591,8 +1591,9 @@ def v2_coach_take_word(session_id):
     reads it as "Your coach". The video comes from the session video upload
     (POST .../video), which returns the ref; a PUT that names no video_ref
     keeps the saved video, and an explicit null removes it (founder
-    2026-10-19). Nothing here gates a per-moment
-    share."""
+    2026-10-19). A GET whose read fails answers 500, never "no word" (N80:
+    the panel would draft over the saved words). Nothing here gates a
+    per-moment share."""
     if not _is_valid_uuid(session_id):
         return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a UUID"}), 400
     if not db.v2_get_session_by_id(session_id):
@@ -1600,8 +1601,13 @@ def v2_coach_take_word(session_id):
     from services.coach_take_word import TakeWordRefusal, save_take_word, take_word_for
     coach_id = str(getattr(request, "user_id", "") or "")
     if request.method == "GET":
-        return jsonify({"word": take_word_for(db, take_session_id=session_id,
-                                              coach_id=coach_id)}), 200
+        try:
+            saved = take_word_for(db, take_session_id=session_id, coach_id=coach_id)
+        except Exception as e:
+            logger.error("take word read failed sid=%s: %s", session_id, e, exc_info=True)
+            sentry_sdk.capture_exception(e)
+            return jsonify({"code": "V2_ERROR", "error": "Could not read the word."}), 500
+        return jsonify({"word": saved}), 200
     try:
         word = save_take_word(db, take_session_id=session_id, coach_id=coach_id,
                               body=request.get_json(silent=True))
