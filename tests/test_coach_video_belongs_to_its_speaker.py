@@ -1,18 +1,45 @@
-"""Two kinds of coach video (founder, 2026-10-18 and 19; decisions log
-N77, N78; migration 0480).
-
-What the founder decided, pinned here through the public seams:
-
-  * an EXERCISE VIDEO a coach makes for one speaker reaches that speaker at
-    once; another speaker gets it only once the founder approves it, and
-    only on an exact fit; another speaker's unapproved video never;
-  * on a moment the speaker's own set comes first, then the shared library;
-  * it fits only exactly (the video's main mistake heard on this clip), and
-    a video whose practice ended on a Good job rests for good;
-  * the speaker's own coach video always plays; the AI clip never takes its
-    place;
-  * a coach's praise line is read for its own speaker only, first;
-  * a DIRECT MESSAGE, the coach's word for a Take, shows on that Take only.
+"""
+STORY    As a speaker, I want a video my coach makes for me to reach me first
+         and no one else until the founder approves it, and my coach's word
+         for a Take to stay on that Take, so that what my coach made for me
+         stays mine.
+OUTCOME
+  O1  My own coach video is served to me; another speaker's coach video is
+      never served to me, even if it is listed in my set by mistake.
+  O2  A coach video reaches other speakers only once the founder approves
+      it; the shared library serves when it fits; on a moment my own set
+      comes before the library.
+  O3  A video fits only exactly (its main mistake heard on this clip), and
+      one whose practice ended on a Good job rests for good.
+  O4  A coach's video shared for a moment opens even when the moment's
+      earlier draw named a library video; a coach video for one speaker
+      never takes over a row that was in the shared library.
+  O5  The founder approves only the version they watched; approving shares
+      it from the library's own copy as a new version carrying the coach's
+      words; keeping it leaves it with its speaker.
+  O6  My own coach video always plays; the AI clip never takes its place.
+  O7  A coach's praise line made for me is read for me first, the shared
+      line for others, and never another speaker's.
+  O8  A coach's word for a Take shows on that Take only; a later Take
+      starts without it.
+PROVES   O1 -> test_the_speakers_own_coach_video_is_served,
+               test_another_speakers_coach_video_is_never_served
+         O2 -> test_a_coach_video_reaches_others_only_once_approved,
+               test_the_shared_library_serves_when_it_fits,
+               test_the_speakers_own_video_comes_before_the_library
+         O3 -> test_it_fits_only_exactly,
+               test_a_good_job_rests_the_video_for_good
+         O4 -> test_a_share_opens_on_a_moment_drawn_before,
+               test_a_row_filed_before_is_not_claimed
+         O5 -> test_approving_shares_it_from_the_library_s_own_copy,
+               test_only_the_version_the_founder_watched_is_approved,
+               test_keeping_it_leaves_it_with_its_speaker
+         O6 -> test_the_ai_clip_never_takes_its_place
+         O7 -> test_own_first_shared_otherwise_never_another_speakers
+         O8 -> test_a_later_take_starts_without_it
+WHY      Founder 2026-10-18 and 19 (decisions log N77, N78; migration 0480):
+         two kinds of coach video; one made for a speaker is theirs, and the
+         founder decides what reaches everyone.
 """
 from __future__ import annotations
 

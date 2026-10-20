@@ -5,15 +5,18 @@ OUTCOME
   O1  The walk's pair is stamped with the request, the moment, the owner and
       the model version; the draft is the server's (never the client's
       text); the video's transcript is a second pair without the request.
-      With the owner's training yes it is releasable.
+      With the owner's training yes it is releasable. The walk's video is
+      stored privately under the speaker's id, never in the public library.
   O2  Without the owner's yes the pair is stored but not releasable.
   O3  A Library save and a pick of another library exercise make no pair,
-      while the request still resolves.
+      while the request still resolves; only a Library save's video goes
+      to the public library store.
 PROVES   O1 -> test_the_pair_is_stamped_and_releasable_with_the_owner_s_yes
          O2 -> test_without_the_owner_s_yes_it_is_recorded_but_not_releasable
          O3 -> test_a_library_save_and_a_library_pick_make_no_pair
 WHY      Founder 2026-10-05 (W6): an unstamped pair had no owner, so no consent
-         could ever reach it.
+         could ever reach it. Founder 2026-10-18 (N77): a coach's video for
+         one speaker belongs to that speaker.
 """
 from __future__ import annotations
 

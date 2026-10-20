@@ -9,6 +9,8 @@ OUTCOME
       shared decision writes in the same order.
   O3  Session and exercise video uploads store the video, and refuse a
       wrong format or an empty file; a repeated upload is not stored twice.
+      An exercise video reaches only the walk's exercise for one moment; a
+      coach's upload to a shared library exercise is refused.
   O4  Training import answers with a receipt and analyses in the
       background; it refuses missing fields, rejected audio and a missing
       corpus basis.
@@ -20,7 +22,8 @@ PROVES   O1 -> StudentDetailContract::test_the_drill_down_shape,
                PracticeReviewContract::test_a_shared_decision_writes_in_order
          O3 -> SessionVideoContract::test_a_stored_video,
                SessionVideoContract::test_refusals,
-               ExerciseVideoContract::test_the_upload_reaches_the_library,
+               ExerciseVideoContract::test_the_upload_reaches_the_moment_s_exercise,
+               ExerciseVideoContract::test_the_shared_library_is_the_founder_s,
                ExerciseVideoContract::test_refusals
          O4 -> TrainingImportContract::test_a_receipt_then_the_background_analysis,
                TrainingImportContract::test_refusals

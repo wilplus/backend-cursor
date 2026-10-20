@@ -446,6 +446,8 @@ O2  Practice review refuses before the coach's blind answer, and a
 shared decision writes in the same order.
 O3  Session and exercise video uploads store the video, and refuse a
 wrong format or an empty file; a repeated upload is not stored twice.
+An exercise video reaches only the walk's exercise for one moment; a
+coach's upload to a shared library exercise is refused.
 O4  Training import answers with a receipt and analyses in the
 background; it refuses missing fields, rejected audio and a missing
 corpus basis.
@@ -456,7 +458,8 @@ O2 -> PracticeReviewContract::test_the_blind_gate_refuses_first,
 PracticeReviewContract::test_a_shared_decision_writes_in_order
 O3 -> SessionVideoContract::test_a_stored_video,
 SessionVideoContract::test_refusals,
-ExerciseVideoContract::test_the_upload_reaches_the_library,
+ExerciseVideoContract::test_the_upload_reaches_the_moment_s_exercise,
+ExerciseVideoContract::test_the_shared_library_is_the_founder_s,
 ExerciseVideoContract::test_refusals
 O4 -> TrainingImportContract::test_a_receipt_then_the_background_analysis,
 TrainingImportContract::test_refusals
@@ -494,6 +497,38 @@ test_editing_only_the_words_never_sends_the_video_again
 test_a_null_video_removes_it
 test_a_word_only_edit_leaves_the_video_out_of_the_write
 test_a_failed_read_stops_the_save","PLF1 (founder 2026-10-05, N48.1): the video went to Whisper with no permit; N79 (founder 2026-10-19): only for the training yes."
+tests/test_coach_video_belongs_to_its_speaker.py,Story,"As a speaker, I want a video my coach makes for me to reach me first and no one else until the founder approves it, and my coach's word for a Take to stay on that Take, so that what my coach made for me stays mine.","O1  My own coach video is served to me; another speaker's coach video is
+never served to me, even if it is listed in my set by mistake.
+O2  A coach video reaches other speakers only once the founder approves
+it; the shared library serves when it fits; on a moment my own set
+comes before the library.
+O3  A video fits only exactly (its main mistake heard on this clip), and
+one whose practice ended on a Good job rests for good.
+O4  A coach's video shared for a moment opens even when the moment's
+earlier draw named a library video; a coach video for one speaker
+never takes over a row that was in the shared library.
+O5  The founder approves only the version they watched; approving shares
+it from the library's own copy as a new version carrying the coach's
+words; keeping it leaves it with its speaker.
+O6  My own coach video always plays; the AI clip never takes its place.
+O7  A coach's praise line made for me is read for me first, the shared
+line for others, and never another speaker's.
+O8  A coach's word for a Take shows on that Take only; a later Take
+starts without it.","O1 -> test_the_speakers_own_coach_video_is_served,
+test_another_speakers_coach_video_is_never_served
+O2 -> test_a_coach_video_reaches_others_only_once_approved,
+test_the_shared_library_serves_when_it_fits,
+test_the_speakers_own_video_comes_before_the_library
+O3 -> test_it_fits_only_exactly,
+test_a_good_job_rests_the_video_for_good
+O4 -> test_a_share_opens_on_a_moment_drawn_before,
+test_a_row_filed_before_is_not_claimed
+O5 -> test_approving_shares_it_from_the_library_s_own_copy,
+test_only_the_version_the_founder_watched_is_approved,
+test_keeping_it_leaves_it_with_its_speaker
+O6 -> test_the_ai_clip_never_takes_its_place
+O7 -> test_own_first_shared_otherwise_never_another_speakers
+O8 -> test_a_later_take_starts_without_it","Founder 2026-10-18 and 19 (decisions log N77, N78; migration 0480): two kinds of coach video; one made for a speaker is theirs, and the founder decides what reaches everyone."
 tests/test_communities.py,Story,"As a speaker, I want to share a Take only with communities I belong to, revocably, with listeners hearing audio only, so that sharing is my choice and listeners judge blind.","O1  Clips the listener answered or labelled, and clips the quorum
 settled, are not queued again.
 O2  The listener's answers list shows each answer with its clip's sound,
@@ -2334,12 +2369,14 @@ O5 -> test_dark_writes_nothing","Founder 2026-10-05, N48.5 Q27 A; BLIND COACH, 3
 tests/test_the_walk_pair_is_stamped.py,Story,"As a speaker, I want a coach exercise made about my moment to be used for training only with my training yes, so that my consent decides.","O1  The walk's pair is stamped with the request, the moment, the owner and
 the model version; the draft is the server's (never the client's
 text); the video's transcript is a second pair without the request.
-With the owner's training yes it is releasable.
+With the owner's training yes it is releasable. The walk's video is
+stored privately under the speaker's id, never in the public library.
 O2  Without the owner's yes the pair is stored but not releasable.
 O3  A Library save and a pick of another library exercise make no pair,
-while the request still resolves.","O1 -> test_the_pair_is_stamped_and_releasable_with_the_owner_s_yes
+while the request still resolves; only a Library save's video goes
+to the public library store.","O1 -> test_the_pair_is_stamped_and_releasable_with_the_owner_s_yes
 O2 -> test_without_the_owner_s_yes_it_is_recorded_but_not_releasable
-O3 -> test_a_library_save_and_a_library_pick_make_no_pair","Founder 2026-10-05 (W6): an unstamped pair had no owner, so no consent could ever reach it."
+O3 -> test_a_library_save_and_a_library_pick_make_no_pair","Founder 2026-10-05 (W6): an unstamped pair had no owner, so no consent could ever reach it. Founder 2026-10-18 (N77): a coach's video for one speaker belongs to that speaker."
 tests/test_token_arc_charged.py,Story,"As a speaker, I want to see whether I already paid for an action on this presentation, without being charged for looking, so that the prices on its buttons are true. (Critical path: payments.)","O1  GET /v2/tokens/arc/<arc_id> answers, for every per-arc action, whether I
 already paid for it here and what it costs.
 O2  Looking charges nothing: no ledger row, no balance change, no charge
