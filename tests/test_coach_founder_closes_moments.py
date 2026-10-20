@@ -6,8 +6,11 @@ OUTCOME
       waiting; the reach alarm still hears the Take.
   O2  Delete closes exactly what the speaker's row counts as waiting (never
       an answered moment) and keeps what the Take already holds.
+  O3  A Take still waiting for its text (the greyed row) closes whole: it
+      leaves every coach's queue, with the moments it gets later.
 PROVES   O1 -> FounderClosesMomentsTests::test_a_closed_moment_leaves_every_coachs_queue
          O2 -> FounderClosesMomentsTests::test_closing_takes_only_what_the_row_counts_as_waiting
+         O3 -> FounderClosesMomentsTests::test_a_take_waiting_for_its_text_closes_whole
 WHY      Founder 2026-10-20: the ⋯ Delete on a speaker's row of the queue,
          like the training corpus; their Takes and Ideal Text stay.
 """
@@ -80,6 +83,26 @@ class FounderClosesMomentsTests(unittest.TestCase):
         self.assertNotIn(B, ctx[q.CLOSED_KEY])
         with self.assertRaises(RuntimeError):
             q.close_moments(_Db(ok=False), [{"id": TAKE}], {TAKE: [A]})
+
+
+    def test_a_take_waiting_for_its_text_closes_whole(self):
+        def queue(intake: dict, moments: object) -> list[dict]:
+            row = {"id": TAKE, "user_id": "u1", "intake_context": intake,
+                   "review_requested_at": "2026-10-20T08:00:00+00:00"}
+            return q.moments_queue(
+                [row], moments_for=lambda _r: moments, reached_for=lambda _s: {A},
+                ratings_for=lambda _s: {}, request_for=lambda _s, _n: None,
+                pseudonym_for=lambda _u: "Quiet Sparrow", alarm=False)
+
+        greyed = queue({}, None)
+        self.assertEqual(q.waiting_for_text(greyed), {TAKE})
+        db = _Db()
+        row = {"id": TAKE, "intake_context": {"topic": "research"}}
+        self.assertEqual(q.close_moments(db, [row], {}, whole=q.waiting_for_text(greyed)), 1)
+        (_sid, ctx), = db.takes.writes
+        self.assertEqual(ctx["topic"], "research")
+        self.assertEqual(queue(ctx, None), [])   # gone while it waits for its text
+        self.assertEqual(queue(ctx, [A]), [])    # and once its moments arrive
 
 
 if __name__ == "__main__":

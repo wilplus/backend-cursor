@@ -514,10 +514,12 @@ def v2_coach_close_moments():
     the speaker's waiting moments leave every coach's queue; the Takes, their
     requests and their Ideal Text stay. Body {session_ids}: the speaker's
     Takes. What closes is what the founder's own queue counts as waiting on
-    them, so the row's number is exactly what goes; a Take not in the review
+    them, so the row's number is exactly what goes, and a Take still waiting
+    for its text closes whole (the greyed row); a Take not in the review
     queue closes nothing. 200 {closed: n} · 400 · 403 · 500."""
     from services.coach_moments_queue import (
-        MAX_CLOSE_TAKES, close_moments, queue_for_coach, waiting_moments,
+        MAX_CLOSE_TAKES, close_moments, queue_for_coach, waiting_for_text,
+        waiting_moments,
     )
     body = request.get_json(silent=True)
     ids = body.get("session_ids") if isinstance(body, dict) else None
@@ -533,7 +535,8 @@ def v2_coach_close_moments():
             db, rows, rater_id=str(getattr(request, "user_id", "") or ""),
             moments_for=_queue_moments_for(snips, rows),
             pseudonym_for=_coach_pseudonym, alarm=False)
-        return jsonify({"closed": close_moments(db, rows, waiting_moments(queue))}), 200
+        return jsonify({"closed": close_moments(
+            db, rows, waiting_moments(queue), whole=waiting_for_text(queue))}), 200
     except Exception as e:
         logger.error("coach/queue/moments/close failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)

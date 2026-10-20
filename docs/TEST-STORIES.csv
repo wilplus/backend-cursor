@@ -441,8 +441,11 @@ O3 -> test_the_allowlist_still_drops_everything_that_judges_the_speaker",Never-r
 tests/test_coach_founder_closes_moments.py,Story,"As the founder, I want to delete a speaker's waiting moments from the coach queue, so that the queue holds only moments worth a coach's ear.","O1  A closed moment leaves every coach's queue and stops counting as
 waiting; the reach alarm still hears the Take.
 O2  Delete closes exactly what the speaker's row counts as waiting (never
-an answered moment) and keeps what the Take already holds.","O1 -> FounderClosesMomentsTests::test_a_closed_moment_leaves_every_coachs_queue
-O2 -> FounderClosesMomentsTests::test_closing_takes_only_what_the_row_counts_as_waiting","Founder 2026-10-20: the ⋯ Delete on a speaker's row of the queue, like the training corpus; their Takes and Ideal Text stay."
+an answered moment) and keeps what the Take already holds.
+O3  A Take still waiting for its text (the greyed row) closes whole: it
+leaves every coach's queue, with the moments it gets later.","O1 -> FounderClosesMomentsTests::test_a_closed_moment_leaves_every_coachs_queue
+O2 -> FounderClosesMomentsTests::test_closing_takes_only_what_the_row_counts_as_waiting
+O3 -> FounderClosesMomentsTests::test_a_take_waiting_for_its_text_closes_whole","Founder 2026-10-20: the ⋯ Delete on a speaker's row of the queue, like the training corpus; their Takes and Ideal Text stay."
 tests/test_coach_guidance_delivery_d3_postgres.py,Story,"As a speaker, I want coach guidance on my Take to depend on my coach-review permission, not on the exercise one, so that turning off coach review stops it.","O1  A guidance batch is still made when only the exercise permission is
 missing.
 O2  Once coach review is removed, a new batch is refused
