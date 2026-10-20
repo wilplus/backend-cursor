@@ -259,17 +259,20 @@ class _SkipAnalytics(Exception):
     introduced on the live path (where stages is None and this never fires)."""
 
 
-def _learn_from_the_transcript(database: Any, *, session_id: str, user_id: Optional[str],
-                               spoken: bool, text: str) -> None:
+def _learn_from_the_transcript(database: Any, state: RecordingState, *,
+                               segments: list, words_all: list) -> None:
     """Will learns from the speaker's own words (founder 2026-10-20, step 2):
     once a spoken Take's transcript is final, a short opening and closing
     are kept as a speaker-memory event. Only a live spoken Take of a
     signed-in speaker (never a re-read, never the coach-only import lane).
     Handed off at once (``record_later``): nothing here waits on it, and a
     failure costs only the event."""
+    session_id, user_id = state.session_id, state.user_id
     try:
-        words = " ".join(str(text or "").split())
-        if not spoken or not user_id or not words:
+        spoken = (state.recording_kind == "spoken" and not state.paired_session_id
+                  and state.run_analytics)
+        words = " ".join(_full_transcript_text(segments, words_all).split()) if spoken else ""
+        if not user_id or not words:
             return
         from services import speaker_memory
         size = speaker_memory.EXCERPT // 2
@@ -458,10 +461,7 @@ def _process_lab_recording_impl(
 
     # Stage 5 — persist the complete slide/deckless transcript and diagnostics.
     persist_recording_transcript(state, database=db, log=logger)
-    _learn_from_the_transcript(
-        db, session_id=session_id, user_id=user_id,
-        spoken=_rec_kind == "spoken" and not paired_session_id and _run_analytics,
-        text=_full_transcript_text(segments, words_all))
+    _learn_from_the_transcript(db, state, segments=segments, words_all=words_all)
 
     # AI-Commentator coach-note pre-fill — RETIRED by default (founder
     # 2026-07-14): "no pre-filled comment; the system should learn from what

@@ -145,51 +145,64 @@ _COACH = {"take_word": "Their coach wrote to them",
           "moment_answer": "Their coach answered one of their moments"}
 
 
-def _event_line(event: dict) -> str:
-    p = event.get("payload") or {}
-    kind = event.get("kind")
-    if kind == "answer":
-        if p.get("skipped"):
-            return "- Asked if the feedback helped: they skipped the follow-up."
-        if p.get("missing"):
-            missing = _words_only(p["missing"])
-            return f"- Said what would help: \"{missing}\"" if missing else ""
-        if p.get("helped") is True:
-            return "- Said the feedback helped."
-        if p.get("helped") is False:
-            return "- Said the feedback did not really help."
-        return ""
-    if kind == "take":
-        bits = []
-        if p.get("practice") == "better":
-            bits.append("their practice landed")
-        elif p.get("practice") == "not_yet":
-            bits.append("their practice did not land yet")
-        moved = {"rose": "voice sounded surer than the last take",
-                 "held": "voice about as sure as the last take",
-                 "dipped": "voice less sure than the last take"}.get(p.get("moved") or "")
-        if moved:
-            bits.append(moved)
-        words = [_words_only(w, 60) for w in (p.get("helper_words") or [])
-                 if isinstance(w, str)][:2]
-        words = [w for w in words if w]
-        if words:
-            bits.append("chose helper words " + ", ".join(f'"{w}"' for w in words))
-        return f"- A take: {'; '.join(bits)}." if bits else ""
-    if kind == "transcript":
-        opening, closing = _words_only(p.get("opening")), _words_only(p.get("closing"))
-        if opening and closing:
-            return f"- In a take they opened with \"{opening}\" and closed with \"{closing}\""
-        return f"- In a take they said: \"{opening or closing}\"" if opening or closing else ""
-    if kind == "coach_word":
-        label, excerpt = _COACH.get(str(p.get("source") or "")), _words_only(p.get("excerpt"))
-        if not label or not excerpt:
-            return ""
-        return f"- {label}{' (an edit)' if p.get('edited') else ''}: \"{excerpt}\""
-    if kind == "chat":
-        excerpt = _words_only(p.get("excerpt"))
-        return f"- They wrote in the chat: \"{excerpt}\"" if excerpt else ""
+def _answer_line(p: dict) -> str:
+    if p.get("skipped"):
+        return "- Asked if the feedback helped: they skipped the follow-up."
+    if p.get("missing"):
+        missing = _words_only(p["missing"])
+        return f"- Said what would help: \"{missing}\"" if missing else ""
+    if p.get("helped") is True:
+        return "- Said the feedback helped."
+    if p.get("helped") is False:
+        return "- Said the feedback did not really help."
     return ""
+
+
+def _take_line(p: dict) -> str:
+    bits = []
+    if p.get("practice") == "better":
+        bits.append("their practice landed")
+    elif p.get("practice") == "not_yet":
+        bits.append("their practice did not land yet")
+    moved = {"rose": "voice sounded surer than the last take",
+             "held": "voice about as sure as the last take",
+             "dipped": "voice less sure than the last take"}.get(p.get("moved") or "")
+    if moved:
+        bits.append(moved)
+    words = [w for w in (_words_only(w, 60) for w in (p.get("helper_words") or [])
+                         if isinstance(w, str)) if w][:2]
+    if words:
+        bits.append("chose helper words " + ", ".join(f'"{w}"' for w in words))
+    return f"- A take: {'; '.join(bits)}." if bits else ""
+
+
+def _transcript_line(p: dict) -> str:
+    opening, closing = _words_only(p.get("opening")), _words_only(p.get("closing"))
+    if opening and closing:
+        return f"- In a take they opened with \"{opening}\" and closed with \"{closing}\""
+    return f"- In a take they said: \"{opening or closing}\"" if opening or closing else ""
+
+
+def _coach_line(p: dict) -> str:
+    label, excerpt = _COACH.get(str(p.get("source") or "")), _words_only(p.get("excerpt"))
+    if not label or not excerpt:
+        return ""
+    return f"- {label}{' (an edit)' if p.get('edited') else ''}: \"{excerpt}\""
+
+
+def _chat_line(p: dict) -> str:
+    excerpt = _words_only(p.get("excerpt"))
+    return f"- They wrote in the chat: \"{excerpt}\"" if excerpt else ""
+
+
+_LINES = {"answer": _answer_line, "take": _take_line, "transcript": _transcript_line,
+          "coach_word": _coach_line, "chat": _chat_line}
+
+
+def _event_line(event: dict) -> str:
+    """One event as the line the model reads; '' for nothing to say."""
+    line = _LINES.get(str(event.get("kind") or ""))
+    return line(event.get("payload") or {}) if line else ""
 
 
 def _write(old_note: str, events: list[dict], *, user_id: str, take: Optional[str]) -> Optional[str]:
@@ -273,6 +286,7 @@ def _under_authority(database: Any, user_id: str, take: Optional[str], write):
         return write()
     from services.authorized_provider import (
         AuthorizedProviderAdapter, ProviderCoordinates, protected_provider_scope)
+    principal: Optional[str]
     if take:
         session = database.v2_get_session_by_id(take) or {}
         principal = authorization.resolve_acquisition_principal(

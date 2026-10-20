@@ -209,8 +209,10 @@ def test_transcripts_coach_words_and_chat_reach_the_note(monkeypatch):
     seen = _synchronous(monkeypatch)
     db = _Db()
     from services.lab_recording import _learn_from_the_transcript
-    _learn_from_the_transcript(db, session_id=TAKE, user_id="u", spoken=True,
-                               text="Good morning everyone, today I want to talk about trust.")
+    take = SimpleNamespace(session_id=TAKE, user_id="u", recording_kind="spoken",
+                           paired_session_id=None, run_analytics=True)
+    _learn_from_the_transcript(db, take, words_all=[], segments=[
+        {"text": "Good morning everyone, today I want to talk about trust."}])
     word, answer = _coach(monkeypatch, db)
     word("Slow down for the closing line.", share=True)
     answer("Pause before the ask.", share=True)
