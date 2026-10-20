@@ -1,4 +1,4 @@
--- the_take_is_found_by_its_arc_as_text (0476)
+-- the_take_is_found_by_its_arc_as_text (0478)
 --
 -- The Ideal Text's core read, `read_ideal_text_document_core_v1` (0315),
 -- proves the caller owns the arc with

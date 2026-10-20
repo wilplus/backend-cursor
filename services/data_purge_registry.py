@@ -271,6 +271,14 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     # Account/profile and conversational product state.
     PurgeDependency("lounge", "lounge_messages", "user_id", "user", "delete",
                     "database_row", 60),
+    # A coach's card about this person's goal (WIL-74) lives in the coach's
+    # Lounge; it goes with the person it is about.
+    PurgeDependency("lounge_about", "lounge_messages", "about_user_id", "user",
+                    "delete", "database_row", 60),
+    PurgeDependency("goal_history", "user_goal_history", "user_id", "user",
+                    "delete", "database_row", 60),
+    PurgeDependency("feedback_checks", "take_feedback_checks", "user_id", "user",
+                    "delete", "database_row", 60),
     PurgeDependency("settings", "user_settings", "user_id", "user", "delete",
                     "database_row", 60),
     # Lesson bookings (founder 2026-10-15, fix 6). The termination request
@@ -329,6 +337,13 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     # with it, ahead of the practice and attempt it reads.
     PurgeDependency("practice_more_confident_outcome",
                     "practice_more_confident_outcomes", "practice_id",
+                    "practice", "delete", "derived_feedback", 59),
+    # Whether a practised exercise held into the next Take, migration 0476
+    # (founder 2026-10-18, WIL-29). About one speaker's practice: it goes
+    # with it, ahead of the practice it reads; the cascades on the practice
+    # and on the next Take are only the backstop.
+    PurgeDependency("exercise_held_next_take_outcome",
+                    "exercise_held_next_take_outcomes", "practice_id",
                     "practice", "delete", "derived_feedback", 59),
     # Why that choice was made, migration 0384. Goes with the Take, ahead of
     # the assignment it explains; its ON DELETE CASCADE is only the backstop.

@@ -357,6 +357,27 @@ class DatabaseService:
         
         return result.data[0] if result.data else None
 
+    def get_recording_languages(self, recording_ids) -> dict:
+        """Batch read — {recording_id: {"transcription_language": ...}} for
+        many recordings in one query per 100 ids.
+
+        The coach queue resolves a Take's language from the recording when
+        the Take declares none, and used to read every recording whole, one
+        round trip per queued Take, for this one field. Raises like
+        `get_recording` does, so a failed read fails the queue rather than
+        withholding every undeclared Take as "language unknown"."""
+        ids = sorted({str(r) for r in (recording_ids or []) if r})
+        out: dict = {}
+        for i in range(0, len(ids), 100):
+            chunk = ids[i:i + 100]
+            result = self._execute_with_retry(
+                lambda chunk=chunk: self.client.table("recordings")
+                .select("id, transcription_language").in_("id", chunk),
+                label="get_recording_languages")
+            for row in (result.data or []):
+                out[str(row.get("id"))] = row
+        return out
+
     def create_signed_url(self, bucket: str, path: str, expires_in: int = 3600):
         """Create a signed URL for a file in Supabase Storage"""
         import logging
@@ -2387,6 +2408,7 @@ class DatabaseService:
 
     def get_snippets_by_sessions(
         self, session_ids, *, include_words: bool = False,
+        columns: Optional[str] = None,
     ) -> dict:
         """Batch read — ALL snippets for many sessions in ONE query per 100 ids
         (kills the N+1 on /v2/user/strengths). Returns
@@ -2395,14 +2417,15 @@ class DatabaseService:
         Excludes the heavy `words` JSONB by default — the Trainings list reads
         the precomputed slide_transcripts (#A), so per-snippet words aren't
         needed there. Pass include_words=True where the per-snippet split is
-        used. Best-effort: {} on hiccup; falls back to select(*) if the slim
-        projection trips a missing column."""
+        used, or `columns` for a narrower projection still (the coach queue
+        needs only ids and order). Best-effort: {} on hiccup; falls back to
+        select(*) if the projection trips a missing column."""
         ids = [str(s) for s in (session_ids or []) if s]
         if not ids:
             return {}
         slim = ("id, session_id, start_offset_ms, duration_ms, transcript, "
                 "audio_segment_path, metrics, snippet_type")
-        cols = "*" if include_words else slim
+        cols = columns or ("*" if include_words else slim)
         # Pieces-canonical (2026-07-14): a session can carry ~15-270 piece
         # rows (was ≤10 windows), so 100 sessions per query can exceed
         # PostgREST's server-side max-rows (default 1000) — which TRUNCATES
@@ -5265,6 +5288,32 @@ class DatabaseService:
                 "get_ideal_text_feedback_set failed arc=%s take=%s: %s",
                 arc_id, take_session_id, e)
             return None
+
+    def get_ideal_text_feedback_sets(self, take_session_ids) -> dict:
+        """Batch read — {take_session_id: [frozen selections]} for many Takes
+        in one query per 100 ids. The coach queue read the singular once per
+        queued Take; callers match the arc themselves, as the singular does
+        in its filter. {} on anything missing or failed, which every queued
+        Take then reads as the singular's None (not frozen yet)."""
+        ids = sorted({str(s) for s in (take_session_ids or []) if s})
+        out: dict = {}
+        try:
+            for i in range(0, len(ids), 100):
+                chunk = ids[i:i + 100]
+                res = (
+                    self.client.table("ideal_text_feedback_sets")
+                    .select("arc_id,take_session_id,take_index,review_version,"
+                            "selected_keys,created_at")
+                    .in_("take_session_id", chunk)
+                    .execute()
+                )
+                for row in (res.data or []):
+                    out.setdefault(str(row.get("take_session_id")), []).append(row)
+        except Exception as e:
+            logger.warning(
+                "get_ideal_text_feedback_sets failed n=%s: %s", len(ids), e, exc_info=True)
+            return {}
+        return out
 
     def claim_ideal_text_feedback_set(
         self,
@@ -9876,7 +9925,9 @@ class DatabaseService:
 
     def get_own_state_ratings_for_session(self, session_id: str,
                                           rater_id: str) -> dict:
-        """{snippet_id: {value, unrateable}} — THIS rater's own ratings only.
+        """{snippet_id: {value, unrateable, updated_at}} — THIS rater's own
+        ratings only. ``updated_at`` orders the coach's answered Takes (most
+        recently answered first); it is never a value.
 
         SCOPED TO ONE RATER ON PURPOSE, and that scope is the whole safety
         argument. Showing a coach their OWN prior answer is just resuming
@@ -9893,7 +9944,7 @@ class DatabaseService:
             return {}
         try:
             rows = (self.client.table("confidence_labels")
-                    .select("snippet_id, value, unrateable")
+                    .select("snippet_id, value, unrateable, updated_at")
                     .eq("session_id", str(session_id))
                     .eq("rater_id", str(rater_id))
                     .execute().data) or []
@@ -9905,6 +9956,7 @@ class DatabaseService:
                 out[str(snippet_id)] = {
                     "value": r.get("value"),
                     "unrateable": bool(r.get("unrateable")),
+                    "updated_at": r.get("updated_at"),
                 }
             return out
         except Exception as e:
@@ -9912,6 +9964,51 @@ class DatabaseService:
                 "get_own_state_ratings_for_session failed session=%s: %s",
                 session_id, e)
             return {}
+
+    def get_own_state_ratings_for_sessions(self, session_ids,
+                                           rater_id: str) -> dict:
+        """{session_id: {snippet_id: {value, unrateable, updated_at}}} — the batch of
+        `get_own_state_ratings_for_session`, for the coach queue, which read
+        the singular once per queued Take. THIS rater's rows only, for the
+        same reason the singular gives. Paged, because one rater's rows on
+        a wide queue can pass PostgREST's max-rows, which truncates
+        silently. {} on anything missing, as the singular."""
+        ids = sorted({str(s) for s in (session_ids or []) if s})
+        if not ids or not rater_id:
+            return {}
+        _page = 1000
+        out: dict = {}
+        try:
+            for i in range(0, len(ids), 100):
+                chunk = ids[i:i + 100]
+                offset = 0
+                while True:
+                    rows = (self.client.table("confidence_labels")
+                            .select("session_id, snippet_id, value, unrateable, "
+                                    "updated_at")
+                            .in_("session_id", chunk)
+                            .eq("rater_id", str(rater_id))
+                            .order("snippet_id", desc=False)
+                            .range(offset, offset + _page - 1)
+                            .execute().data) or []
+                    for r in rows:
+                        if not r.get("snippet_id"):
+                            continue
+                        out.setdefault(str(r.get("session_id")), {})[
+                            str(r["snippet_id"])] = {
+                                "value": r.get("value"),
+                                "unrateable": bool(r.get("unrateable")),
+                                "updated_at": r.get("updated_at"),
+                        }
+                    if len(rows) < _page:
+                        break
+                    offset += _page
+        except Exception as e:
+            logger.warning(
+                "get_own_state_ratings_for_sessions failed n=%s: %s",
+                len(ids), e, exc_info=True)
+            return {}
+        return out
 
     def count_labelled_snippets_by_session_ids(self, session_ids: list) -> dict:
         """{session_id: how many DISTINCT snippets carry a confidence label}.
@@ -10679,6 +10776,66 @@ class DatabaseService:
             )
             return False
 
+    # ── WIL-74: goal history and "did this help?" (migration 0477) ──
+
+    def insert_goal_history(self, row: dict) -> bool:
+        """One more goal in the speaker's history. False on any failure."""
+        try:
+            self.client.table("user_goal_history").insert(row).execute()
+            return True
+        except Exception as e:
+            logger.warning("insert_goal_history failed user=%s: %s",
+                           row.get("user_id"), e, exc_info=True)
+            return False
+
+    def list_goal_history(self, user_id: str, limit: int = 20) -> list[dict]:
+        """The speaker's goals, newest first. [] on any failure."""
+        try:
+            return (self.client.table("user_goal_history")
+                    .select("goal, previous_goal, source, changed_at")
+                    .eq("user_id", user_id).order("changed_at", desc=True)
+                    .limit(limit).execute().data) or []
+        except Exception as e:
+            logger.warning("list_goal_history failed user=%s: %s", user_id, e, exc_info=True)
+            return []
+
+    def active_coach_user_ids(self) -> list[str]:
+        """The user ids of the active coaches (coach_users holds emails).
+        [] on any failure."""
+        try:
+            emails = [r.get("email") for r in (
+                self.client.table("coach_users").select("email")
+                .eq("is_active", True).execute().data) or []]
+        except Exception as e:
+            logger.warning("active_coach_user_ids failed: %s", e, exc_info=True)
+            return []
+        ids = (self.v2_find_user_id_by_email(e) for e in emails if e)
+        return [str(i) for i in ids if i]
+
+    def get_take_feedback_check(self, user_id: str,
+                                take_session_id: str) -> Optional[dict]:
+        try:
+            rows = (self.client.table("take_feedback_checks").select("*")
+                    .eq("user_id", user_id)
+                    .eq("take_session_id", take_session_id)
+                    .limit(1).execute().data)
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning("get_take_feedback_check failed user=%s: %s",
+                           user_id, e, exc_info=True)
+            return None
+
+    def save_take_feedback_check(self, row: dict) -> bool:
+        """Upsert one Take's answer (one row per Take). False on failure."""
+        try:
+            (self.client.table("take_feedback_checks")
+             .upsert(row, on_conflict="user_id,take_session_id").execute())
+            return True
+        except Exception as e:
+            logger.warning("save_take_feedback_check failed user=%s: %s",
+                           row.get("user_id"), e, exc_info=True)
+            return False
+
     # ── blind-rater language eligibility ───────────────────────────
 
     def get_user_proficient_languages(self, user_id: str) -> Optional[list]:
@@ -10873,6 +11030,11 @@ class DatabaseService:
             }
             for m in messages
         ]
+        if any(m.get("about_user_id") for m in messages):
+            # A row about another person (a coach's goal card, WIL-74): the
+            # account purge deletes it with that person (migration 0477).
+            for row, m in zip(rows, messages):
+                row["about_user_id"] = m.get("about_user_id")
         try:
             res = (
                 self.client.table("lounge_messages")
@@ -13152,6 +13314,15 @@ class DatabaseService:
                     out.append(str(row[key]))
         return out
 
+    def list_community_answers(self, listener_id: str, *, limit: int = 50) -> list[dict]:
+        """This listener's answers in the queue, newest first: the clip they
+        heard and the answer they gave, for the walk reopened from the
+        Lounge."""
+        res = (self.client.table("community_answers").select("*")
+               .eq("listener_user_id", str(listener_id))
+               .order("created_at", desc=True).limit(int(limit)).execute())
+        return list(res.data or [])
+
     def insert_community_answer(self, row: dict) -> Optional[dict]:
         """One per person per clip: a duplicate answers None."""
         try:
@@ -13169,21 +13340,34 @@ class DatabaseService:
 
     def upsert_coach_take_word(
         self, *, take_session_id: str, coach_id: str, text: Optional[str],
-        video_ref: Optional[str], share: bool,
+        video_ref: Optional[str], share: bool, keep_video: bool = False,
     ) -> Optional[dict]:
         """One word per (Take, coach) (0403), replaced on each save; sharing
-        stamps shared_at once and a later save keeps it. Raises on failure."""
+        stamps shared_at once and a later save keeps it. ``keep_video``: the
+        save names no video, so the saved one stays. A transcript belongs to
+        its video: a new or removed video clears it, so the new one is
+        transcribed (N79). Raises on failure, the read of the row before it
+        included: a failed read must not pass for "no row yet", or a share
+        would be stamped again and the speaker told twice."""
         now = datetime.now(timezone.utc).isoformat()
-        existing = self.get_coach_take_word(take_session_id, coach_id) or {}
+        res = (self.client.table("coach_take_words").select("*")
+               .eq("take_session_id", str(take_session_id))
+               .eq("coach_id", str(coach_id)).limit(1).execute())
+        existing = (res.data or [None])[0] or {}
         payload: dict[str, Any] = {
             "take_session_id": str(take_session_id),
             "coach_id": str(coach_id),
             "text": text,
-            "video_ref": video_ref,
             "updated_at": now,
         }
+        if not keep_video:
+            payload["video_ref"] = video_ref
         if share and not existing.get("shared_at"):
             payload["shared_at"] = now
+        if (not keep_video and existing
+                and (existing.get("video_ref") or None) != (video_ref or None)):
+            payload["transcript"] = None
+            payload["transcribed_at"] = None
         res = (self.client.table("coach_take_words")
                .upsert(payload, on_conflict="take_session_id,coach_id")
                .execute())
@@ -14573,12 +14757,19 @@ class DatabaseService:
 
     def set_coach_take_word_transcript(
         self, *, take_session_id: str, coach_id: str, transcript: str,
+        video_ref: Optional[str] = None,
     ) -> Optional[dict]:
-        res = (self.client.table("coach_take_words")
-               .update({"transcript": str(transcript),
-                        "transcribed_at": datetime.now(timezone.utc).isoformat()})
-               .eq("take_session_id", str(take_session_id))
-               .eq("coach_id", str(coach_id)).execute())
+        """The words of the word's video. With ``video_ref``, they land only
+        while the row still holds that video, so a video replaced while it
+        was being transcribed never gets the old one's words."""
+        query = (self.client.table("coach_take_words")
+                 .update({"transcript": str(transcript),
+                          "transcribed_at": datetime.now(timezone.utc).isoformat()})
+                 .eq("take_session_id", str(take_session_id))
+                 .eq("coach_id", str(coach_id)))
+        if video_ref:
+            query = query.eq("video_ref", str(video_ref))
+        res = query.execute()
         return (res.data or [None])[0]
 
     def list_coach_word_drafts(self, limit: int = 5000) -> list[dict]:

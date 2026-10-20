@@ -1,22 +1,27 @@
-"""Training copies go when the yes goes (0376, SPEC-training-corpus §6, P4).
+"""
+STORY    As a speaker, I want my training copies erased when I withdraw or
+         delete my account, so that nothing of mine stays in the training
+         data. (Critical path: deletion and consent.)
+OUTCOME
+  O1  A withdrawal marks every copy of mine due, and nobody else's.
+  O2  The erasure job deletes my due copies (audio only once its object is
+      proven gone) and never an active copy of anyone.
+  O3  Once a copy's audio is verified gone, the account purge marks it
+      `purged`.
+  O4  Account deletion takes my copies' audio and rows with it; the copies
+      never stop it, and the only thing that may stop it for review is the
+      record of my consent.
+PROVES   O1 -> test_a_withdrawal_makes_that_persons_copies_due_and_nobody_elses
+         O2 -> test_the_erasure_deletes_due_copies_and_never_an_active_one
+         O3 -> test_a_verified_object_marks_the_copy_purged
+         O4 -> test_account_erasure_reaches_the_copies
+WHY      0376 (SPEC-training-corpus section 6, P4; founder locks C3, Q3).
 
-Run on the released rehearsal lane, after the consent and corpus suites. The
-orchestrator and the database helpers are the production Python, driven
-through the SQL shim of tests/test_account_deletion_starts_postgres.py as
-service_role. Pins:
-
-  * a withdrawal marks every active copy of that person due, and nobody
-    else's;
-  * the corpus erasure deletes a due copy's row through service_role's own
-    grant, never an active copy;
-  * account erasure reaches the copies: the orchestrator's freeze is accepted
-    with a copy's audio as a storage target, and the copy rows are a `delete`
-    dependency, not a review stop;
-  * the object mark moves a copy to `purged`, and it still carries its D11
-    lock preamble after 0376 re-issued it;
-  * what still stops a training-consented account's erasure is stated by
-    running it: the MLC-2 consent events (`external_review`), and nothing of
-    the corpus.
+Runs on the released rehearsal lane after the consent and corpus suites. The
+orchestrator, the erasure job and its database helpers are the production
+Python, driven through the SQL client of
+tests/test_account_deletion_starts_postgres.py as service_role; only object
+storage is faked.
 """
 from __future__ import annotations
 
@@ -27,7 +32,9 @@ import uuid
 import psycopg2
 import pytest
 
+from services import training_corpus
 from services.data_purge import DataPurgeOrchestrator
+from services.db import DatabaseService
 from tests.test_account_deletion_starts_postgres import _Database
 from tests.test_training_consent_postgres import (
     TOGGLE_COPY,
@@ -145,26 +152,95 @@ def test_a_withdrawal_makes_that_persons_copies_due_and_nobody_elses(db, ready):
     assert _state(db, bystander["text"]) == "active"
 
 
-def test_account_erasure_reaches_the_copies(db, ready):
+class _CorpusDatabase(_Database):
+    """The production helpers the erasure job calls, on the SQL client."""
+
+    list_due_training_corpus_items = DatabaseService.list_due_training_corpus_items
+    erase_training_corpus_item = DatabaseService.erase_training_corpus_item
+
+
+def _exists(db, item):
+    return _one(db, "SELECT count(*) FROM public.training_corpus_items "
+                    "WHERE id = %s", (item,)) == 1
+
+
+def test_the_erasure_deletes_due_copies_and_never_an_active_one(db, ready,
+                                                                monkeypatch):
     person = _person_with_copies(db, ready)
-    request = str(_one(db, """
+    bystander = _person_with_copies(db, ready)
+    _withdraw(db, person)
+    database = _CorpusDatabase(db)
+    gone = {"answer": False}
+    monkeypatch.setattr(
+        "services.lab_audio_storage.delete_verified_lab_audio_object",
+        lambda key, **_: gone["answer"])
+
+    # Storage cannot prove the audio gone: its copy stays due.
+    assert training_corpus.purge_due_copies(person["principal"],
+                                            database=database) == {
+        "erased": 1, "failed": 1}
+    assert not _exists(db, person["text"])
+    assert _state(db, person["audio"]) == "purge_pending"
+
+    gone["answer"] = True
+    assert training_corpus.purge_due_copies(person["principal"],
+                                            database=database) == {
+        "erased": 1, "failed": 0}
+    assert not _exists(db, person["audio"])
+
+    # An active copy is never erased, even when asked for by id.
+    assert database.erase_training_corpus_item(bystander["text"]) is False
+    assert _state(db, bystander["text"]) == "active"
+
+
+def test_a_verified_object_marks_the_copy_purged(db, ready):
+    person = _person_with_copies(db, ready)
+    request = _erasure_request(db, person)
+    with db.cursor() as cur:
+        cur.execute("""
+            SELECT storage_provider, bucket, storage_key, object_sha256
+              FROM public.training_corpus_items WHERE id = %s""",
+            (person["audio"],))
+        provider, bucket, key, sha = cur.fetchone()
+    _one(db, """
+        SELECT public.mark_phase1_storage_object_purged_v1(
+            %s, 'training_corpus_items', %s, %s, %s, %s, %s)""",
+        (request, person["audio"], provider, bucket, key, sha))
+    assert _state(db, person["audio"]) == "purged"
+    assert _state(db, person["text"]) == "active"
+
+
+def _erasure_request(db, person):
+    return str(_one(db, """
         INSERT INTO public.data_purge_requests (
             acquisition_principal_id, trigger_kind, idempotency_key)
         VALUES (%s, 'account_deletion', %s) RETURNING id""",
         (person["principal"], str(uuid.uuid4()))))
 
+
+def test_account_erasure_reaches_the_copies(db, ready):
+    person = _person_with_copies(db, ready)
+    request = _erasure_request(db, person)
+
     result = DataPurgeOrchestrator(_Database(db)).freeze_inventory(request)
 
-    assert result.get("state") in ("in_progress", "review_required"), result
     assert _one(db, """
         SELECT count(*) FROM public.data_purge_targets
          WHERE purge_request_id = %s
            AND metadata->>'source_relation' = 'training_corpus_items'
            AND target_ref = %s""", (request, f"training-copy:{person['audio']}")) == 1
-    # The rows are a delete dependency, not a stop.
-    stopped_on = _one(db, """
+    # The rows go as a delete dependency.
+    assert _one(db, """
+        SELECT metadata->>'disposition' FROM public.data_purge_targets
+         WHERE purge_request_id = %s
+           AND metadata->>'relation' = 'training_corpus_items'""",
+        (request,)) == "delete"
+    # What stops it for review, if anything, is the consent record alone.
+    stopped_on = set(_one(db, """
         SELECT coalesce(jsonb_agg(DISTINCT metadata->>'relation'), '[]'::jsonb)
           FROM public.data_purge_targets
          WHERE purge_request_id = %s AND state IN ('unknown', 'failed')""",
-        (request,))
-    assert "training_corpus_items" not in stopped_on
+        (request,)))
+    assert stopped_on <= {"ml_consent_events"}, stopped_on
+    assert result["state"] == ("review_required" if stopped_on
+                               else "in_progress"), result

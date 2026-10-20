@@ -1,18 +1,19 @@
-"""D-ML-4: the praise detectors get their own switch (QA3 A).
-
-Founder 2026-10-06, Navigation Panel QA3 A: "praise detectors get their own
-switch, turned on in a reviewed change"; ledger A045, A053b. Detector praise
-(the structural device and the impeccable delivery read) was written only by
-the star lane, MOMENT_SUGGESTIONS_ENABLED, default off, so by default no Take
-carried a praise naming its cue and most Yes answers showed no card.
-
-`Config.PRAISE_DETECTORS_ENABLED` (default ON in code) now gates only that
-praise, independently of the star lane: the worker runs the two detectors on
-their own (`moment_suggestions.generate_praise_for_session`) and the read
-path stamps their evidence (`tracked_changes._detector_praise_evidence`).
-The praise stays Manager-gated (one per block read confident, V3's budget
-unchanged), the payload carries no number (AC-9), and where no detector
-evidence exists the lane is the Manager's tentative fallback.
+"""
+STORY    As a speaker, I want praise for good delivery or structure to show
+         even when the star lane is off, so that my Yes answers come with a
+         card naming what I did well.
+OUTCOME
+  O1  With PRAISE_DETECTORS_ENABLED on (star lane off), detector praise is
+      stamped, competes in the praise lane, and is served with its cue keys
+      and no number (Never-1: no scores shown to speakers).
+  O2  With it off, the detector praise is excluded and the lane falls back
+      to the Manager's tentative praise.
+  O3  The worker's praise-only pass writes only praise rows, never an issue.
+PROVES   O1 -> test_switch_on_serves_detector_praise_without_numbers,
+               test_with_detector_praise_no_tentative_fallback_is_added
+         O2 -> test_switch_off_excludes_detector_praise_and_falls_back
+         O3 -> test_the_praise_only_pass_writes_only_praise
+WHY      Founder 2026-10-06, QA3 A: praise detectors get their own switch.
 """
 from __future__ import annotations
 
@@ -23,16 +24,31 @@ import pytest
 
 from services.intervention_candidates import feedback_family_of
 from services.take_feedback_manager import (
+    TakeDocumentMap,
     ensure_required_families,
+    strip_internal_evidence,
+    verbal_exclusion,
 )
+from services.tracked_changes import build_tracked_changes
+from services.transcript_document import relocate_pieces
 from tests.test_verbal_lanes_take_document_n48_1 import (
+    DOC,
     SERVED,
     TAKE,
-    _map,
-    _tracked,
+    _placed_document,
 )
 
 CUES = ["full_volume", "landed_ending"]
+
+
+def _map() -> TakeDocumentMap:
+    return TakeDocumentMap.for_document(_placed_document(), SERVED, take_id=TAKE)
+
+
+def _tracked(suggestion: dict, sid: str) -> list[dict]:
+    pieces = relocate_pieces(SERVED, DOC["pieces"], paragraph_fallback=True,
+                             slide_regions={})
+    return build_tracked_changes(SERVED, pieces, {sid: suggestion})
 
 
 def _impeccable(sid: str = "s2b") -> dict:
@@ -58,13 +74,43 @@ def lane_off_praise_on():
         yield
 
 
-# ── the switch itself ───────────────────────────────────────────────────────
+@pytest.fixture
+def praise_off():
+    config = _config()
+    with patch.object(config, "MOMENT_SUGGESTIONS_ENABLED", False), \
+            patch.object(config, "PRAISE_DETECTORS_ENABLED", False):
+        yield
 
 
-# ── served: detector praise reaches the praise lane, star lane off ──────────
+def _tentative(rows: list[dict]) -> list[dict]:
+    return [r for r in rows if r["feedback_family"] == "great_formulation"
+            and (r.get("_manager_evidence") or {}).get("fallback")]
 
 
-# ── off: unstamped, excluded, and the lane is the tentative fallback ────────
+def _numbers(value, top=True):
+    """Every number outside the location coordinates the client reads."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not (top and key in ("span", "evidence")):
+                yield from _numbers(item, False)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _numbers(item, False)
+    elif isinstance(value, (int, float)) and not isinstance(value, bool):
+        yield value
+
+
+# ── on: stamped, competing, served with its cues and no number ─────────────
+
+def test_switch_on_serves_detector_praise_without_numbers(lane_off_praise_on):
+    praise = _impeccable()
+    assert verbal_exclusion(praise, _map())[0] is None
+    [served] = strip_internal_evidence([praise])
+    assert served["cue_keys"] == CUES and served["quote"]
+    assert served["feedback_family"] == feedback_family_of(praise)
+    assert list(_numbers(served)) == []
+    assert not any(key.startswith("_manager_") or key == "detector_version"
+                   for key in served)
 
 
 def test_with_detector_praise_no_tentative_fallback_is_added(
@@ -72,8 +118,20 @@ def test_with_detector_praise_no_tentative_fallback_is_added(
     out = ensure_required_families(
         SERVED, [_impeccable()], take_session_id=TAKE, snippet_id="s1a",
         document_map=_map())
-    assert not [r for r in out if r["feedback_family"] == "great_formulation"
-                and (r.get("_manager_evidence") or {}).get("fallback")]
+    assert out[0]["cue_keys"] == CUES
+    assert not _tentative(out)
+
+
+# ── off: excluded, and the lane is the tentative fallback ──────────────────
+
+def test_switch_off_excludes_detector_praise_and_falls_back(praise_off):
+    praise = _impeccable()
+    assert verbal_exclusion(praise, _map())[0] == "missing_evidence_metadata"
+    out = ensure_required_families(
+        SERVED, [praise], take_session_id=TAKE, snippet_id="s1a",
+        document_map=_map())
+    [fallback] = _tentative(out)
+    assert fallback["quote"] in SERVED and fallback["tentative"] is True
 
 
 # ── generated: the worker's praise-only pass ────────────────────────────────

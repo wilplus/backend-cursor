@@ -34,6 +34,7 @@ def speakers_summary(queue: list[dict]) -> list[dict]:
                 "waiting": waiting,
                 "waiting_for_text": waiting_for_text,
                 "answered": (not waiting_for_text) and waiting == 0,
+                "answered_at": take.get("answered_at"),
             })
         out.append({
             "pseudonym": speaker.get("pseudonym"),

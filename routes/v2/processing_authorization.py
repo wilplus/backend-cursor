@@ -220,6 +220,20 @@ def enforce_phase1_processing_gate():
     if gate_recently_passed(cache_key):
         return None
     generation = gate_cache_generation()
+    # Named in Server-Timing (founder 2026-10-18: a 5.9 s Ideal Text open
+    # spent 2 s before its route started, with nothing to say where).
+    from services.request_context import timed
+    with timed("gate"):
+        refusal = _ask_the_gate(service)
+    if refusal is not None:
+        return refusal
+    remember_gate_passed(cache_key, generation)
+    return None
+
+
+def _ask_the_gate(service: ProcessingAuthorizationService):
+    """The database's decision for this caller: None for a YES, else the
+    refusal response."""
     try:
         # Founder 2026-10-18: this gate ran before every core read and paid
         # the same three round trips the status route paid before 0473
@@ -239,7 +253,6 @@ def enforce_phase1_processing_gate():
         return _principal_error(error)
     except ProcessingAuthorizationError as error:
         return jsonify({"code": error.code, "error": error.message}), error.status
-    remember_gate_passed(cache_key, generation)
     return None
 
 
@@ -329,6 +342,38 @@ def _status_in_one_trip(service: ProcessingAuthorizationService):
     return service.status_in_one_trip(None, principal_id)
 
 
+def _remember_status_as_gate_yes(
+    service: ProcessingAuthorizationService, principal_id: str,
+    status: dict, generation: int,
+) -> None:
+    """The app-open status read answers the core gate's next question too.
+
+    Founder 2026-10-18: the app opens with GET /v2/processing-authorization
+    (one round trip, 0473), and the core reads that follow within the same
+    second (/v2/chat/session-state, the Ideal Text) each ran the gate, which
+    asked the database the very same question again. The status just read IS
+    the gate's answer: the gate computes its YES from the same one-trip read
+    and the same `require_current`, so a YES is remembered here under the
+    same key, for the same few seconds, under the same rules (S1). A refusal
+    is never remembered; `generation` was read before the database was
+    asked, so a YES computed while an authority write ran is not kept; and
+    nothing here can turn a readable status into an unreadable one.
+    """
+    if not service.enforced:
+        return
+    try:
+        key = gate_cache_key(
+            service.mode, _request_user_id(),
+            request.headers.get(GUEST_OWNER_HEADER))
+        service.require_current(
+            principal_id, operation="core_service", status=status)
+    except ProcessingAuthorizationError:
+        return
+    except Exception:  # noqa: BLE001 -- a memory that fails is only slower
+        return
+    remember_gate_passed(key, generation)
+
+
 @v2_bp.route("/processing-authorization", methods=["GET", "POST"])
 @optional_auth
 def v2_processing_authorization():
@@ -336,9 +381,12 @@ def v2_processing_authorization():
     if request.method == "GET":
         # Q19 A: a person who asked to leave is shown that, not asked to
         # accept again. Read here only: require_current stays one read.
+        generation = gate_cache_generation()
         fast = _status_in_one_trip(service)
         if fast is not None:
             principal_id, status = fast
+            _remember_status_as_gate_yes(
+                service, principal_id, status, generation)
             return jsonify(service.status_with_deletions(
                 principal_id, status=status)), 200
     try:

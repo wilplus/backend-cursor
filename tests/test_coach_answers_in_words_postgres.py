@@ -1,12 +1,19 @@
-"""A coach answers in words too, executed on a disposable database (0402).
-Founder 2026-09-30, C2 to C5. Pins:
-  * resolve_exercise_coach_request_v2 records a line or a clearer version
-    with its answer, once, and shares it like an exercise;
-  * words and an exercise never mix on one resolution; no_safe_match takes
-    neither; v1 still resolves an exercise as before;
-  * feedback_pairs keeps only a differing (draft, final) with its coach, one
-    per (surface, request), and reaches no browser role;
-  * coach_moment_error_event takes a naming keyed by the moment alone.
+"""
+STORY    As a coach, I want to answer a speaker's request with a written line
+         or clearer version, recorded once and shared, so that the speaker
+         gets words from me.
+OUTCOME
+  O1  A line is recorded once, trimmed, and shared; the same answer again is
+      a no-op; a different answer is refused (ALREADY_RESOLVED).
+  O2  Words and an exercise never mix on one answer: either way round is
+      refused (INPUT_INVALID) and the request stays unanswered.
+  O3  feedback_pairs keeps a (draft, final) only when they differ, and one
+      per (surface, request).
+PROVES   O1 -> test_a_line_is_answered_once_and_shared
+         O2 -> test_words_and_an_exercise_never_mix
+         O3 -> test_a_pair_is_kept_only_when_the_coach_changed_the_draft
+WHY      Migration 0402 (founder 2026-09-30, C2 to C5). Runs only on a
+         disposable database whose name starts with willab_confident_moment_.
 """
 from __future__ import annotations
 
@@ -81,3 +88,35 @@ def test_a_line_is_answered_once_and_shared(db):
              req["id"], "line_written", answer="Different words.")
     _refused(db, "EXERCISE_COACH_REQUEST_ALREADY_RESOLVED", _resolve_v2,
              req["id"], "version_written", answer="You let the number land.")
+
+
+def test_words_and_an_exercise_never_mix(db):
+    req = _request(db)
+    _refused(db, "EXERCISE_COACH_REQUEST_INPUT_INVALID", _resolve_v2,
+             req["id"], "line_written", answer="You let it land.",
+             exercise_id="ex-1", version=1)
+    _refused(db, "EXERCISE_COACH_REQUEST_INPUT_INVALID", _resolve_v2,
+             req["id"], "exercise_chosen", answer="You let it land.",
+             exercise_id="ex-1", version=1)
+    still = _row(db, "SELECT resolution, answer_text, resolved_exercise_id "
+                     "FROM public.exercise_coach_requests WHERE id = %s", (req["id"],))
+    assert still == {"resolution": None, "answer_text": None, "resolved_exercise_id": None}
+
+
+def _pair(db, request_id, draft, final):
+    return _row(db, "INSERT INTO public.feedback_pairs "
+                    "(surface, draft_text, final_text, coach_id, request_id) "
+                    "VALUES ('clearer_version', %s, %s, 'coach-1', %s) RETURNING id",
+                (draft, final, request_id))
+
+
+def test_a_pair_is_kept_only_when_the_coach_changed_the_draft(db):
+    req = _request(db)
+    with pytest.raises(psycopg2.errors.CheckViolation):
+        _pair(db, req["id"], "Say it slower.", "  Say it slower. ")
+    assert _pair(db, req["id"], "Say it slower.", "Let the number land.")["id"]
+    with pytest.raises(psycopg2.errors.UniqueViolation):
+        _pair(db, req["id"], "Say it slower.", "Another final.")
+    pairs = _row(db, "SELECT count(*) AS n FROM public.feedback_pairs "
+                     "WHERE request_id = %s", (req["id"],))
+    assert pairs["n"] == 1

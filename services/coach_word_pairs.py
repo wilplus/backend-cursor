@@ -35,6 +35,7 @@ pairs. The ledger reports, per surface, the share of drafts sent unchanged.
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any, Optional
 
 _log = logging.getLogger(__name__)
@@ -245,13 +246,44 @@ def _speaker_permit_adapter(database: Any, take_session_id: str) -> Any:
         authorization=authorization)
 
 
+def take_video_object(ref: Any, take_session_id: str) -> Optional[tuple[str, str]]:
+    """(bucket, key) of the coach's upload for this Take, whichever shape
+    its ref comes back in: the signed link the upload returned, or the
+    ``s3://`` marker it wrote. Only this Take's own upload prefix
+    (``coach-feedback/<take>/``) in the bucket uploads land in counts; None
+    for anything else, which is never read or transcribed."""
+    from services.coach_video_storage import (
+        default_media_bucket, media_key_from_ref, media_ref_bucket,
+    )
+    key = media_key_from_ref(ref)
+    if not key or not take_session_id or not key.startswith(
+            f"coach-feedback/{take_session_id}/"):
+        return None
+    bucket = media_ref_bucket(ref) or default_media_bucket()
+    return (bucket, key) if bucket == default_media_bucket() else None
+
+
+def _worth_transcribing(database: Any, take: str, coach_id: str) -> bool:
+    """A coach's video about a speaker's Take is sent to the transcriber only
+    for a speaker who holds the training yes (founder 2026-10-19, N79: its
+    words have no use but training), and never on the coach's own Take (an
+    owner's answer is never a pair, L3). A doubt reads as no."""
+    from services.pair_consent import take_holds_training_yes
+    session = database.v2_get_session_by_id(take) or {}
+    if str(session.get("user_id") or "").strip() == str(coach_id or "").strip():
+        return False
+    return take_holds_training_yes(database, take)
+
+
 def transcribe_take_word_video(database: Any, *, word_row: Any, coach_id: str) -> Optional[str]:
     """The word's video, transcribed (the coach video pipeline's own path:
     audio extracted, Whisper through the speaker's permit), saved as the
-    second final. Best-effort, never raises; None when there is no video,
-    it could not be read, or enforce mode refused the permit. A refusal
-    costs only the transcript draft: the word and its video are already
-    saved, and the coach types the words."""
+    second final. Only this Take's own upload is read, and only for a
+    speaker with the training yes (N79). Best-effort, never raises; None
+    when there is no video, it could not be read, there is no yes, or
+    enforce mode refused the permit. A refusal costs only the transcript
+    draft: the word and its video are already saved, and the coach types
+    the words."""
     if not isinstance(word_row, dict) or not word_row.get("video_ref"):
         return None
     from services.processing_authorization import ProcessingAuthorizationError
@@ -259,11 +291,13 @@ def transcribe_take_word_video(database: Any, *, word_row: Any, coach_id: str) -
     try:
         from services.coach_video_storage import get_coach_object_bytes
         from services.ffmpeg_audio_extract import extract_audio_mp3_for_whisper
-        ref = str(word_row["video_ref"])
-        if not ref.startswith("s3://"):
+        found = take_video_object(word_row["video_ref"], take)
+        if found is None:
+            return None
+        bucket, key = found
+        if not _worth_transcribing(database, take, coach_id):
             return None
         adapter = _speaker_permit_adapter(database, take)
-        bucket, _, key = ref[len("s3://"):].partition("/")
         audio = extract_audio_mp3_for_whisper(get_coach_object_bytes(bucket, key), max_seconds=600)
         # usage_surface stays "whisper_take", the ledger label this call
         # always carried (the transcriber's default); relabelling is a
@@ -273,8 +307,10 @@ def transcribe_take_word_video(database: Any, *, word_row: Any, coach_id: str) -
         text = (tr.get("text") or "").strip() if isinstance(tr, dict) else ""
         if not text:
             return None
-        database.set_coach_take_word_transcript(take_session_id=take,
-                                                coach_id=str(coach_id), transcript=text)
+        if not database.set_coach_take_word_transcript(
+                take_session_id=take, coach_id=str(coach_id), transcript=text,
+                video_ref=str(word_row["video_ref"])):
+            return None  # the video was replaced meanwhile; its own run follows
         record_take_word_pair(database, word_row=word_row, coach_id=coach_id,
                               final_text=text, final_kind="transcript")
         return text
@@ -285,6 +321,18 @@ def transcribe_take_word_video(database: Any, *, word_row: Any, coach_id: str) -
     except Exception as e:  # noqa: BLE001 — the word is saved either way
         _log.warning("take word transcript failed take=%s: %s", take, e, exc_info=True)
         return None
+
+
+def transcribe_take_word_video_in_background(database: Any, *, word_row: Any,
+                                             coach_id: str) -> None:
+    """The same, off the coach's request: reading the video, ffmpeg and
+    Whisper never hold the save (coaches never slow the loop)."""
+    if not isinstance(word_row, dict) or not word_row.get("video_ref"):
+        return
+    threading.Thread(
+        target=transcribe_take_word_video, args=(database,),
+        kwargs={"word_row": dict(word_row), "coach_id": str(coach_id)},
+        name="take-word-transcript", daemon=True).start()
 
 
 def unchanged_share(rows: Any) -> dict:

@@ -1,16 +1,24 @@
-"""Guest readout re-read + video-upload reject (bug batch 2026-07-13).
-
-BE-1: GET /v2/lab/recordings/<id>/readout — the unauth twin of the authed
-      re-read, so a signed-out user can poll for the async Say-It-Stronger
-      cards and re-open their recording without hitting the 401 → "couldn't
-      load these insights" screen. The signed Guest ID is required; a bare
-      session UUID is never authorization.
-BE-2: /v2/lab/recordings rejects a VIDEO upload with 415 AUDIO_ONLY — while
-      the mic's own audio/webm (.webm) still passes.
-
-Flask-route classes skip locally, run in CI (the known gotcha).
-
-Run: python3 -m unittest tests.test_guest_readout_video
+"""
+STORY    As a signed-out speaker, I want to reopen my own readout with my
+         guest pass but never someone else's, and to have a video upload
+         refused clearly, so that my recording stays private and the record
+         step stays audio-only.
+OUTCOME
+  O1  My guest pass (or my account, once claimed) opens my readout, with
+      its state.
+  O2  A bare Take id, or someone else's Take, answers 404 SESSION_NOT_FOUND
+      without saying whose it is; a malformed id answers 400.
+  O3  A video upload answers 415 AUDIO_ONLY; the mic's own audio/webm passes
+      the gate.
+PROVES   O1 -> test_the_guest_owner_reads_their_readout
+               test_claimed_owner_can_read
+               test_state_reflects_lifecycle
+         O2 -> test_bare_session_id_is_not_authorization
+               test_claimed_by_other_404s_without_leak
+               test_bad_uuid_400s
+         O3 -> test_a_video_upload_is_refused_as_audio_only
+               test_mic_audio_webm_is_NOT_rejected_as_video
+WHY      Bug batch 2026-07-13 (BE-1 guest re-read, BE-2 video reject).
 """
 from __future__ import annotations
 
@@ -79,6 +87,11 @@ class GuestReadoutTests(unittest.TestCase):
             resp, status = v2_lab_recording.v2_guest_get_recording_readout.__wrapped__(session_id)
             return resp.get_json(), status
 
+    def test_the_guest_owner_reads_their_readout(self):
+        body, status = self._call()
+        self.assertEqual(status, 200)
+        self.assertEqual((body["session_id"], body["state"], body["readout"]),
+                         (_SID, "readout_ready", self._READOUT))
 
     def test_bare_session_id_is_not_authorization(self):
         body, status = self._call(include_guest=False)
@@ -98,7 +111,7 @@ class GuestReadoutTests(unittest.TestCase):
                          "status": "readout_ready"}
         body, status = self._call(user_id="u1")
         self.assertEqual(status, 200)
-
+        self.assertEqual(body["readout"], self._READOUT)
 
     def test_bad_uuid_400s(self):
         _, status = self._call(session_id="not-a-uuid")
@@ -141,6 +154,11 @@ class VideoRejectTests(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
 
+    def test_a_video_upload_is_refused_as_audio_only(self):
+        for filename, ctype in (("talk.mp4", "video/mp4"), ("talk.webm", "video/webm"),
+                                ("talk.mov", "application/octet-stream")):
+            body, status = self._post(filename, ctype)
+            self.assertEqual((status, body["code"]), (415, "AUDIO_ONLY"), filename)
 
     def test_mic_audio_webm_is_NOT_rejected_as_video(self):
         # the live mic sends audio/webm (.webm) — it must pass the video gate

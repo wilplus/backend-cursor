@@ -8,12 +8,14 @@ rate limit, the optional auth, the request parsing and the 500 boundary.
 The answer comes from the first of these that claims the turn, in this
 order; each is best-effort, and a failure falls through to the next:
 
-  1. the Life Panel hashtag router (signed in, flag on, consented);
-  2. the goal-update intercept (signed in);
-  3. the audit intercept (signed in, AUDIT_SURFACE_ENABLED);
-  4. the presentation-change intercept;
-  5. the Lounge-bot deterministic intents (crisis, joke, off-mission);
-  6. the librarian (``services.master_doc_rag``), with the admin's private
+  1. the feedback check (signed in): an answer to "Did this feedback help
+     you?" or "What was missing?" (``services.feedback_check``);
+  2. the Life Panel hashtag router (signed in, flag on, consented);
+  3. the goal-update intercept (signed in);
+  4. the audit intercept (signed in, AUDIT_SURFACE_ENABLED);
+  5. the presentation-change intercept;
+  6. the Lounge-bot deterministic intents (crisis, joke, off-mission);
+  7. the librarian (``services.master_doc_rag``), with the admin's private
      notes and the Life Panel context for a participating user.
 
 ``finalize`` writes the turn (when the client opted in and is signed in) and
@@ -69,8 +71,8 @@ def _take_card_row(bot_client_id: str, take_card: dict, created_at: str) -> dict
 
 
 def _bot_metadata(*, intent, suggested_action, suggested_actions,
-                  bubbles) -> dict:
-    meta: dict[str, Any] = {"intent": intent}
+                  bubbles, extra=None) -> dict:
+    meta: dict[str, Any] = {**(extra or {}), "intent": intent}
     if suggested_action:
         meta["suggested_action"] = suggested_action
     if suggested_actions:
@@ -84,6 +86,7 @@ def persist_chat_turn(
     database, user_id, question, answer, *, suggested_action=None,
     suggested_actions=None, bubbles=None, intent=None,
     user_client_id=None, user_created_at=None, offer=None, take_card=None,
+    row_metadata=None,
 ):
     """BE-owned persistence of one Lounge chat turn (founder #2 — bubbles must
     never disappear): the user message and the bot reply, in lounge_messages,
@@ -119,7 +122,8 @@ def persist_chat_turn(
         "client_id": b_id, "role": "bot", "kind": "text", "body": a,
         "metadata": _bot_metadata(
             intent=intent, suggested_action=suggested_action,
-            suggested_actions=suggested_actions, bubbles=bubbles),
+            suggested_actions=suggested_actions, bubbles=bubbles,
+            extra=row_metadata),
         "client_created_at": now_iso,
     })
     if offer:
@@ -146,6 +150,7 @@ def finish_chat_turn(database, resp: dict, *, user_id, question,
             bubbles=resp.get("bubbles"), intent=intent,
             user_client_id=user_client_id, user_created_at=user_created_at,
             offer=resp.get("offer"), take_card=resp.get("take_card"),
+            row_metadata=resp.get("row_metadata"),
         )
         resp["persisted"] = bool(bot_cid)
         if bot_cid:
@@ -190,6 +195,21 @@ def _life_panel(user_id, question, _context, _history=None) -> Optional[tuple[di
     return _reply(answer, debug={"intent": "life_panel",
                                  "route": note.get("route"),
                                  "link": note.get("link")}), "life_panel"
+
+
+def _feedback_check(user_id, question, _context, _history=None) -> Optional[tuple[dict, str]]:
+    """WIL-74: the speaker's answer to the question after the Feedback walk
+    is saved and answered with the signed words, before any other voice can
+    read it as something else (a goal, a note, feedback for Will)."""
+    from services.db import db
+    from services.feedback_check import chat_turn
+    turn = chat_turn(db, user_id, question)
+    if not turn:
+        return None
+    meta = turn["row_metadata"]
+    return _reply(turn["answer"], suggested_action=meta.get("suggested_action"),
+                  row_metadata=meta,
+                  debug={"intent": "feedback_check"}), "feedback_check"
 
 
 def _goal_update(user_id, question, _context, _history=None) -> Optional[tuple[dict, str]]:
@@ -241,6 +261,8 @@ def _intercepts(user_id, app_config) -> list[tuple[str, Callable]]:
     life_on = bool(user_id and getattr(app_config, "LIFE_PANEL_ENABLED", False))
     audit_on = bool(user_id and getattr(app_config, "AUDIT_SURFACE_ENABLED", False))
     chain: list[tuple[str, Callable]] = []
+    if user_id:
+        chain.append(("feedback-check intercept failed user=%s: %s", _feedback_check))
     if life_on:
         chain.append(("life-panel intercept failed user=%s: %s", _life_panel))
     if user_id:

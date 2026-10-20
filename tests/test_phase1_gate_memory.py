@@ -1,14 +1,25 @@
-"""The core gate remembers a YES for a few seconds, and nothing else (S1,
-2026-10-08).
-
-With PLF1_PROCESSING_AUTHORIZATION_MODE=enforce, every core request resolved
-the caller's principal and asked the database for current authority: about
-three queries before every Ideal Text read. A read-only request may now reuse
-a YES this process got for the same caller within GATE_CACHE_SECONDS. A
-refusal is never remembered, a write always asks, and every authority or
-consent write in this process forgets everything.
+"""
+STORY    As a speaker, I want the app to open fast without the consent gate
+         re-asking the database on every read, while a refusal or any
+         consent change takes effect at once, so that speed never weakens
+         consent.
+OUTCOME
+  O1  A read reuses a recent yes (also the app-open status read's yes).
+  O2  A refusal is never remembered: the next read is asked and refused.
+  O3  A write always asks.
+  O4  A consent write forgets every remembered yes: yes, withdraw, and the
+      next read is asked again and refused.
+PROVES   O1 -> test_a_consent_write_forgets_the_remembered_yes,
+               test_the_app_open_status_read_answers_the_next_core_read
+         O2 -> test_the_app_open_status_read_answers_the_next_core_read
+         O3 -> test_a_write_always_asks
+         O4 -> test_a_consent_write_forgets_the_remembered_yes
+WHY      S1, 2026-10-08: about three queries ran before every Ideal Text read.
 """
 from __future__ import annotations
+
+from contextlib import suppress
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -60,3 +71,45 @@ def test_a_write_always_asks(app_client, gate):
     app_client.post(WRITE, headers=BEARER, json={})
     app_client.post(WRITE, headers=BEARER, json={})
     assert gate["asked"] == 3
+
+
+def test_a_consent_write_forgets_the_remembered_yes(app_client, gate):
+    assert app_client.get(READ, headers=BEARER).status_code != 403
+    assert app_client.get(READ, headers=BEARER).status_code != 403
+    assert gate["asked"] == 1                     # the yes was reused
+    # The speaker withdraws. Whatever the write answers, the gate forgets.
+    gate["refuse"] = True
+    with suppress(Exception):
+        ProcessingAuthorizationService(MagicMock()).set_consent_choice(
+            "owner-1", choice="coach_review", enabled=False,
+            idempotency_key="withdraw-1", client_version="test")
+    assert app_client.get(READ, headers=BEARER).status_code == 403
+    assert gate["asked"] == 2
+
+
+@pytest.mark.parametrize("refused", [False, True])
+def test_the_app_open_status_read_answers_the_next_core_read(
+        app_client, gate, monkeypatch, refused):
+    """Founder 2026-10-18: the app opens with the status read, and the core
+    reads right behind it ran the gate, which asked the database the same
+    question again. The status read's YES is the gate's YES for the next
+    few seconds; a refusal is still asked again, and refused again."""
+    reads: list = []
+
+    def one_trip(self, user_id, principal_id):
+        reads.append(user_id)
+        return "owner-1", {"authorized": True, "code": "PROCESSING_AUTHORIZED",
+                           "gate_mode": "enforce"}
+
+    monkeypatch.setattr(ProcessingAuthorizationService, "status_in_one_trip",
+                        one_trip)
+    gate["refuse"] = refused
+    assert app_client.get("/v2/processing-authorization",
+                          headers=BEARER).status_code == 200
+    response = app_client.get(READ, headers=BEARER)
+    if refused:
+        assert response.status_code == 403
+        assert len(reads) == 2
+    else:
+        assert response.status_code != 403
+        assert len(reads) == 1

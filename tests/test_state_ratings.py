@@ -1,49 +1,91 @@
-"""willab — state-generic ternary ratings (SPEC.md v3 §3.2, §6, §17).
-
-services/state_ratings.py.
-
-WHAT THIS PINS DOWN:
-  * the INSTRUMENT — three perceptual positions plus explicit uncertainty and
-    technical-audio states, all stored without coercion;
-  * STRICT TYPES — this is training data, so a truthy string is refused
-    rather than coerced. A coerced value records a verdict no human gave and
-    is indistinguishable from a real one afterwards;
-  * the OPERATIONAL-DEFINITION GATE (§1.4) — a state with no written
-    definition cannot be asked about, so validation refuses it;
-  * LANE derivation — verified rating provenance, never clip source, decides
-    whether a coach act is panel-grade. Seeded/historical rows remain
-    `bootstrap` and cannot be reconstructed as human-panel evidence later;
-  * AGGREGATION — bootstrap is excluded from the panel by default;
-    `unrateable` rows are counted but never aggregated;
-  * QUALITY — sample size DOMINATES agreement, by decision. A five-rater
-    panel at 60% must outweigh a two-rater unanimous one, because the panel
-    estimates a population percept and two people agreeing is a small sample,
-    not a strong finding.
-
-Run: python3 -m unittest tests.test_state_ratings
+"""
+STORY    As a coach, I want my rating stored exactly as I gave it, blind by
+         default, so that the training data holds only real, independent
+         human judgements.
+OUTCOME
+  O1  Never-2: a rating is stored as given and marked blind unless the route
+      says the rater saw the machine's read.
+  O2  A wrong-typed value (a truthy string, a bool) is refused, never coerced.
+  O3  A state with no written definition cannot be rated.
+  O4  The lane comes from the rating act's provenance: an unverified coach
+      act is bootstrap, never panel.
+  O5  Aggregation leaves out bootstrap rows and counts "audio unclear" apart.
+  O6  A five-rater panel at 60% outweighs a unanimous pair.
+PROVES   O1 -> test_blind_is_the_default_and_the_answer_is_kept
+         O2 -> test_truthy_strings_are_refused_not_coerced
+         O3 -> test_a_state_without_a_definition_is_refused
+         O4 -> test_lane_comes_from_provenance
+         O5 -> test_bootstrap_and_unclear_rows_stay_out_of_the_label
+         O6 -> test_panel_size_outweighs_agreement
 """
 from __future__ import annotations
 
 import unittest
 
 from services.state_ratings import (
+    aggregate,
+    quality,
+    resolve_lane,
     validate_rating,
 )
 
+
+class RatingIntakeTests(unittest.TestCase):
+    def test_blind_is_the_default_and_the_answer_is_kept(self):
+        row, err = validate_rating({"state_id": "confidence",
+                                    "value": "in_between"})
+        self.assertIsNone(err)
+        self.assertEqual(row["value"], "in_between")
+        self.assertIs(row["saw_model_output"], False)
+        # Only the route can say the rater saw the machine's read.
+        row, _ = validate_rating({"state_id": "confidence", "value": "yes",
+                                  "saw_model_output": True})
+        self.assertIs(row["saw_model_output"], False)
+        row, _ = validate_rating({"state_id": "confidence", "value": "yes"},
+                                 saw_model_output=True)
+        self.assertIs(row["saw_model_output"], True)
+
+    def test_truthy_strings_are_refused_not_coerced(self):
+        for payload in ({"state_id": "confidence", "value": True},
+                        {"state_id": "confidence", "value": "Yes"},
+                        {"state_id": "confidence", "value": "true"},
+                        {"state_id": "confidence", "value": "yes",
+                         "unrateable": "true"}):
+            row, err = validate_rating(payload)
+            self.assertIsNone(row, payload)
+            self.assertTrue(err)
+
+    def test_a_state_without_a_definition_is_refused(self):
+        row, err = validate_rating({"state_id": "charisma", "value": "yes"})
+        self.assertIsNone(row)
+        self.assertIn("operational definition", err)
+
+
+class LaneAndAggregationTests(unittest.TestCase):
+    def test_lane_comes_from_provenance(self):
+        self.assertEqual(resolve_lane(is_coach=True), "bootstrap")
+        self.assertEqual(resolve_lane(is_coach=True, panel_grade=True), "coach")
+        self.assertEqual(resolve_lane(is_coach=False), "game_peer")
+        self.assertEqual(resolve_lane(is_coach=False, is_owner=True),
+                         "game_owner")
+
+    def test_bootstrap_and_unclear_rows_stay_out_of_the_label(self):
+        label = aggregate([
+            {"lane": "coach", "value": "yes"},
+            {"lane": "game_peer", "value": "yes"},
+            {"lane": "coach", "value": "audio_unclear"},
+            {"lane": "bootstrap", "value": "no"},
+            {"lane": "bootstrap", "value": "no"},
+            {"lane": "game_owner", "value": "no"},
+        ])
+        self.assertEqual(label["n_raters"], 2)
+        self.assertEqual(label["by_value"], {"yes": 2, "in_between": 0, "no": 0})
+        self.assertEqual(label["unrateable_n"], 1)
+        self.assertIsNone(aggregate([{"lane": "bootstrap", "value": "yes"}]))
+
+    def test_panel_size_outweighs_agreement(self):
+        self.assertGreater(quality(5, 0.6), quality(2, 1.0))
+
+
 if __name__ == "__main__":
     unittest.main()
-
-
-class AnchoredSelfCheckTests(unittest.TestCase):
-    """"Do you agree?" on the Confident Voice card (founder 2026-08-15).
-
-    The card shows the machine's read and THEN asks. Its answer is routing to
-    the Voice Album only; it must never enter the rating corpus."""
-
-    def test_blind_is_the_DEFAULT_not_a_choice(self):
-        # A caller that forgets gets the old, stricter behaviour. The only
-        # way to record an anchored row is for a route to say so.
-        row, err = validate_rating({"state_id": "confidence",
-                                    "value": "yes"})
-        self.assertIsNone(err)
-        self.assertIs(row["saw_model_output"], False)

@@ -484,12 +484,15 @@ def _publication_failure_key(arc_id: str, generation: int) -> str:
 
 def _note_publication_failure(arc_id: str, generation: int) -> None:
     """Count one failed delivery for this generation; best-effort."""
+    _count_failure(_publication_failure_key(arc_id, generation), arc_id)
+
+
+def _count_failure(key: str, arc_id: str) -> None:
     try:
         from services import job_queue
         conn = job_queue.get_redis()
         if conn is None:
             return
-        key = _publication_failure_key(arc_id, generation)
         conn.incr(key)
         conn.expire(key, PUBLICATION_FAILURE_WINDOW_SECONDS)
     except Exception:
@@ -500,12 +503,16 @@ def _note_publication_failure(arc_id: str, generation: int) -> None:
 def _publication_resting(arc_id: str, generation: int) -> bool:
     """True when this generation has failed enough times to rest. Fails open:
     an unreadable broker means keep trying, the behaviour before the count."""
+    return _failed_enough(_publication_failure_key(arc_id, generation), arc_id)
+
+
+def _failed_enough(key: str, arc_id: str) -> bool:
     try:
         from services import job_queue
         conn = job_queue.get_redis()
         if conn is None:
             return False
-        raw = conn.get(_publication_failure_key(arc_id, generation))
+        raw = conn.get(key)
         return int(raw or 0) >= PUBLICATION_FAILURES_BEFORE_REST
     except Exception:
         logger.warning("ideal-text publication failure count unreadable "
@@ -537,10 +544,15 @@ def sweep_pending_publications(database: Any, limit: int = 100) -> int:
 
 def publish_for_arc(database: Any, arc_id: str,
                     actor_id: str | None = None, *,
-                    enqueue_on_failure: bool = True) -> dict | None:
-    """Publish one immutable head; retry once if a source mutates mid-build."""
+                    enqueue_on_failure: bool = True,
+                    sessions: list | None = None) -> dict | None:
+    """Publish one immutable head; retry once if a source mutates mid-build.
+
+    ``sessions``: the arc's sessions when the caller has just read them (the
+    on-open repair has, for its owner check), so they are not read twice."""
     try:
-        sessions = database.takes.get_arc_sessions(arc_id) or []
+        if sessions is None:
+            sessions = database.takes.get_arc_sessions(arc_id) or []
         spoken = _completed_spoken(sessions)
         if not spoken:
             return None
@@ -634,8 +646,19 @@ MISSING_HEAD_PUBLISH_WINDOW_SECONDS = 30.0
 _missing_head_publish_attempts: dict[str, float] = {}
 
 
+def _open_failure_key(arc_id: str, generation: int, sessions: Any) -> str:
+    """What one on-open repair attempt was made against: the generation and
+    the completed Takes. A new Take finishing, or an edit, is a new key, so
+    the repair is tried afresh exactly when the source has changed."""
+    spoken = sorted(_completed_spoken(sessions),
+                    key=lambda row: row.get("take_index") or 0)
+    latest = str(spoken[-1].get("id") or "") if spoken else ""
+    return (f"willab:ideal-text-publish:open-failures:{arc_id}:{generation}:"
+            f"{len(spoken)}:{latest}")
+
+
 def read_core_or_publish(database: Any, arc_id: str, actor_id: str, *,
-                         is_owner: Any) -> dict | None:
+                         owner_read: Any) -> dict | None:
     """The owner-checked cold-open read; when there is no head at all, one
     publication and a second read (founder 2026-09-28, decision 16A: "build
     and save it the moment it's opened").
@@ -648,9 +671,20 @@ def read_core_or_publish(database: Any, arc_id: str, actor_id: str, *,
     talk" section with no slide picture. Publishing here repairs the head
     once, through the same writer every other boundary uses.
 
-    Only the project's owner triggers it (``is_owner``), at most once per arc
-    per window, and only when the read found no head -- an existing head is
-    never rebuilt from here. A failed READ still raises to the caller."""
+    Only the project's owner triggers it (``owner_read`` answers
+    ``(owned, sessions)``), at most once per arc per window, and only when
+    the read found no head -- an existing head is never rebuilt from here. A
+    failed READ still raises to the caller.
+
+    A REPAIR THAT KEEPS FAILING RESTS (founder 2026-10-18: a 404 took 5.9 s,
+    3.6 s of it this build, and the client then read the composing lane
+    anyway). A build that fails for a lasting reason failed again on every
+    open, every window, on every worker. After
+    ``PUBLICATION_FAILURES_BEFORE_REST`` failures against the same generation
+    and the same completed Takes, the open answers "pending" at once; a new
+    Take or an edit makes a new key and the repair runs again. The count is
+    the on-open path's own, so it never puts the worker's sweep to rest.
+    """
     import time
 
     core_read = database.get_ideal_text_document_core_v2(arc_id, actor_id)
@@ -663,9 +697,28 @@ def read_core_or_publish(database: Any, arc_id: str, actor_id: str, *,
         return None
     _missing_head_publish_attempts[key] = now
     try:
-        if not is_owner():
+        from services.parallel import run_in_parallel
+        from services.request_context import timed
+        # The owner check and the generation fence go out together.
+        (owned, sessions), generation = run_in_parallel(
+            owner_read,
+            lambda: database.get_ideal_text_document_generation(key))
+        if not owned:
             return None
-        published = publish_for_arc(database, key, actor_id)
+        if not isinstance(generation, int):
+            # Nothing to publish against: the build would refuse
+            # (GENERATION_REQUIRED) after reading the sessions again.
+            return None
+        failure_key = _open_failure_key(key, generation, sessions)
+        if _failed_enough(failure_key, key):
+            logger.info("ideal-text core on-open publish resting arc=%s "
+                        "generation=%s", arc_id, generation)
+            return None
+        with timed("ideal_publish"):
+            published = publish_for_arc(
+                database, key, actor_id, sessions=list(sessions or []))
+        if published is None:
+            _count_failure(failure_key, key)
     except Exception as error:
         logger.warning("ideal-text core on-open publish failed arc=%s: %s",
                        arc_id, error)

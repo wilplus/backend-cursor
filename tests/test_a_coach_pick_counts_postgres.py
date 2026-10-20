@@ -1,9 +1,17 @@
-"""0398 on a disposable database: a coach's pick is frozen once with its
-trace, its render is receipted, it sits beside an 80/20 row on the same
-moment, and the draw's own shape is still enforced.
-
-Founder 2026-09-29, decision 3. The target must be a disposable local
-database whose name starts with ``willab_confident_moment_``.
+"""
+STORY    As the founder, I want a coach's chosen exercise frozen once, with the
+         reason it was chosen, and its showing receipted, so that what the
+         speaker practises is traceable and never silently swapped.
+OUTCOME
+  O1  A coach pick is frozen once (a replay naming another exercise returns
+      the first row) under the coach policy, with no seed and no draw.
+  O2  Its match trace is stored once, with outcome coach_chosen.
+  O3  Showing the card is receipted once against that frozen pick; a card
+      for another exercise is refused by name.
+PROVES   O1, O2 -> test_a_coach_pick_is_frozen_once_with_its_trace
+         O3     -> test_showing_the_coach_pick_is_receipted_once
+WHY      Migration 0398 (founder 2026-09-29, decision 3). Runs only on a
+         disposable database whose name starts with willab_confident_moment_.
 """
 from __future__ import annotations
 
@@ -85,3 +93,28 @@ def test_a_coach_pick_is_frozen_once_with_its_trace(db):
     assert trace["fit"] is None
     assert trace["matching_policy_version"] == "exercise-coach-request-v1"
     assert trace["trace"]["candidates"][0]["outcome"] == "coach_chosen"
+
+
+def _rendered(db, owner, take, snippet, exercise):
+    with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            "SELECT * FROM public.record_exercise_rendered_v2(%s, %s, %s, %s)",
+            (owner, take, snippet, exercise))
+        return dict(cur.fetchone())
+
+
+def test_showing_the_coach_pick_is_receipted_once(db):
+    owner, take, snippet = _ids()
+    pick = _coach(db, owner, take, snippet)
+    seen = _rendered(db, owner, take, snippet, "coach-pick")
+    assert seen["assignment_id"] == pick["id"]
+    assert (seen["exercise_id"], seen["exercise_version"]) == ("coach-pick", 3)
+    again = _rendered(db, owner, take, snippet, "coach-pick")
+    assert again["id"] == seen["id"]
+    with db.cursor() as cur:
+        cur.execute("SELECT count(*) FROM public.confident_voice_exercise_exposures "
+                    "WHERE assignment_id = %s", (pick["id"],))
+        assert cur.fetchone()[0] == 1
+    with pytest.raises(psycopg2.errors.RaiseException,
+                       match="EXERCISE_RENDERED_WRONG_EXERCISE"):
+        _rendered(db, owner, take, snippet, "not-the-pick")

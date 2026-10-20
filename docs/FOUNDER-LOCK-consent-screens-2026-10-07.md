@@ -100,3 +100,50 @@ looks perfect". It replaces the 2026-10-07 prototype as the reference.
 - **Read more:** Privacy section 4a in a window, **Continue** to close.
 - **Data & consent:** the WhatsApp card (Remove, with its confirm) and Stop
   sharing on a shared Take, in the words shown with dashed outlines.
+
+## Amended 2026-10-18: one screen (founder, in chat)
+
+Approved on the clickable prototype "Condensed Consent Screens"
+<https://claude.ai/artifact/6v4vEhppupQc9LC2tzbD6H> (version 6; copy in
+`docs/design/consent-screens-2026-10-18.html`, the "One screen" flow): "dev
+it!". It replaces the first-time walk of 2026-10-07 and 2026-10-15 as the
+reference. The founder's words in the same chat, verbatim: "dont ask where
+do you live just a choose chountry is neough and make it *", "shorten that
+too!" (the sentence above the button), "bring it back to the center",
+"so there is no need for the screen that asks you before te take, cause if
+you don't agree, you don't enter" and "remove that screen".
+
+- **One screen instead of six.** Welcome, then one acceptance screen: the
+  voice mark, the agreement text, the three documents as underlined links in
+  one centred row (**Terms of Service · Privacy Policy · How AI is used
+  here**, each with "read ✓" once opened), a dropdown reading **Choose your
+  country \*** (Poland, then United States (California), then the rest by
+  name; nothing preselected except the person's own earlier answer), the one
+  tick **"I agree that WillpowerLab may process my recordings. \*"**, then
+  **Agree and continue** / **Do not agree**. No heading, no Back.
+- **The age and the Terms are accepted by the button**, as the agreement
+  text says; the age tick is gone. The recordings tick stays its own tick.
+- **The documents open in a window** (the whole screen on a phone, a window
+  in the middle on a computer): title, version and **Continue** stay still,
+  only the text scrolls. They never gate the button. The AI-notice exposure
+  row is written when that window opens.
+- **No training question on the screen, and no "Turn on the learning?"
+  before a Take.** That screen is removed from the app. The Help improve
+  WillpowerLab card on Data & consent stays until the Privacy Policy says
+  otherwise (below).
+- **Nothing was recorded** is unchanged; "Go back" returns to the screen
+  and "Read the documents again" opens the Terms window on it.
+- Fits a 390×844 phone and a computer without scrolling; on a 375×667 phone
+  it scrolls by under 50 px.
+
+**The words above the button are the policy's `agreement_copy`** and change
+only with a policy republish. The founder's approved text, three paragraphs,
+is in `legal/phase1-2026.1/copy/agreement-3.2.txt`. Until a policy carrying
+it is published the screen shows agreement 3.1 in the same layout. The third
+paragraph (anonymised words from practice help improve the feedback for every
+speaker) can go live only together with a Privacy Policy and Terms that make
+training on anonymised text part of the service (today's 4a makes it a
+consent); that is a counsel question (21-counsel-questions-2026-10.md).
+
+Training wording v4's "the third thing to confirm" (amendment of 2026-10-15)
+no longer applies to the first-time screen.

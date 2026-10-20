@@ -132,7 +132,7 @@ def v2_explore_get_ideal_text_core(arc_id):
         from services.ideal_text_core_snapshot import read_core_or_publish
         core_read = read_core_or_publish(
             db, arc_id, str(request.user_id),
-            is_owner=lambda: _arc_owned_by_caller(arc_id)[0])
+            owner_read=lambda: _arc_owned_by_caller(arc_id))
     except IdealTextCoreReadError:
         # A FAILED read is not "no document yet" (founder 2026-09-26: a
         # dropped connection showed an existing Ideal Text as missing). 503
@@ -455,6 +455,31 @@ def v2_explore_arc_review_summary(arc_id):
         logger.error("review summary failed arc=%s: %s", arc_id, e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return jsonify({"code": "V2_ERROR", "error": "Failed to save the summary"}), 500
+
+
+@v2_bp.route("/explore/arc/<arc_id>/feedback-check", methods=["POST"])
+@require_auth
+def v2_explore_arc_feedback_check(arc_id):
+    """The speaker's tap on "Did this feedback help you?" (WIL-74): Yes, Not
+    really, or Skip under "What was missing?". Body: {take_session_id,
+    choice}. Writes the tap and the signed reply into the Lounge.
+    200 {messages} · 400 · 404 · 500"""
+    from services.feedback_check import CheckError, answer
+    try:
+        owned, sessions = _arc_owned_by_caller(arc_id)
+        body = request.get_json(silent=True) or {}
+        take = str(body.get("take_session_id") or "")
+        if not owned or take not in {str(s.get("id")) for s in sessions}:
+            return jsonify({"code": "NOT_FOUND", "error": "take not found"}), 404
+        messages = answer(db, user_id=str(request.user_id), arc_id=str(arc_id),
+                          take_session_id=take, choice=str(body.get("choice") or ""))
+        return jsonify({"messages": messages}), 200
+    except CheckError as e:
+        return jsonify({"code": e.code, "error": str(e)}), e.status
+    except Exception as e:
+        logger.error("feedback check failed arc=%s: %s", arc_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to save the answer"}), 500
 
 
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/notes", methods=["PUT"])

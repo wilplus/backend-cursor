@@ -1,19 +1,21 @@
-"""GET /v2/explore/arc/<arc_id>/ideal-text — slide linkage (FE handoff
-2026-08-03, FE PR #222): the two additive fields the interleaved reading
-view needs cross-device:
-
-  * top-level `presentation_ref` — the arc's served deck PDF url (first
-    non-null across takes in take order, never clobbered by a deckless
-    retake);
-  * `pieces[]` — one entry per "\n\n"-paragraph of the served `text`,
-    with `slide_index` attached ONLY when the machine assembly's piece
-    list aligns 1:1 with the served paragraphs (anything weaker degrades
-    to null and the FE falls back to its exact-count zip).
-
-The provenance must NEVER put the composer (its LLM pass included) on
-this GET — the legacy path reads only the persisted compose cache.
-
-Run: python3 -m unittest tests.test_ideal_text_slide_linkage
+"""
+STORY    As a speaker, I want each paragraph of my Ideal Text tied to its
+         slide and my deck link kept, and my locked words shown even when
+         composing fails, so that I can read my talk slide by slide.
+OUTCOME
+  O1  Pieces that line up 1:1 with the served paragraphs carry their slide.
+  O2  Pieces that do not line up all degrade to slide_index null; the
+      paragraph text still serves.
+  O3  presentation_ref is the first deck across Takes; a later deckless
+      Take never clobbers it.
+  O4  The GET never runs the composer (only the stored compose cache is read).
+  O5  A compose failure serves the pinned locked text, locks still on the wire.
+PROVES   O1 -> test_aligned_pieces_carry_their_slide_index
+         O2 -> test_misaligned_counts_degrade_every_index_to_null
+         O3 -> test_a_deckless_retake_keeps_the_first_deck
+         O4 -> test_aligned_pieces_carry_their_slide_index (composer patched to explode)
+         O5 -> test_compose_exception_serves_the_pinned_state_with_its_locks
+WHY      FE PR #222 (slide linkage); SPEC 12.1 field report #5 (compose fallback).
 """
 from __future__ import annotations
 
@@ -77,10 +79,34 @@ class SlideLinkageTests(unittest.TestCase):
                  patch.object(db, "get_user_arc_ideal_notes",
                               return_value=None), \
                  patch.object(db, "get_best_presentation_cache",
-                              return_value=cache, create=True):
+                              return_value=cache, create=True), \
+                 patch("services.ideal_text_block.maybe_assemble_ideal_text",
+                       side_effect=AssertionError("composer ran on GET")) \
+                    as composer:
                 out = v2_explore_ideal_text.v2_explore_get_ideal_text.__wrapped__(ARC)
             resp, status = out if isinstance(out, tuple) else (out, 200)
+            self.assertEqual(composer.call_count, 0)
             return resp.get_json(), status
+
+    def test_aligned_pieces_carry_their_slide_index(self):
+        sessions = [_sess("t1", 1, presentation_ref=DECK)]
+        row = _row(auto_text="Para one.\n\nPara two.")
+        cache = {"signature": "sig", "payload": {
+            "presentation_ref": DECK,
+            "slides": [_pick(3, "Para one.", "sn1", "t1", 1),
+                       _pick(5, "Para two.", "sn2", "t1", 1)]}}
+        body, status = self._get(sessions=sessions, row=row, cache=cache)
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            [(p["text"], p["slide_index"], p["snippet_id"])
+             for p in body["pieces"]],
+            [("Para one.", 3, "sn1"), ("Para two.", 5, "sn2")])
+
+    def test_a_deckless_retake_keeps_the_first_deck(self):
+        sessions = [_sess("t1", 1, presentation_ref=DECK), _sess("t2", 2)]
+        body, status = self._get(sessions=sessions, row=_row())
+        self.assertEqual(status, 200)
+        self.assertEqual(body["presentation_ref"], DECK)
 
 
     def test_misaligned_counts_degrade_every_index_to_null(self):
@@ -101,10 +127,7 @@ class SlideLinkageTests(unittest.TestCase):
         self.assertEqual(pieces[1]["text"], "Para two.")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class ComposeFailureFallbackTests(unittest.TestCase):
     """SPEC §12.1 (founder 2026-08-14): a compose exception used to serve
     the RAW machine text — stored parts no longer joined, the parts block
@@ -151,3 +174,7 @@ class ComposeFailureFallbackTests(unittest.TestCase):
         parts = body.get("parts")
         self.assertIsNotNone(parts)
         self.assertEqual([p["locked"] for p in parts], [True])
+
+
+if __name__ == "__main__":
+    unittest.main()

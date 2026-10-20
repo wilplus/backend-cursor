@@ -1,11 +1,18 @@
-"""Archive a project (founder 2026-09-26, decisions log N14).
-
-The ⋯ on each project row offers Archive: the project leaves the list and
-nothing else changes. Pinned here: only the owner's live project is touched,
-restore brings it back, the list hides archived projects unless Data &
-consent asks for them, and a project that is not the owner's is a 404.
-
-Flask-route classes skip locally without app deps and run in CI.
+"""
+STORY    As a speaker, I want to archive a project so it leaves my list and
+         can be restored, so that my list stays tidy without losing anything.
+OUTCOME
+  O1  Archive stamps archived_at only on the owner's own, not-erased project.
+  O2  Restore clears archived_at on that same project.
+  O3  A project that is not the owner's (or is erased) is a 404.
+  O4  The list hides an archived project; Data & consent (include_archived)
+      still lists it, marked archived.
+PROVES   O1 -> test_archive_touches_only_the_owners_live_project
+         O2 -> test_restore_brings_it_back
+         O3 -> test_not_the_owners_or_erased_is_404
+         O4 -> test_the_list_hides_an_archived_project,
+               test_data_and_consent_still_lists_it
+WHY      Founder 2026-09-26, decisions log N14.
 """
 from __future__ import annotations
 
@@ -14,15 +21,6 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from services.project_archive import ProjectArchiveError, ProjectArchiveService
-
-try:
-    from flask import Flask, request
-
-    _IMPORT_ERROR = None
-except Exception as e:  # pragma: no cover
-    Flask = None
-    request = None
-    _IMPORT_ERROR = e
 
 PROJECT = "22222222-2222-4222-8222-222222222222"
 OTHER = "33333333-3333-4333-8333-333333333333"
@@ -57,8 +55,27 @@ def _service(rows):
     return ProjectArchiveService(SimpleNamespace(client=client)), query, client
 
 
+OWNER_FILTERS = [("eq", "id", PROJECT), ("eq", "owner_principal_id", "p1"),
+                 ("is", "tombstoned_at", "null")]
+
+
 class ServiceTests(unittest.TestCase):
 
+    def test_archive_touches_only_the_owners_live_project(self):
+        service, query, client = _service(
+            [{"id": PROJECT, "archived_at": "2026-09-26T10:00:00+00:00"}])
+        out = service.archive("p1", PROJECT)
+        client.table.assert_called_once_with("projects")
+        self.assertTrue(query.payload["archived_at"])
+        self.assertEqual(query.filters, OWNER_FILTERS)
+        self.assertEqual(out["project_id"], PROJECT)
+
+    def test_restore_brings_it_back(self):
+        service, query, _client = _service([{"id": PROJECT, "archived_at": None}])
+        out = service.restore("p1", PROJECT)
+        self.assertEqual(query.payload, {"archived_at": None})
+        self.assertEqual(query.filters, OWNER_FILTERS)
+        self.assertIsNone(out["archived_at"])
 
     def test_not_the_owners_or_erased_is_404(self):
         service, _query, _client = _service([])
@@ -99,3 +116,8 @@ class FeedTests(unittest.TestCase):
         out = self._feed(False)
         self.assertEqual([t["arc_id"] for t in out], [PROJECT])
         self.assertFalse(out[0]["archived"])
+
+    def test_data_and_consent_still_lists_it(self):
+        out = self._feed(True)
+        self.assertEqual([(t["arc_id"], t["archived"]) for t in out],
+                         [(PROJECT, False), (OTHER, True)])

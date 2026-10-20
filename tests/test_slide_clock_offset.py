@@ -1,63 +1,81 @@
-"""F1 — the MEASURED audio-vs-UI clock offset (2026-07-26).
-
-Pause-snap guesses the recorder warm-up by hunting a silence near each tap.
-The FE can measure it instead. This pins that correction.
-
-  C-1  the shift is exact, order/shape preserving, and clamps at 0;
-  C-2  a missing / malformed / absurd offset degrades to TODAY's behaviour —
-       an unusable measurement must never corrupt the timeline;
-  C-3  validation rejects an out-of-range value loudly (seconds-sent-as-ms is
-       the classic bug) instead of clamping it into something plausible;
-  C-4  the whole pipeline inherits the correction from one place;
-  C-5  a take with no offset is byte-identical to before this shipped.
-
-Run: ./venv/bin/python -m unittest tests.test_slide_clock_offset
+"""
+STORY    As a speaker using slides, I want my words matched to the right slide
+         even when the recorder starts late, so that each slide's paragraph of
+         my Ideal Text has the words I said while it was on screen.
+         (Critical path: record -> process -> Ideal Text.)
+OUTCOME
+  O1  A measured offset moves every slide tap onto the audio clock by exactly
+      that amount (never before 0), so the first words after a tap land on
+      the new slide instead of the old one.
+  O2  No offset, or one that is unusable (zero, not a number, absurd), leaves
+      the timeline exactly as recorded.
+  O3  The intake refuses an out-of-range offset loudly (seconds sent as ms is
+      the classic bug) and keeps a sane one as sent.
+PROVES   O1 -> test_a_measured_offset_moves_the_first_words_onto_the_new_slide
+         O2 -> test_no_or_unusable_offset_changes_nothing
+         O3 -> test_the_intake_refuses_an_out_of_range_offset
+WHY      F1 (2026-07-26): the recorder warm-up put the first words after a tap
+         on the previous slide.
 """
 from __future__ import annotations
 
 import unittest
 
-from services.slide_word_split import (
-    apply_clock_offset,
-    context_with_clock_offset,
-)
+from services.intake_context import IntakeContextError, validate_intake_context_body
+from services.slide_word_split import build_slide_transcripts, context_with_clock_offset
+
+SLIDES = [{"title": "Intro"}, {"title": "Plan"}, {"title": "Ask"}]
 
 
 def _adv(*t_ms):
     return [{"index": i, "t_ms": t} for i, t in enumerate(t_ms)]
 
 
-class DegradeTests(unittest.TestCase):
-    """C-2 — an unusable measurement must fall back, never corrupt."""
-
-    def test_missing_zero_and_malformed_are_all_no_ops(self):
-        src = _adv(0, 5000)
-        for bad in (None, 0, "300", True, False, [], {}, float("nan")):
-            self.assertIs(apply_clock_offset(src, bad), src, repr(bad))
+def _w(word, start, end):
+    return {"word": word, "start": start, "end": end}
 
 
-    def test_empty_or_non_list_advances(self):
-        self.assertEqual(apply_clock_offset([], 300), [])
-        self.assertIsNone(apply_clock_offset(None, 300))
-
-    def test_a_malformed_entry_passes_through_untouched(self):
-        out = apply_clock_offset([{"index": 0, "t_ms": True},
-                                  {"index": 1, "t_ms": 5000}], 300)
-        self.assertIs(out[0]["t_ms"], True)      # bool never treated as 1ms
-        self.assertEqual(out[1]["t_ms"], 4700)
+# The speaker taps NEXT at 5.0 s and 9.0 s on the UI clock. The recorder
+# started 300 ms late, so on the AUDIO clock the slides changed at 4.7 s and
+# 8.7 s, and "budget" (4.8 s) and "please" (8.8 s) were said on the new slide.
+WORDS = [_w("hello", 1.0, 1.4), _w("budget", 4.8, 5.2),
+         _w("approve", 7.0, 7.4), _w("please", 8.8, 9.2)]
 
 
-class ContextTests(unittest.TestCase):
-    """C-4/C-5 — one place corrects it; no offset means no change at all."""
+class ClockOffsetTests(unittest.TestCase):
 
+    def test_a_measured_offset_moves_the_first_words_onto_the_new_slide(self):
+        raw = {"slide_advances": _adv(100, 5000, 9000)}
+        uncorrected = build_slide_transcripts(WORDS, raw["slide_advances"], SLIDES)
+        # Without the correction the words sit on the slide before the tap.
+        self.assertEqual([s["transcript"] for s in uncorrected],
+                         ["hello budget", "approve please", ""])
 
-    def test_out_of_range_offset_leaves_the_context_alone(self):
-        ctx = {"slide_advances": _adv(0, 5000),
-               "slide_clock_offset_ms": 999999}
-        self.assertIs(context_with_clock_offset(ctx), ctx)
+        ctx = context_with_clock_offset({**raw, "slide_clock_offset_ms": 300})
+        # Exact shift, order and shape kept; the first tap clamps at 0.
+        self.assertEqual(ctx["slide_advances"], _adv(0, 4700, 8700))
+        slides = build_slide_transcripts(WORDS, ctx["slide_advances"], SLIDES)
+        self.assertEqual([s["transcript"] for s in slides],
+                         ["hello", "budget approve", "please"])
 
-    def test_non_dict_context(self):
+    def test_no_or_unusable_offset_changes_nothing(self):
+        for offset in (None, 0, float("nan"), True, "300", 999_999):
+            ctx = {"slide_advances": _adv(0, 5000), "slide_clock_offset_ms": offset}
+            self.assertIs(context_with_clock_offset(ctx), ctx, repr(offset))
+        # A tap that is not a number is passed through untouched; the rest move.
+        ctx = context_with_clock_offset({
+            "slide_advances": [{"index": 0, "t_ms": True}, {"index": 1, "t_ms": 5000}],
+            "slide_clock_offset_ms": 300})
+        self.assertEqual(ctx["slide_advances"],
+                         [{"index": 0, "t_ms": True}, {"index": 1, "t_ms": 4700}])
         self.assertIsNone(context_with_clock_offset(None))
+
+    def test_the_intake_refuses_an_out_of_range_offset(self):
+        with self.assertRaisesRegex(IntakeContextError, "slide_clock_offset_ms"):
+            validate_intake_context_body({"slide_clock_offset_ms": 300_000})
+        self.assertEqual(
+            validate_intake_context_body(
+                {"slide_clock_offset_ms": 300})["slide_clock_offset_ms"], 300)
 
 
 if __name__ == "__main__":

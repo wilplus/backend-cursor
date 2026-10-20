@@ -1,28 +1,21 @@
-"""A subject with a practice recording can actually be erased.
-
-B-4 (major), audit 2026-09-22.
-
-`services/data_purge.py` has emitted storage targets carrying
-`source_relation = 'processing_practice_objects'` since migration 0334 gave
-practice audio its own registry. Neither function that consumes them knew the
-relation existed:
-
-  * `freeze_phase1_purge_inventory_v4` accepted `processing_audio_objects` and
-    `processing_orphan_objects`, and its `ELSE` raised
-    `PURGE_STORAGE_TARGET_SOURCE_INVALID`;
-  * `mark_phase1_storage_object_purged_v1` had the same two branches and
-    raised `PURGE_OBJECT_SOURCE_INVALID`.
-
-So for a subject whose only stored audio is a practice recording the request
-was written, the freeze refused, and the row sat at `requested` for ever with
-nothing erased. Not a partial deletion — no deletion, and a record saying one
-had been asked for. The table was always ready: 0334 gave it `deleted_at`,
-commented "stamped by the purge once the object is gone from storage, mirrors
-the sibling tables". Only the two functions were never told.
-
-These cases EXECUTE the real functions rather than reading their text. The
-whole finding is that a function refuses something, and only calling it can
-show that it no longer does. The target must be a disposable local database.
+"""
+STORY    As a speaker whose only recording is a practice attempt, I want my
+         deletion request to actually erase it, so that "delete my account"
+         deletes everything, and nobody else can fold my recording into
+         their erasure. (Deletion.)
+OUTCOME
+  O1  The freeze accepts my practice object (the request moves on, the
+      target is pending), and marking it purged stamps deleted_at once.
+  O2  Someone else's request cannot freeze my object.
+  O3  Every target kind the orchestrator sends (FREEZE_TARGET_KINDS) is one
+      the real freeze accepts; any other kind is filed unknown.
+PROVES   O1 -> test_the_freeze_accepts_my_practice_object_and_the_mark_stamps_it
+         O2 -> test_the_freeze_still_refuses_an_object_that_is_not_the_subjects
+         O3 -> test_every_kind_the_orchestrator_sends_is_one_the_freeze_accepts
+WHY      B-4 (audit 2026-09-22, 0354): the freeze and the mark raised
+         SOURCE_INVALID for processing_practice_objects, so such a request sat
+         at 'requested' forever with nothing erased. These cases EXECUTE the
+         real functions on a disposable database (rehearsal tier, released lane).
 """
 from __future__ import annotations
 
@@ -32,6 +25,8 @@ import uuid
 
 import psycopg2
 import pytest
+
+from services.data_purge import FREEZE_TARGET_KINDS
 
 DSN = os.environ.get("CONFIDENT_MOMENT_REHEARSAL_DSN", "")
 pytestmark = pytest.mark.skipif(
@@ -107,15 +102,42 @@ def subject(db):
     }
 
 
+def _freeze(db, request, graph, targets):
+    return _one(db, """
+        SELECT public.freeze_phase1_purge_inventory_v4(
+            %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s::text[])""",
+        (request, RESOLVER, "f" * 64, json.dumps(graph), json.dumps(targets),
+         "e" * 64, []))
+
+
+def _graph(db, principal):
+    return _one(db, "SELECT public.resolve_phase1_purge_subject_graph_v3(%s)", (principal,))
+
+
 class TestThePurgeReachesAPracticeRecording:
 
+    def test_the_freeze_accepts_my_practice_object_and_the_mark_stamps_it(self, db, subject):
+        frozen = _freeze(db, subject["request"], _graph(db, subject["principal"]),
+                         [subject["target"]])
+        assert (frozen["state"], frozen["unknown_target_count"]) == ("in_progress", 0)
+        assert _one(db, """
+            SELECT state FROM public.data_purge_targets
+             WHERE purge_request_id = %s AND target_ref = %s""",
+            (subject["request"], subject["target"]["target_ref"])) == "pending"
+
+        mark = """SELECT public.mark_phase1_storage_object_purged_v1(
+                      %s, 'processing_practice_objects', %s, 'r2', %s, %s, %s)"""
+        args = (subject["request"], subject["object_id"], subject["bucket"],
+                subject["key"], subject["sha"])
+        assert _one(db, mark, args)["deleted_at_recorded"] is True
+        assert _one(db, "SELECT deleted_at IS NOT NULL FROM public.processing_practice_objects"
+                        " WHERE id = %s", (subject["object_id"],)) is True
+        with pytest.raises(psycopg2.errors.RaiseException, match="PURGE_OBJECT_METADATA_MISMATCH"):
+            _one(db, mark, args)  # a second mark is a mismatch, not a silent no-op
 
     def test_the_freeze_still_refuses_an_object_that_is_not_the_subjects(self, db, subject):
-        """The new branch verifies ownership exactly as its two siblings do.
-
-        Without this the fix would be a hole: anyone able to name an object id
-        could have it frozen into someone else's erasure.
-        """
+        """Without this the fix would be a hole: anyone able to name an object
+        id could have it frozen into someone else's erasure."""
         stranger = _one(db, """
             INSERT INTO public.owner_principals (id, user_id)
             VALUES (gen_random_uuid(), gen_random_uuid()) RETURNING id""")
@@ -124,13 +146,33 @@ class TestThePurgeReachesAPracticeRecording:
                 acquisition_principal_id, trigger_kind, idempotency_key)
             VALUES (%s, 'account_deletion', %s) RETURNING id""",
             (stranger, str(uuid.uuid4())))
-        graph = _one(db, "SELECT public.resolve_phase1_purge_subject_graph_v3(%s)",
-                     (stranger,))
-
         with pytest.raises(psycopg2.errors.RaiseException) as raised:
-            _one(db, """
-                SELECT public.freeze_phase1_purge_inventory_v4(
-                    %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s::text[])""",
-                (other_request, RESOLVER, "f" * 64, json.dumps(graph),
-                 json.dumps([subject["target"]]), "e" * 64, []))
+            _freeze(db, other_request, _graph(db, stranger), [subject["target"]])
         assert "PURGE_STORAGE_TARGET_GRAPH_MISMATCH" in str(raised.value)
+        assert _one(db, "SELECT deleted_at FROM public.processing_practice_objects"
+                        " WHERE id = %s", (subject["object_id"],)) is None
+
+    def test_every_kind_the_orchestrator_sends_is_one_the_freeze_accepts(self, db, subject):
+        """0362: the freeze files an unknown kind as `unknown`, and one unknown
+        target stops the whole erasure."""
+        graph = _graph(db, subject["principal"])
+
+        def target(kind):
+            code = f"kind_{kind}"
+            return {"target_kind": kind, "target_ref": f"dependency:{code}",
+                    "metadata": {"dependency_code": code, "relation": "some_table",
+                                 "selector_column": "acquisition_principal_id",
+                                 "locator_kind": "principal",
+                                 "locator_values": graph["principal_ids"]}}
+
+        frozen = _freeze(db, subject["request"], graph,
+                         [target(k) for k in sorted(FREEZE_TARGET_KINDS)])
+        assert (frozen["state"], frozen["unknown_target_count"]) == ("in_progress", 0)
+
+        second = _one(db, """
+            INSERT INTO public.data_purge_requests (
+                acquisition_principal_id, trigger_kind, idempotency_key)
+            VALUES (%s, 'account_deletion', %s) RETURNING id""",
+            (subject["principal"], str(uuid.uuid4())))
+        odd = _freeze(db, second, graph, [target("a_kind_sql_never_heard_of")])
+        assert (odd["state"], odd["unknown_target_count"]) == ("review_required", 1)

@@ -1,19 +1,26 @@
-"""Judgement after feedback (founder 2026-10-01, F1; Phase 2 of the
-after-practice paths). On since 2026-10-02; the switch and its off-branch
-were deleted 2026-10-11.
-
-F1: "Opening a bookmark never asks for a judgment first. The machine's read
-chooses the feedback. The speaker judges themselves after it: on a confident
-moment right after the praise, on a moment that needed work after each
-practice attempt. Helper words open on Yes or In-between of that judgment."
-
-Pins: the open raises the moment's request under the machine's kind
-(insert-once, raised at the open), the later judgement sets its answer_kind
-from the matrix, a practice judgement that disagrees with the machine's
-read of the attempt makes it an ambiguity, no read and Audio unclear send
-nothing, the practice may start without an answer, a landed or dismissed
-practice or a skipped bookmark settles the item without a Path 1 answer,
-and the coach reads the speaker's side only after the blind rating.
+"""
+STORY    As a speaker, I want to judge myself after the feedback and not
+         before, with my answer shown to the coach only after their blind
+         rating, so that the machine leads and the coach stays blind.
+OUTCOME
+  O1  Opening a moment raises one coach request, under the machine's kind,
+      once; it never asks me for a judgement first.
+  O2  My later answer sets the request's answer_kind from the matrix.
+  O3  Never-2 (coach judgements stay blind): when my practice judgement
+      disagrees with the machine's read, the moment becomes an ambiguity and
+      coaches who already judged it are asked to listen again, blind; an
+      agreeing judgement confirms the kind once.
+  O4  A clip with no read, and an Audio unclear answer, send nothing.
+  O5  A skipped bookmark, a landed or a dismissed practice settle the
+      moment without an answer.
+PROVES   O1 -> test_the_open_raises_one_request_of_the_machines_kind
+         O2 -> test_the_judgement_after_the_praise_sets_the_answer_kind
+         O3 -> test_a_practice_judgement_that_disagrees_is_an_ambiguity
+         O4 -> test_no_read_and_audio_unclear_send_nothing
+         O5 -> test_skips_and_closed_practices_settle_without_an_answer
+WHY      Founder 2026-10-01, F1: "Opening a bookmark never asks for a
+         judgment first." (The coach's blind gate on the speaker's side is
+         proven in tests/test_the_machine_heard.py.)
 """
 from __future__ import annotations
 
@@ -22,6 +29,7 @@ from unittest.mock import patch
 
 from services import confident_voice_practice as cvp
 from services import judgement_follow_up as jf
+from services import moment_events as me
 
 
 def _snippet():
@@ -42,6 +50,7 @@ class _Db:
         self.events = list(events)
         self.practices = list(practices)
         self.recorded: list = []
+        self.listen_again: list = []
 
     def get_confident_voice_exercise_assignment(self, _take, _snip):
         return self.assignment
@@ -102,6 +111,10 @@ class _Db:
     def list_confident_voice_practice_for_take(self, _take, _owner=None):
         return list(self.practices)
 
+    def request_coach_listen_again(self, take, snip):
+        self.listen_again.append((take, snip))
+        return 1
+
 
 def _verdict(read, fired):
     pattern = {"confident": "confident", "weak": "low_confidence_rushing_dominant",
@@ -132,6 +145,60 @@ def _answer(db, answer, read="weak", fired=True):
 
 
 class OnTests(unittest.TestCase):
+
+    def test_the_open_raises_one_request_of_the_machines_kind(self):
+        db = _Db()
+        self.assertEqual(_open(db, "weak", True), "coach_request")
+        self.assertEqual(len(db.raised), 1)
+        self.assertEqual(db.raised[0]["kind"], "error")
+        self.assertEqual(db.raised[0]["raised_on"], "open")
+        self.assertEqual(db.answer_kinds, [])  # no judgement asked for
+        _open(db, "weak", True)
+        self.assertEqual(len(db.raised), 1)  # insert-once
+
+    def test_a_practice_judgement_that_disagrees_is_an_ambiguity(self):
+        practice = {"take_session_id": "take-1", "snippet_id": "snip-1"}
+        db = _Db(request={"id": "req-1", "kind": "error", "answer_kind": None})
+        self.assertEqual(jf.practice_judgement(db, practice, "yes", "no"),
+                         "ambiguity")
+        self.assertEqual(db.request["answer_kind"], "ambiguity")
+        self.assertEqual(db.listen_again, [("take-1", "snip-1")])
+        db = _Db(request={"id": "req-1", "kind": "error", "answer_kind": None})
+        self.assertEqual(jf.practice_judgement(db, practice, "no", "no"),
+                         "error")
+        self.assertIsNone(jf.practice_judgement(db, practice, "no", "no"))
+        self.assertEqual(db.listen_again, [])
+
+    def test_no_read_and_audio_unclear_send_nothing(self):
+        db = _Db()
+        self.assertEqual(_answer(db, "audio_unclear"), "none")
+        _open(db, "unknown", False)
+        _answer(db, "no", "unknown", False)
+        db.get_confident_voice_practice_candidates = lambda _ids: []
+        self.assertEqual(_answer(db, "no"), "none")
+        self.assertEqual((db.raised, db.answer_kinds), ([], []))
+        # ...while a readable clip does reach the coach.
+        readable = _Db()
+        _answer(readable, "no")
+        self.assertEqual(len(readable.raised), 1)
+
+    def test_skips_and_closed_practices_settle_without_an_answer(self):
+        db = _Db(practices=[
+            {"snippet_id": "snip-2", "status": "completed",
+             "final_user_answer": "yes"},
+            {"snippet_id": "snip-3", "status": "dismissed"}])
+        with patch("services.ideal_text_feedback_bake."
+                   "request_rebake_after_answer"):
+            status, body = me.record_moment_event(
+                db, user_id="owner-1", snippet_id="snip-1",
+                body={"event": "skipped"})
+        self.assertEqual((status, body["recorded"]), (200, True))
+        self.assertEqual(
+            me.settled_status_by_moment(db, take_session_id="take-1",
+                                        owner_user_id="owner-1"),
+            {"snip-1": "dismissed", "snip-2": "approved",
+             "snip-3": "dismissed"})
+        self.assertEqual((db.raised, db.answer_kinds), ([], []))
 
 
     def test_the_judgement_after_the_praise_sets_the_answer_kind(self):
