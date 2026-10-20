@@ -31,6 +31,10 @@ OUTCOME
       place), a filled empty slot asked after the signed deeper questions;
       a number, a missing "{the board}" or a different number of answers is
       refused.
+  O7  Will says a question with a light touch only when it still means the
+      signed one and keeps my own words in it once, one line, no number,
+      still a question; otherwise he says the signed words. The tap answers
+      never change.
 PROVES   O1 -> test_will_asks_the_first_that_holds_and_nothing_when_nothing_is_missing
          O2 -> test_the_taps_come_from_what_will_heard,
                test_only_words_the_take_says_are_kept_from_the_read
@@ -42,6 +46,7 @@ PROVES   O1 -> test_will_asks_the_first_that_holds_and_nothing_when_nothing_is_m
          O5 -> test_the_summary_holds_its_message_under_wills_question,
                test_the_summary_hears_the_practised_line_when_it_came_back
          O6 -> test_the_founders_words_are_what_will_asks
+         O7 -> test_will_varies_his_words_lightly_or_says_them_as_written
 WHY      Founder 2026-10-20 (N82): "ask me a lot of questions … a natural
          flow in the walk and in the lounge"; the bank signed the same day.
 """
@@ -295,6 +300,7 @@ def _summary(db, monkeypatch, takes=TAKES, take="t1", heard=None, carried=None):
     monkeypatch.setattr(take_summary, "_under_authority", lambda _db, _take, w: w())
     monkeypatch.setattr(take_summary, "write_summary", write)
     monkeypatch.setattr(will_question, "heard", lambda *a, **k: heard or {})
+    monkeypatch.setattr(will_question, "vary", lambda *a, **k: None)
     monkeypatch.setattr(will_question, "carried_over", lambda *a, **k: carried)
     msg = take_summary.summary_message(db, user_id="u", arc_id="arc", takes=takes,
                                        take_session_id=take, body={"practice": "better"})
@@ -346,3 +352,22 @@ def test_the_founders_words_are_what_will_asks():
                 {"key": "pause", "question": "Need a break?", "chips": ["Yes"]}):
         with pytest.raises(will_question.QuestionError):
             will_question.save_bank(db, [bad])
+
+
+def test_will_varies_his_words_lightly_or_says_them_as_written():
+    signed = will_question.QUESTIONS["audience"]
+    check = will_question.QUESTIONS["audience_check"]
+    light = "Quick one: who is this talk actually for? 🎯"
+    assert will_question.read_varied("audience", light, signed) == light
+    # a number, a lost or doubled placeholder, no question, another meaning: as written
+    assert will_question.read_varied("audience", "Quick one: who are the 2 people this talk is for?", signed) is None
+    assert will_question.read_varied("audience_check", "Sounds like this one's for the board. Right? 🎯", check) is None
+    assert will_question.read_varied("audience_check", "Sounds like {heard} is who {heard} is for. Right?", check) is None
+    assert will_question.read_varied("audience", "Quick one: this talk is for someone. 🎯", signed) is None
+    assert will_question.read_varied("audience", "Do you like pizza? 🎯", signed) is None
+    # the varied words are what Will asks; the tap answers stay as signed
+    found = _plan("audience", heard={"audience": None, "audience_times": 0})
+    found.varied = lambda: {"audience": light}
+    key, text, chips, _ = will_question.words_for(found)
+    assert (key, text) == ("audience", light)
+    assert chips == ["A buyer", "Their team", "The decision maker"]

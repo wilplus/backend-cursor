@@ -261,6 +261,20 @@ talk is for and what it asks, word for word from the Take or nothing; code
 keeps only words the Take says (services.will_question.read_heard)."""
 
 
+SPEC_WILL_QUESTION_VARY = LLMSpec(
+    model=CHEAP_MODEL,
+    # Warm enough to reword, never to invent: the words are checked against
+    # the signed question before Will says them.
+    temperature=0.7,
+    max_tokens=80,
+    timeout_seconds=8.0,
+)
+"""Will's question after a Take, said with a light touch (founder 2026-10-20,
+N86) — the signed question in slightly different words; code keeps it only
+when it still means the signed one and keeps the speaker's own words in it
+(services.will_question.read_varied), else Will says the signed words."""
+
+
 SPEC_AUDIT_POINTER = LLMSpec(
     model=CHEAP_MODEL,
     # Low temp — one short, in-language line pointing the user to their audit

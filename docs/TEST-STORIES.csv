@@ -2846,7 +2846,11 @@ O6  The founder's words are what Will asks from the next Take: a changed
 question and renamed answers (each answer keeps its follow-up by its
 place), a filled empty slot asked after the signed deeper questions;
 a number, a missing ""{the board}"" or a different number of answers is
-refused.","O1 -> test_will_asks_the_first_that_holds_and_nothing_when_nothing_is_missing
+refused.
+O7  Will says a question with a light touch only when it still means the
+signed one and keeps my own words in it once, one line, no number,
+still a question; otherwise he says the signed words. The tap answers
+never change.","O1 -> test_will_asks_the_first_that_holds_and_nothing_when_nothing_is_missing
 O2 -> test_the_taps_come_from_what_will_heard,
 test_only_words_the_take_says_are_kept_from_the_read
 O3 -> test_a_tap_is_kept_fills_the_setup_and_lets_the_message_go,
@@ -2856,7 +2860,8 @@ O4 -> test_typed_words_are_the_answer_and_fill_the_call_to_action,
 test_distress_typed_under_the_question_gets_the_safety_reply
 O5 -> test_the_summary_holds_its_message_under_wills_question,
 test_the_summary_hears_the_practised_line_when_it_came_back
-O6 -> test_the_founders_words_are_what_will_asks","Founder 2026-10-20 (N82): ""ask me a lot of questions … a natural flow in the walk and in the lounge""; the bank signed the same day."
+O6 -> test_the_founders_words_are_what_will_asks
+O7 -> test_will_varies_his_words_lightly_or_says_them_as_written","Founder 2026-10-20 (N82): ""ask me a lot of questions … a natural flow in the walk and in the lounge""; the bank signed the same day."
 tests/test_withdrawal_erases_sheets.py,Story,"As a speaker, I want the coach sheets about my Takes deleted when I turn training off, so that my withdrawal is real.","O1  Turning training off deletes my Takes' rows from all three coach
 sheet tables, and only mine.
 O2  If my Takes cannot be read, the switch still turns off, and the
