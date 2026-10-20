@@ -1830,15 +1830,17 @@ placed exactly once, and every re-pointed locator is one the project
 graph fills.
 O2  A re-pointed table counts only this project's rows; an account table
 nobody placed, where the account has rows, stops the purge for review.
-O4  A speaker with lesson bookings can delete a project: bookings belong
-to the account, so the project purge neither targets them nor stops
-for review over them.
+O4  A speaker with lesson bookings, goal history, a coach's card about
+their goal, Will's private note, feedback answers and memory events
+can delete a project without it stopping for review: the project's
+Takes' answers and events go with it, the account's rows stay, and the
+account purge still deletes every one of them.
 O3  The project orchestrator refuses an account request and the account
 orchestrator refuses a project request; each request is routed to its
 own orchestrator.","O1 -> test_every_placement_names_an_account_keyed_entry_once
 O2 -> test_a_project_purge_counts_its_project_and_stops_on_the_unplaced
 O3 -> test_neither_orchestrator_runs_the_others_request
-O4 -> test_bookings_never_stop_or_join_a_project_purge","P1-B, decisions log N8/N12: the project graph lists no principal or user, so an unplaced account-keyed table would reach no row at all. Python orchestrator only, over the in-memory `PurgeDb` of tests/test_purge_user_locators.py; the real project purge runs on the released lane in tests/test_project_purge_postgres.py. Whether each re-pointed column exists in the schema is not checked here: that purge would fail on a missing column there."
+O4 -> test_a_project_purge_finishes_for_a_speaker_will_knows","P1-B, decisions log N8/N12: the project graph lists no principal or user, so an unplaced account-keyed table would reach no row at all. O4: found 2026-10-20, the WIL-74 tables (speaker_memory and its events, feedback checks, goal history, the coach's goal card) were never placed, so a project purge for any speaker with a note stopped for review with PROJECT_SCOPE_UNRESOLVED. Python orchestrator only, over the in-memory `PurgeDb` of tests/test_purge_user_locators.py; the real project purge runs on the released lane in tests/test_project_purge_postgres.py. Whether each re-pointed column exists in the schema is not checked here: that purge would fail on a missing column there."
 tests/test_project_setup.py,Story,"As a speaker recording Take 2, I want the recording screen set up from my project: the words from my latest spoken Take and the presentation from my first Take that had a deck, so that every Take is said against the same slides. (Critical path: next Take.)","O1  The slides and presentation come from the first spoken Take that
 carried a deck; the words (topic, audience) from the latest spoken
 Take; a read-aloud Take never counts.
