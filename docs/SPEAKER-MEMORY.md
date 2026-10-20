@@ -80,6 +80,32 @@ note is read alongside.
 Any failed read leaves its source out; nothing raises, and with no block
 Will answers as before. Guarded by `tests/test_will_looks_up_history.py`.
 
+## The summary looks back too (step 3, founder 2026-10-20)
+
+The summary after a Take (`services/take_summary.py`) can point back to an
+earlier Take ("in Take 2 the pricing line rushed; this time it landed").
+It has no question, so its query is the current Take's key words: the
+helper words, the talk's title and slides and what they said this Take,
+the 24 most frequent content words (`speaker_lookup.key_terms`).
+`speaker_lookup.earlier_takes` then ranks only the transcripts of the
+speaker's **older** Takes: the arc's Takes before this one, or another
+project's Take recorded before it; never this Take (already in the prompt),
+never a later one, never coach words or chat. The same project comes
+first. The same project and authorization checks as the chat apply, and a
+failed check lets no Take through. At most 3 pieces reach the prompt as one
+private fact (drift-locked, `take_summary.earlier_facts`):
+
+> What they said in earlier Takes (private, to steer by; you may point back
+> to one moment in a few of their own words, never more): Take 2: "…"
+
+The reply still passes `_clean`: a number (outside a Take number), drift
+from the signed lines or a closing question still gives the signed copy.
+The lookup starts off the request right after the moments are read and
+runs beside the other reads; the summary waits at most 1 second for it
+(`_EARLIER_BUDGET`). Too slow, failed, or nothing found: no fact, and the
+summary is written exactly as before. Guarded by `tests/test_take_summary.py`
+(O6).
+
 ## Storage (migration 0480)
 
 - `speaker_memory_events`: the raw inputs, kept for good. They are the asset:

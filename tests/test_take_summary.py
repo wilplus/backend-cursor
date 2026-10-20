@@ -16,6 +16,11 @@ OUTCOME
       (services/after_take.py).
   O5  The summary and the ask after it sort under the walk's last step,
       even when my browser's clock runs ahead of the server's.
+  O6  The summary can point back to what I said in an older Take (the same
+      project first), never this Take, never a Take whose processing
+      authorization is not in force; a failing or slow lookup leaves the
+      summary as it was, and a number it brings in still falls back to the
+      approved copy (founder 2026-10-20, step 3).
 PROVES   O1 -> test_a_take_gets_one_summary_from_its_real_progress,
                test_the_summary_knows_the_talk_and_asks_for_whatsapp_once
          O2 -> test_a_reply_with_a_number_falls_back_to_the_signed_copy,
@@ -26,6 +31,10 @@ PROVES   O1 -> test_a_take_gets_one_summary_from_its_real_progress,
                test_a_coach_word_shared_after_the_review_is_its_own_bubble
          O4 -> test_the_summary_knows_the_talk_and_asks_for_whatsapp_once
          O5 -> test_the_summary_and_its_ask_sort_under_the_walk
+         O6 -> test_the_summary_points_back_to_an_older_take_never_this_one,
+               test_a_take_not_in_force_never_reaches_the_summary,
+               test_a_failing_or_slow_lookup_leaves_the_summary_as_today,
+               test_an_earlier_take_with_a_number_still_falls_back_to_the_signed_copy
 WHY      Never-rule 1; founder lock 2026-10-12 (section 3) and 2026-10-14;
          founder 2026-10-20 (the chat keeps the order it shows; one action
          at a time).
@@ -71,7 +80,7 @@ TAKES = [{"id": "t1", "intake_context": {"topic": "Churn in Q3",
          {"id": "t2"}]
 
 
-def _run(db, monkeypatch, reply, body=None):
+def _run(db, monkeypatch, reply, body=None, takes=TAKES):
     seen = {}
 
     def fake(write):
@@ -86,7 +95,7 @@ def _run(db, monkeypatch, reply, body=None):
     monkeypatch.setattr("services.person_asks.next_for", lambda _user: None)
     monkeypatch.setattr(take_summary, "_under_authority", lambda _db, _take, w: fake(w))
     monkeypatch.setattr(take_summary, "write_summary", write)
-    msg = take_summary.summary_message(db, user_id="u", arc_id="a", takes=TAKES,
+    msg = take_summary.summary_message(db, user_id="u", arc_id="a", takes=takes,
                                        take_session_id="t2", body=body or {"practice": "better"})
     return msg, seen
 
@@ -198,3 +207,91 @@ def test_a_reply_that_ends_on_a_question_is_the_signed_copy(monkeypatch):
     msg, _ = _run(_Db(), monkeypatch, "Your voice sounded surer. Another Take? 🎉")
     assert msg["body"] == _COPY[2] and msg["metadata"]["written"] is False
 
+
+
+class _History:
+    """The speaker's Takes with their transcripts, newest first."""
+    def __init__(self, rows):
+        self.rows = rows
+
+    def list_speaker_take_transcripts(self, user_id, *, limit):
+        if self.rows is None:
+            raise RuntimeError("database down")
+        return self.rows[:limit]
+
+
+def _said(take_id, index, words, at, arc="a", owner="p-live"):
+    return {"id": take_id, "user_id": "u", "arc_id": arc, "take_index": index,
+            "created_at": at, "analysis_state": "ready", "owner_principal_id": owner,
+            "slide_transcripts": [{"index": 0, "transcript": words}]}
+
+
+ARC = [{**TAKES[0], "created_at": "2026-10-18T10:00:00+00:00"},
+       {"id": "t2", "created_at": "2026-10-19T10:00:00+00:00"}]
+
+
+def _earlier(seen):
+    return next((f for f in seen["facts"] if f.startswith("What they said in earlier Takes")), None)
+
+
+def test_the_summary_points_back_to_an_older_take_never_this_one(monkeypatch):
+    """Step 3 (founder 2026-10-20): the summary hears what the speaker said
+    in an older Take, matched on what they said now, the same project
+    first; never this Take (already in the prompt) nor a later one."""
+    db = _Db()
+    db.client = None
+    db.takes = _History([
+        _said("t3", 3, "Later: churn fell because we listened again", "2026-10-20T10:00:00+00:00"),
+        _said("t2", 2, "Our churn fell because we listened.", "2026-10-19T10:00:00+00:00"),
+        _said("x1", 1, "Churn fell and we listened to the panel", "2026-10-18T12:00:00+00:00",
+              arc="b"),
+        _said("t1", 1, "Churn fell, I rushed it, we listened", "2026-10-18T10:00:00+00:00")])
+    _, seen = _run(db, monkeypatch, "Churn in Q3, nailed it! Now record take three.", takes=ARC)
+    fact = _earlier(seen)
+    assert fact.endswith('Take 1: "Churn fell, I rushed it, we listened"; '
+                         'Take 1: "Churn fell and we listened to the panel"')
+    assert "Later" not in fact and "Our churn fell because we listened." not in fact
+
+
+def test_a_take_not_in_force_never_reaches_the_summary(monkeypatch):
+    from services.processing_authorization import ProcessingAuthorizationService as Service
+    monkeypatch.setenv("PLF1_PROCESSING_AUTHORIZATION_MODE", "enforce")
+    monkeypatch.setattr(Service, "resolve_acquisition_principal", lambda self, owner, **kw: owner)
+    monkeypatch.setattr(Service, "status", lambda self, principal: (
+        {"authorized": True, "pooled_learning_eligible": False} if principal == "p-live"
+        else {"authorized": False, "code": "PROCESSING_AUTHORIZATION_WITHDRAWN"}))
+    db = _Db()
+    db.client = None
+    db.takes = _History([_said("t1", 1, "Churn fell, I rushed it, we listened",
+                               "2026-10-18T10:00:00+00:00", owner="p-gone")])
+    _, seen = _run(db, monkeypatch, "Churn in Q3, nailed it! Now record take three.", takes=ARC)
+    assert _earlier(seen) is None
+
+
+def test_a_failing_or_slow_lookup_leaves_the_summary_as_today(monkeypatch):
+    import time
+    from services import speaker_lookup
+    reply = "Your churn talk, nailed it! Now record the next take."
+    _, today = _run(_Db(), monkeypatch, reply, takes=ARC)
+    broken = _Db()
+    broken.takes = _History(None)
+    msg, seen = _run(broken, monkeypatch, reply, takes=ARC)
+    assert seen["facts"] == today["facts"] and msg["body"] == reply
+    monkeypatch.setattr(take_summary, "_EARLIER_BUDGET", 0.05)
+    monkeypatch.setattr(speaker_lookup, "earlier_takes",
+                        lambda *a, **kw: time.sleep(0.5) or [speaker_lookup.Snippet(
+                            "Take 1 transcript", "too late", "take", "")])
+    started = time.monotonic()
+    _, slow = _run(_Db(), monkeypatch, reply, takes=ARC)
+    assert slow["facts"] == today["facts"] and time.monotonic() - started < 0.4
+
+
+def test_an_earlier_take_with_a_number_still_falls_back_to_the_signed_copy(monkeypatch):
+    db = _Db()
+    db.client = None
+    db.takes = _History([_said("t1", 1, "Churn fell twenty percent, from 30 to 10",
+                               "2026-10-18T10:00:00+00:00")])
+    msg, seen = _run(db, monkeypatch, "In Take 1 churn fell from 30 to 10. Record the next one.",
+                     takes=ARC)
+    assert "from 30 to 10" in _earlier(seen)
+    assert msg["body"] == _COPY[2] and msg["metadata"]["written"] is False
