@@ -597,11 +597,19 @@ def _said_as_chip(text: str, chips: list[str]) -> Optional[str]:
     return next((c for c in chips if _norm(c) == said), None)
 
 
+def _not_an_answer(text: str) -> bool:
+    """Words that are never an answer to Will: distress (the chat's safety
+    reply answers it, never a thank-you) and a "#" note (the founder's
+    notebook)."""
+    from services.chat_intents import detect_chat_intent
+    return text.lstrip().startswith("#") or (detect_chat_intent(text) or {}).get("intent") == "crisis"
+
+
 def chat_turn(database: Any, user_id: str, question: str) -> Optional[dict]:
     """The chat's intercept: what the speaker types under Will's question
     (or its follow-up) is their answer. {"answer", "row_metadata"}, or None
     when no question is open (the turn goes on to the next voice)."""
-    if not user_id or not question.strip():
+    if not user_id or not question.strip() or _not_an_answer(question):
         return None
     open_q = open_question(database, str(user_id))
     if not open_q:

@@ -22,6 +22,7 @@ OUTCOME
       message go; a repeat tap writes nothing.
   O4  Typed words under the question are the answer: what I want them to
       do lands as the talk's call to action, my own note on the talk kept.
+      Distress is never taken as an answer: the chat's safety reply comes.
   O5  After a Take that needs it, the summary's batch holds the message
       under Will's question, and the summary hears the line I practised
       last Take when this Take said it.
@@ -31,7 +32,8 @@ PROVES   O1 -> test_will_asks_the_first_that_holds_and_nothing_when_nothing_is_m
          O3 -> test_a_tap_is_kept_fills_the_setup_and_lets_the_message_go,
                test_someone_else_opens_one_follow_up_answered_in_own_words,
                test_skip_lets_the_message_go_and_a_repeat_tap_writes_nothing
-         O4 -> test_typed_words_are_the_answer_and_fill_the_call_to_action
+         O4 -> test_typed_words_are_the_answer_and_fill_the_call_to_action,
+               test_distress_typed_under_the_question_gets_the_safety_reply
          O5 -> test_the_summary_holds_its_message_under_wills_question,
                test_the_summary_hears_the_practised_line_when_it_came_back
 WHY      Founder 2026-10-20 (N82): "ask me a lot of questions … a natural
@@ -223,6 +225,15 @@ def test_skip_lets_the_message_go_and_a_repeat_tap_writes_nothing(monkeypatch):
     assert [r["body"] for r in _tap(db, will_question.SKIP)] == ["Skip", SUMMARY]
     assert db.events[-1]["payload"] == {"question": "audience", "skipped": True}
     assert _tap(db, "The board") == [] and "t1" not in db.takes.ctx
+
+
+def test_distress_typed_under_the_question_gets_the_safety_reply(monkeypatch):
+    _quiet(monkeypatch)
+    db = _Db()
+    _asked(db, "pause", chips=CHIPS["pause"])
+    resp = _typed(db, monkeypatch, "Honestly I can't go on like this")
+    assert resp["answer"] != THANKS and "sorry" in resp["answer"].lower()
+    assert db.events == []  # never kept as an answer
 
 
 def test_typed_words_are_the_answer_and_fill_the_call_to_action(monkeypatch):

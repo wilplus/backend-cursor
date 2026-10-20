@@ -2789,6 +2789,7 @@ my typed words under it are the answer, or Skip. Skip lets the
 message go; a repeat tap writes nothing.
 O4  Typed words under the question are the answer: what I want them to
 do lands as the talk's call to action, my own note on the talk kept.
+Distress is never taken as an answer: the chat's safety reply comes.
 O5  After a Take that needs it, the summary's batch holds the message
 under Will's question, and the summary hears the line I practised
 last Take when this Take said it.","O1 -> test_will_asks_the_first_that_holds_and_nothing_when_nothing_is_missing
@@ -2797,7 +2798,8 @@ test_only_words_the_take_says_are_kept_from_the_read
 O3 -> test_a_tap_is_kept_fills_the_setup_and_lets_the_message_go,
 test_someone_else_opens_one_follow_up_answered_in_own_words,
 test_skip_lets_the_message_go_and_a_repeat_tap_writes_nothing
-O4 -> test_typed_words_are_the_answer_and_fill_the_call_to_action
+O4 -> test_typed_words_are_the_answer_and_fill_the_call_to_action,
+test_distress_typed_under_the_question_gets_the_safety_reply
 O5 -> test_the_summary_holds_its_message_under_wills_question,
 test_the_summary_hears_the_practised_line_when_it_came_back","Founder 2026-10-20 (N82): ""ask me a lot of questions … a natural flow in the walk and in the lounge""; the bank signed the same day."
 tests/test_withdrawal_erases_sheets.py,Story,"As a speaker, I want the coach sheets about my Takes deleted when I turn training off, so that my withdrawal is real.","O1  Turning training off deletes my Takes' rows from all three coach
