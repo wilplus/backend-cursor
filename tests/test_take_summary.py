@@ -4,26 +4,31 @@ STORY    As a speaker, I want one short summary of my Take in words, about my
 OUTCOME
   O1  Each Take gets one stored summary, written from its real progress and
       about my talk (its title, slides, my most confident moment).
-  O2  A summary with a number, or praise that drifts from the approved
-      lines, is replaced by the approved fallback copy.
+  O2  A summary with a number, praise that drifts from the approved lines,
+      or a closing question (one action at a time: the next step is the last
+      thing said, founder 2026-10-20) is replaced by the approved fallback
+      copy.
   O3  A coach note rewrites the summary in place, keeping the first one
       however many notes follow, once per note; a note shared after the
       review is its own bubble, stored once.
-  O4  A speaker without a WhatsApp number is offered WhatsApp once, right
-      after the summary.
+  O4  From Take 2, a speaker without a WhatsApp number is asked for it
+      after the Take's card, and the summary waits under the ask
+      (services/after_take.py).
   O5  The summary and the ask after it sort under the walk's last step,
       even when my browser's clock runs ahead of the server's.
 PROVES   O1 -> test_a_take_gets_one_summary_from_its_real_progress,
                test_the_summary_knows_the_talk_and_asks_for_whatsapp_once
          O2 -> test_a_reply_with_a_number_falls_back_to_the_signed_copy,
-               test_a_reply_that_drifts_from_the_signed_lines_is_the_signed_copy
+               test_a_reply_that_drifts_from_the_signed_lines_is_the_signed_copy,
+               test_a_reply_that_ends_on_a_question_is_the_signed_copy
          O3 -> test_a_coach_update_rewrites_the_summary_in_place_and_keeps_the_first,
                test_a_shared_coach_word_rewrites_a_reviewed_take_once_per_word,
                test_a_coach_word_shared_after_the_review_is_its_own_bubble
          O4 -> test_the_summary_knows_the_talk_and_asks_for_whatsapp_once
          O5 -> test_the_summary_and_its_ask_sort_under_the_walk
 WHY      Never-rule 1; founder lock 2026-10-12 (section 3) and 2026-10-14;
-         founder 2026-10-20 (the chat keeps the order it shows).
+         founder 2026-10-20 (the chat keeps the order it shows; one action
+         at a time).
 """
 from services import take_summary
 from services.journey_messages import _COPY
@@ -50,8 +55,9 @@ class _Db:
                 "t2": [{"block_id": "b1", "s": 0.7, "w": 0.6, "willfident": 0.42},
                        {"block_id": "b2", "s": 0.4, "w": 0.5, "willfident": 0.2}]}.get(take, [])
 
-    def rewrite_lounge_message(self, user_id, client_id, body, metadata):
-        self.rows[client_id] = {**self.rows[client_id], "body": body, "metadata": metadata}
+    def rewrite_lounge_message(self, user_id, client_id, body, metadata, at=None):
+        self.rows[client_id] = {**self.rows[client_id], "body": body, "metadata": metadata,
+                                **({"client_created_at": at} if at else {})}
         return self.rows[client_id]
 
     def insert_lounge_messages(self, user_id, messages):
@@ -77,6 +83,7 @@ def _run(db, monkeypatch, reply, body=None):
 
     monkeypatch.setattr("services.whatsapp_notify.whatsapp_state",
                         lambda _db, _user: {"phone": db.phone})
+    monkeypatch.setattr("services.person_asks.next_for", lambda _user: None)
     monkeypatch.setattr(take_summary, "_under_authority", lambda _db, _take, w: fake(w))
     monkeypatch.setattr(take_summary, "write_summary", write)
     msg = take_summary.summary_message(db, user_id="u", arc_id="a", takes=TAKES,
@@ -152,13 +159,14 @@ def test_the_summary_knows_the_talk_and_asks_for_whatsapp_once(monkeypatch):
     through the signed lines, and a speaker without a WhatsApp number gets
     the Lounge's WhatsApp offer right after it."""
     db = _Db(phone=None)
-    msg, seen = _run(db, monkeypatch, "Churn in Q3, nailed it! Another Take?")
+    msg, seen = _run(db, monkeypatch, "Churn in Q3, nailed it! Now record take three.")
     facts = " ".join(seen["facts"])
     assert 'called "Churn in Q3"' in facts and "Why churn fell" in facts
     assert 'most confident moment this Take: "Our churn fell because we listened."' in facts
     assert seen["signed"] and all(line in take_summary.line_bank_lines() for line in seen["signed"][:4])
     offers = [r for r in db.rows.values() if (r.get("metadata") or {}).get("offer") == "whatsapp"]
     assert msg["metadata"]["summary"] is True and len(offers) == 1
+    assert msg["metadata"]["held_for"] == "whatsapp"  # it waits under the ask
 
 
 def test_the_summary_and_its_ask_sort_under_the_walk(monkeypatch):
@@ -168,7 +176,7 @@ def test_the_summary_and_its_ask_sort_under_the_walk(monkeypatch):
     db = _Db(phone=None)
     db.get_lounge_messages_page = lambda user_id, limit, before=None: [
         {"client_id": "step", "kind": "walk_step", "client_created_at": ahead}]
-    msg, _ = _run(db, monkeypatch, "Churn in Q3, nailed it! Another Take?")
+    msg, _ = _run(db, monkeypatch, "Churn in Q3, nailed it! Now record take three.")
     ask = next(r for r in db.rows.values() if (r.get("metadata") or {}).get("offer"))
     at = datetime.fromisoformat
     assert at(ahead) < at(msg["client_created_at"]) < at(ask["client_created_at"])
@@ -176,10 +184,17 @@ def test_the_summary_and_its_ask_sort_under_the_walk(monkeypatch):
 
 def test_a_reply_that_drifts_from_the_signed_lines_is_the_signed_copy():
     signed = ["You sounded like you really believed it this time!"]
-    near = "Churn in Q3 was the talk! You sounded like you believed it this time! Another go?"
+    near = "Churn in Q3 was the talk! You sounded like you believed it this time! Go again."
     assert take_summary._clean(near, signed, ("Churn in Q3",)) == near
-    assert take_summary._clean("Churn in Q3 was the talk. You're a natural genius. Another go?",
+    assert take_summary._clean("Churn in Q3 was the talk. You're a natural genius. Go again.",
                                signed, ("Churn in Q3",)) is None
-    assert take_summary._clean("Fewer stops here than on Take 1. Lovely! Again?",
+    assert take_summary._clean("Fewer stops here than on Take 1. Lovely! Record the next one ⬇️",
                                ["Fewer stops here than on Take 1."]) is not None
+
+
+def test_a_reply_that_ends_on_a_question_is_the_signed_copy(monkeypatch):
+    """Founder 2026-10-20: the Record button is under it, so a question
+    would be a second thing to do."""
+    msg, _ = _run(_Db(), monkeypatch, "Your voice sounded surer. Another Take? 🎉")
+    assert msg["body"] == _COPY[2] and msg["metadata"]["written"] is False
 

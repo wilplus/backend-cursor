@@ -12,17 +12,21 @@ The chat's own module for one question after the Feedback walk:
      next Take: the record button is back the moment they answer, and an
      ignored question stays a bubble in the thread.
   2. ``answer``: Yes → "Thanks!"; No → "What would help?" with a
-     Skip button; Skip → "Thanks!".
+     Skip button; Skip → "Thanks!". When the message after the Take waits
+     for the question (``after_take``, founder 2026-10-20: one action at a
+     time), Yes lets it go with "We're glad it helped you." in place of
+     "Thanks!", and Skip, or the answer to "What would help?", lets it go
+     under "Thanks!".
   3. ``chat_turn``: the chat's intercept. What the speaker types under
      "What would help?" is their answer: it is saved and answered with the
      signed words, before any other voice can claim it. Typing "Yes" or
      "No" (or the old "Not really") under the question counts as tapping it.
 
-Checked against the fixed messages after a Take (``check_against_after_take``):
-the question is the last row of the summary's batch, and it is NOT asked when
-another offer rides in that batch (today: the WhatsApp offer). One ask at a
-time; it is asked after a later Take instead. A coach update that rewrites the
-summary does not ask again (the summary's batch is written once per Take).
+Which ask follows a Take is ``after_take.choose`` (one ask per Take; from
+Take 2 the CEO panel's ask, WhatsApp and the home screen come first). The
+question still refuses a batch that carries another offer
+(``check_against_after_take``). A coach update that rewrites the summary does
+not ask again (the summary's batch is written once per Take).
 
 No number, score or verdict reaches the speaker (CLAUDE.md, Never 1): the
 answer is stored for the founder, and the speaker only ever reads the signed
@@ -160,9 +164,12 @@ def answer(database: Any, *, user_id: str, arc_id: str, take_session_id: str,
     take = str(take_session_id)
     held = database.get_take_feedback_check(user_id, take) or {}
     # Under the question it answers, whatever the browser's clock said.
+    from services import after_take
     from services.lounge_messages import thread_stamp
     at = thread_stamp(database, user_id)
     meta = {"feedback_check": choice, "arc_id": arc_id, "take_session_id": take}
+    waiting = after_take.held(database, user_id, take) is not None
+    reply: Optional[dict]
     if choice == "skip":
         if held.get("helped") is not False or held.get("missing") or held.get("skipped"):
             return []
@@ -174,14 +181,19 @@ def answer(database: Any, *, user_id: str, arc_id: str, take_session_id: str,
             return []
         _save(database, user_id, arc_id, take, helped=choice == "yes")
         if choice == "yes":
-            reply = _row(_cid(user_id, take, "thanks"), "bot", COPY["thanks"], meta,
-                         _after(at, 1))
+            # The message after the Take answers a Yes itself, glad.
+            reply = None if waiting else _row(
+                _cid(user_id, take, "thanks"), "bot", COPY["thanks"], meta, _after(at, 1))
         else:
             reply = _row(_cid(user_id, take, "missing"), "bot", COPY["missing"],
                          {**meta, "feedback_check": "missing",
                           "suggested_action": SKIP_ACTION}, _after(at, 1))
     mine = _row(_cid(user_id, take, choice), "user", COPY[choice], meta, at)
-    return database.insert_lounge_messages(user_id, [mine, reply]) or []
+    rows = database.insert_lounge_messages(user_id, [mine] + ([reply] if reply else [])) or []
+    if waiting and choice != "not_really":
+        let_go = after_take.release(database, user_id, take=take, glad=choice == "yes")
+        rows += [let_go] if let_go else []
+    return rows
 
 
 def _review_card(row: dict) -> bool:
@@ -245,6 +257,14 @@ def chat_turn(database: Any, user_id: str, question: str) -> Optional[dict]:
         return None  # an ordinary turn; Will sees the question in the thread
     _save(database, str(user_id), arc_id, take, helped=choice == "yes")
     if choice == "yes":
+        from services import after_take
+        waiting = after_take.held(database, str(user_id), take)
+        if waiting:
+            # The message after the Take is the reply, glad (finish_chat_turn
+            # lets it go under the typed "yes", with no other reply row).
+            return {"answer": after_take.glad_body(waiting.get("body") or ""),
+                    "row_metadata": {**meta, "feedback_check": "yes"},
+                    "after_take": "glad"}
         return {"answer": COPY["thanks"],
                 "row_metadata": {**meta, "feedback_check": "yes"}}
     return {"answer": COPY["missing"],

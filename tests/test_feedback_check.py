@@ -58,9 +58,10 @@ class _Db:
     def get_lounge_message_by_client_id(self, user_id, client_id):
         return self.thread.get((user_id, client_id))
 
-    def rewrite_lounge_message(self, user_id, client_id, body, metadata):
-        row = self.thread[(user_id, client_id)]
-        row.update(body=body, metadata=metadata)
+    def rewrite_lounge_message(self, user_id, client_id, body, metadata, at=None):
+        row = self.thread.pop((user_id, client_id))
+        row.update(body=body, metadata=metadata, **({"client_created_at": at} if at else {}))
+        self.thread[(user_id, client_id)] = row  # a new time: the bottom of the thread
         return row
 
     # take_feedback_checks

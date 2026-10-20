@@ -388,6 +388,19 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
   Take number, no scores, no verdicts. A speaker with no WhatsApp number
   gets the Lounge's WhatsApp offer right after it.
 
+- **One action at a time** (founder, 2026-10-20, in chat: "You cannot
+  have two actions at a time, like feedback and record"; the details
+  chosen on the decisions page <https://claude.ai/artifact/AT5A7Govq7G6n3UpbEiaQ5>
+  the same day; amends the bullet above). The summary no longer ends with
+  a question: it ends on the next step, and the Lounge puts "Record Take
+  N" under it. After the Take's card comes at most one ask, then the
+  summary: after Take 1 only "Did this help?" (when the Take looks off);
+  from Take 2 the CEO panel's ask, else WhatsApp (at most twice), else the
+  home screen (once), else the question. "Yes" brings the summary with
+  "We're glad it helped you." before its last line. A typed message passes
+  the ask; "Not now" on the CEO panel's ask brings it back after the next
+  Take. `services/after_take.py`.
+
 - **Words first, then voice** (founder, 2026-10-18; prototype
   <https://claude.ai/artifact/Ut2SqvHCoJ1hvH8dp17yQe>, the criteria page
   <https://claude.ai/artifact/Kr97WV8e2PNZwf4FPcsKUW>, "ok, push to prod").

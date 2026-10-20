@@ -18,9 +18,13 @@ Cheeky and curious (founder 2026-10-14): the bubble now also knows the
 talk's title and slide topics, what the speaker said, and their most
 willfident moment. It praises through one SIGNED line (``line_bank``),
 lightly varied at most, checked in code; it gives no advice (the walk
-did) and ends with a question back to the speaker. If they have no
-WhatsApp number yet, the Lounge's own WhatsApp offer follows the bubble; if
-not, "Did this feedback help you?" does (``feedback_check``, WIL-74).
+did). It ends on the next step, the spirit of the signed copy's last line,
+never on a question (founder 2026-10-20: one action at a time; the Lounge
+puts "Record Take N" under it).
+
+One action at a time (``after_take``, founder 2026-10-20): at most one ask
+follows the Take's card (the CEO panel's, WhatsApp, the home screen or "Did
+this help?"), and the bubble is held back until that ask closes.
 
 Anything that fails (no permit, no provider, a reply that breaks the
 rules or drifts from the signed lines) falls back to the signed journey
@@ -55,6 +59,8 @@ _BANNED = re.compile(r"\d|%|\bcue\b|\bscore\b|\bmetric|\bwillfidence\b|\bpercent
 #: A signed later-line names its Take; that is the one number allowed.
 _TAKE_NUMBER = re.compile(r"\bTake \d+\b")
 _EMOJI = re.compile("[\U0001F300-\U0001FAFF\u2600-\u27BF]")
+#: What may follow the last mark besides an emoji: spaces, the arrow.
+_TAIL = " \u2b07\ufe0f\u200d"
 #: How close a sentence must be to a signed line (shared words).
 _NEAR = 0.5
 _MAX_CHARS = 420
@@ -71,8 +77,9 @@ _SYSTEM = (
     "- If what they said seems to wander from the talk's title, ask about "
     "it with curiosity, never as a correction.\n"
     "- Give no feedback and no advice: their walk already did that.\n"
-    "- End with one question back to them: how it went, whether they like "
-    "it, another Take, or anything they want to tell you.\n"
+    "- End with the next step, in the spirit of the usual message's last "
+    "line: record the next take (or, after the third, keep practising). "
+    "Never end with a question.\n"
     "- Speak only to what this Take showed about whether they can do "
     "this; never judge them as a person, their self-esteem or their worth.\n"
     "Never use numbers (a Take number inside a signed line is the one "
@@ -134,13 +141,17 @@ def _clean(text: Optional[str], lines: Optional[list[str]] = None,
            names: tuple = ()) -> Optional[str]:
     """The reply, if it keeps the rules: 2-4 short sentences, no number
     (but a signed line's Take number, or one inside the talk's own title
-    or slide names) or banned word, at most one emoji and, when signed
-    lines were given, one of them said near-verbatim. Else None."""
+    or slide names) or banned word, at most one emoji, not ending on a
+    question (one action at a time: the next step is the last thing said)
+    and, when signed lines were given, one of them said near-verbatim.
+    Else None."""
     if not text:
         return None
     body = " ".join(text.strip().strip('"').split())
     sentences = [s for s in re.split(r"(?<=[.?!])\s+", body) if s]
     if not 2 <= len(sentences) <= 4 or len(body) > _MAX_CHARS:
+        return None
+    if _EMOJI.sub("", body).rstrip(_TAIL).endswith("?"):
         return None
     checked = _TAKE_NUMBER.sub("Take", body)
     for name in sorted((n for n in names if n), key=len, reverse=True):
@@ -344,18 +355,6 @@ def signed_lines(now: list[dict], before: Optional[list[dict]], take_index: int)
     return picks
 
 
-def _whatsapp_offer(database: Any, user_id: str, client_id: str, at: str) -> list[dict]:
-    """The Lounge's WhatsApp offer after the bubble, when the speaker has
-    no number yet (founder 2026-10-14); [] otherwise."""
-    from services.whatsapp_notify import whatsapp_state
-    if whatsapp_state(database, user_id).get("phone"):
-        return []
-    from services.chat_app_context import OFFER_PROMPTS
-    return [{"client_id": str(uuid.uuid5(_NAMESPACE, f"{client_id}:whatsapp")),
-             "role": "bot", "kind": "text", "body": OFFER_PROMPTS["whatsapp"],
-             "metadata": {"offer": "whatsapp"}, "client_created_at": at}]
-
-
 def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dict],
                     take_session_id: str, body: dict) -> Optional[dict]:
     """The summary bubble for one Take of the arc (``takes``: its spoken
@@ -393,34 +392,58 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
             "coach_note_key": _note_key(note), "practice": practice, "helper_words": words,
             "moved": moved}
     if held:
-        if not text:
-            return held  # the coach's update could not be written: keep it
-        first = held.get("metadata") or {}
-        earlier = (first["earlier"] if first.get("coach_update") and first.get("earlier")
-                   else held.get("body"))
-        meta.update({"coach_update": True, "earlier": earlier})
-        return database.rewrite_lounge_message(str(user_id), client_id, text, meta) or held
-    # Under the walk it closes: the walk's steps carry the browser's time.
+        return _rewritten(database, str(user_id), client_id, held, text, meta)
+    return _first_written(database, str(user_id), client_id, text or anchor, meta,
+                          can_install=body.get("can_install") is True)
+
+
+def _rewritten(database: Any, user_id: str, client_id: str, held: dict,
+               text: Optional[str], meta: dict) -> dict:
+    """A coach's note rewrites the stored summary in place; the first words
+    stay one tap away (``earlier``)."""
+    if not text:
+        return held  # the coach's update could not be written: keep it
+    from services import after_take
+    first = held.get("metadata") or {}
+    earlier = (first["earlier"] if first.get("coach_update") and first.get("earlier")
+               else held.get("body"))
+    meta.update({"coach_update": True, "earlier": earlier})
+    # Still held back, or let go after "Yes": the rewrite keeps that.
+    meta.update({k: first[k] for k in ("held_for", "glad") if first.get(k)})
+    if first.get("glad"):
+        text = after_take.glad_body(text)
+    return database.rewrite_lounge_message(user_id, client_id, text, meta) or held
+
+
+def _first_written(database: Any, user_id: str, client_id: str, text: str, meta: dict,
+                   *, can_install: bool) -> Optional[dict]:
+    """The summary's batch, once per Take: the summary, held back behind the
+    Take's one ask when there is one (``after_take``), then that ask."""
+    from services import after_take
+    from services.feedback_check import looks_off
     from services.lounge_messages import stamp_after, thread_stamp
+    take, practice, moved = meta["take_session_id"], meta["practice"], meta["moved"]
+    after_take.release_older(database, user_id)
+    ask = after_take.choose(database, user_id, take_index=meta["take_index"],
+                            off=looks_off(practice, moved), can_install=can_install)
+    if ask:
+        meta["held_for"] = ask
+    # Under the walk it closes: the walk's steps carry the browser's time.
     at = thread_stamp(database, user_id)
     batch = [{
         "client_id": client_id,
         "role": "bot",
         "kind": "cadence",
-        "body": text or anchor,
+        "body": text,
         "metadata": meta,
         "client_created_at": at,
-    }] + _whatsapp_offer(database, str(user_id), client_id, stamp_after(at))
-    # WIL-74: "Did this feedback help you?" closes the batch, unless another
-    # offer already rides in it (feedback_check decides).
-    from services.feedback_check import ask_rows, looks_off
-    batch += ask_rows(database, user_id=str(user_id), arc_id=str(arc_id),
-                      take_session_id=take, batch=batch, at=at,
-                      off=looks_off(practice, moved))
-    persisted = database.insert_lounge_messages(str(user_id), batch)
+    }] + after_take.ask_rows(database, ask, user_id=user_id, arc_id=meta["arc_id"],
+                             take=take, at=stamp_after(at))
+    persisted = database.insert_lounge_messages(user_id, batch)
     from services import speaker_memory
     speaker_memory.record(database, user_id, "take",
-                          {"practice": practice, "moved": moved, "helper_words": words}, take)
+                          {"practice": practice, "moved": moved,
+                           "helper_words": meta["helper_words"]}, take)
     from services.feedback_digest import post_later
     post_later(database)
     return persisted[0] if persisted else None
