@@ -3,7 +3,7 @@
 > **SUPERSEDED IN PART 2026-10-05 (decisions log N44).** Purchases are one-time packages (contract §8): no subscriptions, no monthly reset, the free grant once. Read the monthly model below as history.
 
 Date: 2026-07-27 · Status: **Phase 0 + Phase 1 BE BUILT** (flag-gated, `TOKEN_PRICING_ENABLED=0`).
-FE pending — see [PROMPT-FE-token-pricing.md](PROMPT-FE-token-pricing.md).
+FE pending — see [PROMPT-FE-token-pricing.md](history/PROMPT-FE-token-pricing.md).
 
 **✅ Founder-approved 2026-07-27** — the whole shape is now decided:
 - Peg **10,000 tokens = $1.00**; tiers **Free 12,000 · $5 = 50,000 · $25 = 300,000 (6×) · $100/mo = 1,500,000 (30×)**
@@ -383,7 +383,7 @@ first: log what *would* have been charged for a week, compare against real spend
 every tier now renews (§9.6). `STRIPE_CHECKOUT_PRICE_CREDITS_JSON` still maps price → amount; add a
 parallel `STRIPE_PRICE_TIER_JSON` mapping price → tier so the webhook sets the tier, not just a
 balance. Anchor `period_start` to the Stripe billing date. Details in
-[PROMPT-BE-token-pricing.md](PROMPT-BE-token-pricing.md) §1.
+[PROMPT-BE-token-pricing.md](history/PROMPT-BE-token-pricing.md) §1.
 
 **Phase 4 — FE handoff.** Balance chip, price shown *before* each action, top-up sheet, low-balance
 nudge. All copy held for sign-off.
@@ -684,7 +684,7 @@ was specified and never wired.
     FE wallet in #198 / #201.
 
 **Settled 2026-07-31 alongside the plan-change endpoints**
-([BE→FE answer](handoffs/BE-ANSWER-plan-checkout-2026-07-31.md)):
+([BE→FE answer](history/handoffs/BE-ANSWER-plan-checkout-2026-07-31.md)):
 
 13. **Mid-period DOWNGRADE, and the balance above the new cap.** The tier changes at once; the
     BALANCE IS NEVER TRUNCATED MID-PERIOD. A Max user with 1.4M who drops to Starter keeps all

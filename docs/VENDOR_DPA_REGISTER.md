@@ -24,7 +24,7 @@ established in the EU. No DPO has been appointed — see the open question below
 reference into accepted terms, no signature needed · `REQUESTED` asked, awaiting
 reply · `TODO` not started
 
-**Documents live in [`compliance/dpa/`](compliance/dpa/)** — filename convention
+**Documents live in [`compliance/dpa/`](compliance/dpa)** — filename convention
 and capture rules in that folder's README. Every file there has a row here;
 a row whose Evidence file is empty means the document has not been captured
 yet, and one marked ⚠️ means the row was written before the file arrived.

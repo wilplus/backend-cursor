@@ -1490,7 +1490,7 @@ def rank_goals_by_expected_value(user_id: str) -> int:
 
 
 # The drafted day-sized action (founder-agreed contract, 2026-08-02 —
-# docs/life-checkin-learning-contract.md). The card used to show the goal's
+# docs/history/life-checkin-learning-contract.md). The card used to show the goal's
 # TITLE as the one thing: "Profitable" is not something you can do before
 # lunch. This drafts the concrete step; the goal it serves stays named beside
 # it, and the deterministic title card is the fallback for every failure.

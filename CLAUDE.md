@@ -83,6 +83,28 @@ test, ask:
 - **No coverage target.** Cover the critical path (record → Ideal Text →
   feedback → next Take, consent, deletion, payments), not boilerplate.
 
+## Reference (open only when the task needs it)
+
+Everything older or superseded is in `docs/history/`. The live files:
+
+- **Locks:** `docs/LOCKS.md` and `docs/FOUNDER-LOCK-*.md`; signed words in
+  `docs/SIGNED-line-bank-2026-10-06.md`, `docs/SIGN-praise-lines-and-rewrite-moves-2026-10.md`.
+- **Product rules:** `docs/SPEC.md`, `docs/SPEC-DECISIONS-LOG.md`,
+  `docs/CANONICAL_PRODUCT_CONTRACT.md`, `docs/PRINCIPLES-WIL-74-feedback-goals.md`,
+  `docs/willab_decision_filter.md`.
+- **Code map:** `docs/ENGINE-MAP.md`, `docs/ASYNC-PIPELINE-QUEUE.md`,
+  `docs/DB-TRANSACTIONS.md`, `docs/RATE-LIMITS-AND-ERROR-CONTRACT.md`.
+- **Running it:** `docs/PHASE1-PROCESSING-RUNBOOK.md`, `docs/OPS-PIPELINE-QUEUE-RUNBOOK.md`,
+  `docs/OPS-FLAGS-AND-RELEASES.md`, `docs/OPS-SECRETS-AND-STAGING.md`, `docs/MIGRATIONS.md`.
+- **Will and learning:** `docs/SPEAKER-MEMORY.md`, `docs/WILL-LEARNING-PLAN.md`,
+  `docs/MLC2-FOUNDATION.md`, `docs/AI-VOICE-PRACTICE.md`, `docs/prompt_evals.md`.
+- **Data and legal:** `docs/RLS-AUDIT.md`, `docs/VENDOR_DPA_REGISTER.md`,
+  `docs/legal/`, `docs/compliance/`, `legal/`; cited by the signed legal pack:
+  `docs/AI-CONTENT-MARKING-PROPOSAL.md`, `docs/LEARNING-DOORS.md`,
+  `docs/MEASURE-exercise-human-delayed-v1.md`, `docs/PRODUCT-LEGAL-FLOW-PLF-1.1.md`.
+- **Money and backlog:** `docs/PRICING-TOKENS-PLAN.md`, `docs/BACKLOG.md`,
+  `docs/audit/LEDGER.md`.
+
 ## Security
 
 Never ask for or reuse passwords, tokens or keys in chat. Keys go into

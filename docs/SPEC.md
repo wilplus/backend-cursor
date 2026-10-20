@@ -8,20 +8,20 @@
 **Read §0 and §1 before anything else.**
 
 **Companion documents (normative, not optional):**
-- [Appendix A — Verbal Computations](SPEC-APPENDIX-A-verbal-computations.md)
-- [Appendix B — Feedback Progression](SPEC-APPENDIX-B-progression.md)
-- [Appendix C — Intervention Contract](SPEC-APPENDIX-C-intervention-contract.md)
-- [Appendix D — Fire-Up Benchmarks and Trigger Functions](SPEC-APPENDIX-D-benchmarks.md)
-- [Appendix E — Research Findings and Required Amendments](SPEC-APPENDIX-E-research.md)
-- [Appendix F — Measurement Windows](SPEC-APPENDIX-F-windows.md)
-- [Appendix G — Silent Population Telemetry](SPEC-APPENDIX-G-telemetry.md)
-- [Appendix H — Manager Engine Parameters](SPEC-APPENDIX-H-manager.md)
+- [Appendix A — Verbal Computations](history/SPEC-APPENDIX-A-verbal-computations.md)
+- [Appendix B — Feedback Progression](history/SPEC-APPENDIX-B-progression.md)
+- [Appendix C — Intervention Contract](history/SPEC-APPENDIX-C-intervention-contract.md)
+- [Appendix D — Fire-Up Benchmarks and Trigger Functions](history/SPEC-APPENDIX-D-benchmarks.md)
+- [Appendix E — Research Findings and Required Amendments](history/SPEC-APPENDIX-E-research.md)
+- [Appendix F — Measurement Windows](history/SPEC-APPENDIX-F-windows.md)
+- [Appendix G — Silent Population Telemetry](history/SPEC-APPENDIX-G-telemetry.md)
+- [Appendix H — Manager Engine Parameters](history/SPEC-APPENDIX-H-manager.md)
 - [Decisions log — settled after v3](SPEC-DECISIONS-LOG.md)
 
 **Operational documents (non-normative, but load-bearing):**
-- [Product-manager backlog — recurring processes and deferred unlocks](PRODUCT-MANAGER-BACKLOG.md)
-- [Prompt — build the drift layer (execute now)](PROMPT-drift-layer.md)
-- [Prompt — IRT / CAT / DIF (deferred, trigger-gated)](PROMPT-irt-dif-deferred.md)
+- [Product-manager backlog — recurring processes and deferred unlocks](history/PRODUCT-MANAGER-BACKLOG.md)
+- [Prompt — build the drift layer (execute now)](history/PROMPT-drift-layer.md)
+- [Prompt — IRT / CAT / DIF (deferred, trigger-gated)](history/PROMPT-irt-dif-deferred.md)
 
 ---
 

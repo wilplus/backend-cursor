@@ -1,5 +1,5 @@
 """Did a practised exercise hold into the next Take? (founder 2026-10-18,
-Linear WIL-29; concept docs/CONCEPT-per-user-exercise-effectiveness-2026-10-18.md;
+Linear WIL-29; concept docs/history/CONCEPT-per-user-exercise-effectiveness-2026-10-18.md;
 migration 0476.)
 
 Every other measure asks whether an exercise helped the moment it was

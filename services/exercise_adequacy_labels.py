@@ -2,7 +2,7 @@
 
 Turns each exposure the counter counts into one label under
 exercise-adequacy-label-v2 (founder 2026-09-28,
-docs/MLC3-EXERCISE-ADEQUACY-DESIGN.md §3.5):
+docs/history/MLC3-EXERCISE-ADEQUACY-DESIGN.md §3.5):
 
   * **helped** when none of the exposure's targeted problems fires on its
     endpoint attempt (item 1);

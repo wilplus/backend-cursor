@@ -1244,7 +1244,7 @@ def serialize_day(row: dict) -> dict:
         # Which GOAL the drafted action is toward — the goal's name and id
         # only. The rest of draft_meta (drafted, accepted, displacement) is
         # learner and gate data and NEVER reaches the wire
-        # (docs/life-checkin-learning-contract.md).
+        # (docs/history/life-checkin-learning-contract.md).
         "one_thing_goal": ((row.get("draft_meta") or {}).get("one_thing")
                            or {}).get("goal") or "",
         "one_thing_goal_id": ((row.get("draft_meta") or {}).get("one_thing")

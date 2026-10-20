@@ -136,7 +136,7 @@ def _frame_rms_db(sig: np.ndarray) -> np.ndarray:
 
 
 #: The noise meter's operational definition (founder 2026-09-28: build it,
-#: silent first). docs/MLC3-EXERCISE-ADEQUACY-DESIGN.md §3.5a.
+#: silent first). docs/history/MLC3-EXERCISE-ADEQUACY-DESIGN.md §3.5a.
 NOISE_METER_VERSION = "noise-meter-v1"
 NOISE_METER_MIN_FRAMES = 20
 

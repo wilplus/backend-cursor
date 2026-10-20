@@ -1287,7 +1287,7 @@ def life_week_get():
     return jsonify({
         "week": lp.serialize_week(row) if row else
         {"week_start": week_start.isoformat()},
-        # The learning contract's gate (docs/life-checkin-learning-contract.md):
+        # The learning contract's gate (docs/history/life-checkin-learning-contract.md):
         # a goal displaced from the one-thing slot on the 3 most recent card
         # days arrives HERE, as a conscious retire / re-date / keep decision —
         # never as silent input to the ranking. The goal's own name and due

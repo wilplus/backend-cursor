@@ -6102,7 +6102,7 @@
   "QB3": {
    "batch": 3,
    "closed_note": "answered and read by Claude, 6 Oct",
-   "evidence": "be scripts/phase1_retention_rules_v1_2.sql:80-93 seeds ('training_corpus', ..., true); legal/phase1-2026.1/SIGNED-ARTIFACTS.md:32-40 v1.2 registered 2026-10-02 with its rules, scripts run by the founder; legal/phase1-2026.1/11-retention-schedule-v1.1-training-DRAFT.md:20 'the rules are seeded inactive'; docs/SPEC-training-corpus-and-project-purge.md:244 'active = false until P5'; config.py:276 MLC2_TRAINING_CORPUS_COPY_ENABLED=False, :279 DOOR 1 OPENED 2026-10-01; services/training_corpus.py:16-20 docstring still says nobody can hold a training yes and the rule does not exist (both stale). Prod state is A126b (needs a DB read).",
+   "evidence": "be scripts/phase1_retention_rules_v1_2.sql:80-93 seeds ('training_corpus', ..., true); legal/phase1-2026.1/SIGNED-ARTIFACTS.md:32-40 v1.2 registered 2026-10-02 with its rules, scripts run by the founder; legal/phase1-2026.1/11-retention-schedule-v1.1-training-DRAFT.md:20 'the rules are seeded inactive'; docs/history/SPEC-training-corpus-and-project-purge.md:244 'active = false until P5'; config.py:276 MLC2_TRAINING_CORPUS_COPY_ENABLED=False, :279 DOOR 1 OPENED 2026-10-01; services/training_corpus.py:16-20 docstring still says nobody can hold a training yes and the rule does not exist (both stale). Prod state is A126b (needs a DB read).",
    "importance": 3,
    "options": [
     {

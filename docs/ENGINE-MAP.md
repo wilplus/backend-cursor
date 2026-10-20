@@ -12,7 +12,7 @@
 > - The game (E9) and its peer labels went with 0281 (`game_saves` dropped).
 >
 > For the current wiring use `docs/CANONICAL_PRODUCT_CONTRACT.md` and
-> `docs/MLC3-EXERCISE-ADEQUACY-DESIGN.md`.
+> `docs/history/MLC3-EXERCISE-ADEQUACY-DESIGN.md`.
 
 **Date:** 2026-07-28 · verified against the code on `feat/coach-star-verdict`
 (`ac9b800`). Plain-language reference for the founder; every claim is checked
@@ -110,4 +110,4 @@ coach corrects trains the models under Privacy §5 (objection route **L-1**).
   concurrent coach PUTs (single-coach product; a DB constraint would close it).
 - `log_rlhf_auto_accept_events` (assignment lane) is imported but never
   invoked — a second dead-emitter of the same family, untouched by this wave.
-- FE handoffs: `docs/PROMPT-FE-star-verdict.md`, `docs/PROMPT-FE-game.md`.
+- FE handoffs: `docs/history/PROMPT-FE-star-verdict.md`, `docs/history/PROMPT-FE-game.md`.

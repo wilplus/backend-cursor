@@ -1,5 +1,5 @@
 """One person's exercises, as facts (founder 2026-10-18, Linear WIL-29;
-concept docs/CONCEPT-per-user-exercise-effectiveness-2026-10-18.md, v1;
+concept docs/history/CONCEPT-per-user-exercise-effectiveness-2026-10-18.md, v1;
 decided in chat: "build option 1", "founder only").
 
 For each library exercise this person practised, counts in words, never a

@@ -27,4 +27,4 @@ drift. Same rule here: this pointer must never grow a competing version
 of the doctrine.
 
 Project state, system map, shipping mechanics, billing, and the
-maintainer checklist: [`docs/HANDOFF.md`](docs/HANDOFF.md).
+maintainer checklist: [`docs/history/HANDOFF.md`](docs/history/HANDOFF.md).

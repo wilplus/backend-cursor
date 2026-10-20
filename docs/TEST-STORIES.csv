@@ -793,7 +793,7 @@ O2 -> test_only_the_first_exposure_per_problem_counts
 O3 -> test_the_first_valid_attempt_is_the_endpoint_and_none_is_missing_data
 O4 -> test_the_bar_is_300_in_all_and_30_per_ranked_exercise
 O5 -> test_an_unreadable_source_blocks_ready
-O6 -> test_a_coach_pick_is_never_in_the_ranked_pool",docs/MLC3-EXERCISE-ADEQUACY-DESIGN.md §3.5 (items 1-8).
+O6 -> test_a_coach_pick_is_never_in_the_ranked_pool",docs/history/MLC3-EXERCISE-ADEQUACY-DESIGN.md §3.5 (items 1-8).
 tests/test_exercise_match_trace_postgres.py,Story,"As the founder, I want every exercise draw to write one frozen trace of why it was chosen, so that later analysis cannot be faked by recomputing.","O1  The call that draws writes exactly one trace beside the assignment.
 O2  A replay returns the frozen choice and writes nothing: the first
 trace stays, byte for byte.

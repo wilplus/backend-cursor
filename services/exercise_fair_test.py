@@ -2,7 +2,7 @@
 
 Grades a candidate exercise ranker against today's fixed ranking under
 exercise-adequacy-label-v2 (founder 2026-09-28,
-docs/MLC3-EXERCISE-ADEQUACY-DESIGN.md §3.5), without ever serving it:
+docs/history/MLC3-EXERCISE-ADEQUACY-DESIGN.md §3.5), without ever serving it:
 
   * **Study group and exam group (item 6).** Speakers are split by a stable
     hash of the speaker id. A ranker may learn only from `split_of(...) ==

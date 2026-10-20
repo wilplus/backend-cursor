@@ -2,7 +2,7 @@
 
 The learning contract (exercise-adequacy-label-v2, founder 2026-09-28,
 F7 2026-10-01,
-docs/MLC3-EXERCISE-ADEQUACY-DESIGN.md §3.5) says no learned ranking may even
+docs/history/MLC3-EXERCISE-ADEQUACY-DESIGN.md §3.5) says no learned ranking may even
 be evaluated before at least 300 first-exposure attempts with a valid
 endpoint, and 30 for every exercise it would rank (item 8). This counts them,
 so the founder can watch the jar fill instead of guessing.

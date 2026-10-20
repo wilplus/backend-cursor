@@ -18,7 +18,7 @@ PROVES   O1 -> test_untraced_or_old_rules_renders_are_not_counted
          O4 -> test_the_bar_is_300_in_all_and_30_per_ranked_exercise
          O5 -> test_an_unreadable_source_blocks_ready
          O6 -> test_a_coach_pick_is_never_in_the_ranked_pool
-WHY      docs/MLC3-EXERCISE-ADEQUACY-DESIGN.md §3.5 (items 1-8).
+WHY      docs/history/MLC3-EXERCISE-ADEQUACY-DESIGN.md §3.5 (items 1-8).
 """
 from __future__ import annotations
 

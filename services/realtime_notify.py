@@ -1,7 +1,7 @@
 """Best-effort Supabase Realtime broadcast for analysis-state flips.
 
 The push half of the FE's push-first status transport (frontend-cursor #232 /
-docs/BE-HANDOFF-analysis-state-push.md). One REST send per state flip, on a
+docs/history/BE-HANDOFF-analysis-state-push.md). One REST send per state flip, on a
 broadcast channel whose NAME carries the session UUID — the same
 unguessable-id capability trust model as the guest readout route, so nothing
 is enumerable and no RLS changes. Payload is mechanical plumbing state ONLY

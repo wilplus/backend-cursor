@@ -37,7 +37,7 @@
 
 **2. Learning receipts and canonical dual-write (F2).** `learning presentation ownership rejected` and `canonical feedback bundle unavailable` on every open: same cause, the account is outside the canary. No user impact. Noisy logs.
 
-**3. Confidence producer activation (MLC-2).** One constant in code (`MLC2_CONFIDENCE_CUTOVER_MODE = "dark"`), permanent once flipped (rollback only to `killed`). Thirteen preconditions in `docs/work-items/mlc2-confidence-founder-canary-activation-runbook.md`, including the ML/data readiness acceptance (unknown) and consent for the canary account. Founder: stay dark.
+**3. Confidence producer activation (MLC-2).** One constant in code (`MLC2_CONFIDENCE_CUTOVER_MODE = "dark"`), permanent once flipped (rollback only to `killed`). Thirteen preconditions in `docs/history/work-items/mlc2-confidence-founder-canary-activation-runbook.md`, including the ML/data readiness acceptance (unknown) and consent for the canary account. Founder: stay dark.
 
 **4. The reserved bookmark slot (faint circle after a paragraph).** The page holds a slot while the server says a feedback section is still `retryable`; if the server keeps saying so after the retry budget, the slot stays until reload. Needs the console output of the enrichment `feedback` / `document_layers` sections on project j to decide whether the server or the page is wrong.
 

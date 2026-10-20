@@ -52,7 +52,7 @@ choice is a holding position until a signing identity makes it proportionate.
 
 The product/legal onboarding, recording-eligibility, AI-transparency,
 termination, deletion, and audio-lineage decision is locked in
-[`PRODUCT-LEGAL-FLOW-PLF-1.md`](./PRODUCT-LEGAL-FLOW-PLF-1.md).
+[`PRODUCT-LEGAL-FLOW-PLF-1.md`](history/PRODUCT-LEGAL-FLOW-PLF-1.md).
 
 PLF-1 supersedes earlier conversational assumptions about per-recording
 sole-speaker confirmation, full-date-of-birth collection, per-recording
@@ -61,7 +61,7 @@ or authorize implementation, deployment, datasets, training, or promotion.
 
 ### PLF-1.1 amendment
 
-[`PRODUCT-LEGAL-FLOW-PLF-1.1.md`](./PRODUCT-LEGAL-FLOW-PLF-1.1.md) supersedes
+[`PRODUCT-LEGAL-FLOW-PLF-1.1.md`](PRODUCT-LEGAL-FLOW-PLF-1.1.md) supersedes
 PLF-1. Required service processing and optional pooled model improvement now
 have independent authorization states and affirmative actions. A user may
 withdraw pooled-improvement authorization while continuing recording and
@@ -552,7 +552,7 @@ not retired.
 ## N · Training consent, the training corpus and project delete (founder 2026-09-25)
 
 Locked by the founder on 2026-09-25. Design:
-`docs/SPEC-training-corpus-and-project-purge.md`.
+`docs/history/SPEC-training-corpus-and-project-purge.md`.
 
 **N1 · C1 — training returns only through re-acceptance.** Training may come
 back later only through a new policy version that every user re-accepts.
@@ -2251,7 +2251,7 @@ its rules from.
 - The recording lock records the one close button and the fade (Q-B14 A).
   N59 named the prototype's version 6; the lock is version 7, as the
   frontend's CLAUDE.md and the lock file already say.
-- `docs/COACH-PANEL-BUILD-PLAN-P2-P7.md` maps the coach panel rebuild to
+- `docs/history/COACH-PANEL-BUILD-PLAN-P2-P7.md` maps the coach panel rebuild to
   steps, screens and endpoints.
 
 **N65 · Wave 2's signatures are given, and V4 may measure every

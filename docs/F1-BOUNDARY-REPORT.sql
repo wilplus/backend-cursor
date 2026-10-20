@@ -1,7 +1,7 @@
 -- F1 — word→slide boundary report (run in Supabase → SQL Editor)
 --
 -- Answers ONE question: is it worth asking the FE to measure the recorder
--- clock offset exactly (docs/PROMPT-FE-audio-clock-offset.md), or is
+-- clock offset exactly (docs/history/PROMPT-FE-audio-clock-offset.md), or is
 -- pause-snap already handling the drift?
 --
 -- Prerequisites: migrations/add_boundary_metrics.sql has run, and at least a

@@ -188,7 +188,7 @@ fallback.
    account** — the existing `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` /
    `R2_SECRET_ACCESS_KEY` are reused, no new credentials.
 2. Do NOT enable public access (founder decision 4, 2026-09-25; see
-   docs/PRIVATE-BUCKETS-M11.4.md). Every read is signed. Note that
+   docs/history/PRIVATE-BUCKETS-M11.4.md). Every read is signed. Note that
    `R2_LAB_AUDIO_PUBLIC_BASE_URL` also gates whether lab audio uses this
    bucket at all (`services/lab_audio_storage.py:99-103`), so that switch
    must be separated from the public base before this cutover.

@@ -634,7 +634,7 @@ with this contract, this contract wins.
     (Take, moment), and never rerandomizes on refresh or retry
     (`exercise-80-20-v1`, migration 0372). Using the outcomes as evaluation
     evidence follows label specification `exercise-adequacy-label-v2`
-    (founder 2026-09-28; docs/MLC3-EXERCISE-ADEQUACY-DESIGN.md §3.5): an
+    (founder 2026-09-28; docs/history/MLC3-EXERCISE-ADEQUACY-DESIGN.md §3.5): an
     exercise helped when the problems it targeted no longer fire on the first
     valid same-passage attempt (F7, founder 2026-10-01: fixed in advance, so
     when the speaker stops cannot change it; the attempt the speaker landed
