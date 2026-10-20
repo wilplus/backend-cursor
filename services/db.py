@@ -10732,6 +10732,66 @@ class DatabaseService:
             )
             return False
 
+    # ── WIL-74: goal history and "did this help?" (migration 0477) ──
+
+    def insert_goal_history(self, row: dict) -> bool:
+        """One more goal in the speaker's history. False on any failure."""
+        try:
+            self.client.table("user_goal_history").insert(row).execute()
+            return True
+        except Exception as e:
+            logger.warning("insert_goal_history failed user=%s: %s",
+                           row.get("user_id"), e, exc_info=True)
+            return False
+
+    def list_goal_history(self, user_id: str, limit: int = 20) -> list[dict]:
+        """The speaker's goals, newest first. [] on any failure."""
+        try:
+            return (self.client.table("user_goal_history")
+                    .select("goal, previous_goal, source, changed_at")
+                    .eq("user_id", user_id).order("changed_at", desc=True)
+                    .limit(limit).execute().data) or []
+        except Exception as e:
+            logger.warning("list_goal_history failed user=%s: %s", user_id, e, exc_info=True)
+            return []
+
+    def active_coach_user_ids(self) -> list[str]:
+        """The user ids of the active coaches (coach_users holds emails).
+        [] on any failure."""
+        try:
+            emails = [r.get("email") for r in (
+                self.client.table("coach_users").select("email")
+                .eq("is_active", True).execute().data) or []]
+        except Exception as e:
+            logger.warning("active_coach_user_ids failed: %s", e, exc_info=True)
+            return []
+        ids = (self.v2_find_user_id_by_email(e) for e in emails if e)
+        return [str(i) for i in ids if i]
+
+    def get_take_feedback_check(self, user_id: str,
+                                take_session_id: str) -> Optional[dict]:
+        try:
+            rows = (self.client.table("take_feedback_checks").select("*")
+                    .eq("user_id", user_id)
+                    .eq("take_session_id", take_session_id)
+                    .limit(1).execute().data)
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning("get_take_feedback_check failed user=%s: %s",
+                           user_id, e, exc_info=True)
+            return None
+
+    def save_take_feedback_check(self, row: dict) -> bool:
+        """Upsert one Take's answer (one row per Take). False on failure."""
+        try:
+            (self.client.table("take_feedback_checks")
+             .upsert(row, on_conflict="user_id,take_session_id").execute())
+            return True
+        except Exception as e:
+            logger.warning("save_take_feedback_check failed user=%s: %s",
+                           row.get("user_id"), e, exc_info=True)
+            return False
+
     # ── blind-rater language eligibility ───────────────────────────
 
     def get_user_proficient_languages(self, user_id: str) -> Optional[list]:
@@ -10926,6 +10986,11 @@ class DatabaseService:
             }
             for m in messages
         ]
+        if any(m.get("about_user_id") for m in messages):
+            # A row about another person (a coach's goal card, WIL-74): the
+            # account purge deletes it with that person (migration 0477).
+            for row, m in zip(rows, messages):
+                row["about_user_id"] = m.get("about_user_id")
         try:
             res = (
                 self.client.table("lounge_messages")

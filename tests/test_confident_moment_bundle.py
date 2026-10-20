@@ -1,7 +1,12 @@
-"""Focused unit tests for Confident Moment Bundle application logic (Chunk 3).
-
-No PostgreSQL, no browser, no live DB. Pure projection and policy tests plus
-mocked-RPC repository tests.
+"""
+STORY    As a speaker, I want my answer to a feedback item stored against that
+         item's family, so that my yes on confident voice is never read as a
+         yes on another kind of feedback.
+OUTCOME
+  O1  A projection whose owner decision names the item's own family is accepted.
+  O2  A projection whose owner decision names a different family is refused.
+PROVES   O1 -> test_owner_decision_on_the_items_family_is_accepted
+         O2 -> test_owner_decision_on_another_family_is_refused
 """
 from __future__ import annotations
 
@@ -16,9 +21,6 @@ from services.confident_moment_bundle import (
     ConfidentMomentProjectionInvalid,
     validate_projection_envelope,
 )
-
-# ── Gate ────────────────────────────────────────────────────────────────────
-
 
 def _projection_envelope() -> dict[str, Any]:
     def identifier(number: int) -> str:
@@ -147,26 +149,28 @@ def _projection_envelope() -> dict[str, Any]:
     }
 
 
-def test_d49_owner_decision_is_exact_and_family_bound():
+def _envelope_with_owner_decision(family: str) -> dict[str, Any]:
     envelope = _projection_envelope()
     item = envelope["bundle_projection"]["bundles"][0][
         "feedback_language_items"
     ][0]
+    assert item["feedback_family"] == "confident_voice"
     item["owner_decision"] = {
-        "feedback_family": "confident_voice",
+        "feedback_family": family,
         "response": "yes",
         "decision_id": "00000000-0000-0000-0000-000000000070",
         "owner_response_id": "00000000-0000-0000-0000-000000000071",
         "response_binding_id": "00000000-0000-0000-0000-000000000072",
     }
+    return envelope
+
+
+def test_owner_decision_on_the_items_family_is_accepted():
+    envelope = _envelope_with_owner_decision("confident_voice")
     assert validate_projection_envelope(envelope) is envelope
 
-    item["owner_decision"]["feedback_family"] = "great_formulation"
+
+def test_owner_decision_on_another_family_is_refused():
+    envelope = _envelope_with_owner_decision("great_formulation")
     with pytest.raises(ConfidentMomentProjectionInvalid, match="family"):
         validate_projection_envelope(envelope)
-
-
-# ── Repository: disabled gate ───────────────────────────────────────────────
-
-
-# ── Repository: enabled-path with mocked RPC ────────────────────────────────

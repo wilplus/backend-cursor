@@ -30,7 +30,7 @@ from auth import optional_auth, require_auth
 from config import Config
 from routes.admin import is_admin, is_coach
 from routes.v2.blueprint import v2_bp
-from routes.v2.common import _resolve_snippet_audio_url
+from routes.v2.common import _resolve_snippet_audio_url, retired_route
 from services.db import db
 from services.create_take import session_owned_by_principal
 from routes.v2.guest_owner import (
@@ -865,31 +865,13 @@ def _coach_finalized_deck(arc_id, sessions):
 @v2_bp.route("/explore/arc/<arc_id>/take-comparison", methods=["GET"])
 @require_auth
 def v2_explore_arc_take_comparison(arc_id):
-    """Take-1-vs-take-2 comparison (Paid Audits A6) — the NEUTRAL teaser at the
-    paywall. RAW acoustic aggregates (mean pitch, speech rate, pitch range,
-    mean pause) for take 1 vs take 2 + a neutral pitch-range movement word
-    (widened / narrowed / steadied).
+    """RETIRED (founder 2026-10-19): 410 GONE, nothing read or sent.
 
-    FREE on purpose — this is the unpaid teaser, so it is NOT behind the A2
-    paywall (only ownership-gated). AC-9 / D8: no score, ratio, verdict word, or
-    charisma vocabulary; raw values + neutral movement only.
-
-    Response 200 { arc_id, take_count, takes:[...], comparison|null }
-             404 NOT_FOUND · 500 V2_ERROR
+    It sent raw Hz, wpm and pause milliseconds to the speaker (Never rule 1),
+    and no frontend called it. Each call still logs ``retired_route_called``.
     """
-    try:
-        from services.take_comparison import build_take_comparison
-        owned, _ = _arc_owned_by_caller(arc_id)
-        if not owned:
-            return jsonify({"code": "NOT_FOUND", "error": "arc not found"}), 404
-        return jsonify(build_take_comparison(arc_id)), 200
-    except Exception as e:
-        logger.error("explore/arc take-comparison failed arc=%s: %s", arc_id, e,
-                     exc_info=True)
-        sentry_sdk.capture_exception(e)
-        return jsonify({
-            "code": "V2_ERROR", "error": "Failed to load take comparison",
-        }), 500
+    return retired_route("/v2/explore/arc/<id>/take-comparison",
+                         "The take comparison was retired (founder 2026-10-19).")
 
 
 @v2_bp.route("/arc/<arc_id>/redeem", methods=["POST"])

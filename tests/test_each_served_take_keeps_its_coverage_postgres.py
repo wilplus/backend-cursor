@@ -1,22 +1,37 @@
-"""Each served Take keeps its coverage and lane outcomes, on a disposable
-database (0437, D-ML-5; contract 24c, 24d, 25).
-
-Pins: the table exists with RLS on and nothing granted to the browser
-roles; the row the serve path builds (`coverage_row`) fits it, including a
-`no_defensible_candidate` lane; one row per Take (the first serve inserts,
-a reread finds it and does not insert again); the counts cannot claim more
-Slides covered than formed a block; applying the file again keeps every
-row."""
+"""
+STORY    As the founder, I want each served Take's feedback coverage and lane
+         outcomes stored once, so that I can see where feedback found nothing
+         worth saying.
+OUTCOME
+  O1  The row the serve path builds (`coverage_row`) fits the table, with an
+      empty lane typed `no_defensible_candidate`.
+  O2  One row per Take: a second serve inserts nothing.
+  O3  A row cannot claim more Slides covered than formed a block.
+  O4  RLS is on and the browser roles (anon, authenticated) hold nothing.
+  O5  Applying the migration again keeps every row.
+PROVES   O1 -> test_the_row_the_serve_path_builds_fits_and_types_the_empty_lane
+         O2 -> test_a_second_serve_keeps_one_row
+         O3 -> test_covered_cannot_exceed_formed
+         O4 -> test_browser_roles_reach_nothing
+         O5 -> test_reapplying_the_migration_keeps_the_rows
+NOTE     The insert below is the SQL the production writer's PostgREST upsert
+         (`record_take_feedback_coverage`, on_conflict + ignore_duplicates)
+         becomes; the writer itself talks to Supabase, not to psycopg2.
+WHY      0437, D-ML-5; contract 24c, 24d, 25.
+"""
 from __future__ import annotations
 
 import json
 import os
+import pathlib
 import uuid
 
 import psycopg2
 import psycopg2.extras
 import pytest
 
+MIGRATION = (pathlib.Path(__file__).resolve().parents[1] / "migrations"
+             / "each_served_take_keeps_its_coverage.sql")
 DSN = os.environ.get("CONFIDENT_MOMENT_REHEARSAL_DSN", "")
 pytestmark = pytest.mark.skipif(
     not DSN, reason="disposable confident-moment rehearsal only"
@@ -105,3 +120,55 @@ def test_the_row_the_serve_path_builds_fits_and_types_the_empty_lane(db):
     }
     assert stored["uncovered"] == [
         {"slide_index": 1, "reasons": ["no_exact_lineage"]}]
+
+
+def _count(cur, take_id: str) -> int:
+    cur.execute("SELECT count(*) AS n FROM public.take_feedback_coverage "
+                "WHERE take_session_id = %s", (take_id,))
+    return cur.fetchone()["n"]
+
+
+def test_a_second_serve_keeps_one_row(db):
+    row = _row(covered=False)
+    with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        assert _insert(cur, row) is True
+        assert _insert(cur, {**_row(covered=True),
+                             "take_session_id": row["take_session_id"]}) is False
+        assert _count(cur, row["take_session_id"]) == 1
+        cur.execute("SELECT slides_covered FROM public.take_feedback_coverage "
+                    "WHERE take_session_id = %s", (row["take_session_id"],))
+        assert cur.fetchone()["slides_covered"] == 1
+
+
+def test_covered_cannot_exceed_formed(db):
+    row = {**_row(covered=True), "slides_with_blocks": 1, "slides_covered": 2}
+    with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        with pytest.raises(psycopg2.errors.CheckViolation,
+                           match="take_feedback_coverage_counts"):
+            _insert(cur, row)
+        assert _count(cur, row["take_session_id"]) == 0
+
+
+def test_browser_roles_reach_nothing(db):
+    with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute("SELECT relrowsecurity FROM pg_class "
+                    "WHERE oid = 'public.take_feedback_coverage'::regclass")
+        assert cur.fetchone()["relrowsecurity"] is True
+        for role in ("anon", "authenticated"):
+            for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE"):
+                cur.execute(
+                    "SELECT has_table_privilege(%s, "
+                    "'public.take_feedback_coverage', %s) AS ok",
+                    (role, privilege))
+                assert cur.fetchone()["ok"] is False, (role, privilege)
+        cur.execute("SELECT has_table_privilege('service_role', "
+                    "'public.take_feedback_coverage', 'INSERT') AS ok")
+        assert cur.fetchone()["ok"] is True
+
+
+def test_reapplying_the_migration_keeps_the_rows(db):
+    row = _row(covered=True)
+    with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        assert _insert(cur, row) is True
+        cur.execute(MIGRATION.read_text())
+        assert _count(cur, row["take_session_id"]) == 1

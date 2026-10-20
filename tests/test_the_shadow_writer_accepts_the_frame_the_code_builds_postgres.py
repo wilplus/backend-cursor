@@ -1,23 +1,23 @@
-"""0431 on a real database: the shadow writer stores the frame the V3 picker
-builds, and still refuses every other frame (ledger N20, founder R3 A).
-
-Since #893 the code builds frame schema `take-feedback-policy-v3-frame-v5`;
-the writer 0311 defined accepted only `-v3`, so every shadow write was refused
-and only logged. This suite does not hand-write a frame: it seeds a Take in
-the disposable released lane, runs `build_shadow_frame` over it exactly as
-`services/ideal_text_changes.py` does, and hands the result to
-`public.record_take_feedback_policy_v3_shadow_v3`.
-
-Pins:
-  * the frame the code builds is STORED, byte for byte, and read back;
-  * the same frame relabelled -v3 or -v4, or carrying another detector or
-    policy version, is still refused with 0311's error;
-  * re-applying 0431 inside a transaction (twice) leaves the writer accepting
-    the code's frame: the migration is idempotent;
-  * SECURITY DEFINER, search_path = public and the grants are as 0311 left
-    them: service_role may execute, anon and authenticated may not.
-
-Every write happens inside a transaction that is rolled back.
+"""
+STORY    As a developer, I want the database to store the feedback frame the
+         code really builds, so that every Take's shadow record is kept
+         instead of silently refused.
+OUTCOME
+  O1  The frame build_shadow_frame makes is stored byte for byte and read
+      back; a replay is still "stored".
+  O2  The same frame with an older schema label or another detector
+      version is refused.
+  O3  Re-applying the writer's migrations (twice) leaves it accepting the
+      code's frame.
+  O4  The writer is SECURITY DEFINER with search_path = public; only
+      service_role may execute it.
+PROVES   O1 -> test_the_frame_the_code_builds_is_stored_and_read_back
+         O2 -> test_an_older_label_or_detector_is_refused
+         O3 -> test_re_applying_the_writer_keeps_it_accepting_the_frame
+         O4 -> test_only_the_service_key_may_call_the_writer
+WHY      0431/0441, ledger N20: after #893 every shadow write was refused and
+         only logged. Released lane; every write is rolled back. Other suites
+         import _migration_body, _seed_take and _write from here.
 """
 from __future__ import annotations
 
@@ -185,3 +185,42 @@ def test_the_frame_the_code_builds_is_stored_and_read_back(cur):
     assert rows[0]["frame"] == seed["frame"]
     # The replay the writer is idempotent for.
     assert _write(cur, seed, seed["frame"])["outcome"] == "stored"
+
+
+def test_an_older_label_or_detector_is_refused(cur):
+    seed = _seed_take(cur)
+    frame = seed["frame"]
+    older = [{**frame, "frame_schema_version": "take-feedback-policy-v3-frame-v3"},
+             {**frame, "frame_schema_version": "take-feedback-policy-v3-frame-v4"},
+             {**frame, "implementation_versions": {
+                 **frame["implementation_versions"],
+                 "confidence_detector_version": "voice-confidence-universal-v2"}}]
+    for relabelled in older:
+        cur.execute("SAVEPOINT refused")
+        with pytest.raises(psycopg2.Error) as refused:
+            _write(cur, seed, relabelled)
+        cur.execute("ROLLBACK TO SAVEPOINT refused")
+        assert "invalid universal-v3 dark frame" in str(refused.value)
+    assert _write(cur, seed, frame)["outcome"] == "stored"
+
+
+def test_re_applying_the_writer_keeps_it_accepting_the_frame(cur):
+    cur.execute(_migration_body())
+    cur.execute(_migration_body())
+    seed = _seed_take(cur)
+    assert _write(cur, seed, seed["frame"])["outcome"] == "stored"
+
+
+def test_only_the_service_key_may_call_the_writer(cur):
+    signature = ("public.record_take_feedback_policy_v3_shadow_v3("
+                 "text, uuid, uuid, uuid, uuid, integer, text, jsonb, text)")
+    cur.execute("SELECT prosecdef, proconfig FROM pg_proc WHERE oid = %s::regprocedure",
+                (signature,))
+    row = cur.fetchone()
+    assert row["prosecdef"] is True
+    assert row["proconfig"] == ["search_path=public"]
+    for role, allowed in (("service_role", True), ("anon", False),
+                          ("authenticated", False)):
+        cur.execute("SELECT has_function_privilege(%s, %s, 'EXECUTE') AS ok",
+                    (role, signature))
+        assert cur.fetchone()["ok"] is allowed, role

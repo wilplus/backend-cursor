@@ -1,14 +1,26 @@
-"""Unit tests for services/manager_engine.py — Appendix H.
-
-Pins the parameters that are DERIVED (so a tune has to argue with a study)
-and the invariants that fail silently (a note deleted rather than demoted, two
-suppressors compounding into permanent silence, escalation on repetition).
-
-Run: python3 -m unittest tests.test_manager_engine
+"""
+STORY    As the founder, I want the feedback arbitration's experiment honest
+         (protected Confident Voice slot, per-slide exploration, withheld
+         notes recorded as having won), so that we can later learn what
+         feedback helps.
+OUTCOME
+  O1  A protected note never gives up its slot to exploration or withholding.
+  O2  Exploration trades only inside the swapped note's own slide.
+  O3  Every withheld note is logged as would_have_surfaced, not surfaced.
+  O4  Take 1 is never withheld from (science arms, 2026-09-18 ruling).
+  O5  A note shown again and again unacted is never escalated.
+PROVES   O1 -> test_a_protected_note_never_gives_up_its_slot,
+               test_a_withheld_note_is_recorded_as_having_won
+         O2 -> test_per_slide_exploration_trades_inside_the_swaps_own_slide
+         O3 -> test_a_withheld_note_is_recorded_as_having_won
+         O4 -> test_take_one_is_never_withheld_from
+         O5 -> test_a_repeated_unacted_note_is_reframed_never_escalated
+WHY      Appendix H (H.4, H.7, H.13.4); PM-8 the experiment's record.
 """
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from services import manager_engine as me
 
@@ -27,29 +39,34 @@ def _user(state=me.NOVICE, dims=("wpm",), **kw):
     return me.UserState(**args)
 
 
+def _four(**kw):
+    return [_c(d, anchor=(i * 10.0, i * 10.0 + 1), deviation=4.0 - i, **kw)
+            for i, d in enumerate(("d0", "d1", "d2", "d3"))]
+
+
 class TestProgressCoupling(unittest.TestCase):
     """H.4 — the slot where the evidence points against intuition."""
 
-    def test_it_never_escalates(self):
-        forms = {me.on_unacted(k) for k in range(1, 30)}
-        self.assertNotIn("ESCALATE", forms)
-        self.assertEqual(forms, {me.REPEAT_AS_IS, me.REFRAME,
-                                 me.CHANGE_INTERVENTION_TYPE})
+    def test_a_repeated_unacted_note_is_reframed_never_escalated(self):
+        user = _user(me.APPRENTICE, dims=("wpm",))
+        forms = []
+        for k in (1, 2, 5, 29):
+            out = me.arbitrate([_c("wpm", k=k)], user, controls=False)
+            forms.append(out["selected"][0].form)
+        self.assertEqual(forms, [me.REPEAT_AS_IS, me.REFRAME,
+                                 me.CHANGE_INTERVENTION_TYPE,
+                                 me.CHANGE_INTERVENTION_TYPE])
 
 
 class TestExploration(unittest.TestCase):
 
-
-    # The exploration trade's own rules (audit W1: the stages arbitrate()
-    # was split into are pinned here, not only through the whole call).
     def _five(self):
         return [_c(f"d{i}", anchor=(i * 10.0, i * 10.0 + 1),
                    deviation=10.0 - i) for i in range(5)]
 
     def test_a_protected_note_never_gives_up_its_slot(self):
-        """The Take contract's Confident Voice slot is protected: with every
-        selected note protected, there is nothing to trade and exploration
-        sits this one out."""
+        """With every selected note protected there is nothing to trade, and
+        exploration sits this one out."""
         user = _user(me.APPRENTICE, dims=("a",))
         out = me.arbitrate(
             self._five(), user, roll=lambda: 0.0,
@@ -74,36 +91,38 @@ class TestExploration(unittest.TestCase):
 
 
 class TestArmRows(unittest.TestCase):
-    """PM-8 — the experiment's record. Running the controls without this is
-    strictly WORSE than not running them: users pay the cost in withheld
-    feedback and no causal claim is recoverable."""
+    """PM-8 — the experiment's record. Withholding without this row is
+    strictly worse than not running the arm."""
 
-    def _rows(self, dims=("d0", "d1", "d2", "d3"), user="u0", session="s1",
-              **kw):
-        state = {d: me.APPRENTICE for d in dims}
-        user_state = me.UserState(user_id=user, state_by_dimension=state)
-        cands = [_c(d, anchor=(i * 10.0, i * 10.0 + 1), deviation=4.0 - i)
-                 for i, d in enumerate(dims)]
-        out = me.arbitrate(cands, user_state, session_id=session, **kw)
-        return out, me.arm_rows(out, session_id=session, user_id=user)
-
+    def _arbitrate(self, *, take_index, protected=()):
+        user = me.UserState(user_id="u0", state_by_dimension={
+            d: me.APPRENTICE for d in ("d0", "d1", "d2", "d3")})
+        # Rate 1.0: every eligible winner is withheld, so the case is
+        # deterministic rather than a hunt for a session that hashes low.
+        with patch.object(me, "INTERVENTION_RANDOMISATION", 1.0):
+            out = me.arbitrate(_four(), user, session_id="s1",
+                               take_index=take_index,
+                               protected_dimensions=list(protected))
+        return out, me.arm_rows(out, session_id="s1", user_id="u0")
 
     def test_a_withheld_note_is_recorded_as_having_won(self):
-        """The within-subject untreated condition, and the only evidence it
-        occurred at all."""
-        for i in range(200):
-            out, rows = self._rows(session=f"s{i}")
-            withheld = [r for r in rows if r["arm"] == me.ARM_WITHHELD]
-            if withheld:
-                for r in withheld:
-                    self.assertTrue(r["would_have_surfaced"])
-                    self.assertFalse(r["surfaced"])
-                return
-        self.fail("no session withheld in 200 tries")
+        out, rows = self._arbitrate(take_index=2, protected=("d0",))
+        withheld = [r for r in rows if r["arm"] == me.ARM_WITHHELD]
+        self.assertTrue(withheld)
+        self.assertEqual({r["dimension_id"] for r in withheld},
+                         set(out["withheld"]))
+        for r in withheld:
+            self.assertTrue(r["would_have_surfaced"])
+            self.assertFalse(r["surfaced"])
+        # The protected note is still shown, never withheld.
+        self.assertEqual([c.dimension for c in out["selected"]], ["d0"])
+
+    def test_take_one_is_never_withheld_from(self):
+        out, rows = self._arbitrate(take_index=1)
+        self.assertFalse(out["withheld"])
+        self.assertTrue(out["selected"])
+        self.assertNotIn(me.ARM_WITHHELD, {r["arm"] for r in rows})
 
 
 if __name__ == "__main__":
     unittest.main()
-
-
-# ── the science arms after the 2026-09-18 ruling (Appendix H.13.4) ──

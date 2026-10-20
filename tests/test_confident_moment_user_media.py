@@ -1,7 +1,22 @@
+"""
+STORY    As a speaker, I want my confident-moment playback to load even if its
+         short authorisation expires mid-load, so that I can always hear my
+         own moment.
+OUTCOME
+  O1  An authorisation that expires locally is retried once and the exact
+      bytes are returned.
+  O2  If the retry expires too, the load fails cleanly with a retry error:
+      no bytes, no third attempt, and the buffer reservation is released.
+PROVES   O1 -> test_expired_authorization_is_retried_once_and_returns_the_exact_bytes
+         O2 -> test_second_expiry_fails_cleanly_without_a_third_attempt
+"""
 from __future__ import annotations
+
+import pytest
 
 from services.confident_moment_user_media import (
     BufferedPlaybackAdmission,
+    ConfidentMomentUserReadRetry,
     load_confident_moment_source_bytes,
 )
 
@@ -82,23 +97,64 @@ class Reader:
         return self.body
 
 
-def test_expired_local_authorization_consumes_attempt_then_retries_once():
-    clock = iter((0.0, 0.0, 0.0, 0.0, 0.0, 0.6, 0.6, 0.6, 0.7))
-    calls = 0
+class Clock:
+    """Monotonic clock that stands still unless the database was slow.
+
+    ``slow_answer()`` makes the read right after an authorisation returns jump
+    past the local emit window, so that authorisation expires before use.
+    """
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self._jump = 0.0
+
+    def slow_answer(self) -> None:
+        self._jump = 0.6
+
+    def __call__(self) -> float:
+        value = self.now
+        self.now += self._jump
+        self._jump = 0.0
+        return value
+
+
+def _load(*, slow_attempts: set[int]):
+    clock = Clock()
+    attempts: list[int] = []
+    admission = BufferedPlaybackAdmission()
 
     def authorize(expected, buffered, request_id):
-        nonlocal calls
-        calls += 1
+        attempts.append(len(attempts) + 1)
+        if len(attempts) in slow_attempts:
+            clock.slow_answer()
         return emit_authorization(
             request_id, authority_digest=expected, buffered_digest=buffered,
         )
 
-    body, _ = load_confident_moment_source_bytes(
-        resolve_authority=lambda: authority(), authorize_emit=authorize,
-        principal_id=IDS["principal"], bundle_id=IDS["bundle"],
-        attachment_id=IDS["attachment"], reader=Reader(),
-        admission=BufferedPlaybackAdmission(), monotonic=lambda: next(clock),
-        sleep=lambda _seconds: None, jitter=lambda _a, _b: 0.0,
-    )
+    def run():
+        return load_confident_moment_source_bytes(
+            resolve_authority=lambda: authority(), authorize_emit=authorize,
+            principal_id=IDS["principal"], bundle_id=IDS["bundle"],
+            attachment_id=IDS["attachment"], reader=Reader(),
+            admission=admission, monotonic=clock,
+            sleep=lambda _seconds: None, jitter=lambda _a, _b: 0.0,
+        )
+
+    return run, attempts, admission
+
+
+def test_expired_authorization_is_retried_once_and_returns_the_exact_bytes():
+    run, attempts, admission = _load(slow_attempts={1})
+    body, content_type = run()
     assert body == b"abc"
-    assert calls == 2
+    assert content_type == "audio/webm"
+    assert attempts == [1, 2]
+    assert admission.snapshot() == (0, 0)
+
+
+def test_second_expiry_fails_cleanly_without_a_third_attempt():
+    run, attempts, admission = _load(slow_attempts={1, 2})
+    with pytest.raises(ConfidentMomentUserReadRetry):
+        run()
+    assert attempts == [1, 2]
+    assert admission.snapshot() == (0, 0)
