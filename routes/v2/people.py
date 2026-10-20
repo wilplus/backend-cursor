@@ -90,6 +90,28 @@ def speaker_memory_note(user_id: str):
         return _reply({"code": "V2_ERROR", "error": "Could not read the note"}, 500)
 
 
+@people_bp.route("/v2/admin/will-questions", methods=["GET", "PUT"])
+@require_founder
+def will_questions():
+    """Founder only (N83, 2026-10-20): Will's questions after a Take, as the
+    coach panel's "Will's questions" edits them. GET {groups, questions,
+    empty}; PUT {questions: [{key, question, chips}]} keeps the founder's
+    words (checked: no numbers, the speaker's own words kept in place, the
+    same number of tap answers) and answers as GET."""
+    from services import will_question
+    from services.db import db
+    try:
+        if request.method == "PUT":
+            body = request.get_json(silent=True) or {}
+            return _reply(will_question.save_bank(db, body.get("questions")))
+        return _reply(will_question.admin_view(db))
+    except will_question.QuestionError as e:
+        return _reply({"code": e.code, "error": str(e)}, e.status)
+    except Exception:
+        logger.warning("will questions admin failed", exc_info=True)
+        return _reply({"code": "V2_ERROR", "error": "Could not read Will's questions"}, 500)
+
+
 @people_bp.route("/v2/admin/people/<user_id>/practice-effects", methods=["GET"])
 @require_founder
 def get_practice_effects(user_id: str):

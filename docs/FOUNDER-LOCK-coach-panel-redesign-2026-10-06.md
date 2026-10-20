@@ -110,6 +110,28 @@ Founder, chat, 19 October 2026: approved the two-phone prototype
 - **The coach's picture** beside the coach's words is the grey-blue coach
   avatar, as speakers see the coach (amends step 8's "grey picture").
 
+## Decided after the lock (2026-10-20, Will's questions, N83)
+
+Founder, chat, 20 October 2026: "show me where would you add it in the
+coach panel … below the users", then "OK" to the prototype
+<https://claude.ai/artifact/WLZ1KY6dX1RBLXiNU73F9N>. Adds to flow step 2
+(the queue), for the founder only:
+
+- **One row under the blind lists,** in its own section "Will · only you":
+  "Will's questions" with "N questions · M empty slots", a chevron, no dot
+  (nothing waits there). No other coach sees the section.
+- **It opens Will's questions** after a Take (N82) in the groups Will picks
+  them by ("Who it's for", "What they should do", "When something is off",
+  "Deeper, from Take 3"), each card with when Will asks it, the question,
+  its tap answers (or "Their own words") and "Asked N times". Tap a
+  question or an answer to change it, then the panel's black "Save"; the
+  toast says "Saved". "Only you see this. Will asks the new words from the
+  next Take." An "Empty slot" card opens with "+ Add a question".
+- **The words are checked** before they are kept: no numbers, the
+  speaker's own words kept in place ("{the board}", "…"), the same number
+  of tap answers, each answer keeping its follow-up by its place. A refusal
+  says what is wrong above Save.
+
 ## Words signed (CP2 A)
 
 Signed exactly as listed on the panel (CP2), `{p}` the speaker's name:
