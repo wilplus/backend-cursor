@@ -29,7 +29,11 @@ Skip, a typed answer, or a tap that needs no follow-up lets the held message
 after the Take go.
 
 No number, score or verdict reaches the speaker. No new words but those
-below, signed on 2026-10-20; Will says them as written.
+below, signed on 2026-10-20. Will says each question with a light touch
+(founder 2026-10-20, N86: ``vary``, one small call under the Take's
+authority, kept only when it still means the signed question and keeps the
+speaker's own words in it), else as written; the tap answers always as
+written.
 """
 from __future__ import annotations
 
@@ -247,6 +251,103 @@ def start_heard(database: Any, *, user_id: str, arc_id: str, take: str, title: s
     return collect
 
 
+# ------------------------------------------------------------------ varied
+
+#: The light touch (founder 2026-10-20, N86; drift-locked: services/prompts/pending.py).
+_VARY_SYSTEM = (
+    "You are Will, a speaking coach and a curious, cheeky colleague. You are "
+    "given one question Will asks a speaker right after a practice Take, in "
+    "its signed wording. Say the same question in slightly different words: "
+    "the same meaning, the same tone, about the same length, still one "
+    "friendly question. Keep most of its words.\n"
+    "- Keep any {placeholder} exactly as written, once.\n"
+    "- No numbers, no new facts, no advice, no greeting.\n"
+    "- Keep the emoji if there is one, where it was.\n"
+    "Answer with the question only."
+)
+_VARY_SURFACE = "will_question_vary"
+#: How many of the signed question's words a light touch keeps, at least.
+_VARY_NEAR = 0.45
+_BRACE = re.compile(r"[{}]")
+
+
+def _shared(a: str, b: str) -> float:
+    one = set(re.findall(r"[a-z']+", a.lower()))
+    two = set(re.findall(r"[a-z']+", b.lower()))
+    return len(one & two) / len(one | two) if one and two else 0.0
+
+
+def read_varied(key: str, text: Optional[str], signed: str) -> Optional[str]:
+    """The varied question when it is still the signed one said with a light
+    touch: most words shared, the speaker's own words kept in place once, no
+    number, one line that fits two, still a question. Else None, and Will
+    says the signed words. Pure."""
+    body = " ".join(str(text or "").strip().strip('"“”').split())
+    if not body or body == signed or len(body) > _MAX_QUESTION:
+        return None
+    if _DIGIT.search(body) or "?" not in body:
+        return None
+    inner = _SHOWN.get(key, ("", ""))[0]
+    if inner and body.count(inner) != 1:
+        return None
+    if _BRACE.search(body.replace(inner, "") if inner else body):
+        return None
+    if _shared(body, signed) < _VARY_NEAR:
+        return None
+    return body
+
+
+def vary(key: str, signed: str, *, user_id: Optional[str], take: Optional[str],
+         arc_id: Optional[str]) -> Optional[str]:
+    """gpt-4o-mini says the signed question with a light touch; code keeps it
+    only when ``read_varied`` does. Runs inside the Take's protected provider
+    scope (the caller's)."""
+    from services.llm import chat_complete
+    from services.llm_config import SPEC_WILL_QUESTION_VARY
+    result = chat_complete(spec=SPEC_WILL_QUESTION_VARY, system=_VARY_SYSTEM,
+                           user=f"Question: {signed}", surface=_VARY_SURFACE,
+                           user_id=user_id, session_id=take, arc_id=arc_id)
+    return read_varied(key, getattr(result, "text", None) if result else None, signed)
+
+
+def start_vary(database: Any, *, user_id: str, arc_id: str, take: str, keys: list[str],
+               words: dict) -> Callable[[], dict]:
+    """Starts the light touch for each of ``keys`` off the request, beside
+    the summary's own call, and returns the call that collects them, waiting
+    at most ``_HEARD_BUDGET`` in all. Too slow, refused or failed: that
+    question is said as written."""
+    templates = {k: str((words or {}).get(k, {}).get("question") or "") for k in keys}
+    templates = {k: t for k, t in templates.items() if t}
+    if not templates:
+        return lambda: {}
+    try:
+        from concurrent.futures import ThreadPoolExecutor
+        from contextvars import copy_context
+        from services.take_summary import _under_authority
+        pool = ThreadPoolExecutor(max_workers=len(templates), thread_name_prefix="will-question-vary")
+        futures = {k: pool.submit(copy_context().run, lambda k=k, t=t: _under_authority(
+            database, take, lambda: vary(k, t, user_id=user_id, take=take, arc_id=arc_id)))
+            for k, t in templates.items()}
+        pool.shutdown(wait=False)
+    except Exception as error:  # noqa: BLE001 -- said as written
+        logger.warning("will question: light touch not started take=%s: %s", take, error)
+        return lambda: {}
+
+    def collect() -> dict:
+        import time
+        out: dict = {}
+        until = time.monotonic() + _HEARD_BUDGET
+        for k, future in futures.items():
+            try:
+                got = future.result(timeout=max(0.0, until - time.monotonic()))
+                if isinstance(got, str) and got:
+                    out[k] = got
+            except Exception as error:  # noqa: BLE001 -- too slow or failed: as written
+                logger.info("will question: said as written key=%s take=%s: %r", k, take, error)
+        return out
+    return collect
+
+
 # ------------------------------------------------------------------ the talk
 
 
@@ -297,6 +398,7 @@ class Plan:
     field_name: Optional[str] = None
     earlier: list[str] = field(default_factory=list)
     words: dict = field(default_factory=dict)
+    varied: Callable[[], dict] = field(default=lambda: {})
 
 
 def two_off(now: tuple, before: tuple) -> bool:
@@ -423,9 +525,12 @@ def plan(database: Any, *, user_id: str, arc_id: str, take: str, take_index: int
 
 def words_for(found: Plan) -> tuple[str, str, list[str], dict]:
     """The key, the question, its tap answers and what it rests on. Pure
-    but for collecting the heard call."""
+    but for collecting the heard call and the light touch."""
     key, words = found.key, found.words or signed_bank()
     said = {k: words[k]["question"] for k in words}
+    for k, text in (found.varied() or {}).items():
+        if k in said and text:
+            said[k] = text
     if key in ("audience", "goal"):
         got = found.heard() or {}
         if key == "audience" and got.get("audience") and got.get("audience_times", 0) >= 2:

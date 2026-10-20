@@ -104,9 +104,15 @@ def _coach_answer(surface: str) -> Callable[[dict], Any]:
 
 
 def _will_question(inp: dict) -> Any:
-    """Will's heard call (N82): who the talk is for and what it asks, kept
-    only where the Take says it word for word (``read_heard``)."""
-    from services.will_question import heard
+    """Will's calls. A row with a ``key`` and a ``question`` is the light
+    touch (N86): ``vary`` says the signed question in slightly different
+    words, or the signed words when the variation fails ``read_varied``.
+    Every other row is the heard call (N82): who the talk is for and what it
+    asks, kept only where the Take says it word for word (``read_heard``)."""
+    from services.will_question import heard, vary
+    if inp.get("key") and inp.get("question"):
+        said = vary(str(inp["key"]), str(inp["question"]), user_id=None, take=None, arc_id=None)
+        return {"question": said or str(inp["question"]), "varied": said is not None}
     return heard(inp.get("title") or "", inp.get("transcript") or "",
                  user_id=None, take=None, arc_id=None)
 

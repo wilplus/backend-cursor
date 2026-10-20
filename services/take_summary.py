@@ -506,8 +506,9 @@ def _before_outcome(database: Any, user_id: str, arc_id: str, take_index: int) -
 def _will_plan(database: Any, *, user_id: str, arc_id: str, takes: list[dict], take: str,
                take_index: int, now: tuple, moments: list[dict]) -> tuple:
     """Will's question after this Take (``will_question``), its heard call
-    started beside the summary's own; and, for the summary, the line
-    practised last Take when this Take said it. Never raises."""
+    and its light touch started beside the summary's own; and, for the
+    summary, the line practised last Take when this Take said it. Never
+    raises."""
     from services import will_question
     try:
         snippets = database.get_snippets_by_session(take) or []
@@ -523,6 +524,11 @@ def _will_plan(database: Any, *, user_id: str, arc_id: str, takes: list[dict], t
                 database, user_id=user_id, arc_id=arc_id, take=take,
                 title=talk_title([t.get("intake_context") or {} for t in takes]),
                 said=" ".join(m["text"] for m in moments if m.get("text")))
+        if found:
+            keys = [found.key] + (["audience_check"] if found.key == "audience" else [])
+            found.varied = will_question.start_vary(
+                database, user_id=user_id, arc_id=arc_id, take=take, keys=keys,
+                words=found.words)
         return found, will_question.carried_fact(carried)
     except Exception as error:  # noqa: BLE001 -- the summary and its other asks go on
         logger.warning("take summary: no will question take=%s: %s", take, error, exc_info=True)

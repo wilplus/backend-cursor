@@ -85,6 +85,8 @@ REGISTER = {
     "sunday_note.system": SourceRef("services/sunday_note.py", "_SYSTEM"),
     "will_question.heard": SourceRef("services/will_question.py", "_HEARD_SYSTEM"),
     "will_question.heard_user": SourceRef("services/will_question.py", "heard"),
+    "will_question.vary": SourceRef("services/will_question.py", "_VARY_SYSTEM"),
+    "will_question.vary_user": SourceRef("services/will_question.py", "vary"),
     "speaker_memory.lookup_block": SourceRef("services/speaker_lookup.py", "lookup_block"),
     "audit_pointer.builder": SourceRef("services/audit_intent.py", "_render_pointer"),
     "next_session_icebreaker.builder": SourceRef(
