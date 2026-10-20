@@ -11,10 +11,8 @@ class JourneyMessageTests(unittest.TestCase):
         row = journey_message("u1", "a1", 1)
         self.assertEqual(row["kind"], "cadence")
         self.assertEqual(row["body"].split("\n\n"), [
-            "We have successfully registered your first take 🎉",
-            "You have recorded some of the helper words and recognized your "
-            "confident moments.",
-            "Use the helper words and record the second take of your presentation ⬇️",
+            "Your first take is in 🎉",
+            "Now record take 2 with your helper words ⬇️",
         ])
         self.assertEqual(row["metadata"]["actions"],
                          ["prepare_take_2", "keep_practising"])

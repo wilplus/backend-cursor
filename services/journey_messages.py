@@ -23,11 +23,11 @@ from typing import Any, Optional
 _NAMESPACE = uuid.UUID("c0af92c8-758e-4c31-9c6e-f6d36bd52395")
 
 _COPY = {
+    # Simplified by the founder, 2026-10-20 (chosen in chat over two other
+    # versions): what happened, then what to do next.
     1: (
-        "We have successfully registered your first take 🎉\n\n"
-        "You have recorded some of the helper words and recognized your "
-        "confident moments.\n\n"
-        "Use the helper words and record the second take of your presentation ⬇️"
+        "Your first take is in 🎉\n\n"
+        "Now record take 2 with your helper words ⬇️"
     ),
     2: (
         "Your presentation is stronger now.\n\n"
