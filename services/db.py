@@ -161,6 +161,17 @@ _UUID_TEXT = re.compile(
     r"[0-9a-fA-F]{12}")
 
 
+def _uuid_text(value: Any) -> str:
+    """``value`` as a canonical UUID string, or "" when it is not one. For
+    ids written into a PostgREST filter string, where anything else would
+    become part of the filter."""
+    import uuid
+    try:
+        return str(uuid.UUID(str(value))) if value else ""
+    except (ValueError, TypeError, AttributeError):
+        return ""
+
+
 def _group_rows(rows: Any, key: str, wanted: list) -> dict:
     """``{value: rows}`` for every wanted value (empty when none), each list
     in the read's order and without the grouping column, so it is exactly
@@ -11856,6 +11867,71 @@ class DatabaseService:
             logger.warning("list_diagnostic_exercises failed: %s", e)
             return []
 
+    def review_diagnostic_exercise(
+        self, *, exercise_id: str, decision: str, reviewed_by: str,
+        version: int, video_url: Optional[str] = None,
+    ) -> Optional[dict]:
+        """The founder's review of a coach's exercise video (0480, N78), of
+        exactly ``version``: a row saved since matches nothing, and None
+        comes back. 'approved' clears the owner in the same write, so the
+        row is the shared library's, puts the library copy of its video on
+        it and bumps the version; 'kept' leaves it with its speaker. None
+        on failure."""
+        patch: dict = {"review_decision": decision,
+                       "reviewed_at": datetime.now(timezone.utc).isoformat(),
+                       "reviewed_by": str(reviewed_by or "")}
+        if decision == "approved":
+            patch["owner_user_id"] = None
+            patch["version"] = int(version) + 1
+            if video_url:
+                patch["explanation_video_url"] = video_url
+        try:
+            res = (self.client.table("diagnostic_exercise").update(patch)
+                   .eq("exercise_id", str(exercise_id))
+                   .eq("version", int(version)).execute())
+            return (res.data or [None])[0]
+        except Exception as e:
+            logger.warning("review_diagnostic_exercise failed id=%s: %s",
+                           exercise_id, e, exc_info=True)
+            return None
+
+    def list_speaker_exercise_ids(self, owner_user_id: str) -> Optional[set[str]]:
+        """The exercises in one speaker's own set (0480, N77): their coach
+        videos and the library ones a coach picked for them. None when
+        unreadable: the caller serves no video rather than a guess."""
+        if not owner_user_id:
+            return set()
+        try:
+            res = (self.client.table("speaker_exercise_set").select("exercise_id")
+                   .eq("owner_user_id", str(owner_user_id)).execute())
+            return {str(r.get("exercise_id")) for r in (res.data or [])
+                    if r.get("exercise_id")}
+        except Exception as e:
+            logger.warning("list_speaker_exercise_ids failed owner=%s: %s",
+                           owner_user_id, e, exc_info=True)
+            return None
+
+    def add_speaker_exercise(
+        self, *, owner_user_id: str, exercise_id: str, source: str,
+        source_id: Optional[str] = None, added_by: str = "",
+    ) -> bool:
+        """Put one exercise in a speaker's own set; already there is fine."""
+        if not owner_user_id or not exercise_id:
+            return False
+        try:
+            self.client.table("speaker_exercise_set").upsert({
+                "owner_user_id": str(owner_user_id),
+                "exercise_id": str(exercise_id), "source": source,
+                "source_id": str(source_id) if source_id else None,
+                "added_by": str(added_by or ""),
+            }, on_conflict="owner_user_id,exercise_id",
+                ignore_duplicates=True).execute()
+            return True
+        except Exception as e:
+            logger.warning("add_speaker_exercise failed owner=%s ex=%s: %s",
+                           owner_user_id, exercise_id, e, exc_info=True)
+            return False
+
     def any_active_coach(self) -> Optional[bool]:
         """Is at least one coach on the panel? True / False, or None when
         the read failed (callers keep today's behaviour on None rather than
@@ -11870,11 +11946,23 @@ class DatabaseService:
             logger.warning("any_active_coach failed: %s", e, exc_info=True)
             return None
 
-    def list_feedback_catalogue(self, active_only: bool = True) -> list[dict]:
+    def list_feedback_catalogue(
+        self, active_only: bool = True, owner_user_id: Optional[str] = None,
+    ) -> list[dict]:
         """The signed lines (migration 0401). [] means "no catalogue": the
-        served rows keep their constants and the honest fallback."""
+        served rows keep their constants and the honest fallback.
+
+        The shared lines only (owner NULL), plus ``owner_user_id``'s own when
+        given: a coach's line for one speaker is read for no one else (0480,
+        N77)."""
         try:
             query = self.client.table("feedback_catalogue").select("*")
+            owner = _uuid_text(owner_user_id)
+            if owner:
+                query = query.or_(
+                    f"owner_user_id.is.null,owner_user_id.eq.{owner}")
+            else:
+                query = query.is_("owner_user_id", "null")
             if active_only:
                 query = query.eq("active", True)
             return (query.order("lane").order("pattern_kind")
@@ -11887,10 +11975,12 @@ class DatabaseService:
 
     def insert_feedback_catalogue_line(
         self, *, lane: str, pattern_kind: str, pattern_key: str, text: str,
-        signed_by: Optional[str],
+        signed_by: Optional[str], owner_user_id: Optional[str] = None,
+        request_id: Optional[str] = None,
     ) -> Optional[dict]:
         """A new VERSION of the line for one pattern (rows are never
-        edited). None on failure."""
+        edited). None on failure. ``owner_user_id`` makes it one speaker's
+        line (a coach's answer, 0480); versions count across every owner."""
         try:
             prior = (self.client.table("feedback_catalogue")
                      .select("version").eq("lane", lane)
@@ -11898,11 +11988,15 @@ class DatabaseService:
                      .eq("pattern_key", pattern_key)
                      .order("version", desc=True).limit(1).execute().data) or []
             version = int((prior[0] or {}).get("version") or 0) + 1 if prior else 1
-            res = self.client.table("feedback_catalogue").insert({
+            row: dict = {
                 "lane": lane, "pattern_kind": pattern_kind,
                 "pattern_key": pattern_key, "text": text,
                 "version": version, "signed_by": signed_by, "active": True,
-            }).execute()
+            }
+            if owner_user_id:
+                row["owner_user_id"] = str(owner_user_id)
+                row["request_id"] = str(request_id) if request_id else None
+            res = self.client.table("feedback_catalogue").insert(row).execute()
             return (res.data or [None])[0]
         except Exception as e:
             logger.warning("insert_feedback_catalogue_line failed key=%s/%s/%s: %s",
@@ -12044,13 +12138,17 @@ class DatabaseService:
         self, exercise_id: str, version: int,
     ) -> Optional[dict]:
         """One version row's transcript state (0399): {transcript_status,
-        transcript}. The walk's pair reads the video's transcript here as
-        the second final. None when absent or unreadable."""
+        transcript, transcript_language}, and the AI draft the coach worked
+        from. The walk's pair reads the video's transcript here as the
+        second final; the founder's approval carries all of it onto the
+        approved version (N78). None when absent or unreadable."""
         if not exercise_id:
             return None
         try:
             res = (self.client.table("diagnostic_exercise_version")
-                   .select("exercise_id,version,transcript_status,transcript")
+                   .select("exercise_id,version,transcript_status,transcript,"
+                           "transcript_language,ai_draft_text,"
+                           "ai_draft_model_version")
                    .eq("exercise_id", str(exercise_id))
                    .eq("version", int(version)).limit(1).execute())
             return (res.data or [None])[0]
@@ -14045,10 +14143,12 @@ class DatabaseService:
         """What this speaker's EARLIER Takes showed, for ranking (step 7).
 
         Returns {"pattern_takes": {problem: [take ids]},
-                 "completed_exercises": [exercise ids], "earlier_takes": n}:
+                 "completed_exercises": [exercise ids],
+                 "rested_exercises": [exercise ids], "earlier_takes": n}:
         the problems spotted on their exercise moments (from the frozen match
-        traces and coach requests, never recomputed), and the exercises they
-        completed. The current Take is excluded; at most `limit` earlier
+        traces and coach requests, never recomputed), the exercises they
+        completed, and those whose practice ended on a Good job (any Take,
+        this one too). Otherwise the current Take is excluded; at most `limit` earlier
         Takes of each kind are read. Shadow verdicts are never read here —
         they route nothing. Raises on failure; the caller ranks without
         history rather than guessing one.
@@ -14083,18 +14183,25 @@ class DatabaseService:
         for row in requests:
             for tag in row.get("observed_tags") or []:
                 seen(tag, row.get("take_session_id"))
+        from services.practice_check import machine_closed
+        # Every Take, this one too: a Good job rests an exercise for good
+        # (N77), wherever it was earned; "done before" stays earlier Takes.
         completed = (self.client.table("confident_voice_practice")
-                     .select("exercise_id")
+                     .select("exercise_id,take_session_id,after_practice")
                      .eq("owner_user_id", owner).eq("status", "completed")
-                     .neq("take_session_id", current)
                      .execute()).data or []
         earlier = ({str(a.get("take_session_id")) for a in assignments}
                    | {str(r.get("take_session_id")) for r in requests})
         return {
             "pattern_takes": {tag: sorted(t) for tag, t in takes_of.items()},
-            "completed_exercises": sorted({str(r.get("exercise_id"))
-                                           for r in completed
-                                           if r.get("exercise_id")}),
+            "completed_exercises": sorted({
+                str(r.get("exercise_id")) for r in completed
+                if r.get("exercise_id")
+                and str(r.get("take_session_id") or "") != current}),
+            "rested_exercises": sorted({
+                str(r.get("exercise_id")) for r in completed
+                if r.get("exercise_id")
+                and machine_closed({**r, "status": "completed"})}),
             "earlier_takes": len(earlier),
         }
 

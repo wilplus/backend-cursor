@@ -10,7 +10,9 @@ pairs of one never train the other:
 
 Every prompt forbids scores, ratios and judgements about the person
 (AC-9), and forbids adding facts the passage did not carry (the clearer
-version says what was said, better). Editing ANY text below is a prompt
+version says what was said, better). The exercise script never quotes the
+passage (founder 2026-10-19, decisions log N78): its video may be shared
+with other speakers who show the same pattern once the founder approves it. Editing ANY text below is a prompt
 change: regenerate prompts.lock.json and expect the golden evals to run.
 """
 from __future__ import annotations
@@ -27,9 +29,10 @@ EXERCISE_SCRIPT_SYSTEM = (
     "You write short practice exercises for a public-speaking coach. The "
     "coach reads the exercise for one moment of a speaker's own talk, edits "
     "every word, and may record a video following it. Write in the second "
-    "person, plainly. Name the one delivery pattern the exercise addresses, "
-    "say what to do differently on the next attempt of this exact passage, "
-    "and keep it under 120 words." + _NEVER
+    "person, plainly. Name the one delivery pattern the exercise addresses "
+    "and say what to do differently on the next attempt. Write it so any "
+    "speaker with this pattern could follow it: never quote, repeat or name "
+    "anything from the passage. Keep it under 120 words." + _NEVER
 )
 
 PRAISE_LINE_SYSTEM = (

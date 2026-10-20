@@ -9,16 +9,23 @@ the moment themselves before any of this is revealed (contract 35f).
 
 Three resolutions, each recorded once:
 
-  * ``exercise_chosen``   — an active library exercise;
-  * ``exercise_authored`` — one the coach files into the library now. It goes
-    through the same catalogue validation as every exercise, so it must name a
-    problem code can detect, and it becomes reusable for any speaker whose
-    clip shows that problem — the coach's teaching, not a verdict about one
-    person (L3);
+  * ``exercise_chosen``   — an active library exercise, or this speaker's own;
+  * ``exercise_authored`` — one the coach makes now. It goes through the same
+    catalogue validation as every exercise, so it must name a problem code can
+    detect;
   * ``no_safe_match``     — nothing suitable exists.
 
 Sharing with the speaker is a separate tick and only an exercise can be
 shared. A shared exercise then rides on that same item for the speaker.
+
+TWO KINDS OF COACH VIDEO (founder 2026-10-18 and 19, decisions log N77,
+N78; 0480). The exercise a coach makes for a moment is made for that
+speaker; once shared, it and any library exercise a coach picked join the
+speaker's own set, the pool the app tries first on their later Takes. Other
+speakers get it only once the founder approves it (services.exercise_review).
+An answer in words, with or without a video, is a direct message: that
+speaker's alone, on that moment alone. A coach's praise line is the
+speaker's own line too.
 """
 from __future__ import annotations
 
@@ -63,6 +70,7 @@ def _labels(database: Any) -> dict:
 def coach_request_payload(request: dict, database: Any) -> dict:
     """What the coach sees AFTER their blind rating. Coach-only: the need
     evidence may be revealed now (35f), never to the speaker."""
+    from services.coach_answer_video import exercise_video_url
     from services.coach_request_drafts import draft_on
     from services.confident_voice_practice import coach_exercise_order
     from services.exercise_pick_view import request_candidates
@@ -73,9 +81,12 @@ def coach_request_payload(request: dict, database: Any) -> dict:
         str(request.get("take_session_id")), str(request.get("snippet_id")))
         if hasattr(database, "get_confident_voice_exercise_assignment")
         else None)
+    # The shared library and this speaker's own coach videos (N77).
     ordered = coach_exercise_order({
         "machine_assessment": {"pattern": request.get("pattern")},
         "acoustic_evidence": {"signals": signals},
+        "owner_user_id": request.get("owner_user_id"),
+        "take_session_id": request.get("take_session_id"),
     }, database)
     return {
         "id": str(request.get("id")),
@@ -114,7 +125,8 @@ def coach_request_payload(request: dict, database: Any) -> dict:
             "version": row.get("version"),
             "title": row.get("title"),
             "instruction": row.get("instruction"),
-            "explanation_video_ref": row.get("explanation_video_url"),
+            "explanation_video_ref": exercise_video_url(
+                row.get("explanation_video_url")),
         } for row in ordered],
     }
 
@@ -167,10 +179,15 @@ def _require_main_target(fields: dict) -> Optional[tuple]:
 def _exercise_for(database: Any, request: dict, body: dict, resolution: str,
                   coach_id: str = "") -> tuple[Optional[dict], Optional[tuple]]:
     """(exercise, None) or (None, error) for an exercise resolution."""
+    from services.confident_voice_practice import pickable
+    from services.coach_exercise_authoring import exercise_id_for_request
     if resolution == "exercise_chosen":
         exercise = database.get_active_diagnostic_exercise(
             str(body.get("exercise_id") or ""))
-        if not isinstance(exercise, dict):
+        own_moment = isinstance(exercise, dict) and str(
+            exercise.get("exercise_id")) == exercise_id_for_request(request.get("id"))
+        if not isinstance(exercise, dict) or not (own_moment or pickable(
+                exercise, request.get("owner_user_id"))):
             return None, _error(409, "EXERCISE_UNAVAILABLE",
                                 "Select an active reviewed exercise.")
         return exercise, None
@@ -178,6 +195,9 @@ def _exercise_for(database: Any, request: dict, body: dict, resolution: str,
         CatalogueRefusal,
         save_exercise,
     )
+    if not str(request.get("owner_user_id") or ""):
+        # Never filed without its speaker: no owner would mean everyone's.
+        return None, _error(404, "NOT_FOUND", "request not found")
     custom = body.get("custom_exercise")
     fields = dict(custom) if isinstance(custom, dict) else {}
     fields["exercise_id"] = f"coach-request-{request.get('id')}"
@@ -196,6 +216,7 @@ def _exercise_for(database: Any, request: dict, body: dict, resolution: str,
     try:
         exercise = save_exercise(
             database, fields, source="coach_request", created_by=str(coach_id or ""),
+            owner_user_id=str(request.get("owner_user_id") or "") or None,
             ai_draft_text=draft,
             ai_draft_model_version=(str(request.get("draft_model_version") or "").strip()
                                     or None) if draft else None)
@@ -258,9 +279,34 @@ def resolve_request(database: Any, request: dict, body: Any,
         return _error(500, "V2_ERROR", "Could not save your answer.")
     _file_answer(database, request, resolved, fields, exercise, coach_id,
                  previous=request)
+    _into_speaker_set(database, request, resolved, exercise, coach_id)
     if resolved.get("shared_at") and not request.get("shared_at"):
         _tell_the_speaker(database, request)
     return 200, {"request": coach_request_payload(resolved, database)}
+
+
+def _into_speaker_set(database: Any, request: dict, resolved: dict,
+                      exercise: Optional[dict], coach_id: Any) -> None:
+    """A SHARED exercise joins the speaker's own set (founder 2026-10-18,
+    N77; 0480): on their later Takes the app may serve it to them by itself
+    when its main mistake is heard again, until a Good job rests it. Their
+    own coach video, or a library one this coach picked for them. Never
+    before the share: until then the coach has not given it to them.
+    Best-effort: the answer is saved and served on this moment either way."""
+    adder = getattr(database, "add_speaker_exercise", None)
+    owner = str(request.get("owner_user_id") or "")
+    if (adder is None or not owner or not resolved.get("shared_at")
+            or not isinstance(exercise, dict) or not exercise.get("exercise_id")):
+        return
+    own = str(exercise.get("owner_user_id") or "") == owner
+    try:
+        adder(owner_user_id=owner, exercise_id=str(exercise["exercise_id"]),
+              source="coach_made" if own else "coach_pick",
+              source_id=str(request.get("id") or "") or None,
+              added_by=str(coach_id or ""))
+    except Exception as e:  # noqa: BLE001 -- the answer is saved either way
+        logger.warning("speaker set add failed request=%s: %s",
+                       request.get("id"), e, exc_info=True)
 
 
 def _tell_the_speaker(database: Any, request: dict) -> None:
@@ -388,8 +434,10 @@ def _file_answer(database: Any, request: dict, resolved: dict, fields: dict,
       records a second one;
     * a praise line lands in the catalogue of signed lines as the newest
       version for the moment's pattern (35f; P2-3) unless the coach says
-      ``file_in_catalogue: false``. A clearer version never does: it is one
-      speaker's passage, not a move for every rewrite (Q-B13 A).
+      ``file_in_catalogue: false``, as THIS SPEAKER's own line: it is read
+      for no one else (founder 2026-10-18, N77; 0480). A clearer version
+      never does: it is one speaker's passage, not a move for every rewrite
+      (Q-B13 A).
 
     ``previous`` is the request row as it was before this answer (0446): an
     answer that repeats it files nothing again (no duplicate praise), a
@@ -443,7 +491,9 @@ def _file_praise_line(database: Any, request: dict, resolved: dict,
         CONFIDENT_READ, CatalogueRefusal, validate_line,
     )
     writer = getattr(database, "insert_feedback_catalogue_line", None)
-    if writer is None:
+    owner = str(request.get("owner_user_id") or "")
+    if writer is None or not owner:
+        # Never filed without its speaker: no owner would mean everyone's.
         return
     key = _pattern_key(request, "line_written", chosen)
     if key == CONFIDENT_READ:
@@ -453,7 +503,8 @@ def _file_praise_line(database: Any, request: dict, resolved: dict,
             "text": resolved.get("answer_text")}
     try:
         line = validate_line(body)
-        writer(**line, signed_by=str(coach_id))
+        writer(**line, signed_by=str(coach_id), owner_user_id=owner,
+               request_id=str(request.get("id") or "") or None)
     except CatalogueRefusal as refusal:
         logger.info("praise line not filed request=%s: %s",
                     request.get("id"), refusal)

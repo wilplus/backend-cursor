@@ -68,11 +68,14 @@ def _answer_gate(database, *, session: dict, snippet_id: str, user_id: str,
                       "Answer the Confident Voice question first.", 409)
 
 
-def _start_kind(database, body: dict) -> tuple[str, Optional[str], Any]:
+def _start_kind(database, body: dict,
+                user_id: Any = None) -> tuple[str, Optional[str], Any]:
     """(kind, exercise_id, exercise). THREE KINDS OF PASSAGE (founder lock
     2026-09-30, D1): the library exercise matched to the clip, the Manager's
     rewrite as the words to say, or the plain moment said again. Only the
-    first needs an exercise row and the exercise gate."""
+    first needs an exercise row and the exercise gate. Another speaker's
+    coach video is not available to this one (N77)."""
+    from services.confident_voice_practice import visible_to
     from services.practice_adoption import KINDS
 
     kind = str(body.get("kind") or "exercise")
@@ -82,7 +85,7 @@ def _start_kind(database, body: dict) -> tuple[str, Optional[str], Any]:
         return kind, None, None
     exercise_id = str(body.get("exercise_id") or "hear-every-word-v1")
     exercise = database.get_active_diagnostic_exercise(exercise_id)
-    if not exercise:
+    if not exercise or not visible_to(exercise, user_id):
         raise Refusal("EXERCISE_UNAVAILABLE", "This exercise is not available.", 409)
     return kind, exercise_id, exercise
 
@@ -207,7 +210,7 @@ def start_practice(database, *, snippet_id: str, body: dict, user_id: Any,
     snip, session = _owned_moment(database, snippet_id, user_id)
     _answer_gate(database, session=session, snippet_id=str(snippet_id),
                  user_id=str(user_id), answer=answer)
-    kind, exercise_id, exercise = _start_kind(database, body)
+    kind, exercise_id, exercise = _start_kind(database, body, user_id)
     take_id = str(session.get("id"))
     existing = database.get_confident_voice_practice_by_moment(
         take_id, str(snippet_id), str(user_id))

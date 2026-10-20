@@ -155,6 +155,11 @@ def _attempt_view(attempt: Any, *, selected_id: str, resolve_audio) -> Optional[
     }
 
 
+def _exercise_video(ref: Any) -> Optional[str]:
+    from services.coach_answer_video import exercise_video_url
+    return _text(exercise_video_url(_text(ref) or None)) or None
+
+
 def _exercise_event(
     database: Any, practice: Any, *, resolve_audio,
 ) -> Optional[dict]:
@@ -191,7 +196,8 @@ def _exercise_event(
         "at": practice.get("created_at"),
         "title": title,
         "instruction": instruction,
-        "video_url": _text(snapshot.get("explanation_video_url")) or None,
+        # A coach's video for this speaker is a private ref (0480): signed.
+        "video_url": _exercise_video(snapshot.get("explanation_video_url")),
         "exercise_id": _text(practice.get("exercise_id")) or None,
         "exercise_version": _int_or_none(practice.get("exercise_version")),
         "attempts": attempts,

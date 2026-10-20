@@ -520,6 +520,19 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "take", "delete", "derived_feedback", 60),
     PurgeDependency("practice", "confident_voice_practice", "id", "practice",
                     "delete", "derived_feedback", 60),
+    # A COACH'S VIDEO FOR ONE SPEAKER (0480; founder 2026-10-18, N77): their
+    # own set, and the coach exercises, versions and praise lines that are
+    # theirs, go with their account. A row with no owner is the shared
+    # library and is never matched by the user key. The exercise goes after
+    # the practices that point at it (60); its versions just before it.
+    PurgeDependency("speaker_exercise_set", "speaker_exercise_set",
+                    "owner_user_id", "user", "delete", "derived_feedback", 60),
+    PurgeDependency("owned_praise_lines", "feedback_catalogue",
+                    "owner_user_id", "user", "delete", "derived_feedback", 60),
+    PurgeDependency("owned_exercise_versions", "diagnostic_exercise_version",
+                    "owner_user_id", "user", "delete", "derived_feedback", 69),
+    PurgeDependency("owned_exercises", "diagnostic_exercise",
+                    "owner_user_id", "user", "delete", "derived_feedback", 70),
     # V4 B1.4 (0450): a practise try's fast read and its times. It goes with
     # the try (and its FK cascades with it as the backstop).
     PurgeDependency("v4_practice_reads", "v4_practice_reads", "attempt_id",
@@ -1436,21 +1449,17 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     "admin_users", "coach_users", "admin_annotation_export_runs",
     "admin_notifications", "arc_invite_codes", "casual_voice_benchmarks",
     "chat_question_pool", "coach_video_assets",
-    "dad_jokes", "diagnostic_exercise",
-    # Its version rows (0399): the coach's texts, the AI draft and the video's
-    # transcript, product vocabulary like the row they mirror. Coach content,
-    # never a speaker's recording.
-    "diagnostic_exercise_version",
+    "dad_jokes",
+    # diagnostic_exercise and its version rows left this list with 0480: a
+    # row with an owner is one speaker's coach video, a dependency above.
     # The speaking error LIBRARY — names and written definitions of speech
     # patterns, beside diagnostic_exercise for the same reason: it is product
     # vocabulary, not anybody's recording. A row never says that a pattern
     # occurred in a particular take, so there is nothing here to purge when a
     # person asks to be deleted.
     "speaking_error",
-    # The catalogue of signed lines (0401): one sentence per pattern, written
-    # by the founder or a coach. Copy, never a speaker's words or recording;
-    # nothing here names a person.
-    "feedback_catalogue",
+    # feedback_catalogue left this list with 0480: a coach's praise line for
+    # one speaker carries their id, a dependency above.
     # A dataset release manifest: counts, rules and a checksum, no subject
     # column (its items are the subject rows, classified above).
     "dataset_releases",

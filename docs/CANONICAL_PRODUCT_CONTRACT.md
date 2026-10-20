@@ -706,7 +706,16 @@ with this contract, this contract wins.
     on the moment, and a coach-shared exercise replaces the rung. Dark behind
     `EXERCISE_FALLBACK_LADDER_ENABLED` until the three general exercises
     and the warm-up exist (switched on 2026-10-02 before they did, off again
-    from 2026-10-03, N29).
+    from 2026-10-03, N29). **Amended 2026-10-18 (founder, decisions log
+    N77; migration 0480):** the app picks by itself only from the speaker's
+    own set (their coach's videos, and library exercises a coach picked for
+    one of their moments), and only on an exact fit; a trial is never served
+    by itself. With nothing in their set that fits exactly there is no
+    exercise video, and the AI version of their voice plays. **Amended
+    2026-10-19 (founder, decisions log N78):** when nothing of their own
+    fits, the shared library is tried next: the founder's exercises and the
+    coach videos the founder approved for everyone, on an exact fit, 80/20
+    among them; only then the AI clip.
 35g-2. **The coach hears when nothing fits** (founder 2026-09-28; extended
     2026-09-29). When the Take's exercise item gets no exercise under 35g-1,
     one coach request is recorded for that exact moment with why (nothing
@@ -747,6 +756,16 @@ with this contract, this contract wins.
     exercise is what is served. Under 24e-1 the request rises at the open
     instead, under the machine's kind, and the judgement sets its answer
     kind; the coach reads that side only after their blind rating.
+    **Amended 2026-10-18 (founder, decisions log N77; migration 0480):** an
+    exercise a coach makes is that speaker's own and never reusable for any
+    other speaker; once shared, it and any library exercise the coach picked
+    join the speaker's own set (35g-1). A praise line lands in the catalogue
+    as that speaker's own line, read for them first and for no one else. The
+    shared library holds only what the founder makes or approves.
+    **Amended 2026-10-19 (founder, decisions log N78):** once the founder
+    approves a coach's exercise video it is shared with every speaker whose
+    recording fits it exactly; a direct message (an answer on a moment, the
+    word for a Take) is never shared.
 35g-2a. **The draft and the pair** (founder 2026-09-30, C2, C5; build plan
     P2-1, P2-2). On an error, praise or rewrite request the coach may ask
     for one model draft by the request's kind (an exercise script, a praise
@@ -833,7 +852,10 @@ with this contract, this contract wins.
     exercise done before is ranked later, never withheld: history cannot
     leave a speaker with no exercise. History is read from the frozen records
     of earlier Takes, as of the first draw, and is frozen with it. Shadow
-    verdicts are never part of it.
+    verdicts are never part of it. **Amended 2026-10-18 (founder, decisions
+    log N77):** an exercise whose practice ended on a Good job is withheld
+    from then on (it rests for good); one completed without a Good job is
+    still ranked later, never withheld.
 
 35g-5. **The coach's walk** (founder 2026-09-30, A1 to A8, B10; build plan
     P2-8 to P2-14). The coach's work is one walk over one queue: speakers
@@ -863,7 +885,11 @@ with this contract, this contract wins.
     label, verdict or number, and never edits Ideal Text (clause 40). Every
     per-moment answer reaches the speaker on its own moment the moment it
     is shared (35g-2); the arc-level publish that once held them back is
-    retired (clause 65).
+    retired (clause 65). **Amended 2026-10-18 (founder, decisions log N77;
+    supersedes N48.3 Q11 A's fallback):** the word shows on its own Take
+    only. A later Take starts without it; a word left on an earlier Take
+    after a newer one exists reaches the speaker through its Lounge bubble,
+    the WhatsApp and the email.
 35g-7. **The coach's exercise preference** (founder 2026-10-01, F8; Phase 1b
     of the coach panel; migration 0411; served only once
     `COACH_EXERCISE_PREFERENCE_ENABLED` is on). After the blind rating the

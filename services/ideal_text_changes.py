@@ -1679,14 +1679,16 @@ class _ChangesRun:
         Q29 A) join as the floor only once signed; until then an empty
         table changes nothing, as before."""
         from services.feedback_catalogue import decorate, floor_rows
+        # The shared lines and this speaker's own (a coach's, 0480, N77).
+        owner = str(self.user_id or "") or None
         try:
             reader = getattr(self.db, "list_feedback_catalogue", None)
-            rows = reader() if callable(reader) else []
+            rows = reader(owner_user_id=owner) if callable(reader) else []
         except Exception as e:  # noqa: BLE001 -- no table, no signed lines
             logger.info("catalogue unavailable arc=%s: %s", self.arc_id, e)
             rows = []
         if rows or floor_rows():
-            self.changes = decorate(self.changes, rows)
+            self.changes = decorate(self.changes, rows, owner)
 
     def _window(self) -> None:
         """At most three open moments reach the page (contract 24b/24c as
@@ -1731,6 +1733,11 @@ class _ChangesRun:
             snippet_ids=[str(row["snippet_id"]) for row in moments])
         for row in moments:
             card = cards.get(str(row["snippet_id"]))
+            if card == "exercise" and not row.get("practice_exercise"):
+                # A frozen draw this speaker no longer gets (N77, N78): the
+                # moment carries no exercise, so it opens as unmatched.
+                from services.confident_voice_practice import coach_on_panel
+                card = "coach_request" if coach_on_panel(self.db) else None
             if card:
                 row["open_card"] = card
 

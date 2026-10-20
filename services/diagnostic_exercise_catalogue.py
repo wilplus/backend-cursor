@@ -366,8 +366,15 @@ def save_exercise(
     ai_draft_model_version: Optional[str] = None,
     video_sha256: Optional[str] = None, video_bytes: Optional[int] = None,
     transcript_status: str = "not_requested",
+    owner_user_id: Optional[str] = None, video_ref: Optional[str] = None,
 ) -> Optional[dict]:
     """Validate and write one catalogue entry, new or existing.
+
+    ``owner_user_id`` makes it one speaker's coach video (0480, N77): only
+    the server sets it, never a client's body, and a save without it never
+    clears an owner already there. ``video_ref`` is a private video the
+    server stored for that speaker (``s3://``), which the client-facing URL
+    rule would refuse.
 
     Raises CatalogueRefusal for anything an author can fix; returns None only
     when the write itself failed.
@@ -383,6 +390,17 @@ def save_exercise(
     row = validate_exercise(database, body, source=source)
     reader = getattr(database, "get_diagnostic_exercise", None)
     before = reader(row["exercise_id"]) if reader is not None else None
+    if owner_user_id:
+        # Only a new exercise takes an owner, or one already theirs. A row
+        # filed before 0480 is the shared library's until the founder's
+        # clean-up (step 2) moves it: other speakers' practices may name it.
+        if isinstance(before, dict) and str(
+                before.get("owner_user_id") or "") != str(owner_user_id):
+            raise CatalogueRefusal("This exercise is not available.",
+                                   code="EXERCISE_UNAVAILABLE", status=409)
+        row["owner_user_id"] = str(owner_user_id)
+    if video_ref:
+        row["explanation_video_url"] = video_ref
     row["version"] = next_version(before, row)
     saved = database.upsert_diagnostic_exercise(row)
     if saved:
@@ -398,6 +416,7 @@ def save_exercise(
 
 def file_coach_exercise(
     database: Any, *, practice_id: Any, fields: Any,
+    owner_user_id: Optional[str] = None,
 ) -> Optional[dict]:
     """The coach's on-the-spot exercise, filed into the library like any other.
 
@@ -418,11 +437,20 @@ def file_coach_exercise(
     So it goes through exactly the validation every catalogue entry goes
     through -- including the refusal for an error code cannot detect, which is
     the one a coach is most likely to meet and most needs to read.
+
+    AMENDED 2026-10-18 and 19 (founder, decisions log N77, N78; 0480): the
+    coach's video is made for the speaker of the practice
+    (``owner_user_id``). It treats an error, as above, for that speaker, and
+    for every other speaker whose recording fits it only once the founder
+    approves it (services.exercise_review). Without an owner it is not
+    filed at all.
     """
     payload: dict = fields if isinstance(fields, dict) else {}
     practice = str(practice_id or "").strip()
     if not practice:
         raise CatalogueRefusal("an exercise needs the practice it came from")
+    if not owner_user_id:
+        raise CatalogueRefusal("an exercise needs the speaker it is for")
     body = dict(payload)
     body["exercise_id"] = f"coach-custom-{practice}"
     body.setdefault("active", True)
@@ -430,4 +458,5 @@ def file_coach_exercise(
     # including the video, which the library has always required and this path
     # used to treat as optional.
     return save_exercise(database, body, source="coach_review",
-                         created_by=str(body.get("created_by") or ""))
+                         created_by=str(body.get("created_by") or ""),
+                         owner_user_id=str(owner_user_id))

@@ -51,6 +51,17 @@ def playable(ref: str) -> str:
     return refreshed_media_url(ref) or ref
 
 
+def exercise_video_url(ref: Any) -> Any:
+    """An exercise video as a player can open it. A coach's video for one
+    speaker is a private ``s3://`` ref (0480, N77), signed afresh on every
+    read; a library video is a public link and passes unchanged. A private
+    ref that cannot be signed is None: the bucket key names the speaker."""
+    if isinstance(ref, str) and ref.startswith("s3://"):
+        from services.coach_video_storage import refreshed_media_url
+        return refreshed_media_url(ref) or None
+    return ref
+
+
 def store_answer_video(database: Any, *, request_row: Any, video_file: Any,
                        max_mb: int, coach_id: Any = None) -> tuple[int, dict]:
     """(status, payload): 200 {video_url}, or the refusal named. A coach

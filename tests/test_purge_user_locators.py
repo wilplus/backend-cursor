@@ -41,6 +41,11 @@ USER_KEYED = {
     "error_presence_audit_by_coach": ("error_presence_audit", "coach_id"),
     "coach_block_pick_by_coach": ("coach_block_pick", "coach_id"),
     "coach_clip_exposures": ("coach_clip_exposures", "coach_id"),
+    # A speaker's own coach videos, set and praise lines (0480, N77).
+    "speaker_exercise_set": ("speaker_exercise_set", "owner_user_id"),
+    "owned_praise_lines": ("feedback_catalogue", "owner_user_id"),
+    "owned_exercise_versions": ("diagnostic_exercise_version", "owner_user_id"),
+    "owned_exercises": ("diagnostic_exercise", "owner_user_id"),
 }
 
 #: A real account: its owner principal's id is not its user id.

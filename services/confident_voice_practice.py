@@ -516,8 +516,8 @@ REPEATED_PATTERN_MIN_TAKES = 2
 HISTORY_TAKES = 20
 
 EMPTY_HISTORY: dict = {"repeated_patterns": frozenset(),
-                       "done_before": frozenset(), "earlier_takes": 0,
-                       "available": False}
+                       "done_before": frozenset(), "rested": frozenset(),
+                       "earlier_takes": 0, "available": False}
 
 
 def speaker_history(database: Any, owner_user_id: Any,
@@ -526,7 +526,9 @@ def speaker_history(database: Any, owner_user_id: Any,
 
     * repeated_patterns — problems spotted on at least
       REPEATED_PATTERN_MIN_TAKES of their earlier Takes;
-    * done_before — exercises they already completed.
+    * done_before — exercises they already completed;
+    * rested — exercises whose practice ended on a Good job, on any Take:
+      the app never serves them to this speaker by itself again (N77).
 
     Read from the frozen records of those Takes (as of now, never the current
     one). EMPTY_HISTORY when there is no owner or the read fails: ranking
@@ -541,7 +543,9 @@ def speaker_history(database: Any, owner_user_id: Any,
     except Exception as e:  # noqa: BLE001 — history never costs the offer
         _log.warning("speaker history failed owner=%s take=%s: %s",
                      owner_user_id, take_session_id, e)
-        return dict(EMPTY_HISTORY)
+        # Unknown, not empty: which videos rest cannot be guessed, so
+        # ``speaker_matches`` draws nothing on this read (N77).
+        return {**EMPTY_HISTORY, "rested": None}
     raw = raw if isinstance(raw, dict) else {}
     takes = raw.get("pattern_takes")
     takes = takes if isinstance(takes, dict) else {}
@@ -552,6 +556,8 @@ def speaker_history(database: Any, owner_user_id: Any,
             and len(set(seen)) >= REPEATED_PATTERN_MIN_TAKES),
         "done_before": frozenset(
             str(e) for e in raw.get("completed_exercises") or []),
+        "rested": frozenset(
+            str(e) for e in raw.get("rested_exercises") or []),
         "earlier_takes": int(raw.get("earlier_takes") or 0),
         "available": True,
     }
@@ -810,8 +816,36 @@ def build_match_trace(*, lane: str, verdict: dict, vocabulary: Any,
     })
 
 
-def reviewed_active_exercises(database: Any) -> list[dict]:
-    """Every catalogue row whose assets are live, in catalogue order.
+def visible_to(exercise: Any, owner_user_id: Any = None) -> bool:
+    """THE OWNER WALL (founder 2026-10-18, decisions log N77; 0480).
+
+    A row with no owner is the founder's shared library, which every coach
+    list may show. A row with an owner is a coach's video for that one
+    speaker: only that speaker's own lists may show it, and no other
+    speaker, coach list or library page ever sees it."""
+    if not isinstance(exercise, dict):
+        return False
+    owner = str(exercise.get("owner_user_id") or "")
+    return not owner or owner == str(owner_user_id or "")
+
+
+def pickable(exercise: Any, owner_user_id: Any = None) -> bool:
+    """What a coach list may offer for this speaker, and what the app may
+    pick from (N77, N78): the speaker's own coach videos, and the shared
+    library (``shared_for_everyone``). Never another speaker's video, and
+    never a coach's video the founder has not approved for everyone."""
+    if not isinstance(exercise, dict):
+        return False
+    owner = str(exercise.get("owner_user_id") or "")
+    if owner:
+        return owner == str(owner_user_id or "")
+    return shared_for_everyone(exercise)
+
+
+def reviewed_active_exercises(database: Any,
+                              owner_user_id: Any = None) -> list[dict]:
+    """Every catalogue row whose assets are live, in catalogue order: the
+    shared library, plus ``owner_user_id``'s own coach videos when given.
 
     `get_active_diagnostic_exercise` is the gate: the row must be `active`, and
     must carry both an explanation video and a journal post that is actually
@@ -819,12 +853,12 @@ def reviewed_active_exercises(database: Any) -> list[dict]:
     """
     batch = active_exercises_batch(database)
     if batch is not None:
-        return batch
+        return [row for row in batch if pickable(row, owner_user_id)]
     out: list[dict] = []
     for row in database.list_diagnostic_exercises() or []:
         active = database.get_active_diagnostic_exercise(
             str(row.get("exercise_id") or ""))
-        if active:
+        if active and pickable(active, owner_user_id):
             out.append(active)
     return out
 
@@ -921,9 +955,12 @@ def coach_exercise_order(practice: Any, database: Any) -> list[dict]:
     vanish from this list. Those follow the ranked ones, in catalogue order.
 
     Internal order only — no score, distance or overlap leaves this function.
+
+    The shared library and this speaker's own coach videos; never another
+    speaker's (N77).
     """
-    pool = reviewed_active_exercises(database)
     row = practice if isinstance(practice, dict) else {}
+    pool = reviewed_active_exercises(database, row.get("owner_user_id"))
     ranked = [item[3] for item in rank_exercises_for_clip(
         stored_practice_verdict(practice), database, exercises=pool,
         history=speaker_history(database, row.get("owner_user_id"),
@@ -982,8 +1019,9 @@ def _with_default_patterns(active: dict) -> dict:
     return active
 
 
-def offerable_exercises(database: Any) -> list[dict]:
-    """The live catalogue the speaker's offer is chosen from."""
+def offerable_exercises(database: Any, owner_user_id: Any = None) -> list[dict]:
+    """The live catalogue: the shared library, plus ``owner_user_id``'s own
+    coach videos when given (``pickable``)."""
     exercise_rows = (
         database.list_diagnostic_exercises() or []
         if hasattr(database, "list_diagnostic_exercises")
@@ -992,14 +1030,113 @@ def offerable_exercises(database: Any) -> list[dict]:
     batch = active_exercises_batch(database) \
         if hasattr(database, "list_diagnostic_exercises") else None
     if batch is not None:
-        return [_with_default_patterns(row) for row in batch]
+        return [_with_default_patterns(row) for row in batch
+                if pickable(row, owner_user_id)]
     exercises = []
     for row in exercise_rows:
         active = database.get_active_diagnostic_exercise(
             str(row.get("exercise_id") or ""))
-        if active:
+        if active and pickable(active, owner_user_id):
             exercises.append(_with_default_patterns(active))
     return exercises
+
+
+#: A coach's exercise for one moment or one practice: shared with other
+#: speakers only once the founder approves it (N78).
+_COACH_MADE = ("coach-request-", "coach-custom-")
+
+
+def shared_for_everyone(exercise: Any) -> bool:
+    """THE SHARED LIBRARY (founder 2026-10-19, decisions log N78): a row
+    with no owner that the founder made, or a coach's exercise video the
+    founder approved. A coach's video filed before 0480 and never approved
+    is in nobody's pool until the founder reviews it."""
+    if not isinstance(exercise, dict) or exercise.get("owner_user_id"):
+        return False
+    coach_made = str(exercise.get("exercise_id") or "").startswith(_COACH_MADE)
+    return not coach_made or exercise.get("review_decision") == "approved"
+
+
+def speaker_pools(database: Any, owner_user_id: Any) -> tuple[list[dict], list[dict]]:
+    """(own, shared): the two pools the app picks from by itself after a Take
+    (founder 2026-10-18 and 19, decisions log N77, N78; 0480).
+
+    OWN: the speaker's own set -- the exercise videos a coach made for them
+    and the library exercises a coach picked for one of their moments. It is
+    tried first. SHARED: the founder's library and the coach videos the
+    founder approved for everyone, tried only when nothing of their own
+    fits. Nobody else's unapproved video is in either. An unreadable set
+    serves nothing on that read: a guess would be frozen by the draw.
+    """
+    ids: set = set()
+    reader = getattr(database, "list_speaker_exercise_ids", None)
+    if reader is not None and owner_user_id:
+        try:
+            read = reader(str(owner_user_id))
+        except Exception as e:  # noqa: BLE001 — never lose the feedback
+            _log.warning("speaker set read failed owner=%s: %s", owner_user_id, e)
+            read = None
+        if read is None:
+            # Unreadable: nothing is drawn on this read, so a shared video is
+            # never frozen in the place of their own; the next read retries.
+            return [], []
+        ids = set(read)
+    catalogue = offerable_exercises(database, owner_user_id)
+    own = [row for row in catalogue if str(row.get("exercise_id") or "") in ids]
+    shared = [row for row in catalogue if shared_for_everyone(row)
+              and str(row.get("exercise_id") or "") not in ids]
+    return own, shared
+
+
+def speaker_exercises(database: Any, owner_user_id: Any) -> list[dict]:
+    """THE SPEAKER'S OWN SET alone (``speaker_pools``' first pool)."""
+    return speaker_pools(database, owner_user_id)[0]
+
+
+def _all_fitting(verdict: Any, exercises: list[dict], vocabulary: Any,
+                 history: Any) -> list[dict]:
+    """Every exercise of both pools that fits this clip exactly, for a frozen
+    draw to be found in whichever pool it was made from (N78)."""
+    _, keyed = speaker_matches(
+        str((verdict or {}).get("pattern") or ""), exercises,
+        observed_tags=observed_problem_tags(verdict, vocabulary=vocabulary),
+        history=history)
+    return [item[1] for item in keyed]
+
+
+def pools_match(
+    pattern: str, pools: tuple[list[dict], list[dict]], *, observed_tags: Any,
+    history: Any,
+) -> tuple[Optional[str], list[tuple[tuple, dict]]]:
+    """``speaker_matches`` over the speaker's own set first, then the shared
+    library: a coach's video made or picked for them wins whenever it fits
+    (N78); the 80/20 draw runs within the pool that matched."""
+    own, shared = pools
+    fit, keyed = speaker_matches(pattern, own, observed_tags=observed_tags,
+                                 history=history)
+    if keyed:
+        return fit, keyed
+    return speaker_matches(pattern, shared, observed_tags=observed_tags,
+                           history=history)
+
+
+def speaker_matches(
+    pattern: str, exercises: list[dict], *, observed_tags: Any,
+    history: Any,
+) -> tuple[Optional[str], list[tuple[tuple, dict]]]:
+    """``matched_exercises`` over a speaker's own set, by the founder's rule
+    (N77): it fits only EXACTLY -- the video's main mistake was heard on
+    this clip -- and a video whose practice already ended on a Good job
+    rests for good. A history that could not be read draws nothing."""
+    if isinstance(history, dict) and history.get("rested", frozenset()) is None:
+        return None, []
+    rested = (history.get("rested") or frozenset()
+              if isinstance(history, dict) else frozenset())
+    pool = [row for row in exercises
+            if str(row.get("exercise_id") or "") not in rested]
+    fit, keyed = matched_exercises(
+        pattern, pool, observed_tags=observed_tags, history=history)
+    return (fit, keyed) if fit == FIT_EXACT else (None, [])
 
 
 def _blocked_by_existing(existing: Any, snippet_id: str) -> bool:
@@ -1015,7 +1152,8 @@ def _blocked_by_existing(existing: Any, snippet_id: str) -> bool:
 def choose_exercise(ranked: list[dict], *, owner_user_id: str,
                     take_session_id: str, snippet_id: str, lane: str,
                     database: Any, fit: Optional[str] = None,
-                    trace: Optional[dict] = None) -> Optional[dict]:
+                    trace: Optional[dict] = None,
+                    also: Optional[list[dict]] = None) -> Optional[dict]:
     """The 80/20 choice among a moment's ranked exercises, frozen once.
 
     The database draws and stores it (migration 0372), so every later read
@@ -1023,6 +1161,8 @@ def choose_exercise(ranked: list[dict], *, owner_user_id: str,
     migrated) or an owner, the best match is served exactly as before.
     Returns None when a frozen choice is no longer in the live catalogue:
     serving a different exercise would contradict the stored assignment.
+    ``also``: the other fitting exercises a frozen choice may still be (a
+    shared video drawn before the speaker's own set gained one, N78).
     """
     if not ranked:
         return None
@@ -1051,12 +1191,13 @@ def choose_exercise(ranked: list[dict], *, owner_user_id: str,
     if not isinstance(assignment, dict):
         return ranked[0]
     selected = str(assignment.get("selected_exercise_id") or "")
-    return next((item for item in ranked
+    return next((item for item in [*ranked, *(also or [])]
                  if str(item.get("exercise_id") or "") == selected), None)
 
 
 def _offer_payload(exercise: dict, verdict: dict, snippet: dict,
                    chosen: dict, existing: Any) -> dict:
+    from services.coach_answer_video import exercise_video_url
     intro = (exercise.get("confident_introduction_copy")
              if verdict.get("pattern") == "confident" else
              exercise.get("introduction_copy"))
@@ -1068,7 +1209,8 @@ def _offer_payload(exercise: dict, verdict: dict, snippet: dict,
         "introduction": intro or INTRO_NEAR,
         "yes_introduction": INTRO_AFTER_YES,
         "no_introduction": INTRO_AFTER_NO,
-        "explanation_video_ref": exercise.get("explanation_video_url"),
+        "explanation_video_ref": exercise_video_url(
+            exercise.get("explanation_video_url")),
         "passage": (snippet.get("transcript") or chosen.get("quote") or "").strip(),
         "practice_id": str(existing.get("id")) if existing else None,
         "resume": bool(existing and existing.get("status") == "open"),
@@ -1121,7 +1263,8 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
                   and row.get("snippet_id")]
     if not candidates or not take_session_id:
         return rows
-    exercises = offerable_exercises(database)
+    pools = speaker_pools(database, owner_user_id)
+    exercises = [*pools[0], *pools[1]]
     if not exercises:
         return rows
     existing = database.get_confident_voice_practice_by_take(take_session_id)
@@ -1138,6 +1281,7 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
     # Read the library and the speaker's history ONCE for the whole take,
     # not per candidate clip.
     vocabulary = detected_problem_vocabulary(database)
+    # An unread history draws nothing (speaker_matches, N77).
     history = speaker_history(database, owner_user_id, take_session_id)
     # (fit, -covered, claimed, distance, -editorial, -priority, id, index)
     ranked: list[tuple[tuple, dict, dict, dict, dict]] = []
@@ -1157,8 +1301,8 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
         # WHAT WENT WRONG, not just how confident it sounded. The fit leads
         # the sort key, so an exercise that treats this clip's actual
         # problems beats one that merely suits its confidence level.
-        _, matched = matched_exercises(
-            str(verdict.get("pattern") or ""), exercises,
+        _, matched = pools_match(
+            str(verdict.get("pattern") or ""), pools,
             observed_tags=observed_problem_tags(
                 verdict, vocabulary=vocabulary), history=history)
         for key, exercise in matched:
@@ -1183,7 +1327,8 @@ def attach_exercise_offer(changes: list[dict], *, take_session_id: str,
             exercises=exercises, ranked=moment, fit=fit, snippet=snippet,
             history=history,
             take_session_id=take_session_id,
-            snippet_id=str(chosen.get("snippet_id"))))
+            snippet_id=str(chosen.get("snippet_id"))),
+        also=_all_fitting(verdict, exercises, vocabulary, history))
     if served is None:
         return rows
     chosen["practice_exercise"] = _offer_payload(
@@ -1296,6 +1441,16 @@ def _by_moment_for_take(database: Any, reader_name: str,
         if isinstance(row, dict) and row.get("snippet_id"):
             out.setdefault(str(row["snippet_id"]), row)
     return out
+
+
+def _rested_on_take(practices: Optional[dict]) -> frozenset[str]:
+    """Exercises whose practice on THIS Take ended on a Good job, from the
+    practices already read for it: they rest on its other moments too."""
+    from services.practice_check import machine_closed
+    return frozenset(
+        str(row.get("exercise_id")) for row in (practices or {}).values()
+        if isinstance(row, dict) and row.get("exercise_id")
+        and machine_closed(row))
 
 
 def _moment_closed(existing: Any) -> bool:
@@ -1431,13 +1586,19 @@ def _attach_exercises(
     `problem_recognised` says whether a problem fired with nothing targeting
     it, so a judgement can send the bookmark to the coach. The catalogue,
     the vocabulary and the speaker's history are read once per Take.
+
+    The pools are the speaker's own set first, then the shared library,
+    matched exactly (``pools_match``; N77, N78): a coach's video made or
+    picked for this speaker wins, then a video the founder made or approved
+    for everyone; never another speaker's unapproved video.
     """
     targets = [row for row in rows
                if row.get("source") == "confident_voice"
                and row.get("snippet_id")]
     if not targets:
         return rows
-    exercises = offerable_exercises(database)
+    pools = speaker_pools(database, owner_user_id)
+    exercises = [*pools[0], *pools[1]]
     by_id = {str(r.get("id")): r for r in (
         database.get_confident_voice_practice_candidates(
             [str(row["snippet_id"]) for row in targets]) or [])}
@@ -1474,13 +1635,17 @@ def _attach_exercises(
                  else getter(take_session_id, snippet_id)
                  if getter is not None else None)
         if isinstance(drawn, dict):
-            moment_history: dict = dict(EMPTY_HISTORY)
+            # Frozen; but a Good job on this Take rests its video here too.
+            moment_history: dict = {**EMPTY_HISTORY,
+                                    "rested": _rested_on_take(practices)}
         else:
             if history is None:
                 history = speaker_history(database, owner_user_id, take_session_id)
             moment_history = history
-        fit, keyed = matched_exercises(
-            str(verdict.get("pattern") or ""), exercises,
+            if history.get("rested", frozenset()) is None:
+                continue  # unread history: nothing drawn, the next read retries
+        fit, keyed = pools_match(
+            str(verdict.get("pattern") or ""), pools,
             observed_tags=observed, history=moment_history)
         if not keyed:
             # Read weak, a problem fired, nothing targets it: an "error" the
@@ -1500,8 +1665,13 @@ def _attach_exercises(
                 lane="v3_exercise_block", verdict=verdict, vocabulary=vocabulary,
                 exercises=exercises, ranked=ranked, fit=fit, snippet=snippet,
                 history=moment_history,
-                take_session_id=take_session_id, snippet_id=snippet_id))
+                take_session_id=take_session_id, snippet_id=snippet_id),
+            also=_all_fitting(verdict, exercises, vocabulary, moment_history))
         if exercise is None:
+            # The frozen draw names a video this speaker no longer gets (a
+            # draw from before N77, or one rested since): nothing targets
+            # it for them now, as above.
+            target["problem_recognised"] = bool(observed)
             continue
         target["evidence"] = evidence
         target["practice_exercise"] = _offer_payload(
@@ -1687,19 +1857,33 @@ def coach_shared_answer(request: Any) -> Optional[dict]:
 def coach_shared_exercise(request: Any, database: Any) -> Optional[dict]:
     """The live exercise a coach resolved and shared this request with, or
     None. The version must still be the one they shared: an exercise edited
-    since is not the one they chose."""
+    since is not the one they chose. Another speaker's coach video never
+    rides this speaker's moment (N77)."""
     if not isinstance(request, dict) or not request.get("shared_at"):
         return None
     exercise_id = str(request.get("resolved_exercise_id") or "")
     if not exercise_id:
         return None
     active = database.get_active_diagnostic_exercise(exercise_id)
-    if not isinstance(active, dict):
+    if not isinstance(active, dict) or not visible_to(
+            active, request.get("owner_user_id")):
         return None
     if int(active.get("version") or 1) != int(
             request.get("resolved_exercise_version") or 0):
         return None
     return active
+
+
+def _may_open(active: Any, owner_user_id: Any, coach_shared: bool) -> bool:
+    """Whether a drawn exercise may still open a new practice: never another
+    speaker's video, nor an unapproved coach video filed before 0480 (N78),
+    the rows the offer drops; the coach's share for this speaker's own
+    moment only needs to be theirs to see."""
+    if not isinstance(active, dict):
+        return True
+    if coach_shared:
+        return visible_to(active, owner_user_id)
+    return pickable(active, owner_user_id)
 
 
 def start_exercise_check(*, snippet: dict, take_session_id: str,
@@ -1719,13 +1903,27 @@ def start_exercise_check(*, snippet: dict, take_session_id: str,
     getter = getattr(database, "get_confident_voice_exercise_assignment", None)
     assignment = (getter(take_session_id, snippet_id)
                   if getter is not None else None)
-    if isinstance(assignment, dict):
+    shared = _shared_request_for(database, take_session_id, snippet_id)
+    coach_shared = shared is not None and str(
+        shared.get("resolved_exercise_id")) == str(exercise_id)
+    # A draw made before N77 may name a video this speaker no longer gets;
+    # the coach's share for the moment is what the row serves then.
+    if isinstance(assignment, dict) and (
+            not coach_shared
+            or str(assignment.get("selected_exercise_id")) == str(exercise_id)):
         if not clip_can_carry_exercise(verdict):
             return "NOT_ELIGIBLE", verdict, None
         if str(assignment.get("selected_exercise_id")) != str(exercise_id):
             return "EXERCISE_OFFER_STALE", verdict, None
         active = database.get_active_diagnostic_exercise(str(exercise_id))
+        if not _may_open(active, owner_user_id, coach_shared):
+            return "EXERCISE_OFFER_STALE", verdict, None
         return None, verdict, {
+            # In the speaker's own set: its video always plays (N77); a
+            # shared one follows the AI-voice rule (N78).
+            "speaker_set": str(exercise_id) in {
+                str(row.get("exercise_id") or "")
+                for row in speaker_exercises(database, owner_user_id)},
             "pattern_distance": confidence_pattern_distance(
                 str(verdict.get("pattern") or ""),
                 _with_default_patterns(active or {}).get(
@@ -1738,9 +1936,7 @@ def start_exercise_check(*, snippet: dict, take_session_id: str,
             "exercise_fit": fit_from_policy(
                 assignment.get("matching_policy_version")),
         }
-    shared = _shared_request_for(database, take_session_id, snippet_id)
-    if shared is not None and str(
-            shared.get("resolved_exercise_id")) == str(exercise_id):
+    if coach_shared and shared is not None:
         if not clip_can_carry_exercise(verdict):
             return "NOT_ELIGIBLE", verdict, None
         matching = {
@@ -1757,9 +1953,14 @@ def start_exercise_check(*, snippet: dict, take_session_id: str,
         return None, verdict, matching
     if not verdict.get("eligible"):
         return "NOT_ELIGIBLE", verdict, None
-    # The same history the offer ranked with, so the two agree on the best.
-    fit, matched = match_for_clip(
-        verdict, database,
+    # The same pools, rule and history the offer ranked with (their own set
+    # first, then the shared library; exact only, N77, N78), so the two
+    # agree on the best.
+    pools = speaker_pools(database, owner_user_id)
+    fit, matched = pools_match(
+        str(verdict.get("pattern") or ""), pools,
+        observed_tags=observed_problem_tags(
+            verdict, vocabulary=detected_problem_vocabulary(database)),
         history=speaker_history(database, owner_user_id, take_session_id))
     if not matched:
         return "NOT_MATCHABLE", verdict, None
@@ -1770,6 +1971,9 @@ def start_exercise_check(*, snippet: dict, take_session_id: str,
         "pattern_distance": best_key[KEY_DISTANCE],
         "matching_policy_version": MATCHING_POLICY_VERSION,
         "exercise_fit": fit,
+        # Their own set's video always plays; a shared one follows the
+        # AI-voice rule (N77, N78).
+        "speaker_set": best_exercise in pools[0],
     }
 
 

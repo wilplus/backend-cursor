@@ -14,6 +14,7 @@ the library teaching ("Attach = both") and the share notification.
 """
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -23,6 +24,7 @@ from services.practice_adoption import ANSWERS as _FIVE_ANSWERS
 from services.practice_more_confident import record_after_coach_decision
 from services.refusal import Refusal
 
+_log = logging.getLogger(__name__)
 
 def requested_video_url(body: dict) -> tuple[Any, Any]:
     """The coach's explanation video address, or the reason it is refused.
@@ -97,7 +99,8 @@ def _file_custom_exercise(database, practice: dict, custom_body) -> dict:
     custom_body = with_moment_errors(custom_body, practice, database)
     try:
         exercise = file_coach_exercise(
-            database, practice_id=practice.get("id"), fields=custom_body)
+            database, practice_id=practice.get("id"), fields=custom_body,
+            owner_user_id=str(practice.get("owner_user_id") or "") or None)
     except CatalogueRefusal as refusal:
         raise Refusal(refusal.code, refusal.message,
                       refusal.status) from refusal
@@ -114,9 +117,12 @@ def _chosen_exercise(database, practice: dict,
     if custom_body is not None:
         exercise = _file_custom_exercise(database, practice, custom_body)
         return exercise, exercise, str(exercise.get("exercise_id") or "")
+    from services.confident_voice_practice import pickable
     exercise_id = str(body.get("exercise_id") or practice.get("exercise_id"))
     exercise = database.get_active_diagnostic_exercise(exercise_id)
-    if not exercise:
+    # Another speaker's coach video, or one the founder has not approved for
+    # everyone, is not this speaker's to get (N77, N78).
+    if not exercise or not pickable(exercise, practice.get("owner_user_id")):
         raise Refusal("EXERCISE_UNAVAILABLE",
                       "Select an active reviewed exercise.", 409)
     return exercise, None, exercise_id
@@ -202,8 +208,31 @@ def save_coach_decision(database, practice: dict, body: dict,
         raise Refusal("V2_ERROR", "Could not save the coach decision.", 500)
     if attempt_id:
         _reconcile_album(database, practice, updated)
-    if share and custom_exercise is None:  # "Attach = both" (founder 09-25)
+    # "Attach = both" (founder 09-25): the shared library learns; a coach
+    # video for one speaker is no one else's to teach with (N77).
+    if share and custom_exercise is None and not exercise.get("owner_user_id"):
         teach_on_attach(database, practice, exercise_id, coach_id)
     if share:
+        _into_speaker_set(database, practice, exercise_id,
+                          custom=custom_exercise is not None, coach_id=coach_id)
         _notify_share(database, practice)
     return updated
+
+
+def _into_speaker_set(database, practice: dict, exercise_id: str, *,
+                      custom: bool, coach_id: str) -> None:
+    """The shared exercise joins the speaker's own set (founder 2026-10-18,
+    N77; 0480), as the moment's answer does (exercise_coach_requests).
+    Best-effort: the share is saved either way."""
+    adder = getattr(database, "add_speaker_exercise", None)
+    owner = str(practice.get("owner_user_id") or "")
+    if adder is None or not owner or not exercise_id:
+        return
+    try:
+        adder(owner_user_id=owner, exercise_id=str(exercise_id),
+              source="coach_made" if custom else "coach_pick",
+              source_id=str(practice.get("id") or "") or None,
+              added_by=str(coach_id or ""))
+    except Exception as e:  # noqa: BLE001 -- the share is saved either way
+        _log.warning("speaker set add failed practice=%s: %s",
+                     practice.get("id"), e, exc_info=True)

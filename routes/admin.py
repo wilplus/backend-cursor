@@ -171,6 +171,12 @@ def is_founder_email(email: str) -> bool:
     return bool(founder) and str(email or "").strip().lower() == founder
 
 
+def is_founder_request() -> bool:
+    """This request is the founder's own (admin AND the founder's email)."""
+    user_id = getattr(request, "user_id", None)
+    return bool(user_id and is_admin(user_id)) and is_founder_email(_token_email())
+
+
 def is_research(email: str) -> bool:
     """A read-only research account (research_users, is_active)."""
     if not email:

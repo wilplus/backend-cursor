@@ -1289,9 +1289,18 @@ def _machine_pick(practice: dict) -> Optional[dict]:
 def _coach_practice_payload(practice: dict) -> dict:
     """Coach-only attempt bundle, intentionally separate from blind packet."""
     from services.audio_ref_resolver import resolve_playable_ref
-    from services.confident_voice_practice import ASSESSMENT_COPY, coach_exercise_order
-    original_raw = db.get_active_diagnostic_exercise(
-        str(practice.get("exercise_id") or "")) or \
+    from services.coach_answer_video import exercise_video_url
+    from services.confident_voice_practice import (
+        ASSESSMENT_COPY, coach_exercise_order, visible_to,
+    )
+    owner = practice.get("owner_user_id")
+
+    def live(exercise_id: Any) -> Optional[dict]:
+        """The live row, unless it is another speaker's coach video (N77)."""
+        row = db.get_active_diagnostic_exercise(str(exercise_id or ""))
+        return row if isinstance(row, dict) and visible_to(row, owner) else None
+
+    original_raw = live(practice.get("exercise_id")) or \
         (practice.get("exercise_snapshot")
          if isinstance(practice.get("exercise_snapshot"), dict) else {})
     original_exercise: dict[str, Any] = (
@@ -1301,9 +1310,9 @@ def _coach_practice_payload(practice: dict) -> dict:
     if isinstance(custom_exercise, dict):
         exercise = custom_exercise
     else:
-        selected_exercise = db.get_active_diagnostic_exercise(
-            str(practice.get("coach_selected_exercise_id")
-                or practice.get("exercise_id") or "")) or original_exercise
+        selected_exercise = live(
+            practice.get("coach_selected_exercise_id")
+            or practice.get("exercise_id")) or original_exercise
         exercise = (selected_exercise
                     if isinstance(selected_exercise, dict) else {})
     # Best match for THIS clip first, by the speaker's own ranking; every
@@ -1313,7 +1322,8 @@ def _coach_practice_payload(practice: dict) -> dict:
         "version": active.get("version"),
         "title": active.get("title"),
         "instruction": active.get("instruction"),
-        "explanation_video_ref": active.get("explanation_video_url"),
+        "explanation_video_ref": exercise_video_url(
+            active.get("explanation_video_url")),
     } for active in coach_exercise_order(practice, db)]
     attempts = db.list_confident_voice_practice_attempts(
         str(practice.get("id")))
@@ -1343,7 +1353,7 @@ def _coach_practice_payload(practice: dict) -> dict:
                        or practice.get("exercise_version"),
             "title": exercise.get("title"),
             "instruction": exercise.get("instruction"),
-            "explanation_video_ref": (
+            "explanation_video_ref": exercise_video_url(
                 practice.get("coach_explanation_video_url")
                 or exercise.get("explanation_video_url")
                 or exercise.get("explanation_video_ref")
@@ -2946,12 +2956,14 @@ def v2_coach_list_catalogue():
 
 
 @v2_bp.route("/coach/catalogue", methods=["POST"])
-@require_admin_or_coach
+@require_founder
 def v2_coach_add_catalogue_line():
     """One signed line for one pattern: a new version, never an edit.
     `signed_by` is the authenticated caller (L3). The line is copy a speaker
     reads, so it is held to the same rule as every other line: words, no
-    number about a person. 200 { line } · 400 · 403 · 500"""
+    number about a person. The shared lines are the founder's (2026-10-18,
+    N77): a coach's line for one speaker is filed by their answer, as that
+    speaker's own. 200 { line } · 400 · 403 · 500"""
     from services.feedback_catalogue import CatalogueRefusal, validate_line
     try:
         row = validate_line(request.get_json(silent=True) or {})

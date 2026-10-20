@@ -2576,6 +2576,62 @@ prototype. Locks: `FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md` ("Words
 first, then voice") and `FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`
 ("Decided after the lock (2026-10-18, words first)"). No migration.
 
+**N77 · A coach's video belongs to the speaker it was made for (founder,
+Claude Code session, 18 October 2026).** Asked who gets a coach's recorded
+message, the founder chose every recommended answer on the plain-words map
+(<https://claude.ai/artifact/QU5ENGdftkJXFppAQYFhyj>). A coach's exercise
+video belongs to one speaker and no other speaker gets it. After a Take the app
+picks by itself only from that speaker's own set (their coach videos, and
+library exercises a coach picked for one of their moments), and only on an
+exact fit: the video's main mistake heard on the sentence. Their own coach
+video always plays; the AI clip never takes its place and still follows a try
+that is not better yet. It comes back each time it fits until their practice
+on it gets a Good job, then rests for good. With no own video the AI version of
+their voice plays. The shared library holds only what the founder makes or
+approves, and reaches a speaker only when a coach picks it. Coach praise lines
+follow the same rule. The coach's word for a Take shows on that Take only
+(supersedes N48.3 Q11 A's earlier-Take fallback). Coach videos already in the
+shared library go back to their own speakers at private links, and coach
+praise lines that cannot be traced are switched off but kept (step 2, a
+script the founder approves before it runs). A coach writes and reads only
+for the speakers the founder assigns them in admin (step 4). Approving a coach
+video into the library comes later, as its own step. Step 1 (backend):
+migration 0480, the matcher, the coach save paths, praise, the Take word and
+deletion. The coach panel's library words ("Share without the library", "The
+library offers it to other speakers…") are unchanged until the founder signs
+their replacement (step 3, a locked screen). Contract 35g-1, 35g-2, 35g-4 and
+35g-6 carry dated amendments; `FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`
+"Decided after the lock (2026-10-18, the coach's video)".
+
+**N78 · Two kinds of coach video: shared exercise videos, private direct
+messages (founder, Claude Code session, 19 October 2026).** Revises N77. "We
+don't want random videos shared with everyone, only the most fitting ones;
+there is a difference between the direct video message and the video
+recorded for the exercise, that can be shared if the pattern fits." An
+EXERCISE VIDEO a coach records for one speaker's moment reaches that speaker
+at once and joins their own set; every other speaker gets it only after the
+founder approves it, and only when their own recording shows its mistake
+exactly. Approval copies the video into the library and clears the owner, so
+it stays when that speaker leaves. A DIRECT MESSAGE (the answer on a moment,
+the word for a Take) is only ever that speaker's, only on that moment or
+Take, and never comes back. On a moment: a coach video made or picked for
+the speaker first (the AI clip never replaces it), else an approved shared
+exercise video, 80/20 among exact fits, else the AI clip; a video rests for a
+speaker after their Good job. The coach's exercise-script draft never quotes
+the speaker's passage. Coach videos filed into the shared library before
+0480 reach nobody new until the founder reviews them (`GET/PUT
+/v2/admin/exercises/review`); the founder's review screen comes with a
+signed prototype. The same session set the longer aim, a coach avatar: its
+footage only ever comes from separate scripted recordings the coach owns,
+under a written face-and-voice consent; the coach's diagnosis becomes a
+training input under the speaker's training yes; direct messages may train
+the text model with that yes, scrubbed of names and specifics; every
+training use for the next year goes into one privacy update; a written,
+versioned coach agreement comes before more coaches; a short list of
+exercise formats is drafted for the founder's approval; a second coach
+diagnoses a blind sample once there is one. The map:
+<https://claude.ai/artifact/QU5ENGdftkJXFppAQYFhyj>. Migration 0480.
+
 **N79 · What we keep of what a coach says, and what may leave (founder, chat,
 19 October 2026).** The goal is a coach "text brain" trained on what coaches
 say, the situation and the error type; first we fix what is captured. Four

@@ -9,6 +9,8 @@ OUTCOME
       shared decision writes in the same order.
   O3  Session and exercise video uploads store the video, and refuse a
       wrong format or an empty file; a repeated upload is not stored twice.
+      An exercise video reaches only the walk's exercise for one moment; a
+      coach's upload to a shared library exercise is refused.
   O4  Training import answers with a receipt and analyses in the
       background; it refuses missing fields, rejected audio and a missing
       corpus basis.
@@ -20,7 +22,8 @@ PROVES   O1 -> StudentDetailContract::test_the_drill_down_shape,
                PracticeReviewContract::test_a_shared_decision_writes_in_order
          O3 -> SessionVideoContract::test_a_stored_video,
                SessionVideoContract::test_refusals,
-               ExerciseVideoContract::test_the_upload_reaches_the_library,
+               ExerciseVideoContract::test_the_upload_reaches_the_moment_s_exercise,
+               ExerciseVideoContract::test_the_shared_library_is_the_founder_s,
                ExerciseVideoContract::test_refusals
          O4 -> TrainingImportContract::test_a_receipt_then_the_background_analysis,
                TrainingImportContract::test_refusals
@@ -252,20 +255,31 @@ class SessionVideoContract(unittest.TestCase):
 class ExerciseVideoContract(unittest.TestCase):
     """POST /v2/coach/exercises/<id>/video (the same upload checks)."""
 
-    def _post(self, filename="clip.mov", form=None):
+    #: The walk's exercise for one moment, the only one a coach files (N77).
+    WALK = "coach-request-0b6a8c1e-2f3d-4a5b-8c7d-9e0f1a2b3c4d"
+
+    def _post(self, filename="clip.mov", form=None, exercise_id=WALK):
         from routes.v2 import coach_exercises
         data = {"video_file": (io.BytesIO(b"vid"), filename), **(form or {})}
-        return _call(coach_exercises.v2_coach_exercise_video, "ex-1",
+        return _call(coach_exercises.v2_coach_exercise_video, exercise_id,
                      method="POST", data=data, content_type="multipart/form-data")
 
-    def test_the_upload_reaches_the_library(self):
+    def test_the_upload_reaches_the_moment_s_exercise(self):
         with patch("services.coach_exercise_authoring.attach_video",
-                   return_value=(200, {"exercise": "ex-1"})) as attach:
+                   return_value=(200, {"exercise": self.WALK})) as attach:
             status, body = self._post(form={"exercise": '{"title": "T"}'})
-        self.assertEqual((status, body), (200, {"exercise": "ex-1"}))
+        self.assertEqual((status, body), (200, {"exercise": self.WALK}))
         attach.assert_called_once_with(
-            db, exercise_id="ex-1", coach_id=COACH, video_bytes=b"vid",
+            db, exercise_id=self.WALK, coach_id=COACH, video_bytes=b"vid",
             filename="clip.mov", content_type=ANY, definition={"title": "T"})
+
+    def test_the_shared_library_is_the_founder_s(self):
+        """A coach files no video into the shared library (founder
+        2026-10-18, N77): only the walk's exercise for one speaker."""
+        with patch("services.coach_exercise_authoring.attach_video") as attach:
+            status, body = self._post(exercise_id="ex-1")
+        self.assertEqual((status, body["code"]), (403, "FORBIDDEN"))
+        attach.assert_not_called()
 
     def test_refusals(self):
         with patch("services.coach_exercise_authoring.attach_video") as attach:
