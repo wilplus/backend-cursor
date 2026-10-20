@@ -276,6 +276,14 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
     brings the newest step back; the recorder never gives way. A paragraph
     without the black line still opens with no buttons (the entry below).
   - **No new words.**
+  - **After the first build** (founder, the same chat, from the phone):
+    - **"Your coach:"** opens the coach's bubble, with the colon (signed
+      2026-10-20); the bar and the step's name stay "Your coach".
+    - **The text never shows before the walk.** After a Take the lens
+      waits, with the typing dots, until the walk's first step is there;
+      the text shows only once the page knows there is nothing to walk.
+      The eight-second last resort counts only once the page has loaded,
+      its marks are in and its deck is up.
 
 - **A paragraph's walk** (founder, Claude Code chat, 2026-10-20: "if there
   is still something not answered, it should first display and you answer
