@@ -23,8 +23,11 @@ never on a question (founder 2026-10-20: one action at a time; the Lounge
 puts "Record Take N" under it).
 
 One action at a time (``after_take``, founder 2026-10-20): at most one ask
-follows the Take's card (the CEO panel's, WhatsApp, the home screen or "Did
-this help?"), and the bubble is held back until that ask closes.
+follows the Take's card (the CEO panel's, WhatsApp, the home screen, Will's
+question or "Did this help?"), and the bubble is held back until that ask
+closes. Will's question is planned before the summary is written
+(``_will_plan``), its heard call running beside the summary's own; when this
+Take says the clearer line practised on the last one, the summary is told.
 
 Anything that fails (no permit, no provider, a reply that breaks the
 rules or drifts from the signed lines) falls back to the signed journey
@@ -470,8 +473,11 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
     now, before = _reads(database, ids, take_index)
     rest = (progress_facts(now, before) + goal_facts(database, str(user_id))
             + memory_facts(database, str(user_id)))
-    facts = talk_facts(takes) + said_facts(moments, now) + earlier() + rest
     moved = _move(_mean(now, "s"), _mean(before, "s")) if before is not None else None
+    will, carried = (None, []) if held else _will_plan(
+        database, user_id=str(user_id), arc_id=str(arc_id), takes=takes, take=take,
+        take_index=take_index, now=(practice, moved), moments=moments)
+    facts = talk_facts(takes) + said_facts(moments, now) + earlier() + carried + rest
     text = _written(database, take, anchor, facts, practice, words,
                     note, str(arc_id), str(user_id),
                     signed=signed_lines(now, before, take_index),
@@ -483,7 +489,44 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
     if held:
         return _rewritten(database, str(user_id), client_id, held, text, meta)
     return _first_written(database, str(user_id), client_id, text or anchor, meta,
-                          can_install=body.get("can_install") is True)
+                          can_install=body.get("can_install") is True, will=will)
+
+
+def _before_outcome(database: Any, user_id: str, arc_id: str, take_index: int) -> Optional[tuple]:
+    """The Take before's (practice, moved), as its summary kept them; None
+    on Take 1 or when it has no summary."""
+    if take_index < 2:
+        return None
+    row = database.get_lounge_message_by_client_id(
+        user_id, summary_client_id(user_id, arc_id, take_index - 1))
+    meta = (row or {}).get("metadata") or {}
+    return (meta.get("practice"), meta.get("moved")) if row else None
+
+
+def _will_plan(database: Any, *, user_id: str, arc_id: str, takes: list[dict], take: str,
+               take_index: int, now: tuple, moments: list[dict]) -> tuple:
+    """Will's question after this Take (``will_question``), its heard call
+    started beside the summary's own; and, for the summary, the line
+    practised last Take when this Take said it. Never raises."""
+    from services import will_question
+    try:
+        snippets = database.get_snippets_by_session(take) or []
+        carried = will_question.carried_over(database, user_id=user_id, takes=takes,
+                                             take_index=take_index, snippets=snippets)
+        found = will_question.plan(
+            database, user_id=user_id, arc_id=arc_id, take=take, take_index=take_index,
+            now=now, before=_before_outcome(database, user_id, arc_id, take_index),
+            takes=takes, carried=carried, heard_call=lambda: {})
+        if found and found.key in ("audience", "goal"):
+            from services.chat_app_context import talk_title
+            found.heard = will_question.start_heard(
+                database, user_id=user_id, arc_id=arc_id, take=take,
+                title=talk_title([t.get("intake_context") or {} for t in takes]),
+                said=" ".join(m["text"] for m in moments if m.get("text")))
+        return found, will_question.carried_fact(carried)
+    except Exception as error:  # noqa: BLE001 -- the summary and its other asks go on
+        logger.warning("take summary: no will question take=%s: %s", take, error, exc_info=True)
+        return None, []
 
 
 def _rewritten(database: Any, user_id: str, client_id: str, held: dict,
@@ -505,7 +548,7 @@ def _rewritten(database: Any, user_id: str, client_id: str, held: dict,
 
 
 def _first_written(database: Any, user_id: str, client_id: str, text: str, meta: dict,
-                   *, can_install: bool) -> Optional[dict]:
+                   *, can_install: bool, will: Any = None) -> Optional[dict]:
     """The summary's batch, once per Take: the summary, held back behind the
     Take's one ask when there is one (``after_take``), then that ask."""
     from services import after_take
@@ -514,7 +557,8 @@ def _first_written(database: Any, user_id: str, client_id: str, text: str, meta:
     take, practice, moved = meta["take_session_id"], meta["practice"], meta["moved"]
     after_take.release_older(database, user_id)
     ask = after_take.choose(database, user_id, take_index=meta["take_index"],
-                            off=looks_off(practice, moved), can_install=can_install)
+                            off=looks_off(practice, moved), can_install=can_install,
+                            will=will is not None)
     if ask:
         meta["held_for"] = ask
     # Under the walk it closes: the walk's steps carry the browser's time.
@@ -527,7 +571,7 @@ def _first_written(database: Any, user_id: str, client_id: str, text: str, meta:
         "metadata": meta,
         "client_created_at": at,
     }] + after_take.ask_rows(database, ask, user_id=user_id, arc_id=meta["arc_id"],
-                             take=take, at=stamp_after(at))
+                             take=take, at=stamp_after(at), will=will)
     persisted = database.insert_lounge_messages(user_id, batch)
     from services import speaker_memory
     speaker_memory.record(database, user_id, "take",

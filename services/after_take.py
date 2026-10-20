@@ -9,18 +9,22 @@ written with the summary's batch (``take_summary``) but held back
 ask. Which ask (``choose``):
 
   Take 1      "Did this help?", only when the Take looks off
-              (``feedback_check.looks_off``). Never WhatsApp, never an ask
-              from the CEO panel.
+              (``feedback_check.looks_off``); else Will's question when it
+              has one (``will_question``, founder 2026-10-20). Never
+              WhatsApp, never an ask from the CEO panel.
   Take 2 on   the founder's ask from the CEO panel when one is open
               ("admin"; the Lounge shows it, and "Not now" leaves it open,
               so it comes back at the end of the next Take); else WhatsApp,
               while there is no number and it was asked fewer than twice;
               else the home screen, once, where the phone can add it; else
-              "Did this help?" when the Take looks off.
+              Will's question when it has one; else "Did this help?" when
+              the Take looks off.
 
 Let go (``release``), always under the rows that closed the ask:
   - "Yes": with ``GLAD`` before its last line; "Skip", or the answer to
     "What would help?": as written (``feedback_check``);
+  - Will's question answered (a tap with no follow-up, Skip, or typed
+    words), as written (``will_question``);
   - a typed turn that passes the ask, under Will's reply
     (``chat_query.finish_chat_turn``);
   - the ask's form closing in the Lounge, whatever the choice (Save, Not
@@ -86,8 +90,9 @@ def _no_phone(database: Any, user_id: str) -> bool:
 
 
 def choose(database: Any, user_id: str, *, take_index: int, off: bool,
-           can_install: bool = False) -> Optional[str]:
-    """The one ask after this Take, or None (see the module's table)."""
+           can_install: bool = False, will: bool = False) -> Optional[str]:
+    """The one ask after this Take, or None (see the module's table).
+    ``will``: Will has a question for this Take."""
     if take_index >= 2:
         if _admin_ask(user_id):
             return "admin"
@@ -95,14 +100,22 @@ def choose(database: Any, user_id: str, *, take_index: int, off: bool,
             return "whatsapp"
         if can_install and asked(database, user_id, "install") == 0:
             return "install"
-    return "feedback_check" if off else None
+        if will:
+            return "will_question"
+    if off:
+        return "feedback_check"
+    return "will_question" if will else None
 
 
 def ask_rows(database: Any, ask: Optional[str], *, user_id: str, arc_id: str,
-             take: str, at: str) -> list[dict]:
+             take: str, at: str, will: Any = None) -> list[dict]:
     """The ask's bubble after the held message, in the shape the Lounge
     draws as an offer. The CEO panel's ask is drawn by the Lounge itself
-    (its price words live there), so it has no row here."""
+    (its price words live there), so it has no row here. ``will``: Will's
+    plan (``will_question.Plan``) when his question is the ask."""
+    if ask == "will_question":
+        from services.will_question import ask_rows as will_rows
+        return will_rows(will, user_id=user_id, at=at)
     if ask == "feedback_check":
         from services.feedback_check import ask_rows as question
         return question(database, user_id=user_id, arc_id=arc_id, take_session_id=take,
@@ -175,7 +188,9 @@ def release_older(database: Any, user_id: str) -> None:
 
 def passes(resp: dict) -> bool:
     """Does this chat reply pass the open ask? Not when it keeps an ask
-    open: "What would help?" waits for its answer, and a reply that opens a
-    form (a number without its country code) waits for the form. Pure."""
+    open: "What would help?" and Will's follow-up wait for their answer, and
+    a reply that opens a form (a number without its country code) waits for
+    the form. Pure."""
     meta = resp.get("row_metadata") or {}
-    return not resp.get("offer") and meta.get("feedback_check") != "missing"
+    return (not resp.get("offer") and meta.get("feedback_check") != "missing"
+            and meta.get("will_question_step") != "follow")
