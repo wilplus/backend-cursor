@@ -426,7 +426,7 @@ O2 -> test_words_and_an_exercise_never_mix
 O3 -> test_a_pair_is_kept_only_when_the_coach_changed_the_draft
 O4 -> test_a_take_word_pair_is_kept_and_the_latest_teaches
 O5 -> test_the_migration_recovers_each_word_s_pair_once
-O6 -> test_every_draft_is_kept_as_it_was_sent_and_only_settled","Migration 0402 (founder 2026-09-30, C2 to C5); O4 and O5 migration 0479 (founder 2026-10-19, N79). Runs only on a disposable database whose name starts with willab_confident_moment_. O6 migration 0480 (founder 2026-10-19, N79)."
+O6 -> test_every_draft_is_kept_as_it_was_sent_and_only_settled","Migration 0402 (founder 2026-09-30, C2 to C5); O4 and O5 migration 0479 (founder 2026-10-19, N79). Runs only on a disposable database whose name starts with willab_confident_moment_. O6 migration 0481 (founder 2026-10-19, N79)."
 tests/test_coach_blind_gate.py,Story,"As a coach, I want the speaker's words and the machine's measurements hidden until I commit my answer, so that I judge the voice blind.","O1  The speaker's words appear only after I commit my answer; before
 that I still get the audio.
 O2  The machine's measurements appear only after I commit my answer.

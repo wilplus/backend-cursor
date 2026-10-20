@@ -32,7 +32,7 @@ PROVES   O1 -> test_a_line_is_answered_once_and_shared
          O6 -> test_every_draft_is_kept_as_it_was_sent_and_only_settled
 WHY      Migration 0402 (founder 2026-09-30, C2 to C5); O4 and O5 migration
          0479 (founder 2026-10-19, N79). Runs only on a disposable database
-         whose name starts with willab_confident_moment_. O6 migration 0480
+         whose name starts with willab_confident_moment_. O6 migration 0481
          (founder 2026-10-19, N79).
 """
 from __future__ import annotations

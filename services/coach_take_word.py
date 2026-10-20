@@ -86,7 +86,7 @@ def _the_pair(database: Any, row: dict, *, coach_id: str, text: Optional[str],
               new_video: bool = True) -> None:
     """7 (C5-a, 0411): when a draft was shown and the coach's words differ,
     the (draft, final) pair; a video's transcript is a second final. The
-    draft the row carries is settled in coach_draft_history (0480): whether
+    draft the row carries is settled in coach_draft_history (0481): whether
     the saved words are that draft as written. All best-effort; the word is
     saved either way."""
     try:

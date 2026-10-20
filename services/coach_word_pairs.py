@@ -32,7 +32,7 @@ rebuilds this module's prompt from it verbatim; a pair without it is never
 released, judged or trained on. Door 3 needs the sealed golden set and 200
 pairs. The ledger reports, per surface, the share of drafts sent unchanged.
 Every draft is also kept as it was shown, with the hash of the exact text
-sent, in coach_draft_history (0480, N79; services.coach_draft_history);
+sent, in coach_draft_history (0481, N79; services.coach_draft_history);
 the row's snapshot names it by ``draft_id``, beside ``prompt_context``,
 which the pair copies unchanged.
 """
@@ -76,7 +76,7 @@ def prompt_snapshot(*, transcript: Any, coach_text: Optional[str],
                     draft_id: Optional[str] = None) -> dict:
     """What the draft's prompt was given, kept on the draft's row and then
     on its pair: {passage_text, prompt_context}. ``draft_id`` names the
-    draft's coach_draft_history row (0480); the pair never copies it."""
+    draft's coach_draft_history row (0481); the pair never copies it."""
     snapshot: dict = {"passage_text": passage_for(transcript),
                       "prompt_context": {"prompt": PROMPT_FAMILY,
                                          "coach_text": str(coach_text).strip()
@@ -126,7 +126,7 @@ def compose(*, surface: str, transcript: str, coach_text: Optional[str],
 
 def _keep(database: Any, draft: dict, draft_id: str, *, surface: str, coach_id: str,
           notes: Optional[str], **home: Any) -> None:
-    """The draft as it was shown, in coach_draft_history (0480). Best effort."""
+    """The draft as it was shown, in coach_draft_history (0481). Best effort."""
     from services.coach_draft_history import keep
     keep(database, draft_id=draft_id, surface=surface, prompt_family=PROMPT_FAMILY,
          coach_id=coach_id, draft=draft,

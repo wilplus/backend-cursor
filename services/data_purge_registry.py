@@ -492,7 +492,7 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("coach_take_word_versions", "coach_take_word_versions",
                     "take_session_id", "take", "delete", "derived_feedback", 57),
     # Every model draft shown to a coach about the speaker's Take, with what
-    # its prompt was given (0480): it goes with the Take, before the word and
+    # its prompt was given (0481): it goes with the Take, before the word and
     # request rows, whose cascades are only the backstop. No by-coach entry:
     # a coach's words stay with the speaker (founder 2026-10-19, N79).
     PurgeDependency("coach_draft_history", "coach_draft_history",
