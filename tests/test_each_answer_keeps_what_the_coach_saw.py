@@ -1,4 +1,4 @@
-"""Each answer keeps what the coach saw (0481; founder 2026-10-19, decisions
+"""Each answer keeps what the coach saw (0482; founder 2026-10-19, decisions
 log N79).
 
 When a coach answered a moment or left a word on a Take, nothing kept what

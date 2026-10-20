@@ -909,10 +909,10 @@ fi
 hard migrations/a_coach_answer_video_is_kept_in_words.sql
 hard migrations/a_coach_answer_video_is_kept_in_words.sql
 
-# 0481 (founder 2026-10-19, N79): each answer keeps what the coach saw. One
+# 0482 (founder 2026-10-19, N79): each answer keeps what the coach saw. One
 # insert-only table with foreign keys to exercise_coach_requests (0385) and
 # coach_take_words (0403), and its frozen trigger; both lanes carry both.
-# Both lanes, after 0480, as in the manifest. Twice: apply/reapply
+# Both lanes, after 0481, as in the manifest. Twice: apply/reapply
 # idempotency. Its case is in
 # tests/test_a_coach_may_change_their_answer_postgres.py.
 hard migrations/each_answer_keeps_what_the_coach_saw.sql

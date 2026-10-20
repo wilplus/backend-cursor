@@ -1,9 +1,9 @@
--- each_answer_keeps_what_the_coach_saw (0481; founder 2026-10-19, decisions log N79)
+-- each_answer_keeps_what_the_coach_saw (0482; founder 2026-10-19, decisions log N79)
 --
 -- WHY. A coach answers a speaker's moment (exercise_coach_requests, 0385+;
 -- a changed answer's old one is kept in exercise_coach_request_answer_versions,
 -- 0446) or leaves a word on the Take (coach_take_words, 0403; every earlier
--- version in coach_take_word_versions, 0478). What the coach was looking at
+-- version in coach_take_word_versions, 0479). What the coach was looking at
 -- when they answered was kept nowhere: the words of the clip, the error type
 -- they had picked (coach_moment_diagnoses, 0445, which go when the coach's
 -- account is purged) and the Ideal Text the Take had. Some of it can be
@@ -17,7 +17,7 @@
 --     the moment (0408). A replaced answer finds its history row on
 --     (request_id, resolved_at);
 --   * or take_word_id and answered_at = the word row's updated_at, one row
---     per save of a Take word. This is NOT an equality key into the 0478
+--     per save of a Take word. This is NOT an equality key into the 0479
 --     history: a re-draft bumps updated_at too. The words a save describes
 --     are on the lowest-numbered coach_take_word_versions row of that word
 --     whose updated_at >= answered_at, or, when there is none, on the live
@@ -109,7 +109,7 @@ CREATE INDEX IF NOT EXISTS coach_answer_situations_take_idx
     ON public.coach_answer_situations (take_session_id);
 ALTER TABLE public.coach_answer_situations ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.coach_answer_situations IS
-    'What the coach saw when they gave an answer (0481; founder 2026-10-19, N79): '
+    'What the coach saw when they gave an answer (0482; founder 2026-10-19, N79): '
     'the clip''s words (the whole Take''s with its re-reads for a Take word), the '
     'kind, the pattern they named, their diagnosis by id and copied, and the Ideal '
     'Text snapshot made from the answered Take (the spoken Take for a re-read''s '

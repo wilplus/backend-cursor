@@ -32,7 +32,7 @@ Pins:
     and for no other; a failed try is retried in place and counted; done
     words are never written over; after a new video, the old one keeps its
     words and the new one gets its own; only the recorder writes the table;
-  * each answer keeps what the coach saw (0481, N79): one situation per
+  * each answer keeps what the coach saw (0482, N79): one situation per
     answer (the same answer written again is ignored), a replaced answer
     finds its own on (request_id, resolved_at) with the error type copied,
     one per Take-word save; nobody may update a situation; the request's and

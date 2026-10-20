@@ -504,7 +504,7 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     # a coach's words stay with the speaker (founder 2026-10-19, N79).
     PurgeDependency("coach_draft_history", "coach_draft_history",
                     "take_session_id", "take", "delete", "derived_feedback", 57),
-    # What the coach saw when they gave an answer (0481): the clip's words,
+    # What the coach saw when they gave an answer (0482): the clip's words,
     # their diagnosis copied, the Take's Ideal Text snapshot by id. It goes
     # with the Take, before the request and word rows, whose cascades are
     # only the backstop. No by-coach entry and no coach column: a coach's
