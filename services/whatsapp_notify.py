@@ -99,6 +99,39 @@ def save_phone(database: Any, user_id: str, body: Any) -> dict:
     return {"phone": phone}
 
 
+#: After a number is saved (founder 2026-10-15, approved in chat), word for
+#: word as the Lounge's form says it (frontend WHATSAPP_COPY.saved).
+SAVED = "Saved ✓ We'll message you on WhatsApp at {phone} when your coach's feedback is in."
+
+# A message that is only a phone number: digits with the usual separators.
+_PHONE_LIKE = re.compile(r"^\+?[\d\s\-().]+$")
+
+
+def _typed_number(question: str) -> bool:
+    text = question.strip()
+    return bool(_PHONE_LIKE.match(text)) and 7 <= sum(c.isdigit() for c in text) <= 15
+
+
+def chat_turn(database: Any, user_id: Optional[str], question: str) -> Optional[dict]:
+    """The chat's intercept (founder 2026-10-20): a number typed while the
+    newest ask in the thread is the WhatsApp ask is the answer to it, saved
+    as the form saves it. ``{"answer", "row_metadata"}``, with ``offer``
+    when the number needs its country code, so the form opens with the
+    same words it shows under the field; None for any other turn."""
+    if not user_id or not _typed_number(question or ""):
+        return None
+    from services.chat_app_context import newest_ask
+    if newest_ask(database, user_id) != "whatsapp":
+        return None
+    try:
+        phone = save_phone(database, str(user_id), {"phone": question})["phone"]
+    except WhatsAppRefusal as refusal:
+        return {"answer": refusal.message, "offer": "whatsapp",
+                "row_metadata": {"whatsapp": "invalid"}}
+    return {"answer": SAVED.format(phone=phone),
+            "row_metadata": {"whatsapp": "saved"}}
+
+
 def remove_phone(database: Any, user_id: str) -> dict:
     """DELETE: no more WhatsApp messages."""
     (_settings(database)

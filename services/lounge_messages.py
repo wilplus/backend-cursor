@@ -24,7 +24,7 @@ Invariants this module enforces (BE contract §5.11):
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 
@@ -101,6 +101,34 @@ def _parse_iso(value: Any) -> Optional[datetime]:
         return datetime.fromisoformat(raw)
     except ValueError:
         return None
+
+
+def stamp_after(*stamps: Any, gap_ms: int = 1) -> str:
+    """Now, or ``gap_ms`` after the latest of ``stamps`` when that is later.
+
+    The thread is ordered by ``client_created_at`` and the browser stamps
+    its own rows with its own clock (the walk's steps, a typed turn), so a
+    row the server writes after one of them takes the later of the two
+    times: a reply never sorts above the turn it answers, nor a summary
+    above the walk it closes, whatever either clock says. Pure."""
+    now = datetime.now(timezone.utc)
+    later = [t for t in (_parse_iso(s) for s in stamps) if t is not None]
+    latest = max((t if t.tzinfo else t.replace(tzinfo=timezone.utc) for t in later),
+                 default=None)
+    if latest is not None and latest + timedelta(milliseconds=gap_ms) > now:
+        now = latest + timedelta(milliseconds=gap_ms)
+    return now.isoformat()
+
+
+def thread_stamp(database: Any, user_id: Any) -> str:
+    """The time for a row written now at the bottom of this speaker's
+    thread: after its newest row (``stamp_after``). Best-effort: the
+    server's own clock when the thread cannot be read."""
+    try:
+        rows = database.get_lounge_messages_page(str(user_id), limit=1) or []
+    except Exception:  # noqa: BLE001 -- the row is written either way
+        rows = []
+    return stamp_after(*(r.get("client_created_at") for r in rows[:1]))
 
 
 def validate_lounge_batch(body: Any) -> list[dict]:

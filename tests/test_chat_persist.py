@@ -7,9 +7,13 @@ OUTCOME
       writes the same two ids, so the table keeps it once.
   O2  A reload (GET /v2/user/lounge/messages) brings the bot's choices back.
   O3  If saving fails, the turn still answers.
+  O4  The bot's reply is saved under my turn even when my browser's clock
+      runs ahead of the server's, so a reload keeps the order I saw.
 PROVES   O1, O2 -> test_a_turn_is_saved_once_and_its_choices_come_back
          O3     -> test_the_answer_still_comes_when_saving_fails
-WHY      Founder #2: bubbles must never disappear. The harness is
+         O4     -> test_the_reply_is_saved_under_the_turn_it_answers
+WHY      Founder #2: bubbles must never disappear; founder 2026-10-20: the
+         chat keeps the order it shows. The harness is
          tests/chat_route_fakes.py; what the chat answers is pinned in
          test_chat_answers.py.
 """
@@ -50,3 +54,13 @@ class ChatTurnPersistsTests(ChatRouteHarness):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.get_json()["answer"], "It's a voice coach.")
         self.assertEqual(self.rows, [])
+
+    def test_the_reply_is_saved_under_the_turn_it_answers(self):
+        from datetime import datetime, timedelta, timezone
+        ahead = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
+        self.post({"question": "what is this?", "persist": True,
+                   "client_created_at": ahead})
+        mine, bot = self.rows[-1][1]
+        self.assertEqual(mine["client_created_at"], ahead)
+        self.assertGreater(datetime.fromisoformat(bot["client_created_at"]),
+                           datetime.fromisoformat(ahead))

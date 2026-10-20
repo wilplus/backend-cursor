@@ -362,12 +362,20 @@ O4  A feature with a page (booking) comes with its link.
 O5  Feedback about the app is kept like any turn, with nothing marking it
 for a person to read.
 O6  A reply to the summary after a Take reaches Will with that summary,
-read from the speaker's own thread.","O1 -> test_both_transports_carry_the_same_turn_to_the_answer
+read from the speaker's own thread; the signed fallback is marked as
+the fixed message, so Will knows the specifics are missing.
+O7  When the app sends what is on my screen, Will reads my bubbles in
+the order I see them, cards included, not the stored thread.
+O8  A number I type under the WhatsApp ask is saved as the form saves it
+and answered with the signed line; one without its country code gets
+the form's own words and the form, and the ask is not asked twice.","O1 -> test_both_transports_carry_the_same_turn_to_the_answer
 O2 -> test_a_visitor_gets_two_answers_then_the_signup_line
 O3 -> test_the_whatsapp_form_opens_to_add_or_change_a_number
 O4 -> test_a_feature_with_a_page_comes_with_its_link
 O5 -> test_what_a_speaker_tells_will_is_not_marked_for_anyone
-O6 -> test_will_reads_the_summary_he_wrote_after_the_take","Founder 2026-10-14 to 2026-10-18 (cost, WhatsApp, privacy, context). Split out of test_chat_persist.py; the harness is tests/chat_route_fakes.py."
+O6 -> test_will_reads_the_summary_he_wrote_after_the_take
+O7 -> test_will_reads_the_screen_in_the_order_it_is_drawn
+O8 -> test_a_number_typed_under_the_whatsapp_ask_answers_it","Founder 2026-10-14 to 2026-10-18 (cost, WhatsApp, privacy, context); 2026-10-20 (""the chat should be aware of the order of bubbles it displays""). Split out of test_chat_persist.py; the harness is tests/chat_route_fakes.py."
 tests/test_chat_jokes.py,Story,"As a speaker chatting with Will, I want ""next"" after a dad joke to get another joke, and my answers to Will's questions not treated as requests, so that the chat follows the thread.","O1  ""next"", ""another"" or ""more"" after a joke gives a different joke.
 O2  ""next"" with no joke before it is left to Will.
 O3  Telling the story of my startup after Will asks about my talk is an
@@ -379,8 +387,11 @@ tests/test_chat_persist.py,Story,"As a speaker, I want every chat turn saved wit
 with the bot's choices in its metadata; posting the same turn again
 writes the same two ids, so the table keeps it once.
 O2  A reload (GET /v2/user/lounge/messages) brings the bot's choices back.
-O3  If saving fails, the turn still answers.","O1, O2 -> test_a_turn_is_saved_once_and_its_choices_come_back
-O3     -> test_the_answer_still_comes_when_saving_fails",Founder #2: bubbles must never disappear. The harness is tests/chat_route_fakes.py; what the chat answers is pinned in test_chat_answers.py.
+O3  If saving fails, the turn still answers.
+O4  The bot's reply is saved under my turn even when my browser's clock
+runs ahead of the server's, so a reload keeps the order I saw.","O1, O2 -> test_a_turn_is_saved_once_and_its_choices_come_back
+O3     -> test_the_answer_still_comes_when_saving_fails
+O4     -> test_the_reply_is_saved_under_the_turn_it_answers",Founder #2: bubbles must never disappear; founder 2026-10-20: the chat keeps the order it shows. The harness is tests/chat_route_fakes.py; what the chat answers is pinned in test_chat_answers.py.
 tests/test_chat_talk.py,Story,"As a speaker, I want Will to read my whole talk slide by slide, so that his answers refer to what I actually said on each slide.","O1  Each slide lists its bullet points and what I said on it.
 O2  A slide I said nothing on reads ""(nothing yet)"".
 O3  Words not tied to a slide are listed on their own.","O1, O2, O3 -> test_each_slide_carries_its_points_and_what_they_said",Founder 2026-10-15; Privacy 3.7 section 4.
@@ -808,7 +819,9 @@ O3  ""No"" asks what would help; my next typed message is kept as
 that answer (even if it sounds like a goal change), then the chat is
 ordinary again.
 O4  ""Skip"" ends it with no answer kept; typing a button's words counts as
-tapping it, and any other message goes to the chat as usual.
+tapping it (also once the Take's card, drawn above the summary, is
+stored after the question), and any other message goes to the chat
+as usual.
 O5  A new goal is kept in the history and every coach except the speaker
 gets one card a day showing before and now; no change, no card.
 O6  A Take that went fine is not asked; one whose practice did not land,
@@ -2249,14 +2262,17 @@ O3  A coach note rewrites the summary in place, keeping the first one
 however many notes follow, once per note; a note shared after the
 review is its own bubble, stored once.
 O4  A speaker without a WhatsApp number is offered WhatsApp once, right
-after the summary.","O1 -> test_a_take_gets_one_summary_from_its_real_progress,
+after the summary.
+O5  The summary and the ask after it sort under the walk's last step,
+even when my browser's clock runs ahead of the server's.","O1 -> test_a_take_gets_one_summary_from_its_real_progress,
 test_the_summary_knows_the_talk_and_asks_for_whatsapp_once
 O2 -> test_a_reply_with_a_number_falls_back_to_the_signed_copy,
 test_a_reply_that_drifts_from_the_signed_lines_is_the_signed_copy
 O3 -> test_a_coach_update_rewrites_the_summary_in_place_and_keeps_the_first,
 test_a_shared_coach_word_rewrites_a_reviewed_take_once_per_word,
 test_a_coach_word_shared_after_the_review_is_its_own_bubble
-O4 -> test_the_summary_knows_the_talk_and_asks_for_whatsapp_once",Never-rule 1; founder lock 2026-10-12 (section 3) and 2026-10-14.
+O4 -> test_the_summary_knows_the_talk_and_asks_for_whatsapp_once
+O5 -> test_the_summary_and_its_ask_sort_under_the_walk",Never-rule 1; founder lock 2026-10-12 (section 3) and 2026-10-14; founder 2026-10-20 (the chat keeps the order it shows).
 tests/test_take_two_rewrites_an_edited_slide_postgres.py,Story,"As a speaker who edited a Paragraph, I want Take 2 to replace the slides I spoke with what I said, keep the rest and my helper words, and keep my edit in history, so that the Ideal Text is my latest words and nothing is lost.","O1  On a real database, a slide I spoke in Take 2 shows exactly what I
 said, even if I had edited it, on the same Paragraph.
 O2  A slide I did not speak keeps its last version, including my own

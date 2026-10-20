@@ -199,6 +199,28 @@ def apply_app_action(action: Any, *, signed_in: bool,
     return {"link": opens}
 
 
+#: How far back the chat looks for the ask it shows last.
+_ASK_LOOKBACK = 24
+
+
+def newest_ask(database, user_id) -> Optional[str]:
+    """The offer of the newest ask in this speaker's thread (an offer
+    bubble: WhatsApp, install, "Did this feedback help you?"), or None.
+    The chat reads what it shows in order (founder 2026-10-20): a number
+    typed under the WhatsApp ask answers it, and an ask already showing
+    is not asked again. Best-effort: None when the thread cannot be read."""
+    try:
+        rows = database.get_lounge_messages_page(str(user_id), limit=_ASK_LOOKBACK) or []
+    except Exception as e:  # noqa: BLE001 -- the turn goes on without it
+        logger.warning("chat: thread unread for the ask user=%s: %s", user_id, e)
+        return None
+    for row in rows:
+        offer = (row.get("metadata") or {}).get("offer")
+        if isinstance(offer, str) and offer:
+            return offer
+    return None
+
+
 def signup_gate(history: Any) -> Optional[str]:
     """For a visitor who is not signed in: the sign-up line once they have
     had their free answers, else None. Counted from the thread the client

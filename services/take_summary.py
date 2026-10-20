@@ -43,7 +43,6 @@ import hashlib
 import logging
 import re
 import uuid
-from datetime import datetime, timezone
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -401,7 +400,9 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
                    else held.get("body"))
         meta.update({"coach_update": True, "earlier": earlier})
         return database.rewrite_lounge_message(str(user_id), client_id, text, meta) or held
-    at = datetime.now(timezone.utc).isoformat()
+    # Under the walk it closes: the walk's steps carry the browser's time.
+    from services.lounge_messages import stamp_after, thread_stamp
+    at = thread_stamp(database, user_id)
     batch = [{
         "client_id": client_id,
         "role": "bot",
@@ -409,7 +410,7 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
         "body": text or anchor,
         "metadata": meta,
         "client_created_at": at,
-    }] + _whatsapp_offer(database, str(user_id), client_id, at)
+    }] + _whatsapp_offer(database, str(user_id), client_id, stamp_after(at))
     # WIL-74: "Did this feedback help you?" closes the batch, unless another
     # offer already rides in it (feedback_check decides).
     from services.feedback_check import ask_rows, looks_off
@@ -478,6 +479,7 @@ def coach_update_message(database: Any, *, take_session_id: str, text: Optional[
     coach wrote it (lock 2026-10-12, section 3). Stored once per word.
     None when the review has not ended (the walk shows the word as its
     first step) or anything is missing."""
+    from services.lounge_messages import thread_stamp
     from services.slide_selection import spoken_arc_sessions
     take = str(take_session_id)
     session = database.v2_get_session_by_id(take) or {}
@@ -507,7 +509,7 @@ def coach_update_message(database: Any, *, take_session_id: str, text: Optional[
                      "heading": COACH_UPDATE_LABEL, "arc_id": str(arc_id),
                      "take_session_id": take, "take_index": take_index,
                      "video": video_url},
-        "client_created_at": datetime.now(timezone.utc).isoformat(),
+        "client_created_at": thread_stamp(database, user_id),
     }])
     return persisted[0] if persisted else None
 

@@ -10,13 +10,20 @@ order; each is best-effort, and a failure falls through to the next:
 
   1. the feedback check (signed in): an answer to "Did this feedback help
      you?" or "What was missing?" (``services.feedback_check``);
-  2. the Life Panel hashtag router (signed in, flag on, consented);
-  3. the goal-update intercept (signed in);
-  4. the audit intercept (signed in, AUDIT_SURFACE_ENABLED);
-  5. the presentation-change intercept;
-  6. the Lounge-bot deterministic intents (crisis, joke, off-mission);
-  7. the librarian (``services.master_doc_rag``), with the admin's private
+  2. the WhatsApp number (signed in): a number typed under the WhatsApp ask
+     (``services.whatsapp_notify.chat_turn``);
+  3. the Life Panel hashtag router (signed in, flag on, consented);
+  4. the goal-update intercept (signed in);
+  5. the audit intercept (signed in, AUDIT_SURFACE_ENABLED);
+  6. the presentation-change intercept;
+  7. the Lounge-bot deterministic intents (crisis, joke, off-mission);
+  8. the librarian (``services.master_doc_rag``), with the admin's private
      notes and the Life Panel context for a participating user.
+
+Will reads the conversation in the order the Lounge draws it (founder
+2026-10-20): the client sends what is on screen (``history_source``
+"screen"), cards included; an older client's plain turns fall back to the
+stored thread (``thread_history``).
 
 ``finalize`` writes the turn (when the client opted in and is signed in) and
 charges after answering, never before.
@@ -108,9 +115,19 @@ def persist_chat_turn(
         u_id = str(uuid.uuid5(
             uuid.NAMESPACE_URL, f"willab-chat-user:{user_id}:{q}"))
     b_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"willab-chat-bot:{u_id}"))
-    now_iso = datetime.now(timezone.utc).isoformat()
     u_ts = (user_created_at if isinstance(user_created_at, str)
-            and user_created_at.strip() else now_iso)
+            and user_created_at.strip() else
+            datetime.now(timezone.utc).isoformat())
+    # The reply sorts under the turn it answers, whatever the browser's
+    # clock said for that turn; what the reply opens sorts under it.
+    from services.lounge_messages import stamp_after
+    now_iso = stamp_after(u_ts)
+    if offer:
+        # An ask already showing last is not asked again (founder
+        # 2026-10-20); the reply still opens its form.
+        from services.chat_app_context import newest_ask
+        if newest_ask(database, user_id) == offer:
+            offer = None
     rows = []
     if q:
         rows.append({
@@ -127,9 +144,9 @@ def persist_chat_turn(
         "client_created_at": now_iso,
     })
     if offer:
-        rows.append(_offer_row(b_id, offer, now_iso))
+        rows.append(_offer_row(b_id, offer, stamp_after(now_iso)))
     if take_card:
-        rows.append(_take_card_row(b_id, take_card, now_iso))
+        rows.append(_take_card_row(b_id, take_card, stamp_after(now_iso, gap_ms=2)))
     try:
         database.insert_lounge_messages(str(user_id), rows)
         return b_id
@@ -212,6 +229,19 @@ def _feedback_check(user_id, question, _context, _history=None) -> Optional[tupl
                   debug={"intent": "feedback_check"}), "feedback_check"
 
 
+def _whatsapp_number(user_id, question, _context, _history=None) -> Optional[tuple[dict, str]]:
+    """A number typed under the WhatsApp ask (founder 2026-10-20): saved as
+    the form saves it, before any voice reads it as something else."""
+    from services.db import db
+    from services.whatsapp_notify import chat_turn
+    turn = chat_turn(db, user_id, question)
+    if not turn:
+        return None
+    extra = {"offer": turn["offer"]} if turn.get("offer") else {}
+    return _reply(turn["answer"], row_metadata=turn["row_metadata"],
+                  debug={"intent": "whatsapp_number"}, **extra), "whatsapp_number"
+
+
 def _goal_update(user_id, question, _context, _history=None) -> Optional[tuple[dict, str]]:
     """Prompt A §6 C4: "change my goal to X" updates the profile goal and
     confirms in the speaker's language; a cheap pre-gate inside."""
@@ -263,6 +293,7 @@ def _intercepts(user_id, app_config) -> list[tuple[str, Callable]]:
     chain: list[tuple[str, Callable]] = []
     if user_id:
         chain.append(("feedback-check intercept failed user=%s: %s", _feedback_check))
+        chain.append(("whatsapp-number intercept failed user=%s: %s", _whatsapp_number))
     if life_on:
         chain.append(("life-panel intercept failed user=%s: %s", _life_panel))
     if user_id:
@@ -375,6 +406,18 @@ def _retired(row: dict) -> bool:
         meta.get("note") in ("human_check", "coach_video_shared")
 
 
+def _fallback_label(row: dict) -> str:
+    """The signed fallback after a Take, told to Will as such (founder
+    2026-10-20), so he knows the written summary's specifics are missing;
+    the frontend's screen copy says the same. Empty for any other row."""
+    meta = row.get("metadata") or {}
+    if not (meta.get("summary") is True and meta.get("written") is False):
+        return ""
+    take = meta.get("take_index")
+    which = f"Take {take}" if isinstance(take, int) else "this Take"
+    return f"[The app's fixed message after {which}; the written summary failed]\n"
+
+
 def thread_history(database, user_id, question: str, user_client_id=None) -> list:
     """A signed-in speaker's conversation, read from their own Lounge thread
     (founder 2026-10-15: "it does not hold the context"): the client sends
@@ -396,23 +439,47 @@ def thread_history(database, user_id, question: str, user_client_id=None) -> lis
                 or (user_client_id and row.get("client_id") == user_client_id)):
             continue
         turns.append({"role": "user" if row["role"] == "user" else "assistant",
-                      "content": body})
+                      "content": _fallback_label(row) + body})
     if turns and turns[-1]["role"] == "user" and turns[-1]["content"] == question:
         turns.pop()
     return turns
 
 
+#: The screen as the client sends it: at most this many bubbles, each cut.
+_SCREEN_ROWS = 40
+_SCREEN_CHARS = 2000
+
+
+def screen_history(history: Any) -> list:
+    """The client's screen (founder 2026-10-20: "the chat should be aware of
+    the order of bubbles it displays"): every bubble the Lounge draws, in
+    the order it draws them, its cards and asks included, as {role,
+    content}. Anything else in the list is dropped. Pure."""
+    turns = []
+    for m in history if isinstance(history, list) else []:
+        if not isinstance(m, dict) or m.get("role") not in ("user", "assistant"):
+            continue
+        content = m.get("content")
+        if isinstance(content, str) and content.strip():
+            turns.append({"role": m["role"], "content": content.strip()[:_SCREEN_CHARS]})
+    return turns[-_SCREEN_ROWS:]
+
+
 def answer_chat(database, *, user_id, question: str, history, context,
                 app_config, finalize: Callable[[dict, str], Any],
-                user_client_id=None) -> Any:
+                user_client_id=None, screen: bool = False) -> Any:
     """Answer one turn and hand it to ``finalize(response, intent)``.
 
-    A signed-in speaker's history is their stored thread (``thread_history``);
-    the client's copy is the fallback. An intercept is finalized inside its
+    ``screen``: the client sent the thread as the Lounge draws it
+    (``screen_history``), which is what Will reads. Otherwise a signed-in
+    speaker's history is their stored thread (``thread_history``), with the
+    client's copy as the fallback. An intercept is finalized inside its
     own guard, exactly as the route did: a failure anywhere in it falls
     through to the next one."""
     question = question.strip()
-    if user_id:
+    if screen:
+        history = screen_history(history)
+    elif user_id:
         history = thread_history(database, user_id, question, user_client_id) or history
     for failure, intercept in _intercepts(user_id, app_config):
         try:
