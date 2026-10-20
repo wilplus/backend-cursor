@@ -74,9 +74,14 @@ def post_worker_init(worker):
         # it pulls a distinct (chroma) filterbank; the remaining
         # features (spectral_centroid/rolloff, zcr, stft-based flux)
         # reuse the STFT core mfcc already compiled.
+        #
+        # tuning=0.0, as services/audio_metrics.py: the default estimates the
+        # tuning through piptrack's numba gufunc, which segfaulted every
+        # replacement worker here (production, 2026-10-03 and again
+        # 2026-10-20 on the pinned numba), a crash no try/except can catch.
         y = np.zeros(16000, dtype="float32")
         librosa.feature.mfcc(y=y, sr=16000, n_mfcc=13)
-        librosa.feature.chroma_stft(y=y, sr=16000)
+        librosa.feature.chroma_stft(y=y, sr=16000, tuning=0.0)
         worker.log.info("[warmup] librosa numba JIT warmed (pid=%s)", worker.pid)
     except Exception as e:  # never block worker boot on the warmup
         worker.log.warning("[warmup] librosa warmup skipped: %s", e)

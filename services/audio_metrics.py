@@ -780,7 +780,12 @@ def _compute_librosa_features(sig: "np.ndarray") -> Optional[Dict]:
         spectral_flux_mean = round(float(flux_frames.mean()), 4)
 
         # ── Chroma: 12 pitch class energies, mean across time ──────
-        chroma = librosa.feature.chroma_stft(y=sig, sr=sr)
+        # tuning=0.0: no tuning estimate. Estimating it runs piptrack's
+        # numba gufunc, which segfaults the process in production (the
+        # worker warm-ups, 2026-10-03 and 2026-10-20), and a speaking voice
+        # has no instrument tuning worth a fraction of a bin. Nothing reads
+        # chroma_mean (services/voice_confidence.py excludes it).
+        chroma = librosa.feature.chroma_stft(y=sig, sr=sr, tuning=0.0)
         chroma_mean = [round(float(v), 4) for v in chroma.mean(axis=1)]
 
         return {
