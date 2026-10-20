@@ -10901,6 +10901,67 @@ class DatabaseService:
                            row.get("user_id"), e, exc_info=True)
             return False
 
+    # ── voice notebook (migration 0481, services/voice_notebook.py) ──
+
+    def insert_voice_note(self, row: dict) -> Optional[dict]:
+        """One note; the stored row (with its id), or None on failure."""
+        try:
+            data = self.client.table("voice_notebook_notes").insert(row).execute().data
+            return data[0] if data else None
+        except Exception as e:
+            logger.warning("insert_voice_note failed user=%s: %s",
+                           row.get("user_id"), e, exc_info=True)
+            return None
+
+    def insert_voice_note_audio(self, note_id: str, user_id: str,
+                                content_type: str, audio: bytes) -> bool:
+        try:
+            (self.client.table("voice_notebook_audio")
+             .insert({"note_id": note_id, "user_id": user_id,
+                      "content_type": content_type,
+                      "audio": "\\x" + audio.hex()})
+             .execute())
+            return True
+        except Exception as e:
+            logger.warning("insert_voice_note_audio failed user=%s: %s",
+                           user_id, e, exc_info=True)
+            return False
+
+    def list_voice_notes(self, user_id: str, limit: int = 20) -> list[dict]:
+        """One person's newest notes, oldest first. [] on any failure."""
+        try:
+            rows = (self.client.table("voice_notebook_notes")
+                    .select("id, source, text_clean, created_at")
+                    .eq("user_id", user_id).order("created_at", desc=True)
+                    .limit(limit).execute().data or [])
+            return list(reversed(rows))
+        except Exception as e:
+            logger.warning("list_voice_notes failed user=%s: %s", user_id, e,
+                           exc_info=True)
+            return []
+
+    def get_voice_notebook_consent(self, user_id: str) -> Optional[dict]:
+        try:
+            rows = (self.client.table("voice_notebook_consent").select("*")
+                    .eq("user_id", user_id).limit(1).execute().data)
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning("get_voice_notebook_consent failed user=%s: %s",
+                           user_id, e, exc_info=True)
+            return None
+
+    def save_voice_notebook_consent(self, user_id: str, decision: str) -> bool:
+        try:
+            (self.client.table("voice_notebook_consent")
+             .upsert({"user_id": user_id, "decision": decision,
+                      "decided_at": datetime.now(timezone.utc).isoformat()},
+                     on_conflict="user_id").execute())
+            return True
+        except Exception as e:
+            logger.warning("save_voice_notebook_consent failed user=%s: %s",
+                           user_id, e, exc_info=True)
+            return False
+
     def get_take_feedback_check(self, user_id: str,
                                 take_session_id: str) -> Optional[dict]:
         try:

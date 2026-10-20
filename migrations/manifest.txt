@@ -516,3 +516,4 @@
 0478	the_take_is_found_by_its_arc_as_text.sql
 0479	the_status_read_carries_the_policy_text_only_when_it_is_shown.sql
 0480	each_speaker_has_a_private_memory_will_reads.sql
+0481	a_voice_notebook_keeps_the_founders_notes.sql

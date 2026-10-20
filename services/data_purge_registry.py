@@ -284,6 +284,15 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "delete", "database_row", 60),
     PurgeDependency("speaker_memory_events", "speaker_memory_events", "user_id",
                     "user", "delete", "database_row", 60),
+    # The voice notebook (Will learning plan, step 1, migration 0481): the
+    # recordings first (they point at their note), then the notes and the
+    # answer to "Keep a voice notebook?".
+    PurgeDependency("voice_notebook_audio", "voice_notebook_audio", "user_id",
+                    "user", "delete", "database_row", 59),
+    PurgeDependency("voice_notebook_notes", "voice_notebook_notes", "user_id",
+                    "user", "delete", "database_row", 60),
+    PurgeDependency("voice_notebook_consent", "voice_notebook_consent", "user_id",
+                    "user", "delete", "database_row", 60),
     PurgeDependency("settings", "user_settings", "user_id", "user", "delete",
                     "database_row", 60),
     # Lesson bookings (founder 2026-10-15, fix 6). The termination request
