@@ -10866,6 +10866,33 @@ class DatabaseService:
                            row.get("user_id"), e, exc_info=True)
             return False
 
+    def list_will_question_bank(self) -> list[dict]:
+        """The founder's words for Will's questions (0488, N83): one row per
+        question changed. Raises on failure (the caller keeps the signed
+        words)."""
+        return list(self.client.table("will_question_bank")
+                    .select("key, question, chips, updated_at").execute().data or [])
+
+    def save_will_question_bank(self, rows: list[dict]) -> bool:
+        """Keep the founder's words, one row per question. False on failure."""
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            self.client.table("will_question_bank").upsert(
+                [{**r, "updated_at": now} for r in rows], on_conflict="key").execute()
+            return True
+        except Exception as e:
+            logger.warning("save_will_question_bank failed: %s", e, exc_info=True)
+            return False
+
+    def count_will_questions_asked(self, key: str) -> int:
+        """How many times Will asked this question after a Take (N82). Raises
+        on failure."""
+        result = (self.client.table("lounge_messages").select("id", count="exact")
+                  .eq("metadata->>offer", "will_question")
+                  .eq("metadata->>will_question_step", "ask")
+                  .eq("metadata->>will_question", key).limit(1).execute())
+        return int(result.count or 0)
+
     def list_speaker_memory_events(self, user_id: str,
                                    limit: Optional[int] = None) -> list[dict]:
         """One speaker's events, oldest first; the newest ``limit`` when

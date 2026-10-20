@@ -895,10 +895,11 @@ hard migrations/a_legacy_take_takes_its_owner_from_its_account.sql
 hard migrations/a_confidence_event_without_a_clip_is_given_up.sql
 hard migrations/a_confidence_event_without_a_clip_is_given_up.sql
 
-# 0488 (founder 2026-10-20): a project deletion finds its Takes by their arc
+# 0489 (founder 2026-10-20): a project deletion finds its Takes by their arc
 # as text. It redefines 0380's resolve_phase1_purge_project_graph_v1 and
 # 0456's void_project_pair_releases_v1, comparing arc_id::text. Released lane
-# only, as 0456; after 0487, as in the manifest. Twice: apply/reapply
+# only, as 0456; after 0487, as in the manifest (0488, Will's questions, is
+# not in this lane). Twice: apply/reapply
 # idempotency. Its cases are in tests/test_project_deletion_postgres.py
 # (TestProductionArcIsAUuid), which gives arc_id production's UUID type
 # inside a transaction it rolls back.

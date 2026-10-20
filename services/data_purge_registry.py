@@ -1468,6 +1468,9 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     # by the founder or a coach. Copy, never a speaker's words or recording;
     # nothing here names a person.
     "feedback_catalogue",
+    # Will's questions as the founder changed them (0488, N83): copy, one row
+    # per question, no row names a person.
+    "will_question_bank",
     # A dataset release manifest: counts, rules and a checksum, no subject
     # column (its items are the subject rows, classified above).
     "dataset_releases",

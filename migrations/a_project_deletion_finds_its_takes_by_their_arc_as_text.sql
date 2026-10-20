@@ -1,4 +1,4 @@
--- a_project_deletion_finds_its_takes_by_their_arc_as_text (0488)
+-- a_project_deletion_finds_its_takes_by_their_arc_as_text (0489)
 --
 -- THE PROBLEM. Production's v2_sessions.arc_id is a UUID (0114,
 -- add_explore_arc.sql). Two functions of the one-project deletion compare it

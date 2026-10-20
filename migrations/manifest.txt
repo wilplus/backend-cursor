@@ -523,4 +523,5 @@
 0485	a_legacy_take_takes_its_owner_from_its_account.sql
 0486	will_writes_the_founder_a_sunday_case.sql
 0487	a_confidence_event_without_a_clip_is_given_up.sql
-0488	a_project_deletion_finds_its_takes_by_their_arc_as_text.sql
+0488	the_founder_edits_wills_questions.sql
+0489	a_project_deletion_finds_its_takes_by_their_arc_as_text.sql

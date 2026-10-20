@@ -2810,3 +2810,39 @@ and its words ("signed, build it"):
   (N82, praise first and Will's one question), 'signed, build it'".
 Lock: `FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md` ("Decided after the
 lock", "Praise first, and Will's one question after a Take"). No migration.
+
+**N83 · The founder edits Will's questions on the coach panel (founder,
+chat, 20 October 2026).** N82's bank was to be "editable in admin, with
+empty slots". Asked where, the founder drew it under the coach panel's
+queue ("show me where would you add it in the coach panel … below the
+users") and said "OK" to the prototype
+<https://claude.ai/artifact/WLZ1KY6dX1RBLXiNU73F9N>; the outside migration
+review was waived ("waive the review"):
+- **One row under the blind lists,** "Will · only you" → "Will's questions"
+  with how many questions and empty slots; the founder only (the backend's
+  `require_founder`; the panel draws the row only when the bank reads).
+- **It opens the bank** in Will's groups: change a question or a tap
+  answer, Save, and Will asks the new words from the next Take. The two
+  empty slots take the founder's own questions, asked after the signed
+  deeper ones, in the speaker's own words.
+- **The words are checked** (`will_question.save_bank`): no numbers, at
+  most two lines, the speaker's own words kept in place ("{the board}",
+  "…"), the same number of tap answers. Each answer keeps its follow-up by
+  its place, so a renamed answer still opens it.
+- **Where:** migration 0488 `will_question_bank` (one row per changed
+  question; copy, no row names a person; no env var); GET/PUT
+  `/v2/admin/will-questions`. A question with no row keeps the signed words
+  in code.
+- **New words, approved with the prototype:** "Will · only you", "Will's
+  questions", "N questions · M empty slots", "Only you see this. Will asks
+  the new words from the next Take.", "Empty slot", "Add a question",
+  "Their own words", "Asked N times", "Saved". The groups and the lines
+  saying when Will asks each are the prototype's.
+- **What stops happening:** nothing.
+- **The approval**, the last line of every commit that changes a locked file
+  for this: "Founder-Approved: Artur in the Claude Code chat, 20 October
+  2026: 'OK' to the prototype https://claude.ai/artifact/WLZ1KY6dX1RBLXiNU73F9N
+  (N83, Will's questions on the coach panel)".
+Lock: `FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md` ("Decided after the
+lock (2026-10-20, Will's questions, N83)").
+

@@ -22,7 +22,7 @@ PROVES   O1 -> test_owner_request_is_pending_and_due_in_seven_days
          O6 -> test_browser_roles_are_refused
          O7 -> TestProductionArcIsAUuid::test_my_request_and_my_projects_graph_work
 WHY      Founder 2026-09-25, decisions log N8 (0364): Delete is a request an
-         operator confirms within 7 days. O7: founder 2026-10-20 (0488), both
+         operator confirms within 7 days. O7: founder 2026-10-20 (0489), both
          raised "operator does not exist: uuid = text" in production, whose
          arc_id is a UUID; this lane's narrow copy declares it TEXT.
 
