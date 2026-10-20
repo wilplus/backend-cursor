@@ -224,6 +224,32 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
 
 ## Decided after the lock
 
+- **When the coach changes their word** (founder, chat, 2026-10-19, N80;
+  prototype <https://claude.ai/artifact/APk56PLZt6o6Cx9qUMKkuk>). Amends
+  section 1 and section 3:
+  - **One "Later · from your coach" bubble per Take word.** A change moves
+    it to the bottom with the latest words and video; it is never stacked.
+  - **A removed or replaced coach video no longer plays** anywhere in the
+    chat. The file stays stored.
+  - **The same words and video again change nothing** for the speaker.
+  - **Watching the word anywhere** (the WhatsApp or email link, the dot
+    card, the bubble) clears its "new" marks, and the walk writes the
+    coach's words into the chat only once. Only "Continue" on the coach's
+    step or "Close" on the bubble marks it watched; ✕ keeps the ring.
+  - **"See the earlier version"** is the summary from before any coach
+    note, however many edits followed; when the first summary already
+    heard the coach, it is that first summary.
+  - **A video-only change does not rewrite the summary,** but during the
+    review a new or removed video with the same words makes the word new
+    again: Step 0 shows it again.
+  - **Tapping the coach's bubble** opens only the coach's word in the lens,
+    with "Close", not the whole finished review.
+  - **While the review is open,** the coach's bubble still appears only
+    when the walk reaches the coach's step; a later change updates that
+    bubble in place.
+  - **No new words.** The orange ring says it is new; "Updated with your
+    coach's note" stays as signed.
+
 - **Always the two highest willfidence moments** (founder, 2026-10-17:
   "guarantee the best, most confident moment based on the highest scored
   willfidence moment and the second highest scored willfidence moment").

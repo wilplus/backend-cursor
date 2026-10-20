@@ -2601,3 +2601,74 @@ Built as one small pull request per fix, each branched from main: the door
 hold, the Take-word video ref, the Take-word pair's home, Take-word history,
 every draft with its exact prompt, exercise transcription from the audio,
 answer-video transcripts, and the situation frozen on each answer.
+
+**N80 · When a coach changes their word for a Take (founder, chat, 19 October
+2026).** The founder approved the two-phone prototype
+(<https://claude.ai/artifact/APk56PLZt6o6Cx9qUMKkuk>) and signed one new
+coach-panel word, "Remove the video". Every recommended answer (D1–D16),
+then six follow-up answers the same day (Q1–Q6):
+- **One bubble per word (D1).** The speaker's chat has one "Later · from
+  your coach" bubble per Take word; a change moves it to the bottom with the
+  latest words and video, never stacked. Every version stays in the word's
+  version history.
+- **A video taken back is gone from the chat (D2).** A removed or replaced
+  coach video can no longer be played anywhere in the speaker's chat: the
+  Lounge serves a coach video only while it is the word's current one, from
+  a fresh link. The file stays stored. A link a browser already holds plays
+  until its signature ends. The same rule covers a coach's video on a
+  moment's answer, in a small follow-up pull request (Q6).
+- **The same word again changes nothing (D3):** no jump, no orange mark, no
+  dot, no message.
+- **Watched once is watched (D4).** Watching the coach's word anywhere (the
+  WhatsApp link, the email link, the dot card, the bubble) clears its "new"
+  marks, and the walk writes the coach's words into the chat only once.
+  Only "Continue" on the coach's step or "Close" on the bubble marks it
+  watched, as locked; ✕ keeps the ring.
+- **The summary (D5, D6, Q1).** "See the earlier version" shows the summary
+  from before any coach note, however many edits followed. When the first
+  summary was already written with the coach's note, it shows that first
+  summary, with no extra AI call. A change to the video only (new or
+  removed, same words) does not rewrite the summary.
+- **During the review (D7)** a new or removed video with the same words
+  makes the coach's word new again: Step 0 shows it again.
+- **The bubble opens the word only (D8):** tapping the coach's bubble opens
+  just the coach's word in the lens, with "Close" (the locked design), not
+  the whole finished review.
+- **The coach panel, coming back (D9, D10, D12, Q3).** The saved video shows
+  with "Send to {p}" (keeps it), "Record again" (replaces it) and "Remove the
+  video" (new), which goes back to the camera with "Send without a video"
+  and sends the word with no video. "Remove the video" shows only for a
+  saved video, never right after recording a new clip; going back to the
+  words and forward keeps it removed until Send; ✕ cancels. The subtitle
+  "Optional · it opens first in {p}’s feedback" stays as signed. The
+  coach's picture beside the panel's words is the grey-blue coach avatar,
+  as speakers see the coach.
+- **No new words for the speaker (D11).** The orange ring says it is new;
+  the signed "Updated with your coach's note" line stays. The email for a
+  Take word leaves out "Open it to hear each moment, say how it sounded to
+  you…", because its link opens a walk with no moment to judge; nothing
+  replaces the line.
+- **While the review is open (Q4, Q5).** The coach's bubble still appears
+  only when the walk reaches the coach's step, as today; a later change
+  updates that bubble in place, in a later pull request.
+- **Coach videos into words (D13, D14, D15).** A coach's exercise video for
+  a speaker is turned into words only when that speaker gave the training
+  yes, as every coach video is (N79); this is built into #1127 before it
+  merges. The 10-minute cap stays. Answer-video transcription stays in the
+  web process's background thread for now; a catch-up run fills the gaps
+  later.
+- **Merge order (D16).** The five capture pull requests (#1133, #1134,
+  #1136, #1137, #1138) merge before #1127; each migration takes its number
+  when it merges.
+- **The approval (Q2)**, the last line of every commit that changes a locked
+  file for this: "Founder-Approved: Artur in the Claude Code chat, 19
+  October 2026: approved the two-phone prototype
+  https://claude.ai/artifact/APk56PLZt6o6Cx9qUMKkuk and signed the words
+  “Remove the video”".
+Locks: `FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md` ("Decided after the
+lock (2026-10-19, the saved video, N80)") and
+`FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md` ("Decided after the lock",
+"When the coach changes their word"). Built as small pull requests: the
+speaker's read side first (backend), the coach panel's saved video and the
+speaker's coach bubble (frontend), the same word again (backend, after the
+speaker's side is live) and #1127's training-yes gate. No new migration.
