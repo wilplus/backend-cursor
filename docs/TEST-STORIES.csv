@@ -614,12 +614,16 @@ runs.
 O4  A coach's practice review checks the speaker's choice (after the blind
 rating gate), never the coach's.
 O5  Turning practice off erases my practice: each recording first, then its
-rows.","O1 -> ChoicePermittedTests::test_an_explicit_no_is_refused_in_every_mode
+rows.
+O6  The coach's gate reads me where my own Data & consent page does: an
+older Take recorded under an earlier principal of mine is judged by my
+account's choices now.","O1 -> ChoicePermittedTests::test_an_explicit_no_is_refused_in_every_mode
 O2 -> RecordingWithdrawalTests::test_recording_is_refused_after_a_withdrawal_in_either_mode
 O3 -> GuardTests::test_a_no_is_refused_before_the_handler
 O4 -> CoachTests::test_it_runs_after_the_blind_gate_and_before_the_practice
 O5 -> ErasureTests::test_everything_goes_recording_first_then_rows,
-ChangeChoiceTests::test_turning_practice_off_erases_it","Founder 2026-09-25, locked E1, E3, E5-A."
+ChangeChoiceTests::test_turning_practice_off_erases_it
+O6 -> CoachTests::test_an_older_take_is_judged_by_the_speakers_account","Founder 2026-09-25, locked E1, E3, E5-A. O6: the coach panel said ""The speaker turned practice off."" of a speaker with every choice on (2026-10-20)."
 tests/test_consent_choices_postgres.py,Story,"As a speaker, I want each change of my mind recorded once, as permanent evidence that no browser can touch, so that my consent history can be trusted.","O1  Turning practice off and back on is recorded once each; repeating the
 same choice records nothing.
 O2  The record cannot be edited or deleted.

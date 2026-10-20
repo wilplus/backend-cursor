@@ -13,18 +13,25 @@ OUTCOME
       rating gate), never the coach's.
   O5  Turning practice off erases my practice: each recording first, then its
       rows.
+  O6  The coach's gate reads me where my own Data & consent page does: an
+      older Take recorded under an earlier principal of mine is judged by my
+      account's choices now.
 PROVES   O1 -> ChoicePermittedTests::test_an_explicit_no_is_refused_in_every_mode
          O2 -> RecordingWithdrawalTests::test_recording_is_refused_after_a_withdrawal_in_either_mode
          O3 -> GuardTests::test_a_no_is_refused_before_the_handler
          O4 -> CoachTests::test_it_runs_after_the_blind_gate_and_before_the_practice
          O5 -> ErasureTests::test_everything_goes_recording_first_then_rows,
                ChangeChoiceTests::test_turning_practice_off_erases_it
-WHY      Founder 2026-09-25, locked E1, E3, E5-A.
+         O6 -> CoachTests::test_an_older_take_is_judged_by_the_speakers_account
+WHY      Founder 2026-09-25, locked E1, E3, E5-A. O6: the coach panel said
+         "The speaker turned practice off." of a speaker with every choice on
+         (2026-10-20).
 """
 from __future__ import annotations
 
 import pathlib
 import unittest
+from unittest import mock
 
 from services import processing_authorization as pa
 
@@ -160,6 +167,75 @@ class CoachTests(unittest.TestCase):
         self.assertLess(route.index("_speaker_practice_permitted(owner_sid)"),
                         route.index("get_confident_voice_practice_by_moment"))
         self.assertIn('"SPEAKER_PRACTICE_OFF"', route)
+
+    def test_an_older_take_is_judged_by_the_speakers_account(self):
+        from routes.v2 import coach as v2_coach
+
+        # The Take's recording was acquired by an earlier principal of the
+        # speaker, holding no receipt of the policy in force; the account's
+        # acquirer now holds one, and that is what the speaker's page shows.
+        earlier, account, now = (
+            "22222222-2222-2222-2222-222222222222",
+            "33333333-3333-3333-3333-333333333333", PRINCIPAL)
+        speaker_db = _SpeakerDb(
+            take={"user_id": "user-1", "owner_principal_id": account,
+                  "recording_id": "rec-1"},
+            account=account, recorded_by=earlier, resolved=now,
+            choices={earlier: {"has_receipt": False},
+                     now: _choices(practice=True)})
+        with mock.patch.object(v2_coach, "db", speaker_db), \
+                mock.patch.dict(
+                    "os.environ", {"PLF1_PROCESSING_AUTHORIZATION_MODE": "enforce"}):
+            self.assertTrue(v2_coach._speaker_practice_permitted("take-1"))
+            # A guest Take has no account: its own acquirer answers.
+            speaker_db.take = {"user_id": None, "owner_principal_id": earlier,
+                               "recording_id": "rec-1"}
+            self.assertFalse(v2_coach._speaker_practice_permitted("take-1"))
+
+
+class _SpeakerDb:
+    """One speaker: a Take, its recording's acquirer, the account's acquirer
+    now, and the choices each principal holds."""
+
+    def __init__(self, *, take, account, recorded_by, resolved, choices):
+        self.take, self.account = take, account
+        self.client = _SpeakerClient(recorded_by, resolved, choices)
+
+    def v2_get_session_by_id(self, _take_id):
+        return dict(self.take)
+
+    def get_owner_principal_for_user(self, user_id):
+        return {"id": self.account} if user_id else None
+
+
+class _SpeakerClient:
+    def __init__(self, recorded_by, resolved, choices):
+        self.recorded_by, self.resolved, self.choices = recorded_by, resolved, choices
+
+    def table(self, _name):
+        return _Query({"acquisition_principal_id": self.recorded_by})
+
+    def rpc(self, name, params):
+        if name == "resolve_phase1_acquisition_principal_v1":
+            return _Query(self.resolved)
+        return _Query(self.choices.get(params["p_acquisition_principal_id"]))
+
+
+class _Query:
+    def __init__(self, data):
+        self.data = data
+
+    def select(self, *_args):
+        return self
+
+    def eq(self, *_args):
+        return self
+
+    def limit(self, *_args):
+        return self
+
+    def execute(self):
+        return _Result([self.data] if isinstance(self.data, dict) else self.data)
 
 
 class _PracticeDb:

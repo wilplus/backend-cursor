@@ -800,6 +800,27 @@ class ProcessingAuthorizationService:
             recording_id=str(session.get("recording_id") or "") or None,
         )
 
+    def take_speaker_principal(self, take_id: str) -> str:
+        """The person behind a Take, as their own Data & consent page reads them.
+
+        A choice is the person's, so it is read where they change it: for a
+        Take of an account, that account's acquirer now (the principal
+        `user_acquisition_principal` gives, read here without creating one);
+        for a guest Take, the Take's own acquirer. The acquirer of one older
+        recording can be an earlier principal of the same person, a guest
+        later claimed into the account, whose only receipt is of an earlier
+        policy. Asked of that one, a speaker who had accepted the policy in
+        force read as "turned practice off" on the coach panel (2026-10-20).
+        """
+        session = self.database.v2_get_session_by_id(str(take_id)) or {}
+        user_id = str(session.get("user_id") or "")
+        owner = (self.database.get_owner_principal_for_user(user_id)
+                 if user_id else None)
+        if owner and owner.get("id"):
+            return self.resolve_acquisition_principal(
+                str(owner["id"]), user_id=user_id)
+        return self.take_acquisition_principal(str(take_id))
+
     @_clears_gate_cache
     def accept(self, acquisition_principal_id: str, payload: Mapping[str, Any]) -> dict:
         if payload.get("explicit_action") != "agree_and_continue":

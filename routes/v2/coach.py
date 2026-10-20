@@ -1284,7 +1284,10 @@ def _speaker_practice_permitted(take_session_id: str) -> bool:
     A coach may not send an exercise to someone who turned practice off, or
     never turned it on: choosing one for them is the practice purpose, not
     coach review. Asked of the one boundary that decides it, about the
-    SPEAKER, never the coach making the request.
+    SPEAKER, never the coach making the request: the speaker as their own
+    Data & consent page reads them (take_speaker_principal), not the acquirer
+    of this one recording, which for an older Take can be an earlier
+    principal of theirs with no receipt of the policy in force.
     """
     from services.processing_authorization import (
         PERSONALISED_PRACTICE,
@@ -1292,10 +1295,23 @@ def _speaker_practice_permitted(take_session_id: str) -> bool:
     )
     service = ProcessingAuthorizationService(db)
     try:
-        principal = service.take_acquisition_principal(str(take_session_id))
-    except Exception:
+        principal = service.take_speaker_principal(str(take_session_id))
+    except Exception as e:
+        logger.warning("coach practice gate: speaker unresolved take=%s: %s",
+                       take_session_id, e)
         return not service.enforced
-    return service.choice_permitted(principal, PERSONALISED_PRACTICE)
+    if service.choice_permitted(principal, PERSONALISED_PRACTICE):
+        return True
+    # Why, so the next refusal is read from the logs: an explicit no, no
+    # receipt of the policy in force, or a read that failed (all None).
+    choices = service.consent_choices(principal) or {}
+    logger.warning(
+        "coach practice gate refused take=%s principal=%s choices=%s",
+        take_session_id, principal,
+        {key: choices.get(key) for key in (
+            "has_receipt", "policy_id", "practice_in_service",
+            PERSONALISED_PRACTICE)})
+    return False
 
 
 def _coach_moment_edit(practice: dict):
