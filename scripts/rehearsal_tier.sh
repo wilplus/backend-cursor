@@ -114,7 +114,7 @@ dsn() { echo "postgresql://postgres@/$1?host=$SOCK&port=$PORT"; }
 # Each suite was written against the migration chain AS IT STOOD at its own
 # slice; later migrations install triggers its fixture helpers trip. So lanes
 # are checkpoints of one chain, not clones of the final schema. Every recipe
-# below was verified by execution on 2026-09-14 (docs/REHEARSAL-TIER.md).
+# below was verified by execution on 2026-09-14 (docs/history/REHEARSAL-TIER.md).
 PSQL=(psql -X -q -v ON_ERROR_STOP=1)
 sql_file() {  # sql_file <db> <file>   (released files apply twice: idempotency)
   "${PSQL[@]}" -d "$1" -f "$2" >"$SOCK/apply.log" 2>&1 \
@@ -145,7 +145,7 @@ clone willab_service_rehearsal $CHAIN                   # First-Client Service D
 
 echo "→ building the Confident Moment lanes via tests/integration/confident_moment_rehearsal.sh"
 # One checkpoint is cut from the narrow build (the recipe's
-# CONFIDENT_MOMENT_CHECKPOINTS hook; docs/REHEARSAL-TIER-PENDING-LANE-RECIPES.md):
+# CONFIDENT_MOMENT_CHECKPOINTS hook; docs/history/REHEARSAL-TIER-PENDING-LANE-RECIPES.md):
 #   narrow,   right after 0326 add_mlc3_general_user_service_d4.sql         → D4 template
 # The released build used to be cut right after 0325 for the founder-canary
 # readiness lane; that lane went with the MLC-3 service loop (founder
@@ -293,9 +293,9 @@ LANES=(
   "model-gate|RUNTIME_MODEL_GATE_REHEARSAL_DSN|willab_model_gate_rehearsal|tests/test_runtime_config_model_guard_postgres.py"
 )
 # Suites with no GREEN recipe. Reported NOT RUN, never skipped, never run as
-# "expected to fail"; see docs/REHEARSAL-TIER.md "Pending lanes".
+# "expected to fail"; see docs/history/REHEARSAL-TIER.md "Pending lanes".
 PENDING=(
-  "tests/test_mlc3_coach_inline_authoring_d5_postgres.py|D5: narrow @0324 + the D4 relaxations reaches 11/12; the last failure is an assertion, not a fixture gap (tests/test_mlc3_coach_inline_authoring_d5_postgres.py:782 — prepare_coach_inline_blind_batch_v1 returns 1 item, 2 expected), a question for D5's owner; recipe in docs/REHEARSAL-TIER-PENDING-LANE-RECIPES.md"
+  "tests/test_mlc3_coach_inline_authoring_d5_postgres.py|D5: narrow @0324 + the D4 relaxations reaches 11/12; the last failure is an assertion, not a fixture gap (tests/test_mlc3_coach_inline_authoring_d5_postgres.py:782 — prepare_coach_inline_blind_batch_v1 returns 1 item, 2 expected), a question for D5's owner; recipe in docs/history/REHEARSAL-TIER-PENDING-LANE-RECIPES.md"
 )
 
 if [ "$KEEP" = 1 ]; then
