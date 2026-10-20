@@ -53,6 +53,10 @@ CUE_READS_VERSION = "delivery-cue-reads-v1"
 #: The same bar as delivery_cues' _MIN_CUE_Z: a cue that moved less than
 #: that is noise, and a praise line that cites noise is worse than none.
 CUE_GAIN_MIN = 0.5
+#: How much surer the try's voice must sound than the original clip for a
+#: Good job on that alone: the lock's margin (founder 2026-10-12, section 6,
+#: "MARGIN is +0.05"; held to it 2026-10-20, N84). A smaller rise is noise.
+GOOD_JOB_MARGIN = 0.05
 
 #: The closed set (proposed 2026-10-01, awaiting founder sign-off): key →
 #: (the sentence on Yes, the gentler sentence on In-between).
@@ -206,13 +210,21 @@ def _reads(attempt: Any, side: str) -> Any:
     return cues.get(side) if isinstance(cues, dict) else None
 
 
+def clearly_surer(original: Any, attempt: Any) -> bool:
+    """The try's voice-confidence composite beats the original's by the
+    lock's margin; a missing score is not surer. Pure."""
+    from services.practice_more_confident import machine_leg
+    if machine_leg(original, attempt) == "unmeasurable":
+        return False
+    return float(attempt) - float(original) >= GOOD_JOB_MARGIN
+
+
 def _confidence(snapshot: Any) -> Any:
     return snapshot.get("confidence") if isinstance(snapshot, dict) else None
 
 
 def _original_praise(practice: Any, landed: dict, variant: str, base: dict) -> dict:
     """Lanes 1 to 4 against the original clip."""
-    from services.practice_more_confident import machine_leg
     error = cleared_error(practice, landed)
     if error and f"cleared:{error}" in PRAISE:
         return _say(f"cleared:{error}", variant, "cleared", base, error=error)
@@ -221,7 +233,7 @@ def _original_praise(practice: Any, landed: dict, variant: str, base: dict) -> d
         return _say(f"cue:{gains[0][0]}", variant, "cue", base, cue=gains[0][0])
     evidence = (practice or {}).get("acoustic_evidence")
     original = evidence.get("snapshot") if isinstance(evidence, dict) else None
-    if machine_leg(_confidence(original), _confidence(landed.get("acoustic_metrics"))) == "higher":
+    if clearly_surer(_confidence(original), _confidence(landed.get("acoustic_metrics"))):
         return _say("more_assured", variant, "machine_leg", base)
     return _say("good_job", variant, "none", base)
 
