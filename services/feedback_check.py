@@ -7,15 +7,15 @@ The chat's own module for one question after the Feedback walk:
   1. ``ask_rows``: the closing summary (``take_summary``) is written; the
      question follows it in the Lounge, in the shape the Lounge already draws
      as an offer (kind text + metadata.offer), so the footer shows
-     Not really | Yes in place of the record button. Never in the way of the
+     No | Yes in place of the record button. Never in the way of the
      next Take: the record button is back the moment they answer, and an
      ignored question stays a bubble in the thread.
-  2. ``answer``: Yes → "Thanks!"; Not really → "What would help?" with a
+  2. ``answer``: Yes → "Thanks!"; No → "What would help?" with a
      Skip button; Skip → "Thanks!".
   3. ``chat_turn``: the chat's intercept. What the speaker types under
      "What would help?" is their answer: it is saved and answered with the
      signed words, before any other voice can claim it. Typing "Yes" or
-     "Not really" under the question counts as tapping it.
+     "No" (or the old "Not really") under the question counts as tapping it.
 
 Checked against the fixed messages after a Take (``check_against_after_take``):
 the question is the last row of the summary's batch, and it is NOT asked when
@@ -38,13 +38,15 @@ logger = logging.getLogger(__name__)
 
 _NAMESPACE = uuid.UUID("6b0d3f52-74a1-4c5e-9d2b-7e1c0a9f4b11")
 
-#: The signed words (founder 2026-10-19; "ask", "missing" and "thanks"
-#: simplified by the founder in chat, 2026-10-20). No new words without the founder's OK. The
+#: The signed words (founder 2026-10-19; "ask", "missing", "thanks" and the
+#: "not_really" button, now "No", simplified by the founder in chat,
+#: 2026-10-20). The choice keeps its name "not_really", so stored answers and
+#: the API are unchanged. No new words without the founder's OK. The
 #: frontend's fallback for "ask" is loungeOffers.ts OFFER_PROMPT.feedback_check.
 COPY = {
     "ask": "Did this help?",
     "yes": "Yes",
-    "not_really": "Not really",
+    "not_really": "No",
     "missing": "What would help?",
     "skip": "Skip",
     "thanks": "Thanks!",
@@ -121,7 +123,7 @@ def _save(database: Any, user_id: str, arc_id: Optional[str], take: str, **field
 
 def answer(database: Any, *, user_id: str, arc_id: str, take_session_id: str,
            choice: str) -> list[dict]:
-    """A tap on Yes, Not really or Skip: stores it and writes the thread's
+    """A tap on Yes, No or Skip: stores it and writes the thread's
     rows (their tap and the signed reply). A repeat tap writes nothing and
     returns []. Raises ``CheckError``."""
     if choice not in CHOICES:
@@ -171,11 +173,16 @@ def _open_question(database: Any, user_id: str) -> Optional[dict]:
     return {"step": step, "arc_id": meta.get("arc_id"), "take_session_id": str(take)}
 
 
+#: Words the button used to carry, still read as that button when typed.
+_TYPED_ALSO = {"not really": "not_really"}
+
+
 def _said(question: str) -> Optional[str]:
-    """The typed words when they are one of the buttons, else None."""
+    """The typed words when they are one of the buttons, else None. The old
+    "Not really" still counts as No, so a speaker used to it is not lost."""
     said = question.strip().rstrip(".!").lower()
     return next((c for c in ("yes", "not_really")
-                 if said == COPY[c].lower()), None)
+                 if said == COPY[c].lower()), None) or _TYPED_ALSO.get(said)
 
 
 def chat_turn(database: Any, user_id: str, question: str) -> Optional[dict]:

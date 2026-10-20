@@ -800,7 +800,7 @@ tests/test_feedback_check.py,Story,"As a speaker, I want to be asked ""Did this 
 already there (one ask at a time).
 O2  ""Yes"" is kept and answered once with the signed words; a second tap
 changes nothing.
-O3  ""Not really"" asks what was missing; my next typed message is kept as
+O3  ""No"" asks what would help; my next typed message is kept as
 that answer (even if it sounds like a goal change), then the chat is
 ordinary again.
 O4  ""Skip"" ends it with no answer kept; typing a button's words counts as
