@@ -397,18 +397,21 @@ O2  Another speaker's videos stay.","O1, O2 -> test_closing_an_account_deletes_t
 tests/test_coach_answers_five_ways_postgres.py,Story,"As a coach, I want my answer on a practice recording limited to the speaker's five values, so that coach and speaker answers can be compared.","O1  yes, in_between, no, not_sure and audio_unclear are stored.
 O2  Any other value (e.g. ""maybe"") is refused and the stored answer stays.","O1 -> test_the_five_answers_are_accepted
 O2 -> test_any_other_answer_is_refused",Migration 0390. Runs only on a disposable database whose name starts with willab_confident_moment_.
-tests/test_coach_answers_in_words_postgres.py,Story,"As a coach, I want to answer a speaker's request with a written line or clearer version, recorded once and shared, so that the speaker gets words from me.","O1  A line is recorded once, trimmed, and shared; the same answer again is
+tests/test_coach_answers_in_words_postgres.py,Story,"As a coach, I want to answer a speaker's request with a written line or clearer version, recorded once and shared, and the changes I make to a drafted Take word kept with that word, only my latest version teaching, so that the speaker gets words from me and the drafts learn from what I say now.","O1  A line is recorded once, trimmed, and shared; the same answer again is
 a no-op; a different answer is refused (ALREADY_RESOLVED).
 O2  Words and an exercise never mix on one answer: either way round is
 refused (INPUT_INVALID) and the request stays unanswered.
 O3  feedback_pairs keeps a (draft, final) only when they differ, and one
 per (surface, request).
 O4  A Take word is a pair's home: one current pair per word and kind, the
-latest version supersedes the older (a version that is no pair
-retires it), the same words again write nothing, only the Take-word
-surface takes a word as its home, and no browser role may write one.
-O5  The migration recovers each word's pair once, only where the draft
-came before the final, with consent left closed.","O1 -> test_a_line_is_answered_once_and_shared
+latest version supersedes the older without deleting it (a version
+that is no pair retires it), the same words again write nothing, the
+video's transcript is its own current pair, only the Take-word
+surface takes a word as its home, a pair with no home is refused, and
+no browser role may write one.
+O5  The migration, run twice, recovers each word's pair once, with its
+owner and the words spoken, only where the draft came before the
+final, with consent left closed.","O1 -> test_a_line_is_answered_once_and_shared
 O2 -> test_words_and_an_exercise_never_mix
 O3 -> test_a_pair_is_kept_only_when_the_coach_changed_the_draft
 O4 -> test_a_take_word_pair_is_kept_and_the_latest_teaches

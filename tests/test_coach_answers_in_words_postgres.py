@@ -1,7 +1,9 @@
 """
 STORY    As a coach, I want to answer a speaker's request with a written line
-         or clearer version, recorded once and shared, so that the speaker
-         gets words from me.
+         or clearer version, recorded once and shared, and the changes I make
+         to a drafted Take word kept with that word, only my latest version
+         teaching, so that the speaker gets words from me and the drafts
+         learn from what I say now.
 OUTCOME
   O1  A line is recorded once, trimmed, and shared; the same answer again is
       a no-op; a different answer is refused (ALREADY_RESOLVED).
@@ -10,11 +12,14 @@ OUTCOME
   O3  feedback_pairs keeps a (draft, final) only when they differ, and one
       per (surface, request).
   O4  A Take word is a pair's home: one current pair per word and kind, the
-      latest version supersedes the older (a version that is no pair
-      retires it), the same words again write nothing, only the Take-word
-      surface takes a word as its home, and no browser role may write one.
-  O5  The migration recovers each word's pair once, only where the draft
-      came before the final, with consent left closed.
+      latest version supersedes the older without deleting it (a version
+      that is no pair retires it), the same words again write nothing, the
+      video's transcript is its own current pair, only the Take-word
+      surface takes a word as its home, a pair with no home is refused, and
+      no browser role may write one.
+  O5  The migration, run twice, recovers each word's pair once, with its
+      owner and the words spoken, only where the draft came before the
+      final, with consent left closed.
 PROVES   O1 -> test_a_line_is_answered_once_and_shared
          O2 -> test_words_and_an_exercise_never_mix
          O3 -> test_a_pair_is_kept_only_when_the_coach_changed_the_draft
