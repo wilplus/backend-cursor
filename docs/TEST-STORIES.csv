@@ -2128,6 +2128,9 @@ answers 200 {saved: true} and records the decision with the right kind
 O2  A guest without a signed Guest ID (a bare session UUID) is refused
 404 and nothing is recorded.","O1 -> test_document_replace_and_bold_are_saved_with_their_kind
 O2 -> test_a_guest_without_a_signed_id_is_refused","Founder bug 2026-07-22: the document targets were rejected 400 by the allowlist, so every Accept/Keep on the document failed. The other targets live in tests/test_user_sessions_route_contracts.py."
+tests/test_supabase_connection_keepalive.py,Story,"As a speaker, I want my Ideal Text to open as fast on the first visit after a pause as on the one right after it, so that the loop never feels slower for having waited.","O1  The connection the backend holds to Supabase stays open for the
+configured keep-alive, not httpx's five seconds, so a request after a
+pause does not pay a new TCP + TLS handshake before its first read.",O1 -> test_the_supabase_connection_outlives_a_pause_between_requests,"Founder's stopwatch, 2026-10-20: the two reads that open the Ideal Text enrichment took 250 ms each while every read behind them took 40-70 ms; the difference was the handshake."
 tests/test_take_comparison.py,Story,"As a speaker, I never want to see my pitch, pace or pauses as numbers, so that feedback stays in words (Never rule 1).","O1  The retired take comparison (GET /v2/explore/arc/<id>/take-comparison,
 founder 2026-10-19) answers 410 GONE, reads nothing, sends no
 measurement number, and logs retired_route_called so any caller left
