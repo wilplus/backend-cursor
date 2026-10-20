@@ -443,7 +443,7 @@ def _first_written(database: Any, user_id: str, client_id: str, text: str, meta:
     from services import speaker_memory
     speaker_memory.record(database, user_id, "take",
                           {"practice": practice, "moved": moved,
-                           "helper_words": meta["helper_words"]}, take)
+                           "helper_words": meta["helper_words"]}, take, meta["arc_id"])
     from services.feedback_digest import post_later
     post_later(database)
     return persisted[0] if persisted else None

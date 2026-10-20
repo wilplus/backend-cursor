@@ -2169,15 +2169,28 @@ sent; no language is forced without a hint.
 O2  The returned text is trimmed, malformed word times are dropped, the
 duration is in ms, and the clip's seconds are recorded as usage.","O1 -> test_the_filename_is_fixed_up_to_its_lowercase_extension
 O2 -> test_the_result_is_cleaned_and_its_usage_recorded",tests/test_snippet_transcription.py covers a missing client.
-tests/test_speaker_memory.py,Guard,"Will learns about each speaker: every answer to ""Did this help?"" and every Take's outcome is kept, a private note is rewritten from them, and Will reads that note in the chat and in the summary after a Take.","C1  an answer that is no longer kept as an event, or no longer rewrites the note
+tests/test_speaker_memory.py,Guard,"Will learns about each speaker: every answer to ""Did this help?"", every Take's outcome and transcript, what their coach sent them and their own chat messages are kept, a private note is rewritten from them, and Will reads that note in the chat and in the summary after a Take.","C1  an answer that is no longer kept as an event, or no longer rewrites the note
 C2  the chat no longer handing the note to Will
 C3  the summary after a Take no longer hearing the note
-C4  a note carrying a number reaching Will, or the founder unable to correct it
-C5  the note or its events surviving the speaker's account deletion","C1 -> test_an_answer_is_kept_and_rewrites_the_note
+C4  a note carrying a number reaching Will, the founder unable to correct
+it, or a number in a transcript reaching the model's input
+C5  the note or its events surviving the speaker's account deletion
+C6  a Take's transcript, a word or moment answer the coach sent, or the
+speaker's own chat message no longer kept, or no longer reaching the
+note's input
+C7  a coach's unsent word or answer, Will's own reply, or an answer to
+""Did this help?"" kept as something Will learns from
+C8  an event surviving the erasure of its project or its Take
+C9  a line from a Take whose authorization is gone, or a chat line without
+current authority, reaching the model; a failed check letting any through","C1 -> test_an_answer_is_kept_and_rewrites_the_note
 C2 -> test_will_reads_the_note_in_the_chat
 C3 -> test_the_summary_after_a_take_hears_the_note
 C4 -> test_a_note_with_a_number_is_refused_and_the_founder_can_correct_it
-C5 -> test_the_note_and_its_events_go_with_the_account","If removed: Will stops learning about each speaker without anyone noticing (founder 2026-10-20: ""a permanent part of our application"")."
+C5 -> test_the_note_and_its_events_go_with_the_account
+C6 -> test_transcripts_coach_words_and_chat_reach_the_note
+C7 -> test_drafts_wills_replies_and_feedback_answers_are_never_learned
+C8 -> test_an_erased_project_or_take_takes_its_events
+C9 -> test_lines_whose_authorization_is_gone_never_reach_the_model","If removed: Will stops learning about each speaker without anyone noticing (founder 2026-10-20: ""a permanent part of our application"")."
 tests/test_state_ratings.py,Story,"As a coach, I want my rating stored exactly as I gave it, blind by default, so that the training data holds only real, independent human judgements.","O1  Never-2: a rating is stored as given and marked blind unless the route
 says the rater saw the machine's read.
 O2  A wrong-typed value (a truthy string, a bool) is refused, never coerced.

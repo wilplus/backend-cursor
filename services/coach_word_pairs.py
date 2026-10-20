@@ -307,10 +307,19 @@ def transcribe_take_word_video(database: Any, *, word_row: Any, coach_id: str) -
         text = (tr.get("text") or "").strip() if isinstance(tr, dict) else ""
         if not text:
             return None
-        if not database.set_coach_take_word_transcript(
-                take_session_id=take, coach_id=str(coach_id), transcript=text,
-                video_ref=str(word_row["video_ref"])):
+        landed = database.set_coach_take_word_transcript(
+            take_session_id=take, coach_id=str(coach_id), transcript=text,
+            video_ref=str(word_row["video_ref"]))
+        if not landed:
             return None  # the video was replaced meanwhile; its own run follows
+        if isinstance(landed, dict) and landed.get("shared_at"):
+            # The video was sent already: Will learns its words now (a video
+            # shared later is learned on that share, services.coach_take_word).
+            from services import speaker_memory
+            speaker_memory.record_later(database, None, "coach_word", {
+                "source": "take_video",
+                "excerpt": " ".join(text.split())[:speaker_memory.EXCERPT],
+                "edited": False}, take)
         record_take_word_pair(database, word_row=word_row, coach_id=coach_id,
                               final_text=text, final_kind="transcript")
         return text

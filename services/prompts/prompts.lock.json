@@ -364,7 +364,7 @@
     "speaker_memory.system": {
       "kind": "source_ref",
       "module": "pending",
-      "sha256": "0ed70e325034250a108d1361090f77abfb885f7963af986248de9f042c570a51"
+      "sha256": "e9982db7e684ae4fc0fd9497c8b948955cf3268467a50df052c4da0e4080d786"
     },
     "structural_star.system": {
       "kind": "static",

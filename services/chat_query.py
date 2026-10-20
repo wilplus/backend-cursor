@@ -160,6 +160,29 @@ def persist_chat_turn(
         return None
 
 
+#: Turns whose words are not something to learn from: an answer to "Did
+#: this help?" (kept as its own "answer" event), a phone number typed under
+#: the WhatsApp ask, and the founder's Life Panel.
+_NOT_LEARNED = frozenset({"feedback_check", "whatsapp_number", "life_panel"})
+
+
+def _will_learns(database, resp: dict, *, user_id, question, intent) -> None:
+    """Will learns from the speaker's own message (founder 2026-10-20, step
+    2): only what they typed, never his reply, never an answer to "Did this
+    help?". Off the turn (services.speaker_memory.record_later). Never
+    raises."""
+    try:
+        words = " ".join(str(question or "").split())
+        meta = resp.get("row_metadata") or {}
+        if not user_id or not words or intent in _NOT_LEARNED or meta.get("feedback_check"):
+            return
+        from services import speaker_memory
+        speaker_memory.record_later(database, user_id, "chat",
+                                    {"excerpt": words[:speaker_memory.EXCERPT]})
+    except Exception as e:  # noqa: BLE001 -- the answer is sent either way
+        logger.info("chat/query: speaker memory skipped user=%s: %s", user_id, e)
+
+
 def finish_chat_turn(database, resp: dict, *, user_id, question,
                      persist_thread, user_client_id, user_created_at,
                      intent=None) -> dict:
@@ -185,6 +208,7 @@ def finish_chat_turn(database, resp: dict, *, user_id, question,
         # True tells the Lounge to read the thread again: the message is there.
         if bot_cid and after_take.passes(resp) and after_take.release(database, user_id, glad=glad):
             resp["after_take"] = True
+    _will_learns(database, resp, user_id=user_id, question=question, intent=intent)
     # Charge after answering, never before. Chat is repeatable, so it has no
     # idempotency ref; billing failure must never replace the answer.
     if user_id:

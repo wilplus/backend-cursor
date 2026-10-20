@@ -260,7 +260,30 @@ def resolve_request(database: Any, request: dict, body: Any,
                  previous=request)
     if resolved.get("shared_at") and not request.get("shared_at"):
         _tell_the_speaker(database, request)
+    _will_learns(database, request, resolved)
     return 200, {"request": coach_request_payload(resolved, database)}
+
+
+def _will_learns(database: Any, request: dict, resolved: dict) -> None:
+    """Will learns the answer the coach SENT on this moment (founder
+    2026-10-20, step 2): the shared answer in words the speaker reads
+    (``coach_shared_answer``), on its first share and on every edit of a
+    shared one. An unshared answer and the draft never are. Off the coach's
+    save (services.speaker_memory.record_later)."""
+    try:
+        from services import speaker_memory
+        from services.confident_voice_practice import coach_shared_answer
+        answer = coach_shared_answer(resolved)
+        owner = str(resolved.get("owner_user_id") or request.get("owner_user_id") or "")
+        if not answer or not owner:
+            return
+        speaker_memory.record_later(database, owner, "coach_word", {
+            "source": "moment_answer",
+            "excerpt": answer["text"][:speaker_memory.EXCERPT],
+            "edited": bool(request.get("shared_at"))},
+            str(resolved.get("take_session_id") or request.get("take_session_id") or "") or None)
+    except Exception as e:  # noqa: BLE001 -- the answer is saved either way
+        logger.info("speaker memory skipped request=%s: %s", request.get("id"), e)
 
 
 def _tell_the_speaker(database: Any, request: dict) -> None:
