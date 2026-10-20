@@ -1,22 +1,17 @@
-"""willab — confidence labelling (founder 2026-07-28), the corpus for the
-app's core function: recognising the confident snippet.
-
-services/confidence_labels.py.
-
-WHAT THIS PINS DOWN:
-  * the label shape — `confident` yes/no is REQUIRED and must be a real
-    boolean (a truthy string is refused, not coerced: a rating corpus that
-    silently accepted junk is worse than one that rejected it); `intensity`
-    is an optional 1-5 on the Jiang & Pell scale;
-  * STRATIFIED sampling — the queue draws from the confident, neutral AND
-    doubtful bands. A corpus drawn only from machine-confident pieces teaches
-    the model to agree with itself and never shows it the boundary;
-  * BLIND COACH — the queue payload carries the moment and nothing else: no
-    band, no score, no acoustic read, and no ordering tell;
-  * determinism — the same session yields the same queue (resumable batches,
-    replayable imports).
-
-Run: python3 -m unittest tests.test_confidence_labels
+"""
+STORY    As a coach labelling confidence, I want the queue to show only the
+         moment, and to cover clips the machine reads as high, neutral and low,
+         so that my labels are blind and teach the model the boundary.
+OUTCOME
+  O1  Never-2: the queue payload I receive carries the moment's words and
+      audio, and no machine score, band, acoustic read or selection reason.
+  O2  The queue draws from the high, neutral and low bands, not only from
+      clips the machine already calls confident, and the same session seed
+      gives the same queue.
+PROVES   O1 -> test_queue_payload_carries_no_machine_read
+         O2 -> test_the_queue_covers_every_band_and_is_stable_per_session
+WHY      Founder 2026-07-28: a corpus drawn from machine-confident clips only
+         teaches the model to agree with itself.
 """
 from __future__ import annotations
 
@@ -47,10 +42,30 @@ class BlindPayloadTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         row = rows[0]
         self.assertEqual(row["transcript"], "line s1")
+        self.assertEqual(row["audio_ref"], "s3://s1")
         for banned in ("metrics", "voice_confidence", "acoustic_read",
                        "band", "score", "user_tone_word", "_selection",
                        "selection_reason", "sampling_probability"):
             self.assertNotIn(banned, row)
+
+
+class StratifiedQueueTests(unittest.TestCase):
+
+    def test_the_queue_covers_every_band_and_is_stable_per_session(self):
+        from services.confidence_labels import mixed_label_queue
+        # Mostly clips near the boundary, a few the machine reads high or low.
+        pool = ([_snip(f"mid{i}", score=0.01 * (i - 15)) for i in range(30)]
+                + [_snip(f"high{i}", score=0.8) for i in range(5)]
+                + [_snip(f"low{i}", score=-0.8) for i in range(5)])
+        queue = mixed_label_queue(pool, target_size=10, seed="session-1")
+        ids = [row["id"] for row in queue]
+        self.assertEqual(len(ids), 10)
+        self.assertTrue(any(i.startswith("high") for i in ids), ids)
+        self.assertTrue(any(i.startswith("low") for i in ids), ids)
+        self.assertTrue(any(i.startswith("mid") for i in ids), ids)
+        again = mixed_label_queue(list(reversed(pool)), target_size=10,
+                                  seed="session-1")
+        self.assertEqual([row["id"] for row in again], ids)
 
 
 if __name__ == "__main__":

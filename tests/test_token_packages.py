@@ -1,28 +1,44 @@
-"""Packages, bought once (contract §8; founder 2026-10-05, "Packages"; N44).
-
-Pins:
-  * the buy button opens a one-time Checkout (``mode="payment"``) at the
-    published price, never a subscription;
-  * the webhook grants only a session Stripe says is paid, in USD, for
-    exactly the package's price, and grants once however often Stripe
-    delivers it;
-  * the tokens land in the bucket that never resets and the package's coach
-    reviews in their own never-resetting bucket;
-  * nothing renews: the period no longer rolls, so the free grant lands once.
+"""
+STORY    As a speaker, I want to buy a package once at the published price and
+         get my tokens exactly once, so that I am never charged a
+         subscription or credited twice. (Critical path: payments.)
+OUTCOME
+  O1  The buy button opens a one-time USD checkout at the listed price, never
+      a subscription.
+  O2  Only a session Stripe says is paid, one-time, in USD, for exactly the
+      package's price grants it; anything else grants nothing.
+  O3  A grant that could not be written asks Stripe to deliver again; a
+      repeated delivery grants nothing more.
+  O4  The webhook applies a package and nothing else: a subscription event or
+      an old arc checkout is acknowledged and grants nothing.
+  O5  Nothing renews: months later the balance is what it was, with no new
+      grant and no renewal date.
+  O6  A package carries tokens only: no package on sale grants coach reviews
+      (a review is paid in tokens since 2026-10-14).
+PROVES   O1 -> test_checkout_is_one_time_at_the_published_price
+         O2 -> test_a_paid_session_grants_the_package
+            -> test_anything_but_a_paid_exact_package_grants_nothing
+         O3 -> test_a_failed_grant_asks_stripe_to_deliver_again
+            -> test_a_second_delivery_grants_nothing
+         O4 -> test_the_webhook_grants_packages_and_nothing_else
+         O5 -> test_nothing_renews
+         O6 -> test_a_package_grants_no_coach_reviews
+WHY      Contract section 8; founder 2026-10-05 "Packages" (N44, N48.3 Q13 A).
 """
 from __future__ import annotations
 
-import pathlib
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest import mock
 
 import pytest
+from flask import Flask
 
+from routes import internal_webhooks
 from services import token_account as ta
 from services import token_packages as tp
-from services.token_prices import TIERS
+from services.token_prices import SOLD_TIERS, TIERS
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
 CONFIG = SimpleNamespace(STRIPE_SECRET_KEY="sk_test", FRONTEND_URL="https://app.test")
 
 
@@ -100,17 +116,39 @@ def test_a_failed_grant_asks_stripe_to_deliver_again():
     assert result.http_status == 500
 
 
+def _webhook(event, session=None):
+    """POST one Stripe event to the webhook route; returns (status, body, grant)."""
+    grant = mock.Mock(return_value={"ok": True, "reason": ""})
+    with mock.patch.object(internal_webhooks, "config", SimpleNamespace(
+            STRIPE_WEBHOOK_SECRET="whsec_test", STRIPE_SECRET_KEY="sk_test")), \
+            mock.patch("stripe.Webhook.construct_event", return_value=event), \
+            mock.patch("stripe.checkout.Session.retrieve", return_value=session), \
+            mock.patch.object(ta, "package_grant", grant), \
+            Flask(__name__).test_request_context(method="POST", data=b"{}"):
+        resp, status = internal_webhooks.stripe_checkout_webhook()
+    return status, resp.get_json(), grant
+
+
+def _completed(metadata):
+    return {"type": "checkout.session.completed",
+            "data": {"object": {"id": "cs_1", "metadata": metadata}}}
+
+
 def test_the_webhook_grants_packages_and_nothing_else():
     """N48.3 Q13 A: the subscription, arc-checkout and credit-pack paths are
     gone; a package is the only thing the webhook applies."""
-    source = (ROOT / "routes/internal_webhooks.py").read_text()
-    body = source[source.index("def stripe_checkout_webhook("):]
-    end = body.find("@internal_webhooks_bp.route")
-    body = body if end < 0 else body[:end]
-    assert "webhook_reply" in body
-    for retired in ("apply_subscription_event", "apply_completed_arc_checkout",
-                    "apply_paid_checkout_session_credits"):
-        assert retired not in body, retired
+    status, body, grant = _webhook(_completed(_session()["metadata"]), _session())
+    assert (status, body["granted"]) == (200, True)
+    grant.assert_called_once()
+
+    status, body, grant = _webhook({"type": "customer.subscription.updated",
+                                    "data": {"object": {"id": "sub_1"}}})
+    assert (status, body) == (200, {"received": True})
+    grant.assert_not_called()
+
+    status, body, grant = _webhook(_completed({"user_id": "u1", "arc_id": "a1"}))
+    assert (status, body["granted"], body["reason"]) == (200, False, "not_a_package")
+    grant.assert_not_called()
 
 
 # ── the grant ───────────────────────────────────────────────────────────
@@ -124,6 +162,12 @@ class _Query:
 
     def update(self, payload):
         self.op, self.payload = "update", payload
+        self.db.writes.append(payload)
+        return self
+
+    def upsert(self, payload):
+        self.op, self.payload = "upsert", payload
+        self.db.writes.append(payload)
         return self
 
     def eq(self, column, value):
@@ -155,6 +199,7 @@ class _Db:
                     "coach_reviews_used": 0, "bonus_balance": None,
                     "coach_review_credits": 0, **row}
         self.ledger: list[dict] = []
+        self.writes: list[dict] = []
         self.client = SimpleNamespace(table=self._table)
 
     def _table(self, _name):
@@ -184,4 +229,25 @@ def test_a_second_delivery_grants_nothing(db):
     assert len(db.ledger) == 1
 
 
+def test_a_package_grants_no_coach_reviews(db):
+    for package in SOLD_TIERS:
+        if package != "free":
+            assert tp.package_spec(package)["coach_reviews"] == 0, package
+    spec = tp.package_spec("coaching")
+    ta.package_grant("u1", tokens=spec["tokens"], coach_reviews=spec["coach_reviews"],
+                     ref_id="cs_2", package="coaching", database=db)
+    assert db.row["bonus_balance"] == spec["tokens"]
+    assert db.row["coach_review_credits"] == 0
+    assert all("coach_review_credits" not in w for w in db.writes)
+
+
 # ── nothing renews ──────────────────────────────────────────────────────
+
+def test_nothing_renews(db):
+    long_ago = datetime.now(timezone.utc) - timedelta(days=400)
+    db.row.update(period_start=long_ago.isoformat(), token_balance=700,
+                  bonus_balance=150_000)
+    account = ta.get_account("u1", database=db)
+    assert (account["balance"], account["bonus_balance"]) == (150_700, 150_000)
+    assert account["period_ends_at"] is None
+    assert db.writes == [] and db.ledger == []

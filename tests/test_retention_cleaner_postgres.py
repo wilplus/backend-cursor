@@ -1,47 +1,41 @@
-"""The scheduled clean-up against a real schema (migrations 0423 and 0426;
-services/retention_cleaner.py; founder 2026-10-05, decisions log N48.4 Q16 A
-and N50).
+"""
+STORY    As the founder, I want the clean-up on the real schema to delete
+         exactly what is due and nothing kept for evidence, so that I can
+         trust the first live run.
+OUTCOME
+  O1  The report, a dry run and the founder's script count the same lines,
+      exactly the rows due in the world built here; a dry run deletes
+      nothing. An account under erasure is left to that erasure.
+  O2  A live request with RETENTION_CLEANER_LIVE off is refused and deletes
+      nothing.
+  O3  A live run deletes exactly the due rows and objects (rule 1 guests via
+      the account purge, rule 2 recordings with their voice measurements,
+      rule 3 logs but never dev_bugs, rule 4 financial records) and no
+      evidence row.
+  O4  A second run finds nothing left to do.
+  O5  A recording whose object will not go keeps no deletion event, but its
+      measurements still go.
+  O6  Without the purge kill switch no guest is erased (rules 2-4 still
+      run); a guest whose erasure stopped for review is never re-run.
+PROVES   O1 -> test_the_report_a_dry_run_and_the_script_agree,
+               test_an_erasure_under_way_keeps_the_cleaner_out
+         O2 -> test_a_live_request_with_the_key_off_deletes_nothing
+         O3 -> test_it_deletes_exactly_what_was_due_and_nothing_retained
+         O4 -> test_a_second_run_finds_nothing_left_to_do
+         O5 -> test_a_stuck_object_keeps_its_event_back
+         O6 -> test_without_the_purge_switch_no_guest_is_erased,
+               test_a_guest_stopped_for_review_is_left_for_a_person
+WHY      Migrations 0423/0426, services/retention_cleaner.py; founder
+         2026-10-05, decisions log N48.4 Q16 A and N50.
 
-What it proves, on the released lane:
-  * the report, a dry run and the founder's script count the same lines, and
-    on a world built for it those lines are exactly the rows that are due --
-    and they are the report of 2026-10-05's numbers, except where 0423
-    refined them (a processing job deletion evidence points at is kept) and
-    0426 changed them (the founder's bug list is not a log, N50 C4 B; the
-    financial records whose five years have ended are rule 4, N50 P7);
-  * a live request is refused while RETENTION_CLEANER_LIVE is False, and
-    deletes nothing;
-  * with the key patched on, a live run deletes exactly those rows and
-    objects: an unclaimed guest through the account purge, an idle
-    account's recording with its voice measurements (the measurements go
-    first, the event names the run), the four logs' old rows, the financial
-    records past their five years (the year read in Warsaw time; an account
-    under erasure left to it) -- and nothing that is not due, nothing
-    retained, and never the founder's bug list;
-  * a second run finds nothing left to do; a recording whose object will
-    not go keeps its event back but never its measurements; and the guards
-    0423 opens open for a live run only;
-  * rule 1 is a purge: without the purge kill switch no guest is erased
-    (rules 2 to 4 still run), and a guest whose erasure stopped for review
-    is left for a person, never run again.
-
-Every case runs in ONE transaction that is rolled back, so nothing it writes
-reaches the next case or the next suite in the lane. The cleaner's own code
-runs through the SQL client tests/test_account_deletion_starts_postgres.py
-built for the purge: its PostgREST calls become SQL, as service_role. The
-world is set in 2001 (AS_OF): every row the other suites write is dated
-today, so nothing of theirs is ever due here, and the cases can say
-"exactly".
-
-Stand-ins, each named: object storage is faked (this lane has no R2); every
-retention rule the purge can ask for is seeded active, as production's are
-(tests/test_take_purge_postgres.py); the tables this lane does not carry are
-built from their own migrations (token_ledger's beside a one-column
-stand-in for the account table it alters, v2_student_details, which predates
-the migrations directory); 0426 is applied again inside the case, so its
-door to the two financial tables, guarded on them existing, opens as it does
-in production; and the grants Supabase gives service_role by default are
-given, on the other tables only: rule 4 deletes with 0426's door alone.
+Every case runs in ONE rolled-back transaction on the released lane. The
+cleaner's PostgREST calls become SQL as service_role (the client from
+tests/test_account_deletion_starts_postgres.py). The world is set in 2001
+(AS_OF), so nothing other suites write is ever due here. Stand-ins: object
+storage is faked; every retention rule the purge can ask for is seeded
+active; tables this lane lacks are built from their own migrations; 0426 is
+re-applied inside the case; Supabase's default service_role grants are
+given on the other tables only.
 """
 from __future__ import annotations
 
@@ -677,6 +671,21 @@ def _deletion(db, audio: str) -> dict | None:
 
 class TestOneDefinitionOfWhatIsDue:
 
+    def test_the_report_a_dry_run_and_the_script_agree(self, db, storage):
+        _world(db)
+        retained = _retained(db)
+        report = {line: n for line, n in _report(db).items() if n}
+        script = (ROOT / "scripts" / "retention_report.sql").read_text()
+        select = script[script.index("SELECT rule"):].rstrip().rstrip(";")
+        assert "retention_report_v1(now())" in select
+        scripted = {(r["rule"], r["would_delete"]): r["how_many"] for r in _rows(
+            db, select.replace("now()", "%s::timestamptz"), (AS_OF,)) if r["how_many"]}
+        dry = rc.run(_Database(db), mode=rc.DRY_RUN, as_of=AS_OF)
+        assert dry["mode"] == rc.DRY_RUN
+        assert {k: v for k, v in _lines(dry["due"]).items() if v} == report
+        assert scripted == report == EXPECTED
+        assert storage["deleted"] == [] and _retained(db) == retained
+        assert {k: v for k, v in _report(db).items() if v} == EXPECTED
 
     def test_an_erasure_under_way_keeps_the_cleaner_out(self, db):
         w = _world(db)
@@ -691,6 +700,17 @@ class TestOneDefinitionOfWhatIsDue:
 
 
 class TestALiveRun:
+
+    def test_a_live_request_with_the_key_off_deletes_nothing(
+            self, db, storage, monkeypatch):
+        w = _world(db)
+        monkeypatch.setattr(rc, "RETENTION_CLEANER_LIVE", False)
+        summary = rc.run(_Database(db), mode=rc.LIVE, as_of=AS_OF,
+                         purge_execution=True)
+        assert summary["refusal"] == rc.REFUSAL_LIVE_OFF
+        assert summary["done"] == {} and storage["deleted"] == []
+        assert _deletion(db, w["idle_rec"]["audio"]) is None
+        assert {k: v for k, v in _report(db).items() if v} == EXPECTED
 
     def test_it_deletes_exactly_what_was_due_and_nothing_retained(
             self, db, storage, key_on):
@@ -800,6 +820,51 @@ class TestALiveRun:
         assert _one(db, "SELECT count(*) FROM public.processing_audio_object_deletion_events") == events
         assert _one(db, "SELECT count(*) FROM public.data_purge_requests") == requests
         assert _deletion(db, w["busy_rec"]["audio"]) is None
+
+
+    def test_a_stuck_object_keeps_its_event_back(self, db, storage, key_on):
+        w = _world(db)
+        storage["refuse"].add(w["idle_rec"]["key"])
+        summary = rc.run(_Database(db), mode="live", as_of=AS_OF,
+                         purge_execution=True)
+        assert _deletion(db, w["idle_rec"]["audio"]) is None
+        assert _measurements_left(db, w["idle_rec"])["snippets"] == 0
+        assert _rows(db, "SELECT outcome FROM public.retention_cleaner_audio_claims "
+                         "WHERE run_id = %s", (summary["run_id"],)) == [
+            {"outcome": "failed"}]
+        assert storage["deleted"] == [w["guest_old_rec"]["key"]]
+
+
+class TestTheGuestsArePurges:
+
+    def test_without_the_purge_switch_no_guest_is_erased(self, db, storage, key_on):
+        w = _world(db)
+        summary = rc.run(_Database(db), mode="live", as_of=AS_OF,
+                         purge_execution=False)
+        assert summary["done"]["guests.held_purge_execution_off"] == 1
+        assert _one(db, "SELECT count(*) FROM public.data_purge_requests "
+                        "WHERE acquisition_principal_id = %s",
+                    (w["guest_old"]["principal"],)) == 0
+        assert storage["deleted"] == [w["idle_rec"]["key"]]
+        assert summary["done"]["financial.token_ledger"] == 2
+
+    def test_a_guest_stopped_for_review_is_left_for_a_person(
+            self, db, storage, key_on):
+        w = _world(db)
+        principal = w["guest_old"]["principal"]
+        _one(db, """
+            INSERT INTO public.data_purge_requests (acquisition_principal_id,
+                trigger_kind, idempotency_key, state)
+            VALUES (%s, 'retention_expiry', %s, 'review_required') RETURNING id""",
+            (principal, f"retention-cleaner:unclaimed-guest-30-days:{principal}"))
+        summary = rc.run(_Database(db), mode="live", as_of=AS_OF,
+                         purge_execution=True)
+        assert summary["done"].get("guests.skipped_left_for_a_person") == 1
+        assert summary["done"].get("guests.erased") is None
+        assert _rows(db, "SELECT state FROM public.data_purge_requests "
+                         "WHERE acquisition_principal_id = %s", (principal,)) == [
+            {"state": "review_required"}]
+        assert w["guest_old_rec"]["key"] not in storage["deleted"]
 
 
 def _present(db, table: str, row_id: str) -> bool:

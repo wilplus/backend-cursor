@@ -1,27 +1,23 @@
-"""Behaviour of ``OpenAIService.transcribe_audio`` — F1 piece (a), the
-per-slide transcription's provider call (audit Q-A4, Phase 3).
+"""
+STORY    As a speaker, I want my recording sent to transcription correctly, so
+         that my transcript is accurate in my language.
+         (Critical path: record -> process, the transcript seam.)
+OUTCOME
+  O1  The request asks whisper-1 for verbose JSON with segment AND word
+      timestamps, and the answer comes back as text, duration, language,
+      segments and words (absolute seconds; a malformed word dropped).
+  O2  Where word timestamps are refused, a segments-only call still returns
+      the transcript.
+  O3  Non-English audio drops the English prompt and keeps only my words.
+  O4  A provider failure is wrapped and reported, never returned as text.
+PROVES   O1 -> test_the_request_and_the_transcript_it_returns
+         O2 -> test_without_word_timestamps_the_transcript_still_arrives
+         O3 -> test_non_english_language_drops_the_english_prompt_and_keeps_vocabulary
+         O4 -> test_provider_failure_is_wrapped_and_reported_to_sentry
+WHY      2026-07-29: an English prompt on Polish audio gave an empty transcript.
 
-Until this file existed the only tests around transcription mocked
-``transcribe_audio`` itself (``test_recording_transcription.py`` pins what
-happens around it). Nothing pinned what the function sends to Whisper or
-what it hands back, and the module sat at 17.6% coverage. These tests use
-a fake client that records the request and replies with a shaped response;
-no network, no credentials, no prompt text is asserted verbatim (the prompt
-registry's ``legacy_openai.whisper_priming`` entry owns the prompt).
-
-What is pinned here, because the live loop depends on it:
-
-* the request shape: whisper-1, verbose_json, segment AND word timestamps,
-  the file tuple with a content type that never silently defaults to webm;
-* the language rule from 2026-07-29: an English disfluency prompt on
-  non-English audio is worse than none, so a declared non-English language
-  drops the prompt and keeps only the domain vocabulary;
-* the response contract read by ``services/recording_transcription.py``:
-  text, duration, language, segments, words — all present, words absolute
-  seconds, a dict-shaped word tolerated, a malformed one dropped;
-* the fallbacks: word granularity unavailable → segments-only retry; usage
-  ledger failure never touches the transcript; a provider failure is wrapped
-  and reported; no client → refuse before touching the audio.
+A fake client records the request; no network, no prompt text asserted
+verbatim (the prompt registry owns it).
 """
 from __future__ import annotations
 
@@ -33,7 +29,6 @@ import pytest
 
 import services.openai_service as osvc
 
-# ── a fake OpenAI client with the two surfaces transcribe_audio touches ──────
 
 class _Seg:
     def __init__(self, start, end, text):
@@ -45,10 +40,10 @@ class _Word:
         self.word, self.start, self.end = word, start, end
 
 
-def _response(*, text="hello there", language="en", segments=None, words=None):
+def _response(*, words=None):
     return types.SimpleNamespace(
-        text=text, language=language,
-        segments=[_Seg(0.0, 1.5, " hello "), _Seg(1.5, 3.25, "there")] if segments is None else segments,
+        text="hello there", language="en",
+        segments=[_Seg(0.0, 1.5, " hello "), _Seg(1.5, 3.25, "there")],
         words=[_Word("hello", 0.0, 0.9), _Word("there", 1.6, 3.25)] if words is None else words,
     )
 
@@ -59,7 +54,6 @@ class _FakeClient:
 
     def __init__(self, replies=None):
         self.calls: list[dict] = []
-        self.options: list[dict] = []
         self.replies = list(replies) if replies is not None else [_response()]
         client = self
 
@@ -74,7 +68,6 @@ class _FakeClient:
         self.audio = types.SimpleNamespace(transcriptions=_Transcriptions())
 
     def with_options(self, **kwargs):
-        self.options.append(kwargs)
         return self
 
 
@@ -86,19 +79,39 @@ def _service(client):
 
 @pytest.fixture(autouse=True)
 def _quiet_side_channels(monkeypatch):
-    """The ledger and Sentry are best-effort side channels; keep them out of
-    the way unless a test patches them on purpose."""
+    """The ledger and Sentry are best-effort side channels."""
     monkeypatch.setattr("services.llm_usage.record_audio_usage", lambda **kw: None)
     monkeypatch.setattr(osvc.sentry_sdk, "capture_exception", lambda *a, **k: None)
-    # mimetypes tables differ per platform; the fallback table under test is
-    # the module's own. Tests that want mimetypes' answer patch it back.
-    monkeypatch.setattr(osvc.mimetypes, "guess_type", lambda *_a, **_k: (None, None))
 
 
-# ── the request ──────────────────────────────────────────────────────────────
+def test_the_request_and_the_transcript_it_returns():
+    client = _FakeClient([_response(words=[
+        _Word("hello", 0.0, 0.9),
+        {"word": "there", "start": 1.6, "end": None},   # dict-shaped, no end
+        _Word("lost", None, 2.0),                       # no start: dropped
+    ])])
+    out = _service(client).transcribe_audio(BytesIO(b"audio"), "take.webm")
+    (call,) = client.calls
+    assert call["model"] == "whisper-1"
+    assert call["response_format"] == "verbose_json"
+    assert call["timestamp_granularities"] == ["segment", "word"]
+    assert call["file"][:2] == ("take.webm", b"audio")
+    assert out == {
+        "text": "hello there", "duration": 3.25, "language": "en",
+        "segments": [{"start": 0.0, "end": 1.5, "text": "hello"},
+                     {"start": 1.5, "end": 3.25, "text": "there"}],
+        "words": [{"word": "hello", "start": 0.0, "end": 0.9},
+                  {"word": "there", "start": 1.6, "end": 1.6}],
+    }
 
 
-# ── the language rule (2026-07-29) ───────────────────────────────────────────
+def test_without_word_timestamps_the_transcript_still_arrives():
+    client = _FakeClient([TypeError("timestamp_granularities"), _response(words=[])])
+    out = _service(client).transcribe_audio(BytesIO(b"audio"), "take.webm")
+    assert "timestamp_granularities" not in client.calls[1]
+    assert out["text"] == "hello there"
+    assert [s["text"] for s in out["segments"]] == ["hello", "there"]
+    assert out["words"] == []
 
 
 def test_non_english_language_drops_the_english_prompt_and_keeps_vocabulary():
@@ -109,12 +122,6 @@ def test_non_english_language_drops_the_english_prompt_and_keeps_vocabulary():
     call = client.calls[0]
     assert call["language"] == "pl"
     assert call["prompt"] == "Kraków, OKR."
-
-
-# ── the response contract ────────────────────────────────────────────────────
-
-
-# ── fallbacks and failure ────────────────────────────────────────────────────
 
 
 def test_provider_failure_is_wrapped_and_reported_to_sentry():

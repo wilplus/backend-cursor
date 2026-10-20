@@ -19,7 +19,8 @@ talk's title and slide topics, what the speaker said, and their most
 willfident moment. It praises through one SIGNED line (``line_bank``),
 lightly varied at most, checked in code; it gives no advice (the walk
 did) and ends with a question back to the speaker. If they have no
-WhatsApp number yet, the Lounge's own WhatsApp offer follows the bubble.
+WhatsApp number yet, the Lounge's own WhatsApp offer follows the bubble; if
+not, "Did this feedback help you?" does (``feedback_check``, WIL-74).
 
 Anything that fails (no permit, no provider, a reply that breaks the
 rules or drifts from the signed lines) falls back to the signed journey
@@ -365,14 +366,20 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
         meta.update({"coach_update": True, "earlier": held.get("body")})
         return database.rewrite_lounge_message(str(user_id), client_id, text, meta) or held
     at = datetime.now(timezone.utc).isoformat()
-    persisted = database.insert_lounge_messages(str(user_id), [{
+    batch = [{
         "client_id": client_id,
         "role": "bot",
         "kind": "cadence",
         "body": text or anchor,
         "metadata": meta,
         "client_created_at": at,
-    }] + _whatsapp_offer(database, str(user_id), client_id, at))
+    }] + _whatsapp_offer(database, str(user_id), client_id, at)
+    # WIL-74: "Did this feedback help you?" closes the batch, unless another
+    # offer already rides in it (feedback_check decides).
+    from services.feedback_check import ask_rows
+    batch += ask_rows(database, user_id=str(user_id), arc_id=str(arc_id),
+                      take_session_id=take, batch=batch, at=at)
+    persisted = database.insert_lounge_messages(str(user_id), batch)
     return persisted[0] if persisted else None
 
 

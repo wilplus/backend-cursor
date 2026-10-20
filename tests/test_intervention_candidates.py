@@ -1,26 +1,42 @@
-"""The manager engine is the SOLE source of `changes` (founder 2026-08-07).
-
-THE BUG THIS CLOSES. `services/manager_engine.py` is a complete, tested
-arbitration policy — the ≤3 budget, collision resolution, the certainty floor,
-the three randomisation arms — and it had NO CALLER IN PRODUCTION. Meanwhile
-`_tracked_changes_block` concatenated three lanes and served all of them. So
-Appendix H's budget was enforced nowhere, and the number of marks on a
-student's document was whatever the lanes happened to produce.
-
-WHAT THESE TESTS ARE FOR. Two different failures, and only the first is
-obvious:
-
-  1. the budget does not hold — more than three marks reach the screen;
-  2. a lane goes ROUND the engine. That one is silent: the payload looks
-     normal, the tests for each individual lane still pass, and the only
-     symptom is a fourth highlight nobody can account for. So the wiring is
-     pinned structurally as well as behaviourally.
-
-AC-9 is checked here rather than assumed: `priority`, `ppv` and `deviation`
-are arbitration inputs, and a change dict that carried one of them would put
-an internal number on a client-facing schema.
-
-Run: python3 -m unittest tests.test_intervention_candidates
+"""
+STORY    As a speaker, I want at most the budgeted number of marks on my
+         document, one per span, from known lanes only, and nothing at all if
+         arbitration fails, so that the page stays focused and honest.
+OUTCOME
+  O1  The budget holds: more than BUDGET_CEILING changes in, at most
+      BUDGET_CEILING served; overlapping changes serve one mark; a
+      zero-width insert never takes a slot.
+  O2  Only declared lanes are served; a change with no span is dropped.
+  O3  If arbitration fails, nothing is served.
+  O4  Never-1 (no numbers to speakers): a served change carries no internal
+      number (priority, ppv, deviation) and no funnel.
+  O5  Accents on a locked part ride the style lane: outside the budget,
+      capped per Take, not suppressed by single-point focus.
+  O6  Confident Voice needs playable audio, keeps its reserved slot, is not
+      capped by rewrites and is not bound by the accent window; an accent
+      past the window is never offered.
+  O7  The controls flag passes the arm key through; an empty serve still
+      logs where the pool emptied.
+PROVES   O1 -> test_the_budget_holds, test_two_lanes_on_the_same_span_yield_one_mark,
+               test_a_zero_width_insert_does_not_eat_a_budget_slot
+         O2 -> test_an_undeclared_lane_never_reaches_the_user,
+               test_every_declared_lane_is_admitted,
+               test_a_change_with_no_span_is_dropped_not_repaired
+         O3 -> test_failure_serves_NOTHING_rather_than_everything
+         O4 -> test_the_funnel_never_reaches_the_client
+         O5 -> test_a_decided_style_proposal_KEEPS_its_slot,
+               test_the_cap_is_pure_and_degrades_on_junk,
+               test_the_style_lane_BYPASSES_single_point_focus
+         O6 -> test_confident_voice_without_playable_audio_is_not_surfaced,
+               test_confident_voice_reserved_slot_survives_single_point_focus,
+               test_notice_is_never_capped_by_the_rewrite_row,
+               test_confident_voice_passes_regardless_of_size,
+               test_the_ceiling_is_the_shared_constant_not_a_local_number
+         O7 -> test_flipping_the_flag_passes_the_arm_key_through,
+               test_an_EMPTY_serve_still_reports_where_it_emptied,
+               test_an_EMPTY_INPUT_still_writes_a_funnel_line
+WHY      2026-08-07: manager_engine had no production caller, so the budget
+         was enforced nowhere and every lane's marks reached the page.
 """
 from __future__ import annotations
 
@@ -108,6 +124,12 @@ class TestTheStyleLane(unittest.TestCase):
 
 
 class TestCollisions(unittest.TestCase):
+
+    def test_the_budget_holds(self):
+        pool = [_change(i) for i in range(me.BUDGET_CEILING + 4)]
+        out = ic.select(pool, session_id="s1")["changes"]
+        self.assertTrue(out)
+        self.assertLessEqual(len(out), me.BUDGET_CEILING)
 
     def test_two_lanes_on_the_same_span_yield_one_mark(self):
         """A polish star and a cross-take offer on the same words would render
@@ -329,10 +351,11 @@ class TestTheFunnel(unittest.TestCase):
         # with PPV numbers in them and belongs in a server log — the change
         # dicts must stay exactly what they were.
         out = ic.select([_change(i) for i in range(3)], session_id="s1")
+        self.assertTrue(out["changes"])
         for c in out["changes"]:
-            self.assertNotIn("funnel", c)
-            self.assertNotIn("priority", c)
-            self.assertNotIn("ppv", c)
+            self.assertEqual(c["quote"], "x" * 10)
+            for internal in ("funnel", "priority", "ppv", "deviation"):
+                self.assertNotIn(internal, c)
 
 
 if __name__ == "__main__":

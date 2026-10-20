@@ -1,47 +1,42 @@
-"""Retention schedule v1.4 on the real schema: the four tables that stopped
-every erasure (N14.3) are decided, and the purge acts on them only once the
-v1.4 rules are active (founder 2026-10-05, decisions log N48.4 Q15 A:
-product records go with the account or the project; job evidence is kept 12
-months).
+"""
+STORY    As a speaker deleting my account or a project, I want what the Take
+         showed me, my answers and every Paragraph version deleted while job
+         evidence is kept, so that my erasure finishes and keeps only what
+         the law needs (deletion).
+OUTCOME
+  O1  Without the v1.4 rules the erasure stops for review on these records
+      and deletes nothing (fail closed, as before v1.4).
+  O2  With the rules, seeded by scripts/phase1_retention_rules_v1_4.sql as
+      the founder runs it, the account erasure reaches done: those records
+      are deleted under product-records-v1, the job and its events are kept
+      under job-evidence-v1, and a stranger's records are untouched.
+  O3  A project erasure deletes that project's records and keeps the other
+      project's.
+  O4  Outside a running purge, the append-only trigger (0424) still refuses
+      a direct delete, even with the rules active.
+PROVES   O1 -> test_without_the_rules_the_erasure_stops_and_deletes_nothing
+         O2 -> test_the_account_erasure_deletes_the_product_records_and_keeps_the_job
+         O3 -> test_a_project_erasure_deletes_only_that_projects_records
+         O4 -> test_outside_a_purge_the_trigger_refuses_a_delete
+WHY      N14.3: these four tables stopped every erasure; founder 2026-10-05,
+         decisions log N48.4 Q15 A (retention schedule v1.4).
 
-These cases run the Python production runs (`DataPurgeOrchestrator.run`,
-`ProjectPurgeOrchestrator.run`) through the SQL client of
+Runs the Python production runs (DataPurgeOrchestrator.run,
+ProjectPurgeOrchestrator.run) through the SQL client of
 tests/test_account_deletion_starts_postgres.py, as service_role, on the
-released rehearsal lane:
-
-  * WITHOUT the v1.4 rules: the erasure stops for review on exactly these
-    rows (EXPLICIT_RESOLVER_REQUIRED), deletes nothing, and the append-only
-    trigger still refuses a direct delete. Fail closed, as before v1.4;
-  * WITH them, seeded by scripts/phase1_retention_rules_v1_4.sql itself, as
-    the founder runs it (the signed hash in it): the account erasure reaches
-    done; what the Take showed, the speaker's answers and every version of
-    the Paragraph are deleted under product-records-v1; the job and its
-    events are kept under job-evidence-v1;
-  * a project erasure deletes that project's records and keeps the other
-    project's; a stranger's rows are never reached, and outside a running
-    purge the trigger refuses even with the rules active;
-  * the job plumbing (0425): with the rules active the account erasure
-    deletes the person's outbox row, carry-over and orphaned object's
-    metadata, as the registry always listed them, and keeps the job and its
-    events as job evidence; without them it stops for review exactly as on
-    main, with the plumbing untouched.
-
-Named stand-ins: object storage is faked (tests/test_take_purge_postgres.py).
-The lane never applied 0293, so the two Take tables, the three immutable
-triggers and production's service_role grants (0293, and 0336 for the
-revision table) are laid down here exactly as those files write them. The
-lane's ACCOUNT graph is a pre-0313 stand-in that lists no job
-(tests/integration/mlc3_exercise_foundation_prerequisites.sql); production's
-(0312) lists every job of the person. So job events are proved through the
-PROJECT graph, which is the released one (0380) and lists the project's jobs,
-and the job-plumbing cases lay production's job list over the stand-in for
-their length (`production_job_list`), then put the stand-in back.
+released rehearsal lane. Object storage is faked
+(tests/test_take_purge_postgres.py). The lane never applied 0293, so the two
+Take tables, the three immutable triggers and production's service_role
+grants are laid down here as those files write them. The lane's ACCOUNT graph
+lists no job, so job events are proved through the PROJECT graph (0380). The
+job plumbing (0425: outbox, carry-over, orphan metadata) is not covered here.
 """
 from __future__ import annotations
 
 import pathlib
 import uuid
 
+import psycopg2
 import pytest
 
 from services.data_purge import DataPurgeOrchestrator
@@ -169,42 +164,6 @@ def no_v1_4_rules(db):
     withdraw()
 
 
-@pytest.fixture
-def production_job_list(db):
-    """The account graph with production's job list (0312: every job whose
-    principal is the person's) laid over the lane's stand-in, which lists
-    none. The stand-in is renamed and wrapped, never rewritten, and put back
-    after the case: the rest of the lane keeps the graph it was built on."""
-    with db.cursor() as cur:
-        cur.execute("""
-            ALTER FUNCTION public.resolve_phase1_purge_subject_graph_v1(uuid)
-                RENAME TO resolve_phase1_purge_subject_graph_v1_lane_stand_in""")
-        cur.execute("""
-            CREATE FUNCTION public.resolve_phase1_purge_subject_graph_v1(
-                p_acquisition_principal_id UUID
-            ) RETURNS JSONB LANGUAGE sql STABLE AS $$
-            SELECT base.graph || jsonb_build_object('job_ids', COALESCE((
-                       SELECT jsonb_agg(job.id::text ORDER BY job.id::text)
-                         FROM public.phase1_processing_jobs job
-                        WHERE job.acquisition_principal_id::text IN (
-                              SELECT jsonb_array_elements_text(
-                                         base.graph -> 'principal_ids'))),
-                   '[]'::jsonb))
-              FROM (SELECT public.resolve_phase1_purge_subject_graph_v1_lane_stand_in(
-                               p_acquisition_principal_id) AS graph) base
-            $$""")
-    try:
-        yield
-    finally:
-        with db.cursor() as cur:
-            cur.execute("""
-                DROP FUNCTION public.resolve_phase1_purge_subject_graph_v1(uuid)""")
-            cur.execute("""
-                ALTER FUNCTION
-                    public.resolve_phase1_purge_subject_graph_v1_lane_stand_in(uuid)
-                    RENAME TO resolve_phase1_purge_subject_graph_v1""")
-
-
 def _records(db, subject: dict) -> dict:
     """What a Take showed, the speaker's answers, two versions of a
     Paragraph (the second naming the first, as 0327's chain does), and the
@@ -310,6 +269,28 @@ def _target(db, request: str, code: str) -> dict:
            AND target.target_ref = %s""", (request, f"dependency:{code}"))
 
 
+class TestWithoutTheRulesTheErasureStops:
+
+    @pytest.fixture(autouse=True)
+    def _rules(self, db, no_v1_4_rules):
+        _production_shape(db)
+        takes._seed_every_retention_rule(db)
+
+    def test_without_the_rules_the_erasure_stops_and_deletes_nothing(
+            self, db, fake_storage):
+        records = _records(db, takes._account_with_one_take(db))
+
+        DataPurgeOrchestrator(_Database(db)).run(records["request"])
+
+        assert _one(db, "SELECT state FROM public.data_purge_requests WHERE id = %s",
+                    (records["request"],)) != "done"
+        stopped = {item["ref"] for item in takes._left_for_review(db, records["request"])
+                   if item["reason"] == "EXPLICIT_RESOLVER_REQUIRED"}
+        assert {f"dependency:{code}" for code in THE_THREE} <= stopped
+        assert _rows(db, records) == {
+            "shown": 1, "answers": 2, "versions": 2, "job": 1, "events": 2}
+
+
 class TestWithTheSignedRulesTheErasureFinishes:
 
     @pytest.fixture(autouse=True)
@@ -367,3 +348,12 @@ class TestWithTheSignedRulesTheErasureFinishes:
                 "rule": "job-evidence-v1"}, code
         assert _rows(db, kept) == {
             "shown": 1, "answers": 2, "versions": 2, "job": 1, "events": 2}
+
+    def test_outside_a_purge_the_trigger_refuses_a_delete(self, db):
+        records = _records(db, takes._account_with_one_take(db))
+        for table in ("take_feedback_exposure", "take_feedback_self_report"):
+            with pytest.raises(psycopg2.Error) as refused:
+                _one(db, f"DELETE FROM public.{table} WHERE take_session_id = %s "
+                         "RETURNING 1", (records["take"],))
+            assert "immutable feedback evidence" in str(refused.value)
+        assert _rows(db, records)["shown"] == 1

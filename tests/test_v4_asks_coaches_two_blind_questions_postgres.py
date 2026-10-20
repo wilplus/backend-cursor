@@ -1,34 +1,53 @@
-"""0453: V4 asks coaches two blind questions (V4 B1.8/B1.9, build plan
-D-ML-13), on the disposable rehearsal database: the tables' own checks hold
-each sheet to its versions, slices and answer shapes, and the door is the
-service role's alone."""
+"""
+STORY    As a coach, I want each pick sheet answered with one of its own
+         clips, and the machine's picks behind a door only the server opens,
+         so that my blind answers are clean.
+OUTCOME
+  O1  An answer among the sheet's clips is kept; an answer outside them is
+      refused by the table itself.
+  O2  NEVER-2: a coach's own login (anon, authenticated) cannot read the
+      sheets, where the machine's picks are stored; only service_role can
+      read and write them.
+PROVES   O1 -> test_a_pick_sheet_is_answered_with_one_of_its_clips
+         O2 -> test_only_the_service_role_opens_the_door
+WHY      0453, V4 B1.8/B1.9, build plan D-ML-13 (BLIND COACH).
+"""
 from __future__ import annotations
 
+import os
 import pathlib
 import uuid
 
 import psycopg2
 import psycopg2.errors
+import psycopg2.extras
 import pytest
 
-from tests import test_a_take_draws_its_random_moments_postgres as draw_suite
-from tests import (
-    test_the_shadow_writer_accepts_the_frame_the_code_builds_postgres as base,
-)
-
-DSN = base.DSN
+DSN = os.environ.get("CONFIDENT_MOMENT_REHEARSAL_DSN", "")
 pytestmark = pytest.mark.skipif(not DSN, reason="disposable confident-moment rehearsal only")
 MIGRATION = pathlib.Path(__file__).resolve().parents[1] / "migrations" / "v4_asks_coaches_two_blind_questions.sql"
+TABLES = ("public.v4_moment_pick_sheets", "public.v4_surer_sheets")
 
 
 @pytest.fixture
 def cur():
-    yield from base.cur.__wrapped__()
-
-
-def _apply(cur):
-    cur.execute(draw_suite._body(MIGRATION))
-    cur.execute(draw_suite._body(MIGRATION))
+    """A transaction on the disposable database, rolled back after the test,
+    with the migration applied twice (it must be idempotent)."""
+    if not psycopg2.extensions.parse_dsn(DSN).get("dbname", "").startswith(
+            "willab_confident_moment_"):
+        raise RuntimeError("Refusing a non-disposable database")
+    conn = psycopg2.connect(DSN)
+    conn.autocommit = False
+    body = "\n".join(line for line in MIGRATION.read_text().splitlines()
+                     if line.strip() not in ("BEGIN;", "COMMIT;"))
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as c:
+            c.execute(body)
+            c.execute(body)
+            yield c
+    finally:
+        conn.rollback()
+        conn.close()
 
 
 def _pick(cur, **kw):
@@ -43,11 +62,35 @@ def _pick(cur, **kw):
     return cur.fetchone()
 
 
-def test_a_pick_sheet_is_answered_once_with_one_of_its_clips(cur):
-    _apply(cur)
+def test_a_pick_sheet_is_answered_with_one_of_its_clips(cur):
     sheet = _pick(cur)
-    cur.execute("UPDATE public.v4_moment_pick_sheets SET answer_snippet_id = 'a', "
-                "answered_at = now() WHERE id = %s", (sheet["id"],))
+    cur.execute("UPDATE public.v4_moment_pick_sheets SET answer_snippet_id = 'c', "
+                "answered_at = now() WHERE id = %s RETURNING answer_snippet_id", (sheet["id"],))
+    assert cur.fetchone()["answer_snippet_id"] == "c"
     with pytest.raises(psycopg2.errors.CheckViolation):
         cur.execute("UPDATE public.v4_moment_pick_sheets SET answer_snippet_id = 'zzz' "
                     "WHERE id = %s", (sheet["id"],))
+
+
+def _can(cur, role: str, sql: str) -> bool:
+    cur.execute("SAVEPOINT door")
+    try:
+        cur.execute(f"SET LOCAL ROLE {role}")
+        cur.execute(sql)
+        return True
+    except psycopg2.errors.InsufficientPrivilege:
+        return False
+    finally:
+        cur.execute("ROLLBACK TO SAVEPOINT door")
+
+
+def test_only_the_service_role_opens_the_door(cur):
+    _pick(cur)
+    for table in TABLES:
+        read = f"SELECT * FROM {table}"
+        for role in ("anon", "authenticated"):
+            assert not _can(cur, role, read), (role, table)
+        assert _can(cur, "service_role", read), table
+    assert _can(cur, "service_role",
+                "UPDATE public.v4_moment_pick_sheets SET answer_snippet_id = 'a', "
+                "answered_at = now()")

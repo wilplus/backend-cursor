@@ -19,7 +19,7 @@ import sentry_sdk
 from flask import jsonify, request
 
 from config import Config
-from routes.admin import is_admin, require_admin_or_coach
+from routes.admin import is_admin, require_admin_or_coach, require_founder
 from routes.phase2_guard import operational_purpose_disabled
 from routes.v2.blueprint import v2_bp
 from routes.v2.processing_authorization import speaker_provider_route
@@ -2032,6 +2032,34 @@ def v2_coach_archive_training_import(session_id):
                        session_id, e)
         return jsonify({"code": "SERVER_ERROR",
                         "error": "could not archive the import"}), 500
+
+
+@v2_bp.route("/coach/training-imports/<session_id>/erase", methods=["POST"])
+@require_founder
+def v2_coach_erase_training_import(session_id):
+    """ERASE a training import for good: the founder only (2026-10-19).
+
+    Unlike the archive above, nothing comes back: the audio, the moments,
+    the transcript and every judgement go (services/training_import_erase).
+    For audio we hold no rights to.
+
+    200 {erased: true, session_id, deleted} · 403 · 404 · 409 · 500
+    """
+    from services.training_import_erase import (
+        EraseRefused, erase_training_import,
+    )
+    if not _is_valid_uuid(str(session_id)):
+        return jsonify({"code": "NOT_FOUND", "error": "import not found"}), 404
+    try:
+        return jsonify(erase_training_import(db, str(session_id))), 200
+    except EraseRefused as refusal:
+        return jsonify({"code": refusal.code,
+                        "error": "could not erase the import"}), refusal.status
+    except Exception as e:
+        logger.error("erase training import failed sid=%s: %s",
+                     session_id, e, exc_info=True)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not erase the import"}), 500
 
 
 @v2_bp.route("/coach/training-imports/<session_id>/restore",

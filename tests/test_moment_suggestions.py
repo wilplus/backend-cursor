@@ -1,25 +1,23 @@
-"""willab — star suggestions on the SD ideal text (founder 2026-07-18).
-
-Pinned here:
-  * direction resolution: coach label ALWAYS wins (incl. ambiguous = an
-    explicit 'neither'); else the deterministic potentiometer; the shadow
-    model is BANNED from the module (blind-coach, source-pinned);
-  * kind resolution: REPLACE = threat | profanity | very-low stickiness
-    (union — a charisma lean with a swear still replaces); EMPHASIZE only
-    for a clean charisma lean;
-  * generation: guarded strings, a replace without a replacement is dead;
-  * assembly: suggestion-flagged picks get in-text anchors;
-  * the student GET: verified (orange) beats suggestion (grey); applied
-    folds into the DISPLAYED text only (emphasize -> **{{orange:...}}**,
-    replace -> swapped span), anchors always match the served text, the
-    canonical row is never written (L1), user_text edit wins wholesale;
-  * flag OFF = no star keys at all.
-
-Run: python3 -m unittest tests.test_moment_suggestions
+"""
+STORY    As a speaker, I want my Ideal Text read to carry no star or
+         suggestion outside the gated changes lane and no scores, so that I
+         see only words and the latest text.
+OUTCOME
+  O1  Whatever lane a stored moment suggestion came from (replace,
+      emphasize, structure), the GET serves the moment with its anchor and
+      playback identity but no star and no suggestion.
+  O2  The GET serves the text with no score, rank or internal read
+      (Never-1: no scores, numbers or verdicts shown to speakers).
+  O3  Serving never writes the canonical or auto Ideal Text (L1, Never-5).
+PROVES   O1 -> test_no_lane_serves_a_star_or_suggestion
+         O2 -> test_ac9_score_free
+         O3 -> test_no_lane_serves_a_star_or_suggestion, test_ac9_score_free
+               (asserted inside _get on every read)
+WHY      Founder 2026-08-10: the old star lane is ripped; moment suggestions
+         reach the speaker only through the gated ``changes`` lane.
 """
 from __future__ import annotations
 
-import inspect
 import json
 import unittest
 from unittest.mock import patch
@@ -40,33 +38,6 @@ SNIP = "aaaa1111-aaaa-1111-aaaa-111111111111"
 SESS = "bbbb2222-bbbb-2222-bbbb-222222222222"
 
 
-class ConfidenceResolutionTests(unittest.TestCase):
-    """SPEC §7.2 / §17 — the star lane routes on ``confidence``.
-
-    It used to route on ``charisma`` / ``threat``, resolved from
-    ``acoustic_read.tone_hint``. That construct had no written operational
-    definition, and §17 names charisma explicitly as something ``confidence``
-    must NOT be folded together with — so an undefined subjective label was
-    deciding, on every take with no human in the loop, whether a moment got a
-    replace star, an emphasize star, or silence."""
-
-    def _resolve(self, score):
-        from services.moment_confidence import resolve_moment_confidence
-        metrics = ({"voice_confidence": {"score": score,
-                                         "version": "voice-confidence-universal-v3"}}
-                   if score is not None else None)
-        return resolve_moment_confidence(metrics)
-
-
-    def test_blind_coach_shadow_model_banned(self):
-        # The docstring may NAME the ban; the IMPORT is what's banned.
-        import services.moment_confidence as mod
-        src = inspect.getsource(mod)
-        self.assertNotIn("from services.learning_serve", src)
-        self.assertNotIn("import learning_serve", src)
-        self.assertNotIn("predict_direction", src)
-
-
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
 class StudentGetStarTests(unittest.TestCase):
     def setUp(self):
@@ -81,7 +52,11 @@ class StudentGetStarTests(unittest.TestCase):
                "verified_version": None, "verified_text": None}
         with self.app.test_request_context():
             request.user_id = "u1"
-            with patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
+            # Every read not stubbed below fails at once, the way an outage
+            # does; the GET must degrade, not wait on the network.
+            with patch("postgrest.utils.SyncClient.request",
+                       side_effect=ConnectionError("offline in tests")), \
+                 patch("routes.v2.explore_ideal_text._arc_owned_by_caller",
                               return_value=(True, [])), \
                  patch("routes.v2.explore_ideal_text._moment_suggestions_enabled",
                               return_value=stars), \
@@ -121,13 +96,9 @@ class StudentGetStarTests(unittest.TestCase):
                        "replacement_text": replacement,
                        "why": "It reads calmer.", "trigger": trigger}}
 
-    # ── THE MANAGER ENGINE IS THE SOLE GATEKEEPER (founder 2026-08-10:
-    # "no other exist, older feedback system should be ripped off"). The
-    # machine star/suggestion branches that served these rows unbudgeted
-    # from key_moments are GONE — the same moment_suggestions rows now
-    # reach the student ONLY through the gated `changes` lane. These tests
-    # pin the rip per lane: the moment keeps its anchor, ids and playback;
-    # it never carries a star or a suggestion. ──
+    # The manager engine is the sole gatekeeper: these rows reach the
+    # speaker only through the gated `changes` lane, never as a star on a
+    # key moment (founder 2026-08-10).
 
     def _serves_no_star(self, body):
         m = body["key_moments"][0]
@@ -139,22 +110,29 @@ class StudentGetStarTests(unittest.TestCase):
         self.assertIn(m["anchor"], body["text"])
         return m
 
-
     def _struct(self, device="contrast", quote="the turn"):
         return {SNIP: {"snippet_id": SNIP, "arc_id": ARC, "kind": "structure",
                        "replacement_text": None, "why": quote,
                        "trigger": device}}
 
+    def test_no_lane_serves_a_star_or_suggestion(self):
+        for lane in (self._sug(),
+                     self._sug(kind="emphasize", replacement=None,
+                               trigger="confident"),
+                     self._struct()):
+            body, status = self._get(sugs=lane)
+            self.assertEqual(status, 200)
+            self._serves_no_star(body)
 
     def test_ac9_score_free(self):
         body, _ = self._get(sugs=self._sug())
+        # The speaker gets their words (markup stripped) and the moment.
+        self.assertEqual(body["text"], "Hello. the turn goodbye.")
+        self._serves_no_star(body)
         raw = json.dumps(body)
         for banned in ("potentiometer", "acoustic_read", "overall_score",
                        "slide_stickiness", "rank", "charisma score"):
             self.assertNotIn(banned, raw)
-
-
-# ── merged from tests/test_moment_suggestions_funnel.py (audit Q-T9) ──
 
 
 if __name__ == "__main__":

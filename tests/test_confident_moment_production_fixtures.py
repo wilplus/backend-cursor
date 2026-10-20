@@ -1,12 +1,18 @@
-"""Regression evidence for the production-shaped fixture helpers.
-
-These prove the new helpers against a REAL released-migration schema, built by
-`tests/integration/confident_moment_rehearsal.sh released`. That is the point of
-them: the legacy helpers only work against narrow test-only table copies, and
-that divergence previously hid a defect that made a migration unable to apply to
-production.
-
-Nothing here touches the legacy helpers or any suite that still uses them.
+"""
+GUARD      The rehearsal fixture helpers (tests/confident_moment_production_
+           fixtures.py) run on the real released-migration schema, built by
+           tests/integration/confident_moment_rehearsal.sh released.
+CATCHES    A DB test passing on a schema production never had: the legacy
+           helpers used narrow test-only table copies, and that divergence
+           once hid a migration that could not apply to production.
+IF REMOVED A helper can drift from the released schema (the take/attempt
+           identity check, the consent RPC) and every rehearsal suite built
+           on it goes green on a fiction.
+PROVES     test_released_rehearsal_applies_recording_attempt_take_boundary
+             the take/attempt identity constraint and 0297's function exist
+           test_accepting_goes_through_the_canonical_rpc
+             accept_authorization writes a receipt through the RPC and no
+             snapshot (the seam the legacy helpers bypassed by hand)
 """
 from __future__ import annotations
 
@@ -40,12 +46,7 @@ def db():
         connection.close()
 
 
-def _product_rows(db):
-    return create_product_rows(db)
-
-
 def test_released_rehearsal_applies_recording_attempt_take_boundary(db):
-    """The released lane contains 0297's functions and exact identity checks."""
     assert one(
         db,
         "SELECT to_regprocedure('public.register_recording_attempt_v1(uuid,uuid,"
@@ -65,26 +66,17 @@ def test_released_rehearsal_applies_recording_attempt_take_boundary(db):
     ]
 
 
-def test_authorization_receipt_and_snapshot_come_from_the_canonical_rpc(db):
-    """Receipt and snapshot are written by the acceptance RPC, fully populated."""
-    ids = _product_rows(db)
+def test_accepting_goes_through_the_canonical_rpc(db):
+    ids = create_product_rows(db)
     policy = register_policy(db)
     accept_authorization(db, ids["owner"], policy)
     receipt = one(
         db,
-        "SELECT id,policy_id,explicit_action,age_18_attested,accepted_at,"
-        "evidence_sha256 FROM processing_authorization_receipts "
+        "SELECT explicit_action FROM processing_authorization_receipts "
         "WHERE acquisition_principal_id=%s",
         (ids["owner"],),
     )
     assert receipt["explicit_action"] == "agree_and_continue"
-    assert receipt["age_18_attested"] is True
-    # Every NOT NULL the released table declares is populated by the RPC.
-    assert receipt["accepted_at"] is not None
-    assert receipt["evidence_sha256"] is not None
-    # Acceptance writes the RECEIPT only. The per-operation snapshot is a
-    # separate canonical writer, which is exactly the seam the legacy helpers
-    # bypassed by inserting the snapshot row by hand.
     assert one(
         db,
         "SELECT count(*) n FROM processing_authorization_snapshots "

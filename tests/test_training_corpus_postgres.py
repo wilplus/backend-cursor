@@ -1,18 +1,26 @@
-"""Training copies are copies (0375, SPEC-training-corpus §4, P3).
+"""
+STORY    As a speaker, I want training copies made only while my training yes
+         is active, so that withdrawing stops any new copy.
+         (Critical path: consent.)
+OUTCOME
+  O1  With an active yes (and the corpus retention rule in force) a copy is
+      made, stamped with the yes it was made under.
+  O2  No copy without an active yes, and none after the yes is withdrawn.
+  O3  A source is copied once: copying it again returns the same copy, and a
+      changed source is refused rather than overwritten.
+  O4  A copy's content never changes; only its purge state moves, forward.
+  O5  The copies hold no foreign key to a product table (lineage by value),
+      and browser roles reach neither the table nor the door.
+PROVES   O1 -> test_an_active_yes_makes_a_copy
+         O2 -> test_no_copy_without_an_active_yes
+            -> test_no_copy_after_the_yes_is_withdrawn
+         O3 -> test_a_source_is_copied_once
+         O4 -> test_a_copy_never_changes_and_its_state_only_moves_forward
+         O5 -> test_no_product_foreign_keys_and_no_browser_access
+WHY      0375 (SPEC-training-corpus section 4, P3; invariant 4).
 
-Run on the released rehearsal lane, after tests/test_training_consent_postgres.py
-has registered the test training policy. Pins:
-
-  * SPEC §10 invariant 4: no column of training_corpus_items is a foreign key
-    to a product table;
-  * the one door refuses without an active training yes, without an active
-    `training_corpus` retention rule, and after a withdrawal;
-  * a copy is recorded once per (grant, kind, source), and a changed source
-    is refused rather than overwritten;
-  * shape: audio needs its object, a coach label needs the coach provenance,
-    source material carries none;
-  * the content never changes; only the purge state moves, and only forward;
-  * browser roles reach nothing.
+Runs on the released rehearsal lane after tests/test_training_consent_postgres.py,
+which registers the test training policy (made here if it did not run).
 """
 from __future__ import annotations
 
@@ -155,3 +163,59 @@ def test_no_copy_after_the_yes_is_withdrawn(db, active_rule, yes):
             now(), %s)).id""", (principal, grant, f"w-{uuid.uuid4()}"))
     with pytest.raises(psycopg2.Error, match="TRAINING_CORPUS_NO_ACTIVE_YES"):
         _record(db, _item(principal, grant))
+
+
+def test_an_active_yes_makes_a_copy(db, active_rule, yes):
+    principal, grant = yes
+    copy = _record(db, _item(principal, grant))
+    assert copy["state"] == "active"
+    assert str(copy["training_grant_event_id"]) == grant
+    assert copy["consent_state"]["active"] is True
+    assert copy["content"] == {"text": "hello there"}
+
+
+def test_a_source_is_copied_once(db, active_rule, yes):
+    principal, grant = yes
+    item = _item(principal, grant)
+    first = _record(db, item)
+    again = _record(db, item)
+    assert again["id"] == first["id"]
+    assert _one(db, "SELECT count(*) FROM public.training_corpus_items "
+                    "WHERE training_grant_event_id = %s", (grant,)) == 1
+    with pytest.raises(psycopg2.Error, match="TRAINING_CORPUS_SOURCE_CHANGED"):
+        _record(db, {**item, "sha": "2" * 64})
+
+
+def test_a_copy_never_changes_and_its_state_only_moves_forward(db, active_rule, yes):
+    principal, grant = yes
+    copy = _record(db, _item(principal, grant))["id"]
+    with pytest.raises(psycopg2.Error, match="TRAINING_CORPUS_ITEM_IMMUTABLE"):
+        _one(db, """UPDATE public.training_corpus_items
+                       SET content = '{"text": "edited"}'::jsonb
+                     WHERE id = %s RETURNING id""", (copy,))
+    _one(db, "UPDATE public.training_corpus_items SET state = 'purge_pending' "
+             "WHERE id = %s RETURNING id", (copy,))
+    with pytest.raises(psycopg2.Error, match="TRAINING_CORPUS_STATE_CANNOT_GO_BACK"):
+        _one(db, "UPDATE public.training_corpus_items SET state = 'active' "
+                 "WHERE id = %s RETURNING id", (copy,))
+    assert _one(db, "SELECT state FROM public.training_corpus_items WHERE id = %s",
+                (copy,)) == "purge_pending"
+
+
+def test_no_product_foreign_keys_and_no_browser_access(db):
+    with db.cursor() as cur:
+        cur.execute("""
+            SELECT confrelid::regclass::text FROM pg_constraint
+             WHERE conrelid = 'public.training_corpus_items'::regclass
+               AND contype = 'f' ORDER BY 1""")
+        targets = [r[0] for r in cur.fetchall()]
+    # Only the consent and retention records it is governed by.
+    assert targets == ["data_retention_rules", "ml_consent_events",
+                       "owner_principals"]
+    door = ("public.record_training_corpus_item_v1(uuid, uuid, text, text, "
+            "text, text, text, text, jsonb, text, text, text, text)")
+    for role in ("anon", "authenticated"):
+        assert _one(db, "SELECT has_table_privilege(%s, "
+                        "'public.training_corpus_items', 'SELECT')", (role,)) is False
+        assert _one(db, "SELECT has_function_privilege(%s, %s, 'EXECUTE')",
+                    (role, door)) is False
