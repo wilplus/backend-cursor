@@ -916,6 +916,10 @@ O3 -> test_a_provable_take_serves_rows_and_hands_back_the_recorded_bundle
 NOTE     O2 empties the bundle index through the private `_canonical_index`:
 no real inventory can produce a row the bundle lacks, so this is the
 one seam that reaches the refusal.",
+tests/test_founder_clears_a_blind_line.py,Story,"As the founder, I want to clear what waits on a blind list of the coach queue, so that it stays empty until next week's items come.","O1  A cleared item is never shown again.
+O2  A line cleared this week does not refill before next week, on each of
+the four lines.","O1 -> FounderClearsABlindLineTests::test_a_cleared_item_is_never_shown_again
+O2 -> FounderClearsABlindLineTests::test_a_line_cleared_this_week_waits_for_next_week","Founder 2026-10-20: the ⋯ on Do you hear it?, Pick the most confident, Pick the moment for feedback and Which sounds surer (""New ones come next week. Answers already given stay.""); 0482."
 tests/test_guest_readout_video.py,Story,"As a signed-out speaker, I want to reopen my own readout with my guest pass but never someone else's, and to have a video upload refused clearly, so that my recording stays private and the record step stays audio-only.","O1  My guest pass (or my account, once claimed) opens my readout, with
 its state.
 O2  A bare Take id, or someone else's Take, answers 404 SESSION_NOT_FOUND
@@ -1826,15 +1830,17 @@ placed exactly once, and every re-pointed locator is one the project
 graph fills.
 O2  A re-pointed table counts only this project's rows; an account table
 nobody placed, where the account has rows, stops the purge for review.
-O4  A speaker with lesson bookings can delete a project: bookings belong
-to the account, so the project purge neither targets them nor stops
-for review over them.
+O4  A speaker with lesson bookings, goal history, a coach's card about
+their goal, Will's private note, feedback answers and memory events
+can delete a project without it stopping for review: the project's
+Takes' answers and events go with it, the account's rows stay, and the
+account purge still deletes every one of them.
 O3  The project orchestrator refuses an account request and the account
 orchestrator refuses a project request; each request is routed to its
 own orchestrator.","O1 -> test_every_placement_names_an_account_keyed_entry_once
 O2 -> test_a_project_purge_counts_its_project_and_stops_on_the_unplaced
 O3 -> test_neither_orchestrator_runs_the_others_request
-O4 -> test_bookings_never_stop_or_join_a_project_purge","P1-B, decisions log N8/N12: the project graph lists no principal or user, so an unplaced account-keyed table would reach no row at all. Python orchestrator only, over the in-memory `PurgeDb` of tests/test_purge_user_locators.py; the real project purge runs on the released lane in tests/test_project_purge_postgres.py. Whether each re-pointed column exists in the schema is not checked here: that purge would fail on a missing column there."
+O4 -> test_a_project_purge_finishes_for_a_speaker_will_knows","P1-B, decisions log N8/N12: the project graph lists no principal or user, so an unplaced account-keyed table would reach no row at all. O4: found 2026-10-20, the WIL-74 tables (speaker_memory and its events, feedback checks, goal history, the coach's goal card) were never placed, so a project purge for any speaker with a note stopped for review with PROJECT_SCOPE_UNRESOLVED. Python orchestrator only, over the in-memory `PurgeDb` of tests/test_purge_user_locators.py; the real project purge runs on the released lane in tests/test_project_purge_postgres.py. Whether each re-pointed column exists in the schema is not checked here: that purge would fail on a missing column there."
 tests/test_project_setup.py,Story,"As a speaker recording Take 2, I want the recording screen set up from my project: the words from my latest spoken Take and the presentation from my first Take that had a deck, so that every Take is said against the same slides. (Critical path: next Take.)","O1  The slides and presentation come from the first spoken Take that
 carried a deck; the words (topic, audience) from the latest spoken
 Take; a read-aloud Take never counts.
@@ -2287,7 +2293,12 @@ O4  From Take 2, a speaker without a WhatsApp number is asked for it
 after the Take's card, and the summary waits under the ask
 (services/after_take.py).
 O5  The summary and the ask after it sort under the walk's last step,
-even when my browser's clock runs ahead of the server's.","O1 -> test_a_take_gets_one_summary_from_its_real_progress,
+even when my browser's clock runs ahead of the server's.
+O6  The summary can point back to what I said in an older Take (the same
+project first), never this Take, never a Take whose processing
+authorization is not in force; a failing or slow lookup leaves the
+summary as it was, and a number it brings in still falls back to the
+approved copy (founder 2026-10-20, step 3).","O1 -> test_a_take_gets_one_summary_from_its_real_progress,
 test_the_summary_knows_the_talk_and_asks_for_whatsapp_once
 O2 -> test_a_reply_with_a_number_falls_back_to_the_signed_copy,
 test_a_reply_that_drifts_from_the_signed_lines_is_the_signed_copy,
@@ -2296,7 +2307,11 @@ O3 -> test_a_coach_update_rewrites_the_summary_in_place_and_keeps_the_first,
 test_a_shared_coach_word_rewrites_a_reviewed_take_once_per_word,
 test_a_coach_word_shared_after_the_review_is_its_own_bubble
 O4 -> test_the_summary_knows_the_talk_and_asks_for_whatsapp_once
-O5 -> test_the_summary_and_its_ask_sort_under_the_walk",Never-rule 1; founder lock 2026-10-12 (section 3) and 2026-10-14; founder 2026-10-20 (the chat keeps the order it shows; one action at a time).
+O5 -> test_the_summary_and_its_ask_sort_under_the_walk
+O6 -> test_the_summary_points_back_to_an_older_take_never_this_one,
+test_a_take_not_in_force_never_reaches_the_summary,
+test_a_failing_or_slow_lookup_leaves_the_summary_as_today,
+test_an_earlier_take_with_a_number_still_falls_back_to_the_signed_copy",Never-rule 1; founder lock 2026-10-12 (section 3) and 2026-10-14; founder 2026-10-20 (the chat keeps the order it shows; one action at a time).
 tests/test_take_two_rewrites_an_edited_slide_postgres.py,Story,"As a speaker who edited a Paragraph, I want Take 2 to replace the slides I spoke with what I said, keep the rest and my helper words, and keep my edit in history, so that the Ideal Text is my latest words and nothing is lost.","O1  On a real database, a slide I spoke in Take 2 shows exactly what I
 said, even if I had edited it, on the same Paragraph.
 O2  A slide I did not speak keeps its last version, including my own

@@ -112,6 +112,7 @@ REGISTER = {
         "services/snippet_transcription.py", "_DISFLUENT_PROMPT"),
     "shared_blocks.admin_dont_ask": SourceRef(
         "services/utils.py", "render_admin_dont_ask_block"),
+    "take_summary.earlier_facts": SourceRef("services/take_summary.py", "earlier_facts"),
 
     # ── prompt-shaped text that never hits a live API but drives models
     #    downstream (fine-tuning export, backlog email for coding agents,

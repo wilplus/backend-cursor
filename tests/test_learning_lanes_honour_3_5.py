@@ -184,6 +184,9 @@ class _PickDb(_Ledger):
     def count_coach_blind_answers(self, coach, week):
         return 0
 
+    def blind_line_cleared(self, line, owner_id, week):
+        return False
+
     def list_coach_block_picks_pending(self, coach):
         return [p for p in self.picks if not p.get("answered_at")]
 

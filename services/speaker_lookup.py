@@ -16,6 +16,11 @@ Public API:
       fails. Never raises.
   lookup_block(snippets) -> str
       Them as a private block for Will's prompt; '' when there are none.
+  earlier_takes(database, user_id, wanted, *, older, first) -> list[Snippet]
+      For the summary after a Take (step 3), which has no question: the
+      pieces of the speaker's older Takes' transcripts that share the most
+      of ``wanted`` (``key_terms`` of the current Take); same checks, never
+      coach words or chat. Never raises.
 
 What it may read, and nothing else (founder 2026-10-20):
   - Takes: the speaker's newest finished spoken Takes
@@ -352,3 +357,60 @@ def lookup_block(snippets: list[Snippet]) -> str:
             "Let it steer your answer. You may point to a moment in their own "
             "words, quoting at most a few of them. Never repeat their answers to "
             "\"Did this help?\", and never give a number, a score or a verdict.\n")
+
+
+# ── a surface with no question: the summary after a Take (step 3) ──────────
+
+#: How many of the current Take's words make the query.
+KEY_WORDS = 24
+#: How many older pieces reach the summary.
+TOP_EARLIER = 3
+
+
+def key_terms(text: Any, limit: int = KEY_WORDS) -> set[str]:
+    """The text's most frequent content words (as ``terms``), at most
+    ``limit``; ties go to the word said first. Pure."""
+    from collections import Counter
+    words = (w.replace("'", "") for w in _WORD.findall(str(text or "").lower()))
+    counts = Counter(_stem(w) for w in words if len(w) > 1 and w not in _STOPWORDS)
+    return {w for w, _n in counts.most_common(limit)}
+
+
+def earlier_takes(database: Any, user_id: Any, wanted: set[str], *,
+                  older: Callable[[dict], bool],
+                  first: Callable[[dict], bool] = lambda _take: False) -> list[Snippet]:
+    """For a surface with no question (the summary after a Take): the
+    pieces of the speaker's older Takes' transcripts that share the most
+    words with ``wanted`` (``key_terms`` of the current Take), best first.
+
+    Only Takes ``older`` lets through (the caller leaves the current Take
+    and anything after it out), in a visible project and in force, by the
+    same checks as ``lookup`` (a failed check lets no Take through). Never
+    coach words, never chat. The Takes ``first`` picks (the same project)
+    come first. Never raises: on any failure, []."""
+    if not user_id or not wanted:
+        return []
+    uid = str(user_id)
+    try:
+        takes = [t for t in _own_takes(database, uid) if older(t)]
+        if not takes:
+            return []
+        from services.parallel import run_in_parallel
+        hidden, in_force = run_in_parallel(
+            lambda: _hidden_arcs(database, takes), lambda: _takes_in_force(database, takes))
+        allowed = {str(t["id"]) for t in takes
+                   if str(t.get("arc_id") or "") not in hidden and str(t["id"]) in in_force}
+        near = {str(t["id"]) for t in takes if first(t)}
+        items = [i for i in _transcript_items(takes) if i[4] in allowed]
+        ranked = (_rank(wanted, [i for i in items if i[4] in near])
+                  + _rank(wanted, [i for i in items if i[4] not in near]))
+        seen, top = set(), []
+        for snippet in ranked:
+            if snippet.text not in seen:
+                seen.add(snippet.text)
+                top.append(snippet)
+        return top[:TOP_EARLIER]
+    except Exception as error:  # noqa: BLE001 -- the summary is written as before
+        logger.warning("speaker lookup (earlier takes) failed user=%s: %s", uid, error,
+                       exc_info=True)
+        return []
