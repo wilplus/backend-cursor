@@ -916,6 +916,10 @@ O3 -> test_a_provable_take_serves_rows_and_hands_back_the_recorded_bundle
 NOTE     O2 empties the bundle index through the private `_canonical_index`:
 no real inventory can produce a row the bundle lacks, so this is the
 one seam that reaches the refusal.",
+tests/test_founder_clears_a_blind_line.py,Story,"As the founder, I want to clear what waits on a blind list of the coach queue, so that it stays empty until next week's items come.","O1  A cleared item is never shown again.
+O2  A line cleared this week does not refill before next week, on each of
+the four lines.","O1 -> FounderClearsABlindLineTests::test_a_cleared_item_is_never_shown_again
+O2 -> FounderClearsABlindLineTests::test_a_line_cleared_this_week_waits_for_next_week","Founder 2026-10-20: the ⋯ on Do you hear it?, Pick the most confident, Pick the moment for feedback and Which sounds surer (""New ones come next week. Answers already given stay.""); 0482."
 tests/test_guest_readout_video.py,Story,"As a signed-out speaker, I want to reopen my own readout with my guest pass but never someone else's, and to have a video upload refused clearly, so that my recording stays private and the record step stays audio-only.","O1  My guest pass (or my account, once claimed) opens my readout, with
 its state.
 O2  A bare Take id, or someone else's Take, answers 404 SESSION_NOT_FOUND
