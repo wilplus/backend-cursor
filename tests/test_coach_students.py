@@ -4,10 +4,7 @@ STORY    As a speaker, I want my coach to see me only by pseudonym, so that
 OUTCOME
   O1  The coach's roster shows each speaker by pseudonym and domain; no
       name or email reaches it, even when the profile holds them.
-  O2  The roster also carries no user_id. NOT TRUE TODAY: it sends the
-      user_id as the drill key (routes/v2/coach.py, "user_id": str(uid)),
-      though the route's own docstring says "NEVER user_id"; pinned as a
-      known gap that turns red once fixed.
+  O2  The roster also carries no user_id (founder 2026-10-20).
   O3  The Students screens' walk-take read stays off: 404 for a valid id,
       400 for a bad one.
 PROVES   O1 -> test_the_roster_shows_a_pseudonym_and_no_name_or_email
@@ -23,7 +20,6 @@ import inspect
 import json
 from unittest.mock import patch
 
-import pytest
 from flask import Flask, request
 
 from routes.v2 import coach as v2_coach
@@ -59,8 +55,6 @@ def test_the_roster_shows_a_pseudonym_and_no_name_or_email():
     assert "Jane" not in text and "jane@example.com" not in text
 
 
-@pytest.mark.xfail(strict=True, reason="KNOWN GAP: the coach roster sends the speaker's "
-                   "user_id as its drill key (routes/v2/coach.py v2_coach_students)")
 def test_the_roster_carries_no_user_id():
     _status, body = _roster()
     assert UID not in json.dumps(body)
