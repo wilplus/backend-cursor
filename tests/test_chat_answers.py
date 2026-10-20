@@ -14,7 +14,8 @@ OUTCOME
   O5  Feedback about the app is kept like any turn, with nothing marking it
       for a person to read.
   O6  A reply to the summary after a Take reaches Will with that summary,
-      read from the speaker's own thread.
+      read from the speaker's own thread; the signed fallback is marked as
+      the fixed message, so Will knows the specifics are missing.
   O7  When the app sends what is on my screen, Will reads my bubbles in
       the order I see them, cards included, not the stored thread.
   O8  A number I type under the WhatsApp ask is saved as the form saves it
@@ -121,6 +122,12 @@ class ChatAnswersTests(ChatRouteHarness):
         self.assertEqual(self.histories[-1], [
             {"role": "user", "content": "hi Will"},
             {"role": "assistant", "content": "Churn in Q3, nailed it! How did it go?"}])
+        self.thread[1] = {**self.thread[1], "body": "Your second take is in 🎉",
+                          "metadata": {"summary": True, "written": False, "take_index": 2}}
+        self.post({"question": "great, yes!", "persist": True, "client_id": "now"})
+        self.assertEqual(self.histories[-1][-1]["content"],
+                         "[The app's fixed message after Take 2; the written summary failed]\n"
+                         "Your second take is in 🎉")
 
     def test_will_reads_the_screen_in_the_order_it_is_drawn(self):
         self.thread = [{"client_id": "x", "role": "bot", "kind": "text",

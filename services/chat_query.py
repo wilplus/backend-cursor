@@ -400,6 +400,18 @@ def _retired(row: dict) -> bool:
         meta.get("note") in ("human_check", "coach_video_shared")
 
 
+def _fallback_label(row: dict) -> str:
+    """The signed fallback after a Take, told to Will as such (founder
+    2026-10-20), so he knows the written summary's specifics are missing;
+    the frontend's screen copy says the same. Empty for any other row."""
+    meta = row.get("metadata") or {}
+    if not (meta.get("summary") is True and meta.get("written") is False):
+        return ""
+    take = meta.get("take_index")
+    which = f"Take {take}" if isinstance(take, int) else "this Take"
+    return f"[The app's fixed message after {which}; the written summary failed]\n"
+
+
 def thread_history(database, user_id, question: str, user_client_id=None) -> list:
     """A signed-in speaker's conversation, read from their own Lounge thread
     (founder 2026-10-15: "it does not hold the context"): the client sends
@@ -421,7 +433,7 @@ def thread_history(database, user_id, question: str, user_client_id=None) -> lis
                 or (user_client_id and row.get("client_id") == user_client_id)):
             continue
         turns.append({"role": "user" if row["role"] == "user" else "assistant",
-                      "content": body})
+                      "content": _fallback_label(row) + body})
     if turns and turns[-1]["role"] == "user" and turns[-1]["content"] == question:
         turns.pop()
     return turns

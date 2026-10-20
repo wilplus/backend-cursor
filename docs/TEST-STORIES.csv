@@ -362,7 +362,8 @@ O4  A feature with a page (booking) comes with its link.
 O5  Feedback about the app is kept like any turn, with nothing marking it
 for a person to read.
 O6  A reply to the summary after a Take reaches Will with that summary,
-read from the speaker's own thread.
+read from the speaker's own thread; the signed fallback is marked as
+the fixed message, so Will knows the specifics are missing.
 O7  When the app sends what is on my screen, Will reads my bubbles in
 the order I see them, cards included, not the stored thread.
 O8  A number I type under the WhatsApp ask is saved as the form saves it
