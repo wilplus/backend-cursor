@@ -85,8 +85,15 @@ def _missing_table(error: Exception) -> bool:
 
 
 def _ids(client: Any, table: str, column: str, value: str) -> list[str]:
-    rows = (client.table(table).select("id").eq(column, value)
-            .execute().data or [])
+    # Production renamed charisma_snippets to snippets: the old name is
+    # gone there, and a table that is not there holds no rows.
+    try:
+        rows = (client.table(table).select("id").eq(column, value)
+                .execute().data or [])
+    except Exception as error:  # noqa: BLE001 - database boundary
+        if _missing_table(error):
+            return []
+        raise
     return [str(r["id"]) for r in rows if r.get("id")]
 
 
@@ -167,6 +174,11 @@ def erase_training_import(database: Any, session_id: str) -> dict:
     prefix = f"willab_lab/{sid}/"
     _erase_audio([str(r["storage_path"]) for r in recordings
                   if str(r.get("storage_path") or "").startswith(prefix)])
+
+    # The session names its recording; let go of it first, so the
+    # recording's delete never depends on how that link is constrained.
+    client.table("v2_sessions").update(
+        {"recording_id": None, "recording_1_id": None}).eq("id", sid).execute()
 
     deleted: dict[str, int] = {}
     for _order, relation, column, locator in _relations():

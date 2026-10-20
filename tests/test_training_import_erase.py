@@ -35,6 +35,10 @@ class _Query:
         self.op = "delete"
         return self
 
+    def update(self, values):
+        self.op, self.values = "update", values
+        return self
+
     def eq(self, column, value):
         self.filters.append((column, {value}))
         return self
@@ -56,6 +60,9 @@ class _Query:
         hit = [r for r in rows if self._match(r)]
         if self.op == "delete":
             self.tables[self.name] = [r for r in rows if not self._match(r)]
+        if self.op == "update":
+            for row in hit:
+                row.update(self.values)
         return SimpleNamespace(data=hit)
 
 
@@ -77,7 +84,9 @@ def _database(source="training_import"):
              "storage_path": f"willab_lab/{SID}/import_ab.mp3"},
             {"id": "rec-2", "session_v2_id": OTHER,
              "storage_path": f"willab_lab/{OTHER}/take.webm"}],
-        "charisma_snippets": [
+        # Production's names: the snippet table was renamed to `snippets`
+        # (SNIPPETS_TABLE=snippets) and `charisma_snippets` no longer exists.
+        "snippets": [
             {"id": "s1", "session_id": SID}, {"id": "s9", "session_id": OTHER}],
         "confidence_labels": [
             {"snippet_id": "s1"}, {"snippet_id": "s9"}],
@@ -97,15 +106,15 @@ class EraseTrainingImport(unittest.TestCase):
 
     def test_the_import_goes_and_nothing_else_does(self):
         database, tables = _database()
-        with patch("services.training_import_erase._erase_audio") as audio:
+        with patch("services.training_import_erase.SNIPPETS_TABLE", "snippets"), \
+                patch("services.training_import_erase._erase_audio") as audio:
             result = erase_training_import(database, SID)
         audio.assert_called_once_with([f"willab_lab/{SID}/import_ab.mp3"])
         self.assertTrue(result["erased"])
         self.assertEqual(tables["v2_sessions"], [
             {"id": OTHER, "source": "interview", "arc_id": "other-arc"}])
         self.assertEqual([r["id"] for r in tables["recordings"]], ["rec-2"])
-        self.assertEqual(tables["charisma_snippets"],
-                         [{"id": "s9", "session_id": OTHER}])
+        self.assertEqual(tables["snippets"], [{"id": "s9", "session_id": OTHER}])
         self.assertEqual(tables["confidence_labels"], [{"snippet_id": "s9"}])
         self.assertEqual(tables["star_verdicts"], [{"session_id": OTHER}])
         self.assertEqual(tables["candidate_windows"], [])
