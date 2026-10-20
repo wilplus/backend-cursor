@@ -13748,7 +13748,7 @@ class DatabaseService:
         return (res.data or [None])[0]
 
     def record_take_word_pair(self, **fields: Any) -> Optional[dict]:
-        """A Take word's version (0477): in one transaction it supersedes the
+        """A Take word's version (0478): in one transaction it supersedes the
         word's current pair of the same final kind and, when it is a pair,
         is inserted. None when nothing new was written (the same words
         again, or a version that is no pair). Raises on failure; the service
@@ -13768,7 +13768,7 @@ class DatabaseService:
         out: dict[str, dict[str, int]] = {}
         for surface in SURFACES:
             # A pair a newer version of its Take word replaced is not
-            # counted (0477, the latest teaches).
+            # counted (0478, the latest teaches).
             total = (self.client.table("feedback_pairs")
                      .select("id", count="exact").eq("surface", surface)
                      .is_("superseded_at", "null").limit(1).execute())

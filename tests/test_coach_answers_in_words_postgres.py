@@ -21,7 +21,7 @@ PROVES   O1 -> test_a_line_is_answered_once_and_shared
          O4 -> test_a_take_word_pair_is_kept_and_the_latest_teaches
          O5 -> test_the_migration_recovers_each_word_s_pair_once
 WHY      Migration 0402 (founder 2026-09-30, C2 to C5); O4 and O5 migration
-         0477 (founder 2026-10-19, N79). Runs only on a disposable database
+         0478 (founder 2026-10-19, N79). Runs only on a disposable database
          whose name starts with willab_confident_moment_.
 """
 from __future__ import annotations
