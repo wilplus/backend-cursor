@@ -1,5 +1,5 @@
 """
-STORY    As a speaker, I want to be asked "Did this feedback help you?" after the
+STORY    As a speaker, I want to be asked "Did this help?" after the
          Feedback walk and have my answer kept, and as a coach I want a card
          when my speaker's goal changes, so that the founder learns whether
          feedback helps and coaches follow each speaker's goal.
@@ -21,7 +21,8 @@ PROVES   O1 -> test_the_question_closes_the_summary_but_waits_when_another_offer
          O4 -> test_skip_ends_it_without_an_answer,
                test_typing_a_button_counts_as_tapping_it_and_anything_else_goes_to_will
          O5 -> test_a_new_goal_is_kept_and_every_coach_but_the_speaker_gets_one_card_a_day
-WHY      WIL-74, founder 2026-10-19 (words signed the same day).
+WHY      WIL-74, founder 2026-10-19 (words signed the same day; the question
+         and the thank-you simplified by the founder, 2026-10-20).
 """
 from services import chat_query, feedback_check, goal_history
 from services.feedback_check import COPY
