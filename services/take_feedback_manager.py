@@ -538,7 +538,10 @@ def evidence_backed_rewrite_candidates(
     ranks the complete rewrite family instead of accepting the first fit.
 
     The second rule keeps a phrase the speaker said twice in a row once
-    (`_repeated_phrase_rewrites`).
+    (`_repeated_phrase_rewrites`). The third says a sentence that undermines
+    the speaker with conviction: its apologies, asks for permission,
+    self-doubt and softening hedges left out, never a word added
+    (`_undermining_rewrites`, founder 2026-10-20, N85).
     """
     text = served_text if isinstance(served_text, str) else ""
     take = str(take_session_id or "")
@@ -584,6 +587,42 @@ def evidence_backed_rewrite_candidates(
             },
         })
     rows.extend(_repeated_phrase_rewrites(text, sentences, take=take, sid=sid))
+    rows.extend(_undermining_rewrites(sentences, take=take, sid=sid))
+    return rows
+
+
+def _undermining_rewrites(sentences: list, *, take: str, sid: str) -> list[dict]:
+    """A rewrite for each sentence that undermines the speaker and reads
+    whole without those words (``services.undermining``). The row says why
+    (``rewrite_reason``), so the walk names it with the signed line."""
+    from services import undermining
+    rows: list[dict] = []
+    for start, end, sentence in sentences:
+        proposed = undermining.without(sentence)
+        if not proposed:
+            continue
+        rows.append({
+            "id": _stable_id("undermining-rewrite", take, sentence),
+            "snippet_id": sid,
+            "take_session_id": take,
+            "kind": "replace",
+            "source": "wording",
+            "span": {"start": start, "end": end},
+            "quote": sentence,
+            "proposed_text": proposed,
+            "why_key": "clarity",
+            "feedback_family": "rewrite_clarity",
+            "tentative": False,
+            "rule_version": undermining.RULE_VERSION,
+            "rewrite_reason": "undermining",
+            "_manager_evidence": {
+                "fallback": False,
+                "detector": "undermining_words",
+                "detector_rank": 4,
+                "specificity": 4,
+                "lexical_words_invented": 0,
+            },
+        })
     return rows
 
 

@@ -2870,3 +2870,33 @@ at upload and show the clip whenever it lands":
 - **What stops happening:** a voice that is only a hair surer no longer
   gets a Good job; nothing else.
 
+**N85 · The walk spots words that undermine the speaker (founder, chat, 20
+October 2026).** The ask: the walk "spots my negative thinking patterns";
+"undermining or poorly formulated words" get the clearer version ("try it
+and see if it gives you confidence"). The patterns the founder chose:
+hedging and self-doubt, playing the product or the idea down, apologising
+and asking permission. The signed prototype
+<https://claude.ai/artifact/HSRfvDZLDRQizmGJDxMUJz> shows the clearer
+version naming it with B10's "Say what you mean. Don't dance around it,
+just say it straight." and B13's "Try saying it like this:":
+- **The words check** (`rewrite_gate.words_need_help`) now also needs help
+  for words that undermine the speaker: one is enough ("sorry", "if that's
+  okay", "does that make sense", "just a small thing", "it's not much",
+  "I'm not sure", "I might be wrong" and their kind; closed English lists
+  in `services/undermining.py`, ambiguous words like "just" or "hope"
+  left out). Hedges keep their rate of 3 per 100 words.
+- **A rule writes the clearer version** (`take_feedback_manager.
+  _undermining_rewrites`): the same sentence with its apologies, asks for
+  permission, self-doubt and softening hedges left out, never a word
+  added ("Sorry, I think we could maybe match their price, if that's
+  okay." → "We could match their price."). A playing-down phrase that
+  would have to be rewritten makes no rule rewrite, and the moment keeps
+  the voice exercise.
+- **The gate** counts fewer undermining words as a real fix; every other
+  check (in the clip, still theirs, sayable) is unchanged.
+- **The walk names it:** the row carries `rewrite_reason: "undermining"`,
+  and the clearer version shows B10's first line and "Try saying it like
+  this:" in place of the rotating opener (signed lines, a new place).
+- **What stops happening:** a moment whose only problem is undermining
+  words no longer goes to the voice exercise when a clean version exists.
+

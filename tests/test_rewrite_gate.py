@@ -9,10 +9,17 @@ OUTCOME
       backed by evidence, really fixes the words, uses only my words and is
       no harder to say; otherwise practice opens on my voice.
   O3  Mending a broken or repeated sentence counts as a real fix.
+  O4  Words that undermine me (an apology or an ask for permission, the
+      idea played down, self-doubt) need help even once; the same sentence
+      said without them, nothing added, is a real fix that opens the
+      moment, and a playing-down phrase that would need rewriting makes no
+      rule rewrite (N85).
 PROVES   O1 -> test_only_words_that_need_help_can_open_on_a_rewrite
          O2 -> test_a_rewrite_that_fixes_the_words_and_keeps_them_theirs_opens_the_moment,
                test_a_rewrite_that_fails_any_check_falls_back_to_the_voice_exercise
          O3 -> test_a_mended_sentence_counts_as_the_fix
+         O4 -> test_only_words_that_need_help_can_open_on_a_rewrite,
+               test_undermining_words_said_with_conviction_open_the_moment
 WHY      Founder 2026-10-18: "words first, then voice".
 """
 from __future__ import annotations
@@ -42,6 +49,9 @@ def _rewrite(quote=SAID, proposed="We think it matters a lot to the people here.
     ("I don't want. A script for every single meeting we hold this year", 1.0, "broken_sentence"),
     ("We cut onboarding from three weeks to four days and nobody had to work late", None, None),
     ("So we need to we need to fix the flow and we can we can ship it this week", 1.0, "repeats"),
+    ("Sorry, we could match their price for the board, if that's okay", 1.0, "undermining"),
+    ("This is just a small thing, but it saves the team a full day every week", 1.0, "undermining"),
+    ("I'm not sure, but this plan cuts what we spend on support in half", 1.0, "undermining"),
     ("So we need to we need to fix the onboarding flow for every new customer who "
      "signs up with us this quarter and the next one after that", 1.0, None),
 ])
@@ -81,3 +91,19 @@ def test_a_rewrite_that_fails_any_check_falls_back_to_the_voice_exercise(change,
 def test_a_mended_sentence_counts_as_the_fix(quote, proposed):
     row, item = _rewrite(quote=quote, proposed=proposed)
     assert rewrite_refusal(row, item, CLIP, quote) is None
+
+
+def test_undermining_words_said_with_conviction_open_the_moment():
+    from services.take_feedback_manager import evidence_backed_rewrite_candidates
+    said = "We doubled growth. Sorry, I think we could maybe match their price, if that's okay. Thanks."
+    rows = evidence_backed_rewrite_candidates(said, take_session_id="t", snippet_id="s")
+    (row,) = [r for r in rows if r.get("rewrite_reason") == "undermining"]
+    assert row["quote"] == "Sorry, I think we could maybe match their price, if that's okay."
+    assert row["proposed_text"] == "We could match their price."
+    item = {"candidate_id": row["id"], "document_span": {"start": 120, "end": 200},
+            "evidence": {"fallback": False}}
+    assert rewrite_refusal(row, item, CLIP, row["quote"]) is None
+    played_down = "This is just a small thing, but it saves the team a full day every week."
+    assert not [r for r in evidence_backed_rewrite_candidates(played_down, take_session_id="t", snippet_id="s")
+                if r.get("rewrite_reason")]
+

@@ -2085,10 +2085,17 @@ repeats and off-slide words count as needing help.
 O2  A rewrite opens the moment only if it sits in the moment's clip, is
 backed by evidence, really fixes the words, uses only my words and is
 no harder to say; otherwise practice opens on my voice.
-O3  Mending a broken or repeated sentence counts as a real fix.","O1 -> test_only_words_that_need_help_can_open_on_a_rewrite
+O3  Mending a broken or repeated sentence counts as a real fix.
+O4  Words that undermine me (an apology or an ask for permission, the
+idea played down, self-doubt) need help even once; the same sentence
+said without them, nothing added, is a real fix that opens the
+moment, and a playing-down phrase that would need rewriting makes no
+rule rewrite (N85).","O1 -> test_only_words_that_need_help_can_open_on_a_rewrite
 O2 -> test_a_rewrite_that_fixes_the_words_and_keeps_them_theirs_opens_the_moment,
 test_a_rewrite_that_fails_any_check_falls_back_to_the_voice_exercise
-O3 -> test_a_mended_sentence_counts_as_the_fix","Founder 2026-10-18: ""words first, then voice""."
+O3 -> test_a_mended_sentence_counts_as_the_fix
+O4 -> test_only_words_that_need_help_can_open_on_a_rewrite,
+test_undermining_words_said_with_conviction_open_the_moment","Founder 2026-10-18: ""words first, then voice""."
 tests/test_rings_postgres.py,Story,"As the founder, I want features switched on per person by ring in the database, with a one-way kill and change history that cannot be edited, so that rollouts are safe and auditable.","O1  A person at or above the feature's ring has it; below does not.
 O2  An ordinary kill turns it off and the unkill turns it back on.
 O3  The Python preview (services/rings.rule_reaches) agrees with the
