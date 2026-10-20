@@ -866,6 +866,18 @@ fi
 hard migrations/status_read_in_one_trip.sql
 hard migrations/status_read_in_one_trip.sql
 
+# 0478 (founder 2026-10-19, N79): a Take word is a pair's home, the latest
+# version teaches. Widens 0402's one_home CHECK, adds superseded_at, the
+# current-pair index and record_take_word_pair_v1, and recovers pairs from
+# coach_take_words. Released lane only: the recovery reads
+# coach_take_words.draft_prompt (0459, released lane). After 0473, as in the
+# manifest. Twice: apply/reapply idempotency. Its cases are in
+# tests/test_coach_answers_in_words_postgres.py.
+if [ "$LANE" = "released" ]; then
+  hard migrations/a_take_word_pair_has_a_home.sql
+  hard migrations/a_take_word_pair_has_a_home.sql
+fi
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

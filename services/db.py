@@ -13442,6 +13442,7 @@ class DatabaseService:
                .eq("surface", str(surface)).eq("releasable", True)
                .not_.is_("passage_text", "null")
                .not_.is_("draft_model_version", "null")
+               .is_("superseded_at", "null")
                .is_("exported_at", "null").order("created_at").limit(int(limit)).execute())
         return list(res.data or [])
 
@@ -13631,6 +13632,7 @@ class DatabaseService:
                .select("id,surface,final_text,passage_text,prompt_context,"
                        "owner_principal_id,take_session_id,created_at")
                .eq("surface", str(surface)).not_.is_("passage_text", "null")
+               .is_("superseded_at", "null")
                .order("created_at", desc=True).limit(int(limit)).execute())
         return list(res.data or [])
 
@@ -13650,6 +13652,7 @@ class DatabaseService:
                .eq("surface", str(surface)).eq("releasable", True)
                .not_.is_("release_id", "null").is_("trained_run_id", "null")
                .not_.is_("passage_text", "null")
+               .is_("superseded_at", "null")
                .order("created_at").limit(int(limit)).execute())
         return list(res.data or [])
 
@@ -13744,6 +13747,16 @@ class DatabaseService:
         res = self.client.table("feedback_pairs").insert(fields).execute()
         return (res.data or [None])[0]
 
+    def record_take_word_pair(self, **fields: Any) -> Optional[dict]:
+        """A Take word's version (0478): in one transaction it supersedes the
+        word's current pair of the same final kind and, when it is a pair,
+        is inserted. None when nothing new was written (the same words
+        again, or a version that is no pair). Raises on failure; the service
+        logs it and the word stands."""
+        result = self.client.rpc("record_take_word_pair_v1", {"p_row": fields}).execute()
+        row = self._rpc_row(result.data)
+        return row if isinstance(row, dict) and row.get("id") else None
+
     def count_feedback_pairs(self) -> dict[str, dict[str, int]]:
         """{surface: {total, unexported, releasable}} for the ledger, for
         EVERY pair surface (services.feedback_pairs.SURFACES: the three
@@ -13754,14 +13767,18 @@ class DatabaseService:
         from services.feedback_pairs import SURFACES
         out: dict[str, dict[str, int]] = {}
         for surface in SURFACES:
+            # A pair a newer version of its Take word replaced is not
+            # counted (0478, the latest teaches).
             total = (self.client.table("feedback_pairs")
                      .select("id", count="exact").eq("surface", surface)
-                     .limit(1).execute())
+                     .is_("superseded_at", "null").limit(1).execute())
             waiting = (self.client.table("feedback_pairs")
                        .select("id", count="exact").eq("surface", surface)
+                       .is_("superseded_at", "null")
                        .is_("exported_at", "null").limit(1).execute())
             releasable = (self.client.table("feedback_pairs")
                           .select("id", count="exact").eq("surface", surface)
+                          .is_("superseded_at", "null")
                           .eq("releasable", True).limit(1).execute())
             out[surface] = {"total": int(total.count or 0),
                             "unexported": int(waiting.count or 0),
@@ -13784,7 +13801,8 @@ class DatabaseService:
                      .select("id", count="exact").eq("surface", surface)
                      .eq("releasable", True)
                      .not_.is_("passage_text", "null")
-                     .not_.is_("draft_model_version", "null"))
+                     .not_.is_("draft_model_version", "null")
+                     .is_("superseded_at", "null"))
                 if unexported:
                     q = q.is_("exported_at", "null")
                 return int(q.limit(1).execute().count or 0)

@@ -92,7 +92,7 @@ def record_pair(
         return None
     if not request_id and not exercise_id and not take_word_id:
         return None
-    writer = getattr(database, "insert_feedback_pair", None)
+    writer = _pair_writer(database, take_word_id)
     if writer is None:
         return None
     # The pair remembers the yes (0405): its owner's principal and the
@@ -136,6 +136,13 @@ def record_pair(
     return None
 
 
+def _pair_writer(database: Any, take_word_id: Any) -> Any:
+    """A Take word's pair supersedes the word's earlier one (0478; founder
+    2026-10-19, the latest version teaches); every other pair is inserted."""
+    return getattr(database, "record_take_word_pair" if take_word_id
+                   else "insert_feedback_pair", None)
+
+
 #: Request kind by surface, as the draft prompt was told it (coach_request_drafts).
 KIND_FOR_SURFACE = {"exercise_script": "error", "praise_line": "praise",
                     "clearer_version": "rewrite"}
@@ -176,9 +183,11 @@ def _given_snapshot(snapshot: Any) -> dict:
 
 
 def _mirror(database: Any, row: dict, coach: str) -> None:
-    """The dark export's ledger, same surface name, best-effort."""
+    """The dark export's ledger, same surface name, best-effort. A coach's
+    direct message is never copied there: a Take's erasure does not reach
+    that ledger (N79)."""
     mirror = getattr(database, "create_admin_annotation_event", None)
-    if mirror is None:
+    if mirror is None or row.get("surface") in COACH_WORD_SURFACES:
         return
     try:
         mirror(

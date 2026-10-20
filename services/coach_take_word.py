@@ -91,6 +91,13 @@ def _the_pair(database: Any, row: dict, *, coach_id: str, text: Optional[str],
             record_take_word_pair, transcribe_take_word_video_in_background,
         )
         record_take_word_pair(database, word_row=row, coach_id=coach_id, final_text=text)
+        if not row.get("transcript") and (new_video or not row.get("video_ref")):
+            # No video, or a new one not yet transcribed (the save cleared the
+            # old words): no video's words teach (0478). A kept video is left
+            # alone: its words may be landing right now, and no one sends it
+            # to the transcriber again.
+            record_take_word_pair(database, word_row=row, coach_id=coach_id,
+                                  final_text=None, final_kind="transcript")
         # Only a save that brings a video sends it to the transcriber: a
         # word-only edit never sends the kept video again (one still being
         # transcribed, or one with no speech in it).
