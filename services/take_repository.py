@@ -211,8 +211,9 @@ class TakeRepository(TableRepository):
         Takes out."""
         result = (
             self.client.table("v2_sessions")
-            .select("id,user_id,arc_id,take_index,created_at,recording_kind,"
-                    "paired_session_id,analysis_state,slide_transcripts")
+            .select("id,user_id,owner_principal_id,recording_id,arc_id,take_index,"
+                    "created_at,recording_kind,paired_session_id,analysis_state,"
+                    "slide_transcripts")
             .eq("user_id", str(user_id))
             .order("created_at", desc=True)
             .limit(int(limit))

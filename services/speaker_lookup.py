@@ -29,7 +29,10 @@ What it may read, and nothing else (founder 2026-10-20):
   - Chat: only the speaker's own messages (``lounge_messages`` with role
     ``user``), never Will's replies, never an answer to "Did this help?"
     (services.feedback_check), and not the conversation Will already reads.
-Every read is bounded. No migration, no environment variable.
+Only a Take whose processing authorization is in force for this speaker
+gives excerpts, and so do only the coach's words on such a Take
+(``_takes_in_force``; fails closed). Every read is bounded. No migration,
+no environment variable.
 """
 from __future__ import annotations
 
@@ -115,7 +118,7 @@ def _excerpt(text: str, wanted: set[str]) -> str:
 
 # ── the reads, each bounded and owned by the speaker ───────────────────────
 
-#: (label, text, source, at, the Take's project or "")
+#: (label, text, source, at, the Take it belongs to or "")
 _Item = tuple[str, str, str, str, str]
 
 
@@ -147,6 +150,50 @@ def _hidden_arcs(database: Any, takes: list[dict]) -> set[str]:
     return set(erased) | set(archived)
 
 
+#: The chat's own provider operation (routes.v2.processing_authorization.
+#: phase1_provider_route): the excerpts ride the chat's call.
+_OPERATION = "ai_conversation"
+
+
+def _takes_in_force(database: Any, takes: list[dict]) -> set[str]:
+    """The ids of the Takes whose processing authorization is in force now
+    (founder 2026-10-20). Each Take's acquisition principal is resolved as
+    the recording pipeline resolves it (``resolve_acquisition_principal``
+    with the Take's owner, account and recording) and must hold current
+    authority (``require_current``): an accepted, current receipt, not
+    withdrawn, not waiting for a re-acceptance, not blocked. A refused
+    principal leaves its Takes out; anything that stops the check from
+    being made raises, and then no Take-based excerpt goes (the caller
+    fails closed). While the gate is off every Take passes, as on every
+    other surface."""
+    from services.parallel import run_in_parallel
+    from services.processing_authorization import (
+        ProcessingAuthorizationError, ProcessingAuthorizationService)
+    service = ProcessingAuthorizationService(database)
+    if not service.enforced:
+        return {str(t["id"]) for t in takes}
+
+    def principal(take: dict) -> str:
+        return service.resolve_acquisition_principal(
+            str(take.get("owner_principal_id") or ""),
+            user_id=str(take.get("user_id") or "") or None,
+            recording_id=str(take.get("recording_id") or "") or None)
+
+    def in_force(principal_id: str) -> bool:
+        try:
+            service.require_current(principal_id, operation=_OPERATION)
+            return True
+        except ProcessingAuthorizationError as refusal:
+            if refusal.status >= 500:
+                raise
+            return False
+
+    principals = run_in_parallel(*[lambda t=t: principal(t) for t in takes])
+    distinct = sorted({str(p) for p in principals if p})
+    verdicts = dict(zip(distinct, run_in_parallel(*[lambda p=p: in_force(p) for p in distinct])))
+    return {str(t["id"]) for t, p in zip(takes, principals) if p and verdicts.get(str(p))}
+
+
 def _take_label(take: Optional[dict]) -> str:
     index = (take or {}).get("take_index")
     return f"Take {index}" if isinstance(index, int) else "a Take"
@@ -164,7 +211,7 @@ def _transcript_items(takes: list[dict]) -> list[_Item]:
             if len(slides) > 1 and isinstance(slide.get("index"), int):
                 label += f", slide {slide['index'] + 1}"
             items.append((label, words, "take", str(take.get("created_at") or ""),
-                          str(take.get("arc_id") or "")))
+                          str(take["id"])))
     return items
 
 
@@ -185,7 +232,7 @@ def _coach_items(database: Any, user_id: str, takes: list[dict]) -> list[_Item]:
         take = by_id.get(str((word or {}).get("take_session_id")))
         if not take or not word.get("shared_at"):
             continue
-        at, arc = str(word.get("shared_at")), str(take.get("arc_id") or "")
+        at, arc = str(word.get("shared_at")), str(take["id"])
         if str(word.get("text") or "").strip():
             items.append((f"your coach's word on {_take_label(take)}", str(word["text"]),
                           "coach", at, arc))
@@ -200,7 +247,7 @@ def _coach_items(database: Any, user_id: str, takes: list[dict]) -> list[_Item]:
         if answer:
             items.append((f"your coach's answer on a moment in {_take_label(take)}",
                           answer["text"], "coach", str(row.get("shared_at")),
-                          str(take.get("arc_id") or "")))
+                          str(take["id"])))
     return items
 
 
@@ -246,7 +293,7 @@ def _rank(question_terms: set[str], items: list[_Item]) -> list[Snippet]:
     """Word overlap with the question times a small source weight; ties go
     to the most recent. Items sharing no word are dropped. Pure."""
     scored = []
-    for label, text, source, at, _arc in items:
+    for label, text, source, at, _take in items:
         shared = question_terms & terms(text)
         if shared:
             scored.append((len(shared) * _WEIGHT.get(source, 1.0), at,
@@ -272,13 +319,20 @@ def lookup(database: Any, user_id: Any, question: str) -> list[Snippet]:
         takes, chat = run_in_parallel(
             lambda: _quietly("takes", uid, lambda: _own_takes(database, uid)),
             lambda: _quietly("chat", uid, lambda: _chat_items(database, uid)))
-        # The project check and the coach's words side by side; a failed
-        # project check keeps every Take and coach word out.
-        hidden, coach = run_in_parallel(
+        # The project check, the authorization check and the coach's words
+        # side by side. Only a Take in a visible project whose authorization
+        # is in force gives excerpts (its transcript and what the coach sent
+        # on it); a check that fails keeps every Take-based excerpt out.
+        hidden, in_force, coach = run_in_parallel(
             lambda: _quietly("projects", uid, lambda: [_hidden_arcs(database, takes)]),
+            lambda: _quietly("authorization", uid, lambda: [_takes_in_force(database, takes)]),
             lambda: _quietly("coach words", uid, lambda: _coach_items(database, uid, takes)))
-        items = [i for i in _transcript_items(takes) + coach
-                 if hidden and i[4] not in hidden[0]]
+        allowed = {str(t["id"]) for t in takes
+                   if hidden and in_force and str(t.get("arc_id") or "") not in hidden[0]
+                   and str(t["id"]) in in_force[0]}
+        items = [i for i in _transcript_items(takes) + coach if i[4] in allowed]
+        # The speaker's own messages belong to no Take: they ride the chat's
+        # own call, which the route already binds to their current authority.
         return _rank(wanted, items + chat)
     except Exception as error:  # noqa: BLE001 -- Will answers as before
         logger.warning("speaker lookup failed user=%s: %s", uid, error, exc_info=True)

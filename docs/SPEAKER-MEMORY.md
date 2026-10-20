@@ -52,8 +52,31 @@ private, to steer by, and that he may quote at most a few of the speaker's
 own words, never their answers to "Did this help?", never a number, score
 or verdict. Its wording is drift-locked (`speaker_memory.lookup_block`).
 
+**Permission (founder 2026-10-20).** Only a Take whose processing
+authorization is in force for this speaker gives excerpts, and the coach's
+words and moment answers on a Take follow their Take. `_takes_in_force`
+resolves each Take's acquisition principal as the recording pipeline does
+(`ProcessingAuthorizationService.resolve_acquisition_principal`, from the
+Take's owner, account and recording) and asks `require_current(principal,
+operation="ai_conversation")`, the chat's own operation: in force means an
+accepted, current receipt, not withdrawn, not waiting for a re-acceptance,
+not blocked. A refused principal leaves its Takes out. If the check cannot
+be made, no Take-based excerpt goes (fails closed). The speaker's own chat
+messages belong to no Take: they ride the chat's own call, which
+`routes.v2.processing_authorization.phase1_provider_route` already binds to
+the caller's current authority (`ai_conversation`), the strictest rule that
+exists for chat content. While the gate is off every Take passes, as on
+every other surface.
+
+**Chat history (founder confirmed, 2026-10-20).** Reading the speaker's own
+earlier messages is fine because nothing is stored and it only answers the
+same speaker. This is not the "thread never feeds profile" rule of the
+`lounge_messages` migration being relaxed: step 2, feeding the private note
+from chat history, needs the founder's OK again.
+
 The reads run side by side (`services.parallel`): Takes and chat first,
-then the project check and the coach's words; the note is read alongside.
+then the project check, the authorization check and the coach's words; the
+note is read alongside.
 Any failed read leaves its source out; nothing raises, and with no block
 Will answers as before. Guarded by `tests/test_will_looks_up_history.py`.
 

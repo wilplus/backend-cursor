@@ -2695,11 +2695,15 @@ never Will's own replies, never an answer to ""Did this help?""
 O2  a coach's unsent word or draft never reaches Will; what they sent does
 O3  the piece that matches the question best comes first
 O4  a failing read gives no block and no error: Will answers as today
-O5  a signed-in speaker's chat hands the block to Will; a visitor's does not","O1 -> test_only_this_speakers_own_words_reach_will
+O5  a signed-in speaker's chat hands the block to Will; a visitor's does not
+O6  a Take whose processing authorization is gone (withdrawn, expired)
+never reaches Will, nor what the coach sent on it; a failed check
+lets no Take through","O1 -> test_only_this_speakers_own_words_reach_will
 O2 -> test_only_what_the_coach_sent_reaches_will
 O3 -> test_the_most_relevant_piece_comes_first
 O4 -> test_a_failing_read_gives_no_block_and_no_error
-O5 -> test_will_reads_the_lookup_in_the_chat","Will's answers should build on what this speaker already said and heard, without anything private to someone else, or to the coach, leaking in."
+O5 -> test_will_reads_the_lookup_in_the_chat
+O6 -> test_a_take_whose_authorization_is_gone_never_reaches_will","Will's answers should build on what this speaker already said and heard, without anything private to someone else, or to the coach, leaking in."
 tests/test_withdrawal_erases_sheets.py,Story,"As a speaker, I want the coach sheets about my Takes deleted when I turn training off, so that my withdrawal is real.","O1  Turning training off deletes my Takes' rows from all three coach
 sheet tables, and only mine.
 O2  If my Takes cannot be read, the switch still turns off, and the

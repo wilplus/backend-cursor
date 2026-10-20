@@ -10,11 +10,15 @@ OUTCOME
   O3  the piece that matches the question best comes first
   O4  a failing read gives no block and no error: Will answers as today
   O5  a signed-in speaker's chat hands the block to Will; a visitor's does not
+  O6  a Take whose processing authorization is gone (withdrawn, expired)
+      never reaches Will, nor what the coach sent on it; a failed check
+      lets no Take through
 PROVES   O1 -> test_only_this_speakers_own_words_reach_will
          O2 -> test_only_what_the_coach_sent_reaches_will
          O3 -> test_the_most_relevant_piece_comes_first
          O4 -> test_a_failing_read_gives_no_block_and_no_error
          O5 -> test_will_reads_the_lookup_in_the_chat
+         O6 -> test_a_take_whose_authorization_is_gone_never_reaches_will
 WHY      Will's answers should build on what this speaker already said and
          heard, without anything private to someone else, or to the coach,
          leaking in.
@@ -155,3 +159,27 @@ def test_will_reads_the_lookup_in_the_chat(monkeypatch):
     assert 'Never repeat their answers to "Did this help?"' in prompt
     _, visitor = _chat_prompt(monkeypatch, db, None)
     assert "OWN HISTORY" not in visitor
+
+
+def test_a_take_whose_authorization_is_gone_never_reaches_will(monkeypatch):
+    from services.processing_authorization import ProcessingAuthorizationService as Service
+    monkeypatch.setenv("PLF1_PROCESSING_AUTHORIZATION_MODE", "enforce")
+    monkeypatch.setattr(Service, "resolve_acquisition_principal",
+                        lambda self, owner, **kw: owner)
+    monkeypatch.setattr(Service, "status", lambda self, principal: (
+        {"authorized": True, "pooled_learning_eligible": False} if principal == "p-live"
+        else {"authorized": False, "code": "PROCESSING_AUTHORIZATION_WITHDRAWN"}))
+    live = {**_take("t2", ME, 2, "My closing lands with one ask", "2026-10-19"),
+            "owner_principal_id": "p-live"}
+    gone = {**_take("t1", ME, 1, "My closing was rushed", "2026-10-18"),
+            "owner_principal_id": "p-gone"}
+    db = _Db(takes=[live, gone],
+             words=[{"take_session_id": "t1", "text": "Closing: breathe first.",
+                     "shared_at": "2026-10-18T12:00"}])
+    assert [s.text for s in lookup(db, ME, QUESTION)] == ["My closing lands with one ask"]
+
+    def broken(self, principal):
+        raise RuntimeError("authority unreachable")
+    monkeypatch.setattr(Service, "status", broken)
+    monkeypatch.setattr(Service, "require_current", lambda self, *a, **kw: broken(self, a))
+    assert lookup(db, ME, QUESTION) == []
