@@ -13220,7 +13220,11 @@ class DatabaseService:
         return list(res.data or [])
 
     def list_corpus_clips(self, *, active_only: bool = True) -> list[dict]:
-        query = self.client.table("corpus_clips").select("*")
+        # The queue picks by stratum and plays by URL; the passage text and
+        # the coach's label stay in the database (the latter never reaches
+        # a listener, AC-9, and the former is the largest column).
+        query = self.client.table("corpus_clips").select(
+            "id, audio_url, duration_ms, machine_stratum, active, created_at")
         if active_only:
             query = query.eq("active", True)
         return list(query.order("created_at", desc=True).limit(500).execute().data or [])

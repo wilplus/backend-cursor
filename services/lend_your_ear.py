@@ -159,11 +159,17 @@ def other_voices(database: Any, *, listener_id: str, rng: Any = None,
     training clips for the places left. Audio only (AC-9). The one door
     for another speaker's moment is ``communities.community_clips``; no
     Album share, no measure pair, nothing else is read."""
-    from services.communities import answered_clip_ids, community_clips
+    from services.communities import answered_clip_ids, community_clips, hearing_for
+    from services.parallel import run_in_parallel
     me = str(listener_id)
     limit = max(0, int(limit))
-    answered = answered_clip_ids(database, me)
-    clips = community_clips(database, listener_id=me, answered=answered, limit=limit)
+    # What the listener answered and where they may listen do not depend on
+    # each other: one round trip, not three in a row (founder 2026-10-20).
+    answered, hearing = run_in_parallel(
+        lambda: answered_clip_ids(database, me),
+        lambda: hearing_for(database, me))
+    clips = community_clips(database, listener_id=me, answered=answered, limit=limit,
+                            hearing=hearing)
     clips.extend(training_clips(database, answered=answered,
                                 size=limit - len(clips), rng=rng))
     return clips[:limit]

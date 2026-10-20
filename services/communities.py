@@ -333,12 +333,23 @@ def my_live_shares(database: Any, *, owner_user_id: str) -> tuple[int, dict]:
 
 # ── the queue ─────────────────────────────────────────────────────────────
 
+def hearing_for(database: Any, listener_id: str) -> tuple[Optional[str], list[dict]]:
+    """(the general community's id, the open private communities the
+    listener belongs to). The two reads do not depend on each other, so
+    they go out together (founder 2026-10-20: the peer queue was a chain of
+    one read after another)."""
+    from services.parallel import run_in_parallel
+    general, (rows, _) = run_in_parallel(
+        lambda: database.get_general_community(),
+        lambda: _open_private(database, listener_id))
+    general_id = str(general["id"]) if isinstance(general, dict) and general.get("id") else None
+    return general_id, rows
+
+
 def _hearable(database: Any, listener_id: str) -> tuple[Optional[str], set[str]]:
     """(the general community's id, the private ones the listener belongs
     to and that are open)."""
-    general = database.get_general_community()
-    general_id = str(general["id"]) if isinstance(general, dict) and general.get("id") else None
-    rows, _ = _open_private(database, listener_id)
+    general_id, rows = hearing_for(database, listener_id)
     return general_id, {str(r.get("id")) for r in rows}
 
 
@@ -387,20 +398,25 @@ def answered_clip_ids(database: Any, listener_id: str) -> set[str]:
 
 
 def community_clips(database: Any, *, listener_id: str, answered: set[str],
-                    limit: int) -> list[dict]:
+                    limit: int,
+                    hearing: Optional[tuple[Optional[str], list[dict]]] = None,
+                    ) -> list[dict]:
     """Up to `limit` community clips the listener may hear, in the queue's
     order. THE ONE DOOR for another speaker's moment into a peer queue:
     only a Take shared under the per-Take consent (``community_clips_live``)
-    is read here. Audio only (AC-9)."""
+    is read here. Audio only (AC-9). ``hearing`` is ``hearing_for``'s
+    answer when the caller already has it."""
     me = str(listener_id)
-    general_id, private_ids = _hearable(database, me)
+    general_id, private_rows = hearing if hearing is not None else hearing_for(database, me)
+    private_ids = {str(r.get("id")) for r in private_rows}
     hearable = ([general_id] if general_id else []) + sorted(private_ids)
     rows = [r for r in database.list_community_clips_live(hearable) or [] if isinstance(r, dict)]
     ids = list(dict.fromkeys(str(r["snippet_id"]) for r in rows if r.get("snippet_id")))
     labels = (database.get_confidence_labels_by_snippet_ids(ids) or {}) if ids else {}
     # A clip from one of the listener's own communities carries its name, so
     # the walk says "Now N moments from Invita." (lock 2026-10-12, section 9).
-    names = {str(r.get("id")): r.get("name") for r in _open_private(database, me)[0]
+    # The same rows `hearing_for` read; they are not read again.
+    names = {str(r.get("id")): r.get("name") for r in private_rows
              if isinstance(r.get("name"), str) and r.get("name")}
     clips: list[dict] = []
     for row in order_community_clips(rows, listener_id=me, answered=answered,
