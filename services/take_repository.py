@@ -204,6 +204,23 @@ class TakeRepository(TableRepository):
             logger.warning("v2_get_latest_session_for_user failed: %s", e)
             return None
 
+    def list_speaker_take_transcripts(self, user_id: str, *, limit: int) -> List[dict]:
+        """This account's newest Takes with their per-slide transcripts, for
+        Will's lookup (services.speaker_lookup). Only rows whose ``user_id``
+        is the speaker; bounded. Raises on failure: the lookup leaves the
+        Takes out."""
+        result = (
+            self.client.table("v2_sessions")
+            .select("id,user_id,owner_principal_id,recording_id,arc_id,take_index,"
+                    "created_at,recording_kind,paired_session_id,analysis_state,"
+                    "slide_transcripts")
+            .eq("user_id", str(user_id))
+            .order("created_at", desc=True)
+            .limit(int(limit))
+            .execute()
+        )
+        return list(result.data or [])
+
     def v2_get_published_sessions_for_user(self, user_id: str) -> List[dict]:
         """All published sessions for a user, newest first.
 

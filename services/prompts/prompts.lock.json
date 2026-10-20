@@ -356,6 +356,11 @@
       "module": "snippet_stickiness",
       "sha256": "76a78a620e6e8810691d4792a67e9a0ed6189d4845c323d96432bf82eda4ab51"
     },
+    "speaker_memory.lookup_block": {
+      "kind": "source_ref",
+      "module": "pending",
+      "sha256": "213b3909272a66e9ac253a5e57b592fc3864d8665a4649e02c847856ec822788"
+    },
     "speaker_memory.system": {
       "kind": "source_ref",
       "module": "pending",
