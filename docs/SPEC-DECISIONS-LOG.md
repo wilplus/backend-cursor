@@ -2661,3 +2661,13 @@ and L13; self-judgement waits for about 50 clips with both answers, then the
 founder sees the numbers; the coach panel's audience-and-goal lines get a
 prototype. The rules: flow page A2, C2, C4, C5, E2, H1, K, §2, §3. The
 builds are §2 lines. No migration.
+
+**N87 · The coach sees who the talk is for and what they should do (founder,
+chat, 20 October 2026).** Under the speaker's goal on their screen, in the
+same small text, the speaker's own words from the newest Take that said them
+("Who it's for: …", "What they should do: …", the signed group names of N83);
+nothing when they have not said. The founder approved the prototype
+<https://claude.ai/artifact/UiZzNZs5623NkforaeR4PM> ("make it all the same
+small text", "please execute all of that"). The coach panel's rules move to
+one page, frontend `docs/flows/coach-panel.md`, as the walk's did (N86); its
+lock file is history. The rules: that page, C3 and J. No migration.
