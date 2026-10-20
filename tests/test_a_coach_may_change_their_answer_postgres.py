@@ -27,7 +27,7 @@ Pins:
     coach_take_word_versions; a NULL being filled in, or the same text
     again, keeps none; a new video clears the old video's words on the row;
     only the trigger writes the history;
-  * a coach's answer video keeps its own words, by its ref (0480, N79): the
+  * a coach's answer video keeps its own words, by its ref (0481, N79): the
     recorder takes words for the video on the row or one the history keeps,
     and for no other; a failed try is retried in place and counted; done
     words are never written over; after a new video, the old one keeps its

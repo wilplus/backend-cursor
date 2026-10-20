@@ -1,4 +1,4 @@
--- a_coach_answer_video_is_kept_in_words (0480; founder 2026-10-19, decisions log N79)
+-- a_coach_answer_video_is_kept_in_words (0481; founder 2026-10-19, decisions log N79)
 --
 -- WHY. A coach may answer a speaker's moment with a video (0403): it is kept
 -- privately as exercise_coach_requests.answer_video_ref, and a changed
@@ -92,7 +92,7 @@ CREATE INDEX IF NOT EXISTS coach_answer_video_transcripts_request_idx
     ON public.coach_answer_video_transcripts (request_id);
 ALTER TABLE public.coach_answer_video_transcripts ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.coach_answer_video_transcripts IS
-    'The words of a coach''s answer video, one row per video ref (0480; founder '
+    'The words of a coach''s answer video, one row per video ref (0481; founder '
     '2026-10-19, N79), so a changed answer''s old video keeps its own words. '
     'Written only by record_coach_answer_video_transcript_v1; done words are '
     'never written over. Only for speakers with the training yes, never on the '
@@ -170,7 +170,7 @@ $$;
 
 COMMENT ON FUNCTION public.record_coach_answer_video_transcript_v1(
     uuid, text, text, text, text, text) IS
-    'Keeps the words of a coach''s answer video (0480): only for a video on the '
+    'Keeps the words of a coach''s answer video (0481): only for a video on the '
     'request row or in its answer history; done words are never written over; '
     'a failed or speaker_authorization_missing row is retried in place. '
     'service_role only.';

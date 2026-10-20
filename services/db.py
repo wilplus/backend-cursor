@@ -12923,7 +12923,7 @@ class DatabaseService:
         self, *, request_id: str, video_ref: str, coach_id: Optional[str], status: str,
         transcript: Optional[str] = None, language: Optional[str] = None,
     ) -> Optional[dict]:
-        """The words of a coach's answer video, by its ref (0480), through
+        """The words of a coach's answer video, by its ref (0481), through
         record_coach_answer_video_transcript_v1: only for a video on the
         request row or in its answer history, and done words are never
         written over (the kept row comes back). Raises on failure, or with

@@ -15,7 +15,7 @@ OUTCOME
       again; a null video removes it; a failed read stops the save.
   O6  A moment's answer video (a first video, or a new video on a given
       answer) is written down after its upload, under my permit, and kept
-      by its own ref (0480, N79); without my training yes, on the coach's
+      by its own ref (0481, N79); without my training yes, on the coach's
       own Take, or with the permit refused, nothing reaches the provider,
       and the upload succeeds either way (only a refusal is kept, as
       speaker_authorization_missing, for a later retry).
@@ -287,7 +287,7 @@ class _AnswerDb(_Db):
 
 
 class AnAnswerVideoIsKeptInWords(unittest.TestCase):
-    """0480 (founder 2026-10-19, N79): what a coach says in a moment's answer
+    """0481 (founder 2026-10-19, N79): what a coach says in a moment's answer
     video is written down by the video's own ref, under the speaker's
     permit, after the upload has returned."""
 

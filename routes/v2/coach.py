@@ -1567,7 +1567,7 @@ def v2_coach_exercise_request_video(session_id, snippet_id):
     give it a new video: that is an answer change (0446), so the history
     keeps the old one; another coach's resolved request is closed (409).
     Its words are written down after the response, off this request, under
-    the speaker's permit and only for a speaker with the training yes (0480,
+    the speaker's permit and only for a speaker with the training yes (0481,
     N79), so no provider call runs here.
 
     multipart/form-data: video_file. 200 {video_url} · 400/404/409/413/415/500/502
