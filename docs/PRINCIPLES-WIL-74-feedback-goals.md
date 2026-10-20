@@ -24,10 +24,6 @@ of them: the simplest thing that works, nothing to set up or test by hand.
 6. **Everyone gets it.** No test group: it is optional and quiet.
 7. **We change something when the same thing is missing three times** in
    the weekly note.
-8. **The feedback learns from each answer, once** (founder, 2026-10-20). What
-   a speaker says was missing after a Take reaches the summary of their next
-   Take (`take_summary.missing_facts`), which speaks to it in words. Only
-   the Take just before, so an answer is heard once.
 
 The chat knows these as facts (`feedback_check.CHAT_FACTS`, passed to the
 librarian with the feature list and the speaker's status card), so it can
