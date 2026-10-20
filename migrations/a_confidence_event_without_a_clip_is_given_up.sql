@@ -18,6 +18,10 @@
 -- ever offers it again, and none of them had to be re-issued here. A CHECK
 -- holds the three together, so a claim cannot lock an abandoned row.
 -- Its last_error_code and attempt_count stay as the record of what happened.
+-- 'infinity' is a valid timestamptz but not every client maps it (psycopg2
+-- reads datetime.max, psycopg3 refuses by default): no application code
+-- selects an outbox row's available_at; the RPC's returned row reaches
+-- Python through PostgREST as JSON text and is not parsed as a time.
 --
 -- ONE WAY IN. abandon_mlc2_confidence_outbox_event_v1, for the worker that
 -- holds the lease (as fail_mlc2_outbox_event_v1), on the confidence surface
@@ -54,10 +58,18 @@ BEGIN
                     AND processed_at IS NULL
                     AND locked_by IS NULL
                     AND available_at = 'infinity'::timestamptz)
-            );
+            ) NOT VALID;
     END IF;
 END;
 $$;
+
+-- Outside review (2026-10-20): add NOT VALID, then validate, so the scan
+-- runs under SHARE UPDATE EXCLUSIVE. The runner wraps this file in one
+-- transaction, so the ADD's lock is held to commit anyway; the table is
+-- small and every existing row passes (the new columns are null). A
+-- second run validates an already-valid constraint, which is a no-op.
+ALTER TABLE public.ml_outbox_events
+    VALIDATE CONSTRAINT ml_outbox_abandon_check;
 
 CREATE OR REPLACE FUNCTION public.abandon_mlc2_confidence_outbox_event_v1(
     p_outbox_event_id UUID,
