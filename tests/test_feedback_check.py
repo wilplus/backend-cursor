@@ -1,6 +1,28 @@
-"""WIL-74: "Did this feedback help you?" after the Feedback walk, and the
-coach's card when a speaker's goal changes (founder 2026-10-19, words signed
-the same day). What the speaker sees and what is kept for the founder."""
+"""
+STORY    As a speaker, I want to be asked "Did this feedback help you?" after the
+         Feedback walk and have my answer kept, and as a coach I want a card
+         when my speaker's goal changes, so that the founder learns whether
+         feedback helps and coaches follow each speaker's goal.
+OUTCOME
+  O1  The question closes the Take summary, but waits when another offer is
+      already there (one ask at a time).
+  O2  "Yes" is kept and answered once with the signed words; a second tap
+      changes nothing.
+  O3  "Not really" asks what was missing; my next typed message is kept as
+      that answer (even if it sounds like a goal change), then the chat is
+      ordinary again.
+  O4  "Skip" ends it with no answer kept; typing a button's words counts as
+      tapping it, and any other message goes to the chat as usual.
+  O5  A new goal is kept in the history and every coach except the speaker
+      gets one card a day showing before and now; no change, no card.
+PROVES   O1 -> test_the_question_closes_the_summary_but_waits_when_another_offer_is_there
+         O2 -> test_yes_is_kept_and_answered_with_the_signed_words_once
+         O3 -> test_not_really_asks_what_was_missing_and_the_chat_keeps_the_answer
+         O4 -> test_skip_ends_it_without_an_answer,
+               test_typing_a_button_counts_as_tapping_it_and_anything_else_goes_to_will
+         O5 -> test_a_new_goal_is_kept_and_every_coach_but_the_speaker_gets_one_card_a_day
+WHY      WIL-74, founder 2026-10-19 (words signed the same day).
+"""
 from services import chat_query, feedback_check, goal_history
 from services.feedback_check import COPY
 

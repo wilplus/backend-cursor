@@ -1,24 +1,31 @@
-"""API-seam integration tests — request → routing → decorators → handler →
-error handlers, through the REAL app object with every blueprint registered.
-
-Why these exist (testing-strategy overhaul, founder priority 4): the
-incidents that hurt lived at integration seams — auth boundaries, CORS
-preflight, proxy/payload behavior — while the suite tested pure logic. These
-pin the backend half of those seams:
-
-  * the 401 JSON contract of require_auth and the never-401 contract of
-    optional_auth, exercised over HTTP, not by calling the decorator;
-  * ownership on the job poll: foreign and unknown jobs answer IDENTICALLY
-    (no existence leak);
-  * CORS preflight allows every header the FE actually sends — the exact
-    seam that broke big deck uploads on 2026-07-15 (a preflight fails on
-    ANY unlisted request header);
-  * error handlers answer JSON, never HTML (the FE state machine parses
-    these bodies);
-  * the F1-surface paths the FE polls exist exactly as published.
-
-pytest-style, using the conftest.py fixtures: app_client, swap_db_client,
-stub_verified_user.
+"""
+STORY    As a speaker using the app, I want the server's front door (sign-in,
+         job progress, uploads, error answers) to behave the same every
+         time, so that the app never breaks on it or shows me someone
+         else's job.
+OUTCOME
+  O1  The paths the website and Railway call exist, and the health check
+      answers "ok".
+  O2  Without a valid sign-in, a protected page answers a clear "not signed
+      in" the app can read.
+  O3  A guest or the owner can follow their own processing job; someone
+      else's job looks exactly like no job at all.
+  O4  Errors come back in a form the app can read, never as a web page.
+  O5  The browser's pre-upload check accepts every header the app sends,
+      so big deck uploads go through.
+PROVES   O1 -> test_critical_routes_are_wired, test_health_endpoints_answer_200
+         O2 -> test_protected_route_without_header_is_401_json,
+               test_protected_route_non_bearer_is_401_json,
+               test_protected_route_garbage_token_is_401_json
+         O3 -> test_guest_job_polls_anonymously,
+               test_owned_job_polls_with_bearer,
+               test_foreign_job_and_unknown_job_are_indistinguishable,
+               test_non_uuid_job_id_is_404_without_db
+         O4 -> test_405_answers_json_not_html,
+               test_413_handler_is_registered_and_answers_json
+         O5 -> test_preflight_allows_every_header_the_fe_sends
+WHY      Incident 2026-07-15: big deck uploads failed at the browser's
+         pre-upload (CORS) check.
 """
 import uuid
 

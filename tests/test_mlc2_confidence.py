@@ -1,3 +1,11 @@
+"""
+STORY    As a coach, I want the blind packet I rate to carry no transcript,
+         score, rank, model guess or judgement, so that my rating is my own.
+OUTCOME
+  O1  A packet carrying any such hint is refused.
+PROVES   O1 -> test_blind_packet_rejects_answer_or_selection_hints
+WHY      Never-rule 2: no coach sees the machine's guess before answering.
+"""
 
 import uuid
 

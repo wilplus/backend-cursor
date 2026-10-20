@@ -1,13 +1,21 @@
-"""Per-person exercise effectiveness (founder 2026-10-18, Linear WIL-29).
-
-Two contracts the founder decided on:
-
-  * exercise-held-next-take-v1: a practice's targeted problem is checked on
-    the same passage in the speaker's next Take; it holds, comes back, or
-    is unknown with a reason (a rewritten passage is unknown, never held);
-  * the founder's per-person list: counts in words per exercise, the
-    machine's, the coach's and the speaker's answers on their own lines,
-    and "too few to read" below five practices.
+"""
+STORY    As the founder, I want to see per person whether a practised problem
+         stayed away in the next Take, so that I can judge which exercises help
+         without reading any scores.
+OUTCOME
+  O1  The practised problem is "held" when it stays away on the same passage
+      in the next Take, and "came back" when it shows up again.
+  O2  When the passage was rewritten or the rules changed in between, the
+      result is "unknown" with its reason, never "held".
+  O3  The per-person list counts each exercise under word labels, keeps the
+      machine's, the coach's and the speaker's answers apart, shows no
+      decimals, and marks fewer than five practices as "too few".
+PROVES   O1 -> test_held_when_the_targeted_problem_stays_away,
+               test_came_back_when_the_targeted_problem_fires_again
+         O2 -> test_a_rewritten_passage_is_unknown_never_held,
+               test_a_rule_change_in_between_is_unknown
+         O3 -> test_the_person_list_counts_in_words_and_keeps_each_voice_apart
+WHY      Founder 2026-10-18, Linear WIL-29.
 """
 from services.confident_voice_practice import SIGNAL_RULES_VERSION
 from services.exercise_held import decide

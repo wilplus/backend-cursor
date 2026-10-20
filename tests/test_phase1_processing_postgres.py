@@ -1,27 +1,25 @@
-"""Authorization evidence binds to the principal that acquired the audio.
-
-B-2 and B-3 (major), ML provenance audit 2026-09-22.
-
-Phase-1 lineage rests on one claim: the principal named on a permit is the
-principal that acquired the recording. Two functions let that claim be false.
-
-  * B-2 — `issue_phase1_provider_permit_v1` read the authorization of
-    `p_acquisition_principal_id` and then inserted `p_source_take_id` /
-    `p_source_recording_id` verbatim, with nothing anywhere saying those
-    coordinates were that principal's to name. The auditor minted a permit
-    for one guest's recording under another principal's receipt.
-  * B-3 — `resolve_phase1_acquisition_principal_v1` returned a claim's SOURCE
-    only when that source already held a receipt, and otherwise returned the
-    TARGET. A guest who recorded while the gate was off holds no receipt by
-    construction, so after signing up their recordings resolved to the new
-    account principal, whose receipt was signed later for an acquisition that
-    had already happened.
-
-These cases EXECUTE the real functions against a disposable PostgreSQL lane.
-The whole finding is about what a function does and does not refuse, and the
-suite that was supposed to cover this path
-(`test_phase1_processing_rehearsal_contract.py`) only asserts substrings of a
-.sql file that nothing runs — which is why neither defect was caught.
+"""
+STORY    As a speaker, I want a permit to send my recording to a provider to be
+         issued only under my own consent, and my consent status read
+         correctly in one call, so that no one else's consent can authorize
+         processing of my voice.
+OUTCOME
+  O1  The person who recorded can still get a permit for their own recording.
+  O2  Someone else naming my recording is refused, and nothing is written for
+      them.
+  O3  The one-call status read gives exactly the same answer as the old
+      three-step read (signed-up account, guest without consent, guest who
+      later signed up), and answers nothing rather than guess.
+  O4  Only the server itself may call the status read, never a browser.
+PROVES   O1 -> TestAPermitNamesOnlyItsOwnSource::test_the_acquiring_principal_can_still_mint_its_own_permit
+         O2 -> TestAPermitNamesOnlyItsOwnSource::test_permit_rejects_foreign_source_recording
+         O3 -> TestTheStatusReadsInOneTrip::test_an_authorized_account_reads_the_same_status,
+               TestTheStatusReadsInOneTrip::test_an_unauthorized_guest_reads_the_same_status,
+               TestTheStatusReadsInOneTrip::test_a_claimed_guest_resolves_through_the_one_resolver,
+               TestTheStatusReadsInOneTrip::test_it_answers_nothing_rather_than_guess
+         O4 -> TestTheStatusReadsInOneTrip::test_only_the_service_role_may_call_it
+WHY      ML provenance audit 2026-09-22 (B-2, B-3): a permit could be minted
+         for one guest's recording under another person's consent.
 """
 from __future__ import annotations
 

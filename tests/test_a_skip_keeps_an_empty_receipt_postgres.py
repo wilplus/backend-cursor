@@ -1,31 +1,18 @@
-"""A speaker's skip keeps an empty receipt, on the released lane (0448; founder
-N12; decision tree 2026-10-08, Q3 YES and Q4 YES: "empty receipt").
-
-WHAT WAS BROKEN. record_root_phrase_skip_v1 writes a feedback_revisions row
-(rater_role 'owner', rater_id the speaker's user id) under the evidence span
-of the speaker's lock decision. 0379's lineage wipe empties
-feedback_revisions.revision_payload as a child of that span, but since 0327
-the table's guard (reject_confident_moment_mutation_v1) refused every UPDATE,
-so the wipe raised and rolled back and the erasure could not finish.
-
-Pins:
-  * feedback_revisions has its own guard; every other 0327 table keeps the
-    shared one, whose body still only raises;
-  * an account erasure, and a project erasure, with a real skip (written through
-    record_paragraph_decision_v1 + record_root_phrase_skip_v1) reaches
-    `done`: the skip row stays, its payload is '{}', and the wipe reports
-    not_blank 0;
-  * outside a running purge, UPDATE and DELETE still raise
-    CONFIDENT_MOMENT_APPEND_ONLY, and inside one any change but emptying the
-    payload still raises;
-  * fail closed: a coach row under an erased span makes the wipe raise, and
-    an owner row of the person that hangs off a span outside the wipe's scope
-    is reported not blank, never passed as retained.
-
-This lane's `paragraphs` is a two-column MLC-2 fixture stub, and its
-`evidence_spans` lacks four of 0296's columns. They are added here, in the
-disposable database only, as 0296 defines them (nullable where 0296 is NOT
-NULL, because earlier suites' rows are already in these tables).
+"""
+STORY    As a speaker who deletes my account after skipping helper words, I
+         want the erasure to finish, with my skip kept only as an empty
+         receipt, so that deletion never gets stuck and nothing I wrote
+         survives.
+OUTCOME
+  O1  The account erasure reaches "done": my skip stays with an empty
+      payload and my paragraph text reads "[erased]".
+  O2  Someone else's skip is untouched.
+  O3  During an erasure, any change to the skip other than emptying it,
+      and any delete, is refused.
+PROVES   O1, O2 -> TestTheSkipIsAnEmptyReceipt::test_the_account_erasure_reaches_done
+         O3 -> TestTheGuard::test_inside_a_running_purge_only_emptying_the_payload_passes
+WHY      Before 0448 the erasure failed on the skip (founder N12, "empty
+         receipt").
 """
 from __future__ import annotations
 

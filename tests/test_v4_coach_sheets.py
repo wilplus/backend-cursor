@@ -1,5 +1,19 @@
-"""V4 B1.8/B1.9: the two blind coach sheets (build plan D-ML-13; founder
-S-B8 A, QG4 B, QG9 A, QB7 B, QB8 A, V18 A, V19 A, V20 A)."""
+"""
+STORY    As a coach, I want the pick and "surer" sheets to show me only clips
+         and words, so that I answer without the machine's guess.
+OUTCOME
+  O1  The pick sheet shows only the clip, a letter, the words and the audio
+      timing, never the machine's ids, sureness or choice.
+  O2  The "surer" sheet shows only the two wordings, never the slice,
+      level, bar or the quality being varied.
+  O3  A Take with two feedback versions still fills the sheets, each moment
+      asked once, and a moment the database refuses is skipped, not an
+      error.
+PROVES   O1 -> test_the_sheet_payload_is_blind
+         O2 -> test_the_pair_payload_is_blind
+         O3 -> test_a_take_with_two_frames_still_fills_the_pick_sheets
+WHY      Never-rule 2: coach judgements stay blind.
+"""
 from __future__ import annotations
 
 import json

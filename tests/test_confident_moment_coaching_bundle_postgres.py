@@ -1,4 +1,18 @@
-"""Executable checks run only against a disposable production-shaped clone."""
+"""
+STORY    As a speaker, I want each coach update I am shown recorded once
+         against the exact item shown, and nothing writable except through
+         checked functions, so that my feedback history is exact and
+         tamper-proof.
+OUTCOME
+  O1  The receipt ties together the bundle, the item and what was shown;
+      asking again returns the same receipt.
+  O2  A receipt naming another bundle is refused and nothing is written.
+  O3  Browser roles and the service key have no direct access to the
+      bundle tables; only the checked functions can be called, and their
+      old versions are gone.
+PROVES   O1, O2 -> test_d13_bundle_item_render_binds_path_and_returns_closed_receipt
+         O3 -> test_runtime_roles_have_no_direct_writes_or_rpc_execution
+"""
 from __future__ import annotations
 
 import os

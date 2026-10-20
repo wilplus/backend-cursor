@@ -1,10 +1,18 @@
-"""Every alignment path of ``compose_locked``, pinned exactly before its
-split into named stages (audit W1, 2026-09-28).
-
-``tests/test_ideal_text_parts.py`` holds the product cases. These pin the
-whole output of each path — ids, order, text, the lock, the helper words
-riding on it, and ``changed`` — with minted ids made deterministic, so a
-refactor that mints in a different order, or drops a field, fails here.
+"""
+STORY    As a speaker, I want the paragraphs I locked kept word for word and
+         in place when a new Take rebuilds my Ideal Text, so that my chosen
+         words stay until I pick new ones.
+OUTCOME
+  O1  With the same number of paragraphs, locked ones stay and the new
+      Take's text fills the rest.
+  O2  When the number of paragraphs changes, a locked paragraph keeps its
+      text and place, even where the new Take dropped it.
+  O3  With no usable new text, the stored Ideal Text is served unchanged.
+PROVES   O1 -> ComposeLockedPathPins::test_no_lock_anchored_and_equal_counts_is_positional
+         O2 -> ComposeLockedPathPins::test_diverged_counts_pin_a_replace_region_holding_a_lock,
+               ComposeLockedPathPins::test_diverged_counts_refresh_an_open_replace_and_keep_a_deleted_lock
+         O3 -> ComposeLockedPathPins::test_no_usable_machine_text_serves_the_stored_state
+WHY      Never-rule 5; audit W1 2026-09-28.
 """
 from __future__ import annotations
 

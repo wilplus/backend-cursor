@@ -1,4 +1,19 @@
-"""Disposable PostgreSQL tests for restored V3/P1/P2/RPQ contracts."""
+"""
+STORY    As a speaker, I want a phrase I said confidently to become my helper
+         words and lock its Paragraph in one step, and be removable, so that
+         my helper words follow my choices.
+OUTCOME
+  O1  A phrase I said with a confident "yes" qualifies to become helper
+      words directly.
+  O2  Choosing it locks the Paragraph and sets the helper words in one step;
+      doing it twice changes nothing more, and the Ideal Text is not
+      rebuilt.
+  O3  Removing the helper words clears them and keeps the Paragraph locked.
+PROVES   O1 -> test_direct_confident_path_activates_and_removes_separate_actions
+         O2 -> test_direct_confident_path_activates_and_removes_separate_actions
+         O3 -> test_direct_confident_path_activates_and_removes_separate_actions
+WHY      Never-rule 5: helper words stay until the speaker picks new ones.
+"""
 from __future__ import annotations
 
 import os

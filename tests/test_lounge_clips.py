@@ -1,4 +1,18 @@
-"""A Lounge clip gets a fresh link only from the reader's own recording."""
+"""
+STORY    As a speaker, I want the clips, recordings and slide decks in my Lounge
+         to get fresh links from my own recordings only, and each page to load
+         quickly, so that my media plays and I never see another user's.
+OUTCOME
+  O1  My own clip gets a fresh link; a clip pointing at another user's
+      recording is left untouched.
+  O2  One page gets fresh clip, recording and deck links and the "new coach
+      feedback" flags from one batched read per kind, not one per Take.
+  O3  An older page carries no flags, and a failing step (such as decks)
+      costs only that step; my clips still refresh.
+PROVES   O1 -> test_own_clip_is_resigned_and_another_users_is_not
+         O2 -> test_one_page_gets_fresh_links_decks_and_flags_from_batched_reads
+         O3 -> test_an_older_page_carries_no_flags_and_a_failed_step_costs_only_itself
+"""
 from services.lounge_clips import refresh_walk_clips
 
 
