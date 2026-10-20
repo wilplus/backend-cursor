@@ -420,8 +420,9 @@ owner and the words spoken, only where the draft came before the
 final, with consent left closed.
 O6  Every draft keeps its prompt: the app keeps each draft in
 coach_draft_history and may only settle it afterwards, never rewrite
-what was drafted or sent; an answer draft hangs on its request; no
-browser role reaches the table.","O1 -> test_a_line_is_answered_once_and_shared
+what was drafted or sent; an answer draft hangs on its request and a
+Take word's draft on its Take, never on a request; no browser role
+reaches the table.","O1 -> test_a_line_is_answered_once_and_shared
 O2 -> test_words_and_an_exercise_never_mix
 O3 -> test_a_pair_is_kept_only_when_the_coach_changed_the_draft
 O4 -> test_a_take_word_pair_is_kept_and_the_latest_teaches
@@ -695,6 +696,16 @@ traceback.
 O3  No route file hands raw exception text back to the browser.","O1 -> GlobalHandlerTests::test_uncaught_exception_returns_generic_json
 O2 -> DeployedNeverReRaisesTests::test_a_deployed_app_with_debug_on_leaks_nothing
 O3 -> RouteSweepTests::test_no_route_returns_raw_exception_text",P0 audit 2026-08-03: nothing leaks to the client.
+tests/test_every_draft_keeps_its_prompt.py,Story,"As the founder, I want every draft the machine shows a coach kept with exactly what its prompt was sent, a re-draft beside the first, and settled by the coach's save, so that we can learn from what the coach kept or changed and never lose a draft to a re-draft.","O1  Every answer draft is kept, a re-draft beside the first, with the
+sha256 of exactly the system and user text sent, what the prompt was
+given (the passage as sent, the kind, the spotted labels and tag ids,
+the coach's notes) and the surface's prompt lock; the request's
+draft_prompt names the latest draft.
+O2  The coach's save settles the draft the request carries, kept as
+written or not; the earlier, replaced draft stays unsettled.
+O3  A Take-word draft is kept on its Take and word the same way, and the
+word's save settles it as changed.","O1, O2 -> test_every_answer_draft_is_kept_with_what_it_was_sent_and_the_save_settles_it
+O3 -> test_a_take_word_draft_is_kept_on_its_take_and_the_word_s_save_settles_it","Migration 0481, every draft keeps its prompt (founder 2026-10-19, decisions log N79)."
 tests/test_exercise_assignment_postgres.py,Story,"As the founder, I want each moment's exercise drawn 80/20 once, reproducibly and immutably, so that the comparison is trustworthy later and harmless to the speaker now.","O1  One draw per moment: a later call, even with another pool, returns the
 first row.
 O2  Two or more exercises: every probability is stored (4/5 for the best

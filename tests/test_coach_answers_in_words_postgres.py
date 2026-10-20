@@ -22,8 +22,9 @@ OUTCOME
       final, with consent left closed.
   O6  Every draft keeps its prompt: the app keeps each draft in
       coach_draft_history and may only settle it afterwards, never rewrite
-      what was drafted or sent; an answer draft hangs on its request; no
-      browser role reaches the table.
+      what was drafted or sent; an answer draft hangs on its request and a
+      Take word's draft on its Take, never on a request; no browser role
+      reaches the table.
 PROVES   O1 -> test_a_line_is_answered_once_and_shared
          O2 -> test_words_and_an_exercise_never_mix
          O3 -> test_a_pair_is_kept_only_when_the_coach_changed_the_draft
