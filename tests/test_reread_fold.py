@@ -2,12 +2,12 @@
 STORY    As a coach, I want a mid-take re-read to show as part of its take,
          not a separate item, so that I review one take as one piece of work.
 OUTCOME
-  O1  The coach queue row marks the parent take (has_reread) and carries the
-      opaque user_id drill key, still pseudonymized, no intake context.
+  O1  The coach queue row marks the parent take (has_reread), is
+      pseudonymized, and carries no user_id and no intake context.
   O2  A read never competes as a take: only spoken takes count.
   O3  A read enters the review flow but never sends its own coach email; a
       spoken take does.
-PROVES   O1 -> test_queue_row_carries_drill_key_and_fold_markers
+PROVES   O1 -> test_queue_row_carries_fold_markers_and_no_user_id
          O2 -> test_a_read_never_competes_as_a_take
          O3 -> test_read_flips_but_never_emails
 WHY      Founder fix-pack 2026-07-16 (BE-2, BE-3a, BE-4): "never separate
@@ -51,7 +51,7 @@ def _session_row(sid=SPOKEN, **over):
 class QueueRowShapeTests(unittest.TestCase):
     """BE-4: the opaque per-user drill key + fold markers on queue rows."""
 
-    def test_queue_row_carries_drill_key_and_fold_markers(self):
+    def test_queue_row_carries_fold_markers_and_no_user_id(self):
         row = dict(_session_row(), has_reread=True,
                    arc_id="arc9", take_index=2, user_id="u-42")
         app = Flask(__name__)
@@ -70,7 +70,8 @@ class QueueRowShapeTests(unittest.TestCase):
         out = resp.get_json()
         self.assertEqual(len(out), 1)
         r = out[0]
-        self.assertEqual(r["user_id"], "u-42")      # opaque drill key
+        self.assertNotIn("user_id", r)               # founder 2026-10-20
+        self.assertNotIn("u-42", str(out))
         self.assertTrue(r["has_reread"])
         self.assertEqual(r["arc_id"], "arc9")
         self.assertEqual(r["take_index"], 2)
