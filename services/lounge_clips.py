@@ -17,6 +17,7 @@ are hidden for that read and the words still show.
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from typing import Any, Callable, Optional
 
@@ -253,32 +254,56 @@ def _take_id(value: Any) -> Optional[str]:
         return None
 
 
-def _coach_bubbles(messages: list) -> list[tuple[dict, dict, str]]:
-    """(message, metadata, Take) for every coach bubble on the page: the
-    "Later · from your coach" bubbles and the walk's copies of the coach's
-    word, on a UUID-shaped Take."""
+def _upload_take(key: Optional[str]) -> Optional[str]:
+    """The Take a coach's upload was made on, from its key
+    (``coach-feedback/<Take>/…``, store_session_video); None otherwise."""
+    head, _, rest = str(key or "").partition("/")
+    return _take_id(rest.partition("/")[0]) if head == "coach-feedback" else None
+
+
+def _coach_bubbles(messages: list) -> list[tuple[dict, dict, tuple]]:
+    """(message, metadata, the Takes its word may be of, surest first) for
+    every coach bubble on the page: the "Later · from your coach" bubbles
+    and the walk's copies of the coach's word, on a UUID-shaped Take.
+
+    A "Later" bubble names its word's Take (the server writes it). A walk
+    copy names the Take the walk reviewed, which is a later one when the
+    walk showed an earlier Take's word (N48.3 Q11 A). So a copy's word is
+    looked for first on the Take it names as ``coach_take_session_id``,
+    then on the Take its video was uploaded on, then on its own Take."""
     out = []
     for m in messages or []:
         meta = m.get("metadata") if m.get("kind") == "walk_step" else None
-        if (isinstance(meta, dict) and meta.get("step") == "coachnote"
+        if not (isinstance(meta, dict) and meta.get("step") == "coachnote"
                 and meta.get("author") == "coach"):
-            take = _take_id(meta.get("take_session_id"))
-            if take:
-                out.append((m, meta, take))
+            continue
+        take = _take_id(meta.get("take_session_id"))
+        if not take:
+            continue
+        takes = [take] if meta.get("coach_update") else [
+            _take_id(meta.get("coach_take_session_id")),
+            _upload_take(_video_key(meta.get("video"))), take]
+        out.append((m, meta, tuple(dict.fromkeys(t for t in takes if t))))
     return out
+
+
+_SUPABASE_OBJECT = re.compile(r"^/storage/v1/object/(?:sign|public|authenticated)/[^/]+/(.+)$")
 
 
 def _video_key(ref: Any) -> Optional[str]:
     """The stored object behind a video link, whatever shape it was written
-    in (an s3:// ref, a bare key, a signed link); None for no video."""
+    in (an s3:// ref, a bare key, a signed link, a Supabase storage link
+    where R2 is not set up); None for no video."""
     if not isinstance(ref, str) or not ref.strip():
         return None
+    from urllib.parse import unquote, urlsplit
     from services.coach_video_storage import media_key_from_ref
     try:
         key = media_key_from_ref(ref)
+        found = None if key else _SUPABASE_OBJECT.match(urlsplit(ref.strip()).path or "")
     except Exception:  # noqa: BLE001 -- an unreadable ref is compared as written
-        key = None
-    return key or ref.strip().split("?", 1)[0]
+        key, found = None, None
+    return key or (unquote(found.group(1)) if found else ref.strip().split("?", 1)[0])
 
 
 def _words(text: Any) -> Optional[str]:
@@ -319,7 +344,8 @@ def refresh_coach_words(messages: list, user_id: str, database: Any) -> set:
     other coach video is None (D2). Every coach bubble gets ``unseen``
     (D4, D7). A "Later · from your coach" bubble whose words or video no
     longer match a shared word is left out (D1). The walk's own copies are
-    never left out. A Take the reader does not own is left untouched.
+    never left out. Each bubble is judged by its own word's Take (see
+    ``_coach_bubbles``). A Take the reader does not own is left untouched.
     Fails closed: when a read fails, every coach video goes and nothing
     is left out or marked."""
     from services.coach_feedback_signal import newer_than_seen, word_changed_at
@@ -329,7 +355,8 @@ def refresh_coach_words(messages: list, user_id: str, database: Any) -> set:
     if not bubbles:
         return set()
     try:
-        words, seen = _coach_word_reads(user_id, sorted({t for _, _, t in bubbles}), database)
+        words, seen = _coach_word_reads(
+            user_id, sorted({t for _, _, takes in bubbles for t in takes}), database)
     except Exception:
         logger.warning("lounge coach words unreadable: coach videos hidden", exc_info=True)
         for _, meta, _ in bubbles:
@@ -337,10 +364,11 @@ def refresh_coach_words(messages: list, user_id: str, database: Any) -> set:
                 meta["video"] = None
         return set()
     hidden: set = set()
-    for message, meta, take in bubbles:
-        shared = words.get(take)
-        if not shared:
+    for message, meta, takes in bubbles:
+        take = next((t for t in takes if t in words), None)
+        if take is None:
             continue  # no shared word (an older publish's note): as stored
+        shared = words[take]
         videos = {_video_key(w.get("video_ref")): w.get("video_ref") for w in shared}
         key = _video_key(meta.get("video"))
         versions = {(_words(w.get("text")), _video_key(w.get("video_ref"))) for w in shared}

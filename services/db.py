@@ -14744,7 +14744,10 @@ class DatabaseService:
                .upsert({"take_session_id": str(take_session_id), "coach_id": str(coach_id),
                         "draft_text": str(text), "draft_model_version": model_version or None,
                         "draft_prompt": prompt if isinstance(prompt, dict) else None,
-                        "drafted_at": now, "updated_at": now},
+                        # No updated_at (the column default covers a new row):
+                        # a draft is nothing the speaker sees, so it never
+                        # makes a shared word "new" again (N80, D3).
+                        "drafted_at": now},
                        on_conflict="take_session_id,coach_id").execute())
         return (res.data or [None])[0]
 
