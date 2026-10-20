@@ -26,6 +26,11 @@ OUTCOME
   O5  After a Take that needs it, the summary's batch holds the message
       under Will's question, and the summary hears the line I practised
       last Take when this Take said it.
+  O6  The founder's words are what Will asks from the next Take: a changed
+      question and renamed answers (each answer keeps its follow-up by its
+      place), a filled empty slot asked after the signed deeper questions;
+      a number, a missing "{the board}" or a different number of answers is
+      refused.
 PROVES   O1 -> test_will_asks_the_first_that_holds_and_nothing_when_nothing_is_missing
          O2 -> test_the_taps_come_from_what_will_heard,
                test_only_words_the_take_says_are_kept_from_the_read
@@ -36,13 +41,16 @@ PROVES   O1 -> test_will_asks_the_first_that_holds_and_nothing_when_nothing_is_m
                test_distress_typed_under_the_question_gets_the_safety_reply
          O5 -> test_the_summary_holds_its_message_under_wills_question,
                test_the_summary_hears_the_practised_line_when_it_came_back
+         O6 -> test_the_founders_words_are_what_will_asks
 WHY      Founder 2026-10-20 (N82): "ask me a lot of questions … a natural
          flow in the walk and in the lounge"; the bank signed the same day.
 """
 import json
 
 from services import after_take, chat_query, speaker_memory, take_summary, will_question
-from services.will_question import AUDIENCE_BY_FIELD, CHIPS, FOLLOW, QUESTIONS, THANKS
+import pytest
+
+from services.will_question import AUDIENCE_BY_FIELD, CHIPS, FOLLOW_AT, PRINCIPLES, QUESTIONS, THANKS
 
 SUMMARY = "Q3 Board pitch, the endings landed! 😎\n\nRecord Take 2 when you're ready ⬇️"
 
@@ -64,6 +72,7 @@ class _Db:
         self.thread = {}
         self.events = []
         self.takes = _Takes()
+        self.bank = {}
 
     def insert_lounge_messages(self, user_id, rows):
         for r in rows:
@@ -87,6 +96,18 @@ class _Db:
 
     def list_speaker_memory_events(self, user_id, limit=None):
         return list(self.events)
+
+    def list_will_question_bank(self):
+        return list(self.bank.values())
+
+    def save_will_question_bank(self, rows):
+        self.bank.update({r["key"]: dict(r) for r in rows})
+        return True
+
+    def count_will_questions_asked(self, key):
+        return sum(1 for r in self.thread.values()
+                   if (r.get("metadata") or {}).get("will_question") == key
+                   and (r.get("metadata") or {}).get("will_question_step") == "ask")
 
     def get_user_profile(self, user_id):
         return {"domain": "sales"}
@@ -204,7 +225,7 @@ def test_someone_else_opens_one_follow_up_answered_in_own_words(monkeypatch):
     db = _Db()
     _asked(db, "audience_check", chips=CHIPS["audience_check"], heard="the board")
     rows = _tap(db, "Someone else")
-    assert [r["body"] for r in rows] == ["Someone else", FOLLOW["Someone else"]]
+    assert [r["body"] for r in rows] == ["Someone else", FOLLOW_AT["audience_check"][1]]
     assert after_take.held(db, "u") is not None and "t1" not in db.takes.ctx  # it waits
     resp = _typed(db, monkeypatch, "The investors. The board only signs off.")
     assert resp["answer"] == THANKS
@@ -213,7 +234,7 @@ def test_someone_else_opens_one_follow_up_answered_in_own_words(monkeypatch):
 
     skipped = _Db()  # Skip under the follow-up lets the message go too
     _asked(skipped, "pause", chips=CHIPS["pause"])
-    assert [r["body"] for r in _tap(skipped, "Something's missing")][-1] == FOLLOW["Something's missing"]
+    assert [r["body"] for r in _tap(skipped, "Something's missing")][-1] == FOLLOW_AT["pause"][1]
     assert [r["body"] for r in _tap(skipped, will_question.SKIP)] == ["Skip", SUMMARY]
     assert will_question.open_question(skipped, "u") is None
 
@@ -299,3 +320,29 @@ def test_the_summary_hears_the_practised_line_when_it_came_back(monkeypatch):
                        carried={"passage": "We can match their price.", "used": True})
     assert any("We can match their price." in f for f in seen["facts"])
     assert not [r for r in db.thread.values() if (r.get("metadata") or {}).get("offer")]  # nothing to ask
+
+
+def test_the_founders_words_are_what_will_asks():
+    db = _Db()
+    view = will_question.admin_view(db)
+    assert (view["questions"], view["empty"]) == (9, 2)
+    check = next(i for g in view["groups"] for i in g["items"] if i["key"] == "audience_check")
+    assert "{the board}" in check["question"] and check["chips"] == ["Yes", "Someone else"]
+    will_question.save_bank(db, [
+        {"key": "audience_check", "question": "So this one's for {the board}? 🎯", "chips": ["Spot on", "Not quite"]},
+        {"key": "slot_1", "question": "What would make you proud of this talk?", "chips": []}])
+    words = will_question.bank(db)
+    found = will_question.Plan(key="audience", arc_id="arc", take="t1", words=words,
+                               heard=lambda: {"audience": "the board", "audience_times": 2})
+    key, text, chips, _ = will_question.words_for(found)
+    assert (key, text, chips) == ("audience_check", "So this one's for the board? 🎯", ["Spot on", "Not quite"])
+    assert will_question.follow_up("audience_check", "Not quite", chips) == FOLLOW_AT["audience_check"][1]
+    assert will_question.resolved("audience_check", "Spot on", {"chips": chips, "heard": "the board"}) == "the board"
+    filled = tuple(k for k in PRINCIPLES if words[k]["question"])
+    assert _key(take_index=3, audience="The board", goal="Say yes", asked=set(PRINCIPLES[:4]), deeper=filled) == "slot_1"
+    assert will_question.admin_view(db)["empty"] == 1
+    for bad in ({"key": "audience_check", "question": "Is it for the board?", "chips": ["Yes", "No"]},
+                {"key": "goal", "question": "Give me 3 reasons", "chips": ["Say yes", "Trust me", "Get it"]},
+                {"key": "pause", "question": "Need a break?", "chips": ["Yes"]}):
+        with pytest.raises(will_question.QuestionError):
+            will_question.save_bank(db, [bad])

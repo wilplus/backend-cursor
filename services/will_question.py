@@ -57,6 +57,8 @@ QUESTIONS = {
     "most_you": "Which part of this talk is most you?",
     "why_matters": "Why does this one matter to you?",
     "changes": "If this talk goes perfectly, what changes for you?",
+    "slot_1": "",
+    "slot_2": "",
 }
 CHIPS = {
     "pause": ("A breather", "Something's missing", "All good, keep going"),
@@ -74,18 +76,20 @@ AUDIENCE_BY_FIELD = {
     "interview_prep": ("The hiring manager", "A panel", "A recruiter"),
 }
 GOAL_CHIPS = ("Say yes", "Trust me", "Get it")
-#: One follow-up, once, after these taps.
-FOLLOW = {
-    "Someone else": "Who is it for, then? 👀",
-    "Something's missing": "Tell me more 👀 What's missing?",
-    "It didn't feel like me": "What would feel more like you?",
-    "Not sure": "What would make it a yes?",
-    "Not really": "Where do you want it to take you?",
+#: One follow-up, once, after the tap answer in this place (founder's
+#: words may rename the answer; its place keeps its follow-up).
+FOLLOW_AT = {
+    "audience_check": {1: "Who is it for, then? 👀"},
+    "pause": {1: "Tell me more 👀 What's missing?"},
+    "not_used": {2: "What would feel more like you?"},
+    "vision": {1: "What would make it a yes?", 2: "Where do you want it to take you?"},
 }
 THANKS = "Got it, thanks 🙏"
 #: The signed "Skip" (the Lounge's chip vocabulary, as under "What would help?").
 SKIP = "Skip"
-PRINCIPLES = ("vision", "most_you", "why_matters", "changes")
+#: The deeper questions, in the order Will asks them; the two slots are the
+#: founder's own (N83), asked once filled.
+PRINCIPLES = ("vision", "most_you", "why_matters", "changes", "slot_1", "slot_2")
 #: Asked at most once per talk; the others belong to the Take that shows them.
 _ONCE_PER_TALK = ("audience", "audience_check", "goal") + PRINCIPLES
 CALL_TO_ACTION = "Desired call to action:"
@@ -292,6 +296,7 @@ class Plan:
     heard: Callable[[], dict] = field(default=lambda: {})
     field_name: Optional[str] = None
     earlier: list[str] = field(default_factory=list)
+    words: dict = field(default_factory=dict)
 
 
 def two_off(now: tuple, before: tuple) -> bool:
@@ -303,7 +308,8 @@ def two_off(now: tuple, before: tuple) -> bool:
 
 def choose_key(*, take_index: int, now: tuple, before: Optional[tuple],
                carried: Optional[dict], audience: str, goal: str,
-               asked: set[str], asked_last: Optional[str]) -> Optional[str]:
+               asked: set[str], asked_last: Optional[str],
+               deeper: tuple = PRINCIPLES[:4]) -> Optional[str]:
     """The first that holds (module table), or None: nothing is off or
     missing. Pure."""
     if before is not None and asked_last != "pause" and two_off(now, before):
@@ -315,7 +321,7 @@ def choose_key(*, take_index: int, now: tuple, before: Optional[tuple],
     if not goal and "goal" not in asked:
         return "goal"
     if take_index >= 3 and audience and goal:
-        return next((k for k in PRINCIPLES if k not in asked), None)
+        return next((k for k in deeper if k not in asked), None)
     return None
 
 
@@ -397,13 +403,15 @@ def plan(database: Any, *, user_id: str, arc_id: str, take: str, take_index: int
     """What Will asks after this Take, or None. Best-effort: never raises."""
     try:
         asked, asked_last = asked_on_talk(database, user_id, arc_id)
+        words = bank(database)
         key = choose_key(take_index=take_index, now=now, before=before, carried=carried,
                          audience=talk_audience(takes), goal=talk_goal(takes),
-                         asked=asked, asked_last=asked_last)
+                         asked=asked, asked_last=asked_last,
+                         deeper=tuple(k for k in PRINCIPLES if words[k]["question"]))
         if not key:
             return None
         found = Plan(key=key, arc_id=str(arc_id), take=str(take), heard=heard_call,
-                     passage=(carried or {}).get("passage"))
+                     passage=(carried or {}).get("passage"), words=words)
         if key == "audience":
             found.field_name = _field(database, user_id)
             found.earlier = earlier_audiences(database, user_id)
@@ -416,20 +424,129 @@ def plan(database: Any, *, user_id: str, arc_id: str, take: str, take_index: int
 def words_for(found: Plan) -> tuple[str, str, list[str], dict]:
     """The key, the question, its tap answers and what it rests on. Pure
     but for collecting the heard call."""
-    key = found.key
+    key, words = found.key, found.words or signed_bank()
+    said = {k: words[k]["question"] for k in words}
     if key in ("audience", "goal"):
         got = found.heard() or {}
         if key == "audience" and got.get("audience") and got.get("audience_times", 0) >= 2:
             phrase = str(got["audience"])
-            return ("audience_check", QUESTIONS["audience_check"].format(heard=_in_sentence(phrase)),
-                    list(CHIPS["audience_check"]), {"heard": phrase})
+            return ("audience_check", said["audience_check"].replace("{heard}", _in_sentence(phrase)),
+                    list(words["audience_check"]["chips"]), {"heard": phrase})
         if key == "audience":
-            signed = AUDIENCE_BY_FIELD.get(found.field_name or "", AUDIENCE_BY_FIELD["executive_presence"])
-            return key, QUESTIONS[key], _chips([got.get("audience")], found.earlier, signed), {}
-        return key, QUESTIONS[key], _chips([got.get("ask")], GOAL_CHIPS), {}
+            signed = (AUDIENCE_BY_FIELD.get(found.field_name or "")
+                      if found.field_name not in (None, "executive_presence") else None)
+            return key, said[key], _chips([got.get("audience")], found.earlier,
+                                          signed or words["audience"]["chips"]), {}
+        return key, said[key], _chips([got.get("ask")], words["goal"]["chips"]), {}
     if key == "not_used":
-        return key, QUESTIONS[key].format(words=found.passage or ""), list(CHIPS[key]), {}
-    return key, QUESTIONS[key], list(CHIPS.get(key, ())), {}
+        return key, said[key].replace("{words}", found.passage or ""), list(words[key]["chips"]), {}
+    return key, said[key], list(words[key]["chips"]), {}
+
+
+# ------------------------------------------------------------------ the bank
+
+#: The questions the founder edits on the coach panel (N83), in the panel's
+#: groups, each with when Will asks it.
+LAYOUT = (
+    ("Who it's for", (("audience_check", "The Take names it twice"),
+                      ("audience", "Not known yet · the Take's own words come first"))),
+    ("What they should do", (("goal", "Not known yet"),)),
+    ("When something is off", (("pause", "Tries missed two Takes in a row"),
+                               ("not_used", "Last practised line not used"))),
+    ("Deeper, from Take 3", tuple((k, "Basics known") for k in PRINCIPLES)),
+)
+EDITABLE = tuple(k for _, items in LAYOUT for k, _ in items)
+#: What the editor shows for the speaker's own words inside a question.
+_SHOWN = {"audience_check": ("{heard}", "{the board}"), "not_used": ("{words}", "…")}
+_MAX_QUESTION = 200
+
+
+def signed_bank() -> dict:
+    """The signed words, before any change of the founder's. Pure."""
+    chips = {**CHIPS, "audience": AUDIENCE_BY_FIELD["executive_presence"], "goal": GOAL_CHIPS}
+    return {k: {"question": QUESTIONS.get(k, ""), "chips": tuple(chips.get(k, ()))} for k in EDITABLE}
+
+
+def bank(database: Any) -> dict:
+    """The words Will asks: the founder's where they changed one, else the
+    signed ones. Never raises."""
+    words = signed_bank()
+    try:
+        rows = database.list_will_question_bank() or []
+    except Exception as error:  # noqa: BLE001 -- the signed words
+        logger.warning("will question: bank unread: %s", error)
+        rows = []
+    for row in rows:
+        key = str(row.get("key") or "")
+        if key in words:
+            words[key] = {"question": str(row.get("question") or ""),
+                          "chips": tuple(c for c in (row.get("chips") or []) if isinstance(c, str))}
+    return words
+
+
+def _shown(key: str, question: str) -> str:
+    inner, shown = _SHOWN.get(key, ("", ""))
+    return question.replace(inner, shown) if inner else question
+
+
+def _stored(key: str, question: str) -> str:
+    inner, shown = _SHOWN.get(key, ("", ""))
+    return question.replace(shown, inner) if inner else question
+
+
+def admin_view(database: Any) -> dict:
+    """The editor's page: each group's questions, how often each was asked,
+    and how many are filled. Founder only (the route)."""
+    words = bank(database)
+    groups = []
+    for label, items in LAYOUT:
+        groups.append({"label": label, "items": [{
+            "key": key, "when": when, "question": _shown(key, words[key]["question"]),
+            "chips": list(words[key]["chips"]), "own_words": not signed_bank()[key]["chips"],
+            "empty": not words[key]["question"], "asked": _asked(database, key)}
+            for key, when in items]})
+    filled = sum(1 for k in EDITABLE if words[k]["question"])
+    return {"groups": groups, "questions": filled, "empty": len(EDITABLE) - filled}
+
+
+def _asked(database: Any, key: str) -> int:
+    try:
+        return int(database.count_will_questions_asked(key) or 0)
+    except Exception:  # noqa: BLE001 -- the editor works without the count
+        return 0
+
+
+def _checked(key: str, question: Any, chips: Any) -> dict:
+    """One question as the founder wrote it, checked against what Will can
+    ask; raises ``QuestionError`` with what is wrong. Pure."""
+    signed = signed_bank()[key]
+    text = " ".join(str(question or "").split())
+    if not text and not key.startswith("slot_"):
+        raise QuestionError("INVALID_WORDS", "A question can't be empty.")
+    if len(text) > _MAX_QUESTION or _DIGIT.search(text):
+        raise QuestionError("INVALID_WORDS", "A question has no numbers and fits in two lines.")
+    stored = _stored(key, text)
+    inner = _SHOWN.get(key, ("", ""))
+    if inner[0] and inner[0] not in stored:
+        raise QuestionError("INVALID_WORDS", f"Keep {inner[1]} in this question: it is the speaker's own words.")
+    raw = [str(c) for c in (chips or []) if str(c).strip()]
+    clean = [chip(c) for c in raw]
+    if len(clean) != len(signed["chips"]) or any(c is None for c in clean):
+        raise QuestionError("INVALID_WORDS",
+                            f"This question has {len(signed['chips'])} tap answers, each a few words, no numbers.")
+    return {"key": key, "question": stored, "chips": clean}
+
+
+def save_bank(database: Any, items: Any) -> dict:
+    """The founder's words, checked, then kept; Will asks them from the next
+    Take. Raises ``QuestionError``."""
+    if not isinstance(items, list):
+        raise QuestionError("INVALID_WORDS", "Nothing to save.")
+    rows = [_checked(str(i.get("key")), i.get("question"), i.get("chips"))
+            for i in items if isinstance(i, dict) and i.get("key") in EDITABLE]
+    if rows and not database.save_will_question_bank(rows):
+        raise QuestionError("V2_ERROR", "Could not save.", 500)
+    return admin_view(database)
 
 
 # ------------------------------------------------------------------ rows
@@ -493,10 +610,15 @@ def _into_setup(database: Any, take: str, *, audience: Optional[str] = None,
         logger.warning("will question: setup not written take=%s: %s", take, error, exc_info=True)
 
 
+def follow_up(key: str, choice: str, chips: list) -> Optional[str]:
+    """The one follow-up a tap opens, by its place among the answers. Pure."""
+    return FOLLOW_AT.get(key, {}).get(chips.index(choice)) if choice in chips else None
+
+
 def resolved(key: str, choice: str, meta: dict) -> Optional[str]:
-    """What a tap says: "Yes" to the check is the audience it heard; a tap
-    that opens the follow-up says nothing yet. Pure."""
-    if choice in FOLLOW:
+    """What a tap says: the first answer to the check is the audience it
+    heard; a tap that opens the follow-up says nothing yet. Pure."""
+    if follow_up(key, choice, list(meta.get("chips") or [])):
         return None
     if key == "audience_check":
         return str(meta.get("heard") or "").strip() or None
@@ -539,7 +661,7 @@ def answer(database: Any, *, user_id: str, arc_id: str, take_session_id: str,
     if choice == SKIP:
         return _skip(database, user_id=user_id, take=take, key=key, step=step, base=base, at=at)
     said = resolved(key, choice, meta)
-    follow = FOLLOW.get(choice)
+    follow = follow_up(key, choice, list(meta.get("chips") or []))
     _save(database, user_id=user_id, take=take, key=key, said=said or choice,
           settled=said is not None, tapped=True)
     mine = _row(_cid(user_id, take, "answer"), "user", choice,
@@ -617,10 +739,11 @@ def chat_turn(database: Any, user_id: str, question: str) -> Optional[dict]:
     take, key = open_q["take_session_id"], str(open_q.get("will_question"))
     base = {"will_question": key, "arc_id": open_q.get("arc_id"), "take_session_id": take}
     tapped = _said_as_chip(question, list(open_q.get("chips") or []))
-    if open_q["will_question_step"] == "ask" and tapped and tapped in FOLLOW:
+    follow = follow_up(key, tapped, list(open_q.get("chips") or [])) if tapped else None
+    if open_q["will_question_step"] == "ask" and follow:
         _save(database, user_id=str(user_id), take=take, key=key, said=tapped,
               settled=False, typed=True)
-        return {"answer": FOLLOW[tapped],
+        return {"answer": follow,
                 "row_metadata": {**base, "offer": OFFER, "will_question_step": "follow", "chips": []}}
     said = (resolved(key, tapped, open_q) or tapped) if tapped else question.strip()[:_MAX_SAID]
     if key == "audience_check" and not tapped:
