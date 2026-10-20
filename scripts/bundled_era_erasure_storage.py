@@ -4,7 +4,7 @@
 Founder, 2026-09-25. Preview is the default and changes nothing. With
 --execute each file is deleted, verified gone and recorded against the
 snapshot, which apply_bundled_era_erasure_v1 requires before it deletes a row.
-The full procedure is docs/BUNDLED-ERA-ERASURE.md.
+The full procedure is docs/history/BUNDLED-ERA-ERASURE.md.
 
   python3 scripts/bundled_era_erasure_storage.py --snapshot-id <uuid>
   python3 scripts/bundled_era_erasure_storage.py --snapshot-id <uuid> --execute

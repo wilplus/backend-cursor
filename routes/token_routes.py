@@ -1,6 +1,6 @@
 """Token balance API (token pricing Phase 1).
 
-docs/PRICING-TOKENS-PLAN.md · docs/PROMPT-FE-token-pricing.md.
+docs/PRICING-TOKENS-PLAN.md · docs/history/PROMPT-FE-token-pricing.md.
 
 A self-contained blueprint with full paths baked in (same shape as
 routes/journal.py and routes/dev_bugs.py) rather than more routes in the

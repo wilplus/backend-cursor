@@ -67,7 +67,7 @@ config = Config()
 # state ∈ {pending,in_progress,done}. These routes are the alignment layer over
 # the same handlers/db methods — no new logic, just the FE-facing shape. The
 # namespace reversal (supersedes the earlier "re-gate /admin/*") is recorded in
-# docs/coach-namespace-delta.md.
+# docs/history/coach-namespace-delta.md.
 #
 # IDENTITY (S.4 / §14 red-line 6): every coach response is pseudonymized —
 # `pseudonym` + `domain` only, NEVER user_id / real name / email.

@@ -1,7 +1,7 @@
 """Drift monitoring — PSI on inputs, p-chart on decisions.
 
 SPEC.md v3 D26/D30, Appendix G §G.5 / §G.7 / §G.9. Build prompt:
-docs/PROMPT-drift-layer.md. Operational process: PM-3.
+docs/history/PROMPT-drift-layer.md. Operational process: PM-3.
 
 WHAT THIS IS, AND WHAT IT IS NOT (Appendix G.1.1 — read before trusting it).
 This is a REGRESSION detector. It answers "did something change under us" —
