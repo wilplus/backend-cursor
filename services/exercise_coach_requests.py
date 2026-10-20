@@ -396,7 +396,7 @@ def _file_answer(database: Any, request: dict, resolved: dict, fields: dict,
       version for the moment's pattern (35f; P2-3) unless the coach says
       ``file_in_catalogue: false``. A clearer version never does: it is one
       speaker's passage, not a move for every rewrite (Q-B13 A);
-    * the draft the row carries is settled in coach_draft_history (0479):
+    * the draft the row carries is settled in coach_draft_history (0480):
       whether this answer is that draft as written. Every save settles it,
       a repeated one too, so a re-draft answered the same way is recorded.
 

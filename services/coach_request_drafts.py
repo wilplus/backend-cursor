@@ -8,7 +8,7 @@ there the coach's own judgement is the whole answer. The draft is shown to
 the coach only, stored on the request row so the final can be paired with
 it (services.feedback_pairs), and never reaches the speaker as drafted.
 Every draft is also kept, with what its prompt was given and the hash of
-the exact text sent, in coach_draft_history (0479, N79;
+the exact text sent, in coach_draft_history (0480, N79;
 services.coach_draft_history), and the row's ``draft_prompt`` names it.
 
 The draft never blocks anything: a provider that does not answer returns
@@ -103,7 +103,7 @@ def draft_for_request(database: Any, request: dict, body: Any, *,
     """POST .../exercise-request/draft: write the draft, keep it on the row,
     return it to the coach. A second call re-drafts and replaces it on the
     row; every draft stays in coach_draft_history with what its prompt was
-    given (0479)."""
+    given (0480)."""
     if not isinstance(request, dict) or not request.get("id"):
         return 404, {"code": "NOT_FOUND", "error": "No request for this moment."}
     if changed_by_another_coach(request, coach_id):

@@ -1,4 +1,4 @@
-"""Every draft keeps its prompt (0479; founder 2026-10-19, decisions log N79).
+"""Every draft keeps its prompt (0480; founder 2026-10-19, decisions log N79).
 
 A model draft shown to a coach lives on the row it is shown from (the
 moment's request, the coach's Take word), and a re-draft replaces it. This

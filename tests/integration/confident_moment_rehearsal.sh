@@ -888,11 +888,11 @@ if [ "$LANE" = "released" ]; then
   hard migrations/a_take_word_keeps_every_version.sql
 fi
 
-# 0479 (founder 2026-10-19, N79): every draft keeps its prompt. One history
+# 0480 (founder 2026-10-19, N79): every draft keeps its prompt. One history
 # table with foreign keys to exercise_coach_requests (0385) and
 # coach_take_words (0403), and new comments on their draft_prompt columns.
 # Released lane only: the comments are on draft_prompt (0459, released
-# lane). After 0478, as in the manifest. Twice: apply/reapply idempotency.
+# lane). After 0479, as in the manifest. Twice: apply/reapply idempotency.
 # Its case is in tests/test_coach_answers_in_words_postgres.py.
 if [ "$LANE" = "released" ]; then
   hard migrations/every_draft_keeps_its_prompt.sql
