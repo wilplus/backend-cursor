@@ -515,3 +515,4 @@
 0477	speakers_tell_us_if_feedback_helped_and_goals_keep_history.sql
 0478	the_take_is_found_by_its_arc_as_text.sql
 0479	the_status_read_carries_the_policy_text_only_when_it_is_shown.sql
+0480	each_speaker_has_a_private_memory_will_reads.sql

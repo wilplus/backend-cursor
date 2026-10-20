@@ -10852,6 +10852,90 @@ class DatabaseService:
         ids = (self.v2_find_user_id_by_email(e) for e in emails if e)
         return [str(i) for i in ids if i]
 
+    def active_admin_user_ids(self) -> list[str]:
+        """The user ids of the active admins (admin_users holds emails).
+        [] on any failure."""
+        try:
+            emails = [r.get("email") for r in (
+                self.client.table("admin_users").select("email")
+                .eq("is_active", True).execute().data) or []]
+        except Exception as e:
+            logger.warning("active_admin_user_ids failed: %s", e, exc_info=True)
+            return []
+        ids = (self.v2_find_user_id_by_email(e) for e in emails if e)
+        return [str(i) for i in ids if i]
+
+    def list_take_summaries_since(self, since_iso: str, limit: int = 2000) -> list[dict]:
+        """The closing summaries' metadata written since ``since_iso``, for
+        the founder's weekly note. [] on any failure."""
+        try:
+            rows = (self.client.table("lounge_messages").select("metadata")
+                    .eq("kind", "cadence").eq("metadata->>summary", "true")
+                    .gte("client_created_at", since_iso)
+                    .limit(limit).execute().data) or []
+            return [r.get("metadata") or {} for r in rows]
+        except Exception as e:
+            logger.warning("list_take_summaries_since failed: %s", e, exc_info=True)
+            return []
+
+    def list_feedback_checks_since(self, since_iso: str, limit: int = 2000) -> list[dict]:
+        """The answers given since ``since_iso``, newest first. [] on any
+        failure."""
+        try:
+            return (self.client.table("take_feedback_checks")
+                    .select("helped, missing, skipped, answered_at")
+                    .gte("answered_at", since_iso).order("answered_at", desc=True)
+                    .limit(limit).execute().data) or []
+        except Exception as e:
+            logger.warning("list_feedback_checks_since failed: %s", e, exc_info=True)
+            return []
+
+    # ── speaker memory (migration 0480, services/speaker_memory.py) ──
+
+    def insert_speaker_memory_event(self, row: dict) -> bool:
+        try:
+            self.client.table("speaker_memory_events").insert(row).execute()
+            return True
+        except Exception as e:
+            logger.warning("insert_speaker_memory_event failed user=%s: %s",
+                           row.get("user_id"), e, exc_info=True)
+            return False
+
+    def list_speaker_memory_events(self, user_id: str,
+                                   limit: Optional[int] = None) -> list[dict]:
+        """One speaker's events, oldest first; the newest ``limit`` when
+        given. [] on any failure."""
+        try:
+            q = (self.client.table("speaker_memory_events")
+                 .select("kind, payload, take_session_id, created_at")
+                 .eq("user_id", user_id).order("created_at", desc=True))
+            rows = (q.limit(limit) if limit else q.limit(5000)).execute().data or []
+            return list(reversed(rows))
+        except Exception as e:
+            logger.warning("list_speaker_memory_events failed user=%s: %s",
+                           user_id, e, exc_info=True)
+            return []
+
+    def get_speaker_memory(self, user_id: str) -> Optional[dict]:
+        try:
+            rows = (self.client.table("speaker_memory").select("*")
+                    .eq("user_id", user_id).limit(1).execute().data)
+            return rows[0] if rows else None
+        except Exception as e:
+            logger.warning("get_speaker_memory failed user=%s: %s", user_id, e,
+                           exc_info=True)
+            return None
+
+    def save_speaker_memory(self, row: dict) -> bool:
+        try:
+            (self.client.table("speaker_memory")
+             .upsert(row, on_conflict="user_id").execute())
+            return True
+        except Exception as e:
+            logger.warning("save_speaker_memory failed user=%s: %s",
+                           row.get("user_id"), e, exc_info=True)
+            return False
+
     def get_take_feedback_check(self, user_id: str,
                                 take_session_id: str) -> Optional[dict]:
         try:

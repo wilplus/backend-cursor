@@ -2,6 +2,7 @@
 
 Admin:
   GET    /v2/admin/people/<user_id>   the whole profile (services/admin_person.py)
+  GET/PUT /v2/admin/people/<user_id>/speaker-memory   Will's note (founder only)
 
 The person themself:
   (The WhatsApp number lives in routes/v2/user_whatsapp.py, one copy in
@@ -63,6 +64,30 @@ def get_person(user_id: str):
     if not profile:
         return _reply({"code": "NOT_FOUND", "error": "No account with this id"}, 404)
     return _reply(profile)
+
+
+@people_bp.route("/v2/admin/people/<user_id>/speaker-memory", methods=["GET", "PUT"])
+@require_founder
+def speaker_memory_note(user_id: str):
+    """Founder only (WIL-74, 2026-10-20): Will's private note on this
+    speaker, to read or correct. GET {note, written_by, updated_at, events};
+    PUT {note} saves the founder's version (no numbers, at most five lines)."""
+    from services import speaker_memory
+    from services.db import db
+    try:
+        if request.method == "PUT":
+            body = request.get_json(silent=True) or {}
+            saved = speaker_memory.set_note(db, user_id, str(body.get("note") or ""))
+            if saved is None:
+                return _reply({"code": "INVALID_NOTE",
+                               "error": "The note can't hold numbers or be empty after cleaning."}, 400)
+        row = db.get_speaker_memory(user_id) or {}
+        return _reply({"note": row.get("note") or "", "written_by": row.get("written_by"),
+                       "updated_at": row.get("updated_at"),
+                       "events": len(db.list_speaker_memory_events(user_id))})
+    except Exception:
+        logger.warning("speaker memory admin failed user=%s", user_id, exc_info=True)
+        return _reply({"code": "V2_ERROR", "error": "Could not read the note"}, 500)
 
 
 @people_bp.route("/v2/admin/people/<user_id>/practice-effects", methods=["GET"])

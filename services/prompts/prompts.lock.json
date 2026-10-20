@@ -356,6 +356,11 @@
       "module": "snippet_stickiness",
       "sha256": "76a78a620e6e8810691d4792a67e9a0ed6189d4845c323d96432bf82eda4ab51"
     },
+    "speaker_memory.system": {
+      "kind": "source_ref",
+      "module": "pending",
+      "sha256": "0ed70e325034250a108d1361090f77abfb885f7963af986248de9f042c570a51"
+    },
     "structural_star.system": {
       "kind": "static",
       "module": "moment_suggestions",

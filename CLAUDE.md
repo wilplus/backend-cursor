@@ -53,6 +53,10 @@ Promises that must never break:
 - Every moment a speaker meets reaches a coach (alarm:
   `coach_moments_queue.reach_alarm`, backend).
 - The coach's link opens the coach's feedback, whatever else is processing.
+- Will learns about each speaker: every answer and every Take's outcome is
+  kept, and Will reads the speaker's private note in the chat and in the
+  summary (`services/speaker_memory.py`, `docs/SPEAKER-MEMORY.md`, guarded by
+  `tests/test_speaker_memory.py`).
 
 ## How to test (founder, 2026-10-12)
 
