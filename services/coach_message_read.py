@@ -94,20 +94,44 @@ def _message_for_take(database: Any, shown: list, take: str) -> Optional[dict]:
     }
 
 
+def _word_seen(database: Any, actor_id: str, sessions: Any) -> Optional[dict]:
+    """{Take: when the speaker last watched its coach word} for these
+    Takes; None when it cannot be read."""
+    takes = [str(s["id"]) for s in sessions or [] if isinstance(s, dict) and s.get("id")]
+    try:
+        return database.list_coach_take_word_seen(str(actor_id), takes) or {}
+    except Exception as e:
+        logger.warning("coach word seen read failed: %s", e, exc_info=True)
+        return None
+
+
 def journey_payload(database: Any, actor_id: str, arc_id: str,
                     take_count: int, sessions: Any,
                     take_session_id: Optional[str]) -> dict:
     """The Ideal Text enrichment's `journey` section, for the project OWNER
     (the route refuses anyone else before it runs): whether the guided next
     steps were seen, and the coach's overall message and video for the Take
-    on screen (Q1, Final Screens L8; N48.3 Q11 A)."""
+    on screen (Q1, Final Screens L8; N48.3 Q11 A).
+
+    The message carries ``unseen`` (founder 2026-10-19, N80): its word
+    changed after the speaker last watched it, from any door (the WhatsApp
+    or email link, the dot card, the bubble), the dot's own rule. It is
+    read for the message's OWN Take, which may be an earlier one. When the
+    watch cannot be read, the word counts as unseen: one more tap at most,
+    never a hidden coach word."""
+    from services.coach_feedback_signal import newer_than_seen
     from services.journey_messages import journey_seen
     from services.parallel import run_in_parallel
-    # Two independent reads, read together (2026-10-18: this section was the
+    # Independent reads, read together (2026-10-18: this section was the
     # slowest one on the Ideal Text open).
-    seen, message = run_in_parallel(
+    seen, message, watched = run_in_parallel(
         lambda: journey_seen(database, actor_id, arc_id, take_count),
-        lambda: coach_message_for(database, sessions, take_session_id))
+        lambda: coach_message_for(database, sessions, take_session_id),
+        lambda: _word_seen(database, actor_id, sessions))
+    if isinstance(message, dict):
+        changed = message.pop("changed_at", None) or message.get("published_at")
+        message["unseen"] = watched is None or newer_than_seen(
+            changed, watched.get(str(message.get("take_session_id") or "")))
     return {
         "journey_next_steps_seen": seen,
         "coach_message": message,

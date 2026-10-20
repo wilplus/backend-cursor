@@ -1,10 +1,19 @@
-"""When the practise moment opens on the Clearer version (founder
-2026-10-18, "words first, then voice"; services/rewrite_gate.py).
-
-Pins what a speaker sees: good words never get a rewrite; weak words get
-one only when it sits in the moment's own clip, is evidence-backed, really
-fixes the words, stays theirs and is no harder to say. Every other case is
-the voice Exercise.
+"""
+STORY    As a speaker, I want a Clearer version offered only when my words
+         really need help and the rewrite stays mine, so that good words are
+         left alone and practice opens on my voice otherwise.
+OUTCOME
+  O1  Good words never get a rewrite; fillers, hedges, broken sentences,
+      repeats and off-slide words count as needing help.
+  O2  A rewrite opens the moment only if it sits in the moment's clip, is
+      backed by evidence, really fixes the words, uses only my words and is
+      no harder to say; otherwise practice opens on my voice.
+  O3  Mending a broken or repeated sentence counts as a real fix.
+PROVES   O1 -> test_only_words_that_need_help_can_open_on_a_rewrite
+         O2 -> test_a_rewrite_that_fixes_the_words_and_keeps_them_theirs_opens_the_moment,
+               test_a_rewrite_that_fails_any_check_falls_back_to_the_voice_exercise
+         O3 -> test_a_mended_sentence_counts_as_the_fix
+WHY      Founder 2026-10-18: "words first, then voice".
 """
 from __future__ import annotations
 

@@ -1,23 +1,11 @@
-"""The wall clock on one attempt — the wedged-job hole.
-
-FOUNDER 2026-09-17: "for take to actually be processed. It got stale and now
-it needs to function."
-
-Every recovery path in services/pipeline_jobs.py keyed off HEARTBEAT silence,
-and `_Heartbeat` is a daemon thread on a timer: it writes `heartbeat_at` every
-60 seconds whether or not the runner is advancing. So a runner blocked forever
-on a socket that never returns kept its job row looking perfectly healthy, and
-all three recovery paths stood down:
-
-  * `list_stale_processing_jobs` never listed it (heartbeat fresh);
-  * `run_processing_job` re-delivery early-returned ("another worker is live");
-  * `sweep_orphaned_sessions` skipped the session (it HAS a live job).
-
-The take was unrecoverable by any code path in the system. These tests hold the
-wall clock in place, because the failure is invisible in every log the module
-writes — the only symptom is a user staring at "Working on your take".
-
-Run: python3 -m unittest tests.test_wedged_job_wall_clock
+"""
+STORY    As a speaker, I want a Take stuck in processing to be recovered, so
+         that I do not stare at "Working on your take" forever.
+OUTCOME
+  O1  A job running past its time limit, even with a fresh heartbeat, is
+      flagged as stuck, released and re-queued once.
+PROVES   O1 -> SweeperRecoversTheWedgedJob::test_the_founder_symptom_is_recovered
+WHY      Founder 2026-09-17: "It got stale and now it needs to function."
 """
 from __future__ import annotations
 

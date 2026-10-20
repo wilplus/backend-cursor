@@ -1,3 +1,18 @@
+"""
+STORY    As a speaker, I want my chosen helper words to stay on their slide
+         after a later Take, and out-of-date ones refused, so that my helper
+         words stay until I pick new ones.
+OUTCOME
+  O1  Helper words whose Paragraph was changed or belongs elsewhere are
+      refused rather than shown in the wrong place.
+  O2  The helper-words route returns the helper words currently chosen.
+  O3  Helper words picked in an earlier Take still appear, on the slide's
+      Paragraph now.
+PROVES   O1 -> test_stale_or_invalid_live_root_fails_closed
+         O2 -> test_recording_roots_route_returns_the_live_root
+         O3 -> test_helper_words_from_an_earlier_take_stay_on_their_slide
+WHY      Never-rule 5; founder 2026-10-13, project "S".
+"""
 from __future__ import annotations
 
 import inspect

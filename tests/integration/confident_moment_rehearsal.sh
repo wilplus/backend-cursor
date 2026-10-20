@@ -866,6 +866,16 @@ fi
 hard migrations/status_read_in_one_trip.sql
 hard migrations/status_read_in_one_trip.sql
 
+# 0479 (founder 2026-10-20): the status read carries the policy text only
+# when it will be shown. Two v2 functions beside 0473's read and 0358's
+# status, and the v1 pair re-pointed at them with the text always on; no
+# table. Both lanes, after 0473 (0474-0478 touch none of its tables),
+# as in the manifest. Twice:
+# apply/reapply idempotency. Its cases are in
+# tests/test_phase1_processing_postgres.py (TestTheStatusReadsInOneTrip).
+hard migrations/the_status_read_carries_the_policy_text_only_when_it_is_shown.sql
+hard migrations/the_status_read_carries_the_policy_text_only_when_it_is_shown.sql
+
 # 0478 (founder 2026-10-18, N77): a coach's video belongs to its speaker.
 # The owner on the version rows (0399) and on the catalogue's lines (0401),
 # both applied above, and the speaker's own set; the exercise library parts
