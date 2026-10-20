@@ -1,7 +1,14 @@
-"""A refused training switch is visible: logged and sent to Sentry by code.
-
-The HTTP answer stays the code and the status the switch already chose.
-The report never carries a person's id (the frontend has no Sentry).
+"""
+STORY    As the founder, I want a refused training switch to show up in the
+         logs and Sentry without the person's id, so that problems are
+         visible and private.
+OUTCOME
+  O1  When the training status cannot be read, the speaker gets "service
+      unavailable" (503) with the refusal code.
+  O2  One warning is logged and one Sentry message sent, naming the code
+      and never the user or owner id.
+PROVES   O1 -> test_status_unavailable_is_reported_and_answered_503
+         O2 -> test_status_unavailable_is_reported_and_answered_503
 """
 
 from __future__ import annotations

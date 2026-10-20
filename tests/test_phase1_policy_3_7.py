@@ -1,7 +1,17 @@
-"""The 3.7 publish script (founder 2026-10-15, N74). Pins what a speaker later
-proves they agreed to: the four copy blocks are the legal pack's files byte
-for byte (Privacy 3.7, the rest unchanged from 3.6), the guards check those
-files' own hashes, and the training wording is left alone."""
+"""
+STORY    As a speaker, I want the 3.7 terms I accept to be the legal pack's files
+         exactly, with the training wording left alone, so that I can later
+         prove what I agreed to.
+OUTCOME
+  O1  The terms, privacy (3.7), AI notice and agreement text in the publish
+      script equal the legal pack's files byte for byte, and the terms' and
+      privacy fingerprints (hashes) are checked by the script.
+  O2  It publishes version 3.7 with privacy 3.7, keeps the United States, and
+      does not replace the training wording.
+PROVES   O1 -> test_the_copy_is_the_legal_pack_byte_for_byte_and_its_hash_is_checked
+         O2 -> test_it_publishes_3_7_and_leaves_the_training_wording_alone
+WHY      Founder 2026-10-15, N74.
+"""
 from __future__ import annotations
 
 import hashlib

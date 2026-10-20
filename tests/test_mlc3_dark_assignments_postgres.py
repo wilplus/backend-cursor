@@ -1,8 +1,16 @@
-"""Executable rejection/reproduction tests; disposable PostgreSQL ONLY.
-
-Load integration/mlc3_assignment_prerequisites.sql, 0313 and 0314 into an
-empty willab_m33_* database, then set MLC3_REHEARSAL_DSN. No provider calls,
-real audio, user exposure, dataset creation or model evaluation occurs here.
+"""
+STORY    As a speaker, I want no exercise assigned on evidence the machine did
+         not really have, and none after I withdraw permission, so that practice
+         is never invented or done without my permission.
+OUTCOME
+  O1  Unclear or unreliable audio, or missing or out-of-range measurements,
+      give "no match" with the named reason, and that "no match" cannot be
+      turned into a request for a new exercise.
+  O2  After my permission is withdrawn, no new assignment or observation can
+      be made.
+PROVES   O1 -> test_no_invented_evidence (one case per reason)
+         O2 -> test_revocation_blocks_creation_and_replay
+WHY      Rehearsal database only (migrations 0313, 0314); no provider calls.
 """
 from __future__ import annotations
 

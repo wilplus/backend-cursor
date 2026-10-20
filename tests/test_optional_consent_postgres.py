@@ -1,20 +1,15 @@
-"""A receipt can record a yes the person was free to withhold.
-
-P11's prerequisite, built on the founder's 2026-09-23 decision to land it
-before republishing the policy.
-
-`accept_phase1_processing_authorization_v1` writes receipt purpose rows only
-`WHERE pp.required_for_core_service`, so a purpose someone could decline left
-no evidence at all — and for `coach_review`, whose lawful basis IS consent,
-that is the absence of the lawful basis rather than a gap in the paperwork.
-Meanwhile `resolve_mlc3_dual_purpose_receipt_v2` gates the whole MLC-3 service
-on the receipt naming two such purposes. The only way the product worked was
-if they were compulsory, which is the bundling doc 01 §3 calls invalid.
-
-These cases run the real function against a released-lane policy that carries
-one required purpose and one optional one, which is the shape the republished
-policy will have. The point of each is the same: what ends up in the receipt
-must be exactly what the person was asked and said, and nothing else.
+"""
+STORY    As a speaker, I want to be able to decline coach review and still
+         record, and to have my "yes" recorded when I give it, so that my
+         consent is freely given.
+OUTCOME
+  O1  When I tick an optional purpose, my receipt holds the required purposes
+      plus that one, and I am authorized.
+  O2  When I decline, my receipt holds only the required purposes, and I am
+      still authorized to record.
+PROVES   O1 -> TestV2RecordsExactlyWhatWasChosen::test_a_chosen_optional_purpose_reaches_the_receipt
+         O2 -> TestV2RecordsExactlyWhatWasChosen::test_declining_leaves_the_person_authorized_for_the_core
+WHY      Founder 2026-09-23: bundling consent with the core service is invalid.
 """
 from __future__ import annotations
 

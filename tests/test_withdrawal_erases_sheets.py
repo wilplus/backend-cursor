@@ -1,17 +1,14 @@
-"""A training withdrawal deletes the coach sheets about the speaker's Takes
-(3.5 pack, file 22 E4; Privacy 3.5 §4a).
-
-Pins:
-  * turning the training switch off DELETES (not hides) every V4 moment-pick
-    sheet, V4 surer sheet and blind block pick about the speaker's Takes;
-  * other speakers' rows are untouched;
-  * someone who holds the yes again is skipped; a failed read is named and
-    never raises into the switch; the queued erasure job runs it again;
-  * the database method deletes by Take only, in the three tables, and each
-    table is a take-scoped delete in the purge registry (the registry stays
-    consistent with what the withdrawal erases).
-
-Run: python3 -m pytest tests/test_withdrawal_erases_sheets.py
+"""
+STORY    As a speaker, I want the coach sheets about my Takes deleted when I
+         turn training off, so that my withdrawal is real.
+OUTCOME
+  O1  Turning training off deletes my Takes' rows from all three coach
+      sheet tables, and only mine.
+  O2  If my Takes cannot be read, the switch still turns off, and the
+      queued erasure job finishes the deletion later.
+PROVES   O1 -> WithdrawalTests::test_withdraw_deletes_the_speakers_rows_and_only_theirs
+         O2 -> WithdrawalTests::test_a_failed_read_is_named_and_never_breaks_the_switch
+WHY      Privacy 3.5 section 4a (3.5 pack, file 22 E4).
 """
 from __future__ import annotations
 

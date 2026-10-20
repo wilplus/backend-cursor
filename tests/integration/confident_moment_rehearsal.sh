@@ -866,10 +866,11 @@ fi
 hard migrations/status_read_in_one_trip.sql
 hard migrations/status_read_in_one_trip.sql
 
-# 0478 (founder 2026-10-20): the status read carries the policy text only
+# 0479 (founder 2026-10-20): the status read carries the policy text only
 # when it will be shown. Two v2 functions beside 0473's read and 0358's
 # status, and the v1 pair re-pointed at them with the text always on; no
-# table. Both lanes, right after 0473, as in the manifest. Twice:
+# table. Both lanes, after 0473 (0474-0478 touch none of its tables),
+# as in the manifest. Twice:
 # apply/reapply idempotency. Its cases are in
 # tests/test_phase1_processing_postgres.py (TestTheStatusReadsInOneTrip).
 hard migrations/the_status_read_carries_the_policy_text_only_when_it_is_shown.sql

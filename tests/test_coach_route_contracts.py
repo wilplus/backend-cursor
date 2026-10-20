@@ -1,12 +1,32 @@
-"""Route-level contracts for the coach routes moved out of
-``routes/v2/coach.py`` into services (founder 2026-10-12: "move logic out of
-the backend routes and cut glue").
-
-Characterization tests, written against the unmodified routes first: each pins
-one route's main success path (status, the whole JSON body, the writes and
-their order) and its main refusal, so the move is provably
-behaviour-preserving. Decorators (auth, rate limit, purpose guard) are peeled
-with ``inspect.unwrap``; they are untouched by the move and pinned elsewhere.
+"""
+STORY    As a developer moving coach routes into services, I want each
+         route's success answer and main refusals pinned, so that the move
+         changes nothing a coach sees.
+OUTCOME
+  O1  Student detail returns the same drill-down, and refuses a bad or
+      unknown student.
+  O2  Practice review refuses before the coach's blind answer, and a
+      shared decision writes in the same order.
+  O3  Session and exercise video uploads store the video, and refuse a
+      wrong format or an empty file; a repeated upload is not stored twice.
+  O4  Training import answers with a receipt and analyses in the
+      background; it refuses missing fields, rejected audio and a missing
+      corpus basis.
+  O5  The confidence label refuses bad input, an unknown moment and a
+      rater who must be fresh.
+PROVES   O1 -> StudentDetailContract::test_the_drill_down_shape,
+               StudentDetailContract::test_refusals
+         O2 -> PracticeReviewContract::test_the_blind_gate_refuses_first,
+               PracticeReviewContract::test_a_shared_decision_writes_in_order
+         O3 -> SessionVideoContract::test_a_stored_video,
+               SessionVideoContract::test_refusals,
+               ExerciseVideoContract::test_the_upload_reaches_the_library,
+               ExerciseVideoContract::test_refusals
+         O4 -> TrainingImportContract::test_a_receipt_then_the_background_analysis,
+               TrainingImportContract::test_refusals
+         O5 -> ConfidenceLabelContract::test_refusals
+WHY      Founder 2026-10-12: "move logic out of the backend routes and cut
+         glue".
 """
 from __future__ import annotations
 

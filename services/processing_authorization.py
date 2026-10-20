@@ -533,7 +533,7 @@ class ProcessingAuthorizationService:
         path refuses an unresolvable principal, in `off` it degrades to the
         owner, and both decisions stay where they are made.
 
-        Founder 2026-10-20 (0478): the answer carried 52 KB of policy text
+        Founder 2026-10-20 (0479): the answer carried 52 KB of policy text
         on every open, to a person who had accepted and is never shown it.
         The v2 read sends the Terms, the Privacy Policy, the AI notice and
         the agreement words only when the status is not authorized -- a

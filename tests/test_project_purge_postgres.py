@@ -1,19 +1,18 @@
-"""One project is erased; the account's other project is untouched (P1-B, 0380).
-
-The founder's words (2026-09-26): "make the delete work". A person taps
-Delete on one project row; an operator confirms it (N8); the purge must then
-reach that project's takes, words and audio, and nothing else the person has.
-
-This runs `ProjectPurgeOrchestrator.run` - the Python production runs - on
-the released rehearsal lane, with the same two named stand-ins as
-tests/test_take_purge_postgres.py: every retention rule seeded active, and
-object storage faked.
-
-  * the confirmed project reaches `done`; its words are gone, its row and
-    take are kept as empty receipts (N9, N12) and its audio was deleted;
-  * the same person's other project keeps its name, its take and its words;
-  * the user's request is marked done by the finished purge, never before;
-  * a project request can never be frozen as an account-wide purge.
+"""
+STORY    As a speaker, I want deleting one project to erase its words and
+         audio and leave my other project untouched, so that I can remove one
+         talk without losing everything.
+OUTCOME
+  O1  The confirmed project's erasure finishes, and my delete request is
+      marked done.
+  O2  That project's words are gone and its audio deleted; its project and
+      Take rows stay only as empty receipts.
+  O3  My other project keeps its name, its Take and its words, and my
+      account and consent record stay.
+PROVES   O1 -> TestOneProjectIsErased::test_the_project_reaches_done_and_the_other_is_untouched
+         O2 -> TestOneProjectIsErased::test_the_project_reaches_done_and_the_other_is_untouched
+         O3 -> TestOneProjectIsErased::test_the_project_reaches_done_and_the_other_is_untouched
+WHY      Founder 2026-09-26: "make the delete work" (N8, N9, N12).
 """
 from __future__ import annotations
 

@@ -1,14 +1,32 @@
-"""The status read on every app open (founder 2026-10-16: it took ~600 ms).
-
-The client reads `pending_deletion` only when the status says blocked and
-never reads `pending_project_deletions`, so the two deletion reads run only
-for a blocked person, and then side by side. An ordinary open pays the
-status read alone.
-
-Then (0473) that one status read is one round trip:
-`read_phase1_processing_status_v1` resolves the owner, the acquirer and the
-status in a single call. When it cannot (migration not applied, it raises,
-or it answers a null principal), the route takes exactly the old path.
+"""
+STORY    As a speaker, I want the app to check my permission quickly every
+         time I open it, and to show a deletion I asked for when my account
+         is blocked, so that opening the app is fast and I always see my
+         pending deletion.
+OUTCOME
+  O1  An ordinary open reads only the status; a blocked person also gets
+      both deletion lists.
+  O2  The status comes back in one database call, keeping the gate mode
+      and country; when that call cannot answer, it steps aside, and with
+      nothing to look up it asks nothing.
+  O3  Opening the app uses the one-call read when it can and the old steps
+      when it cannot; a guest's secret is checked before either.
+  O4  Every core read is gated the same way, and a person without
+      permission is refused (403) exactly as before.
+PROVES   O1 -> test_an_ordinary_open_reads_the_status_alone,
+               test_a_blocked_person_gets_both_deletions
+         O2 -> test_the_fast_path_answers_the_status_with_gate_mode_in_one_call,
+               test_a_reacceptance_keeps_its_country_after_gate_mode,
+               test_the_fast_path_steps_aside_when_it_cannot_vouch,
+               test_nothing_to_read_by_asks_nothing
+         O3 -> test_an_open_that_the_one_trip_read_answers_skips_the_steps,
+               test_an_open_the_one_trip_read_cannot_answer_takes_the_old_path,
+               test_a_guest_is_verified_in_python_before_the_one_trip_read
+         O4 -> test_a_core_read_is_gated_in_one_trip,
+               test_a_core_read_the_one_trip_read_cannot_answer_is_gated_in_steps,
+               test_the_one_trip_status_refuses_like_the_old_path
+WHY      Founder 2026-10-16: the status read on every open took ~600 ms
+         (migration 0473).
 """
 from __future__ import annotations
 
@@ -104,7 +122,7 @@ def test_the_fast_path_answers_the_status_with_gate_mode_in_one_call():
     assert service.database.client.calls == [(
         "read_phase1_processing_status_v2",
         {"p_user_id": USER, "p_product_owner_principal_id": None,
-         # 0478: the policy text rides along only when a screen shows it.
+         # 0479: the policy text rides along only when a screen shows it.
          "p_always_with_copy": False})]
 
 

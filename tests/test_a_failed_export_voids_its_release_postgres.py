@@ -1,18 +1,17 @@
-"""A failed export voids its release, executed on a disposable database
-(0455; door 2, ML-9). Pins:
-  * the gap: when the mark refuses (a pair stopped being releasable after
-    the export read it), the release row stands live with no pair pointing
-    at it, and the weekly refresh cannot reach it;
-  * void_failed_pair_release_v1 reaches it: voided 'export_failed', in the
-    sweep's list, the still-releasable pair waiting to leave in a later
-    week's release, and the refresh leaves the reason alone;
-  * a mark that committed before the failure was seen is undone: the pairs
-    go back to waiting, as the refresh sends back a voided release's pairs;
-  * a second call changes nothing, a release another path voided keeps its
-    reason, a bystander release stands, an unknown release is named;
-  * the week stays taken once voided (pair_releases_one_per_week), which is
-    what lets the export refuse a second fire before it writes;
-  * only the service role may call it.
+"""
+STORY    As a speaker who withdrew my training "yes", I want a half-finished
+         export that held my pair voided and cleaned up, so that my data
+         never leaves in a broken release.
+OUTCOME
+  O1  When an export's last step is refused because a pair is no longer
+      allowed, the release is voided as "export_failed" and queued for
+      file cleanup.
+  O2  Pairs of speakers who still say yes wait and leave in a later week's
+      release.
+  O3  The weekly consent refresh keeps the "export_failed" reason.
+PROVES   O1, O2, O3 ->
+             test_a_mark_that_refuses_leaves_a_release_only_this_void_reaches
+WHY      Door 2, ML-9 (migration 0455).
 """
 from __future__ import annotations
 

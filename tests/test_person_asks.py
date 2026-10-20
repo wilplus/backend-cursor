@@ -1,9 +1,15 @@
-"""Consent asks from a person's profile (founder 2026-10-18): a "no" given in
-the chat starts the same 30-day wait as any other "no" before the consent can
-be asked again (privacy law wants consent given freely), and a consent no
-screen can answer is not asked at all.
-
-Run: python3 -m pytest tests/test_person_asks.py
+"""
+STORY    As a speaker, I want a "no" I give in the chat to stop the same consent
+         being asked again for 30 days, and never to be asked for a consent no
+         screen can answer, so that my consent stays freely given.
+OUTCOME
+  O1  Within 30 days of a "no" in the chat, asking again is refused
+      (TOO_SOON); after 30 days it is allowed.
+  O2  A consent no screen can answer (share, email) is never asked
+      (INVALID_CONSENT).
+PROVES   O1 -> test_a_no_in_the_chat_waits_thirty_days_before_asking_again
+         O2 -> test_a_consent_no_screen_answers_is_not_asked
+WHY      Founder 2026-10-18: privacy law wants consent given freely.
 """
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
--- 0478 · The status read carries the policy text only when it will be shown.
+-- 0479 · The status read carries the policy text only when it will be shown.
 --
 -- Founder 2026-10-20: GET /v2/processing-authorization runs on every app
 -- open. Its answer is 53,800 bytes, and 52,000 of them are the Terms, the

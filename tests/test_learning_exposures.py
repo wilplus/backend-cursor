@@ -1,4 +1,17 @@
-"""Tests for prepared packets versus true rendered exposure receipts."""
+"""
+STORY    As the founder, I want each record of what a speaker was shown to keep
+         the machine's, the speaker's and the coach's answers apart and to show
+         no numbers, so that the three judgements stay independent.
+OUTCOME
+  O1  What the speaker sees carries no score, rank or prediction, and no copy
+      of any other person's answer; the machine's own score stays only in the
+      machine's column.
+  O2  A shown item that carries a score or someone's answer is refused before
+      anything is saved.
+PROVES   O1 -> test_v3_packets_carry_no_score_rank_prediction_or_other_actors_answer
+         O2 -> test_a_visible_payload_with_a_score_or_an_answer_is_refused_at_the_seam
+WHY      Never-rules 1 and 2 (AC-9, L3).
+"""
 from __future__ import annotations
 
 import uuid
