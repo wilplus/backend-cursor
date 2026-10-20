@@ -11,7 +11,8 @@ the doors the bubble offers (the frontend labels them from the signed copy):
 ``presentation_mode`` is no longer emitted (J5, N37.4): the ⋯ menu is
 Presentation Mode's only door. The Take 3 copy lost its last sentence
 ("You can present, export your notes, or keep practising.") per Q-B15 A
-(N62); every other word is as signed.
+(N62). All three messages were simplified by the founder in chat on
+2026-10-20; Take 3's names only its two buttons, export and keep practising.
 """
 from __future__ import annotations
 
@@ -23,8 +24,8 @@ from typing import Any, Optional
 _NAMESPACE = uuid.UUID("c0af92c8-758e-4c31-9c6e-f6d36bd52395")
 
 _COPY = {
-    # Takes 1 and 2 simplified by the founder, 2026-10-20 (each chosen in
-    # chat over two other versions): what happened, then what to do next.
+    # All three simplified by the founder, 2026-10-20 (each chosen in chat
+    # over two other versions): what happened, then what to do next.
     1: (
         "Your first take is in 🎉\n\n"
         "Now record take 2 with your helper words ⬇️"
@@ -34,11 +35,8 @@ _COPY = {
         "Now record take 3. Use your helper words as anchors, not a script ⬇️"
     ),
     3: (
-        "Your presentation is ready.\n\n"
-        "We’ve seen your message become much more clear and your delivery grow "
-        "more natural across three takes.\n\n"
-        "Use the orange-marked text as your anchors - not a script - and try "
-        "to speak as to a friend."
+        "Your third take is in 🎉\n\n"
+        "Your presentation is ready. Export your notes or keep practising ⬇️"
     ),
 }
 
