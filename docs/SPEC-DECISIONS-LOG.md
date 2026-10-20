@@ -2671,3 +2671,11 @@ nothing when they have not said. The founder approved the prototype
 small text", "please execute all of that"). The coach panel's rules move to
 one page, frontend `docs/flows/coach-panel.md`, as the walk's did (N86); its
 lock file is history. The rules: that page, C3 and J. No migration.
+
+**N88 · The walk opens the moment processing ends (founder, the app, 20
+October 2026).** After checking the app: the marks are baked in the
+processing run right after the Take is ready, the processing bubble waits
+for them, the Clearer version is served on its moment, and the speaker-side
+practice gates read the speaker's own page. The rules: the walk's page, A1,
+A2, C3, C4, D4, D5 (frontend `docs/flows/feedback-walk-and-chat.md`, §6
+N88; backend #1209, frontend #896). No migration.

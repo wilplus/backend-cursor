@@ -146,7 +146,7 @@ def _practice_permitted(database: Any, take_session_id: str) -> bool:
     )
     service = ProcessingAuthorizationService(database)
     try:
-        principal = service.take_acquisition_principal(str(take_session_id))
+        principal = service.take_speaker_principal(str(take_session_id))
     except Exception:
         return not service.enforced
     return service.choice_permitted(principal, PERSONALISED_PRACTICE)

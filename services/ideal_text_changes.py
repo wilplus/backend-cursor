@@ -1169,9 +1169,15 @@ class _ChangesRun:
     def _practice_permitted(self) -> bool:
         """Whether this Take's owner allows exercises chosen from it.
 
-        Asked of the one boundary that decides it. A failure to resolve the
-        owner is a clean no-offer while the gate enforces, and the
-        established path while it is off, the same rule every caller gets.
+        Asked of the one boundary that decides it, for the person as their
+        own Data & consent page reads them (`take_speaker_principal`, as the
+        coach's gate since #1206): the acquirer of one older recording can be
+        an earlier principal of the same person with a receipt of an earlier
+        policy, which read as "practice off" and withheld the exercise while
+        the page showed every choice on (WIL-90, 2026-10-20). A failure to
+        resolve the owner is a clean no-offer while the gate enforces, and
+        the established path while it is off, the same rule every caller
+        gets.
         """
         from services.processing_authorization import (
             PERSONALISED_PRACTICE,
@@ -1179,7 +1185,7 @@ class _ChangesRun:
         )
         service = ProcessingAuthorizationService(self.db)
         try:
-            principal = service.take_acquisition_principal(str(self.arm_sid))
+            principal = service.take_speaker_principal(str(self.arm_sid))
         except Exception:
             return not service.enforced
         return service.choice_permitted(principal, PERSONALISED_PRACTICE)

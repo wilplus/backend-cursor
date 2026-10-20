@@ -126,7 +126,7 @@ def _on_notice_version(database: Any, take_session_id: str) -> bool:
         return False
     try:
         service = ProcessingAuthorizationService(database)
-        status = service.status(service.take_acquisition_principal(str(take_session_id)))
+        status = service.status(service.take_speaker_principal(str(take_session_id)))
     except Exception as e:  # noqa: BLE001 — unknown reads as not on the version
         _log.warning("blind-check policy read failed take=%s: %s", take_session_id, e,
                      exc_info=True)
@@ -144,7 +144,7 @@ def _objected(database: Any, take_session_id: str) -> bool:
     from services.processing_authorization import ProcessingAuthorizationService
     try:
         service = ProcessingAuthorizationService(database)
-        principal = service.take_acquisition_principal(str(take_session_id))
+        principal = service.take_speaker_principal(str(take_session_id))
         result = service.client.rpc("has_blind_check_objection_v1", {
             "p_acquisition_principal_id": str(principal),
         }).execute()

@@ -529,43 +529,31 @@ def _run_full_analysis_impl(
     # speaker was never waiting on, so the flip comes first.
     _flip_ready(on_ready, session_id)
 
-    # THE BOOKMARKS, ASKED FOR THE MOMENT THE SPEAKER CAN OPEN THEM (founder
-    # 2026-09-20: "there need to be bookmarks right away the moment we see
-    # it. Otherwise, that makes no sense because people will quit").
+    # THE BOOKMARKS, IN THE RUN, RIGHT AFTER READY (founder 2026-10-20; flow
+    # page A2: "the moment processing finishes, the walk opens, right away,
+    # with nothing in between"; F2: the text never shows before the walk).
+    # The walk is the marks, so the speaker waits for them whatever we do;
+    # queued (#595, #596) they waited on the pipeline queue and the page gave
+    # up asking before they landed (WIL-76). `bake_now` stores them here, in
+    # this job, 20-40 s after the flip, while the chat still shows
+    # "Processing your recording"; the page keeps that bubble until the
+    # marks are in and then opens the walk at once.
     #
     # Below the terminal boundary and below the version card, and every line
-    # of distance is deliberate: the bake computes the feedback block, and
-    # the stages that produce the evidence it arbitrates over run above. A
-    # bake asked for at the assembly — which is what #580 effectively did —
-    # computes an empty lane on a fresh take, because
-    # `ideal_text_confirmation` runs before the feedback stages do.
+    # of distance is deliberate: the bake computes the feedback block over
+    # the evidence the stages above produced, and the published head names
+    # the previous Take until the ready flip advances the generation
+    # (2026-10-15), so the bake republishes it first. Without a flip here (no
+    # callback: the dispatcher writes `ready` after the return) the head is
+    # not final yet and the queue keeps the work as before.
     #
-    # HERE RATHER THAN AT THE PUBLISH is the entire content of task #43. The
-    # Manager needs 20-40 seconds over a real document and it must be spent
-    # where nobody is holding a request open — not on `publish_for_arc`,
-    # which Take 1 creation and the cold-open GET both call. `enqueue_bake`
-    # hands the work to the queue and returns.
-    #
-    # REINSTATED (#595) after #593 removed it on a queue jam that never
-    # happened. `processing_jobs` shows `waited_s` of two to three seconds on
-    # every row across both days — the stale wait the founder reported was a
-    # frontend marker that never cleared (frontend #421), not this line.
-    #
-    # ONE QUEUE IS STILL TRUE, and it is the honest caveat rather than the
-    # reason to stay away. `job_queue.queue_name()` serves everything, so a
-    # bake does sit in the same line as `run_processing_job`. At one speaker
-    # that costs three seconds of wait, measured. With several recording at
-    # once a forty-second bake ahead of a take would delay it, and the answer
-    # then is PIPELINE_QUEUE_NAME and a worker of its own — not deleting the
-    # pre-warm, which is the only thing that makes the FIRST open fast.
-    #
-    # Not wrapped in `_deg`, and unbranched: `enqueue_bake` cannot raise, a
-    # false return means the next reader computes live, and every condition
-    # worth applying — spoken take, real arc, real actor, the flag — lives
-    # inside it, because whether a bake is worth making is the bake's own
-    # question.
-    from services.ideal_text_feedback_bake import enqueue_bake
-    enqueue_bake(arc_id, _document_actor(session_id, user_id), recording_kind)
+    # One unbranched call that cannot raise, every condition inside it
+    # (spoken take, the flag, a real document, the broker for the queue):
+    # whether a bake is worth making is the bake's own question, and this
+    # function is grandfathered against the complexity ratchet.
+    from services.ideal_text_feedback_bake import bake_after_ready
+    bake_after_ready(arc_id, _document_actor(session_id, user_id),
+                     recording_kind, flipped=on_ready is not None)
     # Training copies (SPEC-training-corpus P3). Same shape as the bake: one
     # unbranched call that cannot raise, every condition inside it. A code
     # constant keeps it a no-op until P5.
