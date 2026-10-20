@@ -12991,7 +12991,7 @@ class DatabaseService:
         }).execute()
         return self._rpc_row(result.data)
 
-    # ── What the coach saw when they answered (0482) ───────────────────────
+    # ── What the coach saw when they answered (0483) ───────────────────────
 
     def get_snippet_passages(self, take_session_id: str,
                              snippet_id: Optional[str] = None) -> list[dict]:
@@ -13063,7 +13063,7 @@ class DatabaseService:
         return rows[0] if rows else None
 
     def insert_coach_answer_situation(self, **row: Any) -> Optional[dict]:
-        """What the coach saw when they gave an answer (0482), written once
+        """What the coach saw when they gave an answer (0483), written once
         per answer: the same answer written again is ignored (its UNIQUE
         key), and no row is ever updated. None when ignored. Raises on
         failure: services.coach_answer_situation logs it and the answer

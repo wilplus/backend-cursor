@@ -1,4 +1,4 @@
-"""Each answer keeps what the coach saw (0482; founder 2026-10-19, decisions
+"""Each answer keeps what the coach saw (0483; founder 2026-10-19, decisions
 log N79).
 
 When a coach answers a speaker's moment (a first answer, a changed one, or
@@ -11,7 +11,7 @@ this module freezes the situation they answered in, once per answer, in
     Take word, the word row's ``updated_at`` (one row per save; the words
     it describes are the live row's, or the lowest-numbered
     coach_take_word_versions row of that word whose ``updated_at`` is at or
-    after it, 0479: a re-draft bumps ``updated_at`` too, so it is no
+    after it, 0480: a re-draft bumps ``updated_at`` too, so it is no
     equality key);
   * the moment's kind (``answer_kind``, else ``kind``) and the pattern the
     coach named on the Home screen, when they named one;

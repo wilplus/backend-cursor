@@ -256,7 +256,7 @@ def resolve_request(database: Any, request: dict, body: Any,
         raise
     if not isinstance(resolved, dict):
         return _error(500, "V2_ERROR", "Could not save your answer.")
-    # What the coach saw when they gave it (0482, N79): once per new answer,
+    # What the coach saw when they gave it (0483, N79): once per new answer,
     # never on their own Take; capture only, off the request, never in the
     # answer's way.
     from services.coach_answer_situation import freeze_answer_in_background
