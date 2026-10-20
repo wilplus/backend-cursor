@@ -1,4 +1,19 @@
-"""Unit tests for Lab recording analysis execution modes."""
+"""
+STORY    As a speaker, I want my Take processed even when the job queue is down,
+         the upload to return without waiting, and a first Take that could not
+         build its Ideal Text reported as failed, so that record -> process ->
+         Ideal Text never lies about where it stands.
+OUTCOME
+  O1  If the queue fails, the Take is processed right away instead.
+  O2  In background mode the upload answers "pending" at once, and the Take
+      is marked ready when the work finishes.
+  O3  A Take 1 whose Ideal Text could not be confirmed is reported as failed,
+      never as complete.
+PROVES   O1 -> AnalysisDispatchTests::test_queue_failure_preserves_the_sync_fallback
+         O2 -> AnalysisDispatchTests::test_daemon_returns_immediately_and_updates_state_when_run
+         O3 -> AnalysisDispatchTests::test_synchronous_take_one_timeout_is_not_reported_as_success
+WHY      Never-rule 3: never break record -> process -> Ideal Text -> next Take.
+"""
 from __future__ import annotations
 
 import unittest

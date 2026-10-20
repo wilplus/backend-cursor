@@ -1,13 +1,16 @@
-"""A pair remembers the yes, executed on a disposable database (0405).
-Founder 2026-09-30, L1, L2, L5. Pins:
-  * the refresh marks a pair releasable only under an active training-only
-    yes (or a surface outside counsel's list), and back to not releasable
-    after a withdrawal;
-  * a withdrawal voids the release that carried the pair and returns the
-    pair to waiting; the release keeps its manifest as history;
-  * a pair leaves once: marking refuses a pair that is not releasable or
-    already released, and an unknown release;
-  * every new table has RLS on and reaches no browser role.
+"""
+STORY    As a speaker, I want my coached pairs released for training only
+         while my yes is active, and pulled back if I withdraw, so that
+         withdrawing really stops their use.
+OUTCOME
+  O1  A pair is allowed into training only while my training yes is
+      active; withdrawing turns it off.
+  O2  A pair leaves once: a released pair cannot be released again.
+  O3  Withdrawing voids the release that carried my pair and returns the
+      pair; the release keeps its record.
+PROVES   O1 -> test_a_pair_is_releasable_only_under_an_active_yes
+         O2, O3 -> test_a_withdrawal_voids_the_release_and_returns_the_pair_to_waiting
+WHY      Founder 2026-09-30, L1, L2, L5 (migration 0405).
 """
 from __future__ import annotations
 

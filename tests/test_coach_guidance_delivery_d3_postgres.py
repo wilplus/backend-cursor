@@ -1,8 +1,15 @@
-"""Adversarial PostgreSQL tests for disabled Coach Guidance D3.
-
-The target must be a disposable local database whose name starts with
-``willab_d3_``.  These fixtures create synthetic identities and media only;
-they never call R2 or expose guidance to a user.
+"""
+STORY    As a speaker, I want coach guidance on my Take to depend on my
+         coach-review permission, not on the exercise one, so that turning
+         off coach review stops it.
+OUTCOME
+  O1  A guidance batch is still made when only the exercise permission is
+      missing.
+  O2  Once coach review is removed, a new batch is refused
+      (CURRENT_AUTHORITY_REQUIRED).
+PROVES   O1, O2 -> test_coach_review_remains_live_without_exercise_purpose
+WHY      Coach Guidance D3 (disabled feature); runs on a disposable database
+         with synthetic data only.
 """
 
 from __future__ import annotations

@@ -1,13 +1,24 @@
-"""WhatsApp: the speaker leaves a number, the coach's feedback reaches it
-(founder 2026-10-12, "Add Phone Input for WhatsApp Notifications").
-
-Pins the two contracts a speaker would notice:
-  * /v2/user/whatsapp saves a valid number in E.164, refuses one without a
-    country code (nothing written), reads it back and removes it;
-  * a coach's FIRST share of a Take word sends one WhatsApp message to the
-    speaker's number; editing an already-shared word sends nothing more.
-
-Run: python3 -m unittest tests.test_whatsapp_number
+"""
+STORY    As a speaker, I want to save my WhatsApp number and get one message
+         when my coach first shares feedback, so that I know feedback arrived
+         without spam.
+OUTCOME
+  O1  A valid number is saved in international form; a number without a
+      country code is refused and nothing is written.
+  O2  I can read my number back and remove it.
+  O3  A coach's first share sends one WhatsApp message (with the brand
+      image when the template has one); editing a shared note or having
+      WhatsApp switched off sends nothing.
+  O4  When WhatsApp refuses a message, the log names its reason.
+PROVES   O1 -> WhatsAppNumberRouteTest::test_a_valid_number_is_saved_in_e164,
+               WhatsAppNumberRouteTest::test_a_number_without_country_code_is_refused
+         O2 -> WhatsAppNumberRouteTest::test_the_number_reads_back_and_can_be_removed
+         O3 -> CoachFeedbackMessageTest::test_the_first_share_sends_one_whatsapp_message,
+               CoachFeedbackMessageTest::test_an_image_header_template_carries_its_image,
+               CoachFeedbackMessageTest::test_editing_a_shared_word_sends_nothing_more,
+               CoachFeedbackMessageTest::test_nothing_is_sent_while_switched_off
+         O4 -> CoachFeedbackMessageTest::test_a_refusal_logs_metas_reason
+WHY      Founder 2026-10-12, "Add Phone Input for WhatsApp Notifications".
 """
 from __future__ import annotations
 

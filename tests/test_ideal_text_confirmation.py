@@ -1,4 +1,21 @@
-"""Take 1 Ideal Text confirmation, timeout, and artifact-only retry."""
+"""
+STORY    As a speaker, I want my first Ideal Text built from my first Take,
+         retried after a dropped connection, and never undone by a failed
+         notification, so that Take 1 always produces my text.
+OUTCOME
+  O1  A retry builds version 1 from the Take that created the document, not
+      from a later Take.
+  O2  One dropped database connection is retried instead of failing Take 1.
+  O3  If the "ready" notification fails, the document still counts as
+      confirmed.
+  O4  A later Take may queue the retry too, and the retry job carries no
+      audio, upload or transcription fields.
+PROVES   O1 -> IdealTextConfirmationTests::test_exact_session_retry_persists_version_one_not_latest_take
+         O2 -> IdealTextConfirmationTests::test_a_dropped_connection_is_retried_not_final
+         O3 -> IdealTextRetryJobTests::test_ready_card_failure_cannot_reclassify_a_confirmed_document
+         O4 -> TheRetryFollowsTheCreatingTakeTests::test_a_later_take_may_retry_creating_the_document
+WHY      Founder 2026-09-26: one "Server disconnected" cost a whole Take 1.
+"""
 from __future__ import annotations
 
 import sys

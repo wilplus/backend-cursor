@@ -1,9 +1,13 @@
-"""The bake works on the Take that was just told "ready" (founder 2026-10-15).
-
-The head stored during processing named the PREVIOUS Take with the new
-version, so the bake re-ran the old Take and every guard threw its marks
-away ("feedback set not claimable ... index=2 version=3"). The bake job now
-republishes a head that is behind the arc's generation before baking it.
+"""
+STORY    As a speaker, I want my feedback marks built on the Take I was just told
+         is ready, so that I never see the previous Take's marks.
+OUTCOME
+  O1  If the stored Ideal Text still points at the previous Take, it is
+      republished first and the new Take is the one baked.
+  O2  If it is already current, it is baked as it stands, with no republish.
+PROVES   O1 -> test_a_stale_head_is_republished_and_the_new_take_is_baked
+         O2 -> test_a_current_head_is_baked_as_it_stands
+WHY      Founder 2026-10-15: the bake re-ran the old Take and threw every mark away.
 """
 from __future__ import annotations
 

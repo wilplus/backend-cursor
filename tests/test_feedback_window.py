@@ -1,4 +1,18 @@
-"""Which open moments reach the page (founder lock 2026-10-12)."""
+"""
+STORY    As a speaker, I want my page to show only the moments that matter, so
+         that it stays focused.
+OUTCOME
+  O1  Confident moments, the exercise and items I already answered are shown;
+      other open moments are not, a paragraph I saved in this Take gets no
+      more moments, and no score fields reach the page.
+  O2  A Take with nothing picked still shows two moments.
+  O3  A paragraph I saved in an earlier Take gets its moments again in later
+      Takes.
+PROVES   O1 -> test_green_moments_and_the_exercise_show_nothing_else_open_does
+         O2 -> test_a_take_with_nothing_picked_still_shows_two_moments
+         O3 -> test_a_paragraph_saved_in_an_earlier_take_gets_its_moments_again
+WHY      Founder lock 2026-10-12; project "S" 2026-10-13; Never-rule 1.
+"""
 from services.feedback_window import window_rows
 
 

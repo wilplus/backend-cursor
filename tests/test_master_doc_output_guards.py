@@ -1,17 +1,17 @@
-"""Deterministic output guards for the Lounge bot (RULE A + RULE K).
-
-These test the POST-GENERATION floor in services/master_doc_rag.py —
-the code that enforces the construct-prohibition (B1/AC-9) and the
-library-dump prohibition (RULE K) on the model's OUTPUT, independent of
-whether the prompt rule held. The guards are driven through
-`answer_question` with the model call stubbed: NO LLM, NO network — this
-is the part of the probe's guarantee that can run keyless in CI.
-
-master_doc_rag imports services.will_voice (pure) + services.db lazily,
-so a db stub keeps it import-safe in the lean env (same pattern as
-test_library_bot_context — stub in setUpModule, RESTORE in tearDown).
-
-Run: python3 -m unittest tests.test_master_doc_output_guards
+"""
+STORY    As a speaker, I want the Lounge chat bot never to tell me about scores,
+         ratios, KPIs or retired collections, whatever the AI model wrote, so
+         that what I read is in words and points me to the right place.
+OUTCOME
+  O1  An answer that mentions a score, ratio, KPI or classifier is replaced by
+      a safe answer in words.
+  O2  An answer that recreates the retired "Strong Sides" collection (in any
+      language) is replaced by a pointer to Voice Album.
+  O3  Ordinary answers pass through untouched.
+PROVES   O1 -> ChatAnswerGuardTests::test_every_answer_leaves_through_the_guards
+         O2 -> ChatAnswerGuardTests::test_every_answer_leaves_through_the_guards
+         O3 -> ChatAnswerGuardTests::test_every_answer_leaves_through_the_guards
+WHY      Never-rule 1 (RULE A / AC-9) and RULE K; no AI call is made in the test.
 """
 from __future__ import annotations
 

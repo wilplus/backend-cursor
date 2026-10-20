@@ -1,8 +1,17 @@
-"""The 3.6 publish script (founder 2026-10-15, N72 and N73). Pins what a
-speaker later proves they agreed to: the four copy blocks are the legal
-pack's files byte for byte, the guards check those files' own hashes, the
-United States is added to the countries, and the v4 sentence is the one
-whose hash is registered."""
+"""
+STORY    As a speaker, I want the 3.6 terms I accept to be the legal pack's files
+         exactly, checked by their fingerprints, so that I can later prove what
+         I agreed to.
+OUTCOME
+  O1  The terms, privacy, AI notice and agreement text in the publish script
+      equal the legal pack's files byte for byte, and the terms' and privacy
+      fingerprints (hashes) are checked by the script.
+  O2  The United States is added to the countries, and the registered
+      training sentence is the v4 one.
+PROVES   O1 -> test_the_copy_is_the_legal_pack_byte_for_byte_and_its_hash_is_checked
+         O2 -> test_the_united_states_and_the_v4_sentence
+WHY      Founder 2026-10-15, N72 and N73.
+"""
 from __future__ import annotations
 
 import hashlib

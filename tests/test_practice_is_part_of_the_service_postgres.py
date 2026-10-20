@@ -1,14 +1,17 @@
-"""Practice is part of the service (0454; founder N55, N66.2).
-
-Runs the real functions in the released lane. Under a policy where practice
-is optional (the shape of 3.3, and of the shared optional-consent policy
-these suites use) every answer is what it was. Under a policy that makes
-practice required (the shape of 3.4) practice reads as on for every receipt
-and no withdraw event turns it off. That second policy is made inside one
-transaction that is rolled back, so no other suite sees it.
-
-And the blind check's written objection: recorded once per person, read for
-the whole person, closed to browser roles.
+"""
+STORY    As a speaker under a policy where practice is part of the service, I
+         want practice on for me whatever I ticked before, and my objection to
+         blind checks recorded once, so that the service matches the policy I
+         accepted.
+OUTCOME
+  O1  Under a policy that makes practice required, practice (and personalised
+      practice) reads as on even after I had switched it off; under the
+      optional policy nothing changes.
+  O2  My objection to blind checks is recorded once, however often it is
+      sent, and applies only to me.
+PROVES   O1 -> test_where_practice_is_part_of_the_service_it_is_on_and_stays_on
+         O2 -> test_an_objection_is_recorded_once_and_read_for_the_person
+WHY      Founder N55, N66.2 (migration 0454).
 """
 from __future__ import annotations
 
