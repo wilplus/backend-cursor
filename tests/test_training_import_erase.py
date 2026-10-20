@@ -23,6 +23,10 @@ OTHER = "44444444-4444-4444-8444-444444444444"
 ARC = "55555555-5555-4555-8555-555555555555"
 
 
+# As in production: the service role may read these, never delete from them.
+READ_ONLY = {"take_feedback_detector_reconciliation"}
+
+
 class _Query:
     def __init__(self, tables, name):
         self.tables, self.name = tables, name
@@ -56,6 +60,8 @@ class _Query:
     def execute(self):
         if self.name not in self.tables:
             raise RuntimeError('relation does not exist (42P01)')
+        if self.op == "delete" and self.name in READ_ONLY:
+            raise RuntimeError(f'permission denied for table {self.name} (42501)')
         rows = self.tables[self.name]
         hit = [r for r in rows if self._match(r)]
         if self.op == "delete":
@@ -93,6 +99,8 @@ def _database(source="training_import"):
         "star_verdicts": [{"session_id": SID}, {"session_id": OTHER}],
         "candidate_windows": [{"recording_id": "rec-1"}],
         "ideal_text_blocks": [{"arc_id": ARC}, {"arc_id": "other-arc"}],
+        "take_feedback_detector_reconciliation": [
+            {"take_session_id": OTHER, "snippet_id": "s9"}],
     }
     client = _Client(tables)
 
