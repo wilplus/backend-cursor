@@ -256,6 +256,19 @@ def _whatsapp_number(user_id, question, _context, _history=None) -> Optional[tup
                   debug={"intent": "whatsapp_number"}, **extra), "whatsapp_number"
 
 
+def _sunday_note(user_id, question, _context, _history=None) -> Optional[tuple[dict, str]]:
+    """The founder's Sunday case (Will learning plan, step 2): "sunday note"
+    writes one now; "Old"/"New" and "Add principle"/"Not now" typed under
+    its ask count as the tap. Anyone else, anything else: None."""
+    from services.db import db
+    from services.sunday_note import chat_turn
+    turn = chat_turn(db, user_id, question)
+    if not turn:
+        return None
+    return _reply(turn["answer"], row_metadata=turn["row_metadata"],
+                  debug={"intent": "sunday_note"}), "sunday_note"
+
+
 def _voice_notebook(user_id, question, _context, _history=None,
                     *, life_on: bool = False) -> Optional[tuple[dict, str]]:
     """A typed "#" note in the founder's voice notebook (Will learning plan,
@@ -322,6 +335,7 @@ def _intercepts(user_id, app_config) -> list[tuple[str, Callable]]:
     if user_id:
         chain.append(("feedback-check intercept failed user=%s: %s", _feedback_check))
         chain.append(("whatsapp-number intercept failed user=%s: %s", _whatsapp_number))
+        chain.append(("sunday-note intercept failed user=%s: %s", _sunday_note))
         chain.append(("voice-notebook intercept failed user=%s: %s",
                       functools.partial(_voice_notebook, life_on=life_on)))
     if life_on:

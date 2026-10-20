@@ -2211,6 +2211,20 @@ answers 200 {saved: true} and records the decision with the right kind
 O2  A guest without a signed Guest ID (a bare session UUID) is refused
 404 and nothing is recorded.","O1 -> test_document_replace_and_bold_are_saved_with_their_kind
 O2 -> test_a_guest_without_a_signed_id_is_refused","Founder bug 2026-07-22: the document targets were rejected 400 by the allowlist, so every Accept/Keep on the document failed. The other targets live in tests/test_user_sessions_route_contracts.py."
+tests/test_sunday_note.py,Story,"As the founder, I want Will to write me one case about my week on Sunday evening, in my own form, so that I see which bug drove it, whether I knew it, and can keep the principle it teaches.","O1  The note comes on Sunday from 6 pm in my own time zone, once a week;
+not before, and not again that week.
+O2  It is in my form: the case, which of the four bugs it was and why,
+the principles I applied, reflections, a new principle. No numbers.
+O3  Old or New is kept; a new principle follows; Add principle puts it
+among my active Life Panel principles and says ""Noted.""; Not now
+keeps it out; a second tap changes nothing.
+O4  Typing ""sunday note"" writes one now; for anyone without the
+notebook nothing changes.
+O5  Will reads last week's case in the chat.","O1 -> test_it_is_due_on_sunday_evening_in_my_time_and_once_a_week
+O2 -> test_the_note_is_in_my_form_without_numbers
+O3 -> test_old_or_new_then_the_principle_only_on_my_yes
+O4 -> test_asking_writes_one_now_and_nobody_else_is_touched
+O5 -> test_will_reads_last_weeks_case","Will learning plan, step 2 (founder 2026-10-20, ""start step 2""; the form is the founder's own)."
 tests/test_take_comparison.py,Story,"As a speaker, I never want to see my pitch, pace or pauses as numbers, so that feedback stays in words (Never rule 1).","O1  The retired take comparison (GET /v2/explore/arc/<id>/take-comparison,
 founder 2026-10-19) answers 410 GONE, reads nothing, sends no
 measurement number, and logs retired_route_called so any caller left
