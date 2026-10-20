@@ -876,7 +876,7 @@ hard migrations/status_read_in_one_trip.sql
 hard migrations/the_status_read_carries_the_policy_text_only_when_it_is_shown.sql
 hard migrations/the_status_read_carries_the_policy_text_only_when_it_is_shown.sql
 
-# 0478 (founder 2026-10-18, N77): a coach's video belongs to its speaker.
+# 0480 (founder 2026-10-18, N77): a coach's video belongs to its speaker.
 # The owner on the version rows (0399) and on the catalogue's lines (0401),
 # both applied above, and the speaker's own set; the exercise library parts
 # degrade to no-ops, as this lane carries no diagnostic_exercise. The

@@ -1,5 +1,5 @@
 """The founder's review of a coach's exercise video (founder 2026-10-19,
-decisions log N78; migration 0478).
+decisions log N78; migration 0480).
 
 Two kinds of coach video. A DIRECT MESSAGE (the answer on a moment, the
 word for a Take) belongs to one speaker and is never shared. An EXERCISE
@@ -8,7 +8,7 @@ and every other speaker whose own recording shows that mistake exactly once
 the founder approves it here.
 
 * ``waiting`` lists the coach exercise videos with no review yet: the ones
-  made for one speaker since 0478, and those filed into the shared library
+  made for one speaker since 0480, and those filed into the shared library
   before it, which reach nobody new until reviewed.
 * ``review`` records the founder's decision. ``approved`` copies the video
   out of the speaker's private storage into the library (so it stays when
@@ -62,8 +62,8 @@ def waiting(database: Any) -> list[dict]:
 
 def _library_copy(ref: Any) -> str:
     """The video where the shared library keeps it. A private ref (a coach
-    video made for one speaker since 0478) is copied to the library's
-    store; a public one (filed before 0478) already is there. Raises on
+    video made for one speaker since 0480) is copied to the library's
+    store; a public one (filed before 0480) already is there. Raises on
     failure: approving never leaves a shared row on a file that goes when
     its speaker leaves."""
     ref = str(ref or "")

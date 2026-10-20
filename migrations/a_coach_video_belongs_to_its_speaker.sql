@@ -1,4 +1,4 @@
--- a_coach_video_belongs_to_its_speaker (0478)
+-- a_coach_video_belongs_to_its_speaker (0480)
 --
 -- WHY. A coach's exercise video was filed into the one shared library
 -- (diagnostic_exercise has no owner), so a video a coach recorded for one
@@ -62,7 +62,7 @@ BEGIN
              || 'WHERE owner_user_id IS NOT NULL';
         EXECUTE 'COMMENT ON COLUMN public.diagnostic_exercise.owner_user_id IS '
              || quote_literal('NULL: the founder''s shared library. Set: a '
-             || 'coach video for this one speaker, served to no one else (0478).');
+             || 'coach video for this one speaker, served to no one else (0480).');
     END IF;
 END $$;
 
@@ -89,7 +89,7 @@ $$;
 REVOKE ALL ON FUNCTION public.exercise_version_takes_its_owner_v1()
     FROM PUBLIC, anon, authenticated;
 
--- Immutable, except the one transcript transition (0399) and, from 0478,
+-- Immutable, except the one transcript transition (0399) and, from 0480,
 -- the one owner transition: NULL to a speaker with nothing else changed.
 CREATE OR REPLACE FUNCTION public.guard_exercise_version_update_v1()
 RETURNS TRIGGER LANGUAGE plpgsql SET search_path = public
@@ -165,7 +165,7 @@ CREATE TABLE IF NOT EXISTS public.speaker_exercise_set (
 COMMENT ON TABLE public.speaker_exercise_set IS
     'The exercises the app may serve one speaker by itself after a Take: '
     'their own coach videos and library exercises a coach picked for them '
-    '(0478, decisions log N77). Goes with the speaker''s account.';
+    '(0480, decisions log N77). Goes with the speaker''s account.';
 
 ALTER TABLE public.speaker_exercise_set ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.speaker_exercise_set FROM PUBLIC, anon, authenticated;

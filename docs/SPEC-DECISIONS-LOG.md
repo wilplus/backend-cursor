@@ -2596,7 +2596,7 @@ praise lines that cannot be traced are switched off but kept (step 2, a
 script the founder approves before it runs). A coach writes and reads only
 for the speakers the founder assigns them in admin (step 4). Approving a coach
 video into the library comes later, as its own step. Step 1 (backend):
-migration 0478, the matcher, the coach save paths, praise, the Take word and
+migration 0480, the matcher, the coach save paths, praise, the Take word and
 deletion. The coach panel's library words ("Share without the library", "The
 library offers it to other speakers…") are unchanged until the founder signs
 their replacement (step 3, a locked screen). Contract 35g-1, 35g-2, 35g-4 and
@@ -2619,7 +2619,7 @@ the speaker first (the AI clip never replaces it), else an approved shared
 exercise video, 80/20 among exact fits, else the AI clip; a video rests for a
 speaker after their Good job. The coach's exercise-script draft never quotes
 the speaker's passage. Coach videos filed into the shared library before
-0478 reach nobody new until the founder reviews them (`GET/PUT
+0480 reach nobody new until the founder reviews them (`GET/PUT
 /v2/admin/exercises/review`); the founder's review screen comes with a
 signed prototype. The same session set the longer aim, a coach avatar: its
 footage only ever comes from separate scripted recordings the coach owns,
@@ -2630,7 +2630,7 @@ training use for the next year goes into one privacy update; a written,
 versioned coach agreement comes before more coaches; a short list of
 exercise formats is drafted for the founder's approval; a second coach
 diagnoses a blind sample once there is one. The map:
-<https://claude.ai/artifact/QU5ENGdftkJXFppAQYFhyj>. Migration 0478.
+<https://claude.ai/artifact/QU5ENGdftkJXFppAQYFhyj>. Migration 0480.
 
 **N79 · What we keep of what a coach says, and what may leave (founder, chat,
 19 October 2026).** The goal is a coach "text brain" trained on what coaches

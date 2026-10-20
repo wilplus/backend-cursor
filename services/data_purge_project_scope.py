@@ -127,7 +127,7 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     # The signed line last shown per bank (0438): the speaker's, not a
     # project's.
     "line_bank_memory",
-    # A speaker's own coach videos, set and praise lines (0478, N77): theirs
+    # A speaker's own coach videos, set and praise lines (0480, N77): theirs
     # across every project, so they go with the account.
     "speaker_exercise_set", "owned_praise_lines", "owned_exercise_versions",
     "owned_exercises",

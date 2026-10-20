@@ -53,7 +53,7 @@ def playable(ref: str) -> str:
 
 def exercise_video_url(ref: Any) -> Any:
     """An exercise video as a player can open it. A coach's video for one
-    speaker is a private ``s3://`` ref (0478, N77), signed afresh on every
+    speaker is a private ``s3://`` ref (0480, N77), signed afresh on every
     read; a library video is a public link and passes unchanged. A private
     ref that cannot be signed is None: the bucket key names the speaker."""
     if isinstance(ref, str) and ref.startswith("s3://"):

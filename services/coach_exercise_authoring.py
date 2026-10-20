@@ -152,7 +152,7 @@ _URL_TO_COME = "https://video.pending.invalid/exercise"
 
 
 def speaker_for_exercise(database: Any, exercise_id: Any) -> Optional[str]:
-    """The speaker a walk exercise belongs to (0478, N77): the owner of the
+    """The speaker a walk exercise belongs to (0480, N77): the owner of the
     request it was filed for. None for a library exercise. An exercise for a
     moment whose speaker cannot be read is refused by the caller rather
     than filed into the shared library."""
@@ -168,7 +168,7 @@ def speaker_for_exercise(database: Any, exercise_id: Any) -> Optional[str]:
 
 def _store_speaker_video(video_bytes: bytes, filename: str, *, owner: str,
                          exercise_id: str) -> str:
-    """A coach's video for one speaker, PRIVATE (0478, N77): beside the
+    """A coach's video for one speaker, PRIVATE (0480, N77): beside the
     answer videos under the speaker's id, so closing their account erases
     it; an ``s3://`` ref every read signs afresh."""
     import os
@@ -217,7 +217,7 @@ def attach_video(database: Any, *, exercise_id: str, coach_id: str,
     read from the version row when the request resolves.
 
     THE WALK'S EXERCISE BELONGS TO ITS SPEAKER (founder 2026-10-18, N77;
-    0478). ``coach-request-<request id>`` is saved with the request's
+    0480). ``coach-request-<request id>`` is saved with the request's
     speaker as its owner and its video stored privately under their id;
     only a library exercise (the founder's, the route says) is public.
     """
@@ -236,7 +236,7 @@ def attach_video(database: Any, *, exercise_id: str, coach_id: str,
     if request_id_for_exercise(exercise_id) is not None and owner is None:
         return 404, {"code": "NOT_FOUND", "error": "request not found"}
     if owner:
-        # Refused before anything is stored: a row filed before 0478 waits
+        # Refused before anything is stored: a row filed before 0480 waits
         # for the founder's clean-up (save_exercise says the same).
         existing = database.get_diagnostic_exercise(str(exercise_id))
         if isinstance(existing, dict) and str(

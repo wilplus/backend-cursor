@@ -196,7 +196,7 @@ def _exercise_event(
         "at": practice.get("created_at"),
         "title": title,
         "instruction": instruction,
-        # A coach's video for this speaker is a private ref (0478): signed.
+        # A coach's video for this speaker is a private ref (0480): signed.
         "video_url": _exercise_video(snapshot.get("explanation_video_url")),
         "exercise_id": _text(practice.get("exercise_id")) or None,
         "exercise_version": _int_or_none(practice.get("exercise_version")),

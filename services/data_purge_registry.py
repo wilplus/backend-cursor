@@ -520,7 +520,7 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "take", "delete", "derived_feedback", 60),
     PurgeDependency("practice", "confident_voice_practice", "id", "practice",
                     "delete", "derived_feedback", 60),
-    # A COACH'S VIDEO FOR ONE SPEAKER (0478; founder 2026-10-18, N77): their
+    # A COACH'S VIDEO FOR ONE SPEAKER (0480; founder 2026-10-18, N77): their
     # own set, and the coach exercises, versions and praise lines that are
     # theirs, go with their account. A row with no owner is the shared
     # library and is never matched by the user key. The exercise goes after
@@ -1450,7 +1450,7 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     "admin_notifications", "arc_invite_codes", "casual_voice_benchmarks",
     "chat_question_pool", "coach_video_assets",
     "dad_jokes",
-    # diagnostic_exercise and its version rows left this list with 0478: a
+    # diagnostic_exercise and its version rows left this list with 0480: a
     # row with an owner is one speaker's coach video, a dependency above.
     # The speaking error LIBRARY — names and written definitions of speech
     # patterns, beside diagnostic_exercise for the same reason: it is product
@@ -1458,7 +1458,7 @@ NON_SUBJECT_RELATIONS: frozenset[str] = frozenset({
     # occurred in a particular take, so there is nothing here to purge when a
     # person asks to be deleted.
     "speaking_error",
-    # feedback_catalogue left this list with 0478: a coach's praise line for
+    # feedback_catalogue left this list with 0480: a coach's praise line for
     # one speaker carries their id, a dependency above.
     # A dataset release manifest: counts, rules and a checksum, no subject
     # column (its items are the subject rows, classified above).

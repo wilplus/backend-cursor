@@ -817,7 +817,7 @@ def build_match_trace(*, lane: str, verdict: dict, vocabulary: Any,
 
 
 def visible_to(exercise: Any, owner_user_id: Any = None) -> bool:
-    """THE OWNER WALL (founder 2026-10-18, decisions log N77; 0478).
+    """THE OWNER WALL (founder 2026-10-18, decisions log N77; 0480).
 
     A row with no owner is the founder's shared library, which every coach
     list may show. A row with an owner is a coach's video for that one
@@ -1049,7 +1049,7 @@ _COACH_MADE = ("coach-request-", "coach-custom-")
 def shared_for_everyone(exercise: Any) -> bool:
     """THE SHARED LIBRARY (founder 2026-10-19, decisions log N78): a row
     with no owner that the founder made, or a coach's exercise video the
-    founder approved. A coach's video filed before 0478 and never approved
+    founder approved. A coach's video filed before 0480 and never approved
     is in nobody's pool until the founder reviews it."""
     if not isinstance(exercise, dict) or exercise.get("owner_user_id"):
         return False
@@ -1059,7 +1059,7 @@ def shared_for_everyone(exercise: Any) -> bool:
 
 def speaker_pools(database: Any, owner_user_id: Any) -> tuple[list[dict], list[dict]]:
     """(own, shared): the two pools the app picks from by itself after a Take
-    (founder 2026-10-18 and 19, decisions log N77, N78; 0478).
+    (founder 2026-10-18 and 19, decisions log N77, N78; 0480).
 
     OWN: the speaker's own set -- the exercise videos a coach made for them
     and the library exercises a coach picked for one of their moments. It is
@@ -1876,7 +1876,7 @@ def coach_shared_exercise(request: Any, database: Any) -> Optional[dict]:
 
 def _may_open(active: Any, owner_user_id: Any, coach_shared: bool) -> bool:
     """Whether a drawn exercise may still open a new practice: never another
-    speaker's video, nor an unapproved coach video filed before 0478 (N78),
+    speaker's video, nor an unapproved coach video filed before 0480 (N78),
     the rows the offer drops; the coach's share for this speaker's own
     moment only needs to be theirs to see."""
     if not isinstance(active, dict):
