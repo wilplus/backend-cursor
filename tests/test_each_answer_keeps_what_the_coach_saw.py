@@ -1,33 +1,33 @@
-"""Each answer keeps what the coach saw (0483; founder 2026-10-19, decisions
-log N79).
-
-When a coach answered a moment or left a word on a Take, nothing kept what
-they were looking at: the clip's words, the error type they had picked and
-the Ideal Text the Take had. Pins, on the public services the routes call
-(services.exercise_coach_requests.resolve_request,
-services.coach_answer_video.store_answer_video,
-services.coach_take_word.save_take_word):
-
-  * a moment's first answer keeps one situation: the resolver's own time,
-    the clip's words uncut, its slide (the coach's correction first), the
-    kind the coach acted on, the pattern they named, their current
-    diagnosis by id and copied with its label, and the Ideal Text the
-    service asks for: the answered Take's own, in its arc. (That the
-    database read returns the snapshot made from that Take, and not the
-    speaker's head, is db.get_take_ideal_text_snapshot's filter, which this
-    fake cannot pin.);
-  * the same answer again (only the share added) keeps nothing new; a
-    changed answer and a new video on a given answer each keep their own,
-    and the first stays as it was;
-  * each Take-word save keeps the whole Take's words in order, its
-    re-read's after them, uncut, the coach's diagnoses on their moments and
-    the Take's Ideal Text;
-  * a moment from a mid-take re-read asks for the spoken Take's Ideal Text,
-    the only Take a snapshot is made from;
-  * a coach answering their own Take keeps nothing (L3).
-
-The situation is kept off the coach's request, so each check waits for
-that thread first.
+"""
+STORY    As the founder, I want every coach answer, and every word a coach
+         leaves on a Take, to keep what the coach was looking at when they
+         gave it, so that the answer can still be read against what they
+         saw after a clip is re-cut, replaced or purged.
+OUTCOME
+  O1  A moment's first answer keeps one record: when it was given, the
+      clip's words uncut, the slide (the coach's correction first), what
+      the coach acted on, the pattern they named, their current diagnosis
+      with its label, and the answered Take's own Ideal Text.
+  O2  The same answer again (only the share added) keeps nothing new; a
+      changed answer and a new video on an answer each keep their own, and
+      the first record stays as it was.
+  O3  Each save of a Take word keeps the whole Take's words in order, its
+      re-read's after them, uncut, the coach's diagnoses on its moments and
+      the Take's Ideal Text.
+  O4  A moment from a mid-take re-read keeps the spoken Take's Ideal Text.
+  O5  A coach answering their own Take keeps nothing.
+PROVES   O1, O2 -> test_each_new_answer_to_a_moment_keeps_its_own_situation_once
+         O3 -> test_each_take_word_save_keeps_the_whole_take
+         O4 -> test_a_moment_from_a_re_read_keeps_the_spoken_takes_ideal_text
+         O5 -> test_a_coach_answering_their_own_take_keeps_nothing
+WHY      Founder 2026-10-19, decisions log N79 (migration 0483); L3 for a coach
+         answering their own Take. The checks run
+         on the public services the routes call (resolve_request,
+         store_answer_video, save_take_word) with a fake database: that the
+         Ideal Text read returns the snapshot of that Take, not the
+         speaker's latest, is the database read's filter and is not pinned
+         here. The record is kept off the coach's request, so each check
+         waits for that thread first.
 """
 from __future__ import annotations
 
