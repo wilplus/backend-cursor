@@ -9,10 +9,14 @@ OUTCOME
       text to prove it, is excluded as ``document_span_unmapped``.
   O3  NEVER-1: the rows that leave the server carry the feedback's words
       and no rank, evidence, score, version or other number (AC-9).
+  O4  A served clearer version names the moment it corrects (its block),
+      so the walk draws it on that moment and not as a moment of its own
+      (founder 2026-10-20: "the rewrite doesn't appear at all").
 PROVES   O1 -> test_a_row_on_this_takes_words_is_mapped_into_its_transcript
          O2 -> test_a_row_on_an_unspoken_slide_is_excluded
          O3 -> test_a_served_v3_payload_carries_no_internal_evidence_or_numbers
          O3 -> test_a_stray_mlc3_service_block_never_reaches_the_client
+         O4 -> test_a_served_rewrite_rides_its_moments_block
 WHY      N48.1 (Wave 1, E1), founder-approved 2026-10-05: from Take 2 on the
          served Ideal Text and the Take's transcript are two documents.
 """
@@ -234,6 +238,36 @@ def test_a_served_v3_payload_carries_no_internal_evidence_or_numbers():
         # `evidence` is the Manager's copy here, not coordinates: dropped.
         assert "evidence" not in row
         assert list(_numeric_leaves(row)) == []
+
+
+def test_a_served_rewrite_rides_its_moments_block(monkeypatch):
+    # The rewrite gate (H3) is its own contract (tests/test_rewrite_gate.py);
+    # here it lets the clearer version through so the serving can be read.
+    monkeypatch.setattr("services.rewrite_gate.words_need_help",
+                        lambda *_a, **_k: "fillers")
+    monkeypatch.setattr("services.rewrite_gate.rewrite_refusal",
+                        lambda *_a, **_k: None)
+    pool = exposure_snapshot([_praise(), _rewrite()])
+    document = _placed_document(parts=True)
+    frame = build_service_candidate_frame(
+        take_document=document, snippets=_snippets(), suggestions={},
+        feedback_candidates=pool, take_index=2,
+        expected_recording_id=RECORDING, served_text=SERVED)
+    inventory = prepare_v3_service_inventory(
+        frame=frame, take_document=document, served_text=SERVED,
+        feedback_candidates=pool)
+    assert inventory is not None
+    visible = strip_internal_evidence(inventory["visible_rows"])
+    by_snippet: dict[str, set] = {}
+    for row in visible:
+        by_snippet.setdefault(str(row.get("snippet_id")), set()).add(
+            row.get("block_id"))
+    rewrite = [row for row in visible
+               if row["feedback_family"] == "rewrite_clarity"]
+    assert rewrite, "the clearer version is served"
+    # One block id per snippet: the rewrite's is its moment's, and it is set.
+    assert all(rewrite_row.get("block_id") for rewrite_row in rewrite)
+    assert len(by_snippet["s1a"]) == 1
 
 
 def test_a_stray_mlc3_service_block_never_reaches_the_client():

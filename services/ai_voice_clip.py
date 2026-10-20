@@ -494,11 +494,18 @@ def _speak_until_checked(job: _Job, voice_id: str, request: dict, selection: dic
             speech = voices.speak(owner_key=job.owner, voice_id=voice_id, body=request["body"])
         except Exception as error:  # noqa: BLE001 — named; asked once more only if transient
             _log.warning("ai voice: provider refused cycle=%s", job.cycle_id, exc_info=True)
-            if getattr(error, "transient", False) and not asked_again:
+            # A permit the service could not read right now is transient too
+            # (PROVIDER_PERMIT_UNAVAILABLE); and a refusal's code, not its
+            # class name, is what the cycle keeps, so the row in
+            # `ai_voice_cycles` says which check refused (founder 2026-10-20,
+            # the clip that never came).
+            code = str(getattr(error, "code", "") or "")
+            transient = bool(getattr(error, "transient", False)) or code == "PROVIDER_PERMIT_UNAVAILABLE"
+            if transient and not asked_again:
                 asked_again = True
                 time.sleep(1.5)
                 continue
-            failure = str(getattr(error, "kind", "") or type(error).__name__)
+            failure = str(getattr(error, "kind", "") or code or type(error).__name__)
             break
         attempts += 1
         characters += int(speech.character_cost or request["metadata"]["characters"])

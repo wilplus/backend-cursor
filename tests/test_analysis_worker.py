@@ -9,8 +9,12 @@ OUTCOME
   O2  A trailing failure is logged as degraded and never reaches me.
   O3  Take 2 builds the Ideal Text when the Project has none ...
   O4  ... and never rebuilds one that exists (no overwrite of my words).
+  O5  My feedback marks are baked right after "ready", inside the run and
+      before the trailing work, so the walk opens the moment the
+      processing bubble ends (founder 2026-10-20, flow page A2).
 PROVES   O1 -> test_ready_comes_first_and_the_cards_are_waited_for
          O2 -> test_trailing_work_failing_never_reaches_the_speaker
+         O5 -> test_the_marks_are_baked_right_after_ready_in_the_run
          O3 -> test_a_later_take_DOES_create_a_document_that_is_missing
          O4 -> test_a_later_take_does_not_rebuild_an_existing_document
 WHY      Founder 2026-09-22 (Option A): one Project sat in "processing" for
@@ -149,6 +153,10 @@ class ReadyBeforeTrailingWorkTests(unittest.TestCase):
             "services.say_it_stronger": _module(
                 "services.say_it_stronger",
                 wait_for_cards=lambda sid: order.append("cards") or True),
+            "services.ideal_text_feedback_bake": _module(
+                "services.ideal_text_feedback_bake",
+                bake_after_ready=lambda *a, **kw: (
+                    order.append(("bake", kw.get("flipped"))) or True)),
         }):
             readout, sent = aw.run_full_analysis(
                 session_id=_SID,
@@ -167,10 +175,17 @@ class ReadyBeforeTrailingWorkTests(unittest.TestCase):
         order, readout, _ = self._run()
         self.assertEqual(readout, {"snippets": [1]})
         self.assertEqual(order[0], "ready")
-        self.assertEqual(set(order[1:-1]), {
+        self.assertEqual(set(order[2:-1]), {
             "verbal_cue_shadow", "acoustic_cue_shadow",
             "detector_rollout_shadow"})
         self.assertEqual(order[-1], "cards")
+
+    def test_the_marks_are_baked_right_after_ready_in_the_run(self):
+        # Founder 2026-10-20 (A2): the walk is the marks, so they are made
+        # the moment the Take is ready, in this job, before any trailing
+        # work -- and the bake is told the run itself flipped ready.
+        order, _, _ = self._run()
+        self.assertEqual(order[:2], ["ready", ("bake", True)])
 
     def test_trailing_work_failing_never_reaches_the_speaker(self):
         order, readout, log = self._run(shadow_raises=True)

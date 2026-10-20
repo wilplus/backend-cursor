@@ -660,6 +660,65 @@ def enqueue_bake(arc_id: Any, actor_id: Any, recording_kind: Any) -> bool:
         return False
 
 
+def bake_now(arc_id: Any, actor_id: Any, recording_kind: Any) -> bool:
+    """The bake, in the run, the moment the speaker has been told the Take
+    is ready (founder 2026-10-20; flow page A2: "the moment processing
+    finishes, the walk opens, right away, with nothing in between"; F2: the
+    text never shows before the walk).
+
+    THE WALK IS THE MARKS. Since the walk opens first, the speaker waits for
+    the marks whatever we do, and the only choice left is where that wait is
+    spent. Queued (#595, #596) the bake sat on the pipeline queue behind
+    whatever ran there, and the page stopped asking before it landed
+    (WIL-76: the typing dots that never ended). Here it runs inside the job,
+    right after the ready flip, while the chat still shows "Processing your
+    recording"; the page keeps that bubble until the marks are stored and
+    then opens the walk at once. The heartbeat thread covers the 20 to 40
+    seconds exactly as it covers the trailing work.
+
+    AFTER THE FLIP, NEVER BEFORE: the published head names the previous
+    Take until the ready flip advances the generation (2026-10-15, the
+    stale head), so this republishes it first, as the queued job does.
+
+    Returns True when a bake ran over the current head, whether or not it
+    stored anything (an honestly empty lane is a result, and the reader
+    remembers it); False when it did not run, so the caller may queue it.
+    Never raises.
+    """
+    if recording_kind != "spoken":
+        return False
+    arc = str(arc_id or "")
+    actor = str(actor_id or "")
+    if not _bake_enabled() or not arc or not actor:
+        return False
+    try:
+        from services.db import db
+        head = _current_head(db, arc, actor)
+        if head is None:
+            return False
+        bake_for_snapshot(db, arc, actor, head)
+        return True
+    except Exception:
+        logger.warning("ideal-text feedback bake in the run failed arc=%s "
+                       "(the queue has it)", arc, exc_info=True)
+        return False
+
+
+def bake_after_ready(arc_id: Any, actor_id: Any, recording_kind: Any, *,
+                     flipped: bool) -> bool:
+    """The one call at the end of the analysis run: the bake in the run when
+    the Take has just been flipped ready (`bake_now`), else, or when that
+    did not run, the queued bake as before (`enqueue_bake`).
+
+    ``flipped`` is whether the run itself wrote ``ready`` (the queue runner's
+    callback). Without it the dispatcher writes ``ready`` after the return,
+    the head is not final yet, and the queue keeps the work. Never raises.
+    """
+    if flipped and bake_now(arc_id, actor_id, recording_kind):
+        return True
+    return enqueue_bake(arc_id, actor_id, recording_kind)
+
+
 #: How long answers to one document are gathered before one rebake runs.
 #: A walk answers bookmark after bookmark; each answer retires the stored
 #: block, so baking after every one would run the Manager eight times for a

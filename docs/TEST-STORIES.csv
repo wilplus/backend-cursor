@@ -282,8 +282,12 @@ tests/test_analysis_worker.py,Story,"As a speaker, I want to hear ""ready"" as s
 the readout is returned untouched.
 O2  A trailing failure is logged as degraded and never reaches me.
 O3  Take 2 builds the Ideal Text when the Project has none ...
-O4  ... and never rebuilds one that exists (no overwrite of my words).","O1 -> test_ready_comes_first_and_the_cards_are_waited_for
+O4  ... and never rebuilds one that exists (no overwrite of my words).
+O5  My feedback marks are baked right after ""ready"", inside the run and
+before the trailing work, so the walk opens the moment the
+processing bubble ends (founder 2026-10-20, flow page A2).","O1 -> test_ready_comes_first_and_the_cards_are_waited_for
 O2 -> test_trailing_work_failing_never_reaches_the_speaker
+O5 -> test_the_marks_are_baked_right_after_ready_in_the_run
 O3 -> test_a_later_take_DOES_create_a_document_that_is_missing
 O4 -> test_a_later_take_does_not_rebuild_an_existing_document","Founder 2026-09-22 (Option A): one Project sat in ""processing"" for eleven days; founder 2026-10-14: ""ready"" before the trailing work."
 tests/test_annotation_export_retired.py,Story,"As the founder, I want the retired learning-export routes to be gone, so that counsel's claim that every Phase-2 learning route is closed stays true.","O1  Both retired paths answer ""not found"" (404).",O1 -> RetiredPhase2RoutesAreAbsent::test_each_retired_path_is_a_404,ML-1; audit 2026-09-22 I-1 / LEGACY-4; removed by the founder 2026-10-12.
@@ -328,6 +332,15 @@ test_a_core_read_the_one_trip_read_cannot_answer_is_gated_in_steps,
 test_the_one_trip_status_refuses_like_the_old_path",Founder 2026-10-16: the status read on every open took ~600 ms (migration 0473).
 tests/test_authorized_provider_scope.py,Story,"As the founder, I want every outside AI call made from a background thread to carry the speaker's permit, so that no transcript leaves our servers without a record we can later delete.","O1  Work started with start_scoped_thread inside a protected scope gets
 a permit, issued by the same authority.",O1 -> TestTheScopeSurvivesAThread::test_fanout_threads_inherit_protected_scope,"B-6, ML provenance audit 2026-09-22: four background threads called the provider with no permit and nothing was recorded."
+tests/test_bake_after_ready.py,Story,"As a speaker, I want my feedback marks ready the moment my Take is, so that the walk opens as soon as the processing bubble ends and I never sit on typing dots (founder 2026-10-20, flow page A2; WIL-76).","O1  When the run itself has just flipped my Take ready, the marks are
+baked there and then, over the head as it stands, and nothing is
+queued for later.
+O2  When the run did not flip ready (the dispatcher writes it after the
+return) the bake is queued as before: the head is not final yet.
+O3  A bake that cannot run in the run (no document yet, or a failure) is
+queued, so the queue still has its try.","O1 -> test_a_flipped_take_is_baked_in_the_run_and_not_queued
+O2 -> test_an_unflipped_take_is_queued_as_before
+O3 -> test_a_bake_that_cannot_run_now_is_queued","Founder 2026-10-20: ""It doesn't open right after the processing""; the queued bake landed after the page had stopped asking."
 tests/test_blind_coach_evidence_postgres.py,Story,"As a coach, I want the blind evidence packet to carry only audio and timing, never the machine's or other raters' answers, so that my judgement stays blind.","O1  blind_coach_evidence_v1 gives the assigned coach the moment's audio and
 timing, and nothing else: no owner, machine or peer value, no words.
 O2  coach_evidence_comparison_v1 shows the owner, machine and peer answers
@@ -1684,6 +1697,10 @@ test_a_good_job_only_when_the_voice_is_clearly_surer
 O2 -> test_a_good_job_no_longer_ends_the_loop_the_speaker_may_try_until_three
 O3 -> test_the_route_answers_in_a_key_never_a_measure
 O4 -> test_the_route_answers_in_a_key_never_a_measure",Founder lock 2026-10-06 (the Feedback walk; decisions log N52.3).
+tests/test_practice_gates_read_the_speaker.py,Story,"As a speaker who accepted the policy in force, I want my exercise and the cues that route it, whatever older recording the Take is read through, so that the walk offers me what my Data & consent page says is on (WIL-90; founder 2026-10-20).","O1  The Manager's exercise offer asks about me as my own page reads me
+(`take_speaker_principal`), never about one recording's acquirer.
+O2  The verbal-cue gate asks the same question of the same person.","O1 -> test_the_exercise_offer_reads_the_speaker_as_their_page_does
+O2 -> test_the_cue_gate_reads_the_speaker_as_their_page_does","#1206 moved the coach's gate; the Manager's offer and the cues still read the recording's acquirer, so an older or claimed Take got no exercise while the page showed practice on."
 tests/test_practice_is_part_of_the_service_postgres.py,Story,"As a speaker under a policy where practice is part of the service, I want practice on for me whatever I ticked before, and my objection to blind checks recorded once, so that the service matches the policy I accepted.","O1  Under a policy that makes practice required, practice (and personalised
 practice) reads as on even after I had switched it off; under the
 optional policy nothing changes.
@@ -2727,10 +2744,14 @@ transcript (its served span shifted past the unspoken Slide).
 O2  A verbal row on a Slide this Take did not speak, or with no served
 text to prove it, is excluded as ``document_span_unmapped``.
 O3  NEVER-1: the rows that leave the server carry the feedback's words
-and no rank, evidence, score, version or other number (AC-9).","O1 -> test_a_row_on_this_takes_words_is_mapped_into_its_transcript
+and no rank, evidence, score, version or other number (AC-9).
+O4  A served clearer version names the moment it corrects (its block),
+so the walk draws it on that moment and not as a moment of its own
+(founder 2026-10-20: ""the rewrite doesn't appear at all"").","O1 -> test_a_row_on_this_takes_words_is_mapped_into_its_transcript
 O2 -> test_a_row_on_an_unspoken_slide_is_excluded
 O3 -> test_a_served_v3_payload_carries_no_internal_evidence_or_numbers
-O3 -> test_a_stray_mlc3_service_block_never_reaches_the_client","N48.1 (Wave 1, E1), founder-approved 2026-10-05: from Take 2 on the served Ideal Text and the Take's transcript are two documents."
+O3 -> test_a_stray_mlc3_service_block_never_reaches_the_client
+O4 -> test_a_served_rewrite_rides_its_moments_block","N48.1 (Wave 1, E1), founder-approved 2026-10-05: from Take 2 on the served Ideal Text and the Take's transcript are two documents."
 tests/test_voice_album.py,Story,"As a speaker, I want a moment in my Voice Album only when the machine, I and a coach all agree, and shown without scores, so that the album is trustworthy and number-free.","O1  A moment enters only with all three yeses (machine reads it
 confident, the speaker said yes, a coach said yes); missing any one
 keeps it out.

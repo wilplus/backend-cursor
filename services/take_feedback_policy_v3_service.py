@@ -351,12 +351,23 @@ def _v3_confidence_block(
     return True
 
 
-def _v3_snippet_block_index(blocks: list[Any]) -> dict[str, tuple[int, int]]:
-    snippet_block: dict[str, tuple[int, int]] = {}
+def _v3_snippet_block_index(
+    blocks: list[Any],
+) -> dict[str, tuple[int, int, str]]:
+    """Each snippet's block: its position, its slide and its id.
+
+    The id is what the walk groups a moment's rows by (frontend
+    `walkMomentGroups`): a verbal row served without it was a moment of its
+    own there, so the Clearer version never met the moment it corrects and
+    the walk showed the voice Exercise in its place (founder 2026-10-20,
+    "the rewrite doesn't appear at all").
+    """
+    snippet_block: dict[str, tuple[int, int, str]] = {}
     for block_position, block in enumerate(blocks, 1):
         for snippet_id in block.get("snippet_ids") or []:
             snippet_block[str(snippet_id)] = (
                 block_position, int(block.get("slide_index")),
+                str(block.get("block_id") or ""),
             )
     return snippet_block
 
@@ -364,7 +375,7 @@ def _v3_snippet_block_index(blocks: list[Any]) -> dict[str, tuple[int, int]]:
 def _v3_verbal_candidate_row(
     row_input: Any, *, family: str, lane_selected: frozenset[str],
     raw_by_identity: dict[tuple[str, str], dict],
-    pieces: dict[str, dict], snippet_block: dict[str, tuple[int, int]],
+    pieces: dict[str, dict], snippet_block: dict[str, tuple[int, int, str]],
     inventory: _V3ServiceInventory,
 ) -> bool:
     if not isinstance(row_input, dict):
@@ -389,7 +400,13 @@ def _v3_verbal_candidate_row(
     inventory.candidates.append(copied)
     if is_selected:
         inventory.selected.append({"id": candidate_key, "feedback_family": family})
-        inventory.visible.append(dict(copied))
+        # THE ROW RIDES ITS MOMENT (founder 2026-10-20): the visible copy
+        # carries its block's id, as the moment's own row does
+        # (`_presentable`), so the walk draws the Clearer version on the
+        # moment it corrects and not as a moment of its own.
+        block_id = block_identity[2]
+        inventory.visible.append(
+            {**copied, "block_id": block_id} if block_id else dict(copied))
     inventory.items.append({
         "candidate_key": candidate_key,
         "feedback_family": family,
@@ -407,7 +424,7 @@ def _v3_verbal_candidate_row(
 
 def _v3_verbal_lane(
     lane: Any, *, family: str, raw_by_identity: dict[tuple[str, str], dict],
-    pieces: dict[str, dict], snippet_block: dict[str, tuple[int, int]],
+    pieces: dict[str, dict], snippet_block: dict[str, tuple[int, int, str]],
     inventory: _V3ServiceInventory,
     closed: Callable[[str], None] = lambda _gate: None,
 ) -> bool:
