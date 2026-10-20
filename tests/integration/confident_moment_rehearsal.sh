@@ -899,11 +899,11 @@ if [ "$LANE" = "released" ]; then
   hard migrations/every_draft_keeps_its_prompt.sql
 fi
 
-# 0481 (founder 2026-10-19, N79): a coach's answer video is kept in words.
+# 0482 (founder 2026-10-19, N79): a coach's answer video is kept in words.
 # One table keyed by the video ref, with a foreign key to
 # exercise_coach_requests (0385), and its recorder, which reads the
 # request's answer_video_ref (0403) and its answer history (0446); both
-# lanes carry all three. Both lanes, after 0480, as in the manifest. Twice:
+# lanes carry all three. Both lanes, after 0481, as in the manifest. Twice:
 # apply/reapply idempotency. Its case is in
 # tests/test_a_coach_may_change_their_answer_postgres.py.
 hard migrations/a_coach_answer_video_is_kept_in_words.sql

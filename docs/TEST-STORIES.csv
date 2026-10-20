@@ -515,7 +515,7 @@ O5  A coach who edits only the words keeps the video, and it is not sent
 again; a null video removes it; a failed read stops the save.
 O6  A moment's answer video (a first video, or a new video on a given
 answer) is written down after its upload, under my permit, and kept
-by its own ref (0481, N79); without my training yes, on the coach's
+by its own ref (0482, N79); without my training yes, on the coach's
 own Take, or with the permit refused, nothing reaches the provider,
 and the upload succeeds either way (only a refusal is kept, as
 speaker_authorization_missing, for a later retry).","O1 -> test_enforced_with_authority_permit_precedes_provider_and_saves

@@ -272,7 +272,7 @@ def record_moment_line_pair(database: Any, *, request_row: Any, coach_id: str,
 def speaker_permit_adapter(database: Any, take_session_id: str) -> Any:
     """The provider door for a coach's video about a speaker's Take: the
     Take word's (PLF1, founder 2026-10-05, N48.1) and a moment's answer
-    video (0481, N79; services.coach_answer_video).
+    video (0482, N79; services.coach_answer_video).
 
     The video is the coach's, but it is about the speaker's Take and its
     transcript lands beside the speaker's words, so the permit is the
