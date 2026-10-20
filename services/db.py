@@ -10855,16 +10855,47 @@ class DatabaseService:
             logger.warning("list_feedback_checks_since failed: %s", e, exc_info=True)
             return []
 
-    # ── speaker memory (migration 0480, services/speaker_memory.py) ──
+    # ── speaker memory (migrations 0480, 0482; services/speaker_memory.py) ──
 
     def insert_speaker_memory_event(self, row: dict) -> bool:
         try:
             self.client.table("speaker_memory_events").insert(row).execute()
             return True
         except Exception as e:
+            if "arc_id" in str(e) and "arc_id" in row:
+                # Before 0482 the table has no project column: the event is
+                # kept with its Take, which the purge reaches it by too.
+                return self.insert_speaker_memory_event(
+                    {k: v for k, v in row.items() if k != "arc_id"})
             logger.warning("insert_speaker_memory_event failed user=%s: %s",
                            row.get("user_id"), e, exc_info=True)
             return False
+
+    def count_speaker_memory_events(self, user_id: str, *, kind: str,
+                                    since: str) -> Optional[int]:
+        """How many events of this kind the speaker has had since ``since``
+        (counted in Python, bounded: past 200 the exact number does not
+        matter). None on any failure."""
+        try:
+            rows = (self.client.table("speaker_memory_events").select("id")
+                    .eq("user_id", str(user_id)).eq("kind", kind)
+                    .gte("created_at", since).limit(200).execute().data) or []
+            return len(rows)
+        except Exception as e:
+            logger.warning("count_speaker_memory_events failed user=%s: %s",
+                           user_id, e, exc_info=True)
+            return None
+
+    def delete_speaker_memory_events_for_takes(self, user_id: str,
+                                               take_session_ids: list[str]) -> bool:
+        """The speaker's events on these Takes, deleted (the Takes were
+        erased). Raises on failure."""
+        ids = [str(t) for t in take_session_ids if t]
+        if not ids:
+            return True
+        (self.client.table("speaker_memory_events").delete()
+         .eq("user_id", str(user_id)).in_("take_session_id", ids).execute())
+        return True
 
     def list_speaker_memory_events(self, user_id: str,
                                    limit: Optional[int] = None) -> list[dict]:

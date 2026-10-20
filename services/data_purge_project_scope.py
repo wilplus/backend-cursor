@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Mapping
 from dataclasses import replace
 from typing import Any
@@ -44,6 +45,8 @@ from services.data_purge_registry import (
     PurgeDependency,
     dependency_manifest_sha256,
 )
+
+logger = logging.getLogger(__name__)
 
 PROJECT_RESOLVER_VERSION = "phase1-project-purge-resolver-v1"
 
@@ -148,6 +151,11 @@ ACCOUNT_LEVEL: frozenset[str] = frozenset({
     # Lesson bookings (founder 2026-10-19): keyed by the account, never by a
     # project, so a project purge leaves them and no longer stops for review.
     "bookings",
+    # Speaker memory (0480, 0482): the note and the account's events belong
+    # to the account; the events on the project's Takes go with the project
+    # under their own codes (speaker_memory_events_by_take, _by_project),
+    # and the note is written again once the project is gone.
+    "speaker_memory", "speaker_memory_events",
     # Retention schedule v1.4: product records and job evidence that name
     # only the person, never a project. Deleted with the account (or kept
     # 12 months as job evidence); a project purge leaves them. Placed only
@@ -464,7 +472,23 @@ class ProjectPurgeOrchestrator(DataPurgeOrchestrator):
                 "p_purge_request_id": purge_request_id,
             }).execute()
             outcome["project_deletion"] = _one(completed.data) or {}
+            self._forget_what_will_learned()
         return outcome
+
+    def _forget_what_will_learned(self) -> None:
+        """The project's speaker-memory events went with it (registry codes
+        speaker_memory_events_by_take / _by_project); Will's private note,
+        which may have been written from them, is written again from what
+        remains (services.speaker_memory.forget). After the purge is done:
+        it never changes the purge's outcome."""
+        try:
+            from services import speaker_memory
+            for user_id in self._account().user_ids:
+                speaker_memory.forget(self.database, user_id)
+        except Exception:  # noqa: BLE001 -- the purge is done either way
+            logger.warning(
+                "project purge: speaker note not rewritten project=%s",
+                self._project_id, exc_info=True)
 
 
 def orchestrator_for(database: Any, purge_request_id: str) -> DataPurgeOrchestrator:

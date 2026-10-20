@@ -78,7 +78,29 @@ def save_take_word(database: Any, *, take_session_id: str, coach_id: str,
         from services.take_summary import coach_update
         coach_update(database, str(take_session_id), text)
     _the_pair(database, row, coach_id=str(coach_id), text=text, new_video=not keep_video)
+    _will_learns(database, row)
     return take_word_payload(row) or {}
+
+
+def _will_learns(database: Any, row: dict) -> None:
+    """Will learns what the coach SENT (founder 2026-10-20, step 2): a word
+    the speaker can read now, when it is first shared and again whenever a
+    shared word is edited, and its video's words once they are there. A word
+    never shared is never learned from, and neither is a draft. Off the
+    coach's save (services.speaker_memory.record_later)."""
+    if not row.get("shared_at"):
+        return
+    try:
+        from services import speaker_memory
+        take, edited = str(row.get("take_session_id") or ""), not _first_share(row)
+        for source, words in (("take_word", row.get("text")),
+                              ("take_video", row.get("transcript") if row.get("video_ref") else None)):
+            excerpt = " ".join(str(words or "").split())[:speaker_memory.EXCERPT]
+            if excerpt:
+                speaker_memory.record_later(database, None, "coach_word", {
+                    "source": source, "excerpt": excerpt, "edited": edited}, take)
+    except Exception as e:  # noqa: BLE001 -- the word is saved either way
+        _log.info("speaker memory skipped take=%s: %s", row.get("take_session_id"), e)
 
 
 def _the_pair(database: Any, row: dict, *, coach_id: str, text: Optional[str],

@@ -378,6 +378,10 @@ def _hard_delete_sessions_for_user(user_id: str, session_ids: list) -> None:
     (TakeHasLineageError) is left exactly as it was, and the caller must not
     report success for it."""
     db.takes.v2_delete_sessions(list(session_ids), user_id)
+    # What Will learned from these Takes goes with them, and his private
+    # note is written again from what remains (services.speaker_memory).
+    from services import speaker_memory
+    speaker_memory.forget(db, user_id, list(session_ids))
 
 
 def _take_has_lineage_response(e: TakeHasLineageError):

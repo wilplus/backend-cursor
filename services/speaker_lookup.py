@@ -31,7 +31,7 @@ What it may read, and nothing else (founder 2026-10-20):
     (services.feedback_check), and not the conversation Will already reads.
 Only a Take whose processing authorization is in force for this speaker
 gives excerpts, and so do only the coach's words on such a Take
-(``_takes_in_force``; fails closed). Every read is bounded. No migration,
+(``takes_in_force``; fails closed). Every read is bounded. No migration,
 no environment variable.
 """
 from __future__ import annotations
@@ -136,7 +136,7 @@ def _own_takes(database: Any, user_id: str) -> list[dict]:
             and str(r.get("user_id") or user_id) == user_id and _done(r)][:_TAKES]
 
 
-def _hidden_arcs(database: Any, takes: list[dict]) -> set[str]:
+def hidden_arcs(database: Any, takes: list[dict]) -> set[str]:
     """The projects among these Takes' that the speaker erased or archived.
     Raises: then the Takes and their coach words stay out."""
     arcs = {str(t["arc_id"]) for t in takes if t.get("arc_id")}
@@ -155,7 +155,7 @@ def _hidden_arcs(database: Any, takes: list[dict]) -> set[str]:
 _OPERATION = "ai_conversation"
 
 
-def _takes_in_force(database: Any, takes: list[dict]) -> set[str]:
+def takes_in_force(database: Any, takes: list[dict]) -> set[str]:
     """The ids of the Takes whose processing authorization is in force now
     (founder 2026-10-20). Each Take's acquisition principal is resolved as
     the recording pipeline resolves it (``resolve_acquisition_principal``
@@ -324,8 +324,8 @@ def lookup(database: Any, user_id: Any, question: str) -> list[Snippet]:
         # is in force gives excerpts (its transcript and what the coach sent
         # on it); a check that fails keeps every Take-based excerpt out.
         hidden, in_force, coach = run_in_parallel(
-            lambda: _quietly("projects", uid, lambda: [_hidden_arcs(database, takes)]),
-            lambda: _quietly("authorization", uid, lambda: [_takes_in_force(database, takes)]),
+            lambda: _quietly("projects", uid, lambda: [hidden_arcs(database, takes)]),
+            lambda: _quietly("authorization", uid, lambda: [takes_in_force(database, takes)]),
             lambda: _quietly("coach words", uid, lambda: _coach_items(database, uid, takes)))
         allowed = {str(t["id"]) for t in takes
                    if hidden and in_force and str(t.get("arc_id") or "") not in hidden[0]

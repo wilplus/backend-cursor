@@ -151,7 +151,7 @@ def _save(database: Any, user_id: str, arc_id: Optional[str], take: str, **field
         raise CheckError("V2_ERROR", "Failed to save the answer", 500)
     # Will learns from every answer, privately (services.speaker_memory).
     from services import speaker_memory
-    speaker_memory.record(database, user_id, "answer", fields, take)
+    speaker_memory.record(database, user_id, "answer", fields, take, arc_id)
 
 
 def answer(database: Any, *, user_id: str, arc_id: str, take_session_id: str,

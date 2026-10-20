@@ -284,6 +284,14 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
                     "delete", "database_row", 60),
     PurgeDependency("speaker_memory_events", "speaker_memory_events", "user_id",
                     "user", "delete", "database_row", 60),
+    # Step 2 (0482): an event on a Take (its transcript, what the coach sent
+    # on it, an answer, its outcome) goes with the Take, and with its project
+    # (arc_id); the speaker's chat messages belong to no Take and go with the
+    # account above.
+    PurgeDependency("speaker_memory_events_by_take", "speaker_memory_events",
+                    "take_session_id", "take", "delete", "database_row", 59),
+    PurgeDependency("speaker_memory_events_by_project", "speaker_memory_events",
+                    "arc_id", "project", "delete", "database_row", 59),
     PurgeDependency("settings", "user_settings", "user_id", "user", "delete",
                     "database_row", 60),
     # Lesson bookings (founder 2026-10-15, fix 6). The termination request
