@@ -1,10 +1,14 @@
-"""The bookmarks are baked again after the speaker answers (F3, 2026-10-08).
-
-Every answer writes to the mutable feedback surface, which retires the stored
-block, and only the end of an analysis run used to bake again — so the first
-open of the Ideal Text after a walk ran the whole Manager live. These pin the
-rebake: one per document per window however many answers land in it, never
-in the way of the answer that asked for it.
+"""
+STORY    As a speaker, I want my Ideal Text ready quickly after I answer
+         feedback, and my answer never blocked by that refresh, so that the
+         next open is fast and answering always works.
+OUTCOME
+  O1  However many answers land in one window, the document is rebaked once;
+      an answer after the window closes asks for the next rebake.
+  O2  Never-3: a broken queue never fails the answer - it is still saved.
+PROVES   O1 -> test_answers_in_one_window_rebake_the_document_once
+         O2 -> test_a_failure_to_enqueue_does_not_fail_the_answer
+WHY      F3 2026-10-08: the first open after a walk ran the whole Manager live.
 """
 from __future__ import annotations
 
@@ -12,7 +16,7 @@ import pytest
 
 from services import ideal_text_feedback_bake as bake
 from services import job_queue
-from tests import test_a_speaker_may_change_a_judgement as judgement
+from tests import judgement_route_fakes as judgement
 
 
 class _FakeRedis:
@@ -51,19 +55,39 @@ def broker(monkeypatch):
     return redis, queued
 
 
-# ── the answer route ──────────────────────────────────────────────────────
-
-
 def _answer_route_db():
     change = {"outcome": "replayed", "row": {"id": 7, "snippet_id": judgement.SNIP,
                                              "response": "no", "revision": 0}}
     return judgement._RouteDb("saved", change)
 
 
+def _rebakes(queued):
+    return [q for q in queued if q[0] == bake.BAKE_TASK_PATH]
+
+
+def test_answers_in_one_window_rebake_the_document_once(broker):
+    redis, queued = broker
+    for response in ("no", "yes", "no"):
+        status, body, _ = judgement._post(_answer_route_db(), response=response)
+        assert status == 200 and body["saved"] is True
+    assert len(_rebakes(queued)) == 1
+    _path, args, kwargs = _rebakes(queued)[0]
+    assert args == ("arc-1", judgement.OWNER)
+    assert kwargs["delay_seconds"] == bake.REBAKE_DEBOUNCE_SECONDS
+
+    redis.now += bake.REBAKE_DEBOUNCE_SECONDS + 1
+    judgement._post(_answer_route_db(), response="yes")
+    assert len(_rebakes(queued)) == 2
+
+
 def test_a_failure_to_enqueue_does_not_fail_the_answer(broker, monkeypatch):
+    attempts = []
+
     def _boom(*_a, **_k):
+        attempts.append(1)
         raise RuntimeError("broker gone")
 
     monkeypatch.setattr(job_queue, "enqueue", _boom)
     status, body, _ = judgement._post(_answer_route_db(), response="no")
+    assert attempts, "the answer must have asked for a rebake"
     assert status == 200 and body["saved"] is True

@@ -1,92 +1,176 @@
-"""willab — recording-lane guards (founder bugs 2026-07-20).
-
-"Please do not count re-read as a separate take — only a spoken take is a
-real take" + "after the re-read, recording the spoken version analyses the
-re-read". Three guards, pinned here:
-
-  A1 an UNPAIRED read is rejected 422 before any storage (it used to fall
-     through as SPOKEN: taking a take number, assembling, minting a
-     version);
-  A2 a SPENT session id (one that already owns a recording / a lane /
-     analysis) is never reused — a fresh session is minted, so a new
-     spoken take can never be folded into the previous re-read;
-  A3 assembly/version/bubble run for SPOKEN takes ONLY — the SD-mode
-     condition `_rec_kind == "spoken" or _single_deliverable_enabled()`
-     let a re-read run the whole pipeline (regenerate suggestions,
-     reassemble, bump the version, fire the ready bubble).
-
-Run: python3 -m unittest tests.test_recording_lane_guards
+"""
+STORY    As a speaker, I want only my spoken takes to count as takes, and a
+         new spoken take never folded into an earlier re-read, so that my
+         take numbers and Ideal Text stay right.
+OUTCOME
+  O1  A "read" upload without its spoken take (no paired_session_id), or an
+      ideal-text re-read (no paired_snippet_id, lane retired), gets 422 and
+      nothing is stored.
+  O2  Every accepted upload gets a fresh Take id; a session id the browser
+      sends (a spent one) is never reused for the new recording.
+  O3  A delivery-star snippet re-record (read + pair + snippet) is accepted,
+      binds to its spoken take WITHOUT taking a new take number, and reaches
+      analysis as a "read"; a spoken upload does take a take number.
+  O4  Only a spoken take builds the Ideal Text; a read never does.
+PROVES   O1 -> test_unpaired_or_retired_read_is_refused_before_storage
+         O2 -> test_new_take_never_reuses_a_session_id_from_the_browser
+         O3 -> test_snippet_rerecord_binds_to_its_take_without_a_take_number
+         O4 -> test_only_a_spoken_take_builds_the_ideal_text
+WHY      Founder bugs 2026-07-20: a re-read counted as a take and a spoken
+         take was analysed as the re-read.
 """
 from __future__ import annotations
 
 import io
+import sys
+import types
 import unittest
+from contextlib import ExitStack
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 try:
     from flask import Flask
 
-    from routes.v2 import lab_recording as v2_lab_recording
-    from services.db import db as v2_db
+    from routes.v2 import lab_recording as route
+    from services.lab_analysis_dispatch import PendingAnalysis
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
-    Flask = None
     _IMPORT_ERROR = e
 
-PAIR = "22222222-2222-4222-8222-222222222222"
-
-
-def _file(name="take.webm", ctype="audio/webm", body=b"x" * 32):
-    from werkzeug.datastructures import FileStorage
-    return FileStorage(stream=io.BytesIO(body), filename=name,
-                       content_type=ctype)
+SPOKEN = "22222222-2222-4222-8222-222222222222"
+SNIPPET = "aaaa1111-aaaa-4111-8aaa-111111111111"
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class UnpairedReadTests(unittest.TestCase):
-    """A1 — a read without its spoken take is refused, and refused EARLY
-    (before storage/processing), so nothing about it can be persisted."""
-
-    def setUp(self):
-        self.app = Flask(__name__)
+class RecordingLaneRouteTests(unittest.TestCase):
+    """POST /lab/recordings with only the outside world faked: the database,
+    object storage, the audio gate, project lookup and the analysis queue.
+    Lane parsing, Take-id minting, persistence and project binding are real.
+    """
 
     def _post(self, form):
-        data = {"audio_file": _file()}
+        from werkzeug.datastructures import FileStorage
+        data = {"audio_file": FileStorage(
+            stream=io.BytesIO(b"x" * 32), filename="take.webm",
+            content_type="audio/webm")}
         data.update(form)
-        with self.app.test_request_context(
+        project = SimpleNamespace(
+            project_id="project-1", idempotency_key="upload-1",
+            duplicate_take=None, principal=SimpleNamespace(id="owner-1"),
+        )
+        auth = MagicMock(enforced=False)
+        auth.resolve_acquisition_principal.return_value = "owner-1"
+        fakes = SimpleNamespace(db=MagicMock())
+        with ExitStack() as stack, Flask(__name__).test_request_context(
                 method="POST", data=data,
                 content_type="multipart/form-data"):
-            # Any storage/DB touch would mean the guard ran too late.
-            project = SimpleNamespace(
-                project_id="project-1", idempotency_key="upload-1",
-                duplicate_take=None, principal=SimpleNamespace(id="owner-1"),
-            )
-            with patch("routes.v2.lab_recording.resolve_take_project",
-                       return_value=project), \
-                 patch("routes.v2.lab_recording."
-                       "ensure_project_presentation_unchanged"), \
-                 patch.object(v2_db, "v2_get_session_by_id") as m_sess, \
-                 patch("services.coach_video_storage.put_coach_object_bytes") \
-                    as m_put:
-                out = v2_lab_recording.v2_lab_create_recording.__wrapped__()
-                resp, status = out if isinstance(out, tuple) else (out, 200)
-                return resp.get_json(), status, m_sess, m_put
+            def fake(target, **kw):
+                return stack.enter_context(patch(target, **kw))
+            fake("routes.v2.lab_recording.db", new=fakes.db)
+            fake("routes.v2.lab_recording.resolve_take_project",
+                 return_value=project)
+            fake("routes.v2.lab_recording.ProcessingAuthorizationService",
+                 return_value=auth)
+            fake("services.processing_authorization."
+                 "ProcessingAuthorizationService", return_value=auth)
+            fake("routes.v2.lab_recording.ensure_project_presentation_unchanged")
+            fake("routes.v2.lab_recording._is_data_foundation_canary_owner",
+                 return_value=False)
+            fake("routes.v2.lab_recording.require_analyzable_recording",
+                 return_value={"ok": True, "duration_sec": 30})
+            fakes.put = fake("services.lab_audio_storage.put_lab_audio_bytes",
+                             return_value="lab-bucket")
+            fake("services.lab_audio_storage.storage_provider",
+                 return_value="r2")
+            fakes.reserve = fake("services.create_take.reserve_take",
+                                 return_value=3)
+            fakes.bind = fake("services.project_repository.ProjectRepository."
+                              "bind_variant", return_value=2)
+            fakes.dispatch = fake(
+                "routes.v2.lab_recording.dispatch_recording_analysis",
+                return_value=PendingAnalysis({"state": "processing"}))
+            out = route.v2_lab_create_recording.__wrapped__()
+            resp, status = out if isinstance(out, tuple) else (out, 200)
+            return resp.get_json(), status, fakes
 
-    PAIR = "3f7c1b6e-6f5a-4a7e-9f2b-8c1d0e5a4b39"
-    SNIP = "aaaa1111-aaaa-1111-aaaa-111111111111"
+    def test_unpaired_or_retired_read_is_refused_before_storage(self):
+        for form in (
+            {"recording_kind": "read"},                         # no pair
+            {"recording_kind": "read", "paired_session_id": "nope"},
+            {"recording_kind": "read", "paired_snippet_id": SNIPPET},
+            {"recording_kind": "read", "paired_session_id": SPOKEN},  # retired
+        ):
+            with self.subTest(form=form):
+                body, status, fakes = self._post({"topic": "t", **form})
+                self.assertEqual(status, 422)
+                self.assertEqual(body["code"], "INVALID_INPUT")
+                fakes.put.assert_not_called()
+                fakes.db.takes.v2_create_recording_session.assert_not_called()
+                fakes.reserve.assert_not_called()
+                fakes.dispatch.assert_not_called()
 
+    def test_new_take_never_reuses_a_session_id_from_the_browser(self):
+        body, status, fakes = self._post(
+            {"topic": "t", "session_id": SPOKEN, "recording_id": SPOKEN})
+        self.assertEqual(status, 202)
+        created = fakes.db.takes.v2_create_recording_session.call_args.args[0]
+        self.assertNotEqual(created, SPOKEN)
+        self.assertNotIn(SPOKEN, fakes.put.call_args.args[0])  # storage key
+        inputs = fakes.dispatch.call_args.args[0]
+        self.assertEqual(inputs.session_id, created)
+        self.assertEqual(inputs.recording_kind, "spoken")
+        self.assertEqual(inputs.take_index, 3)       # a real take number
+        fakes.reserve.assert_called_once()
+        fakes.bind.assert_not_called()
+        # And a second upload mints a different id again.
+        _, _, again = self._post({"topic": "t", "session_id": created})
+        self.assertNotEqual(
+            again.db.takes.v2_create_recording_session.call_args.args[0],
+            created)
 
-    def test_delivery_star_snippet_rerecord_still_passes(self):
-        # The read lane SURVIVES for the delivery-star snippet re-record —
-        # a separate live feature that shares the wire and was never in
-        # scope for the retirement. It must not hit the retirement guard.
-        body, status, _, _ = self._post(
+    def test_snippet_rerecord_binds_to_its_take_without_a_take_number(self):
+        body, status, fakes = self._post(
             {"topic": "t", "recording_kind": "read",
-             "paired_session_id": self.PAIR,
-             "paired_snippet_id": self.SNIP})
-        self.assertNotIn(
-            "retired", ((body or {}).get("error", "") or "").lower())
+             "paired_session_id": SPOKEN, "paired_snippet_id": SNIPPET})
+        self.assertEqual(status, 202)
+        fakes.put.assert_called_once()
+        fakes.reserve.assert_not_called()
+        self.assertEqual(fakes.bind.call_args.args[-1], SPOKEN)
+        inputs = fakes.dispatch.call_args.args[0]
+        self.assertEqual(inputs.recording_kind, "read")
+        self.assertEqual(inputs.paired_session_id, SPOKEN)
+        self.assertEqual(inputs.take_index, 2)       # the spoken take's number
+        context = fakes.db.takes.set_session_intake_context.call_args.args[1]
+        self.assertEqual(context["paired_snippet_id"], SNIPPET)
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class SpokenOnlyAssemblyTests(unittest.TestCase):
+
+    def _builds_ideal_text(self, recording_kind):
+        import services.analysis_worker as aw
+        lab = types.ModuleType("services.lab_recording")
+        lab.process_lab_recording = lambda **kw: {"snippets": [1]}
+        fake_db = MagicMock()
+        fake_db.get_snippets_by_session.return_value = []
+        with patch.dict(sys.modules, {"services.lab_recording": lab}), \
+             patch("services.db.db", fake_db), \
+             patch("services.analysis_worker.db", fake_db), \
+             patch("services.ideal_text_confirmation."
+                   "build_initial_ideal_text_from_stored_artifacts") as build:
+            aw.run_full_analysis(
+                session_id=SPOKEN, user_id=None, recording_id=SNIPPET,
+                audio_bytes=b"x", filename="lab.webm", session_context=None,
+                parent_audio_url="https://a", recording_kind=recording_kind,
+                paired_session_id=SPOKEN if recording_kind == "read" else None,
+                arc_id="project-1", take_index=1,
+            )
+        return build.called
+
+    def test_only_a_spoken_take_builds_the_ideal_text(self):
+        self.assertTrue(self._builds_ideal_text("spoken"))
+        self.assertFalse(self._builds_ideal_text("read"))
 
 
 if __name__ == "__main__":

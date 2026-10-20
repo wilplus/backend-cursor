@@ -180,6 +180,8 @@ def handle_goal_update(
         return None
     if not ok:
         return None
+    from services.goal_history import record_later
+    record_later(db, user_id, current_goal, new_goal, "chat")
 
     answer = str(verdict.get("confirmation") or "").strip()
     if not answer:

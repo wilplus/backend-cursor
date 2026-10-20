@@ -14,7 +14,7 @@ This repo: **backend** (Flask, Railway, Supabase). The frontend is
 
 ## Never
 
-1. **No scores, numbers or verdicts shown to speakers.** Feedback is in words.
+1. **No scores, numbers or verdicts shown to speakers.** Feedback is in words. A processing-progress percentage and a token price are not about the speaker and are allowed (founder, 2026-10-19).
 2. **No coach sees the machine's guess before answering.** Coach judgements stay blind.
 3. **Never break record → process → Ideal Text → next Take.** Coaches and exercises are never in the way.
 4. **No new words on screen without the founder's OK.**

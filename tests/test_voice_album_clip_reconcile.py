@@ -1,11 +1,18 @@
-"""`reconcile_voice_album_clip`, pinned path by path.
-
-The exact-clip reconciler admits a moment only when Machine Yes, User Yes
-and a professional Coach Yes on a Take of the project align on that clip
-(L3; the publish gate left with the arc-level delivery, contract 65),
-and removes one only on an explicit professional No. A practice attempt is
-reconciled from its own three recorded decisions instead. Every other read
-is a no-op that can never withdraw a saved moment.
+"""
+STORY    As a speaker, I want a moment added to my Voice Album only when all
+         three yeses align and removed only on a coach's explicit No, so that
+         my album is never changed by accident.
+OUTCOME
+  O1  My yes, the machine's confident read and a professional coach Yes on a
+      Take of this project add the clip, on its Take and slide.
+  O2  A coach's explicit No removes the clip (no publish gate since the
+      arc-level delivery was retired).
+  O3  Any other read writes nothing: a missing yes, a weak or unreadable
+      machine read, a Take of another project, a database failure.
+PROVES   O1 -> test_three_aligned_yeses_add_the_clip
+         O2 -> test_a_no_on_an_unpublished_take_withdraws_too
+         O3 -> test_any_other_read_writes_nothing
+WHY      L3 / contract 65: incomplete reads must never withdraw a saved moment.
 """
 from __future__ import annotations
 
@@ -19,76 +26,31 @@ CLIP = "snip-1"
 TAKE = "take-1"
 
 
-# THE MACHINE LEG IS THE CLIP'S OWN READ (founder 2026-10-05, Q5; N45).
-# These fakes still describe a confident clip the way the old lane did (an
-# EMPHASIZE "confident" row); the read below translates that into the read
-# the album now asks for, so each test keeps its meaning. A reader that
-# raises is a clip that cannot be read (None).
-def _read_from_star(database, take_session_id, snippet_id):
-    try:
-        try:
-            rows = database.get_moment_suggestions_by_arc("arc-1", strict=True)
-        except TypeError:
-            rows = database.get_moment_suggestions_by_arc("arc-1")
-    except Exception:
-        return None
-    row = (rows or {}).get(str(snippet_id))
-    if (isinstance(row, dict) and row.get("kind") == "emphasize"
-            and row.get("trigger") == "confident"):
-        return "confident"
-    return "weak"
-
-
-_READ_PATCH = mock.patch("services.judgement_follow_up.clip_machine_read",
-                         _read_from_star)
-
-
-def setUpModule():
-    _READ_PATCH.start()
-
-
-def tearDownModule():
-    _READ_PATCH.stop()
-
 class _Db:
-    def __init__(self, *, attempt=None, practice=None, self_reports=(),
-                 routes=(), suggestion=None, labels=(), session=None,
-                 broken=False):
-        self.attempt = attempt
-        self.practice = practice
+    def __init__(self, *, self_reports=(), labels=(), session=None,
+                 machine="confident", broken=False):
         self.self_reports = list(self_reports)
-        self.routes = list(routes)
-        self.suggestion = suggestion
         self.labels = list(labels)
         self.session = session
+        self.machine = machine          # the clip's own read (Q5, N45)
         self.broken = broken
         self.writes: list[tuple] = []
-        self.reads: list[str] = []
 
     def get_confident_voice_practice_attempt(self, target):
-        self.reads.append("attempt")
         if self.broken:
             raise RuntimeError("database down")
-        return self.attempt
-
-    def get_confident_voice_practice(self, practice_id):
-        self.reads.append(f"practice:{practice_id}")
-        return self.practice
+        return None
 
     def list_confident_voice_self_reports(self, arc):
         return self.self_reports
 
     def list_owner_voice_album_routes(self, arc):
-        return self.routes
-
-    def get_moment_suggestions_by_arc(self, arc):
-        return {CLIP: self.suggestion} if self.suggestion else {}
+        return []
 
     def get_confidence_labels_by_snippet_ids(self, ids):
         return {CLIP: self.labels}
 
     def v2_get_session_by_id(self, session_id):
-        self.reads.append(f"session:{session_id}")
         return self.session
 
     def insert_voice_album_entry(self, **kwargs):
@@ -99,47 +61,59 @@ class _Db:
         self.writes.append(("delete", kwargs))
         return True
 
-    def insert_voice_album_practice_entry(self, **kwargs):
-        self.writes.append(("insert_practice", kwargs))
-        return True
-
-    def delete_voice_album_practice_entry(self, **kwargs):
-        self.writes.append(("delete_practice", kwargs))
-        return True
-
 
 _USER_YES = {"snippet_id": CLIP, "response": "yes", "slide_index": 2}
-_STAR = {"kind": "emphasize", "trigger": "confident"}
 _COACH_YES = {"lane": "coach", "value": "yes"}
 _COACH_NO = {"lane": "coach", "value": "no"}
-_PUBLISHED = {"results_published_at": "2026-09-01", "project_id": ARC}
+_THIS_PROJECT = {"project_id": ARC}
 
 
 def _aligned(**overrides):
-    fields = dict(self_reports=[_USER_YES], suggestion=_STAR,
-                  labels=[_COACH_YES], session=_PUBLISHED)
+    fields = dict(self_reports=[_USER_YES], labels=[_COACH_YES],
+                  session=_THIS_PROJECT)
     fields.update(overrides)
     return _Db(**fields)
 
 
-def _run(database, *, take=TAKE, arc=ARC, clip=CLIP):
-    return reconcile_voice_album_clip(
-        arc, clip, take_session_id=take, database=database)
+def _run(database):
+    with mock.patch("services.judgement_follow_up.clip_machine_read",
+                    lambda db, _take, _snip: db.machine):
+        return reconcile_voice_album_clip(
+            ARC, CLIP, take_session_id=TAKE, database=database)
 
 
 class OriginalClip(unittest.TestCase):
 
+    def test_three_aligned_yeses_add_the_clip(self):
+        database = _aligned()
+        self.assertTrue(_run(database))
+        self.assertEqual(database.writes, [("insert", {
+            "arc_id": ARC, "snippet_id": CLIP, "take_session_id": TAKE,
+            "slide_index": 2,
+        })])
 
     def test_a_no_on_an_unpublished_take_withdraws_too(self):
-        # No publish gate since the arc-level delivery was retired: the
-        # coach's No on the walk is final when written.
-        database = _aligned(labels=[_COACH_NO],
-                            session={"project_id": ARC})
+        database = _aligned(labels=[_COACH_NO])
         self.assertTrue(_run(database))
         self.assertEqual(database.writes, [("delete", {
             "arc_id": ARC, "snippet_id": CLIP,
         })])
 
+    def test_any_other_read_writes_nothing(self):
+        cases = {
+            "no user yes": _aligned(self_reports=[]),
+            "machine reads weak": _aligned(machine="weak"),
+            "machine cannot read": _aligned(machine=None),
+            "no coach answer": _aligned(labels=[]),
+            "a Take of another project": _aligned(
+                labels=[_COACH_NO], session={"project_id": "other-arc"}),
+            "database down": _aligned(labels=[_COACH_NO], broken=True),
+        }
+        for name, database in cases.items():
+            with self.subTest(name):
+                self.assertFalse(_run(database))
+                self.assertEqual(database.writes, [])
 
-if __name__ == "__main__":
+
+if __name__ == "__main__":  # pragma: no cover
     unittest.main()

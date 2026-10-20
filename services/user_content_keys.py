@@ -115,6 +115,13 @@ USER_CONTENT_PREFIXES: tuple[str, ...] = (
     # Weekly pair releases: a coach's words about a person's passage, so a
     # person's content (ML-9, migration 0405). Private bucket, never a URL.
     "pair-releases/",
+    # Practice clips spoken in the speaker's own cloned voice
+    # (services/ai_voice_clip.py). The speaker's voice, so their content.
+    "ai-voice/",
+    # A coach's video answer to a speaker's moment, filed under the speaker's
+    # id (services/coach_answer_video.py). Already private and re-signed on
+    # every read; listed so no surface can ever mint a public URL for it.
+    "coach-answers/",
 )
 
 #: Object-key prefixes this codebase writes that are deliberately NOT user

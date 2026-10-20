@@ -19,7 +19,7 @@ import sentry_sdk
 from flask import jsonify, request
 
 from config import Config
-from routes.admin import is_admin, require_admin_or_coach
+from routes.admin import is_admin, require_admin_or_coach, require_founder
 from routes.phase2_guard import operational_purpose_disabled
 from routes.v2.blueprint import v2_bp
 from routes.v2.processing_authorization import speaker_provider_route
@@ -319,9 +319,6 @@ def v2_coach_students():
             uid = r.get("user_id")
             prof = _profiles.get(str(uid)) or {}
             out.append({
-                # Opaque drill key — the FE keys the student detail view on
-                # this; a random UUID is not name/email.
-                "user_id": str(uid) if uid else "",
                 "pseudonym": _coach_pseudonym(uid),
                 "domain": (prof or {}).get("domain") or "",
                 "last_active": r.get("last_active") or "",
@@ -426,14 +423,11 @@ def v2_coach_student_audit_send(user_id):
 @require_admin_or_coach
 def v2_coach_queue():
     """① Coach review queue (FE PR2 → /v2/coach/queue). Pseudonymized rows,
-    FIFO (oldest sent first). Each row: {session_id, user_id, pseudonym,
-    domain, topic, n_snippets, state, sent_at, arc_id?, take_index?,
-    has_reread?}. `user_id` is the same OPAQUE drill key the roster exposes
-    (founder 2026-07-16, BE-4 — the FE groups the queue per student and opens
-    the student list from it; a random UUID is not name/email, so §14
-    red-line 6 still holds: pseudonym + domain remain the only DISPLAYED
-    fields). Read rows are folded into their parent take (never listed);
-    has_reread marks the parent."""
+    FIFO (oldest sent first). Each row: {session_id, pseudonym, domain,
+    topic, n_snippets, state, sent_at, arc_id?, take_index?, has_reread?}.
+    No user_id: rows are grouped by pseudonym (founder 2026-10-20, replacing
+    the 2026-07-16 opaque drill key). Read rows are folded into their parent
+    take (never listed); has_reread marks the parent."""
     try:
         # An unset profile is a setup state, not an empty queue: make the
         # distinction explicit so the UI can ask once rather than silently
@@ -458,9 +452,8 @@ def v2_coach_queue():
             cstate = _states.get(str(sid)) or {}
             out.append({
                 "session_id": sid,
-                # Opaque drill key — mirrors GET /v2/coach/students (never
-                # rendered; keys the per-student grouping + drill-down).
-                "user_id": str(r.get("user_id")) if r.get("user_id") else "",
+                # Speakers are grouped by pseudonym; no user_id reaches a coach
+                # (founder 2026-10-20).
                 "pseudonym": _coach_pseudonym(r.get("user_id")),
                 "domain": (ctx or {}).get("domain") or "",
                 "topic": (ctx or {}).get("topic") or "",
@@ -1596,7 +1589,9 @@ def v2_coach_take_word(session_id):
     message and video per Take, per coach. GET this coach's own; PUT {text,
     video_ref, share} saves it and, on share, sends it to the speaker, who
     reads it as "Your coach". The video comes from the session video upload
-    (POST .../video), which returns the ref. Nothing here gates a per-moment
+    (POST .../video), which returns the ref; a PUT that names no video_ref
+    keeps the saved video, and an explicit null removes it (founder
+    2026-10-19). Nothing here gates a per-moment
     share."""
     if not _is_valid_uuid(session_id):
         return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a UUID"}), 400
@@ -2030,6 +2025,34 @@ def v2_coach_archive_training_import(session_id):
                        session_id, e)
         return jsonify({"code": "SERVER_ERROR",
                         "error": "could not archive the import"}), 500
+
+
+@v2_bp.route("/coach/training-imports/<session_id>/erase", methods=["POST"])
+@require_founder
+def v2_coach_erase_training_import(session_id):
+    """ERASE a training import for good: the founder only (2026-10-19).
+
+    Unlike the archive above, nothing comes back: the audio, the moments,
+    the transcript and every judgement go (services/training_import_erase).
+    For audio we hold no rights to.
+
+    200 {erased: true, session_id, deleted} · 403 · 404 · 409 · 500
+    """
+    from services.training_import_erase import (
+        EraseRefused, erase_training_import,
+    )
+    if not _is_valid_uuid(str(session_id)):
+        return jsonify({"code": "NOT_FOUND", "error": "import not found"}), 404
+    try:
+        return jsonify(erase_training_import(db, str(session_id))), 200
+    except EraseRefused as refusal:
+        return jsonify({"code": refusal.code,
+                        "error": "could not erase the import"}), refusal.status
+    except Exception as e:
+        logger.error("erase training import failed sid=%s: %s",
+                     session_id, e, exc_info=True)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not erase the import"}), 500
 
 
 @v2_bp.route("/coach/training-imports/<session_id>/restore",

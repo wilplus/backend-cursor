@@ -1,26 +1,28 @@
-"""Doors 1 and 2, the machinery (founder 2026-09-30,
-L1, L2, L5; build plan ML-8, ML-9).
-
-Pins:
-  * a pair is stamped at write with its owner's consent; a surface outside
-    counsel's list is releasable without a yes; no principal is unknown and
-    not releasable; every surface needs the yes today;
-  * nothing leaves without the founder's sentence for the surface, or
-    without a bucket and a key; the reason is words;
-  * with everything in place only releasable pairs leave, once, under one
-    release, with a manifest whose sha256 is signed and verifiable, split
-    speaker-disjoint, carrying no user id, coach id or take;
-  * a voided release's object is deleted by the sweep and the row marked;
-  * one file per surface per week: a week that has a release, standing or
-    voided, is refused before anything is written; the row and its owners
-    are written before any object, so a fire racing another is refused at
-    its own row and puts nothing (0455);
-  * anything after the row that fails voids the release ('export_failed')
-    and the sweep deletes what was put; a void that fails too is named;
-  * the weekly job refreshes first, exports, sweeps, and reports each.
+"""
+STORY    As the founder, I want feedback pairs released for training only
+         with a yes, my sentence, a signed manifest and a speaker-disjoint
+         split, at most once a week, with failed exports voided and swept,
+         so that no unconsented or partial data leaves.
+OUTCOME
+  O1  Nothing leaves without the founder's sentence for the surface, a
+      bucket and a signing key; the reason is given in words.
+  O2  With everything in place only pairs with a yes in force leave, under
+      one release whose manifest signature verifies, split by the owner's
+      speaker, and carrying no user id, coach id or take.
+  O3  One file per surface per week: a second run that week writes nothing.
+  O4  A voided release's objects are deleted by the sweep and it is marked.
+  O5  A failure after the release row voids it and the same weekly run
+      sweeps what was put.
+PROVES   O1 -> test_nothing_leaves_without_the_sentence_a_bucket_and_a_key
+         O2 -> test_only_releasable_pairs_leave_signed_and_split_by_speaker
+         O3 -> test_a_second_run_in_the_same_week_writes_nothing
+         O4 -> test_a_voided_release_loses_its_object_and_is_marked_purged
+         O5 -> test_the_weekly_job_voids_the_failed_release_and_sweeps_it_in_the_same_run
+WHY      Founder 2026-09-30 (L1, L2, L5); build plan ML-8, ML-9; 0405, 0455.
 """
 from __future__ import annotations
 
+import json
 import unittest
 from datetime import date, datetime, timezone
 from unittest import mock
@@ -45,18 +47,12 @@ def _open(*surfaces):
 
 
 class _Storage:
-    def __init__(self, fail_on=None, log=None):
+    def __init__(self):
         self.objects: dict[tuple[str, str], bytes] = {}
         self.puts: list[str] = []
-        self.fail_on = fail_on      # the object name whose put fails
-        self.log = log              # the order the export writes in, with the database's
 
     def put(self, bucket, key, body, content_type):
         self.puts.append(key)
-        if self.log is not None:
-            self.log.append(f"put {key.rsplit('/', 1)[-1]}")
-        if self.fail_on and key.endswith(self.fail_on):
-            raise RuntimeError("bucket away")
         self.objects[(bucket, key)] = body
 
     def delete(self, bucket, key):
@@ -174,6 +170,76 @@ class _Db:
         return row
 
 
+WEEK = date(2026, 9, 28)
+NOW = datetime(2026, 9, 30, tzinfo=timezone.utc)
+
+
+def _export(db, storage, config):
+    return pr.export_surface(db, storage, surface="praise_line",
+                             week_start=WEEK, config=config, now=NOW)
+
+
+class GateTests(unittest.TestCase):
+    def test_nothing_leaves_without_the_sentence_a_bucket_and_a_key(self):
+        no_bucket = _open("praise_line")
+        no_bucket.R2_PAIR_RELEASE_BUCKET = ""
+        no_key = _open("praise_line")
+        no_key.PAIR_RELEASE_SIGNING_KEY = " "
+        for config, words in ((_open(), "no founder sentence"),
+                              (no_bucket, "no release bucket"),
+                              (no_key, "no signing key")):
+            with self.subTest(words=words):
+                db, storage = _Db(pairs=[_pair(1)]), _Storage()
+                out = _export(db, storage, config)
+                self.assertEqual(out["exported"], 0)
+                self.assertIn(words, out["why"])
+                self.assertEqual((db.releases, storage.puts), ([], []))
+
+
+class ExportTests(unittest.TestCase):
+    def _released(self):
+        # p-9 has a speaker but no yes in force: nominated, but the release
+        # decides afresh.
+        db = _Db(pairs=[_pair(1, "p-1"), _pair(2, "p-2"), _pair(3, "p-9")])
+        storage = _Storage()
+        out = _export(db, storage, _open("praise_line"))
+        return db, storage, out
+
+    def test_only_releasable_pairs_leave_signed_and_split_by_speaker(self):
+        db, storage, out = self._released()
+        self.assertEqual(out["exported"], 2)
+        self.assertEqual(len(db.releases), 1)
+        self.assertEqual(db.marked, [(out["release_id"], ["pair-1", "pair-2"])])
+        key = "pair-releases/praise_line/2026-09-28/pairs.jsonl"
+        bucket = "willab-pair-releases"
+        lines = [json.loads(line) for line in
+                 storage.objects[(bucket, key)].decode().splitlines()]
+        self.assertEqual({(r["pair_id"], r["split"]) for r in lines},
+                         {("pair-1", "train"), ("pair-2", "test")})
+        body = storage.objects[(bucket, key)].decode()
+        for leak in ("p-1", "p-2", "p-9", "user_id", "coach", "take"):
+            self.assertNotIn(leak, body)
+        manifest = json.loads(storage.objects[
+            (bucket, key.replace("pairs.jsonl", "manifest.json"))])
+        self.assertEqual(manifest["file_sha256"], pr.sha256_text(body))
+        signed = {k: v for k, v in manifest.items()
+                  if k not in ("manifest_sha256", "signature", "signing_key_id")}
+        self.assertEqual(manifest["manifest_sha256"],
+                         pr.sha256_text(pr._json(signed)))
+        self.assertTrue(pr.verify(manifest["manifest_sha256"],
+                                  manifest["signature"], "k" * 32))
+        self.assertFalse(pr.verify(manifest["manifest_sha256"],
+                                   manifest["signature"], "x" * 32))
+
+    def test_a_second_run_in_the_same_week_writes_nothing(self):
+        db, storage, _ = self._released()
+        puts = list(storage.puts)
+        again = _export(db, storage, _open("praise_line"))
+        self.assertEqual(again["exported"], 0)
+        self.assertIn("one file per surface per week", again["why"])
+        self.assertEqual((len(db.releases), storage.puts), (1, puts))
+
+
 class SweepTests(unittest.TestCase):
     def test_a_voided_release_loses_its_object_and_is_marked_purged(self):
         storage = _Storage()
@@ -187,7 +253,6 @@ class SweepTests(unittest.TestCase):
         self.assertEqual(db.purged, ["rel-7"])
 
 
-WEEK = date(2026, 9, 28)
 LEDGER = {"ledger_version": "learning-ledger-v1",
           "pairs": {"praise_line": {"total": 1, "unexported": 1}},
           "exercise_jar": {}, "shadow_cues": {}, "unavailable": []}

@@ -1,57 +1,63 @@
-"""willab — pieces-canonical core (founder 2026-07-14): the ≤200-char piece
-IS the moment.
-
-Covers the F1-CORE cutter (services/slide_word_split.chunk_slide_words_by_chars):
-slide boundary FIRST (a piece never crosses a slide), ≤200 chars within the
-slide, exact word-derived audio spans, global ordinals — and the drafter's
-two-tier budget dispatch (LLM for the budget set, deterministic auto-comment
-for the rest, same write-once lane).
-
-Run: python3 -m unittest tests.test_pieces_canonical
+"""
+STORY    As a speaker, I want my transcript cut into pieces that never cross a
+         slide, never end mid-sentence and keep exact audio times, so that
+         each paragraph and moment plays the right words. (Transcript: the
+         pieces are what the Ideal Text and every moment are built from.)
+OUTCOME
+  O1  A piece never crosses a slide: a revisited slide is a new run, every
+      piece's words and audio lie inside one visit, ordinals run in time order.
+  O2  Piece boundaries land on sentence ends, and sentence ends survive
+      ghost words in the punctuation alignment.
+  O3  What is persisted reads back unchanged (text and audio offsets).
+PROVES   O1 -> test_a_piece_never_crosses_a_slide
+         O2 -> test_never_mid_sentence_when_end_within_cap
+               test_ghost_run_mid_take_keeps_later_sentences
+         O3 -> test_persist_then_read_round_trip
+WHY      Founder 2026-07-14: the <=200-char piece IS the moment (F1-CORE).
 """
 from __future__ import annotations
 
-import sys
-import types
 import unittest
-from unittest.mock import MagicMock
 
-_ORIG_SERVICES_DB = None
-
-
-def setUpModule():
-    global _ORIG_SERVICES_DB
-    _ORIG_SERVICES_DB = sys.modules.get("services.db")
-    stub = types.ModuleType("services.db")
-    stub.db = MagicMock()
-    sys.modules["services.db"] = stub
+from services.slide_word_split import chunk_slide_words_by_chars
 
 
-def tearDownModule():
-    if _ORIG_SERVICES_DB is not None:
-        sys.modules["services.db"] = _ORIG_SERVICES_DB
-    else:
-        sys.modules.pop("services.db", None)
-
-
-def _words(text_per_slide, word_dur=0.4, tap_gap_s=1.0):
-    """Build a time-consistent whisper word list + tap timeline: each slide's
-    tap lands after the previous slide's last word, then its words follow —
-    one every `word_dur`s (no overlap between slides, like real speech)."""
-    words, advances = [], []
-    t = 0.0
-    for i, text in enumerate(text_per_slide):
-        if i > 0:
+def _visits(visits, word_dur=0.4, tap_gap_s=1.0):
+    """A time-consistent word list + tap timeline for [(slide, text), ...]:
+    each visit's tap lands just before its first word."""
+    words, advances, spans, t = [], [], [], 0.0
+    for n, (slide, text) in enumerate(visits):
+        if n:
             t += tap_gap_s
-            advances.append({"index": i, "t_ms": int(t * 1000) - 50})
+        advances.append({"index": slide, "t_ms": max(0, int(t * 1000) - 50)})
+        begin = t
         for w in text.split():
-            words.append({"word": w, "start": round(t, 3),
-                          "end": round(t + word_dur, 3)})
+            words.append({"word": w, "start": round(t, 3), "end": round(t + word_dur, 3)})
             t += word_dur
-        if not text.split():
-            t += tap_gap_s  # silent slide still occupies a beat
-    advances.insert(0, {"index": 0, "t_ms": 0})
-    return words, advances
+        spans.append((slide, round(begin * 1000), round(t * 1000), set(text.split())))
+    return words, advances, spans
+
+
+class SlideBoundaryTests(unittest.TestCase):
+
+    def test_a_piece_never_crosses_a_slide(self):
+        # A -> B -> A: the first visit is long enough to need several pieces,
+        # and the revisit of slide 0 must be its own run.
+        first = " ".join(f"alpha{i}" for i in range(60)) + "."
+        visits = [(0, first), (1, "beta one beta two."), (0, "gamma back again.")]
+        words, advances, spans = _visits(visits)
+        pieces = chunk_slide_words_by_chars(words, advances, [{}, {}, {}])
+
+        self.assertEqual([p["index"] for p in pieces], list(range(len(pieces))))
+        for piece in pieces:
+            visit = [v for v in spans if set(piece["transcript"].split()) <= v[3]]
+            self.assertEqual(len(visit), 1, f"piece mixes visits: {piece['transcript'][:60]}")
+            slide, begin, end, _ = visit[0]
+            self.assertEqual(piece["slide_index"], slide)
+            self.assertGreaterEqual(piece["start_offset_ms"], begin)
+            self.assertLessEqual(piece["start_offset_ms"] + piece["duration_ms"], end)
+        # the long first visit needed several pieces; then B, then A again
+        self.assertEqual([p["slide_index"] for p in pieces][-3:], [0, 1, 0])
 
 
 class RestorePunctuationTests(unittest.TestCase):
@@ -68,10 +74,6 @@ class RestorePunctuationTests(unittest.TestCase):
         words = self._words(word_tokens)
         segs = [{"text": seg_text, "start": 0, "end": 99}]
         return restore_punctuation(words, segs)
-
-
-        # (both the think-comma and the ghost's comma carry — punctuation is
-        # never LOST; cosmetic doubling is acceptable and rare)
 
 
     def test_ghost_run_mid_take_keeps_later_sentences(self):

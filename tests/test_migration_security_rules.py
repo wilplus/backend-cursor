@@ -1,58 +1,30 @@
-"""The two standing security rules for migrations, enforced instead of remembered.
-
-docs/RLS-AUDIT.md · migrations/add_rls_all_public_tables.sql ·
-migrations/lock_down_public_function_grants.sql
-
-WHY THIS FILE EXISTS
---------------------
-The 2026-07-25 incident was not a clever attack. It was a DEFAULT: Supabase
-grants `anon`/`authenticated` access to `public`, the FE ships the anon key
-inlined in the browser bundle, and 57 tables shipped without anyone typing the
-one line that closes it. The founder ran the sweep the same day, and the audit
-ends with a standing rule — "every new public table gets ENABLE ROW LEVEL
-SECURITY in the same migration that creates it."
-
-A standing rule that only a human checks is a rule that holds until the week
-someone is busy. This file is that rule with teeth, plus the second one that
-2026-08-03 introduced.
-
-RULE 1 — TABLES GET RLS.
-    RLS is the ONLY control on the direct-PostgREST path; no amount of
-    API-side owner checking defends it, because that path never reaches Flask.
-
-RULE 2 — FUNCTIONS GET THEIR EXECUTE REVOKED.
-    New with the first `.rpc()` in this repo (add_token_charge_rpc.sql), and it
-    is a genuinely different door: RLS is table-level and says NOTHING about
-    functions. PostgREST publishes every function in the exposed schema at
-    /rest/v1/rpc/<name>, and Postgres grants EXECUTE to PUBLIC by default. A
-    money-moving function created without a REVOKE is the 2026-07-25 exposure
-    again, through a door the sweep does not cover.
-
-THE LEGACY ALLOWLIST IS FROZEN.
-    47 migration files create tables without enabling RLS in the file. They
-    are listed below so this gate is green on the day it lands: a red-on-day-1
-    gate gets ignored, and an ignored gate protects nothing. The list may only
-    ever SHRINK. Anything new that fails is a real finding.
-
-    46 of the 47 are covered in PRODUCTION by the dynamic sweep the founder ran
-    on 2026-07-25 — docs/RLS-AUDIT.md names them — so the gap is in the FILES,
-    not the database. (Git dates do not show this: repo history starts
-    2026-07-27, after the sweep. The audit's own table is the evidence.)
-
-    THE ONE EXCEPTION, and the first thing this gate caught:
-    `add_processing_jobs.sql` (0239) landed 2026-08-03 with the durable
-    Redis/RQ queue (#322) — AFTER the sweep, and absent from the audit. It was
-    genuinely exposed. Closed by migrations/add_rls_processing_jobs.sql rather
-    than by editing 0239, because 0239 is already manifested and editing an
-    applied file trips the runner's checksum drift detection. Its entry stays
-    below because the entry describes the FILE accurately; the database is
-    fixed. Do not read a frozen entry as "this table is safe" — read it as
-    "this file predates the rule."
-
-Run: python3 -m unittest tests.test_migration_security_rules
+"""
+STORY    As a developer, I want every new table to switch on RLS and every new
+         function to revoke EXECUTE from public, anon and authenticated, so
+         that the browser's anon key can never read tables or call
+         money-moving functions again.
+OUTCOME
+  O1  CI goes red on a new migration that creates a public table without
+      ENABLE ROW LEVEL SECURITY in the same file.
+  O2  CI goes red on a new function that does not revoke EXECUTE from PUBLIC.
+  O3  CI goes red on a new function that is not itself revoked from anon AND
+      authenticated (a REVOKE on that function naming both roles, or a DO
+      block that revokes that function looping over both). Supabase grants
+      both roles directly, so a PUBLIC revoke alone leaves them in.
+  O4  A SECURITY DEFINER migration pins its search_path.
+PROVES   O1 -> test_every_new_public_table_enables_rls_in_its_own_migration
+         O2 -> test_every_created_function_revokes_execute_from_public
+         O3 -> test_every_created_function_revokes_anon_and_authenticated
+         O4 -> test_security_definer_functions_pin_their_search_path
+WHY      2026-07-25: 57 tables shipped readable with the anon key
+         (docs/RLS-AUDIT.md); RLS says nothing about functions, so the
+         function rule arrived with the first .rpc() on 2026-08-03. The two
+         frozen lists below describe FILES that predate a rule (applied
+         migrations cannot be edited); they may only shrink.
 """
 from __future__ import annotations
 
+import functools
 import os
 import re
 import unittest
@@ -85,6 +57,7 @@ _DYNAMIC_REVOKE = re.compile(
     r"EXECUTE\s+'REVOKE\s+ALL\s+ON\s+FUNCTION\s*'\s*\|\|", re.I)
 
 
+@functools.lru_cache(maxsize=None)
 def _manifest_order() -> list:
     path = os.path.join(os.path.dirname(MIGRATIONS), "migrations", "manifest.txt")
     with open(path, encoding="utf-8") as fh:
@@ -92,23 +65,29 @@ def _manifest_order() -> list:
                 for line in fh if "\t" in line]
 
 
-def _revoked_by_an_earlier_migration(name: str) -> set:
+@functools.lru_cache(maxsize=None)
+def _created_and_revoked(name: str) -> frozenset:
+    """Functions this migration both creates and revokes (read once)."""
+    path = os.path.join(MIGRATIONS, name)
+    if not os.path.exists(path):
+        return frozenset()
+    sql = _read(name)
+    return frozenset(
+        fn for fn in {f.lower() for f in _CREATE_FUNCTION.findall(sql)}
+        if re.search(r"REVOKE\s+(?:ALL|EXECUTE)[\s\S]{0,200}?ON\s+FUNCTION\s+"
+                     r"(?:public\.)?" + re.escape(fn) + r"\s*\(", sql, re.I))
+
+
+@functools.lru_cache(maxsize=None)
+def _revoked_by_an_earlier_migration(name: str) -> frozenset:
     """Functions an earlier manifest migration both created and revoked."""
     order = _manifest_order()
     if name not in order:
-        return set()
-    done = set()
+        return frozenset()
+    done: set = set()
     for earlier in order[:order.index(name)]:
-        path = os.path.join(MIGRATIONS, earlier)
-        if not os.path.exists(path):
-            continue
-        with open(path, encoding="utf-8", errors="replace") as fh:
-            sql = _strip_comments(fh.read())
-        for fn in {f.lower() for f in _CREATE_FUNCTION.findall(sql)}:
-            if re.search(r"REVOKE\s+(?:ALL|EXECUTE)[\s\S]{0,200}?ON\s+FUNCTION\s+"
-                         r"(?:public\.)?" + re.escape(fn) + r"\s*\(", sql, re.I):
-                done.add(fn)
-    return done
+        done |= _created_and_revoked(earlier)
+    return frozenset(done)
 
 
 def _dynamic_names(sql: str, trigger: "re.Pattern") -> set:
@@ -239,6 +218,46 @@ LEGACY_TABLES_WITHOUT_RLS = frozenset({
 })
 
 
+# ── Frozen: migrations whose functions name no anon/authenticated revoke of
+# their own, applied after the 0242 sweep (lock_down_public_function_grants)
+# and before the per-function rule (2026-10-19). Listed by FILE because an
+# applied migration cannot change. NEVER ADD TO THIS LIST.
+LEGACY_FILES_WITHOUT_ROLE_REVOKE = frozenset({
+    "add_canonical_project_ownership.sql",
+    "add_confident_moment_coaching_bundle_v1.sql",
+    "add_mlc2_confidence_dark_contracts.sql",
+    "add_mlc2_foundation.sql",
+})
+#: The 0242 sweep revoked every function that existed then from PUBLIC, anon
+#: and authenticated; a migration before it in the manifest is covered by it.
+_FUNCTION_SWEEP = "lock_down_public_function_grants.sql"
+_ROLES = ("anon", "authenticated")
+_REVOKE_ON_FUNCTION = re.compile(r"REVOKE\s+(?:ALL|EXECUTE)[^;]*?ON\s+FUNCTION", re.I)
+
+
+@functools.lru_cache(maxsize=None)
+def _read(name: str) -> str:
+    with open(os.path.join(MIGRATIONS, name), encoding="utf-8",
+              errors="replace") as fh:
+        return _strip_comments(fh.read())
+
+
+def _roles_revoked(sql: str, fn: str) -> set:
+    """The roles (of anon/authenticated) this SQL revokes `fn` from: a static
+    REVOKE ... ON FUNCTION fn(...) FROM <roles>; or a DO block that names fn,
+    revokes a function, and names the role (the FOREACH role ... %I idiom)."""
+    roles: set = set()
+    for m in re.finditer(r"REVOKE\s+(?:ALL|EXECUTE)[^;]*?ON\s+FUNCTION\s+(?:public\.)?"
+                         + re.escape(fn) + r"\s*\([^;]*?\bFROM\b([^;]*);", sql, re.I):
+        roles |= {r for r in _ROLES if re.search(rf"\b{r}\b", m.group(1), re.I)}
+    for _tag, body in _DO_BLOCK.findall(sql):
+        if (_REVOKE_ON_FUNCTION.search(body)
+                and re.search(rf"\b{re.escape(fn)}\b", body, re.I)):
+            roles |= {r for r in _ROLES
+                      if re.search(rf"'{r}'|\bFROM\s+{r}\b", body, re.I)}
+    return roles
+
+
 class NewTablesEnableRlsTests(unittest.TestCase):
     """RULE 1 — docs/RLS-AUDIT.md, "Standing rule going forward"."""
 
@@ -315,26 +334,41 @@ class NewFunctionsRevokeExecuteTests(unittest.TestCase):
             f"Offenders: {offenders}"))
 
     def test_every_created_function_revokes_anon_and_authenticated(self):
-        """Revoking PUBLIC is not sufficient on Supabase.
-
-        Supabase's ALTER DEFAULT PRIVILEGES grants anon/authenticated on
-        functions in `public` DIRECTLY, and a direct grant survives a REVOKE
-        aimed at PUBLIC. Both roles have to be named."""
+        """Revoking PUBLIC is not sufficient on Supabase: its default
+        privileges grant anon/authenticated on functions in `public`
+        DIRECTLY, and a direct grant survives a REVOKE aimed at PUBLIC. A role
+        name elsewhere in the file (a table revoke, the word "Canonical") is
+        not a revoke of this function."""
+        order = _manifest_order()
+        sweep = order.index(_FUNCTION_SWEEP)
         offenders = []
         for name in _sql_files():
-            with open(os.path.join(MIGRATIONS, name), encoding="utf-8",
-                      errors="replace") as fh:
-                sql = _strip_comments(fh.read())
-            if not self._functions_in(sql):
+            if name in LEGACY_FILES_WITHOUT_ROLE_REVOKE:
                 continue
-            for role in ("anon", "authenticated"):
-                if not re.search(r"REVOKE[\s\S]{0,600}?\b" + role + r"\b",
-                                 sql, re.I) and role not in sql:
-                    offenders.append(f"{name}: {role} never revoked")
+            if name in order and order.index(name) < sweep:
+                continue
+            sql = _read(name)
+            earlier = [e for e in order[:order.index(name)]] if name in order else []
+            for fn in sorted(self._functions_in(sql)):
+                roles = _roles_revoked(sql, fn)
+                for prior in earlier:
+                    if len(roles) == len(_ROLES):
+                        break
+                    if not os.path.exists(os.path.join(MIGRATIONS, prior)):
+                        continue
+                    prior_sql = _read(prior)
+                    if fn in self._functions_in(prior_sql):
+                        # CREATE OR REPLACE keeps the ACL an earlier
+                        # migration set on the same function.
+                        roles |= _roles_revoked(prior_sql, fn)
+                missing = [r for r in _ROLES if r not in roles]
+                if missing:
+                    offenders.append(f"{name}: {fn} not revoked from {', '.join(missing)}")
 
         self.assertEqual(offenders, [], (
-            "Function migration does not revoke anon/authenticated. "
-            f"{offenders}"))
+            "Function(s) not revoked from anon/authenticated. Add, guarded on "
+            "pg_roles:\n    REVOKE ALL ON FUNCTION public.<name>(<types>) "
+            f"FROM anon, authenticated;\nOffenders: {offenders}"))
 
     def test_security_definer_functions_pin_their_search_path(self):
         """SECURITY DEFINER runs as the OWNER — it bypasses RLS for whoever
@@ -356,5 +390,5 @@ class NewFunctionsRevokeExecuteTests(unittest.TestCase):
             f"hijack away from running as the owner: {offenders}"))
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     unittest.main()

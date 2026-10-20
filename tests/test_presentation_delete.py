@@ -1,106 +1,104 @@
-"""DELETE /v2/user/presentations/<id> and .../takes/<n> (FE PR #161).
-
-Hard-delete semantics (founder call): a presentation deletes ALL its takes'
-sessions; a take deletes the one session at that 1-based chronological
-position. take_number ordering must MATCH /user/strengths (so the FE's "take
-3" deletes the same session the user sees). Owner-scoped. Durable — drops the
-library rows AND the underlying session so the readout re-ingest can't
-resurrect it.
-
-Route tests: skip locally (no flask), run in CI.
-Run: python3 -m unittest tests.test_presentation_delete
+"""
+STORY    As a speaker, I want deleting a presentation or one Take to remove
+         exactly those Takes, and nobody else to be able to delete them, so
+         that deleted work is gone and nothing else is (deletion).
+OUTCOME
+  O1  Deleting a presentation deletes every Take of that deck, and no Take
+      of another deck or of a deckless talk.
+  O2  Deleting Take n deletes the n-th oldest Take of that deck, only it.
+  O3  Someone else asking for the same presentation or Take gets 404 and
+      nothing is deleted.
+  O4  A Take the database refuses to delete (its lineage still points at
+      it) answers 409 and the route does not report success.
+PROVES   O1 -> test_deleting_a_presentation_deletes_all_its_takes
+         O2 -> test_deleting_take_n_deletes_the_nth_oldest_take
+         O3 -> test_someone_else_cannot_delete_my_presentation_or_take
+         O4 -> test_a_take_with_lineage_is_refused_and_not_reported_deleted
+WHY      FE PR #161 (hard delete, founder call). The database delete itself
+         (v2_delete_sessions) is stubbed here: these cases prove which Takes
+         the routes ask it to delete, for whom, not the SQL.
 """
 from __future__ import annotations
 
-import unittest
+import pytest
+from flask import Flask, request
 
-try:
-    from flask import Flask, request
+from routes.v2 import user_sessions as v2_user_sessions
+from routes.v2.arcs import _presentation_group_key
+from services.db import db
+from services.take_repository import TakeHasLineageError
 
-    from routes.v2 import user_sessions as v2_user_sessions
-    from services.db import db
-    _IMPORT_ERROR = None
-except Exception as e:  # pragma: no cover
-    Flask = None
-    request = None
-    _IMPORT_ERROR = e
+OWNER, STRANGER = "user-1", "user-2"
+DECK_A = {"slides": [{"title": "Intro", "body": "hello"}],
+          "presentation_ref": "https://x/a.pdf"}
+DECK_B = {"slides": [{"title": "Other", "body": "x"}],
+          "presentation_ref": "https://x/b.pdf"}
+# The presentation id the frontend sends is the deck's identity key.
+PID_A = _presentation_group_key(DECK_A)
 
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class PresentationDeleteTests(unittest.TestCase):
-    UID = "user-1"
-
-    def setUp(self):
-        self.app = Flask(__name__)
-        self.originals = {}
-        # Two UPLOADED decks: A has two takes (s1 oldest, s2 newest), B has
-        # one (s3); s4 is deckless (→ general, never a presentation).
-        #
-        # `presentation_ref` is what marks a deck as UPLOADED (2026-08-15) —
-        # a real deck always has the PDF behind it, and it is now what
-        # identifies the presentation. Slides alone stopped being enough the
-        # day the generic default deck started shipping on deckless takes.
-        self._sessions = {
-            "s1": {"created_at": "2026-01-01T00:00:00Z",
-                   "intake_context": {"slides": [{"title": "Intro", "body": "hello"}],
-                                      "presentation_ref": "https://x/a.pdf"}},
-            "s2": {"created_at": "2026-02-01T00:00:00Z",
-                   "intake_context": {"slides": [{"title": "Intro", "body": "hello"}],
-                                      "presentation_ref": "https://x/a.pdf"}},
-            "s3": {"created_at": "2026-03-01T00:00:00Z",
-                   "intake_context": {"slides": [{"title": "Other", "body": "x"}],
-                                      "presentation_ref": "https://x/b.pdf"}},
-            "s4": {"created_at": "2026-04-01T00:00:00Z",
-                   "intake_context": {"slides": []}},
-        }
-        self.deleted_sessions: list = []
-        self._patch_db("v2_get_session_by_id", lambda sid: dict(self._sessions.get(sid, {}), id=sid))
-        # 4.4 fix: the presentation DELETE now resolves its target set from
-        # the user's lab sessions (complete set), not the library grouping.
-        self._patch_db("v2_list_user_lab_sessions", lambda uid, **kw: [
-            dict(meta, id=sid) for sid, meta in self._sessions.items()
-        ])
-        self._patch_db(
-            "v2_delete_sessions",
-            lambda sids, uid: self.deleted_sessions.extend(
-                (sid, uid) for sid in sids),
-        )
-
-    def tearDown(self):
-        for target, attr, orig in self.originals.values():
-            setattr(target, attr, orig)
-
-    def _patch_db(self, attr, fn):
-        # audit Q-A2: takes-family methods now live on db.takes, not db.
-        target = db.takes if hasattr(db.takes, attr) else db
-        self.originals[f"db:{attr}"] = (target, attr, getattr(target, attr, None))
-        setattr(target, attr, fn)
-
-    def _pid(self, n_takes):
-        """The presentation_id of the group with exactly n_takes sessions."""
-        groups = v2_user_sessions._user_presentation_groups(self.UID)
-        for pid, sids in groups.items():
-            if len(sids) == n_takes:
-                return pid, sids
-        raise AssertionError(f"no group with {n_takes} takes: {groups}")
-
-    # ── grouping / take_number ──
+# The owner's Takes, listed out of order on purpose: deck A has three
+# (s1 oldest .. s3 newest), deck B one, and s5 is a deckless talk.
+SESSIONS = {
+    "s3": {"user_id": OWNER, "created_at": "2026-03-01T00:00:00Z", "intake_context": DECK_A},
+    "s1": {"user_id": OWNER, "created_at": "2026-01-01T00:00:00Z", "intake_context": DECK_A},
+    "s2": {"user_id": OWNER, "created_at": "2026-02-01T00:00:00Z", "intake_context": DECK_A},
+    "s4": {"user_id": OWNER, "created_at": "2026-04-01T00:00:00Z", "intake_context": DECK_B},
+    "s5": {"user_id": OWNER, "created_at": "2026-05-01T00:00:00Z", "intake_context": {"slides": []}},
+}
 
 
-    # ── DELETE presentation ──
+@pytest.fixture
+def deleted(monkeypatch):
+    """The sessions the routes asked the database to delete, per caller."""
+    calls: list = []
 
-    def test_delete_presentation_removes_all_takes(self):
-        pid, sids = self._pid(2)
-        with self.app.test_request_context():
-            request.user_id = self.UID
-            resp, status = v2_user_sessions.v2_user_delete_presentation.__wrapped__(pid)
-        self.assertEqual(status, 200)
-        self.assertEqual(resp.get_json()["deleted_sessions"], 2)
-        self.assertEqual({s for s, _ in self.deleted_sessions}, {"s1", "s2"})
+    def list_sessions(uid, **_kw):
+        return [dict(meta, id=sid) for sid, meta in SESSIONS.items()
+                if meta["user_id"] == uid]
+
+    monkeypatch.setattr(db.takes, "v2_list_user_lab_sessions", list_sessions)
+    monkeypatch.setattr(db.takes, "v2_delete_sessions",
+                        lambda sids, uid: calls.append((sorted(sids), uid)))
+    return calls
 
 
-    # ── DELETE take ──
+def _as(user_id, view, *args):
+    with Flask(__name__).test_request_context():
+        request.user_id = user_id
+        return getattr(v2_user_sessions, view).__wrapped__(*args)
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_deleting_a_presentation_deletes_all_its_takes(deleted):
+    response, status = _as(OWNER, "v2_user_delete_presentation", PID_A)
+    assert status == 200
+    assert response.get_json()["deleted_sessions"] == 3
+    assert deleted == [(["s1", "s2", "s3"], OWNER)]
+
+
+def test_deleting_take_n_deletes_the_nth_oldest_take(deleted):
+    response, status = _as(OWNER, "v2_user_delete_take", PID_A, "1")
+    assert status == 200
+    assert response.get_json()["deleted_session"] == "s1"
+    assert deleted == [(["s1"], OWNER)]
+
+    _response, status = _as(OWNER, "v2_user_delete_take", PID_A, "4")
+    assert status == 404
+    assert deleted == [(["s1"], OWNER)]
+
+
+def test_someone_else_cannot_delete_my_presentation_or_take(deleted):
+    _response, status = _as(STRANGER, "v2_user_delete_presentation", PID_A)
+    assert status == 404
+    _response, status = _as(STRANGER, "v2_user_delete_take", PID_A, "1")
+    assert status == 404
+    assert deleted == []
+
+
+def test_a_take_with_lineage_is_refused_and_not_reported_deleted(deleted, monkeypatch):
+    def refuse(sids, _uid):
+        raise TakeHasLineageError(list(sids))
+
+    monkeypatch.setattr(db.takes, "v2_delete_sessions", refuse)
+    response, status = _as(OWNER, "v2_user_delete_take", PID_A, "1")
+    assert status == 409
+    assert response.get_json()["code"] == "TAKE_HAS_LINEAGE"

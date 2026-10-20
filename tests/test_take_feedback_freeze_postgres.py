@@ -1,21 +1,28 @@
-"""Database-bound checks for the freeze the speaker's answer is judged against.
+"""
+STORY    As a speaker, I want my answer to any feedback item I was shown to be
+         accepted, so that I never see "feedback item is not in this Take's
+         frozen set" on an item I just saw. (Critical path: feedback -> next
+         Take.)
+OUTCOME
+  O1  Every item of a Take frozen under V3 takes an answer, not only the first.
+  O2  An item that was never served is refused.
+  O3  A set without a Confident Voice item cannot be frozen.
+  O4  A Take frozen under V2 keeps its V2 set: a V3 item is refused there,
+      and freezing again does not replace the set (the claim is insert-once).
+  O5  The record of what was shown takes a V3 selection of six items, and
+      still refuses one without Confident Voice.
+PROVES   O1 -> test_every_block_is_answerable_not_just_the_first
+         O2 -> test_an_item_never_served_is_still_refused
+         O3 -> test_a_set_without_confident_voice_is_refused
+         O4 -> test_a_take_frozen_under_v2_refuses_a_v3_item
+         O5 -> test_the_exposure_record_takes_a_v3_selection
+WHY      #597: the founder's red bar under the Confident Voice question; no
+         lane installed either function until then.
 
-THE PATH THIS COVERS HAD NO COVERAGE AT ALL (#597). Two functions decide
-whether a speaker's judgement is accepted: ``claim_ideal_text_feedback_set_v1``
-freezes what was served, and ``record_take_feedback_response_v1`` checks an
-answer against that freeze. Neither was installed by any rehearsal lane, so the
-tier ran green while testing none of it — and three merges in a row argued about
-this path from reading alone, one of which (#592) shipped a regression worse
-than the bug it fixed.
-
-The founder's symptom was a red bar under the Confident Voice question reading
-"feedback item is not in this Take's frozen set", on an item the product had
-just shown him. These tests pin both halves of that story on a real PostgreSQL:
-a Take frozen under V3 accepts its answer, and a Take frozen under V2 before
-the #591 stage move refuses one — permanently, because the claim is insert-once.
-
-The target must be a disposable local database whose name starts with
-``willab_freeze_``. Nothing here writes media or activates any service.
+Runs on the freeze lane of scripts/rehearsal_tier.sh against the real
+claim_ideal_text_feedback_set_v1 and record_take_feedback_response_v1. The
+target must be a disposable local database whose name starts with
+``willab_freeze_``.
 """
 
 from __future__ import annotations
@@ -24,6 +31,7 @@ import os
 from uuid import uuid4
 
 import psycopg2
+import psycopg2.errors
 import pytest
 from psycopg2.extras import Json
 
@@ -151,11 +159,54 @@ def test_a_set_without_confident_voice_is_refused(db):
         ])
 
 
-# ---------------------------------------------------------------------------
-#  THE EXPOSURE RECORD (0349). Beside the frozen selection sits the record of
-#  the complete ranking that was shown, `take_feedback_exposure`. Its inline
-#  CHECK was V2's exactly-three, the third copy of that rule and the one
-#  nobody listed: on 2026-09-21, minutes after the bookmarks came back,
-#  every V3 open logged 23514 on this table and the audit of what was ranked
-#  behind the bookmarks did not exist.
-# ---------------------------------------------------------------------------
+# V2's budget: exactly one item of each of three families.
+V2_SET = [
+    {"id": "cv-1", "feedback_family": "confident_voice"},
+    {"id": "rw-1", "feedback_family": "rewrite_clarity"},
+    {"id": "gf-1", "feedback_family": "great_formulation"},
+]
+
+
+def test_a_take_frozen_under_v2_refuses_a_v3_item(db):
+    """A Take frozen before the #591 stage move keeps the set it was served.
+    Its own items still take an answer; a V3 block item does not, and a later
+    V3 freeze cannot replace the set."""
+    arc = f"arc-{uuid4()}"
+    session_id = take(db, arc)
+    freeze(db, arc, session_id, V2_SET)
+
+    again = freeze(db, arc, session_id, V3_SET)
+
+    assert again["selected_keys"] == V2_SET
+    assert answer(db, arc, session_id, "cv-block-1")["outcome"] == "not_member"
+    assert answer(db, arc, session_id, "cv-1")["outcome"] == "saved"
+
+
+def _expose(db, arc_id: str, session_id: str, keys: list[dict]) -> None:
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO public.take_feedback_exposure(arc_id, "
+            "take_session_id, review_version, policy_version, candidate_set, "
+            "selected_keys) VALUES (%s,%s,1,'feedback-v3',%s,%s)",
+            (arc_id, session_id, Json(keys), Json(keys)),
+        )
+
+
+def test_the_exposure_record_takes_a_v3_selection(db):
+    """0349: this table's CHECK was V2's exactly-three, and on 2026-09-21
+    every V3 open logged 23514 here, so the record of what was shown behind
+    the bookmarks did not exist."""
+    arc = f"arc-{uuid4()}"
+    session_id = take(db, arc)
+    _expose(db, arc, session_id, V3_SET)
+    with db.cursor() as cur:
+        cur.execute(
+            "SELECT jsonb_array_length(selected_keys) FROM "
+            "public.take_feedback_exposure WHERE take_session_id = %s",
+            (session_id,))
+        assert cur.fetchone()[0] == 6
+
+    other_arc = f"arc-{uuid4()}"
+    other = take(db, other_arc)
+    with pytest.raises(psycopg2.errors.CheckViolation):
+        _expose(db, other_arc, other, V3_SET[5:])   # the rewrite alone

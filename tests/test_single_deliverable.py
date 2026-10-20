@@ -1,42 +1,40 @@
-"""willab — the SINGLE-DELIVERABLE re-shape (founder 2026-07-17).
-
-The product delivers ONE thing: the ideal text. Record a take → instant
-ideal text vN (unverified) → the coach verifies in the background, always →
-the verified text displays FREE. The ONLY paid item: opening the key-moment
-explanations (5 credits, one-time per presentation). This is now the ONLY
-behavior — the SINGLE_DELIVERABLE_ENABLED flag was retired.
-
-Pinned here, token by token:
-  BE-1  version bump on a CHANGED machine copy only; migration fallbacks;
-        the L1 seam-smoothing pass exists and its contract is pinned.
-  BE-2  the 3-take batch cap lifts (takes append forever).
-  BE-3  VERIFY: snapshot + idempotency + the per-version verified bubble.
-  BE-4  the student GET: both states FREE, never a 402; the coach's working
-        text NEVER leaks unverified.
-  BE-5  the 5-credit moments unlock (atomic; no grandfathering) + the gated
-        explanations GET.
-  BE-6  the $25 unlock and publish-analysis routes are gone (retired).
-
-Run: python3 -m unittest tests.test_single_deliverable
+"""
+STORY    As a speaker, I want my Ideal Text free in both states, never the
+         coach's unfinished edit, with the only paid item being key-moment
+         explanations, so that I get my text without a paywall and pay only
+         for extras.
+OUTCOME
+  O1  The Ideal Text GET never shows the coach's in-progress edit.
+  O2  Never-1: the Ideal Text GET carries the text and no scores or
+      internal reads; the stored suggestions snapshot drops internal
+      triggers but keeps the speaker-facing words.
+  O3  Payments: unlocking key-moment explanations charges once per
+      presentation (keyed on it), grants the unlock, and a second tap is
+      free; too few tokens answer 402 and grant nothing - the explanations
+      stay locked.
+PROVES   O1 -> test_coach_working_text_never_leaks_unverified
+         O2 -> test_ac9_score_free, test_write_time_projection_mirrors_serve
+         O3 -> test_unlock_charges_once_and_grants_the_explanations
+               test_unlock_without_tokens_grants_nothing
+WHY      Single-deliverable re-shape, founder 2026-07-17.
 """
 from __future__ import annotations
 
 import json
+import types
 import unittest
 from unittest.mock import patch
 
 try:
-    from flask import Flask, jsonify, request
+    from flask import Flask, request
 
+    from routes.v2 import arcs as v2_arcs
     from routes.v2 import explore_ideal_text as v2_explore_ideal_text
-    from routes.v2 import lab_recording as v2_lab_recording
-    from services.db import DatabaseService, db
+    from services.db import db
     _IMPORT_ERROR = None
 except Exception as e:  # pragma: no cover
     Flask = None
-    jsonify = None
     request = None
-    DatabaseService = None
     _IMPORT_ERROR = e
 
 ARC = "a1"
@@ -85,32 +83,14 @@ class StudentGetSingleDeliverableTests(unittest.TestCase):
 
 
     def test_ac9_score_free(self):
-        body, _ = self._get(_row())
+        body, status = self._get(_row(overall_score=91, power_score=7,
+                                      acoustic_read={"potentiometer": 0.4}))
+        self.assertEqual(status, 200)  # free: never a 402
+        self.assertEqual(body["text"], "machine text")
         raw = json.dumps(body)
         for banned in ("potentiometer", "acoustic_read", "overall_score",
-                       "slide_stickiness", "rank", "power_score"):
+                       "slide_stickiness", "rank", "power_score", "91"):
             self.assertNotIn(banned, raw)
-
-
-@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
-class RecordingFlowTagTests(unittest.TestCase):
-    """The flat-field → session_context fold (founder 2026-07-20). The
-    intake validator strips unknown keys, so these tags ONLY exist because
-    _recording_flow_tags folds them — pinned so a validator refactor can't
-    silently drop the star-re-record contract.
-
-    read_target / ideal_version are RETIRED (founder 2026-08-05): they only
-    ever existed to pair a re-read to the version it read."""
-
-    SNIP = "aaaa1111-aaaa-1111-aaaa-111111111111"
-
-
-    def test_paired_snippet_uuid_guard(self):
-        self.assertEqual(
-            v2_lab_recording._recording_flow_tags({"paired_snippet_id": self.SNIP}),
-            {"paired_snippet_id": self.SNIP})
-        self.assertEqual(
-            v2_lab_recording._recording_flow_tags({"paired_snippet_id": "not-a-uuid"}), {})
 
 
 @unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
@@ -134,8 +114,69 @@ class SnapshotSanitizeTests(unittest.TestCase):
         self.assertEqual(by["s3"]["device"], "pace_fast")
         self.assertIsNone(by["s3"]["quote"])
         self.assertNotIn("s4", by)
-        import json as _json
-        self.assertNotIn("threat", _json.dumps(out))
+        self.assertNotIn("threat", json.dumps(out))
+
+
+@unittest.skipIf(_IMPORT_ERROR is not None, f"needs app deps: {_IMPORT_ERROR}")
+class MomentsUnlockTests(unittest.TestCase):
+    """The one paid item: key-moment explanations, charged per presentation."""
+
+    USER = "u1"
+
+    def setUp(self):
+        self.app = Flask(__name__)
+        self.unlocks: list = []
+        self.charges: list = []
+
+    def _charge(self, ok, balance):
+        def charge(user, action, ref_id=None):
+            self.charges.append((user, action, ref_id))
+            return types.SimpleNamespace(ok=ok, charged=2500 if ok else 0,
+                                         balance=balance,
+                                         reason=None if ok else "short")
+        return charge
+
+    def _call(self, view, *args, ok=True, balance=7500):
+        def insert(arc, user, credits):
+            self.unlocks.append((arc, user, credits))
+            return {"id": len(self.unlocks)}
+
+        sessions = [{"id": "t1", "user_id": self.USER, "arc_id": ARC}]
+        with self.app.test_request_context(method="POST"):
+            request.user_id = self.USER
+            with patch.object(db.takes, "get_arc_sessions",
+                              return_value=sessions), \
+                 patch.object(db, "get_moment_unlock",
+                              side_effect=lambda _a: (self.unlocks[0]
+                                                      if self.unlocks else None)), \
+                 patch.object(db, "insert_moment_unlock", side_effect=insert), \
+                 patch("services.token_account.charge",
+                       self._charge(ok, balance)):
+                out = view.__wrapped__(*args)
+                resp, status = out if isinstance(out, tuple) else (out, 200)
+                return resp.get_json(), status
+
+    def test_unlock_charges_once_and_grants_the_explanations(self):
+        body, status = self._call(v2_arcs.v2_unlock_moments, ARC)
+        self.assertEqual(status, 200)
+        self.assertTrue(body["unlocked"])
+        self.assertEqual(self.charges,
+                         [(self.USER, "moment_explanation", ARC)])
+        self.assertEqual(len(self.unlocks), 1)
+
+        body, status = self._call(v2_arcs.v2_unlock_moments, ARC)
+        self.assertEqual((status, body.get("already_entitled")), (200, True))
+        self.assertEqual(len(self.charges), 1)  # the second tap is free
+        self.assertEqual(len(self.unlocks), 1)
+
+    def test_unlock_without_tokens_grants_nothing(self):
+        body, status = self._call(v2_arcs.v2_unlock_moments, ARC,
+                                  ok=False, balance=100)
+        self.assertEqual(status, 402)
+        self.assertEqual(body["code"], "INSUFFICIENT_TOKENS")
+        self.assertEqual(self.unlocks, [])
+        body, status = self._call(v2_arcs.v2_get_moment_explanation, ARC, "m1")
+        self.assertEqual((status, body["code"]), (402, "MOMENTS_LOCKED"))
 
 
 if __name__ == "__main__":

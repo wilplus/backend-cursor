@@ -1,100 +1,96 @@
-"""willab — eager ideal-text assembly + saved=reviewed (founder 2026-07-15).
-
-The founder's bug: the coach assembler was invisible (silent lazy compute) →
-never reviewed → never approved → publish blocked → the student got ZERO
-bubbles. This suite pins the whole chain:
-
-  * spoken-only readiness/candidates (a read never counts / never competes);
-  * eager assembly at spoken take 3, persisted, coach-edit-safe;
-  * the coach GET's observable states (pending w/ counts → ready);
-  * saved = REVIEWED (review_state) on the coach surfaces;
-  * BE-C: the END-TO-END smoke — 3 takes → eager draft → save ×3 → approve →
-    publish-analysis → EXACTLY the 4 ordered bubbles.
-
-Run: python3 -m unittest tests.test_eager_ideal_text
+"""
+STORY    As a speaker, I want my Ideal Text built from my Take as soon as it
+         is processed, never saved from an empty assembly and never rebuilt
+         over the document I already have, so that record -> Ideal Text ->
+         next Take always ends in a real Ideal Text (Never-3, Never-5).
+OUTCOME
+  O1  A Take with no document yet: the assembled text is persisted, with
+      the version = the source Take's number and the piece provenance.
+  O2  An empty assembly persists nothing and reports failure.
+  O3  A Project that already has a document is left alone: nothing is
+      assembled or persisted (a later Take never overwrites my words).
+PROVES   O1 -> test_a_ready_assembly_is_persisted_as_the_takes_version
+         O2 -> test_not_ready_assembly_never_persists
+         O3 -> test_an_existing_document_is_never_rebuilt
+WHY      services.ideal_text_block.maybe_assemble_ideal_text, called by the
+         analysis worker after every spoken Take (founder 2026-07-15 eager
+         assembly; 2026-08-05 version = Take count; Option A 2026-09-22).
 """
 from __future__ import annotations
 
 import unittest
 from unittest.mock import patch
 
-try:
-    from flask import Flask, request
-
-    _IMPORT_ERROR = None
-except Exception as e:  # pragma: no cover
-    Flask = None
-    request = None
-    _IMPORT_ERROR = e
+import services.ideal_text_block as mod
 
 ARC = "a1"
 
 
-def _spoken(i, saved=True):
+def _spoken(i):
     return {"id": f"s{i}", "user_id": "u1", "arc_id": ARC, "take_index": i,
             "created_at": f"2026-07-1{i}T10:00:00Z",
-            "intake_context": {"topic": "Demo"},
-            "results_published_at": None,
-            "recording_kind": "spoken", "paired_session_id": None,
-            "coach_feedback_saved_at":
-                (f"2026-07-1{i}T11:00:00Z" if saved else None)}
+            "recording_kind": "spoken", "paired_session_id": None}
+
+
+class _Db:
+    """The reads and the one write maybe_assemble_ideal_text makes."""
+
+    def __init__(self, sessions, existing_row=None):
+        self.sessions = sessions
+        self.existing_row = existing_row
+        self.persisted: list = []
+        self.takes = self
+        self.ideal_text = self
+
+    def get_arc_sessions(self, _arc):
+        return self.sessions
+
+    def v2_get_session_by_id(self, sid):
+        return next((s for s in self.sessions if s["id"] == sid), None)
+
+    def get_coach_arc_ideal_text(self, _arc):
+        return self.existing_row
+
+    def persist_auto_ideal_text(self, arc, text, *, take_count=None, document=None):
+        self.persisted.append({"arc": arc, "text": text, "take_count": take_count,
+                               "document": document})
+        return True
 
 
 class EagerAssemblyTests(unittest.TestCase):
-    """maybe_assemble_ideal_text — the take-3 trigger."""
-
-    def _run(self, sessions, existing_row=None, auto=None,
-             require_target=True):
-        import services.ideal_text_block as mod
-        calls = {}
-
-        class _Db:
-            def get_arc_sessions(self, a):
-                return sessions
-
-            @property
-            def takes(self):
-                # audit Q-A2: production now calls db.takes.<method>();
-                # this fake implements those methods directly on itself.
-                return self
-
-            def get_coach_arc_ideal_text(self, a):
-                return existing_row
-
-            @property
-            def ideal_text(self):
-                # audit Q-A2: production now calls
-                # database.ideal_text.<method>(); this fake implements
-                # those methods directly on itself.
-                return self
-
-            def persist_auto_ideal_text(self, a, text, *, take_count=None,
-                                        document=None):
-                # `document` is the piece provenance the real writer
-                # persists beside the text (2026-08-13). A double that
-                # omits it raises TypeError, which the caller swallows —
-                # the same shape of bug a test double hid once already.
-                calls["document"] = document
-                calls["persisted"] = text
-                # The version is the SPOKEN take count (founder 2026-08-05).
-                calls["take_count"] = take_count
-                return True
-
+    def _run(self, db, auto, *, source="s2"):
         with patch.object(mod, "assemble_transcript_document",
-                          return_value=(auto or {
-                              "text": "assembled block",
-                              "key_moments": [], "ready": True})):
+                          return_value=auto) as assemble, \
+                patch.object(mod, "_snapshot_version"), \
+                patch("services.ideal_text_core_snapshot.publish_for_arc"):
             ok = mod.maybe_assemble_ideal_text(
-                ARC, database=_Db(), require_target=require_target)
-        return ok, calls
+                ARC, database=db, require_target=False, source_session_id=source)
+        return ok, assemble
 
+    def test_a_ready_assembly_is_persisted_as_the_takes_version(self):
+        # Take 3 already exists, but Take 2 is the one being processed: the
+        # version is the source Take's number, not the arc's count.
+        db = _Db([_spoken(1), _spoken(2), _spoken(3)])
+        document = {"pieces": [{"slide_index": 0, "text": "Hello."}]}
+        ok, assemble = self._run(db, {"text": "  Hello.  ", "document": document,
+                                      "ready": True})
+        self.assertTrue(ok)
+        self.assertEqual(assemble.call_args.kwargs["session_id"], "s2")
+        self.assertEqual(db.persisted, [{"arc": ARC, "text": "Hello.",
+                                         "take_count": 2, "document": document}])
 
     def test_not_ready_assembly_never_persists(self):
-        ok, calls = self._run(
-            [_spoken(1), _spoken(2), _spoken(3)],
-            auto={"text": "", "key_moments": [], "ready": False})
+        db = _Db([_spoken(1), _spoken(2)])
+        ok, _ = self._run(db, {"text": "", "key_moments": [], "ready": False})
         self.assertFalse(ok)
-        self.assertNotIn("persisted", calls)
+        self.assertEqual(db.persisted, [])
+
+    def test_an_existing_document_is_never_rebuilt(self):
+        db = _Db([_spoken(1), _spoken(2)], existing_row={"text": "My own words."})
+        ok, assemble = self._run(db, {"text": "Newer machine words.", "ready": True})
+        self.assertTrue(ok)
+        assemble.assert_not_called()
+        self.assertEqual(db.persisted, [])
 
 
 if __name__ == "__main__":

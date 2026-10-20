@@ -32,6 +32,9 @@ def _rewrite(quote=SAID, proposed="We think it matters a lot to the people here.
     ("We cut onboarding from three weeks to four days and nobody had to work late", 0.0, "off_slide"),
     ("I don't want. A script for every single meeting we hold this year", 1.0, "broken_sentence"),
     ("We cut onboarding from three weeks to four days and nobody had to work late", None, None),
+    ("So we need to we need to fix the flow and we can we can ship it this week", 1.0, "repeats"),
+    ("So we need to we need to fix the onboarding flow for every new customer who "
+     "signs up with us this quarter and the next one after that", 1.0, None),
 ])
 def test_only_words_that_need_help_can_open_on_a_rewrite(text, fit, why):
     assert words_need_help(text, fit) == why
@@ -62,7 +65,10 @@ def test_a_rewrite_that_fails_any_check_falls_back_to_the_voice_exercise(change,
     assert rewrite_refusal(row, item, CLIP, row["quote"]) == reason
 
 
-def test_a_mended_broken_sentence_counts_as_the_fix():
-    quote = "I don't want. A script for every meeting"
-    row, item = _rewrite(quote=quote, proposed="I don't want a script for every meeting")
+@pytest.mark.parametrize("quote, proposed", [
+    ("I don't want. A script for every meeting", "I don't want a script for every meeting"),
+    ("So we need to we need to fix the onboarding flow.", "So we need to fix the onboarding flow."),
+])
+def test_a_mended_sentence_counts_as_the_fix(quote, proposed):
+    row, item = _rewrite(quote=quote, proposed=proposed)
     assert rewrite_refusal(row, item, CLIP, quote) is None

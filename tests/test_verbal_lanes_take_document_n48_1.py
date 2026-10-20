@@ -1,26 +1,27 @@
-"""Verbal lanes under V3: one eligibility rule, in the Take's own words.
-
-N48.1 (Wave 1, E1), founder-approved 2026-10-05.
-
-  * TWO COORDINATE SYSTEMS. A verbal row's `span` addresses the SERVED Ideal
-    Text; V3's blocks address the Take's TRANSCRIPT document. From Take 2 on
-    they differ (an unspoken Slide keeps its older Paragraph in the served
-    text), so V3 compared numbers from two documents. The row is now mapped
-    into the transcript, or excluded as `document_span_unmapped`.
-  * ONE PREDICATE. `ensure_required_families` counted any row of a family as
-    covering its lane, so a row V3 then excluded suppressed the fallback.
-    Both readers now ask `verbal_exclusion`.
-  * DETECTOR PRAISE CARRIES ITS EVIDENCE. Structural and impeccable praise
-    are stamped with what their detector computed and a code-side version.
-  * A ROW FROM ANOTHER TAKE NO LONGER ABORTS A SERVICE LANE.
+"""
+STORY    As a speaker, I want feedback on later Takes to point at the right
+         words and never show internal numbers, so that a slide I did not
+         speak cannot confuse it.
+OUTCOME
+  O1  A verbal row on words of this Take is mapped into the Take's own
+      transcript (its served span shifted past the unspoken Slide).
+  O2  A verbal row on a Slide this Take did not speak, or with no served
+      text to prove it, is excluded as ``document_span_unmapped``.
+  O3  NEVER-1: the rows that leave the server carry the feedback's words
+      and no rank, evidence, score, version or other number (AC-9).
+PROVES   O1 -> test_a_row_on_this_takes_words_is_mapped_into_its_transcript
+         O2 -> test_a_row_on_an_unspoken_slide_is_excluded
+         O3 -> test_a_served_v3_payload_carries_no_internal_evidence_or_numbers
+         O3 -> test_a_stray_mlc3_service_block_never_reaches_the_client
+WHY      N48.1 (Wave 1, E1), founder-approved 2026-10-05: from Take 2 on the
+         served Ideal Text and the Take's transcript are two documents.
 """
 from __future__ import annotations
 
 from services.ideal_text_parts import with_served_spans
 from services.take_feedback_manager import (
-    TakeDocumentMap,
+    exposure_snapshot,
     strip_internal_evidence,
-    verbal_exclusion,
 )
 from services.take_feedback_policy_v3 import (
     build_service_candidate_frame,
@@ -146,49 +147,36 @@ def _frame(rows, *, served=SERVED, document=None):
     )
 
 
-def _lane(frame, family):
-    return frame["verbal_lanes"][family]
-
-
-# ── Task 0: the coordinate systems differ, and the rows are mapped ─────────
-
-
-# ── Task 1: one predicate decides the fallback ─────────────────────────────
-
-def _map() -> TakeDocumentMap:
-    return TakeDocumentMap.for_document(_placed_document(), SERVED,
-                                        take_id=TAKE)
-
-
-# ── Task 2: detector praise carries what its detector computed ─────────────
-
 def _tracked(suggestion: dict, sid: str = "s2b") -> list[dict]:
+    """Tracked changes over the served text (shared with
+    tests/test_clearer_versions_reach_the_manager.py)."""
     pieces = relocate_pieces(SERVED, DOC["pieces"], paragraph_fallback=True,
                              slide_regions={})
     return build_tracked_changes(SERVED, pieces, {sid: suggestion})
 
 
-# ── The service lane: one unplaceable row no longer silences the lane ──────
+def _lane(frame, family):
+    return {c["candidate_id"]: c for c in frame["verbal_lanes"][family]["candidates"]}
 
 
-def test_the_read_path_builds_its_map_from_the_review_take():
-    """`_feedback_set_and_fallbacks` hands the fallback decision a map of the
-    review Take placed on the served text -- the same relocation V3's
-    binding uses -- and a failure degrades to no map (both fallbacks)."""
-    from services.ideal_text_changes import _ChangesRun
-
-    run = _ChangesRun.__new__(_ChangesRun)
-    run.review_doc, run.served_text = DOC, SERVED
-    run.slide_regions, run.arm_sid, run.arc_id = {}, TAKE, "arc-1"
-    document_map = run._take_document_map()
-    assert document_map is not None
+def test_a_row_on_this_takes_words_is_mapped_into_its_transcript():
     praise = _praise()
-    assert verbal_exclusion(praise, document_map) == (
-        None, (praise["span"]["start"] - SHIFT, praise["span"]["end"] - SHIFT))
+    row = _lane(_frame([praise]), "great_formulation")["structural-praise"]
+    assert row["eligibility"] == "eligible"
+    assert row["document_span"] == {"start": praise["span"]["start"] - SHIFT,
+                                    "end": praise["span"]["end"] - SHIFT}
+    span = row["document_span"]
+    assert DOC["text"][span["start"]:span["end"]] == SPOKEN[3][2]
 
-    run.served_text = object()   # not text: relocation cannot run
-    broken = run._take_document_map()
-    assert broken is None or verbal_exclusion(praise, broken)[0] is not None
+
+def test_a_row_on_an_unspoken_slide_is_excluded():
+    lane = _lane(_frame([_praise(), _praise("old-praise", OLD_SLIDE_0)]),
+                 "great_formulation")
+    assert lane["structural-praise"]["eligibility"] == "eligible"
+    assert (lane["old-praise"]["eligibility"],
+            lane["old-praise"]["exclusion_reason"]) == ("excluded", "document_span_unmapped")
+    unproven = _lane(_frame([_praise()], served=None), "great_formulation")
+    assert unproven["structural-praise"]["exclusion_reason"] == "document_span_unmapped"
 
 
 # ── AC-9 at the serving boundary: only client-read fields leave ────────────
@@ -210,9 +198,6 @@ def _numeric_leaves(value, path=""):
 
 
 def test_a_served_v3_payload_carries_no_internal_evidence_or_numbers():
-    from services.ideal_text_changes import _ChangesRun
-    from services.take_feedback_manager import exposure_snapshot
-
     pool = exposure_snapshot([
         {**_praise(), "cue_keys": ["full_volume"],
          "machine_prediction": {"score": 0.91},
@@ -234,12 +219,12 @@ def test_a_served_v3_payload_carries_no_internal_evidence_or_numbers():
     assert verbal and all("rank_key" in row and "evidence" in row
                           for row in verbal)   # the leak, before the boundary
 
-    run = _ChangesRun.__new__(_ChangesRun)
-    run.changes, run.styles = served, []
-    run.sel, run.learning_presentations, run.v3_failure = {}, {}, ""
-    payload = run._finish()
-    assert payload["changes"]
-    for row in payload["changes"]:
+    # The serving boundary every student payload passes (the changes
+    # block's last stage).
+    visible = strip_internal_evidence(served)
+    assert {row["id"] for row in visible} == {row["id"] for row in served}
+    assert all(row["quote"] for row in visible)
+    for row in visible:
         assert "rank_key" not in row
         assert not any(key.startswith("_manager_") for key in row)
         for key in ("candidate_score", "machine_prediction",

@@ -1,9 +1,17 @@
-"""0399 on a disposable database: a version row is written once, is
-immutable but for its transcript's one arrival, and browser roles reach
-nothing.
-
-Founder 2026-09-29, decision 4. The target must be a disposable local
-database whose name starts with ``willab_confident_moment_``.
+"""
+STORY    As a coach, I want each exercise version stored once and unchangeable,
+         so that a speaker's practice always points at the exact text and
+         video they saw.
+OUTCOME
+  O1  A re-record returns the first row unchanged; a new version gets its
+      own row.
+  O2  Only the transcript may arrive later, exactly once; any other change
+      to a stored version is refused.
+  O3  Browser roles reach neither the table nor the writer functions.
+PROVES   O1 -> test_a_version_is_written_once_with_the_three_texts_and_the_lineage
+         O2 -> test_only_the_transcript_arrives_later_and_only_once
+         O3 -> test_browser_roles_reach_nothing
+WHY      Founder 2026-09-29, decision 4 (0399).
 """
 from __future__ import annotations
 
@@ -68,3 +76,45 @@ def test_a_version_is_written_once_with_the_three_texts_and_the_lineage(db):
     assert first["source"] == "coach_panel" and first["created_by"] == "coach-1"
     second = _record(db, _row(exercise, version=2, instruction="Slower."))
     assert second["version"] == 2 and second["id"] != first["id"]
+
+
+def _transcript(db, exercise, version, status, transcript):
+    with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute("SELECT * FROM public.set_exercise_version_transcript_v1("
+                    "%s, %s, %s, %s::jsonb, 'en')",
+                    (exercise, version, status,
+                     None if transcript is None else psycopg2.extras.Json(transcript)))
+        return dict(cur.fetchone())
+
+
+def test_only_the_transcript_arrives_later_and_only_once(db):
+    exercise = f"ex-{uuid.uuid4().hex[:8]}"
+    first = _record(db, _row(exercise))
+    done = _transcript(db, exercise, 1, "done", {"text": "Say the last word."})
+    assert done["id"] == first["id"]
+    assert (done["transcript_status"], done["transcript"]) == (
+        "done", {"text": "Say the last word."})
+    assert done["title"] == first["title"]
+    with pytest.raises(psycopg2.Error, match="EXERCISE_VERSION_NOT_PENDING"):
+        _transcript(db, exercise, 1, "done", {"text": "Something else."})
+    with db.cursor() as cur:
+        with pytest.raises(psycopg2.Error, match="EXERCISE_VERSION_IMMUTABLE"):
+            cur.execute("UPDATE public.diagnostic_exercise_version "
+                        "SET title = 'Changed' WHERE id = %s", (first["id"],))
+
+
+def test_browser_roles_reach_nothing(db):
+    functions = ("public.record_exercise_version_v1(jsonb)",
+                 "public.set_exercise_version_transcript_v1("
+                 "text, integer, text, jsonb, text)")
+    with db.cursor() as cur:
+        for role in ("anon", "authenticated"):
+            for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE"):
+                cur.execute("SELECT has_table_privilege(%s, "
+                            "'public.diagnostic_exercise_version', %s)",
+                            (role, privilege))
+                assert cur.fetchone()[0] is False, (role, privilege)
+            for function in functions:
+                cur.execute("SELECT has_function_privilege(%s, %s, 'EXECUTE')",
+                            (role, function))
+                assert cur.fetchone()[0] is False, (role, function)
