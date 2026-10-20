@@ -239,7 +239,9 @@ O3  A clip that fails its check is never shown; a real pause heard in
 the audio passes.
 O4  One clip per practice, started early once the exercise is known,
 within the daily limit; a voice still being made is waited for a
-few times only; my next try is measured on that one problem.
+few times only; my next try is measured on that one problem. My
+voice starts being made as my spoken Take is stored, beside its
+processing (N84), so the clip can be ready by the walk.
 O5  Delete removes my voice at the provider and every clip, old links
 stop working, and deleting twice is safe; closing my account
 removes the voice first.","O1 -> test_a_problem_from_the_line_up_else_the_default,
@@ -257,7 +259,8 @@ test_one_recording_makes_one_checked_clip_then_measures_the_next_try,
 test_a_stored_bake_with_a_voice_exercise_queues_one_prewarm_once,
 test_the_bake_queues_the_offered_exercise_and_never_a_rewrite_or_praise,
 test_prewarm_opens_the_practice_and_the_clip_and_skips_without_a_voice,
-test_a_voice_still_being_made_is_waited_for_a_bounded_number_of_times
+test_a_voice_still_being_made_is_waited_for_a_bounded_number_of_times,
+test_a_spoken_takes_upload_starts_the_voice_and_a_read_take_or_guest_does_not
 O5 -> test_after_delete_an_old_link_no_longer_serves_the_clip,
 test_a_voice_already_gone_at_elevenlabs_counts_as_deleted,
 test_account_deletion_removes_the_voice_before_the_account_is_blocked,
@@ -1655,7 +1658,8 @@ test_it_falls_back_to_the_project_when_the_take_has_no_owner
 O4 -> test_the_purge_finds_the_registered_recording","2026-09-16: practice audio was uploaded with nothing recording that it existed, so a purge removed the rows and left the voice in the bucket."
 tests/test_practice_check.py,Story,"As a speaker, I want each practice try judged by the machine as Good job or try again with a word of encouragement, up to three tries, without numbers, so that practice moves me forward.","O1  decide returns praise, again or moved_on with a line key; a ""not yet""
 names the cue that went the wrong way; a rewrite is judged on its
-voice alone.
+voice alone; a voice only a little surer is not yet a Good job, one
+surer by the lock's margin is (N84).
 O2  The loop takes up to three tries, a later praise moves the landing
 try, a fourth try is refused (409).
 O3  The check route answers the speaker with the outcome and the line key
@@ -1663,7 +1667,8 @@ only: no lane, cue value or measured index (Never-1: no scores,
 numbers or verdicts shown to speakers).
 O4  The machine's decision is never written as the speaker's own answer
 (L3).","O1 -> test_a_not_yet_names_the_reading_that_went_the_wrong_way,
-test_a_clearer_version_try_is_checked_on_its_voice_alone
+test_a_clearer_version_try_is_checked_on_its_voice_alone,
+test_a_good_job_only_when_the_voice_is_clearly_surer
 O2 -> test_a_good_job_no_longer_ends_the_loop_the_speaker_may_try_until_three
 O3 -> test_the_route_answers_in_a_key_never_a_measure
 O4 -> test_the_route_answers_in_a_key_never_a_measure",Founder lock 2026-10-06 (the Feedback walk; decisions log N52.3).

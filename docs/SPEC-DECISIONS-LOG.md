@@ -2846,3 +2846,27 @@ review was waived ("waive the review"):
 Lock: `FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md` ("Decided after the
 lock (2026-10-20, Will's questions, N83)").
 
+**N84 · A Good job only when clearly better, and the AI voice on time
+(founder, chat, 20 October 2026).** Two of N82's open items, decided with
+it: "Good job means clearly better, as locked" and "start the voice copy
+at upload and show the clip whenever it lands":
+- **A Good job only when clearly better.** The practise check said "better"
+  on any rise of the voice-confidence composite, however small. It now
+  needs the lock's margin, +0.05 (`after_practice.GOOD_JOB_MARGIN`; section
+  6 of the moment-and-feedback lock), for a Good job on the voice alone. A
+  cleared problem or a cue moved by at least half a within-speaker
+  deviation still counts as before, and a clearer version's try with no
+  sound read is still a Good job. A smaller rise is a not yet, so the AI
+  version of their voice gets its turn. The coach's outcome rule
+  (`practice_more_confident`, "any increase", in the database) is not this
+  check and is unchanged.
+- **The voice copy starts at upload.** It used to start only at the very end
+  of the Take's processing, after the bake that warms the clip had already
+  skipped for want of a voice. It now starts as the spoken Take is stored,
+  beside its processing, with the same gates, permits and daily cap; the
+  pipeline's own ask at its end stays (a voice on its way is not asked
+  twice). The walk keeps asking for the clip after its first minute and
+  shows it whenever it lands (frontend).
+- **What stops happening:** a voice that is only a hair surer no longer
+  gets a Good job; nothing else.
+

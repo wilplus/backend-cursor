@@ -5,7 +5,8 @@ STORY    As a speaker, I want each practice try judged by the machine as Good
 OUTCOME
   O1  decide returns praise, again or moved_on with a line key; a "not yet"
       names the cue that went the wrong way; a rewrite is judged on its
-      voice alone.
+      voice alone; a voice only a little surer is not yet a Good job, one
+      surer by the lock's margin is (N84).
   O2  The loop takes up to three tries, a later praise moves the landing
       try, a fourth try is refused (409).
   O3  The check route answers the speaker with the outcome and the line key
@@ -14,7 +15,8 @@ OUTCOME
   O4  The machine's decision is never written as the speaker's own answer
       (L3).
 PROVES   O1 -> test_a_not_yet_names_the_reading_that_went_the_wrong_way,
-               test_a_clearer_version_try_is_checked_on_its_voice_alone
+               test_a_clearer_version_try_is_checked_on_its_voice_alone,
+               test_a_good_job_only_when_the_voice_is_clearly_surer
          O2 -> test_a_good_job_no_longer_ends_the_loop_the_speaker_may_try_until_three
          O3 -> test_the_route_answers_in_a_key_never_a_measure
          O4 -> test_the_route_answers_in_a_key_never_a_measure
@@ -65,6 +67,22 @@ def test_a_clearer_version_try_is_checked_on_its_voice_alone():
     assert decide(practice, [unheard], "a1")["next"] == "praise"
     third = [_try({}, {}, 1), _try({}, {}, 2), _try({"mean_pitch": 0.1}, {"mean_pitch": 0.0}, 3)]
     assert decide(practice, third, "a3")["next"] == "moved_on"
+
+
+def test_a_good_job_only_when_the_voice_is_clearly_surer():
+    """N84 (founder 2026-10-20, "Good job means clearly better, as locked"):
+    the voice-confidence composite must rise by the lock's margin; a rise
+    smaller than that is not yet, and the AI clip gets its turn."""
+    from services.after_practice import GOOD_JOB_MARGIN
+    from services.practice_check import decide
+    practice = {"kind": "exercise", "acoustic_evidence": {"snapshot": {"confidence": 0.20}}}
+
+    def tried(confidence: float) -> dict:
+        return {"id": "a1", "attempt_index": 1, "comparison": {},
+                "acoustic_metrics": {"confidence": confidence}}
+    assert decide(practice, [tried(0.20 + GOOD_JOB_MARGIN / 2)], "a1")["next"] == "again"
+    clearly = decide(practice, [tried(0.20 + GOOD_JOB_MARGIN + 0.01)], "a1")
+    assert (clearly["next"], clearly["key"]) == ("praise", "more_assured")
 
 
 # ── the loop ──────────────────────────────────────────────────────────────

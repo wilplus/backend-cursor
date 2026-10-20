@@ -12,7 +12,9 @@ OUTCOME
       the audio passes.
   O4  One clip per practice, started early once the exercise is known,
       within the daily limit; a voice still being made is waited for a
-      few times only; my next try is measured on that one problem.
+      few times only; my next try is measured on that one problem. My
+      voice starts being made as my spoken Take is stored, beside its
+      processing (N84), so the clip can be ready by the walk.
   O5  Delete removes my voice at the provider and every clip, old links
       stop working, and deleting twice is safe; closing my account
       removes the voice first.
@@ -31,7 +33,8 @@ PROVES   O1 -> test_a_problem_from_the_line_up_else_the_default,
                test_a_stored_bake_with_a_voice_exercise_queues_one_prewarm_once,
                test_the_bake_queues_the_offered_exercise_and_never_a_rewrite_or_praise,
                test_prewarm_opens_the_practice_and_the_clip_and_skips_without_a_voice,
-               test_a_voice_still_being_made_is_waited_for_a_bounded_number_of_times
+               test_a_voice_still_being_made_is_waited_for_a_bounded_number_of_times,
+               test_a_spoken_takes_upload_starts_the_voice_and_a_read_take_or_guest_does_not
          O5 -> test_after_delete_an_old_link_no_longer_serves_the_clip,
                test_a_voice_already_gone_at_elevenlabs_counts_as_deleted,
                test_account_deletion_removes_the_voice_before_the_account_is_blocked,
@@ -781,3 +784,41 @@ def test_a_voice_still_being_made_is_waited_for_a_bounded_number_of_times(monkey
             {"status": "ready", "provider_voice_id": "voice-abc"})
         done = _run_pipeline(db, db.practice, voices, _heard(0.55, "the window closes once"))
         assert done["clip"]["state"] == "ready" and voices.spoken == 1
+
+
+def test_a_spoken_takes_upload_starts_the_voice_and_a_read_take_or_guest_does_not():
+    """N84 (founder 2026-10-20, "start the voice copy at upload"): the voice
+    is asked for as the Take is stored, with the stored audio and the
+    Take's acquisition principal, never for a read Take or a guest."""
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock, patch
+
+    from flask import Flask, request
+
+    from routes.v2 import lab_recording
+
+    def upload(kind: str, user_id):
+        persisted = SimpleNamespace(session_id="take-1", recording_id="rec-1", bucket="b",
+                                    storage_key="k", storage_provider="r2",
+                                    acquisition_principal_id="p-1")
+        project = SimpleNamespace(principal=SimpleNamespace(id="p-1"), duplicate_take=None)
+        with Flask(__name__).test_request_context(method="POST", data={}), \
+                patch.object(lab_recording, "resolve_take_project", return_value=project), \
+                patch.object(lab_recording, "ProcessingAuthorizationService", return_value=MagicMock()), \
+                patch.object(lab_recording, "_prepare_lab_upload", return_value=SimpleNamespace(recording_kind=kind)), \
+                patch.object(lab_recording, "_persist_lab_take", return_value=persisted), \
+                patch.object(lab_recording, "_analysis_response", return_value=({"state": "queued"}, 202)), \
+                patch("services.ai_voice_clone.after_take") as after_take:
+            request.user_id = user_id
+            _, status = lab_recording.v2_lab_create_recording.__wrapped__()
+        assert status == 202
+        return after_take
+
+    asked = upload("spoken", "u-1")
+    asked.assert_called_once()
+    kwargs = asked.call_args.kwargs
+    assert (kwargs["user_id"], kwargs["principal_id"], kwargs["take_id"]) == ("u-1", "p-1", "take-1")
+    assert kwargs["storage"] == {"storage_provider": "r2", "bucket": "b", "storage_key": "k"}
+    upload("read", "u-1").assert_not_called()
+    upload("spoken", None).assert_not_called()
+
