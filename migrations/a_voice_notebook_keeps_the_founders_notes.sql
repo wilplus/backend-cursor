@@ -19,7 +19,10 @@
 --
 -- Read and written by the backend (service role) only. No environment
 -- variable needed. Idempotent and additive: IF NOT EXISTS / ON CONFLICT DO
--- NOTHING everywhere, nothing dropped.
+-- NOTHING everywhere, nothing dropped. One transaction; explicit grants to
+-- service_role (outside review, 2026-10-20).
+
+BEGIN;
 
 CREATE TABLE IF NOT EXISTS public.voice_notebook_notes (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -37,7 +40,8 @@ CREATE INDEX IF NOT EXISTS voice_notebook_notes_user_idx
     ON public.voice_notebook_notes (user_id, created_at);
 
 ALTER TABLE public.voice_notebook_notes ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE public.voice_notebook_notes FROM anon, authenticated;
+REVOKE ALL ON TABLE public.voice_notebook_notes FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.voice_notebook_notes TO service_role;
 
 CREATE TABLE IF NOT EXISTS public.voice_notebook_audio (
     note_id       UUID PRIMARY KEY
@@ -53,7 +57,8 @@ CREATE INDEX IF NOT EXISTS voice_notebook_audio_user_idx
     ON public.voice_notebook_audio (user_id);
 
 ALTER TABLE public.voice_notebook_audio ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE public.voice_notebook_audio FROM anon, authenticated;
+REVOKE ALL ON TABLE public.voice_notebook_audio FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.voice_notebook_audio TO service_role;
 
 CREATE TABLE IF NOT EXISTS public.voice_notebook_consent (
     user_id     UUID PRIMARY KEY,
@@ -63,7 +68,8 @@ CREATE TABLE IF NOT EXISTS public.voice_notebook_consent (
 );
 
 ALTER TABLE public.voice_notebook_consent ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE public.voice_notebook_consent FROM anon, authenticated;
+REVOKE ALL ON TABLE public.voice_notebook_consent FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.voice_notebook_consent TO service_role;
 
 INSERT INTO public.feature_rings (feature, min_ring, note, changed_by)
 VALUES ('voice_notebook', 6,
@@ -82,3 +88,5 @@ SELECT f.feature, f.min_ring, f.attribute_rule, f.consent_purpose, f.killed,
  WHERE f.feature = 'voice_notebook'
    AND NOT EXISTS (SELECT 1 FROM public.feature_ring_changes c
                     WHERE c.feature = f.feature);
+
+COMMIT;
