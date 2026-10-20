@@ -65,8 +65,11 @@ def _state(cur):
     cur.execute("SELECT alias, learning_surface_id FROM public.ml_learning_surface_aliases "
                 "WHERE alias = ANY(%s) ORDER BY 1", (list(COACH_WORDS),))
     aliases = cur.fetchall()
+    # 0459's two drafter columns. Later tables that keep a draft's prompt too
+    # (the Take word's version history) are theirs to test, not this file's.
     cur.execute("SELECT table_name, is_nullable FROM information_schema.columns "
-                "WHERE table_schema = 'public' AND column_name = 'draft_prompt' ORDER BY 1")
+                "WHERE table_schema = 'public' AND column_name = 'draft_prompt' "
+                "AND table_name IN ('coach_take_words', 'exercise_coach_requests') ORDER BY 1")
     return checks, aliases, cur.fetchall()
 
 
