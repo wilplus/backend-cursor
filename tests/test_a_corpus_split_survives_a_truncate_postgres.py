@@ -1,12 +1,14 @@
-"""A corpus split survives a TRUNCATE too, on a disposable database (0434,
-N56.4: "never re-shuffled").
-
-0433's row-level trigger refuses UPDATE and DELETE but cannot see a
-TRUNCATE. Pins: a TRUNCATE (plain, CASCADE, RESTART IDENTITY) is refused
-with CORPUS_SPLIT_IMMUTABLE and every stored split stays; the trigger is
-statement-level BEFORE TRUNCATE on 0433's refusing function; applying the
-file again leaves exactly one such trigger and changes no row; 0433's
-UPDATE/DELETE refusal is untouched; the function is still not PUBLIC."""
+"""
+STORY    As the founder, I want each speaker's train/test split to survive
+         even a whole-table wipe (TRUNCATE), so that the separation is never
+         reset by accident.
+OUTCOME
+  O1  Every form of TRUNCATE is refused with CORPUS_SPLIT_IMMUTABLE.
+  O2  Every stored split stays exactly as it was.
+PROVES   O1, O2 -> test_a_truncate_is_refused_and_every_split_stays
+                   (plain, CASCADE and RESTART IDENTITY)
+WHY      N56.4: a split is "never re-shuffled" (migration 0434).
+"""
 from __future__ import annotations
 
 import hashlib

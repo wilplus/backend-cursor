@@ -367,7 +367,7 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("exercise_coach_request_answer_versions",
                     "exercise_coach_request_answer_versions", "take_session_id",
                     "take", "delete", "derived_feedback", 58),
-    # The words of a coach's answer videos, one row per video (0481): the
+    # The words of a coach's answer videos, one row per video (0482): the
     # coach's words about the speaker's Take, so they go with the Take,
     # before the request (whose cascade is only the backstop). No by-coach
     # entry: a coach's words stay with the speaker (founder 2026-10-19, N79).
@@ -492,14 +492,14 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("fine_tune_run_owners", "fine_tune_run_owners",
                     "owner_principal_id", "principal", "delete",
                     "derived_feedback", 35),
-    # Every earlier version of a coach's Take word (0479): the coach's words
+    # Every earlier version of a coach's Take word (0480): the coach's words
     # about the speaker's Take go with the Take, before the word row, whose
     # cascade is only the backstop (founder 2026-10-19, N79: a coach's words
     # stay with the speaker).
     PurgeDependency("coach_take_word_versions", "coach_take_word_versions",
                     "take_session_id", "take", "delete", "derived_feedback", 57),
     # Every model draft shown to a coach about the speaker's Take, with what
-    # its prompt was given (0480): it goes with the Take, before the word and
+    # its prompt was given (0481): it goes with the Take, before the word and
     # request rows, whose cascades are only the backstop. No by-coach entry:
     # a coach's words stay with the speaker (founder 2026-10-19, N79).
     PurgeDependency("coach_draft_history", "coach_draft_history",

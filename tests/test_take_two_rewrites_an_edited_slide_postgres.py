@@ -1,35 +1,24 @@
-"""B1-5: the owner edits a Paragraph, then Take 2 rewrites the Slide — on a
-real database, through the Python production runs.
-
-Contract 8 (as amended 2026-10-03, N29), 9, 14 and 16; founder N48.1 Wave 1
-step 7. Each later Take rewrites every Slide it spoke from exactly what was
-said on it in that Take, owner edits included; a Slide it did not speak keeps
-its last version; locked helper words persist until the user picks new ones;
-nothing is lost, because every version stays in history.
-
-WHAT RUNS, AND HOW. Every write and read below is the production code path,
-against the disposable `take-rewrite` lane (scripts/rehearsal_tier.sh):
-
-  Take 1      `mint_machine_parts` + `DatabaseService.replace_ideal_text_parts`
-              (the publish path's minting of Paragraph identity);
-  helper      `slide_helper_words.pick` / `.lock` + `replace_slide_helper_words`
-  words       (the route's `_apply`, with the Slide known), and
-              `set_ideal_text_part_root` / `set_ideal_text_part_lock`;
-  the edit    `DatabaseService.compare_and_set_user_ideal_edit` ->
-              `compare_and_set_user_ideal_edit_v1`, the one owner-edit writer,
-              exactly as the legacy PUT sends it;
-  Take 2      `services.take_review.finalize_later_take_review`: the rebuild
-              plan, `finalize_ideal_text_take_v2`, the fresh-read proof, and
-              `apply_after_finalize` (identity, `take_rewrite` revisions,
-              helper words).
-
-Two seams are replaced, and only two. `build_transcript_document` returns
-Take 2's transcript document (turning audio and snippets into that document is
-transcription, not what is under test here); `publish_for_arc` is recorded
-instead of run (the cold-open read model has its own lane). The Supabase
-client is a thin shim that turns its PostgREST calls into SQL, as the account
-deletion rehearsal does; it runs as the lane's owner, because this suite
-asserts behaviour, not grants.
+"""
+STORY    As a speaker who edited a Paragraph, I want Take 2 to replace the
+         slides I spoke with what I said, keep the rest and my helper words,
+         and keep my edit in history, so that the Ideal Text is my latest
+         words and nothing is lost.
+OUTCOME
+  O1  On a real database, a slide I spoke in Take 2 shows exactly what I
+      said, even if I had edited it, on the same Paragraph.
+  O2  A slide I did not speak keeps its last version, including my own
+      edit made after Take 1.
+  O3  Helper words and locks stay on both slides, and a reworded open
+      Paragraph keeps its id and helper words through the page publish.
+  O4  Every earlier version (my edit, Take 1, Take 2) stays in the history.
+PROVES   O1 -> test_take_two_rewrites_the_edited_slide_and_keeps_the_rest
+         O2 -> test_an_edit_on_a_slide_take_two_did_not_speak_is_its_last_version
+         O3 -> test_take_two_rewrites_the_edited_slide_and_keeps_the_rest,
+               test_a_reworded_open_paragraph_keeps_its_id_through_the_snapshot_publish
+         O4 -> test_take_two_rewrites_the_edited_slide_and_keeps_the_rest,
+               test_an_edit_on_a_slide_take_two_did_not_speak_is_its_last_version,
+               test_a_reworded_open_paragraph_keeps_its_id_through_the_snapshot_publish
+WHY      Never-rule 5; contracts 8, 9, 14, 16 (N29, N48.1 Wave 1).
 """
 from __future__ import annotations
 

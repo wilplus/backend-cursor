@@ -1,14 +1,15 @@
-"""A speaker may change a judgement; the first answer stays, on a
-disposable database (0440, D-FW-9; founder QA1 A).
-
-Runs the real revise_take_feedback_response_v1 and the readers' overlay
-(DatabaseService._latest_self_reports over psycopg2). Pins: a change is a
-new revision and the first answer's row is byte-for-byte unchanged; the
-same answer again is a replay; going back to the first answer is a
-revision; a rewrite's answer is not revisable; no first answer, nothing to
-revise; a revision is never edited; two concurrent changes get two
-numbers; the readers see the latest with the first beside it; closed to
-the browser roles; applying the file again keeps every row."""
+"""
+STORY    As a speaker, I want to change my answer to a piece of feedback
+         with my first answer kept exactly as it was, so that both my choice
+         and its history are kept.
+OUTCOME
+  O1  A change is stored as a new revision; the same change again changes
+      nothing; changing back is revision 2.
+  O2  The first answer's row is unchanged, and the revision list holds
+      both changes.
+PROVES   O1, O2 -> test_a_change_is_kept_beside_the_first
+WHY      D-FW-9, founder QA1 A (migration 0440).
+"""
 from __future__ import annotations
 
 import os

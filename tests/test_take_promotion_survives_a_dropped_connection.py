@@ -1,14 +1,13 @@
-"""A dropped connection during the Take promotion is retried, not fatal.
-
-THE BUG (the founder's Takes of 2026-10-02 and 2026-10-03, during the
-database incident): the promotion RPC is the last call of a run. When the
-transport dropped on that one call the wrapper returned None, the lifecycle
-raised "successful recording was not promoted to a Take", and the job threw
-the whole attempt away and re-ran transcription and the Ideal Text from the
-start. The RPC is idempotent on (attempt, completion_hash), so the right
-answer is the same reconnect-and-retry every read already gets.
-
-Run: python3 -m unittest tests.test_take_promotion_survives_a_dropped_connection
+"""
+STORY    As a speaker, I want a dropped database connection at the last step
+         to be retried, so that my Take is not thrown away and processed
+         again.
+OUTCOME
+  O1  When the connection drops while the recording becomes a Take, the
+      step is retried once and the Take is returned.
+PROVES   O1 -> PromotionRetryTests::test_a_dropped_connection_is_retried_and_the_take_returned
+WHY      Founder's Takes of 2026-10-02 and 2026-10-03 were re-run from the
+         start after one dropped call.
 """
 from __future__ import annotations
 

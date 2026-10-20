@@ -1,9 +1,14 @@
-"""The answered bookmark's read (Q19 A): ``GET
-/v2/user/takes/<id>/feedback-responses`` gives the owner their latest answer
-per item, a changed judgement at its newest revision, and anyone else a 404.
-
-Runs the real DatabaseService reads over an in-memory table client, so the
-contract holds whichever order the reads go out in."""
+"""
+STORY    As a speaker, I want my latest answer to each feedback item shown back
+         to me, and nobody else able to read it, so that my judgements stay mine
+         and current.
+OUTCOME
+  O1  I get one answer per item, at its latest change.
+  O2  Someone else's Take, or a Take that does not exist, is "not found".
+PROVES   O1 -> test_the_owner_reads_each_answer_at_its_latest
+         O2 -> test_someone_elses_take_or_no_take_is_not_found
+WHY      Q19 A: the answered bookmark's read.
+"""
 from __future__ import annotations
 
 import inspect

@@ -1,42 +1,37 @@
-"""A coach may change their answer, on a disposable database (0446; coach
-panel lock flows 7 and 12; Q-B12 A, N62; build plan D-CP-7).
-
-Pins:
-  * the history table exists with RLS on; browser roles and PUBLIC hold
-    nothing on it or on the v3 resolver; service_role reads and deletes the
-    history, calls the resolver, and cannot write the history by hand;
-  * the file applied again changes nothing; the guard trigger is v2;
-  * the first answer is written as before; the same answer again is a no-op
-    that may add the share; a DIFFERENT answer by the same coach replaces the
-    row's answer, resets the share to this call's, and moves the old answer
-    (words, exercise, video, share) into the history as version 1, 2, ...;
-  * another coach's call on a resolved request is ALREADY_RESOLVED, the
-    same answer included (it cannot add the share);
-  * the answer's video goes with the answer: a new video (p_video_ref) is a
-    change that keeps the old video in the history and puts the new one on
-    the row in the same UPDATE; '' clears it; NULL keeps it; a hand UPDATE
-    of a resolved answer's video is refused by the guard;
-  * the guard still refuses a hand UPDATE of a set resolution, a hand unset
-    of a share, and any change to what was requested; the door is only the
-    resolver's, in its own transaction;
-  * a changed answer that goes from shared to unshared leaves shared_at NULL
-    (a withdrawn share), and from words to an exercise respects the row's
-    shape checks;
-  * a coach's Take word keeps every earlier version too (0479, N79): a new
-    word, a re-draft or a new video moves the one before into
-    coach_take_word_versions; a NULL being filled in, or the same text
-    again, keeps none; a new video clears the old video's words on the row;
-    only the trigger writes the history;
-  * a coach's answer video keeps its own words, by its ref (0481, N79): the
-    recorder takes words for the video on the row or one the history keeps,
-    and for no other; a failed try is retried in place and counted; done
-    words are never written over; after a new video, the old one keeps its
-    words and the new one gets its own; only the recorder writes the table;
-  * each answer keeps what the coach saw (0482, N79): one situation per
-    answer (the same answer written again is ignored), a replaced answer
-    finds its own on (request_id, resolved_at) with the error type copied,
-    one per Take-word save; nobody may update a situation; the request's and
-    the word's cascades remove theirs.
+"""
+STORY    As a coach, I want to change my answer to a speaker's request, or
+         my word on a Take, and have every earlier one kept, so that I can
+         correct myself without losing the record.
+OUTCOME
+  O1  Giving the same answer again changes nothing.
+  O2  A different answer replaces what the speaker sees; the old one, with
+      its words, video and share, is kept as version 1, 2, 3.
+  O3  A new answer that is not shared withdraws the earlier share.
+  O4  Changing from words to an exercise keeps the answer well-formed.
+  O5  A coach's word on a Take keeps every earlier version: a new word, a
+      new draft or a new video keeps the one before; filling in what was
+      empty, or the same word again, keeps nothing; a new video clears the
+      old video's words; only the database writes the history, and the
+      purge can read and delete it.
+  O6  A coach's answer video keeps its own words, by its ref: a failed try
+      is retried in place and counted; done words are never written over;
+      after a new video the old one, now in the history, keeps its words
+      and the new one gets its own; a video that is not this request's
+      takes no words; only the database writes them.
+  O7  Each answer keeps what the coach saw when they gave it: one record
+      per answer (the same answer again adds none), a replaced answer
+      keeps its own, with the error type the coach picked; one per Take
+      word save; nobody can change a record afterwards; deleting the
+      request or the word removes its records.
+PROVES   O1, O2, O3, O4 ->
+             test_the_same_coach_changes_the_answer_and_every_earlier_one_stays
+         O5 -> test_a_take_word_keeps_every_earlier_version
+         O6 -> test_an_answer_video_keeps_its_own_words
+         O7 -> test_each_answer_keeps_what_the_coach_saw_and_it_never_changes
+WHY      Coach panel lock flows 7 and 12; Q-B12 A (migration 0446); a Take
+         word keeps every version, N79 (migration 0480); a coach's answer
+         video is kept in words, N79 (migration 0482); each answer keeps
+         what the coach saw, N79 (migration 0483).
 """
 from __future__ import annotations
 

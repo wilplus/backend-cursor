@@ -1,6 +1,19 @@
-"""The Lounge's dad jokes hold the thread (founder 2026-10-15: "I told it to
-tell me a dad joke, then I said next, and it understood it as a separate
-message"). Pure: no model, no database."""
+"""
+STORY    As a speaker chatting with Will, I want "next" after a dad joke to
+         get another joke, and my answers to Will's questions not treated as
+         requests, so that the chat follows the thread.
+OUTCOME
+  O1  "next", "another" or "more" after a joke gives a different joke.
+  O2  "next" with no joke before it is left to Will.
+  O3  Telling the story of my startup after Will asks about my talk is an
+      answer, not deflected; "tell me a story" on its own is still a
+      request.
+PROVES   O1 -> test_next_after_a_joke_tells_another_one
+         O2 -> test_next_without_a_joke_before_is_left_to_will
+         O3 -> test_answering_wills_question_is_not_deflected
+WHY      Founder 2026-10-15: "next" after a dad joke was read as a new
+         message.
+"""
 from services.chat_intents import detect_chat_intent
 from services.dad_jokes import DAD_JOKES
 

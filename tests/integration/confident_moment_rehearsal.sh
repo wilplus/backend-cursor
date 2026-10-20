@@ -866,7 +866,7 @@ fi
 hard migrations/status_read_in_one_trip.sql
 hard migrations/status_read_in_one_trip.sql
 
-# 0478 (founder 2026-10-19, N79): a Take word is a pair's home, the latest
+# 0479 (founder 2026-10-19, N79): a Take word is a pair's home, the latest
 # version teaches. Widens 0402's one_home CHECK, adds superseded_at, the
 # current-pair index and record_take_word_pair_v1, and recovers pairs from
 # coach_take_words. Released lane only: the recovery reads
@@ -878,32 +878,32 @@ if [ "$LANE" = "released" ]; then
   hard migrations/a_take_word_pair_has_a_home.sql
 fi
 
-# 0479 (founder 2026-10-19, N79): a Take word keeps every version. One
+# 0480 (founder 2026-10-19, N79): a Take word keeps every version. One
 # history table and the BEFORE UPDATE trigger on coach_take_words (0403)
 # that writes it. Released lane only: it copies draft_prompt (0459). After
-# 0478, as in the manifest. Twice: apply/reapply idempotency. Its case is in
+# 0479, as in the manifest. Twice: apply/reapply idempotency. Its case is in
 # tests/test_a_coach_may_change_their_answer_postgres.py.
 if [ "$LANE" = "released" ]; then
   hard migrations/a_take_word_keeps_every_version.sql
   hard migrations/a_take_word_keeps_every_version.sql
 fi
 
-# 0480 (founder 2026-10-19, N79): every draft keeps its prompt. One history
+# 0481 (founder 2026-10-19, N79): every draft keeps its prompt. One history
 # table with foreign keys to exercise_coach_requests (0385) and
 # coach_take_words (0403), and new comments on their draft_prompt columns.
 # Released lane only: the comments are on draft_prompt (0459, released
-# lane). After 0479, as in the manifest. Twice: apply/reapply idempotency.
+# lane). After 0480, as in the manifest. Twice: apply/reapply idempotency.
 # Its case is in tests/test_coach_answers_in_words_postgres.py.
 if [ "$LANE" = "released" ]; then
   hard migrations/every_draft_keeps_its_prompt.sql
   hard migrations/every_draft_keeps_its_prompt.sql
 fi
 
-# 0481 (founder 2026-10-19, N79): a coach's answer video is kept in words.
+# 0482 (founder 2026-10-19, N79): a coach's answer video is kept in words.
 # One table keyed by the video ref, with a foreign key to
 # exercise_coach_requests (0385), and its recorder, which reads the
 # request's answer_video_ref (0403) and its answer history (0446); both
-# lanes carry all three. Both lanes, after 0480, as in the manifest. Twice:
+# lanes carry all three. Both lanes, after 0481, as in the manifest. Twice:
 # apply/reapply idempotency. Its case is in
 # tests/test_a_coach_may_change_their_answer_postgres.py.
 hard migrations/a_coach_answer_video_is_kept_in_words.sql

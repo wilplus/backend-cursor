@@ -1,18 +1,25 @@
-"""A deletion completes by itself after seven days: the application side
-(founder 2026-10-05, decisions log N48.4 Q14 A, Q17 A, Q19 A; migration
-0422). tests/test_a_deletion_completes_after_seven_days_postgres.py runs the
-SQL; this pins:
-
-  * what the speaker's app reads: the deletion view, whether it can still be
-    cancelled, the status read's ``pending_deletion``;
-  * the authority service maps every refusal to its code and status;
-  * the completion run: what is due, a dry run that writes nothing, one run
-    at a time, a purge that stops for a person, a fault that never stops
-    the others, the lease always released;
-  * the routes: the terminate split, the cancel, the cron route's two gates;
-  * learning stops: the pair stamp and the corpus copy job.
-
-Flask-route classes skip locally without app deps and run in CI.
+"""
+STORY    As a speaker who deletes my account, I want it to complete by itself
+         after seven days unless I cancel, so that my data really goes.
+OUTCOME
+  O1  The daily run finishes a due deletion: started, purged, then marked
+      done; a dry run only reports what it would do and writes nothing.
+  O2  A purge that cannot finish is left for a person, with its reasons, and
+      is not marked done.
+  O3  Once I am leaving, my earlier "yes" to learning is kept on record but
+      nothing of mine is released for learning.
+  O4  Asking to delete my account opens the cancellable seven-day window;
+      ending the service (termination) purges straight away.
+  O5  The daily run's route is shut without its secret, refuses a wrong one,
+      and deletes for real only when the kill switch is on.
+PROVES   O1 -> RunTests::test_a_due_request_is_started_purged_and_finished,
+               RunTests::test_a_dry_run_reads_and_writes_nothing
+         O2 -> RunTests::test_a_purge_that_stops_is_left_for_a_person_with_its_reasons
+         O3 -> LearningTests::test_the_stamp_keeps_the_yes_and_releases_nothing_of_a_leaving_person
+         O4 -> SpeakerRouteTests::test_an_account_deletion_takes_the_window_and_a_termination_does_not
+         O5 -> CronRouteTests::test_the_route_is_dead_without_its_secret_and_refuses_a_wrong_one,
+               CronRouteTests::test_it_deletes_only_with_the_kill_switch_on
+WHY      Founder 2026-10-05, decisions log N48.4 Q14 A, Q17 A, Q19 A (migration 0422).
 """
 from __future__ import annotations
 

@@ -1,26 +1,21 @@
-"""A deletion completes by itself after seven days (0422; founder 2026-10-05,
-decisions log N48.4 Q14 A, Q17 A, Q19 A; PLF-T2, PLF-T3, PLF-T4, L5).
-
-Run on the released rehearsal lane through the thin SQL client of
-tests/test_account_deletion_starts_postgres.py, as service_role, so the
-Python production runs (the authority service, the completion run, the
-orchestrators) meets the real functions. The two named stand-ins of
-tests/test_take_purge_postgres.py apply: every retention rule seeded active,
-and object storage faked. Pins:
-
-  * the window: completes_after is the request + 7 days; the person is
-    blocked at once, in-flight jobs and permits are cancelled, their pairs
-    leave the releasable pool, and nothing is deleted;
-  * the cancel: only the requester, only inside the window, never once the
-    purge started; it lifts the block;
-  * the run: a due request is started, purged and marked done on verified
-    evidence; a purge that meets rows no rule decides (N14.3's
-    ideal_text_part_revision) deletes nothing, waits for a person and is not
-    retried; a dry run writes nothing; one run at a time;
-  * a project deletion keeps the same window and completes the same way;
-  * a termination stops learning: pairs, the weekly refresh, training copies;
-  * requests made before 0422 are carried over, never cancellable;
-  * the status read the app gets.
+"""
+STORY    As a speaker who asks to delete my account, I want my processing to
+         stop at once, seven days to change my mind, and everything erased
+         after that, so that deletion is real and only briefly reversible.
+OUTCOME
+  O1  The request blocks me at once, cancels running jobs and permits,
+      takes my coached pairs out of training, deletes nothing yet, and ends
+      seven days later; asking twice is one request.
+  O2  I can cancel inside the seven days and the block lifts; asking again
+      later starts a new request.
+  O3  After the seven days the run erases my data, marks the request done
+      with proof, and never does it twice.
+  O4  A dry run only reports what is due and writes nothing.
+PROVES   O1 -> test_a_request_blocks_at_once_deletes_nothing_and_waits_seven_days
+         O2 -> test_the_requester_cancels_inside_the_window_and_the_block_lifts
+         O3 -> test_the_run_completes_a_due_deletion_on_verified_evidence
+         O4 -> test_a_dry_run_reads_what_is_due_and_writes_nothing
+WHY      Founder 2026-10-05, N48.4 Q14 A, Q17 A, Q19 A (migration 0422).
 """
 from __future__ import annotations
 

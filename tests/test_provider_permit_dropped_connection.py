@@ -1,9 +1,19 @@
-"""A dropped connection is not a refusal (founder 2026-10-15).
-
-A Take sat at 59% for seven minutes because the permit RPC's connection was
-closed under it ("Server disconnected") and the worker read that as
-"Provider processing is not authorized", failing the attempt. The permit RPC
-is idempotent on its key, so it is sent once more; a real denial stays final.
+"""
+STORY    As a speaker, I want a brief database hiccup not to fail my Take, so
+         that processing continues instead of sitting at 59%.
+OUTCOME
+  O1  A dropped connection or a timeout is sent again with the same key
+      until it answers.
+  O2  A real denial is final and is not sent again.
+  O3  A database that never answers gives "unavailable" (503) after a
+      bounded number of retries, not "denied".
+  O4  The log line for a refusal names the check that failed.
+PROVES   O1 -> test_a_dropped_connection_is_sent_once_more_with_the_same_key,
+               test_a_statement_timeout_is_resent_with_the_same_key_until_it_answers
+         O2 -> test_a_denial_is_final
+         O3 -> test_a_database_that_never_answers_is_unavailable_not_a_denial
+         O4 -> test_a_refusal_log_line_names_the_check_that_failed
+WHY      Founder 2026-10-15: a Take sat at 59% for seven minutes.
 """
 from __future__ import annotations
 

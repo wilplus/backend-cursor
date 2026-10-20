@@ -72,10 +72,8 @@ def test_enrichment_rejects_snapshot_that_turns_stale_during_readers(
         "enrichment_seed": {},
     }
     database = Mock()
-    database.get_ideal_text_document_core.side_effect = [
-        selected,
-        {**selected, "id": "snapshot-new"},
-    ]
+    database.get_ideal_text_document_core.return_value = selected
+    database.get_ideal_text_document_fence.return_value = {"id": "snapshot-new"}
     database.get_ideal_text_document_snapshot.return_value = selected
     monkeypatch.setattr(route, "db", database)
     monkeypatch.setattr(route, "_arc_owned_by_caller", lambda _arc: (
@@ -103,5 +101,33 @@ def test_enrichment_rejects_snapshot_that_turns_stale_during_readers(
         "current_document_snapshot_id": "snapshot-new",
     }
     assert b"must-not-leave-server" not in response.data
-    assert database.get_ideal_text_document_core.call_count == 2
+    # The whole snapshot is read once; the post-reader check is the fence.
+    assert database.get_ideal_text_document_core.call_count == 1
+    database.get_ideal_text_document_fence.assert_called_once_with(
+        "arc-1", "actor-1")
+    assert "fence_read;dur=" not in response.headers.get("Server-Timing", "")
     prepared.assert_called_once()
+
+
+def test_the_fence_read_is_the_head_and_the_generation_only(monkeypatch):
+    """The post-reader check compares two ids; it reads two rows, not the
+    whole snapshot again, and a generation that moved on reads as no head."""
+    from services.db import db
+
+    def reads(by_label):
+        def execute(query_factory, *, label, **_):
+            return Mock(data=by_label[label])
+        return execute
+
+    head = [{"snapshot_id": "snapshot-1",
+             "ideal_text_document_snapshots": {"source_generation": 4}}]
+    monkeypatch.setattr(db, "_execute_with_retry", reads({
+        "ideal_text_fence_head": head,
+        "ideal_text_fence_generation": [{"generation": 4}]}))
+    assert db.get_ideal_text_document_fence("arc-1", "actor-1") == {
+        "id": "snapshot-1"}
+
+    monkeypatch.setattr(db, "_execute_with_retry", reads({
+        "ideal_text_fence_head": head,
+        "ideal_text_fence_generation": [{"generation": 5}]}))
+    assert db.get_ideal_text_document_fence("arc-1", "actor-1") is None

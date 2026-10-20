@@ -1,10 +1,14 @@
-"""Doors 3 and 4 on a disposable database (0406). Pins:
-  * a pair is marked trained only once, only when released and releasable;
-  * a run with an owner whose yes is gone appears in the withdrawn view;
-  * the promote RPC accepts the three answer-surface keys and still refuses
-    an unlisted one;
-  * the two acoustic cues are seeded shadow; the three aliases exist;
-  * every new table has RLS on and reaches no browser role.
+"""
+STORY    As a speaker, I want the model trained only on my coached pairs that
+         I said yes to and that were released, and only once, so that my
+         "no" is respected.
+OUTCOME
+  O1  A released pair that is still allowed is marked trained, once.
+  O2  A pair that is not released, no longer allowed, or already trained
+      is refused.
+  O3  An unknown training run is refused.
+PROVES   O1, O2, O3 -> test_a_pair_trains_once_and_only_when_released_and_releasable
+WHY      Doors 3 and 4 (migration 0406).
 """
 from __future__ import annotations
 

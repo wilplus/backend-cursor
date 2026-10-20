@@ -319,9 +319,6 @@ def v2_coach_students():
             uid = r.get("user_id")
             prof = _profiles.get(str(uid)) or {}
             out.append({
-                # Opaque drill key — the FE keys the student detail view on
-                # this; a random UUID is not name/email.
-                "user_id": str(uid) if uid else "",
                 "pseudonym": _coach_pseudonym(uid),
                 "domain": (prof or {}).get("domain") or "",
                 "last_active": r.get("last_active") or "",
@@ -426,14 +423,11 @@ def v2_coach_student_audit_send(user_id):
 @require_admin_or_coach
 def v2_coach_queue():
     """① Coach review queue (FE PR2 → /v2/coach/queue). Pseudonymized rows,
-    FIFO (oldest sent first). Each row: {session_id, user_id, pseudonym,
-    domain, topic, n_snippets, state, sent_at, arc_id?, take_index?,
-    has_reread?}. `user_id` is the same OPAQUE drill key the roster exposes
-    (founder 2026-07-16, BE-4 — the FE groups the queue per student and opens
-    the student list from it; a random UUID is not name/email, so §14
-    red-line 6 still holds: pseudonym + domain remain the only DISPLAYED
-    fields). Read rows are folded into their parent take (never listed);
-    has_reread marks the parent."""
+    FIFO (oldest sent first). Each row: {session_id, pseudonym, domain,
+    topic, n_snippets, state, sent_at, arc_id?, take_index?, has_reread?}.
+    No user_id: rows are grouped by pseudonym (founder 2026-10-20, replacing
+    the 2026-07-16 opaque drill key). Read rows are folded into their parent
+    take (never listed); has_reread marks the parent."""
     try:
         # An unset profile is a setup state, not an empty queue: make the
         # distinction explicit so the UI can ask once rather than silently
@@ -458,9 +452,8 @@ def v2_coach_queue():
             cstate = _states.get(str(sid)) or {}
             out.append({
                 "session_id": sid,
-                # Opaque drill key — mirrors GET /v2/coach/students (never
-                # rendered; keys the per-student grouping + drill-down).
-                "user_id": str(r.get("user_id")) if r.get("user_id") else "",
+                # Speakers are grouped by pseudonym; no user_id reaches a coach
+                # (founder 2026-10-20).
                 "pseudonym": _coach_pseudonym(r.get("user_id")),
                 "domain": (ctx or {}).get("domain") or "",
                 "topic": (ctx or {}).get("topic") or "",
@@ -1567,7 +1560,7 @@ def v2_coach_exercise_request_video(session_id, snippet_id):
     give it a new video: that is an answer change (0446), so the history
     keeps the old one; another coach's resolved request is closed (409).
     Its words are written down after the response, off this request, under
-    the speaker's permit and only for a speaker with the training yes (0481,
+    the speaker's permit and only for a speaker with the training yes (0482,
     N79), so no provider call runs here.
 
     multipart/form-data: video_file. 200 {video_url} · 400/404/409/413/415/500/502
@@ -1604,8 +1597,9 @@ def v2_coach_take_word(session_id):
     reads it as "Your coach". The video comes from the session video upload
     (POST .../video), which returns the ref; a PUT that names no video_ref
     keeps the saved video, and an explicit null removes it (founder
-    2026-10-19). Nothing here gates a per-moment
-    share."""
+    2026-10-19). A GET whose read fails answers 500, never "no word" (N80:
+    the panel would draft over the saved words). Nothing here gates a
+    per-moment share."""
     if not _is_valid_uuid(session_id):
         return jsonify({"code": "INVALID_INPUT", "error": "session_id must be a UUID"}), 400
     if not db.v2_get_session_by_id(session_id):
@@ -1613,8 +1607,13 @@ def v2_coach_take_word(session_id):
     from services.coach_take_word import TakeWordRefusal, save_take_word, take_word_for
     coach_id = str(getattr(request, "user_id", "") or "")
     if request.method == "GET":
-        return jsonify({"word": take_word_for(db, take_session_id=session_id,
-                                              coach_id=coach_id)}), 200
+        try:
+            saved = take_word_for(db, take_session_id=session_id, coach_id=coach_id)
+        except Exception as e:
+            logger.error("take word read failed sid=%s: %s", session_id, e, exc_info=True)
+            sentry_sdk.capture_exception(e)
+            return jsonify({"code": "V2_ERROR", "error": "Could not read the word."}), 500
+        return jsonify({"word": saved}), 200
     try:
         word = save_take_word(db, take_session_id=session_id, coach_id=coach_id,
                               body=request.get_json(silent=True))

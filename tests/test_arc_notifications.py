@@ -1,7 +1,13 @@
-"""Arc lifecycle cards/notes + transcript claim-once (founder bug-batch
-2026-07-06). Pure (fake db).
-
-Run: python3 -m unittest tests.test_arc_notifications
+"""
+STORY    As a speaker, I want the "your voice album is ready" chat message to
+         speak in words, never counts or rankings, so that it encourages
+         rather than grades.
+OUTCOME
+  O1  The message has no digits and none of: score, best, top, rank, %,
+      points.
+PROVES   O1 -> VoiceAlbumBubbleTests::test_ac9_it_never_counts_or_grades
+WHY      Never-rule 1; founder 2026-08-15 (post the album bubble once it is
+         available).
 """
 from __future__ import annotations
 

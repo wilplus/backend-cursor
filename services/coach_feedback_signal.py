@@ -12,12 +12,19 @@ The rule lives in ``new_coach_feedback_by_project_v1`` (0439).
 
 Best-effort on the Lounge's read: a failure there is no flag, never an
 error, so the Lounge always mounts (LIVE LOOP).
+
+The same rule for one Take's word (founder 2026-10-19, N80):
+``word_changed_at`` and ``newer_than_seen`` mirror 0439's ``take_word``
+branch (GREATEST(shared_at, updated_at) against ``seen_at``), so the
+Lounge's coach bubble and the walk's Step 0 follow the dot: watched
+anywhere is watched, and a new or removed video makes the word new again.
 """
 from __future__ import annotations
 
 import logging
 import uuid
-from typing import Any, Optional
+from datetime import datetime, timezone
+from typing import Any, Iterable, Optional
 
 _log = logging.getLogger(__name__)
 
@@ -30,6 +37,42 @@ def _uuid(value: Any) -> Optional[str]:
         return str(uuid.UUID(str(value)))
     except (TypeError, ValueError, AttributeError):
         return None
+
+
+def _moment(value: Any) -> Optional[datetime]:
+    """An aware datetime from a stored timestamp (UTC when it names no
+    zone), or None. Pure."""
+    if isinstance(value, datetime):
+        moment = value
+    elif isinstance(value, str) and value.strip():
+        try:
+            moment = datetime.fromisoformat(value.strip())
+        except ValueError:
+            return None
+    else:
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
+def word_changed_at(words: Iterable[Any]) -> Optional[datetime]:
+    """When a Take's shared words last changed for the speaker: the latest
+    GREATEST(shared_at, updated_at) over them, as 0439's take_word branch
+    reads it; None when there is none. Pure."""
+    stamps: list[Optional[datetime]] = []
+    for word in words or []:
+        if isinstance(word, dict) and word.get("shared_at"):
+            stamps += [_moment(word["shared_at"]), _moment(word.get("updated_at"))]
+    return max((s for s in stamps if s is not None), default=None)
+
+
+def newer_than_seen(changed_at: Any, seen_at: Any) -> bool:
+    """The word changed after the speaker last watched it, or they never
+    watched it. A word with no change time is never new. Pure."""
+    changed = _moment(changed_at)
+    if changed is None:
+        return False
+    seen = _moment(seen_at)
+    return seen is None or seen < changed
 
 
 def lounge_flags(database: Any, user_id: Any) -> dict[str, bool]:

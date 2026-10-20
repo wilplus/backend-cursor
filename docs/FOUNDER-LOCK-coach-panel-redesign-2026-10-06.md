@@ -90,6 +90,26 @@ everything they need.
 A paragraph without a bookmark does not open on tap (amends B7's "still
 opens its own sheet on tap").
 
+## Decided after the lock (2026-10-19, the saved video, N80)
+
+Founder, chat, 19 October 2026: approved the two-phone prototype
+<https://claude.ai/artifact/APk56PLZt6o6Cx9qUMKkuk> and signed the words
+"Remove the video". Amends flow step 13:
+
+- **Coming back to a Take word already sent,** "Your video" shows the saved
+  video with the coach's words under it. "Send to {p}" keeps it; "Record
+  again" replaces it; "Remove the video" returns to the camera with
+  "Record" and "Send without a video", which sends the word with no video.
+- **"Remove the video" shows only for a saved video,** never right after
+  recording a new clip ("Record again" covers that).
+- **After "Remove the video",** going back to the words and forward again
+  keeps it removed until Send; ✕ cancels and nothing is saved.
+- **The subtitle stays as signed:** "Optional · it opens first in {p}’s
+  feedback", although after a finished review the word reaches the speaker
+  under "Later · from your coach".
+- **The coach's picture** beside the coach's words is the grey-blue coach
+  avatar, as speakers see the coach (amends step 8's "grey picture").
+
 ## Words signed (CP2 A)
 
 Signed exactly as listed on the panel (CP2), `{p}` the speaker's name:
@@ -108,7 +128,7 @@ Signed exactly as listed on the panel (CP2), `{p}` the speaker's name:
 - What did {p} do well? · What kind of fix is it?
 - Ready for {p} · Without a video it goes to {p} only, not to the library. · In the library under “{error}”, waiting until the machine can hear it.
 - Summary: Your answer · Change my answer
-- A word for this Take: Optional · it opens first in {p}’s feedback · As {p} will see it · Send without a video
+- A word for this Take: Optional · it opens first in {p}’s feedback · As {p} will see it · Send without a video · Remove the video (signed 2026-10-19, N80)
 - Training corpus: Import audio, label it, then judge its moments blind · {n} imports · {n} moments to judge · {n} of {m} moments to judge · One recording · it is cut into moments you judge blind · Choose a file · Audio or video, up to 30 minutes · Imported · {n} moments
 - Training corpus set-up: Finish the set-up · Before its moments can be judged · Set-up not finished · finish it before judging · Set up · {n} moments
 - Library (now in admin): One error · the library offers it when the machine hears it · As a speaker will see it · the pencil edits every word · An exercise needs its video · Bring it back · Retire it · Praise lines the library offers when the machine hears this · None yet. · Exercises that treat it

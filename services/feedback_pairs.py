@@ -137,7 +137,7 @@ def record_pair(
 
 
 def _pair_writer(database: Any, take_word_id: Any) -> Any:
-    """A Take word's pair supersedes the word's earlier one (0478; founder
+    """A Take word's pair supersedes the word's earlier one (0479; founder
     2026-10-19, the latest version teaches); every other pair is inserted."""
     return getattr(database, "record_take_word_pair" if take_word_id
                    else "insert_feedback_pair", None)

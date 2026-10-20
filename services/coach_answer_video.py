@@ -8,7 +8,7 @@ directly; once given, a new video is an answer change and goes through the
 resolver (0446), so the history keeps the old video. The route enforces
 the blind gate before this runs.
 
-What the coach says in it is written down (0481; founder 2026-10-19, N79)
+What the coach says in it is written down (0482; founder 2026-10-19, N79)
 in coach_answer_video_transcripts, by the video's ref, so a changed
 answer's old video keeps its own words: after the upload has returned, off
 the coach's request, audio extracted and transcribed through the SPEAKER's
@@ -136,7 +136,7 @@ def _replace_resolved_video(database: Any, request_row: dict, url: str,
 
 def transcribe_answer_video(database: Any, *, request_row: Any, video_ref: str,
                             coach_id: Any, video_bytes: bytes) -> Optional[str]:
-    """The answer video's words, kept by its ref (0481, N79): audio
+    """The answer video's words, kept by its ref (0482, N79): audio
     extracted and transcribed through the speaker's permit
     (``coach_word_pairs.speaker_permit_adapter``, as the Take word's video).
     Only for a speaker who holds the training yes and never on the coach's
@@ -187,7 +187,7 @@ def transcribe_answer_video(database: Any, *, request_row: Any, video_ref: str,
         if "COACH_ANSWER_TRANSCRIPT_NOT_THIS_REQUESTS_VIDEO" in str(e):
             # Replaced before the answer was given, and before its words were
             # kept: it never reached the speaker. A replacement that lands
-            # after the words leaves the row (0481 header: readers filter).
+            # after the words leaves the row (0482 header: readers filter).
             _log.info("answer video words not kept request=%s: the video was replaced",
                       request_row["id"])
         else:
