@@ -271,6 +271,14 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     # Account/profile and conversational product state.
     PurgeDependency("lounge", "lounge_messages", "user_id", "user", "delete",
                     "database_row", 60),
+    # A coach's card about this person's goal (WIL-74) lives in the coach's
+    # Lounge; it goes with the person it is about.
+    PurgeDependency("lounge_about", "lounge_messages", "about_user_id", "user",
+                    "delete", "database_row", 60),
+    PurgeDependency("goal_history", "user_goal_history", "user_id", "user",
+                    "delete", "database_row", 60),
+    PurgeDependency("feedback_checks", "take_feedback_checks", "user_id", "user",
+                    "delete", "database_row", 60),
     PurgeDependency("settings", "user_settings", "user_id", "user", "delete",
                     "database_row", 60),
     # Lesson bookings (founder 2026-10-15, fix 6). The termination request
@@ -477,7 +485,7 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("fine_tune_run_owners", "fine_tune_run_owners",
                     "owner_principal_id", "principal", "delete",
                     "derived_feedback", 35),
-    # Every earlier version of a coach's Take word (0478): the coach's words
+    # Every earlier version of a coach's Take word (0479): the coach's words
     # about the speaker's Take go with the Take, before the word row, whose
     # cascade is only the backstop (founder 2026-10-19, N79: a coach's words
     # stay with the speaker).

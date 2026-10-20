@@ -212,7 +212,7 @@ def record_take_word_pair(database: Any, *, word_row: Any, coach_id: str,
     """When a draft was shown and the coach's final differs, the pair under
     the C5 rule (feedback_pairs.record_pair; surface coach_take_word). A
     transcript of the word's video is a second final (final_kind
-    "transcript"). One current pair per word and kind (0477): a newer
+    "transcript"). One current pair per word and kind (0478): a newer
     version supersedes the older, so the latest teaches (founder
     2026-10-19, N79), and a version that is no pair (no final, or the draft
     kept as it was) retires the older one. Never in the save's way."""
@@ -236,7 +236,7 @@ def record_take_word_pair(database: Any, *, word_row: Any, coach_id: str,
 
 def _retire_take_word_pair(database: Any, word_row: dict, final_kind: str) -> None:
     """The word's latest version is no pair, so its older pair of this kind
-    stops teaching (0477; the database writes nothing new)."""
+    stops teaching (0478; the database writes nothing new)."""
     writer = getattr(database, "record_take_word_pair", None)
     if writer is None or not word_row.get("id"):
         return

@@ -11,7 +11,7 @@ audit Q-A3); import from this module.
 import logging
 import os
 
-from flask import request
+from flask import jsonify, request
 
 from config import Config
 from services.db import db
@@ -19,6 +19,19 @@ from utils.ids import is_uuid as _is_valid_uuid  # noqa: F401 - imported from he
 
 logger = logging.getLogger(__name__)
 config = Config()
+
+
+#: Stable log event for a call to a retired route, so the founder can see
+#: whether anything still uses one before its code is deleted.
+RETIRED_ROUTE_EVENT = "retired_route_called"
+
+
+def retired_route(route: str, reason: str):
+    """Answer a retired route: 410 GONE, nothing read or written, and one
+    WARNING naming the route and the caller."""
+    logger.warning("%s route=%s method=%s user=%s", RETIRED_ROUTE_EVENT,
+                   route, request.method, getattr(request, "user_id", None))
+    return jsonify({"code": "GONE", "error": reason}), 410
 
 
 def _client_ip_from_request() -> str:

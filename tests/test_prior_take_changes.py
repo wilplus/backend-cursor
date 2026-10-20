@@ -1,22 +1,21 @@
-"""willab — cross-take discernment on the Living Transcript (founder
-decision 2026-07-20 #4).
-
-"When I say something differently the next time in a similar fragment,
-the system should spot that and let me know that previous time or this
-time it was better."
-
-Pinned here:
-  * fragments align by TEXT similarity under a monotonic constraint —
-    never by position (the corruption the #227 review found);
-  * new material (no confident counterpart) is never compared;
-  * a change is offered ONLY when the previous fragment outranks the new
-    one by more than noise — the new take holding its ground is silence;
-  * the offer is span-anchored on the NEW words, proposes the OLD ones,
-    and carries a deterministic why-key;
-  * a decided fragment is never re-offered;
-  * AC-9: no scores/internal vocabulary on the payload.
-
-Run: python3 -m unittest tests.test_prior_take_changes
+"""
+STORY    As a speaker, I want to be told when I said a passage better in an
+         earlier take, and to accept or keep it, so that my Ideal Text keeps
+         my best wording.
+OUTCOME
+  O1  Fragments align by text, not position; an offer is made only where
+      the old fragment clearly beats the new one, anchored on the NEW words
+      and proposing the OLD ones; the new take holding its ground is silence.
+  O2  A fragment the speaker already decided is never offered again.
+  O3  The offer carries no score or internal vocabulary (Never-1).
+  O4  Accept writes an approved bake row; keep writes a dismissal with no
+      replacement (Never-5: the text changes only on the speaker's yes).
+PROVES   O1 -> test_only_the_old_fragment_that_beats_the_new_is_offered
+         O2 -> test_only_the_old_fragment_that_beats_the_new_is_offered
+         O3 -> test_ac9_no_scores_or_internal_vocabulary
+         O4 -> test_accept_writes_an_approved_bake_row,
+               test_keep_writes_a_dismissal_with_no_replacement
+WHY      Founder decision 2026-07-20 #4 (cross-take discernment).
 """
 from __future__ import annotations
 
@@ -78,12 +77,33 @@ class BuildChangesTests(unittest.TestCase):
             _p("o2", "Then we shipped the first version quickly.", 1)]}
         return doc, prev
 
+    def test_only_the_old_fragment_that_beats_the_new_is_offered(self):
+        doc, prev = self._docs()
+        # An unrelated, strong opening in the old take: aligning by position
+        # would pair it with n1. Aligning by text never compares it.
+        prev["pieces"].insert(0, _p("o0", "Good morning to every one of you here today.", 1))
+        database = self._Db()
+        database.ROWS = {**database.ROWS,
+                         "o0": {"metrics": {"overall_score": 0.99, "f0_sd": 20.0}}}
+        [offer] = build_prior_take_changes(doc, prev, database=database)
+        self.assertEqual((offer["snippet_id"], offer["replaces_snippet_id"]), ("o1", "n1"))
+        self.assertEqual(offer["kind"], "replace")
+        self.assertEqual(offer["quote"], "We started small in a tiny room.")
+        self.assertEqual(self.DOC[offer["span"]["start"]:offer["span"]["end"]],
+                         offer["quote"])
+        self.assertEqual(offer["proposed_text"], "We started small in a cramped room.")
+        self.assertTrue(offer["why_key"])
+        # Once decided, never offered again.
+        self.assertEqual(build_prior_take_changes(
+            doc, prev, database=database, decided_ids=["o1"]), [])
 
     def test_ac9_no_scores_or_internal_vocabulary(self):
         import json
         doc, prev = self._docs()
-        raw = json.dumps(build_prior_take_changes(doc, prev,
-                                                  database=self._Db()))
+        offers = build_prior_take_changes(doc, prev, database=self._Db())
+        self.assertEqual(len(offers), 1)
+        self.assertEqual(offers[0]["proposed_text"], "We started small in a cramped room.")
+        raw = json.dumps(offers)
         for banned in ("overall_score", "power_score", "_score", "f0_sd",
                        "activation", "charisma", "threat", "stickiness"):
             self.assertNotIn(banned, raw)

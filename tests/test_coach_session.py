@@ -1,14 +1,21 @@
-"""willab coach session read — GET /v2/coach/sessions/<id> (FE PR #73).
-
-The headline regression: canonical coach-authored note/tag/surfaced state
-resumes on reopen without reviving the retired psychological construct lane.
-
-Also guards the §S.4 identity strip (pseudonym + domain only; NO user_id /
-name / email). The §B.4 pseudonym itself is pinned by
-test_email_threading.py::PseudonymParityTests.
+"""
+STORY    As a coach reopening a review, I want my earlier notes, tags and
+         surfaced moments back, with context hidden until all my blind labels
+         are in, so that I can resume without losing blindness.
+OUTCOME
+  O1  Never-2: until every moment has my blind label, the context is hidden
+      (no domain, deck or stickiness) and an unanswered moment is audio-only.
+  O2  Once my labels are in, my saved note, tag and surfaced state come back
+      on the moment I left them on, and the context opens.
+  O3  The payload never carries the speaker's user id (pseudonym only).
+PROVES   O1 -> test_context_is_redacted_until_every_blind_label_is_committed
+         O2 -> test_saved_notes_tags_and_surfaced_moments_resume_after_commit
+         O3 -> test_saved_notes_tags_and_surfaced_moments_resume_after_commit
+WHY      FE PR #73: notes and tags were lost on reopen; section S.4 identity strip.
 """
 from __future__ import annotations
 
+import json
 import unittest
 
 try:
@@ -45,6 +52,8 @@ class CoachSessionReadTests(unittest.TestCase):
         self._patch_db(
             "get_user_proficient_languages", lambda user_id: ["en"],
         )
+        self._patch_db("get_snippets_by_session", lambda sid: [])
+        self._patch_db("get_read_sessions_for", lambda sid: [], target=db.takes)
         self._patch_db(
             "get_recording",
             lambda recording_id: {"transcription_language": "en"},
@@ -89,9 +98,10 @@ class CoachSessionReadTests(unittest.TestCase):
         for target, attr, orig in self.originals.values():
             setattr(target, attr, orig)
 
-    def _patch_db(self, attr, fn):
-        self.originals[f"db:{attr}"] = (db, attr, getattr(db, attr, None))
-        setattr(db, attr, fn)
+    def _patch_db(self, attr, fn, target=None):
+        target = db if target is None else target
+        self.originals[f"{id(target)}:{attr}"] = (target, attr, getattr(target, attr, None))
+        setattr(target, attr, fn)
 
     def _get(self, sid=SID):
         with self.app.test_request_context():
@@ -99,34 +109,8 @@ class CoachSessionReadTests(unittest.TestCase):
             resp, status = v2_coach.v2_coach_get_session.__wrapped__(sid)
             return status, resp.get_json()
 
-
-    def _as_second_coach(self, own_ratings=None):
-        """A review another coach already claimed (K4 routes an Audio-unclear
-        moment to a second coach; founder 2026-10-08, playback everywhere)."""
-        calls = []
-
-        def claimed_by_other(session_id, actor_user_id, **kwargs):
-            calls.append(actor_user_id)
-            raise RuntimeError("review assigned to another coach")
-
-        self._patch_db("claim_coach_review", claimed_by_other)
-        self._patch_db("get_own_state_ratings_for_session",
-                       lambda sid, rater_id: dict(own_ratings or {}))
-        lab.build_readout_from_session = lambda sid, **kw: {"snippets": [
-            {"id": "a", "index": 1, "transcript": "hi",
-             "audio_ref": "https://signed.example/take.webm?sig=1",
-             "start_offset_ms": 0, "duration_ms": 8000,
-             "stickiness": {"composite": 0.5, "comment": "c"}},
-            {"id": "b", "index": 2, "transcript": "yo",
-             "audio_ref": "https://signed.example/take.webm?sig=1",
-             "start_offset_ms": 9000, "duration_ms": 5000},
-        ]}
-        return calls
-
-
     def test_context_is_redacted_until_every_blind_label_is_committed(self):
-        setattr(
-            db,
+        self._patch_db(
             "get_own_state_ratings_for_session",
             lambda sid, rater_id: {
                 "a": {"value": "yes", "unrateable": False},
@@ -148,6 +132,25 @@ class CoachSessionReadTests(unittest.TestCase):
         self.assertNotEqual(by_id["a"]["transcript"], "")
         self.assertEqual(by_id["b"]["transcript"], "")
         self.assertEqual(data["snippets"][0]["coach_state"]["note"], "")
+
+    def test_saved_notes_tags_and_surfaced_moments_resume_after_commit(self):
+        # setUp: this coach answered both moments blind; "a" carries a note.
+        status, data = self._get()
+        self.assertEqual(status, 200)
+        self.assertTrue(data["context_unlocked"])
+        self.assertEqual(data["domain"], "public_speaking")
+        by_id = {row["id"]: row["coach_state"] for row in data["snippets"]}
+        self.assertEqual(
+            (by_id["a"]["note"], by_id["a"]["tag"], by_id["a"]["surfaced"]),
+            ("strong open", "strong", True),
+        )
+        self.assertEqual(
+            (by_id["b"]["note"], by_id["b"]["tag"], by_id["b"]["surfaced"]),
+            ("", None, False),
+        )
+        # The speaker is a pseudonym on the wire, never their user id.
+        self.assertTrue(data["pseudonym"])
+        self.assertNotIn("user-xyz-secret", json.dumps(data))
 
 
 if __name__ == "__main__":

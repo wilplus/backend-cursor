@@ -1,32 +1,26 @@
-"""The gate that had no key: a spoken piece learns its Paragraph.
-
-PRODUCTION, 2026-09-19. The founder's take, read from the Railway log after
-three rounds of making that log readable:
-
-    v3 stood down take=440b7c97-… reason=service_inventory_unavailable
-    detail=piece_has_no_part_id; at_candidate:1; confidence_block_rejected:1
-
-``piece_has_no_part_id`` is the TENTH and last of ``_row_rejection``'s checks.
-Everything before it passed -- candidate id, snippet present in the document,
-span shape, span bounds, eligibility, recording id, start offset, duration.
-The frame was healthy all the way to the final binding.
-
-And that binding could never happen. ``build_transcript_document`` writes
-eleven fields onto a piece and ``part_id`` is not one of them; neither does
-``master_document``. So V3 has produced nothing since the cutover, for any
-Take -- a gate with no key, the same shape as ``service_enrollment_missing``,
-which was found and removed the same way days earlier. Two consumers read
-this field and nothing produced it.
-
-THE GATE STAYS. ``source_ideal_part_id`` is a required, UUID-validated field
-of the feedback contract; it is the Paragraph a bookmark hangs on. An item
-with no part is attached to nothing.
-
-THE RULE (founder, 2026-09-19): slide first, span to refine, and no guess.
+"""
+STORY    As a speaker, I want each spoken piece attached to the right
+         paragraph of my Ideal Text (slide first, then span, never a guess),
+         so that feedback lands on the paragraph I actually said. (Ideal
+         Text -> feedback: an item with no paragraph is attached to nothing.)
+OUTCOME
+  O1  On a slide with one paragraph, the piece gets that paragraph's id,
+      whatever words it carries.
+  O2  On a slide with several paragraphs, the piece's span picks the
+      paragraph, and its served-text span rides along.
+  O3  When the proofs disagree, or nothing proves which paragraph, or the
+      paragraph has no usable id, the piece gets no part_id.
+  O4  One malformed piece never costs the others their binding.
+PROVES   O1 -> test_a_piece_on_a_one_paragraph_slide_takes_that_paragraph
+         O2 -> test_a_span_picks_between_paragraphs_on_one_slide
+         O3 -> test_a_span_disagreeing_with_its_slide_binds_to_nothing
+               test_a_piece_whose_words_are_gone_binds_to_nothing
+               test_a_paragraph_with_no_usable_id_binds_to_nothing
+         O4 -> test_a_malformed_piece_passes_through_untouched
+WHY      Production 2026-09-19: V3 stood down on every Take with
+         piece_has_no_part_id, because nothing ever wrote part_id.
 """
 from __future__ import annotations
-
-import unittest
 
 from services.ideal_text_parts import bind_pieces_to_parts
 
@@ -69,51 +63,59 @@ def _piece(snippet_id, text, slide, start, end):
     }
 
 
-class NothingIsGuessed(unittest.TestCase):
+ID1, ID2, ID3 = (p["id"] for p in PARTS)
 
 
-    def test_a_span_disagreeing_with_its_slide_binds_to_nothing(self):
-        # Two proofs that disagree are not a proof: words matching slide 1's
-        # Paragraph, spoken (per the piece) on slide 0.
-        self.assertEqual(_bind([_piece("s3", THIRD, 0, 0, len(THIRD))]), [None])
+def test_a_piece_on_a_one_paragraph_slide_takes_that_paragraph():
+    # Slide 1 holds THIRD alone. The speaker rewrote it, so the pieces'
+    # words are gone, and the slide's region (here starting at the blank
+    # line before THIRD) gives a span no single paragraph contains: only the
+    # slide proves the paragraph, and that is enough.
+    regions = {0: REGIONS[0], 1: (REGIONS[0][1], len(SERVED))}
+    assert _bind([_piece("s3", "something said quite differently", 1, 0, 32),
+                  _piece("s4", "and more words that are gone", 1, 33, 61)],
+                 regions=regions) == [ID3, ID3]
 
 
-class TheEdgesThatAReadCanActuallyHit(unittest.TestCase):
-    """Each of these is a shape a real read produces, not a hypothetical."""
+def test_a_span_picks_between_paragraphs_on_one_slide():
+    transcript_first, transcript_second = (0, len(FIRST)), (len(FIRST) + 1, len(FIRST) + 1 + len(SECOND))
+    out = bind_pieces_to_parts(
+        _doc([_piece("s1", FIRST, 0, *transcript_first),
+              _piece("s2", SECOND, 0, *transcript_second)]),
+        served_text=SERVED, slide_regions=REGIONS, parts=PARTS)
+    first, second = out["pieces"]
+    assert (first["part_id"], second["part_id"]) == (ID1, ID2)
+    assert SERVED[second["served_start"]:second["served_end"]] == SECOND
 
-    def test_a_malformed_piece_passes_through_untouched(self):
-        # `pieces` is JSON off a document row; one bad entry must not cost
-        # the document its other bindings.
-        out = bind_pieces_to_parts(
-            _doc(["not a dict", _piece("s3", "spoken", 1, 0, 6)]),
-            served_text=SERVED, slide_regions=REGIONS, parts=PARTS,
-        )
-        self.assertEqual(out["pieces"][0], "not a dict")
-        self.assertEqual(out["pieces"][1]["part_id"],
-                         "33333333-3333-4333-8333-333333333333")
 
-    def test_a_piece_relocation_dropped_binds_to_nothing(self):
-        from services.ideal_text_parts import _part_id_for, part_spans
+def test_a_span_disagreeing_with_its_slide_binds_to_nothing():
+    # Two proofs that disagree are not a proof: words matching slide 1's
+    # Paragraph, spoken (per the piece) on slide 0.
+    assert _bind([_piece("s3", THIRD, 0, 0, len(THIRD))]) == [None]
 
-        # `relocate_pieces` drops a piece whose words are genuinely gone and
-        # whose gap is empty. There is then no span to refine with, and the
-        # slide holds two Paragraphs, so nothing proves which.
-        self.assertIsNone(
-            _part_id_for(
-                _piece("s1", FIRST, 0, 0, len(FIRST)),
-                None, part_spans(PARTS), REGIONS,
-            ))
 
-    def test_a_paragraph_with_no_usable_id_binds_to_nothing(self):
-        from services.ideal_text_parts import _part_id_for, part_spans
+def test_a_piece_whose_words_are_gone_binds_to_nothing():
+    # Slide 0 holds two Paragraphs and the words appear in neither: the slide
+    # alone cannot say which, so nothing is guessed.
+    assert _bind([_piece("s1", "words the speaker later deleted", 0, 0, 31)]) == [None]
 
-        # A part row that lost its id cannot be a `source_ideal_part_id`;
-        # the contract UUID-validates it downstream.
-        nameless = [{"id": None, "text": FIRST, "ord": 0},
-                    {"id": "", "text": SECOND, "ord": 1}]
-        spans = part_spans(nameless)
-        self.assertIsNone(_part_id_for(
-            _piece("s1", FIRST, 0, 0, len(FIRST)),
-            {"snippet_id": "s1", "start": 0, "end": len(FIRST)},
-            spans, {},
-        ))
+
+def test_a_paragraph_with_no_usable_id_binds_to_nothing():
+    # A part row that lost its id cannot be a `source_ideal_part_id`.
+    nameless = [{"id": None, "text": FIRST, "ord": 0}, {"id": "", "text": SECOND, "ord": 1}]
+    served = f"{FIRST}\n\n{SECOND}"
+    assert _bind([_piece("s1", FIRST, 0, 0, len(FIRST))], parts=nameless,
+                 regions={0: (0, len(served))}, served=served) == [None]
+    assert _bind([_piece("s1", FIRST, 0, 0, len(FIRST))], parts=nameless[:1],
+                 regions={0: (0, len(FIRST))}, served=FIRST) == [None]
+
+
+def test_a_malformed_piece_passes_through_untouched():
+    # `pieces` is JSON off a document row; one bad entry must not cost the
+    # document its other bindings.
+    out = bind_pieces_to_parts(
+        _doc(["not a dict", _piece("s3", "spoken", 1, 0, 6)]),
+        served_text=SERVED, slide_regions=REGIONS, parts=PARTS,
+    )
+    assert out["pieces"][0] == "not a dict"
+    assert out["pieces"][1]["part_id"] == ID3

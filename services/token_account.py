@@ -84,6 +84,35 @@ _RPC_RECHECK_SECONDS = 600.0
 _rpc_missing_until: float = 0.0
 
 
+#: Stable event name for a charge that let the action through unpaid. One
+#: name so the founder can search the logs and Sentry for the day's list.
+CHARGE_FAILED_EVENT = "token_charge_failed"
+
+
+def _alert_charge_failed(user_id: Any, action: Any, ref_id: Any, reason: str,
+                         err: Any = None) -> None:
+    """Make a fail-open charge visible: one ERROR line and one Sentry event.
+
+    The action still goes through (fence §6.1); this only stops the free
+    action from being silent. Never raises.
+    """
+    logger.error("%s user=%s action=%s ref=%s reason=%s err=%s",
+                 CHARGE_FAILED_EVENT, user_id, action, ref_id, reason, err)
+    try:
+        import sentry_sdk
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("token_charge_failed", reason)
+            scope.set_context(CHARGE_FAILED_EVENT, {
+                "user_id": str(user_id), "action": str(action),
+                "ref_id": None if ref_id is None else str(ref_id),
+                "reason": reason, "error": None if err is None else str(err),
+            })
+            sentry_sdk.capture_message(f"{CHARGE_FAILED_EVENT}:{reason}",
+                                       level="error")
+    except Exception:  # noqa: BLE001 — the alert never costs the action
+        logger.debug("token_account: alert not sent", exc_info=True)
+
+
 class ChargeResult:
     """What a charge did. Never an exception — callers on the F1 path branch on
     ``ok`` and carry on either way."""
@@ -540,16 +569,15 @@ def _charge_atomic(db, user_id: str, action: str, price: int, *,
         # retry through the legacy path, because "rolled back" is what the
         # error SAYS and a lost response after a successful commit looks
         # identical from here.
-        logger.warning("token_account: atomic charge failed user=%s action=%s "
-                       "err=%s", user_id, action, e)
+        _alert_charge_failed(user_id, action, ref_id, "write_failed", e)
         return ChargeResult(True, 0, 0, "write_failed", action)
 
     payload = getattr(res, "data", None)
     if isinstance(payload, list):            # PostgREST can wrap scalars
         payload = payload[0] if payload else None
     if not isinstance(payload, dict):
-        logger.warning("token_account: atomic charge returned %r user=%s",
-                       payload, user_id)
+        _alert_charge_failed(user_id, action, ref_id, "write_failed",
+                             f"unreadable answer {payload!r}")
         return ChargeResult(True, 0, 0, "write_failed", action)
 
     return ChargeResult(
@@ -597,8 +625,7 @@ def charge(user_id: str, action: str, *, ref_id: Optional[str] = None,
     if acct is None:
         # Cannot read the account — do not block. Better to give away an action
         # than to fail a recording over a billing lookup.
-        logger.warning("token_account: charge skipped (no account) user=%s "
-                       "action=%s", user_id, action)
+        _alert_charge_failed(user_id, action, ref_id, "account_unavailable")
         return ChargeResult(True, 0, 0, "account_unavailable", action)
 
     tier = normalize_tier(acct.get("tier"))
@@ -665,12 +692,11 @@ def _charge_legacy(db, user_id: str, action: str, price: int, *,
                 return ChargeResult(False, 0, bal2, "insufficient", action)
             new_balance = max(0, bal2 - price)
             if not _spend(db, user_id, price, monthly2, bonus2):
-                logger.warning("token_account: CAS lost twice user=%s "
-                               "action=%s — allowing", user_id, action)
+                _alert_charge_failed(user_id, action, ref_id,
+                                     "cas_contention")
                 return ChargeResult(True, 0, bal2, "cas_contention", action)
     except Exception as e:
-        logger.warning("token_account: charge write failed user=%s action=%s "
-                       "err=%s", user_id, action, e)
+        _alert_charge_failed(user_id, action, ref_id, "write_failed", e)
         return ChargeResult(True, 0, balance, "write_failed", action)
 
     if action in COACH_ACTIONS:

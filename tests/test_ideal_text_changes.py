@@ -1,11 +1,31 @@
-"""The `changes` block, stage by stage (audit Q-C1, Phase 5).
-
-``services.ideal_text_changes`` is the former 900-line route helper, split
-into stages that run through one ``DegradationLog``. These tests drive the
-stages with a small fake database and a fake ``ChangesDeps``: each stage
-that used to be a swallow-all still serves its fallback, and now names
-itself in `degraded`. The Manager gate (L2) is exercised through the real
-``intervention_candidates.select``.
+"""
+STORY    As a speaker, I want my Ideal Text's feedback block to be the V3
+         feedback, each answered item keeping its decision, every Confident
+         Voice item playable, served fast, and empty rather than wrong when
+         something fails, so that I can trust what is marked (feedback on
+         the critical path).
+OUTCOME
+  O1  A failing stage serves its named fallback (no rows, a named stage in
+      `degraded`), never wrong rows.
+  O2  When V3 fails on the way, no V2 rows are served and the failure is
+      reported.
+  O3  A served V3 Confident Voice row carries its recording
+      (snippet_audio_ref), so the speaker can hear the moment.
+  O4  An answered row stays, with its decision as its status.
+  O5  Every served V3 row carries its learning handles and nothing else
+      leaves the server with it.
+  O6  The block equals the frozen block, each row read once, and the live
+      read is served before the dark frame is written.
+PROVES   O1 -> test_the_span_check_serving_none_is_a_named_fallback
+         O2 -> test_a_failure_on_the_way_to_v3_serves_no_v2_rows
+         O3 -> test_a_served_confident_voice_row_carries_its_recording
+         O4 -> test_a_yes_on_the_legacy_route_marks_the_row_approved_and_keeps_it
+         O5 -> test_every_served_v3_row_carries_its_learning_handles
+         O6 -> test_the_block_is_the_same_block_and_no_row_is_read_twice
+               test_the_live_read_serves_the_block_before_the_dark_frame_is_written
+WHY      services.ideal_text_changes (audit Q-C1). O3: founder 2026-09-20
+         "there is no playback on the overlay". O4 and O5 drive stages of
+         _ChangesRun directly; the rest go through build_changes_block.
 """
 from __future__ import annotations
 
@@ -150,25 +170,6 @@ def test_the_span_check_serving_none_is_a_named_fallback():
             "kind": "span_check_failed"} in out["degraded"]
 
 
-# ── THE CLIP UNDER A V3 ROW (founder 2026-09-20) ──────────────────────────
-#
-# "there is no playback on the overlay so you cannot play the confident
-#  moment and actually see whether it sounded confident or not. there is
-#  nothing at the bottom."
-#
-# `_praise_playback` attaches the recording. It runs early, because
-# `_feedback_set_and_fallbacks` classifies through `feedback_family_of`,
-# which will only call a row Confident Voice once it has a playable excerpt.
-# Then `_first_client_feedback` REPLACES `self.changes` wholesale with V3's
-# rows — and every clip attached upstream went out with the list it was
-# attached to. Since the V3 cutover, not one served Confident Voice item had
-# a recording under it.
-#
-# The product's own rule, stated twice in the source: the claim is about how
-# it SOUNDED, and it is the only claim this product makes that the student
-# cannot check by reading.
-
-
 def _run_for_playback(deps):
     from services.ideal_text_changes import _ChangesRun
     return _ChangesRun(ARC, DOC, "user-1", T1, 1, deps,
@@ -187,9 +188,6 @@ def _v3_row(snippet_id):
         "span": {"start": 0, "end": 17},
         "quote": "We started small.",
     }
-
-
-# ── #592: a superseded set must not filter the rows that superseded it ─────
 
 
 # ---------------------------------------------------------------------------
@@ -221,48 +219,6 @@ def test_a_yes_on_the_legacy_route_marks_the_row_approved_and_keeps_it():
     run.responses_by_id = {f"cand:{S1}": "yes"}
     run._mark_answered_service_items()
     assert _statuses(run) == [(f"cand:{S1}", "approved"), (f"cand:{S2}", None)]
-
-
-# ══════════════════════════════════════════════════════════════════════════
-#  R-4 — a freeze from the old policy does not blank the rows it predates
-# ══════════════════════════════════════════════════════════════════════════
-
-
-class _R4Db:
-    """The two reads and the one write `_claim_or_filter` makes."""
-
-    def __init__(self):
-        self.exposures: list[dict] = []
-        self.claims = 0
-
-    def v2_get_session_by_id(self, sid):
-        return {"id": T1, "take_index": 1} if sid == T1 else {}
-
-    def insert_take_feedback_exposure(self, **kwargs):
-        self.exposures.append(kwargs)
-        return True
-
-    def __getattr__(self, name):
-        def _missing(*a, **k):
-            raise AttributeError(f"_R4Db has no {name}")
-        return _missing
-
-
-def _r4_run(db):
-    return _ChangesRun(
-        ARC, "Our approach is different, and that matters.", "user-1", T1, 1,
-        ChangesDeps(
-            database=db,
-            first_client_repository=None,
-            applied_map=lambda ids: {},
-            playback_map=lambda ids: {},
-            previous_spoken_session=lambda arc_id, sid: None,
-            locked_parts=lambda arc_id, user_id, text: [],
-            with_evidence_coordinates=lambda rows, **k: rows,
-            record_arms=lambda result, sid, uid: None,
-        ),
-        DegradationLog("ideal_text"),
-    )
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -302,12 +258,24 @@ def _v3_bundle(*keys):
     }
 
 
-class _PacketDb(_R4Db):
-    """`_R4Db` plus the one write the packet stage makes."""
+class _PacketDb:
+    """The reads and the writes the claim and packet stages make."""
 
     def __init__(self):
-        super().__init__()
+        self.exposures: list[dict] = []
         self.presentations: list[dict] = []
+
+    def v2_get_session_by_id(self, sid):
+        return {"id": T1, "take_index": 1} if sid == T1 else {}
+
+    def insert_take_feedback_exposure(self, **kwargs):
+        self.exposures.append(kwargs)
+        return True
+
+    def __getattr__(self, name):
+        def _missing(*a, **k):
+            raise AttributeError(f"_PacketDb has no {name}")
+        return _missing
 
     def create_learning_surface_presentation(self, row):
         self.presentations.append(row)
@@ -323,7 +291,8 @@ def _v3_verbal_row(key, family):
 
 def test_every_served_v3_row_carries_its_learning_handles():
     db = _PacketDb()
-    run = _r4_run(db)
+    run = _ChangesRun(ARC, "Our approach is different, and that matters.", "user-1",
+                      T1, 1, _deps(db), DegradationLog("ideal_text"))
     run.arm_sid = T1
     run.v3_replaced_changes = True
     run.v3_learning = {"bundle": _v3_bundle("cv1", "cv2", "rw1"),
@@ -376,6 +345,23 @@ def _replace_sug_db():
     return FakeDB(sugs={S2: {"kind": "replace", "trigger": "polish",
                              "replacement_text": "And then we launched it fast.",
                              "why": "Tighter."}})
+
+
+def test_a_served_confident_voice_row_carries_its_recording():
+    """V3 replaces the rows the clips were first attached to; the served
+    Confident Voice row must still carry its recording."""
+    db = _replace_sug_db()
+    deps = _deps(db, playback_map=lambda ids: {
+        S1: {"snippet_audio_ref": "takes/clip-1.webm"}} if T1 in ids else {})
+    with patch("services.mlc3_first_client_feedback.prepare_first_client_feedback",
+               return_value=[_v3_row(S1)]), \
+            patch("services.ideal_text_parts.bind_pieces_to_parts",
+                  side_effect=lambda doc, **_k: doc):
+        out = _v3_block(db, deps=deps)
+    served = [row for row in out["changes"]
+              if row.get("feedback_family") == "confident_voice"]
+    assert [row["id"] for row in served] == [f"cand:{S1}"]
+    assert served[0]["snippet_audio_ref"] == "takes/clip-1.webm"
 
 
 def test_a_failure_on_the_way_to_v3_serves_no_v2_rows():

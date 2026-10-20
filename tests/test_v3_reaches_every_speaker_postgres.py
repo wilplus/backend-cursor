@@ -1,13 +1,24 @@
-"""0415 on a real database: V3's source gate no longer requires the
-allowlist, can be switched back without a deploy, and still refuses a
-principal with an open account-wide purge.
+"""
+STORY    As a speaker not on any allowlist, I want V3 feedback to reach me, so
+         that every speaker gets the same feedback. (Critical path: feedback.)
+OUTCOME
+  O1  The V3 source gate lets in a speaker who is on no allowlist.
+  O2  The founder can switch the allowlist back on without a deploy, and then
+      the same speaker is refused.
+  O3  A speaker with an open account-wide deletion is refused (privacy).
+PROVES   O1 -> test_a_speaker_not_on_the_list_passes
+         O2 -> test_the_allowlist_can_be_switched_back_on
+         O3 -> test_a_speaker_being_deleted_is_refused
+WHY      Migration 0415 (migrations/v3_reaches_every_speaker.sql; founder
+         2026-10-03, N29 answer 1, "Every speaker").
 
-Founder 2026-10-03 (N29 answer 1, "Every speaker"); F1 Repair Plan Phase 2.
-Every write happens inside a transaction that is rolled back.
+Runs on the rehearsal tier (lane "confident-moment released"). Every write
+happens inside a transaction that is rolled back.
 """
 from __future__ import annotations
 
 import os
+import uuid
 
 import psycopg2
 import pytest
@@ -17,7 +28,8 @@ pytestmark = pytest.mark.skipif(
     not DSN, reason="disposable confident-moment rehearsal only"
 )
 
-GATE = "SELECT public.require_mlc3_service_principal_v1(%s)"
+GATE = "SELECT (public.require_mlc3_service_principal_v1(%s)).contract_version"
+CONTRACT = "mlc3-first-client-service-v1"
 
 
 @pytest.fixture
@@ -28,6 +40,7 @@ def cur():
     conn = psycopg2.connect(DSN)
     try:
         with conn.cursor() as cursor:
+            _active_contract(cursor)
             yield cursor
     finally:
         conn.rollback()
@@ -49,13 +62,45 @@ def _active_contract(cur) -> None:
                retired_at = NULL,
                practice_bucket = 'practice-r2',
                coach_video_bucket = 'coach-r2'
-         WHERE contract_version = 'mlc3-first-client-service-v1'""")
+         WHERE contract_version = %s""", (CONTRACT,))
     if cur.rowcount != 1:
         pytest.skip("the lane has no first-client service contract row")
 
 
+def _passes(cur, principal) -> bool:
+    """True when the gate lets the principal in; False on the refusal."""
+    cur.execute("SAVEPOINT gate")
+    try:
+        cur.execute(GATE, (principal,))
+        assert cur.fetchone()[0] == CONTRACT
+        cur.execute("RELEASE SAVEPOINT gate")
+        return True
+    except psycopg2.Error as refused:
+        cur.execute("ROLLBACK TO SAVEPOINT gate")
+        assert "MLC3_SERVICE_PRINCIPAL_NOT_ALLOWED" in str(refused)
+        return False
+
+
 def test_a_speaker_not_on_the_list_passes(cur):
-    _active_contract(cur)
+    assert _passes(cur, _principal(cur)) is True
+
+
+def test_the_allowlist_can_be_switched_back_on(cur):
     principal = _principal(cur)
-    cur.execute(GATE, (principal,))
-    assert cur.fetchone() is not None
+    assert _passes(cur, principal) is True
+    cur.execute("""
+        INSERT INTO public.ring_settings (key, value, changed_by)
+        VALUES ('v3_requires_allowlist', 'true'::jsonb, 'founder')
+        ON CONFLICT (key) DO UPDATE
+           SET value = EXCLUDED.value, changed_by = EXCLUDED.changed_by""")
+    assert _passes(cur, principal) is False
+
+
+def test_a_speaker_being_deleted_is_refused(cur):
+    principal = _principal(cur)
+    assert _passes(cur, principal) is True
+    cur.execute("""
+        INSERT INTO public.data_purge_requests (
+            acquisition_principal_id, trigger_kind, idempotency_key)
+        VALUES (%s, 'account_deletion', %s)""", (principal, str(uuid.uuid4())))
+    assert _passes(cur, principal) is False

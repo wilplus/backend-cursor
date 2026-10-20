@@ -74,8 +74,11 @@ def save_profile(database, user_id: Any, body: Any) -> dict:
     # {domain, goal} is a full set: only write it when the body carries one
     # of them, otherwise an unrelated partial post would null the intake.
     if "domain" in body or "goal" in body:
+        before = (database.get_user_profile(user_id) or {}).get("goal")
         if not database.set_user_profile(user_id, domain=domain, goal=goal):
             raise _not_saved()
+        from services.goal_history import record_later
+        record_later(database, user_id, before, goal, "profile")
     else:
         stored = database.get_user_profile(user_id) or {}
         domain, goal = stored.get("domain"), stored.get("goal")

@@ -1,23 +1,31 @@
-"""The coach's Take-word video reaches Whisper only through the speaker's permit.
-
-PLF1 (founder 2026-10-05, N48.1; Wave 1 step 6). ``transcribe_take_word_video``
-called ``openai_service.transcribe_audio`` directly: no permit, no provider
-event, and no regard for ``PLF1_PROCESSING_AUTHORIZATION_MODE``. It now goes
-through ``AuthorizedProviderAdapter.transcribe_audio`` bound to the SPEAKER's
-authority, as ``speaker_provider_route`` binds the coach's text drafts.
-
-WHAT THIS PINS DOWN:
-  * enforce + current authority: the speaker's principal, the Take, and
-    ``recording_id=None`` are on the permit; operation ``transcription``,
-    provider ``openai``; the permit comes before the provider and the
-    terminal event after it; the transcript is saved as the second final;
-  * enforce + refusal (authority, permit or principal): no provider call, no
-    transcript, a warning logged with exc_info, and the coach's word and
-    video are still saved;
-  * mode off: one code path, no principal lookup, no permit, the call runs;
-  * the module no longer names the bare ``openai_service`` client.
-
-Run: python3 -m unittest tests.test_coach_take_word_permit
+"""
+STORY    As a speaker, I want my coach's Take-word video transcribed only
+         under my processing permit, and only when I said yes to training,
+         so that my coach's recording about my talk is processed with my
+         consent and never slows the coach's save.
+OUTCOME
+  O1  Enforce + my authority: my principal, the Take and recording None are
+      on the permit (openai, transcription); the permit comes before the
+      provider and the terminal event after it; the transcript is saved.
+  O2  Enforce + refusal: no provider call, no transcript, a warning logged
+      with exc_info; the coach's word and video are still saved.
+  O3  Mode off: no principal lookup, no permit, the call runs plainly.
+  O4  Without my training yes nothing reaches the transcriber (N79).
+  O5  A coach who edits only the words keeps the video, and it is not sent
+      again; a null video removes it; a failed read stops the save.
+PROVES   O1 -> test_enforced_with_authority_permit_precedes_provider_and_saves
+         O2 -> test_enforced_permit_refused_no_transcript_and_logged
+               test_refusal_still_saves_the_coach_s_word_and_video
+         O3 -> test_mode_off_runs_plainly
+               test_the_link_the_upload_handed_back_is_kept_and_transcribed
+         O4 -> test_without_the_training_yes_nothing_reaches_the_transcriber
+         O5 -> test_editing_only_the_words_keeps_the_video
+               test_editing_only_the_words_never_sends_the_video_again
+               test_a_null_video_removes_it
+               test_a_word_only_edit_leaves_the_video_out_of_the_write
+               test_a_failed_read_stops_the_save
+WHY      PLF1 (founder 2026-10-05, N48.1): the video went to Whisper with no
+         permit; N79 (founder 2026-10-19): only for the training yes.
 """
 from __future__ import annotations
 
@@ -154,6 +162,29 @@ class TranscribeTakeWordVideoTests(unittest.TestCase):
             db, word_row=dict(ROW), coach_id=COACH)))()
         return result, db, calls
 
+    def test_enforced_with_authority_permit_precedes_provider_and_saves(self):
+        auth = _Auth()
+        result, db, calls = self._run(auth)
+        self.assertEqual(result, "Slow down on the second slide.")
+        self.assertEqual(auth.order, ["permit", "started", "provider", "completed"])
+        self.assertEqual(auth.resolved, [("owner-principal", "speaker-user")])
+        self.assertEqual(auth.current, [("principal-speaker", "coach_draft")])
+        permit = auth.permits[0]
+        self.assertEqual(
+            (permit["acquisition_principal_id"], permit["take_id"], permit["recording_id"],
+             permit["provider"], permit["operation_kind"]),
+            ("principal-speaker", TAKE, None, "openai", "transcription"))
+        self.assertEqual(calls[0][0], b"audio-bytes")
+        self.assertEqual([t["transcript"] for t in db.transcripts],
+                         ["Slow down on the second slide."])
+
+    def test_mode_off_runs_plainly(self):
+        auth = _Auth(enforced=False)
+        result, db, calls = self._run(auth)
+        self.assertEqual(result, "Slow down on the second slide.")
+        self.assertEqual((auth.resolved, auth.current, auth.permits), ([], [], []))
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(db.transcripts), 1)
 
     def _assert_refused(self, auth):
         with self.assertLogs("services.coach_word_pairs", level="WARNING") as logs:
@@ -167,11 +198,9 @@ class TranscribeTakeWordVideoTests(unittest.TestCase):
         self.assertIsNotNone(refused[0].exc_info)
         return refused[0]
 
-
     def test_enforced_permit_refused_no_transcript_and_logged(self):
         record = self._assert_refused(_Auth(refuse_permit=True))
         self.assertIn("PROVIDER_PERMIT_DENIED", record.getMessage())
-
 
     def test_refusal_still_saves_the_coach_s_word_and_video(self):
         auth = _Auth(refuse_current=True)
@@ -217,7 +246,6 @@ class ATakeWordVideoIsTurnedIntoWords(unittest.TestCase):
         self.assertEqual((calls, db.transcripts), ([], []))
 
 
-
 class ATakeWordKeepsItsVideo(unittest.TestCase):
     """Founder 2026-10-19: a coach who edits only the words keeps their video."""
 
@@ -250,7 +278,6 @@ class ATakeWordKeepsItsVideo(unittest.TestCase):
         word = self._saves({"text": "Well done.", "video_ref": SIGNED_LINK},
                            {"text": "Well done.", "video_ref": None})
         self.assertIsNone(word["video_ref"])
-
 
 
 class TheDatabaseKeepsTheVideoAndTheShare(unittest.TestCase):

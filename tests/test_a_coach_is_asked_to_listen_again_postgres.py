@@ -1,30 +1,23 @@
-"""A coach is asked to listen again, blind, on a disposable database (0444;
-QG12a A, P26b A, N53.4; P26c, N54.1; Q-B8 A, N62; build plan D-CP-10).
-
-Pins:
-  * the table exists with RLS on and, by its shape, no column that could
-    carry a reason, an answer or a read; browser roles and PUBLIC hold
-    nothing on it or on the two functions; service_role reads, deletes and
-    calls the functions, and cannot write the table by hand;
-  * the file applied again changes nothing;
-  * the flag writes one open ask per coach with a blind judgment of record
-    on the clip (coach lane, no self-report, no abstention, no peer, no
-    anonymous row), none for a coach who has not judged it, none twice
-    while one is open; the line key rotates A, B, C, A per coach;
-  * the coach's new answer closes their open ask; a later flag opens a new
-    one and the closed one stays as history;
-  * a coach whose rating was not blind (0411) is not asked;
-  * the rotation reads the coach's latest line, so a purge of older rows
-    never makes a line repeat; two flags on one moment at once write one
-    ask and neither fails (per-coach lock, ON CONFLICT DO NOTHING);
-  * the moment is stored in canonical uuid text, whatever case it was sent
-    in, and the heard mark finds it the same way;
-  * bad input is refused by name.
+"""
+STORY    As a coach, I want to be asked to listen again only for clips I judged
+         blind, once at a time, with a fresh line each time, so that my second
+         answer is still my own and not prompted by the machine.
+OUTCOME
+  O1  The flag opens one ask per coach with a blind judgment of record and
+      none for a self-report, a peer, an abstention, an anonymous row or a
+      coach whose rating was not blind; no second ask while one is open.
+  O2  The coach's new answer closes their ask; the next flag opens a new one
+      with the next signed line (A then B) and the closed ask stays as history.
+  O3  Never-2: the ask carries no reason, answer or machine read, by the
+      table's shape (only take, moment, coach, line key and two times).
+PROVES   O1 -> test_the_flag_asks_every_coach_of_record_once_and_only_them
+         O2 -> test_an_answer_closes_the_ask_and_the_next_flag_rotates_the_line
+         O3 -> test_an_answer_closes_the_ask_and_the_next_flag_rotates_the_line
+WHY      0444 (QG12a A, P26c): the coach's second answer must stay blind.
 """
 from __future__ import annotations
 
 import os
-import pathlib
 import uuid
 
 import psycopg2
@@ -35,8 +28,6 @@ DSN = os.environ.get("CONFIDENT_MOMENT_REHEARSAL_DSN", "")
 pytestmark = pytest.mark.skipif(
     not DSN, reason="disposable confident-moment rehearsal only"
 )
-
-ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(scope="module")
@@ -98,3 +89,30 @@ def test_the_flag_asks_every_coach_of_record_once_and_only_them(db):
         assert len(_asks(cur, snippet)) == 2
         # A clip nobody judged yet: nothing to add (it is still in the queue).
         assert _flag(cur, take, str(uuid.uuid4())) == 0
+
+
+def test_an_answer_closes_the_ask_and_the_next_flag_rotates_the_line(db):
+    take, snippet = str(uuid.uuid4()), str(uuid.uuid4())
+    coach = str(uuid.uuid4())
+    with db.cursor() as cur:
+        _label(cur, snippet, coach, value="no")
+        assert _flag(cur, take, snippet) == 1
+        assert _asks(cur, snippet) == [(coach, "P26c-A", True)]
+
+        # The coach's new blind answer lands: their ask closes.
+        cur.execute("SELECT public.mark_coach_listen_again_heard_v1(%s, %s)",
+                    (snippet, coach))
+        assert cur.fetchone()[0] == 1
+        assert _asks(cur, snippet) == [(coach, "P26c-A", False)]
+
+        # A later flag opens a new ask with the next line; the old one is history.
+        assert _flag(cur, take, snippet) == 1
+        assert _asks(cur, snippet) == [(coach, "P26c-A", False), (coach, "P26c-B", True)]
+
+        # Never-2: what the coach's list reads cannot carry why, by its shape.
+        cur.execute("SELECT column_name FROM information_schema.columns "
+                    "WHERE table_schema = 'public' "
+                    "AND table_name = 'coach_listen_again_requests'")
+        assert {r[0] for r in cur.fetchall()} == {
+            "id", "take_session_id", "snippet_id", "coach_id", "line_key",
+            "requested_at", "heard_at"}
