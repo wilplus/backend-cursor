@@ -849,7 +849,8 @@ O2  ""Yes"" is kept and answered once with the signed words; a second tap
 changes nothing.
 O3  ""No"" asks what would help; my next typed message is kept as
 that answer (even if it sounds like a goal change), then the chat is
-ordinary again.
+ordinary again. Distress typed there is never kept as an answer: the
+chat's safety reply comes.
 O4  ""Skip"" ends it with no answer kept; typing a button's words counts as
 tapping it (also once the Take's card, drawn above the summary, is
 stored after the question), and any other message goes to the chat
@@ -861,7 +862,8 @@ or whose voice dipped, is (founder 2026-10-20).
 O7  The founder's weekly note says how often the voice rose, how many
 answered, and what would help, in the speakers' own words.","O1 -> test_the_question_closes_the_summary_but_waits_when_another_offer_is_there
 O2 -> test_yes_is_kept_and_answered_with_the_signed_words_once
-O3 -> test_not_really_asks_what_was_missing_and_the_chat_keeps_the_answer
+O3 -> test_not_really_asks_what_was_missing_and_the_chat_keeps_the_answer,
+test_distress_under_what_would_help_gets_the_safety_reply
 O4 -> test_skip_ends_it_without_an_answer,
 test_typing_a_button_counts_as_tapping_it_and_anything_else_goes_to_will
 O5 -> test_a_new_goal_is_kept_and_every_coach_but_the_speaker_gets_one_card_a_day
