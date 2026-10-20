@@ -6,6 +6,11 @@
 review session survives itself. Entries here are **binding** and get folded into the numbered
 sections on the next spec pass. Where this file and SPEC.md v3 disagree, **this file is newer.**
 
+**From 2026-10-20, the Feedback walk and the chat have one page** (frontend
+`docs/flows/feedback-walk-and-chat.md`, <https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md>), where their rules are
+edited in place. A decision about that flow keeps its N-number here as two lines
+and a link to the page; the full text lives once, there.
+
 ## 2026-09-22 · Article 50(2) and the plain-text clipboard — SETTLED
 
 **Founder decision, 2026-09-22: do not go further than the obligation
@@ -2566,15 +2571,10 @@ the previous one"). Lock: `FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`,
 "Decided after the lock (2026-10-18, fillers)". Migration 0475.
 
 **N76 · Words first, then voice (founder, chat, 18 October 2026).** The
-practise moment opens on the Clearer version only when its words need help
-(fillers, hedges, off the slide, a broken sentence) and a rewrite passes the
-gate (in the clip, evidence-backed, a real fix, still theirs, sayable, not
-declined); otherwise the voice Exercise with the AI clip. A clearer-version
-try is checked on its voice: better is a Good job with no clip, not yet
-brings the AI clip of the accepted words. "ok, push to prod" on the clickable
-prototype. Locks: `FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md` ("Words
-first, then voice") and `FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`
-("Decided after the lock (2026-10-18, words first)"). No migration.
+practise moment opens on the Clearer version only when its words need help and
+the rewrite passes the gate; otherwise the voice Exercise with the AI clip ("ok,
+push to prod" on <https://claude.ai/artifact/Ut2SqvHCoJ1hvH8dp17yQe>). The rule:
+flow page C4 and H3; `FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`. No migration.
 
 **N79 · What we keep of what a coach says, and what may leave (founder, chat,
 19 October 2026).** The goal is a coach "text brain" trained on what coaches
@@ -2603,246 +2603,31 @@ every draft with its exact prompt, exercise transcription from the audio,
 answer-video transcripts, and the situation frozen on each answer.
 
 **N80 · When a coach changes their word for a Take (founder, chat, 19 October
-2026).** The founder approved the two-phone prototype
-(<https://claude.ai/artifact/APk56PLZt6o6Cx9qUMKkuk>) and signed one new
-coach-panel word, "Remove the video". Every recommended answer (D1–D16),
-then six follow-up answers the same day (Q1–Q6):
-- **One bubble per word (D1).** The speaker's chat has one "Later · from
-  your coach" bubble per Take word; a change moves it to the bottom with the
-  latest words and video, never stacked. Every version stays in the word's
-  version history.
-- **A video taken back is gone from the chat (D2).** A removed or replaced
-  coach video can no longer be played anywhere in the speaker's chat: the
-  Lounge serves a coach video only while it is the word's current one, from
-  a fresh link. The file stays stored. A link a browser already holds plays
-  until its signature ends. The same rule covers a coach's video on a
-  moment's answer, in a small follow-up pull request (Q6).
-- **The same word again changes nothing (D3):** no jump, no orange mark, no
-  dot, no message.
-- **Watched once is watched (D4).** Watching the coach's word anywhere (the
-  WhatsApp link, the email link, the dot card, the bubble) clears its "new"
-  marks, and the walk writes the coach's words into the chat only once.
-  Only "Continue" on the coach's step or "Close" on the bubble marks it
-  watched, as locked; ✕ keeps the ring.
-- **The summary (D5, D6, Q1).** "See the earlier version" shows the summary
-  from before any coach note, however many edits followed. When the first
-  summary was already written with the coach's note, it shows that first
-  summary, with no extra AI call. A change to the video only (new or
-  removed, same words) does not rewrite the summary.
-- **During the review (D7)** a new or removed video with the same words
-  makes the coach's word new again: Step 0 shows it again.
-- **The bubble opens the word only (D8):** tapping the coach's bubble opens
-  just the coach's word in the lens, with "Close" (the locked design), not
-  the whole finished review.
-- **The coach panel, coming back (D9, D10, D12, Q3).** The saved video shows
-  with "Send to {p}" (keeps it), "Record again" (replaces it) and "Remove the
-  video" (new), which goes back to the camera with "Send without a video"
-  and sends the word with no video. "Remove the video" shows only for a
-  saved video, never right after recording a new clip; going back to the
-  words and forward keeps it removed until Send; ✕ cancels. The subtitle
-  "Optional · it opens first in {p}’s feedback" stays as signed. The
-  coach's picture beside the panel's words is the grey-blue coach avatar,
-  as speakers see the coach.
-- **No new words for the speaker (D11).** The orange ring says it is new;
-  the signed "Updated with your coach's note" line stays. The email for a
-  Take word leaves out "Open it to hear each moment, say how it sounded to
-  you…", because its link opens a walk with no moment to judge; nothing
-  replaces the line.
-- **While the review is open (Q4, Q5).** The coach's bubble still appears
-  only when the walk reaches the coach's step, as today; a later change
-  updates that bubble in place, in a later pull request.
-- **Coach videos into words (D13, D14, D15).** A coach's exercise video for
-  a speaker is turned into words only when that speaker gave the training
-  yes, as every coach video is (N79); this is built into #1127 before it
-  merges. The 10-minute cap stays. Answer-video transcription stays in the
-  web process's background thread for now; a catch-up run fills the gaps
-  later.
-- **Merge order (D16).** The five capture pull requests (#1133, #1134,
-  #1136, #1137, #1138) merge before #1127; each migration takes its number
-  when it merges.
-- **The approval (Q2)**, the last line of every commit that changes a locked
-  file for this: "Founder-Approved: Artur in the Claude Code chat, 19
-  October 2026: approved the two-phone prototype
-  https://claude.ai/artifact/APk56PLZt6o6Cx9qUMKkuk and signed the words
-  “Remove the video”".
-Locks: `FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md` ("Decided after the
-lock (2026-10-19, the saved video, N80)") and
-`FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md` ("Decided after the lock",
-"When the coach changes their word"). Built as small pull requests: the
-speaker's read side first (backend), the coach panel's saved video and the
-speaker's coach bubble (frontend), the same word again (backend, after the
-speaker's side is live) and #1127's training-yes gate. No new migration.
+2026).** One "Later · from your coach" bubble per Take word; a taken-back video
+never plays again; watched anywhere is watched; on the coach panel the saved
+video with "Record again" and the new word "Remove the video" (the two-phone
+prototype <https://claude.ai/artifact/APk56PLZt6o6Cx9qUMKkuk>). The rules: flow
+page D5; `FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md` ("Decided after the
+lock (2026-10-19, the saved video, N80)"). No migration.
 
 **N81 · The lens is one chat (founder, chat, 20 October 2026; WIL-89).** The
-ask: "make the lens view a chat, not the screen changing, so it syncs the
-Lounge", with the moment, the rewrite and the practice as one continuous
-conversation, moved on only by taps ("you can just click, but it appears as
-bubbles … you can scroll through the walk"). The founder approved the
-clickable prototype <https://claude.ai/artifact/P5fHFguyCgjhMGPsmH7UaD>
-("that is absolutely insanely great … can you build it that way?") and
-added one rule: "always after the click scroll to the bottom so I can see
-your newest answer". Amends sections 1 and 2 of the moment-and-feedback-chat
-lock:
-- **One thread, nothing swaps.** Every step of the walk reached lands under
-  the one before in the lens; the earlier steps stay above to scroll back
-  to. The lens keeps its sizes (18.5px, 22px corners) and its ‹ › and ✕;
-  there is still no message box.
-- **The step's buttons are a dock under the thread.** A choice (the helper
-  words, Accept and practise, Keep my words, Skip, 👍 Yes) lands as the
-  speaker's own orange bubble, the same words the Lounge stores, then the
-  next step's bubbles land one after the other.
-- **After every tap the thread scrolls to the bottom**, so the newest
-  bubble is in view; it keeps following new bubbles until the speaker
-  scrolls up by hand.
-- **Every practise is one thread**, the clearer version's too: the words to
-  say, then the recorder in the dock (the strip, Skip and the red Stop),
-  the try as "Practise N", the breathing mark while it is checked, then the
-  answer. The separate "Practise · Slide N" recorder screen and the check
-  and answer screens are gone. Tries, lines, AI clips and the three-try
-  rule are unchanged.
-- **Other speakers** land one by one, each with its name ("Other speakers ·
-  2 of 3") and the speaker's answer as their bubble; the three cards and
-  "Audio unclear" are the dock.
-- **Each step opens with its name** as a small line in the thread ("Slide
-  2", "Slide 2 · helper words", "Take 2"); the bar shows the step in view,
-  and ‹ › scroll to the step before or after. They no longer jump to a
-  step outside this opening of the walk; the Lounge holds every step.
-- **The Lounge says the same words.** It stores the practise answer's line
-  as the lens showed it (it used to work the line out again, so from the
-  second try on it could differ); Practise and Practise again no longer
-  write a bubble of their own (the try is the speaker's bubble); the label
-  above a moment is its slide ("Slide 2"), no longer "Slide 2 · moment 1 of
-  2".
-- **The open questions take the prototype's defaults, as approved:** the
-  bubbles of a step land one after another, each grey one behind the
-  typing dots and the step's buttons once they have all landed (the
-  founder compared a short fade and chose the dots, the same day: "add the
-  typing dots"); Next and Continue post nothing;
-  the recorder sits under the thread; the helper-word picker is a big
-  bubble in the thread; each step opens with its name.
-- **No new words.** Everything on screen is signed already.
-- **The approval**, the last line of every commit that changes a locked file
-  for this: "Founder-Approved: Artur in the Claude Code chat, 20 October
-  2026: approved the prototype
-  https://claude.ai/artifact/P5fHFguyCgjhMGPsmH7UaD (WIL-89, the lens as
-  one chat), and after every tap the thread scrolls to the newest bubble".
-Lock: `FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md` ("Decided after the
-lock", "The lens is one chat"). Frontend only; no backend change, no
-migration.
+walk is one chat that grows by taps: nothing swaps, the step's buttons are a dock,
+a choice lands as the speaker's bubble, every practise is one thread ("can you
+build it that way?" on <https://claude.ai/artifact/P5fHFguyCgjhMGPsmH7UaD>). The
+rules: flow page B5–B7, B12, C7. Frontend only; no migration.
 
-**N82 · Will asks one question after a Take, and the practise moment
-cheers first (founder, chat, 20 October 2026).** The ask: the walk "spots
-my negative thinking patterns": a confident moment gets "wow that was
-great", room to improve gets "great, but it could sound even better, why
-not say it like this" with the AI voice; the walk stays taps only; after
-it, Will asks in the Lounge (whether the feedback was applied, the goal,
-the audience, principles, "need a break?"), deeper after about three
-Takes, "a natural flow in the walk and in the lounge". Every open choice
-was answered with the recommended option the same day; the founder signed
-the clickable prototype <https://claude.ai/artifact/HSRfvDZLDRQizmGJDxMUJz>
-and its words ("signed, build it"):
-- **The voice Exercise opens with praise:** L4, the AI version of their
-  voice, then L3, in place of "Exercise" and "Here’s how you could say it."
-  Every not yet after it says L5. Signed lines only.
-- **One question per Take, as the Take's one ask** (`services/after_take.py`):
-  Take 1 keeps "Did this help?" when the Take looks off, otherwise Will
-  asks; from Take 2 the CEO panel's ask, WhatsApp, the home screen, then
-  Will, then "Did this help?".
-- **Only when something is off or missing, the first that holds**
-  (`services/will_question.py`): a breather when the practice did not land
-  or the voice dipped two Takes in a row (never two Takes running); "On
-  purpose?" when the clearer line practised last Take did not come back
-  (the practice's own passage match, no AI guess; when it did come back the
-  summary is told, and Will asks nothing about it); who the talk is for;
-  what they want the audience to do or feel; from Take 3, with both known,
-  one deeper question in their own words. Each basic and deeper question
-  once per talk.
-- **The tap answers come from what Will knows:** this Take's own words,
-  then what the speaker said for an earlier talk, then the signed answers
-  for their field. A Take that names its audience twice is checked
-  instead: "Sounds like this one's for {the board}. Right? 🎯" (Yes,
-  Someone else); the guess becomes the audience only on Yes.
-- **How Will knows:** one gpt-4o-mini call per Take
-  (`SPEC_WILL_QUESTION_HEARD`, prompt `will_question.heard`, drift-locked;
-  golden rows `tests/evals/golden/will_question.jsonl`), under the Take's
-  processing authorization, run beside the summary's own call. It may only
-  return words the title or transcript says, at most four, no number; code
-  checks that, and anything else, or a late or failed call, means Will asks
-  openly.
-- **Where the answers go:** every answer is kept for Will (speaker memory,
-  kind "answer"); who the talk is for fills the Take's setup `audience`, and
-  what they should do its `strategic_context` as "Desired call to action:"
-  (the setup's own line; the rest kept). The next Take's setup carries
-  them, so its clearer version and star suggestions hear them again (the
-  setup stopped asking on 2026-10-12).
-- **Answering:** a tap, Skip, or their own words in the message box; one
-  follow-up after "Someone else", "Something's missing", "It didn't feel
-  like me", "Not sure" or "Not really". A tap with no follow-up, Skip or
-  typed words let the message after the Take go.
-- **The signed words:** "Quick one: who's this talk really for? 🎯";
-  "When you finish, what do you want them to do? Or feel? 🤔"; "Last time
-  we practised “…”. It didn't make it into this Take. On purpose? 😏"
-  (Yes, on purpose · I forgot · It didn't feel like me); "You've put real
-  work into this one 💪 Need a breather, or does something feel missing?"
-  (A breather · Something's missing · All good, keep going); "Zoom out with
-  me 🔭 Does this talk take you where you want to go?" (Yes · Not sure ·
-  Not really); "Which part of this talk is most you?"; "Why does this one
-  matter to you?"; "If this talk goes perfectly, what changes for you?";
-  the follow-ups "Who is it for, then? 👀", "Tell me more 👀 What's
-  missing?", "What would feel more like you?", "What would make it a
-  yes?", "Where do you want it to take you?"; "Got it, thanks 🙏"; the
-  answers by field (business: My team · Leadership · A client; public
-  speaking: A big room · Colleagues · Friends and family; sales: A buyer ·
-  Their team · The decision maker; customer service: A customer · A caller
-  · My team; interviews: The hiring manager · A panel · A recruiter); goal:
-  Say yes · Trust me · Get it. "Skip" is the signed word under "What would
-  help?". Will says them as signed.
-- **Not built yet:** the bank editable on the admin page with empty slots
-  (it needs a table: its own change, with the migration review); Will
-  varying the words lightly; the coach panel showing the audience and the
-  goal in words (a locked screen).
-- **What stops happening:** from Take 2, "Did this help?" waits for a Take
-  where Will has nothing to ask; after a Take 1 that looks fine, the Lounge
-  now asks Will's question where it asked nothing.
-- **The approval**, the last line of every commit that changes a locked file
-  for this: "Founder-Approved: Artur in the Claude Code chat, 20 October
-  2026: signed the prototype https://claude.ai/artifact/HSRfvDZLDRQizmGJDxMUJz
-  (N82, praise first and Will's one question), 'signed, build it'".
-Lock: `FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md` ("Decided after the
-lock", "Praise first, and Will's one question after a Take"). No migration.
+**N82 · Will asks one question after a Take, and the practise moment cheers
+first (founder, chat, 20 October 2026).** The voice Exercise opens with L4, the
+AI clip and L3; Will asks one question in the Lounge, as the Take's one ask, only
+when something is off or missing, with tap answers from what Will knows; every
+answer is kept for Will ("signed, build it" on
+<https://claude.ai/artifact/HSRfvDZLDRQizmGJDxMUJz>). The rules and the signed
+words: flow page C6, E2–E4, K. No migration.
 
-**N83 · The founder edits Will's questions on the coach panel (founder,
-chat, 20 October 2026).** N82's bank was to be "editable in admin, with
-empty slots". Asked where, the founder drew it under the coach panel's
-queue ("show me where would you add it in the coach panel … below the
-users") and said "OK" to the prototype
-<https://claude.ai/artifact/WLZ1KY6dX1RBLXiNU73F9N>; the outside migration
-review was waived ("waive the review"):
-- **One row under the blind lists,** "Will · only you" → "Will's questions"
-  with how many questions and empty slots; the founder only (the backend's
-  `require_founder`; the panel draws the row only when the bank reads).
-- **It opens the bank** in Will's groups: change a question or a tap
-  answer, Save, and Will asks the new words from the next Take. The two
-  empty slots take the founder's own questions, asked after the signed
-  deeper ones, in the speaker's own words.
-- **The words are checked** (`will_question.save_bank`): no numbers, at
-  most two lines, the speaker's own words kept in place ("{the board}",
-  "…"), the same number of tap answers. Each answer keeps its follow-up by
-  its place, so a renamed answer still opens it.
-- **Where:** migration 0488 `will_question_bank` (one row per changed
-  question; copy, no row names a person; no env var); GET/PUT
-  `/v2/admin/will-questions`. A question with no row keeps the signed words
-  in code.
-- **New words, approved with the prototype:** "Will · only you", "Will's
-  questions", "N questions · M empty slots", "Only you see this. Will asks
-  the new words from the next Take.", "Empty slot", "Add a question",
-  "Their own words", "Asked N times", "Saved". The groups and the lines
-  saying when Will asks each are the prototype's.
-- **What stops happening:** nothing.
-- **The approval**, the last line of every commit that changes a locked file
-  for this: "Founder-Approved: Artur in the Claude Code chat, 20 October
-  2026: 'OK' to the prototype https://claude.ai/artifact/WLZ1KY6dX1RBLXiNU73F9N
-  (N83, Will's questions on the coach panel)".
-Lock: `FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md` ("Decided after the
-lock (2026-10-20, Will's questions, N83)").
-
+**N83 · The founder edits Will's questions on the coach panel (founder, chat,
+20 October 2026).** One row under the blind lists, "Will · only you" →
+"Will's questions"; the words are checked before they are kept; migration 0488
+`will_question_bank`, GET/PUT `/v2/admin/will-questions` ("OK" on
+<https://claude.ai/artifact/WLZ1KY6dX1RBLXiNU73F9N>, the review waived). The
+rules and the new words: `FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`
+("Decided after the lock (2026-10-20, Will's questions, N83)"); flow page E5.

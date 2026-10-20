@@ -28,6 +28,14 @@ prototypes show. To change one, ask the founder first. The prototypes and
 lock files are listed in `docs/LOCKS.md`. The earlier, longer
 version of this page is `docs/history/CLAUDE-2026-10-11.md`.
 
+The Feedback walk and the chat have one page, in the frontend repo:
+`docs/flows/feedback-walk-and-chat.md` (the rules as they stand, what is in
+flight, what is open, one line per change). A backend change to a rule of
+that flow is a line on that page, never a new file: the backend PR names the
+frontend PR that updates it. Its entry here in `docs/SPEC-DECISIONS-LOG.md`
+is two lines and a link. The other locked screens get a page of the same
+shape the next time one of them is changed.
+
 ## How to ship
 
 - Branch from `main` → PR → checks green → squash-merge. "Merge when green" is standing permission.
