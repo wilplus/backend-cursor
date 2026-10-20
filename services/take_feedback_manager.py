@@ -344,6 +344,9 @@ def _exposure_row(raw: dict, family: str) -> dict:
         # (D-ML-3, `tracked_changes._clearer_version_evidence`); without it
         # V3 reads the exposure row as unversioned and excludes it.
         "suggestion_version": raw.get("suggestion_version"),
+        # Why a rule rewrite was written (N85, "undermining"): the walk names
+        # it with the signed line. Only on the rows that have one.
+        **({"rewrite_reason": raw["rewrite_reason"]} if raw.get("rewrite_reason") else {}),
         **_machine_readings(raw),
         "evidence": dict(raw.get("_manager_evidence") or {}),
         "_manager_evidence": dict(raw.get("_manager_evidence") or {}),
@@ -409,6 +412,9 @@ CLIENT_READ_ROW_FIELDS = frozenset({
     # (`confident_voice_practice.coach_shared_answer`), read by the walk
     # since 2026-10-14. No number, no draft.
     "coach_answer",
+    # Why a rule rewrite was written ("undermining", N85), read by the
+    # walk's clearer version since 2026-10-20. A word, never a score.
+    "rewrite_reason",
 })
 UNRENDERED_ROW_FIELDS: frozenset[str] = frozenset()
 CLIENT_ROW_FIELDS = CLIENT_READ_ROW_FIELDS | UNRENDERED_ROW_FIELDS

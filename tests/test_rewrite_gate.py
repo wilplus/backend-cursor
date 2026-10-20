@@ -103,6 +103,10 @@ def test_undermining_words_said_with_conviction_open_the_moment():
     item = {"candidate_id": row["id"], "document_span": {"start": 120, "end": 200},
             "evidence": {"fallback": False}}
     assert rewrite_refusal(row, item, CLIP, row["quote"]) is None
+    # The reason reaches V3's input and the client's payload.
+    from services.take_feedback_manager import exposure_snapshot, strip_internal_evidence
+    assert [r.get("rewrite_reason") for r in exposure_snapshot([row])] == ["undermining"]
+    assert strip_internal_evidence([row])[0]["rewrite_reason"] == "undermining"
     played_down = "This is just a small thing, but it saves the team a full day every week."
     assert not [r for r in evidence_backed_rewrite_candidates(played_down, take_session_id="t", snippet_id="s")
                 if r.get("rewrite_reason")]
