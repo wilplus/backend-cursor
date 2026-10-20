@@ -87,6 +87,8 @@ REGISTER = {
     "will_question.heard_user": SourceRef("services/will_question.py", "heard"),
     "will_question.vary": SourceRef("services/will_question.py", "_VARY_SYSTEM"),
     "will_question.vary_user": SourceRef("services/will_question.py", "vary"),
+    "will_question.lead_in": SourceRef("services/will_question.py", "_LEAD_IN_SYSTEM"),
+    "will_question.lead_in_user": SourceRef("services/will_question.py", "lead_in"),
     "speaker_memory.lookup_block": SourceRef("services/speaker_lookup.py", "lookup_block"),
     "audit_pointer.builder": SourceRef("services/audit_intent.py", "_render_pointer"),
     "next_session_icebreaker.builder": SourceRef(

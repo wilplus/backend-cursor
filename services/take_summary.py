@@ -66,6 +66,8 @@ _EMOJI = re.compile("[\U0001F300-\U0001FAFF\u2600-\u27BF]")
 _TAIL = " \u2b07\ufe0f\u200d"
 #: How close a sentence must be to a signed line (shared words).
 _NEAR = 0.5
+#: A last sentence that names the next step (N89: the chain brings it).
+_NEXT_STEP = re.compile(r"\brecord(ing)?\b|\bnext (take|one)\b|\bkeep practi[sc]ing\b", re.I)
 _MAX_CHARS = 420
 
 _SYSTEM = (
@@ -80,9 +82,9 @@ _SYSTEM = (
     "- If what they said seems to wander from the talk's title, ask about "
     "it with curiosity, never as a correction.\n"
     "- Give no feedback and no advice: their walk already did that.\n"
-    "- End with the next step, in the spirit of the usual message's last "
-    "line: record the next take (or, after the third, keep practising). "
-    "Never end with a question.\n"
+    "- Do not tell them what to do next and never mention recording the "
+    "next take: Will brings that himself, after this message. Never end "
+    "with a question.\n"
     "- Speak only to what this Take showed about whether they can do "
     "this; never judge them as a person, their self-esteem or their worth.\n"
     "Never use numbers (a Take number inside a signed line is the one "
@@ -155,6 +157,10 @@ def _clean(text: Optional[str], lines: Optional[list[str]] = None,
     if not 2 <= len(sentences) <= 4 or len(body) > _MAX_CHARS:
         return None
     if _EMOJI.sub("", body).rstrip(_TAIL).endswith("?"):
+        return None
+    # The next step is Will's, after the chain of asks (founder 2026-10-20,
+    # N89): a summary that sends them to record is the signed copy instead.
+    if _NEXT_STEP.search(sentences[-1]):
         return None
     checked = _TAKE_NUMBER.sub("Take", body)
     for name in sorted((n for n in names if n), key=len, reverse=True):
@@ -466,7 +472,9 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
         first = held.get("metadata") or {}
         practice = practice or (first.get("practice") if first.get("practice") in ("better", "not_yet") else None)
         words = words or [w for w in (first.get("helper_words") or []) if isinstance(w, str)][:2]
-    anchor = _COPY.get(take_index) or _COPY[3]
+    # The usual message's first line only (N89): what happened, not what to
+    # do next; the chain and the closing message bring the next step.
+    anchor = (_COPY.get(take_index) or _COPY[3]).split("\n\n")[0]
     moments = _moments(database, take)
     earlier = earlier_lookup(database, user_id=str(user_id), arc_id=str(arc_id), takes=takes,
                              take_index=take_index, query=_query(moments, words, takes))
@@ -478,6 +486,10 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
         database, user_id=str(user_id), arc_id=str(arc_id), takes=takes, take=take,
         take_index=take_index, now=(practice, moved), moments=moments)
     facts = talk_facts(takes) + said_facts(moments, now) + earlier() + carried + rest
+    asks, lead_ins = _chain_plan(database, user_id=str(user_id), arc_id=str(arc_id), take=take,
+                                 take_index=take_index, practice=practice, moved=moved,
+                                 can_install=body.get("can_install") is True, will=will,
+                                 facts=facts, held=held is not None)
     text = _written(database, take, anchor, facts, practice, words,
                     note, str(arc_id), str(user_id),
                     signed=signed_lines(now, before, take_index),
@@ -489,7 +501,7 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
     if held:
         return _rewritten(database, str(user_id), client_id, held, text, meta)
     return _first_written(database, str(user_id), client_id, text or anchor, meta,
-                          can_install=body.get("can_install") is True, will=will)
+                          asks=asks, lead_ins=lead_ins(), will=will)
 
 
 def _before_outcome(database: Any, user_id: str, arc_id: str, take_index: int) -> Optional[tuple]:
@@ -553,22 +565,49 @@ def _rewritten(database: Any, user_id: str, client_id: str, held: dict,
     return database.rewrite_lounge_message(user_id, client_id, text, meta) or held
 
 
-def _first_written(database: Any, user_id: str, client_id: str, text: str, meta: dict,
-                   *, can_install: bool, will: Any = None) -> Optional[dict]:
-    """The summary's batch, once per Take: the summary, held back behind the
-    Take's one ask when there is one (``after_take``), then that ask."""
+def _chain_plan(database: Any, *, user_id: str, arc_id: str, take: str, take_index: int,
+                practice: Optional[str], moved: Optional[str], can_install: bool,
+                will: Any, facts: list[str], held: bool) -> tuple:
+    """The asks after this Take (``after_take.chain``) and Will's lead-ins
+    for them, started beside the summary's own call so they cost no extra
+    wait; nothing for a summary being rewritten. Never raises."""
+    if held:
+        return [], (lambda: {})
     from services import after_take
     from services.feedback_check import looks_off
+    try:
+        asks = after_take.chain(database, user_id, take_index=take_index,
+                                off=looks_off(practice, moved), can_install=can_install,
+                                will=will is not None)
+        return asks, after_take.start_lead_ins(database, user_id=user_id, arc_id=arc_id,
+                                               take=take, asks=asks, facts=facts)
+    except Exception as error:  # noqa: BLE001 -- the summary is written either way
+        logger.warning("take summary: no chain take=%s: %s", take, error, exc_info=True)
+        return [], (lambda: {})
+
+
+def _first_written(database: Any, user_id: str, client_id: str, text: str, meta: dict,
+                   *, asks: list[str], lead_ins: dict, will: Any = None) -> Optional[dict]:
+    """The summary's batch, once per Take (founder 2026-10-20, N89): the
+    summary, drawn at once; the closing message, held back behind the chain
+    of asks (``after_take``) when there is one; then the first ask."""
+    from services import after_take
     from services.lounge_messages import stamp_after, thread_stamp
     take, practice, moved = meta["take_session_id"], meta["practice"], meta["moved"]
     after_take.release_older(database, user_id)
-    ask = after_take.choose(database, user_id, take_index=meta["take_index"],
-                            off=looks_off(practice, moved), can_install=can_install,
-                            will=will is not None)
-    if ask:
-        meta["held_for"] = ask
     # Under the walk it closes: the walk's steps carry the browser's time.
     at = thread_stamp(database, user_id)
+    # Will's question is put together now, from his plan, and written when
+    # its turn in the chain comes.
+    queued = ({"will_question": after_take.ask_rows(
+        database, "will_question", user_id=user_id, arc_id=meta["arc_id"], take=take,
+        at=at, will=will)} if "will_question" in asks else {})
+    closing = after_take.closing_row(user_id=user_id, arc_id=meta["arc_id"],
+                                     take_index=meta["take_index"], take=take,
+                                     at=stamp_after(at), asks=asks, lead_ins=lead_ins,
+                                     queued=queued)
+    first = after_take.rows_for(database, user_id, closing["metadata"], asks[0],
+                                stamp_after(at, gap_ms=2)) if asks else []
     batch = [{
         "client_id": client_id,
         "role": "bot",
@@ -576,8 +615,7 @@ def _first_written(database: Any, user_id: str, client_id: str, text: str, meta:
         "body": text,
         "metadata": meta,
         "client_created_at": at,
-    }] + after_take.ask_rows(database, ask, user_id=user_id, arc_id=meta["arc_id"],
-                             take=take, at=stamp_after(at), will=will)
+    }, closing] + first
     persisted = database.insert_lounge_messages(user_id, batch)
     from services import speaker_memory
     speaker_memory.record(database, user_id, "take",

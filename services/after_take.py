@@ -1,28 +1,42 @@
-"""One action at a time after a Take (founder 2026-10-20: "You cannot have
-two actions at a time, like feedback and record"; the details chosen on the
-decisions page the same day).
+"""One action at a time after a Take, in a chain (founder 2026-10-20, N89,
+after checking the app; the first form, one ask per Take, the same
+morning).
 
-After the Feedback walk the Lounge shows the Take's card, then at most ONE
-ask, then the message after the Take with "Record Take N". The message is
-written with the summary's batch (``take_summary``) but held back
-(``metadata.held_for`` names the ask) and let go under whatever closed the
-ask. Which ask (``choose``):
+After the Feedback walk the Lounge shows the Take's card and the summary
+(``take_summary``): what the Take showed, with no next step and no record
+button. Then, one at a time, each after the one before is answered: every
+ask that waits, each opened by Will's lead-in line and followed by the
+ask's buttons; and only then the closing message (``NEXT_TAKE``) with
+"Record Take N" under it. The closing message is written with the summary's
+batch but held back (``metadata.held_for`` names the ask in front of the
+speaker, ``metadata.chain`` the asks still to come) and advances under
+whatever closed the ask (``release``). The asks (``chain``), in order:
 
-  Take 1      "Did this help?", only when the Take looks off
-              (``feedback_check.looks_off``); else Will's question when it
-              has one (``will_question``, founder 2026-10-20). Never
-              WhatsApp, never an ask from the CEO panel.
+  Take 1      Will's question when it has one (``will_question``); "Did
+              this help?" when the Take looks off
+              (``feedback_check.looks_off``). Never WhatsApp, never an ask
+              from the CEO panel.
   Take 2 on   the founder's ask from the CEO panel when one is open
-              ("admin"; the Lounge shows it, and "Not now" leaves it open,
-              so it comes back at the end of the next Take); else WhatsApp,
+              ("admin"; the Lounge draws it, and "Not now" leaves it open,
+              so it comes back at the end of the next Take); WhatsApp,
               while there is no number and it was asked fewer than twice;
-              else the home screen, once, where the phone can add it; else
-              Will's question when it has one; else "Did this help?" when
+              the home screen, once, where the phone can add it; then
+              Will's question when it has one; then "Did this help?" when
               the Take looks off.
 
-Let go (``release``), always under the rows that closed the ask:
-  - "Yes": with ``GLAD`` before its last line; "Skip", or the answer to
-    "What would help?": as written (``feedback_check``);
+Will's lead-in (``will_question.lead_in``, started beside the summary's
+own call and under the Take's authority): one or two sentences tied to
+this Take before the ask's signed words said with a light touch, for
+WhatsApp, the home screen and "Did this help?" (``LEAD_IN_ASKS``). Will's
+own question needs none, and the CEO panel's asks are drawn as written
+(their prices carry numbers; the data question's words belong to the
+consent screen). A lead-in that fails its checks, or came too late, means
+the ask as written.
+
+Advancing (``release``), always under the rows that closed the ask:
+  - "Yes" to "Did this help?": ``GLAD`` as the reply, then the next ask;
+    "Skip", or the answer to "What would help?": under "Thanks!"
+    (``feedback_check``);
   - Will's question answered (a tap with no follow-up, Skip, or typed
     words), as written (``will_question``);
   - a typed turn that passes the ask, under Will's reply
@@ -30,17 +44,22 @@ Let go (``release``), always under the rows that closed the ask:
   - the ask's form closing in the Lounge, whatever the choice (Save, Not
     now, See prices): POST /v2/user/lounge/after-take;
   - a newer Take's summary: an older held message is let go where it stands.
+An ask that no longer applies when its turn comes (a number saved since) is
+skipped. When the chain is empty the closing message is let go under the
+newest row, and the Lounge puts "Record Take N" under it.
 
-Nothing here blocks the next Take: one tap on the ask (Not now, Skip, No)
-brings the message and its record button. No number, score or verdict, and
-no new words but ``GLAD`` (the founder's own, chosen 2026-10-20).
+Nothing here blocks the next Take: one tap on each ask (Not now, Skip, No)
+brings the next, and the closing message after the last; the Ideal Text
+page's own "Record Take N" is never held. No number, score or verdict, and
+the only words are the founder's (``GLAD``, ``NEXT_TAKE``, 2026-10-20).
 """
 from __future__ import annotations
 
 import logging
 import re
 import uuid
-from typing import Any, Optional
+from datetime import datetime, timedelta
+from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +67,13 @@ _NAMESPACE = uuid.UUID("9a3e6c1d-52b7-4f08-8d41-c7e2b05f9a63")
 
 #: The founder's sentence after "Yes" (decisions page, 2026-10-20).
 GLAD = "We're glad it helped you."
+#: The closing message, once every ask is answered (founder 2026-10-20,
+#: N89); the Lounge puts "Record Take N" under it.
+NEXT_TAKE = "Look, practice makes perfect. If you're ready, let's go with the next take. 💪"
 #: Asks the Lounge draws from the summary's batch as offer bubbles.
 _OFFER_ASKS = ("whatsapp", "install")
+#: The asks Will opens with a lead-in line (``will_question.lead_in``).
+LEAD_IN_ASKS = ("whatsapp", "install", "feedback_check")
 #: WhatsApp is asked at most this many times (founder 2026-10-20).
 _WHATSAPP_TIMES = 2
 #: How far back the thread is read for a held message and for earlier asks.
@@ -89,49 +113,142 @@ def _no_phone(database: Any, user_id: str) -> bool:
         return False
 
 
-def choose(database: Any, user_id: str, *, take_index: int, off: bool,
-           can_install: bool = False, will: bool = False) -> Optional[str]:
-    """The one ask after this Take, or None (see the module's table).
-    ``will``: Will has a question for this Take."""
+def chain(database: Any, user_id: str, *, take_index: int, off: bool,
+          can_install: bool = False, will: bool = False) -> list[str]:
+    """The asks after this Take, in the order they come (see the module's
+    table); [] when nothing waits. ``will``: Will has a question for this
+    Take."""
+    asks: list[str] = []
     if take_index >= 2:
         if _admin_ask(user_id):
-            return "admin"
+            asks.append("admin")
         if _no_phone(database, user_id) and asked(database, user_id, "whatsapp") < _WHATSAPP_TIMES:
-            return "whatsapp"
+            asks.append("whatsapp")
         if can_install and asked(database, user_id, "install") == 0:
-            return "install"
-        if will:
-            return "will_question"
+            asks.append("install")
+    if will:
+        asks.append("will_question")
     if off:
-        return "feedback_check"
-    return "will_question" if will else None
+        asks.append("feedback_check")
+    return asks
+
+
+def choose(database: Any, user_id: str, *, take_index: int, off: bool,
+           can_install: bool = False, will: bool = False) -> Optional[str]:
+    """The first ask of the chain, or None."""
+    found = chain(database, user_id, take_index=take_index, off=off,
+                  can_install=can_install, will=will)
+    return found[0] if found else None
+
+
+def signed_ask(ask: str) -> Optional[str]:
+    """The signed words of an ask Will leads into; None for the others."""
+    if ask in _OFFER_ASKS:
+        from services.chat_app_context import OFFER_PROMPTS
+        return OFFER_PROMPTS[ask]
+    if ask == "feedback_check":
+        from services.feedback_check import COPY
+        return COPY["ask"]
+    return None
 
 
 def ask_rows(database: Any, ask: Optional[str], *, user_id: str, arc_id: str,
-             take: str, at: str, will: Any = None) -> list[dict]:
-    """The ask's bubble after the held message, in the shape the Lounge
-    draws as an offer. The CEO panel's ask is drawn by the Lounge itself
-    (its price words live there), so it has no row here. ``will``: Will's
-    plan (``will_question.Plan``) when his question is the ask."""
+             take: str, at: str, will: Any = None,
+             lead_in: Optional[str] = None) -> list[dict]:
+    """The ask's bubble, in the shape the Lounge draws as an offer, with
+    Will's lead-in as its words when he has one. The CEO panel's ask is
+    drawn by the Lounge itself (its price words live there), so it has no
+    row here. ``will``: Will's plan (``will_question.Plan``) when his
+    question is the ask."""
     if ask == "will_question":
         from services.will_question import ask_rows as will_rows
         return will_rows(will, user_id=user_id, at=at)
     if ask == "feedback_check":
         from services.feedback_check import ask_rows as question
         return question(database, user_id=user_id, arc_id=arc_id, take_session_id=take,
-                        batch=[], at=at)
+                        batch=[], at=at, text=lead_in)
     if ask not in _OFFER_ASKS:
         return []
     from services.chat_app_context import OFFER_PROMPTS
     return [{"client_id": str(uuid.uuid5(_NAMESPACE, f"{user_id}:{take}:{ask}")),
-             "role": "bot", "kind": "text", "body": OFFER_PROMPTS[ask],
+             "role": "bot", "kind": "text", "body": lead_in or OFFER_PROMPTS[ask],
              "metadata": {"offer": ask, "arc_id": arc_id, "take_session_id": take},
              "client_created_at": at}]
 
 
+def start_lead_ins(database: Any, *, user_id: str, arc_id: str, take: str,
+                   asks: list[str], facts: list[str]) -> Callable[[], dict]:
+    """Will's lead-ins for the chain's asks that take one, started off the
+    request beside the summary's own call; the call that collects them.
+    Never raises: a lead-in not there in time means the ask as written."""
+    wanted = {ask: signed_ask(ask) for ask in asks if ask in LEAD_IN_ASKS}
+    signed = {ask: text for ask, text in wanted.items() if text}
+    if not signed:
+        return lambda: {}
+    try:
+        from services.will_question import start_lead_ins as start
+        return start(database, user_id=user_id, arc_id=arc_id, take=take,
+                     signed=signed, facts=facts)
+    except Exception as error:  # noqa: BLE001 -- the asks as written
+        logger.warning("after take: lead-ins not started take=%s: %s", take, error)
+        return lambda: {}
+
+
+def next_take_client_id(user_id: Any, arc_id: Any, take_index: int) -> str:
+    return str(uuid.uuid5(_NAMESPACE, f"{user_id}:{arc_id}:take:{take_index}:next"))
+
+
+def closing_row(*, user_id: str, arc_id: str, take_index: int, take: str, at: str,
+                asks: list[str], lead_ins: Optional[dict] = None,
+                queued: Optional[dict] = None) -> dict:
+    """The closing message's row, held back behind the chain when there is
+    one: ``held_for`` the ask in front of the speaker, ``chain`` the rest,
+    ``lead_ins`` Will's words for the asks still to come and ``queued``
+    rows already put together for them (Will's question). Pure."""
+    meta: dict[str, Any] = {"next_take": True, "arc_id": str(arc_id),
+                            "take_index": take_index, "take_session_id": str(take)}
+    if asks:
+        meta.update({
+            "held_for": asks[0], "chain": list(asks[1:]),
+            "lead_ins": {k: v for k, v in (lead_ins or {}).items() if isinstance(v, str) and v},
+            "queued": {k: v for k, v in (queued or {}).items() if v},
+        })
+    return {"client_id": next_take_client_id(user_id, arc_id, take_index), "role": "bot",
+            "kind": "text", "body": NEXT_TAKE, "metadata": meta, "client_created_at": at}
+
+
+def _after(at: str, ms: int) -> str:
+    try:
+        return (datetime.fromisoformat(at) + timedelta(milliseconds=ms)).isoformat()
+    except ValueError:
+        return at
+
+
+def rows_for(database: Any, user_id: str, meta: dict, ask: str, at: str) -> list[dict]:
+    """The rows of one ask of the chain, as written when its turn comes:
+    Will's question as put together with the summary (``queued``), the
+    others with his lead-in. [] for the CEO panel's ask (the Lounge draws
+    it) and for an ask that cannot be written."""
+    if ask == "admin":
+        return []
+    if ask == "will_question":
+        rows = [dict(r) for r in (meta.get("queued") or {}).get("will_question") or []
+                if isinstance(r, dict)]
+        for i, row in enumerate(rows):
+            row["client_created_at"] = _after(at, i)
+        return rows
+    lead = (meta.get("lead_ins") or {}).get(ask)
+    return ask_rows(database, ask, user_id=user_id, arc_id=str(meta.get("arc_id") or ""),
+                    take=str(meta.get("take_session_id") or ""), at=at,
+                    lead_in=lead if isinstance(lead, str) and lead else None)
+
+
 def _is_held(row: dict, take: Optional[str] = None) -> bool:
     meta = row.get("metadata") or {}
-    return (meta.get("summary") is True and bool(meta.get("held_for"))
+    # The summary itself was the held message in the chain's first form
+    # (the morning of 2026-10-20); a row of that form still waiting is read.
+    return ((meta.get("next_take") is True or meta.get("summary") is True)
+            and bool(meta.get("held_for"))
             and (take is None or meta.get("take_session_id") == take))
 
 
@@ -141,8 +258,8 @@ def held(database: Any, user_id: str, take: Optional[str] = None) -> Optional[di
 
 
 def glad_body(text: str) -> str:
-    """``text`` with ``GLAD`` before its last line: the next step stays the
-    last thing said. Pure."""
+    """``text`` with ``GLAD`` before its last line (the first form's held
+    summary, where the next step stayed the last thing said). Pure."""
     if not text or GLAD in text:
         return text
     head, sep, last = text.rpartition("\n\n")
@@ -152,27 +269,58 @@ def glad_body(text: str) -> str:
     return " ".join(sentences[:-1] + [GLAD, sentences[-1]]) if sentences else text
 
 
+_CHAIN_KEYS = ("held_for", "chain", "lead_ins", "queued")
+
+
 def _let_go(database: Any, user_id: str, row: dict, *, glad: bool, at: Optional[str]) -> Optional[dict]:
-    meta = {k: v for k, v in (row.get("metadata") or {}).items() if k != "held_for"}
+    meta = {k: v for k, v in (row.get("metadata") or {}).items() if k not in _CHAIN_KEYS}
     body = row.get("body") or ""
-    if glad:
+    if glad and meta.get("summary") is True:
         body, meta["glad"] = glad_body(body), True
     return database.rewrite_lounge_message(str(user_id), row["client_id"], body, meta, at=at)
 
 
+def _applies(database: Any, user_id: str, ask: str) -> bool:
+    """Whether an ask still applies when its turn comes."""
+    if ask == "whatsapp":
+        return _no_phone(database, user_id)
+    if ask == "admin":
+        return _admin_ask(user_id)
+    return True
+
+
 def release(database: Any, user_id: str, *, take: Optional[str] = None,
-            glad: bool = False) -> Optional[dict]:
-    """Let the held message go, under the newest row of the thread. The row
-    as stored, or None when nothing was held. Best-effort: never raises."""
+            glad: bool = False) -> list[dict]:
+    """Advance the chain under the newest row of the thread: the next ask's
+    rows, written now (the closing message stays held, in front of it); or,
+    with nothing left, the closing message let go. The rows written, or []
+    when nothing was held. Best-effort: never raises."""
     try:
         row = held(database, user_id, take)
         if not row:
-            return None
+            return []
         from services.lounge_messages import thread_stamp
-        return _let_go(database, user_id, row, glad=glad, at=thread_stamp(database, user_id))
-    except Exception as error:  # noqa: BLE001 -- the Lounge lets it go on its next close
-        logger.warning("after take: not let go user=%s: %s", user_id, error, exc_info=True)
-        return None
+        at = thread_stamp(database, user_id)
+        meta = dict(row.get("metadata") or {})
+        left = [a for a in (meta.get("chain") or []) if isinstance(a, str)]
+        while left:
+            ask = left.pop(0)
+            if not _applies(database, user_id, ask):
+                continue
+            rows = rows_for(database, str(user_id), meta, ask, at)
+            if ask != "admin" and not rows:
+                continue
+            meta.update({"held_for": ask, "chain": left})
+            kept = database.rewrite_lounge_message(str(user_id), row["client_id"],
+                                                   row.get("body") or "", meta, at=None)
+            if rows:
+                return database.insert_lounge_messages(str(user_id), rows) or []
+            return [kept] if kept else []
+        gone = _let_go(database, user_id, row, glad=glad, at=at)
+        return [gone] if gone else []
+    except Exception as error:  # noqa: BLE001 -- the Lounge advances it on its next close
+        logger.warning("after take: not advanced user=%s: %s", user_id, error, exc_info=True)
+        return []
 
 
 def release_older(database: Any, user_id: str) -> None:

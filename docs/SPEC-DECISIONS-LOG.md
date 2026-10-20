@@ -2679,3 +2679,12 @@ for them, the Clearer version is served on its moment, and the speaker-side
 practice gates read the speaker's own page. The rules: the walk's page, A1,
 A2, C3, C4, D4, D5 (frontend `docs/flows/feedback-walk-and-chat.md`, §6
 N88; backend #1209, frontend #896). No migration.
+
+**N89 · One mechanism opens the walk; the chain after the Take (founder, the
+app, 20 October 2026).** Every door opens the whole Take's walk at its step;
+after the summary (no next step, no record button) the asks come one at a
+time, each with Will's lead-in, then "Look, practice makes perfect. If you're
+ready, let's go with the next take. 💪" and "Record Take N". The rules: the
+walk's page, B10, C1, D3, D4, D5, E1, F4, F5, K (frontend
+`docs/flows/feedback-walk-and-chat.md`, §6 N89; backend #1210, frontend
+#897). No migration.

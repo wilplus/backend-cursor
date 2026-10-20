@@ -310,6 +310,123 @@ def vary(key: str, signed: str, *, user_id: Optional[str], take: Optional[str],
     return read_varied(key, getattr(result, "text", None) if result else None, signed)
 
 
+# ------------------------------------------------------------------ lead-in
+
+#: Will's lead-in to an ask after the Take (founder 2026-10-20, N89: "Will
+#: asks a well-balanced reflection question based on liaising the Take",
+#: "these messages are already written but Will can be creative around
+#: them"; drift-locked: services/prompts/pending.py).
+_LEAD_IN_SYSTEM = (
+    "You are Will, a speaking coach and a curious, cheeky colleague. Right "
+    "after a speaker reviewed a recording of their talk, Will has one small "
+    "ask for them; its signed wording is given, and a few plain facts about "
+    "this Take. Write Will's message: one friendly sentence, two at most, "
+    "that ties the ask to this Take or to them (a reflection, never a grade, "
+    "never advice), then the ask itself in its signed wording said with a "
+    "light touch: the same meaning, most of its words kept; its buttons "
+    "follow. Like a friend at work: 'you', contractions, warm; at most one "
+    "emoji.\n"
+    "- No numbers, scores, percentages or verdicts; never 'cue' or the names "
+    "of measurements.\n"
+    "- Only say what the facts support; invent nothing about them.\n"
+    "- No greeting, no advice, and no question other than the ask's own.\n"
+    "Answer with the message only."
+)
+_LEAD_IN_SURFACE = "will_lead_in"
+_LEAD_IN_MAX = 320
+#: What each ask must still say, whatever Will's words around it.
+_LEAD_IN_KEEPS = {
+    "whatsapp": ("whatsapp", "number"),
+    "install": ("home screen", "screen", "tap"),
+    "feedback_check": ("help",),
+}
+_LEAD_IN_BANNED = re.compile(r"\d|%|\bcue\b|\bscore\b|\bmetric|\bwillfidence\b|\bpercent", re.I)
+_LEAD_IN_EMOJI = re.compile("[\U0001F300-\U0001FAFF\u2600-\u27BF]")
+
+
+def read_lead_in(ask: str, text: Optional[str], signed: str) -> Optional[str]:
+    """Will's lead-in when it keeps the rules: two or three sentences, the
+    ask still said (its key words there, a question still a question), no
+    number or banned word, one emoji at most, not too long. Else None, and
+    the ask is said as written. Pure."""
+    body = " ".join(str(text or "").strip().strip('"“”').split())
+    if not body or body == signed or len(body) > _LEAD_IN_MAX:
+        return None
+    if _LEAD_IN_BANNED.search(body) or len(_LEAD_IN_EMOJI.findall(body)) > 1:
+        return None
+    sentences = [s for s in re.split(r"(?<=[.?!])\s+", body) if s]
+    if not 2 <= len(sentences) <= 3:
+        return None
+    low = body.lower()
+    if not any(k in low for k in _LEAD_IN_KEEPS.get(ask, ())):
+        return None
+    if "?" in signed and "?" not in body:
+        return None
+    return body
+
+
+def lead_in(ask: str, signed: str, facts: list[str], *, user_id: Optional[str],
+            take: Optional[str], arc_id: Optional[str]) -> Optional[str]:
+    """gpt-4o-mini writes Will's lead-in to one ask from the Take's facts;
+    code keeps it only when ``read_lead_in`` does. Runs inside the Take's
+    protected provider scope (the caller's)."""
+    from services.llm import chat_complete
+    from services.llm_config import SPEC_WILL_LEAD_IN
+    user = (f"Ask (signed wording): {signed}\nFacts about this Take:\n"
+            + "\n".join(f"- {f}" for f in facts[:6]))
+    result = chat_complete(spec=SPEC_WILL_LEAD_IN, system=_LEAD_IN_SYSTEM, user=user,
+                           surface=_LEAD_IN_SURFACE, user_id=user_id, session_id=take,
+                           arc_id=arc_id)
+    return read_lead_in(ask, getattr(result, "text", None) if result else None, signed)
+
+
+def start_lead_ins(database: Any, *, user_id: str, arc_id: str, take: str,
+                   signed: dict, facts: list[str]) -> Callable[[], dict]:
+    """Starts Will's lead-in for each ask in ``signed`` (ask -> its signed
+    words) off the request, beside the summary's own call, and returns the
+    call that collects them, waiting at most ``_HEARD_BUDGET`` in all. Too
+    slow, refused or failed: that ask is said as written."""
+    def one(ask: str, text: str) -> Callable[[], Optional[str]]:
+        return lambda: lead_in(ask, text, facts, user_id=user_id, take=take, arc_id=arc_id)
+    return _start_calls(database, take=take, label="lead-in",
+                        calls={ask: one(ask, text) for ask, text in signed.items() if text})
+
+
+def _start_calls(database: Any, *, take: str, label: str,
+                 calls: dict[str, Callable[[], Optional[str]]]) -> Callable[[], dict]:
+    """Runs each of ``calls`` on its own thread under the Take's authority
+    and returns the call that collects the words that came back in time."""
+    if not calls:
+        return lambda: {}
+    try:
+        from concurrent.futures import ThreadPoolExecutor
+        from contextvars import copy_context
+        from services.take_summary import _under_authority
+        pool = ThreadPoolExecutor(max_workers=len(calls), thread_name_prefix=f"will-{label}")
+        futures = {k: pool.submit(copy_context().run,
+                                  lambda call=call: _under_authority(database, take, call))
+                   for k, call in calls.items()}
+        pool.shutdown(wait=False)
+    except Exception as error:  # noqa: BLE001 -- said as written
+        logger.warning("will question: %s not started take=%s: %s", label, take, error)
+        return lambda: {}
+
+    def collect() -> dict:
+        import time
+        out: dict = {}
+        until = time.monotonic() + _HEARD_BUDGET
+        for k, future in futures.items():
+            try:
+                got = future.result(timeout=max(0.0, until - time.monotonic()))
+                if isinstance(got, str) and got:
+                    out[k] = got
+            except Exception as error:  # noqa: BLE001 -- too slow or failed: as written
+                logger.info("will question: %s said as written key=%s take=%s: %r",
+                            label, k, take, error)
+        return out
+    return collect
+
+
 def start_vary(database: Any, *, user_id: str, arc_id: str, take: str, keys: list[str],
                words: dict) -> Callable[[], dict]:
     """Starts the light touch for each of ``keys`` off the request, beside
@@ -793,11 +910,11 @@ def _skip(database: Any, *, user_id: str, take: str, key: str, step: str, base: 
 
 
 def _let_go(database: Any, user_id: str, take: str) -> list[dict]:
+    """The chain after the Take goes on under the answer (N89)."""
     from services import after_take
     if after_take.held(database, user_id, take) is None:
         return []
-    row = after_take.release(database, user_id, take=take)
-    return [row] if row else []
+    return after_take.release(database, user_id, take=take)
 
 
 def _review_card(row: dict) -> bool:

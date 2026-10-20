@@ -165,9 +165,9 @@ def finish_chat_turn(database, resp: dict, *, user_id, question,
                      intent=None) -> dict:
     """Persist and charge one completed turn; the response body.
 
-    A turn that passes the Take's open ask lets the message after the Take
-    go under the reply (founder 2026-10-20, services/after_take.py)."""
-    glad = resp.pop("after_take", None) == "glad"
+    A turn that passes the Take's open ask advances the chain after the
+    Take under the reply: the next ask, or the closing message (founder
+    2026-10-20, services/after_take.py)."""
     if persist_thread and user_id:
         bot_cid = persist_chat_turn(
             database, user_id, question, resp.get("answer"),
@@ -176,14 +176,14 @@ def finish_chat_turn(database, resp: dict, *, user_id, question,
             bubbles=resp.get("bubbles"), intent=intent,
             user_client_id=user_client_id, user_created_at=user_created_at,
             offer=resp.get("offer"), take_card=resp.get("take_card"),
-            row_metadata=resp.get("row_metadata"), bot_row=not glad,
+            row_metadata=resp.get("row_metadata"),
         )
         resp["persisted"] = bool(bot_cid)
         if bot_cid:
             resp["persisted_client_id"] = bot_cid
         from services import after_take
         # True tells the Lounge to read the thread again: the message is there.
-        if bot_cid and after_take.passes(resp) and after_take.release(database, user_id, glad=glad):
+        if bot_cid and after_take.passes(resp) and after_take.release(database, user_id):
             resp["after_take"] = True
     # Charge after answering, never before. Chat is repeatable, so it has no
     # idempotency ref; billing failure must never replace the answer.
