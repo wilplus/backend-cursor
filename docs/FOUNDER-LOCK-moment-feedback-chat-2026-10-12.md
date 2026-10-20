@@ -310,10 +310,17 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
     the Ideal Text. It does not walk on to other paragraphs, other speakers
     or the summary; those stay behind "Continue review".
   - **A paragraph without the line opens the whole finished walk** as one
-    chat to scroll through, at that paragraph's part, with no buttons: only
-    ‹ › and ✕ in the bar. Other speakers and the summary are not in it.
-  - **Orange helper words still open their helper-words step,** to pick new
-    ones (rule 5).
+    chat to scroll through, with no buttons: only ‹ › and ✕ in the bar.
+    Other speakers and the summary are not in it. It opens scrolled to the
+    step that paragraph answered (the helper words picked, its clearer
+    version, its Exercise), its green moment just above (founder, same
+    chat: "brought to the moment where the action from that clicked
+    paragraph was performed and the scroll should open there").
+  - **Its orange helper words open the same walk,** not the picker: "if the
+    helper words are already chosen, why would you want to open it again?"
+    Helper words still change from the Lounge's helper-words bubble and in
+    the next Take's walk (rule 5). Orange words on a paragraph with no
+    moment in this Take still open their helper words.
   - **From the Lounge nothing changes:** a bubble opens its step with
     "✓ …" and Next.
   - **No new words.**
