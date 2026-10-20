@@ -17,7 +17,7 @@ PROVES   O1, O2, O3, O4 ->
              test_the_same_coach_changes_the_answer_and_every_earlier_one_stays
          O5 -> test_a_take_word_keeps_every_earlier_version
 WHY      Coach panel lock flows 7 and 12; Q-B12 A (migration 0446); a Take
-         word keeps every version, N79 (migration 0479).
+         word keeps every version, N79 (migration 0480).
 """
 from __future__ import annotations
 

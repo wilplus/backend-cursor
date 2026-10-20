@@ -878,10 +878,10 @@ if [ "$LANE" = "released" ]; then
   hard migrations/a_take_word_pair_has_a_home.sql
 fi
 
-# 0479 (founder 2026-10-19, N79): a Take word keeps every version. One
+# 0480 (founder 2026-10-19, N79): a Take word keeps every version. One
 # history table and the BEFORE UPDATE trigger on coach_take_words (0403)
 # that writes it. Released lane only: it copies draft_prompt (0459). After
-# 0478, as in the manifest. Twice: apply/reapply idempotency. Its case is in
+# 0479, as in the manifest. Twice: apply/reapply idempotency. Its case is in
 # tests/test_a_coach_may_change_their_answer_postgres.py.
 if [ "$LANE" = "released" ]; then
   hard migrations/a_take_word_keeps_every_version.sql
