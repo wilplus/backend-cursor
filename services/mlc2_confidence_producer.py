@@ -30,6 +30,26 @@ PRODUCER_CONTRACT_VERSION = "confidence-producer-v1"
 SOURCE_SCHEMA_VERSION = "confidence-source-audio-v1"
 EVENT_TYPE = "confidence_take_ready"
 
+#: A failure that may pass on its own (the database, the network) waits 30
+#: seconds, then twice as long after each attempt, up to six hours.
+RETRY_BASE_SECONDS = 30
+RETRY_CAP_SECONDS = 6 * 3600
+#: A contract failure does not pass on its own: the frame is a pure function
+#: of the event and the Take's rows, which are written before the Take is
+#: promoted, so a retry fails the same way. Every one was retried every 30
+#: seconds (founder's pg_stat_statements, 2026-10-20: 976 failures over 540
+#: claims). It waits a week instead, so a fix in code still reaches it.
+CONTRACT_RETRY_SECONDS = 7 * 24 * 3600
+
+
+def retry_after_seconds(error: BaseException, *, attempt_count: Any) -> int:
+    """How long a failed confidence event waits before it is claimed again."""
+    if isinstance(error, Mlc2ContractError):
+        return CONTRACT_RETRY_SECONDS
+    attempts = attempt_count if isinstance(attempt_count, int) \
+        and not isinstance(attempt_count, bool) and attempt_count > 0 else 1
+    return min(RETRY_CAP_SECONDS, RETRY_BASE_SECONDS * 2 ** min(attempts - 1, 20))
+
 
 def _content_type(filename: str) -> str:
     suffix = PurePath(filename or "recording.webm").suffix.lower()
@@ -205,7 +225,8 @@ class DarkConfidenceWorker:
     """Rehearsable worker with no queue registration and no model adapter.
 
     A future activation supplies a reviewed ``frame_factory``.  Exceptions are
-    returned to the outbox with a retry code; product state is never reversed.
+    returned to the outbox with a retry code and a wait from
+    ``retry_after_seconds``; product state is never reversed.
     """
 
     def __init__(
@@ -241,5 +262,7 @@ class DarkConfidenceWorker:
                 outbox_event_id=event.outbox_event_id,
                 worker_id=worker_id,
                 error_code=f"{type(error).__name__}:confidence_frame_failed",
+                retry_after_seconds=retry_after_seconds(
+                    error, attempt_count=row.get("attempt_count")),
             )
             raise

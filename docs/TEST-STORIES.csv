@@ -1335,11 +1335,18 @@ own audio object with its exact span, and exactly one clip is selected.
 O2  A replay (rows in any order) is byte-identical.
 O3  Nothing in the frame carries transcript text.
 O4  While the mode is dark, the worker boot line starts nothing.
-O5  Under founder_canary the sweep owner claims, finalizes and re-arms.","O1 -> test_the_frame_is_valid_exact_and_selects_one_clip
+O5  Under founder_canary the sweep owner claims, finalizes and re-arms.
+O6  A Take with no clip a rater could judge is promoted plainly and opens
+no outbox event, because its frame could never be finalized.
+O7  A failed event is not offered again in 30 seconds: a contract failure
+waits a week, any other failure waits longer after each attempt
+(founder's pg_stat_statements, 2026-10-20: 976 failures, 540 claims).","O1 -> test_the_frame_is_valid_exact_and_selects_one_clip
 O2 -> test_a_replay_is_byte_identical
 O3 -> test_no_transcript_text_reaches_the_frame
 O4 -> test_the_boot_line_starts_nothing_while_dark
-O5 -> test_the_owner_claims_finalizes_and_rearms","G-6, audit 2026-09-22."
+O5 -> test_the_owner_claims_finalizes_and_rearms
+O6 -> test_a_take_without_a_clip_opens_no_outbox_event
+O7 -> test_a_failure_is_not_offered_again_in_thirty_seconds","G-6, audit 2026-09-22."
 tests/test_mlc2_legacy_isolation.py,Guard,"The new learning code (MLC-2) never names a legacy learning table: no mlc2_*.py module, and none of the door modules that build, release, evaluate, train on or promote learning data.","A read or write of a retired, unconsented label store (for example
 confidence_labels, star_verdicts) from canonical training code.
 Method names count (get_confidence_labels_by_snippet_ids), and so
