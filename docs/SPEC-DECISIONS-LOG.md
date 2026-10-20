@@ -2647,3 +2647,17 @@ out, never a word added; it opens with B10's first line and B13's "Try saying
 it like this:" (the signed prototype
 <https://claude.ai/artifact/HSRfvDZLDRQizmGJDxMUJz>). The rules and the
 words: flow page C5, H3, K. No migration.
+
+**N86 · The flow page's first review (founder, 20 October 2026, on the
+decision-tree page and in chat).** Nine rules read right; the rest, decided:
+the walk opens the moment processing finishes, nothing in between; the score
+decides each of the two shown moments, praise at or above the floor and a
+correction below it, both corrected when both are weak and both praised when
+both are strong (in place of the fixed roles of 2026-10-14); the highest
+moment's bubble opens with the new signed line "This was your most confident
+moment." ("… so far." when it is corrected); Will may say his signed
+questions with light variation, the tap answers never; counsel approved L12
+and L13; self-judgement waits for about 50 clips with both answers, then the
+founder sees the numbers; the coach panel's audience-and-goal lines get a
+prototype. The rules: flow page A2, C2, C4, C5, E2, H1, K, §2, §3. The
+builds are §2 lines. No migration.
