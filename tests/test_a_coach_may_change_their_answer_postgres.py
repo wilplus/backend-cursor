@@ -18,13 +18,20 @@ OUTCOME
       after a new video the old one, now in the history, keeps its words
       and the new one gets its own; a video that is not this request's
       takes no words; only the database writes them.
+  O7  Each answer keeps what the coach saw when they gave it: one record
+      per answer (the same answer again adds none), a replaced answer
+      keeps its own, with the error type the coach picked; one per Take
+      word save; nobody can change a record afterwards; deleting the
+      request or the word removes its records.
 PROVES   O1, O2, O3, O4 ->
              test_the_same_coach_changes_the_answer_and_every_earlier_one_stays
          O5 -> test_a_take_word_keeps_every_earlier_version
          O6 -> test_an_answer_video_keeps_its_own_words
+         O7 -> test_each_answer_keeps_what_the_coach_saw_and_it_never_changes
 WHY      Coach panel lock flows 7 and 12; Q-B12 A (migration 0446); a Take
          word keeps every version, N79 (migration 0480); a coach's answer
-         video is kept in words, N79 (migration 0482).
+         video is kept in words, N79 (migration 0482); each answer keeps
+         what the coach saw, N79 (migration 0483).
 """
 from __future__ import annotations
 
@@ -260,3 +267,71 @@ def test_an_answer_video_keeps_its_own_words(db):
                 (TRANSCRIPTS,))["can"] is False
     assert _row(db, "SELECT has_function_privilege('service_role', %s, 'EXECUTE') AS can",
                 (RECORDER,))["can"] is True
+
+
+SITUATIONS = "public.coach_answer_situations"
+
+
+def _keep_situation(db, *, take, answered_at, request_id=None, snippet_id=None,
+                    take_word_id=None, diagnoses=()):
+    """As insert_coach_answer_situation writes it: an answer already kept is
+    ignored by its key. Returns the rows written."""
+    key = "take_word_id" if take_word_id else "request_id"
+    with db.cursor() as cur:
+        cur.execute(
+            f"INSERT INTO {SITUATIONS} (take_session_id, snippet_id, request_id, take_word_id, "
+            "answered_at, passage_text, diagnosis_ids, diagnoses) "
+            "VALUES (%s, %s, %s, %s, %s, 'and that is why', %s::uuid[], %s::jsonb) "
+            f"ON CONFLICT ({key}, answered_at) DO NOTHING",
+            (take, snippet_id, request_id, take_word_id, answered_at,
+             [d["diagnosis_id"] for d in diagnoses], psycopg2.extras.Json(list(diagnoses))))
+        return cur.rowcount
+
+
+def _count(db, column, value):
+    return _row(db, f"SELECT count(*) AS n FROM {SITUATIONS} WHERE {column} = %s",
+                (value,))["n"]
+
+
+def test_each_answer_keeps_what_the_coach_saw_and_it_never_changes(db):
+    request = _request(db)
+    moment = {"take": request["take_session_id"], "snippet_id": request["snippet_id"],
+              "request_id": request["id"]}
+    first = _resolve(db, request["id"], "coach-1", "line_written", text="Well said.")
+    picked = [{"diagnosis_id": str(uuid.uuid4()), "snippet_id": request["snippet_id"],
+               "kind": "error", "error_id": "rushing", "named_error_id": None,
+               "label": "Rushing"}]
+    assert _keep_situation(db, answered_at=first["resolved_at"], diagnoses=picked,
+                           **moment) == 1
+    # The same answer written again is ignored: one row per answer.
+    assert _keep_situation(db, answered_at=first["resolved_at"], **moment) == 0
+    # A changed answer keeps its own; the first finds its history row by the
+    # resolver's time, with the error type the coach had picked, copied.
+    second = _resolve(db, request["id"], "coach-1", "line_written",
+                      text="Pause, then the number.")
+    assert _keep_situation(db, answered_at=second["resolved_at"], **moment) == 1
+    with db.cursor() as cur:
+        cur.execute(f"SELECT h.answer_text, s.diagnoses, s.diagnosis_ids::text[] AS ids "
+                    f"FROM {HISTORY} h JOIN {SITUATIONS} s ON s.request_id = h.request_id "
+                    "AND s.answered_at = h.resolved_at WHERE h.request_id = %s",
+                    (request["id"],))
+        assert cur.fetchall() == [("Well said.", picked, [picked[0]["diagnosis_id"]])]
+    # Frozen: nobody rewrites what the coach saw, the owner included.
+    with pytest.raises(psycopg2.Error, match="COACH_ANSWER_SITUATION_FROZEN"):
+        with db.cursor() as cur:
+            cur.execute(f"UPDATE {SITUATIONS} SET passage_text = 'other words' "
+                        "WHERE request_id = %s", (request["id"],))
+    # A Take word: one row per save, by the word and its updated_at.
+    take = str(uuid.uuid4())
+    _save_word(db, take, text="Slow down.")
+    word = _row(db, "SELECT id, updated_at FROM public.coach_take_words "
+                    "WHERE take_session_id = %s", (take,))
+    for written in (1, 0):
+        assert _keep_situation(db, take=take, take_word_id=word["id"],
+                               answered_at=word["updated_at"]) == written
+    # The parents' cascades are the purge's backstop (the registry deletes
+    # by Take first).
+    with db.cursor() as cur:
+        cur.execute("DELETE FROM public.exercise_coach_requests WHERE id = %s", (request["id"],))
+        cur.execute("DELETE FROM public.coach_take_words WHERE id = %s", (word["id"],))
+    assert (_count(db, "request_id", request["id"]), _count(db, "take_word_id", word["id"])) == (0, 0)

@@ -909,6 +909,15 @@ fi
 hard migrations/a_coach_answer_video_is_kept_in_words.sql
 hard migrations/a_coach_answer_video_is_kept_in_words.sql
 
+# 0483 (founder 2026-10-19, N79): each answer keeps what the coach saw. One
+# insert-only table with foreign keys to exercise_coach_requests (0385) and
+# coach_take_words (0403), and its frozen trigger; both lanes carry both.
+# Both lanes, after 0482, as in the manifest. Twice: apply/reapply
+# idempotency. Its case is in
+# tests/test_a_coach_may_change_their_answer_postgres.py.
+hard migrations/each_answer_keeps_what_the_coach_saw.sql
+hard migrations/each_answer_keeps_what_the_coach_saw.sql
+
 # G-6 part 2 (audit 2026-09-22). The narrow snippets copy carries no
 # `metrics`, the column production stamps the delivery-signal read into and
 # the confidence frame factory reads. Released lane only, a NULLABLE trailing

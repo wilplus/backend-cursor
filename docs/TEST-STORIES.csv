@@ -41,10 +41,16 @@ O6  A coach's answer video keeps its own words, by its ref: a failed try
 is retried in place and counted; done words are never written over;
 after a new video the old one, now in the history, keeps its words
 and the new one gets its own; a video that is not this request's
-takes no words; only the database writes them.","O1, O2, O3, O4 ->
+takes no words; only the database writes them.
+O7  Each answer keeps what the coach saw when they gave it: one record
+per answer (the same answer again adds none), a replaced answer
+keeps its own, with the error type the coach picked; one per Take
+word save; nobody can change a record afterwards; deleting the
+request or the word removes its records.","O1, O2, O3, O4 ->
 test_the_same_coach_changes_the_answer_and_every_earlier_one_stays
 O5 -> test_a_take_word_keeps_every_earlier_version
-O6 -> test_an_answer_video_keeps_its_own_words","Coach panel lock flows 7 and 12; Q-B12 A (migration 0446); a Take word keeps every version, N79 (migration 0480); a coach's answer video is kept in words, N79 (migration 0482)."
+O6 -> test_an_answer_video_keeps_its_own_words
+O7 -> test_each_answer_keeps_what_the_coach_saw_and_it_never_changes","Coach panel lock flows 7 and 12; Q-B12 A (migration 0446); a Take word keeps every version, N79 (migration 0480); a coach's answer video is kept in words, N79 (migration 0482); each answer keeps what the coach saw, N79 (migration 0483)."
 tests/test_a_coach_pick_counts_postgres.py,Story,"As the founder, I want a coach's chosen exercise frozen once, with the reason it was chosen, and its showing receipted, so that what the speaker practises is traceable and never silently swapped.","O1  A coach pick is frozen once (a replay naming another exercise returns
 the first row) under the coach policy, with no seed and no draw.
 O2  Its match trace is stored once, with outcome coach_chosen.
@@ -679,6 +685,21 @@ O3  Verdicts go to the shadow log once, under the fit's own version, for
 consented speakers' clips only; the live detector is unchanged.","O1 -> test_switch_off_reads_and_writes_nothing
 O2 -> test_only_consented_train_split_answers_are_fitted
 O3 -> test_verdicts_go_to_the_shadow_log_only_for_consented_clips","3.5 pack, file 22 E3; document 02 v1.2 §3c (dark lane, PLF1 Phase 2)."
+tests/test_each_answer_keeps_what_the_coach_saw.py,Story,"As the founder, I want every coach answer, and every word a coach leaves on a Take, to keep what the coach was looking at when they gave it, so that the answer can still be read against what they saw after a clip is re-cut, replaced or purged.","O1  A moment's first answer keeps one record: when it was given, the
+clip's words uncut, the slide (the coach's correction first), what
+the coach acted on, the pattern they named, their current diagnosis
+with its label, and the answered Take's own Ideal Text.
+O2  The same answer again (only the share added) keeps nothing new; a
+changed answer and a new video on an answer each keep their own, and
+the first record stays as it was.
+O3  Each save of a Take word keeps the whole Take's words in order, its
+re-read's after them, uncut, the coach's diagnoses on its moments and
+the Take's Ideal Text.
+O4  A moment from a mid-take re-read keeps the spoken Take's Ideal Text.
+O5  A coach answering their own Take keeps nothing.","O1, O2 -> test_each_new_answer_to_a_moment_keeps_its_own_situation_once
+O3 -> test_each_take_word_save_keeps_the_whole_take
+O4 -> test_a_moment_from_a_re_read_keeps_the_spoken_takes_ideal_text
+O5 -> test_a_coach_answering_their_own_take_keeps_nothing","Founder 2026-10-19, decisions log N79 (migration 0483); L3 for a coach answering their own Take. The checks run on the public services the routes call (resolve_request, store_answer_video, save_take_word) with a fake database: that the Ideal Text read returns the snapshot of that Take, not the speaker's latest, is the database read's filter and is not pinned here. The record is kept off the coach's request, so each check waits for that thread first."
 tests/test_each_served_take_keeps_its_coverage_postgres.py,Story,"As the founder, I want each served Take's feedback coverage and lane outcomes stored once, so that I can see where feedback found nothing worth saying.","O1  The row the serve path builds (`coverage_row`) fits the table, with an
 empty lane typed `no_defensible_candidate`.
 O2  One row per Take: a second serve inserts nothing.

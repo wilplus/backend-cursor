@@ -70,6 +70,11 @@ def save_take_word(database: Any, *, take_session_id: str, coach_id: str,
         text=text, video_ref=video_ref, share=share, keep_video=keep_video)
     if not isinstance(row, dict):
         raise TakeWordRefusal("Could not save the word.", "V2_ERROR", 500)
+    # What the coach saw when they saved it (0483, N79): the whole Take, their
+    # diagnoses and its Ideal Text; never on their own Take; capture only,
+    # off the request.
+    from services.coach_answer_situation import freeze_take_word_in_background
+    freeze_take_word_in_background(database, word_row=row, coach_id=str(coach_id))
     if share:
         _tell_the_speaker(database, str(take_session_id), text=text,
                           video_ref=row.get("video_ref") or None,
