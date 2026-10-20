@@ -426,3 +426,15 @@ SPEC_CEO_INTELLIGENCE = LLMSpec(
 )
 """Admin-only CEO proposal generator. Output is always a preview revision;
 the model has no route to code, runtime data, deployment, or official status."""
+
+
+SPEC_SUNDAY_NOTE = LLMSpec(
+    model=STRONG_MODEL,
+    # Close to what the week shows; a little room for the reflection.
+    temperature=0.3,
+    max_tokens=900,
+    response_format={"type": "json_object"},
+)
+"""The Sunday note (Will learning plan step 2, founder 2026-10-20): one case
+in the founder's form from the week's notes, Takes and chat. Founder only;
+read in the Lounge (services.sunday_note)."""
