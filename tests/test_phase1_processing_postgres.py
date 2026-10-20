@@ -332,6 +332,67 @@ class TestTheStatusReadsInOneTrip:
         assert self._one_trip(db, owner=account) == nothing
         assert self._one_trip(db) == nothing
 
+    # ── 0478: the text only when it will be shown ─────────────────────────
+
+    COPIES = ("terms_copy", "privacy_copy", "ai_notice_copy", "agreement_copy")
+
+    @staticmethod
+    def _trimmed(db, user_id=None, owner=None):
+        return _one(db, """
+            SELECT public.read_phase1_processing_status_v2(%s, %s, FALSE)""",
+            (user_id, owner))
+
+    def test_an_accepted_person_gets_the_status_without_the_text(
+            self, db, policy):
+        """Founder 2026-10-20: 52 KB of policy text rode along on every app
+        open, to a person who had accepted and is never shown it. The
+        trimmed read is v1's answer minus the four texts, nothing else."""
+        principal, user_id = self._user_principal(db)
+        _accept(db, policy, principal)
+
+        full = self._one_trip(db, user_id=user_id)
+        trimmed = self._trimmed(db, user_id=user_id)
+
+        assert full["status"]["authorized"] is True
+        assert all(full["status"][key] for key in self.COPIES)
+        assert not any(key in trimmed["status"] for key in self.COPIES)
+        assert trimmed == {
+            "acquisition_principal_id": full["acquisition_principal_id"],
+            "status": {k: v for k, v in full["status"].items()
+                       if k not in self.COPIES}}
+
+    def test_a_person_who_must_be_shown_the_text_still_gets_it(
+            self, db, policy):
+        """A first acceptance shows the Terms, the Privacy Policy and the AI
+        notice with the hashes they belong to: the trimmed read sends them
+        whenever the answer is not authorized."""
+        guest = _principal(db, guest=True)
+
+        trimmed = self._trimmed(db, owner=guest)
+        assert trimmed == self._one_trip(db, owner=guest)
+        assert trimmed["status"]["authorized"] is False
+        assert all(trimmed["status"][key] for key in self.COPIES)
+
+    def test_v1_still_answers_with_the_text(self, db, policy):
+        principal, user_id = self._user_principal(db)
+        _accept(db, policy, principal)
+        acquirer, status = self._two_steps(db, principal, user_id)
+        assert all(status[key] for key in self.COPIES)
+        assert _one(db, "SELECT public.get_phase1_processing_authorization_v2(%s, TRUE)",
+                    (acquirer,)) == status
+
+    def test_only_the_service_role_may_call_the_trimmed_read(self, db):
+        for signature in (
+                "public.read_phase1_processing_status_v2(uuid,uuid,boolean)",
+                "public.get_phase1_processing_authorization_v2(uuid,boolean)"):
+            with db.cursor() as cur:
+                cur.execute("""
+                    SELECT has_function_privilege('service_role', %s, 'EXECUTE'),
+                           has_function_privilege('anon', %s, 'EXECUTE'),
+                           has_function_privilege('authenticated', %s, 'EXECUTE')
+                    """, (signature, signature, signature))
+                assert cur.fetchone() == (True, False, False), signature
+
     def test_only_the_service_role_may_call_it(self, db):
         signature = "public.read_phase1_processing_status_v1(uuid,uuid)"
         with db.cursor() as cur:

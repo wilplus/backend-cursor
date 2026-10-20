@@ -532,17 +532,26 @@ class ProcessingAuthorizationService:
         never change an answer in either gate mode -- in `enforce` the old
         path refuses an unresolvable principal, in `off` it degrades to the
         owner, and both decisions stay where they are made.
+
+        Founder 2026-10-20 (0478): the answer carried 52 KB of policy text
+        on every open, to a person who had accepted and is never shown it.
+        The v2 read sends the Terms, the Privacy Policy, the AI notice and
+        the agreement words only when the status is not authorized -- a
+        first acceptance, a re-acceptance, a block -- which are exactly the
+        answers a screen shows the text for. The versions and the hashes
+        always come, so the acceptance RPC's stale check sees what it saw.
         """
         if not user_id and not product_owner_principal_id:
             return None
         try:
             result = self.client.rpc(
-                "read_phase1_processing_status_v1",
+                "read_phase1_processing_status_v2",
                 {
                     "p_user_id": str(user_id) if user_id else None,
                     "p_product_owner_principal_id": (
                         str(product_owner_principal_id)
                         if product_owner_principal_id else None),
+                    "p_always_with_copy": False,
                 },
             ).execute()
             answer = _one(result.data)
