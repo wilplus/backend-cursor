@@ -1,4 +1,4 @@
--- a_take_word_keeps_every_version (0478; founder 2026-10-19, decisions log N79)
+-- a_take_word_keeps_every_version (0479; founder 2026-10-19, decisions log N79)
 --
 -- WHY. There is one coach_take_words row per (Take, coach) (0403). Each save
 -- replaced the word and its video, each re-draft replaced the draft and its
@@ -15,7 +15,7 @@
 -- row (the app does too since #1131), and the old video with its words
 -- stays here. Never shown to a speaker; not training data by itself (the
 -- pairs are, under the speaker's yes, and only the latest version teaches,
--- 0477). Purged with the Take; a coach's words stay with the speaker (N79).
+-- 0478). Purged with the Take; a coach's words stay with the speaker (N79).
 --
 -- Additive and idempotent: CREATE TABLE / INDEX IF NOT EXISTS, CREATE OR
 -- REPLACE, DROP TRIGGER IF EXISTS + CREATE. Nothing dropped, no row
@@ -71,7 +71,7 @@ CREATE INDEX IF NOT EXISTS coach_take_word_versions_take_idx
 ALTER TABLE public.coach_take_word_versions ENABLE ROW LEVEL SECURITY;
 COMMENT ON TABLE public.coach_take_word_versions IS
     'Every Take word, video, draft and transcript a coach_take_words row had and '
-    'no longer has (0478; founder 2026-10-19, N79). Written only by the trigger '
+    'no longer has (0479; founder 2026-10-19, N79). Written only by the trigger '
     'coach_take_word_keeps_its_versions; the live row is the current version. '
     'Never shown to a speaker; not training data by itself. Purged with the Take.';
 

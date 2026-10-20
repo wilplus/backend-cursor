@@ -485,7 +485,7 @@ DEPENDENCIES: tuple[PurgeDependency, ...] = (
     PurgeDependency("fine_tune_run_owners", "fine_tune_run_owners",
                     "owner_principal_id", "principal", "delete",
                     "derived_feedback", 35),
-    # Every earlier version of a coach's Take word (0478): the coach's words
+    # Every earlier version of a coach's Take word (0479): the coach's words
     # about the speaker's Take go with the Take, before the word row, whose
     # cascade is only the backstop (founder 2026-10-19, N79: a coach's words
     # stay with the speaker).
