@@ -76,12 +76,16 @@ def test_a_reply_with_a_number_falls_back_to_the_signed_copy(monkeypatch):
     assert msg["metadata"]["written"] is False
 
 
-def test_a_coach_update_rewrites_the_summary_in_place_and_keeps_the_earlier(monkeypatch):
+def test_a_coach_update_rewrites_the_summary_in_place_and_keeps_the_first(monkeypatch):
+    """N80 (founder 2026-10-19): "see the earlier version" is the summary
+    from before any coach note, however many notes follow."""
     db = _Db()
     first = "Your voice sounded surer than last time. Keep the endings you found."
     _run(db, monkeypatch, first)
-    later = "Your coach wants the opening slower. Your voice is already surer, so take your time."
-    msg, _ = _run(db, monkeypatch, later, {"coach_note": "Slow the opening."})
+    _run(db, monkeypatch, "Your coach wants the opening slower. Take your time.",
+         {"coach_note": "Slow the opening."})
+    later = "Your coach wants a breath before the price. Your voice is already surer."
+    msg, _ = _run(db, monkeypatch, later, {"coach_note": "Breathe before the price."})
     assert msg["body"] == later
     assert msg["metadata"]["earlier"] == first and msg["metadata"]["coach_update"] is True
     assert len(db.rows) == 1

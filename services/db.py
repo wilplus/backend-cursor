@@ -13342,6 +13342,54 @@ class DatabaseService:
                .not_.is_("shared_at", "null").execute())
         return list(res.data or [])
 
+    def list_owned_take_ids(self, user_id: str, take_session_ids: list[str]) -> set[str]:
+        """Which of these Takes belong to this speaker (v2_sessions). Ids
+        that are not UUID-shaped own nothing and are never sent. Raises on
+        failure."""
+        import uuid as _uuid
+
+        def shaped(value: Any) -> Optional[str]:
+            try:
+                return str(_uuid.UUID(str(value)))
+            except (TypeError, ValueError, AttributeError):
+                return None
+
+        ids = sorted({s for s in (shaped(i) for i in take_session_ids or []) if s})
+        if not user_id or not ids:
+            return set()
+        res = (self.client.table("v2_sessions").select("id")
+               .eq("user_id", str(user_id)).in_("id", ids).execute())
+        return {str(row["id"]) for row in res.data or []
+                if isinstance(row, dict) and row.get("id")}
+
+    def list_coach_take_word_seen(self, user_id: str,
+                                  take_session_ids: list[str]) -> dict[str, str]:
+        """{take: seen_at} for this speaker's last watch of each Take's coach
+        word (coach_feedback_seen, item 'take_word', 0439). A Take never
+        watched is absent. Raises on failure (N80)."""
+        ids = sorted({str(i) for i in take_session_ids or [] if i})
+        if not user_id or not ids:
+            return {}
+        res = (self.client.table("coach_feedback_seen")
+               .select("take_session_id,seen_at")
+               .eq("owner_user_id", str(user_id)).eq("item", "take_word")
+               .in_("take_session_id", ids).execute())
+        return {str(row["take_session_id"]): row.get("seen_at")
+                for row in res.data or []
+                if isinstance(row, dict) and row.get("take_session_id")}
+
+    def read_coach_take_word(self, take_session_id: str, coach_id: str) -> Optional[dict]:
+        """This coach's word for the Take, or None when there is none. The
+        same read as ``get_coach_take_word``, but it RAISES on failure, so a
+        failed read never passes for "no word yet" (N80: the panel would
+        draft over the saved words)."""
+        if not take_session_id or not coach_id:
+            return None
+        res = (self.client.table("coach_take_words").select("*")
+               .eq("take_session_id", str(take_session_id))
+               .eq("coach_id", str(coach_id)).limit(1).execute())
+        return (res.data or [None])[0]
+
     # ── The ledger's weeks, the research role, the golden set (0404) ────
 
     def get_mlc2_foundation_health(self) -> dict:
