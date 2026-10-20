@@ -1,5 +1,6 @@
-"""Did this feedback help? (WIL-74 phase 1, founder 2026-10-19, words signed
-the same day). Table: take_feedback_checks, one row per Take.
+"""Did this help? (WIL-74 phase 1, founder 2026-10-19, words signed the same
+day; question and thank-you simplified by the founder in chat, 2026-10-20).
+Table: take_feedback_checks, one row per Take.
 
 The chat's own module for one question after the Feedback walk:
 
@@ -9,10 +10,10 @@ The chat's own module for one question after the Feedback walk:
      Not really | Yes in place of the record button. Never in the way of the
      next Take: the record button is back the moment they answer, and an
      ignored question stays a bubble in the thread.
-  2. ``answer``: Yes → "Noted. Thank you."; Not really → "What was
-     missing?" with a Skip button; Skip → "Noted. Thank you.".
+  2. ``answer``: Yes → "Thanks!"; Not really → "What would help?" with a
+     Skip button; Skip → "Thanks!".
   3. ``chat_turn``: the chat's intercept. What the speaker types under
-     "What was missing?" is their answer: it is saved and answered with the
+     "What would help?" is their answer: it is saved and answered with the
      signed words, before any other voice can claim it. Typing "Yes" or
      "Not really" under the question counts as tapping it.
 
@@ -37,17 +38,19 @@ logger = logging.getLogger(__name__)
 
 _NAMESPACE = uuid.UUID("6b0d3f52-74a1-4c5e-9d2b-7e1c0a9f4b11")
 
-#: The signed words (founder 2026-10-19). No new words without the founder's OK.
+#: The signed words (founder 2026-10-19; "ask", "missing" and "thanks"
+#: simplified by the founder in chat, 2026-10-20). No new words without the founder's OK. The
+#: frontend's fallback for "ask" is loungeOffers.ts OFFER_PROMPT.feedback_check.
 COPY = {
-    "ask": "Did this feedback help you?",
+    "ask": "Did this help?",
     "yes": "Yes",
     "not_really": "Not really",
-    "missing": "What was missing?",
+    "missing": "What would help?",
     "skip": "Skip",
-    "thanks": "Noted. Thank you.",
+    "thanks": "Thanks!",
 }
 OFFER = "feedback_check"
-#: The Skip button under "What was missing?" (the Lounge's chip vocabulary).
+#: The Skip button under "What would help?" (the Lounge's chip vocabulary).
 SKIP_ACTION = "feedback_skip"
 CHOICES = ("yes", "not_really", "skip")
 _MAX_MISSING = 2000
@@ -178,7 +181,7 @@ def _said(question: str) -> Optional[str]:
 def chat_turn(database: Any, user_id: str, question: str) -> Optional[dict]:
     """The chat's intercept: ``{"answer", "row_metadata"}`` when this turn
     answers the open question, else None (the turn goes on to the next
-    voice). The metadata rides on the stored reply, so "What was missing?"
+    voice). The metadata rides on the stored reply, so "What would help?"
     asked from the chat is the same question as the one a tap writes."""
     if not user_id or not question.strip():
         return None
