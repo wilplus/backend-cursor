@@ -235,12 +235,18 @@ def _said(question: str) -> Optional[str]:
                  if said == COPY[c].lower()), None) or _TYPED_ALSO.get(said)
 
 
+def _distress(text: str) -> bool:
+    from services.chat_intents import detect_chat_intent
+    return (detect_chat_intent(text) or {}).get("intent") == "crisis"
+
+
 def chat_turn(database: Any, user_id: str, question: str) -> Optional[dict]:
     """The chat's intercept: ``{"answer", "row_metadata"}`` when this turn
     answers the open question, else None (the turn goes on to the next
     voice). The metadata rides on the stored reply, so "What would help?"
-    asked from the chat is the same question as the one a tap writes."""
-    if not user_id or not question.strip():
+    asked from the chat is the same question as the one a tap writes.
+    Distress is never an answer: the chat's safety reply answers it."""
+    if not user_id or not question.strip() or _distress(question):
         return None
     open_q = _open_question(database, user_id)
     if not open_q:
