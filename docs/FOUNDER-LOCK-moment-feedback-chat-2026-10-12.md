@@ -233,8 +233,9 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
     no message box.
   - **The step's buttons are a dock under the thread.** A choice lands as
     the speaker's own orange bubble, in the words the Lounge stores; the
-    next step's bubbles land one after the other. Next and Continue post
-    nothing.
+    next step's bubbles land one after the other, each grey one behind the
+    typing dots, and its buttons come once they have. Next and Continue
+    post nothing.
   - **After every tap the thread scrolls to the bottom**, so the newest
     bubble is in view, and follows new bubbles until the speaker scrolls up.
   - **Every practise is one thread**, the clearer version's too: the words

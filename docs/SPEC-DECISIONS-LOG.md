@@ -2714,7 +2714,10 @@ lock:
   above a moment is its slide ("Slide 2"), no longer "Slide 2 · moment 1 of
   2".
 - **The open questions take the prototype's defaults, as approved:** the
-  bubbles of a step land one after another; Next and Continue post nothing;
+  bubbles of a step land one after another, each grey one behind the
+  typing dots and the step's buttons once they have all landed (the
+  founder compared a short fade and chose the dots, the same day: "add the
+  typing dots"); Next and Continue post nothing;
   the recorder sits under the thread; the helper-word picker is a big
   bubble in the thread; each step opens with its name.
 - **No new words.** Everything on screen is signed already.
