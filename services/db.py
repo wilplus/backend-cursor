@@ -10901,7 +10901,7 @@ class DatabaseService:
                            row.get("user_id"), e, exc_info=True)
             return False
 
-    # ── voice notebook (migration 0481, services/voice_notebook.py) ──
+    # ── voice notebook (migration 0482, services/voice_notebook.py) ──
 
     def insert_voice_note(self, row: dict) -> Optional[dict]:
         """One note; the stored row (with its id), or None on failure."""
@@ -11320,16 +11320,22 @@ class DatabaseService:
 
     def rewrite_lounge_message(
         self, user_id: str, client_id: str, body: str, metadata: dict,
+        at: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """Rewrite one owner-scoped Lounge message in place (the closing
         summary after a coach update, lock 2026-10-12 section 3). Its place
-        in the thread stays. None on any failure."""
+        in the thread stays, unless ``at`` moves it: the message after a
+        Take, held back until its ask closes, is let go under what closed
+        it (services/after_take.py). None on any failure."""
         if not user_id or not client_id:
             return None
+        fields: Dict[str, Any] = {"body": body, "metadata": metadata}
+        if at:
+            fields["client_created_at"] = at
         try:
             res = (
                 self.client.table("lounge_messages")
-                .update({"body": body, "metadata": metadata})
+                .update(fields)
                 .eq("user_id", user_id)
                 .eq("client_id", client_id)
                 .execute()
@@ -13275,7 +13281,11 @@ class DatabaseService:
         return list(res.data or [])
 
     def list_corpus_clips(self, *, active_only: bool = True) -> list[dict]:
-        query = self.client.table("corpus_clips").select("*")
+        # The queue picks by stratum and plays by URL; the passage text and
+        # the coach's label stay in the database (the latter never reaches
+        # a listener, AC-9, and the former is the largest column).
+        query = self.client.table("corpus_clips").select(
+            "id, audio_url, duration_ms, machine_stratum, active, created_at")
         if active_only:
             query = query.eq("active", True)
         return list(query.order("created_at", desc=True).limit(500).execute().data or [])
@@ -13568,6 +13578,38 @@ class DatabaseService:
                .select("take_session_id,coach_id,text,video_ref,shared_at,updated_at")
                .in_("take_session_id", ids)
                .not_.is_("shared_at", "null").execute())
+        return list(res.data or [])
+
+    def list_sent_coach_take_words(self, take_session_ids: list[str], *,
+                                   limit: int) -> list[dict]:
+        """What coaches SENT on these Takes, newest first: the shared word's
+        text and its video's transcript (Will's lookup, services.
+        speaker_lookup). Never the draft. The caller passes only the
+        speaker's own Takes. Bounded. Raises on failure."""
+        ids = [str(i) for i in take_session_ids if i]
+        if not ids:
+            return []
+        res = (self.client.table("coach_take_words")
+               .select("take_session_id,text,video_ref,transcript,shared_at")
+               .in_("take_session_id", ids)
+               .not_.is_("shared_at", "null")
+               .order("shared_at", desc=True).limit(int(limit)).execute())
+        return list(res.data or [])
+
+    def list_shared_moment_answers(self, user_id: str, take_session_ids: list[str], *,
+                                   limit: int) -> list[dict]:
+        """The moment answers a coach shared with this speaker on these
+        Takes, newest first (Will's lookup). Only rows the speaker owns
+        (``owner_user_id``); never the draft. Bounded. Raises on failure."""
+        ids = [str(i) for i in take_session_ids if i]
+        if not user_id or not ids:
+            return []
+        res = (self.client.table("exercise_coach_requests")
+               .select("owner_user_id,take_session_id,resolution,answer_text,shared_at")
+               .eq("owner_user_id", str(user_id))
+               .in_("take_session_id", ids)
+               .not_.is_("shared_at", "null")
+               .order("shared_at", desc=True).limit(int(limit)).execute())
         return list(res.data or [])
 
     def list_owned_take_ids(self, user_id: str, take_session_ids: list[str]) -> set[str]:

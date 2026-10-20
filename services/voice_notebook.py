@@ -22,7 +22,7 @@ Keep a voice notebook?" Yes | Not now. A note that sounds like a crisis is
 kept and answered at once with the chat's existing safety reply.
 
 Tables: voice_notebook_notes, voice_notebook_audio, voice_notebook_consent
-(migration 0481), purged with the account (services/data_purge_registry.py).
+(migration 0482), purged with the account (services/data_purge_registry.py).
 """
 from __future__ import annotations
 

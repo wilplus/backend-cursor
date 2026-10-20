@@ -507,6 +507,42 @@ def v2_coach_moments_queue():
         return jsonify({"code": "V2_ERROR", "error": "Failed to fetch the queue"}), 500
 
 
+@v2_bp.route("/coach/queue/moments/close", methods=["POST"])
+@require_founder
+def v2_coach_close_moments():
+    """The founder's Delete on a speaker's row of the queue (2026-10-20):
+    the speaker's waiting moments leave every coach's queue; the Takes, their
+    requests and their Ideal Text stay. Body {session_ids}: the speaker's
+    Takes. What closes is what the founder's own queue counts as waiting on
+    them, so the row's number is exactly what goes, and a Take still waiting
+    for its text closes whole (the greyed row); a Take not in the review
+    queue closes nothing. 200 {closed: n} · 400 · 403 · 500."""
+    from services.coach_moments_queue import (
+        MAX_CLOSE_TAKES, close_moments, queue_for_coach, waiting_for_text,
+        waiting_moments,
+    )
+    body = request.get_json(silent=True)
+    ids = body.get("session_ids") if isinstance(body, dict) else None
+    if (not isinstance(ids, list) or not 0 < len(ids) <= MAX_CLOSE_TAKES
+            or not all(_is_valid_uuid(str(i)) for i in ids)):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "session_ids must list the speaker's Takes."}), 400
+    try:
+        wanted = {str(i) for i in ids}
+        rows, snips, _states = load_review_queue(db)
+        rows = [r for r in rows if str(r.get("id")) in wanted]
+        queue = queue_for_coach(
+            db, rows, rater_id=str(getattr(request, "user_id", "") or ""),
+            moments_for=_queue_moments_for(snips, rows),
+            pseudonym_for=_coach_pseudonym, alarm=False)
+        return jsonify({"closed": close_moments(
+            db, rows, waiting_moments(queue), whole=waiting_for_text(queue))}), 200
+    except Exception as e:
+        logger.error("coach/queue/moments/close failed: %s", e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Could not close those moments."}), 500
+
+
 @v2_bp.route("/coach/speakers", methods=["GET"])
 @require_admin_or_coach
 def v2_coach_speakers():

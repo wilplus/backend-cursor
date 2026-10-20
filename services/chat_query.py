@@ -93,7 +93,7 @@ def persist_chat_turn(
     database, user_id, question, answer, *, suggested_action=None,
     suggested_actions=None, bubbles=None, intent=None,
     user_client_id=None, user_created_at=None, offer=None, take_card=None,
-    row_metadata=None,
+    row_metadata=None, bot_row=True,
 ):
     """BE-owned persistence of one Lounge chat turn (founder #2 — bubbles must
     never disappear): the user message and the bot reply, in lounge_messages,
@@ -103,6 +103,10 @@ def persist_chat_turn(
     turn is a no-op (UNIQUE(user_id, client_id)). The user-turn id prefers the
     FE's own client_id; the bot-turn id derives from it, so there is exactly
     one bot row per user turn.
+
+    ``bot_row`` False stores the user's turn alone: its reply is a row
+    already in the thread (a typed "yes" lets the message after the Take go,
+    services/after_take.py).
 
     Returns the bot row's client_id, or None on failure. Best-effort."""
     q = (question or "").strip()
@@ -135,14 +139,15 @@ def persist_chat_turn(
             "body": q, "client_created_at": u_ts,
             "metadata": None,
         })
-    rows.append({
-        "client_id": b_id, "role": "bot", "kind": "text", "body": a,
-        "metadata": _bot_metadata(
-            intent=intent, suggested_action=suggested_action,
-            suggested_actions=suggested_actions, bubbles=bubbles,
-            extra=row_metadata),
-        "client_created_at": now_iso,
-    })
+    if bot_row:
+        rows.append({
+            "client_id": b_id, "role": "bot", "kind": "text", "body": a,
+            "metadata": _bot_metadata(
+                intent=intent, suggested_action=suggested_action,
+                suggested_actions=suggested_actions, bubbles=bubbles,
+                extra=row_metadata),
+            "client_created_at": now_iso,
+        })
     if offer:
         rows.append(_offer_row(b_id, offer, stamp_after(now_iso)))
     if take_card:
@@ -158,7 +163,11 @@ def persist_chat_turn(
 def finish_chat_turn(database, resp: dict, *, user_id, question,
                      persist_thread, user_client_id, user_created_at,
                      intent=None) -> dict:
-    """Persist and charge one completed turn; the response body."""
+    """Persist and charge one completed turn; the response body.
+
+    A turn that passes the Take's open ask lets the message after the Take
+    go under the reply (founder 2026-10-20, services/after_take.py)."""
+    glad = resp.pop("after_take", None) == "glad"
     if persist_thread and user_id:
         bot_cid = persist_chat_turn(
             database, user_id, question, resp.get("answer"),
@@ -167,11 +176,15 @@ def finish_chat_turn(database, resp: dict, *, user_id, question,
             bubbles=resp.get("bubbles"), intent=intent,
             user_client_id=user_client_id, user_created_at=user_created_at,
             offer=resp.get("offer"), take_card=resp.get("take_card"),
-            row_metadata=resp.get("row_metadata"),
+            row_metadata=resp.get("row_metadata"), bot_row=not glad,
         )
         resp["persisted"] = bool(bot_cid)
         if bot_cid:
             resp["persisted_client_id"] = bot_cid
+        from services import after_take
+        # True tells the Lounge to read the thread again: the message is there.
+        if bot_cid and after_take.passes(resp) and after_take.release(database, user_id, glad=glad):
+            resp["after_take"] = True
     # Charge after answering, never before. Chat is repeatable, so it has no
     # idempotency ref; billing failure must never replace the answer.
     if user_id:
@@ -224,9 +237,10 @@ def _feedback_check(user_id, question, _context, _history=None) -> Optional[tupl
     if not turn:
         return None
     meta = turn["row_metadata"]
+    extra = {"after_take": turn["after_take"]} if turn.get("after_take") else {}
     return _reply(turn["answer"], suggested_action=meta.get("suggested_action"),
                   row_metadata=meta,
-                  debug={"intent": "feedback_check"}), "feedback_check"
+                  debug={"intent": "feedback_check"}, **extra), "feedback_check"
 
 
 def _whatsapp_number(user_id, question, _context, _history=None) -> Optional[tuple[dict, str]]:
@@ -371,6 +385,14 @@ def _librarian(database, user_id, question, history, app_config,
     # The status card costs several reads: it is read on first use, once.
     card = functools.cache(
         lambda: app.status_card(database, user_id) if user_id else None)
+    # The speaker's private note and the pieces of their own history that
+    # match the question (services.speaker_memory), read side by side, once,
+    # on first use. Signed-in speakers only.
+    from services.parallel import run_in_parallel
+    memory = functools.cache(lambda: "".join(run_in_parallel(
+        lambda: speaker_memory.prompt_block(speaker_memory.note_for(database, user_id)),
+        lambda: speaker_memory.history_for(database, user_id, question),
+        lambda: notebook.prompt_block(database, user_id))) if user_id else "")
     from services.master_doc_rag import answer_question
     payload, debug = answer_question(
         question, history=history, admin_dont_ask_notes=admin_notes,
@@ -379,10 +401,7 @@ def _librarian(database, user_id, question, history, app_config,
                              "status": app.render_status(card())
                              if user_id else app.VISITOR_BLOCK,
                              "principles": feedback_facts if user_id else "",
-                             "memory": speaker_memory.prompt_block(
-                                 speaker_memory.note_for(database, user_id))
-                             + notebook.prompt_block(database, user_id)
-                             if user_id else ""})
+                             "memory": memory()})
     suggested = payload.get("suggested_action")
     if suggested not in ("trainings", "audit"):
         suggested = None
