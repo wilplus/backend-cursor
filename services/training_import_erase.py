@@ -36,12 +36,14 @@ IMPORT_SOURCE = "training_import"
 
 #: Append-only tables a plain delete cannot touch. An import never writes
 #: them unless its ideal-text stage ran and was served; then it is refused
-#: before anything is deleted.
+#: before anything is deleted. The detector reconciliation is evidence the
+#: service role may only read (0311): even a delete of no rows is refused.
 APPEND_ONLY = frozenset({
     "take_feedback_exposure",
     "take_feedback_self_report",
     "take_feedback_self_report_revision",
     "ideal_text_part_revision",
+    "take_feedback_detector_reconciliation",
 })
 
 _LOCATORS = ("take", "snippet", "recording", "project")
@@ -85,8 +87,15 @@ def _missing_table(error: Exception) -> bool:
 
 
 def _ids(client: Any, table: str, column: str, value: str) -> list[str]:
-    rows = (client.table(table).select("id").eq(column, value)
-            .execute().data or [])
+    # Production renamed charisma_snippets to snippets: the old name is
+    # gone there, and a table that is not there holds no rows.
+    try:
+        rows = (client.table(table).select("id").eq(column, value)
+                .execute().data or [])
+    except Exception as error:  # noqa: BLE001 - database boundary
+        if _missing_table(error):
+            return []
+        raise
     return [str(r["id"]) for r in rows if r.get("id")]
 
 
@@ -149,6 +158,8 @@ def erase_training_import(database: Any, session_id: str) -> dict:
     for relation, column, locator in (
             ("take_feedback_exposure", "take_session_id", "take"),
             ("take_feedback_self_report", "take_session_id", "take"),
+            ("take_feedback_detector_reconciliation", "take_session_id",
+             "take"),
             ("ideal_text_part_revision", "arc_id", "project")):
         if not values[locator]:
             continue
@@ -167,6 +178,11 @@ def erase_training_import(database: Any, session_id: str) -> dict:
     prefix = f"willab_lab/{sid}/"
     _erase_audio([str(r["storage_path"]) for r in recordings
                   if str(r.get("storage_path") or "").startswith(prefix)])
+
+    # The session names its recording; let go of it first, so the
+    # recording's delete never depends on how that link is constrained.
+    client.table("v2_sessions").update(
+        {"recording_id": None, "recording_1_id": None}).eq("id", sid).execute()
 
     deleted: dict[str, int] = {}
     for _order, relation, column, locator in _relations():

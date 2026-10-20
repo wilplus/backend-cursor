@@ -440,6 +440,10 @@ is skipped and the rest are still written.","O1 -> test_an_audit_item_takes_one_
 O2 -> test_the_coach_sheets_are_blind
 O3 -> test_no_training_yes_writes_no_block_pick
 O4 -> test_a_refused_block_pick_is_skipped_and_the_rest_are_written","Founder 2026-10-01 (F6, C5-b). O4: a Take has one frame per policy version sharing block ids, and an insert refused by coach_block_pick_once (a 500) emptied the coach's queue."
+tests/test_coach_reach_alarm.py,Story,"As the founder, I want an alarm when new speakers' moments stop reaching the coaches, so that I hear of it from Sentry, not from an empty queue.","O1  The 3 newest Takes with moments, sent over 6 hours ago, none of them
+reached: one warning, once a day.
+O2  One of them reached, or a Take is too fresh to judge: no warning.","O1 -> ReachAlarmTests::test_fires_once_a_day_when_nothing_new_reached
+O2 -> ReachAlarmTests::test_quiet_while_reach_works_or_takes_are_fresh",Founder 2026-10-20: the walk (lock 2026-10-12) stopped recording the reach and no coach heard the newest tester (frontend #866).
 tests/test_coach_route_contracts.py,Story,"As a developer moving coach routes into services, I want each route's success answer and main refusals pinned, so that the move changes nothing a coach sees.","O1  Student detail returns the same drill-down, and refuses a bad or
 unknown student.
 O2  Practice review refuses before the coach's blind answer, and a
@@ -796,11 +800,11 @@ O4  Tentative evidence gets tentative words.","O1 -> test_unsigned_lines_reach_n
 O2 -> test_signed_lines_are_the_floor
 O3 -> test_no_number_no_construct_no_feelings_no_one_else
 O4 -> test_tentative_evidence_gets_tentative_words","Founder 2026-10-05, decisions log N48.6, Q29 A: drafted for signature."
-tests/test_feedback_check.py,Story,"As a speaker, I want to be asked ""Did this feedback help you?"" after the Feedback walk and have my answer kept, and as a coach I want a card when my speaker's goal changes, so that the founder learns whether feedback helps and coaches follow each speaker's goal.","O1  The question closes the Take summary, but waits when another offer is
+tests/test_feedback_check.py,Story,"As a speaker, I want to be asked ""Did this help?"" after the Feedback walk and have my answer kept, and as a coach I want a card when my speaker's goal changes, so that the founder learns whether feedback helps and coaches follow each speaker's goal.","O1  The question closes the Take summary, but waits when another offer is
 already there (one ask at a time).
 O2  ""Yes"" is kept and answered once with the signed words; a second tap
 changes nothing.
-O3  ""Not really"" asks what was missing; my next typed message is kept as
+O3  ""No"" asks what would help; my next typed message is kept as
 that answer (even if it sounds like a goal change), then the chat is
 ordinary again.
 O4  ""Skip"" ends it with no answer kept; typing a button's words counts as
@@ -811,7 +815,7 @@ O2 -> test_yes_is_kept_and_answered_with_the_signed_words_once
 O3 -> test_not_really_asks_what_was_missing_and_the_chat_keeps_the_answer
 O4 -> test_skip_ends_it_without_an_answer,
 test_typing_a_button_counts_as_tapping_it_and_anything_else_goes_to_will
-O5 -> test_a_new_goal_is_kept_and_every_coach_but_the_speaker_gets_one_card_a_day","WIL-74, founder 2026-10-19 (words signed the same day)."
+O5 -> test_a_new_goal_is_kept_and_every_coach_but_the_speaker_gets_one_card_a_day","WIL-74, founder 2026-10-19 (words signed the same day; the question and the thank-you simplified by the founder, 2026-10-20)."
 tests/test_feedback_contract_evidence.py,Story,"As a speaker, I want feedback offered only where it points at exact words I said (and, for Confident Voice, a clip I can play), so that every piece of feedback is evidence-backed.","O1  A candidate whose words are found in the Take is served with evidence
 that quotes those exact words, their paragraph and slide, and (for
 Confident Voice) the playable clip window; a rewrite carries its

@@ -224,6 +224,33 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
 
 ## Decided after the lock
 
+- **The lens is one chat** (founder, chat, 2026-10-20, N81, WIL-89;
+  prototype <https://claude.ai/artifact/P5fHFguyCgjhMGPsmH7UaD>, "can you
+  build it that way?"). Amends section 1 ("Lens on, the walk … one step at
+  a time, full screen") and section 2.5 (the practise recorder):
+  - **Nothing swaps.** Each step reached lands under the one before in the
+    lens; earlier steps stay above to scroll back to. Same sizes, ‹ › and ✕,
+    no message box.
+  - **The step's buttons are a dock under the thread.** A choice lands as
+    the speaker's own orange bubble, in the words the Lounge stores; the
+    next step's bubbles land one after the other, each grey one behind the
+    typing dots, and its buttons come once they have. Next and Continue
+    post nothing.
+  - **After every tap the thread scrolls to the bottom**, so the newest
+    bubble is in view, and follows new bubbles until the speaker scrolls up.
+  - **Every practise is one thread**, the clearer version's too: the words
+    to say, the recorder in the dock (strip, Skip, red Stop), "Practise N",
+    the breathing mark, the answer. No "Practise · Slide N" screen.
+  - **Other speakers** land one by one with their name; the answer is the
+    speaker's bubble; the cards and "Audio unclear" are the dock.
+  - **Each step opens with its name** as a small line ("Slide 2", "Slide 2
+    · helper words", "Take 2"); the bar shows the step in view; ‹ › scroll
+    to the step before or after, within this opening of the walk.
+  - **The Lounge says the same words:** the practise answer's line as
+    shown, no "Practise" or "Practise again" bubble of its own, and "Slide
+    2" above a moment instead of "Slide 2 · moment 1 of 2".
+  - **No new words.**
+
 - **When the coach changes their word** (founder, chat, 2026-10-19, N80;
   prototype <https://claude.ai/artifact/APk56PLZt6o6Cx9qUMKkuk>). Amends
   section 1 and section 3:
