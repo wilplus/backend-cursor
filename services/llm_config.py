@@ -248,6 +248,19 @@ private note (at most five lines) from the old note and the new events.
 Never shown to anyone but the founder; read by Will (services.speaker_memory)."""
 
 
+SPEC_WILL_QUESTION_HEARD = LLMSpec(
+    model=CHEAP_MODEL,
+    # Zero: it copies words out of the Take, it never writes any.
+    temperature=0.0,
+    max_tokens=60,
+    response_format={"type": "json_object"},
+    timeout_seconds=8.0,
+)
+"""Will's question after a Take (founder 2026-10-20, N82) — reads who the
+talk is for and what it asks, word for word from the Take or nothing; code
+keeps only words the Take says (services.will_question.read_heard)."""
+
+
 SPEC_AUDIT_POINTER = LLMSpec(
     model=CHEAP_MODEL,
     # Low temp — one short, in-language line pointing the user to their audit

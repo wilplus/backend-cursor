@@ -224,6 +224,29 @@ practice try  = Δ willfidence vs the original ≥ +0.05 → better
 
 ## Decided after the lock
 
+- **Praise first, and Will's one question after a Take** (founder, Claude
+  Code chat, 2026-10-20, N82: "wow that was great … great, but it could
+  sound even better, why not say it like this … after the feedback walk
+  … ask the questions"; prototype
+  <https://claude.ai/artifact/HSRfvDZLDRQizmGJDxMUJz>, "signed, build
+  it"). Amends section 2.4's voice Exercise, "Practise again until the
+  third try or a Good job" (L4 and L3 the first time), and "One action at
+  a time" (the order of the one ask):
+  - **The voice Exercise opens with praise:** "That was good. But what if
+    you said it more like this?" (L4), the AI version of their voice, then
+    "Now try saying it like that." (L3), in place of "Exercise" and
+    "Here’s how you could say it." Every not yet after it says L5, so L4
+    is never said twice. Without an AI clip the Exercise is as locked.
+  - **The walk stays taps only.** Will's question is never in the lens.
+  - **Will's one question is the Take's one ask,** in the Lounge after the
+    card, only when something is off or missing: Take 1 keeps "Did this
+    help?" when the Take looks off, otherwise Will asks; from Take 2 the
+    CEO panel's ask, WhatsApp and the home screen come first, then Will,
+    then "Did this help?". The message after the Take waits under it.
+  - **Its answers are taps from what Will knows, and Skip,** or the
+    speaker's own words in the message box; one follow-up at most. The
+    words are the signed bank in N82.
+
 - **The lens, the Ideal Text and the Lounge** (founder, Claude Code chat,
   2026-10-20: "make it full width chat; but slightly bigger (cause it is
   the lense view) … lock in only the bubble 3 dots as waiting … the

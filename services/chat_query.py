@@ -243,6 +243,19 @@ def _feedback_check(user_id, question, _context, _history=None) -> Optional[tupl
                   debug={"intent": "feedback_check"}, **extra), "feedback_check"
 
 
+def _will_question(user_id, question, _context, _history=None) -> Optional[tuple[dict, str]]:
+    """N82: what the speaker types under Will's question after a Take (or
+    its one follow-up) is their answer: kept, then thanked, before any other
+    voice reads it as something else."""
+    from services.db import db
+    from services.will_question import chat_turn
+    turn = chat_turn(db, user_id, question)
+    if not turn:
+        return None
+    return _reply(turn["answer"], row_metadata=turn["row_metadata"],
+                  debug={"intent": "will_question"}), "will_question"
+
+
 def _whatsapp_number(user_id, question, _context, _history=None) -> Optional[tuple[dict, str]]:
     """A number typed under the WhatsApp ask (founder 2026-10-20): saved as
     the form saves it, before any voice reads it as something else."""
@@ -334,6 +347,7 @@ def _intercepts(user_id, app_config) -> list[tuple[str, Callable]]:
     chain: list[tuple[str, Callable]] = []
     if user_id:
         chain.append(("feedback-check intercept failed user=%s: %s", _feedback_check))
+        chain.append(("will-question intercept failed user=%s: %s", _will_question))
         chain.append(("whatsapp-number intercept failed user=%s: %s", _whatsapp_number))
         chain.append(("sunday-note intercept failed user=%s: %s", _sunday_note))
         chain.append(("voice-notebook intercept failed user=%s: %s",
@@ -390,6 +404,7 @@ def _librarian(database, user_id, question, history, app_config,
     from services import speaker_memory
     from services import voice_notebook as notebook
     from services.feedback_check import CHAT_FACTS as feedback_facts
+    from services.will_question import CHAT_FACTS as will_facts
     if not user_id:
         gate = app.signup_gate(history)
         if gate:
@@ -414,7 +429,7 @@ def _librarian(database, user_id, question, history, app_config,
         app_context=lambda: {"features": app.features_block(card()),
                              "status": app.render_status(card())
                              if user_id else app.VISITOR_BLOCK,
-                             "principles": feedback_facts if user_id else "",
+                             "principles": feedback_facts + will_facts if user_id else "",
                              "memory": memory()})
     suggested = payload.get("suggested_action")
     if suggested not in ("trainings", "audit"):

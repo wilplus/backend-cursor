@@ -396,6 +396,16 @@
       "module": "pending",
       "sha256": "3e3be2bc25ec2bfdb1709d4aea28d4993a298ca15de83afe9d23943b85129a0b"
     },
+    "will_question.heard": {
+      "kind": "source_ref",
+      "module": "pending",
+      "sha256": "2d43d64e92955f904d9cabd3dafb49c913271495cf7dcbf1dadfcc9a0f886e6a"
+    },
+    "will_question.heard_user": {
+      "kind": "source_ref",
+      "module": "pending",
+      "sha256": "3008567e3494d728efb1f2b3d5c9e9d8e8204289eccfa9c560f893b28245f98e"
+    },
     "will_voice.off_brand": {
       "kind": "source_ref",
       "module": "pending",

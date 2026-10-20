@@ -482,6 +482,31 @@ def v2_explore_arc_feedback_check(arc_id):
         return jsonify({"code": "V2_ERROR", "error": "Failed to save the answer"}), 500
 
 
+@v2_bp.route("/explore/arc/<arc_id>/will-question", methods=["POST"])
+@require_auth
+def v2_explore_arc_will_question(arc_id):
+    """The speaker's tap under Will's question after a Take (N82): one of
+    the question's answers, or Skip. Body: {take_session_id, choice}. Writes
+    the tap and the reply (thanks, or the one follow-up) into the Lounge.
+    200 {messages} · 400 · 404 · 500"""
+    from services.will_question import QuestionError, answer
+    try:
+        owned, sessions = _arc_owned_by_caller(arc_id)
+        body = request.get_json(silent=True) or {}
+        take = str(body.get("take_session_id") or "")
+        if not owned or take not in {str(s.get("id")) for s in sessions}:
+            return jsonify({"code": "NOT_FOUND", "error": "take not found"}), 404
+        messages = answer(db, user_id=str(request.user_id), arc_id=str(arc_id),
+                          take_session_id=take, choice=str(body.get("choice") or ""))
+        return jsonify({"messages": messages}), 200
+    except QuestionError as e:
+        return jsonify({"code": e.code, "error": str(e)}), e.status
+    except Exception as e:
+        logger.error("will question failed arc=%s: %s", arc_id, e, exc_info=True)
+        sentry_sdk.capture_exception(e)
+        return jsonify({"code": "V2_ERROR", "error": "Failed to save the answer"}), 500
+
+
 @v2_bp.route("/explore/arc/<arc_id>/ideal-text/notes", methods=["PUT"])
 @require_auth
 def v2_explore_put_ideal_notes(arc_id):

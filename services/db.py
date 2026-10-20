@@ -10983,7 +10983,7 @@ class DatabaseService:
                            user_id, e, exc_info=True)
             return False
 
-    # ── the Sunday note (migration 0485, services/sunday_note.py) ──
+    # ── the Sunday note (migration 0486, services/sunday_note.py) ──
 
     def insert_sunday_note(self, row: dict) -> Optional[dict]:
         """The claim on a note; None when the week's Sunday note is already

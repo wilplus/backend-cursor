@@ -2729,3 +2729,84 @@ lock:
 Lock: `FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md` ("Decided after the
 lock", "The lens is one chat"). Frontend only; no backend change, no
 migration.
+
+**N82 · Will asks one question after a Take, and the practise moment
+cheers first (founder, chat, 20 October 2026).** The ask: the walk "spots
+my negative thinking patterns": a confident moment gets "wow that was
+great", room to improve gets "great, but it could sound even better, why
+not say it like this" with the AI voice; the walk stays taps only; after
+it, Will asks in the Lounge (whether the feedback was applied, the goal,
+the audience, principles, "need a break?"), deeper after about three
+Takes, "a natural flow in the walk and in the lounge". Every open choice
+was answered with the recommended option the same day; the founder signed
+the clickable prototype <https://claude.ai/artifact/HSRfvDZLDRQizmGJDxMUJz>
+and its words ("signed, build it"):
+- **The voice Exercise opens with praise:** L4, the AI version of their
+  voice, then L3, in place of "Exercise" and "Here’s how you could say it."
+  Every not yet after it says L5. Signed lines only.
+- **One question per Take, as the Take's one ask** (`services/after_take.py`):
+  Take 1 keeps "Did this help?" when the Take looks off, otherwise Will
+  asks; from Take 2 the CEO panel's ask, WhatsApp, the home screen, then
+  Will, then "Did this help?".
+- **Only when something is off or missing, the first that holds**
+  (`services/will_question.py`): a breather when the practice did not land
+  or the voice dipped two Takes in a row (never two Takes running); "On
+  purpose?" when the clearer line practised last Take did not come back
+  (the practice's own passage match, no AI guess; when it did come back the
+  summary is told, and Will asks nothing about it); who the talk is for;
+  what they want the audience to do or feel; from Take 3, with both known,
+  one deeper question in their own words. Each basic and deeper question
+  once per talk.
+- **The tap answers come from what Will knows:** this Take's own words,
+  then what the speaker said for an earlier talk, then the signed answers
+  for their field. A Take that names its audience twice is checked
+  instead: "Sounds like this one's for {the board}. Right? 🎯" (Yes,
+  Someone else); the guess becomes the audience only on Yes.
+- **How Will knows:** one gpt-4o-mini call per Take
+  (`SPEC_WILL_QUESTION_HEARD`, prompt `will_question.heard`, drift-locked;
+  golden rows `tests/evals/golden/will_question.jsonl`), under the Take's
+  processing authorization, run beside the summary's own call. It may only
+  return words the title or transcript says, at most four, no number; code
+  checks that, and anything else, or a late or failed call, means Will asks
+  openly.
+- **Where the answers go:** every answer is kept for Will (speaker memory,
+  kind "answer"); who the talk is for fills the Take's setup `audience`, and
+  what they should do its `strategic_context` as "Desired call to action:"
+  (the setup's own line; the rest kept). The next Take's setup carries
+  them, so its clearer version and star suggestions hear them again (the
+  setup stopped asking on 2026-10-12).
+- **Answering:** a tap, Skip, or their own words in the message box; one
+  follow-up after "Someone else", "Something's missing", "It didn't feel
+  like me", "Not sure" or "Not really". A tap with no follow-up, Skip or
+  typed words let the message after the Take go.
+- **The signed words:** "Quick one: who's this talk really for? 🎯";
+  "When you finish, what do you want them to do? Or feel? 🤔"; "Last time
+  we practised “…”. It didn't make it into this Take. On purpose? 😏"
+  (Yes, on purpose · I forgot · It didn't feel like me); "You've put real
+  work into this one 💪 Need a breather, or does something feel missing?"
+  (A breather · Something's missing · All good, keep going); "Zoom out with
+  me 🔭 Does this talk take you where you want to go?" (Yes · Not sure ·
+  Not really); "Which part of this talk is most you?"; "Why does this one
+  matter to you?"; "If this talk goes perfectly, what changes for you?";
+  the follow-ups "Who is it for, then? 👀", "Tell me more 👀 What's
+  missing?", "What would feel more like you?", "What would make it a
+  yes?", "Where do you want it to take you?"; "Got it, thanks 🙏"; the
+  answers by field (business: My team · Leadership · A client; public
+  speaking: A big room · Colleagues · Friends and family; sales: A buyer ·
+  Their team · The decision maker; customer service: A customer · A caller
+  · My team; interviews: The hiring manager · A panel · A recruiter); goal:
+  Say yes · Trust me · Get it. "Skip" is the signed word under "What would
+  help?". Will says them as signed.
+- **Not built yet:** the bank editable on the admin page with empty slots
+  (it needs a table: its own change, with the migration review); Will
+  varying the words lightly; the coach panel showing the audience and the
+  goal in words (a locked screen).
+- **What stops happening:** from Take 2, "Did this help?" waits for a Take
+  where Will has nothing to ask; after a Take 1 that looks fine, the Lounge
+  now asks Will's question where it asked nothing.
+- **The approval**, the last line of every commit that changes a locked file
+  for this: "Founder-Approved: Artur in the Claude Code chat, 20 October
+  2026: signed the prototype https://claude.ai/artifact/HSRfvDZLDRQizmGJDxMUJz
+  (N82, praise first and Will's one question), 'signed, build it'".
+Lock: `FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md` ("Decided after the
+lock", "Praise first, and Will's one question after a Take"). No migration.

@@ -24,7 +24,7 @@ Founder only: the notebook's ring row and its Yes (``voice_notebook``). The
 call to the model runs under the founder's processing authorization, in the
 chat's request or, on Sunday, from the worker's sweep
 (``pipeline_jobs.run_sweep_loop`` → ``sweep_due`` → ``run_sunday``).
-Table: sunday_notes (migration 0485), purged with the account.
+Table: sunday_notes (migration 0486), purged with the account.
 """
 from __future__ import annotations
 

@@ -8,6 +8,7 @@ private note that the AI rewrites from what happened, and Will reads it.
 what happens                 kept for good              rewritten              read by
 ──────────────────────       ─────────────────────      ──────────────────     ─────────────────────────
 answer to "Did this help?" ─► speaker_memory_events ──► speaker_memory.note ─► Will in the chat (librarian)
+answer to Will's question  ─►  (kind "answer", N82)
 a Take's outcome           ─►  (raw inputs, the asset)    (≤ 5 lines, plain)  ─► the summary after a Take
                                                           ▲
                                        the founder reads / corrects it in admin

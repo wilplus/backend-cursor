@@ -75,8 +75,12 @@ class _Db:
         return [self.rows[m["client_id"]] for m in messages]
 
 
+# Who it is for and what it asks are known: Will has no question after these
+# Takes (services/will_question.py), so the asks here are the app's own.
 TAKES = [{"id": "t1", "intake_context": {"topic": "Churn in Q3",
-                                          "slides": [{"title": "Why churn fell"}]}},
+                                          "slides": [{"title": "Why churn fell"}],
+                                          "audience": "The board",
+                                          "strategic_context": "Desired call to action: keep the budget"}},
          {"id": "t2"}]
 
 

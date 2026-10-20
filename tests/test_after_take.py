@@ -3,19 +3,20 @@ STORY    As a speaker, after a Take I want one thing to do at a time: the
          Take's card, at most one ask, then the message with "Record Take N",
          so that a question never competes with recording again.
 OUTCOME
-  O1  After Take 1 the only ask is "Did this help?", and only when the Take
-      looks off: never WhatsApp, never an ask from the CEO panel, even
-      without a number.
+  O1  After Take 1 the one ask is "Did this help?" when the Take looks off,
+      else Will's question when it has one: never WhatsApp, never an ask
+      from the CEO panel, even without a number.
   O2  From Take 2 the one ask is the CEO panel's when there is one, else
       WhatsApp (at most twice), else the home screen (once, where the phone
-      can add it), else the question; nothing asked, nothing waits.
+      can add it), else Will's question, else "Did this help?"; nothing
+      asked, nothing waits.
   O3  The message waits for the ask and comes under whatever closed it: a
       typed turn, under Will's reply; "Yes", tapped or typed, glad, as the
       reply; a reply that opens a form keeps it waiting.
   O4  A message still waiting when a newer Take is written shows where it
       stands.
-PROVES   O1 -> test_after_take_one_only_the_question_and_only_when_it_looks_off
-         O2 -> test_from_take_two_the_ceo_ask_then_whatsapp_then_home_screen_then_the_question
+PROVES   O1 -> test_after_take_one_the_question_when_it_looks_off_else_will
+         O2 -> test_from_take_two_the_ceo_ask_then_whatsapp_then_home_screen_then_will_then_the_question
          O3 -> test_the_message_comes_under_what_closed_the_ask
          O4 -> test_an_older_waiting_message_shows_where_it_stands
 WHY      Founder 2026-10-20: "one action at a time"; details chosen on the
@@ -87,14 +88,15 @@ def _typed(db, monkeypatch, question, answer="Slow the first slide down."):
             user_client_id=None, user_created_at=None, intent=intent))
 
 
-def test_after_take_one_only_the_question_and_only_when_it_looks_off(monkeypatch):
+def test_after_take_one_the_question_when_it_looks_off_else_will(monkeypatch):
     _world(monkeypatch, phone=None, admin={"id": "a1", "kind": "promo"})
     db = _Db()
-    assert after_take.choose(db, "u", take_index=1, off=True, can_install=True) == "feedback_check"
+    assert after_take.choose(db, "u", take_index=1, off=True, can_install=True, will=True) == "feedback_check"
+    assert after_take.choose(db, "u", take_index=1, off=False, can_install=True, will=True) == "will_question"
     assert after_take.choose(db, "u", take_index=1, off=False, can_install=True) is None
 
 
-def test_from_take_two_the_ceo_ask_then_whatsapp_then_home_screen_then_the_question(monkeypatch):
+def test_from_take_two_the_ceo_ask_then_whatsapp_then_home_screen_then_will_then_the_question(monkeypatch):
     db = _Db()
     _world(monkeypatch, phone=None, admin={"id": "a1", "kind": "promo"})
     assert after_take.choose(db, "u", take_index=2, off=True) == "admin"
@@ -105,6 +107,7 @@ def test_from_take_two_the_ceo_ask_then_whatsapp_then_home_screen_then_the_quest
     _waiting(db, "take-3", "whatsapp")
     assert after_take.choose(db, "u", take_index=4, off=True, can_install=True) == "install"
     _waiting(db, "take-4", "install")
+    assert after_take.choose(db, "u", take_index=5, off=True, can_install=True, will=True) == "will_question"
     assert after_take.choose(db, "u", take_index=5, off=True, can_install=True) == "feedback_check"
 
     _world(monkeypatch, phone="+447700900461", admin=None)
