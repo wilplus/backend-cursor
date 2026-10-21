@@ -2884,3 +2884,19 @@ and what is open. It outranks nothing: the order of N95 stands, and the page is
 fixed where it differs. The older pages open with a note pointing to it. The
 twenty-four disagreements it found wait for the founder in its §3. No rule
 changes, no code, no migration.
+
+**N103 · Three approved versions of an exercise video per mistake before the
+app stops asking coaches (founder, the Claude Code chat, 21 October 2026).**
+The app keeps asking coaches for exercise videos for a mistake until it has
+at least three versions of it, so a speaker is not shown the same lesson
+again and again. Only versions the founder approved for other speakers count
+(N78's approval; a video made for one speaker stays that speaker's and does
+not count). Below three, a speaker whose moment shows the mistake still gets
+an existing version at once (never waits), and the moment also goes to the
+coach's queue to record another version; at three or more the app stops
+asking for that mistake. Choosing among the exact fits: a shuffle that skips
+any version this speaker has already seen and rests a version after their
+"Good job", keeping the 80/20 learning slot. Builds on N77/N78, which arrive
+with wilplus/backend-cursor#1127; not in force until it is built and merged.
+No new words; the coach-panel line that asks for another version needs the
+founder's wording when it is built.
