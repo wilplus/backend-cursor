@@ -47,7 +47,7 @@ only in chat, a PR description, an open branch, or the frontend's own docs.
 Write every founder decision made in chat into the decisions log right away,
 in its own small docs PR, never bundled with code that waits for review.
 Where the code on main disagrees with these docs, the docs win and the code
-is a bug to fix (founder, 2026-10-21, N94). The frontend's flow pages
+is a bug to fix (founder, 2026-10-21, N95). The frontend's flow pages
 `docs/flows/feedback-walk-and-chat.md` and `docs/flows/coach-panel.md` also
 count for their flows, because the frontend design-lock guard requires them
 to change together with the code.

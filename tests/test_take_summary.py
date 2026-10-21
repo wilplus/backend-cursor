@@ -4,10 +4,12 @@ STORY    As a speaker, I want one short summary of my Take in words, about my
 OUTCOME
   O1  Each Take gets one stored summary, written from its real progress and
       about my talk (its title, slides, my most confident moment).
-  O2  A summary with a number, praise that drifts from the approved lines,
-      or a closing question (one action at a time: the next step is the last
-      thing said, founder 2026-10-20) is replaced by the approved fallback
-      copy.
+  O2  The summary is only a cheeky sum-up of the Take: one or two short
+      sentences, no greeting and no question anywhere (Will asks his own
+      after it, founder 2026-10-21, N94). A summary with a number, praise
+      that drifts from the approved lines, a question or a next step is
+      replaced by the approved fallback copy, which never calls a fourth
+      Take the third.
   O3  A coach note rewrites the summary in place, keeping the first one
       however many notes follow, once per note; a note shared after the
       review is its own bubble, stored once.
@@ -25,7 +27,9 @@ PROVES   O1 -> test_a_take_gets_one_summary_from_its_real_progress,
                test_the_summary_knows_the_talk_and_asks_for_whatsapp_once
          O2 -> test_a_reply_with_a_number_falls_back_to_the_signed_copy,
                test_a_reply_that_drifts_from_the_signed_lines_is_the_signed_copy,
-               test_a_reply_that_ends_on_a_question_is_the_signed_copy
+               test_a_reply_that_ends_on_a_question_is_the_signed_copy,
+               test_only_a_short_cheeky_sum_up_is_kept,
+               test_a_fourth_take_is_never_called_the_third
          O3 -> test_a_coach_update_rewrites_the_summary_in_place_and_keeps_the_first,
                test_a_shared_coach_word_rewrites_a_reviewed_take_once_per_word,
                test_a_coach_word_shared_after_the_review_is_its_own_bubble
@@ -206,9 +210,9 @@ def test_the_summary_and_its_ask_sort_under_the_walk(monkeypatch):
 
 def test_a_reply_that_drifts_from_the_signed_lines_is_the_signed_copy():
     signed = ["You sounded like you really believed it this time!"]
-    near = "Churn in Q3 was the talk! You sounded like you believed it this time! Go again."
+    near = "Churn in Q3 was the talk! You sounded like you believed it this time!"
     assert take_summary._clean(near, signed, ("Churn in Q3",)) == near
-    assert take_summary._clean("Churn in Q3 was the talk. You're a natural genius. Go again.",
+    assert take_summary._clean("Churn in Q3 was the talk. You're a natural genius.",
                                signed, ("Churn in Q3",)) is None
     # The next step is Will's, after the chain (N89): a summary that sends
     # them to record is the signed copy instead.
@@ -216,6 +220,40 @@ def test_a_reply_that_drifts_from_the_signed_lines_is_the_signed_copy():
                                ["Fewer stops here than on Take 1."]) is None
     assert take_summary._clean("Fewer stops here than on Take 1. Lovely!",
                                ["Fewer stops here than on Take 1."]) is not None
+
+
+def test_only_a_short_cheeky_sum_up_is_kept():
+    """Founder 2026-10-21, N94, on the app's summary: "make it shorter and
+    only a cheeky summary of the take"; the question about the content is
+    Will's, after it."""
+    signed = ["You sounded like you really believed it this time!"]
+    names = ("Startup",)
+    seen_in_the_app = ('Hey there! Just watched your third take on "Startup"—you sounded like you '
+                       'really believed it this time! 🎉 I\'m curious, though: how does the source of '
+                       'happiness fit into the main points about running a startup? You\'re moving '
+                       'toward trusting in what you say, and it\'s showing!')
+    assert take_summary._clean(seen_in_the_app, signed, names) is None
+    assert take_summary._clean("Hey, Startup is in! You sounded like you really believed it this time!",
+                               signed, names) is None  # a greeting
+    assert take_summary._clean("Startup, take three! How did that feel? You sounded like you really "
+                               "believed it this time!", signed, names) is None  # a question
+    assert take_summary._clean("Startup, take three. You sounded like you really believed it this "
+                               "time! The ending stuck.", signed, names) is None  # three sentences
+    kept = "Startup, take three, and you sounded like you really believed it this time! 🎉"
+    assert take_summary._clean(kept, signed, names) == kept
+
+
+def test_a_fourth_take_is_never_called_the_third(monkeypatch):
+    takes = TAKES + [{"id": "t3"}, {"id": "t4"}]
+    db = _Db()
+    monkeypatch.setattr("services.whatsapp_notify.whatsapp_state", lambda _db, _user: {"phone": db.phone})
+    monkeypatch.setattr("services.person_asks.next_for", lambda _user: None)
+    monkeypatch.setattr(take_summary, "_under_authority", lambda _db, _take, w: w())
+    monkeypatch.setattr(take_summary, "write_summary", lambda *a, **kw: None)  # refused
+    msg = take_summary.summary_message(db, user_id="u", arc_id="a", takes=takes,
+                                       take_session_id="t4", body={"practice": "better"})
+    assert "third" not in msg["body"] and msg["body"] in take_summary.line_bank_lines()
+    assert msg["metadata"]["written"] is False
 
 
 def test_a_reply_that_ends_on_a_question_is_the_signed_copy(monkeypatch):

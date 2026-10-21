@@ -183,7 +183,10 @@ def finish_chat_turn(database, resp: dict, *, user_id, question,
             resp["persisted_client_id"] = bot_cid
         from services import after_take
         # True tells the Lounge to read the thread again: the message is there.
-        if bot_cid and after_take.passes(resp) and after_take.release(database, user_id):
+        # Never under the safety reply: after a distressed message the asks
+        # wait until the speaker writes again (founder 2026-10-21, N94).
+        if (bot_cid and intent != "crisis" and after_take.passes(resp)
+                and after_take.release(database, user_id)):
             resp["after_take"] = True
     # Charge after answering, never before. Chat is repeatable, so it has no
     # idempotency ref; billing failure must never replace the answer.
