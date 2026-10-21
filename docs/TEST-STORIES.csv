@@ -342,6 +342,12 @@ O3  A bake that cannot run in the run (no document yet, or a failure) is
 queued, so the queue still has its try.","O1 -> test_a_flipped_take_is_baked_in_the_run_and_not_queued
 O2 -> test_an_unflipped_take_is_queued_as_before
 O3 -> test_a_bake_that_cannot_run_now_is_queued","Founder 2026-10-20: ""It doesn't open right after the processing""; the queued bake landed after the page had stopped asking."
+tests/test_bake_serves_the_coachs_answer_fresh.py,Story,"As a speaker, I want my coach's words and video to reach my page when the coach shares them, not when I next answer something, so that a video sent with the feedback is there (founder 2026-10-21: ""the video was sent too with the coach feedback and didn't pass through"").","O1  A stored bake serves the coach's answer as it stands now: words
+shared after the bake arrive, a video added after it is there with a
+fresh link, and an answer the coach withdrew since the bake is gone.
+O2  A coach's answer asks for the document to be baked again, off the
+coach's request; a broken queue never fails the answer.","O1 -> test_a_stored_bake_serves_the_coachs_answer_and_video_as_they_stand
+O2 -> test_a_coachs_answer_asks_for_a_rebake_and_a_broken_queue_never_fails_it","Founder 2026-10-21. The bake is retired only by the speaker's own writes (`ideal_text_feedback_surface_touched_at_v1`), never by the coach's, and a signed video link in it went dark after six hours."
 tests/test_blind_coach_evidence_postgres.py,Story,"As a coach, I want the blind evidence packet to carry only audio and timing, never the machine's or other raters' answers, so that my judgement stays blind.","O1  blind_coach_evidence_v1 gives the assigned coach the moment's audio and
 timing, and nothing else: no owner, machine or peer value, no words.
 O2  coach_evidence_comparison_v1 shows the owner, machine and peer answers

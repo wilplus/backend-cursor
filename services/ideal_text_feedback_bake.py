@@ -398,7 +398,8 @@ def changes_block_for(
     )
     if is_a_bake(baked):
         logger.info("ideal-text bookmarks served from storage arc=%s", arc_id)
-        return _client_rows_only(_with_fresh_playback(baked))
+        return _client_rows_only(
+            _with_fresh_coach_answers(database, _with_fresh_playback(baked)))
     # A BAKE ALREADY ON ITS WAY IS THIS ANSWER (founder 2026-10-14): the page
     # asks again rather than this request running the same Manager a second
     # time beside it, or holding a request thread while it waits.
@@ -552,6 +553,73 @@ def _with_fresh_playback(block: dict) -> dict:
             out.append({**row, "snippet_audio_ref": None})
         else:
             out.append(row)
+    refreshed = dict(block)
+    refreshed["changes"] = out
+    return refreshed
+
+
+def _with_fresh_coach_answers(database: Any, block: dict) -> dict:
+    """The coach's answer on each row as it stands NOW, not as it was baked.
+
+    FOUNDER, 2026-10-21: "the video was sent too with the coach feedback and
+    didn't pass through". The coach's answer in words, `coach_answer` with
+    the video's link, is written into the bake by `_annotate_coach_answers`,
+    and nothing a coach does retires a bake: `ideal_text_feedback_surface_touched_at_v1`
+    reads only the speaker's own writes. So a video the coach added after
+    the bake never reached the page, and a video baked in carried a
+    six-hour signature that `_with_fresh_playback` did not refresh.
+
+    THE SAME RULE AS THE CLIPS: the cache keeps what is expensive (the
+    Manager) and never what is perishable or another party's to change. One
+    read per Take (`list_exercise_coach_requests_for_take`), the answer
+    re-signed by `coach_shared_answer`. A row the coach has answered since
+    the bake gains the answer; one whose answer the coach withdrew loses it.
+    A failed read returns the block untouched: a stale answer beats no card.
+    """
+    rows = block.get("changes")
+    if not isinstance(rows, list):
+        return block
+    takes = sorted({
+        str(row["take_session_id"]) for row in rows
+        if isinstance(row, dict) and row.get("take_session_id") and row.get("snippet_id")
+    })
+    reader = getattr(database, "list_exercise_coach_requests_for_take", None)
+    if not takes or not callable(reader):
+        return block
+    requests: dict[str, dict] = {}
+    try:
+        from services.confident_voice_practice import coach_shared_answer
+        for take in takes:
+            live = reader(take)
+            requests[take] = live if isinstance(live, dict) else {}
+    except Exception as error:  # noqa: BLE001 -- a stale answer beats no card
+        logger.warning("ideal-text bake coach answers refresh failed: %s", error,
+                       exc_info=True)
+        return block
+    out: list[Any] = []
+    for row in rows:
+        if not isinstance(row, dict) or not row.get("snippet_id") or not row.get("take_session_id"):
+            out.append(row)
+            continue
+        found = requests.get(str(row["take_session_id"]), {}).get(str(row["snippet_id"]))
+        request: dict = found if isinstance(found, dict) else {}
+        answer = coach_shared_answer(request) if request else None
+        if answer is None and "coach_answer" not in row:
+            out.append(row)
+            continue
+        fresh = dict(row)
+        had = fresh.get("coach_request")
+        asked: dict = dict(had) if isinstance(had, dict) else {}
+        if answer is None:
+            fresh.pop("coach_answer", None)
+            if asked:
+                fresh["coach_request"] = {**asked, "status": "open"}
+        else:
+            fresh["coach_answer"] = answer
+            fresh["coach_request"] = {
+                **asked, "status": "answered",
+                "kind": asked.get("kind") or request.get("kind") or "error"}
+        out.append(fresh)
     refreshed = dict(block)
     refreshed["changes"] = out
     return refreshed
