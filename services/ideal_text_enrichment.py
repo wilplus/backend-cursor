@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from contextvars import copy_context
 from dataclasses import dataclass
 from time import perf_counter
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping, Optional
 
 
 #  HOW LONG A SECTION GETS, AND WHY THESE TWO NUMBERS DIFFER SO MUCH
@@ -264,8 +264,14 @@ def _learning_section(database, arc_id, actor_id, sessions, core):
 
 def section_readers(database, *, arc_id: str, actor_id: str, sessions: list,
                     selected: Mapping[str, Any], snapshot_id: str,
-                    deps: EnrichmentDeps) -> dict[str, Callable[[], Any]]:
-    """Every section's reader, bound to one immutable document snapshot."""
+                    deps: EnrichmentDeps,
+                    coach_take: Optional[str] = None) -> dict[str, Callable[[], Any]]:
+    """Every section's reader, bound to one immutable document snapshot.
+
+    ``coach_take`` is the Take a coach's link names (``?take=``, founder
+    2026-10-21, N77): the journey section then serves that Take's word, when
+    it is one of the caller's own Takes of this project. Without it, the
+    Take on screen's."""
     core = selected.get("payload") or {}
     seed = selected.get("enrichment_seed") or {}
     moments = seed.get("moments") if isinstance(seed, dict) else []
@@ -275,9 +281,10 @@ def section_readers(database, *, arc_id: str, actor_id: str, sessions: list,
     take_count = int(core.get("take_count") or 0)
 
     def journey():
-        from services.coach_message_read import journey_payload
+        from services.coach_message_read import journey_payload, word_take
         return journey_payload(database, actor_id, arc_id, take_count, sessions,
-                               core.get("latest_take_session_id"))
+                               word_take(sessions, actor_id, coach_take,
+                                         core.get("latest_take_session_id")))
 
     return {
         "feedback": lambda: _feedback_section(

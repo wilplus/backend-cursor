@@ -103,6 +103,20 @@ def _base_url() -> str:
     return (Config.FRONTEND_URL or "https://www.willpowerlab.com").rstrip("/")
 
 
+def feedback_url(arc_id: Any, take_session_id: Any) -> str:
+    """The button's link: the project's coach-only walk
+    (`/chat?idealArc=<arc>&feedback=1`), naming the Take the coach wrote on
+    (`&take=<session_id>`; founder 2026-10-21, N77: a word shows on its own
+    Take only, so the link must say which Take it is); the chat when the
+    project is unknown. Pure."""
+    base, arc = _base_url(), str(arc_id or "").strip()
+    if not arc:
+        return f"{base}/chat"
+    take = str(take_session_id or "").strip()
+    url = f"{base}/chat?idealArc={quote(arc, safe='')}&feedback=1"
+    return f"{url}&take={quote(take, safe='')}" if take else url
+
+
 def _unsubscribe_url(user_id: str) -> Optional[str]:
     """The footer link, or None when tokens are not configured (the email
     then goes without the link rather than with a broken one)."""
@@ -144,9 +158,7 @@ def send_coach_feedback_email(database: Any, *, take_session_id: str,
             return "no_email"
         from services.arc_notifications import _arc_topic
         arc_id = str(session.get("arc_id") or "")
-        base = _base_url()
-        open_url = (f"{base}/chat?idealArc={quote(arc_id, safe='')}&feedback=1"
-                    if arc_id else f"{base}/chat")
+        open_url = feedback_url(arc_id, take_session_id)
         unsubscribe_url = _unsubscribe_url(user_id)
         mail = render(project=_arc_topic(database, arc_id) if arc_id else None,
                       moments=moments, open_url=open_url,

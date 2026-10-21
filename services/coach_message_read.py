@@ -12,16 +12,22 @@ this is the one read that serves them.
   (`coach_review_revisions`), never from `v2_sessions.coach_overall_message`,
   which the coach's message step also writes while drafting. Only a Take with
   `results_published_at` counts.
-- THE TAKE ON SCREEN FIRST (founder 2026-10-05, N48.3 Q11 A; contract
-  35g-6). A coach's word belongs to the Take it was left on. The read serves
-  the word (or published review) of the Take the Ideal Text shows (its
-  `latest_take_session_id`). Coach review is asynchronous, so a coach often
-  answers Take 1 after Take 2 was recorded; that word must still reach the
-  speaker (LIVE LOOP). So when the Take on screen has none, the most recent
-  shared word of an EARLIER Take is served, carrying its own Take. A later
-  Take's word is never served. Every message names its Take
-  (`take_session_id`, `take_index`) so Step 0 labels it and the page can
-  tell an unseen word from one already shown. No Take on screen, no word.
+- THE TAKE ON SCREEN ONLY (founder 2026-10-18, decisions log N77; it
+  supersedes N48.3 Q11 A's earlier-Take fallback, contract 35g-6). A
+  coach's word belongs to the Take it was left on, and the read serves the
+  word (or published review) of the Take the Ideal Text shows (its
+  `latest_take_session_id`) and nothing else: a later Take starts without
+  it. A word a coach leaves on an earlier Take after a newer one exists
+  reaches the speaker through its Lounge bubble ("Later · from your
+  coach"), the WhatsApp and the email, and stays in the Lounge history.
+  Every message names its Take (`take_session_id`, `take_index`). No Take
+  on screen, no word.
+- THE COACH'S LINK NAMES ITS TAKE (founder 2026-10-21, N77). The WhatsApp
+  and the email open `/chat?...&take=<session_id>`, the Take the word (or
+  the moment's answer) was written on, and the Ideal Text asks the journey
+  for that Take (`word_take`), so a word left on an earlier Take opens as
+  that Take's word in the coach-only walk. Only the caller's own Take of
+  this project is read; anything else falls back to the Take on screen.
 - QUALITATIVE. Words and a video; no score, no verdict (AC-9).
 """
 from __future__ import annotations
@@ -42,35 +48,33 @@ def _latest_published(sessions: Any) -> Optional[dict]:
     return max(published, key=lambda s: str(s.get("results_published_at")))
 
 
-def _take_index(row: Any) -> Optional[int]:
-    value = row.get("take_index") if isinstance(row, dict) else None
-    return value if isinstance(value, int) and not isinstance(value, bool) else None
-
-
 def coach_message_for(database: Any, sessions: Any,
                       take_session_id: Optional[str]) -> Optional[dict]:
     """{text, video_url, take_index, published_at, take_session_id} for the
-    Take on screen; failing that, the most recent shared word of an earlier
-    Take (N48.3 Q11 A); else None. Never a later Take's. Best-effort: a
-    failed read is None, never an error.
-
-    An earlier Take is one with a lower `take_index` than the Take on
-    screen; when the Take on screen has no index, no Take is provably
-    earlier and none is served."""
-    from services.coach_take_word import latest_shared_word
+    Take on screen, else None: never another Take's word (N77).
+    Best-effort: a failed read is None, never an error."""
     take = str(take_session_id or "")
     rows = [s for s in (sessions or []) if isinstance(s, dict)]
     shown = [s for s in rows if take and str(s.get("id") or "") == take]
     if not shown:
         return None
-    own = _message_for_take(database, shown, take)
-    if own is not None:
-        return own
-    index = _take_index(shown[0])
-    if index is None:
-        return None
-    earlier = [s for s in rows if (_take_index(s) or index) < index]
-    return latest_shared_word(database, earlier) if earlier else None
+    return _message_for_take(database, shown, take)
+
+
+def word_take(sessions: Any, actor_id: str, asked: Optional[str],
+              on_screen: Optional[str]) -> Optional[str]:
+    """The Take whose word the journey serves: the one a coach's link names
+    (WhatsApp and email, ``?take=``; founder 2026-10-21, N77: "the links
+    carry the Take the word was written on"), when it is one of this
+    project's Takes and the caller's own, as the route's ownership check
+    reads it; otherwise the Take on screen. A Take of anyone else is never
+    read: the request falls back to the Take on screen."""
+    from services.project_ownership import session_actor_id
+    want = str(asked or "").strip()
+    caller = str(actor_id or "")
+    mine = any(isinstance(s, dict) and str(s.get("id") or "") == want
+               and session_actor_id(s) == caller for s in sessions or [])
+    return want if want and caller and mine else on_screen
 
 
 def _message_for_take(database: Any, shown: list, take: str) -> Optional[dict]:
@@ -129,12 +133,12 @@ def journey_payload(database: Any, actor_id: str, arc_id: str,
     """The Ideal Text enrichment's `journey` section, for the project OWNER
     (the route refuses anyone else before it runs): whether the guided next
     steps were seen, and the coach's overall message and video for the Take
-    on screen (Q1, Final Screens L8; N48.3 Q11 A).
+    on screen only (Q1, Final Screens L8; N77).
 
     The message carries ``unseen`` (founder 2026-10-19, N80): its word
     changed after the speaker last watched it, from any door (the WhatsApp
     or email link, the dot card, the bubble), the dot's own rule. It is
-    read for the message's OWN Take, which may be an earlier one. When the
+    read for the message's own Take, the Take on screen (N77). When the
     watch cannot be read, the word counts as unseen: one more tap at most,
     never a hidden coach word."""
     from services.coach_feedback_signal import newer_than_seen

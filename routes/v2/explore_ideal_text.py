@@ -280,7 +280,8 @@ def v2_explore_get_ideal_text_enrichment(arc_id):
             playback_map=_moment_playback_map,
             reference_map=_moment_reference_map,
             moments_entitled=_moments_entitled,
-            price_of=_price_of))
+            price_of=_price_of),
+        coach_take=request.args.get("take"))
     # Budgets live with `run_sections`. The long one is earned by asking for
     # the SLOW section, not by naming any section at all.
     enrichment_timeout = budget_for(requested_sections)

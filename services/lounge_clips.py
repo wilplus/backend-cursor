@@ -268,8 +268,8 @@ def _coach_bubbles(messages: list) -> list[tuple[dict, dict, tuple]]:
 
     A "Later" bubble names its word's Take (the server writes it). A walk
     copy names the Take the walk reviewed, which is a later one when the
-    walk showed an earlier Take's word (N48.3 Q11 A). So a copy's word is
-    looked for first on the Take it names as ``coach_take_session_id``,
+    walk showed an earlier Take's word (N48.3 Q11 A, until N77 retired
+    it). So a copy's word is looked for first on the Take it names as ``coach_take_session_id``,
     then on the Take its video was uploaded on, then on its own Take."""
     out = []
     for m in messages or []:
