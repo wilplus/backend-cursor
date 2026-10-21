@@ -2155,6 +2155,10 @@ O3  A read enters the review flow but never sends its own coach email; a
 spoken take does.","O1 -> test_queue_row_carries_fold_markers_and_no_user_id
 O2 -> test_a_read_never_competes_as_a_take
 O3 -> test_read_flips_but_never_emails","Founder fix-pack 2026-07-16 (BE-2, BE-3a, BE-4): ""never separate items"". Packet append, write routing and publish flip are not covered here (route-heavy harness; cut, not claimed)."
+tests/test_research_quorum.py,Story,"As the founder, I want the research screen's label figures to count exactly what the label ledger counts, so that ""how often two humans agree"" means what a settled label means (N111, B3).","Only blind answers in the ledger's lanes count; a self-report, a
+legacy ""peer"" lane, a row with no lane and an answer given after
+seeing the clip's other side don't. Two ""Not sure"" answers are two
+labels, but no agreement and no kappa pair.",test_the_figures_count_what_the_ledger_counts,"LEARNING-AND-QUORUM §3 B3: the figures counted the ""peer"" lane and rows with no lane, and treated Not sure as a definite answer."
 tests/test_retention_cleaner.py,Story,"As the founder, I want old data cleaned on schedule only when I turn the live key on, in a safe order, so that nothing is deleted early or out of order.","O1  A dry run only counts what is due and deletes nothing.
 O2  A live run is refused while the live key is off.
 O3  A live run deletes in order: old guest accounts, then the

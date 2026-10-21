@@ -267,6 +267,13 @@ own PR)**
 
 1. The SQL view `snippet_label_quorum` (migration 0289) counts ratings with
    `blind = false`. `label_quorum.py` excludes them (contract 35g-11).
+2. The golden set's candidate pool reads every `confidence_labels` row,
+   with no lane, self-report or blind filter. Its docstring says "moments
+   coaches have already labelled blind".
+3. ~~`research_quorum.py` counts a lane `peer` and rows with no lane, and
+   treats Not sure as a definite answer.~~ **Fixed (N111):** the research
+   figures count by the ledger's rules; Not sure is a label but never agrees
+   (`tests/test_research_quorum.py`).
 2. ~~The golden set's candidate pool reads every `confidence_labels` row,
    with no lane, self-report or blind filter.~~ **Fixed (N111):** the pool
    takes only blind answers in the ledger's lanes (a coach, another speaker
@@ -363,5 +370,6 @@ own dates and are left as they are. The legal files are counsel's to change.
 
 One line each, newest first: `date · N · what changed · PR`.
 
+- 2026-10-21 · N111 · B3 fixed: the research screen's label figures count what the ledger counts · BE
 - 2026-10-21 · N111 · B2 fixed: the golden set's pool takes only blind, independent labels · BE
 - 2026-10-21 · N102 · this page gathers the learning sources and the label quorum into one place, with what's open (§3) · BE #1234, FE #922
