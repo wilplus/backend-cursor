@@ -27,7 +27,7 @@ PROVES   O1, O2, O3, O4 -> test_the_coach_s_word_is_new_until_watched_and_again_
 WHY      Founder 2026-10-19, N80 (D4, D7), approved two-phone prototype
          https://claude.ai/artifact/APk56PLZt6o6Cx9qUMKkuk. Founder
          2026-10-18, N77 (contract 35g-6, superseding N48.3 Q11 A's
-         earlier-Take fallback), landed with N92 on 2026-10-21.
+         earlier-Take fallback), landed with N93 on 2026-10-21.
 """
 from services import take_summary
 from services.coach_message_read import coach_message_for, journey_payload

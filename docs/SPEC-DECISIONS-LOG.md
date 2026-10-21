@@ -2585,7 +2585,7 @@ starts without it (supersedes N48.3 Q11 A's earlier-Take fallback). A word
 left on an earlier Take after a newer one exists reaches the speaker through
 its Lounge bubble ("Later · from your coach"), the WhatsApp and the email.
 Contract 35g-6 carries the dated amendment; `services/coach_message_read.py`
-serves the Take on screen only. Landed on main with N92. The rest of N77, a
+serves the Take on screen only. Landed on main with N93. The rest of N77, a
 coach's video belonging to the speaker it was made for (and N78 after it),
 arrives with #1127 and migration 0480 and is not in force until that merges.
 No migration.
@@ -2721,7 +2721,7 @@ shares, review ended or not; a try not heard says so; "Edit the helper
 words". The rules: the walk's page, B10, C3, C7, D5, E1, K (frontend
 `docs/flows/feedback-walk-and-chat.md`, §6 N90). No migration.
 
-**N92 · One source of truth: backend main's docs (founder, chat, 21 October
+**N93 · One source of truth: backend main's docs (founder, chat, 21 October
 2026).** What is in force is what is written and merged on this backend
 repo's `main`, read in this order: this log, then
 `docs/CANONICAL_PRODUCT_CONTRACT.md`, then `docs/LOCKS.md` and the
