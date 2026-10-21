@@ -1743,8 +1743,10 @@ class TakeRepository(TableRepository):
             return []
 
     def list_training_import_sessions(self, *, user_id: Optional[str] = None,
-                                      limit: int = 200) -> list[dict]:
-        """The imported training takes, newest first (founder 2026-07-28).
+                                      limit: int = 200, offset: int = 0) -> list[dict]:
+        """The imported training takes, newest first (founder 2026-07-28);
+        ``limit`` of them from ``offset`` on, so the coach panel reads the
+        corpus in steps as the coach scrolls (founder 2026-10-21, N100).
 
         Deliberately NOT v2_list_user_lab_sessions with a different filter:
         that method is the per-speaker BASELINE reader, and imports must stay
@@ -1769,8 +1771,9 @@ class TakeRepository(TableRepository):
                 )
                 if user_id:
                     q = q.eq("user_id", str(user_id))
-                return (q.order("created_at", desc=True)
-                         .limit(int(limit)).execute().data) or []
+                return (q.order("created_at", desc=True).order("id", desc=True)
+                         .range(int(offset), int(offset) + int(limit) - 1)
+                         .execute().data) or []
             except Exception as e:
                 if _cols is _cols_base:
                     logger.warning(

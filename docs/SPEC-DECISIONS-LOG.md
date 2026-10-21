@@ -2856,3 +2856,19 @@ judging one import after another (N99) reads the next step when the steps
 loaded hold no import left to judge. The list is no longer cut at its
 newest 200 imports. The rules: frontend `docs/flows/coach-panel.md`, H4. No
 new words, no migration.
+
+**N101 · The training corpus is judged mixed: across imports, speakers and
+the machine's reads (founder, the Claude Code chat, 21 October 2026: "make
+sure that for the display of the recordings for the judgement, they do not
+come from the same speaker; the fragments are really mixed, with different
+willfidence scores like really neutral, high, and low").** Judging draws its
+clips in rounds across every open import the coach may hear, from each
+import's frozen cohort: never one speaker twice in a row while another is
+left, and up to the same number of clips from each band of the machine's
+read (high, neutral, low), so all three are there. The band decides only
+which clips come in, never where they stand: the order is a seeded shuffle
+of the clips, so nothing on screen hints at the machine's read (BLIND
+COACH). Opening an import starts the round with one of its clips; the next
+round follows when one is done, and the list when none is left. This
+replaces N99's one import after another. The rules: frontend
+`docs/flows/coach-panel.md`, H3. No new words, no migration.

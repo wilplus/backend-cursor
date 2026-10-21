@@ -502,9 +502,12 @@ coach does not speak it, without reading its pieces or its recording
 O2  An import without a declared language takes its language from its
 recording, else its pieces, read once for every such import.
 O3  Each import's labelled count stays right past the database's 1000
-rows a read (600 clips' labels pass it): a done import reads done.","O1 -> test_declared_imports_need_no_read_of_their_pieces
+rows a read (600 clips' labels pass it): a done import reads done.
+O4  The list comes in steps (N100): ?limit imports from ?offset, newest
+first, and next_offset leads to the next step, null after the last.","O1 -> test_declared_imports_need_no_read_of_their_pieces
 O2 -> test_undeclared_imports_take_their_language_from_one_read
-O3 -> test_labelled_counts_stay_right_past_a_thousand_labels","Founder 2026-10-21 (N99): ""please make sure it is smooth that it loads fast""."
+O3 -> test_labelled_counts_stay_right_past_a_thousand_labels
+O4 -> test_the_list_comes_in_steps","Founder 2026-10-21 (N99): ""please make sure it is smooth that it loads fast""."
 tests/test_coach_listen_again.py,Story,"As a coach asked to listen to a moment again, I want it shown with only its line key and nothing of the speaker's side, so that my second listen stays blind.","O1  That moment's row carries only its id, its state and the line key,
 with no sign of what the speaker asked.
 O2  It still counts in the ""waiting"" totals.","O1, O2 ->
@@ -1393,10 +1396,13 @@ O3  CI goes red on a new function that is not itself revoked from anon AND
 authenticated (a REVOKE on that function naming both roles, or a DO
 block that revokes that function looping over both). Supabase grants
 both roles directly, so a PUBLIC revoke alone leaves them in.
-O4  A SECURITY DEFINER migration pins its search_path.","O1 -> test_every_new_public_table_enables_rls_in_its_own_migration
+O4  A SECURITY DEFINER migration pins its search_path.
+O5  CI goes red on a new migration that creates a public table without
+granting service_role on it in the same file.","O1 -> test_every_new_public_table_enables_rls_in_its_own_migration
 O2 -> test_every_created_function_revokes_execute_from_public
 O3 -> test_every_created_function_revokes_anon_and_authenticated
-O4 -> test_security_definer_functions_pin_their_search_path","2026-07-25: 57 tables shipped readable with the anon key (docs/RLS-AUDIT.md); RLS says nothing about functions, so the function rule arrived with the first .rpc() on 2026-08-03. The two frozen lists below describe FILES that predate a rule (applied migrations cannot be edited); they may only shrink."
+O4 -> test_security_definer_functions_pin_their_search_path
+O5 -> test_every_new_public_table_grants_service_role_in_its_own_migration","2026-07-25: 57 tables shipped readable with the anon key (docs/RLS-AUDIT.md); RLS says nothing about functions, so the function rule arrived with the first .rpc() on 2026-08-03. The two frozen lists below describe FILES that predate a rule (applied migrations cannot be edited); they may only shrink. From 2026-10-30 Supabase no longer grants a new public table to the Data API roles, so a table the backend reaches through PostgREST answers 42501 until a migration grants service_role on it."
 tests/test_migrations.py,Story,"As the founder, I want the list of database migrations to be complete, append-only, in dependency order, safe to run and free of surprise drops, so that merging a migration (which runs it in production) cannot corrupt or desynchronise the database.","O1  The list matches the files on disk one to one, with no gaps, duplicates
 or reordering, and the first 239 (already recorded in production) can
 never change; ""verify"" passes on the real tree and fails on a file

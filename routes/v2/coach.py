@@ -2078,6 +2078,18 @@ def v2_coach_training_import_status(session_id):
 
 #: What the list's language gate reads of an undeclared import's pieces.
 _IMPORT_LANGUAGE_COLUMNS = "id, session_id, start_offset_ms, language"
+#: The most imports one step of the list reads (and the step without ?limit).
+_IMPORT_PAGE_MAX = 200
+
+
+def _import_page(args) -> tuple[int, int]:
+    """``(limit, offset)`` of one step of the corpus list (N100): ?limit in
+    1..200, 200 when absent or unreadable; ?offset from 0."""
+    def number(name, default):
+        raw = str(args.get(name) or "").strip()
+        return int(raw) if raw.isdigit() else default
+    return (min(max(number("limit", _IMPORT_PAGE_MAX), 1), _IMPORT_PAGE_MAX),
+            number("offset", 0))
 
 
 @v2_bp.route("/coach/training-imports", methods=["GET"])
@@ -2103,9 +2115,13 @@ def v2_coach_list_training_imports():
     Archived imports (DELETE below) are filtered out unless
     ?include_archived=1 — archive is a tidier list, never lost corpus.
 
+    One step at a time (founder 2026-10-21, N100): ?limit (1..200, 200
+    when absent) imports from ?offset (0 when absent), newest first;
+    `next_offset` is where the next step starts, null after the last.
+
     200 { imports: [{session_id, arc_id, topic, speaker_label, created_at,
           status, queue_count, labelled_count, language,
-          duration_sec, archived_at, setup_complete}], count }
+          duration_sec, archived_at, setup_complete}], count, next_offset }
     """
     try:
         proficient = db.get_user_proficient_languages(
@@ -2113,8 +2129,12 @@ def v2_coach_list_training_imports():
         if not proficient:
             return _rater_language_error("profile_required")
 
+        limit, offset = _import_page(request.args)
         rows = db.takes.list_training_import_sessions(
-            user_id=(request.args.get("user_id") or None)) or []
+            user_id=(request.args.get("user_id") or None),
+            limit=limit, offset=offset) or []
+        # A full step may have more behind it; a short one is the last.
+        next_offset = offset + len(rows) if len(rows) == limit else None
         include_archived = (request.args.get("include_archived") or "") in (
             "1", "true", "yes")
         # The language gate, read for the whole list at once: an import that
@@ -2162,7 +2182,8 @@ def v2_coach_list_training_imports():
                 # every row so the shape doesn't shift with the query param.
                 "archived_at": ctx.get("archived_at"),
             })
-        return jsonify({"imports": out, "count": len(out)}), 200
+        return jsonify({"imports": out, "count": len(out),
+                        "next_offset": next_offset}), 200
     except Exception as e:
         logger.warning("list training imports failed: %s", e)
         return jsonify({"code": "SERVER_ERROR",

@@ -996,6 +996,13 @@ _TEMPLATE = """-- {title}
 -- e.g.
 -- ALTER TABLE public.some_table
 --     ADD COLUMN IF NOT EXISTS some_column TEXT;
+--
+-- A new public table carries its RLS and its grant in this same file
+-- (tests/test_migration_security_rules.py):
+-- CREATE TABLE IF NOT EXISTS public.some_table (...);
+-- ALTER TABLE public.some_table ENABLE ROW LEVEL SECURITY;
+-- REVOKE ALL ON TABLE public.some_table FROM PUBLIC, anon, authenticated;
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.some_table TO service_role;
 """
 
 
