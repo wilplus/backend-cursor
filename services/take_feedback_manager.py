@@ -551,7 +551,8 @@ def evidence_backed_rewrite_candidates(
     (`_repeated_phrase_rewrites`). The third says a sentence that undermines
     the speaker with conviction: its apologies, asks for permission,
     self-doubt and softening hedges left out, never a word added
-    (`_undermining_rewrites`, founder 2026-10-20, N85).
+    (`_undermining_rewrites`, founder 2026-10-20, N85); a sentence that only
+    hedges gets the same with its hedges left out (founder 2026-10-21, N112).
     """
     text = served_text if isinstance(served_text, str) else ""
     take = str(take_session_id or "")
@@ -604,12 +605,19 @@ def evidence_backed_rewrite_candidates(
 def _undermining_rewrites(sentences: list, *, take: str, sid: str) -> list[dict]:
     """A rewrite for each sentence that undermines the speaker and reads
     whole without those words (``services.undermining``). The row says why
-    (``rewrite_reason``), so the walk names it with the signed line."""
+    (``rewrite_reason``), so the walk names it with the signed line.
+
+    A sentence that does not undermine but hedges gets its hedges left out
+    (N112): the walk's own opener, so no ``rewrite_reason``, and ranked
+    under the undermining and repeat rules."""
     from services import undermining
     rows: list[dict] = []
     for start, end, sentence in sentences:
         proposed = undermining.without(sentence)
         if not proposed:
+            hedged = undermining.without_hedges(sentence)
+            if hedged:
+                rows.append(_hedge_rewrite(start, end, sentence, hedged, take=take, sid=sid))
             continue
         rows.append({
             "id": _stable_id("undermining-rewrite", take, sentence),
@@ -634,6 +642,32 @@ def _undermining_rewrites(sentences: list, *, take: str, sid: str) -> list[dict]
             },
         })
     return rows
+
+
+def _hedge_rewrite(start: int, end: int, sentence: str, proposed: str, *,
+                   take: str, sid: str) -> dict:
+    from services import undermining
+    return {
+        "id": _stable_id("hedge-rewrite", take, sentence),
+        "snippet_id": sid,
+        "take_session_id": take,
+        "kind": "replace",
+        "source": "wording",
+        "span": {"start": start, "end": end},
+        "quote": sentence,
+        "proposed_text": proposed,
+        "why_key": "clarity",
+        "feedback_family": "rewrite_clarity",
+        "tentative": False,
+        "rule_version": undermining.HEDGE_RULE_VERSION,
+        "_manager_evidence": {
+            "fallback": False,
+            "detector": "hedge_words",
+            "detector_rank": 3,
+            "specificity": 3,
+            "lexical_words_invented": 0,
+        },
+    }
 
 
 #: Words a sentence cannot end on: a sentence that stops on one stopped

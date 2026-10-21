@@ -13,13 +13,17 @@ OUTCOME
   O4  A corrected moment opens on a Clearer version only when the rewrite
       passes the gate; a weak fallback opens the voice exercise instead, and
       only for a voice under the floor: a voice that cleared it is praised.
+  O5  A shown moment whose own words hedge opens on a Clearer version with
+      its hedges left out, nothing added, even when its voice cleared the
+      floor; a hedge's words that are not a hedge where they stand stay.
 PROVES   O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O2 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O3 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O4 -> test_weak_words_open_on_the_rewrite_only_when_it_passes_the_gate
+         O5 -> test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version
 WHY      Founder 2026-10-20 ("the score decides each", flow page C2, C4),
          2026-10-18 ("words first, then voice"), 2026-10-21 (N108, "the
-         voice decides").
+         voice decides"; N112, "There was no single rewrite in the take").
 """
 from pathlib import Path
 
@@ -327,3 +331,45 @@ def test_weak_words_open_on_the_rewrite_only_when_it_passes_the_gate():
                              scores=(0.9, 0.5, -0.6))
     assert [b["slide_index"] for b in strong["blocks"] if b["carries_exercise"]] == []
     assert sorted(b["slide_index"] for b in strong["blocks"] if b["most_confident"]) == [0, 1]
+
+
+_HEDGED = "I think maybe we could kind of start the pilot in two cities and see how it goes."
+
+
+def test_a_strong_voice_whose_words_hedge_opens_on_its_clearer_version():
+    """The founder's Take (2026-10-21, N112): both shown moments had strong
+    voices and one hedged, and no rule wrote its clearer version, so it was
+    praised and the Take showed no rewrite."""
+    from services.take_feedback_manager import evidence_backed_rewrite_candidates
+    pieces, snippets, at = [], [], 0
+    for index, score in enumerate((0.9, 0.5, -0.6)):
+        text = " ".join(f"w{index}x{n}" for n in range(75 - 17 * (index == 1))) + "."
+        text = f"{_HEDGED} {text}" if index == 1 else text
+        pieces.append({"snippet_id": f"s{index}", "take_session_id": "take-2",
+                       "slide_index": index, "start": at, "end": at + len(text),
+                       "text": text, "recording_id": "recording-1",
+                       "start_offset_ms": index * 5000, "duration_ms": 5000})
+        at += len(text) + 1
+        snippets.append({"id": f"s{index}", "session_id": "take-2", "recording_id": "recording-1",
+                         "start_offset_ms": index * 5000, "duration_ms": 5000,
+                         "transcript": _HEDGED if index == 1 else None,
+                         "metrics": {"voice_confidence": {
+                             "version": "voice-confidence-universal-v3", "score": score}}})
+    served = " ".join(piece["text"] for piece in pieces)
+    rows = evidence_backed_rewrite_candidates(served, take_session_id="take-2", snippet_id="s0")
+    frame = build_shadow_frame(
+        take_document={"take_session_id": "take-2", "text": served, "pieces": pieces},
+        snippets=snippets, suggestions={}, feedback_candidates=rows,
+        take_index=2, expected_recording_id="recording-1", served_text=served)
+
+    assert [(b["slide_index"], b["exercise_kind"]) for b in frame["blocks"]
+            if b["carries_exercise"]] == [(1, "clearer")]
+    (chosen,) = frame["verbal_lanes"]["rewrite_clarity"]["selected_candidate_ids"]
+    (row,) = [r for r in rows if r["id"] == chosen]
+    assert (row["quote"], row["proposed_text"]) == (
+        _HEDGED, "We could start the pilot in two cities and see how it goes.")
+    assert "rewrite_reason" not in row      # the walk's own opener, not N85's
+
+    # A hedge's words that are not a hedge where they stand stay whole.
+    plain = "This kind of problem is what I think about every single day."
+    assert evidence_backed_rewrite_candidates(plain, take_session_id="t", snippet_id="s") == []
