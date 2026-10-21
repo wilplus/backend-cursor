@@ -3005,3 +3005,93 @@ the walk's page, A1, A2 (frontend
 [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), §6 N110); the recording
 screens' page, the flow, 5 (frontend
 [`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md), §6 N110). No migration.
+
+**N111 · The open questions of 21 October (founder, the decision page "Docs
+and Learning Decisions" of the Claude Code chat, 21 October 2026: 29 yes-or-no
+answers, then "Yes, ship it").** The questions left open by N106 and N107, and
+§3 of [`LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md). Two answers are held
+and asked again (A11 and A14, at the end), because the question put to the
+founder missed a fact. Each answer below is built in its own pull request.
+
+- **The docs.** The labels stand as set (N106). The policy update prompt
+  (<https://claude.ai/artifact/GPRRXaivyrZE2UjrRZY93K>, version 2) and every
+  Lounge ask, unified (<https://claude.ai/artifact/CzVL6JWK85tZDVpU9JRtgY>,
+  version 2), join the consent screens' rules; the code already follows both.
+  The docs that only code comments name leave `main`: 65 of the 82 kept on
+  21 October because code named them, each comment now pointing to the doc's
+  last version. The other 17 stay, because a migration (never edited once it
+  has run), a script, a prompt the app reads, a golden eval file or a sheet
+  still waiting for the founder's signature needs them. The four rules
+  pages of N107 are rewritten in the present tense part by part, when their
+  screen next changes. WIL-32 goes to Done and WIL-70 closes once Linear is
+  connected to the chat.
+- **The docs don't pile up again.** Every part of the code has one home doc,
+  named in a table in the master doc ("Home docs for the code"; the
+  frontend's table is in its own `README.md`). A row may say "No page" when
+  the code and its comments describe that part. The checks refuse a pull
+  request with code that no row covers, and a new `.md` file unless its line
+  in the master doc says `Founder-Approved:`. The rules pages also guard the
+  locked-screen files they missed (`scripts/flow-pages.txt` in the frontend),
+  except the Lounge's thread files, which the walk's page leaves unguarded on
+  purpose.
+- **Learning and the label quorum** (§3 A of the learning page):
+  - A1 · The Voice Album: contract 32 decides. A clip is admitted by a
+    Machine Yes, a User Yes and a Coach Yes on the same recording. C1 and C4
+    are out of date where they make the Album a two-person quorum.
+  - A2 · Once a coach's answer is saved, the coach panel shows what the
+    machine heard (coach panel D2, E1). On that point this replaces contract
+    34's amendment of 6 October (N51). Before the answer the coach sees
+    nothing (CLAUDE.md, Never 2).
+  - A3 · Detector training is on: the founder's "turn it all ON" of 8 October
+    covered it (`config.py`, `DETECTOR_TRAINING_AUTHORISED`). Contract 35g-9
+    and N29.6 are out of date on that point.
+  - A4 · The blind lines are off (coach panel B3, contract 35g-10). Production
+    is checked, and the notes of `error_presence_audit.py`,
+    `coach_block_pick.py` and `v4_coach_sheets.py` are corrected.
+  - A5 · "Half praised and half low" leaves walk rule I1. The order is N86's,
+    N101's and N97's.
+  - A6 · willfidence-v2's "200 labels" means 200 settled clips.
+  - A7 · A coach's answer on an import of their own talk is a self-report and
+    never counts (N58). The code is corrected.
+  - A8 · The "Turn on the learning?" question before every Take is gone, by
+    the consent screens' lock as amended on 18 October. N28's question is
+    retired.
+  - A9 · The ledger's "a second listener right away" (J3) orders only a
+    Take's confidence queue. The coach panel's queue, the corpus rounds
+    (N101) and other speakers' clips (N97) keep their own order.
+  - A10 · The copies kept for training are text only (N68, D1). N6 Q1 and
+    N10 are out of date on that point.
+  - A12 · A speaker's answer about their own practice never trains any model
+    (contract 30, walk I2; the founder, 19 October: "never trains any
+    model"). MLC3 §8 is out of date on that point.
+  - A13 · Willfidence is the voice-confidence read of one sentence (walk H1).
+    SPEC §17 is out of date on that point.
+  - A15 · The exercise measures of WIL-29 count, with the founder's chat
+    answers of 18 October as the code states them: "build option 1";
+    "founder only" (one person's list of their exercises is the founder's,
+    never a speaker's or a coach's screen); "next time is the next Take of
+    the same project" (a practice gets at most one "held" result, decided
+    when the next Take of the same project is ready); and, the founder's
+    default, a paragraph rewritten, split or cut is "unknown", never "held".
+    The concept is
+    [`CONCEPT-per-user-exercise-effectiveness-2026-10-18.md`](CONCEPT-per-user-exercise-effectiveness-2026-10-18.md).
+- **Code that disagrees with the rules** (§3 B): each of the seven is fixed in
+  its own pull request, and confirmed in the code first. The first changes
+  the view `snippet_label_quorum`, so it is a migration and gets its outside
+  review before it merges.
+- **History** (§3 C): clips settled by two `neutral` answers under J4 to J6,
+  before K of 25 August, stay settled (K: old rows keep their meaning). The
+  code is corrected. That `neutral` means three things in three places is
+  written on the learning page, and that is enough.
+- **Held, asked again.** A11 (does training rest on Article 9 explicit
+  consent?): the question said the legal pack is counsel's text and N69 is
+  not, but N69 is counsel's answer as the founder relayed it, and the 3.5
+  pack was signed without counsel. A14 (were Privacy and Terms 3.5
+  published?): the question missed that migration 0458 cleared the blocker
+  N68 names, that `config.py` records the publication on the evening of 8
+  October, and that doors 3 and 4 have been open for three surfaces since.
+  Until the founder answers again, nothing changes for either.
+
+The rules pages: the consent screens, the walk (I1, I3) and the coach panel,
+and the locked-screen files they now guard (frontend #932). No migration in
+this entry.
