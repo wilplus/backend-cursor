@@ -216,6 +216,9 @@ test_directives_reach_the_permit_through_the_real_llm_wrapper
 O2 -> test_the_icebreaker_runs_under_the_speakers_scope
 test_the_icebreaker_is_refused_without_the_speakers_authority
 O3 -> every test (_FakeDB)","Founder 2026-10-05, N48.1 step 6: ""every AI call carries its permission slip""; the two admin tools called the provider with none."
+tests/test_admin_takes_willfidence.py,Story,"As the founder, I want each Take on a person's admin page to show its willfidence, so I can read how a speaker's Takes are going.","O1  A Take row carries `willfidence`: the mean of its pieces' willfidence in
+whole percent, counting only pieces with a sound read; none when no piece
+has one (never the middle of the scale made up).",O1 -> test_a_take_row_carries_its_willfidence_in_percent,"Founder 2026-10-21 (N105): ""add the willfidence column here (in the ceo panel but only here)""."
 tests/test_after_take.py,Story,"As a speaker, after a Take I want one thing to do at a time: the Take's card and its summary, then each ask on its own with Will's words leading into it, and only then ""practice makes perfect"" with ""Record Take N"", so that nothing competes with the walk or with recording again (founder 2026-10-20, N89).","O1  After Take 1 the chain holds Will's question when he has one and ""Did
 this help?"" when the Take looks off: never WhatsApp, never an ask from
 the CEO panel, even without a number.

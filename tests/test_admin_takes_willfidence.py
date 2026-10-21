@@ -6,7 +6,7 @@ OUTCOME
       whole percent, counting only pieces with a sound read; none when no piece
       has one (never the middle of the scale made up).
 PROVES   O1 -> test_a_take_row_carries_its_willfidence_in_percent
-WHY      Founder 2026-10-21 (N102): "add the willfidence column here (in the
+WHY      Founder 2026-10-21 (N105): "add the willfidence column here (in the
          ceo panel but only here)".
 """
 from __future__ import annotations
