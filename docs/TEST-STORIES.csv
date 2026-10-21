@@ -236,7 +236,8 @@ tests/test_ai_voice.py,Story,"As a speaker practising, I want an AI clip of my o
 sentence under the clip names it in words, with no numbers.
 O2  The clip says my own words (or the clearer version I accepted, with
 the ums taken out), in at most 17 seconds.
-O3  A clip that fails its check is never shown; a real pause heard in
+O3  A clip that fails its check is made once more with a new seed and
+is never shown; a try after it is not scored; a real pause heard in
 the audio passes.
 O4  One clip per practice, started early once the exercise is known,
 within the daily limit; a voice still being made is waited for a
@@ -253,7 +254,7 @@ O2 -> test_the_request_says_the_speakers_own_words,
 test_no_clip_is_longer_than_the_limit,
 test_a_clearer_version_practice_gets_a_clip_of_the_accepted_words,
 test_a_sentence_with_fillers_is_said_without_them_and_the_next_try_is_measured_on_them
-O3 -> test_a_clip_that_fails_its_check_is_never_shown,
+O3 -> test_a_clip_that_fails_its_check_is_made_once_more_and_shown_only_if_it_passes,
 test_a_pause_heard_in_the_audio_passes_when_the_words_hide_it
 O4 -> test_the_daily_limit_stops_the_provider_call,
 test_two_corrected_moments_queue_two_prewarms,
@@ -504,7 +505,7 @@ never raises (stories 6 and 7).","O1, O2, O3, O4 -> test_the_coach_s_word_is_new
 O5 -> test_a_word_on_take_2_is_not_served_on_take_3
 O6 -> test_the_word_on_the_take_on_screen_is_served
 O7 -> test_a_late_word_on_take_1_goes_to_its_lounge_bubble_not_take_2
-O8 -> test_no_word_or_a_failed_read_serves_nothing","Founder 2026-10-19, N80 (D4, D7), approved two-phone prototype https://claude.ai/artifact/APk56PLZt6o6Cx9qUMKkuk. Founder 2026-10-18, N77 (contract 35g-6, superseding N48.3 Q11 A's earlier-Take fallback), landed with N93 on 2026-10-21."
+O8 -> test_no_word_or_a_failed_read_serves_nothing","Founder 2026-10-19, N80 (D4, D7), approved two-phone prototype https://claude.ai/artifact/APk56PLZt6o6Cx9qUMKkuk. Founder 2026-10-18, N77 (contract 35g-6, superseding N48.3 Q11 A's earlier-Take fallback), landed with N94 on 2026-10-21."
 tests/test_coach_panel_learning.py,Story,"As the founder, I want the coach panel's blind learning lanes (the error audit and the block pick) to stay blind, answered once, and only about speakers who said yes, so that learning never leaks into what coaches see or reaches a speaker who did not agree.","O1  An audit item takes one answer, once: a second answer is 409, a value
 outside yes/no/cant_tell is 400.
 O2  The coach's sheets are blind (Never rule 2: no coach sees the

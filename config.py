@@ -922,10 +922,13 @@ class Config:
     # The share of picks that take the runner-up problem, so the stored
     # cycles can later tell which exercise helps (never a trained model now).
     AI_VOICE_EXPLORE_SHARE = _env_float("AI_VOICE_EXPLORE_SHARE", 0.15)
-    # Founder 2026-10-12: one generation per exercise; a clip that fails its
-    # check is not remade. (A provider refusal that made nothing, a 429 or a
-    # 5xx, is asked once more: it uses no credits.)
-    AI_VOICE_GENERATION_RETRIES = _env_int("AI_VOICE_GENERATION_RETRIES", 0)
+    # Founder 2026-10-21 (N93): a clip that fails its check is made once more
+    # with a new seed, never a third time; until then it was one generation
+    # (2026-10-12). The stress clip of 2026-10-20 came out flat (0.02 dB of
+    # contrast; the two that passed had about 2.4). 0 turns it back off.
+    # (A provider refusal that made nothing, a 429 or a 5xx, is asked once
+    # more anyway: it uses no credits.)
+    AI_VOICE_GENERATION_RETRIES = _env_int("AI_VOICE_GENERATION_RETRIES", 1)
 
     @property
     def is_production(self):

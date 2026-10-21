@@ -480,8 +480,9 @@ def _wait_for_voice(job: _Job, selection: dict) -> str:
 def _speak_until_checked(job: _Job, voice_id: str, request: dict, selection: dict,
                          context: dict) -> tuple[bytes, Optional[dict], Optional[str]]:
     """(audio, last check, provider failure). At most 1 + RETRIES clips are
-    made (founder 2026-10-12: one, so RETRIES is 0). A provider refusal that
-    made nothing (429, 5xx) is asked once more and costs no generation."""
+    made: a clip that fails its check is made once more with a new seed
+    (founder 2026-10-21, N93; RETRIES is 1). A provider refusal that made
+    nothing (429, 5xx) is asked once more and costs no generation."""
     from services.ai_voice_limits import estimated_credits
     from services.ai_voice_validator import validate
     voices = job.tools["provider"] or _voices(job.db, job.principal_id, job.practice)
@@ -707,9 +708,12 @@ def note_attempts(database: Any, practice: dict, attempts: list[dict]) -> None:
     """The next try, measured on the one problem only, in the same units.
 
     Stored for the future picker; it changes nothing on screen. A try
-    longer than the practice limit (45 s) is not measured."""
+    longer than the practice limit (45 s) is not measured, and neither is
+    a try after a clip that was never made (failed its check, skipped):
+    the speaker never heard one to follow."""
     cycle = store.get_cycle(database, str(practice.get("id")))
-    if not cycle or not cycle.get("exercise") or not attempts:
+    if not cycle or cycle.get("status") != "completed" \
+            or not cycle.get("exercise") or not attempts:
         return
     latest = max(attempts, key=lambda row: int(row.get("attempt_index") or 0))
     after = dict(latest.get("acoustic_metrics") or {})
