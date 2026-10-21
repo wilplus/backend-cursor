@@ -8,7 +8,10 @@ own willfidence (founder 2026-10-20). Every open Confident Voice moment that
 is praised (`bookmark_tier == "confident"`) or corrected (`practice_prompt`)
 shows; other open moments do not. On a Take where the
 machine could read nothing, at most two open moments show, in text order,
-so the speaker still has something to open.
+so the speaker still has something to open. A Take whose picked moments are
+all answered is not one: no other moment takes their place (founder
+2026-10-21, "the black lines on the ideal text are still there even though I
+walked through them").
 
 WHAT LEAVES ENTIRELY. A paragraph saved with helper words is done: its open
 moments are not served, and its notes ride the locked screen. Everything
@@ -40,10 +43,12 @@ def _picked(row: dict) -> bool:
     return row.get("bookmark_tier") == "confident" or bool(row.get("practice_prompt"))
 
 
-def choose_open_moments(moments: list[dict]) -> list[dict]:
-    """The open moments to show, in the order they were given."""
+def choose_open_moments(moments: list[dict], *,
+                        read: bool = False) -> list[dict]:
+    """The open moments to show, in the order they were given. ``read``: the
+    Take has picked moments, open or answered."""
     picked = [row for row in moments if _picked(row)]
-    return picked if picked else moments[:UNREAD]
+    return picked if picked or read else moments[:UNREAD]
 
 
 def window_rows(
@@ -57,7 +62,8 @@ def window_rows(
         row for row in rows
         if _is_moment(row) and _open(row)
         and paragraph_of(row) not in saved_paragraphs]
-    chosen = choose_open_moments(open_moments)
+    read = any(_is_moment(row) and _picked(row) for row in rows)
+    chosen = choose_open_moments(open_moments, read=read)
     chosen_ids = {id(row) for row in chosen}
     withheld_paragraphs = {
         paragraph_of(row) for row in open_moments if id(row) not in chosen_ids}

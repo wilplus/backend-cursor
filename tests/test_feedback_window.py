@@ -5,11 +5,13 @@ OUTCOME
   O1  Confident moments, the exercise and items I already answered are shown;
       other open moments are not, a paragraph I saved in this Take gets no
       more moments, and no score fields reach the page.
-  O2  A Take with nothing picked still shows two moments.
+  O2  A Take with nothing picked still shows two moments; one whose picked
+      moments I answered shows no others in their place.
   O3  A paragraph I saved in an earlier Take gets its moments again in later
       Takes.
 PROVES   O1 -> test_green_moments_and_the_exercise_show_nothing_else_open_does
-         O2 -> test_a_take_with_nothing_picked_still_shows_two_moments
+         O2 -> test_a_take_with_nothing_picked_still_shows_two_moments,
+               test_answered_moments_leave_no_place_for_others
          O3 -> test_a_paragraph_saved_in_an_earlier_take_gets_its_moments_again
 WHY      Founder lock 2026-10-12; project "S" 2026-10-13; Never-rule 1.
 """
@@ -40,6 +42,16 @@ def test_a_take_with_nothing_picked_still_shows_two_moments():
     rows = [_m("a", 0), _m("b", 1), _m("c", 2)]
     out = window_rows(rows, paragraph_of=_para, saved_paragraphs=set())
     assert [r["id"] for r in out] == ["a", "b"]
+
+
+def test_answered_moments_leave_no_place_for_others():
+    """Founder 2026-10-21: walked through, the black lines stayed. Answered
+    or saved, the picked moments stand; the other moments stay unshown."""
+    rows = [_m("g1", 0, "confident", status="dismissed"), _m("plain", 1),
+            _m("ex", 2, practise=True, status="approved"), _m("other", 3),
+            _m("g2", 4, "confident")]
+    out = window_rows(rows, paragraph_of=_para, saved_paragraphs={4})
+    assert [r["id"] for r in out] == ["g1", "ex"]
 
 
 def test_a_paragraph_saved_in_an_earlier_take_gets_its_moments_again():
