@@ -2947,3 +2947,21 @@ later. The mentions in the In force docs become clickable links now. The
 founder checks every file's proposed label on a page, and corrections follow
 in their own PR. Map: the docs map of 21 October 2026 (step 1). No rule
 changes, no code, no migration.
+
+**N107 · The docs converge (founder, the Claude Code chat, 21 October 2026,
+"do it all", to four steps proposed in the same chat).** (1) The docs labelled
+Archive under N106 leave `main`; git keeps every one, and the master doc links
+to the last commit that had them. (2) History collapses: the MLC-2 and MLC-3
+chain becomes one summary page, the audits keep their latest and what the rules
+cite, and the other History docs stay only while a rule or code names them.
+Where the rules cite a deleted doc, the mention becomes a permanent link to it in
+git history. (3) Every locked screen gets one rules page in the frontend's
+`docs/flows/`, in the shape of the walk's page: the recording screens, the
+consent screens, the Ideal Text with its helper words, and the AI voice in
+practice. Each folds in its founder lock, signed words verbatim, and the lock
+file becomes history, as the walk's and the coach panel's did. The contract
+keeps its numbered clauses, because code and tests cite them by number. (4) A
+new doc is not started: the area page or the master doc is edited, and handoffs
+and prompts for coding agents go in pull request descriptions. A new doc needs
+the founder's OK and a line in the master doc. No rule about the product
+changes, no code, no migration.
