@@ -2984,3 +2984,24 @@ read keeps the rule of 2026-10-17. The rules: flow page C2, C4, H1
 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)). No migration.
 
 **N109 · The confident moment's line fits what follows (founder, the Claude Code chat, 21 October 2026: "it was a solid confident moment we have recognised, here is an example to make it even better"; "vary around the line I suggested … no abruptions").** When the walk goes on to make the Take's most confident moment better, one line names it solid and confident and leads into what follows (a clearer version, an example, or saying it again), three phrasings each around the founder's line, in place of "so far"; Line A is never said on that moment. The rules: flow page C2 and K (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), FE #929). No migration.
+
+**N110 · The waiting screen stays until the walk is there, and starts at 1%
+(founder, the Claude Code chat, 21 October 2026, with a screenshot of the walk
+opening on its typing dots: "It starts on the screen and then automatically
+closes and opens the lounge it is abrupt make it stay"; "when it says it's done
+it opens the walk automatically but then it still loads the walk - so it is not
+done!"; "when the processing starts it should show at least 1% from the very
+first second so that user knows it has at least started").** After Finish take
+the waiting screen stays on screen: when the server holds the Take, the Lounge
+takes the wait over and shows the same screen at once, full screen, in place of
+the chat; its ✕ shows the chat, where "Processing your recording" waits as
+before. When the Take's text is stored and the walk opens by itself, the
+waiting screen stays over it until the walk's first step is on screen (or, with
+nothing to walk, the text), also when the speaker had gone to the chat, so
+"done" never opens onto the walk still loading. The bar shows at least 1% from
+the first second, in place of "…" before the first report; a processing
+percentage is allowed (Never 1, founder 2026-10-19). No new words. The rules:
+the walk's page, A1, A2 (frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), §6 N110); the recording
+screens' page, the flow, 5 (frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md), §6 N110). No migration.
