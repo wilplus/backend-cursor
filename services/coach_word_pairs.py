@@ -24,8 +24,12 @@ THE DOORS (Privacy/Terms 3.5, signed by the founder 2026-10-08, decisions
 log N68; legal/phase1-2026.1/22-…SIGNED, E2): the coach's own words are
 training data under the SPEAKER's training yes, and the coach agreement
 covers the coach's side. Doors 2, 3 and 4 know both surfaces
-(feedback_pairs.DOOR_SURFACES), and each still opens for one only when its
-switch is on and the founder named it in the door's config set. The
+(feedback_pairs.DOOR_SURFACES), and a door opens for one only when the
+founder names it in that door's set in config.py (the doors' switches were
+removed 2026-10-12). CLOSED TO BOTH SINCE 2026-10-19 (founder, N79: "Close
+them for now"): a coach's words to one speaker leave by no door until names
+and specifics are scrubbed, the one privacy update is published and the
+versioned coach agreement exists; both are still recorded. The
 drafter keeps what its prompt was given (``draft_prompt`` on the row,
 0459), the pair carries it, and a training example or a golden evaluation
 rebuilds this module's prompt from it verbatim; a pair without it is never

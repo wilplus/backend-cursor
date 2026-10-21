@@ -297,10 +297,10 @@ own PR)**
 6. The `label_quorum.py` docstring points to `game_engine._source_class`,
    which is gone. It also says the SQL file holds the same truth table, but
    the current view is migration 0289, not `add_label_quorum_ledger.sql`.
-7. The docstrings of `coach_word_pairs.py`, `pair_consent.py` and
+7. ~~The docstrings of `coach_word_pairs.py`, `pair_consent.py` and
    `feedback_pairs.py` don't mention N79's closing of the coach-word
    surfaces. `training_import.py` still names door constants that were
-   removed.
+   removed.~~ **Fixed (N111):** all four say what the doors do today.
 
 Items B2 to B5 were read from the code but not run. The PR that fixes each
 one confirms it first.
@@ -380,6 +380,7 @@ own dates and are left as they are. The legal files are counsel's to change.
 
 One line each, newest first: `date · N · what changed · PR`.
 
+- 2026-10-21 · N111 · B7 fixed: four modules' notes say the coach-word surfaces are closed (N79) and the doors' switches are gone · BE
 - 2026-10-21 · N111 · B6 fixed: the ledger's notes point to today's serving order and today's view · BE
 - 2026-10-21 · N111 · B5 fixed: an unresolved or quarantined clip no longer reaches community listeners · BE
 - 2026-10-21 · N111 · B4 fixed: a panel read in `state_ratings` leaves out self-reports and non-blind answers · BE

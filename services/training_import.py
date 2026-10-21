@@ -55,8 +55,10 @@ rights to, with the language required:
     its own) gets one fixed 80/20 learn/test split, stored once and never
     re-shuffled (services/corpus_split.py, migration 0433).
 
-Nothing trains on any of it: dataset releases, training, evaluation and
-promotion keep their own constants, all closed.
+What may leave for training is not decided here. The learning doors'
+switches were removed 2026-10-12 ("remove the learning doors"); each door
+names the surfaces it releases in config.py, and an import's blind labels
+are labels like any other (docs/LEARNING-AND-QUORUM.md).
 
 PROVIDER CALLS. The transcription runs inside ``process_lab_recording``, the
 one wrapper that puts every provider call of a recording through the
