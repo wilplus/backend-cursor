@@ -1,5 +1,7 @@
 # WIL-70 · Speaker/coach disagreement as a learning signal (design note, 2026-10-18)
 
+> **2026-10-21 (N102):** the whole picture of what the app learns from and how a label settles is [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md). This note keeps the detail of N97 (§6).
+
 No code in this note. It says what to build, where, and what stays as it is.
 
 It answers WIL-32: how speaker/coach disagreement should change

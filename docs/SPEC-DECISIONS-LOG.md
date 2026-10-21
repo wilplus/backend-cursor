@@ -348,6 +348,8 @@ evaluation — it is calibration signal. **Active-learning priority:** when the 
 corpus (either a model miss or a rater miss, and one more peer says which) — it routes
 **immediately** for a 2nd peer. *Amended 2026-10-06 (founder, Navigation Panel QG1 A; ledger CA06; decisions log N51): J3 still holds for the label ledger and for the sound confidence read — a singleton is never gold and never evaluation, and only a settled clip is gold or evaluation data (rule 3 of `services/label_quorum.py`). Willfidence (SPEC §17, `willfidence-v1`) is a separate, internal measure computed from stored answers; it is not a label, not gold and not an evaluation set. This note changes nothing about training labels.*
 
+*J4 to J6 are replaced by K below (founder 2026-08-25): "Not sure" never settles, and only two matching Yes, In-between or No answers settle a clip. What this did to v1 `neutral` rows is open in `docs/LEARNING-AND-QUORUM.md` §3 C1.*
+
 **J4 · IDK is a RESPONSE, not a null.** Counted like any other answer:
 - **1 definite + 1 IDK** = not a quorum → **route to a 3rd rater**.
 - **2 IDKs** = **settled**, marked **"perceptually ambiguous"** in the DB. This is a
@@ -2872,3 +2874,13 @@ COACH). Opening an import starts the round with one of its clips; the next
 round follows when one is done, and the list when none is left. This
 replaces N99's one import after another. The rules: frontend
 `docs/flows/coach-panel.md`, H3. No new words, no migration.
+
+**N102 · Learning sources and the label quorum have one page (founder, the
+Claude Code chat, 21 October 2026: "unify the .md files about the learning
+sources and quorum in general").** `docs/LEARNING-AND-QUORUM.md` gathers what
+the app learns from and how an answer becomes a label, with a plain-words
+summary, the rules as they stand (each naming its source), what is in flight
+and what is open. It outranks nothing: the order of N95 stands, and the page is
+fixed where it differs. The older pages open with a note pointing to it. The
+twenty-four disagreements it found wait for the founder in its §3. No rule
+changes, no code, no migration.

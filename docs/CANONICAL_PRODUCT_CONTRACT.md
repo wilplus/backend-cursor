@@ -452,6 +452,8 @@ with this contract, this contract wins.
 
 ## 5. Confidence, learning provenance, and Voice Album
 
+*The whole picture of these clauses with the decisions log is [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md) (N102); this contract still outranks it (N95).*
+
 29. Confident Voice offers primary responses Yes — Confident, In-between, and
     No — Not confident, plus secondary Not sure and Audio unclear. The response
     is an immutable self-report tied to the exact clip and Take.
@@ -950,6 +952,8 @@ with this contract, this contract wins.
     that clip. Game raters have no exposure record.
 
 ## 6. Coach review and learning lineage
+
+*The whole picture of these clauses with the decisions log is [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md) (N102); this contract still outranks it (N95).*
 
 35h. Confident Voice, Actionable Improvement, and Praise responses use
     separate schemas and remain separate datasets. Shown is not positive, skip
