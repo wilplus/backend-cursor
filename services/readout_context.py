@@ -132,11 +132,23 @@ def _attach_piece_instant_chunks(
         ]
 
 
-def _load_intake_context(database: Any, session_id: str) -> dict:
-    try:
-        context = database.takes.get_session_intake_context(session_id) or {}
-    except Exception:
-        return {}
+def _held(session_row: Any, column: str) -> tuple[bool, Any]:
+    """``(True, value)`` when the caller's session row carries ``column``,
+    so the readout need not read it again; ``(False, None)`` otherwise."""
+    if isinstance(session_row, dict) and column in session_row:
+        return True, session_row.get(column)
+    return False, None
+
+
+def _load_intake_context(
+    database: Any, session_id: str, session_row: Any = None,
+) -> dict:
+    held, context = _held(session_row, "intake_context")
+    if not held:
+        try:
+            context = database.takes.get_session_intake_context(session_id) or {}
+        except Exception:
+            return {}
     return context if isinstance(context, dict) else {}
 
 
@@ -171,7 +183,12 @@ def _map_snippets_to_slides(
             snippet["slide"] = slide
 
 
-def _persisted_slide_transcripts(database: Any, session_id: str) -> Any:
+def _persisted_slide_transcripts(
+    database: Any, session_id: str, session_row: Any = None,
+) -> Any:
+    held, slide_transcripts = _held(session_row, "slide_transcripts")
+    if held:
+        return slide_transcripts if isinstance(slide_transcripts, list) else None
     try:
         return database.takes.get_session_slide_transcripts(session_id)
     except Exception:
@@ -240,6 +257,7 @@ def _attach_deck_context(
     context: dict,
     slides: list,
     log: logging.Logger,
+    session_row: Any = None,
 ) -> None:
     result["slides"] = slides
     advances = context.get("slide_advances")
@@ -248,7 +266,8 @@ def _attach_deck_context(
         advances=advances,
         slides=slides,
     )
-    slide_transcripts = _persisted_slide_transcripts(database, session_id)
+    slide_transcripts = _persisted_slide_transcripts(
+        database, session_id, session_row)
     if not slide_transcripts:
         slide_transcripts = _fallback_slide_transcripts(
             snippets,
@@ -274,9 +293,11 @@ def _attach_deckless_context(
     result: dict,
     *,
     edits_by_chunk: dict,
+    session_row: Any = None,
 ) -> None:
     try:
-        slide_transcripts = database.takes.get_session_slide_transcripts(session_id)
+        slide_transcripts = _persisted_slide_transcripts(
+            database, session_id, session_row)
         if not slide_transcripts:
             return
         full_transcript = " ".join(
@@ -313,15 +334,20 @@ def attach_readout_context(
     edits_by_chunk: dict,
     include_upgrade_cards: bool,
     log: logging.Logger = logger,
+    session_row: Any = None,
 ) -> None:
-    """Attach canonical chunks and deck/deckless presentation context."""
+    """Attach canonical chunks and deck/deckless presentation context.
+
+    ``session_row`` is the session when the caller holds it: its
+    ``intake_context`` and ``slide_transcripts`` are used as read, and a
+    column the row does not carry is read here as before."""
     _attach_piece_instant_chunks(
         result,
         output_snippets,
         edits_by_chunk=edits_by_chunk,
         include_upgrade_cards=include_upgrade_cards,
     )
-    context = _load_intake_context(database, session_id)
+    context = _load_intake_context(database, session_id, session_row)
     _attach_setup_fields(result, context)
     slides = context.get("slides")
     if slides:
@@ -334,6 +360,7 @@ def attach_readout_context(
             context=context,
             slides=slides,
             log=log,
+            session_row=session_row,
         )
     else:
         _attach_deckless_context(
@@ -342,4 +369,5 @@ def attach_readout_context(
             output_snippets,
             result,
             edits_by_chunk=edits_by_chunk,
+            session_row=session_row,
         )

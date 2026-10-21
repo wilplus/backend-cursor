@@ -580,9 +580,14 @@ tests/test_coach_session.py,Story,"As a coach reopening a review, I want my earl
 (no domain, deck or stickiness) and an unanswered moment is audio-only.
 O2  Once my labels are in, my saved note, tag and surfaced state come back
 on the moment I left them on, and the context opens.
-O3  The payload never carries the speaker's user id (pseudonym only).","O1 -> test_context_is_redacted_until_every_blind_label_is_committed
+O3  The payload never carries the speaker's user id (pseudonym only).
+O4  A re-read's moments come after the Take's, each blind on my answers
+for its own session; my drafts and ratings are read once for the Take
+and its re-reads, and the re-read is stamped opened (the link took
+6.7 s, one read after another).","O1 -> test_context_is_redacted_until_every_blind_label_is_committed
 O2 -> test_saved_notes_tags_and_surfaced_moments_resume_after_commit
-O3 -> test_saved_notes_tags_and_surfaced_moments_resume_after_commit",FE PR #73: notes and tags were lost on reopen; section S.4 identity strip.
+O3 -> test_saved_notes_tags_and_surfaced_moments_resume_after_commit
+O4 -> test_a_reread_folds_after_the_take_blind_on_its_own_answers","FE PR #73: notes and tags were lost on reopen; section S.4 identity strip. O4: founder 2026-10-21, the coach's link took 6.7 s to open."
 tests/test_coach_students.py,Story,"As a speaker, I want my coach to see me only by pseudonym, so that my identity stays private.","O1  The coach's roster shows each speaker by pseudonym and domain; no
 name or email reaches it, even when the profile holds them.
 O2  The roster also carries no user_id (founder 2026-10-20).
