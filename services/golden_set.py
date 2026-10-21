@@ -7,10 +7,12 @@ engineering seeds (ML-10: it refuses an unsealed set).
 
 Two kinds of surface, one instrument each:
 
-  * ``confidence``: the pool is the moments coaches have already labelled
-    blind, judged with the same one question the coach answers. The
-    founder never sees those labels, nor a machine read (BLIND COACH holds
-    for the founder too).
+  * ``confidence``: the pool is the moments already labelled blind, by a
+    coach or another speaker inside practice (walk I1; the label ledger's
+    lanes, never a self-report, never an answer given after seeing the
+    clip's other side: N111, B2), judged with the same one question the
+    coach answers. The founder never sees those labels, nor a machine read
+    (BLIND COACH holds for the founder too).
   * the pair surfaces: the three coach-answer surfaces (``praise_line``,
     ``clearer_version``, ``exercise_script``; ML-10) and, since
     Privacy/Terms 3.5 (signed 2026-10-08, N68), the coach's own words
@@ -80,8 +82,13 @@ def _judged_ids(database: Any, *, surface: str, judge: str) -> set[str]:
 
 def _next_clip(database: Any, *, surface: str, judged: set[str]) -> Optional[dict]:
     from services.snippet_audio_url import resolve_snippet_audio_url
+    from services.label_quorum import QUORUM_LANES, is_self_report
     for row in database.get_confidence_label_corpus(limit=500) or []:
-        snippet_id = str((row or {}).get("snippet_id") or "")
+        if (not isinstance(row, dict) or is_self_report(row)
+                or (row.get("lane") or "") not in QUORUM_LANES
+                or row.get("blind") is False):
+            continue
+        snippet_id = str(row.get("snippet_id") or "")
         if not snippet_id or snippet_id in judged:
             continue
         snippet = database.get_snippet_by_id(snippet_id, None)

@@ -1043,6 +1043,10 @@ tests/test_founder_clears_a_blind_line.py,Story,"As the founder, I want to clear
 O2  A line cleared this week does not refill before next week, on each of
 the four lines.","O1 -> FounderClearsABlindLineTests::test_a_cleared_item_is_never_shown_again
 O2 -> FounderClearsABlindLineTests::test_a_line_cleared_this_week_waits_for_next_week","Founder 2026-10-20: the ⋯ on Do you hear it?, Pick the most confident, Pick the moment for feedback and Which sounds surer (""New ones come next week. Answers already given stay.""); 0482."
+tests/test_golden_set_pool.py,Story,"As the founder, I want the golden set I judge to be drawn only from moments that real, blind, independent listeners labelled, so that the evaluation is measured against the same labels the app learns from (N111, B2).","The confidence pool offers a moment labelled blind by a coach or
+another speaker inside practice, and skips a speaker's own answer,
+an answer from any other lane, and an answer given after seeing
+the clip's other side.",test_the_confidence_pool_takes_only_blind_independent_labels,walk I1 (labels come only from blind answers); LEARNING-AND-QUORUM §3 B2: the pool used to read every row.
 tests/test_guest_readout_video.py,Story,"As a signed-out speaker, I want to reopen my own readout with my guest pass but never someone else's, and to have a video upload refused clearly, so that my recording stays private and the record step stays audio-only.","O1  My guest pass (or my account, once claimed) opens my readout, with
 its state.
 O2  A bare Take id, or someone else's Take, answers 404 SESSION_NOT_FOUND
