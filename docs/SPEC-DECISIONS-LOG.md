@@ -2795,3 +2795,16 @@ to the same link, never to the guest's "Done" screen; a project the device
 holds as a guest's own work stays on the guest's screens. No new words. The
 rules: the walk's page, C1 (frontend `docs/flows/feedback-walk-and-chat.md`,
 §6 WIL-93; frontend #911). No backend change, no migration.
+**N98 · The founder's roadmap page (founder, the Claude Code chat, 21 October
+2026: "can you build it into the CEO panel as a separate tab in the hamburger
+menu and make it updated at all times? … I just want it to be my overview and
+where things stand not the decision or ticking tool").** The admin menu gets
+Overview → Roadmap (`/admin/roadmap`, founder only). It shows the 1.1, 1.2 and
+2.0 plan with each item's state read from the two GitHub repositories (done,
+in review, draft, in progress, not started) and the PRs merged lately. An
+overview only: no decisions, no ticks, nothing typed by hand; a state comes
+only from GitHub, and "done" only when every PR that finishes the item is
+merged. The plan lives in `config/roadmap.json`; a PR that starts or finishes
+an item adds its number there. Read without a token (both repositories are
+public), cached five minutes; the page reads again every two minutes while on
+screen. No migration, no environment variable.
