@@ -21,7 +21,8 @@
 #   number of periods. Leave it unset and the operator chooses years by
 #   enabling/disabling the cron service instead — also correct, just manual.
 # Variables for each service:
-#   LIFE_BACKEND_URL      https://dev.willpowerlab.com  (or the web service URL)
+#   LIFE_BACKEND_URL      the production Flask backend's public URL (NOT the Vercel frontend,
+#                         NOT dev.willpowerlab.com — it answers 307 and the job fails)
 #   LIFE_REMINDER_SECRET  same as on the Flask web service
 #   LIFE_REMINDER_SLOT    morning | evening | weekly | monthly | quarterly
 #                         | yearly | fiveyear | tenyear

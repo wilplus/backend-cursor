@@ -24,7 +24,8 @@
 #                                  year", so the year gate lives server-side)
 #
 # Required variables:
-#   LIFE_BACKEND_URL      public URL of the Flask app, e.g. https://dev.willpowerlab.com
+#   LIFE_BACKEND_URL      public URL of the PRODUCTION Flask backend (Railway web service domain),
+#                         NOT the Vercel frontend and NOT dev.willpowerlab.com
 #   LIFE_REMINDER_SECRET  must match the web service LIFE_REMINDER_SECRET
 #   LIFE_REMINDER_SLOT    morning | evening | weekly | monthly | quarterly
 #                         | yearly | fiveyear | tenyear
