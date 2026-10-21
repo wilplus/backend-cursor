@@ -45,6 +45,18 @@ def _piece_means(pieces: list[dict]) -> dict:
     return out
 
 
+def _willfidence(pieces: list[dict]) -> Optional[int]:
+    """The Take's willfidence in whole percent (founder 2026-10-21): the mean
+    of its pieces' S x W, the read the moments are picked by. Only pieces
+    with a sound read count; None when there is none."""
+    from services import moment_pick
+    from services.voice_confidence import stamped_score
+    reads = [moment_pick.read(stamped_score(p.get("metrics")), p.get("transcript"), p.get("metrics"))
+             for p in pieces]
+    heard = [r["value"] for r in reads if r["sound"]]
+    return round(100 * sum(heard) / len(heard)) if heard else None
+
+
 def _projects(ids: set[str]) -> dict[str, str]:
     if not ids:
         return {}
@@ -101,6 +113,7 @@ def takes(user_id: str) -> dict:
                 "kpi_score": s.get("kpi_score"),
             },
             "piece_means": _piece_means(own),
+            "willfidence": _willfidence(own),
             "ai_clip": clips.get(str(s["id"])),
         })
     baseline = None
