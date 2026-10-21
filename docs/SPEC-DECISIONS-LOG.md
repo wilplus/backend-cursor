@@ -2761,3 +2761,16 @@ to change together with the code. With it, N77's part about the coach's word
 showing on its own Take lands on main (contract 35g-6,
 `services/coach_message_read.py`), with the coach's links naming the word's
 Take. No migration.
+
+**N96 · Import audio takes several files at once, inside the upload limit
+(founder, the Claude Code chat, 21 October 2026: "please make it possible to
+upload more than 1 file in the trianing coprus if it doesnt exceed the limit
+of the upload"; "ok" to the words below).** On the coach panel's training
+corpus each picked file becomes its own import under the same set-up, one at
+a time in name order (one file per request, as before), filed as "{topic} ·
+{file name}" when there are several. It stays inside `whisper_limit` (20 a
+minute, 200 an hour per coach): more than 200 files is refused at the
+choice, a per-minute refusal is waited out, an hourly one stops the batch.
+New words: "{n} files", "{name} · {i} of {n}", "Up to 200 files at a time".
+The rules: frontend `docs/flows/coach-panel.md`, H2. No backend change, no
+migration.
