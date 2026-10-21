@@ -525,7 +525,7 @@ def _mark_moments(blocks: list[dict], snippet_map: dict,
                   rewrite_rows: Optional[list] = None,
                   ) -> tuple[list[dict], list[dict], list[dict]]:
     """The Take's two shown moments, each praised or corrected by its own
-    willfidence (founder 2026-10-20, flow page C2 and C4;
+    voice (founder 2026-10-21, N108, flow page C2 and C4;
     `services.moment_pick`).
 
     Every block is written, so a re-run cannot leave a stale mark:
@@ -566,6 +566,14 @@ def _mark_moments(blocks: list[dict], snippet_map: dict,
         _mark_shown(block, {s["block_id"]: s for s in picked["shown"]}.get(block["block_id"]),
                     value_of.get(block["block_id"]))
     pool = _gate_exercise(blocks, snippet_map, rewrite_ranked, rewrite_rows)
+    clears = {s["block_id"] for s in picked["shown"] if s["voice_clears"]}
+    for block in blocks:
+        # The voice exercise is only for a voice under the floor (founder
+        # 2026-10-21, N108): a voice that cleared it whose rewrite did not
+        # pass the gate is praised.
+        if block["block_id"] in clears and block["exercise_kind"] == moment_pick.EXERCISE_VOICE:
+            _mark_shown(block, {"praise": True, "highest": block["highest_moment"]},
+                        value_of.get(block["block_id"]))
     rewrite_blocks = [
         block for block in blocks
         if block["carries_exercise"]

@@ -430,11 +430,12 @@ def _moments(database: Any, take: str) -> list[dict]:
 
 
 def said_facts(moments: list[dict], now: list[dict]) -> list[str]:
-    """What the speaker said, and their most willfident moment. Pure."""
+    """What the speaker said, and their most confident moment: the strongest
+    voice, then the most willfident (founder 2026-10-21, N108). Pure."""
     said = " ".join(m["text"] for m in moments if m.get("text")).strip()
     facts = [f"What they said this Take: {said[:_SAID_CHARS]}"] if said else []
     rated = [r for r in now if isinstance(r.get("willfident"), (int, float))]
-    best = max(rated, key=lambda r: r["willfident"], default=None)
+    best = max(rated, key=lambda r: (r.get("s") or 0, r["willfident"]), default=None)
     text = next((m["text"] for m in moments
                  if best and m.get("ref") == str(best.get("block_id")) and m.get("text")), "")
     if text:

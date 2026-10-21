@@ -11,13 +11,15 @@ OUTCOME
   O3  Coverage is counted per slide, a slide without a clip says why, and
       the bar is higher from Take 3.
   O4  A corrected moment opens on a Clearer version only when the rewrite
-      passes the gate; a weak fallback opens the voice exercise instead.
+      passes the gate; a weak fallback opens the voice exercise instead, and
+      only for a voice under the floor: a voice that cleared it is praised.
 PROVES   O1 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O2 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O3 -> test_a_whole_take_is_partitioned_read_marked_noted_and_covered
          O4 -> test_weak_words_open_on_the_rewrite_only_when_it_passes_the_gate
 WHY      Founder 2026-10-20 ("the score decides each", flow page C2, C4),
-         2026-10-18 ("words first, then voice").
+         2026-10-18 ("words first, then voice"), 2026-10-21 (N108, "the
+         voice decides").
 """
 from pathlib import Path
 
@@ -274,12 +276,12 @@ def test_a_whole_take_is_partitioned_read_marked_noted_and_covered():
 _UMS = " ".join(["um we think it matters"] * 3 + ["w"] * 60)
 
 
-def _practise_frame(rewrite):
-    """Three slides: the best is praised; the second best is below the floor
-    and its own words carry fillers, so it is corrected and may open on a
-    clearer version when the rewrite passes (founder 2026-10-20)."""
+def _practise_frame(rewrite, scores=(0.9, -0.2, -0.6)):
+    """Three slides: the best is praised; the second's own words carry
+    fillers, so it is corrected and may open on a clearer version when the
+    rewrite passes (founder 2026-10-20)."""
     pieces, snippets, at = [], [], 0
-    for index, score in enumerate((0.9, -0.2, -0.6)):
+    for index, score in enumerate(scores):
         text = " ".join(f"w{index}x{n}" for n in range(75))
         pieces.append({"snippet_id": f"s{index}", "take_session_id": "take-2",
                        "slide_index": index, "start": at, "end": at + len(text),
@@ -317,3 +319,11 @@ def test_weak_words_open_on_the_rewrite_only_when_it_passes_the_gate():
     routed = [(b["slide_index"], b["exercise_kind"]) for b in fallback["blocks"] if b["carries_exercise"]]
     assert routed == [(1, "voice")]
     assert fallback["verbal_lanes"]["rewrite_clarity"]["selected_candidate_ids"] == []
+
+    # A voice that cleared the floor is never sent to the voice exercise
+    # (N108): with no rewrite that passes, it is praised.
+    strong = _practise_frame({"tentative": True,
+                              "_manager_evidence": {"specificity": 5, "fallback": True}},
+                             scores=(0.9, 0.5, -0.6))
+    assert [b["slide_index"] for b in strong["blocks"] if b["carries_exercise"]] == []
+    assert sorted(b["slide_index"] for b in strong["blocks"] if b["most_confident"]) == [0, 1]
