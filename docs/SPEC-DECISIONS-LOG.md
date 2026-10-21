@@ -2916,3 +2916,12 @@ AC-9's "never a number on screen" still holds for speakers. The new word is
 the Confident Voice practice progress tile. The rules: frontend
 `docs/flows/coach-panel.md`, E1. No migration; the person's admin read no
 longer carries `practice`.
+
+
+**N105 · The person's Takes table gets a Willfidence column (founder, the
+Claude Code chat, 21 October 2026: "add the willfidence column here (in the
+ceo panel but only here)").** On the founder's person page, "Takes and
+acoustic data" shows each Take's willfidence in whole percent: the mean of
+its pieces' willfidence (N104), counting only pieces with a sound read, and
+"—" when none has one. It is on that table only (and its CSV); no speaker
+sees it. The word is the one signed in N104. No migration.
