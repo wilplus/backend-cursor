@@ -626,8 +626,9 @@ test_editing_only_the_words_never_sends_the_video_again
 test_a_null_video_removes_it
 test_a_word_only_edit_leaves_the_video_out_of_the_write
 test_a_failed_read_stops_the_save","PLF1 (founder 2026-10-05, N48.1): the video went to Whisper with no permit; N79 (founder 2026-10-19): only for the training yes."
-tests/test_communities.py,Story,"As a speaker, I want to share a Take only with communities I belong to, revocably, with listeners hearing audio only, so that sharing is my choice and listeners judge blind.","O1  Clips the listener answered or labelled, and clips the quorum
-settled, are not queued again.
+tests/test_communities.py,Story,"As a speaker, I want to share a Take only with communities I belong to, revocably, with listeners hearing audio only, so that sharing is my choice and listeners judge blind.","O1  Clips the listener answered or labelled, clips the quorum settled,
+and clips that can no longer settle (unresolved, quarantined for
+unclear audio) are not queued again.
 O2  The listener's answers list shows each answer with its clip's sound,
 newest first, only their own.
 O3  Stop sharing (Data & consent) lists each shared Take once, with where.

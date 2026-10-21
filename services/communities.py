@@ -359,8 +359,10 @@ def order_community_clips(rows: list[dict], *, listener_id: str, answered: set[s
     communities' first, then the general one's; one entry per moment (a
     moment shared with two communities is heard once, under the private
     one); never their own, never one they answered or already labelled,
-    never one the quorum settled. Pure."""
-    from services.label_quorum import SETTLED_STATUSES, resolve
+    never one the quorum settled, and never one that can no longer settle
+    (three answers with no quorum, or quarantined for unclear audio): the
+    ledger routes only a clip that still needs a rater (N111, B5). Pure."""
+    from services.label_quorum import resolve
     me = str(listener_id)
     seen: set[str] = set()
     picked: list[tuple[int, int, dict]] = []
@@ -373,7 +375,7 @@ def order_community_clips(rows: list[dict], *, listener_id: str, answered: set[s
         rows_for = labels.get(sid, []) or []
         if any(isinstance(r, dict) and str(r.get("rater_id") or "") == me for r in rows_for):
             continue
-        if resolve(rows_for).get("status") in SETTLED_STATUSES:
+        if not resolve(rows_for).get("needs_rater"):
             continue
         rank = 0 if str(row.get("community_id")) in private_ids else 1
         picked.append((rank, index, row))
