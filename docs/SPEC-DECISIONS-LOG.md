@@ -3095,3 +3095,16 @@ founder missed a fact. Each answer below is built in its own pull request.
 The rules pages: the consent screens, the walk (I1, I3) and the coach panel,
 and the locked-screen files they now guard (frontend #932). No migration in
 this entry.
+
+**N112 · A moment whose words hedge gets its clearer version (founder, the
+Claude Code chat, 21 October 2026: "There was no single rewrite in the take";
+then "Rule leaves out hedges").** A shown moment whose words needed help for
+their hedges had no rewrite to offer: the AI writes one only for a clip it
+read as unconfident, rude or off the slide, and the rules only for
+undermining words, a broken sentence or a repeat, so a strong voice was
+praised instead. The rule of N85 now also writes the clearer version for a
+sentence that hedges: its softening hedges ("I think", "maybe", "kind of")
+left out, nothing added; a hedge's words that are not a hedge where they
+stand ("I think about it", "this kind of problem") stay. It opens with C5's
+"Here is a slightly more polished option:", so no new words on screen. The
+rules: flow page C4, C5, H3 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)). No migration.

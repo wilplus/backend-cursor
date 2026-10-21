@@ -71,6 +71,7 @@ perceptual ratings settle; disagreement or IDK requests a third rater:
     │ 3+ responses, no quorum        │ unresolved       — quarantined    │
     │ 1 unclear-audio report         │ audio_retry      — one fresh ear  │
     │ 2 unclear-audio reports        │ audio_quarantined — no training   │
+    │ 2 historical v1 ``neutral``s   │ perceptually_ambiguous — closed   │
     └────────────────────────────────┴───────────────────────────────────┘
 
   yes+IDK and IDK+IDK both route to a third rater. yes+no does too.
@@ -78,8 +79,13 @@ perceptual ratings settle; disagreement or IDK requests a third rater:
 
 WHICH STORED RESPONSE IS "IDK" — in the v2 instrument it is the explicit
 ``not_sure`` value. ``in_between`` is a real perceptual middle and may reach
-quorum in its own right. Historical v1 ``neutral`` rows retain their original
-IDK interpretation; versioning prevents old judgments being silently recast.
+quorum in its own right. Historical v1 ``neutral`` rows keep the meaning
+J6 gave them (founder 2026-08-14; kept by K, "historical rows keep their
+question version and remain interpretable"; N111, C1): one is an IDK, and two
+settled the clip as perceptually ambiguous. Such a clip stays settled in the
+routing sense, closed to new raters and never routed again, but it is never
+ground truth: only a perceptual quorum is (K4), so it is no gold and no
+evaluation, and ``settled`` stays False. A perceptual quorum still wins.
 
 ``audio_unclear``/``unrateable`` is the OTHER thing: a TECHNICAL abstention
 (the rater could not hear/judge the clip as an artifact — a failure of the
@@ -149,6 +155,10 @@ UNRESOLVED = "unresolved"
 AUDIO_RETRY = "audio_retry"
 AUDIO_QUARANTINED = "audio_quarantined"
 QUORUM = "quorum"
+# Two historical v1 ``neutral`` answers (J6, 2026-08-14): closed, never a
+# label (N111, C1).
+PERCEPTUALLY_AMBIGUOUS = "perceptually_ambiguous"
+V1_IDK = "neutral"
 
 # Only an exact perceptual quorum may enter gold/evaluation data.
 SETTLED_STATUSES = (QUORUM,)
@@ -242,6 +252,7 @@ def _eligible(rows: Any, *, state_id: Optional[str] = None) -> tuple:
     n_self_report = 0
     n_lane_excluded = 0
     n_audio_unclear = 0
+    n_v1_neutral = 0
     # A non-list is not "no ratings", it is a CALLER BUG — but this runs on
     # the corpus read path, and taking a trace or an export down over one
     # malformed argument is worse than reporting an empty ledger. (A bare
@@ -273,7 +284,9 @@ def _eligible(rows: Any, *, state_id: Optional[str] = None) -> tuple:
             continue
         if resp is not None:
             counted.append(resp)
-    return counted, n_self_report, n_lane_excluded, n_audio_unclear
+            if r.get("value") == V1_IDK:
+                n_v1_neutral += 1
+    return counted, n_self_report, n_lane_excluded, n_audio_unclear, n_v1_neutral
 
 
 def resolve(rows: Any, *, state_id: Optional[str] = None) -> dict:
@@ -294,7 +307,7 @@ def resolve(rows: Any, *, state_id: Optional[str] = None) -> dict:
     independent humans match. Every unsettled status returns None; exposing a
     front-runner as truth would fabricate a label.
     """
-    counted, n_self_report, n_lane_excluded, n_audio_unclear = _eligible(
+    counted, n_self_report, n_lane_excluded, n_audio_unclear, n_v1_neutral = _eligible(
         rows, state_id=state_id)
 
     by_response: dict = {}
@@ -324,6 +337,8 @@ def resolve(rows: Any, *, state_id: Optional[str] = None) -> dict:
         status, value = SINGLETON, None
     elif perceptual_modal_n >= QUORUM_N and len(perceptual_modal) == 1:
         status, value = QUORUM, perceptual_modal[0]
+    elif n_v1_neutral >= QUORUM_N:
+        status, value = PERCEPTUALLY_AMBIGUOUS, None
     elif n < 3:
         status, value = NEEDS_THIRD, None
     else:
@@ -434,7 +449,7 @@ def routing_priority(resolution: Any, machine_value: Any = None) -> int:
         return P_UNRATED
     status = resolution.get("status")
     if status in SETTLED_STATUSES or status in (
-        UNRESOLVED, AUDIO_QUARANTINED,
+        UNRESOLVED, AUDIO_QUARANTINED, PERCEPTUALLY_AMBIGUOUS,
     ):
         return P_SETTLED
     if status == SINGLETON:
