@@ -6,7 +6,7 @@ Public Journal on www.willpowerlab.com plus a password-gated in-house CMS.
 Fully self-contained: the only table is `journal_post`, and nothing in the
 record → transcribe → coach → read loop reads or writes it.
 
-FE spec: `docs/journal-fe-prompt.md` in the `frontend-cursor` repo.
+FE spec: [`docs/journal-fe-prompt.md`](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/journal-fe-prompt.md) in the `frontend-cursor` repo.
 
 ---
 

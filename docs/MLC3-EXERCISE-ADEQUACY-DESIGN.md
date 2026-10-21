@@ -711,7 +711,7 @@ Cutover rules:
 - no schema or runtime changes.
 
 Delivered audit:
-[`MLC3-EXERCISE-DEPENDENCY-AUDIT.md`](MLC3-EXERCISE-DEPENDENCY-AUDIT.md).
+[`MLC3-EXERCISE-DEPENDENCY-AUDIT.md`](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-EXERCISE-DEPENDENCY-AUDIT.md).
 
 Gate: Founder/Product + ML/data approval.
 

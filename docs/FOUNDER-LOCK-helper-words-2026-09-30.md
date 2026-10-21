@@ -1,6 +1,10 @@
 # Founder lock — helper words, the paragraph overlay and the practise loop (2026-09-30)
 
-> **Label: In force** · one of the rules, read in N95's order. Every doc and its label: [`README.md`](../README.md) (N106).
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
+> **History since 2026-10-21.** The rules of the Ideal Text page and its helper words are on one page in the frontend repo,
+> [`docs/flows/ideal-text.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md), edited in place as they change; it carries this file's
+> signed words as they were signed. This file is kept as written and is no longer edited (N107).
 
 `LOCKED 2026-09-30 · B1 yes · B2 yes · B3 yes · B4 yes · B5 yes · B6 yes · B7 yes · B8 yes · B9 yes · B10 yes · D1 yes · D2 yes · D3 yes · D4 yes · D5 yes · D6 yes · D7 yes · D8 yes · D9 yes · D10 yes · Q1 yes · Q2 yes · Q3 no · Q4 no · Q5 no · closed 2026-09-30: Q1 B · Q2 A · Q3 A · Q4 A · Q5 A`
 

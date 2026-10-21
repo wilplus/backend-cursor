@@ -3,7 +3,7 @@
 > **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
 
 **Repo:** `backend-cursor` · **Spec of record:** [PROMPT-life-panel.md](PROMPT-life-panel.md)
-**Pair:** [PROMPT-FE-life-panel.md](PROMPT-FE-life-panel.md)
+**Pair:** [PROMPT-FE-life-panel.md](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/PROMPT-FE-life-panel.md)
 **Date:** 2026-07-26 · **Status:** not started
 
 Read the spec first. This document is *how to build it*; the spec is *what and why*, and where

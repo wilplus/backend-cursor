@@ -112,4 +112,4 @@ coach corrects trains the models under Privacy §5 (objection route **L-1**).
   concurrent coach PUTs (single-coach product; a DB constraint would close it).
 - `log_rlhf_auto_accept_events` (assignment lane) is imported but never
   invoked — a second dead-emitter of the same family, untouched by this wave.
-- FE handoffs: `docs/PROMPT-FE-star-verdict.md`, `docs/PROMPT-FE-game.md`.
+- FE handoffs: [`docs/PROMPT-FE-star-verdict.md`](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/PROMPT-FE-star-verdict.md), [`docs/PROMPT-FE-game.md`](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/PROMPT-FE-game.md).

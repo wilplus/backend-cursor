@@ -175,6 +175,6 @@ the same script.
 The template is built from an empty database plus the narrow prerequisites
 files. It does not carry production row shapes or the released trigger
 definitions that only exist in production, which is the gap
-`docs/audits/2026-09-14-proposal-production-shaped-rehearsal-lane.md`
+[`docs/audits/2026-09-14-proposal-production-shaped-rehearsal-lane.md`](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/audits/2026-09-14-proposal-production-shaped-rehearsal-lane.md)
 describes. That lane, when it exists, is a second template for this same
 runner.

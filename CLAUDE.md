@@ -33,8 +33,9 @@ The Feedback walk and the chat have one page, in the frontend repo:
 flight, what is open, one line per change). A backend change to a rule of
 that flow is a line on that page, never a new file: the backend PR names the
 frontend PR that updates it. Its entry here in [`docs/SPEC-DECISIONS-LOG.md`](docs/SPEC-DECISIONS-LOG.md)
-is two lines and a link. The other locked screens get a page of the same
-shape the next time one of them is changed.
+is two lines and a link. Every other locked screen has a page of the same
+shape in the frontend's `docs/flows/`: the recording screens, the consent
+screens, the Ideal Text page and the AI voice in practice (N107).
 
 ## One source of truth
 
@@ -53,6 +54,14 @@ count for their flows, because the frontend design-lock guard requires them
 to change together with the code. Every doc in both repos, with its label
 (In force, Reference, History or Archive) and a link, is listed in
 [`README.md`](README.md) (N106).
+
+## Docs
+
+Every doc is listed in [`README.md`](README.md) with its label (N106). Don't
+start a new doc: edit the area's rules page (the frontend's `docs/flows/`, or
+the backend page it belongs to) or the master doc. Handoffs and prompts for
+coding agents go in the pull request description, not in a file. A new doc
+needs the founder's OK and a line in `README.md` (N107).
 
 ## How to ship
 

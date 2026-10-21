@@ -22,15 +22,14 @@ For coding agents, first: [`CLAUDE.md`](CLAUDE.md) (and [`AGENTS.md`](AGENTS.md)
 
 1. [The decisions log](docs/SPEC-DECISIONS-LOG.md): the founder's dated decisions, newest last.
 2. [The product contract](docs/CANONICAL_PRODUCT_CONTRACT.md): the numbered clauses.
-3. [The locked screens](docs/LOCKS.md), and the founder locks still in force:
-   - [Founder lock — helper words, the paragraph overlay and the practise loop (2026-09-30)](docs/FOUNDER-LOCK-helper-words-2026-09-30.md)
-   - [Founder lock · the recording screens (7 October 2026)](docs/FOUNDER-LOCK-recording-screens-2026-10-07.md)
-   - [Founder lock · the consent screens (7 October 2026)](docs/FOUNDER-LOCK-consent-screens-2026-10-07.md)
-   - [Founder lock — the coach panel, the learning machine and the removals (2026-09-30, for October)](docs/FOUNDER-LOCK-coach-panel-2026-10.md)
-   - [Founder lock — the AI version of your voice in practice (2026-10-12)](docs/FOUNDER-LOCK-ai-voice-practice-2026-10-12.md)
-4. The flow pages, in the frontend repo, which count for their screens:
+3. [The locked screens](docs/LOCKS.md), and [the founder lock for the coach panel and the learning machine](docs/FOUNDER-LOCK-coach-panel-2026-10.md) (L1 to L9).
+4. The rules page of each locked screen, in the frontend repo, which count for their screens:
    - [The Feedback walk and the chat](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)
    - [The coach panel](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)
+   - [The Ideal Text page and its helper words](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ideal-text.md)
+   - [The recording screens](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md)
+   - [The consent screens and the Data & consent page](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md)
+   - [The AI version of your voice in practice](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/ai-voice-practice.md)
 5. [Learning and the label quorum](docs/LEARNING-AND-QUORUM.md): what the app learns from and how a label settles.
 6. [The signed line bank](docs/SIGNED-line-bank-2026-10-06.md): the signed words a speaker may see.
 
@@ -211,18 +210,10 @@ and [`docs/legal/README.md`](docs/legal/README.md). Every file in them is Refere
 
 Kept as written, because the rules still cite them.
 
-<details><summary>The MLC-2 and MLC-3 programme (70 files)</summary>
+<details><summary>The MLC-2 and MLC-3 programme (43 files)</summary>
 
 - [MLC-2 Foundation Slice 1](docs/MLC2-FOUNDATION.md) · `backend` `docs/MLC2-FOUNDATION.md`
-- [MLC-3 Coach Guidance and Exercise Delivery — D3](docs/MLC3-COACH-GUIDANCE-DELIVERY-D3.md) · `backend` `docs/MLC3-COACH-GUIDANCE-DELIVERY-D3.md`
-- [MLC-3 Coach Guidance and Exercise Delivery D3 — Release Preparation Packet](docs/MLC3-COACH-GUIDANCE-DELIVERY-IMPLEMENTATION.md) · `backend` `docs/MLC3-COACH-GUIDANCE-DELIVERY-IMPLEMENTATION.md`
-- [MLC-3 Coach Inline Exercise Authoring D5](docs/MLC3-COACH-INLINE-EXERCISE-AUTHORING-D5.md) · `backend` `docs/MLC3-COACH-INLINE-EXERCISE-AUTHORING-D5.md`
-- [MLC-3 Coach Inline Exercise Authoring D5 — Release Review Packet](docs/MLC3-COACH-INLINE-EXERCISE-AUTHORING-IMPLEMENTATION.md) · `backend` `docs/MLC3-COACH-INLINE-EXERCISE-AUTHORING-IMPLEMENTATION.md`
-- [MLC-3 Confident Moment Coaching Bundle — Chunk 2B implementation review D4](docs/MLC3-CONFIDENT-MOMENT-CHUNK2B-IMPLEMENTATION-REVIEW-D4.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-CHUNK2B-IMPLEMENTATION-REVIEW-D4.md`
-- [MLC-3 Confident Moment Coaching Bundle — Chunk 2B implementation review D5](docs/MLC3-CONFIDENT-MOMENT-CHUNK2B-IMPLEMENTATION-REVIEW-D5.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-CHUNK2B-IMPLEMENTATION-REVIEW-D5.md`
 - [MLC-3 Confident Moment Coaching Bundle — Coach Context Principal Amendment D26](docs/MLC3-CONFIDENT-MOMENT-COACHING-COACH-CONTEXT-PRINCIPAL-AMENDMENT-D26.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-COACH-CONTEXT-PRINCIPAL-AMENDMENT-D26.md`
-- [MLC-3 Confident Moment Coaching Bundle — Founder Contract Delta D3](docs/MLC3-CONFIDENT-MOMENT-COACHING-CONTRACT-DELTA-D3.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-CONTRACT-DELTA-D3.md`
-- [MLC-3 Confident Moment Coaching Bundle — Per-item Currentness Amendment D12](docs/MLC3-CONFIDENT-MOMENT-COACHING-CURRENTNESS-AMENDMENT-D12.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-CURRENTNESS-AMENDMENT-D12.md`
 - [MLC-3 Confident Moment Coaching Bundle — Currentness and Lock Closure D49](docs/MLC3-CONFIDENT-MOMENT-COACHING-CURRENTNESS-LOCK-CLOSURE-D49.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-CURRENTNESS-LOCK-CLOSURE-D49.md`
 - [MLC-3 Confident Moment Coaching Bundle — Feedback Exposure Identity Amendment D15](docs/MLC3-CONFIDENT-MOMENT-COACHING-FEEDBACK-EXPOSURE-IDENTITY-AMENDMENT-D15.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-FEEDBACK-EXPOSURE-IDENTITY-AMENDMENT-D15.md`
 - [MLC-3 Confident Moment Coaching Bundle — Frontend and Authoring Amendment D14](docs/MLC3-CONFIDENT-MOMENT-COACHING-FRONTEND-AND-AUTHORING-AMENDMENT-D14.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-FRONTEND-AND-AUTHORING-AMENDMENT-D14.md`
@@ -238,7 +229,6 @@ Kept as written, because the rules still cite them.
 - [MLC-3 Confident Moment Coaching Bundle — Implementation Seam Amendment D36](docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D36.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D36.md`
 - [MLC-3 Confident Moment Coaching Bundle — Scanner Identity Amendment D37](docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D37.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D37.md`
 - [MLC-3 Confident Moment Coaching Bundle — Interface Manifest D11](docs/MLC3-CONFIDENT-MOMENT-COACHING-INTERFACE-MANIFEST-D11.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-INTERFACE-MANIFEST-D11.md`
-- [MLC-3 Confident Moment Coaching Bundle — Interface Manifest D6](docs/MLC3-CONFIDENT-MOMENT-COACHING-INTERFACE-MANIFEST-D6.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-INTERFACE-MANIFEST-D6.md`
 - [MLC-3 Confident Moment Coaching Bundle — Render Identity and Transport Amendment D13](docs/MLC3-CONFIDENT-MOMENT-COACHING-RENDER-IDENTITY-AND-TRANSPORT-AMENDMENT-D13.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-RENDER-IDENTITY-AND-TRANSPORT-AMENDMENT-D13.md`
 - [MLC-3 Confident Moment Coaching Bundle — Transport Closure Amendment D16](docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D16.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D16.md`
 - [MLC-3 Confident Moment Coaching Bundle — Transport Closure Amendment D17](docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D17.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D17.md`
@@ -262,36 +252,17 @@ Kept as written, because the rules still cite them.
 - [MLC-3 Confident Moment Coaching Bundle — Exercise Source Speaker Amendment D47](docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D47.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D47.md`
 - [MLC-3 Confident Moment Coaching Bundle — Speaker-Binding Authorization D48](docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D48.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D48.md`
 - [D49 §5 — activation attestation (taken 2026-09-14, remediated and re-taken 2026-09-15)](docs/MLC3-CONFIDENT-MOMENT-D49-SECTION-5-ACTIVATION-ATTESTATION.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-D49-SECTION-5-ACTIVATION-ATTESTATION.md`
-- [MLC-3 Confident Moment Point 7 — frontend base-commit errata](docs/MLC3-CONFIDENT-MOMENT-POINT7-FRONTEND-BASE-COMMIT-ERRATA.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-POINT7-FRONTEND-BASE-COMMIT-ERRATA.md`
-- [MLC-3 Confident Moment Coaching Bundle — Point 7 Implementation Evidence](docs/MLC3-CONFIDENT-MOMENT-POINT7-IMPLEMENTATION-EVIDENCE.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-POINT7-IMPLEMENTATION-EVIDENCE.md`
 - [MLC-3 First-Client Service D2](docs/MLC3-FIRST-CLIENT-SERVICE-D2.md) · `backend` `docs/MLC3-FIRST-CLIENT-SERVICE-D2.md`
-- [MLC-3 First-Client Service D2 — Local Implementation Review Packet](docs/MLC3-FIRST-CLIENT-SERVICE-IMPLEMENTATION.md) · `backend` `docs/MLC3-FIRST-CLIENT-SERVICE-IMPLEMENTATION.md`
-- [MLC-3 Founder Canary Activation Readiness](docs/MLC3-FOUNDER-CANARY-ACTIVATION-READINESS.md) · `backend` `docs/MLC3-FOUNDER-CANARY-ACTIVATION-READINESS.md`
-- [MLC-3 Founder Canary Activation-Readiness Review](docs/MLC3-FOUNDER-CANARY-ACTIVATION-REVIEW.md) · `backend` `docs/MLC3-FOUNDER-CANARY-ACTIVATION-REVIEW.md`
-- [MLC-3 general availability — activation runbook](docs/MLC3-GA-ACTIVATION-RUNBOOK.md) · `backend` `docs/MLC3-GA-ACTIVATION-RUNBOOK.md`
-- [MLC-3 General-User Service Rollout D4 — Disabled Implementation Review](docs/MLC3-GENERAL-USER-SERVICE-D4-IMPLEMENTATION.md) · `backend` `docs/MLC3-GENERAL-USER-SERVICE-D4-IMPLEMENTATION.md`
-- [MLC-3 General-User Service D4 — Offer Resolver-Chain Correction](docs/MLC3-GENERAL-USER-SERVICE-D4-RELEASE-CORRECTION-2.md) · `backend` `docs/MLC3-GENERAL-USER-SERVICE-D4-RELEASE-CORRECTION-2.md`
-- [MLC-3 General-User Service D4 — Production-Shape Release Correction](docs/MLC3-GENERAL-USER-SERVICE-D4-RELEASE-CORRECTION.md) · `backend` `docs/MLC3-GENERAL-USER-SERVICE-D4-RELEASE-CORRECTION.md`
-- [MLC-3 General-User Service Rollout D4 — Release Packet](docs/MLC3-GENERAL-USER-SERVICE-D4-RELEASE.md) · `backend` `docs/MLC3-GENERAL-USER-SERVICE-D4-RELEASE.md`
 - [MLC-3 General-User Service Rollout D4](docs/MLC3-GENERAL-USER-SERVICE-D4.md) · `backend` `docs/MLC3-GENERAL-USER-SERVICE-D4.md`
-- [M3-3 dark assignment frames — implementation review](docs/MLC3-M3-3-IMPLEMENTATION-REVIEW.md) · `backend` `docs/MLC3-M3-3-IMPLEMENTATION-REVIEW.md`
-- [MLC-3 N1 Proximity Foundation — Corrective Review Packet](docs/MLC3-N1-PROXIMITY-CORRECTION-REVIEW.md) · `backend` `docs/MLC3-N1-PROXIMITY-CORRECTION-REVIEW.md`
-- [MLC-2 Confidence founder-canary activation runbook](docs/work-items/mlc2-confidence-founder-canary-activation-runbook.md) · `backend` `docs/work-items/mlc2-confidence-founder-canary-activation-runbook.md`
-- [MLC-2 Slice 6 — Founder-only Confidence canary readiness](docs/work-items/mlc2-confidence-slice-6-readiness.md) · `backend` `docs/work-items/mlc2-confidence-slice-6-readiness.md`
-- [MLC-2 Slice 6A — Founder consent and recurring readiness remediation](docs/work-items/mlc2-confidence-slice-6a-readiness-remediation.md) · `backend` `docs/work-items/mlc2-confidence-slice-6a-readiness-remediation.md`
-- [MLC-2 Foundation Slice 1](docs/work-items/mlc2-foundation-slice-1.md) · `backend` `docs/work-items/mlc2-foundation-slice-1.md`
-- [MLC-2 Foundation Slice 2 — Database Rehearsal and Hardening](docs/work-items/mlc2-foundation-slice-2.md) · `backend` `docs/work-items/mlc2-foundation-slice-2.md`
-- [MLC-2 Foundation Slice 3 — Confidence Audit and Dark Contracts](docs/work-items/mlc2-foundation-slice-3.md) · `backend` `docs/work-items/mlc2-foundation-slice-3.md`
-- [MLC-2 Foundation Slice 4 — Dark Confidence Producer Integration](docs/work-items/mlc2-foundation-slice-4.md) · `backend` `docs/work-items/mlc2-foundation-slice-4.md`
+- [The MLC-2 and MLC-3 programme](docs/history/MLC-PROGRAMME.md) · `backend` `docs/history/MLC-PROGRAMME.md`
 
 </details>
 
-<details><summary>Audits (31 files)</summary>
+<details><summary>Audits (17 files)</summary>
 
 - [PHASE A0 — Findings](PHASE-A0-FINDINGS.md) · `backend` `PHASE-A0-FINDINGS.md`
 - [MLC-2 Confidence Classification Dependency Audit](docs/MLC2-CONFIDENCE-DEPENDENCY-AUDIT.md) · `backend` `docs/MLC2-CONFIDENCE-DEPENDENCY-AUDIT.md`
 - [MLC-2 Legacy Dependency Audit](docs/MLC2-LEGACY-DEPENDENCY-AUDIT.md) · `backend` `docs/MLC2-LEGACY-DEPENDENCY-AUDIT.md`
-- [MLC-3 exercise dependency audit](docs/MLC3-EXERCISE-DEPENDENCY-AUDIT.md) · `backend` `docs/MLC3-EXERCISE-DEPENDENCY-AUDIT.md`
 - [Phase-1 deletion dependency audit](docs/PHASE1-DELETION-DEPENDENCY-AUDIT.md) · `backend` `docs/PHASE1-DELETION-DEPENDENCY-AUDIT.md`
 - [RLS audit — public-schema tables without row level security](docs/RLS-AUDIT.md) · `backend` `docs/RLS-AUDIT.md`
 - [Founder queue (from LEDGER.md)](docs/audit/FOUNDER-QUEUE.md) · `backend` `docs/audit/FOUNDER-QUEUE.md`
@@ -302,33 +273,24 @@ Kept as written, because the rules still cite them.
 - [Founder answers, Navigation Panel, 6 October 2026 (export of 07:59 UTC, verbatim)](docs/audit/PANEL-ANSWERS-2026-10-06.md) · `backend` `docs/audit/PANEL-ANSWERS-2026-10-06.md`
 - [How audit work runs (founder-approved 6 October 2026)](docs/audit/WORKFLOW.md) · `backend` `docs/audit/WORKFLOW.md`
 - [Build plan of 7 Oct 2026](docs/audit/build/BUILD-PLAN-2026-10-07.md) · `backend` `docs/audit/build/BUILD-PLAN-2026-10-07.md`
-- [Ledger splitter brief (read-only; text only, no code reading needed)](docs/audit/build/SPLIT_BRIEF.md) · `backend` `docs/audit/build/SPLIT_BRIEF.md`
-- [V4 Phase 1 · one row per pull request](docs/audit/build/V4-PHASE1-ROWS.md) · `backend` `docs/audit/build/V4-PHASE1-ROWS.md`
 - [V4 decision record and Developer brief (verbatim from https://claude.ai/artifact/UXiVaBvGLRTg83kjmHKY6E, founder-signed 2026-10-05/06)](docs/audit/build/V4_BRIEF.md) · `backend` `docs/audit/build/V4_BRIEF.md`
 - [Measurement reports](docs/audit/measure/README.md) · `backend` `docs/audit/measure/README.md`
-- [Audit questions — decisions needed before cleanup — 2026-09-13](docs/audits/2026-09-13-audit-questions.md) · `backend` `docs/audits/2026-09-13-audit-questions.md`
-- [Engineering audit prompt — tests, complexity, abstractions, glue code](docs/audits/2026-09-13-engineering-audit-prompt.md) · `backend` `docs/audits/2026-09-13-engineering-audit-prompt.md`
-- [Engineering audit — backend (`backend-cursor`) — 2026-09-13](docs/audits/2026-09-13-engineering-audit.md) · `backend` `docs/audits/2026-09-13-engineering-audit.md`
-- [Audit decisions — founder answers to the 2026-09-13 questions — 2026-09-14](docs/audits/2026-09-14-audit-decisions.md) · `backend` `docs/audits/2026-09-14-audit-decisions.md`
-- [Proposal — a rehearsal lane seeded from a production-shaped dump](docs/audits/2026-09-14-proposal-production-shaped-rehearsal-lane.md) · `backend` `docs/audits/2026-09-14-proposal-production-shaped-rehearsal-lane.md`
 - [ML provenance audit, 2026-09-22 (read-only; no code changed)](docs/audits/2026-09-22-ml-provenance/README.md) · `backend` `docs/audits/2026-09-22-ml-provenance/README.md`
-- [Prompt for the senior engineer — keep the ML code aligned with the locked architecture](docs/audits/2026-09-22-ml-provenance/engineer_prompt.md) · `backend` `docs/audits/2026-09-22-ml-provenance/engineer_prompt.md`
 - [Job 1 — critical review of the Willab ML provenance audit](docs/audits/2026-09-22-ml-provenance/job1_review.md) · `backend` `docs/audits/2026-09-22-ml-provenance/job1_review.md`
-- [Prompts for the five jobs](docs/audits/2026-09-22-ml-provenance/job_prompts.md) · `backend` `docs/audits/2026-09-22-ml-provenance/job_prompts.md`
-- [willab — FE ↔ BE Compatibility Audit (Lounge & Coach UX batch)](docs/be-compat-audit.md) · `backend` `docs/be-compat-audit.md`
-- [Take Feedback Policy v3 — ML/data review packet](docs/take-feedback-policy-v3-ml-review.md) · `backend` `docs/take-feedback-policy-v3-ml-review.md`
-- [Engineering audit — frontend (`frontend-cursor`) — 2026-09-13](https://github.com/wilplus/frontend-cursor/blob/main/docs/audits/2026-09-13-engineering-audit.md) · `frontend` `docs/audits/2026-09-13-engineering-audit.md`
-- [Chat bot audit — BE + FE prompts](https://github.com/wilplus/frontend-cursor/blob/main/docs/handoffs/chat-bot-audit-handoffs.md) · `frontend` `docs/handoffs/chat-bot-audit-handoffs.md`
 
 </details>
 
-<details><summary>Earlier rule pages, indexes and records (16 files)</summary>
+<details><summary>Earlier rule pages, indexes and records (20 files)</summary>
 
 - [Concept — per-user exercise effectiveness (Linear WIL-29)](docs/CONCEPT-per-user-exercise-effectiveness-2026-10-18.md) · `backend` `docs/CONCEPT-per-user-exercise-effectiveness-2026-10-18.md`
 - [The willab engine map — what runs where, and how it all connects](docs/ENGINE-MAP.md) · `backend` `docs/ENGINE-MAP.md`
+- [Founder lock — the AI version of your voice in practice (2026-10-12)](docs/FOUNDER-LOCK-ai-voice-practice-2026-10-12.md) · `backend` `docs/FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`
 - [Founder lock · the coach panel, redrawn (6 October 2026)](docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md) · `backend` `docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`
+- [Founder lock · the consent screens (7 October 2026)](docs/FOUNDER-LOCK-consent-screens-2026-10-07.md) · `backend` `docs/FOUNDER-LOCK-consent-screens-2026-10-07.md`
 - [Founder lock — the Feedback walk, its look and its motion (2026-10-06)](docs/FOUNDER-LOCK-feedback-walk-2026-10-06.md) · `backend` `docs/FOUNDER-LOCK-feedback-walk-2026-10-06.md`
+- [Founder lock — helper words, the paragraph overlay and the practise loop (2026-09-30)](docs/FOUNDER-LOCK-helper-words-2026-09-30.md) · `backend` `docs/FOUNDER-LOCK-helper-words-2026-09-30.md`
 - [Founder lock — moment and feedback, one chat with a lens (2026-10-12)](docs/FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md) · `backend` `docs/FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md`
+- [Founder lock · the recording screens (7 October 2026)](docs/FOUNDER-LOCK-recording-screens-2026-10-07.md) · `backend` `docs/FOUNDER-LOCK-recording-screens-2026-10-07.md`
 - [HANDOFF — WillpowerLab, 2026-08-14](docs/HANDOFF.md) · `backend` `docs/HANDOFF.md`
 - [LEARNING-TRACE — the developer window into the learning lanes](docs/LEARNING-TRACE.md) · `backend` `docs/LEARNING-TRACE.md`
 - [exercise-human-delayed-v1 — the delayed blind human measure (signed by the founder 2026-10-02)](docs/MEASURE-exercise-human-delayed-v1.md) · `backend` `docs/MEASURE-exercise-human-delayed-v1.md`
@@ -345,184 +307,234 @@ Kept as written, because the rules still cite them.
 
 ## 4. Archive
 
-Out of date, and nothing needs them. They move to an archive folder later (N106).
+Out of date, but code, tests or the legal pack still name them, so they stay in the folders for now (N107).
 
-<details><summary>Prompts written for coding agents (46 files)</summary>
+<details><summary>Prompts written for coding agents (11 files)</summary>
 
-- [BE prompt — the 2026-07-27 backlog wave](docs/PROMPT-BE-2026-07-27-backlog-wave.md) · `backend` `docs/PROMPT-BE-2026-07-27-backlog-wave.md`
 - [BE prompt — The Life Panel](docs/PROMPT-BE-life-panel.md) · `backend` `docs/PROMPT-BE-life-panel.md`
-- [PROMPT — BE: `prior_edit` re-offer + re-apply telemetry (T1 · 1.2)](docs/PROMPT-BE-prior-edit-2026-07-28.md) · `backend` `docs/PROMPT-BE-prior-edit-2026-07-28.md`
 - [BE handoff — token pricing (Phase 1)](docs/PROMPT-BE-token-pricing.md) · `backend` `docs/PROMPT-BE-token-pricing.md`
-- [FE handoff — founder items 2026-07-17 (paste into a fresh Claude session in `frontend-cursor`)](docs/PROMPT-FE-2026-07-17.md) · `backend` `docs/PROMPT-FE-2026-07-17.md`
-- [FE handoff — the full versioning + recording wave (2026-07-23)](docs/PROMPT-FE-2026-07-23-consolidated.md) · `backend` `docs/PROMPT-FE-2026-07-23-consolidated.md`
-- [FE prompt — the 2026-07-27 backlog wave](docs/PROMPT-FE-2026-07-27-backlog-wave.md) · `backend` `docs/PROMPT-FE-2026-07-27-backlog-wave.md`
-- [BE answers — the corpus index: labelled badge, archive, and your open questions](docs/PROMPT-FE-2026-07-30-corpus-index.md) · `backend` `docs/PROMPT-FE-2026-07-30-corpus-index.md`
 - [FE HANDOFF — measure the recorder clock offset (F1)](docs/PROMPT-FE-audio-clock-offset.md) · `backend` `docs/PROMPT-FE-audio-clock-offset.md`
-- [FE HANDOFF — Community Content Studio (one button in the CMS)](docs/PROMPT-FE-community-content-studio.md) · `backend` `docs/PROMPT-FE-community-content-studio.md`
-- [Frontend brief: exercise routing, steps 1–3 (2026-09-28)](docs/PROMPT-FE-exercise-routing-2026-09-28.md) · `backend` `docs/PROMPT-FE-exercise-routing-2026-09-28.md`
-- [FE prompt — The Key-Moments Game (Engine 5)](docs/PROMPT-FE-game.md) · `backend` `docs/PROMPT-FE-game.md`
-- [PROMPT — FE: add & rearrange text in the ideal-text area while recording (T1 · 1.2)](docs/PROMPT-FE-ideal-text-add-rearrange-2026-07-28.md) · `backend` `docs/PROMPT-FE-ideal-text-add-rearrange-2026-07-28.md`
-- [FE handoff — generated Journal cover images (paste into a fresh Claude session in `frontend-cursor`)](docs/PROMPT-FE-journal-cover-images.md) · `backend` `docs/PROMPT-FE-journal-cover-images.md`
-- [FE prompt — The Life Panel](docs/PROMPT-FE-life-panel.md) · `backend` `docs/PROMPT-FE-life-panel.md`
-- [FE handoff — polish as suggestions, Approve all, re-read mic (paste into `frontend-cursor`)](docs/PROMPT-FE-polish-suggestions-2026-07-18.md) · `backend` `docs/PROMPT-FE-polish-suggestions-2026-07-18.md`
-- [FE handoff — the speaker-sex field](docs/PROMPT-FE-speaker-sex.md) · `backend` `docs/PROMPT-FE-speaker-sex.md`
-- [FE prompt — Coach Star Verdict](docs/PROMPT-FE-star-verdict.md) · `backend` `docs/PROMPT-FE-star-verdict.md`
 - [FE handoff — token pricing (Phase 1)](docs/PROMPT-FE-token-pricing.md) · `backend` `docs/PROMPT-FE-token-pricing.md`
-- [FE prompt — Training corpus, rev 2 (answers to your handoff)](docs/PROMPT-FE-training-corpus-rev2.md) · `backend` `docs/PROMPT-FE-training-corpus-rev2.md`
-- [FE prompt — Training corpus, rev 3: answering §7 (the empty Polish import)](docs/PROMPT-FE-training-corpus-rev3.md) · `backend` `docs/PROMPT-FE-training-corpus-rev3.md`
-- [FE prompt — Training corpus, rev 4: answering your §9](docs/PROMPT-FE-training-corpus-rev4.md) · `backend` `docs/PROMPT-FE-training-corpus-rev4.md`
-- [FE prompt — Training corpus: audio import + confidence labelling](docs/PROMPT-FE-training-corpus.md) · `backend` `docs/PROMPT-FE-training-corpus.md`
-- [PROMPT — Community Content Studio (one button in the CMS → 3 community posts)](docs/PROMPT-community-content-studio.md) · `backend` `docs/PROMPT-community-content-studio.md`
 - [PROMPT — build the drift layer (execute now)](docs/PROMPT-drift-layer.md) · `backend` `docs/PROMPT-drift-layer.md`
 - [PROMPT — IRT, CAT and DIF (deferred; do not execute until a trigger fires)](docs/PROMPT-irt-dif-deferred.md) · `backend` `docs/PROMPT-irt-dif-deferred.md`
 - [The Life Panel — implementation document](docs/PROMPT-life-panel.md) · `backend` `docs/PROMPT-life-panel.md`
-- [Backend prompt: Flow-step overrides (skip metric questions / skip post questions)](docs/cursor-prompts/BACKEND_FLOW_STEPS_OVERRIDES.md) · `backend` `docs/cursor-prompts/BACKEND_FLOW_STEPS_OVERRIDES.md`
-- [Prompt for Claude — continue Confident Moment Chunk 2B](docs/cursor-prompts/CLAUDE-CONTINUE-CONFIDENT-MOMENT-CHUNK2B.md) · `backend` `docs/cursor-prompts/CLAUDE-CONTINUE-CONFIDENT-MOMENT-CHUNK2B.md`
-- [PARKED — Lounge intent-router + persona polish](docs/cursor-prompts/PARKED-intent-router-and-lounge-persona.md) · `backend` `docs/cursor-prompts/PARKED-intent-router-and-lounge-persona.md`
 - [Prompt registry & golden evals](docs/prompt_evals.md) · `backend` `docs/prompt_evals.md`
 - [WillLab community — content model](services/prompts/community_content_strategy.md) · `backend` `services/prompts/community_content_strategy.md`
 - [willab - willpower lab 🎙️ — App description (single source of truth)](https://github.com/wilplus/frontend-cursor/blob/main/.taskmaster/docs/APP_DESCRIPTION.md) · `frontend` `.taskmaster/docs/APP_DESCRIPTION.md`
 - [Task Master docs (willab - willpower lab 🎙️)](https://github.com/wilplus/frontend-cursor/blob/main/.taskmaster/docs/README.md) · `frontend` `.taskmaster/docs/README.md`
-- [Backend: Return `assigned_exercises` so step 0 shows the assigned exercise](https://github.com/wilplus/frontend-cursor/blob/main/docs/cursor-prompts/BACKEND_ASSIGNED_EXERCISES_STEP0.md) · `frontend` `docs/cursor-prompts/BACKEND_ASSIGNED_EXERCISES_STEP0.md`
-- [Backend: Assignment Email (POST send-assignment)](https://github.com/wilplus/frontend-cursor/blob/main/docs/cursor-prompts/BACKEND_ASSIGNMENT_EMAIL.md) · `frontend` `docs/cursor-prompts/BACKEND_ASSIGNMENT_EMAIL.md`
-- [Backend: Persist and honor “flow steps” overrides (skip step 2 / step 4)](https://github.com/wilplus/frontend-cursor/blob/main/docs/cursor-prompts/BACKEND_FLOW_STEPS_OVERRIDES.md) · `frontend` `docs/cursor-prompts/BACKEND_FLOW_STEPS_OVERRIDES.md`
-- [Backend Cursor Prompt: willab (willpower lab) — Five Bug Fixes](https://github.com/wilplus/frontend-cursor/blob/main/docs/cursor-prompts/BACKEND_PROMPT.md) · `frontend` `docs/cursor-prompts/BACKEND_PROMPT.md`
-- [Frontend prompt: Homework flow – admin overrides and “report generating” state](https://github.com/wilplus/frontend-cursor/blob/main/docs/cursor-prompts/FRONTEND_HOMEWORK_FLOW_PROMPT.md) · `frontend` `docs/cursor-prompts/FRONTEND_HOMEWORK_FLOW_PROMPT.md`
-- [Frontend Cursor prompt: willab bugfixes (production-ready)](https://github.com/wilplus/frontend-cursor/blob/main/docs/cursor-prompts/FRONTEND_PROMPT.md) · `frontend` `docs/cursor-prompts/FRONTEND_PROMPT.md`
-- [BUILD PROMPT — wire the billing portal (manage / switch / cancel a plan)](https://github.com/wilplus/frontend-cursor/blob/main/docs/cursor-prompts/PROMPT-FE-billing-portal.md) · `frontend` `docs/cursor-prompts/PROMPT-FE-billing-portal.md`
-- [BUILD PROMPT — draw the cover from a description, let Enter walk the lane, and stop refusing real video](https://github.com/wilplus/frontend-cursor/blob/main/docs/cursor-prompts/PROMPT-FE-cover-draw-and-enter.md) · `frontend` `docs/cursor-prompts/PROMPT-FE-cover-draw-and-enter.md`
-- [BUILD PROMPT — the in-thread top-up card (Lounge)](https://github.com/wilplus/frontend-cursor/blob/main/docs/cursor-prompts/PROMPT-FE-lounge-topup-card.md) · `frontend` `docs/cursor-prompts/PROMPT-FE-lounge-topup-card.md`
-- [BE PROMPT — Journal (blog) content + media API](https://github.com/wilplus/frontend-cursor/blob/main/docs/journal-be-prompt.md) · `frontend` `docs/journal-be-prompt.md`
-- [FE PROMPT — Public Journal (blog) + admin CMS](https://github.com/wilplus/frontend-cursor/blob/main/docs/journal-fe-prompt.md) · `frontend` `docs/journal-fe-prompt.md`
-- [FE prompt — The Life Panel](https://github.com/wilplus/frontend-cursor/blob/main/docs/life-panel-fe-prompt.md) · `frontend` `docs/life-panel-fe-prompt.md`
 
 </details>
 
-<details><summary>Session handoffs (48 files)</summary>
+<details><summary>Session handoffs (5 files)</summary>
 
 - [BE handoff — push the analysis-state flip (kill the FE's 2s status polling)](docs/BE-HANDOFF-analysis-state-push.md) · `backend` `docs/BE-HANDOFF-analysis-state-push.md`
-- [Claude Handoff — Confident Moment Coaching Bundle](docs/CLAUDE-HANDOFF-CONFIDENT-MOMENT-2026-09-11.md) · `backend` `docs/CLAUDE-HANDOFF-CONFIDENT-MOMENT-2026-09-11.md`
 - [Claude Handoff — Confident Moment Coaching Bundle point 7](docs/CLAUDE-HANDOFF-CONFIDENT-MOMENT-POINT7-2026-09-12.md) · `backend` `docs/CLAUDE-HANDOFF-CONFIDENT-MOMENT-POINT7-2026-09-12.md`
-- [BE → FE: the legacy credits are settled. The balance has two halves now.](docs/handoffs/BE-ANSWER-legacy-credits-2026-08-01.md) · `backend` `docs/handoffs/BE-ANSWER-legacy-credits-2026-08-01.md`
-- [BE → FE: the plans are sellable. Answers, and two bugs you did not ask about.](docs/handoffs/BE-ANSWER-plan-checkout-2026-07-31.md) · `backend` `docs/handoffs/BE-ANSWER-plan-checkout-2026-07-31.md`
-- [BE answer — stress lane deleted, peer-review validation loop wired](docs/handoffs/BE-ANSWER-stress-lane-deletion-2026-08-03.md) · `backend` `docs/handoffs/BE-ANSWER-stress-lane-deletion-2026-08-03.md`
-- [BE → FE handoff — add & rearrange text in the ideal-text area while recording (T1 · 1.2)](docs/handoffs/BE-HANDOFF-ideal-text-add-rearrange.md) · `backend` `docs/handoffs/BE-HANDOFF-ideal-text-add-rearrange.md`
-- [BE → FE handoff — slide linkage on the ideal-text GET (answers FE PR #222)](docs/handoffs/BE-HANDOFF-ideal-text-slide-linkage.md) · `backend` `docs/handoffs/BE-HANDOFF-ideal-text-slide-linkage.md`
-- [BE handoff — Session-1 completion gate (≥1 charisma + ≥1 stress + ≥60s)](docs/handoffs/BE-HANDOFF-tab-session1-completion-gate.md) · `backend` `docs/handoffs/BE-HANDOFF-tab-session1-completion-gate.md`
-- [BE handoff — split the comment sinks (user-visible vs. pipeline-only)](docs/handoffs/BE-HANDOFF-tab1-comment-sink-split.md) · `backend` `docs/handoffs/BE-HANDOFF-tab1-comment-sink-split.md`
-- [BE handoff — Tab 1: >5-word-change save gate (anti-lazy-admin)](docs/handoffs/BE-HANDOFF-tab1-edit-gate.md) · `backend` `docs/handoffs/BE-HANDOFF-tab1-edit-gate.md`
-- [BE handoff — Admin Tab 1: snippet list re-rank + transcript hiding](docs/handoffs/BE-HANDOFF-tab1-snippet-rerank.md) · `backend` `docs/handoffs/BE-HANDOFF-tab1-snippet-rerank.md`
-- [BE handoff — Admin Tab 3: private admin notes panel](docs/handoffs/BE-HANDOFF-tab3-private-admin-notes.md) · `backend` `docs/handoffs/BE-HANDOFF-tab3-private-admin-notes.md`
-- [BE handoff — Task 7: "4h human-at-heart" CTA + post-signup confirmation](docs/handoffs/BE-HANDOFF-task7-signup-cta-human-at-heart.md) · `backend` `docs/handoffs/BE-HANDOFF-task7-signup-cta-human-at-heart.md`
-- [BE handoff — Task 8: data-sharing consent modal at session 2](docs/handoffs/BE-HANDOFF-task8-sharing-consent-modal.md) · `backend` `docs/handoffs/BE-HANDOFF-task8-sharing-consent-modal.md`
-- [BE handoff — Task 9: admin Tab 4 (Files) Next.js page](docs/handoffs/BE-HANDOFF-task9-files-tab-ui.md) · `backend` `docs/handoffs/BE-HANDOFF-task9-files-tab-ui.md`
-- [DEBUG HANDOFF — 2026-08-10 evening session](docs/handoffs/DEBUG-HANDOFF-2026-08-10.md) · `backend` `docs/handoffs/DEBUG-HANDOFF-2026-08-10.md`
-- [FE handoff — the backlog wave (2026-07-27)](docs/handoffs/FE-HANDOFF-2026-07-27-backlog-wave.md) · `backend` `docs/handoffs/FE-HANDOFF-2026-07-27-backlog-wave.md`
-- [FE handoff — the Life Panel document dock, answered (2026-07-31)](docs/handoffs/FE-HANDOFF-2026-07-31-life-panel-doc-dock.md) · `backend` `docs/handoffs/FE-HANDOFF-2026-07-31-life-panel-doc-dock.md`
-- [FE handoff — one BFF idiom + lab upload defenses (2026-08-03)](docs/handoffs/FE-HANDOFF-2026-08-03-bff-and-upload-defenses.md) · `backend` `docs/handoffs/FE-HANDOFF-2026-08-03-bff-and-upload-defenses.md`
-- [FE handoff — the monthly + quarterly reviews (piece 5, 2026-08-03)](docs/handoffs/FE-HANDOFF-2026-08-03-life-period-reviews.md) · `backend` `docs/handoffs/FE-HANDOFF-2026-08-03-life-period-reviews.md`
-- [FE handoff — the block variant PICKER, revisions & restore (2026-08-03)](docs/handoffs/FE-HANDOFF-2026-08-03-variant-picker.md) · `backend` `docs/handoffs/FE-HANDOFF-2026-08-03-variant-picker.md`
-- [FE handoff — wins → proposed principles (piece 6, 2026-08-03)](docs/handoffs/FE-HANDOFF-2026-08-03-wins-derive.md) · `backend` `docs/handoffs/FE-HANDOFF-2026-08-03-wins-derive.md`
-- [FE handoff — coaching chat STEP 2 becomes the peer-review flag](docs/handoffs/FE-HANDOFF-2026-08-04-step2-peer-review.md) · `backend` `docs/handoffs/FE-HANDOFF-2026-08-04-step2-peer-review.md`
 - [Handoffs — dated messages between the two repos (backend copy)](docs/handoffs/README.md) · `backend` `docs/handoffs/README.md`
-- [willab BE → FE handoff — last-pass before test & clear](docs/willab_be_handoff_fe_lastpass.md) · `backend` `docs/willab_be_handoff_fe_lastpass.md`
-- [BE handoff — Training corpus (FE side is live on `main`)](https://github.com/wilplus/frontend-cursor/blob/main/docs/HANDOFF-BE-2026-07-28-training-corpus.md) · `frontend` `docs/HANDOFF-BE-2026-07-28-training-corpus.md`
-- [BE handoff — Voice-game + star verdict (FE side is live on `main`)](https://github.com/wilplus/frontend-cursor/blob/main/docs/HANDOFF-BE-2026-07-28-voice-game.md) · `frontend` `docs/HANDOFF-BE-2026-07-28-voice-game.md`
-- [BE handoff — the `language` field: already shipped, and that was the problem](https://github.com/wilplus/frontend-cursor/blob/main/docs/HANDOFF-BE-2026-07-29-corpus-language.md) · `frontend` `docs/HANDOFF-BE-2026-07-29-corpus-language.md`
-- [BE handoff — Training corpus, FE answer to rev 3](https://github.com/wilplus/frontend-cursor/blob/main/docs/HANDOFF-BE-2026-07-29-corpus-rev3.md) · `frontend` `docs/HANDOFF-BE-2026-07-29-corpus-rev3.md`
-- [BE handoff — confident voice as the labelling engine, star video, and the deletion that is BLOCKED](https://github.com/wilplus/frontend-cursor/blob/main/docs/HANDOFF-BE-2026-07-30-confident-voice-and-star-video.md) · `frontend` `docs/HANDOFF-BE-2026-07-30-confident-voice-and-star-video.md`
-- [BE handoff — `direction_label` is about to lose its only writer, and that breaks L2](https://github.com/wilplus/frontend-cursor/blob/main/docs/HANDOFF-BE-2026-07-30-direction-label.md) · `frontend` `docs/HANDOFF-BE-2026-07-30-direction-label.md`
 - [BE handoff — plan management: one route still missing (the billing portal)](https://github.com/wilplus/frontend-cursor/blob/main/docs/HANDOFF-BE-2026-07-31-token-subscriptions.md) · `frontend` `docs/HANDOFF-BE-2026-07-31-token-subscriptions.md`
-- [FE → BE — block variant picker: one anchoring assumption to confirm before the flag flips](https://github.com/wilplus/frontend-cursor/blob/main/docs/HANDOFF-BE-2026-08-03-block-variants-anchoring.md) · `frontend` `docs/HANDOFF-BE-2026-08-03-block-variants-anchoring.md`
-- [BE handoff — delete the stress lane, wire the peer-review validation loop](https://github.com/wilplus/frontend-cursor/blob/main/docs/HANDOFF-BE-2026-08-03-stress-lane-deletion-and-peer-review.md) · `frontend` `docs/HANDOFF-BE-2026-08-03-stress-lane-deletion-and-peer-review.md`
-- [HANDOFF — willab pricing & billing surfaces (frontend)](https://github.com/wilplus/frontend-cursor/blob/main/docs/HANDOFF-FE-2026-08-13-pricing-and-billing.md) · `frontend` `docs/HANDOFF-FE-2026-08-13-pricing-and-billing.md`
-- [Handoff — Voice Game Bubble + Beta Badge](https://github.com/wilplus/frontend-cursor/blob/main/docs/HANDOFF-game-bubble-and-beta-badge.md) · `frontend` `docs/HANDOFF-game-bubble-and-beta-badge.md`
-- [Handoff — Voice Game Bubble + Beta Badge](https://github.com/wilplus/frontend-cursor/blob/main/docs/handoff-voice-game-bubble-and-beta.md) · `frontend` `docs/handoff-voice-game-bubble-and-beta.md`
-- [Backlog implementation — real repos (frontend-cursor / backend-cursor)](https://github.com/wilplus/frontend-cursor/blob/main/docs/handoffs/BACKLOG-IMPLEMENTATION-REPORT.md) · `frontend` `docs/handoffs/BACKLOG-IMPLEMENTATION-REPORT.md`
 - [Handoffs — dated messages between the two repos (frontend copy)](https://github.com/wilplus/frontend-cursor/blob/main/docs/handoffs/README.md) · `frontend` `docs/handoffs/README.md`
-- [BE handoff: connect the breakthrough moment + coach breakthrough video](https://github.com/wilplus/frontend-cursor/blob/main/docs/handoffs/backend-handoff-breakthrough-video.md) · `frontend` `docs/handoffs/backend-handoff-breakthrough-video.md`
-- [BE handoff: coach publish floor + presentation_ref nullability](https://github.com/wilplus/frontend-cursor/blob/main/docs/handoffs/backend-handoff-coach-publish-and-slide-refs.md) · `frontend` `docs/handoffs/backend-handoff-coach-publish-and-slide-refs.md`
-- [BE handoff: stale tasks served as current, and where the Dalio ranking lives](https://github.com/wilplus/frontend-cursor/blob/main/docs/handoffs/backend-handoff-life-goal-priority.md) · `frontend` `docs/handoffs/backend-handoff-life-goal-priority.md`
-- [BE handoff: the Life Panel document dock (kind-aware drafting)](https://github.com/wilplus/frontend-cursor/blob/main/docs/handoffs/backend-handoff-life-panel-document-dock.md) · `frontend` `docs/handoffs/backend-handoff-life-panel-document-dock.md`
-- [Backend summary: Default warm-up question](https://github.com/wilplus/frontend-cursor/blob/main/docs/handoffs/backend-summary-default-warmup.md) · `frontend` `docs/handoffs/backend-summary-default-warmup.md`
-- [Handoff — CSP `style-src` hardening, after the 2026-08-04 outage](https://github.com/wilplus/frontend-cursor/blob/main/docs/handoffs/handoff-csp-style-src.md) · `frontend` `docs/handoffs/handoff-csp-style-src.md`
-- [Handoff — The Life Panel (FE)](https://github.com/wilplus/frontend-cursor/blob/main/docs/handoffs/handoff-life-panel.md) · `frontend` `docs/handoffs/handoff-life-panel.md`
-- [Handoff — readout per-slide, take cadence copy, best-presentation cleanup](https://github.com/wilplus/frontend-cursor/blob/main/docs/handoffs/handoff-readout-and-takes.md) · `frontend` `docs/handoffs/handoff-readout-and-takes.md`
 
 </details>
 
-<details><summary>The frontend's archive folder (43 files)</summary>
+<details><summary>Other (2 files)</summary>
 
-- [Admin Dashboard Implementation Summary](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/ADMIN_DASHBOARD_IMPLEMENTATION.md) · `frontend` `docs/archive/ADMIN_DASHBOARD_IMPLEMENTATION.md`
-- [Admin Feedback Flow: Storing & Using Admin Comments](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/ADMIN_FEEDBACK_FLOW.md) · `frontend` `docs/archive/ADMIN_FEEDBACK_FLOW.md`
-- [API JSON request/response spec — current vs v1 (theme + 1 preQ + 3 command options)](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/API_JSON_SPEC_CURRENT_AND_V1.md) · `frontend` `docs/archive/API_JSON_SPEC_CURRENT_AND_V1.md`
-- [Backend: Use Admin Feedback in AI Analysis](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/BACKEND_ADMIN_FEEDBACK_USAGE.md) · `frontend` `docs/archive/BACKEND_ADMIN_FEEDBACK_USAGE.md`
-- [Backend Development vs Production Workflow](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/BACKEND_DEV_PROD_WORKFLOW.md) · `frontend` `docs/archive/BACKEND_DEV_PROD_WORKFLOW.md`
-- [Backend Email Link Fix: Production URL Issue](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/BACKEND_EMAIL_LINK_FIX.md) · `frontend` `docs/archive/BACKEND_EMAIL_LINK_FIX.md`
-- [Backend Prompt: Admin Email with Correct Feedback Link](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/BACKEND_EMAIL_LINK_PROMPT.md) · `frontend` `docs/archive/BACKEND_EMAIL_LINK_PROMPT.md`
-- [Backend Fix: Enable Real OpenAI Analysis (Remove Mock Data)](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/BACKEND_ENABLE_REAL_OPENAI.md) · `frontend` `docs/archive/BACKEND_ENABLE_REAL_OPENAI.md`
-- [Backend Environment Variables: Update Checklist](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/BACKEND_ENV_UPDATE_CHECKLIST.md) · `frontend` `docs/archive/BACKEND_ENV_UPDATE_CHECKLIST.md`
-- [Fix Mock Data in Your Backend](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/BACKEND_FIX_MOCK_DATA.md) · `frontend` `docs/archive/BACKEND_FIX_MOCK_DATA.md`
-- [Backend Implementation: Post-Recording Questions & Performance Scoring](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/BACKEND_POST_QUESTIONS_SCORING.md) · `frontend` `docs/archive/BACKEND_POST_QUESTIONS_SCORING.md`
-- [Backend Fix: Questionnaire Flow Integration](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/BACKEND_QUESTIONNAIRE_FLOW_FIX.md) · `frontend` `docs/archive/BACKEND_QUESTIONNAIRE_FLOW_FIX.md`
-- [Backend Integration: Pre-Recording Questionnaire](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/BACKEND_QUESTIONNAIRE_INTEGRATION.md) · `frontend` `docs/archive/BACKEND_QUESTIONNAIRE_INTEGRATION.md`
-- [Backend Implementation Prompt: Questionnaire Flow](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/BACKEND_QUESTIONNAIRE_PROMPT.md) · `frontend` `docs/archive/BACKEND_QUESTIONNAIRE_PROMPT.md`
-- [Backend Checklist: Why Old Recordings Aren't Showing](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/BACKEND_RECORDINGS_CHECKLIST.md) · `frontend` `docs/archive/BACKEND_RECORDINGS_CHECKLIST.md`
-- [Backend Implementation: Solo-Relevant Scoring System](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/BACKEND_SOLO_RELEVANT_SCORING.md) · `frontend` `docs/archive/BACKEND_SOLO_RELEVANT_SCORING.md`
-- [Backend Updates After Vercel Deployment](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/BACKEND_UPDATE_AFTER_VERCEL.md) · `frontend` `docs/archive/BACKEND_UPDATE_AFTER_VERCEL.md`
-- [Clean Git History: Remove Large Files](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/CLEAN_GIT_HISTORY.md) · `frontend` `docs/archive/CLEAN_GIT_HISTORY.md`
-- [Development vs Production: OpenAI Analysis & Email Flow](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/DEVELOPMENT_VS_PRODUCTION_GUIDE.md) · `frontend` `docs/archive/DEVELOPMENT_VS_PRODUCTION_GUIDE.md`
-- [Final Implementation Checklist](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/FINAL_IMPLEMENTATION_CHECKLIST.md) · `frontend` `docs/archive/FINAL_IMPLEMENTATION_CHECKLIST.md`
-- [Fix: Remove node_modules from Git](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/FIX_GIT_NODE_MODULES.md) · `frontend` `docs/archive/FIX_GIT_NODE_MODULES.md`
-- [Fix: App Won't Host on Localhost](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/FIX_LOCALHOST_ISSUE.md) · `frontend` `docs/archive/FIX_LOCALHOST_ISSUE.md`
-- [Flask Backend Setup for Supabase JWT Verification](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/FLASK_BACKEND_SETUP.md) · `frontend` `docs/archive/FLASK_BACKEND_SETUP.md`
-- [Frontend: Email Link Debugging Guide](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/FRONTEND_EMAIL_LINK_DEBUG.md) · `frontend` `docs/archive/FRONTEND_EMAIL_LINK_DEBUG.md`
-- [Frontend: Email Link Setup Complete ✅](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/FRONTEND_EMAIL_LINK_SETUP.md) · `frontend` `docs/archive/FRONTEND_EMAIL_LINK_SETUP.md`
-- [Frontend Implementation Summary](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/FRONTEND_IMPLEMENTATION_SUMMARY.md) · `frontend` `docs/archive/FRONTEND_IMPLEMENTATION_SUMMARY.md`
-- [Frontend: Redirect Fix for Email Links](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/FRONTEND_REDIRECT_FIX.md) · `frontend` `docs/archive/FRONTEND_REDIRECT_FIX.md`
-- [Frontend UUID Verification: Post-Questions](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/FRONTEND_UUID_VERIFICATION.md) · `frontend` `docs/archive/FRONTEND_UUID_VERIFICATION.md`
-- [How to See Real OpenAI Analysis (Not Mock Data)](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/HOW_TO_SEE_REAL_ANALYSIS.md) · `frontend` `docs/archive/HOW_TO_SEE_REAL_ANALYSIS.md`
-- [Implementation Summary: Questionnaire Flow](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/IMPLEMENTATION_SUMMARY.md) · `frontend` `docs/archive/IMPLEMENTATION_SUMMARY.md`
-- [Password Reset Troubleshooting Guide](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/PASSWORD_RESET_TROUBLESHOOTING.md) · `frontend` `docs/archive/PASSWORD_RESET_TROUBLESHOOTING.md`
-- [Post-Recording Questions Implementation Summary](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/POST_QUESTIONS_IMPLEMENTATION_SUMMARY.md) · `frontend` `docs/archive/POST_QUESTIONS_IMPLEMENTATION_SUMMARY.md`
-- [Quick Guide: Test Real OpenAI (No Mock Data)](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/QUICK_TEST_REAL_OPENAI.md) · `frontend` `docs/archive/QUICK_TEST_REAL_OPENAI.md`
-- [Post Recording Questions Table Schema Verification](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/SCHEMA_VERIFICATION.md) · `frontend` `docs/archive/SCHEMA_VERIFICATION.md`
-- [Prompt: Debug "Session expired" on Next.js + Supabase + Flask BFF](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/SESSION_EXPIRED_DEBUG_PROMPT.md) · `frontend` `docs/archive/SESSION_EXPIRED_DEBUG_PROMPT.md`
-- [Solo-Relevant Implementation Summary](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/SOLO_RELEVANT_IMPLEMENTATION_SUMMARY.md) · `frontend` `docs/archive/SOLO_RELEVANT_IMPLEMENTATION_SUMMARY.md`
-- [Troubleshooting 502 Errors: Backend Not Responding](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/TROUBLESHOOTING_502_ERRORS.md) · `frontend` `docs/archive/TROUBLESHOOTING_502_ERRORS.md`
-- [Troubleshoot: Git Push Taking Too Long or Failing](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/TROUBLESHOOT_GIT_PUSH.md) · `frontend` `docs/archive/TROUBLESHOOT_GIT_PUSH.md`
-- [Vercel Build Fixes](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/VERCEL_BUILD_FIX.md) · `frontend` `docs/archive/VERCEL_BUILD_FIX.md`
-- [Vercel Configuration Settings](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/VERCEL_CONFIGURATION.md) · `frontend` `docs/archive/VERCEL_CONFIGURATION.md`
-- [Vercel Deployment Guide](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/VERCEL_DEPLOYMENT_GUIDE.md) · `frontend` `docs/archive/VERCEL_DEPLOYMENT_GUIDE.md`
-- [Vercel Setup: Step-by-Step Guide](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/VERCEL_SETUP_STEP_BY_STEP.md) · `frontend` `docs/archive/VERCEL_SETUP_STEP_BY_STEP.md`
-- [Recordings Table Column Mapping](https://github.com/wilplus/frontend-cursor/blob/main/docs/archive/supabase-recordings-table-mapping.md) · `frontend` `docs/archive/supabase-recordings-table-mapping.md`
-
-</details>
-
-<details><summary>Unchanged since before July 2026 (22 files)</summary>
-
-- [Admin notification when a lesson is complete](https://github.com/wilplus/frontend-cursor/blob/main/docs/ADMIN_LESSON_COMPLETE_NOTIFICATION.md) · `frontend` `docs/ADMIN_LESSON_COMPLETE_NOTIFICATION.md`
-- [Admin Recording Import MVP](https://github.com/wilplus/frontend-cursor/blob/main/docs/ADMIN_RECORDING_IMPORT_MVP.md) · `frontend` `docs/ADMIN_RECORDING_IMPORT_MVP.md`
-- [Willab Admin Redesign Implementation](https://github.com/wilplus/frontend-cursor/blob/main/docs/ADMIN_REDESIGN_IMPLEMENTATION.md) · `frontend` `docs/ADMIN_REDESIGN_IMPLEMENTATION.md`
-- [Backend guide: student homework without post-recording questions](https://github.com/wilplus/frontend-cursor/blob/main/docs/BACKEND_WITHOUT_POST_RECORDING_QUESTIONS.md) · `frontend` `docs/BACKEND_WITHOUT_POST_RECORDING_QUESTIONS.md`
-- [Debug plan: which of the 3 metric-step failure points is failing](https://github.com/wilplus/frontend-cursor/blob/main/docs/DEBUG-METRIC-STEP-PLAN.md) · `frontend` `docs/DEBUG-METRIC-STEP-PLAN.md`
-- [Domain migration: `willonski.com` → `willpowerlab.com`](https://github.com/wilplus/frontend-cursor/blob/main/docs/DOMAIN_MIGRATION_willpowerlab.md) · `frontend` `docs/DOMAIN_MIGRATION_willpowerlab.md`
 - [Frontend — what to know (short contract)](https://github.com/wilplus/frontend-cursor/blob/main/docs/FRONTEND-WHAT-TO-KNOW.md) · `frontend` `docs/FRONTEND-WHAT-TO-KNOW.md`
-- [HomeworkFlowCard — Architecture Reference](https://github.com/wilplus/frontend-cursor/blob/main/docs/HOMEWORK_FLOW_CARD_ARCHITECTURE.md) · `frontend` `docs/HOMEWORK_FLOW_CARD_ARCHITECTURE.md`
-- [ML 1.0 labeling guide](https://github.com/wilplus/frontend-cursor/blob/main/docs/ML_LABELING_1_0.md) · `frontend` `docs/ML_LABELING_1_0.md`
-- [Panel-State Matrix — `/chat` surface (v1)](https://github.com/wilplus/frontend-cursor/blob/main/docs/PANEL-STATE-MATRIX.md) · `frontend` `docs/PANEL-STATE-MATRIX.md`
-- [Recording Data Points](https://github.com/wilplus/frontend-cursor/blob/main/docs/RECORDING_DATA_POINTS.md) · `frontend` `docs/RECORDING_DATA_POINTS.md`
-- [Sniper ratings & baseline — backend directions](https://github.com/wilplus/frontend-cursor/blob/main/docs/SNIPER_RATINGS_BACKEND.md) · `frontend` `docs/SNIPER_RATINGS_BACKEND.md`
-- [Sniper (Strength/Pace Dartboard) — Settings History](https://github.com/wilplus/frontend-cursor/blob/main/docs/SNIPER_SETTINGS_HISTORY.md) · `frontend` `docs/SNIPER_SETTINGS_HISTORY.md`
-- [Frontend styling guidelines](https://github.com/wilplus/frontend-cursor/blob/main/docs/STYLING_GUIDELINES.md) · `frontend` `docs/STYLING_GUIDELINES.md`
-- [Timer countdown fix checklist](https://github.com/wilplus/frontend-cursor/blob/main/docs/TIMER_COUNTDOWN_FIX_CHECKLIST.md) · `frontend` `docs/TIMER_COUNTDOWN_FIX_CHECKLIST.md`
-- [What’s in place & edge cases](https://github.com/wilplus/frontend-cursor/blob/main/docs/WHATS_IN_PLACE_AND_EDGE_CASES.md) · `frontend` `docs/WHATS_IN_PLACE_AND_EDGE_CASES.md`
 - [Backend reference: Assignment email](https://github.com/wilplus/frontend-cursor/blob/main/docs/backend-reference/README.md) · `frontend` `docs/backend-reference/README.md`
-- [Backend: Coach message after homework (no video on homework flow)](https://github.com/wilplus/frontend-cursor/blob/main/docs/backend-reference/coach_message_after_homework.md) · `frontend` `docs/backend-reference/coach_message_after_homework.md`
-- [Backend: Tutor countdown timer for first-time completers](https://github.com/wilplus/frontend-cursor/blob/main/docs/backend-reference/tutor_feedback_deadline_first_lesson.md) · `frontend` `docs/backend-reference/tutor_feedback_deadline_first_lesson.md`
-- [Copilot Draft Contract](https://github.com/wilplus/frontend-cursor/blob/main/docs/copilot-draft-contract.md) · `frontend` `docs/copilot-draft-contract.md`
-- [willab — FE Clearing Map](https://github.com/wilplus/frontend-cursor/blob/main/docs/willab_clearing_map_fe.md) · `frontend` `docs/willab_clearing_map_fe.md`
-- [willab — Design Decisions (Developer Reference)](https://github.com/wilplus/frontend-cursor/blob/main/docs/willab_design_decisions_beta.md) · `frontend` `docs/willab_design_decisions_beta.md`
+
+</details>
+
+## 5. Left main
+
+On 21 October 2026, 183 docs left `main` (N107): the ones labelled Archive that nothing names, the MLC
+chain (now one page, [`docs/history/MLC-PROGRAMME.md`](docs/history/MLC-PROGRAMME.md)) and the History nothing
+cites. Git keeps every one. Browse them at the last commit that had them:
+[backend `docs/`](https://github.com/wilplus/backend-cursor/tree/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs) and
+[frontend `docs/`](https://github.com/wilplus/frontend-cursor/tree/501da43874460770310b24fafc664c4f5e606114/docs).
+
+<details><summary>The 183 docs, each at its last version</summary>
+
+- [Claude Handoff — Confident Moment Coaching Bundle](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/CLAUDE-HANDOFF-CONFIDENT-MOMENT-2026-09-11.md) · `backend` `docs/CLAUDE-HANDOFF-CONFIDENT-MOMENT-2026-09-11.md`
+- [MLC-3 Coach Guidance and Exercise Delivery — D3](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-COACH-GUIDANCE-DELIVERY-D3.md) · `backend` `docs/MLC3-COACH-GUIDANCE-DELIVERY-D3.md`
+- [MLC-3 Coach Guidance and Exercise Delivery D3 — Release Preparation Packet](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-COACH-GUIDANCE-DELIVERY-IMPLEMENTATION.md) · `backend` `docs/MLC3-COACH-GUIDANCE-DELIVERY-IMPLEMENTATION.md`
+- [MLC-3 Coach Inline Exercise Authoring D5](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-COACH-INLINE-EXERCISE-AUTHORING-D5.md) · `backend` `docs/MLC3-COACH-INLINE-EXERCISE-AUTHORING-D5.md`
+- [MLC-3 Coach Inline Exercise Authoring D5 — Release Review Packet](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-COACH-INLINE-EXERCISE-AUTHORING-IMPLEMENTATION.md) · `backend` `docs/MLC3-COACH-INLINE-EXERCISE-AUTHORING-IMPLEMENTATION.md`
+- [MLC-3 Confident Moment Coaching Bundle — Chunk 2B implementation review D4](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-CONFIDENT-MOMENT-CHUNK2B-IMPLEMENTATION-REVIEW-D4.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-CHUNK2B-IMPLEMENTATION-REVIEW-D4.md`
+- [MLC-3 Confident Moment Coaching Bundle — Chunk 2B implementation review D5](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-CONFIDENT-MOMENT-CHUNK2B-IMPLEMENTATION-REVIEW-D5.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-CHUNK2B-IMPLEMENTATION-REVIEW-D5.md`
+- [MLC-3 Confident Moment Coaching Bundle — Founder Contract Delta D3](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-CONFIDENT-MOMENT-COACHING-CONTRACT-DELTA-D3.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-CONTRACT-DELTA-D3.md`
+- [MLC-3 Confident Moment Coaching Bundle — Per-item Currentness Amendment D12](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-CONFIDENT-MOMENT-COACHING-CURRENTNESS-AMENDMENT-D12.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-CURRENTNESS-AMENDMENT-D12.md`
+- [MLC-3 Confident Moment Coaching Bundle — Interface Manifest D6](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-CONFIDENT-MOMENT-COACHING-INTERFACE-MANIFEST-D6.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-INTERFACE-MANIFEST-D6.md`
+- [MLC-3 Confident Moment Point 7 — frontend base-commit errata](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-CONFIDENT-MOMENT-POINT7-FRONTEND-BASE-COMMIT-ERRATA.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-POINT7-FRONTEND-BASE-COMMIT-ERRATA.md`
+- [MLC-3 Confident Moment Coaching Bundle — Point 7 Implementation Evidence](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-CONFIDENT-MOMENT-POINT7-IMPLEMENTATION-EVIDENCE.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-POINT7-IMPLEMENTATION-EVIDENCE.md`
+- [MLC-3 exercise dependency audit](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-EXERCISE-DEPENDENCY-AUDIT.md) · `backend` `docs/MLC3-EXERCISE-DEPENDENCY-AUDIT.md`
+- [MLC-3 First-Client Service D2 — Local Implementation Review Packet](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-FIRST-CLIENT-SERVICE-IMPLEMENTATION.md) · `backend` `docs/MLC3-FIRST-CLIENT-SERVICE-IMPLEMENTATION.md`
+- [MLC-3 Founder Canary Activation Readiness](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-FOUNDER-CANARY-ACTIVATION-READINESS.md) · `backend` `docs/MLC3-FOUNDER-CANARY-ACTIVATION-READINESS.md`
+- [MLC-3 Founder Canary Activation-Readiness Review](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-FOUNDER-CANARY-ACTIVATION-REVIEW.md) · `backend` `docs/MLC3-FOUNDER-CANARY-ACTIVATION-REVIEW.md`
+- [MLC-3 general availability — activation runbook](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-GA-ACTIVATION-RUNBOOK.md) · `backend` `docs/MLC3-GA-ACTIVATION-RUNBOOK.md`
+- [MLC-3 General-User Service Rollout D4 — Disabled Implementation Review](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-GENERAL-USER-SERVICE-D4-IMPLEMENTATION.md) · `backend` `docs/MLC3-GENERAL-USER-SERVICE-D4-IMPLEMENTATION.md`
+- [MLC-3 General-User Service D4 — Offer Resolver-Chain Correction](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-GENERAL-USER-SERVICE-D4-RELEASE-CORRECTION-2.md) · `backend` `docs/MLC3-GENERAL-USER-SERVICE-D4-RELEASE-CORRECTION-2.md`
+- [MLC-3 General-User Service D4 — Production-Shape Release Correction](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-GENERAL-USER-SERVICE-D4-RELEASE-CORRECTION.md) · `backend` `docs/MLC3-GENERAL-USER-SERVICE-D4-RELEASE-CORRECTION.md`
+- [MLC-3 General-User Service Rollout D4 — Release Packet](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-GENERAL-USER-SERVICE-D4-RELEASE.md) · `backend` `docs/MLC3-GENERAL-USER-SERVICE-D4-RELEASE.md`
+- [M3-3 dark assignment frames — implementation review](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-M3-3-IMPLEMENTATION-REVIEW.md) · `backend` `docs/MLC3-M3-3-IMPLEMENTATION-REVIEW.md`
+- [MLC-3 N1 Proximity Foundation — Corrective Review Packet](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-N1-PROXIMITY-CORRECTION-REVIEW.md) · `backend` `docs/MLC3-N1-PROXIMITY-CORRECTION-REVIEW.md`
+- [BE prompt — the 2026-07-27 backlog wave](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/PROMPT-BE-2026-07-27-backlog-wave.md) · `backend` `docs/PROMPT-BE-2026-07-27-backlog-wave.md`
+- [PROMPT — BE: `prior_edit` re-offer + re-apply telemetry (T1 · 1.2)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/PROMPT-BE-prior-edit-2026-07-28.md) · `backend` `docs/PROMPT-BE-prior-edit-2026-07-28.md`
+- [FE handoff — founder items 2026-07-17 (paste into a fresh Claude session in `frontend-cursor`)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/PROMPT-FE-2026-07-17.md) · `backend` `docs/PROMPT-FE-2026-07-17.md`
+- [FE handoff — the full versioning + recording wave (2026-07-23)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/PROMPT-FE-2026-07-23-consolidated.md) · `backend` `docs/PROMPT-FE-2026-07-23-consolidated.md`
+- [FE prompt — the 2026-07-27 backlog wave](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/PROMPT-FE-2026-07-27-backlog-wave.md) · `backend` `docs/PROMPT-FE-2026-07-27-backlog-wave.md`
+- [BE answers — the corpus index: labelled badge, archive, and your open questions](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/PROMPT-FE-2026-07-30-corpus-index.md) · `backend` `docs/PROMPT-FE-2026-07-30-corpus-index.md`
+- [FE HANDOFF — Community Content Studio (one button in the CMS)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/PROMPT-FE-community-content-studio.md) · `backend` `docs/PROMPT-FE-community-content-studio.md`
+- [Frontend brief: exercise routing, steps 1–3 (2026-09-28)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/PROMPT-FE-exercise-routing-2026-09-28.md) · `backend` `docs/PROMPT-FE-exercise-routing-2026-09-28.md`
+- [FE prompt — The Key-Moments Game (Engine 5)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/PROMPT-FE-game.md) · `backend` `docs/PROMPT-FE-game.md`
+- [PROMPT — FE: add & rearrange text in the ideal-text area while recording (T1 · 1.2)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/PROMPT-FE-ideal-text-add-rearrange-2026-07-28.md) · `backend` `docs/PROMPT-FE-ideal-text-add-rearrange-2026-07-28.md`
+- [FE handoff — generated Journal cover images (paste into a fresh Claude session in `frontend-cursor`)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/PROMPT-FE-journal-cover-images.md) · `backend` `docs/PROMPT-FE-journal-cover-images.md`
+- [FE prompt — The Life Panel](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/PROMPT-FE-life-panel.md) · `backend` `docs/PROMPT-FE-life-panel.md`
+- [FE handoff — polish as suggestions, Approve all, re-read mic (paste into `frontend-cursor`)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/PROMPT-FE-polish-suggestions-2026-07-18.md) · `backend` `docs/PROMPT-FE-polish-suggestions-2026-07-18.md`
+- [FE handoff — the speaker-sex field](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/PROMPT-FE-speaker-sex.md) · `backend` `docs/PROMPT-FE-speaker-sex.md`
+- [FE prompt — Coach Star Verdict](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/PROMPT-FE-star-verdict.md) · `backend` `docs/PROMPT-FE-star-verdict.md`
+- [FE prompt — Training corpus, rev 2 (answers to your handoff)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/PROMPT-FE-training-corpus-rev2.md) · `backend` `docs/PROMPT-FE-training-corpus-rev2.md`
+- [FE prompt — Training corpus, rev 3: answering §7 (the empty Polish import)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/PROMPT-FE-training-corpus-rev3.md) · `backend` `docs/PROMPT-FE-training-corpus-rev3.md`
+- [FE prompt — Training corpus, rev 4: answering your §9](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/PROMPT-FE-training-corpus-rev4.md) · `backend` `docs/PROMPT-FE-training-corpus-rev4.md`
+- [FE prompt — Training corpus: audio import + confidence labelling](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/PROMPT-FE-training-corpus.md) · `backend` `docs/PROMPT-FE-training-corpus.md`
+- [PROMPT — Community Content Studio (one button in the CMS → 3 community posts)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/PROMPT-community-content-studio.md) · `backend` `docs/PROMPT-community-content-studio.md`
+- [Ledger splitter brief (read-only; text only, no code reading needed)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/audit/build/SPLIT_BRIEF.md) · `backend` `docs/audit/build/SPLIT_BRIEF.md`
+- [V4 Phase 1 · one row per pull request](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/audit/build/V4-PHASE1-ROWS.md) · `backend` `docs/audit/build/V4-PHASE1-ROWS.md`
+- [Audit questions — decisions needed before cleanup — 2026-09-13](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/audits/2026-09-13-audit-questions.md) · `backend` `docs/audits/2026-09-13-audit-questions.md`
+- [Engineering audit prompt — tests, complexity, abstractions, glue code](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/audits/2026-09-13-engineering-audit-prompt.md) · `backend` `docs/audits/2026-09-13-engineering-audit-prompt.md`
+- [Engineering audit — backend (`backend-cursor`) — 2026-09-13](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/audits/2026-09-13-engineering-audit.md) · `backend` `docs/audits/2026-09-13-engineering-audit.md`
+- [Audit decisions — founder answers to the 2026-09-13 questions — 2026-09-14](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/audits/2026-09-14-audit-decisions.md) · `backend` `docs/audits/2026-09-14-audit-decisions.md`
+- [Proposal — a rehearsal lane seeded from a production-shaped dump](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/audits/2026-09-14-proposal-production-shaped-rehearsal-lane.md) · `backend` `docs/audits/2026-09-14-proposal-production-shaped-rehearsal-lane.md`
+- [Prompt for the senior engineer — keep the ML code aligned with the locked architecture](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/audits/2026-09-22-ml-provenance/engineer_prompt.md) · `backend` `docs/audits/2026-09-22-ml-provenance/engineer_prompt.md`
+- [Prompts for the five jobs](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/audits/2026-09-22-ml-provenance/job_prompts.md) · `backend` `docs/audits/2026-09-22-ml-provenance/job_prompts.md`
+- [willab — FE ↔ BE Compatibility Audit (Lounge & Coach UX batch)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/be-compat-audit.md) · `backend` `docs/be-compat-audit.md`
+- [Backend prompt: Flow-step overrides (skip metric questions / skip post questions)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/cursor-prompts/BACKEND_FLOW_STEPS_OVERRIDES.md) · `backend` `docs/cursor-prompts/BACKEND_FLOW_STEPS_OVERRIDES.md`
+- [Prompt for Claude — continue Confident Moment Chunk 2B](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/cursor-prompts/CLAUDE-CONTINUE-CONFIDENT-MOMENT-CHUNK2B.md) · `backend` `docs/cursor-prompts/CLAUDE-CONTINUE-CONFIDENT-MOMENT-CHUNK2B.md`
+- [PARKED — Lounge intent-router + persona polish](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/cursor-prompts/PARKED-intent-router-and-lounge-persona.md) · `backend` `docs/cursor-prompts/PARKED-intent-router-and-lounge-persona.md`
+- [BE → FE: the legacy credits are settled. The balance has two halves now.](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/handoffs/BE-ANSWER-legacy-credits-2026-08-01.md) · `backend` `docs/handoffs/BE-ANSWER-legacy-credits-2026-08-01.md`
+- [BE → FE: the plans are sellable. Answers, and two bugs you did not ask about.](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/handoffs/BE-ANSWER-plan-checkout-2026-07-31.md) · `backend` `docs/handoffs/BE-ANSWER-plan-checkout-2026-07-31.md`
+- [BE answer — stress lane deleted, peer-review validation loop wired](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/handoffs/BE-ANSWER-stress-lane-deletion-2026-08-03.md) · `backend` `docs/handoffs/BE-ANSWER-stress-lane-deletion-2026-08-03.md`
+- [BE → FE handoff — add & rearrange text in the ideal-text area while recording (T1 · 1.2)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/handoffs/BE-HANDOFF-ideal-text-add-rearrange.md) · `backend` `docs/handoffs/BE-HANDOFF-ideal-text-add-rearrange.md`
+- [BE → FE handoff — slide linkage on the ideal-text GET (answers FE PR #222)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/handoffs/BE-HANDOFF-ideal-text-slide-linkage.md) · `backend` `docs/handoffs/BE-HANDOFF-ideal-text-slide-linkage.md`
+- [BE handoff — Session-1 completion gate (≥1 charisma + ≥1 stress + ≥60s)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/handoffs/BE-HANDOFF-tab-session1-completion-gate.md) · `backend` `docs/handoffs/BE-HANDOFF-tab-session1-completion-gate.md`
+- [BE handoff — split the comment sinks (user-visible vs. pipeline-only)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/handoffs/BE-HANDOFF-tab1-comment-sink-split.md) · `backend` `docs/handoffs/BE-HANDOFF-tab1-comment-sink-split.md`
+- [BE handoff — Tab 1: >5-word-change save gate (anti-lazy-admin)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/handoffs/BE-HANDOFF-tab1-edit-gate.md) · `backend` `docs/handoffs/BE-HANDOFF-tab1-edit-gate.md`
+- [BE handoff — Admin Tab 1: snippet list re-rank + transcript hiding](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/handoffs/BE-HANDOFF-tab1-snippet-rerank.md) · `backend` `docs/handoffs/BE-HANDOFF-tab1-snippet-rerank.md`
+- [BE handoff — Admin Tab 3: private admin notes panel](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/handoffs/BE-HANDOFF-tab3-private-admin-notes.md) · `backend` `docs/handoffs/BE-HANDOFF-tab3-private-admin-notes.md`
+- [BE handoff — Task 7: "4h human-at-heart" CTA + post-signup confirmation](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/handoffs/BE-HANDOFF-task7-signup-cta-human-at-heart.md) · `backend` `docs/handoffs/BE-HANDOFF-task7-signup-cta-human-at-heart.md`
+- [BE handoff — Task 8: data-sharing consent modal at session 2](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/handoffs/BE-HANDOFF-task8-sharing-consent-modal.md) · `backend` `docs/handoffs/BE-HANDOFF-task8-sharing-consent-modal.md`
+- [BE handoff — Task 9: admin Tab 4 (Files) Next.js page](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/handoffs/BE-HANDOFF-task9-files-tab-ui.md) · `backend` `docs/handoffs/BE-HANDOFF-task9-files-tab-ui.md`
+- [DEBUG HANDOFF — 2026-08-10 evening session](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/handoffs/DEBUG-HANDOFF-2026-08-10.md) · `backend` `docs/handoffs/DEBUG-HANDOFF-2026-08-10.md`
+- [FE handoff — the backlog wave (2026-07-27)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/handoffs/FE-HANDOFF-2026-07-27-backlog-wave.md) · `backend` `docs/handoffs/FE-HANDOFF-2026-07-27-backlog-wave.md`
+- [FE handoff — the Life Panel document dock, answered (2026-07-31)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/handoffs/FE-HANDOFF-2026-07-31-life-panel-doc-dock.md) · `backend` `docs/handoffs/FE-HANDOFF-2026-07-31-life-panel-doc-dock.md`
+- [FE handoff — one BFF idiom + lab upload defenses (2026-08-03)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/handoffs/FE-HANDOFF-2026-08-03-bff-and-upload-defenses.md) · `backend` `docs/handoffs/FE-HANDOFF-2026-08-03-bff-and-upload-defenses.md`
+- [FE handoff — the monthly + quarterly reviews (piece 5, 2026-08-03)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/handoffs/FE-HANDOFF-2026-08-03-life-period-reviews.md) · `backend` `docs/handoffs/FE-HANDOFF-2026-08-03-life-period-reviews.md`
+- [FE handoff — the block variant PICKER, revisions & restore (2026-08-03)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/handoffs/FE-HANDOFF-2026-08-03-variant-picker.md) · `backend` `docs/handoffs/FE-HANDOFF-2026-08-03-variant-picker.md`
+- [FE handoff — wins → proposed principles (piece 6, 2026-08-03)](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/handoffs/FE-HANDOFF-2026-08-03-wins-derive.md) · `backend` `docs/handoffs/FE-HANDOFF-2026-08-03-wins-derive.md`
+- [FE handoff — coaching chat STEP 2 becomes the peer-review flag](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/handoffs/FE-HANDOFF-2026-08-04-step2-peer-review.md) · `backend` `docs/handoffs/FE-HANDOFF-2026-08-04-step2-peer-review.md`
+- [Take Feedback Policy v3 — ML/data review packet](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/take-feedback-policy-v3-ml-review.md) · `backend` `docs/take-feedback-policy-v3-ml-review.md`
+- [willab BE → FE handoff — last-pass before test & clear](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/willab_be_handoff_fe_lastpass.md) · `backend` `docs/willab_be_handoff_fe_lastpass.md`
+- [MLC-2 Confidence founder-canary activation runbook](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/work-items/mlc2-confidence-founder-canary-activation-runbook.md) · `backend` `docs/work-items/mlc2-confidence-founder-canary-activation-runbook.md`
+- [MLC-2 Slice 6 — Founder-only Confidence canary readiness](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/work-items/mlc2-confidence-slice-6-readiness.md) · `backend` `docs/work-items/mlc2-confidence-slice-6-readiness.md`
+- [MLC-2 Slice 6A — Founder consent and recurring readiness remediation](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/work-items/mlc2-confidence-slice-6a-readiness-remediation.md) · `backend` `docs/work-items/mlc2-confidence-slice-6a-readiness-remediation.md`
+- [MLC-2 Foundation Slice 1](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/work-items/mlc2-foundation-slice-1.md) · `backend` `docs/work-items/mlc2-foundation-slice-1.md`
+- [MLC-2 Foundation Slice 2 — Database Rehearsal and Hardening](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/work-items/mlc2-foundation-slice-2.md) · `backend` `docs/work-items/mlc2-foundation-slice-2.md`
+- [MLC-2 Foundation Slice 3 — Confidence Audit and Dark Contracts](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/work-items/mlc2-foundation-slice-3.md) · `backend` `docs/work-items/mlc2-foundation-slice-3.md`
+- [MLC-2 Foundation Slice 4 — Dark Confidence Producer Integration](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/work-items/mlc2-foundation-slice-4.md) · `backend` `docs/work-items/mlc2-foundation-slice-4.md`
+- [Admin notification when a lesson is complete](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/ADMIN_LESSON_COMPLETE_NOTIFICATION.md) · `frontend` `docs/ADMIN_LESSON_COMPLETE_NOTIFICATION.md`
+- [Admin Recording Import MVP](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/ADMIN_RECORDING_IMPORT_MVP.md) · `frontend` `docs/ADMIN_RECORDING_IMPORT_MVP.md`
+- [Willab Admin Redesign Implementation](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/ADMIN_REDESIGN_IMPLEMENTATION.md) · `frontend` `docs/ADMIN_REDESIGN_IMPLEMENTATION.md`
+- [Backend guide: student homework without post-recording questions](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/BACKEND_WITHOUT_POST_RECORDING_QUESTIONS.md) · `frontend` `docs/BACKEND_WITHOUT_POST_RECORDING_QUESTIONS.md`
+- [Debug plan: which of the 3 metric-step failure points is failing](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/DEBUG-METRIC-STEP-PLAN.md) · `frontend` `docs/DEBUG-METRIC-STEP-PLAN.md`
+- [Domain migration: `willonski.com` → `willpowerlab.com`](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/DOMAIN_MIGRATION_willpowerlab.md) · `frontend` `docs/DOMAIN_MIGRATION_willpowerlab.md`
+- [BE handoff — Training corpus (FE side is live on `main`)](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/HANDOFF-BE-2026-07-28-training-corpus.md) · `frontend` `docs/HANDOFF-BE-2026-07-28-training-corpus.md`
+- [BE handoff — Voice-game + star verdict (FE side is live on `main`)](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/HANDOFF-BE-2026-07-28-voice-game.md) · `frontend` `docs/HANDOFF-BE-2026-07-28-voice-game.md`
+- [BE handoff — the `language` field: already shipped, and that was the problem](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/HANDOFF-BE-2026-07-29-corpus-language.md) · `frontend` `docs/HANDOFF-BE-2026-07-29-corpus-language.md`
+- [BE handoff — Training corpus, FE answer to rev 3](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/HANDOFF-BE-2026-07-29-corpus-rev3.md) · `frontend` `docs/HANDOFF-BE-2026-07-29-corpus-rev3.md`
+- [BE handoff — confident voice as the labelling engine, star video, and the deletion that is BLOCKED](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/HANDOFF-BE-2026-07-30-confident-voice-and-star-video.md) · `frontend` `docs/HANDOFF-BE-2026-07-30-confident-voice-and-star-video.md`
+- [BE handoff — `direction_label` is about to lose its only writer, and that breaks L2](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/HANDOFF-BE-2026-07-30-direction-label.md) · `frontend` `docs/HANDOFF-BE-2026-07-30-direction-label.md`
+- [FE → BE — block variant picker: one anchoring assumption to confirm before the flag flips](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/HANDOFF-BE-2026-08-03-block-variants-anchoring.md) · `frontend` `docs/HANDOFF-BE-2026-08-03-block-variants-anchoring.md`
+- [BE handoff — delete the stress lane, wire the peer-review validation loop](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/HANDOFF-BE-2026-08-03-stress-lane-deletion-and-peer-review.md) · `frontend` `docs/HANDOFF-BE-2026-08-03-stress-lane-deletion-and-peer-review.md`
+- [HANDOFF — willab pricing & billing surfaces (frontend)](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/HANDOFF-FE-2026-08-13-pricing-and-billing.md) · `frontend` `docs/HANDOFF-FE-2026-08-13-pricing-and-billing.md`
+- [Handoff — Voice Game Bubble + Beta Badge](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/HANDOFF-game-bubble-and-beta-badge.md) · `frontend` `docs/HANDOFF-game-bubble-and-beta-badge.md`
+- [HomeworkFlowCard — Architecture Reference](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/HOMEWORK_FLOW_CARD_ARCHITECTURE.md) · `frontend` `docs/HOMEWORK_FLOW_CARD_ARCHITECTURE.md`
+- [ML 1.0 labeling guide](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/ML_LABELING_1_0.md) · `frontend` `docs/ML_LABELING_1_0.md`
+- [Panel-State Matrix — `/chat` surface (v1)](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/PANEL-STATE-MATRIX.md) · `frontend` `docs/PANEL-STATE-MATRIX.md`
+- [Recording Data Points](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/RECORDING_DATA_POINTS.md) · `frontend` `docs/RECORDING_DATA_POINTS.md`
+- [Sniper ratings & baseline — backend directions](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/SNIPER_RATINGS_BACKEND.md) · `frontend` `docs/SNIPER_RATINGS_BACKEND.md`
+- [Sniper (Strength/Pace Dartboard) — Settings History](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/SNIPER_SETTINGS_HISTORY.md) · `frontend` `docs/SNIPER_SETTINGS_HISTORY.md`
+- [Frontend styling guidelines](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/STYLING_GUIDELINES.md) · `frontend` `docs/STYLING_GUIDELINES.md`
+- [Timer countdown fix checklist](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/TIMER_COUNTDOWN_FIX_CHECKLIST.md) · `frontend` `docs/TIMER_COUNTDOWN_FIX_CHECKLIST.md`
+- [What’s in place & edge cases](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/WHATS_IN_PLACE_AND_EDGE_CASES.md) · `frontend` `docs/WHATS_IN_PLACE_AND_EDGE_CASES.md`
+- [Admin Dashboard Implementation Summary](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/ADMIN_DASHBOARD_IMPLEMENTATION.md) · `frontend` `docs/archive/ADMIN_DASHBOARD_IMPLEMENTATION.md`
+- [Admin Feedback Flow: Storing & Using Admin Comments](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/ADMIN_FEEDBACK_FLOW.md) · `frontend` `docs/archive/ADMIN_FEEDBACK_FLOW.md`
+- [API JSON request/response spec — current vs v1 (theme + 1 preQ + 3 command options)](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/API_JSON_SPEC_CURRENT_AND_V1.md) · `frontend` `docs/archive/API_JSON_SPEC_CURRENT_AND_V1.md`
+- [Backend: Use Admin Feedback in AI Analysis](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/BACKEND_ADMIN_FEEDBACK_USAGE.md) · `frontend` `docs/archive/BACKEND_ADMIN_FEEDBACK_USAGE.md`
+- [Backend Development vs Production Workflow](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/BACKEND_DEV_PROD_WORKFLOW.md) · `frontend` `docs/archive/BACKEND_DEV_PROD_WORKFLOW.md`
+- [Backend Email Link Fix: Production URL Issue](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/BACKEND_EMAIL_LINK_FIX.md) · `frontend` `docs/archive/BACKEND_EMAIL_LINK_FIX.md`
+- [Backend Prompt: Admin Email with Correct Feedback Link](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/BACKEND_EMAIL_LINK_PROMPT.md) · `frontend` `docs/archive/BACKEND_EMAIL_LINK_PROMPT.md`
+- [Backend Fix: Enable Real OpenAI Analysis (Remove Mock Data)](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/BACKEND_ENABLE_REAL_OPENAI.md) · `frontend` `docs/archive/BACKEND_ENABLE_REAL_OPENAI.md`
+- [Backend Environment Variables: Update Checklist](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/BACKEND_ENV_UPDATE_CHECKLIST.md) · `frontend` `docs/archive/BACKEND_ENV_UPDATE_CHECKLIST.md`
+- [Fix Mock Data in Your Backend](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/BACKEND_FIX_MOCK_DATA.md) · `frontend` `docs/archive/BACKEND_FIX_MOCK_DATA.md`
+- [Backend Implementation: Post-Recording Questions & Performance Scoring](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/BACKEND_POST_QUESTIONS_SCORING.md) · `frontend` `docs/archive/BACKEND_POST_QUESTIONS_SCORING.md`
+- [Backend Fix: Questionnaire Flow Integration](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/BACKEND_QUESTIONNAIRE_FLOW_FIX.md) · `frontend` `docs/archive/BACKEND_QUESTIONNAIRE_FLOW_FIX.md`
+- [Backend Integration: Pre-Recording Questionnaire](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/BACKEND_QUESTIONNAIRE_INTEGRATION.md) · `frontend` `docs/archive/BACKEND_QUESTIONNAIRE_INTEGRATION.md`
+- [Backend Implementation Prompt: Questionnaire Flow](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/BACKEND_QUESTIONNAIRE_PROMPT.md) · `frontend` `docs/archive/BACKEND_QUESTIONNAIRE_PROMPT.md`
+- [Backend Checklist: Why Old Recordings Aren't Showing](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/BACKEND_RECORDINGS_CHECKLIST.md) · `frontend` `docs/archive/BACKEND_RECORDINGS_CHECKLIST.md`
+- [Backend Implementation: Solo-Relevant Scoring System](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/BACKEND_SOLO_RELEVANT_SCORING.md) · `frontend` `docs/archive/BACKEND_SOLO_RELEVANT_SCORING.md`
+- [Backend Updates After Vercel Deployment](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/BACKEND_UPDATE_AFTER_VERCEL.md) · `frontend` `docs/archive/BACKEND_UPDATE_AFTER_VERCEL.md`
+- [Clean Git History: Remove Large Files](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/CLEAN_GIT_HISTORY.md) · `frontend` `docs/archive/CLEAN_GIT_HISTORY.md`
+- [Development vs Production: OpenAI Analysis & Email Flow](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/DEVELOPMENT_VS_PRODUCTION_GUIDE.md) · `frontend` `docs/archive/DEVELOPMENT_VS_PRODUCTION_GUIDE.md`
+- [Final Implementation Checklist](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/FINAL_IMPLEMENTATION_CHECKLIST.md) · `frontend` `docs/archive/FINAL_IMPLEMENTATION_CHECKLIST.md`
+- [Fix: Remove node_modules from Git](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/FIX_GIT_NODE_MODULES.md) · `frontend` `docs/archive/FIX_GIT_NODE_MODULES.md`
+- [Fix: App Won't Host on Localhost](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/FIX_LOCALHOST_ISSUE.md) · `frontend` `docs/archive/FIX_LOCALHOST_ISSUE.md`
+- [Flask Backend Setup for Supabase JWT Verification](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/FLASK_BACKEND_SETUP.md) · `frontend` `docs/archive/FLASK_BACKEND_SETUP.md`
+- [Frontend: Email Link Debugging Guide](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/FRONTEND_EMAIL_LINK_DEBUG.md) · `frontend` `docs/archive/FRONTEND_EMAIL_LINK_DEBUG.md`
+- [Frontend: Email Link Setup Complete ✅](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/FRONTEND_EMAIL_LINK_SETUP.md) · `frontend` `docs/archive/FRONTEND_EMAIL_LINK_SETUP.md`
+- [Frontend Implementation Summary](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/FRONTEND_IMPLEMENTATION_SUMMARY.md) · `frontend` `docs/archive/FRONTEND_IMPLEMENTATION_SUMMARY.md`
+- [Frontend: Redirect Fix for Email Links](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/FRONTEND_REDIRECT_FIX.md) · `frontend` `docs/archive/FRONTEND_REDIRECT_FIX.md`
+- [Frontend UUID Verification: Post-Questions](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/FRONTEND_UUID_VERIFICATION.md) · `frontend` `docs/archive/FRONTEND_UUID_VERIFICATION.md`
+- [How to See Real OpenAI Analysis (Not Mock Data)](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/HOW_TO_SEE_REAL_ANALYSIS.md) · `frontend` `docs/archive/HOW_TO_SEE_REAL_ANALYSIS.md`
+- [Implementation Summary: Questionnaire Flow](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/IMPLEMENTATION_SUMMARY.md) · `frontend` `docs/archive/IMPLEMENTATION_SUMMARY.md`
+- [Password Reset Troubleshooting Guide](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/PASSWORD_RESET_TROUBLESHOOTING.md) · `frontend` `docs/archive/PASSWORD_RESET_TROUBLESHOOTING.md`
+- [Post-Recording Questions Implementation Summary](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/POST_QUESTIONS_IMPLEMENTATION_SUMMARY.md) · `frontend` `docs/archive/POST_QUESTIONS_IMPLEMENTATION_SUMMARY.md`
+- [Quick Guide: Test Real OpenAI (No Mock Data)](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/QUICK_TEST_REAL_OPENAI.md) · `frontend` `docs/archive/QUICK_TEST_REAL_OPENAI.md`
+- [Post Recording Questions Table Schema Verification](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/SCHEMA_VERIFICATION.md) · `frontend` `docs/archive/SCHEMA_VERIFICATION.md`
+- [Prompt: Debug "Session expired" on Next.js + Supabase + Flask BFF](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/SESSION_EXPIRED_DEBUG_PROMPT.md) · `frontend` `docs/archive/SESSION_EXPIRED_DEBUG_PROMPT.md`
+- [Solo-Relevant Implementation Summary](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/SOLO_RELEVANT_IMPLEMENTATION_SUMMARY.md) · `frontend` `docs/archive/SOLO_RELEVANT_IMPLEMENTATION_SUMMARY.md`
+- [Troubleshooting 502 Errors: Backend Not Responding](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/TROUBLESHOOTING_502_ERRORS.md) · `frontend` `docs/archive/TROUBLESHOOTING_502_ERRORS.md`
+- [Troubleshoot: Git Push Taking Too Long or Failing](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/TROUBLESHOOT_GIT_PUSH.md) · `frontend` `docs/archive/TROUBLESHOOT_GIT_PUSH.md`
+- [Vercel Build Fixes](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/VERCEL_BUILD_FIX.md) · `frontend` `docs/archive/VERCEL_BUILD_FIX.md`
+- [Vercel Configuration Settings](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/VERCEL_CONFIGURATION.md) · `frontend` `docs/archive/VERCEL_CONFIGURATION.md`
+- [Vercel Deployment Guide](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/VERCEL_DEPLOYMENT_GUIDE.md) · `frontend` `docs/archive/VERCEL_DEPLOYMENT_GUIDE.md`
+- [Vercel Setup: Step-by-Step Guide](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/VERCEL_SETUP_STEP_BY_STEP.md) · `frontend` `docs/archive/VERCEL_SETUP_STEP_BY_STEP.md`
+- [Recordings Table Column Mapping](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/archive/supabase-recordings-table-mapping.md) · `frontend` `docs/archive/supabase-recordings-table-mapping.md`
+- [Engineering audit — frontend (`frontend-cursor`) — 2026-09-13](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/audits/2026-09-13-engineering-audit.md) · `frontend` `docs/audits/2026-09-13-engineering-audit.md`
+- [Backend: Coach message after homework (no video on homework flow)](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/backend-reference/coach_message_after_homework.md) · `frontend` `docs/backend-reference/coach_message_after_homework.md`
+- [Backend: Tutor countdown timer for first-time completers](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/backend-reference/tutor_feedback_deadline_first_lesson.md) · `frontend` `docs/backend-reference/tutor_feedback_deadline_first_lesson.md`
+- [Copilot Draft Contract](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/copilot-draft-contract.md) · `frontend` `docs/copilot-draft-contract.md`
+- [Backend: Return `assigned_exercises` so step 0 shows the assigned exercise](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/cursor-prompts/BACKEND_ASSIGNED_EXERCISES_STEP0.md) · `frontend` `docs/cursor-prompts/BACKEND_ASSIGNED_EXERCISES_STEP0.md`
+- [Backend: Assignment Email (POST send-assignment)](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/cursor-prompts/BACKEND_ASSIGNMENT_EMAIL.md) · `frontend` `docs/cursor-prompts/BACKEND_ASSIGNMENT_EMAIL.md`
+- [Backend: Persist and honor “flow steps” overrides (skip step 2 / step 4)](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/cursor-prompts/BACKEND_FLOW_STEPS_OVERRIDES.md) · `frontend` `docs/cursor-prompts/BACKEND_FLOW_STEPS_OVERRIDES.md`
+- [Backend Cursor Prompt: willab (willpower lab) — Five Bug Fixes](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/cursor-prompts/BACKEND_PROMPT.md) · `frontend` `docs/cursor-prompts/BACKEND_PROMPT.md`
+- [Frontend prompt: Homework flow – admin overrides and “report generating” state](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/cursor-prompts/FRONTEND_HOMEWORK_FLOW_PROMPT.md) · `frontend` `docs/cursor-prompts/FRONTEND_HOMEWORK_FLOW_PROMPT.md`
+- [Frontend Cursor prompt: willab bugfixes (production-ready)](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/cursor-prompts/FRONTEND_PROMPT.md) · `frontend` `docs/cursor-prompts/FRONTEND_PROMPT.md`
+- [BUILD PROMPT — wire the billing portal (manage / switch / cancel a plan)](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/cursor-prompts/PROMPT-FE-billing-portal.md) · `frontend` `docs/cursor-prompts/PROMPT-FE-billing-portal.md`
+- [BUILD PROMPT — draw the cover from a description, let Enter walk the lane, and stop refusing real video](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/cursor-prompts/PROMPT-FE-cover-draw-and-enter.md) · `frontend` `docs/cursor-prompts/PROMPT-FE-cover-draw-and-enter.md`
+- [BUILD PROMPT — the in-thread top-up card (Lounge)](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/cursor-prompts/PROMPT-FE-lounge-topup-card.md) · `frontend` `docs/cursor-prompts/PROMPT-FE-lounge-topup-card.md`
+- [Handoff — Voice Game Bubble + Beta Badge](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/handoff-voice-game-bubble-and-beta.md) · `frontend` `docs/handoff-voice-game-bubble-and-beta.md`
+- [Backlog implementation — real repos (frontend-cursor / backend-cursor)](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/handoffs/BACKLOG-IMPLEMENTATION-REPORT.md) · `frontend` `docs/handoffs/BACKLOG-IMPLEMENTATION-REPORT.md`
+- [BE handoff: connect the breakthrough moment + coach breakthrough video](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/handoffs/backend-handoff-breakthrough-video.md) · `frontend` `docs/handoffs/backend-handoff-breakthrough-video.md`
+- [BE handoff: coach publish floor + presentation_ref nullability](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/handoffs/backend-handoff-coach-publish-and-slide-refs.md) · `frontend` `docs/handoffs/backend-handoff-coach-publish-and-slide-refs.md`
+- [BE handoff: stale tasks served as current, and where the Dalio ranking lives](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/handoffs/backend-handoff-life-goal-priority.md) · `frontend` `docs/handoffs/backend-handoff-life-goal-priority.md`
+- [BE handoff: the Life Panel document dock (kind-aware drafting)](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/handoffs/backend-handoff-life-panel-document-dock.md) · `frontend` `docs/handoffs/backend-handoff-life-panel-document-dock.md`
+- [Backend summary: Default warm-up question](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/handoffs/backend-summary-default-warmup.md) · `frontend` `docs/handoffs/backend-summary-default-warmup.md`
+- [Chat bot audit — BE + FE prompts](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/handoffs/chat-bot-audit-handoffs.md) · `frontend` `docs/handoffs/chat-bot-audit-handoffs.md`
+- [Handoff — CSP `style-src` hardening, after the 2026-08-04 outage](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/handoffs/handoff-csp-style-src.md) · `frontend` `docs/handoffs/handoff-csp-style-src.md`
+- [Handoff — The Life Panel (FE)](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/handoffs/handoff-life-panel.md) · `frontend` `docs/handoffs/handoff-life-panel.md`
+- [Handoff — readout per-slide, take cadence copy, best-presentation cleanup](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/handoffs/handoff-readout-and-takes.md) · `frontend` `docs/handoffs/handoff-readout-and-takes.md`
+- [BE PROMPT — Journal (blog) content + media API](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/journal-be-prompt.md) · `frontend` `docs/journal-be-prompt.md`
+- [FE PROMPT — Public Journal (blog) + admin CMS](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/journal-fe-prompt.md) · `frontend` `docs/journal-fe-prompt.md`
+- [FE prompt — The Life Panel](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/life-panel-fe-prompt.md) · `frontend` `docs/life-panel-fe-prompt.md`
+- [willab — FE Clearing Map](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/willab_clearing_map_fe.md) · `frontend` `docs/willab_clearing_map_fe.md`
+- [willab — Design Decisions (Developer Reference)](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/willab_design_decisions_beta.md) · `frontend` `docs/willab_design_decisions_beta.md`
 
 </details>
 
@@ -530,4 +542,5 @@ Out of date, and nothing needs them. They move to an archive folder later (N106)
 
 - A new doc gets its label line under its title and a line on this page, in the same pull request.
 - A label that changes changes in both places. A change to a rule is a decisions-log entry first (N95).
-- The labels were set on 21 October 2026 (N106). The founder's corrections follow in their own pull request.
+- The labels were set on 21 October 2026 (N106) and the docs converged the same day (N107).
+- Don't start a new doc: edit the area's rules page or this page. A new doc needs the founder's OK (N107).
