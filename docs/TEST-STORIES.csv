@@ -496,6 +496,15 @@ tests/test_coach_guidance_delivery_d3_postgres.py,Story,"As a speaker, I want co
 missing.
 O2  Once coach review is removed, a new batch is refused
 (CURRENT_AUTHORITY_REQUIRED).","O1, O2 -> test_coach_review_remains_live_without_exercise_purpose",Coach Guidance D3 (disabled feature); runs on a disposable database with synthetic data only.
+tests/test_coach_imports_list_loads_fast.py,Story,"As a coach, I want the training corpus list to open fast and show only the imports in languages I speak.","O1  An import that declares its language is listed, or withheld when the
+coach does not speak it, without reading its pieces or its recording
+(one read of every piece per import made the list take 15.7 s).
+O2  An import without a declared language takes its language from its
+recording, else its pieces, read once for every such import.
+O3  Each import's labelled count stays right past the database's 1000
+rows a read (600 clips' labels pass it): a done import reads done.","O1 -> test_declared_imports_need_no_read_of_their_pieces
+O2 -> test_undeclared_imports_take_their_language_from_one_read
+O3 -> test_labelled_counts_stay_right_past_a_thousand_labels","Founder 2026-10-21 (N99): ""please make sure it is smooth that it loads fast""."
 tests/test_coach_listen_again.py,Story,"As a coach asked to listen to a moment again, I want it shown with only its line key and nothing of the speaker's side, so that my second listen stays blind.","O1  That moment's row carries only its id, its state and the line key,
 with no sign of what the speaker asked.
 O2  It still counts in the ""waiting"" totals.","O1, O2 ->
