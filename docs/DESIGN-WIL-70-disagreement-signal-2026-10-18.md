@@ -4,9 +4,11 @@ No code in this note. It says what to build, where, and what stays as it is.
 
 It answers WIL-32: how speaker/coach disagreement should change
 `ranking_priority` in `label_quorum.py`, for star, disagreement, licensed
-and peer recordings. It is not built yet. Section 5 checks it against main
-on 2026-10-21. Two parts of it no longer match the walk, and the founder
-decides those two before anything is built.
+and peer recordings. Section 5 checks it against main on 2026-10-21. The
+founder decided the open parts the same day (section 6, decisions log N97):
+the ranking rule stands and waits, round one is not built, and the walk
+keeps one other voice per practice try. Where section 6 and the sections
+above disagree, section 6 wins.
 
 ## 1. The two answers, and when they disagree
 
@@ -61,6 +63,12 @@ The ticket calls it `ranking_priority`; in the code it is
 | **Licensed** (a clip from the licensed corpus) | Nothing. A corpus clip is not a snippet and takes no label, so the ledger never sees it. It is picked by stratum and fills the places the peers leave. |
 
 ## 3. The recording mix in each judgement round
+
+> **Decided 2026-10-21 (section 6).** Round one is not built: judging your
+> own moments stays out of the walk, so the star and disagreement replays
+> go with it. Round two's "3 clips every walk" is replaced: the walk keeps
+> one other voice per practice try (C8), other speakers' clips first and
+> licensed clips for the places left. What follows is the design as it was.
 
 **Round one is the speaker's own voice: the walk's own judgements.** The
 current Take's moments are served as they are today. Up to **2** earlier
@@ -122,6 +130,10 @@ trainer must read labels only through `label_quorum.resolve()`.
 
 ## 4. Code touchpoints
 
+Items 1 to 3 and the `test_label_quorum` rows wait until speakers answer
+about their own clips again. Items 4 and 5 and their two contract checks
+are dropped (section 6).
+
 1. **`services/label_quorum.py`**
    - Add `owner_disagrees(resolution, owner_value)` next to
      `machine_disagrees`. It applies the perceptual-vs-perceptual rule from
@@ -149,14 +161,14 @@ trainer must read labels only through `label_quorum.resolve()`.
    - `owner_value` is the clip owner's latest answer
      (`list_confident_voice_self_reports` on the clip's project). Read it
      once per project, not once per clip.
-4. **`services/lend_your_ear.py` `other_voices`**
+4. **Dropped 2026-10-21 (section 6).** **`services/lend_your_ear.py` `other_voices`**
    - Add `PEERS_MAX = 2` next to `OTHER_VOICES_MAX = 3`.
    - Call `community_clips(..., limit=min(limit, PEERS_MAX))`. Training
      clips fill `limit - len(clips)` as they do now. Peers stay first in the
      list.
    - Update the docstring and the Q-B11 A comment to "at most 2 peers, at
      least 1 training clip".
-5. **Round one picker:** add `own_replays(database, owner_id, arc_id)` in
+5. **Dropped 2026-10-21 (section 6).** **Round one picker:** add `own_replays(database, owner_id, arc_id)` in
    `services/lend_your_ear.py`. It returns at most 1 star and 1
    disagreement, as in section 3. The route that serves the own judgements
    adds them to the current Take's moments. Audio only.
@@ -165,9 +177,9 @@ trainer must read labels only through `label_quorum.resolve()`.
      speaker `no` → 100; + speaker `yes` → 40; + speaker `not_sure` → 40;
      quorum + speaker disagrees → 0.
    - One contract check that `own_replays` never returns two clips of the
-     same kind.
+     same kind. Dropped with item 5.
    - One contract check on `other_voices`: with 5 peer clips and 5 training
-     clips, it returns 2 peers then 1 training clip.
+     clips, it returns 2 peers then 1 training clip. Dropped with item 4.
    - No new test file.
 
 ## 5. Checked against main (2026-10-21, WIL-32)
@@ -206,8 +218,24 @@ the first two.
    written. It only does something once speakers answer about their own
    clips again, which is point 1.
 
-**For the founder:**
-- Point 1: bring back judging your own moments in the walk (a change to a
-  locked screen), or drop round one and the star recording.
-- Point 2: 3 other voices every walk (C8 changes), or one per try (section 3
-  changes, and the licensed place is kept only at three tries).
+Both points were decided on 2026-10-21 (section 6).
+
+## 6. Decided (founder, 2026-10-21, N97)
+
+The founder answered on the WIL-32 decision page in the Claude Code chat
+(21 October 2026, 08:18 UTC).
+
+1. **The rule stands.** When the speaker and the lone coach disagree, the
+   clip goes to 100: the front of the line for a second blind listener
+   (section 2).
+2. **Judging your own moments stays out of the walk.** Round one, the star
+   recording and the disagreement replay are not built.
+3. **The rule waits.** Items 4.1 to 4.3 are built only once speakers answer
+   about their own clips again. Until then the code does not change.
+4. **One other voice per practice try, as now (C8).** Other speakers' clips
+   come first, and licensed clips fill only the places left. This replaces
+   the mix of 19 October (3 every walk, at least 1 licensed). The code
+   already does this: `other_voices` serves community clips first and fills
+   with training clips, and the walk shows the first `max(1, min(3, tries))`.
+5. **The docs ship:** this note, the decisions log (N97) and the walk's page
+   (C8, §3, §6).
