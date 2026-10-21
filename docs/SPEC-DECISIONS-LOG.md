@@ -2774,3 +2774,12 @@ choice, a per-minute refusal is waited out, an hourly one stops the batch.
 New words: "{n} files", "{name} · {i} of {n}", "Up to 200 files at a time".
 The rules: frontend `docs/flows/coach-panel.md`, H2. No backend change, no
 migration.
+
+**WIL-93 · The coach's links, tapped signed out, go to log in and back
+(founder, the Claude Code chat, 21 October 2026: "please go with the fix.
+You have my okay").** Tapped where the speaker is not signed in, the
+WhatsApp and email links to the coach's feedback go to log in and come back
+to the same link, never to the guest's "Done" screen; a project the device
+holds as a guest's own work stays on the guest's screens. No new words. The
+rules: the walk's page, C1 (frontend `docs/flows/feedback-walk-and-chat.md`,
+§6 WIL-93; frontend #911). No backend change, no migration.
