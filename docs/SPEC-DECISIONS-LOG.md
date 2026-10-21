@@ -2832,3 +2832,17 @@ at the bottom. An answer moves on at once while its save runs behind it; a
 refused save brings the coach back to that moment. The coach's queue read
 and the label save are to answer fast (they took 6.7 s and 9 s). The rules:
 frontend `docs/flows/coach-panel.md`, H3. No new words, no migration.
+
+**WIL-93, second follow-up · The coach's link opens the coach's feedback,
+read or not (founder, the Claude Code chat, 21 October 2026: "ok do it" to
+the proposal).** The WhatsApp and email links always open the coach's
+feedback for their Take, even once it has been seen: the coach's word and
+every moment the coach answered on that Take, as they were given (the
+speaker's own answers kept, nothing to redo), then Continue back to the
+chat. Read or unread changes only the bubble's dot, never what the link
+opens; no "already viewed" notice. When the page holds nothing of the
+coach's (a link naming an earlier Take whose coach left only moment
+answers), the chat opens scrolled to the coach's bubble, which pulses once;
+a tap on it opens that Take's feedback as before. No new words. The rules:
+the walk's page, C1 (frontend `docs/flows/feedback-walk-and-chat.md`).
+No backend change, no migration.
