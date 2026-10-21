@@ -3,8 +3,9 @@ STORY    As a speaker, I want to share a Take only with communities I belong
          to, revocably, with listeners hearing audio only, so that sharing is
          my choice and listeners judge blind.
 OUTCOME
-  O1  Clips the listener answered or labelled, and clips the quorum
-      settled, are not queued again.
+  O1  Clips the listener answered or labelled, clips the quorum settled,
+      and clips that can no longer settle (unresolved, quarantined for
+      unclear audio) are not queued again.
   O2  The listener's answers list shows each answer with its clip's sound,
       newest first, only their own.
   O3  Stop sharing (Data & consent) lists each shared Take once, with where.
@@ -244,6 +245,17 @@ def test_answered_self_labelled_and_settled_clips_are_not_queued():
     assert _uuid(11) not in {c["clip_id"] for c in _queue(db2)}
     assert cm.answer(db2, listener_id="listener", body={"clip_id": _uuid(51), "value": "no"})[0] == 200
     assert _uuid(51) not in {c["clip_id"] for c in _queue(db2)}
+    db3, _ = _world()
+    db3.labels[_uuid(11)] = [{"value": v, "lane": "coach", "rater_id": f"c{i}"}
+                             for i, v in enumerate(("yes", "no", "in_between"))]
+    assert _uuid(11) not in {c["clip_id"] for c in _queue(db3)}
+    db4, _ = _world()
+    db4.labels[_uuid(11)] = [{"value": "audio_unclear", "lane": "coach", "rater_id": f"c{i}"}
+                             for i in range(2)]
+    assert _uuid(11) not in {c["clip_id"] for c in _queue(db4)}
+    db5, _ = _world()
+    db5.labels[_uuid(11)] = [{"value": "yes", "lane": "coach", "rater_id": "c1"}]
+    assert _uuid(11) in {c["clip_id"] for c in _queue(db5)}
 
 
 def test_the_judging_reopened_shows_the_latest_answers_with_their_clips():
