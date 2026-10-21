@@ -2982,3 +2982,5 @@ no exercise is skipped, in place of "said again, never dropped" (N88): the
 walk moves on and the moment still reaches the coach. A clip with no sound
 read keeps the rule of 2026-10-17. The rules: flow page C2, C4, H1
 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)). No migration.
+
+**N109 · The confident moment's line fits what follows (founder, the Claude Code chat, 21 October 2026: "it was a solid confident moment we have recognised, here is an example to make it even better"; "vary around the line I suggested … no abruptions").** When the walk goes on to make the Take's most confident moment better, one line names it solid and confident and leads into what follows (a clearer version, an example, or saying it again), three phrasings each around the founder's line, in place of "so far"; Line A is never said on that moment. The rules: flow page C2 and K (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), FE #929). No migration.
