@@ -2820,3 +2820,15 @@ another account." with "Log in with that account", which signs out and comes
 back to the link, instead of waiting on "Building your Ideal Text". The
 rules: the walk's page, C1, K (frontend `docs/flows/feedback-walk-and-chat.md`,
 §6 WIL-93; frontend #917). No backend change, no migration.
+
+**N99 · Judging the training corpus goes on from one recording to the next
+(founder, the Claude Code chat, 21 October 2026: "make the training corpus
+switch from the recording to recording without needing to click the table
+of the next one it goes recording one by one; and done are moved to the
+bottom; and please make sure it is smooth that it loads fast").** After an
+import's last moment the next import in the list with moments waiting opens
+by itself, and the list when none is left; in the list the done imports sit
+at the bottom. An answer moves on at once while its save runs behind it; a
+refused save brings the coach back to that moment. The coach's queue read
+and the label save are to answer fast (they took 6.7 s and 9 s). The rules:
+frontend `docs/flows/coach-panel.md`, H3. No new words, no migration.
