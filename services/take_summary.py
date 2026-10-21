@@ -1,7 +1,8 @@
 """The closing summary after a Take's review (founder lock 2026-10-12,
 moment and feedback chat, section 3).
 
-One plain Lounge bubble, 2-3 sentences, written by GPT-4o
+One plain bubble, one or two short sentences (founder 2026-10-21, N94:
+"make it shorter and only a cheeky summary of the take"), written by GPT-4o
 (``SPEC_TAKE_SUMMARY``) through the processing-authorization path (a
 protected provider scope for the Take, as ``services.willfidence`` does).
 
@@ -14,18 +15,16 @@ protected provider scope for the Take, as ``services.willfidence`` does).
   "cue" or a metric name; no number, score or verdict (AC-9); no
   cheerleading. After Take 1 it claims no progress.
 
-Cheeky and curious (founder 2026-10-14): the bubble now also knows the
-talk's title and slide topics, what the speaker said, and their most
-willfident moment. It praises through one SIGNED line (``line_bank``),
-lightly varied at most, checked in code; it gives no advice (the walk
-did). It ends on the next step, the spirit of the signed copy's last line,
-never on a question (founder 2026-10-20: one action at a time; the Lounge
-puts "Record Take N" under it).
+Cheeky (founder 2026-10-14; only cheeky since 2026-10-21, N94): the bubble
+knows the talk's title and slide topics, what the speaker said, and their
+most willfident moment. It praises through one SIGNED line of one sentence
+(``line_bank``), lightly varied at most, checked in code; it gives no
+advice (the walk did), no greeting and asks nothing, not even about the
+content: Will's own question comes after it in the chat, behind a bridge
+line (``after_take.BRIDGE``). It never names the next step (N89).
 
-One action at a time (``after_take``, founder 2026-10-20): at most one ask
-follows the Take's card (the CEO panel's, WhatsApp, the home screen, Will's
-question or "Did this help?"), and the bubble is held back until that ask
-closes. Will's question is planned before the summary is written
+The chain after it (``after_take``): the asks one at a time, then the
+closing message. Will's question is planned before the summary is written
 (``_will_plan``), its heard call running beside the summary's own; when this
 Take says the clearer line practised on the last one, the summary is told.
 
@@ -68,23 +67,29 @@ _TAIL = " \u2b07\ufe0f\u200d"
 _NEAR = 0.5
 #: A last sentence that names the next step (N89: the chain brings it).
 _NEXT_STEP = re.compile(r"\brecord(ing)?\b|\bnext (take|one)\b|\bkeep practi[sc]ing\b", re.I)
-_MAX_CHARS = 420
+#: One or two short sentences, "at most about 140 characters" (founder
+#: 2026-10-21, N94): the prompt asks for 140, the check allows a little more.
+_MAX_CHARS = 160
+_MAX_SENTENCES = 2
+#: No greeting: the summary is the Take's, not a hello (founder 2026-10-21).
+_GREETING = re.compile(r"^\W*(hey|hi|hello|hiya)\b", re.I)
 
 _SYSTEM = (
-    "You are Will, a speaking coach and a curious, cheeky colleague. Write "
-    "one short chat message to a speaker right after they reviewed a "
-    "recording of their talk. 2 to 4 short sentences, like a friend at "
-    "work: 'you', contractions, playful and warm. Exclamation marks are "
-    "fine; at most one emoji.\n"
+    "You are Will, a speaking coach and a cheeky colleague. Write one short, "
+    "cheeky chat message that sums up this take, right after the speaker "
+    "reviewed it: one or two short sentences, at most 140 characters, like a "
+    "friend at work: 'you', contractions, playful and warm. No greeting. "
+    "Exclamation marks are fine; at most one emoji.\n"
     "- Use exactly one of the SIGNED LINES below for the praise, word for "
-    "word or with a light touch. Never write other praise.\n"
-    "- Make it about their talk: name the talk or one slide topic.\n"
-    "- If what they said seems to wander from the talk's title, ask about "
-    "it with curiosity, never as a correction.\n"
+    "word or with a light touch. Never write other praise, and no pep talk.\n"
+    "- Make it about this take of their talk: you may name the talk or one "
+    "slide topic.\n"
+    "- Only sum up the take. Ask nothing: no question at all, not about the "
+    "content and not about the title (Will asks his own question after this "
+    "message).\n"
     "- Give no feedback and no advice: their walk already did that.\n"
     "- Do not tell them what to do next and never mention recording the "
-    "next take: Will brings that himself, after this message. Never end "
-    "with a question.\n"
+    "next take: Will brings that himself, after this message.\n"
     "- Speak only to what this Take showed about whether they can do "
     "this; never judge them as a person, their self-esteem or their worth.\n"
     "Never use numbers (a Take number inside a signed line is the one "
@@ -142,21 +147,25 @@ def _near_signed(sentences: list[str], lines: list[str]) -> bool:
     return False
 
 
+def _sentences(text: str) -> list[str]:
+    return [s for s in re.split(r"(?<=[.?!])\s+", text.strip()) if s]
+
+
 def _clean(text: Optional[str], lines: Optional[list[str]] = None,
            names: tuple = ()) -> Optional[str]:
-    """The reply, if it keeps the rules: 2-4 short sentences, no number
-    (but a signed line's Take number, or one inside the talk's own title
-    or slide names) or banned word, at most one emoji, not ending on a
-    question (one action at a time: the next step is the last thing said)
+    """The reply, if it keeps the rules: one or two short sentences (N94),
+    no greeting, no question anywhere (Will asks his own after it), no
+    number (but a signed line's Take number, or one inside the talk's own
+    title or slide names) or banned word, at most one emoji, no next step
     and, when signed lines were given, one of them said near-verbatim.
     Else None."""
     if not text:
         return None
     body = " ".join(text.strip().strip('"').split())
-    sentences = [s for s in re.split(r"(?<=[.?!])\s+", body) if s]
-    if not 2 <= len(sentences) <= 4 or len(body) > _MAX_CHARS:
+    sentences = _sentences(body)
+    if not 1 <= len(sentences) <= _MAX_SENTENCES or len(body) > _MAX_CHARS:
         return None
-    if _EMOJI.sub("", body).rstrip(_TAIL).endswith("?"):
+    if "?" in body or _GREETING.match(body):
         return None
     # The next step is Will's, after the chain of asks (founder 2026-10-20,
     # N89): a summary that sends them to record is the signed copy instead.
@@ -303,8 +312,8 @@ def goal_facts(database: Any, user_id: str) -> list[str]:
         return []
     if not goal:
         return []
-    return [f"Their own goal, in their words: \"{goal[:200]}\". Say one thing about "
-            "how this take moved toward it, in words, never a grade."]
+    return [f"Their own goal, in their words (private, to steer by; never a grade): "
+            f"\"{goal[:200]}\""]
 
 
 #: How long the summary waits for the earlier Takes, at most (seconds).
@@ -433,21 +442,44 @@ def said_facts(moments: list[dict], now: list[dict]) -> list[str]:
     return facts
 
 
+def _one_sentence(bank: str) -> list[str]:
+    """A bank's lines of one sentence: the summary is one or two short
+    sentences (N94), so a three-sentence line cannot fit. Pure."""
+    from services import line_bank
+    return [line for line in line_bank.BANKS[bank] if len(_sentences(line)) == 1]
+
+
 def signed_lines(now: list[dict], before: Optional[list[dict]], take_index: int) -> list[str]:
     """The signed praise lines this Take may use (``line_bank``): the bank
     for what carried it (the voice or the words), the gentle general bank,
-    and, from Take 2 on when the voice rose, the signed later-line. Rotated
-    by the Take so a speaker does not hear the same line twice. Pure."""
+    and, from Take 2 on when the voice rose, the signed later-line; only
+    lines of one sentence. Rotated by the Take so a speaker does not hear
+    the same line twice. Pure."""
     from services import line_bank
     voice, words = _mean(now, "s"), _mean(now, "w")
     lead = "B07" if (words or 0) > (voice or 0) else "B01"
-    picks = []
+    picks: list[str] = []
     for bank in (lead, "B09"):
-        options = line_bank.BANKS[bank]
-        picks += [options[(take_index + i) % len(options)] for i in range(2)]
+        options = _one_sentence(bank)
+        for i in range(2):
+            line = options[(take_index + i) % len(options)]
+            if line not in picks:
+                picks.append(line)
     if before is not None and _move(voice, _mean(before, "s")) == "rose":
         picks.append(line_bank.later_line("B01", take_index - 1))
     return picks
+
+
+def fallback(take_index: int) -> str:
+    """The bubble when the model's is refused: the signed journey copy's
+    first line for Takes 1 to 3, what happened; from Take 4, where that copy
+    has no line, the gentle signed praise line for the Take, so a fourth
+    Take is never called the third (founder 2026-10-21). Pure."""
+    from services.journey_messages import _COPY
+    if take_index in _COPY:
+        return _COPY[take_index].split("\n\n")[0]
+    gentle = _one_sentence("B09")
+    return gentle[take_index % len(gentle)]
 
 
 def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dict],
@@ -457,7 +489,6 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
     note. ``earlier`` is the summary as first written, kept through every
     rewrite (N80: when the first one already heard the coach, it is that
     one). None when the Take is not the arc's."""
-    from services.journey_messages import _COPY
     ids = [str(t.get("id")) for t in takes]
     take = str(take_session_id)
     if take not in ids:
@@ -474,7 +505,7 @@ def summary_message(database: Any, *, user_id: str, arc_id: str, takes: list[dic
         words = words or [w for w in (first.get("helper_words") or []) if isinstance(w, str)][:2]
     # The usual message's first line only (N89): what happened, not what to
     # do next; the chain and the closing message bring the next step.
-    anchor = (_COPY.get(take_index) or _COPY[3]).split("\n\n")[0]
+    anchor = fallback(take_index)
     moments = _moments(database, take)
     earlier = earlier_lookup(database, user_id=str(user_id), arc_id=str(arc_id), takes=takes,
                              take_index=take_index, query=_query(moments, words, takes))
@@ -601,7 +632,7 @@ def _first_written(database: Any, user_id: str, client_id: str, text: str, meta:
     # its turn in the chain comes.
     queued = ({"will_question": after_take.ask_rows(
         database, "will_question", user_id=user_id, arc_id=meta["arc_id"], take=take,
-        at=at, will=will)} if "will_question" in asks else {})
+        at=at, will=will, take_index=meta["take_index"])} if "will_question" in asks else {})
     closing = after_take.closing_row(user_id=user_id, arc_id=meta["arc_id"],
                                      take_index=meta["take_index"], take=take,
                                      at=stamp_after(at), asks=asks, lead_ins=lead_ins,

@@ -149,6 +149,94 @@ clearer version can be taken into the text but not practised.
 - Accept
 - (below it, unchanged) Keep my words
 
+## The machine's reading lines, after a practise try (founder 2026-10-13, option A; signed into this file 2026-10-21, N94)
+
+The walk reads each try against the speaker's own voice and says the line for the reading that moved: under "Good job" when it is better, under the not-yet when it is not. Three lines a reading, taken in turn. Copied exactly from frontend `src/components/willab/idealEditCopy.ts` `PRACTISE_LINES`, which ships them.
+
+### Better: under "Good job"
+
+**wide_range** (the voice moved up and down)
+- I liked the variety in your voice. It sounded alive! 🎶
+- Up and down, high and low. Your voice sounded alive! 🎶
+- So much colour in your voice. That's what alive sounds like! ✨
+
+**full_volume** (louder and softer words)
+- It wasn't too quiet. It was the volume that pulled me in. 🔊
+- Loud where it mattered. That's what pulled me in! 🔊
+- Your volume rose and fell, and it pulled me right in. 🔊
+
+**no_hesitation** (fewer stops)
+- It flowed like a river. Without the pauses, it was great 😏
+- Smooth as a river. No stopping, no doubting. 🌊
+- No pauses, just flow. That was great 😏
+
+**settled_pitch** (a lower, calmer voice)
+- Good: calm and smooth, a low voice, a nice sound. 😌
+- Low and calm. That's the sound of someone who's sure. 😌
+- Your voice settled down low. Calm, smooth and nice to hear. 🎧
+
+**kept_moving** (kept the pace)
+- You shot it out fast like a machine gun, and it was good. Exactly what we wanted! 🔥
+- Rat-a-tat! You kept the pace and never slowed down. Exactly what we wanted. 🔥
+- No slowing down at all. You kept it moving, just like we wanted! ⚡
+
+**landed_ending** (the ending came down)
+- You nailed it. Calm and smooth, like you know you're the boss here. 😎
+- That ending landed. Calm, smooth, the boss's voice. 😎
+- You brought the last word down like you own the room. 👑
+
+**opened_strong** (started with energy)
+- You started this like a rocket launching into outer space! 🚀
+- Liftoff! What a strong start. 🚀
+- That opening had rocket fuel in it! 🚀
+
+**general** (when no single reading stands out)
+- You know that I know that you know: that was freaking confident! 💪
+- No doubt about it, that was freaking confident! 💪
+- That one? Pure confidence. You know it, I know it. 💪
+
+### Not yet: the reading that went the other way
+
+**wide_range** (the voice stayed on one note)
+- Hey, I know you're trying. Let your voice go up and down. Let it go crazy, I know you can! 🎢
+- Your voice stayed on one note. Take it on a rollercoaster this time! 🎢
+- Flat like a pancake 🥞 Let it go up and down, I know you've got it in you.
+
+**full_volume** (too quiet)
+- Come on, you can scream a little! 📣
+- Turn it up! Let a few words come out loud. 🔊
+- Don't be shy. Give it some volume this time! 📣
+
+**no_hesitation** (more stops)
+- I know you like the strategic pause 😏 But what if we went through this one like a blast? 💥
+- Pauses are your thing, I get it 😏 This time, blast through it in one go! 💥
+- No brakes this time 🚀 Just blast through it, start to finish!
+
+**settled_pitch** (the pitch went higher)
+- You know Flo Rida? "Low, low, low"? Yeah, so go that low! 🎵
+- Your voice climbed up a bit. Bring it down low and calm. ⬇️
+- Think deep and low, like a late-night radio host. 📻
+
+**kept_moving** (slowed down)
+- It's okay. If you're tired, you can slow down. But if you're not, give it a little speed boost! 🏎️
+- You slowed down there. Put your foot on the gas this time! 🏎️
+- A bit sleepy that time 😴 Wake it up and keep it moving.
+
+**landed_ending** (the ending went up)
+- If that's a question, I can answer it. But if it's not, try again. Lol 😄
+- That ended like a question ❓ Bring the last word down like a statement.
+- Was that a question or an answer? 🤔 Land the last word low.
+
+**opened_strong** (a slow start)
+- You know, like an engine in cold weather. I know you have this heat inside, you just need to warm it up. Try it again! 🔥
+- Slow start there 🥶 Kick it off with energy from the very first word.
+- The first words were a bit shy. Start it like you mean it! 🚀
+
+**general** (when no single reading stands out)
+- You know Whiplash? It's not quite my tempo yet. Lol, try again! 🥁
+- Not quite my tempo 🥁 One more time!
+- Close, but not there yet. Give it another go! 💪
+
 ## The judgements
 
 **The answer toast** (WQ4 A): the answer the speaker chose, with a tick:

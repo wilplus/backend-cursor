@@ -219,19 +219,26 @@ O3 -> every test (_FakeDB)","Founder 2026-10-05, N48.1 step 6: ""every AI call c
 tests/test_after_take.py,Story,"As a speaker, after a Take I want one thing to do at a time: the Take's card and its summary, then each ask on its own with Will's words leading into it, and only then ""practice makes perfect"" with ""Record Take N"", so that nothing competes with the walk or with recording again (founder 2026-10-20, N89).","O1  After Take 1 the chain holds Will's question when he has one and ""Did
 this help?"" when the Take looks off: never WhatsApp, never an ask from
 the CEO panel, even without a number.
-O2  From Take 2 the chain runs: the CEO panel's ask, WhatsApp (at most
-twice), the home screen (once, where the phone can add it), Will's
-question, ""Did this help?""; nothing waits when nothing applies.
+O2  From Take 2 the chain runs in this order: the CEO panel's ask,
+WhatsApp (at most twice), the home screen (once, where the phone can
+add it), Will's question, ""Did this help?""; at most two a Take: when
+more wait, the home screen, then WhatsApp, then ""Did this help?"" wait
+for a later Take (founder 2026-10-21, N94); nothing waits when nothing
+applies.
 O3  The asks come one at a time, each under whatever closed the one
 before: a typed turn, under Will's reply; ""Yes"", tapped or typed,
 under ""We're glad it helped you.""; a reply that opens a form keeps the
 ask open. An ask that no longer applies is skipped. After the last,
 the closing message comes, with its words.
 O4  A message still waiting when a newer Take is written shows where it
-stands.","O1 -> test_after_take_one_wills_question_and_the_question_when_it_looks_off
+stands.
+O5  After a distressed message the chat's safety reply comes and the asks
+wait: nothing lands under it until I write again (founder 2026-10-21,
+N94).","O1 -> test_after_take_one_wills_question_and_the_question_when_it_looks_off
 O2 -> test_from_take_two_the_chain_runs_ceo_ask_whatsapp_home_screen_will_the_question
 O3 -> test_each_ask_comes_under_what_closed_the_one_before_then_the_closing_message
-O4 -> test_an_older_waiting_message_shows_where_it_stands","Founder 2026-10-20: ""one action at a time"", then, after checking the app: the summary without the CTA, Will's liaison before each ask, ""Look, practice makes perfect…"" and the CTA last."
+O4 -> test_an_older_waiting_message_shows_where_it_stands
+O5 -> test_after_a_distressed_message_the_asks_wait_until_i_write_again","Founder 2026-10-20: ""one action at a time"", then, after checking the app: the summary without the CTA, Will's liaison before each ask, ""Look, practice makes perfect…"" and the CTA last."
 tests/test_ai_voice.py,Story,"As a speaker practising, I want an AI clip of my own voice saying my own words with one improvement, never shown if it fails its check, and fully deleted when I ask, so that I hear a believable better version and keep control of my voice.","O1  One problem is picked against my own usual (or the default), and the
 sentence under the clip names it in words, with no numbers.
 O2  The clip says my own words (or the clearer version I accepted, with
@@ -2377,10 +2384,12 @@ O2 -> EveryTakeRewritesTheSlidesItSpoke::test_the_spoken_slide_is_rebuilt_and_th
 O3 -> EveryTakeRewritesTheSlidesItSpoke::test_the_spoken_slide_is_rebuilt_and_the_other_is_kept",Never-rule 5; founder 2026-09-25 (contracts 8-9).
 tests/test_take_summary.py,Story,"As a speaker, I want one short summary of my Take in words, about my own talk, so that I know what went well without a number or verdict.","O1  Each Take gets one stored summary, written from its real progress and
 about my talk (its title, slides, my most confident moment).
-O2  A summary with a number, praise that drifts from the approved lines,
-or a closing question (one action at a time: the next step is the last
-thing said, founder 2026-10-20) is replaced by the approved fallback
-copy.
+O2  The summary is only a cheeky sum-up of the Take: one or two short
+sentences, no greeting and no question anywhere (Will asks his own
+after it, founder 2026-10-21, N94). A summary with a number, praise
+that drifts from the approved lines, a question or a next step is
+replaced by the approved fallback copy, which never calls a fourth
+Take the third.
 O3  A coach note rewrites the summary in place, keeping the first one
 however many notes follow, once per note; a note shared after the
 review is its own bubble, stored once.
@@ -2397,7 +2406,9 @@ approved copy (founder 2026-10-20, step 3).","O1 -> test_a_take_gets_one_summary
 test_the_summary_knows_the_talk_and_asks_for_whatsapp_once
 O2 -> test_a_reply_with_a_number_falls_back_to_the_signed_copy,
 test_a_reply_that_drifts_from_the_signed_lines_is_the_signed_copy,
-test_a_reply_that_ends_on_a_question_is_the_signed_copy
+test_a_reply_that_ends_on_a_question_is_the_signed_copy,
+test_only_a_short_cheeky_sum_up_is_kept,
+test_a_fourth_take_is_never_called_the_third
 O3 -> test_a_coach_update_rewrites_the_summary_in_place_and_keeps_the_first,
 test_a_shared_coach_word_rewrites_a_reviewed_take_once_per_word,
 test_a_coach_word_shared_after_the_review_is_its_own_bubble
@@ -2882,8 +2893,10 @@ O4  Typed words under the question are the answer: what I want them to
 do lands as the talk's call to action, my own note on the talk kept.
 Distress is never taken as an answer: the chat's safety reply comes.
 O5  After a Take that needs it, the summary's batch holds the message
-under Will's question, and the summary hears the line I practised
-last Take when this Take said it.
+under Will's question, a bridge line between the summary and the
+question (""Ok, now let's dive into the content for a bit."", founder
+2026-10-21, N94), and the summary hears the line I practised last
+Take when this Take said it.
 O6  The founder's words are what Will asks from the next Take: a changed
 question and renamed answers (each answer keeps its follow-up by its
 place), a filled empty slot asked after the signed deeper questions;
