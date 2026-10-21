@@ -8,7 +8,7 @@ OUTCOME
   O2  After the rating, the read opens and "heard" says in words what the
       machine heard - never a number.
   O4  After the rating, the read carries the moment's willfidence as a whole
-      percent for the coach (founder 2026-10-21, N102); a clip with no sound
+      percent for the coach (founder 2026-10-21, N104); a clip with no sound
       read carries none, never a made-up middle.
   O3  For each kind, "heard" names the right thing: the error labels, the
       confident cues behind praise, the clearer version's reason, all of it

@@ -6,7 +6,7 @@ moment as the coach may now see it: the passage, the speaker's answer,
 the coach's own answer, the request that reached the coach (kind, what
 fired in words, library status) or None when nothing did, the patterns
 the coach has named on it, and the speaker's goal. Everything in words,
-except the moment's willfidence as a percentage (founder 2026-10-21, N102).
+except the moment's willfidence as a percentage (founder 2026-10-21, N104).
 The route enforces the blind gate before this runs (BLIND COACH): nothing
 here checks it again, and nothing here must be reachable another way.
 """

@@ -1,5 +1,7 @@
 # Speech Coaching System — Canonical Specification
 
+> **2026-10-21 (N102):** what the app learns from and how a label settles are now one page, [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md). The decisions log wins over this file (N95). Its §3, §9 and §17 are partly out of date; that page says where.
+
 **Last updated:** 2026-08-13.
 
 **Version:** v3. Supersedes v1 and v2 entirely.

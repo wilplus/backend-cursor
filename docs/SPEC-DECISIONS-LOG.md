@@ -348,6 +348,8 @@ evaluation — it is calibration signal. **Active-learning priority:** when the 
 corpus (either a model miss or a rater miss, and one more peer says which) — it routes
 **immediately** for a 2nd peer. *Amended 2026-10-06 (founder, Navigation Panel QG1 A; ledger CA06; decisions log N51): J3 still holds for the label ledger and for the sound confidence read — a singleton is never gold and never evaluation, and only a settled clip is gold or evaluation data (rule 3 of `services/label_quorum.py`). Willfidence (SPEC §17, `willfidence-v1`) is a separate, internal measure computed from stored answers; it is not a label, not gold and not an evaluation set. This note changes nothing about training labels.*
 
+*J4 to J6 are replaced by K below (founder 2026-08-25): "Not sure" never settles, and only two matching Yes, In-between or No answers settle a clip. What this did to v1 `neutral` rows is open in `docs/LEARNING-AND-QUORUM.md` §3 C1.*
+
 **J4 · IDK is a RESPONSE, not a null.** Counted like any other answer:
 - **1 definite + 1 IDK** = not a quorum → **route to a 3rd rater**.
 - **2 IDKs** = **settled**, marked **"perceptually ambiguous"** in the DB. This is a
@@ -2873,7 +2875,32 @@ round follows when one is done, and the list when none is left. This
 replaces N99's one import after another. The rules: frontend
 `docs/flows/coach-panel.md`, H3. No new words, no migration.
 
-**N102 · "What happened" on the coach panel gets one more line, Willfidence;
+**N102 · Learning sources and the label quorum have one page (founder, the
+Claude Code chat, 21 October 2026: "unify the .md files about the learning
+sources and quorum in general").** `docs/LEARNING-AND-QUORUM.md` gathers what
+the app learns from and how an answer becomes a label, with a plain-words
+summary, the rules as they stand (each naming its source), what is in flight
+and what is open. It outranks nothing: the order of N95 stands, and the page is
+fixed where it differs. The older pages open with a note pointing to it. The
+twenty-four disagreements it found wait for the founder in its §3. No rule
+changes, no code, no migration.
+
+**N103 · Three approved versions of an exercise video per mistake before the
+app stops asking coaches (founder, the Claude Code chat, 21 October 2026).**
+The app keeps asking coaches for exercise videos for a mistake until it has
+at least three versions of it, so a speaker is not shown the same lesson
+again and again. Only versions the founder approved for other speakers count
+(N78's approval; a video made for one speaker stays that speaker's and does
+not count). Below three, a speaker whose moment shows the mistake still gets
+an existing version at once (never waits), and the moment also goes to the
+coach's queue to record another version; at three or more the app stops
+asking for that mistake. Choosing among the exact fits: a shuffle that skips
+any version this speaker has already seen and rests a version after their
+"Good job", keeping the 80/20 learning slot. Builds on N77/N78, which arrive
+with wilplus/backend-cursor#1127; not in force until it is built and merged.
+No new words; the coach-panel line that asks for another version needs the
+founder's wording when it is built.
+**N104 · "What happened" on the coach panel gets one more line, Willfidence;
 the person's admin page loses the Confident Voice practice tile (founder,
 the Claude Code chat, 21 October 2026: "I would like to have it removed
 from here, at least the confidence level, and rather have it here ... after
