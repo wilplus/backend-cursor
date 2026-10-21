@@ -43,10 +43,13 @@ that is not independent of the thing being judged. Rating ANOTHER user's clip
   own recording writes ``lane='coach'`` and is still a self-report. Conflating
   the two makes the exclusion unqueryable in exactly the case it matters.
 
-  Rule 2's SERVING half — the player's own recordings first — lives in
-  ``game_engine._source_class`` as the founder's 2026-08-14 three-class queue
-  order (own → consented app users → YouTube corpus), which supersedes the
-  own-first rank this module briefly carried.
+  Rule 2's SERVING half — the player's own recordings first — lived in the
+  retired game's queue (``game_engine._source_class``, the founder's
+  2026-08-14 order: own → consented app users → YouTube corpus), which the
+  game took with it. Who hears which clip first is now set by the founder's
+  later orders: other speakers' clips before licensed ones (N97) and the
+  corpus's mixed rounds (N101). This module only says whether a clip still
+  needs a rater (``needs_rater``).
 
 RULE 3 · THE SINGLETON IS WEAK SUPERVISION.  One rating is never gold and
 never evaluation — it is calibration signal, and it is a QUESTION. When the
@@ -91,9 +94,12 @@ beside the human answer and read only for routing; it is never served into a
 rating payload (I1), and ``saw_model_output`` stays false.
 
 Pure: no DB, no I/O, unit-tested. The SQL view ``snippet_label_quorum``
-(migrations/add_label_quorum_ledger.sql) computes the SAME table above so the
-routing queue is one query; the two are kept in step by the truth table, which
-is written out in both files.
+computes the same table above so the routing queue is one query. It was
+created in migrations/add_label_quorum_ledger.sql and is today the one
+migration 0289 wrote (migrations/version_confidence_rating_instrument_v2.sql);
+the two are kept in step by the truth table, written out in both. Where they
+still differ is on the learning page (LEARNING-AND-QUORUM.md §3 B1: the view
+counts non-blind answers, which ``resolve`` leaves out).
 """
 from __future__ import annotations
 
