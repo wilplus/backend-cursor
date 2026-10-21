@@ -12,15 +12,21 @@ OUTCOME
       block that revokes that function looping over both). Supabase grants
       both roles directly, so a PUBLIC revoke alone leaves them in.
   O4  A SECURITY DEFINER migration pins its search_path.
+  O5  CI goes red on a new migration that creates a public table without
+      granting service_role on it in the same file.
 PROVES   O1 -> test_every_new_public_table_enables_rls_in_its_own_migration
          O2 -> test_every_created_function_revokes_execute_from_public
          O3 -> test_every_created_function_revokes_anon_and_authenticated
          O4 -> test_security_definer_functions_pin_their_search_path
+         O5 -> test_every_new_public_table_grants_service_role_in_its_own_migration
 WHY      2026-07-25: 57 tables shipped readable with the anon key
          (docs/RLS-AUDIT.md); RLS says nothing about functions, so the
          function rule arrived with the first .rpc() on 2026-08-03. The two
          frozen lists below describe FILES that predate a rule (applied
-         migrations cannot be edited); they may only shrink.
+         migrations cannot be edited); they may only shrink. From 2026-10-30
+         Supabase no longer grants a new public table to the Data API roles,
+         so a table the backend reaches through PostgREST answers 42501 until
+         a migration grants service_role on it.
 """
 from __future__ import annotations
 
@@ -234,6 +240,34 @@ _FUNCTION_SWEEP = "lock_down_public_function_grants.sql"
 _ROLES = ("anon", "authenticated")
 _REVOKE_ON_FUNCTION = re.compile(r"REVOKE\s+(?:ALL|EXECUTE)[^;]*?ON\s+FUNCTION", re.I)
 
+# ── From 2026-10-30 Supabase stops granting a new `public` table to anon,
+# authenticated and service_role. The backend reaches every table through
+# PostgREST as service_role, so a new table without its own GRANT answers
+# 42501, and a best-effort writer swallows that. Tables created up to this
+# migration were granted by the old default when they ran in production, and
+# Supabase leaves existing grants alone. A database rebuilt from these files
+# after that date (new project, preview branch, `supabase db reset`) gets
+# those older tables without grants.
+_LAST_MIGRATION_BEFORE_GRANT_RULE = "the_founder_edits_wills_questions.sql"
+_GRANT_ON_TABLE = re.compile(
+    r"GRANT\s+[^;]*?\bON\s+(?:TABLE\s+)?(?!FUNCTION\b|SEQUENCE\b|SCHEMA\b|ALL\b)"
+    r"([^;]*?)\s+TO\s+([^;]*);", re.I)
+_DYNAMIC_GRANT_SERVICE_ROLE = re.compile(
+    r"format\s*\(\s*'GRANT\s[^']*?\bON\s+(?:TABLE\s+)?public\.%I\s+"
+    r"TO\s+service_role'", re.I)
+
+
+def _granted_to_service_role(sql: str) -> set:
+    """Tables this SQL grants service_role on: a static GRANT ... ON
+    [TABLE] t[, t2] TO ... service_role, or the DO-block ARRAY loop that
+    EXECUTEs format('GRANT ... ON public.%I TO service_role')."""
+    granted = set()
+    for tables, roles in _GRANT_ON_TABLE.findall(sql):
+        if re.search(r"\bservice_role\b", roles, re.I):
+            granted |= {t.strip().strip('"').lower().replace("public.", "")
+                        for t in tables.split(",")}
+    return granted | _dynamic_names(sql, _DYNAMIC_GRANT_SERVICE_ROLE)
+
 
 @functools.lru_cache(maxsize=None)
 def _read(name: str) -> str:
@@ -283,6 +317,38 @@ class NewTablesEnableRlsTests(unittest.TestCase):
             "No policy is needed: the backend uses the service-role key and "
             "bypasses RLS. Do NOT add these to LEGACY_TABLES_WITHOUT_RLS — "
             "that list is frozen history, not an opt-out.\n"
+            f"Offenders: {offenders}"))
+
+
+class NewTablesGrantServiceRoleTests(unittest.TestCase):
+    """RULE 3 — Supabase, from 2026-10-30: no automatic Data API grant on a
+    new public table. No allowlist: the rule starts after the last migration
+    that ran under the old default."""
+
+    def test_every_new_public_table_grants_service_role_in_its_own_migration(self):
+        order = _manifest_order()
+        last_before = order.index(_LAST_MIGRATION_BEFORE_GRANT_RULE)
+        offenders = []
+        for name in _sql_files():
+            # A file outside the manifest never runs; migrate.py verify fails
+            # CI on it already.
+            if name not in order or order.index(name) <= last_before:
+                continue
+            sql = _read(name)
+            created = {t.lower() for t in _CREATE_TABLE.findall(sql)}
+            for table in sorted(created - _granted_to_service_role(sql)):
+                offenders.append(f"{name}: {table}")
+
+        self.assertEqual(offenders, [], (
+            "New public table(s) created without a grant to service_role.\n"
+            "Since 2026-10-30 Supabase grants a new public table to no one, "
+            "so the backend's PostgREST calls on it answer 42501 permission "
+            "denied. Add to the same migration, with only the privileges the "
+            "backend uses:\n\n"
+            "    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.<table> "
+            "TO service_role;\n\n"
+            "Do not grant anon or authenticated: the browser reaches tables "
+            "only through Flask (docs/RLS-AUDIT.md).\n"
             f"Offenders: {offenders}"))
 
 
