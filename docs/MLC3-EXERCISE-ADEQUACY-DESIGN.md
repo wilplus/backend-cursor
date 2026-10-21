@@ -1,5 +1,7 @@
 # MLC-3 exercise adequacy and Feedback Policy V3 design
 
+> **2026-10-21 (N102):** the whole picture of what the app learns from is [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md). This file keeps the detail of the exercise label (§3.5). Its §8 on practice self-reports is open there (§3 A12).
+
 Status: **ML/DATA DESIGN ACCEPTED — ARCHITECTURE ONLY — IMPLEMENTATION GATED**
 
 Owner: Artur Willoński

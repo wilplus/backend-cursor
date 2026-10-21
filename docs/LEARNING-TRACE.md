@@ -1,5 +1,7 @@
 # LEARNING-TRACE — the developer window into the learning lanes
 
+> **2026-10-21 (N102):** what the app learns from and how a label settles are now one page, [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md). This file stays as history and is no longer the place to look.
+
 > **⚠️ HISTORICAL (marked 2026-09-29). This page describes a surface that no
 > longer exists.** The frontend `/admin/learning` page was removed on
 > 2026-08-14, and `services/learning_trace.py`, `learning_train.py` and

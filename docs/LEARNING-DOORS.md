@@ -1,5 +1,7 @@
 # The learning doors — how each one opens (founder 2026-09-30, L1 to L9)
 
+> **2026-10-21 (N102):** the whole picture of what the app learns from and how a label settles is [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md). This file keeps the detail of the four doors. What is out of date here is listed there (§3 A11, A14, B7).
+
 > 2026-10-12: the door constants named below (`MLC2_TRAINING_SWITCH_ENABLED`, `MLC2_PAIR_RELEASES_ENABLED`, `MLC2_TRAINING_ENABLED`, `MLC2_PROMOTION_ENABLED`, `MLC2_TRAINING_CORPUS_COPY_ENABLED`, `MLC2_DATASET_RELEASES_ENABLED`, `TRAINING_IMPORT_ENABLED`) were removed 2026-10-12 with the values they held (founder: "remove the learning doors"); each door is now gated by its per-surface set only.
 
 Four doors, each a code constant in `config.py`, each opened only by a

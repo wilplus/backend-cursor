@@ -1,5 +1,7 @@
 # Production Data Foundation
 
+> **2026-10-21 (N102):** what the app learns from and how a label settles are now one page, [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md). This file stays as history. Its "no training implemented" is out of date.
+
 Contract versions: Product `PDF-1`, ML/Data `MLC-1`, Engineering `ED-1`
 
 Decision-filter stamp: `ADVANCE-F2`; fences clear; L1/L2/L3 clear.
