@@ -250,7 +250,22 @@ REVOKE ALL ON FUNCTION public.<name>(<types>) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.<name>(<types>) TO service_role;
 ```
 
-Both rules are now enforced in CI by **`test_migration_security_rules.py`**, so
+**3 — Every new `public`-schema table grants `service_role` in the same
+migration that creates it (2026-10-21).** From 2026-10-30 Supabase no longer
+grants a new `public` table to `anon`, `authenticated` or `service_role`. The
+backend reaches every table through PostgREST as `service_role`, so without the
+grant it answers `42501 permission denied`. Grant only what the backend uses,
+and never `anon` or `authenticated`:
+
+```sql
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.<table> TO service_role;
+```
+
+Tables created before the rule keep the grants they got in production. A
+database rebuilt from these files after 2026-10-30 (new project, preview
+branch, `supabase db reset`) does not get those older grants.
+
+All three rules are now enforced in CI by **`test_migration_security_rules.py`**, so
 they hold on the week someone is busy rather than only when someone remembers.
 The 47 pre-2026-07-25 migration files that create tables without the RLS line
 are grandfathered in a frozen allowlist there — they are covered in production

@@ -43,6 +43,11 @@ Writes `migrations/add_speaker_locale_to_recordings.sql` and appends the next
 version to the manifest. Write your SQL, keep it idempotent
 (`IF NOT EXISTS`), commit both files together.
 
+A new `public` table needs `ENABLE ROW LEVEL SECURITY` and a `GRANT ... TO
+service_role` in the same file. From 2026-10-30 Supabase grants a new table to
+no one, so without the grant the backend gets `42501`. CI checks both
+(`tests/test_migration_security_rules.py`, `docs/RLS-AUDIT.md`).
+
 CI fails if a `.sql` is committed without a manifest entry — that file would
 otherwise never run anywhere, which is the old failure mode with a new coat
 of paint.
