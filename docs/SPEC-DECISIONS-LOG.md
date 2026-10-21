@@ -2786,3 +2786,12 @@ mix of 19 October, 3 every walk). The rules:
 `docs/DESIGN-WIL-70-disagreement-signal-2026-10-18.md` §6 and frontend
 `docs/flows/feedback-walk-and-chat.md`, C8 and §3. No code change, no
 migration.
+
+**WIL-93 · The coach's links, tapped signed out, go to log in and back
+(founder, the Claude Code chat, 21 October 2026: "please go with the fix.
+You have my okay").** Tapped where the speaker is not signed in, the
+WhatsApp and email links to the coach's feedback go to log in and come back
+to the same link, never to the guest's "Done" screen; a project the device
+holds as a guest's own work stays on the guest's screens. No new words. The
+rules: the walk's page, C1 (frontend `docs/flows/feedback-walk-and-chat.md`,
+§6 WIL-93; frontend #911). No backend change, no migration.
