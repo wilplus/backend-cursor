@@ -1360,7 +1360,7 @@ class TakeRepository(TableRepository):
             logger.warning("set_session_analysis_state failed sid=%s: %s",
                            session_id, e)
             return False
-        # Push half (docs/BE-HANDOFF-analysis-state-push.md): announce the
+        # Push half (https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/BE-HANDOFF-analysis-state-push.md): announce the
         # flip AFTER the write lands, never before — the FE's poll fallback
         # must always agree with what push said. Guarded here too so a broken
         # notifier can never turn a landed write into a reported failure.

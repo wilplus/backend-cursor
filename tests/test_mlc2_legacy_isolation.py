@@ -61,7 +61,7 @@ def test_canonical_mlc2_modules_cannot_read_or_write_legacy_learning_objects():
 
 
 # ── DA-PROHIBIT: the doors read no object the audit names (2026-10-05) ─────
-# docs/MLC2-CONFIDENCE-DEPENDENCY-AUDIT.md: pair consent, the release and its
+# https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC2-CONFIDENCE-DEPENDENCY-AUDIT.md: pair consent, the release and its
 # release-time decision, the speaker split, training, the golden set and
 # evaluation, promotion, the dataset and DPO release lanes, the training-corpus
 # copy, and the promotion script.

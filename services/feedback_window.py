@@ -1,5 +1,5 @@
 """Which open moments reach the page (founder lock 2026-10-12,
-``docs/FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md``; replaces the window
+``https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md``; replaces the window
 of three of 2026-09-30).
 
 The Manager already chose them (`services.moment_pick`): the Take's two

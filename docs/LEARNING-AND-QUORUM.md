@@ -345,10 +345,10 @@ one confirms it first.
 These now open with a note pointing here and are no longer the place to
 look for the whole picture:
 
-- [`docs/LEARNING-TRACE.md`](LEARNING-TRACE.md) (history since 2026-09-29)
+- [`docs/LEARNING-TRACE.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/LEARNING-TRACE.md) (history since 2026-09-29)
 - [`docs/SESSION-2026-08-14-confidence-unification.md`](SESSION-2026-08-14-confidence-unification.md) (history; its "two
   IDKs settle" is replaced by K)
-- [`docs/PRODUCTION-DATA-FOUNDATION.md`](PRODUCTION-DATA-FOUNDATION.md) (history; its "no training
+- [`docs/PRODUCTION-DATA-FOUNDATION.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/PRODUCTION-DATA-FOUNDATION.md) (history; its "no training
   implemented" is out of date)
 - [`docs/SPEC.md`](SPEC.md) §3, §9 and §17 (the log wins, N95)
 - [`docs/MEASURE-exercise-human-delayed-v1.md`](MEASURE-exercise-human-delayed-v1.md) (retired measure)

@@ -2,7 +2,7 @@
 
 > **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../../README.md) (N106).
 
-Every rule below is a founder answer from the Navigation Panel (https://claude.ai/artifact/HtegguK1CS8R2VBNmmufhT). The answers are kept word for word in `PANEL-ANSWERS-2026-10-06.md`.
+Every rule below is a founder answer from the Navigation Panel (https://claude.ai/artifact/HtegguK1CS8R2VBNmmufhT). The answers are kept word for word in [`PANEL-ANSWERS-2026-10-06.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/audit/PANEL-ANSWERS-2026-10-06.md).
 
 ## Sources of truth, in order
 1. The repo's `CLAUDE.md` (fences, locks, the decision filter).

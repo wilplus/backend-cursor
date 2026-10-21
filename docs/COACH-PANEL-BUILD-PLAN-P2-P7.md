@@ -3,7 +3,7 @@
 > **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
 
 Written 2026-10-07 (build plan D-CP-1). It turns the locked coach panel
-(`docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`; prototype
+([`docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md); prototype
 <https://claude.ai/artifact/TEBvGMehRF6wXCvJTEYTUA>, copy in
 `docs/design/coach-panel-redesign-2026-10-06.html`; decisions log N56, N57,
 N62 Q-B7/Q-B12/Q-B13, N63 Q-B14) into pull-request-sized steps. Screen ids

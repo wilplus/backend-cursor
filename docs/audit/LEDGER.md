@@ -8,7 +8,7 @@ Status values: OPEN, VERIFYING, CONFIRMED, FALSE, DUPLICATE, FOUNDER, PARKED, IN
 
 "Verified?" is **no** on every A-row: the audit is a claim until §2 checks it against the code. The audit evidence column is the audit's claimed evidence, kept as a lead for the verifier. The audit's `switch` field was not re-read on 6 October, so it is left out here.
 
-**Approved by the founder 6 October (Navigation Panel W1 A).** Decisions from the panel are applied as DECIDED notes; the full answers are in `docs/audit/PANEL-ANSWERS-2026-10-06.md`.
+**Approved by the founder 6 October (Navigation Panel W1 A).** Decisions from the panel are applied as DECIDED notes; the full answers are in [`docs/audit/PANEL-ANSWERS-2026-10-06.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/audit/PANEL-ANSWERS-2026-10-06.md).
 
 ## Count check
 

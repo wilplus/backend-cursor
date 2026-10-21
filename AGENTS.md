@@ -27,4 +27,4 @@ drift. Same rule here: this pointer must never grow a competing version
 of the doctrine.
 
 Every doc in both repos, with its label and a link: [`README.md`](README.md)
-(N106). The older index, [`docs/HANDOFF.md`](docs/HANDOFF.md), is history.
+(N106). The older index, [`docs/HANDOFF.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/HANDOFF.md), is history.

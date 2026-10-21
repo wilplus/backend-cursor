@@ -433,7 +433,7 @@ is the permanent answer for most dimensions, not a stopgap.
 See `PROMPT-drift-layer.md` for the build-now specification. The three queries are:
 1. **p-chart** on fire rate — `ABSOLUTE` (T1/T2) thresholds only; `CORPUS_REL` excluded by construction.
 2. **PSI** on the input distribution vs a frozen reference.
-3. **Mantel-Haenszel DIF** — deferred (G.10), specified in `PROMPT-irt-dif-deferred.md`.
+3. **Mantel-Haenszel DIF** — deferred (G.10), specified in [`PROMPT-irt-dif-deferred.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/PROMPT-irt-dif-deferred.md).
 
 **Division of labour: PSI watches the input distribution; the p-chart watches the output decisions.**
 Both are needed — a stable input with drifting decisions means the model changed, and vice versa.
@@ -467,7 +467,7 @@ favourable constraint than the rest of the spec.
 dimension, and it costs 1,000 responses per item to estimate badly.
 
 Stages 3–6 are tracked in `PRODUCT-MANAGER-BACKLOG.md` with their triggers, and their build
-specification is written in advance at `PROMPT-irt-dif-deferred.md` so no design work is repeated when a
+specification is written in advance at [`PROMPT-irt-dif-deferred.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/PROMPT-irt-dif-deferred.md) so no design work is repeated when a
 trigger fires.
 
 **Blocking prerequisite for stage 5:** DIF cannot run without a stored subgroup flag. `language` on

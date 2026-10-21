@@ -25,7 +25,7 @@
 **Operational documents (non-normative, but load-bearing):**
 - [Product-manager backlog — recurring processes and deferred unlocks](PRODUCT-MANAGER-BACKLOG.md)
 - [Prompt — build the drift layer (execute now)](PROMPT-drift-layer.md)
-- [Prompt — IRT / CAT / DIF (deferred, trigger-gated)](PROMPT-irt-dif-deferred.md)
+- [Prompt — IRT / CAT / DIF (deferred, trigger-gated)](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/PROMPT-irt-dif-deferred.md)
 
 ---
 
