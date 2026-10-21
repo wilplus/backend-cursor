@@ -2774,3 +2774,15 @@ choice, a per-minute refusal is waited out, an hourly one stops the batch.
 New words: "{n} files", "{name} · {i} of {n}", "Up to 200 files at a time".
 The rules: frontend `docs/flows/coach-panel.md`, H2. No backend change, no
 migration.
+
+**N97 · The speaker/coach disagreement signal (founder, the WIL-32 decision
+page in the Claude Code chat, 21 October 2026).** A clip where the speaker
+and the lone coach answer differently goes to the front of the line for a
+second blind listener, as a machine disagreement does. It is built only once
+speakers answer about their own clips again, and judging your own moments
+stays out of the walk. Other speakers' clips stay one per practice try:
+other speakers first, licensed clips for the places left (this replaces the
+mix of 19 October, 3 every walk). The rules:
+`docs/DESIGN-WIL-70-disagreement-signal-2026-10-18.md` §6 and frontend
+`docs/flows/feedback-walk-and-chat.md`, C8 and §3. No code change, no
+migration.
