@@ -2689,6 +2689,16 @@ walk's page, B10, C1, D3, D4, D5, E1, F4, F5, K (frontend
 `docs/flows/feedback-walk-and-chat.md`, §6 N89; backend #1210, frontend
 #897). No migration.
 
+**N92 · The coach's answer and video reach the speaker's page as they
+stand (founder, the app, 21 October 2026: "the video was sent too with the
+coach feedback and didn't pass through").** The speaker's feedback rows are
+served from a stored bake that only the speaker's own writes retire, so the
+coach's answer, and the signed link of their video, stayed as baked. Now the
+bake re-reads the coach's answer on every read, one read per Take, the video
+signed afresh, and a coach's share asks for one rebake. The rules: the walk's
+page, C1, D5 (frontend `docs/flows/feedback-walk-and-chat.md`, §6 N92). No
+migration.
+
 **N90 · The walk's doors checked in the app; the coach's bubble at the
 bottom (founder, the app, 21 October 2026).** A step already answered past
 opens the walk on that step with the parts before and after it to scroll;
