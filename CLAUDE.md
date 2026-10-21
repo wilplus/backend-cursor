@@ -65,7 +65,7 @@ request. Handoffs and prompts for coding agents go in the pull request
 description, not in a file. New code that no row covers gets a row in the
 same pull request. A new doc needs the founder's OK, written as
 `Founder-Approved:` on its line in `README.md`. `scripts/doc_guard.py` checks
-all of this in CI (N107, N108).
+all of this in CI (N107, N110).
 
 ## How to ship
 

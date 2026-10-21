@@ -1,7 +1,7 @@
 """
 GUARD      scripts/doc_guard.py: every part of the code has one home doc in
            README.md, every doc is listed there, and a new doc carries the
-           founder's OK (N107, N108).
+           founder's OK (N107, N110).
 CATCHES    Code that no row of the home-doc table covers; a row that covers
            nothing or points at a missing, History or Archive doc; two rows
            claiming one file equally; a doc the master doc doesn't list; a new

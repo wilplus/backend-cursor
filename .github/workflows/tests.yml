@@ -121,7 +121,7 @@ jobs:
             echo "no docs/audit/LEDGER.md — skipped"
           fi
 
-      # The docs guard (founder, 2026-10-21, N107 and N108): every part of the
+      # The docs guard (founder, 2026-10-21, N107 and N110): every part of the
       # code has one home doc in the table in README.md, every doc is listed
       # there, and a new doc carries the founder's OK on its line. Compares
       # the tree with origin/main's, so a shallow fetch of main is enough.
