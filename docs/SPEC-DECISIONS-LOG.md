@@ -2925,3 +2925,23 @@ acoustic data" shows each Take's willfidence in whole percent: the mean of
 its pieces' willfidence (N104), counting only pieces with a sound read, and
 "—" when none has one. It is on that table only (and its CSV); no speaker
 sees it. The word is the one signed in N104. No migration.
+
+**N106 · The docs are sorted: one master doc and four labels (founder, the
+"Sorting the docs" decision page in the Claude Code chat, 21 October 2026,
+eleven answers, then "Yes ship it").** The master doc is the backend's root
+`README.md`. It lists every doc worth reading, as clickable links, in N95's
+order. The frontend's `README.md` points to it and lists the frontend's own
+pages. Every doc carries one label: **In force** (the rules), **Reference** (how
+something works today), **History** (kept as written, because the rules still
+cite it), or **Archive** (nothing needs it). Each doc says its label in one line
+at the top, except where its bytes must not change: the legal pack, the signed
+texts, and files that code or tests read. The MLC-2 and MLC-3 files become
+History behind one entry, except the parts still in force. The prompts written
+for coding agents and the session handoffs are archived. So are the files
+unchanged since before July, except the legal records and anything the rules
+still cite. The frontend's copies of backend docs become one-line pointers,
+except `CLAUDE.md` and `AGENTS.md`. Archived files are labelled now and moved
+later. The mentions in the In force docs become clickable links now. The
+founder checks every file's proposed label on a page, and corrections follow
+in their own PR. Map: the docs map of 21 October 2026 (step 1). No rule
+changes, no code, no migration.
