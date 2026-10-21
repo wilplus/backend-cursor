@@ -153,14 +153,17 @@ _FRONTEND_COMMITS = (
     "c9a42974",  # 2026-09-18  landing; the CTA stops claiming consent (#400)
     "ae212ee9",  # 2026-09-19  Art 50(2) marking of generated text (#406)
     "9a928fd6",  # 2026-10-05  `main` when 03 v1.1 read what the screens label (#609)
+    "bfd45f1a",  # 2026-10-14  `main` when 25 (signed 2026-10-15) read startOAuth.ts and tokens/copy.ts (#788)
 )
 
 
 def _is_frontend(sha: str) -> bool:
     return any(sha.startswith(k) or k.startswith(sha) for k in _FRONTEND_COMMITS)
 
-# Backticked hex that is not a commit reference.
-_NOT_A_COMMIT = {"604800"}
+# Backticked hex that is not a commit reference: a duration in seconds, and
+# the Meta Business portfolio and WhatsApp Business account ids (the processor
+# contact log and 25, signed 2026-10-15).
+_NOT_A_COMMIT = {"604800", "1096268846348586", "1109192322091002"}
 
 _HASH = re.compile(r"`([0-9a-f]{7,40})`")
 
