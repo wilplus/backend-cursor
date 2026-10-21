@@ -203,9 +203,6 @@ practice rows are gone.
 O3  Without the deletion-evidence retention rule, the run stops for
 review and names only that missing rule.","O1 -> TestAnAccountDeletionStarts::test_a_graph_that_is_not_the_subjects_is_still_refused
 O2, O3 -> TestAnAccountDeletionStarts::test_the_erasure_runs_to_the_end_once_the_retention_rules_exist","Founder 2026-09-25, decision 6: every deletion sat at ""requested"" (migration 0362)."
-tests/test_admin_person_practice.py,Story,"As the founder, I want each person's admin page to show how many practices were offered and how many were completed, so that I can see who is practising.","O1  Five offered with three completed reads ""offered 5, done 3"".
-O2  A person with no practice yet reads 0 and 0.","O1 -> test_counts_completed_out_of_offered
-O2 -> test_no_practice_yet",Founder 2026-10-18. Admin only: never shown to a speaker.
 tests/test_admin_speaker_permit.py,Story,"As a speaker, I want any AI call an admin makes about me to run under my own processing permit, and be refused when I have none, so that my words never reach a provider without my authority (processing authorization on the critical path).","O1  Directive suggestions: with my authority the model call runs inside
 the protected scope bound to MY principal; a refused permit answers
 403 before any provider client exists.
@@ -2554,10 +2551,14 @@ the moment read answers 409 BLIND_RATING_REQUIRED and reads nothing
 about the moment.
 O2  After the rating, the read opens and ""heard"" says in words what the
 machine heard - never a number.
+O4  After the rating, the read carries the moment's willfidence as a whole
+percent for the coach (founder 2026-10-21, N104); a clip with no sound
+read carries none, never a made-up middle.
 O3  For each kind, ""heard"" names the right thing: the error labels, the
 confident cues behind praise, the clearer version's reason, all of it
 on an ambiguity, and an explicit ""nothing"" when it heard nothing.","O1 -> test_the_read_is_still_behind_the_blind_gate
 O2 -> test_after_my_rating_the_read_says_what_was_heard_in_words
+O4 -> test_the_read_carries_willfidence_as_a_percent_only_when_heard
 O3 -> test_heard_names_what_the_machine_heard_for_each_kind","D-CP-3; coach panel lock flow 5 (""What happened"")."
 tests/test_the_shadow_writer_accepts_the_frame_the_code_builds_postgres.py,Story,"As a developer, I want the database to store the feedback frame the code really builds, so that every Take's shadow record is kept instead of silently refused.","O1  The frame build_shadow_frame makes is stored byte for byte and read
 back; a replay is still ""stored"".

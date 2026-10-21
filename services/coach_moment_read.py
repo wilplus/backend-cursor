@@ -5,10 +5,10 @@ After the coach's own blind rating, and only then, one read gives the
 moment as the coach may now see it: the passage, the speaker's answer,
 the coach's own answer, the request that reached the coach (kind, what
 fired in words, library status) or None when nothing did, the patterns
-the coach has named on it, and the speaker's goal. Everything in words;
-no count of anything (AC-9). The route enforces the blind gate before
-this runs (BLIND COACH): nothing here checks it again, and nothing here
-must be reachable another way.
+the coach has named on it, and the speaker's goal. Everything in words,
+except the moment's willfidence as a percentage (founder 2026-10-21, N104).
+The route enforces the blind gate before this runs (BLIND COACH): nothing
+here checks it again, and nothing here must be reachable another way.
 """
 from __future__ import annotations
 
@@ -20,19 +20,35 @@ _log = logging.getLogger(__name__)
 _ANSWERS = ("yes", "in_between", "no", "not_sure", "audio_unclear")
 
 
+def _willfidence(row: dict) -> Optional[int]:
+    """The moment's willfidence as a whole percent (S x W, the same read the
+    Take's moments are picked by), or None when the clip has no sound read:
+    the middle of the scale stands in there for ranking, and it is not shown
+    as if it were measured. For the coach only, after the blind answer."""
+    from services import moment_pick
+    from services.voice_confidence import stamped_score
+    metrics = row.get("metrics")
+    read = moment_pick.read(stamped_score(metrics), row.get("transcript"), metrics)
+    return round(read["value"] * 100) if read["sound"] else None
+
+
+def _moment_fields(row: dict) -> dict:
+    return {"passage": str(row.get("transcript") or "").strip(),
+            "slide_index": row.get("slide_index"),
+            "willfidence": _willfidence(row)}
+
+
 def _passage(database: Any, take_session_id: str, snippet_id: str,
              held: Optional[dict] = None) -> dict:
     # The moment's own row, when the caller already holds it, is the row the
     # read of the whole talk would find.
     if (isinstance(held, dict) and str(held.get("id")) == snippet_id
             and str(held.get("session_id")) == take_session_id):
-        return {"passage": str(held.get("transcript") or "").strip(),
-                "slide_index": held.get("slide_index")}
+        return _moment_fields(held)
     for row in database.get_snippets_by_session(take_session_id) or []:
         if isinstance(row, dict) and str(row.get("id")) == snippet_id:
-            return {"passage": str(row.get("transcript") or "").strip(),
-                    "slide_index": row.get("slide_index")}
-    return {"passage": "", "slide_index": None}
+            return _moment_fields(row)
+    return {"passage": "", "slide_index": None, "willfidence": None}
 
 
 def _speaker_answer(database: Any, snippet_id: str) -> Optional[str]:
