@@ -2901,10 +2901,10 @@ with wilplus/backend-cursor#1127; not in force until it is built and merged.
 No new words; the coach-panel line that asks for another version needs the
 founder's wording when it is built.
 
-**N103 · The person's Takes table gets a Willfidence column (founder, the
+**N105 · The person's Takes table gets a Willfidence column (founder, the
 Claude Code chat, 21 October 2026: "add the willfidence column here (in the
 ceo panel but only here)").** On the founder's person page, "Takes and
 acoustic data" shows each Take's willfidence in whole percent: the mean of
-its pieces' willfidence (N102), counting only pieces with a sound read, and
+its pieces' willfidence (N104), counting only pieces with a sound read, and
 "—" when none has one. It is on that table only (and its CSV); no speaker
-sees it. The word is the one signed in N102. No migration.
+sees it. The word is the one signed in N104. No migration.
