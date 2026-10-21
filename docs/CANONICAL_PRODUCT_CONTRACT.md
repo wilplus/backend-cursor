@@ -867,7 +867,9 @@ with this contract, this contract wins.
     supersedes N48.3 Q11 A's fallback):** the word shows on its own Take
     only. A later Take starts without it; a word left on an earlier Take
     after a newer one exists reaches the speaker through its Lounge bubble,
-    the WhatsApp and the email.
+    the WhatsApp and the email. The WhatsApp and email links name the Take
+    the coach wrote on (`take=<session_id>`, founder 2026-10-21) and open
+    that Take's coach-only walk with its word.
 35g-7. **The coach's exercise preference** (founder 2026-10-01, F8; Phase 1b
     of the coach panel; migration 0411; served only once
     `COACH_EXERCISE_PREFERENCE_ENABLED` is on). After the blind rating the

@@ -19,18 +19,30 @@ OUTCOME
       bubble for Take 1 (story 3; WhatsApp: test_whatsapp_number.py).
   O8  No word on the Take serves nothing; a failed read serves nothing and
       never raises (stories 6 and 7).
+  O9  That late word on Take 1, sent to me as a link (the WhatsApp and the
+      email), names Take 1, and opening it serves Take 1's word; a link
+      naming a Take that is not mine serves the Take on screen's instead
+      (story 3, founder 2026-10-21: the coach's link opens the coach's
+      feedback).
 PROVES   O1, O2, O3, O4 -> test_the_coach_s_word_is_new_until_watched_and_again_after_a_new_video
          O5 -> test_a_word_on_take_2_is_not_served_on_take_3
          O6 -> test_the_word_on_the_take_on_screen_is_served
          O7 -> test_a_late_word_on_take_1_goes_to_its_lounge_bubble_not_take_2
          O8 -> test_no_word_or_a_failed_read_serves_nothing
+         O9 -> test_a_late_word_on_take_1_sent_as_a_link_opens_take_1_s_word
 WHY      Founder 2026-10-19, N80 (D4, D7), approved two-phone prototype
          https://claude.ai/artifact/APk56PLZt6o6Cx9qUMKkuk. Founder
          2026-10-18, N77 (contract 35g-6, superseding N48.3 Q11 A's
-         earlier-Take fallback), landed with N94 on 2026-10-21.
+         earlier-Take fallback), landed with N94 on 2026-10-21; its links
+         name the word's Take (founder, 2026-10-21).
 """
+from urllib.parse import parse_qs, urlsplit
+
 from services import take_summary
+from services.coach_feedback_email import feedback_url
 from services.coach_message_read import coach_message_for, journey_payload
+from services.ideal_text_enrichment import section_readers
+from services.whatsapp_notify import feedback_path
 
 TAKE = "33333333-3333-4333-8333-333333333333"
 
@@ -138,3 +150,27 @@ def test_no_word_or_a_failed_read_serves_nothing():
     assert coach_message_for(_Words(), TAKES, T3) is None
     published = [dict(t, results_published_at="2026-10-20T09:00:00+00:00") for t in TAKES]
     assert coach_message_for(_Words([T3], fail=True), published, T3) is None
+
+
+def _opened(db, sessions, link):
+    """What the Ideal Text's journey serves for a link's `take`, with Take 2
+    on screen (the enrichment section the coach-only walk reads)."""
+    take = parse_qs(urlsplit(link).query).get("take", [None])[0]
+    snapshot = {"payload": {"latest_take_session_id": T2, "take_count": 2}}
+    readers = section_readers(db, arc_id="arc1", actor_id="me", sessions=sessions,
+                              selected=snapshot, snapshot_id="snap", deps=None,
+                              coach_take=take)
+    return readers["journey"]()["coach_message"]
+
+
+def test_a_late_word_on_take_1_sent_as_a_link_opens_take_1_s_word():
+    mine = [dict(t, user_id="me") for t in TAKES[:2]]
+    for link in (feedback_path("arc1", T1), feedback_url("arc1", T1)):
+        message = _opened(_Words([T1]), mine, link)
+        assert message["text"] == "Word on 1."
+        assert message["take_session_id"] == T1 and message["take_index"] == 1
+    # Not my Take: the link opens the Take on screen, which has no word.
+    theirs = [dict(TAKES[0], user_id="someone-else"), dict(TAKES[1], user_id="me")]
+    db = _Words([T1])
+    assert _opened(db, theirs, feedback_path("arc1", T1)) is None
+    assert T1 not in db.asked

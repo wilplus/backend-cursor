@@ -141,12 +141,20 @@ def remove_phone(database: Any, user_id: str) -> dict:
     return {"phone": None}
 
 
-def feedback_path(arc_id: Any = None) -> str:
+def feedback_path(arc_id: Any = None, take_session_id: Any = None) -> str:
     """Where the message opens, after the site: the project's walk on the
     coach's feedback (`/chat?lens=<arc>`, the address the coach bubble opens;
-    founder 2026-10-14: tap and go), or the chat when the project is unknown."""
+    founder 2026-10-14: tap and go), or the chat when the project is unknown.
+
+    THE LINK NAMES ITS TAKE (founder 2026-10-21, N77): `&take=<session_id>`
+    is the Take the coach wrote on, so a word left on an earlier Take opens
+    as that Take's word; a word shows on its own Take only."""
     arc = str(arc_id or "").strip()
-    return f"chat?lens={quote(arc, safe='')}" if arc else "chat"
+    if not arc:
+        return "chat"
+    take = str(take_session_id or "").strip()
+    path = f"chat?lens={quote(arc, safe='')}"
+    return f"{path}&take={quote(take, safe='')}" if take else path
 
 
 def _message_body(path: str = "chat") -> str:
@@ -239,7 +247,7 @@ def notify_coach_feedback_in(database: Any, user_id: Optional[str],
         if take_session_id:
             session = database.v2_get_session_by_id(str(take_session_id)) or {}
             arc_id = session.get("arc_id")
-        return send_whatsapp(str(phone), path=feedback_path(arc_id))
+        return send_whatsapp(str(phone), path=feedback_path(arc_id, take_session_id))
     except Exception as e:  # noqa: BLE001 -- the coach's save stands either way
         _log.warning("whatsapp coach-feedback message failed user=%s: %s",
                      user_id, type(e).__name__)

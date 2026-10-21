@@ -2584,7 +2584,9 @@ here: the coach's word for a Take shows on that Take only, and a later Take
 starts without it (supersedes N48.3 Q11 A's earlier-Take fallback). A word
 left on an earlier Take after a newer one exists reaches the speaker through
 its Lounge bubble ("Later · from your coach"), the WhatsApp and the email.
-Contract 35g-6 carries the dated amendment; `services/coach_message_read.py`
+Their links name the word's Take (`take=<session_id>`, founder 2026-10-21)
+and open that Take's coach-only walk with the word; a link without it opens
+as before. Contract 35g-6 carries the dated amendment; `services/coach_message_read.py`
 serves the Take on screen only. Landed on main with N94. The rest of N77, a
 coach's video belonging to the speaker it was made for (and N78 after it),
 arrives with #1127 and migration 0480 and is not in force until that merges.
@@ -2738,6 +2740,10 @@ a PR description, an open branch or the frontend's own docs is in force; each
 founder decision made in chat comes here at once in its own small docs PR,
 never bundled with code waiting for review; where main's code disagrees with
 these docs, the docs win and the code is a bug. The rule: `CLAUDE.md`, "One
-source of truth". With it, N77's part about the coach's word showing on its
-own Take lands on main (contract 35g-6, `services/coach_message_read.py`).
-No migration.
+source of truth". The frontend's flow pages
+`docs/flows/feedback-walk-and-chat.md` and `docs/flows/coach-panel.md` also
+count for their flows, because the frontend design-lock guard requires them
+to change together with the code. With it, N77's part about the coach's word
+showing on its own Take lands on main (contract 35g-6,
+`services/coach_message_read.py`), with the coach's links naming the word's
+Take. No migration.

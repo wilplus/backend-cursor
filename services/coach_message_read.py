@@ -22,6 +22,12 @@ this is the one read that serves them.
   coach"), the WhatsApp and the email, and stays in the Lounge history.
   Every message names its Take (`take_session_id`, `take_index`). No Take
   on screen, no word.
+- THE COACH'S LINK NAMES ITS TAKE (founder 2026-10-21, N77). The WhatsApp
+  and the email open `/chat?...&take=<session_id>`, the Take the word (or
+  the moment's answer) was written on, and the Ideal Text asks the journey
+  for that Take (`word_take`), so a word left on an earlier Take opens as
+  that Take's word in the coach-only walk. Only the caller's own Take of
+  this project is read; anything else falls back to the Take on screen.
 - QUALITATIVE. Words and a video; no score, no verdict (AC-9).
 """
 from __future__ import annotations
@@ -53,6 +59,22 @@ def coach_message_for(database: Any, sessions: Any,
     if not shown:
         return None
     return _message_for_take(database, shown, take)
+
+
+def word_take(sessions: Any, actor_id: str, asked: Optional[str],
+              on_screen: Optional[str]) -> Optional[str]:
+    """The Take whose word the journey serves: the one a coach's link names
+    (WhatsApp and email, ``?take=``; founder 2026-10-21, N77: "the links
+    carry the Take the word was written on"), when it is one of this
+    project's Takes and the caller's own, as the route's ownership check
+    reads it; otherwise the Take on screen. A Take of anyone else is never
+    read: the request falls back to the Take on screen."""
+    from services.project_ownership import session_actor_id
+    want = str(asked or "").strip()
+    caller = str(actor_id or "")
+    mine = any(isinstance(s, dict) and str(s.get("id") or "") == want
+               and session_actor_id(s) == caller for s in sessions or [])
+    return want if want and caller and mine else on_screen
 
 
 def _message_for_take(database: Any, shown: list, take: str) -> Optional[dict]:
