@@ -1,0 +1,47 @@
+{
+  "_about": "The founder's roadmap (founder 2026-10-21). services/roadmap.py reads it and shows each item's state on /admin/roadmap, read live from GitHub. When a PR starts or finishes an item here, add its number in the same PR: 'prs' are the PRs that finish the item, 'parts' are PRs that are only part of it. 'wil' and 'keywords' also match PR titles opened on or after 'since'. Words here are shown to the founder only.",
+  "since": "2026-10-20",
+  "versions": [
+    {
+      "key": "1.1",
+      "name": "Fast and true",
+      "line": "Feedback opens fast, the second recording never fails, the Ideal Text is exactly what was said, and the app keeps its promises.",
+      "items": [
+        {"id": "speed", "title": "Feedback opens fast", "why": "Tapping a moment took 4–5 seconds to show its feedback.", "wil": ["WIL-76", "WIL-36", "WIL-33"], "parts": [{"repo": "backend", "number": 1114}, {"repo": "frontend", "number": 821}]},
+        {"id": "take2", "title": "Take 2 never fails on a new device", "why": "On a second phone or computer the app could refuse the same slides.", "keywords": ["D13"]},
+        {"id": "idealtext", "title": "The written talk is exactly what was said", "why": "No “um”, real double words kept, the end of long talks kept, the language passed to the speech-to-text.", "wil": ["WIL-27"], "parts": [{"repo": "backend", "number": 1155}]},
+        {"id": "dml1", "title": "Measure the speech-to-text before and after", "why": "So we can prove the Ideal Text fixes helped.", "keywords": ["D-ML-1"]},
+        {"id": "fillers", "title": "Filler words counted fairly", "why": "This decides which moment gets praise and which gets practice.", "wil": ["WIL-28"], "branches": [{"repo": "backend", "name": "claude/focused-shannon-n0mj2v"}]},
+        {"id": "greenreason", "title": "Say why a good moment was good", "why": "The praise explains what worked, in the speaker's own words.", "prs": [{"repo": "backend", "number": 1116}]},
+        {"id": "videowhole", "title": "Practice videos shown whole", "why": "The frame cropped them.", "wil": ["WIL-79"], "branches": [{"repo": "frontend", "name": "claude/new-session-gygdw7"}]},
+        {"id": "coachvideos", "title": "Coach videos stay private", "why": "A coach's practice video could reach other speakers through a public link.", "prs": [{"repo": "backend", "number": 1127}]},
+        {"id": "corpus", "title": "A way to delete the YouTube and TED audio", "why": "We have no permission to keep it.", "prs": [{"repo": "backend", "number": 1140}, {"repo": "frontend", "number": 846}]},
+        {"id": "terms38", "title": "New terms, version 3.8", "why": "One-off packs instead of monthly plans; 18 and over; the Ideal Text follows the latest Take.", "keywords": ["Terms 3.8", "Privacy 3.8", "terms-3.8"]},
+        {"id": "aivoice", "title": "AI voice for the founder only, until the lawyer checks", "why": "People who already have a voice copy can still delete it.", "keywords": ["allowlist", "AI voice for the founder"]},
+        {"id": "limits", "title": "An honest list of what the app can't do yet", "why": "For the testers' note and the lawyer's letter.", "wil": ["WIL-75"], "prs": [{"repo": "backend", "number": 1155}]},
+        {"id": "closeouts", "title": "Already built: WIL-83, WIL-30, WIL-80, WIL-8, WIL-26, WIL-67", "why": "Merged; each ticket can be closed in Linear.", "prs": [{"repo": "frontend", "number": 820}, {"repo": "frontend", "number": 848}, {"repo": "backend", "number": 1124}, {"repo": "backend", "number": 1141}, {"repo": "backend", "number": 1144}]}
+      ]
+    },
+    {
+      "key": "1.2",
+      "name": "Real people, while we watch",
+      "line": "5–8 testers use the app while we watch; what they do decides the AI voice and training types.",
+      "items": [
+        {"id": "wil74", "title": "“Did this feedback help you?”", "why": "Asked after the summary; it can always be skipped.", "wil": ["WIL-74"], "prs": [{"repo": "backend", "number": 1149}, {"repo": "frontend", "number": 852}]},
+        {"id": "n79", "title": "New coach tools", "why": "They wait behind the fixes for speakers.", "prs": [{"repo": "backend", "number": 1133}, {"repo": "backend", "number": 1134}, {"repo": "backend", "number": 1136}, {"repo": "backend", "number": 1137}, {"repo": "backend", "number": 1138}]},
+        {"id": "oldvideos", "title": "Approve old coach videos one by one", "why": "Each old video is shared only once approved.", "wil": ["WIL-86"]},
+        {"id": "wp4", "title": "A fence: individuals only", "why": "Keeps the app for single people, not companies.", "keywords": ["WP4", "B2C fence"]},
+        {"id": "booking", "title": "Lesson reminder in the calendar", "why": "10 minutes before, instead of a WhatsApp message.", "keywords": ["lesson reminder", "calendar alarm"]}
+      ]
+    },
+    {
+      "key": "2.0",
+      "name": "Practice for your situation",
+      "line": "Ready-made slides for a pitch, a sales call or a meeting. Same app, same feedback engine. Only after the testers and the lawyer say yes.",
+      "items": [
+        {"id": "wil71", "title": "Training types as ready-made slides", "why": "Picked in the step where people add slides.", "wil": ["WIL-71"], "keywords": ["training type", "guided deck"]},
+        {"id": "emailcheck", "title": "Check emails at sign-up", "why": "Anyone could sign up with someone else's email; it must never block the first recording.", "keywords": ["email confirmation", "confirm email", "verify email", "email verification"]}
+      ]
+    }
+  ]
+}
