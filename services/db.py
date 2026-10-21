@@ -2411,6 +2411,40 @@ class DatabaseService:
             return None
         return out
 
+    def get_snippet_scores_by_ids(self, snippet_ids) -> dict:
+        """{snippet_id: {"session_id", "score"}} for exactly these snippets,
+        the machine's voice-confidence score only (None when unstamped), in
+        chunks of 100 ids. The mixed corpus round balances its bands from it
+        and never sends it anywhere (founder 2026-10-21, N101). Best-effort:
+        {} on a hiccup, and the round then reads as empty."""
+        from services.confidence_labels import _confidence_of
+        ids = sorted({str(s) for s in (snippet_ids or []) if s})
+        out: dict = {}
+        cols = "id, session_id, score:metrics->voice_confidence->score"
+        try:
+            for i in range(0, len(ids), 100):
+                chunk = ids[i:i + 100]
+                try:
+                    rows = (self.client.table(SNIPPETS_TABLE).select(cols)
+                            .in_("id", chunk).execute().data) or []
+                except Exception:
+                    # A PostgREST without JSON paths: the metrics whole.
+                    cols = "id, session_id, metrics"
+                    rows = (self.client.table(SNIPPETS_TABLE).select(cols)
+                            .in_("id", chunk).execute().data) or []
+                for r in rows:
+                    score = r.get("score") if "score" in r else _confidence_of(r)
+                    out[str(r.get("id"))] = {
+                        "session_id": r.get("session_id"),
+                        "score": score if isinstance(score, (int, float))
+                        and not isinstance(score, bool) else None,
+                    }
+            return out
+        except Exception as e:
+            logger.warning("get_snippet_scores_by_ids failed (%d ids): %s",
+                           len(ids), e, exc_info=True)
+            return {}
+
     def get_snippet_order_by_ids(self, snippet_ids) -> list[dict]:
         """``id, session_id, start_offset_ms`` of exactly these snippets, in
         chunks of 100 ids (an ``in`` filter rides the URL). The coach queue

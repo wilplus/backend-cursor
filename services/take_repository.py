@@ -22,6 +22,17 @@ from services.table_repository import TableRepository
 logger = logging.getLogger(__name__)
 
 
+def _with_context(row: dict) -> dict:
+    """A session row read with ``ctx_<key>`` JSON paths, its context put back
+    together under ``intake_context`` (a row read whole passes as it is)."""
+    if "intake_context" in row:
+        return row
+    ctx = {key[4:]: value for key, value in row.items()
+           if key.startswith("ctx_") and value is not None}
+    rest = {key: value for key, value in row.items() if not key.startswith("ctx_")}
+    return {**rest, "intake_context": ctx}
+
+
 class TakeHasLineageError(Exception):
     """A Take still has ON DELETE RESTRICT dependents; the delete was refused
     and nothing was changed."""
@@ -1695,6 +1706,41 @@ class TakeRepository(TableRepository):
         except Exception as e:
             logger.warning("find_training_import_by_key failed: %s", e)
             return None
+
+    def list_training_import_cohorts(self) -> list[dict]:
+        """Every training import with only what the mixed corpus round needs
+        (founder 2026-10-21, N101): its recording, its source, and from its
+        context the topic, language, speaker, archive mark and frozen label
+        cohort, never the spotting blocks the context also holds. Paged by
+        1000 rows. Best-effort: [] on anything missing."""
+        paths = ("topic", "language", "speaker_label", "archived_at")
+        slim = ("id, source, recording_id, "
+                + ", ".join(f"ctx_{p}:intake_context->>{p}" for p in paths)
+                + ", ctx_label_queue_selection:intake_context->label_queue_selection"
+                + ", ctx_label_queue:intake_context->label_queue")
+        out: list[dict] = []
+        try:
+            for cols in (slim, "id, source, recording_id, intake_context"):
+                try:
+                    offset = 0
+                    out = []
+                    while True:
+                        rows = (self.client.table("v2_sessions").select(cols)
+                                .eq("source", "training_import")
+                                .order("created_at", desc=True).order("id", desc=True)
+                                .range(offset, offset + 999).execute().data) or []
+                        out += [_with_context(r) for r in rows]
+                        if len(rows) < 1000:
+                            return out
+                        offset += 1000
+                except Exception:
+                    if cols != slim:
+                        raise
+            return out
+        except Exception as e:
+            logger.warning("list_training_import_cohorts failed: %s", e,
+                           exc_info=True)
+            return []
 
     def list_training_import_sessions(self, *, user_id: Optional[str] = None,
                                       limit: int = 200) -> list[dict]:
