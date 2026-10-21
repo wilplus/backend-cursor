@@ -2846,3 +2846,13 @@ answers), the chat opens scrolled to the coach's bubble, which pulses once;
 a tap on it opens that Take's feedback as before. No new words. The rules:
 the walk's page, C1 (frontend `docs/flows/feedback-walk-and-chat.md`).
 No backend change, no migration.
+
+**N100 · The training corpus list loads in steps as the coach scrolls
+(founder, the Claude Code chat, 21 October 2026: "no it can go in steps,
+just make it faster; you can make the pages or a scrolling and you wait for
+it to load (that is preferred)").** The list opens with its newest imports
+and, at the bottom, loads the next step while the app's one loader shows;
+judging one import after another (N99) reads the next step when the steps
+loaded hold no import left to judge. The list is no longer cut at its
+newest 200 imports. The rules: frontend `docs/flows/coach-panel.md`, H4. No
+new words, no migration.
