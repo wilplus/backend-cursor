@@ -8,7 +8,8 @@ OUTCOME
       sentence under the clip names it in words, with no numbers.
   O2  The clip says my own words (or the clearer version I accepted, with
       the ums taken out), in at most 17 seconds.
-  O3  A clip that fails its check is never shown; a real pause heard in
+  O3  A clip that fails its check is made once more with a new seed and
+      is never shown; a try after it is not scored; a real pause heard in
       the audio passes.
   O4  One clip per practice, started early once the exercise is known,
       within the daily limit; a voice still being made is waited for a
@@ -26,7 +27,7 @@ PROVES   O1 -> test_a_problem_from_the_line_up_else_the_default,
                test_no_clip_is_longer_than_the_limit,
                test_a_clearer_version_practice_gets_a_clip_of_the_accepted_words,
                test_a_sentence_with_fillers_is_said_without_them_and_the_next_try_is_measured_on_them
-         O3 -> test_a_clip_that_fails_its_check_is_never_shown,
+         O3 -> test_a_clip_that_fails_its_check_is_made_once_more_and_shown_only_if_it_passes,
                test_a_pause_heard_in_the_audio_passes_when_the_words_hide_it
          O4 -> test_the_daily_limit_stops_the_provider_call,
                test_two_corrected_moments_queue_two_prewarms,
@@ -200,7 +201,7 @@ class _Voices:
 
     def speak(self, **k):
         self.spoken += 1
-        self.bodies.append(k.get("body") or {})
+        self.bodies.append(dict(k.get("body") or {}))
         if self.fail:
             raise self.fail
         return Speech(b"mp3", "audio/mpeg", "req", 90)
@@ -242,14 +243,14 @@ def _ready_voice(db):
          "provider_voice_id": "voice-abc", "created_at": "2026-10-11T00:00:00+00:00"})
 
 
-def _run_pipeline(db, practice, voices, heard, pcm=None, objects=None):
+def _run_pipeline(db, practice, voices, heard, pcm=None, objects=None, decode=None):
     def put(key, audio):
         if objects is not None:
             objects[key] = audio
         return "bucket"
     return ai_voice_clip.ensure(db, practice, user_id=OWNER, principal_id="", run=lambda cid, p: ai_voice_clip.generate(
         cid, p, database=db, provider=voices, transcribe=lambda _a: heard,
-        put_object=put, decode=lambda _a: pcm if pcm is not None else _pcm_with_pause(1.0),
+        put_object=put, decode=decode or (lambda _a: pcm if pcm is not None else _pcm_with_pause(1.0)),
         provider_usage={"used": 0}), sign=lambda b, k: f"https://signed/{k}")
 
 
@@ -330,17 +331,6 @@ def test_a_clearer_version_practice_gets_a_clip_of_the_accepted_words():
         assert "kind of" not in cycle["prepared_text"]
 
 
-def test_a_clip_that_fails_its_check_is_never_shown():
-    with _on():
-        db = _Db(_practice(), _snip(150, pause_ratio=0.02), TAKE)
-        _ready_voice(db)
-        # No silence before the target phrase, in the words or in the audio.
-        out = _run_pipeline(db, db.practice, _Voices(), _heard(0.0, "the window closes once"),
-                            pcm=_pcm_with_pause(2.4))
-        assert out["clip"]["state"] == "unavailable" and out["clip"]["url"] is None
-        assert db.client.tables["ai_voice_cycles"][0]["failure_kind"] == "validation"
-
-
 def _pcm_louder(start_s, end_s):
     """2.8 s of voiced tone, louder (about 8 dB) between the two times."""
     sr = 16000
@@ -351,6 +341,40 @@ def _pcm_louder(start_s, end_s):
 
 
 PHRASE = "the window closes once"
+
+
+def _pcm_flat():
+    """2.8 s of voiced tone at one level: nothing stands out."""
+    sr = 16000
+    t = np.arange(int(2.8 * sr)) / sr
+    return (0.2 * np.sin(2 * np.pi * 180 * t)).astype(np.float32)
+
+
+@pytest.mark.parametrize("second, shown", [
+    (_pcm_louder(1.0, 1.7), "ready"),    # the second clip makes the phrase stand out
+    (_pcm_flat(), "unavailable"),        # flat again: no clip, never a third
+])
+def test_a_clip_that_fails_its_check_is_made_once_more_and_shown_only_if_it_passes(second, shown):
+    """Founder 2026-10-21 (N92): the stress clip of 2026-10-20 came out flat
+    (0.02 dB) and, made only once, never came. A failed clip is made once
+    more with a new seed; a failed one is never shown, and a try after a
+    clip that never came is not scored."""
+    with _on():
+        db = _Db(_practice(), _snip(150, dynamic_db=10.0), TAKE)
+        _ready_voice(db)
+        voices, clips = _Voices(), iter([_pcm_flat(), second])
+        out = _run_pipeline(db, db.practice, voices, _heard(0.0, PHRASE),
+                            decode=lambda _a: next(clips))
+        cycle = db.client.tables["ai_voice_cycles"][0]
+        assert out["clip"]["state"] == shown and voices.spoken == 2
+        assert voices.bodies[0]["seed"] != voices.bodies[1]["seed"]
+        assert cycle["generation_attempts"] == 2
+        if shown == "unavailable":
+            assert out["clip"]["url"] is None
+            assert (cycle["failure_kind"], cycle["failure_code"]) == ("validation", "not_stressed")
+            ai_voice_clip.note_attempts(db, db.practice, [
+                {"attempt_index": 1, "duration_ms": 3000, "acoustic_metrics": {"dynamic_db": 30.0}}])
+            assert cycle.get("outcome") is None and not cycle.get("retried")
 
 
 @pytest.mark.parametrize("own_numbers, heard, pcm, change, quotes", [

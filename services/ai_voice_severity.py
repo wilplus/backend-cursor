@@ -176,9 +176,13 @@ def severities(snippet: dict, medians: dict, *, sentence: Optional[str] = None) 
 
 def _held_back(history: Iterable[dict]) -> set[str]:
     """Problems whose last HELD_BACK_AFTER outcomes for this speaker were all
-    not improved (newest first in ``history``)."""
+    not improved (newest first in ``history``). Only a clip that was made
+    counts (``ready_at``, kept after a Delete): a try after one that failed
+    its check was scored before 2026-10-21 and says nothing about the clip."""
     by_problem: dict[str, list[str]] = {}
     for row in history or []:
+        if not row.get("ready_at"):
+            continue
         problem = str(row.get("exercise") or "")
         outcome = row.get("outcome")
         if problem in PROBLEMS and outcome:

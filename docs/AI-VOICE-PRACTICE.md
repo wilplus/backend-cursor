@@ -26,8 +26,10 @@ The lock (flow, words, rules) is
    (`POST …/confidence-practice/<id>/ai-voice`, when the Exercise screen
    opens if no video fits, or when Practise is tapped if one does) is the
    fallback: it resumes the same practice and finds the same cycle. One clip
-   per practice, made once (never remade when it fails its check), reused
-   for every appearance. While the job is queued or waiting for the voice,
+   per practice, reused for every appearance; a clip that fails its check is
+   made once more with a new seed, never a third time
+   (`AI_VOICE_GENERATION_RETRIES`, 1; founder 2026-10-21, N92), and a failed
+   one is never shown. While the job is queued or waiting for the voice,
    `demo` already says `ai_voice` with the clip `pending`, so the walk shows
    the clip's place. A voice not ready yet (the clone from Take 1 still
    being made) is asked for again every 30 s, at most 5 times
@@ -35,7 +37,9 @@ The lock (flow, words, rules) is
 4. The clip is shown in the video's place (no exact-fit video for the same
    problem), and after a try that isn't better yet, at most 3 times. It never
    plays by itself.
-5. The next try is measured on the one problem practised and stored. For
+5. The next try is measured on the one problem practised and stored, only
+   after a clip that was made (N92: a try after a failed clip used to be
+   scored and could hold that problem back for the speaker). For
    fillers (founder 2026-10-18) the measure is hesitations per 100 words of
    the try's own transcript, against the same line as the pick.
 6. Data & consent: Delete removes the voice at ElevenLabs and here, with every
