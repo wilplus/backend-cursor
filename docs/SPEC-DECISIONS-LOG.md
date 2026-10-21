@@ -2965,3 +2965,24 @@ new doc is not started: the area page or the master doc is edited, and handoffs
 and prompts for coding agents go in pull request descriptions. A new doc needs
 the founder's OK and a line in the master doc. No rule about the product
 changes, no code, no migration.
+
+**N109 · The waiting screen stays until the walk is there, and starts at 1%
+(founder, the Claude Code chat, 21 October 2026, with a screenshot of the walk
+opening on its typing dots: "It starts on the screen and then automatically
+closes and opens the lounge it is abrupt make it stay"; "when it says it's done
+it opens the walk automatically but then it still loads the walk - so it is not
+done!"; "when the processing starts it should show at least 1% from the very
+first second so that user knows it has at least started").** After Finish take
+the waiting screen stays on screen: when the server holds the Take, the Lounge
+takes the wait over and shows the same screen at once, full screen, in place of
+the chat; its ✕ shows the chat, where "Processing your recording" waits as
+before. When the Take's text is stored and the walk opens by itself, the
+waiting screen stays over it until the walk's first step is on screen (or, with
+nothing to walk, the text), also when the speaker had gone to the chat, so
+"done" never opens onto the walk still loading. The bar shows at least 1% from
+the first second, in place of "…" before the first report; a processing
+percentage is allowed (Never 1, founder 2026-10-19). No new words. The rules:
+the walk's page, A1, A2 (frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), §6 N109); the recording
+screens' page, the flow, 5 (frontend
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md), §6 N109). No migration.
