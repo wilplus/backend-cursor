@@ -1,5 +1,7 @@
 # Claude Handoff — Confident Moment Coaching Bundle
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Date:** 2026-09-11  
 **Goal:** continue the checksum-gated Chunk 2B → Chunk 3 → Chunk 4 → Chunk 5
 implementation without architecture drift. Nothing in this handoff authorizes

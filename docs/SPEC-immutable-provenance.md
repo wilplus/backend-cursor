@@ -1,5 +1,7 @@
 # SPEC — Immutable source data and provenance
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Status:** Phase A BUILT (2026-08-10) — migrations 0257–0259,
 `services/provenance.py` + `services/provenance_check.py`, the boot check,
 the `label_revision` shadow write and the `dimension_evaluations` stamp.

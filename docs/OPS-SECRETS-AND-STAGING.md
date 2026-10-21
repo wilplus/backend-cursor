@@ -1,5 +1,7 @@
 # Ops runbook — secrets, staging, storage split, Sentry
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 P0/P2 technical-debt sweep, 2026-08-03. Everything here is the operator
 half of a change that already landed in code. The code is inert until the
 steps below are run — deliberately, so merging could never break the live

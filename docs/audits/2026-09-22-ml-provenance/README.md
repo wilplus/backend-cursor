@@ -1,5 +1,7 @@
 # ML provenance audit, 2026-09-22 (read-only; no code changed)
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../../../README.md) (N106).
+
 - `willab_ml_provenance_audit.html` — the audit report (98 findings; open in a browser).
 - `job1_review.md` — critical review of the audit: verdicts on the 8 blockers and 25 majors, 21 adjudications, new findings R-1..R-13, unknowns.
 - `engineer_prompt.md` — the ten workstreams for the implementing engineer, with the Job 1 deltas appended.

@@ -1,5 +1,7 @@
 # Appendix H — Manager Engine Parameters
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Last updated:** 2026-08-06. **Status:** founder-supplied, implemented in `services/manager_engine.py`.
 
 **Six slots, each grounded.** Companion to SPEC.md v3 §8.2 / §11, Appendix B (progression), Appendix D (benchmarks), Appendix F (windows).

@@ -1,5 +1,7 @@
 # MLC-3 General-User Service D4 — Offer Resolver-Chain Correction
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: `RELEASE_RE_REVIEW_REQUESTED`
 
 Design authority: `MLC-3 General-User Service Rollout D4`, SHA-256

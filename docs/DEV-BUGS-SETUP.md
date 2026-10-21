@@ -1,5 +1,7 @@
 # dev-bugs — internal bug collector (setup & ops)
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 A tiny founder-only tool at **`dev.willpowerlab.com`**: jot bugs (text, voice, or
 image) from phone or PC, stored in the existing Supabase DB. A Railway cron
 emails all `open` bugs to `artur@willonski.com` every 3 days as a ready-to-paste

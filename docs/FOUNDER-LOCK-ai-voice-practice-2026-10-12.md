@@ -1,5 +1,7 @@
 # Founder lock — the AI version of your voice in practice (2026-10-12)
 
+> **Label: In force** · one of the rules, read in N95's order. Every doc and its label: [`README.md`](../README.md) (N106).
+
 `LOCKED 2026-10-12 · flow yes · UI yes · words yes · backend rules yes`
 
 Locked by the founder on 2026-10-12 (chat: "D1: Approved", "all ok, L2:
@@ -13,9 +15,9 @@ Here's how you could say it."), from two clickable prototypes:
 Plain-words plan with the founder's answers:
 <https://claude.ai/artifact/RYMPxAqSyHinRStymsGwFr>. Decisions log N71.
 
-It adds one step to `FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md`
+It adds one step to [`FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md`](FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md)
 (section 2, steps 4 and 5) and one card to the Data & consent page
-(`FOUNDER-LOCK-consent-screens-2026-10-07.md`). Everything else in those
+([`FOUNDER-LOCK-consent-screens-2026-10-07.md`](FOUNDER-LOCK-consent-screens-2026-10-07.md)). Everything else in those
 locks stays as it is. Where this file and those disagree on the AI step or
 the card, this file wins.
 

@@ -1,5 +1,7 @@
 # The coach panel redesign · build plan P2 to P7
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Written 2026-10-07 (build plan D-CP-1). It turns the locked coach panel
 (`docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`; prototype
 <https://claude.ai/artifact/TEBvGMehRF6wXCvJTEYTUA>, copy in

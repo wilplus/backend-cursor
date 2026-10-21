@@ -1,5 +1,7 @@
 # MLC-3 General-User Service Rollout D4 — Release Packet
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: `SUPERSEDED_BY_PRODUCTION_SHAPE_CORRECTION`
 
 The original checksum-pinned 0326 package failed atomically during the first

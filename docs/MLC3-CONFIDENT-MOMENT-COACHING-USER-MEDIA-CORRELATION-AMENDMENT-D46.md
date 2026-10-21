@@ -1,5 +1,7 @@
 # MLC-3 Confident Moment Coaching Bundle — User Media Correlation Amendment D46
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: proposed final timing correction. D46 retains D38–D45 except where
 replaced here. No gate, dataset, or learning change.
 

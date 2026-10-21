@@ -1,5 +1,7 @@
 # OPS — feature flags and what is waiting on a release decision
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Every boolean flag the backend reads, what it gates, and — for the ones that
 are OFF — **what has to happen before they go on**. A flag with no owner and
 no exit condition becomes permanent by accident: nobody can reconstruct what

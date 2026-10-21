@@ -1,5 +1,7 @@
 # WillLab Community — Content & Growth Strategy
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Free community → funnel into the WillpowerLab app · Broad personal-growth audience ·
 90-day goal: grow membership · Capacity: one deep weekly effort, auto-repurposed.
 

@@ -1,5 +1,7 @@
 # willab backlog — status as of 2026-07-23
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 > **2026-09-21 — founder session notes (V3 cutover day).** Kept at the top so
 > it can be read at any time. Everything below this block is the 2026-07-23
 > backlog and is stale where the two disagree.

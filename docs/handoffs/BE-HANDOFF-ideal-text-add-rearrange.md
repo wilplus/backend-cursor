@@ -1,5 +1,7 @@
 # BE → FE handoff — add & rearrange text in the ideal-text area while recording (T1 · 1.2)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 **Status:** ready to build, 2026-07-26. **Backend changes required: NONE** — the
 entire feature rides two endpoints that already exist and are test-locked.
 **Filter stamp:** `FILTER: JUSTIFIED-SCAFFOLDING (founder-directed) — cat scaffold —

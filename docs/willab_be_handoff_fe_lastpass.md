@@ -1,5 +1,7 @@
 # willab BE → FE handoff — last-pass before test & clear
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Status (2026-06-04):** all willab BE endpoints are **live on prod** (`main` @ `43bd9a3`, Railway deployed). The merge→send status-flip bug (phantom `updated_at` column) is **fixed** (PR #4). Full read+write loop smoke-tested against prod (synthetic upload → merge → history → byte-identical re-read). This doc gives the FE everything to wire seam ③, the send gate, Library, and Insights.
 
 Source of truth for the *why*: `docs/willab_be_contract_v0.3.md` (§-refs below).

@@ -1,5 +1,7 @@
 # P5 — switching training on: the packet for counsel and the founder
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Update 2026-09-26:** the founder signed the four wordings in §3 and relayed
 counsel's answers to §2; both are recorded in `SPEC-DECISIONS-LOG.md` §N10.
 Still open: counsel's drafted policy text, the named training processors, and

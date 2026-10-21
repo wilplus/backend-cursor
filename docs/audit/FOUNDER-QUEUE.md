@@ -1,5 +1,7 @@
 # Founder queue (from LEDGER.md)
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 Every ledger row that waits on you, grouped. Rows marked **?** also carry a question. Answer by row ID; the full row is in `LEDGER.md`.
 
 ## 1 · Questions first (rows I could not grade without you)

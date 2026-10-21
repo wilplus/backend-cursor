@@ -1,5 +1,7 @@
 # willab — FE ↔ BE Compatibility Audit (Lounge & Coach UX batch)
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Status:** BE-answered 2026-06-08 against `main` @ `97ef21ab2`. Verified-against-main,
 not from memory — every row cites the handler it was checked at.
 

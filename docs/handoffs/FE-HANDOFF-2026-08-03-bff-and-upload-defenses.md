@@ -1,5 +1,7 @@
 # FE handoff — one BFF idiom + lab upload defenses (2026-08-03)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 Two items from the P0/P1 sweep live in the **frontend** repo, not here.
 This is the backend-side contract plus the specific defects found while
 reading `docs/homework-bff-routes/` — enough to do the FE work without

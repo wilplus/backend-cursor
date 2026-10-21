@@ -1,5 +1,7 @@
 # MLC-3 Confident Moment Coaching Bundle — Frontend and Authoring Amendment D14
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Status:** proposed narrow executable-interface amendment for Product/ML-data
 and Engineering review. It authorizes no executable edit, migration numbering,
 commit, push, merge, deployment, activation, collection, dataset creation,

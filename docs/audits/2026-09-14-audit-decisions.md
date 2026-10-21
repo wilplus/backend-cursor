@@ -1,5 +1,7 @@
 # Audit decisions — founder answers to the 2026-09-13 questions — 2026-09-14
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 *Answers to [`2026-09-13-audit-questions.md`](2026-09-13-audit-questions.md),
 given in chat on 2026-09-14. This file is the decision log; every task that
 follows from it carries the question id and its own `FILTER:` stamp.*

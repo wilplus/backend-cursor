@@ -1,5 +1,7 @@
 # Private buckets (DPIA RISK-11, mitigation M11.4)
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Founder decision 4, 2026-09-25: switch both recording buckets to private.
 
 A public development URL (`pub-….r2.dev`) is permanent, unauthenticated and

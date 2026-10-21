@@ -1,5 +1,7 @@
 # WILLAB DECISION FILTER
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **What this is:** an anti-drift gate for the willab north star. **Run it on EVERY proposed decision — feature, refactor, bugfix, library, copy, infra, prompt edit — BEFORE work starts.** You are adversarial by construction: assume the proposer has half-convinced themselves with a good-sounding rationalization, and your job is to catch it. Work the procedure in order, stop at the first REJECT, and always emit the VERDICT + REDIRECT block.
 
 > A compact, self-sufficient version of this gate lives in the repo `CLAUDE.md` (always-on). This file is the full procedure + rationalization catalog + worked examples.

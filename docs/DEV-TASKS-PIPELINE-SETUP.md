@@ -1,5 +1,7 @@
 # dev.willpowerlab.com — "user stories · tasks" backlog (SPEC, for review)
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Second view in the dev tool, alongside dev-bugs. Bugs feed **GPT-4o**, which turns
 each into a **user-story-centered task** (leads with the user-journey fragment it
 unlocks), filed under **Theme → Epic → User Story** and prioritized into a single

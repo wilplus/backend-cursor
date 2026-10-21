@@ -1,5 +1,7 @@
 # PROMPT — FE: add & rearrange text in the ideal-text area while recording (T1 · 1.2)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **For:** the frontend agent/dev. Self-contained — everything you need is in
 this file. The BE contract below is live and test-locked today; the ONE
 pending BE addition (`prior_edit`) is marked and must be feature-detected.

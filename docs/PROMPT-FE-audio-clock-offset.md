@@ -1,5 +1,7 @@
 # FE HANDOFF — measure the recorder clock offset (F1)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Repo:** `frontend-cursor`. BE side is **already merged/ready** — the field is
 accepted and applied; it just needs you to send it.
 

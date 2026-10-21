@@ -26,5 +26,5 @@ The frontend repo (`frontend-cursor`) carries the same filter, kept
 drift. Same rule here: this pointer must never grow a competing version
 of the doctrine.
 
-Project state, system map, shipping mechanics, billing, and the
-maintainer checklist: [`docs/HANDOFF.md`](docs/HANDOFF.md).
+Every doc in both repos, with its label and a link: [`README.md`](README.md)
+(N106). The older index, [`docs/HANDOFF.md`](docs/HANDOFF.md), is history.

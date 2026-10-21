@@ -1,5 +1,7 @@
 # Phase-1 deletion dependency audit
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: implementation evidence only. No production purge, deployment, policy
 activation, dataset, training, or model promotion is authorized by this file.
 

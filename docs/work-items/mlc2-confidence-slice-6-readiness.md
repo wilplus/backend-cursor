@@ -1,5 +1,7 @@
 # MLC-2 Slice 6 — Founder-only Confidence canary readiness
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 > 2026-10-12: the readiness monitor (its cron, script and evaluator) was removed (founder: "remove the monitor too"); there is nothing to run.
 
 Owner: Artur Willoński

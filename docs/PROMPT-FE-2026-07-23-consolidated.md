@@ -1,5 +1,7 @@
 # FE handoff — the full versioning + recording wave (2026-07-23)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Every FE-facing BE contract shipped this wave, consolidated. All of it is
 merged to `main`. Flags: `LIVING_TRANSCRIPT_ENABLED` and
 `MASTER_DOCUMENT_ENABLED` gate the document behavior; the endpoints below

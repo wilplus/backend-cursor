@@ -1,5 +1,7 @@
 # MLC-3 Confident Moment Coaching Bundle — Speaker-Binding Authorization D48
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: proposed final authorization closure. D48 retains D38–D47 except where
 strengthened here. No gate, dataset, or learning change.
 

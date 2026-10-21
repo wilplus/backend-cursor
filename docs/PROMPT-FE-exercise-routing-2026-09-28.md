@@ -1,5 +1,7 @@
 # Frontend brief: exercise routing, steps 1–3 (2026-09-28)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 From the backend exercise-routing work on `wilplus/backend-cursor`
 `claude/stoic-mayer-il3c6r`. The founder split the work: the backend owns the
 engine and matching, the frontend (`wilplus/frontend-cursor`

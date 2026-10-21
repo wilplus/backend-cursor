@@ -1,5 +1,7 @@
 # Prompt registry & golden evals
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Founder decision 2026-08-03 (the "Eval Harness" plan): prompts are
 product surface. Two guardrails now exist, one free and deterministic,
 one behavioral and LLM-graded.

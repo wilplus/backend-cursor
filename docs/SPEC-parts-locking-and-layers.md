@@ -1,5 +1,7 @@
 # SPEC — Parts, Locking, and the Two Intervention Layers
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Status:** design agreed (founder, 2026-08-07). **Step 0 built 2026-08-07**
 — see §10 for the two places the build had to diverge from this document and
 why. **Locking has since shipped** with the transcript review deck (the lock

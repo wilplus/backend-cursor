@@ -1,5 +1,7 @@
 # Rooting Phrase Qualification V1 — Release Packet
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 ## Scope
 
 This package assigns the already accepted, checksum-pinned RPQ-V1 dependency

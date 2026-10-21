@@ -1,5 +1,7 @@
 # Founder answers, Navigation Panel, 6 October 2026 (second export, 13:10 UTC)
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 Choices (screen: answer). Notes are verbatim.
 
 R4a A keep the alarm and find the cause. M2a B keep copy-paste for a while.

@@ -1,5 +1,7 @@
 # MLC-3 Confident Moment Coaching Bundle — User Media Correlation Amendment D38
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: proposed interface closure for ML/data review. This document changes no
 runtime gate, serving state, dataset status, or learning surface.
 

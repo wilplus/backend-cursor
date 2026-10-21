@@ -1,5 +1,7 @@
 # SPEC — Training corpus, training consent and project-scoped purge
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Status:** DRAFT design. Docs only. Nothing here is built, switched on, or
 authorized to run. Founder locks C1–C4 (2026-09-25) are recorded in
 `docs/SPEC-DECISIONS-LOG.md` §N and are binding on this design.

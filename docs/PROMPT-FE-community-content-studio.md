@@ -1,5 +1,7 @@
 # FE HANDOFF — Community Content Studio (one button in the CMS)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Backend is DONE and merged-ready** on branch `feat/community-content-studio`
 (this repo). Nothing below is speculative — every endpoint exists and is covered by
 `test_community_content.py` (55 tests, green).

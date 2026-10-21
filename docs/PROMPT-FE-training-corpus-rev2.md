@@ -1,5 +1,7 @@
 # FE prompt — Training corpus, rev 2 (answers to your handoff)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Repo:** `frontend-cursor` · **BE branch:** `feat/training-corpus-async` (`931d1fe`)
 **Date:** 2026-07-28 · **Replaces:** the §1/§2 open items in `PROMPT-FE-training-corpus.md`
 **Status:** BE complete, full suite green. Two contract changes below — both make your side simpler.

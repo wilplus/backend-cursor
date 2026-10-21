@@ -1,5 +1,7 @@
 # Audit ledger
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 The ledger is the memory of the audit work. If it is not here, it did not happen. Sources of truth, in order: repo CLAUDE.md (fences, locks, filter) → the design lock (https://claude.ai/artifact/AeRVS91VUAiJLCePB82s3d) → the V4 decision page and its Developer brief (https://claude.ai/artifact/UXiVaBvGLRTg83kjmHKY6E) → the audit (https://claude.ai/artifact/DwAgAoxxszUSd3WV5EJfMk, a list of claims, not facts).
 
 Status values: OPEN, VERIFYING, CONFIRMED, FALSE, DUPLICATE, FOUNDER, PARKED, IN-PR, DONE. Rows are never deleted. Severity: S1 live loop broken · S2 data loss · S3 fence breach · S4 wrong behaviour · S5 cosmetic · S0 not a defect (a founder, ops, content or counsel step, a parked lane, a build item).

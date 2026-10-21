@@ -1,5 +1,7 @@
 # Concept — per-user exercise effectiveness (Linear WIL-29)
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 > **2026-10-21 (N102):** what the app learns from and how a label settles are now one page, [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md). This concept stays as it was written. Whether what it proposes is in force is §3 A15 there.
 
 Date: 2026-10-18. Status: **CONCEPT FOR THE FOUNDER'S DECISION. Nothing here

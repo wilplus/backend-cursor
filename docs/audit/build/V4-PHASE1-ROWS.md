@@ -1,5 +1,7 @@
 # V4 Phase 1 · one row per pull request
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../../../README.md) (N106).
+
 Written 2026-10-07 (build plan D-ML-6). It splits `V4_BRIEF.md` Phase 1 and
 the ledger rows B1.1 to BEXIT into pull-request-sized rows. Each row names
 the tests that prove it. Every row serves nothing to a speaker: V4 is

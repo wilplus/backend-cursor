@@ -1,5 +1,7 @@
 # SPEC — The lock-in loop, offers, and the coach panel
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Status:** FOUNDER-DECIDED 2026-08-10; paragraph versioning, feedback
 families, and blindness boundary superseded by the founder's 2026-08-26 lock.
 The current rules below and `CANONICAL_PRODUCT_CONTRACT.md` win over historical

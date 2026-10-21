@@ -1,5 +1,7 @@
 # FE prompt — Training corpus: audio import + confidence labelling
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Repo:** `frontend-cursor` · **BE branch:** `feat/training-corpus` (`cde9abb`)
 **Date:** 2026-07-28 · **Status:** BE complete, CI green, contracts pinned and safe to build against
 **Migrations owed before it works in prod:** `add_confidence_labels.sql`, and

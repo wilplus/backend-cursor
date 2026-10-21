@@ -1,5 +1,7 @@
 # Founder lock · the recording screens (7 October 2026)
 
+> **Label: In force** · one of the rules, read in N95's order. Every doc and its label: [`README.md`](../README.md) (N106).
+
 `LOCKED 2026-10-07 · founder in chat: "Lock the recording screens" · decisions log N59`
 `RE-LOCKED 2026-10-12 · founder in chat: "that's what i want; please lock it" · decisions log N70`
 

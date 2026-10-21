@@ -1,5 +1,7 @@
 # MLC-3 Confident Moment Coaching Bundle — User Media Correlation Amendment D39
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: proposed interface correction for ML/data review. D39 retains D38 except
 where explicitly replaced below. It changes no runtime gate, serving state,
 dataset eligibility, or learning surface.

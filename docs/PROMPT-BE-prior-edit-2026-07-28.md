@@ -1,5 +1,7 @@
 # PROMPT — BE: `prior_edit` re-offer + re-apply telemetry (T1 · 1.2)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **For:** the backend agent/dev on `wilplus/backend-cursor`. Run the WILLAB
 DECISION FILTER first and emit the verdict block (expected:
 `JUSTIFIED-SCAFFOLDING — named unblocker: the in-flight FE add/rearrange

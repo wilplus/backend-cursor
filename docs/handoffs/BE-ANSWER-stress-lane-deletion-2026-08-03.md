@@ -1,5 +1,7 @@
 # BE answer — stress lane deleted, peer-review validation loop wired
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 **Date:** 2026-08-03 · **To:** FE (frontend-cursor) · **Re:**
 `BE handoff — delete the stress lane, wire the peer-review validation loop`
 · **Founder decision:** stress recognition is dead; pivoted into peer review.

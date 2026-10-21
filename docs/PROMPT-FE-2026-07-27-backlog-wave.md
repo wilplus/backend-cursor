@@ -1,5 +1,7 @@
 # FE prompt — the 2026-07-27 backlog wave
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Source: `willpowerlab backlog` (13 user stories). Companion:
 `docs/PROMPT-BE-2026-07-27-backlog-wave.md`.
 

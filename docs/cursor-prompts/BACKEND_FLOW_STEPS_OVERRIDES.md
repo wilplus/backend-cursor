@@ -1,5 +1,7 @@
 # Backend prompt: Flow-step overrides (skip metric questions / skip post questions)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 The frontend sends **`skip_metric_questions`** and **`skip_post_questions`** in **PUT `/v2/admin/students/<id>/overrides`** and expects them in **GET student profile** under `overrides`. If the backend does not store or return these fields, the admin toggles will not persist or reload.
 
 ---

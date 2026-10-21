@@ -1,5 +1,7 @@
 # Founder answers, Navigation Panel, 6 October 2026 (export of 07:59 UTC, verbatim)
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 R1 A Undo it (revert #907). R2 A Yes, merge #908 and #616 first. R3 A Fix the shadow-frame writer now. R4 A Delete mlc2-confidence-readiness after a check. R5 A Land the B6 patch.
 
 W1 A The ledger is the list. W2 A Most serious problem first. W3 A A fresh session per row. Note: "Yes each session for each row and if possible and age for the code we can extract the work to an external agent and paste here the work they have done to integrate it things like frontend or chunks of repetitive code etc and adjust the coding agent per each if possible if task requires serious effort make it fable if not go with even sonnet if possible if not go with the current model per session". W4 A Questions only come to the panel. W5 A A Done screen in the panel. Note: "And add the screens from the app like real screens if it was a user flow or user coach related work".

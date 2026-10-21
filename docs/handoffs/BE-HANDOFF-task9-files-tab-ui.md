@@ -1,5 +1,7 @@
 # BE handoff — Task 9: admin Tab 4 (Files) Next.js page
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 Status: **BE complete. Pure FE work — Next.js page + BFF proxy.** Three small premise corrections in the brief, none blocking. Two optional BE enhancements you might want before shipping the page (delete + pagination); flagged at the bottom.
 
 ---

@@ -1,5 +1,7 @@
 # Founder lock — helper words, the paragraph overlay and the practise loop (2026-09-30)
 
+> **Label: In force** · one of the rules, read in N95's order. Every doc and its label: [`README.md`](../README.md) (N106).
+
 `LOCKED 2026-09-30 · B1 yes · B2 yes · B3 yes · B4 yes · B5 yes · B6 yes · B7 yes · B8 yes · B9 yes · B10 yes · D1 yes · D2 yes · D3 yes · D4 yes · D5 yes · D6 yes · D7 yes · D8 yes · D9 yes · D10 yes · Q1 yes · Q2 yes · Q3 no · Q4 no · Q5 no · closed 2026-09-30: Q1 B · Q2 A · Q3 A · Q4 A · Q5 A`
 
 Locked by the founder on 2026-09-30 from the decisions page, with four overrides. Each item below is the locked outcome and the acceptance criteria to check when it is built. The build list and the mocks: <https://claude.ai/artifact/DQ41tdJqgC21SZGnqn9UYR>. The decisions page: <https://claude.ai/artifact/2Vz1UZVEA997UZpwivWWYh>.

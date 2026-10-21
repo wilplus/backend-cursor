@@ -1,5 +1,7 @@
 # MLC-3 Confident Moment Point 7 — frontend base-commit errata
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Date: 2026-09-14. Status: **errata**. It records a commit-identity change in the
 frontend repository that happened *after* the Point 7 review packet was frozen.
 

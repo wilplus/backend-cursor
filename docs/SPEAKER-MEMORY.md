@@ -1,5 +1,7 @@
 # Speaker memory: how Will learns about each speaker
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 > **2026-10-21 (N102):** the whole picture of what the app learns from is [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md). This file keeps the detail of Will's memory.
 
 Founder, 2026-10-20 (WIL-74): "a permanent part of our application,

@@ -1,5 +1,7 @@
 # Appendix C — Intervention Contract: Finding → Intervention → Presentation
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Last updated:** 2026-08-10.
 
 **Companion to SPEC.md v3.** Defines the rigid layer between detection (Appendix A) and what the user sees. Inherits §8 (triage), §11 (delivery constraints), Appendix B (state modulation).

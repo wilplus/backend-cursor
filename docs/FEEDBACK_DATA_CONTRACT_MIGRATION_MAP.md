@@ -1,5 +1,7 @@
 # Canonical Feedback Data Contract — Migration Map
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: additive dual-write foundation. Legacy reads remain authoritative.
 Legacy retirement is explicitly out of scope until parity and rollback are
 approved.

@@ -1,5 +1,7 @@
 # Engineering audit — backend (`backend-cursor`) — 2026-09-13
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 *Read-only audit, executed from the prompt in
 [`2026-09-13-engineering-audit-prompt.md`](2026-09-13-engineering-audit-prompt.md).
 Raw tool outputs are under [`raw/`](raw/). The founder's decision questions

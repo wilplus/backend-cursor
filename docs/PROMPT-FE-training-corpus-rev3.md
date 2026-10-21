@@ -1,5 +1,7 @@
 # FE prompt — Training corpus, rev 3: answering §7 (the empty Polish import)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Repo:** `frontend-cursor` · **BE branch:** `feat/corpus-language-fixes` (`0b182e7`)
 **Date:** 2026-07-29 · **Answers:** your §7, §3a, §1, §2
 

@@ -1,5 +1,7 @@
 # Build plan of 7 Oct 2026
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../../../README.md) (N106).
+
 The founder asked (7 Oct): where does every agreed design stand, how tightly
 is it defined, and what are the DEV tasks to build it inch-perfect, with the
 ML and backend under it. Eight read-only audits (one per area) compared the

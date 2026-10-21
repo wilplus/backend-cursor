@@ -1,5 +1,7 @@
 # BE handoff — push the analysis-state flip (kill the FE's 2s status polling)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: **IMPLEMENTED 2026-08-04** on this branch —
 `services/realtime_notify.py` (the broadcast sender),
 `set_session_analysis_state` instrumentation (services/db.py), and

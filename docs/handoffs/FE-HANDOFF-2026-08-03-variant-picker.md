@@ -1,5 +1,7 @@
 # FE handoff — the block variant PICKER, revisions & restore (2026-08-03)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 **From:** Backend
 **Backend state:** merged to `main` (#314), deployed; migration
 `add_ideal_text_variant_pool.sql` called out to run

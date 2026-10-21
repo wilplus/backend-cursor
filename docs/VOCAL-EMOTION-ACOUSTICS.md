@@ -1,5 +1,7 @@
 # Vocal-emotion acoustics — what we can measure, and where it stops
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Status:** reference doc (task T4 · 4.2). Primary source, not reconstructed.
 **Backs:** the shipped arousal-capture signal (`services/delivery_stars.arousal_z`, PR #249).
 

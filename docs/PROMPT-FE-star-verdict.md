@@ -1,5 +1,7 @@
 # FE prompt — Coach Star Verdict
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Repo:** `frontend-cursor` · **BE branch:** `feat/coach-star-verdict`
 **Date:** 2026-07-28 (rev 2: + playback fields per FE ask, + the star-TEXT edit endpoint)
 **Status:** BE complete · migrations pending: `add_star_verdicts.sql` + `add_moment_suggestion_final.sql`

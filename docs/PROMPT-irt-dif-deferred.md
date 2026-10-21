@@ -1,5 +1,7 @@
 # PROMPT — IRT, CAT and DIF (deferred; do not execute until a trigger fires)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Last updated:** 2026-08-05.
 
 **Status:** written in advance, deliberately not scheduled.

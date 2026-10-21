@@ -1,5 +1,7 @@
 # Transactions — what is atomic, what is not, what to move next
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Founder directive 2026-08-03: *"keep PostgREST for basic CRUD, but move
 invariant-critical, multi-step writes into Postgres functions (`.rpc()`) —
 eliminate these dangerous half-states so a server crash doesn't permanently

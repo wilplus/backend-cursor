@@ -1,5 +1,7 @@
 # FE prompt — The Key-Moments Game (Engine 5)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Repo:** `frontend-cursor` · **Date:** 2026-07-28
 **Status:** BE complete and LIVE on `main` since 2026-07-11 (`services/game_engine.py`,
 routes in `routes/v2_routes.py`, covered by `test_game_engine.py`). No FE exists — this

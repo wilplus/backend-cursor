@@ -1,5 +1,7 @@
 # MLC-3 General-User Service Rollout D4
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: design proposal for ML/data and Engineering review. No implementation
 or activation is authorized by this document.
 

@@ -1,5 +1,7 @@
 # RLS audit — public-schema tables without row level security
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Raised while reviewing the Journal migration (2026-07-25). The Journal review
 surfaced a HIGH-severity class of problem, and it is not specific to the
 Journal.

@@ -1,5 +1,7 @@
 # RPQ-V1 dependency restoration and local implementation review packet
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: checksum-pinned corrective local implementation for ML/data re-review.
 The exact response-boundary candidate/membership/exposure provenance finding
 and all earlier findings are addressed. All runtime and UI gates are

@@ -1,5 +1,7 @@
 # MLC-3 Confident Moment Coaching Bundle — Feedback Exposure Identity Amendment D15
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Status:** proposed narrow correction for Product/ML-data and Engineering
 interface review. It authorizes no implementation, numbering, commit, push,
 merge, deployment, activation, collection, dataset, training, evaluation,

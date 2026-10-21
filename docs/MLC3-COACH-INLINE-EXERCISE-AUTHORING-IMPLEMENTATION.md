@@ -1,5 +1,7 @@
 # MLC-3 Coach Inline Exercise Authoring D5 — Release Review Packet
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: migration 0324 assigned; release verification with every gate disabled.
 
 Backend base: `15bd963162967aaacc2e6ff89a814b085d9b13ec`

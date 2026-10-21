@@ -1,5 +1,7 @@
 # MLC-3 First-Client Service D2
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: revised service-mode amendment for ML/data and Engineering design review.
 
 This amendment connects the already accepted Feedback V3, N1 proximity,

@@ -1,5 +1,7 @@
 # V4 decision record and Developer brief (verbatim from https://claude.ai/artifact/UXiVaBvGLRTg83kjmHKY6E, founder-signed 2026-10-05/06)
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../../../README.md) (N106).
+
 ## Decision rows
 M1 agreed — Three learned models. Recognizer (how willfident is each moment), Picker (which moment, which feedback), Feedback writer (praise, clearer versions, exercise scripts). The existing exercise picker (keep or swap) sits beside them.
 M2 agreed — Fixed rules are never learned. Praise only on a confident read; rewrite or exercise only on a weak one; slide coverage; the honest empty lane; V3 as fallback.

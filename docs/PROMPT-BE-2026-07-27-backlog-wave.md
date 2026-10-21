@@ -1,5 +1,7 @@
 # BE prompt — the 2026-07-27 backlog wave
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 > **STATUS 2026-07-27 — all four BE tasks are IMPLEMENTED on
 > `claude/be-fe-prompts-0f4z8j`.** Founder answers are folded in below; where
 > the answer changed a task, the task text changed with it (BE-2 is now a

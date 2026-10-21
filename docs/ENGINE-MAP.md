@@ -1,5 +1,7 @@
 # The willab engine map — what runs where, and how it all connects
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 > **⚠️ HISTORICAL (marked 2026-09-29). Parts of this map describe code that no
 > longer exists.** Read it as a record of 28 July, not a description of today:
 > - The **shadow direction classifier** (`learning_train`, `learning_serve`,

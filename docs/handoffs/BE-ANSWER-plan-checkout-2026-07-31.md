@@ -1,5 +1,7 @@
 # BE → FE: the plans are sellable. Answers, and two bugs you did not ask about.
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 **Date:** 2026-07-31 · **Answers:** FE handoff "the plans are published, priced, and unsellable"
 **Status:** built, tested, on `claude/plan-checkout-endpoints-z1f08m`. One migration to run.
 

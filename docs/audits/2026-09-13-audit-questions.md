@@ -1,5 +1,7 @@
 # Audit questions — decisions needed before cleanup — 2026-09-13
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 *These are the questions the 2026-09-13 engineering audit could not answer
 from the code. Each one states the evidence, the options, and what changes
 with the answer. ★ marks the questions that gate the most work: answer those

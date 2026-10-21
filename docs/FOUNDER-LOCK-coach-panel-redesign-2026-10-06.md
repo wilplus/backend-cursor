@@ -1,5 +1,7 @@
 # Founder lock · the coach panel, redrawn (6 October 2026)
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 > **History since 2026-10-20.** The current rules of the coach panel are on one
 > page in the frontend repo, `docs/flows/coach-panel.md`
 > (<https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md>), edited in place as they change. This file is kept as written and

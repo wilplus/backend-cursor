@@ -1,5 +1,7 @@
 # PROMPT — build the drift layer (execute now)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Last updated:** 2026-08-05.
 
 **Status:** ready to execute. No trigger; this is stage 2 of Appendix G.10 and it is unblocked.

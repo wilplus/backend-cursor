@@ -1,5 +1,7 @@
 # Product-manager backlog — recurring processes and deferred unlocks
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Last updated:** 2026-08-06.
 
 **Status:** live. Created 2026-08-05 alongside Appendix G.

@@ -1,5 +1,7 @@
 # The check-in learning contract
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Founder-agreed, 2026-08-02.** Every PR that touches the day card argues with
 this document, not around it.
 

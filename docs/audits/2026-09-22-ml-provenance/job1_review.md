@@ -1,5 +1,7 @@
 # Job 1 — critical review of the Willab ML provenance audit
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../../../README.md) (N106).
+
 Scope: backend-cursor origin/main 87a9309 (manifest 0350), frontend-cursor 6768fbc. Read-only. Eight blockers and the 25 majors in sections A, B, D, E, F, G re-verified against source and a disposable copy of the released schema (willab_confident_moment_head2 plus per-reviewer clones, all dropped). Migrations 0341-0350 and migrations/pending/ read. Six independent reviewers covered the majors; the lead covered the blockers, the migrations and the three sweeps.
 
 ## 1. Verdicts

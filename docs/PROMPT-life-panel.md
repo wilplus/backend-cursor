@@ -1,5 +1,7 @@
 # The Life Panel — implementation document
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Status:** plan, not built. Spec of record — build prompts are
 [PROMPT-BE-life-panel.md](PROMPT-BE-life-panel.md) and [PROMPT-FE-life-panel.md](PROMPT-FE-life-panel.md).
 **Date:** 2026-07-26

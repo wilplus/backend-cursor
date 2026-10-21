@@ -1,5 +1,7 @@
 # MLC-2 Confidence Classification Dependency Audit
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: `SLICE 4 DARK PRODUCER INTEGRATED — FLAG OFF — CUTOVER BLOCKED`
 
 Owner: Señor Engineer

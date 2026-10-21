@@ -1,5 +1,7 @@
 # DEBUG HANDOFF — 2026-08-10 evening session
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 **Audience:** the comprehensive debugging + final-fixing session the founder is
 launching. Read this before touching anything. It is the distilled state of a
 full day of work: what shipped, what is verified, what is broken, what was

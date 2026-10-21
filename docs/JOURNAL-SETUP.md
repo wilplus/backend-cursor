@@ -1,5 +1,7 @@
 # Journal (blog) + CMS — BE setup
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Public Journal on www.willpowerlab.com plus a password-gated in-house CMS.
 Fully self-contained: the only table is `journal_post`, and nothing in the
 record → transcribe → coach → read loop reads or writes it.

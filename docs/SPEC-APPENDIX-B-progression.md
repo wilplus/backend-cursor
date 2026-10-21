@@ -1,5 +1,7 @@
 # Appendix B — Feedback Progression: Novice to Expert
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Last updated:** 2026-08-06.
 
 **Companion to SPEC.md v3.** Governs every parameter of the Feedback Engine over a user's lifetime. Inherits §8 (triage), §10 (invariants), §11 (delivery constraints).

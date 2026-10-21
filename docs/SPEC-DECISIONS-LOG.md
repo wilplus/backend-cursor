@@ -1,5 +1,7 @@
 # Decisions log — settled in review, not yet folded into SPEC.md
 
+> **Label: In force** · one of the rules, read in N95's order. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Last updated:** 2026-09-25.
 
 **Purpose:** everything agreed after SPEC.md v3 was committed. This file exists so a long
@@ -7,7 +9,7 @@ review session survives itself. Entries here are **binding** and get folded into
 sections on the next spec pass. Where this file and SPEC.md v3 disagree, **this file is newer.**
 
 **From 2026-10-20, the Feedback walk and the chat have one page** (frontend
-`docs/flows/feedback-walk-and-chat.md`, <https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md>), where their rules are
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), <https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md>), where their rules are
 edited in place. A decision about that flow keeps its N-number here as two lines
 and a link to the page; the full text lives once, there.
 
@@ -18,7 +20,7 @@ requires. The `text/plain` clipboard flavour carries no marker line.**
 
 This closes the open item recorded in
 `legal/phase1-2026.1/03-article-50-assessment-v1.0` §3, where the written
-assessment and `docs/AI-CONTENT-MARKING-PROPOSAL.md` §3 disagreed and the
+assessment and [`docs/AI-CONTENT-MARKING-PROPOSAL.md`](AI-CONTENT-MARKING-PROPOSAL.md) §3 disagreed and the
 implementation had taken one side without the disagreement being resolved.
 
 **What was decided.** The rich-text (`text/html`) flavour keeps its marking.
@@ -45,7 +47,7 @@ break the match with the signed PDF — the defect that superseded two earlier
 signature rounds. The decision lives here and in the proposal's status line. A
 `v1.1` of `03` carrying it is a separate, unhurried call.
 
-**Supersedes** the recommendation in `AI-CONTENT-MARKING-PROPOSAL.md` §3
+**Supersedes** the recommendation in [`AI-CONTENT-MARKING-PROPOSAL.md`](AI-CONTENT-MARKING-PROPOSAL.md) §3
 ("option 1 for `text/plain`, plus the HTML flavour"). That document's
 reasoning stands on the record and is not withdrawn; the product does not
 follow it.
@@ -348,7 +350,7 @@ evaluation — it is calibration signal. **Active-learning priority:** when the 
 corpus (either a model miss or a rater miss, and one more peer says which) — it routes
 **immediately** for a 2nd peer. *Amended 2026-10-06 (founder, Navigation Panel QG1 A; ledger CA06; decisions log N51): J3 still holds for the label ledger and for the sound confidence read — a singleton is never gold and never evaluation, and only a settled clip is gold or evaluation data (rule 3 of `services/label_quorum.py`). Willfidence (SPEC §17, `willfidence-v1`) is a separate, internal measure computed from stored answers; it is not a label, not gold and not an evaluation set. This note changes nothing about training labels.*
 
-*J4 to J6 are replaced by K below (founder 2026-08-25): "Not sure" never settles, and only two matching Yes, In-between or No answers settle a clip. What this did to v1 `neutral` rows is open in `docs/LEARNING-AND-QUORUM.md` §3 C1.*
+*J4 to J6 are replaced by K below (founder 2026-08-25): "Not sure" never settles, and only two matching Yes, In-between or No answers settle a clip. What this did to v1 `neutral` rows is open in [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md) §3 C1.*
 
 **J4 · IDK is a RESPONSE, not a null.** Counted like any other answer:
 - **1 definite + 1 IDK** = not a quorum → **route to a 3rd rater**.
@@ -559,7 +561,7 @@ not retired.
 ## N · Training consent, the training corpus and project delete (founder 2026-09-25)
 
 Locked by the founder on 2026-09-25. Design:
-`docs/SPEC-training-corpus-and-project-purge.md`.
+[`docs/SPEC-training-corpus-and-project-purge.md`](SPEC-training-corpus-and-project-purge.md).
 
 **N1 · C1 — training returns only through re-acceptance.** Training may come
 back later only through a new policy version that every user re-accepts.
@@ -695,10 +697,10 @@ decision page).**
 3. **Who trains:** not decided. **Training stays off until it is.**
 4. **Transfers:** decided together with who trains.
 5. **Privacy Policy text:** engineering drafts, counsel reviews, the founder
-   approves. Draft: `legal/phase1-2026.1/10-training-policy-changes-DRAFT.md`.
+   approves. Draft: [`legal/phase1-2026.1/10-training-policy-changes-DRAFT.md`](../legal/phase1-2026.1/10-training-policy-changes-DRAFT.md).
 6. **Retention schedule:** engineering prepares v1.1 with the training-copies
    and consent-record rows, counsel checks, the founder signs. Draft:
-   `legal/phase1-2026.1/11-retention-schedule-v1.1-training-DRAFT.md`.
+   [`legal/phase1-2026.1/11-retention-schedule-v1.1-training-DRAFT.md`](../legal/phase1-2026.1/11-retention-schedule-v1.1-training-DRAFT.md).
 7. **Delete one project (P1):** finish now.
 8. **The switched-off P5 pieces:** build now, everything off.
 
@@ -713,13 +715,13 @@ page).**
    anyone who has recorded; today every real one stops at `review_required`.
 2. **Who trains: OpenAI.** Training copies go to OpenAI in the United States
    under the European Commission's standard contractual clauses. Filled into
-   `legal/phase1-2026.1/10-training-policy-changes-DRAFT.md` for counsel.
+   [`legal/phase1-2026.1/10-training-policy-changes-DRAFT.md`](../legal/phase1-2026.1/10-training-policy-changes-DRAFT.md) for counsel.
    Training itself stays off until P5.
 3. **The Data & consent intro, approved wording:** "Your recordings are used to
    run your own coaching. They are used to train models only if you turn on
    Help improve WillpowerLab." It is shown only while the switch is offered;
    until then the current wording stays, because it is still true.
-4. **The dead commit codes in `legal/phase1-2026.1/SIGNED-ARTIFACTS.md`:**
+4. **The dead commit codes in [`legal/phase1-2026.1/SIGNED-ARTIFACTS.md`](../legal/phase1-2026.1/SIGNED-ARTIFACTS.md):**
    delete them ("Simply delete them"). `4e92203`, `8ddaab2` and `81369c0`
    were removed and the sentences kept readable; the signed PDFs and their
    hashes are unchanged.
@@ -736,7 +738,7 @@ page).**
    or voice. This closes §3b; doc 06 itself is signed and is not edited.
 3. **Load retention v1.0 now; upload the signed PDF after** ("Not yet, turn
    on anyway"). Migration 0381 registers the schedule by the coordinates in
-   `SIGNED-ARTIFACTS.md` row 06 and seeds its four rules. Until the founder
+   [`SIGNED-ARTIFACTS.md`](../legal/phase1-2026.1/SIGNED-ARTIFACTS.md) row 06 and seeds its four rules. Until the founder
    uploads the signed file to `phase1-2026.1/legal/retention-schedule-v1.0.pdf`,
    that record names a file storage does not hold. **Open: the upload.**
 
@@ -770,7 +772,7 @@ page).**
 **N15 · Door 1 opened; Privacy 3.2 and Terms 3.2 approved (founder
 2026-10-01).** In chat, in this order: "You have my sign off" on counsel's
 switch sentence and the four lines above it (recorded in
-`legal/phase1-2026.1/13-training-consent-wording-SIGNED-2026-10-01.md`);
+[`legal/phase1-2026.1/13-training-consent-wording-SIGNED-2026-10-01.md`](../legal/phase1-2026.1/13-training-consent-wording-SIGNED-2026-10-01.md));
 then "I just approve it here right now" on Privacy 3.2 and Terms 3.2 as
 drafted from counsel's five fixes (`10-…`, `12-…`), including the six-year
 consent-record period that counsel has not yet confirmed; then "Yes, open
@@ -795,8 +797,8 @@ door one."
    changes before publishing (free) or in a 3.3 everyone re-accepts (not).
 4. **The wording PDF** is rendered from `13-…` for the founder's qualified
    signature (PAdES, as for 01 and 06); its signed hash goes into
-   `SIGNED-ARTIFACTS.md` row 13 and the registration SQL in
-   `docs/LEARNING-DOORS.md`.
+   [`SIGNED-ARTIFACTS.md`](../legal/phase1-2026.1/SIGNED-ARTIFACTS.md) row 13 and the registration SQL in
+   [`docs/LEARNING-DOORS.md`](LEARNING-DOORS.md).
 5. **PUBLISHED 2026-10-01 09:00:43 UTC.** The founder ran the four pieces of
    `scripts/phase1_policy_publish_training_3_2.sql` in the Supabase SQL
    editor: STEP 0 resolved all five purposes operational; STEP 1 registered
@@ -942,10 +944,10 @@ and no gate flips on it until its wording is published.
 **N24 · The founder's sign-off of 2026-10-02 ("I sign it all"; own
 determinations, not reviewed by outside counsel).** In chat, after the eight
 determinations (N23): the founder signed the Privacy and Terms lines of
-`legal/phase1-2026.1/15-coach-blind-check-privacy-line-and-balancing-test-SIGNED-2026-10-02.md`
-§1 and `legal/phase1-2026.1/16-share-switch-wording-SIGNED-2026-10-02.md` §1,
+[`legal/phase1-2026.1/15-coach-blind-check-privacy-line-and-balancing-test-SIGNED-2026-10-02.md`](../legal/phase1-2026.1/15-coach-blind-check-privacy-line-and-balancing-test-SIGNED-2026-10-02.md)
+§1 and [`legal/phase1-2026.1/16-share-switch-wording-SIGNED-2026-10-02.md`](../legal/phase1-2026.1/16-share-switch-wording-SIGNED-2026-10-02.md) §1,
 document 02 v1.1, the delayed-measure definition
-(`docs/MEASURE-exercise-human-delayed-v1.md`), and said counsel has answered
+([`docs/MEASURE-exercise-human-delayed-v1.md`](MEASURE-exercise-human-delayed-v1.md)), and said counsel has answered
 everything put to it; what needs a real signature is rendered for him.
 1. **The approved text is `legal/phase1-2026.1/copy/privacy-3.3.txt` and
    `legal/phase1-2026.1/copy/terms-3.3.txt`**: the 3.2 bytes plus the signed
@@ -963,10 +965,10 @@ everything put to it; what needs a real signature is rendered for him.
 2. **Document 02 v1.1 is signed by the controller** (approved_at 2026-10-02,
    signature date 2 October 2026), rendered by `scripts/render_doc_pdf.py` for
    the PAdES signature, upload to its `object_key` and hash
-   (`legal/phase1-2026.1/SIGNED-ARTIFACTS.md`, pending rows). Its condition is
+   ([`legal/phase1-2026.1/SIGNED-ARTIFACTS.md`](../legal/phase1-2026.1/SIGNED-ARTIFACTS.md), pending rows). Its condition is
    engaged (N23): counsel's confirmation is the next action.
 3. **Retention schedule v1.2**
-   (`legal/phase1-2026.1/18-retention-schedule-v1.2-blind-check-and-lending-DRAFT.md`):
+   ([`legal/phase1-2026.1/18-retention-schedule-v1.2-blind-check-and-lending-DRAFT.md`](../legal/phase1-2026.1/18-retention-schedule-v1.2-blind-check-and-lending-DRAFT.md)):
    v1.0 unchanged, v1.1's two training rows (six years stands as the
    founder's figure) and the three rows of 15 §3 and 16 §3, rendered for the
    same signature; `scripts/phase1_retention_rules_v1_2.sql` registers the
@@ -995,7 +997,7 @@ everything put to it; what needs a real signature is rendered for him.
    the data-export path before the peer lane flips.
 7. **Both PDFs signed 2026-10-02 15:53:48 UTC** (PAdES), received by the
    session the same day, each the unsigned render plus the signature and
-   nothing else; hashes in `legal/phase1-2026.1/SIGNED-ARTIFACTS.md` and in
+   nothing else; hashes in [`legal/phase1-2026.1/SIGNED-ARTIFACTS.md`](../legal/phase1-2026.1/SIGNED-ARTIFACTS.md) and in
    the two registration scripts. The upload to each `object_key` is the
    founder's.
 
@@ -1594,11 +1596,11 @@ answers below.
    the four append-only feedback and job tables, a purge that meets their
    rows still stops for a person (N14.3), so project Delete stays off.*
    *As built (Q15 A, Q22 A, Q23 A): retention schedule v1.4
-   (`legal/phase1-2026.1/20-retention-schedule-v1.4-product-records-and-job-evidence-DRAFT.md`)
-   and document 03 v1.1 (`03-article-50-assessment-v1.1-DRAFT.md`) were
+   ([`legal/phase1-2026.1/20-retention-schedule-v1.4-product-records-and-job-evidence-DRAFT.md`](../legal/phase1-2026.1/20-retention-schedule-v1.4-product-records-and-job-evidence-DRAFT.md))
+   and document 03 v1.1 ([`03-article-50-assessment-v1.1-DRAFT.md`](../legal/phase1-2026.1/03-article-50-assessment-v1.1-DRAFT.md)) were
    signed 2026-10-05 20:05 UTC (D1 A, D2 A on the Wave 3 sign-off page,
-   N50; hashes in `SIGNED-ARTIFACTS.md`), and the counsel brief is written
-   (`21-counsel-questions-2026-10.md`, document 02's condition first).
+   N50; hashes in [`SIGNED-ARTIFACTS.md`](../legal/phase1-2026.1/SIGNED-ARTIFACTS.md)), and the counsel brief is written
+   ([`21-counsel-questions-2026-10.md`](../legal/phase1-2026.1/21-counsel-questions-2026-10.md), document 02's condition first).
    Registration waits for the upload and, for v1.4, for 0424 (the purge
    change that acts on its two rules) and 0425 (the grant that lets the
    purge delete three job tables' rows) to be deployed.*
@@ -1698,9 +1700,9 @@ P4 A / P5 A / P6 A / P7 A / C1 A / C2 A / C3 A / C4 B").**
 
 **N51 · The founder's answers of 6 October 2026 (Navigation Panel; two
 exports, 07:59 and 13:10 UTC).** The answers are verbatim, with the
-founder's notes, in `docs/audit/PANEL-ANSWERS-2026-10-06.md` and
-`docs/audit/PANEL-ANSWERS-2026-10-06-b.md`, and the rows they decide are in
-`docs/audit/LEDGER.md`, all three on branch `claude/audit-ledger`. Each answer
+founder's notes, in [`docs/audit/PANEL-ANSWERS-2026-10-06.md`](audit/PANEL-ANSWERS-2026-10-06.md) and
+[`docs/audit/PANEL-ANSWERS-2026-10-06-b.md`](audit/PANEL-ANSWERS-2026-10-06-b.md), and the rows they decide are in
+[`docs/audit/LEDGER.md`](audit/LEDGER.md), all three on branch `claude/audit-ledger`. Each answer
 is listed here by its panel ID with the ledger rows it decides (in brackets;
 "—" where the answer sets process or a build-plan item and no ledger row
 carries it).
@@ -1805,7 +1807,7 @@ carries it).
    open under O3 (QG1 A; BG04, CA02, CA03, CA06, N25). J1 and J3 above carry
    the same note (CA02, CA06). SPEC D3 says it governs the sound confidence
    question only (QG10 A; CA05). "V3 is the served policy" is rewritten in
-   the backend CLAUDE.md, `docs/willab_decision_filter.md`, contract 24, 24h
+   the backend CLAUDE.md, [`docs/willab_decision_filter.md`](willab_decision_filter.md), contract 24, 24h
    and the clause 47 note: V3 is served today; V4, when built, replaces it
    for every speaker by the founder's switch (V22a B); a block V4 is very
    unsure of gets V3's pick, logged, never silent (V15a); the filter copy's
@@ -1830,7 +1832,7 @@ carries it).
    (re-lands with v1.5, P33 B); the Phase 2 texts (QG11 A: written when
    each step starts).
 9. **The third export, 13:38 UTC** (verbatim in
-   `docs/audit/PANEL-ANSWERS-2026-10-06-b.md`, "Third export"). V10b A a
+   [`docs/audit/PANEL-ANSWERS-2026-10-06-b.md`](audit/PANEL-ANSWERS-2026-10-06-b.md), "Third export"). V10b A a
    paragraph is placed by its place on the slide, the slide as backup.
    V22c B V4 alone: no V3 running silently beside it for comparison; the
    founder accepted that V4 cannot then be compared with V3 on the same
@@ -1856,7 +1858,7 @@ carries it).
 the founder wrote in the prototype are signed (founder, 6 October 2026, in
 chat over prototype rounds 1 to 4).** The prototype is
 <https://claude.ai/artifact/C2CTBmU1bfSSDQgJUHTKkE> (version 10); its
-written record is `docs/FOUNDER-LOCK-feedback-walk-2026-10-06.md`, which
+written record is [`docs/FOUNDER-LOCK-feedback-walk-2026-10-06.md`](FOUNDER-LOCK-feedback-walk-2026-10-06.md), which
 wins over older design locks where they disagree.
 1. **The walk, its look and its motion are locked** ("the design we have
    now is good! it should be unified everywhere across the app"; "please
@@ -1920,7 +1922,7 @@ wins over older design locks where they disagree.
 
 **N53 · The founder's answers of 6 October 2026, fourth export (19:28
 UTC; Navigation Panel).** Verbatim, with the notes, in
-`docs/audit/PANEL-ANSWERS-2026-10-06-c.md`; the ledger rows carry DECIDED
+[`docs/audit/PANEL-ANSWERS-2026-10-06-c.md`](audit/PANEL-ANSWERS-2026-10-06-c.md); the ledger rows carry DECIDED
 notes (A053a, A068a, A060, A077a, A169a).
 1. **The line bank.** B11, B13 and B14 are signed as drafted. For B01,
    B05 to B10 and B12 the founder wrote a line of their own; in chat:
@@ -1962,8 +1964,8 @@ notes (A053a, A068a, A060, A077a, A169a).
 
 **N54 · The line bank is signed, and the walk's open questions (founder,
 6 October 2026, fifth export, 20:03 UTC).** Verbatim in
-`docs/audit/PANEL-ANSWERS-2026-10-06-d.md`; every signed line is in
-`docs/SIGNED-line-bank-2026-10-06.md`, which is the only source the code
+[`docs/audit/PANEL-ANSWERS-2026-10-06-d.md`](audit/PANEL-ANSWERS-2026-10-06-d.md); every signed line is in
+[`docs/SIGNED-line-bank-2026-10-06.md`](SIGNED-line-bank-2026-10-06.md), which is the only source the code
 may read them from.
 1. **The line bank.** On the founder's request ("for each you should
    create 4"), four new lines per screen went to the panel beside the
@@ -2003,7 +2005,7 @@ the Privacy Policy and Terms change, counsel reviews it, and only then
 does the switch leave Settings and the code stop asking
 (`consent_choice_required("personalised_practice")`). Until then nothing
 changes in the app. CM3b A: the four lines after the third try that is
-not praise are signed (`docs/SIGNED-line-bank-2026-10-06.md`). WQ3b A
+not praise are signed ([`docs/SIGNED-line-bank-2026-10-06.md`](SIGNED-line-bank-2026-10-06.md)). WQ3b A
 arrived without a letter; asked again: WQ3c A, the button says "Accept"
 (seventh export, 20:14 UTC).
 
@@ -2012,7 +2014,7 @@ arrived without a letter; asked again: WQ3c A, the button says "Accept"
 21:46 UTC).** The founder corrected the coach panel screen by screen on a
 clickable prototype of today's panel and then on its redesign; the layout
 is agreed ("rest looks ok") and locked in
-`docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`.
+[`docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`](FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md).
 
 1. **One action per screen; diagnosis before cure** (chat). An error
    moment asks "What kind of error is it?" (what the machine heard marked;
@@ -2050,7 +2052,7 @@ prototype (<https://claude.ai/artifact/TEBvGMehRF6wXCvJTEYTUA>, copy in
 coach screen is built to, exactly as the Ideal Text Final Screens are for
 the speaker's: no layout, flow or wording change and no added element
 without the founder. The frontend's CLAUDE.md carries the rule
-("Design lock — the coach panel"); `docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`
+("Design lock — the coach panel"); [`docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`](FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md)
 stays the written record. The panel's training-corpus questions CO2 and
 CO3 are open and do not change the screens.
 
@@ -2103,7 +2105,7 @@ moving under a still frame, calmer gestures that land softly, the keyboard
 without a click, and never a reload from a scroll to the top. The words new
 with it are locked with the screens. The frontend's CLAUDE.md carries the
 rule ("Design lock — the recording screens");
-`docs/FOUNDER-LOCK-recording-screens-2026-10-07.md` is the written record.
+[`docs/FOUNDER-LOCK-recording-screens-2026-10-07.md`](FOUNDER-LOCK-recording-screens-2026-10-07.md) is the written record.
 It wins over the Ideal Text lock's line on Recording Mode for these screens.
 
 **N60 · The consent screens' design is locked (founder, chat, 7 October
@@ -2116,7 +2118,7 @@ the learning?" question are built to. Every step scrolls from its true top;
 a document's title and buttons stay still while its text scrolls. One word
 change, signed in the same message: "Two things to confirm" becomes "Three
 things to confirm". The frontend's CLAUDE.md carries the rule ("Design lock
-— the consent screens"); `docs/FOUNDER-LOCK-consent-screens-2026-10-07.md`
+— the consent screens"); [`docs/FOUNDER-LOCK-consent-screens-2026-10-07.md`](FOUNDER-LOCK-consent-screens-2026-10-07.md)
 is the written record.
 Amended the same day (ST1 A): the Data & consent page follows the settings
 page prototype (<https://claude.ai/artifact/4jDJsvBAquMUgaGkJgHR76>, copy in
@@ -2138,7 +2140,7 @@ can count. Ships after a GPT check (HO-14).
 
 **N62 · The build plan's questions are answered, and Wave 1 starts
 (founder, Navigation Panel, 7 October 2026, 16:36 UTC).** The audit of
-every agreed design against `main` (`docs/audit/build/BUILD-PLAN-2026-10-07.md`)
+every agreed design against `main` ([`docs/audit/build/BUILD-PLAN-2026-10-07.md`](audit/build/BUILD-PLAN-2026-10-07.md))
 asked 15 questions; the founder answered 11, all with Claude's pick, and
 gave Wave 1 its green light (GO-W1 A: "I start now, merge each PR when it's
 green, and post every finished piece in Done").
@@ -2258,7 +2260,7 @@ its rules from.
 - The recording lock records the one close button and the fade (Q-B14 A).
   N59 named the prototype's version 6; the lock is version 7, as the
   frontend's CLAUDE.md and the lock file already say.
-- `docs/COACH-PANEL-BUILD-PLAN-P2-P7.md` maps the coach panel rebuild to
+- [`docs/COACH-PANEL-BUILD-PLAN-P2-P7.md`](COACH-PANEL-BUILD-PLAN-P2-P7.md) maps the coach panel rebuild to
   steps, screens and endpoints.
 
 **N65 · Wave 2's signatures are given, and V4 may measure every
@@ -2379,7 +2381,7 @@ switch wording v2 with its eight lines, the retention rows, document 02
 v1.2, and the DPIA and ROPA addenda, with D1 to D4 as drafted, knowing
 counsel has not seen them." **Counsel's review was not obtained**; the
 founder signs in its place and the record says so on every file.
-- **Signed, as drafted** (`legal/phase1-2026.1/SIGN-3.5-2026-10-08.md`):
+- **Signed, as drafted** ([`legal/phase1-2026.1/SIGN-3.5-2026-10-08.md`](../legal/phase1-2026.1/SIGN-3.5-2026-10-08.md)):
   `copy/privacy-3.5.txt` and `copy/terms-3.5.txt` (exact bytes; effective
   date line "8 October 2026"), `22-…-SIGNED-2026-10-08.md` with D1 (the
   corpus copy copies no audio; the code's audio branch goes first), D2
@@ -2388,10 +2390,10 @@ founder signs in its place and the record says so on every file.
   6(1)(f)), `23-…-v2-SIGNED-2026-10-08.md` (the switch sentence, sha256
   `69d3e702…521083c`, and its eight lines), `24-…-SIGNED-2026-10-08.md`,
   document 02 v1.2 (the note, and its full text
-  `02-power-score-classification-v1.2-SIGNED-2026-10-08.md`), and the DPIA
+  [`02-power-score-classification-v1.2-SIGNED-2026-10-08.md`](../legal/phase1-2026.1/02-power-score-classification-v1.2-SIGNED-2026-10-08.md)), and the DPIA
   and ROPA addenda (`docs/legal/*-ADDENDUM-2026-10-08-all-learning-SIGNED.md`).
 - **Rendered for the PAdES signature** by `scripts/render_doc_pdf.py`: 23
-  and 02 v1.2; their unsigned hashes are in `SIGNED-ARTIFACTS.md`. The
+  and 02 v1.2; their unsigned hashes are in [`SIGNED-ARTIFACTS.md`](../legal/phase1-2026.1/SIGNED-ARTIFACTS.md). The
   retention version that carries 24's rows is not yet assembled: v1.5 is
   reserved for N50 P1–P7 (reverted by #909, to re-land).
 - **Signing published nothing and opened nothing.** Every lane still waits
@@ -2424,7 +2426,7 @@ consent record kept six years after withdrawal or erasure) and question 1
 from the 3.5 pack's open list remains.
 Recorded in `legal/phase1-2026.1/22-…-SIGNED-2026-10-08.md` §5. The
 founder also gave the OpenAI data processing agreement's date: signed 18
-September 2026 (recorded on `SIGN-3.5-2026-10-08.md`; a filed copy is still
+September 2026 (recorded on [`SIGN-3.5-2026-10-08.md`](../legal/phase1-2026.1/SIGN-3.5-2026-10-08.md); a filed copy is still
 to be recorded).
 
 **N70 · The recording screens move by buttons, not scrolling (founder,
@@ -2440,8 +2442,8 @@ no slide dots; the slides move sideways (Next: in from the right; Back: in
 from the left); a swipe or scroll never changes the slide; the Take 1
 learning screen (**Scroll down to start**, **Click down to start**) is
 deleted, so every Take opens on **Getting your mic ready**. "Back" and
-"Next slide" are signed. `docs/FOUNDER-LOCK-recording-screens-2026-10-07.md`
-carries the amended lock; the frontend's `docs/LOCKS.md` points to the new
+"Next slide" are signed. [`docs/FOUNDER-LOCK-recording-screens-2026-10-07.md`](FOUNDER-LOCK-recording-screens-2026-10-07.md)
+carries the amended lock; the frontend's [`docs/LOCKS.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/LOCKS.md) points to the new
 prototype.
 
 **N70.1 · The arrow keys on the recording screen (founder, chat, 12 October
@@ -2471,15 +2473,15 @@ it back on. Words L1–L13 signed. Prototypes
 <https://claude.ai/artifact/G8Am3fR3f3SzAdTkwyUGKZ> (v8) and
 <https://claude.ai/artifact/1AUfoqBtZThxVbQKz1BTih> (v2); plan
 <https://claude.ai/artifact/RYMPxAqSyHinRStymsGwFr>. Lock:
-`docs/FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`.
+[`docs/FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`](FOUNDER-LOCK-ai-voice-practice-2026-10-12.md).
 
 **N72 · The 3.6 pack is signed: the new features described, training widened
 to what speakers write to Will, the United States for California residents
 (founder, chat, 15 October 2026).** The founder, word for word: "I sign the 3.6 pack of 15 October 2026 as drafted: Privacy 3.6, Terms 3.6, AI notice 3.2 and the training switch wording v3 with its nine lines, with D1 to D8 as drafted, and the United States (California only) added to the countries, knowing counsel has not seen them."
 **Counsel's review was not obtained.**
-- **Signed, as drafted:** `legal/phase1-2026.1/25-privacy-terms-3.6-new-features-SIGNED-2026-10-15.md`
+- **Signed, as drafted:** [`legal/phase1-2026.1/25-privacy-terms-3.6-new-features-SIGNED-2026-10-15.md`](../legal/phase1-2026.1/25-privacy-terms-3.6-new-features-SIGNED-2026-10-15.md)
   (Privacy 3.6, Terms 3.6, AI notice 3.2; D1–D8) and
-  `26-training-consent-wording-v3-SIGNED-2026-10-15.md` (training-only-v3,
+  [`26-training-consent-wording-v3-SIGNED-2026-10-15.md`](../legal/phase1-2026.1/26-training-consent-wording-v3-SIGNED-2026-10-15.md) (training-only-v3,
   nine lines). Training stays opt-in (founder, 14 October: "Keep opt-in,
   widen it"); `allowed_countries` gains `us`, California only (D8).
 - **Signing published nothing.** 3.6 is published only after E1–E12 (25, §4),
@@ -2546,7 +2548,7 @@ already published and cannot change in place, the founder: "yes, go ahead as
   title?" from the whole talk, slide by slide; and since backend #1069 Will
   reads the Lounge thread (the summary after a Take, the walk's steps, the
   coach's word).
-- **What:** `legal/phase1-2026.1/28-privacy-3.7-will-context-APPROVED-2026-10-15.md`;
+- **What:** [`legal/phase1-2026.1/28-privacy-3.7-will-context-APPROVED-2026-10-15.md`](../legal/phase1-2026.1/28-privacy-3.7-will-context-APPROVED-2026-10-15.md);
   `copy/privacy-3.7.txt` is 3.6 with the founder's two passages verbatim and
   the version lines. Terms 3.6, AI notice 3.2 and training-only-v4 unchanged.
 - **Publishing** is the founder's step: `legal/phase1-2026.1/PUBLISH-3.7-2026-10-15.sql`,
@@ -2569,14 +2571,14 @@ AI clip, as a fourth exercise next to pace, pause and stress; the test that it
 improves awareness is fewer fillers in the next try, measured internally and
 read in the admin Take view, never shown; an uploaded Take has no voice and
 gets nothing. One signed sentence, L18, under the player ("you have my OK to
-the previous one"). Lock: `FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`,
+the previous one"). Lock: [`FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`](FOUNDER-LOCK-ai-voice-practice-2026-10-12.md),
 "Decided after the lock (2026-10-18, fillers)". Migration 0475.
 
 **N76 · Words first, then voice (founder, chat, 18 October 2026).** The
 practise moment opens on the Clearer version only when its words need help and
 the rewrite passes the gate; otherwise the voice Exercise with the AI clip ("ok,
 push to prod" on <https://claude.ai/artifact/Ut2SqvHCoJ1hvH8dp17yQe>). The rule:
-flow page C4 and H3; `FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`. No migration.
+flow page C4 and H3; [`FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`](FOUNDER-LOCK-ai-voice-practice-2026-10-12.md). No migration.
 
 **N77 · A coach's word for a Take shows on its own Take only (founder,
 Claude Code session, 18 October 2026).** Asked who gets a coach's recorded
@@ -2625,7 +2627,7 @@ answer-video transcripts, and the situation frozen on each answer.
 never plays again; watched anywhere is watched; on the coach panel the saved
 video with "Record again" and the new word "Remove the video" (the two-phone
 prototype <https://claude.ai/artifact/APk56PLZt6o6Cx9qUMKkuk>). The rules: flow
-page D5; `FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md` ("Decided after the
+page D5; [`FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`](FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md) ("Decided after the
 lock (2026-10-19, the saved video, N80)"). No migration.
 
 **N81 · The lens is one chat (founder, chat, 20 October 2026; WIL-89).** The
@@ -2647,7 +2649,7 @@ words: flow page C6, E2–E4, K. No migration.
 "Will's questions"; the words are checked before they are kept; migration 0488
 `will_question_bank`, GET/PUT `/v2/admin/will-questions` ("OK" on
 <https://claude.ai/artifact/WLZ1KY6dX1RBLXiNU73F9N>, the review waived). The
-rules and the new words: `FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`
+rules and the new words: [`FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`](FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md)
 ("Decided after the lock (2026-10-20, Will's questions, N83)"); flow page E5.
 
 **N84 · A Good job only when clearly better, and the AI voice on time
@@ -2687,7 +2689,7 @@ same small text, the speaker's own words from the newest Take that said them
 nothing when they have not said. The founder approved the prototype
 <https://claude.ai/artifact/UiZzNZs5623NkforaeR4PM> ("make it all the same
 small text", "please execute all of that"). The coach panel's rules move to
-one page, frontend `docs/flows/coach-panel.md`, as the walk's did (N86); its
+one page, frontend [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md), as the walk's did (N86); its
 lock file is history. The rules: that page, C3 and J. No migration.
 
 **N88 · The walk opens the moment processing ends (founder, the app, 20
@@ -2695,7 +2697,7 @@ October 2026).** After checking the app: the marks are baked in the
 processing run right after the Take is ready, the processing bubble waits
 for them, the Clearer version is served on its moment, and the speaker-side
 practice gates read the speaker's own page. The rules: the walk's page, A1,
-A2, C3, C4, D4, D5 (frontend `docs/flows/feedback-walk-and-chat.md`, §6
+A2, C3, C4, D4, D5 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), §6
 N88; backend #1209, frontend #896). No migration.
 
 **N89 · One mechanism opens the walk; the chain after the Take (founder, the
@@ -2704,7 +2706,7 @@ after the summary (no next step, no record button) the asks come one at a
 time, each with Will's lead-in, then "Look, practice makes perfect. If you're
 ready, let's go with the next take. 💪" and "Record Take N". The rules: the
 walk's page, B10, C1, D3, D4, D5, E1, F4, F5, K (frontend
-`docs/flows/feedback-walk-and-chat.md`, §6 N89; backend #1210, frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), §6 N89; backend #1210, frontend
 #897). No migration.
 
 **N92 · The coach's answer and video reach the speaker's page as they
@@ -2714,7 +2716,7 @@ served from a stored bake that only the speaker's own writes retire, so the
 coach's answer, and the signed link of their video, stayed as baked. Now the
 bake re-reads the coach's answer on every read, one read per Take, the video
 signed afresh, and a coach's share asks for one rebake. The rules: the walk's
-page, C1, D5 (frontend `docs/flows/feedback-walk-and-chat.md`, §6 N92). No
+page, C1, D5 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), §6 N92). No
 migration.
 
 **N90 · The walk's doors checked in the app; the coach's bubble at the
@@ -2723,7 +2725,7 @@ opens the walk on that step with the parts before and after it to scroll;
 the "Later · from your coach" bubble is written the moment the coach
 shares, review ended or not; a try not heard says so; "Edit the helper
 words". The rules: the walk's page, B10, C3, C7, D5, E1, K (frontend
-`docs/flows/feedback-walk-and-chat.md`, §6 N90). No migration.
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), §6 N90). No migration.
 
 **N93 · The AI clip that came out flat gets one more try (founder, the
 Claude Code chat, 21 October 2026).** The stress clip of 20 October failed
@@ -2731,7 +2733,7 @@ its check (0.02 dB of contrast; the two that passed had about 2.4) and,
 made only once, never came: a clip that fails its check is now made once
 more with a new seed, never a third time, and a try after a clip that was
 never made is not scored. The rules: the walk's page, C6, H2 (frontend
-`docs/flows/feedback-walk-and-chat.md`, §6 N93). No migration.
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), §6 N93). No migration.
 
 **N94 · After the walk, a short cheeky summary, a bridge, then Will's
 question; at most two asks (founder, the Claude Code chat, 21 October
@@ -2743,21 +2745,21 @@ into the content for a moment."); at most two asks a Take, the home screen,
 WhatsApp and then "Did this help?" waiting for a later Take; after the
 chat's safety reply the asks wait until the speaker writes again; a fourth
 Take's fallback is no longer called the third; the 48 reading lines are
-signed into `docs/SIGNED-line-bank-2026-10-06.md`. The rules: the walk's
+signed into [`docs/SIGNED-line-bank-2026-10-06.md`](SIGNED-line-bank-2026-10-06.md). The rules: the walk's
 page, C2, C5, C7, D, E1, F3–F5, G1, K (frontend
-`docs/flows/feedback-walk-and-chat.md`, §6 N94). No migration.
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), §6 N94). No migration.
 
 **N95 · One source of truth: backend main's docs (founder, chat, 21 October
 2026).** What is in force is what is written and merged on this backend
 repo's `main`, read in this order: this log, then
-`docs/CANONICAL_PRODUCT_CONTRACT.md`, then `docs/LOCKS.md` and the
+[`docs/CANONICAL_PRODUCT_CONTRACT.md`](CANONICAL_PRODUCT_CONTRACT.md), then [`docs/LOCKS.md`](LOCKS.md) and the
 `FOUNDER-LOCK-*.md` files with their prototypes. Nothing said only in chat,
 a PR description, an open branch or the frontend's own docs is in force; each
 founder decision made in chat comes here at once in its own small docs PR,
 never bundled with code waiting for review; where main's code disagrees with
-these docs, the docs win and the code is a bug. The rule: `CLAUDE.md`, "One
+these docs, the docs win and the code is a bug. The rule: [`CLAUDE.md`](../CLAUDE.md), "One
 source of truth". The frontend's flow pages
-`docs/flows/feedback-walk-and-chat.md` and `docs/flows/coach-panel.md` also
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md) also
 count for their flows, because the frontend design-lock guard requires them
 to change together with the code. With it, N77's part about the coach's word
 showing on its own Take lands on main (contract 35g-6,
@@ -2774,7 +2776,7 @@ a time in name order (one file per request, as before), filed as "{topic} ·
 minute, 200 an hour per coach): more than 200 files is refused at the
 choice, a per-minute refusal is waited out, an hourly one stops the batch.
 New words: "{n} files", "{name} · {i} of {n}", "Up to 200 files at a time".
-The rules: frontend `docs/flows/coach-panel.md`, H2. No backend change, no
+The rules: frontend [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md), H2. No backend change, no
 migration.
 
 **N97 · The speaker/coach disagreement signal (founder, the WIL-32 decision
@@ -2785,8 +2787,8 @@ speakers answer about their own clips again, and judging your own moments
 stays out of the walk. Other speakers' clips stay one per practice try:
 other speakers first, licensed clips for the places left (this replaces the
 mix of 19 October, 3 every walk). The rules:
-`docs/DESIGN-WIL-70-disagreement-signal-2026-10-18.md` §6 and frontend
-`docs/flows/feedback-walk-and-chat.md`, C8 and §3. No code change, no
+[`docs/DESIGN-WIL-70-disagreement-signal-2026-10-18.md`](DESIGN-WIL-70-disagreement-signal-2026-10-18.md) §6 and frontend
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), C8 and §3. No code change, no
 migration.
 
 **WIL-93 · The coach's links, tapped signed out, go to log in and back
@@ -2795,7 +2797,7 @@ You have my okay").** Tapped where the speaker is not signed in, the
 WhatsApp and email links to the coach's feedback go to log in and come back
 to the same link, never to the guest's "Done" screen; a project the device
 holds as a guest's own work stays on the guest's screens. No new words. The
-rules: the walk's page, C1 (frontend `docs/flows/feedback-walk-and-chat.md`,
+rules: the walk's page, C1 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md),
 §6 WIL-93; frontend #911). No backend change, no migration.
 **N98 · The founder's roadmap page (founder, the Claude Code chat, 21 October
 2026: "can you build it into the CEO panel as a separate tab in the hamburger
@@ -2820,7 +2822,7 @@ goes back to the chat, where the coach's bubble is, never to the Ideal Text.
 Opened in an account the project is not in, the page says "This link is for
 another account." with "Log in with that account", which signs out and comes
 back to the link, instead of waiting on "Building your Ideal Text". The
-rules: the walk's page, C1, K (frontend `docs/flows/feedback-walk-and-chat.md`,
+rules: the walk's page, C1, K (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md),
 §6 WIL-93; frontend #917). No backend change, no migration.
 
 **N99 · Judging the training corpus goes on from one recording to the next
@@ -2833,7 +2835,7 @@ by itself, and the list when none is left; in the list the done imports sit
 at the bottom. An answer moves on at once while its save runs behind it; a
 refused save brings the coach back to that moment. The coach's queue read
 and the label save are to answer fast (they took 6.7 s and 9 s). The rules:
-frontend `docs/flows/coach-panel.md`, H3. No new words, no migration.
+frontend [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md), H3. No new words, no migration.
 
 **WIL-93, second follow-up · The coach's link opens the coach's feedback,
 read or not (founder, the Claude Code chat, 21 October 2026: "ok do it" to
@@ -2846,7 +2848,7 @@ opens; no "already viewed" notice. When the page holds nothing of the
 coach's (a link naming an earlier Take whose coach left only moment
 answers), the chat opens scrolled to the coach's bubble, which pulses once;
 a tap on it opens that Take's feedback as before. No new words. The rules:
-the walk's page, C1 (frontend `docs/flows/feedback-walk-and-chat.md`).
+the walk's page, C1 (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)).
 No backend change, no migration.
 
 **N100 · The training corpus list loads in steps as the coach scrolls
@@ -2856,7 +2858,7 @@ it to load (that is preferred)").** The list opens with its newest imports
 and, at the bottom, loads the next step while the app's one loader shows;
 judging one import after another (N99) reads the next step when the steps
 loaded hold no import left to judge. The list is no longer cut at its
-newest 200 imports. The rules: frontend `docs/flows/coach-panel.md`, H4. No
+newest 200 imports. The rules: frontend [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md), H4. No
 new words, no migration.
 
 **N101 · The training corpus is judged mixed: across imports, speakers and
@@ -2873,11 +2875,11 @@ of the clips, so nothing on screen hints at the machine's read (BLIND
 COACH). Opening an import starts the round with one of its clips; the next
 round follows when one is done, and the list when none is left. This
 replaces N99's one import after another. The rules: frontend
-`docs/flows/coach-panel.md`, H3. No new words, no migration.
+[`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md), H3. No new words, no migration.
 
 **N102 · Learning sources and the label quorum have one page (founder, the
 Claude Code chat, 21 October 2026: "unify the .md files about the learning
-sources and quorum in general").** `docs/LEARNING-AND-QUORUM.md` gathers what
+sources and quorum in general").** [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md) gathers what
 the app learns from and how an answer becomes a label, with a plain-words
 summary, the rules as they stand (each naming its source), what is in flight
 and what is open. It outranks nothing: the order of N95 stands, and the page is
@@ -2914,7 +2916,7 @@ the blind gate (BLIND COACH). It is the one number in the coach's read;
 AC-9's "never a number on screen" still holds for speakers. The new word is
 "Willfidence", signed here. The person's admin page (WIL-73) no longer shows
 the Confident Voice practice progress tile. The rules: frontend
-`docs/flows/coach-panel.md`, E1. No migration; the person's admin read no
+[`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md), E1. No migration; the person's admin read no
 longer carries `practice`.
 
 
@@ -2929,8 +2931,8 @@ sees it. The word is the one signed in N104. No migration.
 **N106 · The docs are sorted: one master doc and four labels (founder, the
 "Sorting the docs" decision page in the Claude Code chat, 21 October 2026,
 eleven answers, then "Yes ship it").** The master doc is the backend's root
-`README.md`. It lists every doc worth reading, as clickable links, in N95's
-order. The frontend's `README.md` points to it and lists the frontend's own
+[`README.md`](https://github.com/wilplus/frontend-cursor/blob/main/README.md). It lists every doc worth reading, as clickable links, in N95's
+order. The frontend's [`README.md`](https://github.com/wilplus/frontend-cursor/blob/main/README.md) points to it and lists the frontend's own
 pages. Every doc carries one label: **In force** (the rules), **Reference** (how
 something works today), **History** (kept as written, because the rules still
 cite it), or **Archive** (nothing needs it). Each doc says its label in one line
@@ -2940,7 +2942,7 @@ History behind one entry, except the parts still in force. The prompts written
 for coding agents and the session handoffs are archived. So are the files
 unchanged since before July, except the legal records and anything the rules
 still cite. The frontend's copies of backend docs become one-line pointers,
-except `CLAUDE.md` and `AGENTS.md`. Archived files are labelled now and moved
+except [`CLAUDE.md`](../CLAUDE.md) and [`AGENTS.md`](../AGENTS.md). Archived files are labelled now and moved
 later. The mentions in the In force docs become clickable links now. The
 founder checks every file's proposed label on a page, and corrections follow
 in their own PR. Map: the docs map of 21 October 2026 (step 1). No rule

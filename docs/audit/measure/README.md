@@ -1,5 +1,7 @@
 # Measurement reports
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../../../README.md) (N106).
+
 `scripts/measure_transcripts.py` writes `<date>.json` here: word error
 rate, wrong-slide share and clock-offset error on the founder's golden set
 (D-ML-1). Only reports from a real run on real recordings belong here; a

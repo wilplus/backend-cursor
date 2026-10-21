@@ -1,5 +1,7 @@
 # MLC-2 Foundation Slice 1
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Contract: `MLC-2` · epoch: `1` · engineering design: `ED-2.4`
 
 Decision-filter stamp:

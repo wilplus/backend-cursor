@@ -1,5 +1,7 @@
 # Founder lock · the consent screens (7 October 2026)
 
+> **Label: In force** · one of the rules, read in N95's order. Every doc and its label: [`README.md`](../README.md) (N106).
+
 `LOCKED 2026-10-07 · founder in chat: "the consent screens are great; but right now they are not scrollable like that in the real app; so lock it like that" · decisions log N60`
 
 Clickable prototype (the reference for every screen, phone and desktop):

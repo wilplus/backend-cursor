@@ -1,5 +1,7 @@
 # FE handoff — the monthly + quarterly reviews (piece 5, 2026-08-03)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 **From:** Backend
 **Program:** founder-agreed 2026-08-02 — piece 5: *the monthly + quarterly
 reviews read the reflections layer*

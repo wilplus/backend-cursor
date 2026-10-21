@@ -1,5 +1,7 @@
 # Will's learning plan (founder, 2026-10-20)
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Will learns about each person from what they say and do, without retraining a
 model: plain-text notes and kept events that any model can read. This page
 holds the founder's decisions from the two question pages (the learning plan

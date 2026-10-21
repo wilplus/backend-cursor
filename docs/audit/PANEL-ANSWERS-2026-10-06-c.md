@@ -1,5 +1,7 @@
 # Founder answers, Navigation Panel, 6 October 2026 (fourth export, 19:28 UTC)
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 Choices (screen: answer). Notes are verbatim. Recorded in decisions log N53;
 the ledger rows they decide carry DECIDED notes.
 

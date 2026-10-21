@@ -1,5 +1,7 @@
 # M3-3 dark assignment frames — implementation review
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: **IMPLEMENTED LOCALLY; REVIEW REQUIRED; NO ACTIVATION**
 
 Design: MLC-3-D2. Base: accepted M3-2 `13ca59a`.

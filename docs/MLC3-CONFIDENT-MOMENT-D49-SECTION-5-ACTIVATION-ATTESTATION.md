@@ -1,5 +1,7 @@
 # D49 §5 — activation attestation (taken 2026-09-14, remediated and re-taken 2026-09-15)
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 > **STATUS: PASS.** The first reading (2026-09-14) FAILED at 8 s against a ~1 s
 > client window. A PostgREST `db-pre-request` hook now bounds the three
 > Confident Moment RPC paths to 500 ms, verified in production on 2026-09-15.
