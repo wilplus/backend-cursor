@@ -1,5 +1,7 @@
 # Bundled-era erasure (F4)
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Founder, 2026-09-25. Delete what was gathered for training under the
 bundled-era consent, which the DPIA calls defective (§2.4). The decisions this
 follows are:

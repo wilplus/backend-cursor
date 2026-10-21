@@ -1,5 +1,7 @@
 # How audit work runs (founder-approved 6 October 2026)
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 Every rule below is a founder answer from the Navigation Panel (https://claude.ai/artifact/HtegguK1CS8R2VBNmmufhT). The answers are kept word for word in `PANEL-ANSWERS-2026-10-06.md`.
 
 ## Sources of truth, in order

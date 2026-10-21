@@ -1,5 +1,7 @@
 # Rehearsal tier — recipes for the three pending lanes
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 > **Folded into the runner the same day.** `scripts/rehearsal_tier.sh` now
 > carries the canary and D4 lanes as verified lanes. It cuts the checkpoints
 > with the recipe's own `CONFIDENT_MOMENT_CHECKPOINTS` hook

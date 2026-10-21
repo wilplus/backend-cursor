@@ -1,5 +1,7 @@
 # WIL-74 principles: feedback, goals and notifications (founder, 2026-10-20)
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Answered by the founder one question at a time
 (<https://claude.ai/artifact/FCoVEXE71vKya61NXrbbVg>). The rule behind all
 of them: the simplest thing that works, nothing to set up or test by hand.

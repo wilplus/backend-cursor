@@ -1,5 +1,7 @@
 # Founder lock — the coach panel, the learning machine and the removals (2026-09-30, for October)
 
+> **Label: In force** · one of the rules, read in N95's order. Every doc and its label: [`README.md`](../README.md) (N106).
+
 `LOCKED 2026-09-30 · A1–A8 all yes · B1–B10 all yes · C1–C10 as logged, C11 yes · E1–E10 as logged · L1–L9 all yes`
 
 Recorded by the founder in chat on 2026-09-30 from four decision pages: the

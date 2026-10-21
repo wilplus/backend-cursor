@@ -1,5 +1,7 @@
 # MLC-2 Legacy Dependency Audit
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: `FOUNDATION INVENTORY — NO CUTOVER AUTHORIZED`
 
 Unknown dependencies fail closed. Foundation schema work may proceed, but no

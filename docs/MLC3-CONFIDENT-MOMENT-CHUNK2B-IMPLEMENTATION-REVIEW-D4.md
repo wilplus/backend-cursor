@@ -1,5 +1,7 @@
 # MLC-3 Confident Moment Coaching Bundle — Chunk 2B implementation review D4
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 ## Review boundary
 
 - Repository: `wilplus/backend-cursor`

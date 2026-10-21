@@ -1,5 +1,7 @@
 # MLC-3 Confident Moment Coaching Bundle — Interface Manifest D11
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Status:** proposed executable re-freeze for ML/data review. It authorizes no
 implementation, migration numbering, commit, push, merge, deployment,
 activation, collection, dataset creation, training, evaluation, or promotion.

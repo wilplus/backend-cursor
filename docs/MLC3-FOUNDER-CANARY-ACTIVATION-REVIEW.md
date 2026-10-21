@@ -1,5 +1,7 @@
 # MLC-3 Founder Canary Activation-Readiness Review
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: checksum-pinned security-closure release preparation; every product
 and learning gate is disabled. This packet requests release review of migration
 0325 and the already accepted readiness mechanism, not approval to deploy or

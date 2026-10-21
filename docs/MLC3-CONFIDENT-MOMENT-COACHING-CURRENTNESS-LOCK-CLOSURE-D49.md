@@ -1,5 +1,7 @@
 # MLC-3 Confident Moment Coaching Bundle — Currentness and Lock Closure D49
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: proposed corrective amendment. D49 retains accepted Delta D3, Manifest
 D11 and D38–D48 except where explicitly replaced below. No product gate,
 dataset, learning surface or activation change is introduced.

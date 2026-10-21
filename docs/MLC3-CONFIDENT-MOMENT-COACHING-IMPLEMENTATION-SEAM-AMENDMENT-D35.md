@@ -1,5 +1,7 @@
 # MLC-3 Confident Moment Coaching Bundle — Implementation Seam Amendment D35
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: proposed narrow scanner-progression and Take-arm correction; executable
 work remains blocked pending independent Product, ML/data and Engineering
 acceptance.

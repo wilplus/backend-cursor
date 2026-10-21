@@ -1,5 +1,7 @@
 # MLC-3 Confident Moment Coaching Bundle — Interface Manifest D6
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Status:** frozen for local disabled-gate implementation against the accepted
 Contract Delta D3; not migration-assignment, release, deployment, activation,
 collection, dataset, training, evaluation, or promotion authority.

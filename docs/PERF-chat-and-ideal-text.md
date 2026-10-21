@@ -1,5 +1,7 @@
 # Load-time finding — chat + ideal text (ticket 7, 2026-07-26)
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Measurement only, as instructed. No optimisation code in this pass.**
 
 ## What I could and could not measure

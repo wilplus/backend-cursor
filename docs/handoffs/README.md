@@ -1,5 +1,7 @@
 # Handoffs — dated messages between the two repos (backend copy)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 These files are conversation, not reference: each is a point-in-time handoff,
 answer or debug note written for the other repo's maintainer. They were moved
 here from `docs/` on 2026-09-14 (audit Q-A10) so that `docs/` itself carries

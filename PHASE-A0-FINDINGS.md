@@ -1,5 +1,7 @@
 # PHASE A0 — Findings
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](README.md) (N106).
+
 _Generated 2026-05-16T21:25:51.017434+00:00 by `scripts/phase_a0_diagnostics.py`. Read-only diagnostic. No production code written._
 
 > **This is the gate before any A1–A4 phase starts.** Read the verdicts at the bottom; the counts above are provenance, not policy.

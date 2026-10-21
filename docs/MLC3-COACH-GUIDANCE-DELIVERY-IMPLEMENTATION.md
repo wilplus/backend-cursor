@@ -1,5 +1,7 @@
 # MLC-3 Coach Guidance and Exercise Delivery D3 — Release Preparation Packet
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Scope:** local, synthetic, hard-disabled implementation only  
 **Backend base:** `a782ea0c3f8357f213ac3a127fe5d445830470a0`  
 **Frontend base:** `530ac9868c5b61d1d6287e245a8cee3b0fddca88`  

@@ -1,5 +1,7 @@
 # Rate limits + the JSON error contract
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: **BE SHIPPED, rate limiting ON by default.** It becomes a *global*
 cap the moment `REDIS_URL` is set on the web service (§3) — until then it
 still caps, but per-worker. The error contract needs no config at all.

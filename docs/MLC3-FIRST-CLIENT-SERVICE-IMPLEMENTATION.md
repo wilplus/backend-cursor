@@ -1,5 +1,7 @@
 # MLC-3 First-Client Service D2 — Local Implementation Review Packet
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Scope:** local implementation with every serving and data gate disabled  
 **Backend base:** `0a02060c1674bb81bd3c1b254d7ca140c8d9619d`  
 **Frontend base:** `b44796e6ae837a01b11301b58fed38d783927840`  

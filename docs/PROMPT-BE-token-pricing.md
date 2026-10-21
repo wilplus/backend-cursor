@@ -1,5 +1,7 @@
 # BE handoff — token pricing (Phase 1)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Spec: [docs/PRICING-TOKENS-PLAN.md](PRICING-TOKENS-PLAN.md). Migration:
 `migrations/add_token_pricing.sql`. Phase 0 (cost measurement) is already built —
 commit `55e075e`, table `llm_usage`. **This is a different ledger. Do not join them.**

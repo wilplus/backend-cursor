@@ -1,5 +1,7 @@
 # Willab canonical product contract
 
+> **Label: In force** · one of the rules, read in N95's order. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: founder-locked on 2026-08-26. Feedback Policy V3 amendment locked on
 2026-08-30; it remains inactive until a separately authorized serving cutover.
 L1 / helper-words amendment locked by the founder on 2026-09-25 (clauses 8, 9,
@@ -554,7 +556,7 @@ with this contract, this contract wins.
     enter (L3). Bold voices then adds others' clips the quorum settled Yes
     and corpus clips a coach labelled Yes, without names.
 29e. **The delayed blind human measure** (founder 2026-10-01; Phase 5,
-    exercise-human-delayed-v1, `docs/MEASURE-exercise-human-delayed-v1.md`,
+    exercise-human-delayed-v1, [`docs/MEASURE-exercise-human-delayed-v1.md`](MEASURE-exercise-human-delayed-v1.md),
     served once `DELAYED_MEASURE_ENABLED` is on — on from 2026-10-02, the
     founder having signed the definition and answered C1 to C3 himself, N24,
     N25; off again from 2026-10-03 with the peer lane, N29): one practice makes

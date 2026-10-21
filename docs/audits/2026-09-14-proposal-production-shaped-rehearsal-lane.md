@@ -1,5 +1,7 @@
 # Proposal — a rehearsal lane seeded from a production-shaped dump
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 *Status: PROPOSAL, not executed. Written 2026-09-14 as the "also missing"
 item of the post-audit remediation programme. Nothing here activates any
 gate, collects any data, or touches a migration.*

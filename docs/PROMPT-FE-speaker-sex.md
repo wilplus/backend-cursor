@@ -1,5 +1,7 @@
 # FE handoff — the speaker-sex field
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 BE is on `feat/sex-conditioned-voice-confidence`. Nothing here is blocked on FE:
 the field is optional end-to-end and the composite already runs without it.
 

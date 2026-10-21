@@ -1,5 +1,7 @@
 # The AI version of your voice — how it works
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 The lock (flow, words, rules) is
 [`FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`](FOUNDER-LOCK-ai-voice-practice-2026-10-12.md)
 (decisions log N71). This page is for whoever runs or changes the code.

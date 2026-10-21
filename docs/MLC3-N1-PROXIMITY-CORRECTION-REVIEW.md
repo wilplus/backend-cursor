@@ -1,5 +1,7 @@
 # MLC-3 N1 Proximity Foundation — Corrective Review Packet
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: local release preparation, assigned migration 0317, disabled scope only
 
 Release base: `b87441dd54f746edd248e15c3049270bc4443395`

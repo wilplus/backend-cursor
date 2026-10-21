@@ -1,5 +1,7 @@
 # Prompt for the senior engineer — keep the ML code aligned with the locked architecture
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../../../README.md) (N106).
+
 Paste everything below this line.
 
 ---

@@ -1,5 +1,7 @@
 # MLC-3 exercise dependency audit
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: **M3-1 COMPLETE — DOCUMENTATION ONLY — CUTOVER BLOCKED**
 
 Implementation addendum (M3-3): the original legacy audit remains unchanged.

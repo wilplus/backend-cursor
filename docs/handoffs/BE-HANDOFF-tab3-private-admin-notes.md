@@ -1,5 +1,7 @@
 # BE handoff — Admin Tab 3: private admin notes panel
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 Status: **BE COMPLETE. FE work only.** No code changes needed on the backend for the panel itself. One known gap (LLM injection) is flagged at the bottom as a separate work item.
 
 ---

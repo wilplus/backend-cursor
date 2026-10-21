@@ -1,5 +1,7 @@
 # Prompt for Claude — continue Confident Moment Chunk 2B
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 Continue the MLC-3 Confident Moment Coaching Bundle exactly from the local
 handoff. First read, in full:
 

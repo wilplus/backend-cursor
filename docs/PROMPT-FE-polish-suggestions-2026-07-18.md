@@ -1,5 +1,7 @@
 # FE handoff — polish as suggestions, Approve all, re-read mic (paste into `frontend-cursor`)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Founder 2026-07-18 (rev 2: + the Approve-all button). The ideal text was silently replacing the speaker's words with the compose LLM's "light polish." The BE now **serves the verbatim words** and offers each polish as an **approvable grey star** — the star machinery you already built, plus one label, one bulk button, one bottom mic. Behind BE flag `POLISH_AS_SUGGESTIONS_ENABLED` (on top of `MOMENT_SUGGESTIONS_ENABLED`); build safe-ahead.
 
 ## What changed on the wire (all additive)

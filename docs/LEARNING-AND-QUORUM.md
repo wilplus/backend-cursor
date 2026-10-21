@@ -1,5 +1,7 @@
 # Learning and the label quorum
 
+> **Label: In force** · one of the rules, read in N95's order. Every doc and its label: [`README.md`](../README.md) (N106).
+
 One page for two questions: **what the app learns from**, and **how an
 answer becomes a label it can trust**. Started 2026-10-21 (founder, the
 Claude Code chat: "unify the .md files about the learning sources and quorum
@@ -9,16 +11,16 @@ history or as the detail of one part.
 **How this page works**
 
 - **It gathers; it does not outrank.** The order of truth stays N95's: the
-  decisions log, then `docs/CANONICAL_PRODUCT_CONTRACT.md`, then
-  `docs/LOCKS.md` and the `FOUNDER-LOCK-*.md` files; the frontend's flow pages
+  decisions log, then [`docs/CANONICAL_PRODUCT_CONTRACT.md`](CANONICAL_PRODUCT_CONTRACT.md), then
+  [`docs/LOCKS.md`](LOCKS.md) and the `FOUNDER-LOCK-*.md` files; the frontend's flow pages
   count for their screens. Every rule here names where it comes from. If this
   page and one of those disagree, they win and this page is fixed.
 - **§1 is the present.** A rule that changes is rewritten in place, and its
   old wording goes to §6 as one line. Never a new file.
 - A new decision about learning or labels is an entry in the decisions log
   **and** a line here, in the same PR. A screen's part also goes on its flow
-  page: the walk's §I (frontend `docs/flows/feedback-walk-and-chat.md`) and
-  the coach panel's H (frontend `docs/flows/coach-panel.md`).
+  page: the walk's §I (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)) and
+  the coach panel's H (frontend [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md)).
 - A disagreement found between two docs, or between a doc and the code, is a
   line in §3 until the founder settles it. Where the code disagrees with the
   docs, the docs win and the code is a bug (N95).
@@ -122,7 +124,7 @@ a clip is where it is (BLIND COACH). As read in the code on 2026-10-21, it
 orders one queue: a Take's confidence queue
 (`/v2/coach/sessions/<id>/confidence-queue`). Other queues have their own
 founder-set order (§3, item A9). The N97 rule waits until speakers answer
-about their own moments again (`docs/DESIGN-WIL-70-disagreement-signal-2026-10-18.md`
+about their own moments again ([`docs/DESIGN-WIL-70-disagreement-signal-2026-10-18.md`](DESIGN-WIL-70-disagreement-signal-2026-10-18.md)
 §6).
 
 ### E · Every learning source
@@ -141,8 +143,8 @@ about their own moments again (`docs/DESIGN-WIL-70-disagreement-signal-2026-10-1
 | **The coach's words, for a "text brain"** | Coaches (N79) | No | A future model trained on what coaches say, the situation and the error type. Capture first | The training yes for transcribed coach videos (N79) | Capture is in open PRs (BE #1133 to #1138). No trainer |
 | **Training-corpus copies** (`training_corpus_items`) | The shown moment's text plus the coach's Yes or No | No | A text-only copy for later training (N68 D1) | The training yes | Live since 2026-10-12 |
 | **The blind error audit** ("Do you hear it?") | Coaches (contract 35g-3a) | No | The shadow-cue promotion bar (at least 30 coach Yes, 80% firing) and the learned-v1 detector fit, shadow only (`detector_candidates.training_rows`) | The blind-check policy and legitimate interest; a written objection is recorded (N66) | See §3, items A3 and A4 |
-| **Exercise outcomes** | The machine's practice check and the coach's legs | Only `exercise-adequacy-label-v2` is an exercise label (contract 35c; MLC3 §3.5) | The learned exercise order (live since 2026-10-08, training-yes speakers only) and the exercise picker (walk I4) | The training yes | Mixed: see `docs/MLC3-EXERCISE-ADEQUACY-DESIGN.md`. The delayed measure is retired |
-| **Will's speaker memory** | Every answer and every Take's outcome (`speaker_memory.py`) | No | Will's private note, five lines at most, which the founder can correct. No model is retrained | Processing authorization | Live (`docs/SPEAKER-MEMORY.md`) |
+| **Exercise outcomes** | The machine's practice check and the coach's legs | Only `exercise-adequacy-label-v2` is an exercise label (contract 35c; MLC3 §3.5) | The learned exercise order (live since 2026-10-08, training-yes speakers only) and the exercise picker (walk I4) | The training yes | Mixed: see [`docs/MLC3-EXERCISE-ADEQUACY-DESIGN.md`](MLC3-EXERCISE-ADEQUACY-DESIGN.md). The delayed measure is retired |
+| **Will's speaker memory** | Every answer and every Take's outcome (`speaker_memory.py`) | No | Will's private note, five lines at most, which the founder can correct. No model is retrained | Processing authorization | Live ([`docs/SPEAKER-MEMORY.md`](SPEAKER-MEMORY.md)) |
 
 ### F · Training and checking a model
 
@@ -159,7 +161,7 @@ about their own moments again (`docs/DESIGN-WIL-70-disagreement-signal-2026-10-1
   the sealed golden set, and then the founder promotes it (walk I3).
   Willfidence is an internal measure, not a label (J1 and J3 as amended by
   N51).
-- **F4** **The four doors**, for feedback pairs (`docs/LEARNING-DOORS.md`):
+- **F4** **The four doors**, for feedback pairs ([`docs/LEARNING-DOORS.md`](LEARNING-DOORS.md)):
   - Door 1 is the speaker's training yes.
   - Doors 2 to 4 (release, training, promotion) are open for `praise_line`,
     `clearer_version` and `exercise_script`.
@@ -175,7 +177,7 @@ about their own moments again (`docs/DESIGN-WIL-70-disagreement-signal-2026-10-1
 - The speaker's own answers about their own voice (rule 2; contract 30; walk
   I2).
 - The machine's proposal (rule 1).
-- The AI version of the speaker's voice (`FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`;
+- The AI version of the speaker's voice ([`FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`](FOUNDER-LOCK-ai-voice-practice-2026-10-12.md);
   walk I2).
 - Will's conversation (N73). Whether a message helped is a report for the
   founder, not a label (walk I4).
@@ -243,7 +245,7 @@ bug.
    order any of the others?
 10. **Copies for training: text or audio?** N6 Q1 and N10 say audio. N68 D1
     and `training_corpus.py` say text only.
-11. **An Art 9 basis for training.** `LEARNING-DOORS.md`, `pair_consent.py`
+11. **An Art 9 basis for training.** [`LEARNING-DOORS.md`](LEARNING-DOORS.md), `pair_consent.py`
     and the ROPA addendum name Art 9(2)(a). N69 says no Art 9 basis is
     needed.
 12. **A practice self-report as training data.** MLC3 §8 says it is
@@ -327,32 +329,32 @@ one confirms it first.
 
 | File | What it keeps now |
 |---|---|
-| `docs/SPEC-DECISIONS-LOG.md` | The decisions: J (amended), K, L, M, and N51, N52.4, N56, N58, N68, N69, N73, N79, N95, N97, N99 to N102 |
-| `docs/CANONICAL_PRODUCT_CONTRACT.md` | §5 (clauses 29 to 35k) and §6 |
-| `docs/LEARNING-DOORS.md` | The detail of the four doors |
-| `docs/SPEAKER-MEMORY.md` | The detail of Will's memory |
-| `docs/MLC3-EXERCISE-ADEQUACY-DESIGN.md` | The detail of the exercise label (§3.5) |
-| `docs/DESIGN-WIL-70-disagreement-signal-2026-10-18.md` | The detail of N97 (§6) |
-| `FOUNDER-LOCK-coach-panel-2026-10.md` | L1 to L9 |
-| `FOUNDER-LOCK-ai-voice-practice-2026-10-12.md` | The AI clip |
-| Frontend `docs/flows/feedback-walk-and-chat.md` | C8 and §1 I |
-| Frontend `docs/flows/coach-panel.md` | D (the Judge) and H (the training corpus) |
+| [`docs/SPEC-DECISIONS-LOG.md`](SPEC-DECISIONS-LOG.md) | The decisions: J (amended), K, L, M, and N51, N52.4, N56, N58, N68, N69, N73, N79, N95, N97, N99 to N102 |
+| [`docs/CANONICAL_PRODUCT_CONTRACT.md`](CANONICAL_PRODUCT_CONTRACT.md) | §5 (clauses 29 to 35k) and §6 |
+| [`docs/LEARNING-DOORS.md`](LEARNING-DOORS.md) | The detail of the four doors |
+| [`docs/SPEAKER-MEMORY.md`](SPEAKER-MEMORY.md) | The detail of Will's memory |
+| [`docs/MLC3-EXERCISE-ADEQUACY-DESIGN.md`](MLC3-EXERCISE-ADEQUACY-DESIGN.md) | The detail of the exercise label (§3.5) |
+| [`docs/DESIGN-WIL-70-disagreement-signal-2026-10-18.md`](DESIGN-WIL-70-disagreement-signal-2026-10-18.md) | The detail of N97 (§6) |
+| [`FOUNDER-LOCK-coach-panel-2026-10.md`](FOUNDER-LOCK-coach-panel-2026-10.md) | L1 to L9 |
+| [`FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`](FOUNDER-LOCK-ai-voice-practice-2026-10-12.md) | The AI clip |
+| Frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) | C8 and §1 I |
+| Frontend [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md) | D (the Judge) and H (the training corpus) |
 
 ## 5. The older pages
 
 These now open with a note pointing here and are no longer the place to
 look for the whole picture:
 
-- `docs/LEARNING-TRACE.md` (history since 2026-09-29)
-- `docs/SESSION-2026-08-14-confidence-unification.md` (history; its "two
+- [`docs/LEARNING-TRACE.md`](LEARNING-TRACE.md) (history since 2026-09-29)
+- [`docs/SESSION-2026-08-14-confidence-unification.md`](SESSION-2026-08-14-confidence-unification.md) (history; its "two
   IDKs settle" is replaced by K)
-- `docs/PRODUCTION-DATA-FOUNDATION.md` (history; its "no training
+- [`docs/PRODUCTION-DATA-FOUNDATION.md`](PRODUCTION-DATA-FOUNDATION.md) (history; its "no training
   implemented" is out of date)
-- `docs/SPEC.md` §3, §9 and §17 (the log wins, N95)
-- `docs/MEASURE-exercise-human-delayed-v1.md` (retired measure)
-- `docs/CONCEPT-per-user-exercise-effectiveness-2026-10-18.md`
+- [`docs/SPEC.md`](SPEC.md) §3, §9 and §17 (the log wins, N95)
+- [`docs/MEASURE-exercise-human-delayed-v1.md`](MEASURE-exercise-human-delayed-v1.md) (retired measure)
+- [`docs/CONCEPT-per-user-exercise-effectiveness-2026-10-18.md`](CONCEPT-per-user-exercise-effectiveness-2026-10-18.md)
 
-The audit snapshot (`docs/audit/LEDGER.md`, `docs/audit/FOUNDER-QUEUE.md`),
+The audit snapshot ([`docs/audit/LEDGER.md`](audit/LEDGER.md), [`docs/audit/FOUNDER-QUEUE.md`](audit/FOUNDER-QUEUE.md)),
 the MLC-2 and MLC-3 audits and the legal register (`docs/legal/`) keep their
 own dates and are left as they are. The legal files are counsel's to change.
 

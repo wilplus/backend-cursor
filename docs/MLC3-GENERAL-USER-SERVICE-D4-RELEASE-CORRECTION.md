@@ -1,5 +1,7 @@
 # MLC-3 General-User Service D4 — Production-Shape Release Correction
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: `SUPERSEDED_BY_RESOLVER_CHAIN_CORRECTION`
 
 Superseded by

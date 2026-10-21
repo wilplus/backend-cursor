@@ -1,5 +1,7 @@
 # Ops runbook — the recording pipeline queue
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Audience: the backlog-manager agent, and whoever is on call.** How to
 decide when the take-processing pipeline needs more capacity, what to do
 when it breaks, and — just as important — when to do *nothing*.

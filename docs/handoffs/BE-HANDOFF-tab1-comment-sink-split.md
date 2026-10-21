@@ -1,5 +1,7 @@
 # BE handoff — split the comment sinks (user-visible vs. pipeline-only)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 Status: **BE-only routing change. FE work optional (UX label only). One product question for you below.**
 
 ---

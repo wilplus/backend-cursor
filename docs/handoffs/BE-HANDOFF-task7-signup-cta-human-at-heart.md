@@ -1,5 +1,7 @@
 # BE handoff — Task 7: "4h human-at-heart" CTA + post-signup confirmation
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 Status: **Almost entirely FE work. One BE copy change (~5 LOC) and one product question to settle before I touch anything.** The backend plumbing is already shipped end-to-end across tasks 6 and the existing claim flow.
 
 ---

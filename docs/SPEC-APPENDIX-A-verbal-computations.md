@@ -1,5 +1,7 @@
 # Appendix A — Verbal Computations for Misalignment and Mis-Emphasis
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Last updated:** 2026-08-05.
 
 **Companion to SPEC.md v3.** Everything here inherits §3.1 (detectors are candidate generators, not claims), §4 (scope tiers enforced), §10 (invariants), and §11 (delivery constraints).

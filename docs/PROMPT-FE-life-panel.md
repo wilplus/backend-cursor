@@ -1,5 +1,7 @@
 # FE prompt — The Life Panel
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Repo:** `frontend-cursor` · **Spec of record:** [PROMPT-life-panel.md](PROMPT-life-panel.md)
 **Pair:** [PROMPT-BE-life-panel.md](PROMPT-BE-life-panel.md)
 **Date:** 2026-07-26 · **Status:** not started, blocked on BE-2 + BE-10

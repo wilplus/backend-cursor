@@ -1,5 +1,7 @@
 # MLC-3 general availability — activation runbook
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Founder decision, 2026-09-20: **"All generally available."**
 
 This is the procedure for moving `mlc3_service_rollout_revisions` from its

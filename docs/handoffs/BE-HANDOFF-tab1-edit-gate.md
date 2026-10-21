@@ -1,5 +1,7 @@
 # BE handoff — Tab 1: >5-word-change save gate (anti-lazy-admin)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 Status: **NOT STARTED — needs FE confirmation on 4 questions below.**
 Implementation is small (~50 LOC across two endpoints + one shared helper). Want to confirm shape with FE before shipping so we don't double-trip on the contract.
 

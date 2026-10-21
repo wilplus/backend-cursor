@@ -1,5 +1,7 @@
 # Speech Coaching System — Canonical Specification
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 > **2026-10-21 (N102):** what the app learns from and how a label settles are now one page, [`docs/LEARNING-AND-QUORUM.md`](LEARNING-AND-QUORUM.md). The decisions log wins over this file (N95). Its §3, §9 and §17 are partly out of date; that page says where.
 
 **Last updated:** 2026-08-13.

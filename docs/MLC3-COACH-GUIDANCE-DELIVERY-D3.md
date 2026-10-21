@@ -1,5 +1,7 @@
 # MLC-3 Coach Guidance and Exercise Delivery — D3
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Status:** DRAFT FOR ML/DATA DESIGN RE-REVIEW  
 **Scope:** local, disabled-gate implementation design only  
 **Companions:** `MLC3-EXERCISE-ADEQUACY-DESIGN.md`, accepted MLC-3 N1,

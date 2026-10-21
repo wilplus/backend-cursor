@@ -1,5 +1,7 @@
 # FE handoff — the backlog wave (2026-07-27)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 Every BE-facing contract from the 13-story backlog, consolidated. All of it is
 on `claude/be-fe-prompts-0f4z8j` and merge-ready. **No migration. No flag to
 flip.** `requirements.txt` gains `python-docx==1.1.2` — a deploy concern, not

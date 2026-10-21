@@ -1,5 +1,7 @@
 # BE → FE handoff — slide linkage on the ideal-text GET (answers FE PR #222)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 **Status:** SHIPPED — merged to `main` 2026-08-03 (PR #313, squash `3904d16`).
 No migration, no flag: live on the next BE deploy, nothing else to run. No FE
 deploy needed — your feature-detection picks both fields up the moment the BE

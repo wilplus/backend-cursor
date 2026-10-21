@@ -1,5 +1,7 @@
 # Coach surface namespace — `/v2/coach/*` is canonical (delta)
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Status:** locked 2026-06-06. Supersedes the earlier "re-gate `/admin/*`, no
 twins" decision.
 

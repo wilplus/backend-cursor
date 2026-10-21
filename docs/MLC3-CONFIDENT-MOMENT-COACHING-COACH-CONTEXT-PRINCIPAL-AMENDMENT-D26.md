@@ -1,5 +1,7 @@
 # MLC-3 Confident Moment Coaching Bundle — Coach Context Principal Amendment D26
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: proposed narrow executable-interface correction; implementation remains
 blocked pending independent ML/data and Engineering acceptance.
 

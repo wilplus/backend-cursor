@@ -1,5 +1,7 @@
 # BE handoff — Task 8: data-sharing consent modal at session 2
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 Status: **Almost entirely FE work. Storage + endpoint already exist. One BE add maybe (probe field), and two product questions to settle before I touch anything.** The "collaboration chat + swiping game" features the consent gates don't exist on BE yet — when they do, gating them on `share_consent=true` is part of those features' own tasks, not this one.
 
 ---

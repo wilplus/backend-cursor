@@ -1,5 +1,7 @@
 # ED-PLF-1.3 — Staged authorization and continuously learning service design
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Product contract:** `PLF staged rollout` (`core_service` → `learning_live`)
 **Status:** ENGINEERING DESIGN READY FOR REVIEW · NO IMPLEMENTATION STARTED  
 **Prepared:** 2026-08-29  

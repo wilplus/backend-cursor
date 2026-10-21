@@ -1,5 +1,7 @@
 # Product/legal onboarding and processing flow — PLF-1.1
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Status:** PRODUCT LOCKED · IMPLEMENTATION NOT YET AUTHORIZED
 **Decision date:** 2026-08-29
 **Owner:** Artur Willoński

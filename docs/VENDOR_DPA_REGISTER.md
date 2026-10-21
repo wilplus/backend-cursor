@@ -1,5 +1,7 @@
 # Vendor / sub-processor register (Art. 28 + Art. 30 support)
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status of processor paperwork and the facts a supervisory authority or customer
 would ask for. **Keep this in sync with `frontend-cursor/src/app/privacy/page.tsx`
 (sub-processor table) — a vendor in one and not the other is a defect.**

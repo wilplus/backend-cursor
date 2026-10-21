@@ -1,5 +1,7 @@
 # Marking AI-generated output — mechanism proposal (Article 50(2))
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 > **STATUS, 2026-09-22 — §3's recommendation was NOT adopted.** The founder
 > decided that the `text/plain` clipboard flavour carries no marker line:
 > rich-text marking only, do not go further than the obligation requires. See

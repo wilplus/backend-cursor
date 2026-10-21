@@ -1,5 +1,7 @@
 # Product/legal onboarding and processing flow — PLF-1
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Status:** SUPERSEDED BY [`PLF-1.1`](./PRODUCT-LEGAL-FLOW-PLF-1.1.md)
 **Decision date:** 2026-08-29  
 **Owner:** Artur Willoński

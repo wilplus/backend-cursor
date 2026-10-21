@@ -1,5 +1,7 @@
 # Appendix G — Silent Population Telemetry
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Last updated:** 2026-08-05.
 
 **Status:** locked 2026-08-05. Normative.

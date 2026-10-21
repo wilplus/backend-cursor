@@ -1,5 +1,7 @@
 # FE handoff — generated Journal cover images (paste into a fresh Claude session in `frontend-cursor`)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 You are working in the willab frontend (Next.js, `/Users/arturwillonski/Documents/frontend-cursor`). The BE side is branch `feat/journal-cover-images` in `backend-cursor` — the contracts below are pinned and safe to build against.
 
 **One token.** The Journal CMS gets a "Draw a cover" button: the model reads the post, writes an image brief, draws it, and the file lands in the same R2 bucket an uploaded cover already uses. A notes box steers the next attempt, "Regenerate" re-runs it, and every attempt is kept so Regenerate is never destructive.

@@ -1,5 +1,7 @@
 # Take Feedback Policy v3 — ML/data review packet
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: implemented dark, disabled by default. This document requests design
 and implementation review only. It does not request activation, dataset
 creation, training, or promotion.

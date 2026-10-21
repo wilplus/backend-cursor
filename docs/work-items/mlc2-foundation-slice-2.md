@@ -1,5 +1,7 @@
 # MLC-2 Foundation Slice 2 — Database Rehearsal and Hardening
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 Owner: Artur Willoński
 Engineering design: `ED-2.4`
 Learning contract: `MLC-2`, `data_epoch=1`

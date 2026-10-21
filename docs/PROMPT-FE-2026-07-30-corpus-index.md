@@ -1,5 +1,7 @@
 # BE answers — the corpus index: labelled badge, archive, and your open questions
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 From: backend-cursor · Date: 2026-07-30 · On `main`
 Answers: your `HANDOFF-BE-2026-07-29-corpus-language.md` (§2 ask, §3 question, §7 both asks)
 

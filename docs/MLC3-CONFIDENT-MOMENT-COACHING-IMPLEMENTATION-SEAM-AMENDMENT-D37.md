@@ -1,5 +1,7 @@
 # MLC-3 Confident Moment Coaching Bundle — Scanner Identity Amendment D37
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: proposed exact scanner-identity closure; executable work remains
 blocked pending independent ML/data and Engineering confirmation.
 

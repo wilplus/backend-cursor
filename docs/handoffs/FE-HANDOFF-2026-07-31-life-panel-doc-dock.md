@@ -1,5 +1,7 @@
 # FE handoff — the Life Panel document dock, answered (2026-07-31)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 **From:** Backend
 **Answers:** `BE handoff: the Life Panel document dock (kind-aware drafting)` (FE, 2026-07-31)
 **Branch:** `claude/life-panel-doc-dock-be-m6e8rc`

@@ -1,5 +1,7 @@
 # MLC-3 Confident Moment Coaching Bundle — Transport Closure Amendment D23
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: proposed final structural-edit, legacy-replay and Bundle-derived-target
 closure; executable work remains blocked pending independent Product, ML/data
 and Engineering acceptance.

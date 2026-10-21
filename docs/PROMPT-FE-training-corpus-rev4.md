@@ -1,5 +1,7 @@
 # FE prompt — Training corpus, rev 4: answering your §9
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Repo:** `frontend-cursor` · **BE branch:** `feat/corpus-language-fixes` (`6fbcea6`)
 **Date:** 2026-07-29 · **Answers:** your five asks, in your order
 

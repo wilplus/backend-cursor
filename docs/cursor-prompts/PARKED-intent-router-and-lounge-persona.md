@@ -1,5 +1,7 @@
 # PARKED — Lounge intent-router + persona polish
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 Status: **parked, ready to execute when `services/master_doc_rag.py`
 stops churning** (excision stages + §3.12 library work were landing on
 that file as of 2026-06-06; don't start the router until that settles —

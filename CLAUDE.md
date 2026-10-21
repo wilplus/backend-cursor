@@ -25,32 +25,34 @@ This repo: **backend** (Flask, Railway, Supabase). The frontend is
 Ideal Text and the Feedback walk, the coach panel, the recording screens and
 the consent screens are finished designs. Build them exactly as their
 prototypes show. To change one, ask the founder first. The prototypes and
-lock files are listed in `docs/LOCKS.md`. The earlier, longer
-version of this page is `docs/history/CLAUDE-2026-10-11.md`.
+lock files are listed in [`docs/LOCKS.md`](docs/LOCKS.md). The earlier, longer
+version of this page is [`docs/history/CLAUDE-2026-10-11.md`](docs/history/CLAUDE-2026-10-11.md).
 
 The Feedback walk and the chat have one page, in the frontend repo:
-`docs/flows/feedback-walk-and-chat.md` (the rules as they stand, what is in
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) (the rules as they stand, what is in
 flight, what is open, one line per change). A backend change to a rule of
 that flow is a line on that page, never a new file: the backend PR names the
-frontend PR that updates it. Its entry here in `docs/SPEC-DECISIONS-LOG.md`
+frontend PR that updates it. Its entry here in [`docs/SPEC-DECISIONS-LOG.md`](docs/SPEC-DECISIONS-LOG.md)
 is two lines and a link. The other locked screens get a page of the same
 shape the next time one of them is changed.
 
 ## One source of truth
 
 The single source of truth is this backend repo's `main`, read in this order:
-`docs/SPEC-DECISIONS-LOG.md` (the founder's dated decisions), then
-`docs/CANONICAL_PRODUCT_CONTRACT.md` (the numbered clauses), then
-`docs/LOCKS.md` and the `FOUNDER-LOCK-*.md` files with their prototypes.
+[`docs/SPEC-DECISIONS-LOG.md`](docs/SPEC-DECISIONS-LOG.md) (the founder's dated decisions), then
+[`docs/CANONICAL_PRODUCT_CONTRACT.md`](docs/CANONICAL_PRODUCT_CONTRACT.md) (the numbered clauses), then
+[`docs/LOCKS.md`](docs/LOCKS.md) and the `FOUNDER-LOCK-*.md` files with their prototypes.
 Nothing is in force until it is written there and merged: not a decision said
 only in chat, a PR description, an open branch, or the frontend's own docs.
 Write every founder decision made in chat into the decisions log right away,
 in its own small docs PR, never bundled with code that waits for review.
 Where the code on main disagrees with these docs, the docs win and the code
 is a bug to fix (founder, 2026-10-21, N95). The frontend's flow pages
-`docs/flows/feedback-walk-and-chat.md` and `docs/flows/coach-panel.md` also
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md) and [`docs/flows/coach-panel.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/coach-panel.md) also
 count for their flows, because the frontend design-lock guard requires them
-to change together with the code.
+to change together with the code. Every doc in both repos, with its label
+(In force, Reference, History or Archive) and a link, is listed in
+[`README.md`](README.md) (N106).
 
 ## How to ship
 
@@ -79,7 +81,7 @@ Promises that must never break:
 - The coach's link opens the coach's feedback, whatever else is processing.
 - Will learns about each speaker: every answer and every Take's outcome is
   kept, and Will reads the speaker's private note in the chat and in the
-  summary (`services/speaker_memory.py`, `docs/SPEAKER-MEMORY.md`, guarded by
+  summary (`services/speaker_memory.py`, [`docs/SPEAKER-MEMORY.md`](docs/SPEAKER-MEMORY.md), guarded by
   `tests/test_speaker_memory.py`).
 
 ## How to test (founder, 2026-10-12)

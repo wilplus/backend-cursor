@@ -1,5 +1,7 @@
 # Ledger splitter brief (read-only; text only, no code reading needed)
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../../../README.md) (N106).
+
 You turn audit lines into atomic ledger rows for the willab audit ledger. The audit is a list of CLAIMS, not facts. You do NOT verify against code in this step (that is a later step), and you never fix anything.
 
 Input: a JSON list of open audit lines. Each line has `aid` (ledger id like A042), `area`, `line_id`, `title`, `source` (the lock text it grades), `status` (audit grade), `blocked_on`, `unmet` (what is missing), `switch`, evidence fields.

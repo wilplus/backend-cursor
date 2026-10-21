@@ -1,5 +1,7 @@
 # Production Data Foundation
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 Title: Production Data Foundation  
 Owner: Artur Willoński  
 Problem: Product usage must produce reliable, isolated, reconstructable and uncontaminated signals for seven future learning systems.  

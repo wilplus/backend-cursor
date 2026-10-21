@@ -1,5 +1,7 @@
 # HANDOFF — WillpowerLab, 2026-08-14
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 The state-of-the-world for a maintainer picking this project up cold.
 This is the SYSTEM-LEVEL handoff (both repos); the frontend half lives in
 `frontend-cursor/docs/HANDOFF.md`. It is an index — it points into the

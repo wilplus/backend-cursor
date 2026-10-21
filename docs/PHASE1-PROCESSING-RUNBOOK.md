@@ -1,5 +1,7 @@
 # Phase-1 processing authorization runbook
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: implemented and rehearsed locally; production activation is blocked.
 
 This runbook covers only the required recording/coaching service boundary. It

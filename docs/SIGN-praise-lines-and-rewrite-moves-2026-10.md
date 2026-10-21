@@ -1,5 +1,7 @@
 # Sign: nine praise lines and three rewrite moves (October 2026)
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **For the founder's signature.** Decisions log N48.6, Q29 A: "the nine praise
 lines and three rewrite moves are drafted by the session for the founder's
 signature." **Status: PROPOSED.** The lines are in

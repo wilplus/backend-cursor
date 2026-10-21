@@ -1,5 +1,7 @@
 # Claude Handoff — Confident Moment Coaching Bundle point 7
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Updated: 2026-09-13. Point 7 implementation and local disabled-gate verification
 are complete; this is the end-to-end continuity handoff for review/release work.
 

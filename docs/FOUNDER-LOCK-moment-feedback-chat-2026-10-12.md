@@ -1,5 +1,7 @@
 # Founder lock — moment and feedback, one chat with a lens (2026-10-12)
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 > **History since 2026-10-20.** The current rules of the Feedback walk and the
 > chat are on one page in the frontend repo, `docs/flows/feedback-walk-and-chat.md`
 > (<https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md>), edited in place as they change. This file is kept as written and

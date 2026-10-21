@@ -1,5 +1,7 @@
 # MLC-3 Founder Canary Activation Readiness
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: local, pre-activation review packet. No production gate is changed by
 this work.
 

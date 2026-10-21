@@ -1,5 +1,7 @@
 # MLC-3 Confident Moment Coaching Bundle — Transport Closure Amendment D16
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: proposed interface amendment; no executable implementation is authorized
 by this document.
 

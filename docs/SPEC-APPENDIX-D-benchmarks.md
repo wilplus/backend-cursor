@@ -1,5 +1,7 @@
 # Appendix D — Fire-Up Benchmarks and Trigger Functions
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Last updated:** 2026-08-05.
 
 **Companion to SPEC.md v3.** Defines when a detector fires. Inherits §4 (scope), §5.1 (speaker-relative normalisation), §8.2 (triage), Appendix A (the computations), Appendix C (routing to intervention types).

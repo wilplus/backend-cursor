@@ -1,5 +1,7 @@
 # Prompts for the five jobs
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../../../README.md) (N106).
+
 Each prompt is self-contained. Attach the two inputs it names: the audit report (https://claude.ai/artifact/JRv6BaoFDLeWmBcQYGxYm6, share it first) and `engineer_prompt.md`. In Claude Code, set the model with `/model` and the effort in `/config` before pasting. Every prompt assumes a fresh checkout of `backend-cursor` and `frontend-cursor` at `origin/main` in the working directory.
 
 ---

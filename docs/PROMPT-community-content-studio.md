@@ -1,5 +1,7 @@
 # PROMPT — Community Content Studio (one button in the CMS → 3 community posts)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../README.md) (N106).
+
 > **STATUS 2026-07-26 — §2 (backend) is BUILT** on `feat/community-content-studio`:
 > service, LLM spec, config flag, 5 db methods, 4 routes, migration, 55 tests green.
 > §3 (frontend) is NOT built — the handoff for it is

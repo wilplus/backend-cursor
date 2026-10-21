@@ -1,5 +1,7 @@
 # BE handoff — Session-1 completion gate (≥1 charisma + ≥1 stress + ≥60s)
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 Status: **NOT STARTED — three premise corrections + four FE-design decisions needed before I ship.**
 Implementation is small once the design is settled (~80 LOC across one new endpoint + helper + tests). Want the answers in your reply so I don't have to round-trip.
 

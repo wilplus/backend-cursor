@@ -1,5 +1,7 @@
 # FE handoff — coaching chat STEP 2 becomes the peer-review flag
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 **Date:** 2026-08-04 · **From:** BE (backend-cursor) · **Founder-signed copy.**
 
 STEP 2 of the state-machine coaching chat used to ask *"would you actually

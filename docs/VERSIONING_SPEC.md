@@ -1,5 +1,7 @@
 # VERSIONING_SPEC.md — how the ideal text evolves
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **Status:** confirmed against shipped code, 2026-07-23 (Stage 4 / T1).
 **Scope:** the versioning engine — how a project's ideal text is built from
 takes, how changes are surfaced and approved, and what carries forward.

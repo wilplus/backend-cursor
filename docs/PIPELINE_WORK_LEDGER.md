@@ -1,5 +1,7 @@
 # Pipeline work ledger
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 **What this is.** One file that every workstream pull request appends to, so
 five parallel agent sessions can see what the others did without any of them
 talking to each other. Git is the channel; this file is the message.

@@ -1,5 +1,7 @@
 # The durable pipeline queue — architecture, Railway rollout, FE handoff
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: **BE SHIPPED (default OFF).** Everything below is live on this branch
 behind `PIPELINE_QUEUE_ENABLED=0`. Nothing changes in production until the
 Railway steps in §3 are done and the flag is flipped.

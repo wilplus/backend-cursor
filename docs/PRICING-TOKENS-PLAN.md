@@ -1,5 +1,7 @@
 # willab token pricing — plan (no code)
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 > **SUPERSEDED IN PART 2026-10-05 (decisions log N44).** Purchases are one-time packages (contract §8): no subscriptions, no monthly reset, the free grant once. Read the monthly model below as history.
 
 Date: 2026-07-27 · Status: **Phase 0 + Phase 1 BE BUILT** (flag-gated, `TOKEN_PRICING_ENABLED=0`).

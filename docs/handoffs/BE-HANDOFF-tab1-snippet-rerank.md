@@ -1,5 +1,7 @@
 # BE handoff — Admin Tab 1: snippet list re-rank + transcript hiding
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 Status: **NOT STARTED — blocked on two clarifications from FE.**
 Once both questions are answered, BE work is small (~30 LOC).
 

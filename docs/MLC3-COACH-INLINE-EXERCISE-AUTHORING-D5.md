@@ -1,5 +1,7 @@
 # MLC-3 Coach Inline Exercise Authoring D5
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: proposed local implementation contract. No activation is granted.
 
 ## Problem

@@ -1,5 +1,7 @@
 # MLC-3 Confident Moment Coaching Bundle — Exercise Source Speaker Amendment D47
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
 Status: proposed narrow interface closure. D47 retains D38–D46 except where
 extended here. No gate, dataset, or learning change.
 

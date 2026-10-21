@@ -1,5 +1,7 @@
 # BE → FE: the legacy credits are settled. The balance has two halves now.
 
+> **Label: Archive** · out of date, and nothing needs it; it moves to an archive folder later. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 **Date:** 2026-08-01 · **Answers:** decision 5 of the 2026-07-31 FE handoff
 **Founder decision:** honour at 1,600 tokens/credit, above the free 25, as non-expiring tokens.
 

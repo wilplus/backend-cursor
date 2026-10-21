@@ -1,5 +1,7 @@
 # Engineering audit prompt — tests, complexity, abstractions, glue code
 
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../../README.md) (N106).
+
 *Written 2026-09-13. This is the prompt that was executed to produce
 `2026-09-13-engineering-audit.md` (backend) and the matching frontend report.
 It is kept next to the report so the audit is reproducible and so a future

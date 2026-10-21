@@ -1,5 +1,7 @@
 # The rehearsal tier — PostgreSQL-bound tests, run against a disposable cluster
 
+> **Label: Reference** · how something works today; where it differs from the In force docs, they win. Every doc and its label: [`README.md`](../README.md) (N106).
+
 *Established 2026-09-14 (audit Q-T2, founder decision). This is the documented
 run target for `tests/*_postgres.py`.*
 
