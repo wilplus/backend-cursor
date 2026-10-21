@@ -1,10 +1,14 @@
 """The label quorum as the data scientist reads it (build plan ML-7).
 
-From the blind confidence labels (one row per rater per moment, coach and
-peer lanes, never self-reports): how many labels, how many moments have
-two human answers, how often two humans agree, and Cohen's kappa once
-there are a hundred labels to make it mean something. Pure; the route
-hands in the rows.
+From the blind confidence labels (one row per rater per moment), counted
+by the label ledger's own rules (``services/label_quorum``; N111, B3): only
+its lanes (a coach, another speaker inside practice), never a self-report,
+never an answer given after seeing the clip's other side. How many labels,
+how many moments have two human answers, how often two humans agree, and
+Cohen's kappa once there are a hundred labels to make it mean something.
+"Not sure" is an answer and counts as a label, but, as in the ledger, it is
+no reading of the voice: it never agrees and never enters kappa. Pure; the
+route hands in the rows.
 
 AC-9: these are numbers about the instrument, for the research role only.
 """
@@ -15,16 +19,18 @@ from itertools import combinations
 from typing import Any, Optional
 
 KAPPA_MIN_LABELS = 100
-_DEFINITE = ("yes", "in_between", "no", "not_sure")
-_HUMAN_LANES = ("coach", "game_peer", "peer")
+_PERCEPTUAL = ("yes", "in_between", "no")
+_IDK = ("not_sure", "neutral")
 
 
 def _value(row: dict) -> Optional[str]:
     if row.get("unrateable"):
         return "audio_unclear"
     value = row.get("value")
-    if value in _DEFINITE:
+    if value in _PERCEPTUAL:
         return str(value)
+    if value in _IDK:
+        return "not_sure"
     if row.get("confident") is True:
         return "yes"
     if row.get("confident") is False:
@@ -33,10 +39,10 @@ def _value(row: dict) -> Optional[str]:
 
 
 def _human(row: dict) -> bool:
-    if row.get("self_report"):
+    from services.label_quorum import QUORUM_LANES, is_self_report
+    if is_self_report(row) or row.get("blind") is False:
         return False
-    lane = row.get("lane")
-    return lane is None or lane in _HUMAN_LANES
+    return (row.get("lane") or "") in QUORUM_LANES
 
 
 def cohen_kappa(pairs: list[tuple[str, str]]) -> Optional[float]:
@@ -75,10 +81,10 @@ def quorum(rows: list[Any]) -> dict:
     agreed = 0
     pairs: list[tuple[str, str]] = []
     for answers in two_human:
-        values = [v for v in answers.values() if v != "audio_unclear"]
+        values = [v for v in answers.values() if v in _PERCEPTUAL]
         raters = list(answers.items())
         for (_, a), (_, b) in combinations(raters, 2):
-            if a == "audio_unclear" or b == "audio_unclear":
+            if a not in _PERCEPTUAL or b not in _PERCEPTUAL:
                 continue
             pairs.append((a, b))
         if len(values) >= 2 and len(set(values)) == 1:
