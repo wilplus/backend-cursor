@@ -126,7 +126,7 @@ genuinely parallel and mechanical — and stage 4/5 of G.10 when they unlock. No
 > - The module is **pure and unit-tested** — no DB inside `drift_monitor.py`, following
 >   `services/state_ratings.py`.
 > - Do **not** build IRT, Elo, DIF, adaptive thresholds or any population-facing claim. Those are
->   deferred (`PROMPT-irt-dif-deferred.md`) behind the triggers in `PRODUCT-MANAGER-BACKLOG.md`.
+>   deferred ([`PROMPT-irt-dif-deferred.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/PROMPT-irt-dif-deferred.md)) behind the triggers in `PRODUCT-MANAGER-BACKLOG.md`.
 >
 > ### Definition of done
 >

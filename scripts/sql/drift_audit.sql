@@ -137,5 +137,5 @@ ORDER  BY 1, 2, 3;
 -- 3 · Mantel-Haenszel DIF — DEFERRED, not written here.
 -- Unlocks at >= 400 evaluations/dimension AND >= 200 users per subgroup with
 -- the flag stored (PM-4: profile_native_language has a column but no UI yet).
--- Specification: docs/PROMPT-irt-dif-deferred.md §3.
+-- Specification: https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/PROMPT-irt-dif-deferred.md §3.
 -- ─────────────────────────────────────────────────────────────────────────

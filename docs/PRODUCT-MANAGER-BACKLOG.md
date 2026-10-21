@@ -305,12 +305,12 @@ Two CHECK constraints carry the invariants the analysis depends on: `arm` is one
 ## Part 2 — Deferred unlocks
 
 Each stage has a **numeric trigger**. When it fires, the build specification already exists at
-`PROMPT-irt-dif-deferred.md` — no design work is repeated.
+[`PROMPT-irt-dif-deferred.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/PROMPT-irt-dif-deferred.md) — no design work is repeated.
 
 | Stage | Trigger | What unlocks | Prompt |
 |---|---|---|---|
 | **2 · Drift layer** | **none — build now** | PSI + p-chart + DDSketch | `PROMPT-drift-layer.md` |
-| **3 · Elo/Glicko bridge** | ≥ 50 users with ≥ 3 scored recordings | online learner/item ratings from response one; the bridge to IRT without batch calibration | `PROMPT-irt-dif-deferred.md` §1 |
+| **3 · Elo/Glicko bridge** | ≥ 50 users with ≥ 3 scored recordings | online learner/item ratings from response one; the bridge to IRT without batch calibration | [`PROMPT-irt-dif-deferred.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/PROMPT-irt-dif-deferred.md) §1 |
 | **4 · Rasch / 1PL** | ≥ 150 evaluations per dimension | real item difficulty; the threshold audit becomes meaningful; item-information gating of dimension eligibility; **unidimensionality test** | §2 |
 | **5 · 2PL + MH DIF** | ≥ 400 evaluations per dimension **AND** ≥ 200 users per subgroup with the flag stored (PM-4) | discrimination; the fairness audit turns on | §3 |
 | **6 · Sympson-Hetter** | after stage 5 | calibrated exposure control replacing randomesque | §4 |

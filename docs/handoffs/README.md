@@ -10,8 +10,8 @@ file in this directory.
 
 Deliberately **not** moved:
 
-- `docs/HANDOFF.md` — the system-level maintainer index, referenced from `AGENTS.md`.
-- `docs/BE-HANDOFF-analysis-state-push.md` — still the live push contract; `services/realtime_notify.py`, `services/db.py` and `test_analysis_state_broadcast.py` cite it by path.
+- [`docs/HANDOFF.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/HANDOFF.md) — the system-level maintainer index, referenced from `AGENTS.md`.
+- [`docs/BE-HANDOFF-analysis-state-push.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/BE-HANDOFF-analysis-state-push.md) — still the live push contract; `services/realtime_notify.py`, `services/db.py` and `test_analysis_state_broadcast.py` cite it by path.
 - `docs/CLAUDE-HANDOFF-CONFIDENT-MOMENT-*.md` — listed by path in the reviewed-file checksum manifest `docs/MLC3-CONFIDENT-MOMENT-POINT7-BACKEND-SHA256.txt`; moving them would break the freeze.
 
 | File | First committed | Title |

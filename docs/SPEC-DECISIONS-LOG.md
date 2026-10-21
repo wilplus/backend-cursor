@@ -1700,7 +1700,7 @@ P4 A / P5 A / P6 A / P7 A / C1 A / C2 A / C3 A / C4 B").**
 
 **N51 · The founder's answers of 6 October 2026 (Navigation Panel; two
 exports, 07:59 and 13:10 UTC).** The answers are verbatim, with the
-founder's notes, in [`docs/audit/PANEL-ANSWERS-2026-10-06.md`](audit/PANEL-ANSWERS-2026-10-06.md) and
+founder's notes, in [`docs/audit/PANEL-ANSWERS-2026-10-06.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/audit/PANEL-ANSWERS-2026-10-06.md) and
 [`docs/audit/PANEL-ANSWERS-2026-10-06-b.md`](audit/PANEL-ANSWERS-2026-10-06-b.md), and the rows they decide are in
 [`docs/audit/LEDGER.md`](audit/LEDGER.md), all three on branch `claude/audit-ledger`. Each answer
 is listed here by its panel ID with the ledger rows it decides (in brackets;
@@ -1922,7 +1922,7 @@ wins over older design locks where they disagree.
 
 **N53 · The founder's answers of 6 October 2026, fourth export (19:28
 UTC; Navigation Panel).** Verbatim, with the notes, in
-[`docs/audit/PANEL-ANSWERS-2026-10-06-c.md`](audit/PANEL-ANSWERS-2026-10-06-c.md); the ledger rows carry DECIDED
+[`docs/audit/PANEL-ANSWERS-2026-10-06-c.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/audit/PANEL-ANSWERS-2026-10-06-c.md); the ledger rows carry DECIDED
 notes (A053a, A068a, A060, A077a, A169a).
 1. **The line bank.** B11, B13 and B14 are signed as drafted. For B01,
    B05 to B10 and B12 the founder wrote a line of their own; in chat:
@@ -1964,7 +1964,7 @@ notes (A053a, A068a, A060, A077a, A169a).
 
 **N54 · The line bank is signed, and the walk's open questions (founder,
 6 October 2026, fifth export, 20:03 UTC).** Verbatim in
-[`docs/audit/PANEL-ANSWERS-2026-10-06-d.md`](audit/PANEL-ANSWERS-2026-10-06-d.md); every signed line is in
+[`docs/audit/PANEL-ANSWERS-2026-10-06-d.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/audit/PANEL-ANSWERS-2026-10-06-d.md); every signed line is in
 [`docs/SIGNED-line-bank-2026-10-06.md`](SIGNED-line-bank-2026-10-06.md), which is the only source the code
 may read them from.
 1. **The line bank.** On the founder's request ("for each you should
@@ -2014,7 +2014,7 @@ arrived without a letter; asked again: WQ3c A, the button says "Accept"
 21:46 UTC).** The founder corrected the coach panel screen by screen on a
 clickable prototype of today's panel and then on its redesign; the layout
 is agreed ("rest looks ok") and locked in
-[`docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`](FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md).
+[`docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md).
 
 1. **One action per screen; diagnosis before cure** (chat). An error
    moment asks "What kind of error is it?" (what the machine heard marked;
@@ -2052,7 +2052,7 @@ prototype (<https://claude.ai/artifact/TEBvGMehRF6wXCvJTEYTUA>, copy in
 coach screen is built to, exactly as the Ideal Text Final Screens are for
 the speaker's: no layout, flow or wording change and no added element
 without the founder. The frontend's CLAUDE.md carries the rule
-("Design lock — the coach panel"); [`docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`](FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md)
+("Design lock — the coach panel"); [`docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md)
 stays the written record. The panel's training-corpus questions CO2 and
 CO3 are open and do not change the screens.
 
@@ -2627,7 +2627,7 @@ answer-video transcripts, and the situation frozen on each answer.
 never plays again; watched anywhere is watched; on the coach panel the saved
 video with "Record again" and the new word "Remove the video" (the two-phone
 prototype <https://claude.ai/artifact/APk56PLZt6o6Cx9qUMKkuk>). The rules: flow
-page D5; [`FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`](FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md) ("Decided after the
+page D5; [`FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md) ("Decided after the
 lock (2026-10-19, the saved video, N80)"). No migration.
 
 **N81 · The lens is one chat (founder, chat, 20 October 2026; WIL-89).** The
@@ -2649,7 +2649,7 @@ words: flow page C6, E2–E4, K. No migration.
 "Will's questions"; the words are checked before they are kept; migration 0488
 `will_question_bank`, GET/PUT `/v2/admin/will-questions` ("OK" on
 <https://claude.ai/artifact/WLZ1KY6dX1RBLXiNU73F9N>, the review waived). The
-rules and the new words: [`FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`](FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md)
+rules and the new words: [`FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md)
 ("Decided after the lock (2026-10-20, Will's questions, N83)"); flow page E5.
 
 **N84 · A Good job only when clearly better, and the AI voice on time

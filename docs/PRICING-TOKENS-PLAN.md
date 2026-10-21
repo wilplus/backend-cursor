@@ -5,7 +5,7 @@
 > **SUPERSEDED IN PART 2026-10-05 (decisions log N44).** Purchases are one-time packages (contract §8): no subscriptions, no monthly reset, the free grant once. Read the monthly model below as history.
 
 Date: 2026-07-27 · Status: **Phase 0 + Phase 1 BE BUILT** (flag-gated, `TOKEN_PRICING_ENABLED=0`).
-FE pending — see [PROMPT-FE-token-pricing.md](PROMPT-FE-token-pricing.md).
+FE pending — see [PROMPT-FE-token-pricing.md](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/PROMPT-FE-token-pricing.md).
 
 **✅ Founder-approved 2026-07-27** — the whole shape is now decided:
 - Peg **10,000 tokens = $1.00**; tiers **Free 12,000 · $5 = 50,000 · $25 = 300,000 (6×) · $100/mo = 1,500,000 (30×)**

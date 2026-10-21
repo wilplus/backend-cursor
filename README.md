@@ -210,93 +210,38 @@ and [`docs/legal/README.md`](docs/legal/README.md). Every file in them is Refere
 
 Kept as written, because the rules still cite them.
 
-<details><summary>The MLC-2 and MLC-3 programme (43 files)</summary>
+<details><summary>The MLC-2 and MLC-3 programme (1 file)</summary>
 
-- [MLC-2 Foundation Slice 1](docs/MLC2-FOUNDATION.md) · `backend` `docs/MLC2-FOUNDATION.md`
-- [MLC-3 Confident Moment Coaching Bundle — Coach Context Principal Amendment D26](docs/MLC3-CONFIDENT-MOMENT-COACHING-COACH-CONTEXT-PRINCIPAL-AMENDMENT-D26.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-COACH-CONTEXT-PRINCIPAL-AMENDMENT-D26.md`
-- [MLC-3 Confident Moment Coaching Bundle — Currentness and Lock Closure D49](docs/MLC3-CONFIDENT-MOMENT-COACHING-CURRENTNESS-LOCK-CLOSURE-D49.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-CURRENTNESS-LOCK-CLOSURE-D49.md`
-- [MLC-3 Confident Moment Coaching Bundle — Feedback Exposure Identity Amendment D15](docs/MLC3-CONFIDENT-MOMENT-COACHING-FEEDBACK-EXPOSURE-IDENTITY-AMENDMENT-D15.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-FEEDBACK-EXPOSURE-IDENTITY-AMENDMENT-D15.md`
-- [MLC-3 Confident Moment Coaching Bundle — Frontend and Authoring Amendment D14](docs/MLC3-CONFIDENT-MOMENT-COACHING-FRONTEND-AND-AUTHORING-AMENDMENT-D14.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-FRONTEND-AND-AUTHORING-AMENDMENT-D14.md`
-- [MLC-3 Confident Moment Coaching Bundle — Implementation Seam Amendment D27](docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D27.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D27.md`
-- [MLC-3 Confident Moment Coaching Bundle — Implementation Seam Amendment D28](docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D28.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D28.md`
-- [MLC-3 Confident Moment Coaching Bundle — Implementation Seam Amendment D29](docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D29.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D29.md`
-- [MLC-3 Confident Moment Coaching Bundle — Implementation Seam Amendment D30](docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D30.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D30.md`
-- [MLC-3 Confident Moment Coaching Bundle — Implementation Seam Amendment D31](docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D31.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D31.md`
-- [MLC-3 Confident Moment Coaching Bundle — Implementation Seam Amendment D32](docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D32.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D32.md`
-- [MLC-3 Confident Moment Coaching Bundle — Implementation Seam Amendment D33](docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D33.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D33.md`
-- [MLC-3 Confident Moment Coaching Bundle — Implementation Seam Amendment D34](docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D34.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D34.md`
-- [MLC-3 Confident Moment Coaching Bundle — Implementation Seam Amendment D35](docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D35.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D35.md`
-- [MLC-3 Confident Moment Coaching Bundle — Implementation Seam Amendment D36](docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D36.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D36.md`
-- [MLC-3 Confident Moment Coaching Bundle — Scanner Identity Amendment D37](docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D37.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D37.md`
-- [MLC-3 Confident Moment Coaching Bundle — Interface Manifest D11](docs/MLC3-CONFIDENT-MOMENT-COACHING-INTERFACE-MANIFEST-D11.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-INTERFACE-MANIFEST-D11.md`
-- [MLC-3 Confident Moment Coaching Bundle — Render Identity and Transport Amendment D13](docs/MLC3-CONFIDENT-MOMENT-COACHING-RENDER-IDENTITY-AND-TRANSPORT-AMENDMENT-D13.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-RENDER-IDENTITY-AND-TRANSPORT-AMENDMENT-D13.md`
-- [MLC-3 Confident Moment Coaching Bundle — Transport Closure Amendment D16](docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D16.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D16.md`
-- [MLC-3 Confident Moment Coaching Bundle — Transport Closure Amendment D17](docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D17.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D17.md`
-- [MLC-3 Confident Moment Coaching Bundle — Transport Closure Amendment D18](docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D18.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D18.md`
-- [MLC-3 Confident Moment Coaching Bundle — Transport Closure Amendment D19](docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D19.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D19.md`
-- [MLC-3 Confident Moment Coaching Bundle — Transport Closure Amendment D20](docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D20.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D20.md`
-- [MLC-3 Confident Moment Coaching Bundle — Transport Closure Amendment D21](docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D21.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D21.md`
-- [MLC-3 Confident Moment Coaching Bundle — Transport Closure Amendment D22](docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D22.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D22.md`
-- [MLC-3 Confident Moment Coaching Bundle — Transport Closure Amendment D23](docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D23.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D23.md`
-- [MLC-3 Confident Moment Coaching Bundle — Transport Closure Amendment D24](docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D24.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D24.md`
-- [MLC-3 Confident Moment Coaching Bundle — Transport Closure Amendment D25](docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D25.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D25.md`
-- [MLC-3 Confident Moment Coaching Bundle — User Media Correlation Amendment D38](docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D38.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D38.md`
-- [MLC-3 Confident Moment Coaching Bundle — User Media Correlation Amendment D39](docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D39.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D39.md`
-- [MLC-3 Confident Moment Coaching Bundle — User Media Correlation Amendment D40](docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D40.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D40.md`
-- [MLC-3 Confident Moment Coaching Bundle — User Media Correlation Amendment D41](docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D41.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D41.md`
-- [MLC-3 Confident Moment Coaching Bundle — User Media Correlation Amendment D42](docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D42.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D42.md`
-- [MLC-3 Confident Moment Coaching Bundle — User Media Correlation Amendment D43](docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D43.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D43.md`
-- [MLC-3 Confident Moment Coaching Bundle — User Media Correlation Amendment D44](docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D44.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D44.md`
-- [MLC-3 Confident Moment Coaching Bundle — User Media Correlation Amendment D45](docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D45.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D45.md`
-- [MLC-3 Confident Moment Coaching Bundle — User Media Correlation Amendment D46](docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D46.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D46.md`
-- [MLC-3 Confident Moment Coaching Bundle — Exercise Source Speaker Amendment D47](docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D47.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D47.md`
-- [MLC-3 Confident Moment Coaching Bundle — Speaker-Binding Authorization D48](docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D48.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D48.md`
-- [D49 §5 — activation attestation (taken 2026-09-14, remediated and re-taken 2026-09-15)](docs/MLC3-CONFIDENT-MOMENT-D49-SECTION-5-ACTIVATION-ATTESTATION.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-D49-SECTION-5-ACTIVATION-ATTESTATION.md`
-- [MLC-3 First-Client Service D2](docs/MLC3-FIRST-CLIENT-SERVICE-D2.md) · `backend` `docs/MLC3-FIRST-CLIENT-SERVICE-D2.md`
-- [MLC-3 General-User Service Rollout D4](docs/MLC3-GENERAL-USER-SERVICE-D4.md) · `backend` `docs/MLC3-GENERAL-USER-SERVICE-D4.md`
 - [The MLC-2 and MLC-3 programme](docs/history/MLC-PROGRAMME.md) · `backend` `docs/history/MLC-PROGRAMME.md`
 
 </details>
 
-<details><summary>Audits (17 files)</summary>
+<details><summary>Audits (10 files)</summary>
 
-- [PHASE A0 — Findings](PHASE-A0-FINDINGS.md) · `backend` `PHASE-A0-FINDINGS.md`
-- [MLC-2 Confidence Classification Dependency Audit](docs/MLC2-CONFIDENCE-DEPENDENCY-AUDIT.md) · `backend` `docs/MLC2-CONFIDENCE-DEPENDENCY-AUDIT.md`
-- [MLC-2 Legacy Dependency Audit](docs/MLC2-LEGACY-DEPENDENCY-AUDIT.md) · `backend` `docs/MLC2-LEGACY-DEPENDENCY-AUDIT.md`
 - [Phase-1 deletion dependency audit](docs/PHASE1-DELETION-DEPENDENCY-AUDIT.md) · `backend` `docs/PHASE1-DELETION-DEPENDENCY-AUDIT.md`
 - [RLS audit — public-schema tables without row level security](docs/RLS-AUDIT.md) · `backend` `docs/RLS-AUDIT.md`
 - [Founder queue (from LEDGER.md)](docs/audit/FOUNDER-QUEUE.md) · `backend` `docs/audit/FOUNDER-QUEUE.md`
 - [Audit ledger](docs/audit/LEDGER.md) · `backend` `docs/audit/LEDGER.md`
 - [Founder answers, Navigation Panel, 6 October 2026 (second export, 13:10 UTC)](docs/audit/PANEL-ANSWERS-2026-10-06-b.md) · `backend` `docs/audit/PANEL-ANSWERS-2026-10-06-b.md`
-- [Founder answers, Navigation Panel, 6 October 2026 (fourth export, 19:28 UTC)](docs/audit/PANEL-ANSWERS-2026-10-06-c.md) · `backend` `docs/audit/PANEL-ANSWERS-2026-10-06-c.md`
-- [Founder answers, Navigation Panel, 6 October 2026 (fifth export, 20:03 UTC)](docs/audit/PANEL-ANSWERS-2026-10-06-d.md) · `backend` `docs/audit/PANEL-ANSWERS-2026-10-06-d.md`
-- [Founder answers, Navigation Panel, 6 October 2026 (export of 07:59 UTC, verbatim)](docs/audit/PANEL-ANSWERS-2026-10-06.md) · `backend` `docs/audit/PANEL-ANSWERS-2026-10-06.md`
 - [How audit work runs (founder-approved 6 October 2026)](docs/audit/WORKFLOW.md) · `backend` `docs/audit/WORKFLOW.md`
 - [Build plan of 7 Oct 2026](docs/audit/build/BUILD-PLAN-2026-10-07.md) · `backend` `docs/audit/build/BUILD-PLAN-2026-10-07.md`
-- [V4 decision record and Developer brief (verbatim from https://claude.ai/artifact/UXiVaBvGLRTg83kjmHKY6E, founder-signed 2026-10-05/06)](docs/audit/build/V4_BRIEF.md) · `backend` `docs/audit/build/V4_BRIEF.md`
 - [Measurement reports](docs/audit/measure/README.md) · `backend` `docs/audit/measure/README.md`
 - [ML provenance audit, 2026-09-22 (read-only; no code changed)](docs/audits/2026-09-22-ml-provenance/README.md) · `backend` `docs/audits/2026-09-22-ml-provenance/README.md`
 - [Job 1 — critical review of the Willab ML provenance audit](docs/audits/2026-09-22-ml-provenance/job1_review.md) · `backend` `docs/audits/2026-09-22-ml-provenance/job1_review.md`
 
 </details>
 
-<details><summary>Earlier rule pages, indexes and records (20 files)</summary>
+<details><summary>Earlier rule pages, indexes and records (14 files)</summary>
 
 - [Concept — per-user exercise effectiveness (Linear WIL-29)](docs/CONCEPT-per-user-exercise-effectiveness-2026-10-18.md) · `backend` `docs/CONCEPT-per-user-exercise-effectiveness-2026-10-18.md`
-- [The willab engine map — what runs where, and how it all connects](docs/ENGINE-MAP.md) · `backend` `docs/ENGINE-MAP.md`
 - [Founder lock — the AI version of your voice in practice (2026-10-12)](docs/FOUNDER-LOCK-ai-voice-practice-2026-10-12.md) · `backend` `docs/FOUNDER-LOCK-ai-voice-practice-2026-10-12.md`
-- [Founder lock · the coach panel, redrawn (6 October 2026)](docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md) · `backend` `docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`
 - [Founder lock · the consent screens (7 October 2026)](docs/FOUNDER-LOCK-consent-screens-2026-10-07.md) · `backend` `docs/FOUNDER-LOCK-consent-screens-2026-10-07.md`
 - [Founder lock — the Feedback walk, its look and its motion (2026-10-06)](docs/FOUNDER-LOCK-feedback-walk-2026-10-06.md) · `backend` `docs/FOUNDER-LOCK-feedback-walk-2026-10-06.md`
 - [Founder lock — helper words, the paragraph overlay and the practise loop (2026-09-30)](docs/FOUNDER-LOCK-helper-words-2026-09-30.md) · `backend` `docs/FOUNDER-LOCK-helper-words-2026-09-30.md`
-- [Founder lock — moment and feedback, one chat with a lens (2026-10-12)](docs/FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md) · `backend` `docs/FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md`
 - [Founder lock · the recording screens (7 October 2026)](docs/FOUNDER-LOCK-recording-screens-2026-10-07.md) · `backend` `docs/FOUNDER-LOCK-recording-screens-2026-10-07.md`
-- [HANDOFF — WillpowerLab, 2026-08-14](docs/HANDOFF.md) · `backend` `docs/HANDOFF.md`
-- [LEARNING-TRACE — the developer window into the learning lanes](docs/LEARNING-TRACE.md) · `backend` `docs/LEARNING-TRACE.md`
 - [exercise-human-delayed-v1 — the delayed blind human measure (signed by the founder 2026-10-02)](docs/MEASURE-exercise-human-delayed-v1.md) · `backend` `docs/MEASURE-exercise-human-delayed-v1.md`
 - [willab token pricing — plan (no code)](docs/PRICING-TOKENS-PLAN.md) · `backend` `docs/PRICING-TOKENS-PLAN.md`
 - [Product/legal onboarding and processing flow — PLF-1](docs/PRODUCT-LEGAL-FLOW-PLF-1.md) · `backend` `docs/PRODUCT-LEGAL-FLOW-PLF-1.md`
-- [Production Data Foundation](docs/PRODUCTION-DATA-FOUNDATION.md) · `backend` `docs/PRODUCTION-DATA-FOUNDATION.md`
 - [Session log — 2026-08-13/14/15 · the confidence unification, pricing v3, and the publish rescue](docs/SESSION-2026-08-14-confidence-unification.md) · `backend` `docs/SESSION-2026-08-14-confidence-unification.md`
 - [Sign: nine praise lines and three rewrite moves (October 2026)](docs/SIGN-praise-lines-and-rewrite-moves-2026-10.md) · `backend` `docs/SIGN-praise-lines-and-rewrite-moves-2026-10.md`
 - [CLAUDE.md — willab backend](docs/history/CLAUDE-2026-10-11.md) · `backend` `docs/history/CLAUDE-2026-10-11.md`
@@ -309,14 +254,11 @@ Kept as written, because the rules still cite them.
 
 Out of date, but code, tests or the legal pack still name them, so they stay in the folders for now (N107).
 
-<details><summary>Prompts written for coding agents (11 files)</summary>
+<details><summary>Prompts written for coding agents (8 files)</summary>
 
 - [BE prompt — The Life Panel](docs/PROMPT-BE-life-panel.md) · `backend` `docs/PROMPT-BE-life-panel.md`
 - [BE handoff — token pricing (Phase 1)](docs/PROMPT-BE-token-pricing.md) · `backend` `docs/PROMPT-BE-token-pricing.md`
-- [FE HANDOFF — measure the recorder clock offset (F1)](docs/PROMPT-FE-audio-clock-offset.md) · `backend` `docs/PROMPT-FE-audio-clock-offset.md`
-- [FE handoff — token pricing (Phase 1)](docs/PROMPT-FE-token-pricing.md) · `backend` `docs/PROMPT-FE-token-pricing.md`
 - [PROMPT — build the drift layer (execute now)](docs/PROMPT-drift-layer.md) · `backend` `docs/PROMPT-drift-layer.md`
-- [PROMPT — IRT, CAT and DIF (deferred; do not execute until a trigger fires)](docs/PROMPT-irt-dif-deferred.md) · `backend` `docs/PROMPT-irt-dif-deferred.md`
 - [The Life Panel — implementation document](docs/PROMPT-life-panel.md) · `backend` `docs/PROMPT-life-panel.md`
 - [Prompt registry & golden evals](docs/prompt_evals.md) · `backend` `docs/prompt_evals.md`
 - [WillLab community — content model](services/prompts/community_content_strategy.md) · `backend` `services/prompts/community_content_strategy.md`
@@ -325,20 +267,9 @@ Out of date, but code, tests or the legal pack still name them, so they stay in 
 
 </details>
 
-<details><summary>Session handoffs (5 files)</summary>
+<details><summary>Session handoffs (1 file)</summary>
 
-- [BE handoff — push the analysis-state flip (kill the FE's 2s status polling)](docs/BE-HANDOFF-analysis-state-push.md) · `backend` `docs/BE-HANDOFF-analysis-state-push.md`
-- [Claude Handoff — Confident Moment Coaching Bundle point 7](docs/CLAUDE-HANDOFF-CONFIDENT-MOMENT-POINT7-2026-09-12.md) · `backend` `docs/CLAUDE-HANDOFF-CONFIDENT-MOMENT-POINT7-2026-09-12.md`
 - [Handoffs — dated messages between the two repos (backend copy)](docs/handoffs/README.md) · `backend` `docs/handoffs/README.md`
-- [BE handoff — plan management: one route still missing (the billing portal)](https://github.com/wilplus/frontend-cursor/blob/main/docs/HANDOFF-BE-2026-07-31-token-subscriptions.md) · `frontend` `docs/HANDOFF-BE-2026-07-31-token-subscriptions.md`
-- [Handoffs — dated messages between the two repos (frontend copy)](https://github.com/wilplus/frontend-cursor/blob/main/docs/handoffs/README.md) · `frontend` `docs/handoffs/README.md`
-
-</details>
-
-<details><summary>Other (2 files)</summary>
-
-- [Frontend — what to know (short contract)](https://github.com/wilplus/frontend-cursor/blob/main/docs/FRONTEND-WHAT-TO-KNOW.md) · `frontend` `docs/FRONTEND-WHAT-TO-KNOW.md`
-- [Backend reference: Assignment email](https://github.com/wilplus/frontend-cursor/blob/main/docs/backend-reference/README.md) · `frontend` `docs/backend-reference/README.md`
 
 </details>
 
@@ -535,6 +466,78 @@ cites. Git keeps every one. Browse them at the last commit that had them:
 - [FE prompt — The Life Panel](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/life-panel-fe-prompt.md) · `frontend` `docs/life-panel-fe-prompt.md`
 - [willab — FE Clearing Map](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/willab_clearing_map_fe.md) · `frontend` `docs/willab_clearing_map_fe.md`
 - [willab — Design Decisions (Developer Reference)](https://github.com/wilplus/frontend-cursor/blob/501da43874460770310b24fafc664c4f5e606114/docs/willab_design_decisions_beta.md) · `frontend` `docs/willab_design_decisions_beta.md`
+
+</details>
+
+On the same day, after N111, 64 more left: the docs only code comments named. Each comment now
+links to the doc's last version, as below.
+
+<details><summary>The 64 docs of N111, each at its last version</summary>
+
+- [PHASE A0 — Findings](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/PHASE-A0-FINDINGS.md) · `backend` `PHASE-A0-FINDINGS.md`
+- [BE handoff — push the analysis-state flip (kill the FE's 2s status polling)](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/BE-HANDOFF-analysis-state-push.md) · `backend` `docs/BE-HANDOFF-analysis-state-push.md`
+- [Claude Handoff — Confident Moment Coaching Bundle point 7](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/CLAUDE-HANDOFF-CONFIDENT-MOMENT-POINT7-2026-09-12.md) · `backend` `docs/CLAUDE-HANDOFF-CONFIDENT-MOMENT-POINT7-2026-09-12.md`
+- [The willab engine map — what runs where, and how it all connects](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/ENGINE-MAP.md) · `backend` `docs/ENGINE-MAP.md`
+- [Founder lock · the coach panel, redrawn (6 October 2026)](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md) · `backend` `docs/FOUNDER-LOCK-coach-panel-redesign-2026-10-06.md`
+- [Founder lock — moment and feedback, one chat with a lens (2026-10-12)](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md) · `backend` `docs/FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md`
+- [HANDOFF — WillpowerLab, 2026-08-14](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/HANDOFF.md) · `backend` `docs/HANDOFF.md`
+- [LEARNING-TRACE — the developer window into the learning lanes](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/LEARNING-TRACE.md) · `backend` `docs/LEARNING-TRACE.md`
+- [MLC-2 Confidence Classification Dependency Audit](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC2-CONFIDENCE-DEPENDENCY-AUDIT.md) · `backend` `docs/MLC2-CONFIDENCE-DEPENDENCY-AUDIT.md`
+- [MLC-2 Foundation Slice 1](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC2-FOUNDATION.md) · `backend` `docs/MLC2-FOUNDATION.md`
+- [MLC-2 Legacy Dependency Audit](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC2-LEGACY-DEPENDENCY-AUDIT.md) · `backend` `docs/MLC2-LEGACY-DEPENDENCY-AUDIT.md`
+- [MLC-3 Confident Moment Coaching Bundle — Coach Context Principal Amendment D26](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-COACH-CONTEXT-PRINCIPAL-AMENDMENT-D26.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-COACH-CONTEXT-PRINCIPAL-AMENDMENT-D26.md`
+- [MLC-3 Confident Moment Coaching Bundle — Currentness and Lock Closure D49](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-CURRENTNESS-LOCK-CLOSURE-D49.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-CURRENTNESS-LOCK-CLOSURE-D49.md`
+- [MLC-3 Confident Moment Coaching Bundle — Feedback Exposure Identity Amendment D15](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-FEEDBACK-EXPOSURE-IDENTITY-AMENDMENT-D15.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-FEEDBACK-EXPOSURE-IDENTITY-AMENDMENT-D15.md`
+- [MLC-3 Confident Moment Coaching Bundle — Frontend and Authoring Amendment D14](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-FRONTEND-AND-AUTHORING-AMENDMENT-D14.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-FRONTEND-AND-AUTHORING-AMENDMENT-D14.md`
+- [MLC-3 Confident Moment Coaching Bundle — Implementation Seam Amendment D27](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D27.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D27.md`
+- [MLC-3 Confident Moment Coaching Bundle — Implementation Seam Amendment D28](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D28.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D28.md`
+- [MLC-3 Confident Moment Coaching Bundle — Implementation Seam Amendment D29](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D29.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D29.md`
+- [MLC-3 Confident Moment Coaching Bundle — Implementation Seam Amendment D30](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D30.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D30.md`
+- [MLC-3 Confident Moment Coaching Bundle — Implementation Seam Amendment D31](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D31.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D31.md`
+- [MLC-3 Confident Moment Coaching Bundle — Implementation Seam Amendment D32](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D32.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D32.md`
+- [MLC-3 Confident Moment Coaching Bundle — Implementation Seam Amendment D33](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D33.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D33.md`
+- [MLC-3 Confident Moment Coaching Bundle — Implementation Seam Amendment D34](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D34.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D34.md`
+- [MLC-3 Confident Moment Coaching Bundle — Implementation Seam Amendment D35](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D35.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D35.md`
+- [MLC-3 Confident Moment Coaching Bundle — Implementation Seam Amendment D36](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D36.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D36.md`
+- [MLC-3 Confident Moment Coaching Bundle — Scanner Identity Amendment D37](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D37.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-IMPLEMENTATION-SEAM-AMENDMENT-D37.md`
+- [MLC-3 Confident Moment Coaching Bundle — Interface Manifest D11](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-INTERFACE-MANIFEST-D11.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-INTERFACE-MANIFEST-D11.md`
+- [MLC-3 Confident Moment Coaching Bundle — Render Identity and Transport Amendment D13](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-RENDER-IDENTITY-AND-TRANSPORT-AMENDMENT-D13.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-RENDER-IDENTITY-AND-TRANSPORT-AMENDMENT-D13.md`
+- [MLC-3 Confident Moment Coaching Bundle — Transport Closure Amendment D16](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D16.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D16.md`
+- [MLC-3 Confident Moment Coaching Bundle — Transport Closure Amendment D17](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D17.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D17.md`
+- [MLC-3 Confident Moment Coaching Bundle — Transport Closure Amendment D18](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D18.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D18.md`
+- [MLC-3 Confident Moment Coaching Bundle — Transport Closure Amendment D19](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D19.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D19.md`
+- [MLC-3 Confident Moment Coaching Bundle — Transport Closure Amendment D20](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D20.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D20.md`
+- [MLC-3 Confident Moment Coaching Bundle — Transport Closure Amendment D21](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D21.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D21.md`
+- [MLC-3 Confident Moment Coaching Bundle — Transport Closure Amendment D22](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D22.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D22.md`
+- [MLC-3 Confident Moment Coaching Bundle — Transport Closure Amendment D23](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D23.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D23.md`
+- [MLC-3 Confident Moment Coaching Bundle — Transport Closure Amendment D24](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D24.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D24.md`
+- [MLC-3 Confident Moment Coaching Bundle — Transport Closure Amendment D25](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D25.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-TRANSPORT-CLOSURE-AMENDMENT-D25.md`
+- [MLC-3 Confident Moment Coaching Bundle — User Media Correlation Amendment D38](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D38.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D38.md`
+- [MLC-3 Confident Moment Coaching Bundle — User Media Correlation Amendment D39](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D39.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D39.md`
+- [MLC-3 Confident Moment Coaching Bundle — User Media Correlation Amendment D40](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D40.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D40.md`
+- [MLC-3 Confident Moment Coaching Bundle — User Media Correlation Amendment D41](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D41.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D41.md`
+- [MLC-3 Confident Moment Coaching Bundle — User Media Correlation Amendment D42](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D42.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D42.md`
+- [MLC-3 Confident Moment Coaching Bundle — User Media Correlation Amendment D43](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D43.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D43.md`
+- [MLC-3 Confident Moment Coaching Bundle — User Media Correlation Amendment D44](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D44.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D44.md`
+- [MLC-3 Confident Moment Coaching Bundle — User Media Correlation Amendment D45](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D45.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D45.md`
+- [MLC-3 Confident Moment Coaching Bundle — User Media Correlation Amendment D46](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D46.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D46.md`
+- [MLC-3 Confident Moment Coaching Bundle — Exercise Source Speaker Amendment D47](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D47.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D47.md`
+- [MLC-3 Confident Moment Coaching Bundle — Speaker-Binding Authorization D48](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D48.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-COACHING-USER-MEDIA-CORRELATION-AMENDMENT-D48.md`
+- [D49 §5 — activation attestation (taken 2026-09-14, remediated and re-taken 2026-09-15)](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-CONFIDENT-MOMENT-D49-SECTION-5-ACTIVATION-ATTESTATION.md) · `backend` `docs/MLC3-CONFIDENT-MOMENT-D49-SECTION-5-ACTIVATION-ATTESTATION.md`
+- [MLC-3 First-Client Service D2](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-FIRST-CLIENT-SERVICE-D2.md) · `backend` `docs/MLC3-FIRST-CLIENT-SERVICE-D2.md`
+- [MLC-3 General-User Service Rollout D4](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/MLC3-GENERAL-USER-SERVICE-D4.md) · `backend` `docs/MLC3-GENERAL-USER-SERVICE-D4.md`
+- [Production Data Foundation](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/PRODUCTION-DATA-FOUNDATION.md) · `backend` `docs/PRODUCTION-DATA-FOUNDATION.md`
+- [FE HANDOFF — measure the recorder clock offset (F1)](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/PROMPT-FE-audio-clock-offset.md) · `backend` `docs/PROMPT-FE-audio-clock-offset.md`
+- [FE handoff — token pricing (Phase 1)](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/PROMPT-FE-token-pricing.md) · `backend` `docs/PROMPT-FE-token-pricing.md`
+- [PROMPT — IRT, CAT and DIF (deferred; do not execute until a trigger fires)](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/PROMPT-irt-dif-deferred.md) · `backend` `docs/PROMPT-irt-dif-deferred.md`
+- [Founder answers, Navigation Panel, 6 October 2026 (fourth export, 19:28 UTC)](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/audit/PANEL-ANSWERS-2026-10-06-c.md) · `backend` `docs/audit/PANEL-ANSWERS-2026-10-06-c.md`
+- [Founder answers, Navigation Panel, 6 October 2026 (fifth export, 20:03 UTC)](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/audit/PANEL-ANSWERS-2026-10-06-d.md) · `backend` `docs/audit/PANEL-ANSWERS-2026-10-06-d.md`
+- [Founder answers, Navigation Panel, 6 October 2026 (export of 07:59 UTC, verbatim)](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/audit/PANEL-ANSWERS-2026-10-06.md) · `backend` `docs/audit/PANEL-ANSWERS-2026-10-06.md`
+- [V4 decision record and Developer brief (verbatim from https://claude.ai/artifact/UXiVaBvGLRTg83kjmHKY6E, founder-signed 2026-10-05/06)](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/audit/build/V4_BRIEF.md) · `backend` `docs/audit/build/V4_BRIEF.md`
+- [Frontend — what to know (short contract)](https://github.com/wilplus/frontend-cursor/blob/43e02d2e434a5fe5be31e5646b99be6a4fd85217/docs/FRONTEND-WHAT-TO-KNOW.md) · `frontend` `docs/FRONTEND-WHAT-TO-KNOW.md`
+- [BE handoff — plan management: one route still missing (the billing portal)](https://github.com/wilplus/frontend-cursor/blob/43e02d2e434a5fe5be31e5646b99be6a4fd85217/docs/HANDOFF-BE-2026-07-31-token-subscriptions.md) · `frontend` `docs/HANDOFF-BE-2026-07-31-token-subscriptions.md`
+- [Backend reference: Assignment email](https://github.com/wilplus/frontend-cursor/blob/43e02d2e434a5fe5be31e5646b99be6a4fd85217/docs/backend-reference/README.md) · `frontend` `docs/backend-reference/README.md`
+- [Handoffs — dated messages between the two repos (frontend copy)](https://github.com/wilplus/frontend-cursor/blob/43e02d2e434a5fe5be31e5646b99be6a4fd85217/docs/handoffs/README.md) · `frontend` `docs/handoffs/README.md`
 
 </details>
 

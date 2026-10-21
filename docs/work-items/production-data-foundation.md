@@ -128,7 +128,7 @@ Implemented on branch `codex/ml-data-foundation-20260827`:
 - ~~`DATA_FOUNDATION_CANARY_ENABLED=false`~~ (retired 2026-09-29; the kill switch is now the `canonical_take_rows` ring row's kill, 0394) was the non-destructive kill switch;
   ordinary accounts always retain the established compatibility path.
 - Schema, flow, threat model, legacy paths and blockers documented in
-  `docs/PRODUCTION-DATA-FOUNDATION.md`.
+  [`docs/PRODUCTION-DATA-FOUNDATION.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/PRODUCTION-DATA-FOUNDATION.md).
 
 Decision-filter record:
 

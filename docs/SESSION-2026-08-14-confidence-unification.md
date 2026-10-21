@@ -6,7 +6,7 @@
 
 **For:** artur@willonski.com · **Context:** the OpenAI-tooling handoff. This is the
 narrative record of one working session. The authoritative maps stay
-[`docs/HANDOFF.md`](HANDOFF.md) and [`AGENTS.md`](../AGENTS.md); this file explains
+[`docs/HANDOFF.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/HANDOFF.md) and [`AGENTS.md`](../AGENTS.md); this file explains
 *why* things changed, which is the part a fresh agent cannot reconstruct from a diff.
 
 Everything below is **merged to `main` in both repos. Nothing is left open.**
@@ -197,7 +197,7 @@ Sold ladder is now **free / practice / coaching / intensive**. `PRICE_VERSION = 
 | BE #435 | §17 `lexical-dilution-v1` Verbal lane |
 | BE #436 | Voice Album reads in **presentation order** (slide asc, `entered_at` tie-break) — it had been serving capture order |
 | BE #437 | Game queue voice-source ordering: own → consented app users → YouTube corpus |
-| BE #438 | `AGENTS.md` + `docs/HANDOFF.md` in both repos |
+| BE #438 | `AGENTS.md` + [`docs/HANDOFF.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/HANDOFF.md) in both repos |
 | BE #439 | The **label quorum ledger** — machine routes/never votes, owner ≠ peer, singleton = weak supervision, IDK is a response |
 | FE #297 | e2e flipped to **blocking** |
 | FE #300 | Coach panel: publish when you want, work-first ordering, notes that autosave |

@@ -19,7 +19,7 @@ Here's how you could say it."), from two clickable prototypes:
 Plain-words plan with the founder's answers:
 <https://claude.ai/artifact/RYMPxAqSyHinRStymsGwFr>. Decisions log N71.
 
-It adds one step to [`FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md`](FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md)
+It adds one step to [`FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md`](https://github.com/wilplus/backend-cursor/blob/8b5205fa519f3c8447eb8c49d1bcf6f28b8df3e6/docs/FOUNDER-LOCK-moment-feedback-chat-2026-10-12.md)
 (section 2, steps 4 and 5) and one card to the Data & consent page
 ([`FOUNDER-LOCK-consent-screens-2026-10-07.md`](FOUNDER-LOCK-consent-screens-2026-10-07.md)). Everything else in those
 locks stays as it is. Where this file and those disagree on the AI step or
