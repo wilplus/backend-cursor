@@ -2966,7 +2966,26 @@ and prompts for coding agents go in pull request descriptions. A new doc needs
 the founder's OK and a line in the master doc. No rule about the product
 changes, no code, no migration.
 
-**N109 · The waiting screen stays until the walk is there, and starts at 1%
+**N108 · The voice decides the confident moment; a correction with nothing
+to offer is skipped (founder, the Claude Code chat, 21 October 2026, on a
+screenshot of "Say this one like your confident moment." under a moment that
+"was a confident moment ... even more confident than the first one"; "Voice
+decides", "Skip that moment").** The shown moments are ranked by their voice,
+the sound read S, and the strongest voice is "your most confident moment". A
+shown moment whose voice reaches the floor is praised, unless its words need
+help (the rewrite gate), which gets the Clearer version; the voice Exercise
+is only for a moment whose voice is under the floor. Until now S × W decided
+both (N86), so weaker words could put a stronger voice under the floor and
+then ask it to change its voice. Willfidence stays S × W everywhere else
+(N104, N105, the practise's margin). A voice correction with no AI clip and
+no exercise is skipped, in place of "said again, never dropped" (N88): the
+walk moves on and the moment still reaches the coach. A clip with no sound
+read keeps the rule of 2026-10-17. The rules: flow page C2, C4, H1
+(frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md)). No migration.
+
+**N109 · The confident moment's line fits what follows (founder, the Claude Code chat, 21 October 2026: "it was a solid confident moment we have recognised, here is an example to make it even better"; "vary around the line I suggested … no abruptions").** When the walk goes on to make the Take's most confident moment better, one line names it solid and confident and leads into what follows (a clearer version, an example, or saying it again), three phrasings each around the founder's line, in place of "so far"; Line A is never said on that moment. The rules: flow page C2 and K (frontend [`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), FE #929). No migration.
+
+**N110 · The waiting screen stays until the walk is there, and starts at 1%
 (founder, the Claude Code chat, 21 October 2026, with a screenshot of the walk
 opening on its typing dots: "It starts on the screen and then automatically
 closes and opens the lounge it is abrupt make it stay"; "when it says it's done
@@ -2983,6 +3002,6 @@ nothing to walk, the text), also when the speaker had gone to the chat, so
 the first second, in place of "…" before the first report; a processing
 percentage is allowed (Never 1, founder 2026-10-19). No new words. The rules:
 the walk's page, A1, A2 (frontend
-[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), §6 N109); the recording
+[`docs/flows/feedback-walk-and-chat.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/feedback-walk-and-chat.md), §6 N110); the recording
 screens' page, the flow, 5 (frontend
-[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md), §6 N109). No migration.
+[`docs/flows/recording-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/recording-screens.md), §6 N110). No migration.
