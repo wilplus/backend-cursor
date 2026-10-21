@@ -575,7 +575,7 @@ rule that will be forgotten at the fifth. **Reach for it instead of
 `threading.Thread` anywhere a request or a Take is what the work belongs to.**
 
 **THE ADMIN HALF: THE AUDIT'S PRESCRIPTION IS WRONG. DO NOT IMPLEMENT IT AS
-WRITTEN.** `engineer_prompt.md` says the two admin routes that call LLMs on
+WRITTEN.** [`engineer_prompt.md`](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/audits/2026-09-22-ml-provenance/engineer_prompt.md) says the two admin routes that call LLMs on
 user data (`routes/v2/admin.py:1121`, `:1437`) "get `phase1_provider_route`".
 That decorator resolves `_principal_id()` — the **caller's** principal
 (`routes/v2/processing_authorization.py:68-78`). On an admin route the caller

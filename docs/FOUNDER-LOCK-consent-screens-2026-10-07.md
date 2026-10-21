@@ -1,6 +1,10 @@
 # Founder lock · the consent screens (7 October 2026)
 
-> **Label: In force** · one of the rules, read in N95's order. Every doc and its label: [`README.md`](../README.md) (N106).
+> **Label: History** · kept as written, because the rules still cite it. Every doc and its label: [`README.md`](../README.md) (N106).
+
+> **History since 2026-10-21.** The rules of the consent screens and the Data & consent page are on one page in the frontend repo,
+> [`docs/flows/consent-screens.md`](https://github.com/wilplus/frontend-cursor/blob/main/docs/flows/consent-screens.md), edited in place as they change; it carries this file's
+> signed words as they were signed. This file is kept as written and is no longer edited (N107).
 
 `LOCKED 2026-10-07 · founder in chat: "the consent screens are great; but right now they are not scrollable like that in the real app; so lock it like that" · decisions log N60`
 

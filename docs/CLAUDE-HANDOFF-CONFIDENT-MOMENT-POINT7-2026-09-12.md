@@ -65,7 +65,7 @@ accepted for the local, unnumbered snapshot.
 
 The exact frozen implementation evidence is:
 
-- `docs/MLC3-CONFIDENT-MOMENT-POINT7-IMPLEMENTATION-EVIDENCE.md`
+- [`docs/MLC3-CONFIDENT-MOMENT-POINT7-IMPLEMENTATION-EVIDENCE.md`](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-CONFIDENT-MOMENT-POINT7-IMPLEMENTATION-EVIDENCE.md)
 - `docs/MLC3-CONFIDENT-MOMENT-POINT7-BACKEND-SHA256.txt`
 - `docs/MLC3-CONFIDENT-MOMENT-POINT7-FRONTEND-SHA256.txt`
 

@@ -66,5 +66,5 @@ again.
 - **`willab-journal`** (blog and demo media) is published on purpose and stays
   public.
 - **The MLC-3 buckets** have their own readiness proof
-  (`MLC3-FOUNDER-CANARY-ACTIVATION-READINESS.md`).
+  ([`MLC3-FOUNDER-CANARY-ACTIVATION-READINESS.md`](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/MLC3-FOUNDER-CANARY-ACTIVATION-READINESS.md)).
 - **Deleting old objects** is the F4 plan, not this switch.

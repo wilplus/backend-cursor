@@ -10,7 +10,7 @@ Free community → funnel into the WillpowerLab app · Broad personal-growth aud
 > Reference copy of `WillLab_Community_Content_Strategy.docx`, converted to markdown
 > so it lives in the repo. This is the *source*; the prompt-shaped distillation the
 > generator actually loads is `services/prompts/community_content_strategy.md`.
-> Implementation prompt: [PROMPT-community-content-studio.md](PROMPT-community-content-studio.md).
+> Implementation prompt: [PROMPT-community-content-studio.md](https://github.com/wilplus/backend-cursor/blob/ca58853e58fe7f0b6c3f2b212317f795de69f420/docs/PROMPT-community-content-studio.md).
 
 ## 0. The one-page plan
 
