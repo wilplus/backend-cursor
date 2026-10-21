@@ -2706,3 +2706,11 @@ the "Later · from your coach" bubble is written the moment the coach
 shares, review ended or not; a try not heard says so; "Edit the helper
 words". The rules: the walk's page, B10, C3, C7, D5, E1, K (frontend
 `docs/flows/feedback-walk-and-chat.md`, §6 N90). No migration.
+
+**N93 · The AI clip that came out flat gets one more try (founder, the
+Claude Code chat, 21 October 2026).** The stress clip of 20 October failed
+its check (0.02 dB of contrast; the two that passed had about 2.4) and,
+made only once, never came: a clip that fails its check is now made once
+more with a new seed, never a third time, and a try after a clip that was
+never made is not scored. The rules: the walk's page, C6, H2 (frontend
+`docs/flows/feedback-walk-and-chat.md`, §6 N93). No migration.

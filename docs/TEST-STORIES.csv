@@ -236,7 +236,8 @@ tests/test_ai_voice.py,Story,"As a speaker practising, I want an AI clip of my o
 sentence under the clip names it in words, with no numbers.
 O2  The clip says my own words (or the clearer version I accepted, with
 the ums taken out), in at most 17 seconds.
-O3  A clip that fails its check is never shown; a real pause heard in
+O3  A clip that fails its check is made once more with a new seed and
+is never shown; a try after it is not scored; a real pause heard in
 the audio passes.
 O4  One clip per practice, started early once the exercise is known,
 within the daily limit; a voice still being made is waited for a
@@ -253,7 +254,7 @@ O2 -> test_the_request_says_the_speakers_own_words,
 test_no_clip_is_longer_than_the_limit,
 test_a_clearer_version_practice_gets_a_clip_of_the_accepted_words,
 test_a_sentence_with_fillers_is_said_without_them_and_the_next_try_is_measured_on_them
-O3 -> test_a_clip_that_fails_its_check_is_never_shown,
+O3 -> test_a_clip_that_fails_its_check_is_made_once_more_and_shown_only_if_it_passes,
 test_a_pause_heard_in_the_audio_passes_when_the_words_hide_it
 O4 -> test_the_daily_limit_stops_the_provider_call,
 test_two_corrected_moments_queue_two_prewarms,
