@@ -2853,6 +2853,6 @@ just make it faster; you can make the pages or a scrolling and you wait for
 it to load (that is preferred)").** The list opens with its newest imports
 and, at the bottom, loads the next step while the app's one loader shows;
 judging one import after another (N99) reads the next step when the steps
-loaded hold no import left to judge. No more than 200 imports at once is no
-longer a ceiling. The rules: frontend `docs/flows/coach-panel.md`, H3. No
+loaded hold no import left to judge. The list is no longer cut at its
+newest 200 imports. The rules: frontend `docs/flows/coach-panel.md`, H3. No
 new words, no migration.
