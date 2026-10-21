@@ -6,8 +6,10 @@ is stamped with its surface, the draft's model version, the pattern and the
 moment; the coach is its author; `owner_user_id` names whose passage the
 words are about, for the consent door later (L1 of the learning page).
 
-Three surfaces, and they never mix: the praise line, the clearer version,
-the exercise script. The walk's exercise answer records two finals, the
+Five surfaces, and they never mix: the three answer surfaces (the praise
+line, the clearer version, the exercise script) and, since C5-a, the coach's
+own two (``coach_moment_line``, ``coach_take_word``), which are recorded but
+leave by no door since 2026-10-19 (N79, "Close them for now"). The walk's exercise answer records two finals, the
 saved instruction and the video's transcript, when its request resolves
 (services.exercise_coach_requests); a Library save records none: it has no
 moment, owner or passage, so no export could ever release it (W6).

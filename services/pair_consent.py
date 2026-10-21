@@ -22,7 +22,9 @@ two (coach_moment_line, coach_take_word) too, Privacy/Terms 3.5 signed by the
 founder 2026-10-08 (decisions log N68; 22-…SIGNED, E2): the coach's words
 are training data under the SPEAKER's training yes, so the speaker's yes
 governs them exactly as it governs the rest (the coach agreement covers
-the coach's side, and is no substitute for the speaker's yes). The constant
+the coach's side, and is no substitute for the speaker's yes). Since
+2026-10-19 the doors are closed to both coach-word surfaces (N79); the yes
+governs them again the day a door reopens to them. The constant
 below changes only by a reviewed change carrying a new answer from counsel,
 never by a toggle. AC-9: nothing here reaches a speaker.
 """
