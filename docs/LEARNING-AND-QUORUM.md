@@ -307,12 +307,12 @@ one confirms it first.
 
 **C · History**
 
-1. **v1 `neutral` + `neutral`.** Under J4 to J6 (2026-08-14), two `neutral`
-   answers settled a clip as "perceptually ambiguous". K (2026-08-25)
-   replaced that rule and says historical rows keep their meaning. Today the
-   code reads every v1 `neutral` as an IDK that never settles, so a clip
-   that was settled under v1 now reads as `needs_third` or `unresolved`.
-   Should those clips stay settled?
+1. ~~**v1 `neutral` + `neutral`.**~~ **Decided (N111): they stay settled.** Two
+   historical v1 `neutral` answers close the clip as `perceptually_ambiguous`
+   (J6's meaning, which K keeps): never routed again, and never a label, since
+   only a perceptual quorum is ground truth (K4). One `neutral` is still an IDK,
+   and a perceptual quorum still wins. Built in `label_quorum.py`; the SQL view
+   follows in the migration that also carries B1.
 2. **`neutral` means three things.** In SPEC §17 it is a perceptual middle.
    In J6 and the ledger it is an IDK. In `practice_more_confident.py` it is
    the In-between rung. Writing that down here is enough, unless the
@@ -380,6 +380,7 @@ own dates and are left as they are. The legal files are counsel's to change.
 
 One line each, newest first: `date · N · what changed · PR`.
 
+- 2026-10-21 · N111 · C1 built in the ledger: two historical v1 neutrals close a clip as perceptually ambiguous, never a label · BE
 - 2026-10-21 · N111 · B7 fixed: four modules' notes say the coach-word surfaces are closed (N79) and the doors' switches are gone · BE
 - 2026-10-21 · N111 · B6 fixed: the ledger's notes point to today's serving order and today's view · BE
 - 2026-10-21 · N111 · B5 fixed: an unresolved or quarantined clip no longer reaches community listeners · BE

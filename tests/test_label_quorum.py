@@ -12,6 +12,9 @@ OUTCOME
       blind coach and a blind peer share one quorum.
   O5  Not sure and Audio unclear never settle a label.
   O6  Once settled, no further vote is accepted.
+  O7  Two historical v1 "neutral" answers keep J6's meaning: the clip is
+      closed (perceptually ambiguous), never routed again, never a label.
+      One neutral is still an IDK, and a perceptual quorum still wins.
 PROVES   O1 -> test_a_machine_prediction_is_never_a_vote
          O2 -> test_a_rating_that_was_not_blind_is_not_a_vote
          O3 -> test_a_self_report_is_never_a_vote
@@ -19,6 +22,7 @@ PROVES   O1 -> test_a_machine_prediction_is_never_a_vote
                test_blind_coach_and_blind_peer_share_one_human_quorum
          O5 -> test_not_sure_and_audio_unclear_never_settle
          O6 -> test_fresh_rater_cannot_add_a_vote_after_resolution
+         O7 -> test_two_v1_neutrals_stay_closed_but_are_never_a_label
 WHY      Founder 2026-08-11: a model grading its own homework, or one person
          agreeing with themselves, poisons the gold set beyond repair.
 """
@@ -102,6 +106,25 @@ class TestWhoseVoteCounts(unittest.TestCase):
         self.assertEqual(res["value"], "in_between")
         self.assertEqual(res["n_responses"], 2)
         self.assertEqual(res["n_lane_excluded"], 0)
+
+
+    def test_two_v1_neutrals_stay_closed_but_are_never_a_label(self):
+        res = lq.resolve([_row("neutral", rater="a"), _row("neutral", rater="b")])
+        self.assertEqual(res["status"], lq.PERCEPTUALLY_AMBIGUOUS)
+        self.assertIsNone(res["value"])
+        self.assertFalse(res["settled"])
+        self.assertFalse(res["gold_eligible"])
+        self.assertFalse(res["needs_rater"])
+        self.assertEqual(lq.routing_priority(res), lq.P_SETTLED)
+        self.assertEqual(
+            lq.rater_submission_access([_row("neutral", rater="a"), _row("neutral", rater="b")],
+                                       "c")["outcome"], "closed")
+        self.assertEqual(
+            lq.resolve([_row("neutral", rater="a"), _row("not_sure", rater="b")])["status"],
+            lq.NEEDS_THIRD)
+        won = lq.resolve([_row("neutral", rater="a"), _row("neutral", rater="b"),
+                          _row("yes", rater="c"), _row("yes", rater="d")])
+        self.assertEqual((won["status"], won["value"]), (lq.QUORUM, "yes"))
 
 
 class TestRaterSubmissionAccess(unittest.TestCase):
