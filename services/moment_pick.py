@@ -1,33 +1,37 @@
 """Which moments a Take shows, and whether each is praised or corrected
-(founder 2026-10-20, flow page C2, C4 and H1: "the score decides each";
+(founder 2026-10-21, N108, flow page C2, C4 and H1: "the voice decides";
 founder lock 2026-10-12 section 6 for the read itself).
 
-Each block's selected clip gets one number, its willfidence, S x W, from 0
-to 1:
+Each block's selected clip gets its willfidence, S x W, from 0 to 1:
 
   S  the clip's universal-v3 sound read, stretched to 0..1
-     (``willfidence.stretch``).
+     (``willfidence.stretch``): the voice.
   W  the mean of the word signals present: few fillers, few hedges, fits the
      slide (``willfidence.filler`` / ``hedging`` / ``slide_fit``).
 
-Shown: the Take's two highest moments, at most one per slide (each slide's
-best clip, one with at least ``MIN_WORDS`` words when the slide has one),
-ranked by willfidence, clips with enough words before short ones. Each shown moment is PRAISED when it reaches
-``FLOOR`` with at least ``MIN_WORDS`` words and CORRECTED when it does not:
-both strong, two praises and no practise; both weak, two corrections, each
-with its own tries and clips. The highest of the two is marked, so the walk
-can say "This was your most confident moment." A clip with no sound read is
-not dropped (founder 2026-10-17): its S is neutral and its words order it;
-such a clip is below the floor by construction, so it is corrected.
+The voice decides (N108). Shown: the Take's two strongest voices, at most
+one per slide (each slide's best clip, one with at least ``MIN_WORDS`` words
+when the slide has one), ranked by S, then by willfidence, clips with enough
+words before short ones. The first is "your most confident moment". A shown
+moment whose voice reaches ``FLOOR`` with at least ``MIN_WORDS`` words is
+PRAISED, unless its words need help (``services.rewrite_gate``), when it is
+CORRECTED with the clearer version; a moment whose voice is under the floor
+is CORRECTED, with the clearer version when its words need help ("words
+first, then voice", founder 2026-10-18), otherwise the voice exercise. So the
+voice exercise is only ever for a voice under the floor. The V3 policy keeps
+the clearer version only when a rewrite passes the gate's second half; a
+moment whose voice cleared the floor and whose rewrite does not pass is
+praised (``voice_clears``), never sent to the voice exercise.
 
-A correction's kind (founder 2026-10-18, "words first, then voice";
-``services.rewrite_gate``): the clearer version when its words need help
-(fillers, hedges, undermining words, off the slide, a broken sentence),
-otherwise the voice exercise. The V3 policy then keeps the clearer version
-only when a rewrite passes the gate's second half.
+A clip with no sound read is not dropped (founder 2026-10-17): its S is
+neutral and its words order it; such a clip is below the floor by
+construction, so it is corrected.
 
-Until 2026-10-20 the roles were fixed: the best moment was praised (with the
-softer line under the floor) and the second best was always corrected.
+Until 2026-10-21 S x W decided both the rank and the praise (N86), so weaker
+words could put a stronger voice under the floor and then ask it to change
+its voice. Until 2026-10-20 the roles were fixed: the best moment was
+praised and the second best always corrected. Willfidence stays S x W for
+the praise's level, the coach's read (N104) and the Take's column (N105).
 
 Internal only (AC-9): the numbers order the moments and never leave the
 frame. What crosses to the client is a tier name, one flag and one routing
@@ -44,7 +48,7 @@ from services import willfidence
 FLOOR = 0.6
 MIN_WORDS = 5
 #: The Take shows its two highest moments (founder 2026-10-14, 2026-10-17);
-#: each is praised or corrected by its own score (founder 2026-10-20).
+#: each is praised or corrected by its own voice (founder 2026-10-21, N108).
 SHOWN_LIMIT = 2
 
 EXERCISE_CLEARER = "clearer"
@@ -82,31 +86,48 @@ def pick(reads: list[dict]) -> dict:
     """``reads``: one row per block with ``block_id``, ``slide_index``,
     ``word_count`` and ``read`` (from :func:`read`, or None).
 
-    Returns ``{"shown": [{"block_id", "praise", "kind", "highest"}, ...]}``:
-    the two highest moments in rank order, ``praise`` True when the moment
-    reaches the floor with enough words, else ``kind`` "clearer" or
-    "voice"; ``highest`` marks the first."""
+    Returns ``{"shown": [{"block_id", "praise", "kind", "highest",
+    "voice_clears"}, ...]}``: the two strongest voices in rank order,
+    ``praise`` True when the voice reaches the floor with enough words and
+    the words need no help, else ``kind`` "clearer" (the words need help)
+    or "voice" (the voice is under the floor); ``highest`` marks the first;
+    ``voice_clears`` says the voice reached the floor (N108)."""
     scored = [row for row in reads if row.get("read")]
     best_per_slide: dict[Any, dict] = {}
     for row in scored:
         held = best_per_slide.get(row["slide_index"])
         if held is None or _ahead(row, held):
             best_per_slide[row["slide_index"]] = row
-    # Clips with enough words rank before short ones, whatever their score:
+    # Clips with enough words rank before short ones, whatever their voice:
     # a three-word fragment is shown only when a Take has nothing longer.
     ranked = sorted(best_per_slide.values(),
-                    key=lambda r: (not _worded(r), -r["read"]["value"]))
+                    key=lambda r: (not _worded(r), -r["read"]["s"], -r["read"]["value"]))
     shown = []
     for position, row in enumerate(ranked[:SHOWN_LIMIT]):
-        praise = _worded(row) and row["read"]["value"] >= FLOOR
+        clears = _voice_clears(row)
+        words_help = bool(row["read"].get("words_help"))
+        praise = clears and not words_help
         shown.append({
             "block_id": row["block_id"],
             "praise": praise,
             "kind": None if praise else (
-                EXERCISE_CLEARER if row["read"].get("words_help") else EXERCISE_VOICE),
+                EXERCISE_CLEARER if words_help else EXERCISE_VOICE),
             "highest": position == 0,
+            "voice_clears": clears,
         })
     return {"shown": shown}
+
+
+def _voice_clears(row: dict) -> bool:
+    """The voice reaches the floor, on a clip with enough words and a sound
+    read (a clip with none stays corrected, 2026-10-17)."""
+    read_ = row["read"]
+    return _worded(row) and bool(read_.get("sound", True)) and read_["s"] >= FLOOR
+
+
+def _strength(row: dict) -> tuple[float, float]:
+    """The voice first, then the willfidence (N108)."""
+    return row["read"]["s"], row["read"]["value"]
 
 
 def _worded(row: dict) -> bool:
@@ -115,7 +136,7 @@ def _worded(row: dict) -> bool:
 
 def _ahead(row: dict, held: dict) -> bool:
     """A slide's best clip: one with enough words before one without, then
-    the higher willfidence."""
+    the stronger voice, then the higher willfidence (N108)."""
     if _worded(row) != _worded(held):
         return _worded(row)
-    return row["read"]["value"] > held["read"]["value"]
+    return _strength(row) > _strength(held)
