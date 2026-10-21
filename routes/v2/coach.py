@@ -31,7 +31,7 @@ from routes.v2.common import _is_valid_uuid
 from services.db import db
 from services.refusal import Refusal
 from services.coach_pseudonym import coach_pseudonym as _coach_pseudonym
-from services.coach_queue import load_review_queue
+from services.coach_queue import bookmarks_for, load_review_queue
 from services.coach_confidence_rating import (
     admit_rater, rating_body, rating_response, record_rating,
 )
@@ -206,8 +206,12 @@ def _rater_language_outcome(session, snippets=None, proficient=None,
     rater_id = str(getattr(request, "user_id", "") or "")
     if proficient is None:
         proficient = db.get_user_proficient_languages(rater_id)
-    recording = (_session_recording(session) if recordings is None else
-                 recordings.get(str((session or {}).get("recording_id"))))
+    # A declared language decides before the recording is looked at, so the
+    # recording is read only when the Take declares none.
+    if recordings is not None:
+        recording = recordings.get(str((session or {}).get("recording_id")))
+    else:
+        recording = None if session_language(session) else _session_recording(session)
     language = session_language(
         session,
         recording=recording,
@@ -495,11 +499,11 @@ def v2_coach_moments_queue():
         proficient = db.get_user_proficient_languages(rater_id)
         if not proficient:
             return _rater_language_error("profile_required")
-        rows, snips, _states = load_review_queue(db)
+        rows, snips, _states = load_review_queue(db, snippets=False)
         matched = _language_matched_rows(rows, snips, proficient)
         return jsonify(queue_for_coach(
             db, matched, rater_id=rater_id,
-            moments_for=_queue_moments_for(snips, matched),
+            moments_for=_queue_moments_for(matched),
             pseudonym_for=_coach_pseudonym)), 200
     except Exception as e:
         logger.error("coach/queue/moments GET failed: %s", e, exc_info=True)
@@ -529,11 +533,11 @@ def v2_coach_close_moments():
                         "error": "session_ids must list the speaker's Takes."}), 400
     try:
         wanted = {str(i) for i in ids}
-        rows, snips, _states = load_review_queue(db)
+        rows, _snips, _states = load_review_queue(db, snippets=False)
         rows = [r for r in rows if str(r.get("id")) in wanted]
         queue = queue_for_coach(
             db, rows, rater_id=str(getattr(request, "user_id", "") or ""),
-            moments_for=_queue_moments_for(snips, rows),
+            moments_for=_queue_moments_for(rows),
             pseudonym_for=_coach_pseudonym, alarm=False)
         return jsonify({"closed": close_moments(
             db, rows, waiting_moments(queue), whole=waiting_for_text(queue))}), 200
@@ -556,11 +560,11 @@ def v2_coach_speakers():
         proficient = db.get_user_proficient_languages(rater_id)
         if not proficient:
             return _rater_language_error("profile_required")
-        rows, snips, _states = load_review_queue(db)
+        rows, snips, _states = load_review_queue(db, snippets=False)
         matched = _language_matched_rows(rows, snips, proficient)
         return jsonify(speakers_for_coach(
             db, matched, rater_id=rater_id,
-            moments_for=_queue_moments_for(snips, matched),
+            moments_for=_queue_moments_for(matched),
             pseudonym_for=_coach_pseudonym)), 200
     except Exception as e:
         logger.error("coach/speakers GET failed: %s", e, exc_info=True)
@@ -602,26 +606,16 @@ def _language_matched_rows(rows, snips, proficient):
     return matched
 
 
-def _queue_moments_for(snips, rows):
+def _queue_moments_for(rows):
     """The queue's `moments_for`: a take's bookmarked snippet ids in order,
     or None while its bookmarks are not frozen yet. Not a drop: the take
     rides as "Waiting for the text" (founder 2026-10-01, A1) until the bake
     or the first read freezes them, and the log names the filter. The
     frozen sets of every row in `rows` are read in one batch, not one read
-    per Take (founder 2026-10-18)."""
-    feedback_sets = db.get_ideal_text_feedback_sets(
-        [r.get("id") for r in rows if r.get("arc_id")])
-
-    def moments_for(row):
-        sid = str(row.get("id"))
-        marked = _bookmarked_snippet_ids(row, sid, feedback_sets)
-        if marked is None:
-            logger.info("coach queue: take waiting for the text sid=%s "
-                        "filter=bookmarks_not_frozen", sid)
-            return None
-        return [str(s.get("id")) for s in snips.get(sid) or []
-                if str(s.get("id")) in marked]
-    return moments_for
+    per Take (founder 2026-10-18), and only the bookmarked snippets are
+    read to order them, not every piece of every Take (founder 2026-10-21):
+    services.coach_queue.bookmarks_for."""
+    return bookmarks_for(db, rows, _bookmarked_snippet_ids)
 
 
 def _frozen_feedback_set(arc_id, session_id, feedback_sets=None):
@@ -1695,18 +1689,21 @@ def v2_coach_moment_read(session_id, snippet_id):
     return jsonify(payload), 200
 
 
-def _moment_read_payload(owner_sid, snippet_id):
+def _moment_read_payload(owner_sid, snippet_id, *, session=None, snippet_row=None):
     """The Read screen's body for one moment, for THIS coach. Only ever
-    called behind `_moment_gate`, which is the blind gate."""
+    called behind `_moment_gate`, which is the blind gate, or the label
+    save's own form of it. ``session`` and ``snippet_row`` are the Take and
+    the moment when the caller already holds them."""
     from services.coach_moment_read import moment_read
-    session = db.v2_get_session_by_id(owner_sid) or {}
+    if session is None:
+        session = db.v2_get_session_by_id(owner_sid) or {}
     return moment_read(
         db, take_session_id=owner_sid, snippet_id=snippet_id,
         rater_id=str(getattr(request, "user_id", "")),
-        owner_user_id=session.get("user_id"))
+        owner_user_id=session.get("user_id"), snippet_row=snippet_row)
 
 
-def _moment_read_after_rating(session_id, snippet_id) -> dict:
+def _moment_read_after_rating(session_id, snippet_id, held=None) -> dict:
     """``{"moment_read": <the moment GET's body>}`` once the rating is saved,
     else ``{}`` (C2, founder 2026-10-08: "What happened" arrives with the
     saved answer instead of after a second round trip).
@@ -1716,8 +1713,23 @@ def _moment_read_after_rating(session_id, snippet_id) -> dict:
     that request — so nothing about the moment reaches the coach before
     their answer (BLIND COACH), and an answer the gate keeps shut (Audio
     unclear) gets no read, exactly as the GET would refuse it. Any failure
-    omits the key; the rating is saved either way."""
+    omits the key; the rating is saved either way.
+
+    ``held`` is the save's own ``(session, snippet, rating row)`` on a
+    coach's FIRST answer: the gate's reads would only find them again (the
+    snippet is the Take's own row, and the rating just written is the one
+    the door reads), so the door is decided on the written answer and the
+    moment comes with no read of the whole talk (founder 2026-10-21, the
+    save took 9 s). A reconsideration or a self-report goes through the
+    gate itself."""
     try:
+        if held is not None:
+            sess, snip, row = held
+            if not _practice_door_open({"rating_value": row.get("value"),
+                                        "rating_unrateable": bool(row.get("unrateable"))}):
+                return {}
+            return {"moment_read": _moment_read_payload(
+                str(session_id), str(snippet_id), session=sess, snippet_row=snip)}
         error, owner_sid = _moment_gate(str(session_id), str(snippet_id))
         if error:
             return {}
@@ -2796,17 +2808,25 @@ def _rating_selection(sess, session_id, snippet_id):
     (services.coach_moments_queue.selection_stamp). A clip of a corpus
     labelling cohort keeps the cohort's own record; a speaker's Take, the
     walk's census of the bookmarks that reached the speaker."""
-    from services.coach_moments_queue import reached_for_sessions, selection_stamp
+    from services.coach_moments_queue import reached_moments, selection_stamp
     from services.confidence_labels import stored_selection_records
+    from services.parallel import run_in_parallel
     ctx = sess.get("intake_context") if isinstance(sess, dict) else None
     record = next((r for r in stored_selection_records(ctx)
                    if r.get("snippet_id") == str(snippet_id)), None)
     if record is not None or (sess or {}).get("source") == "training_import":
         return selection_stamp(cohort_record=record, reached_bookmark=False)
+    sid = str(session_id)
     try:
-        marked = _bookmarked_snippet_ids(sess, str(session_id)) or set()
-        requests = db.list_exercise_coach_requests_for_sessions([str(session_id)])
-        reached = reached_for_sessions(db, [str(session_id)], requests)(str(session_id))
+        # The walk's census, its four reads side by side (founder
+        # 2026-10-21, the save took 9 s): the same reach as
+        # reached_for_sessions, from the same reads.
+        marked, requests, events, answered = run_in_parallel(
+            lambda: _bookmarked_snippet_ids(sess, sid) or set(),
+            lambda: db.list_exercise_coach_requests_for_sessions([sid]),
+            lambda: db.list_moment_events_for_sessions([sid]),
+            lambda: db.list_confident_voice_answered_moments([sid]))
+        reached = reached_moments(events, answered, (requests or {}).keys()).get(sid, set())
     except Exception as e:  # noqa: BLE001 -- the rating stands, stamped unknown
         logger.warning("rating selection read failed sid=%s: %s", session_id, e)
         return selection_stamp(reached_bookmark=None)
@@ -2949,7 +2969,9 @@ def v2_coach_put_confidence_label(snippet_id):
         return jsonify({
             **rating_response(db, snip, snippet_id, row, lane,
                               legacy_intensity, canonical_judgment),
-            **_moment_read_after_rating(session_id, snippet_id),  # C2, after the write
+            **_moment_read_after_rating(  # C2, after the write
+                session_id, snippet_id,
+                held=None if reconsidering or self_report else (sess, snip, row)),
         }), 200
     except Refusal as refusal:
         return jsonify(refusal.body), refusal.status

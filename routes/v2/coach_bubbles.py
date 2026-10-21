@@ -30,7 +30,7 @@ def v2_coach_take_bubbles():
         status, payload = take_bubbles(
             db, rater_id=str(getattr(request, "user_id", "") or ""),
             matched_rows=_language_matched_rows,
-            moments_for_snips=_queue_moments_for, pseudonym_for=coach_pseudonym)
+            moments_for_rows=_queue_moments_for, pseudonym_for=coach_pseudonym)
     except Exception as e:
         logger.error("coach/take-bubbles GET failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)

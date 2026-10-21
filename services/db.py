@@ -2411,6 +2411,32 @@ class DatabaseService:
             return None
         return out
 
+    def get_snippet_order_by_ids(self, snippet_ids) -> list[dict]:
+        """``id, session_id, start_offset_ms`` of exactly these snippets, in
+        chunks of 100 ids (an ``in`` filter rides the URL). The coach queue
+        orders a Take's bookmarked moments from it, instead of reading every
+        piece of every queued Take (founder 2026-10-21: the queue took
+        6.7 s). Rows come back in no promised order; the caller sorts.
+        Best-effort: [] on a hiccup, as the batch read it replaces."""
+        ids = sorted({str(s) for s in (snippet_ids or []) if s})
+        out: list[dict] = []
+        try:
+            for i in range(0, len(ids), 100):
+                res = (
+                    self.client.table(SNIPPETS_TABLE)
+                    .select("id, session_id, start_offset_ms")
+                    .in_("id", ids[i:i + 100])
+                    .execute()
+                )
+                out.extend(res.data or [])
+            return out
+        except Exception as e:
+            logger.warning(
+                "get_snippet_order_by_ids failed (%d ids): %s", len(ids), e,
+                exc_info=True,
+            )
+            return []
+
     def get_snippets_by_sessions(
         self, session_ids, *, include_words: bool = False,
         columns: Optional[str] = None,
