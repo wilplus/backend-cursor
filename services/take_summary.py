@@ -674,11 +674,15 @@ COACH_TITLE = "Your coach"
 
 def coach_update_message(database: Any, *, take_session_id: str, text: Optional[str],
                          video_ref: Optional[str]) -> Optional[dict]:
-    """A coach's word shared after the Take's review ended (its summary is
-    stored): its own Lounge bubble under "Later · from your coach", as the
-    coach wrote it (lock 2026-10-12, section 3). Stored once per word.
-    None when the review has not ended (the walk shows the word as its
-    first step) or anything is missing."""
+    """A coach's word shared on a Take: its own Lounge bubble under "Later ·
+    from your coach", as the coach wrote it (lock 2026-10-12, section 3), at
+    the bottom of the thread the moment it is shared, like a new message
+    (founder 2026-10-21), whether or not the review has ended: the walk
+    still shows the word as its first step, and writes no second copy into
+    the chat while this one is there (frontend `coachNoteToChat`). Until
+    2026-10-21 the bubble waited for the review to end, so a word shared
+    during it reached the chat only as the walk's copy, among the Take's
+    steps. Stored once per word. None when anything is missing."""
     from services.lounge_messages import thread_stamp
     from services.slide_selection import spoken_arc_sessions
     take = str(take_session_id)
@@ -692,9 +696,6 @@ def coach_update_message(database: Any, *, take_session_id: str, text: Optional[
     if take not in ids:
         return None
     take_index = ids.index(take) + 1
-    if not database.get_lounge_message_by_client_id(
-            str(user_id), summary_client_id(user_id, arc_id, take_index)):
-        return None
     video_url = None
     if video_ref:
         from services.coach_video_storage import refreshed_media_url

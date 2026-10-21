@@ -2688,3 +2688,11 @@ ready, let's go with the next take. 💪" and "Record Take N". The rules: the
 walk's page, B10, C1, D3, D4, D5, E1, F4, F5, K (frontend
 `docs/flows/feedback-walk-and-chat.md`, §6 N89; backend #1210, frontend
 #897). No migration.
+
+**N90 · The walk's doors checked in the app; the coach's bubble at the
+bottom (founder, the app, 21 October 2026).** A step already answered past
+opens the walk on that step with the parts before and after it to scroll;
+the "Later · from your coach" bubble is written the moment the coach
+shares, review ended or not; a try not heard says so; "Edit the helper
+words". The rules: the walk's page, B10, C3, C7, D5, E1, K (frontend
+`docs/flows/feedback-walk-and-chat.md`, §6 N90). No migration.

@@ -157,13 +157,17 @@ def test_a_coach_word_shared_after_the_review_is_its_own_bubble(monkeypatch):
     db.v2_get_session_by_id = lambda take: {"user_id": "u", "arc_id": "a"}
     db.takes = type("T", (), {"get_arc_sessions": staticmethod(lambda arc: TAKES)})()
     word = {"take_session_id": "t2", "text": "Breathe before the price.", "video_ref": None}
-    assert take_summary.coach_update_message(db, **word) is None  # review not ended: the walk shows it
+    # Shared before the review ended: the bubble lands at the bottom the
+    # moment it is shared, like a new message (founder 2026-10-21); the walk
+    # still opens on the word and writes no second copy.
+    first = take_summary.coach_update_message(db, **word)
+    assert first["body"] == "Your coach\nBreathe before the price."
+    assert first["metadata"]["heading"] == "Later · from your coach" and first["metadata"]["coach_update"] is True
     _run(db, monkeypatch, "Your voice sounded surer than last time. Keep the endings you found.")
     msg = take_summary.coach_update_message(db, **word)
     assert msg["body"] == "Your coach\nBreathe before the price."
-    assert msg["metadata"]["heading"] == "Later · from your coach" and msg["metadata"]["coach_update"] is True
     take_summary.coach_update_message(db, **word)
-    assert len(db.rows) == 3  # the summary, the closing message and one update, stored once
+    assert len(db.rows) == 3  # one update, stored once; the summary and the closing message
 
 
 def test_the_summary_knows_the_talk_and_asks_for_whatsapp_once(monkeypatch):
