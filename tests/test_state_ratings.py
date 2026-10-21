@@ -9,7 +9,8 @@ OUTCOME
   O3  A state with no written definition cannot be rated.
   O4  The lane comes from the rating act's provenance: an unverified coach
       act is bootstrap, never panel.
-  O5  Aggregation leaves out bootstrap rows and counts "audio unclear" apart.
+  O5  Aggregation leaves out bootstrap rows, a self-report in any lane and an
+      answer given after seeing the other side, and counts "audio unclear" apart.
   O6  A five-rater panel at 60% outweighs a unanimous pair.
 PROVES   O1 -> test_blind_is_the_default_and_the_answer_is_kept
          O2 -> test_truthy_strings_are_refused_not_coerced
@@ -77,6 +78,8 @@ class LaneAndAggregationTests(unittest.TestCase):
             {"lane": "bootstrap", "value": "no"},
             {"lane": "bootstrap", "value": "no"},
             {"lane": "game_owner", "value": "no"},
+            {"lane": "coach", "value": "no", "self_report": True},
+            {"lane": "coach", "value": "no", "blind": False},
         ])
         self.assertEqual(label["n_raters"], 2)
         self.assertEqual(label["by_value"], {"yes": 2, "in_between": 0, "no": 0})

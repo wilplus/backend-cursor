@@ -326,8 +326,9 @@ def aggregate(rows: Any, *, lanes: tuple = PANEL_LANES) -> Optional[dict]:
     ``lanes`` defaults to PANEL_LANES — **bootstrap and game_owner are both
     excluded**. bootstrap lacks verified panel-grade provenance; game_owner
     is the speaker judging their own recording (rule 2 —
-    a self-report, never a peer). Pass ``lanes=LANES`` deliberately, and only
-    for a corpus pull that wants everything.
+    a self-report, never a peer). A self-report in another lane and a
+    non-blind answer are left out of a panel read too. Pass ``lanes=LANES``
+    deliberately, and only for a corpus pull that wants everything.
 
     ``unrateable`` rows are counted but never aggregated HERE: on this
     spectrum they carry no position, so including them in ``n_raters`` would
@@ -343,13 +344,20 @@ def aggregate(rows: Any, *, lanes: tuple = PANEL_LANES) -> Optional[dict]:
     """
     if not isinstance(rows, list):
         return None
+    from services.label_quorum import is_self_report
     allowed = set(lanes or ())
+    # A panel read (the owner's lane left out) also leaves out a self-report
+    # in another lane (a coach judging their own Take) and an answer given
+    # after seeing the clip's other side, as the label ledger does (N111, B4).
+    panel = "game_owner" not in allowed
     answered: list[str] = []
     unrateable_n = 0
     for r in rows:
         if not isinstance(r, dict):
             continue
         if r.get("lane") not in allowed:
+            continue
+        if panel and (is_self_report(r) or r.get("blind") is False):
             continue
         if r.get("unrateable") or r.get("value") == "audio_unclear":
             unrateable_n += 1
