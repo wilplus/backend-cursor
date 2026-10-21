@@ -2194,6 +2194,17 @@ O2 -> test_an_unreachable_database_says_skipped_never_ok
 O3 -> test_extension_routines_are_excluded_from_both_queries
 O4 -> test_the_allowlist_is_exactly_the_pinned_set,
 test_anything_not_on_the_list_is_still_a_finding",scripts/rls_guard.py runs in bin/railway-web.sh; docs/RLS-AUDIT.md.
+tests/test_roadmap_overview.py,Story,"As the founder, I want one page that shows where each planned piece of work stands, read from GitHub, so that I see progress without asking anyone or ticking anything by hand.","O1  An item carried by an open PR reads ""in review"", by a draft PR
+""draft"", and ""done"" only when every PR that finishes it is merged.
+O2  A merged part alone never reads ""done""; a branch with no PR reads
+""in progress""; nothing found reads ""not started"".
+O3  A Linear id in the title of a PR opened since the plan's date ties
+that PR to its item; an older PR with the same id does not.
+O4  When GitHub cannot be read, every item reads ""unknown"" and none
+reads ""done"".","O1 -> test_open_draft_and_merged_prs_set_the_state
+O2 -> test_parts_branches_and_nothing_found
+O3 -> test_a_linear_id_ties_only_recent_prs
+O4 -> test_github_down_shows_unknown_not_done",
 tests/test_rooting_phrase_qualification_postgres.py,Story,"As a speaker, I want a phrase I said confidently to become my helper words and lock its Paragraph in one step, and be removable, so that my helper words follow my choices.","O1  A phrase I said with a confident ""yes"" qualifies to become helper
 words directly.
 O2  Choosing it locks the Paragraph and sets the helper words in one step;
