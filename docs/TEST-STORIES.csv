@@ -720,6 +720,19 @@ O2  The retired bundled route (/v2/user/mlc2-consent) records no grant
 (410) and still lets a holder withdraw.","O1 -> test_get_and_put_answer_410_write_nothing_and_warn
 O2 -> test_post_records_nothing_and_answers_410_with_a_code_only
 test_delete_withdraws_a_held_grant_and_never_erases_it",No frontend caller of /v2/user/consent was found on 2026-10-19. Terms acceptance at sign-up is routes/auth.py and is not affected.
+tests/test_corpus_mixed_queue.py,Story,"As the founder judging the training corpus, I want the clips really mixed: never the same speaker twice in a row, and the machine's high, neutral and low reads all there, without anything on screen hinting which is which.","O1  Never one speaker twice in a row while another is left in the round.
+O2  The machine's bands in equal measure: up to the same number from
+each, all of a scarce band.
+O3  BLIND COACH: the order is the same whichever clip carries which band;
+the band decides only which clips come in.
+O4  The import the coach opened comes first.
+O5  The round's payload carries only the queue's allowlist and the topic:
+no import id, speaker, band or score; clips this coach answered, and
+imports not set up, are not in it.","O1 -> test_never_one_speaker_twice_in_a_row
+O2 -> test_the_machines_reads_in_equal_measure
+O3 -> test_the_order_does_not_follow_the_band
+O4 -> test_the_opened_import_comes_first
+O5 -> test_the_round_carries_nothing_of_the_machine","Founder 2026-10-21 (N101): ""they do not come from the same speaker; the fragments are really mixed, with different willfidence scores like really neutral, high, and low""."
 tests/test_country_asked_once.py,Story,"As a speaker re-accepting new terms, I want my country already filled in, so that I am not asked for it again.","O1  When I am asked to re-accept, the status carries my newest receipt's
 country, lower-cased, and everything else in the status is unchanged.",O1 -> AReAcceptanceIsPrefilledTests::test_the_newest_receipts_country_comes_back_lower_cased,"Founder 2026-10-05, decisions log N48.4 Q21 A: country is asked once."
 tests/test_cross_take_selection.py,Story,"As a speaker, I want the strongest moments of each of my Takes shown without any score or rank, so that feedback stays in words.","O1  Each Take shows its own strongest moments, strongest first, up to the

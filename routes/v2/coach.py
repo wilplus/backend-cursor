@@ -2785,6 +2785,45 @@ def _confidence_queue_presented(visible_rows, *, sess, session_id):
     return []
 
 
+@v2_bp.route("/coach/corpus/mixed-queue", methods=["GET"])
+@require_admin_or_coach
+def v2_coach_corpus_mixed_queue():
+    """The training corpus judged mixed (founder 2026-10-21, N101): the next
+    round of clips across every open import this coach may hear, never one
+    speaker twice in a row when it can be helped, the machine's high,
+    neutral and low reads in equal measure, in a blind order
+    (services.corpus_mixed_queue). Only clips this coach has not answered.
+    ?start=<session_id>: the import the coach opened, whose clip comes first.
+
+    200 { session_id: "corpus-mixed", queue: [{snippet_id, label, re_review,
+          rating_locked, rating_lock_reason, learning_exposures, topic}],
+          count, labelled }   an empty queue: nothing left to judge.
+    400 · 428 (no languages) · 500. No import id, speaker, band or score.
+    """
+    start = (request.args.get("start") or "").strip() or None
+    if start is not None and not _is_valid_uuid(start):
+        return jsonify({"code": "INVALID_INPUT",
+                        "error": "start must be a session UUID"}), 400
+    try:
+        from services.corpus_mixed_queue import mixed_queue
+        from services.error_presence_audit import week_key
+        rater_id = str(getattr(request, "user_id", "") or "")
+        proficient = db.get_user_proficient_languages(rater_id)
+        if not proficient:
+            return _rater_language_error("profile_required")
+        queue = mixed_queue(
+            db, rater_id=rater_id, start=start,
+            # The order holds for the coach's week: a reload resumes it.
+            seed=f"{rater_id}:{week_key()}",
+            matched=lambda rows: _language_matched_rows(rows, {}, proficient))
+        return jsonify({"session_id": "corpus-mixed", "queue": queue,
+                        "count": len(queue), "labelled": 0}), 200
+    except Exception as e:
+        logger.warning("corpus mixed queue failed: %s", e, exc_info=True)
+        return jsonify({"code": "SERVER_ERROR",
+                        "error": "could not load the queue"}), 500
+
+
 @v2_bp.route("/coach/corpus/clips/<snippet_id>/playback", methods=["GET"])
 @require_admin_or_coach
 def v2_coach_corpus_clip_playback(snippet_id):
