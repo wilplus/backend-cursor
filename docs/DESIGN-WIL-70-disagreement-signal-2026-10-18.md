@@ -2,6 +2,12 @@
 
 No code in this note. It says what to build, where, and what stays as it is.
 
+It answers WIL-32: how speaker/coach disagreement should change
+`ranking_priority` in `label_quorum.py`, for star, disagreement, licensed
+and peer recordings. It is not built yet. Section 5 checks it against main
+on 2026-10-21. Two parts of it no longer match the walk, and the founder
+decides those two before anything is built.
+
 ## 1. The two answers, and when they disagree
 
 | Side | Where it is read | Which row |
@@ -44,6 +50,15 @@ The ticket calls it `ranking_priority`; in the code it is
   `routing_priority`, never into `resolve()`. `resolve()` still has no
   machine parameter and no owner parameter, `machine_votes` stays 0, and a
   self-report still never counts toward quorum, gold or evaluation.
+
+### By kind of recording
+
+| Recording | What `routing_priority` does with it |
+|---|---|
+| **Disagreement** (the speaker and the lone coach answer differently) | Goes to 100. In the coach queue it comes after re-reviews and before everything else. Among peer clips it comes first within its rank (section 4.3). |
+| **Star** (the speaker says `yes` and so does the coach) | Nothing new. As a singleton it is 40, or 100 if the machine disagrees, and 0 once a peer agrees. Round one picks it by its two answers, not by priority (section 3). |
+| **Peer** (another speaker's clip, shared with a community) | Ordered by priority inside its rank: the listener's own communities first, then the general one (section 4.3). |
+| **Licensed** (a clip from the licensed corpus) | Nothing. A corpus clip is not a snippet and takes no label, so the ledger never sees it. It is picked by stratum and fills the places the peers leave. |
 
 ## 3. The recording mix in each judgement round
 
@@ -115,15 +130,17 @@ trainer must read labels only through `label_quorum.resolve()`.
      the `SINGLETON` branch returns `P_SINGLETON_DISAGREES` when
      `machine_disagrees(...) or owner_disagrees(...)`.
    - In the rule 2 docstring, add one sentence: the owner's answer may order
-     the queue and never counts.
+     the queue and never counts. That docstring also points to
+     `game_engine._source_class`, which no longer exists. Remove the pointer
+     in the same edit.
    - `resolve()` and the `snippet_label_quorum` view stay as they are. The
      view gives status, not priority, so **there is no migration.**
-2. **`routes/v2/coach.py` `_confidence_queue_row`** (around line 2214)
+2. **`routes/v2/coach.py` `_confidence_queue_row`** (around line 2267)
    - Pass `owner_value` to `routing_priority`.
    - Read the speaker's answers once per batch with
      `list_confident_voice_self_reports(arc_id)`, keyed by `snippet_id`.
      Don't read them once per row (#1122).
-   - `_queue_priority` is already removed before the row is sent (line 2511),
+   - `_queue_priority` is already removed before the row is sent (line 2592),
      so the coach never sees the speaker's answer. Blind coach holds.
 3. **`services/communities.py` `order_community_clips`**
    - Change the sort key from `(rank, index)` to `(rank, -priority, index)`, where
@@ -152,3 +169,45 @@ trainer must read labels only through `label_quorum.resolve()`.
    - One contract check on `other_voices`: with 5 peer clips and 5 training
      clips, it returns 2 peers then 1 training clip.
    - No new test file.
+
+## 5. Checked against main (2026-10-21, WIL-32)
+
+None of this is built yet. `label_quorum` has no `owner_disagrees`.
+`routing_priority` takes no `owner_value`. `order_community_clips` still
+sorts by `(rank, index)`. `lend_your_ear` has no `PEERS_MAX`.
+
+Three things have changed since this note was written. The founder decides
+the first two.
+
+1. **Round one has no screen.** The lock of 2026-10-12 took judging your own
+   moments out of the walk (frontend `docs/flows/feedback-walk-and-chat.md`,
+   C10). `walkPlan.ts` no longer plans a judgement step. A speaker now answers
+   about their own clip in one place only: changing an earlier answer from
+   the paragraph (`changeJudgement.ts`). So the star and disagreement
+   recordings of section 3 have nowhere to be shown. Bringing back
+   own-moment judging is a change to a locked screen, so round one is not
+   built until the founder says yes. Without round one, the star recording
+   has no use.
+2. **Round two does not match C8.** C8 serves one other voice per practice
+   try: at least one, at most three. `WalkOthers.tsx` shows the first
+   `max(1, min(3, tries))` clips the server sends. Section 3 says 3 every
+   walk with at least 1 licensed. The server would send peers first, at most
+   2. So when peer clips exist, a walk with one or two tries never shows the
+   licensed clip.
+   Either C8 becomes "3 every walk", or the licensed place is kept only when
+   the walk has three tries. The founder's answer of 2026-10-19 is written
+   only in this note. It is not on the flow page or in the decisions log.
+3. **The speaker's side has almost no answers.** With own-moment judging
+   gone, the only new self-reports are changed answers. The query pack of
+   2026-10-12 counted 4 speaker answers, 21 clips with a coach answer and 1
+   clip with both (the flow page's §3, confirmed 2026-10-20). `owner_disagrees` would almost
+   never fire, and section 4.3's peer ordering would almost never change.
+   Section 2 costs nothing when it does not fire, so it can be built as
+   written. It only does something once speakers answer about their own
+   clips again, which is point 1.
+
+**For the founder:**
+- Point 1: bring back judging your own moments in the walk (a change to a
+  locked screen), or drop round one and the star recording.
+- Point 2: 3 other voices every walk (C8 changes), or one per try (section 3
+  changes, and the licensed place is kept only at three tries).
