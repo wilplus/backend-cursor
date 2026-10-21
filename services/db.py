@@ -10053,14 +10053,25 @@ class DatabaseService:
         if not ids:
             return {}
         try:
-            rows = (self.client.table("confidence_labels")
-                    .select("session_id, snippet_id")
-                    .in_("session_id", ids).execute().data) or []
+            # Paged: one unpaged read is cut at PostgREST's 1000 rows with
+            # no error, and a long corpus's labels pass that (founder
+            # 2026-10-21, 600 clips): imports would read as unlabelled.
             seen: dict = {}
-            for r in rows:
-                sid, snip = r.get("session_id"), r.get("snippet_id")
-                if sid and snip:
-                    seen.setdefault(str(sid), set()).add(str(snip))
+            for i in range(0, len(ids), 50):
+                offset = 0
+                while True:
+                    rows = (self.client.table("confidence_labels")
+                            .select("session_id, snippet_id")
+                            .in_("session_id", ids[i:i + 50])
+                            .order("session_id").order("snippet_id")
+                            .range(offset, offset + 999).execute().data) or []
+                    for r in rows:
+                        sid, snip = r.get("session_id"), r.get("snippet_id")
+                        if sid and snip:
+                            seen.setdefault(str(sid), set()).add(str(snip))
+                    if len(rows) < 1000:
+                        break
+                    offset += 1000
             return {sid: len(snips) for sid, snips in seen.items()}
         except Exception as e:
             logger.warning(

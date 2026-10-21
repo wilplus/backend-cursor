@@ -597,9 +597,12 @@ def _language_matched_rows(rows, snips, proficient):
     reaches a user.
 
     The recordings' languages are read once for the whole queue: a read per
-    Take was the bulk of the coach panel's load time (founder 2026-10-18)."""
+    Take was the bulk of the coach panel's load time (founder 2026-10-18).
+    Only a Take that declares no language needs its recording: a declared
+    one decides before the recording is looked at (founder 2026-10-21)."""
+    from services.rater_languages import session_language
     recordings = db.get_recording_languages(
-        [row.get("recording_id") for row in rows])
+        [row.get("recording_id") for row in rows if not session_language(row)])
     matched = []
     for row in rows:
         sid = str(row.get("id"))
@@ -2073,6 +2076,10 @@ def v2_coach_training_import_status(session_id):
                         "error": "could not read the import"}), 500
 
 
+#: What the list's language gate reads of an undeclared import's pieces.
+_IMPORT_LANGUAGE_COLUMNS = "id, session_id, start_offset_ms, language"
+
+
 @v2_bp.route("/coach/training-imports", methods=["GET"])
 @require_admin_or_coach
 def v2_coach_list_training_imports():
@@ -2110,13 +2117,16 @@ def v2_coach_list_training_imports():
             user_id=(request.args.get("user_id") or None)) or []
         include_archived = (request.args.get("include_archived") or "") in (
             "1", "true", "yes")
-        routed = []
-        for r in rows:
-            snippets = db.get_snippets_by_session(str(r.get("id"))) or []
-            outcome, _language = _rater_language_outcome(
-                r, snippets, proficient=proficient)
-            if outcome == "matched":
-                routed.append(r)
+        # The language gate, read for the whole list at once: an import that
+        # declares its language (every one since N56.4) needs no read; the
+        # pieces of the others, read together, only for their languages
+        # (founder 2026-10-21: one read of every piece per import made the
+        # list take 15.7 s).
+        from services.rater_languages import session_language
+        undeclared = [r.get("id") for r in rows if not session_language(r)]
+        snips = (db.get_snippets_by_sessions(
+            undeclared, columns=_IMPORT_LANGUAGE_COLUMNS) or {}) if undeclared else {}
+        routed = _language_matched_rows(rows, snips, proficient)
         labelled = db.count_labelled_snippets_by_session_ids(
             [r.get("id") for r in routed])
         out = []
